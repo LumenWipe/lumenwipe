@@ -1,0 +1,68 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "maple",
+  "name": "LumenWipe",
+  "colors": {
+    "primary": "#4F46E5",
+    "light": "#818CF8",
+    "dark": "#4338CA"
+  },
+  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg",
+    "href": "https://lumenwipe.com"
+  },
+  "fonts": {
+    "family": "Inter"
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Documentation",
+        "pages": [
+          "index",
+          "executive-summary",
+          "architecture",
+          "rfp-compliance",
+          "community-and-communications"
+        ]
+      }
+    ]
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "assistant",
+      "chatgpt",
+      "claude",
+      "mcp"
+    ],
+    "display": "header"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/LumenWipe/lumenwipe",
+        "icon": "github"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Executive summary",
+      "href": "/executive-summary"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/LumenWipe/lumenwipe"
+    }
+  },
+  "seo": {
+    "metatags": {
+      "canonical": "https://docs.lumenwipe.com"
+    }
+  }
+}

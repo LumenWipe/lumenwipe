@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 182 36" width="182" height="36" role="img" aria-label="LumenWipe">
+  <g transform="translate(0,4) scale(0.4375)">
+    <rect width="64" height="64" rx="14" fill="#4F46E5"/>
+    <path d="M32 13 L36.5 27.5 L51 32 L36.5 36.5 L32 51 L27.5 36.5 L13 32 L27.5 27.5 Z" fill="#ffffff"/>
+  </g>
+  <text x="38" y="25" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="20" font-weight="700" letter-spacing="-0.3">
+    <tspan fill="#1E1B4B">Lumen</tspan><tspan fill="#4F46E5">Wipe</tspan>
+  </text>
+</svg>

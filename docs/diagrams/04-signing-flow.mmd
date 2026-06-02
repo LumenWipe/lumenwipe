@@ -1,0 +1,11 @@
+flowchart TB
+    env["Unsigned transaction envelope"] --> review["XDR review (collapsible)"]
+    review --> choice{"Signing method"}
+    choice -->|"wallet"| kit["stellar-wallets-kit<br/>signTransaction / signAuthEntry"]
+    choice -->|"advanced"| key["Secret key in memory"]
+    kit --> signed["Signed XDR"]
+    key --> signed
+    signed --> confirm["Explicit irreversibility confirmation"]
+    confirm --> send["sendTransaction (Stellar RPC)"]
+    send --> poll["Poll getTransaction until confirmed"]
+    poll --> next["Mark step confirmed, advance"]

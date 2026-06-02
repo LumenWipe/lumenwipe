@@ -1,0 +1,16 @@
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Analyzing: submit source + destination
+    Analyzing --> PreflightComplete: analysis succeeds, plan built
+    Analyzing --> Aborted: account not found or blocked
+    PreflightComplete --> SignerSetup: multisig detected
+    PreflightComplete --> StepExecuting: single-signer
+    SignerSetup --> StepExecuting: enough signatures gathered
+    StepExecuting --> StepConfirmed: ledger confirms step
+    StepExecuting --> StepFailed: submission or simulation error
+    StepFailed --> StepExecuting: retry same step
+    StepConfirmed --> StepExecuting: next step
+    StepConfirmed --> Complete: merge confirmed
+    Complete --> [*]
+    StepExecuting --> Aborted: user cancels
+    StepFailed --> Aborted: user cancels

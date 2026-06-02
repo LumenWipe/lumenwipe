@@ -1,0 +1,51 @@
+flowchart TB
+    subgraph client["Browser client: trust boundary, keys never leave"]
+        direction TB
+        ui["Guided UI<br/>(plan, confirmations, dry-run preview)"]
+        wk["Wallet adapter<br/>(stellar-wallets-kit)"]
+        sk["Secret-key mode<br/>(in-memory only)"]
+        builder["Transaction builder<br/>(pure TypeScript)"]
+        signer["Signer + XDR review"]
+        sess["Session store<br/>(IndexedDB, no keys)"]
+    end
+
+    subgraph backend["Read-only backend: stateless, no keys, no custody"]
+        direction TB
+        analysis["Account analysis<br/>aggregator"]
+        defi["DeFi position adapter<br/>(OctoPos primary, Orion fallback)"]
+        route["Routing service<br/>(Soroswap aggregator + SDEX paths)"]
+        med["Mediator factory<br/>(builds unsigned XDR)"]
+        reg["Exchange + contract<br/>registries"]
+        cache["Cache (Redis)"]
+    end
+
+    subgraph data["Stellar network and data services"]
+        direction TB
+        rpc["Stellar RPC<br/>(live reads, simulate, submit, events)"]
+        idx["Existing indexer<br/>(stellar.expert API)"]
+        soro["Soroswap Aggregator API"]
+        pos["DeFi Position API<br/>(OctoPos / Orion)"]
+        net["Stellar ledger<br/>(classic + Soroban)"]
+    end
+
+    ui --> builder
+    wk --> signer
+    sk --> signer
+    builder --> signer
+    signer -->|"signed XDR"| rpc
+    signer --> sess
+
+    ui -->|"read-only requests"| analysis
+    analysis --> idx
+    analysis --> rpc
+    analysis --> defi
+    defi --> pos
+    route --> soro
+    route --> idx
+    med --> rpc
+    analysis --> cache
+
+    rpc --> net
+    idx --> net
+    soro --> net
+    pos --> net

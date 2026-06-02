@@ -1,0 +1,6 @@
+flowchart TB
+    req["Position request for address"] --> octo["Query OctoPos (5s timeout)"]
+    octo -->|"fresh"| ok1["Return OctoPos data"]
+    octo -->|"stale or error"| orion["Query Orion (5s timeout)"]
+    orion -->|"fresh"| ok2["Return Orion data"]
+    orion -->|"stale or error"| degraded["Degraded mode:<br/>classic steps only,<br/>warn user to verify DeFi manually"]

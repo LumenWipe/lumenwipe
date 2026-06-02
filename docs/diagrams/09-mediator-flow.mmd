@@ -1,0 +1,11 @@
+sequenceDiagram
+    participant S as Source account
+    participant M as Mediator (temporary)
+    participant D as Destination (exchange deposit)
+
+    Note over S,M: Mediator created and funded from the source account
+    S->>M: AccountMerge (transfers all XLM into mediator)
+    Note over M: Mediator now holds the recovered funds
+    M->>D: Payment (forwards funds, with required memo)
+    Note over D: Exchange credits the user by address + memo
+    Note over M: Mediator retains 1 XLM base reserve (disclosed cost)

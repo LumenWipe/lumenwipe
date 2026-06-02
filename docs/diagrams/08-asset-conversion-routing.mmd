@@ -1,0 +1,11 @@
+flowchart TD
+    asset["Non-XLM balance"] --> q["Quote route<br/>(Soroswap aggregator; SDEX paths fallback)"]
+    q --> hasroute{"Route found?"}
+    hasroute -->|"yes"| minrecv["Compute minimum received<br/>(quote x (1 - slippage))"]
+    minrecv --> kind{"Token kind"}
+    kind -->|"classic"| pp["PathPaymentStrictSend<br/>(dest_min = minimum received)"]
+    kind -->|"Soroban"| inv["InvokeHostFunction swap<br/>(min_out = minimum received)"]
+    pp --> conv["Converted to XLM"]
+    inv --> conv
+    hasroute -->|"no"| opt["Offer user a choice:<br/>return asset to issuer, or<br/>forward balance to a third-party address"]
+    conv --> rm["Remove trustline (ChangeTrust limit 0)"]

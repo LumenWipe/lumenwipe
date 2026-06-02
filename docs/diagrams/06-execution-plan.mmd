@@ -1,0 +1,11 @@
+flowchart TD
+    s1["1. Normalize signers<br/>(SetOptions: remove extra signers, thresholds to 0/1/1)"]
+    s2["2. Remove data entries<br/>(ManageData, batched by 100)"]
+    s3["3. Claim selected claimable balances<br/>(ClaimClaimableBalance, optional)"]
+    s4["4. Cancel DEX offers<br/>(ManageSellOffer / ManageBuyOffer, amount 0)"]
+    s5["5. Withdraw AMM and LP positions<br/>(classic LiquidityPoolWithdraw + Soroban pool withdrawals)"]
+    s6["6. Exit DeFi protocols<br/>(Blend, Phoenix, FxDAO: repay then withdraw)"]
+    s7["7. Convert assets to XLM<br/>(PathPaymentStrictSend / Soroban swaps)"]
+    s8["8. Remove trustlines<br/>(ChangeTrust limit 0, batched by 100)"]
+    s9["9. Merge account<br/>(AccountMerge, direct or via mediator)"]
+    s1 --> s2 --> s3 --> s4 --> s5 --> s6 --> s7 --> s8 --> s9

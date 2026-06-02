@@ -1,0 +1,12 @@
+flowchart TD
+    detect["Detect Blend position<br/>(OctoPos / Orion)"] --> ver["Resolve pool version<br/>(wasmHash: V1 or V2)"]
+    ver --> hasdebt{"Open dToken debt?"}
+    hasdebt -->|"yes"| acquire["Acquire repayment asset if needed<br/>(route + PathPayment / swap)"]
+    acquire --> repay["Repay (RequestType 5)"]
+    hasdebt -->|"no"| withdraw
+    repay --> hf{"Health factor stays >= 1.0?"}
+    hf -->|"yes"| withdraw["Withdraw / WithdrawCollateral<br/>(RequestType 1 / 3)"]
+    hf -->|"no"| block["Block step, explain risk"]
+    withdraw --> backstop{"Backstop deposit?"}
+    backstop -->|"queued (Q4W)"| wait["Show 17-day queue;<br/>proceed with rest, warn funds locked"]
+    backstop -->|"none"| done["Position closed"]
