@@ -83,7 +83,7 @@ async function verifyAccountMerge(txHash: string, network: Network): Promise<Ver
       return { valid: true, xlmStroops: "0" };
     }
   } else {
-    // envelopeXdr absent (older node / pruned ledger) — verify op type via resultXdr
+    // envelopeXdr absent (older node / pruned ledger) - verify op type via resultXdr
     if (!hasAccountMergeResult(result.resultXdr)) {
       return { valid: false, xlmStroops: "0" };
     }
