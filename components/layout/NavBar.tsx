@@ -29,6 +29,12 @@ export default function NavBar({ network }: NavBarProps) {
           </Link>
 
           <div className="flex items-center gap-3">
+            <Link
+              href="/blog"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors hidden sm:block"
+            >
+              Blog
+            </Link>
             <button
               onClick={() => setHistoryOpen(true)}
               title="Merge history"
