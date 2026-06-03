@@ -26,6 +26,8 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     setMediatorRequired: syncMediatorToStore,
     sourceAddress,
     destinationAddress,
+    memo,
+    memoType,
   } = useDemolishStore();
 
   const [account, setAccount] = useState<AccountState | null>(null);
@@ -70,7 +72,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
 
       setAccount(accountData);
       setAccountState(accountData);
-      setAddresses(effectiveSource, effectiveDest);
+      setAddresses(effectiveSource, effectiveDest, memo ?? undefined, memoType ?? undefined);
       setMediatorRequired(needsMediator);
       syncMediatorToStore(needsMediator, mediatorPublicKey);
 
@@ -89,6 +91,8 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     setAccountState,
     setAddresses,
     syncMediatorToStore,
+    memo,
+    memoType,
   ]);
 
   useEffect(() => {

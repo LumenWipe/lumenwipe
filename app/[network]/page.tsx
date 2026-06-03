@@ -9,6 +9,7 @@ import NetworkStats from "@/components/stats/NetworkStats";
 import { useSessionRecovery } from "@/hooks/useSessionRecovery";
 import { deleteSession } from "@/lib/session/store";
 import { useDemolishStore } from "@/store/demolish";
+import { getMemoRequirement } from "@/lib/exchange-registry";
 
 export default function HomePage({ params }: { params: Promise<{ network: Network }> }) {
   const { network } = use(params);
@@ -18,7 +19,14 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
 
   function handleResume() {
     if (!session) return;
-    setAddresses(session.sourceAddress, session.destinationAddress, session.memo ?? undefined);
+    const memoReq = getMemoRequirement(session.destinationAddress);
+    const memoType = memoReq.requiresMemo ? (memoReq.memoType ?? undefined) : undefined;
+    setAddresses(
+      session.sourceAddress,
+      session.destinationAddress,
+      session.memo ?? undefined,
+      memoType
+    );
     setMediatorRequired(!!session.mediatorPublicKey, session.mediatorPublicKey ?? undefined);
     initSession();
     router.push(`/${network}/execute`);

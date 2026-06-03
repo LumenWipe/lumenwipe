@@ -42,7 +42,8 @@ export default function AccountEntryForm() {
       }
 
       // Store addresses and secret key reference in app state
-      setAddresses(source, destination, memo.trim() || undefined);
+      const effectiveMemoType = memoRequired ? memoType : undefined;
+      setAddresses(source, destination, memo.trim() || undefined, effectiveMemoType);
       initSession();
       setPhase("ANALYZING");
 

@@ -7,7 +7,8 @@ export function buildMergeTx(
   sdkAccount: Account,
   destinationAddress: string,
   memo: string | null,
-  network: Network
+  network: Network,
+  memoType?: "text" | "id" | "hash" | null
 ): string {
   const passphrase = NETWORK_PASSPHRASES[network];
 
@@ -16,7 +17,13 @@ export function buildMergeTx(
     networkPassphrase: passphrase,
   }).setTimeout(TX_TIMEOUT_SECONDS);
 
-  if (memo) builder.addMemo(Memo.text(memo));
+  if (memo) {
+    if (memoType === "id") {
+      builder.addMemo(Memo.id(memo));
+    } else {
+      builder.addMemo(Memo.text(memo));
+    }
+  }
 
   builder.addOperation(Operation.accountMerge({ destination: destinationAddress }));
 

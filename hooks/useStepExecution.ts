@@ -35,7 +35,8 @@ export function useStepExecution() {
   // Build unsigned XDR for a given step using the current on-chain sequence
   const buildStepXdr = useCallback(
     async (step: PlannedStep): Promise<string> => {
-      const { sourceAddress, accountState, destinationAddress, memo, mediatorPublicKey } = store;
+      const { sourceAddress, accountState, destinationAddress, memo, memoType, mediatorPublicKey } =
+        store;
       if (!sourceAddress || !accountState || !destinationAddress) {
         throw new Error("Missing account state for transaction building");
       }
@@ -90,7 +91,7 @@ export function useStepExecution() {
           if (store.mediatorRequired && mediatorPublicKey) {
             return buildMediatorMergeTx(sdkAccount, mediatorPublicKey, network);
           }
-          return buildMergeTx(sdkAccount, destinationAddress, memo, network);
+          return buildMergeTx(sdkAccount, destinationAddress, memo, network, memoType);
         }
 
         default:
@@ -111,6 +112,7 @@ export function useStepExecution() {
         sourceAddress,
         destinationAddress,
         memo,
+        memoType,
         mediatorRequired,
         mediatorPublicKey,
         executionPlan,
@@ -149,7 +151,8 @@ export function useStepExecution() {
             destinationAddress!,
             memo,
             network,
-            setProgressStatus
+            setProgressStatus,
+            memoType
           );
           clearMediatorSession();
           markStepConfirmed(step.index, result.mergeHash);

@@ -8,6 +8,7 @@ interface DemolishState {
   sourceAddress: string | null;
   destinationAddress: string | null;
   memo: string | null;
+  memoType: "text" | "id" | "hash" | null;
 
   // Preflight
   phase: DemolishPhase;
@@ -29,7 +30,12 @@ interface DemolishState {
   sessionId: string | null;
 
   // Actions
-  setAddresses: (source: string, dest: string, memo?: string) => void;
+  setAddresses: (
+    source: string,
+    dest: string,
+    memo?: string,
+    memoType?: "text" | "id" | "hash"
+  ) => void;
   setPhase: (phase: DemolishPhase) => void;
   setAccountState: (state: AccountState) => void;
   setPlan: (plan: PlannedStep[]) => void;
@@ -47,6 +53,7 @@ const initialState = {
   sourceAddress: null,
   destinationAddress: null,
   memo: null,
+  memoType: null,
   phase: "IDLE" as DemolishPhase,
   accountState: null,
   executionPlan: [],
@@ -61,8 +68,13 @@ const initialState = {
 export const useDemolishStore = create<DemolishState>((set) => ({
   ...initialState,
 
-  setAddresses: (source, dest, memo) =>
-    set({ sourceAddress: source, destinationAddress: dest, memo: memo ?? null }),
+  setAddresses: (source, dest, memo, memoType) =>
+    set({
+      sourceAddress: source,
+      destinationAddress: dest,
+      memo: memo ?? null,
+      memoType: memoType ?? null,
+    }),
 
   setPhase: (phase) => set({ phase }),
 
