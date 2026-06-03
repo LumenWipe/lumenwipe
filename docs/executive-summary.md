@@ -38,11 +38,11 @@ Analyze the account, generate a deterministic ordered plan, execute it step by s
 
 ## Delivery
 
-| Tranche | Focus |
-|---|---|
-| 1. Classic MVP | Full classic wind-down on testnet, the mediator flow, multisig, session recovery. Largely built today. |
-| 2. Soroban and DeFi | Position detection via OctoPos and Orion; Blend, Aquarius, Soroswap, Phoenix, and FxDAO exits; Soroban conversion; allowance inspector. |
-| 3. Production hardening | Third-party security audit and remediation, mainnet deployment, performance validation, final documentation. |
+| Tranche                 | Focus                                                                                                                                   |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Classic MVP          | Full classic wind-down on testnet, the mediator flow, multisig, session recovery. Largely built today.                                  |
+| 2. Soroban and DeFi     | Position detection via OctoPos and Orion; Blend, Aquarius, Soroswap, Phoenix, and FxDAO exits; Soroban conversion; allowance inspector. |
+| 3. Production hardening | Third-party security audit and remediation, mainnet deployment, performance validation, final documentation.                            |
 
 ## Read more
 

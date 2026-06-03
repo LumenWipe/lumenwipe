@@ -31,14 +31,7 @@
     ]
   },
   "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "assistant",
-      "chatgpt",
-      "claude",
-      "mcp"
-    ],
+    "options": ["copy", "view", "assistant", "chatgpt", "claude", "mcp"],
     "display": "header"
   },
   "navbar": {
