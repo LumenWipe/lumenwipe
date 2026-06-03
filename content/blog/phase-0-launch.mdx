@@ -1,0 +1,67 @@
+---
+title: "Introducing LumenWipe Phase 0: Account Wind-Down, Made Simple"
+description: "LumenWipe Phase 0 is live: a non-custodial, guided workflow to close Stellar accounts, recover locked XLM reserves, and remove trustlines and offers safely."
+publishedAt: "2026-06-02"
+category: "Updates"
+tags: ["lumenwipe", "stellar", "xlm", "account-merge", "launch", "non-custodial"]
+---
+
+Managing a Stellar account through its full lifecycle has always required a solid understanding of the protocol. Removing trustlines, canceling open offers, and merging the account into a destination are separate operations that each carry their own prerequisites and failure modes.
+
+If you have ever tried to close a Stellar account manually, you know the friction. Balances that need to reach zero before a trustline can be removed. Offers that silently block the merge. Reserve math that is easy to miscalculate. The process is correct by design, but it is not guided.
+
+LumenWipe Phase 0 is our answer to that friction.
+
+## What LumenWipe does
+
+LumenWipe is a non-custodial web tool that walks you through the complete account wind-down process on Stellar. You provide a source account for analysis and a destination address, and LumenWipe builds a deterministic execution plan that you can review in full before signing anything.
+
+The plan covers every required step, in order:
+
+- **Swap non-XLM balances**: convert remaining issued asset balances back to XLM via the Stellar DEX, automatically finding a viable payment path
+- **Remove trustlines**: clear each trust entry once its balance reaches zero
+- **Cancel open offers**: close any outstanding buy or sell orders on the DEX
+- **Merge the account**: transfer the full remaining XLM balance and close the account permanently
+
+Every transaction is signed in your browser. Your secret key never reaches LumenWipe servers.
+
+## What Phase 0 includes
+
+| Feature                             | Status      |
+| ----------------------------------- | ----------- |
+| Account analysis and execution plan | ✓ Available |
+| Trustline removal                   | ✓ Available |
+| Open offer cancellation             | ✓ Available |
+| Account merge                       | ✓ Available |
+| Mainnet support                     | ✓ Available |
+| Testnet support                     | ✓ Available |
+| Session recovery                    | ✓ Available |
+| Merge history                       | ✓ Available |
+
+Phase 0 covers the most common account type: a standard Stellar account with trustlines and DEX activity. Soroban contract positions are on the Phase 1 roadmap.
+
+## Non-custodial by design
+
+The phrase "non-custodial" gets used loosely in the blockchain space. For LumenWipe it means something specific: your private key is only used to sign individual transactions, each of which you can inspect as XDR before submission. The key is never stored, never sent over the network, and Freighter wallet integration is planned for a future release.
+
+Closing an account is a sensitive operation. The tooling that helps with it should meet a high bar.
+
+## A note on the ecosystem
+
+The Stellar developer ecosystem has produced excellent tooling. Platforms like Stellar Expert have made block exploration, account analytics, and account operations accessible to a wide audience, and they deserve credit for educating the community on how account lifecycle operations work on Stellar.
+
+LumenWipe takes a focused approach: one guided workflow for account closure, with session recovery, a clear step-by-step execution plan, and the ability to inspect every transaction before signing.
+
+## What comes next
+
+Phase 1 will extend wind-down support to Soroban positions:
+
+- Exit liquidity pool positions
+- Withdraw from Soroban contract vaults
+- Handle sponsored ledger entries
+
+We're building in public. If you run into an issue or have feedback, open an issue on the project repository.
+
+---
+
+Ready to wind down an account? [Launch LumenWipe](/public)

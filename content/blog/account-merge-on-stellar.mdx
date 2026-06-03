@@ -1,0 +1,175 @@
+---
+title: "Account Merge on Stellar: A Complete Technical Reference"
+description: "A technical reference for the AccountMerge operation on Stellar: prerequisites, reserve recovery math, XDR structure, result codes, and how automated wind-down tools handle the full flow."
+publishedAt: "2026-06-02"
+category: "Technical"
+tags: ["stellar", "account-merge", "xlm", "reserves", "trustlines", "protocol", "xdr"]
+---
+
+`AccountMerge` is one of Stellar's built-in operations. It closes the source account, transfers its entire XLM balance to a destination, and removes the source entry from the ledger permanently. Understanding how it works at the protocol level matters for anyone building account lifecycle tooling, or simply trying to consolidate Stellar addresses.
+
+For a guided walkthrough of the wind-down process, see the [LumenWipe Phase 0 announcement](/blog/phase-0-launch).
+
+## The operation
+
+`AccountMerge` takes a single parameter: the destination account ID.
+
+```
+AccountMergeOp {
+  destination: AccountID
+}
+```
+
+When it succeeds:
+
+1. The full XLM balance of the source account transfers to the destination
+2. The source account's ledger entry is removed permanently
+3. The source account's sequence number no longer exists on the ledger
+
+There is no undo. The public/private keypair continues to exist mathematically, but the account entry does not. Re-activating that address requires a new `CreateAccount` operation, which resets the sequence number to zero.
+
+## Prerequisites
+
+The protocol enforces several prerequisites before allowing `AccountMerge`. Missing any of them returns an error result code (covered in the table below).
+
+### No trustlines
+
+Every trustline on the account must be removed first. A trustline is removed by submitting `ChangeTrust` with `limit: 0`, but that only works if the trustline balance is exactly zero. Even a dust amount of `0.0000001` of an issued asset will cause it to fail.
+
+The prerequisite chain:
+
+1. Reduce every non-XLM balance to zero by selling or sending the tokens
+2. Submit `ChangeTrust(limit: 0)` for each asset to remove the trustline entry
+
+### No open offers
+
+Open DEX offers, whether buy orders or sell orders, are sub-entries on the account. Each must be cancelled with `ManageSellOffer` or `ManageBuyOffer` using `amount: 0`. Offers that were created as part of a liquidity pool position may require a different removal path.
+
+### No data entries
+
+Named data entries created via `ManageData` must be removed before merging. These are key-value pairs stored on the account. They appear in some application and DEX flows and are easy to overlook.
+
+### No additional signers
+
+Extra signers added via `SetOptions` must be removed. The account's master key is unaffected, but any additional signatories need to be cleared.
+
+### No sponsored entries
+
+If the account is sponsoring any ledger entries through Stellar's [sponsored reserves protocol](https://developers.stellar.org/docs/encyclopedia/sponsored-reserves), those sponsorships must be revoked first.
+
+### Destination must exist
+
+The destination account must already be present on the ledger. If it does not exist, the operation fails with `ACCOUNT_MERGE_NO_ACCOUNT`. Creating a new account and merging into it in the same transaction is not possible.
+
+### Source and destination must differ
+
+An account cannot be merged into itself.
+
+## Reserve recovery
+
+Every Stellar account holds a minimum XLM balance locked by the base reserve mechanism. That locked balance grows with the number of sub-entries the account holds.
+
+| Entry           | Reserve |
+| --------------- | ------- |
+| Account base    | 1 XLM   |
+| Each trustline  | 0.5 XLM |
+| Each open offer | 0.5 XLM |
+| Each data entry | 0.5 XLM |
+| Each signer     | 0.5 XLM |
+
+When you remove a sub-entry, its 0.5 XLM reserve unlocks immediately and becomes part of the available balance. When the account merges, the remaining 1 XLM base reserve transfers to the destination along with everything else.
+
+### Example
+
+An account with 5 trustlines and 2 open offers has a total locked reserve of:
+
+```
+1 XLM (base) + 5 × 0.5 XLM (trustlines) + 2 × 0.5 XLM (offers)
+= 1 + 2.5 + 1
+= 4.5 XLM
+```
+
+All 4.5 XLM is recoverable. The XLM was locked, not spent, so it becomes available again in full once the entries are cleared.
+
+## XDR structure
+
+`AccountMerge` is the most compact operation type in the Stellar protocol. The transaction envelope looks like:
+
+```
+TransactionEnvelope {
+  tx: Transaction {
+    sourceAccount: <source address>,
+    fee: <base fee in stroops>,
+    seqNum: <next sequence number>,
+    timeBounds: <optional>,
+    operations: [
+      Operation {
+        sourceAccount: null,
+        body: {
+          type: ACCOUNT_MERGE,
+          destination: <destination address>
+        }
+      }
+    ]
+  },
+  signatures: [...]
+}
+```
+
+No additional `body` fields are required beyond the destination address.
+
+## Common failure codes
+
+| Result code                     | Meaning                                                  |
+| ------------------------------- | -------------------------------------------------------- |
+| `ACCOUNT_MERGE_SUCCESS`         | Operation completed successfully                         |
+| `ACCOUNT_MERGE_MALFORMED`       | Source and destination are the same account              |
+| `ACCOUNT_MERGE_NO_ACCOUNT`      | Destination does not exist on the ledger                 |
+| `ACCOUNT_MERGE_IMMUTABLE_SET`   | Source account has `AUTH_IMMUTABLE` flag set             |
+| `ACCOUNT_MERGE_HAS_SUB_ENTRIES` | Trustlines, offers, data entries, or signers still exist |
+| `ACCOUNT_MERGE_SEQNUM_TOO_FAR`  | Sequence number exceeds the allowed range                |
+| `ACCOUNT_MERGE_DEST_FULL`       | Destination XLM balance would overflow `INT64_MAX`       |
+| `ACCOUNT_MERGE_IS_SPONSOR`      | Account is sponsoring entries that have not been revoked |
+
+`ACCOUNT_MERGE_HAS_SUB_ENTRIES` is the most common failure. It is the core reason automated wind-down tooling exists: identifying which sub-entries remain and constructing the correct removal transactions requires querying the ledger state and handling each entry type correctly.
+
+## Common questions
+
+### What is the purpose of account merge?
+
+AccountMerge gives account holders a clean way to close an address they no longer need. Common cases: a test account that fulfilled its purpose, multiple addresses you want to consolidate, or an account you are retiring after exiting all positions. Beyond convenience, the merge also releases the base reserve and any per-entry reserves back into spendable funds, so there is a direct financial reason to close accounts rather than abandon them.
+
+### What does Stellar gain when accounts merge?
+
+Every active account is an entry that every validator on the network must store and process. Accounts that go unused still occupy ledger state indefinitely. AccountMerge gives holders a way to close those entries cleanly rather than leaving them open forever. The base reserve mechanism reinforces this: holding an active account always locks a minimum XLM balance, which creates an ongoing cost and a financial reason to close accounts you no longer use. The result is a ledger that stays closer to representing actual usage rather than accumulating abandoned entries.
+
+### After merging, is the account completely gone? Is there still a record of it?
+
+The account's current-state entry is deleted from the ledger when the merge confirms. From that point, no balance, sequence number, or trustline exists for that address as far as the current ledger state is concerned. But the historical record is permanent. Every transaction the account ever signed is recorded on the blockchain and remains publicly accessible forever. You can query a block explorer for the full history of a merged address, including the final AccountMerge transaction itself. Current state is gone; history stays.
+
+### Can a merged account be recovered?
+
+Not in the usual sense. The keypair still exists, so you can still sign with that private key. But the account's on-chain state is gone, including its sequence number. If you send XLM to a merged address, the network treats it as a new `CreateAccount` operation, creating a fresh account with sequence number 0. Any transactions signed before the merge, or any application state tied to the old sequence number, would be invalid.
+
+### What happens to the XLM held by the merged account?
+
+All of it transfers to the destination in the same operation: the regular balance, the base reserve, and any per-entry reserves unlocked during the wind-down process. Nothing is burned. The full balance, including what was previously locked, ends up in the destination account.
+
+## How automated wind-down works
+
+LumenWipe queries the Stellar network to enumerate every sub-entry on the source account, then builds an ordered execution plan that satisfies all prerequisites before submitting the merge.
+
+The sequence is:
+
+1. Fetch account state: trustlines, offers, data entries, signers, and balances
+2. Build swap paths: for each non-XLM balance, find a DEX path back to XLM
+3. Execute path payments: swap assets down to zero balance for each trustline
+4. Remove trustlines: submit `ChangeTrust(limit: 0)` once each balance is zero
+5. Cancel offers: submit `ManageSellOffer(amount: 0)` or `ManageBuyOffer(amount: 0)` for each open order
+6. Merge: submit `AccountMerge` once all sub-entries are cleared
+
+Each step is a separate transaction. Session state is persisted locally, so the process can be resumed if interrupted at any point.
+
+---
+
+For the full protocol specification, refer to the [Stellar Developers documentation on AccountMerge](https://developers.stellar.org/docs/learn/fundamentals/transactions/list-of-operations#account-merge).
