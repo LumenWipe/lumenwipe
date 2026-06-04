@@ -6,6 +6,7 @@ import { MDXRemote } from "next-mdx-remote/rsc";
 import remarkGfm from "remark-gfm";
 import { getAllSlugs, getPost, extractToc, slugify } from "@/lib/blog";
 import CategoryBadge from "@/components/blog/CategoryBadge";
+import BlogToc from "@/components/blog/BlogToc";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
@@ -195,32 +196,8 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
             )}
           </article>
 
-          {/* TOC sidebar */}
-          {toc.length > 0 && (
-            <aside className="hidden lg:block w-52 flex-shrink-0">
-              <div className="sticky top-20">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                  On this page
-                </p>
-                <nav>
-                  <ul className="space-y-1">
-                    {toc.map((entry) => (
-                      <li key={entry.id}>
-                        <a
-                          href={`#${entry.id}`}
-                          className={`block text-xs text-muted-foreground hover:text-foreground transition-colors py-0.5 leading-snug ${
-                            entry.level === 3 ? "pl-3" : ""
-                          }`}
-                        >
-                          {entry.text}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </nav>
-              </div>
-            </aside>
-          )}
+          {/* TOC sidebar with scroll-spy */}
+          <BlogToc toc={toc} />
         </div>
       </div>
     </>
