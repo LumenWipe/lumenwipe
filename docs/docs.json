@@ -3,18 +3,35 @@
   "theme": "maple",
   "name": "LumenWipe",
   "colors": {
-    "primary": "#4F46E5",
-    "light": "#818CF8",
-    "dark": "#4338CA"
+    "primary": "#00B0F0",
+    "light": "#4DC4F5",
+    "dark": "#00B0F0"
+  },
+  "appearance": {
+    "default": "dark",
+    "strict": true
+  },
+  "background": {
+    "decoration": "grid",
+    "color": {
+      "dark": "#07070B",
+      "light": "#FFFFFF"
+    }
+  },
+  "fonts": {
+    "heading": {
+      "family": "Bricolage Grotesque",
+      "weight": 700
+    },
+    "body": {
+      "family": "Manrope"
+    }
   },
   "favicon": "/favicon.svg",
   "logo": {
     "light": "/logo/light.svg",
     "dark": "/logo/dark.svg",
     "href": "https://lumenwipe.com"
-  },
-  "fonts": {
-    "family": "Inter"
   },
   "navigation": {
     "groups": [
@@ -36,6 +53,11 @@
   },
   "navbar": {
     "links": [
+      {
+        "label": "Open the app",
+        "href": "https://lumenwipe.com/mainnet",
+        "icon": "arrow-up-right-from-square"
+      },
       {
         "label": "GitHub",
         "href": "https://github.com/LumenWipe/lumenwipe",
