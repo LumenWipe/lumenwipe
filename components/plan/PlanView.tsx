@@ -47,7 +47,6 @@ export default function PlanView({
         account={account}
         destinationAddress={destinationAddress}
         totalFee={totalFee}
-        mediatorRequired={mediatorRequired}
       />
 
       <BlockersPanel blockers={[]} />

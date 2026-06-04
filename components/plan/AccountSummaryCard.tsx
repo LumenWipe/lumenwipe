@@ -6,20 +6,18 @@ interface AccountSummaryCardProps {
   account: AccountState;
   destinationAddress: string;
   totalFee: string;
-  mediatorRequired: boolean;
 }
 
 export default function AccountSummaryCard({
   account,
   destinationAddress,
   totalFee,
-  mediatorRequired,
 }: AccountSummaryCardProps) {
   const recoverableXlm = calcRecoverableReserve(account.numSubEntries);
+  // Whether direct or via the shared mediator, the user recovers the full
+  // balance minus network fees (the mediator's own reserve is operator-funded).
   const estimatedFinal = (
-    parseFloat(account.nativeBalanceLumens) -
-    parseFloat(totalFee) -
-    (mediatorRequired ? 1.0 : 0)
+    parseFloat(account.nativeBalanceLumens) - parseFloat(totalFee)
   ).toFixed(7);
 
   const stats = [
