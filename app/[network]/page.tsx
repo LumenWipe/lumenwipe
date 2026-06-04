@@ -66,14 +66,16 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
 
       {/* Hero */}
       <div className="text-center mb-10">
-        <div className="inline-flex items-center gap-2 bg-secondary border border-border rounded-full px-3 py-1 text-xs text-muted-foreground mb-4">
+        <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 mkt-mono text-[0.66rem] uppercase tracking-wider text-white/65 mb-5">
           <ShieldCheck className="h-3.5 w-3.5 text-stellar" />
           Non-custodial · Client-side signing only
         </div>
-        <h1 className="text-3xl font-bold tracking-tight mb-3">Merge your Stellar account</h1>
-        <p className="text-muted-foreground text-base leading-relaxed max-w-lg mx-auto">
-          Safely wind down a Stellar account and recover all locked XLM reserves. Remove trustlines,
-          cancel offers, and merge your account in a guided, step-by-step process.
+        <h1 className="mkt-display text-4xl font-extrabold tracking-tight mb-3 text-white">
+          Wind down your Stellar account
+        </h1>
+        <p className="text-white/55 text-base leading-relaxed max-w-lg mx-auto">
+          Recover all the XLM locked in reserves. Remove trustlines, cancel offers, and merge your
+          account in a guided, step-by-step flow, signed entirely in your browser.
         </p>
       </div>
 
@@ -84,10 +86,10 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
           { icon: ShieldCheck, label: "Non-custodial", desc: "Keys never leave your browser" },
           { icon: GitMerge, label: "Exchange-friendly", desc: "Intermediary account support" },
         ].map(({ icon: Icon, label, desc }) => (
-          <div key={label} className="bg-card border border-border rounded-lg p-3 text-center">
+          <div key={label} className="mkt-panel rounded-xl p-3.5 text-center">
             <Icon className="h-5 w-5 text-stellar mx-auto mb-1.5" />
-            <p className="text-xs font-medium">{label}</p>
-            <p className="text-xs text-muted-foreground">{desc}</p>
+            <p className="text-xs font-medium text-white">{label}</p>
+            <p className="text-xs text-white/45">{desc}</p>
           </div>
         ))}
       </div>
@@ -96,9 +98,9 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
       <NetworkStats />
 
       {/* Warning */}
-      <div className="flex items-start gap-2.5 bg-warning/10 border border-warning/20 rounded-lg p-3 mb-8 text-sm">
+      <div className="flex items-start gap-2.5 bg-warning/10 border border-warning/25 rounded-xl p-3.5 mb-8 text-sm">
         <AlertOctagon className="h-4 w-4 text-warning mt-0.5 shrink-0" />
-        <p className="text-muted-foreground">
+        <p className="text-white/60">
           <span className="text-warning font-medium">Irreversible action.</span> An Account Merge
           transfers the XLM balance to the destination and removes the source account from the
           Stellar ledger. Make sure you have a working destination address before proceeding.
@@ -106,10 +108,8 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
       </div>
 
       {/* Form */}
-      <div className="bg-card border border-border rounded-xl p-6">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-5">
-          Account details
-        </h2>
+      <div className="mkt-panel rounded-2xl p-6">
+        <h2 className="mkt-eyebrow text-white/45 mb-5">Account details</h2>
         <AccountEntryForm />
       </div>
     </div>

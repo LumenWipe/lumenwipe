@@ -29,9 +29,16 @@ export default function NetworkLayout({
   }, [network, currentNetwork, setNetwork, reset]);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <NavBar network={network as "public" | "testnet"} />
-      <main className="flex-1">{children}</main>
+    <div className="relative min-h-screen overflow-x-clip bg-[#07070b]">
+      {/* calm instrument backdrop, quieter than the landing */}
+      <div aria-hidden className="pointer-events-none fixed inset-0 z-0">
+        <div className="absolute inset-0 mkt-grid opacity-40" />
+        <div className="absolute inset-x-0 top-0 h-72 bg-[radial-gradient(60%_100%_at_50%_0%,hsl(196_100%_47%/0.07),transparent)]" />
+      </div>
+      <div className="relative z-10 flex min-h-screen flex-col">
+        <NavBar network={network as "public" | "testnet"} />
+        <main className="flex-1">{children}</main>
+      </div>
     </div>
   );
 }

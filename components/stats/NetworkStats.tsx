@@ -47,31 +47,31 @@ export default function NetworkStats() {
         {NETWORKS.map(({ key, label }) => {
           const count = stats?.[key];
           return (
-            <div key={key} className="bg-card border border-border rounded-lg p-4 text-center">
-              <p className="text-xs text-muted-foreground mb-2">{label}</p>
-              <p className="text-3xl font-bold text-stellar tabular-nums">
+            <div key={key} className="mkt-panel rounded-xl p-4 text-center">
+              <p className="mkt-eyebrow text-white/40 mb-2">{label}</p>
+              <p className="mkt-display text-3xl font-bold text-stellar tabular-nums">
                 {count === undefined ? (
                   <span className="inline-block w-8 h-7 bg-border rounded animate-pulse" />
                 ) : (
                   count.toLocaleString()
                 )}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">accounts closed</p>
+              <p className="text-xs text-white/45 mt-1">accounts closed</p>
             </div>
           );
         })}
       </div>
 
-      <div className="bg-card border border-border rounded-lg p-4 text-center">
-        <p className="text-xs text-muted-foreground mb-2">Total Recovered</p>
-        <p className="text-3xl font-bold text-stellar tabular-nums">
+      <div className="mkt-panel rounded-xl p-4 text-center">
+        <p className="mkt-eyebrow text-white/40 mb-2">Total Recovered</p>
+        <p className="mkt-display text-3xl font-bold text-value tabular-nums">
           {totalStroops === null ? (
             <span className="inline-block w-24 h-7 bg-border rounded animate-pulse" />
           ) : (
             formatXlmCompact(totalStroops)
           )}
         </p>
-        <p className="text-xs text-muted-foreground mt-1">recovered on mainnet</p>
+        <p className="text-xs text-white/45 mt-1">recovered on mainnet</p>
       </div>
     </div>
   );

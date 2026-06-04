@@ -97,7 +97,7 @@ export default function AccountEntryForm() {
             onChange={(e) => setMemo(e.target.value)}
             placeholder={memoType === "id" ? "Enter numeric ID" : "Enter memo text (max 28 chars)"}
             maxLength={memoType === "text" ? 28 : undefined}
-            className="w-full text-sm bg-background border border-border rounded-lg px-3 py-2 placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-stellar/40"
+            className="w-full text-sm bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-stellar/40"
           />
         </div>
       )}
@@ -119,7 +119,7 @@ export default function AccountEntryForm() {
       <button
         onClick={handleAnalyze}
         disabled={!canProceed || analyzing || source === destination}
-        className="w-full flex items-center justify-center gap-2 bg-stellar text-black font-semibold py-2.5 px-4 rounded-lg hover:bg-stellar/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="w-full flex items-center justify-center gap-2 bg-stellar text-black font-semibold py-3 px-4 rounded-xl hover:bg-stellar/90 hover:shadow-[0_0_28px_-6px_hsl(var(--stellar)/0.7)] disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition-all"
       >
         {analyzing ? (
           <>

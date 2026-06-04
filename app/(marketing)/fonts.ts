@@ -1,24 +1,3 @@
-import { Bricolage_Grotesque, Manrope, JetBrains_Mono } from "next/font/google";
-
-// Display: characterful grotesque for headlines, distinctive, not generic.
-export const fontDisplay = Bricolage_Grotesque({
-  subsets: ["latin"],
-  variable: "--font-display",
-  display: "swap",
-});
-
-// Body: clean, legible workhorse with more warmth than Inter.
-export const fontBody = Manrope({
-  subsets: ["latin"],
-  variable: "--font-body",
-  display: "swap",
-});
-
-// Mono: engineering authenticity for addresses, amounts, and plan steps.
-export const fontMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-  display: "swap",
-});
-
-export const marketingFontVars = `${fontDisplay.variable} ${fontBody.variable} ${fontMono.variable}`;
+// Fonts now live in the shared, app-wide module so the landing, app, and blog
+// all use one type system. Re-exported here to keep existing imports working.
+export { siteFontVars as marketingFontVars } from "@/app/fonts";

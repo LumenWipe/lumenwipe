@@ -30,7 +30,7 @@ export default function AddressInput({
 
   return (
     <div className="space-y-1.5">
-      <label className="text-sm font-medium text-foreground">
+      <label className="text-sm font-medium text-white">
         {label}
         {required && <span className="text-destructive ml-1">*</span>}
       </label>
@@ -45,12 +45,12 @@ export default function AddressInput({
           spellCheck={false}
           autoComplete="off"
           className={cn(
-            "w-full font-mono-address bg-secondary border rounded-md px-3 py-2 pr-9 text-sm",
-            "placeholder:text-muted-foreground/50",
-            "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-0",
+            "w-full font-mono-address bg-black/30 border rounded-lg px-3 py-2.5 pr-9 text-sm",
+            "placeholder:text-white/30",
+            "focus:outline-none focus:ring-2 focus:ring-stellar/40 focus:ring-offset-0",
             "disabled:opacity-50 disabled:cursor-not-allowed",
             "transition-colors",
-            showError ? "border-destructive focus:ring-destructive/50" : "border-border",
+            showError ? "border-destructive focus:ring-destructive/50" : "border-white/10",
             isValid && touched ? "border-emerald-500/50" : ""
           )}
         />

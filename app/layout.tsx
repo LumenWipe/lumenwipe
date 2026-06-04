@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { Toaster } from "sonner";
+import { siteFontVars } from "./fonts";
 import "./globals.css";
-
-const inter = Inter({ subsets: ["latin"] });
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
@@ -96,7 +94,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           />
         )}
       </head>
-      <body className={inter.className}>
+      <body className={`${siteFontVars} font-body`}>
         {children}
         <Analytics />
         <Toaster position="bottom-right" theme="dark" richColors />

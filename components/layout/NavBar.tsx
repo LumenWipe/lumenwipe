@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Zap, History } from "lucide-react";
+import { History } from "lucide-react";
 import type { Network } from "@/config/networks";
+import Logo from "@/components/marketing/Logo";
 import NetworkSwitcher from "./NetworkSwitcher";
 import NetworkBadge from "./NetworkBadge";
 import HistoryPanel from "@/components/history/HistoryPanel";
@@ -17,28 +18,34 @@ export default function NavBar({ network }: NavBarProps) {
 
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-sm">
-        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-          <Link
-            href={`/${network}`}
-            className="flex items-center gap-2 text-foreground hover:text-stellar transition-colors"
-          >
-            <Zap className="h-5 w-5 text-stellar" />
-            <span className="font-semibold text-sm tracking-tight">Account Demolisher</span>
-            <NetworkBadge network={network} />
-          </Link>
-
+      <header className="sticky top-0 z-50 border-b border-white/10 bg-[#08080c]/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
+            <Link href="/" aria-label="LumenWipe home" className="shrink-0">
+              <Logo />
+            </Link>
+            <span className="hidden h-4 w-px bg-white/10 sm:block" />
+            <NetworkBadge network={network} className="hidden sm:inline-flex" />
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-4">
+            <Link
+              href="/how-it-works"
+              className="hidden text-sm text-white/65 transition-colors hover:text-white sm:block"
+            >
+              How it works
+            </Link>
             <Link
               href="/blog"
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors hidden sm:block"
+              className="hidden text-sm text-white/65 transition-colors hover:text-white sm:block"
             >
               Blog
             </Link>
             <button
               onClick={() => setHistoryOpen(true)}
               title="Merge history"
-              className="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Merge history"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-white/65 transition-colors hover:border-white/20 hover:text-white"
             >
               <History className="h-4 w-4" />
             </button>

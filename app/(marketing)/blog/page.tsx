@@ -23,10 +23,16 @@ export default function BlogPage() {
   const posts = getAllPostMetas();
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-12">
+    <div className="max-w-5xl mx-auto px-5 lg:px-8 py-14 lg:py-20">
       <div className="mb-12">
-        <h1 className="text-3xl font-bold text-foreground mb-3 tracking-tight">Blog</h1>
-        <p className="text-muted-foreground text-base max-w-2xl leading-relaxed">
+        <span className="mkt-eyebrow inline-flex items-center gap-2 text-stellar/90">
+          <span className="h-px w-6 bg-stellar/50" />
+          Blog
+        </span>
+        <h1 className="mkt-display text-4xl font-extrabold text-white mt-4 mb-3 tracking-tight">
+          Field notes on closing Stellar accounts
+        </h1>
+        <p className="text-white/55 text-base max-w-2xl leading-relaxed">
           Technical deep dives, project updates, and guides on Stellar account management, reserve
           recovery, and non-custodial tooling.
         </p>
@@ -39,9 +45,7 @@ export default function BlogPage() {
           ))}
         </div>
       ) : (
-        <div className="text-center py-20 text-muted-foreground text-sm">
-          No articles published yet.
-        </div>
+        <div className="text-center py-20 text-white/45 text-sm">No articles published yet.</div>
       )}
     </div>
   );

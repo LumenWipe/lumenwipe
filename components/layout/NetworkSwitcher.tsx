@@ -10,16 +10,16 @@ interface NetworkSwitcherProps {
 
 export default function NetworkSwitcher({ currentNetwork }: NetworkSwitcherProps) {
   return (
-    <div className="flex items-center gap-1 bg-secondary rounded-md p-0.5 text-xs">
+    <div className="flex items-center gap-0.5 rounded-lg border border-white/10 bg-white/[0.03] p-0.5 text-xs">
       {(["public", "testnet"] as Network[]).map((net) => (
         <Link
           key={net}
           href={`/${net}`}
           className={cn(
-            "px-2.5 py-1 rounded font-medium transition-colors",
+            "rounded-md px-2.5 py-1 font-medium transition-colors",
             currentNetwork === net
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
+              ? "bg-white/10 text-white"
+              : "text-white/55 hover:text-white"
           )}
         >
           {net === "public" ? "Mainnet" : "Testnet"}
