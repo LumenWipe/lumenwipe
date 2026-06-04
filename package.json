@@ -14,7 +14,9 @@
     "test": "bun test tests/unit",
     "test:watch": "bun test --watch tests/unit",
     "test:e2e": "playwright test",
-    "test:all": "bun test tests/unit && playwright test"
+    "test:all": "bun test tests/unit && playwright test",
+    "setup:mediator": "bun scripts/setup-mediator.ts",
+    "test:mediator": "bun scripts/test-mediator-flow.ts"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^13.3.0",
