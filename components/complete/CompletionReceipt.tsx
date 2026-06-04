@@ -50,25 +50,25 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
   return (
     <div className="space-y-6">
       {/* Success banner */}
-      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-6 text-center">
+      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-6 text-center">
         <CheckCircle className="h-12 w-12 text-emerald-500 mx-auto mb-3" />
-        <h2 className="text-xl font-bold mb-1">Account successfully merged</h2>
-        <p className="text-sm text-muted-foreground">
+        <h2 className="mkt-display text-2xl font-bold mb-1 text-white">Account successfully merged</h2>
+        <p className="text-sm text-white/55">
           All assets have been transferred and the account has been removed from the Stellar ledger.
         </p>
       </div>
 
       {/* Transaction list */}
-      <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="border-b border-border px-4 py-3">
-          <h3 className="text-sm font-semibold">Transaction receipts</h3>
+      <div className="mkt-panel rounded-2xl overflow-hidden">
+        <div className="border-b border-white/10 px-4 py-3">
+          <h3 className="mkt-eyebrow text-white/45">Transaction receipts</h3>
         </div>
-        <div className="divide-y divide-border">
+        <div className="divide-y divide-white/8">
           {confirmedSteps.map((step) => (
             <div key={step.index} className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-sm font-medium">{step.title}</p>
-                <p className="text-xs font-mono text-muted-foreground mt-0.5">
+                <p className="text-sm font-medium text-white">{step.title}</p>
+                <p className="text-xs mkt-mono text-white/45 mt-0.5">
                   {step.txHash?.slice(0, 20)}...
                 </p>
               </div>
@@ -96,27 +96,27 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       </div>
 
       {/* Summary */}
-      <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+      <div className="mkt-panel rounded-2xl p-4 space-y-3">
         <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Source account</span>
-          <span className="font-mono-address text-xs">
+          <span className="text-white/55">Source account</span>
+          <span className="font-mono-address text-xs text-white/70">
             {sourceAddress?.slice(0, 8)}...{sourceAddress?.slice(-8)}
           </span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Destination</span>
-          <span className="font-mono-address text-xs">
+          <span className="text-white/55">Destination</span>
+          <span className="font-mono-address text-xs text-white/70">
             {destinationAddress?.slice(0, 8)}...{destinationAddress?.slice(-8)}
           </span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Total fees paid</span>
-          <span className="text-xs font-mono">{formatXlm(totalFee)}</span>
+          <span className="text-white/55">Total fees paid</span>
+          <span className="text-xs mkt-mono text-white/70">{formatXlm(totalFee)}</span>
         </div>
       </div>
 
       {/* History saved notice */}
-      <div className="flex items-start gap-2.5 bg-secondary/30 border border-border rounded-lg p-3 text-xs text-muted-foreground">
+      <div className="flex items-start gap-2.5 bg-white/[0.03] border border-white/10 rounded-xl p-3 text-xs text-white/50">
         <History className="h-4 w-4 shrink-0 mt-0.5 text-stellar" />
         Receipt saved to local history. You can review past merges anytime from the history icon in
         the navigation bar.
@@ -126,7 +126,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       <div className="flex gap-3">
         <button
           onClick={reset}
-          className="flex-1 py-2.5 px-4 rounded-lg border border-border text-sm font-medium hover:bg-secondary/30 transition-colors"
+          className="flex-1 py-2.5 px-4 rounded-xl border border-white/15 text-sm font-medium text-white/85 hover:border-white/30 hover:text-white transition-colors"
         >
           Merge another account
         </button>
@@ -134,7 +134,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
           href={`${explorerBase}/account/${destinationAddress}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-lg bg-stellar text-black text-sm font-semibold hover:bg-stellar/90 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-stellar text-black text-sm font-semibold hover:bg-stellar/90 transition-colors"
         >
           Stellar Expert
           <ExternalLink className="h-3.5 w-3.5" />
@@ -143,7 +143,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
           href={`${svExplorerBase}/account/${destinationAddress}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-lg bg-stellar text-black text-sm font-semibold hover:bg-stellar/90 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-stellar text-black text-sm font-semibold hover:bg-stellar/90 transition-colors"
         >
           StellarView
           <ExternalLink className="h-3.5 w-3.5" />

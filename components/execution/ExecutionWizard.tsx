@@ -67,7 +67,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
   if (!currentStep) {
     return (
-      <div className="text-center py-12 text-muted-foreground text-sm">
+      <div className="text-center py-12 text-white/45 text-sm">
         No execution plan found. Please go back and analyze your account.
       </div>
     );
@@ -78,9 +78,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
       {/* Sidebar */}
       <div className="w-52 shrink-0 hidden md:block">
         <div className="sticky top-20">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
-            Steps
-          </p>
+          <p className="mkt-eyebrow text-white/45 mb-3">Steps</p>
           <PlanSidebar steps={executionPlan} currentIndex={currentStepIndex} />
         </div>
       </div>
@@ -98,9 +96,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
         {/* Mobile step list */}
         <div className="md:hidden mt-5">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-            All steps
-          </p>
+          <p className="mkt-eyebrow text-white/45 mb-2">All steps</p>
           <PlanSidebar steps={executionPlan} currentIndex={currentStepIndex} />
         </div>
       </div>

@@ -34,15 +34,15 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
       <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
       {/* Panel */}
-      <div className="fixed right-0 top-0 z-50 h-full w-full max-w-sm bg-background border-l border-border flex flex-col shadow-xl">
-        <div className="flex items-center justify-between px-4 py-4 border-b border-border">
+      <div className="fixed right-0 top-0 z-50 h-full w-full max-w-sm bg-[#0a0a10] border-l border-white/10 flex flex-col shadow-2xl">
+        <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
           <div className="flex items-center gap-2">
             <History className="h-4 w-4 text-stellar" />
-            <h2 className="font-semibold text-sm">Merge history</h2>
+            <h2 className="mkt-display font-bold text-base text-white">Merge history</h2>
           </div>
           <button
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            className="text-white/50 hover:text-white transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
@@ -72,13 +72,13 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
               });
 
               return (
-                <div key={entry.id} className="border-b border-border px-4 py-4 space-y-3">
+                <div key={entry.id} className="border-b border-white/8 px-4 py-4 space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-xs text-muted-foreground mb-1">
                         {date} · {entry.network}
                       </p>
-                      <p className="text-xs font-mono text-foreground truncate">
+                      <p className="text-xs mkt-mono text-white/80 truncate">
                         {entry.sourceAddress.slice(0, 8)}…{entry.sourceAddress.slice(-6)}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -152,8 +152,8 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
             })}
         </div>
 
-        <div className="border-t border-border px-4 py-3">
-          <p className="text-xs text-muted-foreground">
+        <div className="border-t border-white/10 px-4 py-3">
+          <p className="text-xs text-white/50">
             History is stored locally in your browser and never leaves your device.
           </p>
         </div>

@@ -30,8 +30,8 @@ export default function ExecutePage({ params }: { params: Promise<{ network: Net
         >
           <ArrowLeft className="h-4 w-4" />
         </Link>
-        <h1 className="text-lg font-semibold">Executing plan</h1>
-        <span className="text-xs text-muted-foreground ml-auto font-mono">
+        <h1 className="mkt-display text-xl font-bold text-white">Executing plan</h1>
+        <span className="text-xs text-white/45 ml-auto mkt-mono">
           {sourceAddress.slice(0, 8)}...
         </span>
       </div>

@@ -53,9 +53,9 @@ export default function PlanView({
       <BlockersPanel blockers={[]} />
 
       {mediatorRequired && (
-        <div className="bg-card border border-warning/30 rounded-xl p-4 text-sm">
+        <div className="bg-warning/10 border border-warning/25 rounded-2xl p-4 text-sm">
           <p className="font-medium text-warning mb-1">Intermediary account required</p>
-          <p className="text-muted-foreground">
+          <p className="text-white/60">
             Your destination does not support direct account merges. A temporary intermediary
             account will be created to route your funds. A 1.5 XLM reserve is required upfront -
             approximately 1.0 XLM will remain locked as the the intermediary&apos;s minimum balance
@@ -64,13 +64,13 @@ export default function PlanView({
         </div>
       )}
 
-      <div className="bg-card border border-border rounded-xl">
-        <div className="border-b border-border px-4 py-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold">Execution plan</h3>
+      <div className="mkt-panel rounded-2xl">
+        <div className="border-b border-white/10 px-4 py-3 flex items-center justify-between">
+          <h3 className="mkt-eyebrow text-white/45">Execution plan</h3>
           <button
             onClick={onRefresh}
             disabled={loading}
-            className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+            className="text-white/50 hover:text-white transition-colors disabled:opacity-40"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           </button>
@@ -78,24 +78,24 @@ export default function PlanView({
         <div className="p-3 space-y-2">
           <ExecutionPlanList steps={plan} />
         </div>
-        <div className="border-t border-border px-4 py-3 flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">
+        <div className="border-t border-white/10 px-4 py-3 flex items-center justify-between text-sm">
+          <span className="text-white/50">
             {plan.length} step{plan.length !== 1 ? "s" : ""} · estimated fees
           </span>
-          <span className="font-mono text-xs text-muted-foreground">{totalFee} XLM</span>
+          <span className="mkt-mono text-xs text-white/50">{totalFee} XLM</span>
         </div>
       </div>
 
       <button
         onClick={handleProceed}
         disabled={plan.length === 0}
-        className="w-full flex items-center justify-center gap-2 bg-stellar text-black font-semibold py-3 px-4 rounded-lg hover:bg-stellar/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="w-full flex items-center justify-center gap-2 bg-stellar text-black font-semibold py-3 px-4 rounded-xl hover:bg-stellar/90 hover:shadow-[0_0_28px_-6px_hsl(var(--stellar)/0.7)] disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition-all"
       >
         Begin execution
         <ArrowRight className="h-4 w-4" />
       </button>
 
-      <p className="text-center text-xs text-muted-foreground">
+      <p className="text-center text-xs text-white/45">
         Each step requires your explicit confirmation before signing.
       </p>
     </div>

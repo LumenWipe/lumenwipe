@@ -114,9 +114,9 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   if (error) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12">
-        <div className="bg-card border border-destructive/30 rounded-xl p-6 text-center space-y-4">
+        <div className="mkt-panel border-destructive/30 rounded-2xl p-6 text-center space-y-4">
           <AlertTriangle className="h-8 w-8 text-destructive mx-auto" />
-          <p className="font-medium">Analysis failed</p>
+          <p className="font-medium text-white">Analysis failed</p>
           <p className="text-sm text-muted-foreground">{error}</p>
           <Link
             href={`/${routeNetwork}`}
@@ -140,7 +140,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         >
           <ArrowLeft className="h-4 w-4" />
         </Link>
-        <h1 className="text-lg font-semibold">Execution plan</h1>
+        <h1 className="mkt-display text-xl font-bold text-white">Execution plan</h1>
       </div>
 
       <PlanView

@@ -31,12 +31,12 @@ export default function PlanSidebar({ steps, currentIndex }: PlanSidebarProps) {
             className={cn(
               "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors",
               isActive
-                ? "bg-stellar/10 border border-stellar/30 text-foreground"
+                ? "bg-stellar/10 border border-stellar/30 text-white"
                 : step.status === "confirmed"
                   ? "text-emerald-400/70"
                   : step.status === "failed"
                     ? "text-destructive/70"
-                    : "text-muted-foreground"
+                    : "text-white/45"
             )}
           >
             {/* Status dot */}

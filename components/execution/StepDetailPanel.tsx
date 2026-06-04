@@ -54,18 +54,18 @@ export default function StepDetailPanel({
       : `I understand this will ${step.description.toLowerCase()}`;
 
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden">
+    <div className="mkt-panel rounded-2xl overflow-hidden">
       {/* Header */}
-      <div className="border-b border-border px-5 py-4">
+      <div className="border-b border-white/10 px-5 py-4">
         <div className="flex items-center gap-2 mb-1">
           <span className="text-lg">{STEP_ICONS[step.type] ?? "•"}</span>
-          <h2 className="font-semibold text-base">{step.title}</h2>
+          <h2 className="mkt-display font-bold text-lg text-white">{step.title}</h2>
         </div>
-        <p className="text-sm text-muted-foreground">{step.description}</p>
+        <p className="text-sm text-white/55">{step.description}</p>
       </div>
 
       {/* Meta */}
-      <div className="border-b border-border px-5 py-3 flex gap-6 text-xs text-muted-foreground">
+      <div className="border-b border-white/10 px-5 py-3 flex gap-6 mkt-mono text-xs text-white/45">
         <span>
           {step.operationCount} operation{step.operationCount !== 1 ? "s" : ""}
         </span>
@@ -125,7 +125,7 @@ export default function StepDetailPanel({
                 <p className="font-semibold text-destructive mb-1">
                   This action is permanent and irreversible.
                 </p>
-                <p className="text-muted-foreground">
+                <p className="text-white/60">
                   After this step, the account will be removed from the Stellar ledger. Verify your
                   destination address carefully before signing.
                 </p>
@@ -151,7 +151,7 @@ export default function StepDetailPanel({
                 disabled={isExecuting}
                 className="mt-0.5 accent-stellar"
               />
-              <span className="text-sm text-muted-foreground">{confirmText}</span>
+              <span className="text-sm text-white/60">{confirmText}</span>
             </label>
 
             {/* Progress or sign button */}
@@ -162,11 +162,11 @@ export default function StepDetailPanel({
                 onClick={onSign}
                 disabled={!canSign}
                 className={cn(
-                  "w-full py-2.5 px-4 rounded-lg font-semibold text-sm transition-colors",
+                  "w-full py-3 px-4 rounded-xl font-semibold text-sm transition-all",
                   "flex items-center justify-center gap-2",
                   isMerge
                     ? "bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-40"
-                    : "bg-stellar text-black hover:bg-stellar/90 disabled:opacity-40",
+                    : "bg-stellar text-black hover:bg-stellar/90 hover:shadow-[0_0_28px_-6px_hsl(var(--stellar)/0.7)] disabled:opacity-40 disabled:shadow-none",
                   !canSign && "cursor-not-allowed"
                 )}
               >

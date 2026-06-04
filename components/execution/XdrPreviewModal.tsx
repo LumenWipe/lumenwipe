@@ -50,10 +50,10 @@ export default function XdrPreviewModal({ xdr, network }: XdrPreviewModalProps) 
   }
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
+    <div className="border border-white/10 rounded-xl overflow-hidden">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/30 transition-colors"
+        className="w-full flex items-center justify-between px-3 py-2.5 mkt-mono text-xs text-white/55 hover:text-white hover:bg-white/[0.04] transition-colors"
       >
         <span className="flex items-center gap-1.5">
           {open ? (
@@ -66,9 +66,9 @@ export default function XdrPreviewModal({ xdr, network }: XdrPreviewModalProps) 
       </button>
 
       {open && (
-        <div className="border-t border-border bg-secondary/20 p-3">
+        <div className="border-t border-white/10 bg-black/30 p-3">
           <div className="flex items-start justify-between gap-2 mb-2">
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-white/50">
               Base64-encoded XDR envelope. You can inspect this in{" "}
               <a
                 href={buildLabXdrUrl(xdr, network)}
@@ -82,7 +82,7 @@ export default function XdrPreviewModal({ xdr, network }: XdrPreviewModalProps) 
             </p>
             <button
               onClick={handleCopy}
-              className="shrink-0 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="shrink-0 flex items-center gap-1 text-xs text-white/55 hover:text-white transition-colors"
             >
               {copied ? (
                 <>
@@ -95,7 +95,7 @@ export default function XdrPreviewModal({ xdr, network }: XdrPreviewModalProps) 
               )}
             </button>
           </div>
-          <pre className="text-xs font-mono text-muted-foreground break-all whitespace-pre-wrap leading-relaxed max-h-32 overflow-y-auto">
+          <pre className="text-xs mkt-mono text-white/60 break-all whitespace-pre-wrap leading-relaxed max-h-32 overflow-y-auto">
             {xdr}
           </pre>
         </div>

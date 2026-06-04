@@ -55,7 +55,7 @@ export default function SecretKeyInput({
 
   return (
     <div className="space-y-1.5">
-      <label className="text-sm font-medium text-foreground">
+      <label className="text-sm font-medium text-white">
         {label}
         <span className="text-destructive ml-1">*</span>
       </label>
@@ -72,11 +72,11 @@ export default function SecretKeyInput({
           autoComplete="off"
           autoCorrect="off"
           className={cn(
-            "w-full font-mono-address bg-secondary border rounded-md px-3 py-2 pr-16 text-sm",
-            "placeholder:text-muted-foreground/50",
-            "focus:outline-none focus:ring-2 focus:ring-ring",
+            "w-full font-mono-address bg-black/30 border rounded-lg px-3 py-2.5 pr-16 text-sm",
+            "placeholder:text-white/30",
+            "focus:outline-none focus:ring-2 focus:ring-stellar/40",
             "disabled:opacity-50 disabled:cursor-not-allowed",
-            showError ? "border-destructive" : "border-border",
+            showError ? "border-destructive" : "border-white/10",
             isValid && touched ? "border-emerald-500/50" : ""
           )}
         />
@@ -91,7 +91,7 @@ export default function SecretKeyInput({
           <button
             type="button"
             onClick={() => setShowKey((v) => !v)}
-            className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
+            className="text-white/50 hover:text-white transition-colors p-0.5"
             tabIndex={-1}
           >
             {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -105,7 +105,7 @@ export default function SecretKeyInput({
         </p>
       )}
 
-      <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+      <p className="flex items-start gap-1.5 text-xs text-white/50">
         <ShieldAlert className="h-3.5 w-3.5 mt-0.5 shrink-0 text-warning" />
         Your secret key never leaves your browser. It is held in memory only during signing.
       </p>

@@ -33,7 +33,7 @@ export default function StepCard({ step, isActive, onClick }: StepCardProps) {
             ? "border-emerald-500/20 bg-emerald-500/5"
             : step.status === "failed"
               ? "border-destructive/30 bg-destructive/5"
-              : "border-border bg-card hover:bg-secondary/30",
+              : "border-white/10 bg-white/[0.02] hover:bg-white/[0.05]",
         onClick && "cursor-pointer"
       )}
     >
@@ -54,7 +54,7 @@ export default function StepCard({ step, isActive, onClick }: StepCardProps) {
           <p
             className={cn(
               "text-sm font-medium truncate",
-              step.status === "confirmed" ? "text-emerald-400" : "text-foreground"
+              step.status === "confirmed" ? "text-emerald-400" : "text-white"
             )}
           >
             {step.title}

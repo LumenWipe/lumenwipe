@@ -56,34 +56,34 @@ export default function AccountSummaryCard({
   ];
 
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden">
-      <div className="border-b border-border px-4 py-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Account summary</h3>
-        <span className="font-mono-address text-muted-foreground text-xs truncate max-w-[200px]">
+    <div className="mkt-panel rounded-2xl overflow-hidden">
+      <div className="border-b border-white/10 px-4 py-3 flex items-center justify-between">
+        <h3 className="mkt-eyebrow text-white/45">Account summary</h3>
+        <span className="font-mono-address text-white/55 text-xs truncate max-w-[200px]">
           {account.address.slice(0, 8)}...{account.address.slice(-8)}
         </span>
       </div>
 
-      <div className="grid grid-cols-3 divide-x divide-y divide-border">
+      <div className="grid grid-cols-3 divide-x divide-y divide-white/8">
         {stats.map(({ icon: Icon, label, value }) => (
           <div key={label} className="p-3">
-            <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
-              <Icon className="h-3.5 w-3.5" />
+            <div className="flex items-center gap-1.5 text-white/45 mb-1">
+              <Icon className="h-3.5 w-3.5 text-stellar/70" />
               <span className="text-xs">{label}</span>
             </div>
-            <p className="text-sm font-semibold">{value}</p>
+            <p className="text-sm font-semibold text-white">{value}</p>
           </div>
         ))}
       </div>
 
-      <div className="border-t border-border px-4 py-3 flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">Estimated received at destination</span>
-        <span className="font-semibold text-stellar">{formatXlm(estimatedFinal)}</span>
+      <div className="border-t border-white/10 px-4 py-3 flex items-center justify-between text-sm">
+        <span className="text-white/55">Estimated received at destination</span>
+        <span className="mkt-display font-bold text-value">{formatXlm(estimatedFinal)}</span>
       </div>
 
-      <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+      <div className="border-t border-white/10 px-4 py-2 text-xs text-white/45">
         Destination:{" "}
-        <span className="font-mono-address">
+        <span className="font-mono-address text-white/60">
           {destinationAddress.slice(0, 12)}...{destinationAddress.slice(-8)}
         </span>
       </div>
