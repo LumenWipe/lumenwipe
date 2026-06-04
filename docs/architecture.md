@@ -5,9 +5,9 @@ description: "System design, data sources, the execution plan, Soroban and DeFi 
 icon: "sitemap"
 ---
 
-> Consolidated architecture for LumenWipe, an open-source tool that cleanly closes a Stellar account and recovers its locked reserves. This document is the canonical technical reference for the project and is written to be hosted (GitBook, Whimsical, or equivalent) and linked from the Stellar Community Fund submission.
+> Consolidated architecture for LumenWipe, an open-source tool that cleanly closes a Stellar account and recovers its locked reserves.
 >
-> RFP: [Account Demolisher, SCF Handbook RFP Track, Q2 2026](https://stellar.gitbook.io/scf-handbook/scf-awards/build-award/rfp-track). Reference implementation extended by this project: [stellar.expert/demolisher](https://stellar.expert/demolisher/public) by Orbit Lens.
+> Reference implementation extended by this project: [stellar.expert/demolisher](https://stellar.expert/demolisher/public) by Orbit Lens.
 
 ## Contents
 
@@ -40,7 +40,6 @@ icon: "sitemap"
 Companion documents sit alongside this one:
 
 - [Executive summary](/executive-summary): a one-page overview for a first read.
-- [RFP compliance matrix](/rfp-compliance): every Account Demolisher requirement and every RFP Track requirement mapped to where it is addressed.
 - [Community and communications](/community-and-communications): building in the open, update cadence, and decentralized social presence.
 
 ---
@@ -551,8 +550,6 @@ The work is delivered in three cumulative tranches, each a working, independentl
 | 2. Soroban and DeFi     | Full Soroban parity: DeFi position detection via OctoPos with Orion fallback; Blend, Aquarius, Soroswap, Phoenix, and FxDAO exits; Soroban token conversion; the allowance inspector; per-step simulation.                                                                 | Each protocol's positions detected, unwound, and confirmed on testnet; provider fallback within seconds; degraded mode when both providers are down; Soroban fee estimates within tolerance of submitted fees.                                               |
 | 3. Production hardening | Third-party security audit and remediation; mainnet deployment; performance and load validation; final UX from user testing; complete public documentation.                                                                                                                | Audit complete with critical and high findings remediated and published; mainnet deployment live; CSP verified with no `unsafe-eval`; analysis within performance targets; repository public under a permissive license.                                     |
 
-The [RFP compliance matrix](/rfp-compliance) ties each tranche to the specific RFP requirements it satisfies.
-
 ## 20. Traction
 
 The classic wind-down already runs. The current codebase is a working Next.js application that, on both networks, reads account state over Stellar RPC and the stellar.expert API, builds and signs classic transactions client-side, and executes the full path: signer normalization, data entry removal, offer cancellation, asset conversion through SDEX path payments, trustline removal, and `AccountMerge`, including the mediator flow for exchange destinations with the correct memo handling. It carries an exchange registry, IndexedDB session recovery, unit tests over the plan builder and helpers, and Playwright end-to-end coverage. This is the foundation the Soroban and DeFi work builds on, and the evidence that the team is already executing rather than starting from a blank page.
@@ -632,7 +629,7 @@ These are the items the team is actively resolving. Listing them is deliberate: 
 
 ## 25. References
 
-- Account Demolisher RFP and RFP Track: https://stellar.gitbook.io/scf-handbook/scf-awards/build-award/rfp-track
+- SCF Handbook, Build Award track: https://stellar.gitbook.io/scf-handbook/scf-awards/build-award/rfp-track
 - Reference tool, stellar.expert demolisher (Orbit Lens): https://stellar.expert/demolisher/public
 - StellarExpert demolisher announcement: https://medium.com/@orbit.lens/stellarexpert-embeddable-blocks-accounts-demolisher-and-other-new-features-931ec41427a1
 - Stellar RPC overview and methods: https://developers.stellar.org/docs/data/apis/rpc

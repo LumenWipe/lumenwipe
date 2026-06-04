@@ -259,7 +259,6 @@ Full technical documentation is hosted at [**docs.lumenwipe.com**](https://docs.
 |----------|-------------|
 | [Executive Summary](docs/executive-summary.md) | One-page overview: problem, solution, technical pillars, and delivery plan. Start here. |
 | [Technical Architecture](docs/architecture.md) | Complete system design: data sources, execution plan, Soroban & DeFi integration, mediator flow, security, testing, and roadmap. Includes Mermaid diagrams. |
-| [RFP Compliance Matrix](docs/rfp-compliance.md) | Every Account Demolisher and RFP Track requirement mapped to where and how it is addressed. |
 | [Community & Communications](docs/community-and-communications.md) | Building in the open, update cadence, decentralized social channels, and post-launch maintenance. |
 
 Diagram sources (Mermaid) live in [`docs/diagrams/`](docs/diagrams/) for export to Whimsical, Excalidraw, or image formats.

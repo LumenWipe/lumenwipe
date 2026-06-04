@@ -1,6 +1,6 @@
 ---
 title: "Executive summary"
-description: "One-page overview: problem, solution, technical pillars, RFP fit, and delivery."
+description: "One-page overview: problem, solution, technical pillars, and delivery."
 icon: "file-lines"
 ---
 
@@ -30,10 +30,10 @@ Analyze the account, generate a deterministic ordered plan, execute it step by s
 - CEX compatibility through a transparent temporary mediator account, since exchanges do not support `ACCOUNT_MERGE`.
 - Safety for irreversible operations. Per-step confirmation, simulation before signing, resumable sessions reconciled against on-chain state, and a third-party security audit before any mainnet release.
 
-## How it meets the RFP
+## What it covers
 
-- Covers the full Account Demolisher requirement set: sponsorship and multisig checks, signer and threshold normalization, trustline, data entry, offer, and DeFi position removal, claimable balances, asset conversion, and merge with the mediator flow. See the [RFP compliance matrix](/rfp-compliance).
-- Consumes a funded DeFi Position API recipient, OctoPos as primary and Orion as fallback, exactly as the RFP requires.
+- The full account wind-down: sponsorship and multisig checks, signer and threshold normalization, trustline, data entry, offer, and DeFi position removal, claimable balances, asset conversion, and merge with the mediator flow.
+- Consumes a funded DeFi Position API recipient, OctoPos as primary and Orion as fallback.
 - Open source under Apache 2.0, self-hostable as a single service, with a third-party security audit through the Audit Bank.
 
 ## Delivery
@@ -47,5 +47,4 @@ Analyze the account, generate a deterministic ordered plan, execute it step by s
 ## Read more
 
 - [Technical architecture](/architecture): the full design, with diagrams.
-- [RFP compliance matrix](/rfp-compliance): every requirement mapped to where it is addressed.
 - [Community and communications](/community-and-communications): building in the open, update cadence, maintenance.

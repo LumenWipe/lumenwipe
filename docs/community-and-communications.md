@@ -30,7 +30,7 @@ The project commits to a regular, public update rhythm so the community and the 
 
 ## 4. Where the project communicates
 
-The project maintains a presence across both standard ecosystem channels and decentralized, open networks, as the RFP Track suggests.
+The project maintains a presence across both standard ecosystem channels and decentralized, open networks.
 
 | Channel             | Type                        | Use                                                                                                                 |
 | ------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
