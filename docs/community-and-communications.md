@@ -37,10 +37,9 @@ The project maintains a presence across both standard ecosystem channels and dec
 | GitHub              | Open source                 | Code, issues, roadmap, releases, changelog. The primary source of truth.                                            |
 | Stellar Dev Discord | Ecosystem                   | Coordination with the Stellar developer community and protocol teams.                                               |
 | Matrix              | Decentralized, open source  | A public room for project discussion, bridged where useful. Open-protocol, self-hostable, no single platform owner. |
-| Mastodon            | Decentralized (fediverse)   | Public announcements and progress notes on an open, federated network.                                              |
-| BlueSky             | Decentralized (AT Protocol) | Public announcements on an open, portable-identity network.                                                         |
+| Telegram            | Community                   | Real-time community chat, user support, and announcements.                                                          |
 
-The reasoning behind the decentralized channels is consistency with the project's own values. A non-custodial, self-hostable tool should not anchor its public communication to a single proprietary platform. Matrix, Mastodon, and BlueSky are open protocols that no single company controls, which matches the tool's design and reduces single-platform risk for the community that depends on it.
+The reasoning behind the decentralized channels is consistency with the project's own values. A non-custodial, self-hostable tool should not anchor its public communication to a single proprietary platform. Matrix is an open protocol that no single company controls, which matches the tool's design and reduces single-platform risk for the community that depends on it.
 
 ## 5. Coordination with protocol and ecosystem teams
 
