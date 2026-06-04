@@ -16,7 +16,7 @@ Anyone can read the code, file an issue, propose a change, or self-host the tool
 ## 2. Licensing
 
 - License: Apache 2.0 (permissive, allows reuse and self-hosting, includes a patent grant).
-- Attribution: the project credits and builds upon the public-domain work of stellar.expert/demolisher.
+- Attribution: the project credits and builds upon the public-domain work of [stellar.expert/demolisher](https://stellar.expert/demolisher/public).
 - Dependencies: dependencies are tracked and their licenses are compatible with Apache 2.0.
 
 ## 3. Community updates
