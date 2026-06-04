@@ -82,7 +82,7 @@ export default function MarketingFooter() {
 
         <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-white/8 pt-6 text-xs text-white/40 sm:flex-row sm:items-center">
           <p>© {2026} LumenWipe · Open source under Apache 2.0.</p>
-          <p className="mkt-mono">Non-custodial · Client-side signing · Self-hostable</p>
+          <p className="mkt-mono">Non-custodial · Client-side signing</p>
         </div>
       </div>
     </footer>

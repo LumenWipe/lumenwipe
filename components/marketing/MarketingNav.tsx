@@ -1,24 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Menu, X, ArrowUpRight, Github } from "lucide-react";
 import Logo from "./Logo";
 
-const LINKS = [
+type NavLink = { href: string; label: string; external?: boolean; section?: string };
+
+const LINKS: NavLink[] = [
   { href: "/how-it-works", label: "How it works" },
-  { href: "/#security", label: "Security" },
-  { href: "/#faq", label: "FAQ" },
+  { href: "/#security", label: "Security", section: "security" },
+  { href: "/#faq", label: "FAQ", section: "faq" },
   { href: "https://docs.lumenwipe.com", label: "Docs", external: true },
   { href: "/blog", label: "Blog" },
 ];
+
+// Landing sections the scroll-spy watches, in document order.
+const SPY_SECTIONS = ["security", "faq"];
 
 const GITHUB = "https://github.com/LumenWipe/lumenwipe";
 const APP = "/public";
 
 export default function MarketingNav() {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [activeSection, setActiveSection] = useState<string | null>(null);
+  const visible = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -34,6 +43,41 @@ export default function MarketingNav() {
     };
   }, [open]);
 
+  // Scroll-spy: highlight the anchor link whose section sits in the middle band.
+  useEffect(() => {
+    if (pathname !== "/" || typeof IntersectionObserver === "undefined") {
+      setActiveSection(null);
+      return;
+    }
+    visible.current = new Set();
+    const els = SPY_SECTIONS.map((id) => document.getElementById(id)).filter(
+      (el): el is HTMLElement => el !== null
+    );
+    if (!els.length) return;
+
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) visible.current.add(entry.target.id);
+          else visible.current.delete(entry.target.id);
+        }
+        // Prefer the section lowest in the page that's currently in view.
+        const current = [...SPY_SECTIONS].reverse().find((id) => visible.current.has(id));
+        setActiveSection(current ?? null);
+      },
+      { rootMargin: "-45% 0px -45% 0px", threshold: 0 }
+    );
+    els.forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+  }, [pathname]);
+
+  function isActive(l: NavLink): boolean {
+    if (l.external) return false;
+    if (l.section) return pathname === "/" && activeSection === l.section;
+    if (l.href === "/blog") return pathname === "/blog" || pathname.startsWith("/blog/");
+    return pathname === l.href;
+  }
+
   return (
     <header
       className={`sticky top-0 z-50 transition-colors duration-300 ${
@@ -46,20 +90,31 @@ export default function MarketingNav() {
         </Link>
 
         <div className="hidden items-center gap-7 lg:flex">
-          {LINKS.map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              target={l.external ? "_blank" : undefined}
-              rel={l.external ? "noopener noreferrer" : undefined}
-              className="group inline-flex items-center gap-0.5 text-sm text-white/65 transition-colors hover:text-white"
-            >
-              {l.label}
-              {l.external && (
-                <ArrowUpRight className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-60" />
-              )}
-            </Link>
-          ))}
+          {LINKS.map((l) => {
+            const active = isActive(l);
+            return (
+              <Link
+                key={l.href}
+                href={l.href}
+                target={l.external ? "_blank" : undefined}
+                rel={l.external ? "noopener noreferrer" : undefined}
+                aria-current={active ? "page" : undefined}
+                className={`group relative inline-flex items-center gap-0.5 py-1 text-sm transition-colors ${
+                  active ? "text-white" : "text-white/65 hover:text-white"
+                }`}
+              >
+                {l.label}
+                {l.external && (
+                  <ArrowUpRight className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-60" />
+                )}
+                <span
+                  className={`pointer-events-none absolute -bottom-0.5 left-0 h-px w-full origin-left rounded-full bg-stellar shadow-[0_0_8px_hsl(var(--stellar)/0.7)] transition-transform duration-300 ${
+                    active ? "scale-x-100" : "scale-x-0 group-hover:scale-x-50 group-hover:bg-white/40 group-hover:shadow-none"
+                  }`}
+                />
+              </Link>
+            );
+          })}
         </div>
 
         <div className="flex items-center gap-2">
@@ -92,19 +147,28 @@ export default function MarketingNav() {
       {open && (
         <div className="border-t border-white/10 bg-[#08080c]/95 backdrop-blur-xl lg:hidden">
           <div className="mx-auto flex max-w-6xl flex-col gap-1 px-5 py-4">
-            {LINKS.map((l) => (
-              <Link
-                key={l.href}
-                href={l.href}
-                target={l.external ? "_blank" : undefined}
-                rel={l.external ? "noopener noreferrer" : undefined}
-                onClick={() => setOpen(false)}
-                className="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm text-white/75 transition-colors hover:bg-white/5 hover:text-white"
-              >
-                {l.label}
-                {l.external && <ArrowUpRight className="h-3.5 w-3.5 opacity-50" />}
-              </Link>
-            ))}
+            {LINKS.map((l) => {
+              const active = isActive(l);
+              return (
+                <Link
+                  key={l.href}
+                  href={l.href}
+                  target={l.external ? "_blank" : undefined}
+                  rel={l.external ? "noopener noreferrer" : undefined}
+                  aria-current={active ? "page" : undefined}
+                  onClick={() => setOpen(false)}
+                  className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-colors ${
+                    active ? "bg-white/5 text-white" : "text-white/75 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    {active && <span className="h-1.5 w-1.5 rounded-full bg-stellar" />}
+                    {l.label}
+                  </span>
+                  {l.external && <ArrowUpRight className="h-3.5 w-3.5 opacity-50" />}
+                </Link>
+              );
+            })}
             <Link
               href={APP}
               onClick={() => setOpen(false)}

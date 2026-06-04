@@ -307,7 +307,7 @@ export default function HowItWorksPage() {
             </h2>
             <p className="mt-4 leading-relaxed text-white/55">
               No bespoke indexer, no Horizon dependency. Every read source sits behind an adapter, so
-              self-hosters can point the tool at any compatible provider.
+              any compatible provider can be swapped in without touching the rest of the system.
             </p>
             <div className="mt-7 space-y-2.5">
               {[
