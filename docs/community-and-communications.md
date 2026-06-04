@@ -21,7 +21,7 @@ Anyone can read the code, file an issue, propose a change, or self-host the tool
 
 ## 3. Community updates
 
-The project commits to a regular, public update rhythm so the community and the SCF reviewers can follow progress.
+The project commits to a regular, public update rhythm so the community can follow progress.
 
 - Per tranche: a written milestone update when each tranche's acceptance criteria are met, posted publicly and linked from the repository.
 - Monthly: a short progress note covering what shipped, what is in flight, and any blockers.
