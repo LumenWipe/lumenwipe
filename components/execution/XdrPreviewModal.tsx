@@ -20,7 +20,7 @@ const LAB_NET_CONFIG: Record<
     rpcUrl: "https:////soroban-testnet.stellar.org",
     passphrase: "Test%20SDF%20Network%20/;%20September%202015",
   },
-  public: {
+  mainnet: {
     id: "mainnet",
     label: "Mainnet",
     horizonUrl: "https:////horizon.stellar.org",

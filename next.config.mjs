@@ -1,6 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // The mainnet network used to live at /public (Stellar's network name).
+  // It's now /mainnet to match the UI label; keep old links working.
+  async redirects() {
+    return [
+      { source: "/public", destination: "/mainnet", permanent: true },
+      { source: "/public/:path*", destination: "/mainnet/:path*", permanent: true },
+    ];
+  },
   // Prevent webpack from trying to bundle native Node.js addons pulled in by
   // @stellar/stellar-sdk (sodium-native, require-addon) when building the
   // server bundle. Node.js loads them natively; only the browser bundle needs

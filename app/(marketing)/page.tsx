@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     "LumenWipe closes any Stellar account end to end and recovers the XLM locked in its reserves. Unwind trustlines, offers, data entries and Soroban DeFi positions, then merge out to your wallet or exchange. Non-custodial, open source.",
 };
 
-const APP = "/public";
+const APP = "/mainnet";
 const TESTNET = "/testnet";
 
 const STEPS = [

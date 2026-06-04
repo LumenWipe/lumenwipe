@@ -20,7 +20,7 @@ const LINKS: NavLink[] = [
 const SPY_SECTIONS = ["security", "faq"];
 
 const GITHUB = "https://github.com/LumenWipe/lumenwipe";
-const APP = "/public";
+const APP = "/mainnet";
 
 export default function MarketingNav() {
   const pathname = usePathname();

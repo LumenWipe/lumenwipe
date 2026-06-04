@@ -123,7 +123,7 @@ export default function HowItWorksPage() {
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link
-              href="/public"
+              href="/mainnet"
               className="group inline-flex items-center gap-2 rounded-xl bg-stellar px-5 py-3 text-sm font-semibold text-black transition-all hover:bg-stellar/90 hover:shadow-[0_0_32px_-6px_hsl(var(--stellar)/0.7)]"
             >
               Open the app

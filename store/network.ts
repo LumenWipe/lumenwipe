@@ -7,6 +7,6 @@ interface NetworkState {
 }
 
 export const useNetworkStore = create<NetworkState>((set) => ({
-  network: "public",
+  network: "mainnet",
   setNetwork: (network) => set({ network }),
 }));

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRpcServer } from "@/lib/stellar/rpc";
 
-async function pingRpc(network: "public" | "testnet"): Promise<"ok" | "error"> {
+async function pingRpc(network: "mainnet" | "testnet"): Promise<"ok" | "error"> {
   try {
     const server = getRpcServer(network);
     await server.getLatestLedger();
@@ -27,7 +27,7 @@ async function pingSeApi(): Promise<"ok" | "error"> {
 
 export async function GET() {
   const [rpcMainnet, rpcTestnet, seApi] = await Promise.all([
-    pingRpc("public"),
+    pingRpc("mainnet"),
     pingRpc("testnet"),
     pingSeApi(),
   ]);

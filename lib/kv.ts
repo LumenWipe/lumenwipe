@@ -10,12 +10,12 @@ import type { Network } from "@/config/networks";
 
 const COUNT_KEY: Record<Network, string> = {
   testnet: "stats:testnet:count",
-  public: "stats:mainnet:count",
+  mainnet: "stats:mainnet:count",
 };
 
 const XLM_KEY: Record<Network, string> = {
   testnet: "stats:testnet:xlm",
-  public: "stats:mainnet:xlm",
+  mainnet: "stats:mainnet:xlm",
 };
 
 const PROCESSED_KEY = (n: Network) => `stats:${n}:processed`;
@@ -44,9 +44,9 @@ export async function getStats(): Promise<StatsResult> {
   try {
     const [testnet, mainnet, testnetXlm, mainnetXlm] = await Promise.all([
       kv.get<number>(COUNT_KEY.testnet),
-      kv.get<number>(COUNT_KEY.public),
+      kv.get<number>(COUNT_KEY.mainnet),
       kv.get<string>(XLM_KEY.testnet),
-      kv.get<string>(XLM_KEY.public),
+      kv.get<string>(XLM_KEY.mainnet),
     ]);
     return {
       testnet: testnet ?? 0,

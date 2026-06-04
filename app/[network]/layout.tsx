@@ -25,7 +25,7 @@ export default function NetworkLayout({
     if (currentNetwork !== network) {
       reset(); // Clear state when switching networks
     }
-    setNetwork(network as "public" | "testnet");
+    setNetwork(network as "mainnet" | "testnet");
   }, [network, currentNetwork, setNetwork, reset]);
 
   return (
@@ -36,7 +36,7 @@ export default function NetworkLayout({
         <div className="absolute inset-x-0 top-0 h-72 bg-[radial-gradient(60%_100%_at_50%_0%,hsl(196_100%_47%/0.07),transparent)]" />
       </div>
       <div className="relative z-10 flex min-h-screen flex-col">
-        <NavBar network={network as "public" | "testnet"} />
+        <NavBar network={network as "mainnet" | "testnet"} />
         <main className="flex-1">{children}</main>
       </div>
     </div>
