@@ -26,7 +26,6 @@ const STEP_ICONS: Record<string, string> = {
   CLAIM_BALANCES: "🎯",
   CONVERT_ASSETS: "🔄",
   REMOVE_TRUSTLINES: "🔗",
-  FUND_MEDIATOR: "🏦",
   MERGE: "⚡",
 };
 
@@ -49,9 +48,7 @@ export default function StepDetailPanel({
 
   const confirmText = isMerge
     ? "I have verified the destination address and understand that this account will be merged and removed from the Stellar ledger."
-    : step.type === "FUND_MEDIATOR"
-      ? "I understand a temporary intermediary account will be created to route my funds to the destination."
-      : `I understand this will ${step.description.toLowerCase()}`;
+    : `I understand this will ${step.description.toLowerCase()}`;
 
   return (
     <div className="mkt-panel rounded-2xl overflow-hidden">

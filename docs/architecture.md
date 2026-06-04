@@ -52,7 +52,7 @@ LumenWipe is a guided, non-custodial tool that walks a user through closing a St
 
 The project extends the public-domain [stellar.expert/demolisher](https://stellar.expert/demolisher/public) tool built by Orbit Lens. That tool handles the classic case well: it cancels offers, sells assets on the SDEX, removes trustlines and data entries, works with multisig accounts, and can merge into exchange addresses through an intermediary account. It does not support Soroban, so any account with a Blend loan, an Aquarius LP position, or a Soroswap pair share cannot be closed with it today. This project keeps the parts that work, rebuilds them on the current Stellar stack, and adds full Soroban and DeFi parity, a read-only backend, an allowance inspector, and a production-grade UX designed for irreversible actions.
 
-The tool signs every transaction in the browser. Secret keys never reach a server. The backend is read-only and stateless: it aggregates data, it never holds funds or keys.
+The tool signs every transaction in the browser; your account's secret keys never reach a server. The backend is read-only except for a single signing key, the shared exchange mediator, which it uses solely to co-sign the forwarding payment to an exchange (see section 11). It holds no user funds and no user keys.
 
 Core stack at a glance:
 
@@ -101,7 +101,7 @@ Note that being a _claimant_ of a claimable balance does not block the merge, bu
 
 ## 4. System architecture
 
-The system has three layers: a browser client that builds and signs every transaction, a thin read-only backend that aggregates data, and the Stellar network plus the external data services the backend reads from. The trust boundary is the browser. Private keys and signing live entirely on the client side. Nothing the backend does can move a user's funds.
+The system has three layers: a browser client that builds and signs every transaction, a thin read-only backend that aggregates data (and co-signs one thing, the exchange forwarding payment), and the Stellar network plus the external data services the backend reads from. The trust boundary is the browser. A user's account keys and signing live entirely on the client side. The backend's only key is the shared mediator, which can co-sign the exchange forwarding payment but cannot sign for a user's account, change a destination, or move a user's funds.
 
 ```mermaid
 flowchart TB
@@ -115,7 +115,7 @@ flowchart TB
         sess["Session store<br/>(IndexedDB, no keys)"]
     end
 
-    subgraph backend["Read-only backend: stateless, no keys, no custody"]
+    subgraph backend["Read-only backend: stateless, no custody, one mediator co-sign key"]
         direction TB
         analysis["Account analysis<br/>aggregator"]
         defi["DeFi position adapter<br/>(OctoPos primary, Orion fallback)"]
@@ -157,7 +157,7 @@ flowchart TB
     pos --> net
 ```
 
-Two things to read off this diagram. The signed-XDR arrow runs from the client directly to Stellar RPC. The backend is never in the signing or submission path. And every external read source is pluggable: RPC, the indexer, the routing API, and the DeFi position API can each be swapped or pointed at a self-hosted instance without touching the transaction logic.
+Two things to read off this diagram. The signed-XDR arrow runs from the client directly to Stellar RPC; submission is always client-side. The backend is not in the signing path for a user's account — its only signature is the shared mediator's co-signature on the exchange forwarding payment (section 11). And every external read source is pluggable: RPC, the indexer, the routing API, and the DeFi position API can each be swapped or pointed at a self-hosted instance without touching the transaction logic.
 
 ## 5. Data sources, and why we run no indexer
 
@@ -225,7 +225,7 @@ stateDiagram-v2
     StepFailed --> Aborted: user cancels
 ```
 
-Each transition is written to a local session store in IndexedDB. The store holds the source and destination addresses, the network, the ordered plan, which steps have confirmed and their transaction hashes, and the ephemeral mediator public key when one is in use. It never holds secret keys or fully-signed envelopes beyond the step currently in flight. On re-entry the tool re-runs the analysis and reconciles against on-chain state, so a step that already confirmed (or was completed externally) is skipped rather than repeated.
+Each transition is written to a local session store in IndexedDB. The store holds the source and destination addresses, the network, the ordered plan, which steps have confirmed and their transaction hashes, and the shared mediator public key when an exchange destination is in use. It never holds secret keys or fully-signed envelopes beyond the step currently in flight. On re-entry the tool re-runs the analysis and reconciles against on-chain state, so a step that already confirmed (or was completed externally) is skipped rather than repeated.
 
 ### 6.2 Transaction builder
 
@@ -253,7 +253,7 @@ For multisig accounts the kit and secret-key paths both support accumulating sig
 
 ## 7. Read-only backend service
 
-The backend is a stateless, read-only API layer whose only job is to aggregate read data the client cannot efficiently fetch itself, and to cache it. It runs as the API routes of the same Next.js service rather than a separate microservice, which keeps deployment to one open-source application. It accepts no secret keys, builds no signed transactions, and holds no funds. If it were fully compromised it could return wrong read data, which the client surfaces through confirmations and on-chain simulation, but it could never sign or move anything.
+The backend is a stateless, read-only API layer whose main job is to aggregate read data the client cannot efficiently fetch itself, and to cache it. It runs as the API routes of the same Next.js service rather than a separate microservice, which keeps deployment to one open-source application. It accepts no user keys, holds no user funds, and builds no signed transactions for a user's account. Its one exception is the shared mediator key: it co-signs the exchange forwarding payment only after validating the transaction shape (operation one merges into the mediator, operation two is a payment from the mediator of at least 1 XLM), and it cannot change that payment's destination or amount. If it were fully compromised it could return wrong read data (caught by confirmations and on-chain simulation) or refuse to co-sign, but it could never sign for or move a user's account.
 
 It exposes a small read-only REST surface:
 
@@ -431,25 +431,26 @@ The user keeps control. They can skip conversion for any asset and instead forwa
 
 ## 11. The mediator account flow for exchanges
 
-Exchanges do not support `ACCOUNT_MERGE`, so a user cannot merge directly into a deposit address. The tool uses a temporary mediator account, the same pattern the reference demolisher uses, made transparent to the user.
+Exchanges do not support `ACCOUNT_MERGE`, and their crediting systems only recognize `Payment` operations with a memo, so a user cannot merge directly into a deposit address (a direct merge is typically lost). The tool bridges this with a single shared mediator account, the same pattern the reference demolisher uses, in one atomic transaction.
 
 ```mermaid
 sequenceDiagram
-    participant S as Source account
-    participant M as Mediator (temporary)
+    participant S as Source account (user)
+    participant M as Shared mediator (operator-funded)
     participant D as Destination (exchange deposit)
 
-    Note over S,M: Mediator created and funded from the source account
-    S->>M: AccountMerge (transfers all XLM into mediator)
-    Note over M: Mediator now holds the recovered funds
-    M->>D: Payment (forwards funds, with required memo)
+    Note over S,D: One atomic transaction, two operations
+    S->>M: op1 AccountMerge (source into mediator)
+    M->>D: op2 Payment (mediator to exchange, with memo)
     Note over D: Exchange credits the user by address + memo
-    Note over M: Mediator retains 1 XLM base reserve (disclosed cost)
+    Note over S,D: User signs op1; backend co-signs op2 — both apply or neither
 ```
 
-The mediator is a standard Stellar account. The tool generates an ephemeral keypair in the browser, funds the account from the source account during a prepare step, uses the key once to sign the forward payment, then clears the key from memory. The user can also supply their own mediator key. The flow's one cost, the 1 XLM that stays as the mediator's own base reserve, is disclosed up front rather than hidden. When the destination is a known exchange or anchor, the tool requires the correct memo and blocks submission without it, because funds sent to an exchange without a memo are typically lost.
+The mediator is a single, persistent account that the operator funds once. Its ~1 XLM base reserve is paid once and reused for every close, so the user recovers essentially all of their XLM, including the source account's freed base reserve; only standard network fees apply. This is the key difference from a throwaway per-user intermediary, which would sacrifice ~1 XLM on every close.
 
-A registry of known exchange and anchor addresses, sourced from the stellar.expert directory, drives two decisions: whether a destination needs the mediator flow, and whether it requires a memo and of which type (text, id, or hash).
+The transaction is built, and its merge half signed, in the user's browser. The backend then co-signs only the mediator's forward payment, after validating the exact shape: operation one must be an account merge into the mediator, and operation two a payment from the mediator to the user's chosen destination of at least 1 XLM. Because it is one atomic transaction with a fixed destination and amount, the backend cannot change where the funds go or divert them; it can only co-sign or refuse. This mediator key is the single server-side signing key in the system (see the security model).
+
+When the destination is a known exchange or anchor, the tool requires the correct memo and blocks submission without it, because funds sent to an exchange without a memo are typically lost. A registry of known exchange and anchor addresses, sourced from the stellar.expert directory, drives two decisions: whether a destination needs the mediator flow, and whether it requires a memo and of which type (text, id, or hash).
 
 ## 12. Allowance inspection
 
@@ -470,7 +471,7 @@ The tool builds transactions that drain an account irreversibly, so its security
 | Destination address | Funds sent to the wrong place | Full-address display, ledger existence check, explicit verification before merge               |
 | Memo                | Lost funds at an exchange     | Required and validated for known exchange and anchor destinations                              |
 
-A compromised backend cannot sign or move funds, because it never holds keys and is never in the signing path. It could return wrong read data; the client defends against that with on-chain simulation and explicit user confirmation of every destructive step. A passive network observer sees only TLS-protected read traffic. An XSS attacker is constrained by a strict Content Security Policy with no inline scripts and no `unsafe-eval`. A supply-chain attacker is constrained by lockfile-pinned dependencies, audited in CI, with no dependency permitted that needs dynamic code execution.
+A compromised backend cannot move a user's funds: its only key is the shared mediator, which can co-sign only a payment whose destination and amount the user already fixed in an atomic transaction, so it can neither sign for a user's account nor redirect the forward payment. It could return wrong read data; the client defends against that with on-chain simulation and explicit user confirmation of every destructive step. A passive network observer sees only TLS-protected read traffic. An XSS attacker is constrained by a strict Content Security Policy with no inline scripts and no `unsafe-eval`. A supply-chain attacker is constrained by lockfile-pinned dependencies, audited in CI, with no dependency permitted that needs dynamic code execution.
 
 ### 13.2 Key handling
 
@@ -488,7 +489,7 @@ Given the irreversibility, the project commits to a third-party security audit b
 
 For a tool that closes accounts, decentralization is first a matter of custody and control, and second a matter of who can run it.
 
-Custody and control. The tool is non-custodial by construction. Signing is client-side, keys never reach a server, and the backend is read-only. No operator of any component, including the maintainers, can move a user's funds or close their account. The user authorizes every transaction.
+Custody and control. The tool is non-custodial by construction. A user's account signing is client-side and their keys never reach a server. The backend holds one signing key, the shared exchange mediator, used only to co-sign a forwarding payment the user has already authorized in an atomic transaction. No operator of any component, including the maintainers, can change a destination, move a user's account funds, or close their account without the user's own signature. The user authorizes every transaction.
 
 Who can run it. The whole project is open source under a permissive license, and the code that builds and signs transactions runs in the user's browser where anyone can read it. The tool deploys as a single Next.js service, so anyone can run their own instance with Docker or any Node host. Every external read source is behind a pluggable adapter, so a self-hoster can point the tool at their own Stellar RPC node, their preferred indexer, and their preferred DeFi Position API instance. The canonical deployment is a convenience, not a requirement: nothing about the tool depends on a server only the maintainers can run.
 
@@ -496,7 +497,7 @@ Where centralization remains, and why. The remaining centralized pieces are all 
 
 | Component                          | Ownership                            | Reach               | Notes                                                                                      |
 | ---------------------------------- | ------------------------------------ | ------------------- | ------------------------------------------------------------------------------------------ |
-| Application (UI and read-only API) | Open source, self-hostable           | Open                | One Next.js service, deployable with Docker or any Node host; holds no keys and no custody |
+| Application (UI and read-only API) | Open source, self-hostable           | Open                | One Next.js service, deployable with Docker or any Node host; no user keys, no custody (only the shared mediator co-sign key) |
 | Transaction builder and signing    | Open source, runs client-side        | Open                | The security-critical code; signing never leaves the browser                               |
 | Contract and exchange registries   | Open source, community pull requests | Open                | Versioned JSON, updated by reviewed pull request                                           |
 | Stellar RPC access                 | Pluggable provider                   | External, read-only | Ecosystem providers or a self-hosted node                                                  |
@@ -510,7 +511,7 @@ Nothing in the open rows can move funds. Everything in the external rows is read
 
 The tool runs on light, replaceable infrastructure, which follows from the non-custodial design.
 
-- Application: a single Next.js service that serves the guided UI and the read-only API routes. It holds no per-user state and no keys, so it scales horizontally behind a load balancer. A published Docker image lets anyone self-host it.
+- Application: a single Next.js service that serves the guided UI and the read-only API routes. It holds no per-user state and no user keys (only the shared mediator co-sign key, injected from the environment), so it scales horizontally behind a load balancer. A published Docker image lets anyone self-host it.
 - Cache: a Redis instance holds short-lived public read data only.
 - Stellar access: Stellar RPC through ecosystem providers, configurable per deployment, with the option to run a self-hosted RPC node.
 - Data services: the stellar.expert API for enumeration and the Soroswap API for routing, both pluggable; the DeFi Position API (OctoPos primary, Orion fallback).

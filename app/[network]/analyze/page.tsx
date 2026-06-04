@@ -7,9 +7,9 @@ import Link from "next/link";
 import type { Network } from "@/config/networks";
 import type { AccountState } from "@/types/account";
 import type { PlannedStep } from "@/types/plan";
+import { getMediatorPublicKey } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { buildPlan } from "@/lib/stellar/tx-builder";
-import { createMediatorSession } from "@/lib/stellar/mediator-session";
 import PlanView from "@/components/plan/PlanView";
 
 export default function AnalyzePage({ params }: { params: Promise<{ network: Network }> }) {
@@ -64,11 +64,10 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       const mediatorData = await mediatorRes.json();
       const needsMediator = mediatorData.requiresMediator ?? false;
 
-      let mediatorPublicKey: string | undefined;
-      if (needsMediator) {
-        const session = createMediatorSession();
-        mediatorPublicKey = session.publicKey;
-      }
+      // Shared mediator account (operator-funded once, reused for everyone).
+      const mediatorPublicKey = needsMediator
+        ? getMediatorPublicKey(routeNetwork) || undefined
+        : undefined;
 
       setAccount(accountData);
       setAccountState(accountData);

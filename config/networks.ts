@@ -37,3 +37,19 @@ export const VALID_NETWORKS: Network[] = ["mainnet", "testnet"];
 export function isValidNetwork(value: string): value is Network {
   return VALID_NETWORKS.includes(value as Network);
 }
+
+/**
+ * Shared mediator (intermediary) account used to forward funds to exchange
+ * destinations that don't support ACCOUNT_MERGE. The operator funds this
+ * account once (its ~1 XLM base reserve is paid once and reused for everyone),
+ * so users recover essentially all of their XLM. Public key is safe to expose;
+ * the matching secret lives server-side only (see lib/stellar/mediator-server).
+ */
+export const MEDIATOR_PUBLIC_KEYS: Record<Network, string> = {
+  mainnet: process.env.NEXT_PUBLIC_MEDIATOR_PUBLIC_MAINNET || "",
+  testnet: process.env.NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET || "",
+};
+
+export function getMediatorPublicKey(network: Network): string {
+  return MEDIATOR_PUBLIC_KEYS[network];
+}

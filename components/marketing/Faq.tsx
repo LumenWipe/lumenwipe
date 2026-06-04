@@ -11,9 +11,10 @@ const ITEMS: Item[] = [
     a: (
       <>
         Yes. Every transaction is built and signed in your browser, through your wallet or an
-        in-memory secret key. Your private key never reaches our servers. The backend is read-only
-        and stateless. It aggregates on-chain data and is never in the signing path, so no operator
-        (including us) can move your funds.
+        in-memory secret key, and your private key never reaches our servers. The backend&apos;s only
+        signing key is the shared exchange mediator, used solely to co-sign the forwarding payment to
+        an exchange as the second half of an atomic transaction you already signed. It can&apos;t
+        change the destination or move your account&apos;s funds.
       </>
     ),
   },
@@ -44,9 +45,10 @@ const ITEMS: Item[] = [
     a: (
       <>
         Yes. Exchanges don&apos;t support <span className="mkt-mono text-white/80">ACCOUNT_MERGE</span>
-        , so LumenWipe routes the final merge through a transparent, single-use mediator account and
-        pays out to your deposit address with the correct memo. Known exchanges are validated against
-        a registry that enforces the required memo type, so deposits don&apos;t go missing.
+        , so LumenWipe routes the close through a shared mediator account in one atomic transaction:
+        your account merges into it, and it forwards the full balance to your deposit address with the
+        correct memo. You recover essentially all of your XLM. Known exchanges are validated against a
+        registry that enforces the required memo type, so deposits don&apos;t go missing.
       </>
     ),
   },

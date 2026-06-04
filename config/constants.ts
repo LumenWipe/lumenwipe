@@ -9,7 +9,6 @@ export const POLL_MAX_ATTEMPTS = 30; // 90 seconds total
 export const SLIPPAGE_BPS = 50; // 0.5% default slippage for path payments
 export const SE_API_TIMEOUT_MS = 10000; // 10 seconds
 export const SE_API_MAX_RETRIES = 3;
-export const MEDIATOR_RESERVE_XLM = 1.5; // funding amount for ephemeral mediator
 
 // XLM stroops per lumen
 export const STROOPS_PER_XLM = 10_000_000;

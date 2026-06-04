@@ -15,7 +15,8 @@ interface CompletionReceiptProps {
 }
 
 export default function CompletionReceipt({ network }: CompletionReceiptProps) {
-  const { executionPlan, destinationAddress, sourceAddress, sessionId, reset } = useDemolishStore();
+  const { executionPlan, destinationAddress, sourceAddress, sessionId, reset, mediatorRequired } =
+    useDemolishStore();
   const explorerBase = SE_EXPLORER_BASE[network];
   const svExplorerBase = SV_EXPLORER_BASE[network];
 
@@ -40,9 +41,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
         txHash: s.txHash!,
       })),
       totalFeeLumens: totalFee,
-      usedMediator: executionPlan.some(
-        (s) => s.type === "FUND_MEDIATOR" && s.status === "confirmed"
-      ),
+      usedMediator: mediatorRequired,
     }).then(() => cleanupSession(sessionId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);

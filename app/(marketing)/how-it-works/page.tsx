@@ -223,8 +223,9 @@ export default function HowItWorksPage() {
             </h2>
             <p className="mt-5 leading-relaxed text-white/55">
               Exchanges don&apos;t support <span className="mkt-mono text-white/80">ACCOUNT_MERGE</span>.
-              LumenWipe bridges the gap with a transparent, single-use mediator account, generated in
-              your browser, used once, and cleared from memory.
+              LumenWipe bridges the gap with a shared mediator account in one atomic transaction: your
+              account merges into it, and it forwards the full balance to your exchange address. You
+              recover essentially all of your XLM.
             </p>
           </Reveal>
 
@@ -234,7 +235,7 @@ export default function HowItWorksPage() {
                 {[
                   { label: "Source account", sub: "the account you're closing", tone: "white" },
                   { op: "AccountMerge" },
-                  { label: "Mediator account", sub: "single-use · generated in browser", tone: "stellar" },
+                  { label: "Shared mediator", sub: "operator-funded · reused", tone: "stellar" },
                   { op: "Payment + memo" },
                   { label: "Exchange deposit", sub: "validated address & memo", tone: "value" },
                 ].map((node, i) =>
@@ -267,8 +268,10 @@ export default function HowItWorksPage() {
                 )}
               </div>
               <p className="mt-6 text-center text-sm text-white/45">
-                The ~1 XLM that stays as the mediator&apos;s base reserve is disclosed upfront. Known
-                exchanges are validated against a registry that enforces the correct memo type.
+                Both operations live in one atomic transaction: you sign the merge, the backend
+                co-signs the forward payment, and neither the destination nor the amount can be
+                changed. Known exchanges are validated against a registry that enforces the correct
+                memo type.
               </p>
             </div>
           </Reveal>

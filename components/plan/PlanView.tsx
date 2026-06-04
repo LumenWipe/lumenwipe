@@ -53,13 +53,13 @@ export default function PlanView({
       <BlockersPanel blockers={[]} />
 
       {mediatorRequired && (
-        <div className="bg-warning/10 border border-warning/25 rounded-2xl p-4 text-sm">
-          <p className="font-medium text-warning mb-1">Intermediary account required</p>
+        <div className="bg-stellar/10 border border-stellar/25 rounded-2xl p-4 text-sm">
+          <p className="font-medium text-stellar mb-1">Exchange destination</p>
           <p className="text-white/60">
-            Your destination does not support direct account merges. A temporary intermediary
-            account will be created to route your funds. A 1.5 XLM reserve is required upfront -
-            approximately 1.0 XLM will remain locked as the the intermediary&apos;s minimum balance
-            and cannot be recovered.
+            Your destination doesn&apos;t support direct account merges, so the close is routed
+            through a shared intermediary account in one atomic transaction: your account merges into
+            it, and it forwards the full balance to your exchange address with the required memo. You
+            recover essentially all of your XLM; only standard network fees apply.
           </p>
         </div>
       )}

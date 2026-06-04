@@ -118,27 +118,15 @@ export function buildPlan(accountState: AccountState, mediatorRequired: boolean)
     }
   }
 
-  if (mediatorRequired) {
-    steps.push(
-      step(
-        idx++,
-        "FUND_MEDIATOR",
-        "Create intermediary account",
-        "Create a temporary intermediary account that will receive your merged funds and route them to your destination. Requires 1.5 XLM upfront; ~1.0 XLM stays locked as the account's ledger reserve.",
-        1
-      )
-    );
-  }
-
   steps.push(
     step(
       idx++,
       "MERGE",
-      mediatorRequired ? "Merge account into intermediary" : "Merge account",
+      mediatorRequired ? "Merge and forward to exchange" : "Merge account",
       mediatorRequired
-        ? "Merge this account into the intermediary account, which will then transfer the XLM balance to your destination."
+        ? "Close this account and forward the full balance to your exchange deposit address in one atomic transaction, routed through a shared intermediary. You recover essentially all of your XLM; only standard network fees apply."
         : "Merge this account, transferring the XLM balance to the destination account and removing it from the Stellar ledger.",
-      1
+      mediatorRequired ? 2 : 1
     )
   );
 

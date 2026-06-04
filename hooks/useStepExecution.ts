@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { Keypair, TransactionBuilder, Account } from "@stellar/stellar-sdk";
-import { NETWORK_PASSPHRASES } from "@/config/networks";
+import { NETWORK_PASSPHRASES, getMediatorPublicKey } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import { getRpcServer } from "@/lib/stellar/rpc";
@@ -17,13 +17,8 @@ import {
 } from "@/lib/stellar/tx-builder/asset-conversion";
 import { buildRemoveTrustlinesTx } from "@/lib/stellar/tx-builder/trustlines";
 import { buildNormalizeSignersTx } from "@/lib/stellar/tx-builder/signers";
-import {
-  buildMergeTx,
-  buildFundMediatorTx,
-  buildMediatorMergeTx,
-} from "@/lib/stellar/tx-builder/merge";
-import { executeMediatorFlow } from "@/lib/stellar/mediator";
-import { getMediatorSession, clearMediatorSession } from "@/lib/stellar/mediator-session";
+import { buildMergeTx, buildMediatorMergePaymentTx } from "@/lib/stellar/tx-builder/merge";
+import { requestMediatorCosignature } from "@/lib/stellar/mediator";
 import { batchItems } from "@/lib/stellar/tx-builder/batching";
 import type { PlannedStep } from "@/types/plan";
 
@@ -35,8 +30,7 @@ export function useStepExecution() {
   // Build unsigned XDR for a given step using the current on-chain sequence
   const buildStepXdr = useCallback(
     async (step: PlannedStep): Promise<string> => {
-      const { sourceAddress, accountState, destinationAddress, memo, memoType, mediatorPublicKey } =
-        store;
+      const { sourceAddress, accountState, destinationAddress, memo, memoType } = store;
       if (!sourceAddress || !accountState || !destinationAddress) {
         throw new Error("Missing account state for transaction building");
       }
@@ -82,14 +76,29 @@ export function useStepExecution() {
           return buildRemoveTrustlinesTx(sdkAccount, batches[batchIdx] ?? trustlines, network);
         }
 
-        case "FUND_MEDIATOR": {
-          if (!mediatorPublicKey) throw new Error("No mediator public key set");
-          return buildFundMediatorTx(sdkAccount, mediatorPublicKey, network);
-        }
-
         case "MERGE": {
-          if (store.mediatorRequired && mediatorPublicKey) {
-            return buildMediatorMergeTx(sdkAccount, mediatorPublicKey, network);
+          if (store.mediatorRequired) {
+            const mediator = getMediatorPublicKey(network);
+            if (!mediator) {
+              throw new Error(
+                "This destination needs the exchange (mediator) flow, but no shared mediator account is configured on this deployment."
+              );
+            }
+            // Forward essentially the full live balance through the shared mediator.
+            const res = await fetch(`/api/${network}/account/${sourceAddress}`);
+            if (!res.ok) {
+              throw new Error("Could not read the account balance to build the merge.");
+            }
+            const live = (await res.json()) as { nativeBalanceLumens: string };
+            return buildMediatorMergePaymentTx(
+              sdkAccount,
+              mediator,
+              destinationAddress,
+              live.nativeBalanceLumens,
+              memo,
+              network,
+              memoType
+            );
           }
           return buildMergeTx(sdkAccount, destinationAddress, memo, network, memoType);
         }
@@ -112,7 +121,6 @@ export function useStepExecution() {
         sourceAddress,
         destinationAddress,
         memo,
-        memoType,
         mediatorRequired,
         mediatorPublicKey,
         executionPlan,
@@ -136,27 +144,16 @@ export function useStepExecution() {
 
         updateStep(step.index, { status: "submitted" });
 
-        // Special handling for MERGE with mediator
-        if (step.type === "MERGE" && mediatorRequired && mediatorPublicKey) {
-          setProgressStatus("Submitting account merge...");
-          const mediatorSession = getMediatorSession();
-          if (!mediatorSession) {
-            throw new Error(
-              "Mediator session expired. Please restart the demolition flow from the beginning."
-            );
-          }
-          const result = await executeMediatorFlow(
-            signedXdr,
-            mediatorSession,
-            destinationAddress!,
-            memo,
-            network,
-            setProgressStatus,
-            memoType
-          );
-          clearMediatorSession();
-          markStepConfirmed(step.index, result.mergeHash);
-          recordMergeStats(result.mergeHash, network);
+        // MERGE through the shared mediator: the user signed their half (the
+        // merge); the backend co-signs the mediator's forward payment. It is a
+        // single atomic transaction, so funds cannot be diverted.
+        if (step.type === "MERGE" && mediatorRequired) {
+          setProgressStatus("Co-signing the forward payment...");
+          const cosignedXdr = await requestMediatorCosignature(signedXdr, network);
+          setProgressStatus("Submitting to Stellar network...");
+          const { txHash } = await submitAndWait(cosignedXdr, network, setProgressStatus);
+          markStepConfirmed(step.index, txHash);
+          recordMergeStats(txHash, network);
         } else {
           setProgressStatus("Submitting to Stellar network...");
           const { txHash } = await submitAndWait(signedXdr, network, setProgressStatus);

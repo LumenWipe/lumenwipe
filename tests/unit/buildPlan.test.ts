@@ -31,17 +31,16 @@ test("buildPlan › clean account → single MERGE step", () => {
   expect(plan[0].type).toBe("MERGE");
 });
 
-test("buildPlan › mediatorRequired=true → FUND_MEDIATOR + MERGE", () => {
+test("buildPlan › mediatorRequired=true → single MERGE step (shared mediator)", () => {
   const plan = buildPlan(makeAccount(), true);
-  expect(plan).toHaveLength(2);
-  expect(plan[0].type).toBe("FUND_MEDIATOR");
-  expect(plan[1].type).toBe("MERGE");
+  expect(plan).toHaveLength(1);
+  expect(plan[0].type).toBe("MERGE");
 });
 
-test("buildPlan › MERGE step title includes 'intermediary' when mediator required", () => {
+test("buildPlan › MERGE step title reflects the exchange route when mediator required", () => {
   const plan = buildPlan(makeAccount(), true);
   const mergeStep = plan.find((s) => s.type === "MERGE")!;
-  expect(mergeStep.title.toLowerCase()).toContain("intermediary");
+  expect(mergeStep.title.toLowerCase()).toContain("exchange");
 });
 
 test("buildPlan › MERGE step direct title when no mediator", () => {

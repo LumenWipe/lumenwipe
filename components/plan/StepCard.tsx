@@ -9,7 +9,6 @@ const STEP_ICONS: Record<string, string> = {
   CLAIM_BALANCES: "🎯",
   CONVERT_ASSETS: "🔄",
   REMOVE_TRUSTLINES: "🔗",
-  FUND_MEDIATOR: "🏦",
   MERGE: "⚡",
 };
 

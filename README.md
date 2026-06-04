@@ -22,7 +22,7 @@
 
 LumenWipe is an open-source, non-custodial web app that walks you through closing a Stellar account from start to finish — automatically. It detects everything that holds your account open (trustlines, DEX offers, DeFi positions, data entries, extra signers), unwinds it step by step, converts leftover tokens to XLM, and merges the account into your destination wallet or exchange address.
 
-Every transaction is built and signed in your browser. Your private keys never leave your device. The backend is read-only and stateless: it aggregates data, it never touches your funds.
+Every transaction is built and signed in your browser; your private keys never leave your device. The backend is read-only apart from one signing key — the shared exchange mediator — which can only co-sign a forwarding payment you already authorized, so it can't sign for your account or move your funds.
 
 > **Built on top of the public-domain [stellar.expert/demolisher](https://stellar.expert/demolisher/public) by Orbit Lens**, extended with full Soroban support, DeFi protocol integration, and a production-grade UX designed for irreversible operations.
 
@@ -36,7 +36,7 @@ Stellar has over **10 million accounts on mainnet**, and a large share are stale
 
 2. **Closing an account manually is hard.** A single leftover subentry causes the final `ACCOUNT_MERGE` to fail. Users must cancel every offer, exit every DeFi position, sell every asset, remove every trustline, and clear every data entry — in the correct order — before the merge will succeed. Miss one and everything reverts.
 
-**Exchanges compound the problem.** No major exchange supports `ACCOUNT_MERGE`. A user sending remaining XLM to a CEX cannot merge directly into the deposit address, so the final 1 XLM base reserve stays permanently locked. LumenWipe solves this with a transparent temporary mediator account.
+**Exchanges compound the problem.** No major exchange supports `ACCOUNT_MERGE`. A user sending remaining XLM to a CEX cannot merge directly into the deposit address, so the final 1 XLM base reserve stays permanently locked. LumenWipe solves this with a shared mediator account and an atomic forwarding payment, so the user recovers essentially all of their XLM.
 
 **DeFi users have no tool at all today.** The existing demolisher has no Soroban support. Any account with a Blend loan, an Aquarius LP position, or a Soroswap pair share cannot be closed with existing tools.
 
@@ -107,18 +107,17 @@ The plan is **deterministic**: same account state always produces the same order
 
 ### CEX mediator flow
 
-Exchanges don't support `ACCOUNT_MERGE`. LumenWipe uses a transparent temporary mediator account:
+Exchanges don't support `ACCOUNT_MERGE`. LumenWipe uses a single shared mediator account and forwards the funds in one atomic transaction:
 
 ```
-Source account ──(AccountMerge)──► Mediator account
-                                          │
-                                   (Payment + memo)
-                                          │
-                                          ▼
-                                   Exchange deposit address
+┌─ one atomic transaction ───────────────────────────────┐
+│  op1: AccountMerge   source (you) ──► shared mediator   │
+│  op2: Payment+memo   mediator ──► exchange deposit addr  │
+└─────────────────────────────────────────────────────────┘
+You sign op1; the backend co-signs op2. Both apply, or neither.
 ```
 
-The mediator keypair is generated in the browser, used once, and cleared from memory. The 1 XLM that stays as the mediator's base reserve is disclosed upfront. Known exchange destinations are validated against a registry that enforces the correct memo type.
+The mediator is a single account the operator funds once; its ~1 XLM base reserve is paid once and reused for everyone, so you recover essentially all of your XLM (only network fees apply). The backend co-signs only the forward payment, after validating the transaction shape, and cannot change the destination or amount. Known exchange destinations are validated against a registry that enforces the correct memo type.
 
 ### State machine
 
@@ -148,9 +147,9 @@ The system has three layers. The trust boundary is the browser — signing never
 └────────────────────┬─────────────────────────────────┘
                      │ signed XDR ──────────────────────────┐
 ┌────────────────────▼─────────────────────────────────┐   │
-│  Read-only backend (stateless, no keys, no custody)  │   │
+│  Read-only backend (stateless, no custody)           │   │
 │  Account analysis · DeFi adapter (OctoPos / Orion)   │   │
-│  Routing service · Mediator factory · Redis cache    │   │
+│  Routing · Redis cache · mediator co-signer          │   │
 └────────────────────┬─────────────────────────────────┘   │
                      │ read-only                            │
 ┌────────────────────▼─────────────────────────────────────▼──┐
@@ -177,7 +176,7 @@ LumenWipe builds transactions that drain accounts irreversibly. The security des
 | **Signed transaction** | Built and submitted entirely client-side; user reviews XDR and confirms before every destructive step |
 | **Destination address** | Full-address display, ledger existence check, and explicit confirmation before merge |
 | **Exchange memo** | Required and validated for known exchange destinations — missing memos block submission |
-| **Backend compromise** | Cannot move funds (no keys, not in signing path). Wrong read data is caught by on-chain simulation and explicit confirmations |
+| **Backend compromise** | Cannot sign for your account; its only key is the shared mediator, which can only co-sign an atomic forwarding payment you already authorized (fixed destination and amount). Wrong read data is caught by on-chain simulation and explicit confirmations |
 | **XSS** | Strict Content Security Policy — no inline scripts, no `unsafe-eval` |
 | **Supply chain** | Lockfile-pinned dependencies, audited in CI |
 

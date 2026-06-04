@@ -405,8 +405,9 @@ export default function LandingPage() {
               </h2>
               <p className="mt-5 text-[1.02rem] leading-relaxed text-white/55">
                 LumenWipe builds transactions that drain accounts irreversibly, so the design starts
-                from that fact. Keys are created and used only in your browser. The backend is
-                read-only and stateless. Even a fully compromised server cannot move a single lumen.
+                from that fact. Your keys are created and used only in your browser and never reach a
+                server. The backend can&apos;t touch your account: its one signing key is the shared
+                exchange mediator, which can only co-sign a forwarding payment you already authorized.
               </p>
 
               {/* layered diagram */}
@@ -422,7 +423,7 @@ export default function LandingPage() {
                     label: "Read-only backend",
                     sub: "Account analysis · DeFi adapters · routing · cache",
                     tone: "muted",
-                    note: "no keys · no custody",
+                    note: "co-sign only · no custody",
                   },
                   {
                     label: "Stellar network & data",
@@ -476,7 +477,7 @@ export default function LandingPage() {
                   {
                     icon: Server,
                     title: "Backend compromise",
-                    body: "Cannot move funds. Wrong read data is caught by on-chain simulation and confirmations.",
+                    body: "Its only key is the shared mediator, which can't sign for your account and can't divert funds (atomic, validated). Wrong read data is caught by simulation and confirmations.",
                   },
                   {
                     icon: Network,
