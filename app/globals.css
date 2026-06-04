@@ -30,6 +30,9 @@
     /* Warning */
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
+    /* Recovered value (XLM) accent */
+    --value: 41 96% 56%;
+    --value-foreground: 38 60% 8%;
   }
 }
 
@@ -59,6 +62,175 @@
     font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
     font-size: 0.8rem;
     letter-spacing: -0.02em;
+  }
+  .text-value {
+    color: hsl(var(--value));
+  }
+  .bg-value {
+    background-color: hsl(var(--value));
+  }
+  .border-value {
+    border-color: hsl(var(--value));
+  }
+}
+
+/* ============================================================
+   Marketing site ("Precision instrument" aesthetic)
+   Scoped under .mkt so the app UI is never affected.
+   ============================================================ */
+.mkt {
+  color: hsl(0 0% 96%);
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mkt-display {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.035em;
+  line-height: 0.98;
+}
+
+.mkt-mono {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+  font-feature-settings: "ss01", "cv01";
+}
+
+.mkt-eyebrow {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 0.7rem;
+}
+
+/* Blueprint grid background */
+.mkt-grid {
+  background-image:
+    linear-gradient(hsl(0 0% 100% / 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(0 0% 100% / 0.028) 1px, transparent 1px);
+  background-size: 56px 56px;
+  background-position: center top;
+}
+
+/* Fine dotted texture */
+.mkt-dots {
+  background-image: radial-gradient(hsl(0 0% 100% / 0.05) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* Hero cyan/amber atmosphere */
+.mkt-aura {
+  background:
+    radial-gradient(60% 50% at 78% 12%, hsl(196 100% 47% / 0.16), transparent 70%),
+    radial-gradient(45% 45% at 8% 0%, hsl(41 96% 56% / 0.08), transparent 70%);
+}
+
+.mkt-hairline {
+  border-color: hsl(0 0% 100% / 0.08);
+}
+
+/* Card surface with subtle top sheen */
+.mkt-panel {
+  background:
+    linear-gradient(180deg, hsl(0 0% 100% / 0.025), transparent 40%),
+    hsl(240 14% 6% / 0.7);
+  border: 1px solid hsl(0 0% 100% / 0.08);
+  backdrop-filter: blur(8px);
+}
+
+.mkt-glow-cyan {
+  box-shadow:
+    0 0 0 1px hsl(196 100% 47% / 0.25),
+    0 18px 60px -20px hsl(196 100% 47% / 0.35);
+}
+
+/* Animated corner ticks for the instrument panel */
+.mkt-ticks::before,
+.mkt-ticks::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: hsl(196 100% 47% / 0.6);
+  border-style: solid;
+}
+.mkt-ticks::before {
+  top: -1px;
+  left: -1px;
+  border-width: 1px 0 0 1px;
+}
+.mkt-ticks::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 1px 1px 0;
+}
+
+/* Scroll reveal — visible by default; JS adds .is-hidden below the fold */
+.mkt-reveal {
+  transition:
+    opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+.mkt-reveal.is-hidden {
+  opacity: 0;
+  transform: translateY(16px);
+}
+
+/* Marquee for protocol strip */
+@keyframes mkt-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.mkt-marquee {
+  animation: mkt-marquee 32s linear infinite;
+}
+.mkt-marquee-track:hover .mkt-marquee {
+  animation-play-state: paused;
+}
+
+/* Blinking status dot */
+@keyframes mkt-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+.mkt-pulse {
+  animation: mkt-pulse 1.4s ease-in-out infinite;
+}
+
+/* Sweep shimmer for active plan row */
+@keyframes mkt-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+.mkt-sweep {
+  animation: mkt-sweep 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mkt-reveal,
+  .mkt-reveal.is-hidden {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .mkt-marquee,
+  .mkt-pulse,
+  .mkt-sweep {
+    animation: none;
   }
 }
 
