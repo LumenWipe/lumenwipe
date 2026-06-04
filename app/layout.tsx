@@ -17,11 +17,6 @@ const jsonLd = {
   description,
   applicationCategory: "FinanceApplication",
   operatingSystem: "Web Browser",
-  offers: {
-    "@type": "Offer",
-    price: "0",
-    priceCurrency: "USD",
-  },
   featureList: [
     "Non-custodial Stellar account merge",
     "Trustline removal",

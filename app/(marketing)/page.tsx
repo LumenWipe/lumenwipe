@@ -592,7 +592,7 @@ export default function LandingPage() {
                   <Check className="h-3.5 w-3.5 text-stellar" /> No custody
                 </span>
                 <span className="inline-flex items-center gap-1.5">
-                  <Check className="h-3.5 w-3.5 text-stellar" /> Free &amp; open source
+                  <Check className="h-3.5 w-3.5 text-stellar" /> Open source
                 </span>
               </div>
             </div>

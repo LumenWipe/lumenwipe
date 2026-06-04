@@ -82,16 +82,6 @@ const ITEMS: Item[] = [
     ),
   },
   {
-    q: "What does it cost?",
-    a: (
-      <>
-        LumenWipe is free and open source under Apache 2.0. You only pay standard Stellar network
-        fees. For exchange merges, roughly <span className="text-value">1 XLM</span> remains as the
-        mediator account&apos;s base reserve, disclosed clearly before you start.
-      </>
-    ),
-  },
-  {
     q: "Mainnet or testnet?",
     a: (
       <>
