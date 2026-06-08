@@ -286,12 +286,12 @@ LumenWipe is open source from day one. The full frontend, read-only backend, tra
 
 **Channels:**
 
-| Channel                                                                     | Use                                              |
-| --------------------------------------------------------------------------- | ------------------------------------------------ |
-| [GitHub Issues](https://github.com/LumenWipe/lumenwipe/issues)              | Bug reports, feature requests, roadmap           |
-| [Stellar Dev Discord](https://discord.gg/stellar)                           | Ecosystem coordination                           |
-| [Matrix — #lumenwipe:matrix.org](https://matrix.to/#/#lumenwipe:matrix.org) | Project discussion (open, decentralized)         |
-| Mastodon / BlueSky                                                          | Public announcements on open, federated networks |
+| Channel | Use |
+|---------|-----|
+| [GitHub Issues](https://github.com/LumenWipe/lumenwipe/issues) | Bug reports, feature requests, roadmap |
+| [LumenWipe Discord](https://discord.gg/b37CPB7g) | Community chat, support, and project discussion |
+| [Matrix — #lumenwipe:matrix.org](https://matrix.to/#/#lumenwipe:matrix.org) | Project discussion (open, decentralized) |
+| Telegram | Real-time community chat, support, and announcements |
 
 **Contributing:** open an issue or pull request. The contract and exchange registries (versioned JSON) are especially easy to contribute to — new exchange addresses and protocol contract versions are reviewed pull requests, not code changes.
 
