@@ -117,9 +117,10 @@ export default function HowItWorksPage() {
             A deterministic plan for an irreversible action.
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-[1.05rem] leading-relaxed text-white/60">
-            Closing an account is several sequential transactions in the right order. LumenWipe shows
-            the whole plan up front, then executes it one confirmed step at a time, re-reading live
-            state and simulating before every signature, so nothing is ever signed on stale data.
+            Closing an account is several sequential transactions in the right order. LumenWipe
+            shows the whole plan up front, then executes it one confirmed step at a time, re-reading
+            live state and simulating before every signature, so nothing is ever signed on stale
+            data.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link
@@ -222,10 +223,10 @@ export default function HowItWorksPage() {
               The CEX mediator flow.
             </h2>
             <p className="mt-5 leading-relaxed text-white/55">
-              Exchanges don&apos;t support <span className="mkt-mono text-white/80">ACCOUNT_MERGE</span>.
-              LumenWipe bridges the gap with a shared mediator account in one atomic transaction: your
-              account merges into it, and it forwards the full balance to your exchange address. You
-              recover essentially all of your XLM.
+              Exchanges don&apos;t support{" "}
+              <span className="mkt-mono text-white/80">ACCOUNT_MERGE</span>. LumenWipe bridges the
+              gap with a transparent, single-use mediator account, generated in your browser, used
+              once, and cleared from memory.
             </p>
           </Reveal>
 
@@ -235,7 +236,11 @@ export default function HowItWorksPage() {
                 {[
                   { label: "Source account", sub: "the account you're closing", tone: "white" },
                   { op: "AccountMerge" },
-                  { label: "Shared mediator", sub: "operator-funded · reused", tone: "stellar" },
+                  {
+                    label: "Mediator account",
+                    sub: "single-use · generated in browser",
+                    tone: "stellar",
+                  },
                   { op: "Payment + memo" },
                   { label: "Exchange deposit", sub: "validated address & memo", tone: "value" },
                 ].map((node, i) =>
@@ -268,10 +273,9 @@ export default function HowItWorksPage() {
                 )}
               </div>
               <p className="mt-6 text-center text-sm text-white/45">
-                Both operations live in one atomic transaction: you sign the merge, the backend
-                co-signs the forward payment, and neither the destination nor the amount can be
-                changed. Known exchanges are validated against a registry that enforces the correct
-                memo type.
+                The ~1 XLM that stays as the mediator&apos;s base reserve is disclosed upfront.
+                Known exchanges are validated against a registry that enforces the correct memo
+                type.
               </p>
             </div>
           </Reveal>
@@ -309,14 +313,27 @@ export default function HowItWorksPage() {
               Three layers, one trust boundary.
             </h2>
             <p className="mt-4 leading-relaxed text-white/55">
-              No bespoke indexer, no Horizon dependency. Every read source sits behind an adapter, so
-              any compatible provider can be swapped in without touching the rest of the system.
+              No bespoke indexer, no Horizon dependency. Every read source sits behind an adapter,
+              so any compatible provider can be swapped in without touching the rest of the system.
             </p>
             <div className="mt-7 space-y-2.5">
               {[
-                { l: "Browser", s: "UI · wallet · tx builder · session", note: "keys never leave", tone: true },
-                { l: "Read-only backend", s: "analysis · DeFi adapters · routing · cache", note: "no custody" },
-                { l: "Stellar network", s: "Stellar RPC · stellar.expert · Soroswap", note: "read-only" },
+                {
+                  l: "Browser",
+                  s: "UI · wallet · tx builder · session",
+                  note: "keys never leave",
+                  tone: true,
+                },
+                {
+                  l: "Read-only backend",
+                  s: "analysis · DeFi adapters · routing · cache",
+                  note: "no custody",
+                },
+                {
+                  l: "Stellar network",
+                  s: "Stellar RPC · stellar.expert · Soroswap",
+                  note: "read-only",
+                },
               ].map((row) => (
                 <div
                   key={row.l}

@@ -81,7 +81,9 @@ export default function MarketingNav() {
   return (
     <header
       className={`sticky top-0 z-50 transition-colors duration-300 ${
-        scrolled ? "border-b border-white/10 bg-[#08080c]/80 backdrop-blur-xl" : "border-b border-transparent"
+        scrolled
+          ? "border-b border-white/10 bg-[#08080c]/80 backdrop-blur-xl"
+          : "border-b border-transparent"
       }`}
     >
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 lg:px-8">
@@ -109,7 +111,9 @@ export default function MarketingNav() {
                 )}
                 <span
                   className={`pointer-events-none absolute -bottom-0.5 left-0 h-px w-full origin-left rounded-full bg-stellar shadow-[0_0_8px_hsl(var(--stellar)/0.7)] transition-transform duration-300 ${
-                    active ? "scale-x-100" : "scale-x-0 group-hover:scale-x-50 group-hover:bg-white/40 group-hover:shadow-none"
+                    active
+                      ? "scale-x-100"
+                      : "scale-x-0 group-hover:scale-x-50 group-hover:bg-white/40 group-hover:shadow-none"
                   }`}
                 />
               </Link>
@@ -158,7 +162,9 @@ export default function MarketingNav() {
                   aria-current={active ? "page" : undefined}
                   onClick={() => setOpen(false)}
                   className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-colors ${
-                    active ? "bg-white/5 text-white" : "text-white/75 hover:bg-white/5 hover:text-white"
+                    active
+                      ? "bg-white/5 text-white"
+                      : "text-white/75 hover:bg-white/5 hover:text-white"
                   }`}
                 >
                   <span className="inline-flex items-center gap-2">

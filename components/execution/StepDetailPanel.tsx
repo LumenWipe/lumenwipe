@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils/cn";
 import SecretKeyInput from "@/components/account-entry/SecretKeyInput";
 import XdrPreviewModal from "./XdrPreviewModal";
 import ProgressIndicator from "./ProgressIndicator";
+import { StepTypeIcon } from "@/lib/utils/stepIcons";
 
 interface StepDetailPanelProps {
   step: PlannedStep;
@@ -17,17 +18,11 @@ interface StepDetailPanelProps {
   onSign: () => Promise<void>;
   onRetry: () => void;
   progressStatus: string | null;
+  noSwapPath?: boolean;
+  noSwapPathAsset?: string | null;
+  onSendToIssuer?: () => void;
+  onSkipStep?: () => void;
 }
-
-const STEP_ICONS: Record<string, string> = {
-  NORMALIZE_SIGNERS: "🔑",
-  REMOVE_DATA_ENTRIES: "🗃️",
-  CANCEL_OFFERS: "📊",
-  CLAIM_BALANCES: "🎯",
-  CONVERT_ASSETS: "🔄",
-  REMOVE_TRUSTLINES: "🔗",
-  MERGE: "⚡",
-};
 
 export default function StepDetailPanel({
   step,
@@ -36,6 +31,10 @@ export default function StepDetailPanel({
   onSign,
   onRetry,
   progressStatus,
+  noSwapPath,
+  noSwapPathAsset,
+  onSendToIssuer,
+  onSkipStep,
 }: StepDetailPanelProps) {
   const [confirmed, setConfirmed] = useState(false);
   const [keyValid, setKeyValid] = useState(false);
@@ -48,14 +47,18 @@ export default function StepDetailPanel({
 
   const confirmText = isMerge
     ? "I have verified the destination address and understand that this account will be merged and removed from the Stellar ledger."
-    : `I understand this will ${step.description.toLowerCase()}`;
+    : step.fallbackToIssuer
+      ? `I understand my ${step.affectedAsset?.split(":")[0]} balance will be sent to the issuer instead of swapped on the DEX.`
+      : `I understand this will ${step.description.toLowerCase()}`;
 
   return (
     <div className="mkt-panel rounded-2xl overflow-hidden">
       {/* Header */}
       <div className="border-b border-white/10 px-5 py-4">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-lg">{STEP_ICONS[step.type] ?? "•"}</span>
+          <span className="text-stellar">
+            <StepTypeIcon type={step.type} className="h-5 w-5" />
+          </span>
           <h2 className="mkt-display font-bold text-lg text-white">{step.title}</h2>
         </div>
         <p className="text-sm text-white/55">{step.description}</p>
@@ -116,59 +119,106 @@ export default function StepDetailPanel({
         {/* Pending / executing view */}
         {(step.status === "pending" || isExecuting) && (
           <>
-            {/* Merge-specific warning */}
-            {isMerge && (
-              <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-sm">
-                <p className="font-semibold text-destructive mb-1">
-                  This action is permanent and irreversible.
-                </p>
-                <p className="text-white/60">
-                  After this step, the account will be removed from the Stellar ledger. Verify your
-                  destination address carefully before signing.
-                </p>
+            {/* No DEX path warning — shown before user makes a choice */}
+            {noSwapPath && !isExecuting && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 space-y-3">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-400">
+                      No swap route available for {noSwapPathAsset}
+                    </p>
+                    <p className="text-sm text-white/55 mt-1">
+                      The Stellar DEX has no liquidity path for this asset right now. You can skip
+                      this step and convert it manually on{" "}
+                      <a
+                        href="https://stellar.expert"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-stellar underline-offset-2 hover:underline"
+                      >
+                        stellar.expert
+                      </a>{" "}
+                      or another exchange, then come back to continue. Alternatively, you can return
+                      the balance to the issuer — note that not all issuers accept returning tokens.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={onSkipStep}
+                    className="flex-1 py-2 px-3 rounded-lg text-sm font-semibold bg-stellar/15 text-stellar border border-stellar/30 hover:bg-stellar/25 transition-colors"
+                  >
+                    Skip for now
+                  </button>
+                  <button
+                    onClick={onSendToIssuer}
+                    className="flex-1 py-2 px-3 rounded-lg text-sm font-semibold bg-white/5 text-white/45 border border-white/10 hover:bg-white/10 transition-colors"
+                  >
+                    Return to issuer
+                  </button>
+                </div>
               </div>
             )}
 
-            {/* XDR preview */}
-            {step.txXdr && <XdrPreviewModal xdr={step.txXdr} network={network} />}
-
-            {/* Secret key */}
-            <SecretKeyInput
-              secretKeyRef={secretKeyRef}
-              onValidityChange={setKeyValid}
-              disabled={isExecuting}
-            />
-
-            {/* Confirmation checkbox */}
-            <label className="flex items-start gap-3 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={confirmed}
-                onChange={(e) => setConfirmed(e.target.checked)}
-                disabled={isExecuting}
-                className="mt-0.5 accent-stellar"
-              />
-              <span className="text-sm text-white/60">{confirmText}</span>
-            </label>
-
-            {/* Progress or sign button */}
-            {progressStatus ? (
-              <ProgressIndicator status={progressStatus} />
-            ) : (
-              <button
-                onClick={onSign}
-                disabled={!canSign}
-                className={cn(
-                  "w-full py-3 px-4 rounded-xl font-semibold text-sm transition-all",
-                  "flex items-center justify-center gap-2",
-                  isMerge
-                    ? "bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-40"
-                    : "bg-stellar text-black hover:bg-stellar/90 hover:shadow-[0_0_28px_-6px_hsl(var(--stellar)/0.7)] disabled:opacity-40 disabled:shadow-none",
-                  !canSign && "cursor-not-allowed"
+            {/* Normal sign flow — hidden while waiting for no-path choice */}
+            {!noSwapPath && (
+              <>
+                {/* Merge-specific warning */}
+                {isMerge && (
+                  <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-sm">
+                    <p className="font-semibold text-destructive mb-1">
+                      This action is permanent and irreversible.
+                    </p>
+                    <p className="text-white/60">
+                      After this step, the account will be removed from the Stellar ledger. Verify
+                      your destination address carefully before signing.
+                    </p>
+                  </div>
                 )}
-              >
-                {isMerge ? "Sign and merge account" : "Sign and submit"}
-              </button>
+
+                {/* XDR preview */}
+                {step.txXdr && <XdrPreviewModal xdr={step.txXdr} network={network} />}
+
+                {/* Secret key */}
+                <SecretKeyInput
+                  secretKeyRef={secretKeyRef}
+                  onValidityChange={setKeyValid}
+                  disabled={isExecuting}
+                />
+
+                {/* Confirmation checkbox */}
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={confirmed}
+                    onChange={(e) => setConfirmed(e.target.checked)}
+                    disabled={isExecuting}
+                    className="mt-0.5 accent-stellar"
+                  />
+                  <span className="text-sm text-white/60">{confirmText}</span>
+                </label>
+
+                {/* Progress or sign button */}
+                {progressStatus ? (
+                  <ProgressIndicator status={progressStatus} />
+                ) : (
+                  <button
+                    onClick={onSign}
+                    disabled={!canSign}
+                    className={cn(
+                      "w-full py-3 px-4 rounded-xl font-semibold text-sm transition-all",
+                      "flex items-center justify-center gap-2",
+                      isMerge
+                        ? "bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-40"
+                        : "bg-stellar text-black hover:bg-stellar/90 hover:shadow-[0_0_28px_-6px_hsl(var(--stellar)/0.7)] disabled:opacity-40 disabled:shadow-none",
+                      !canSign && "cursor-not-allowed"
+                    )}
+                  >
+                    {isMerge ? "Sign and merge account" : "Sign and submit"}
+                  </button>
+                )}
+              </>
             )}
           </>
         )}

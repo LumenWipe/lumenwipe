@@ -49,10 +49,13 @@ export async function submitAndWait(
     let result;
     try {
       result = await server.getTransaction(txHash);
-    } catch {
-      // XDR parse error - testnet protocol version mismatch (e.g. TransactionMetaV4).
-      // NOT_FOUND responses carry no XDR fields, so any parse error here means
-      // the tx was applied to the ledger. Treat as success.
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Network/connectivity errors must propagate — don't treat them as success.
+      if (/fetch|network|ECONNREFUSED|ETIMEDOUT|timeout|abort/i.test(msg)) throw err;
+      // XDR parse error from protocol version mismatch (e.g. TransactionMetaV4):
+      // NOT_FOUND responses carry no XDR, so a parse error here means the tx
+      // was found and applied to the ledger. Treat as success.
       return { txHash, ledger: 0 };
     }
 

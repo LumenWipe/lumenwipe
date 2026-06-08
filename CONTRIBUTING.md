@@ -22,16 +22,16 @@ Thank you for your interest in contributing. LumenWipe performs irreversible ope
 
 ## 1. What we welcome
 
-| Contribution type | Notes |
-|-------------------|-------|
-| Bug fixes | Include a test that reproduces the bug before the fix |
-| New DeFi protocol support | Follow the exit adapter invariants in [docs/architecture.md](docs/architecture.md#99-exit-adapter-invariants) |
-| Exchange registry entries | See [Contributing to registries](#9-contributing-to-registries) |
-| Contract registry updates | New `wasmHash` → protocol version mappings for supported protocols |
-| Documentation improvements | Fix errors, improve clarity, add missing details |
-| Test coverage | Unit tests for the transaction builder and edge cases are especially valuable |
-| UI improvements | Stick to the existing component patterns; changes to confirmation flows require extra care |
-| Translations | Open an issue first to coordinate |
+| Contribution type          | Notes                                                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Bug fixes                  | Include a test that reproduces the bug before the fix                                                         |
+| New DeFi protocol support  | Follow the exit adapter invariants in [docs/architecture.md](docs/architecture.md#99-exit-adapter-invariants) |
+| Exchange registry entries  | See [Contributing to registries](#9-contributing-to-registries)                                               |
+| Contract registry updates  | New `wasmHash` → protocol version mappings for supported protocols                                            |
+| Documentation improvements | Fix errors, improve clarity, add missing details                                                              |
+| Test coverage              | Unit tests for the transaction builder and edge cases are especially valuable                                 |
+| UI improvements            | Stick to the existing component patterns; changes to confirmation flows require extra care                    |
+| Translations               | Open an issue first to coordinate                                                                             |
 
 If you are planning a large change — a new protocol integration, a significant refactor, a new feature — **open an issue first** to discuss the approach before writing code. This avoids effort going in a direction that won't be merged.
 
@@ -129,14 +129,14 @@ Follow [Conventional Commits](https://www.conventionalcommits.org):
 
 **Types:**
 
-| Type | When to use |
-|------|-------------|
-| `feat` | New functionality |
-| `fix` | Bug fix |
-| `test` | Adding or improving tests |
-| `docs` | Documentation only |
-| `refactor` | Code change that neither fixes a bug nor adds a feature |
-| `chore` | Dependency updates, tooling, config |
+| Type       | When to use                                                               |
+| ---------- | ------------------------------------------------------------------------- |
+| `feat`     | New functionality                                                         |
+| `fix`      | Bug fix                                                                   |
+| `test`     | Adding or improving tests                                                 |
+| `docs`     | Documentation only                                                        |
+| `refactor` | Code change that neither fixes a bug nor adds a feature                   |
+| `chore`    | Dependency updates, tooling, config                                       |
 | `security` | Security fix or hardening (use for key handling, CSP, validation changes) |
 
 **Scopes** (optional, use when it helps): `builder`, `mediator`, `blend`, `aquarius`, `soroswap`, `phoenix`, `fxdao`, `registry`, `ui`, `backend`, `tests`, `deps`
@@ -151,7 +151,7 @@ security(key-handling): clear secret key from memory after each signing operatio
 chore(registry): add Binance deposit address to exchange registry
 ```
 
-Keep the summary under 72 characters. Use the body to explain the *why* if it is not obvious from the diff.
+Keep the summary under 72 characters. Use the body to explain the _why_ if it is not obvious from the diff.
 
 ---
 
@@ -218,6 +218,7 @@ bun test:e2e
 ### What to test for a new protocol exit
 
 At minimum:
+
 - Normal exit: position detected, exit transaction built, simulated, and submitted correctly on testnet
 - No position: adapter returns no steps when the account has no position in this protocol
 - Unknown `wasmHash`: adapter flags the position for manual review instead of building an exit
@@ -235,6 +236,7 @@ The exchange registry and contract registry are versioned JSON files. Updates to
 Maps known exchange and anchor deposit addresses to whether they need the mediator flow, and what memo type is required.
 
 To add an exchange:
+
 1. Find the exchange's official Stellar deposit address documentation.
 2. Determine the memo type they require (`text`, `id`, `hash`, or none).
 3. Open a PR that adds the entry to the registry JSON with a link to the source documentation in the PR description.
@@ -245,6 +247,7 @@ To add an exchange:
 Maps Soroban contract `wasmHash` values to a known protocol version so the tool can pick the correct exit interface.
 
 To update after a protocol upgrade:
+
 1. Get the new `wasmHash` from the deployed contract on mainnet.
 2. Open a PR that adds the mapping to the registry.
 3. Include in the PR description: the contract address, the `wasmHash`, the source (deploy transaction or protocol team announcement), and which adapter version handles it.

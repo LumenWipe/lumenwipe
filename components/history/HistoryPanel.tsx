@@ -40,10 +40,7 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
             <History className="h-4 w-4 text-stellar" />
             <h2 className="mkt-display font-bold text-base text-white">Merge history</h2>
           </div>
-          <button
-            onClick={onClose}
-            className="text-white/50 hover:text-white transition-colors"
-          >
+          <button onClick={onClose} className="text-white/50 hover:text-white transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>

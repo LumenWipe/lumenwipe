@@ -25,9 +25,21 @@ const COLS: { title: string; links: { label: string; href: string; external?: bo
     title: "Open source",
     links: [
       { label: "GitHub", href: "https://github.com/LumenWipe/lumenwipe", external: true },
-      { label: "Security policy", href: "https://github.com/LumenWipe/lumenwipe/blob/main/SECURITY.md", external: true },
-      { label: "Contributing", href: "https://github.com/LumenWipe/lumenwipe/blob/main/CONTRIBUTING.md", external: true },
-      { label: "Apache 2.0 license", href: "https://github.com/LumenWipe/lumenwipe/blob/main/LICENSE", external: true },
+      {
+        label: "Security policy",
+        href: "https://github.com/LumenWipe/lumenwipe/blob/main/SECURITY.md",
+        external: true,
+      },
+      {
+        label: "Contributing",
+        href: "https://github.com/LumenWipe/lumenwipe/blob/main/CONTRIBUTING.md",
+        external: true,
+      },
+      {
+        label: "Apache 2.0 license",
+        href: "https://github.com/LumenWipe/lumenwipe/blob/main/LICENSE",
+        external: true,
+      },
     ],
   },
 ];

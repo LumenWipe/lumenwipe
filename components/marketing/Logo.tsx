@@ -10,13 +10,7 @@ interface LogoProps {
 export default function Logo({ className = "h-7 w-auto", showWord = true }: LogoProps) {
   return (
     <span className="inline-flex items-center gap-2.5">
-      <svg
-        viewBox="0 0 32 32"
-        fill="none"
-        className={className}
-        aria-hidden="true"
-        role="img"
-      >
+      <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true" role="img">
         <rect
           x="1"
           y="1"

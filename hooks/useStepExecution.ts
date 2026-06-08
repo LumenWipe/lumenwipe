@@ -1,13 +1,16 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Keypair, TransactionBuilder, Account } from "@stellar/stellar-sdk";
+import { Keypair, TransactionBuilder, Account, xdr, Asset } from "@stellar/stellar-sdk";
 import { NETWORK_PASSPHRASES, getMediatorPublicKey } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { submitAndWait } from "@/lib/stellar/submit";
 import { saveSession } from "@/lib/session/store";
+import { NoConversionPathError } from "@/lib/utils/errors";
+import { STROOPS_PER_XLM } from "@/config/constants";
+import type { Trustline } from "@/types/account";
 import { fetchConversionPath } from "@/lib/se-api/paths";
 import { buildRemoveDataEntriesTx } from "@/lib/stellar/tx-builder/data-entries";
 import { buildCancelOffersTx } from "@/lib/stellar/tx-builder/offers";
@@ -21,6 +24,32 @@ import { buildMergeTx, buildMediatorMergePaymentTx } from "@/lib/stellar/tx-buil
 import { requestMediatorCosignature } from "@/lib/stellar/mediator";
 import { batchItems } from "@/lib/stellar/tx-builder/batching";
 import type { PlannedStep } from "@/types/plan";
+
+async function fetchLiveTrustlineBalance(
+  tl: Trustline,
+  accountAddress: string,
+  server: ReturnType<typeof getRpcServer>
+): Promise<string> {
+  try {
+    const asset = new Asset(tl.code, tl.issuer);
+    const accountId = Keypair.fromPublicKey(accountAddress).xdrPublicKey();
+    const sdkAsset = asset.toXDRObject();
+    const tlAsset =
+      tl.code.length <= 4
+        ? xdr.TrustLineAsset.assetTypeCreditAlphanum4(sdkAsset.alphaNum4())
+        : xdr.TrustLineAsset.assetTypeCreditAlphanum12(sdkAsset.alphaNum12());
+    const tlKey = xdr.LedgerKey.trustline(
+      new xdr.LedgerKeyTrustLine({ accountId, asset: tlAsset })
+    );
+    const resp = await server.getLedgerEntries(tlKey);
+    if (!resp.entries || resp.entries.length === 0) return tl.balance;
+    const entryData = resp.entries[0].val as xdr.LedgerEntryData;
+    const balStroops = BigInt(entryData.trustLine().balance().toString());
+    return (Number(balStroops) / STROOPS_PER_XLM).toFixed(7);
+  } catch {
+    return tl.balance;
+  }
+}
 
 export function useStepExecution() {
   const network = useNetworkStore((s) => s.network);
@@ -63,11 +92,14 @@ export function useStepExecution() {
         case "CONVERT_ASSETS": {
           const tl = trustlines.find((t) => t.asset === step.affectedAsset);
           if (!tl) throw new Error(`Trustline not found: ${step.affectedAsset}`);
-          const path = await fetchConversionPath(tl.asset, tl.balance, network);
-          if (!path) {
-            return buildSendToIssuerTx(sdkAccount, tl, network);
+          const liveBalance = await fetchLiveTrustlineBalance(tl, sourceAddress, server);
+          const effectiveTl = { ...tl, balance: liveBalance };
+          if (step.fallbackToIssuer) {
+            return buildSendToIssuerTx(sdkAccount, effectiveTl, network);
           }
-          return buildConvertAssetTx(sdkAccount, tl, path, network);
+          const path = await fetchConversionPath(effectiveTl.asset, effectiveTl.balance, network);
+          if (!path) throw new NoConversionPathError(tl.code);
+          return buildConvertAssetTx(sdkAccount, effectiveTl, path, network);
         }
 
         case "REMOVE_TRUSTLINES": {

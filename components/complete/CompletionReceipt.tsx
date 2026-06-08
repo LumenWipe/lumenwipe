@@ -51,7 +51,9 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       {/* Success banner */}
       <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-6 text-center">
         <CheckCircle className="h-12 w-12 text-emerald-500 mx-auto mb-3" />
-        <h2 className="mkt-display text-2xl font-bold mb-1 text-white">Account successfully merged</h2>
+        <h2 className="mkt-display text-2xl font-bold mb-1 text-white">
+          Account successfully merged
+        </h2>
         <p className="text-sm text-white/55">
           All assets have been transferred and the account has been removed from the Stellar ledger.
         </p>

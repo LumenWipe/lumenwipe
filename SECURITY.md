@@ -19,10 +19,10 @@ LumenWipe performs irreversible operations on Stellar accounts — it removes tr
 
 ## 1. Supported versions
 
-| Version | Supported |
-|---------|-----------|
-| `main` branch (latest) | Yes |
-| Previous releases | Critical fixes only |
+| Version                | Supported           |
+| ---------------------- | ------------------- |
+| `main` branch (latest) | Yes                 |
+| Previous releases      | Critical fixes only |
 
 We recommend always using the latest version. If you are self-hosting, keep your deployment up to date with the `main` branch.
 
@@ -37,6 +37,7 @@ We recommend always using the latest version. If you are self-hosting, keep your
 > **security@lumenwipe.com**
 
 Include in your report:
+
 - A clear description of the vulnerability
 - The component affected (see [Scope](#4-scope) for the list)
 - Steps to reproduce, or a proof of concept if you have one
@@ -51,14 +52,14 @@ You will receive an acknowledgment within **48 hours**. If you do not hear back 
 
 ## 3. Response timeline
 
-| Milestone | Target |
-|-----------|--------|
-| Acknowledgment | 48 hours after report |
-| Initial assessment (confirmed / not confirmed) | 5 business days |
-| Status update | Every 7 days while the issue is open |
-| Fix for critical / high severity | Before public disclosure |
-| Fix for medium severity | Within 30 days |
-| Fix for low severity | Next regular release |
+| Milestone                                      | Target                               |
+| ---------------------------------------------- | ------------------------------------ |
+| Acknowledgment                                 | 48 hours after report                |
+| Initial assessment (confirmed / not confirmed) | 5 business days                      |
+| Status update                                  | Every 7 days while the issue is open |
+| Fix for critical / high severity               | Before public disclosure             |
+| Fix for medium severity                        | Within 30 days                       |
+| Fix for low severity                           | Next regular release                 |
 
 We will coordinate the public disclosure date with you. We ask for a minimum of **14 days** after a fix is deployed before public disclosure, to allow users and self-hosters to update.
 
@@ -68,19 +69,19 @@ We will coordinate the public disclosure date with you. We ask for a minimum of 
 
 The following components are in scope for security reports:
 
-| Component | Examples of in-scope issues |
-|-----------|-----------------------------|
-| **Key handling** | Secret key leaking outside browser memory, persisted to `localStorage` / `sessionStorage` / IndexedDB / network requests, logged, or exposed in error messages |
-| **Transaction construction** | Operations encoded incorrectly (wrong destination, wrong amount, wrong memo), fee manipulation, envelope tampering |
-| **Signing flow** | User signing a transaction they did not review; auto-submission without explicit user confirmation; multisig signature accumulation leaking a partial key |
-| **Mediator account flow** | Mediator keypair persisted, reused, or sent to the backend; funds forwarded to the wrong destination; memo validation bypass for known exchange destinations |
-| **Allowance inspector** | Incorrect allowance data leading a user to believe an approval was revoked when it was not |
-| **Content Security Policy** | Bypasses that allow injected scripts to execute in the application context |
-| **XSS** | Cross-site scripting that could read the in-memory key or intercept a signing operation |
-| **Backend read-only guarantee** | Any path by which the backend receives a private key, a signed envelope with key material, or can influence a transaction without user awareness |
-| **Session store** | Sensitive data (keys, signed envelopes) written to IndexedDB or any persistent browser storage |
-| **Dependency vulnerabilities** | High or critical CVEs in direct dependencies that affect the signing or transaction construction surface |
-| **DeFi exit correctness** | Exit adapter building a transaction that would drain more funds than the user's position, or skipping a repayment that leaves a protocol in an unsafe state |
+| Component                       | Examples of in-scope issues                                                                                                                                    |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Key handling**                | Secret key leaking outside browser memory, persisted to `localStorage` / `sessionStorage` / IndexedDB / network requests, logged, or exposed in error messages |
+| **Transaction construction**    | Operations encoded incorrectly (wrong destination, wrong amount, wrong memo), fee manipulation, envelope tampering                                             |
+| **Signing flow**                | User signing a transaction they did not review; auto-submission without explicit user confirmation; multisig signature accumulation leaking a partial key      |
+| **Mediator account flow**       | Mediator keypair persisted, reused, or sent to the backend; funds forwarded to the wrong destination; memo validation bypass for known exchange destinations   |
+| **Allowance inspector**         | Incorrect allowance data leading a user to believe an approval was revoked when it was not                                                                     |
+| **Content Security Policy**     | Bypasses that allow injected scripts to execute in the application context                                                                                     |
+| **XSS**                         | Cross-site scripting that could read the in-memory key or intercept a signing operation                                                                        |
+| **Backend read-only guarantee** | Any path by which the backend receives a private key, a signed envelope with key material, or can influence a transaction without user awareness               |
+| **Session store**               | Sensitive data (keys, signed envelopes) written to IndexedDB or any persistent browser storage                                                                 |
+| **Dependency vulnerabilities**  | High or critical CVEs in direct dependencies that affect the signing or transaction construction surface                                                       |
+| **DeFi exit correctness**       | Exit adapter building a transaction that would drain more funds than the user's position, or skipping a repayment that leaves a protocol in an unsafe state    |
 
 ---
 

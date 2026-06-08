@@ -23,6 +23,8 @@ export interface PlannedStep {
   error: string | null;
   // Metadata for display
   affectedAsset?: string; // for CONVERT_ASSETS steps
+  // Set when no DEX path exists and the user confirms sending to issuer instead
+  fallbackToIssuer?: boolean;
 }
 
 export type DemolishPhase =

@@ -39,7 +39,7 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-12">
+    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-10 sm:py-12">
       {/* Session recovery banner */}
       {checked && session && (
         <div className="flex items-center justify-between gap-3 bg-stellar/10 border border-stellar/30 rounded-lg px-4 py-3 mb-6 text-sm">
@@ -80,7 +80,7 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
       </div>
 
       {/* Features row */}
-      <div className="grid grid-cols-3 gap-3 mb-10">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-10">
         {[
           { icon: Zap, label: "Step-by-step", desc: "Guided execution" },
           { icon: ShieldCheck, label: "Non-custodial", desc: "Keys never leave your browser" },

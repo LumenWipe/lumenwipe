@@ -56,7 +56,15 @@ const RESERVE = [
   { label: "1 extra signer", count: "0.5 each", xlm: 0.5, w: 10 },
 ];
 
-const PROTOCOLS = ["Blend", "Aquarius", "Soroswap", "Phoenix", "FxDAO", "Classic DEX", "Classic AMM"];
+const PROTOCOLS = [
+  "Blend",
+  "Aquarius",
+  "Soroswap",
+  "Phoenix",
+  "FxDAO",
+  "Classic DEX",
+  "Classic AMM",
+];
 
 const ECOSYSTEM = [
   "Freighter",
@@ -121,10 +129,10 @@ export default function LandingPage() {
             </h1>
 
             <p className="mt-6 max-w-xl text-[1.05rem] leading-relaxed text-white/60">
-              LumenWipe walks you through closing a Stellar account from start to finish: trustlines,
-              offers, data entries, signers, even Soroban DeFi positions. It converts what&apos;s left
-              to XLM and merges it out to your wallet or exchange. One guided flow, signed entirely
-              in your browser.
+              LumenWipe walks you through closing a Stellar account from start to finish:
+              trustlines, offers, data entries, signers, even Soroban DeFi positions. It converts
+              what&apos;s left to XLM and merges it out to your wallet or exchange. One guided flow,
+              signed entirely in your browser.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -179,7 +187,10 @@ export default function LandingPage() {
               { n: "7", l: "DeFi protocols covered" },
               { n: "0", l: "servers that can move your funds" },
             ].map((s, i) => (
-              <div key={s.l} className={`px-4 py-6 ${i >= 2 ? "border-t border-white/8 lg:border-t-0" : ""}`}>
+              <div
+                key={s.l}
+                className={`px-4 py-6 ${i >= 2 ? "border-t border-white/8 lg:border-t-0" : ""}`}
+              >
                 <div className="mkt-display text-2xl font-bold text-white sm:text-3xl">{s.n}</div>
                 <div className="mt-1 text-[0.78rem] leading-snug text-white/45">{s.l}</div>
               </div>
@@ -252,7 +263,10 @@ export default function LandingPage() {
                 body: "The existing demolisher has no Soroban support. Any account with a Blend loan, an Aquarius LP, or a Soroswap position simply cannot be closed with today's tools.",
               },
             ].map((t) => (
-              <Reveal key={t.title} className="group flex gap-4 rounded-2xl border border-white/10 bg-white/[0.02] p-5 transition-colors hover:border-white/20">
+              <Reveal
+                key={t.title}
+                className="group flex gap-4 rounded-2xl border border-white/10 bg-white/[0.02] p-5 transition-colors hover:border-white/20"
+              >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-stellar">
                   <t.icon className="h-5 w-5" />
                 </div>
@@ -275,9 +289,9 @@ export default function LandingPage() {
               One guided flow. Eight steps. Everything recovered.
             </h2>
             <p className="mt-5 text-[1.02rem] leading-relaxed text-white/55">
-              LumenWipe reads the whole account, builds a deterministic ordered plan, and executes it
-              step by step, re-reading live state and simulating before every signature. You confirm
-              each move; nothing happens without you.
+              LumenWipe reads the whole account, builds a deterministic ordered plan, and executes
+              it step by step, re-reading live state and simulating before every signature. You
+              confirm each move; nothing happens without you.
             </p>
           </Reveal>
 
@@ -330,7 +344,9 @@ export default function LandingPage() {
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-stellar/12 text-stellar">
                     <Layers className="h-5 w-5" />
                   </div>
-                  <h3 className="mt-4 text-lg font-semibold text-white">Full Soroban DeFi coverage</h3>
+                  <h3 className="mt-4 text-lg font-semibold text-white">
+                    Full Soroban DeFi coverage
+                  </h3>
                   <p className="mt-2 max-w-md text-sm leading-relaxed text-white/55">
                     The piece the original demolisher lacks. LumenWipe detects positions through
                     OctoPos and Orion, then exits each one with its own protocol adapter, repaying
@@ -395,7 +411,10 @@ export default function LandingPage() {
       </section>
 
       {/* ============================ SECURITY ============================ */}
-      <section id="security" className="relative scroll-mt-20 border-y border-white/8 bg-white/[0.012]">
+      <section
+        id="security"
+        className="relative scroll-mt-20 border-y border-white/8 bg-white/[0.012]"
+      >
         <div className="mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-28">
           <div className="grid gap-12 lg:grid-cols-[1fr_1fr] lg:gap-16">
             <Reveal>
@@ -440,12 +459,14 @@ export default function LandingPage() {
                         : "border-white/10 bg-white/[0.02]"
                     }`}
                   >
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold text-white">{layer.label}</div>
-                      <div className="truncate mkt-mono text-[0.68rem] text-white/40">{layer.sub}</div>
+                      <div className="mkt-mono text-[0.68rem] text-white/40 leading-snug break-words">
+                        {layer.sub}
+                      </div>
                     </div>
                     <span
-                      className={`shrink-0 mkt-mono text-[0.6rem] uppercase tracking-wider ${
+                      className={`shrink-0 mkt-mono text-[0.6rem] uppercase tracking-wider whitespace-nowrap ${
                         layer.tone === "stellar" ? "text-stellar" : "text-white/35"
                       }`}
                     >
@@ -500,9 +521,8 @@ export default function LandingPage() {
                 ))}
               </ul>
               <div className="mt-4 flex items-center gap-2.5 rounded-xl border border-value/20 bg-value/[0.05] p-3.5 text-sm text-white/65">
-                <ShieldCheck className="h-4 w-4 shrink-0 text-value" />
-                A third-party audit through Stellar&apos;s Audit Bank is committed before any mainnet
-                release.
+                <ShieldCheck className="h-4 w-4 shrink-0 text-value" />A third-party audit through
+                Stellar&apos;s Audit Bank is committed before any mainnet release.
               </div>
             </Reveal>
           </div>

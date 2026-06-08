@@ -1,16 +1,7 @@
 import { CheckCircle, Clock, AlertCircle, Loader2, ChevronRight } from "lucide-react";
 import type { PlannedStep } from "@/types/plan";
 import { cn } from "@/lib/utils/cn";
-
-const STEP_ICONS: Record<string, string> = {
-  NORMALIZE_SIGNERS: "🔑",
-  REMOVE_DATA_ENTRIES: "🗃️",
-  CANCEL_OFFERS: "📊",
-  CLAIM_BALANCES: "🎯",
-  CONVERT_ASSETS: "🔄",
-  REMOVE_TRUSTLINES: "🔗",
-  MERGE: "⚡",
-};
+import { StepTypeIcon } from "@/lib/utils/stepIcons";
 
 interface StepCardProps {
   step: PlannedStep;
@@ -19,8 +10,6 @@ interface StepCardProps {
 }
 
 export default function StepCard({ step, isActive, onClick }: StepCardProps) {
-  const icon = STEP_ICONS[step.type] ?? "•";
-
   return (
     <div
       onClick={onClick}
@@ -49,7 +38,7 @@ export default function StepCard({ step, isActive, onClick }: StepCardProps) {
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 mb-0.5">
-          <span className="text-sm">{icon}</span>
+          <StepTypeIcon type={step.type} className="h-3.5 w-3.5 text-stellar/70 shrink-0" />
           <p
             className={cn(
               "text-sm font-medium truncate",
@@ -66,8 +55,9 @@ export default function StepCard({ step, isActive, onClick }: StepCardProps) {
             {step.estimatedFeeLumens} XLM fee
           </span>
           {step.txHash && (
-            <span className="text-xs text-emerald-500 font-mono truncate">
-              ✓ {step.txHash.slice(0, 10)}...
+            <span className="flex items-center gap-1 text-xs text-emerald-500 font-mono truncate">
+              <CheckCircle className="h-3 w-3 shrink-0" />
+              {step.txHash.slice(0, 10)}...
             </span>
           )}
         </div>

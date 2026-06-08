@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { useStepExecution } from "@/hooks/useStepExecution";
+import { NoConversionPathError } from "@/lib/utils/errors";
 import PlanSidebar from "./PlanSidebar";
 import StepDetailPanel from "./StepDetailPanel";
 
@@ -20,9 +21,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     useDemolishStore();
 
   const { executeStep, progressStatus, buildStepXdr } = useStepExecution();
+  const [noPathAsset, setNoPathAsset] = useState<string | null>(null);
 
   const currentStep = executionPlan[currentStepIndex];
-  const allDone = executionPlan.length > 0 && executionPlan.every((s) => s.status === "confirmed");
+  const allDone =
+    executionPlan.length > 0 &&
+    executionPlan.every((s) => s.status === "confirmed" || s.status === "skipped");
 
   // Auto-advance when a step is confirmed
   useEffect(() => {
@@ -43,12 +47,17 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   // Pre-build XDR for the current step when it becomes active
   useEffect(() => {
     if (!currentStep || currentStep.txXdr || currentStep.status !== "pending") return;
+    setNoPathAsset(null);
     buildStepXdr(currentStep)
       .then((xdr) => updateStep(currentStep.index, { txXdr: xdr }))
       .catch((err) => {
-        updateStep(currentStep.index, {
-          error: err instanceof Error ? err.message : "Failed to build transaction",
-        });
+        if (err instanceof NoConversionPathError) {
+          setNoPathAsset(currentStep.affectedAsset?.split(":")[0] ?? "token");
+        } else {
+          updateStep(currentStep.index, {
+            error: err instanceof Error ? err.message : "Failed to build transaction",
+          });
+        }
       });
   }, [currentStep, buildStepXdr, updateStep]);
 
@@ -63,6 +72,28 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     if (!currentStep) return;
     updateStep(currentStep.index, { status: "pending", error: null, txXdr: null });
     setPhase("STEP_EXECUTING");
+  }
+
+  function handleSendToIssuer() {
+    if (!currentStep) return;
+    setNoPathAsset(null);
+    updateStep(currentStep.index, { fallbackToIssuer: true, txXdr: null });
+  }
+
+  function handleSkipStep() {
+    if (!currentStep) return;
+    setNoPathAsset(null);
+    updateStep(currentStep.index, { status: "skipped" });
+    const nextPending = executionPlan.find(
+      (s) => s.status === "pending" && s.index !== currentStep.index
+    );
+    if (nextPending) {
+      setCurrentStepIndex(nextPending.index);
+      setPhase("STEP_EXECUTING");
+    } else {
+      setPhase("COMPLETE");
+      router.push(`/${network}/complete`);
+    }
   }
 
   if (!currentStep) {
@@ -92,6 +123,10 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           onSign={handleSign}
           onRetry={handleRetry}
           progressStatus={progressStatus}
+          noSwapPath={noPathAsset !== null}
+          noSwapPathAsset={noPathAsset}
+          onSendToIssuer={handleSendToIssuer}
+          onSkipStep={handleSkipStep}
         />
 
         {/* Mobile step list */}

@@ -17,9 +17,7 @@ export default function NetworkSwitcher({ currentNetwork }: NetworkSwitcherProps
           href={`/${net}`}
           className={cn(
             "rounded-md px-2.5 py-1 font-medium transition-colors",
-            currentNetwork === net
-              ? "bg-white/10 text-white"
-              : "text-white/55 hover:text-white"
+            currentNetwork === net ? "bg-white/10 text-white" : "text-white/55 hover:text-white"
           )}
         >
           {net === "mainnet" ? "Mainnet" : "Testnet"}

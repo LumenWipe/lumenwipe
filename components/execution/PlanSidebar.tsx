@@ -1,16 +1,7 @@
 import { CheckCircle, Clock, AlertCircle, Loader2, ChevronRight } from "lucide-react";
 import type { PlannedStep } from "@/types/plan";
 import { cn } from "@/lib/utils/cn";
-
-const STEP_ICONS: Record<string, string> = {
-  NORMALIZE_SIGNERS: "🔑",
-  REMOVE_DATA_ENTRIES: "🗃️",
-  CANCEL_OFFERS: "📊",
-  CLAIM_BALANCES: "🎯",
-  CONVERT_ASSETS: "🔄",
-  REMOVE_TRUSTLINES: "🔗",
-  MERGE: "⚡",
-};
+import { StepTypeIcon } from "@/lib/utils/stepIcons";
 
 interface PlanSidebarProps {
   steps: PlannedStep[];
@@ -22,7 +13,6 @@ export default function PlanSidebar({ steps, currentIndex }: PlanSidebarProps) {
     <nav className="space-y-1">
       {steps.map((step) => {
         const isActive = step.index === currentIndex;
-        const icon = STEP_ICONS[step.type] ?? "•";
 
         return (
           <div
@@ -38,7 +28,7 @@ export default function PlanSidebar({ steps, currentIndex }: PlanSidebarProps) {
                     : "text-white/45"
             )}
           >
-            {/* Status dot */}
+            {/* Status icon */}
             <div className="shrink-0">
               {step.status === "confirmed" && (
                 <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />
@@ -52,8 +42,8 @@ export default function PlanSidebar({ steps, currentIndex }: PlanSidebarProps) {
               )}
             </div>
 
-            <span className="flex-1 truncate text-xs">
-              <span className="mr-1">{icon}</span>
+            <span className="flex-1 truncate text-xs flex items-center gap-1.5">
+              <StepTypeIcon type={step.type} className="h-3 w-3 shrink-0 opacity-60" />
               {step.title}
             </span>
 

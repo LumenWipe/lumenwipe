@@ -11,10 +11,9 @@ const ITEMS: Item[] = [
     a: (
       <>
         Yes. Every transaction is built and signed in your browser, through your wallet or an
-        in-memory secret key, and your private key never reaches our servers. The backend&apos;s only
-        signing key is the shared exchange mediator, used solely to co-sign the forwarding payment to
-        an exchange as the second half of an atomic transaction you already signed. It can&apos;t
-        change the destination or move your account&apos;s funds.
+        in-memory secret key. Your private key never reaches our servers. The backend is read-only
+        and stateless. It aggregates on-chain data and is never in the signing path, so no operator
+        (including us) can move your funds.
       </>
     ),
   },
@@ -44,11 +43,11 @@ const ITEMS: Item[] = [
     q: "Can I send the recovered XLM straight to an exchange?",
     a: (
       <>
-        Yes. Exchanges don&apos;t support <span className="mkt-mono text-white/80">ACCOUNT_MERGE</span>
-        , so LumenWipe routes the close through a shared mediator account in one atomic transaction:
-        your account merges into it, and it forwards the full balance to your deposit address with the
-        correct memo. You recover essentially all of your XLM. Known exchanges are validated against a
-        registry that enforces the required memo type, so deposits don&apos;t go missing.
+        Yes. Exchanges don&apos;t support{" "}
+        <span className="mkt-mono text-white/80">ACCOUNT_MERGE</span>, so LumenWipe routes the final
+        merge through a transparent, single-use mediator account and pays out to your deposit
+        address with the correct memo. Known exchanges are validated against a registry that
+        enforces the required memo type, so deposits don&apos;t go missing.
       </>
     ),
   },
@@ -58,8 +57,8 @@ const ITEMS: Item[] = [
       <>
         This is where LumenWipe goes furthest. It detects and exits positions across{" "}
         <span className="text-white/80">Blend, Aquarius, Soroswap, Phoenix and FxDAO</span>, on top
-        of classic DEX offers and AMM pools, using OctoPos and Orion for position detection. The full
-        classic wind-down is live today; complete DeFi coverage is on the way.
+        of classic DEX offers and AMM pools, using OctoPos and Orion for position detection. The
+        full classic wind-down is live today; complete DeFi coverage is on the way.
       </>
     ),
   },
@@ -67,9 +66,10 @@ const ITEMS: Item[] = [
     q: "Which wallets are supported?",
     a: (
       <>
-        Any SEP-43 wallet through <span className="mkt-mono text-white/80">stellar-wallets-kit</span>:
-        Freighter, xBull, Albedo, LOBSTR, Hana, WalletConnect and more. Power users can also use an
-        advanced in-memory secret-key mode that clears the key after each signing operation.
+        Any SEP-43 wallet through{" "}
+        <span className="mkt-mono text-white/80">stellar-wallets-kit</span>: Freighter, xBull,
+        Albedo, LOBSTR, Hana, WalletConnect and more. Power users can also use an advanced in-memory
+        secret-key mode that clears the key after each signing operation.
       </>
     ),
   },

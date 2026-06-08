@@ -132,8 +132,7 @@
 /* Card surface with subtle top sheen */
 .mkt-panel {
   background:
-    linear-gradient(180deg, hsl(0 0% 100% / 0.025), transparent 40%),
-    hsl(240 14% 6% / 0.7);
+    linear-gradient(180deg, hsl(0 0% 100% / 0.025), transparent 40%), hsl(240 14% 6% / 0.7);
   border: 1px solid hsl(0 0% 100% / 0.08);
   backdrop-filter: blur(8px);
 }

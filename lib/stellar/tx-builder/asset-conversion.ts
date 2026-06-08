@@ -21,9 +21,7 @@ export function buildConvertAssetTx(
 
   const sendAsset = assetToSdkAsset(trustline.asset);
   const destAsset = Asset.native();
-  const intermediatePath = path.path
-    .filter((p) => p !== "native" && p !== trustline.asset)
-    .map((p) => assetToSdkAsset(p));
+  const intermediatePath = path.path.map((p) => assetToSdkAsset(p));
 
   builder.addOperation(
     Operation.pathPaymentStrictSend({
