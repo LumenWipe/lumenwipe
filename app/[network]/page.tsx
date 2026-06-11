@@ -2,10 +2,19 @@
 
 import { use } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, Zap, GitMerge, AlertOctagon, RotateCcw, X } from "lucide-react";
+import {
+  ShieldCheck,
+  Zap,
+  GitMerge,
+  AlertOctagon,
+  RotateCcw,
+  X,
+  FlaskConical,
+  ArrowRight,
+} from "lucide-react";
+import Link from "next/link";
 import type { Network } from "@/config/networks";
 import AccountEntryForm from "@/components/account-entry/AccountEntryForm";
-import NetworkStats from "@/components/stats/NetworkStats";
 import { useSessionRecovery } from "@/hooks/useSessionRecovery";
 import { deleteSession } from "@/lib/session/store";
 import { useDemolishStore } from "@/store/demolish";
@@ -39,7 +48,7 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-10 sm:py-12">
+    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
       {/* Session recovery banner */}
       {checked && session && (
         <div className="flex items-center justify-between gap-3 bg-stellar/10 border border-stellar/30 rounded-lg px-4 py-3 mb-6 text-sm">
@@ -65,22 +74,38 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
       )}
 
       {/* Hero */}
-      <div className="text-center mb-10">
-        <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 mkt-mono text-[0.66rem] uppercase tracking-wider text-white/65 mb-5">
+      <div className="text-center mb-6">
+        <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 mkt-mono text-[0.66rem] uppercase tracking-wider text-white/65 mb-3">
           <ShieldCheck className="h-3.5 w-3.5 text-stellar" />
           Non-custodial · Client-side signing only
         </div>
-        <h1 className="mkt-display text-4xl font-extrabold tracking-tight mb-3 text-white">
+        <h1 className="mkt-display text-3xl sm:text-4xl font-extrabold tracking-tight mb-2 text-white">
           Wind down your Stellar account
         </h1>
-        <p className="text-white/55 text-base leading-relaxed max-w-lg mx-auto">
+        <p className="text-white/55 text-sm sm:text-base leading-relaxed max-w-lg mx-auto">
           Recover all the XLM locked in reserves. Remove trustlines, cancel offers, and merge your
           account in a guided, step-by-step flow, signed entirely in your browser.
         </p>
       </div>
 
+      {/* Form */}
+      <div className="mkt-panel rounded-2xl p-6 mb-6">
+        <h2 className="mkt-eyebrow text-white/45 mb-5">Account details</h2>
+        <AccountEntryForm />
+      </div>
+
+      {/* Warning */}
+      <div className="flex items-start gap-2.5 bg-warning/10 border border-warning/25 rounded-xl p-3.5 mb-8 text-sm">
+        <AlertOctagon className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+        <p className="text-white/60">
+          <span className="text-warning font-medium">Irreversible action.</span> An Account Merge
+          transfers the XLM balance to the destination and removes the source account from the
+          Stellar ledger. Make sure you have a working destination address before proceeding.
+        </p>
+      </div>
+
       {/* Features row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-10">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[
           { icon: Zap, label: "Step-by-step", desc: "Guided execution" },
           { icon: ShieldCheck, label: "Non-custodial", desc: "Keys never leave your browser" },
@@ -94,24 +119,23 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
         ))}
       </div>
 
-      {/* Live stats */}
-      <NetworkStats />
-
-      {/* Warning */}
-      <div className="flex items-start gap-2.5 bg-warning/10 border border-warning/25 rounded-xl p-3.5 mb-8 text-sm">
-        <AlertOctagon className="h-4 w-4 text-warning mt-0.5 shrink-0" />
-        <p className="text-white/60">
-          <span className="text-warning font-medium">Irreversible action.</span> An Account Merge
-          transfers the XLM balance to the destination and removes the source account from the
-          Stellar ledger. Make sure you have a working destination address before proceeding.
-        </p>
-      </div>
-
-      {/* Form */}
-      <div className="mkt-panel rounded-2xl p-6">
-        <h2 className="mkt-eyebrow text-white/45 mb-5">Account details</h2>
-        <AccountEntryForm />
-      </div>
+      {network === "testnet" && (
+        <Link
+          href="/playground"
+          className="mt-4 flex items-center justify-between gap-4 mkt-panel rounded-xl px-4 py-3.5 group hover:border-stellar/30 transition-colors"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <FlaskConical className="h-4 w-4 text-stellar/60 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-white/75">No account to test with?</p>
+              <p className="text-xs text-white/40 truncate">
+                Try the Playground - we create a demo and walk you through the full flow.
+              </p>
+            </div>
+          </div>
+          <ArrowRight className="h-4 w-4 text-white/25 group-hover:text-stellar/60 transition-colors shrink-0" />
+        </Link>
+      )}
     </div>
   );
 }

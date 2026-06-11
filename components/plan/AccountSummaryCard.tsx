@@ -16,9 +16,9 @@ export default function AccountSummaryCard({
   const recoverableXlm = calcRecoverableReserve(account.numSubEntries);
   // Whether direct or via the shared mediator, the user recovers the full
   // balance minus network fees (the mediator's own reserve is operator-funded).
-  const estimatedFinal = (
-    parseFloat(account.nativeBalanceLumens) - parseFloat(totalFee)
-  ).toFixed(7);
+  const estimatedFinal = (parseFloat(account.nativeBalanceLumens) - parseFloat(totalFee)).toFixed(
+    7
+  );
 
   const stats = [
     {

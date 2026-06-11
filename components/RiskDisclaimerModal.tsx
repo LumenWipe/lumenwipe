@@ -34,7 +34,7 @@ export default function RiskDisclaimerModal() {
           </div>
           <div>
             <h2 className="text-base font-semibold text-white">
-              Beta Software — Use at Your Own Risk
+              Beta Software - Use at Your Own Risk
             </h2>
             <p className="mt-0.5 text-xs text-white/45">LumenWipe is under active development</p>
           </div>
@@ -46,7 +46,7 @@ export default function RiskDisclaimerModal() {
             LumenWipe is currently in{" "}
             <span className="text-amber-400 font-medium">public beta</span>. While it has been
             tested, bugs and unexpected behavior may still occur. Closing a Stellar account is{" "}
-            <span className="font-medium text-white/80">permanent and irreversible</span> — always
+            <span className="font-medium text-white/80">permanent and irreversible</span> - always
             verify your destination address before signing any transaction.
           </p>
 
@@ -55,19 +55,13 @@ export default function RiskDisclaimerModal() {
               What is confirmed to work
             </p>
             <ul className="space-y-2">
-              <li className="flex items-start gap-2.5">
-                <GitMerge className="h-4 w-4 text-stellar shrink-0 mt-0.5" />
-                <span>
-                  <span className="font-medium text-white/80">Account merge</span> — direct merge
-                  and merge via intermediary account (for exchange addresses).
-                </span>
+              <li className="flex items-center gap-2.5">
+                <GitMerge className="h-4 w-4 text-stellar shrink-0" />
+                <span className="font-medium text-white/80">Account merge</span>
               </li>
-              <li className="flex items-start gap-2.5">
-                <Unlink className="h-4 w-4 text-stellar shrink-0 mt-0.5" />
-                <span>
-                  <span className="font-medium text-white/80">Trustline removal</span> — clearing
-                  balances and removing all trustlines from an account.
-                </span>
+              <li className="flex items-center gap-2.5">
+                <Unlink className="h-4 w-4 text-stellar shrink-0" />
+                <span className="font-medium text-white/80">Trustline removal</span>
               </li>
             </ul>
           </div>
@@ -75,6 +69,11 @@ export default function RiskDisclaimerModal() {
           <p className="text-xs text-white/40">
             Soroban DeFi position unwinding (Blend, Aquarius, etc.) is under development and not yet
             available.
+          </p>
+
+          <p className="text-xs text-white/40">
+            The codebase undergoes ongoing internal security reviews. External audits will be
+            conducted when possible.
           </p>
         </div>
 

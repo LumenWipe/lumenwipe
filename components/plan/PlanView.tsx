@@ -56,9 +56,9 @@ export default function PlanView({
           <p className="font-medium text-stellar mb-1">Exchange destination</p>
           <p className="text-white/60">
             Your destination doesn&apos;t support direct account merges, so the close is routed
-            through a shared intermediary account in one atomic transaction: your account merges into
-            it, and it forwards the full balance to your exchange address with the required memo. You
-            recover essentially all of your XLM; only standard network fees apply.
+            through a shared intermediary account in one atomic transaction: your account merges
+            into it, and it forwards the full balance to your exchange address with the required
+            memo. You recover essentially all of your XLM; only standard network fees apply.
           </p>
         </div>
       )}
