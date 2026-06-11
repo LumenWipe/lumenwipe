@@ -10,6 +10,11 @@ export const RPC_URLS: Record<Network, string> = {
   testnet: process.env.NEXT_PUBLIC_STELLAR_RPC_TESTNET || "https://soroban-testnet.stellar.org",
 };
 
+export const PATH_ROUTING_API_URLS: Record<Network, string> = {
+  mainnet: process.env.NEXT_PUBLIC_PATH_ROUTING_API_MAINNET || "",
+  testnet: process.env.NEXT_PUBLIC_PATH_ROUTING_API_TESTNET || "",
+};
+
 export const SE_API_BASE: Record<Network, string> = {
   mainnet:
     process.env.NEXT_PUBLIC_SE_API_BASE_MAINNET || "https://api.stellar.expert/explorer/public",

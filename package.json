@@ -1,5 +1,5 @@
 {
-  "name": "account-demolisher",
+  "name": "lumenwipe",
   "version": "0.1.0",
   "private": true,
   "packageManager": "bun@1.3.11",
@@ -16,7 +16,9 @@
     "test:e2e": "playwright test",
     "test:all": "bun test tests/unit && playwright test",
     "setup:mediator": "bun scripts/setup-mediator.ts",
-    "test:mediator": "bun scripts/test-mediator-flow.ts"
+    "test:mediator": "bun scripts/test-mediator-flow.ts",
+    "setup:playground": "bun scripts/setup-playground.ts",
+    "test:playground": "bun scripts/test-playground-flow.ts"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^13.3.0",
@@ -27,6 +29,7 @@
     "gray-matter": "^4.0.3",
     "idb": "^8.0.3",
     "lucide-react": "^0.447.0",
+    "motion": "^12.40.0",
     "next": "^15.5.19",
     "next-mdx-remote": "^6.0.0",
     "react": "^19.2.7",

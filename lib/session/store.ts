@@ -1,7 +1,7 @@
 import { openDB } from "idb";
 import type { SessionRecord } from "@/types/session";
 
-const DB_NAME = "account-demolisher";
+const DB_NAME = "lumenwipe";
 const STORE_NAME = "sessions";
 export const HISTORY_STORE_NAME = "history";
 const DB_VERSION = 2;
