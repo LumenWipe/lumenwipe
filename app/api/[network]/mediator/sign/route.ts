@@ -12,7 +12,7 @@ import { getMediatorKeypair } from "@/lib/stellar/mediator-server";
  *
  * This endpoint validates that exact shape and, only then, adds the mediator's
  * signature. It can never change the destination or amount (that would break
- * the user's signature), so it cannot divert funds — it only co-signs the
+ * the user's signature), so it cannot divert funds - it only co-signs the
  * payment leg of a transaction the user already authorized.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ network: string }> }) {
