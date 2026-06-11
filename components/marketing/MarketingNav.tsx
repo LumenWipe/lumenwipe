@@ -12,6 +12,7 @@ const LINKS: NavLink[] = [
   { href: "/how-it-works", label: "How it works" },
   { href: "/#security", label: "Security", section: "security" },
   { href: "/#faq", label: "FAQ", section: "faq" },
+  { href: "/playground", label: "Playground" },
   { href: "https://docs.lumenwipe.com", label: "Docs", external: true },
   { href: "/blog", label: "Blog" },
 ];

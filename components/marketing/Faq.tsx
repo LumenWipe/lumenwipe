@@ -92,16 +92,6 @@ const ITEMS: Item[] = [
       </>
     ),
   },
-  {
-    q: "Has it been security audited?",
-    a: (
-      <>
-        A third-party security audit through Stellar&apos;s Audit Bank is committed before any
-        mainnet release. Critical and high findings will be remediated and published in the
-        repository before public launch.
-      </>
-    ),
-  },
 ];
 
 export default function Faq() {

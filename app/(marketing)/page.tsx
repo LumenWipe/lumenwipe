@@ -15,7 +15,6 @@ import {
   XCircle,
   ArrowLeftRight,
   Unlink,
-  Lock,
   ScanLine,
   Server,
   Network,
@@ -80,7 +79,7 @@ const ECOSYSTEM = [
   "FxDAO",
   "Stellar RPC",
   "stellar.expert",
-  "Soroswap Aggregator",
+  "Soroswap API",
   "OctoPos",
   "Orion",
 ];
@@ -159,10 +158,6 @@ export default function LandingPage() {
               <span className="inline-flex items-center gap-1.5">
                 <Boxes className="h-3.5 w-3.5 text-stellar" />
                 Open source · Apache 2.0
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Lock className="h-3.5 w-3.5 text-stellar" />
-                Audit committed
               </span>
             </div>
 
@@ -260,7 +255,7 @@ export default function LandingPage() {
               {
                 icon: Layers,
                 title: "DeFi has no tool at all",
-                body: "The existing demolisher has no Soroban support. Any account with a Blend loan, an Aquarius LP, or a Soroswap position simply cannot be closed with today's tools.",
+                body: "Any account with a Blend loan, an Aquarius LP, or a Soroswap position simply cannot be closed with today's tools.",
               },
             ].map((t) => (
               <Reveal
@@ -424,9 +419,10 @@ export default function LandingPage() {
               </h2>
               <p className="mt-5 text-[1.02rem] leading-relaxed text-white/55">
                 LumenWipe builds transactions that drain accounts irreversibly, so the design starts
-                from that fact. Your keys are created and used only in your browser and never reach a
-                server. The backend can&apos;t touch your account: its one signing key is the shared
-                exchange mediator, which can only co-sign a forwarding payment you already authorized.
+                from that fact. Your keys are created and used only in your browser and never reach
+                a server. The backend can&apos;t touch your account: its one signing key is the
+                shared exchange mediator, which can only co-sign a forwarding payment you already
+                authorized.
               </p>
 
               {/* layered diagram */}
@@ -446,7 +442,7 @@ export default function LandingPage() {
                   },
                   {
                     label: "Stellar network & data",
-                    sub: "Stellar RPC · stellar.expert · Soroswap Aggregator",
+                    sub: "Stellar RPC · stellar.expert · Soroswap API",
                     tone: "muted",
                     note: "read · simulate · submit",
                   },
@@ -520,10 +516,6 @@ export default function LandingPage() {
                   </li>
                 ))}
               </ul>
-              <div className="mt-4 flex items-center gap-2.5 rounded-xl border border-value/20 bg-value/[0.05] p-3.5 text-sm text-white/65">
-                <ShieldCheck className="h-4 w-4 shrink-0 text-value" />A third-party audit through
-                Stellar&apos;s Audit Bank is committed before any mainnet release.
-              </div>
             </Reveal>
           </div>
         </div>

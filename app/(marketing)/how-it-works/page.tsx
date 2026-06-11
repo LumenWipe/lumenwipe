@@ -81,7 +81,7 @@ const STEPS = [
     icon: ArrowLeftRight,
     title: "Convert assets to XLM",
     body: "Swap every remaining token to XLM along the best available route across Soroban and classic venues.",
-    op: "Soroswap Aggregator · SDEX path payments",
+    op: "Soroswap API · SDEX path payments",
   },
   {
     icon: Unlink,
