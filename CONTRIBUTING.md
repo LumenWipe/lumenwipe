@@ -33,7 +33,7 @@ Thank you for your interest in contributing. LumenWipe performs irreversible ope
 | UI improvements            | Stick to the existing component patterns; changes to confirmation flows require extra care                    |
 | Translations               | Open an issue first to coordinate                                                                             |
 
-If you are planning a large change — a new protocol integration, a significant refactor, a new feature — **open an issue first** to discuss the approach before writing code. This avoids effort going in a direction that won't be merged.
+If you are planning a large change - a new protocol integration, a significant refactor, a new feature - **open an issue first** to discuss the approach before writing code. This avoids effort going in a direction that won't be merged.
 
 ---
 
@@ -59,20 +59,20 @@ bun install
 
 # Copy environment file and configure
 cp .env.example .env.local
-# Edit .env.local — at minimum set STELLAR_RPC_URL to a testnet RPC endpoint
+# Edit .env.local - at minimum set STELLAR_RPC_URL to a testnet RPC endpoint
 
 # Start the development server (testnet by default)
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The app defaults to Stellar testnet — no real funds are at risk during development.
+Open [http://localhost:3000](http://localhost:3000). The app defaults to Stellar testnet - no real funds are at risk during development.
 
 **Verify the setup:**
 
 ```bash
-bun type-check   # TypeScript — must pass with zero errors
-bun lint         # ESLint — must pass with zero errors
-bun test         # Unit tests — must all pass
+bun type-check   # TypeScript - must pass with zero errors
+bun lint         # ESLint - must pass with zero errors
+bun test         # Unit tests - must all pass
 ```
 
 ---
@@ -101,7 +101,7 @@ bun test         # Unit tests — must all pass
 
 ### Comments
 
-Write comments only when the **why** is non-obvious — a hidden constraint, a subtle invariant, a workaround for a specific protocol behavior. Do not describe what the code does; well-named identifiers do that.
+Write comments only when the **why** is non-obvious - a hidden constraint, a subtle invariant, a workaround for a specific protocol behavior. Do not describe what the code does; well-named identifiers do that.
 
 ### Error handling
 
@@ -111,7 +111,7 @@ Write comments only when the **why** is non-obvious — a hidden constraint, a s
 
 ### Transaction builder
 
-The transaction builder (`lib/stellar/tx-builder/`) is a pure module: account state in, unsigned transaction envelopes out, no network side effects. Keep it that way — it makes it directly unit-testable and auditable.
+The transaction builder (`lib/stellar/tx-builder/`) is a pure module: account state in, unsigned transaction envelopes out, no network side effects. Keep it that way - it makes it directly unit-testable and auditable.
 
 ---
 
@@ -189,7 +189,7 @@ chore/registry-kraken-address
    - Any risk or edge cases the reviewer should pay attention to
    - For protocol changes: which invariants in [Section 9.9](docs/architecture.md#99-exit-adapter-invariants) are satisfied and how
 7. **Security-sensitive changes** (key handling, transaction construction, confirmation flows, mediator flow, CSP) require extra description and will receive closer review. Flag them explicitly.
-8. A maintainer will review your PR. Be prepared for back-and-forth — the review is thorough because the operations are irreversible.
+8. A maintainer will review your PR. Be prepared for back-and-forth - the review is thorough because the operations are irreversible.
 9. Squash commits if requested before merge.
 
 ---

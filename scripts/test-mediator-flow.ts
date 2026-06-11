@@ -85,10 +85,13 @@ const medBefore = native((await load(mediatorPub))!);
 // ── Security check: a standalone mediator payment must be REFUSED ──────────────
 log("\n[security] Asking the endpoint to co-sign a standalone mediator payment (theft attempt)...");
 const attacker = Keypair.random();
-const evil = new TransactionBuilder(new Account(dest.publicKey(), (await load(dest.publicKey()))!.sequence), {
-  fee: "100",
-  networkPassphrase: PASSPHRASE,
-})
+const evil = new TransactionBuilder(
+  new Account(dest.publicKey(), (await load(dest.publicKey()))!.sequence),
+  {
+    fee: "100",
+    networkPassphrase: PASSPHRASE,
+  }
+)
   .addOperation(
     Operation.payment({
       source: mediatorPub,
@@ -101,7 +104,7 @@ const evil = new TransactionBuilder(new Account(dest.publicKey(), (await load(de
   .build();
 evil.sign(dest);
 const evilRes = await cosign(evil.toEnvelope().toXDR("base64"));
-log(evilRes.ok ? "  ✗ ACCEPTED — SECURITY FAILURE" : `  ✓ rejected (HTTP ${evilRes.status})`);
+log(evilRes.ok ? "  ✗ ACCEPTED - SECURITY FAILURE" : `  ✓ rejected (HTTP ${evilRes.status})`);
 
 // ── Happy path: atomic merge -> mediator -> destination ───────────────────────
 const feeBuffer = (2 * 100) / 10_000_000;
@@ -151,13 +154,14 @@ log("\nResults:");
 log(`  source:   ${srcAfter ? "STILL EXISTS ✗" : "deleted ✓"}`);
 log(`  source balance was: ${srcBalance} XLM`);
 log(`  dest:     ${destBefore} → ${destAfter}  (+${recovered.toFixed(7)})`);
-log(`  mediator: ${medBefore} → ${medAfter}  (Δ ${(parseFloat(medAfter) - parseFloat(medBefore)).toFixed(7)})`);
+log(
+  `  mediator: ${medBefore} → ${medAfter}  (Δ ${(parseFloat(medAfter) - parseFloat(medBefore)).toFixed(7)})`
+);
 
-const pass =
-  !srcAfter && !evilRes.ok && recovered > parseFloat(srcBalance) - 0.001;
+const pass = !srcAfter && !evilRes.ok && recovered > parseFloat(srcBalance) - 0.001;
 log(
   pass
-    ? "\n✅ E2E PASS — theft attempt rejected, source closed, user recovered ~100%."
-    : "\n❌ E2E FAIL — see results above."
+    ? "\n✅ E2E PASS - theft attempt rejected, source closed, user recovered ~100%."
+    : "\n❌ E2E FAIL - see results above."
 );
 process.exit(pass ? 0 : 1);

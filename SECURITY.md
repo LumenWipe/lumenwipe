@@ -1,6 +1,6 @@
 # Security Policy
 
-LumenWipe performs irreversible operations on Stellar accounts — it removes trustlines, cancels offers, exits DeFi positions, and merges accounts. A security vulnerability could result in permanent loss of user funds. We take this seriously and are committed to addressing security reports promptly and transparently.
+LumenWipe performs irreversible operations on Stellar accounts - it removes trustlines, cancels offers, exits DeFi positions, and merges accounts. A security vulnerability could result in permanent loss of user funds. We take this seriously and are committed to addressing security reports promptly and transparently.
 
 ---
 
@@ -12,7 +12,7 @@ LumenWipe performs irreversible operations on Stellar accounts — it removes tr
 4. [Scope](#4-scope)
 5. [Out of scope](#5-out-of-scope)
 6. [Disclosure policy](#6-disclosure-policy)
-7. [Security audit commitment](#7-security-audit-commitment)
+7. [Security reviews](#7-security-reviews)
 8. [Security design principles](#8-security-design-principles)
 
 ---
@@ -41,12 +41,12 @@ Include in your report:
 - A clear description of the vulnerability
 - The component affected (see [Scope](#4-scope) for the list)
 - Steps to reproduce, or a proof of concept if you have one
-- The potential impact — what an attacker could do and under what conditions
+- The potential impact - what an attacker could do and under what conditions
 - Your preferred disclosure timeline, if any
 
 **PGP encryption** (recommended for sensitive reports): a PGP public key is published at [lumenwipe.com/.well-known/security.txt](https://lumenwipe.com/.well-known/security.txt).
 
-You will receive an acknowledgment within **48 hours**. If you do not hear back within that window, follow up by opening a GitHub issue with the title "Security contact — please check email" and no further details.
+You will receive an acknowledgment within **48 hours**. If you do not hear back within that window, follow up by opening a GitHub issue with the title "Security contact - please check email" and no further details.
 
 ---
 
@@ -89,9 +89,9 @@ The following components are in scope for security reports:
 
 The following are not considered security vulnerabilities for this project:
 
-- Vulnerabilities in the Stellar protocol itself, Stellar RPC, or third-party data services (stellar.expert, OctoPos, Orion, Soroswap API) — report those to the respective projects
-- Phishing sites that impersonate LumenWipe — report these to us for awareness, but they are not code vulnerabilities
-- Denial of service against the read-only backend — the backend holds no funds or keys; disrupting it affects availability, not security
+- Vulnerabilities in the Stellar protocol itself, Stellar RPC, or third-party data services (stellar.expert, OctoPos, Orion, Soroswap API) - report those to the respective projects
+- Phishing sites that impersonate LumenWipe - report these to us for awareness, but they are not code vulnerabilities
+- Denial of service against the read-only backend - the backend holds no funds or keys; disrupting it affects availability, not security
 - Social engineering attacks
 - Issues requiring physical access to the user's device
 - Vulnerabilities in browsers that LumenWipe cannot control
@@ -112,7 +112,7 @@ We follow a **coordinated disclosure** model:
 2. We confirm receipt within 48 hours and provide an initial assessment within 5 business days.
 3. We work with you to understand and reproduce the issue.
 4. We develop and test a fix. For critical and high severity issues, the fix is deployed before any public disclosure.
-5. We coordinate a disclosure date with you — typically **14–30 days** after the fix is deployed, depending on severity and user exposure.
+5. We coordinate a disclosure date with you - typically **14–30 days** after the fix is deployed, depending on severity and user exposure.
 6. We publish a security advisory on GitHub with the vulnerability details, the fix, and a credit to you (unless you prefer to remain anonymous).
 
 We do not pursue legal action against researchers who report vulnerabilities in good faith and follow this policy.
@@ -121,25 +121,18 @@ We do not pursue legal action against researchers who report vulnerabilities in 
 
 ---
 
-## 7. Security audit commitment
+## 7. Security reviews
 
-Given the irreversible nature of the operations, LumenWipe commits to a third-party security audit **before any mainnet launch**.
-
-- The audit is coordinated through [Stellar's Audit Bank](https://stellar.org/blog/developers/introducing-the-stellar-audit-bank) where possible.
-- **Audit scope:** key handling surface, CSP and XSS surface, transaction construction logic (operation encoding, fee estimation, envelope handling), the mediator flow, and the DeFi exit adapters.
-- **Critical and high findings** are remediated before public mainnet launch.
-- **All findings and their remediation status** are published in the repository, regardless of severity.
-
-Progress toward the audit and its results will be announced on the project's public channels.
+The codebase undergoes internal security reviews as part of our development process. External security audits will be conducted when possible.
 
 ---
 
 ## 8. Security design principles
 
-Understanding the security model helps you identify which issues are most impactful. The full model is in [docs/architecture.md — Section 13](docs/architecture.md#13-security-model). In brief:
+Understanding the security model helps you identify which issues are most impactful. The full model is in [docs/architecture.md - Section 13](docs/architecture.md#13-security-model). In brief:
 
 **Private keys never leave the browser.**
-The primary signing path uses [stellar-wallets-kit](https://github.com/Creit-Tech/Stellar-Wallets-Kit), which means the application never sees the private key at all. The advanced secret-key mode keeps the key in memory only — never in `localStorage`, `sessionStorage`, IndexedDB, cookies, or any network request — and clears it immediately after each signing operation.
+The primary signing path uses [stellar-wallets-kit](https://github.com/Creit-Tech/Stellar-Wallets-Kit), which means the application never sees the private key at all. The advanced secret-key mode keeps the key in memory only - never in `localStorage`, `sessionStorage`, IndexedDB, cookies, or any network request - and clears it immediately after each signing operation.
 
 **The backend is read-only and never in the signing path.**
 A fully compromised backend could return incorrect read data, but it cannot sign transactions, move funds, or access keys. Wrong read data is defended against by on-chain simulation and explicit user confirmation before every destructive step.

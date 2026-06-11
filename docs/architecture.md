@@ -63,7 +63,7 @@ Core stack at a glance:
 | Wallets        | stellar-wallets-kit (SEP-43), plus an in-memory secret-key mode |
 | Network access | Stellar RPC: live reads, simulation, submission, events         |
 | Enumeration    | stellar.expert API (existing indexer), pluggable                |
-| Routing        | Soroswap Aggregator API, with SDEX paths as fallback            |
+| Routing        | Soroswap API, with SDEX paths as fallback                       |
 | DeFi detection | OctoPos primary, Orion fallback                                 |
 | Backend        | Read-only Next.js API routes, stateless, Redis cache            |
 
@@ -119,7 +119,7 @@ flowchart TB
         direction TB
         analysis["Account analysis<br/>aggregator"]
         defi["DeFi position adapter<br/>(OctoPos primary, Orion fallback)"]
-        route["Routing service<br/>(Soroswap aggregator + SDEX paths)"]
+        route["Routing service<br/>(Soroswap API + SDEX paths)"]
         med["Mediator factory<br/>(builds unsigned XDR)"]
         reg["Exchange + contract<br/>registries"]
         cache["Cache (Redis)"]
@@ -129,7 +129,7 @@ flowchart TB
         direction TB
         rpc["Stellar RPC<br/>(live reads, simulate, submit, events)"]
         idx["Existing indexer<br/>(stellar.expert API)"]
-        soro["Soroswap Aggregator API"]
+        soro["Soroswap API"]
         pos["DeFi Position API<br/>(OctoPos / Orion)"]
         net["Stellar ledger<br/>(classic + Soroban)"]
     end
@@ -157,7 +157,7 @@ flowchart TB
     pos --> net
 ```
 
-Two things to read off this diagram. The signed-XDR arrow runs from the client directly to Stellar RPC; submission is always client-side. The backend is not in the signing path for a user's account — its only signature is the shared mediator's co-signature on the exchange forwarding payment (section 11). And every external read source is pluggable: RPC, the indexer, the routing API, and the DeFi position API can each be swapped or pointed at a self-hosted instance without touching the transaction logic.
+Two things to read off this diagram. The signed-XDR arrow runs from the client directly to Stellar RPC; submission is always client-side. The backend is not in the signing path for a user's account - its only signature is the shared mediator's co-signature on the exchange forwarding payment (section 11). And every external read source is pluggable: RPC, the indexer, the routing API, and the DeFi position API can each be swapped or pointed at a self-hosted instance without touching the transaction logic.
 
 ## 5. Data sources, and why we run no indexer
 
@@ -178,7 +178,7 @@ Instead the tool reads from existing, production-grade sources through pluggable
 | Transaction submission and confirmation                                                                         | Stellar RPC `sendTransaction`, `getTransaction`                                                                         | Client submits and polls directly.                                                                               |
 | Contract events (for example, discovering `approve` spenders for the allowance inspector)                       | Stellar RPC `getEvents`, with the indexer for older windows                                                             | RPC retains a bounded event window.                                                                              |
 | DeFi position detection across protocols                                                                        | OctoPos (primary) / Orion (fallback) DeFi Position API                                                                  | Builds on a funded DeFi Position API instead of reinventing protocol indexing.                                   |
-| Swap routing and swap-XDR construction                                                                          | Soroswap Aggregator API (primary), stellar.expert paths (classic SDEX fallback)                                         | Best-available routes across Soroban and classic venues without a Horizon dependency.                            |
+| Swap routing and swap-XDR construction                                                                          | Soroswap API (primary), stellar.expert paths (classic SDEX fallback)                                                    | Best-available routes across Soroban and classic venues without a Horizon dependency.                            |
 | Exchange and anchor registry (mediator and memo rules)                                                          | Static JSON sourced from the stellar.expert directory                                                                   | Determines which destinations need the mediator flow and a memo.                                                 |
 
 The split is deliberate. An indexer answers "what does this account hold". RPC answers "what is the exact current state of this specific entry, right now, and will this transaction succeed". The tool enumerates with the indexer, then re-reads each entry over RPC immediately before building the transaction that touches it, so it never signs a transaction based on stale enumeration data.
@@ -411,11 +411,11 @@ Because the operations are irreversible, every protocol exit adapter must satisf
 
 After positions are unwound, the account may hold several classic and Soroban tokens. The tool converts each to XLM (or a user-chosen base asset) using the best available route, then removes the now-empty trustlines.
 
-Routing has two engines. The primary is the Soroswap Aggregator API, which finds optimal routes across Soroswap, Phoenix, Aquarius, and the classic SDEX, handles both classic and Soroban tokens, and builds the swap XDR. The fallback for pure-classic assets is strict-send path finding from the indexer, executed with `PathPaymentStrictSend` across SDEX order books and classic liquidity pools (up to six hops). Either way the tool computes a minimum-received amount from the quoted output and a slippage tolerance, and passes it as the destination minimum so a sudden price move cannot fill the swap at a bad rate.
+Routing has two engines. The primary is the Soroswap API, which finds optimal routes across Soroswap, Phoenix, Aquarius, and the classic SDEX, handles both classic and Soroban tokens, and builds the swap XDR. The fallback for pure-classic assets is strict-send path finding from the indexer, executed with `PathPaymentStrictSend` across SDEX order books and classic liquidity pools (up to six hops). Either way the tool computes a minimum-received amount from the quoted output and a slippage tolerance, and passes it as the destination minimum so a sudden price move cannot fill the swap at a bad rate.
 
 ```mermaid
 flowchart TD
-    asset["Non-XLM balance"] --> q["Quote route<br/>(Soroswap aggregator; SDEX paths fallback)"]
+    asset["Non-XLM balance"] --> q["Quote route<br/>(Soroswap API; SDEX paths fallback)"]
     q --> hasroute{"Route found?"}
     hasroute -->|"yes"| minrecv["Compute minimum received<br/>(quote x (1 - slippage))"]
     minrecv --> kind{"Token kind"}
@@ -443,7 +443,7 @@ sequenceDiagram
     S->>M: op1 AccountMerge (source into mediator)
     M->>D: op2 Payment (mediator to exchange, with memo)
     Note over D: Exchange credits the user by address + memo
-    Note over S,D: User signs op1; backend co-signs op2 — both apply or neither
+    Note over S,D: User signs op1; backend co-signs op2 - both apply or neither
 ```
 
 The mediator is a single, persistent account that the operator funds once. Its ~1 XLM base reserve is paid once and reused for every close, so the user recovers essentially all of their XLM, including the source account's freed base reserve; only standard network fees apply. This is the key difference from a throwaway per-user intermediary, which would sacrifice ~1 XLM on every close.
@@ -481,9 +481,9 @@ The wallet path is primary: through stellar-wallets-kit the private key never en
 
 Every destructive step requires an explicit acknowledgment that states what will happen, shows the affected entry or balance, and warns that it cannot be undone. The tool never auto-submits; the user triggers each submission. The merge gets its own full-screen confirmation with the destination shown in full, a ledger existence check, and memo validation for exchange destinations.
 
-### 13.4 Audit
+### 13.4 Security reviews
 
-Given the irreversibility, the project commits to a third-party security audit before any mainnet release, coordinated through Stellar's Audit Bank where possible. The audit scope is the key-handling surface, the CSP and XSS surface, the transaction construction logic (operation encoding, fee estimation, envelope handling), and the mediator flow. Critical and high findings are remediated before public mainnet launch; findings and their remediation status are published in the repository.
+The codebase undergoes internal security reviews as part of our development process. External security audits will be conducted when possible.
 
 ## 14. Trust minimization, decentralization, and self-hosting
 
@@ -495,15 +495,15 @@ Who can run it. The whole project is open source under a permissive license, and
 
 Where centralization remains, and why. The remaining centralized pieces are all read-only data sources: RPC providers, the indexer, the routing API, and the DeFi Position API. None can affect custody. Each is pluggable and has multiple independent providers in the Stellar ecosystem, so no single one is a hard dependency. The DeFi Position API is a deliberate dependency, satisfied with two independent providers (OctoPos and Orion) behind automatic fallback, precisely so that no single provider is a point of failure.
 
-| Component                          | Ownership                            | Reach               | Notes                                                                                      |
-| ---------------------------------- | ------------------------------------ | ------------------- | ------------------------------------------------------------------------------------------ |
+| Component                          | Ownership                            | Reach               | Notes                                                                                                                         |
+| ---------------------------------- | ------------------------------------ | ------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | Application (UI and read-only API) | Open source, self-hostable           | Open                | One Next.js service, deployable with Docker or any Node host; no user keys, no custody (only the shared mediator co-sign key) |
-| Transaction builder and signing    | Open source, runs client-side        | Open                | The security-critical code; signing never leaves the browser                               |
-| Contract and exchange registries   | Open source, community pull requests | Open                | Versioned JSON, updated by reviewed pull request                                           |
-| Stellar RPC access                 | Pluggable provider                   | External, read-only | Ecosystem providers or a self-hosted node                                                  |
-| Subentry enumeration               | Pluggable indexer                    | External, read-only | stellar.expert API or a Horizon-compatible provider                                        |
-| Swap routing                       | Pluggable                            | External, read-only | Soroswap Aggregator API or SDEX paths                                                      |
-| DeFi position detection            | Pluggable, dual-provider             | External, read-only | OctoPos primary, Orion fallback                                                            |
+| Transaction builder and signing    | Open source, runs client-side        | Open                | The security-critical code; signing never leaves the browser                                                                  |
+| Contract and exchange registries   | Open source, community pull requests | Open                | Versioned JSON, updated by reviewed pull request                                                                              |
+| Stellar RPC access                 | Pluggable provider                   | External, read-only | Ecosystem providers or a self-hosted node                                                                                     |
+| Subentry enumeration               | Pluggable indexer                    | External, read-only | stellar.expert API or a Horizon-compatible provider                                                                           |
+| Swap routing                       | Pluggable                            | External, read-only | Soroswap API or SDEX paths                                                                                                    |
+| DeFi position detection            | Pluggable, dual-provider             | External, read-only | OctoPos primary, Orion fallback                                                                                               |
 
 Nothing in the open rows can move funds. Everything in the external rows is read-only and replaceable.
 
@@ -549,7 +549,7 @@ The work is delivered in three cumulative tranches, each a working, independentl
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 1. Classic MVP          | Full classic wind-down on testnet: signer normalization, data entries, offer cancellation, classic liquidity pool withdrawal, asset conversion via SDEX paths, trustline removal, merge, and the mediator flow. Wallet and secret-key signing, multisig, session recovery. | All classic steps execute correctly on testnet; multisig account closed with multiple keys; mediator flow works for exchange destinations; sessions resume from on-chain state; all errors render in plain language; transaction builder above 80% coverage. |
 | 2. Soroban and DeFi     | Full Soroban parity: DeFi position detection via OctoPos with Orion fallback; Blend, Aquarius, Soroswap, Phoenix, and FxDAO exits; Soroban token conversion; the allowance inspector; per-step simulation.                                                                 | Each protocol's positions detected, unwound, and confirmed on testnet; provider fallback within seconds; degraded mode when both providers are down; Soroban fee estimates within tolerance of submitted fees.                                               |
-| 3. Production hardening | Third-party security audit and remediation; mainnet deployment; performance and load validation; final UX from user testing; complete public documentation.                                                                                                                | Audit complete with critical and high findings remediated and published; mainnet deployment live; CSP verified with no `unsafe-eval`; analysis within performance targets; repository public under a permissive license.                                     |
+| 3. Production hardening | Mainnet deployment; performance and load validation; final UX from user testing; complete public documentation.                                                                                                                                                            | Mainnet deployment live; CSP verified with no `unsafe-eval`; analysis within performance targets; repository public under a permissive license.                                                                                                              |
 
 ## 20. Traction
 
@@ -562,7 +562,7 @@ Plain-English summary of what the tool is built from and why.
 - Frontend: Next.js and TypeScript, an open source and self-hostable web app, with TypeScript's type safety valuable when constructing transactions.
 - Stellar SDK: `@stellar/stellar-sdk`, the official SDK, which covers classic and Soroban.
 - Wallets: stellar-wallets-kit, for one interface across Freighter, xBull, Albedo, LOBSTR, Rabet, Hana, WalletConnect, and more, including Soroban authorization-entry signing.
-- Network access: Stellar RPC for live reads, simulation, submission, and events; the stellar.expert API for subentry enumeration; the Soroswap Aggregator API for routing; OctoPos and Orion for DeFi position detection.
+- Network access: Stellar RPC for live reads, simulation, submission, and events; the stellar.expert API for subentry enumeration; the Soroswap API for routing; OctoPos and Orion for DeFi position detection.
 - DeFi integration: the official Blend SDK, the Soroswap API, and the published contract interfaces for Aquarius, Phoenix, and FxDAO, behind per-protocol adapters and a versioned contract registry.
 - State and storage: Zustand for the wizard state machine, IndexedDB for resumable sessions (never keys).
 - Backend: read-only API routes within the same Next.js service, stateless, with a Redis cache for short-lived public read data.

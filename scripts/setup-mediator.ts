@@ -1,6 +1,6 @@
 /**
  * Generates and funds a shared mediator account on Stellar TESTNET via friendbot,
- * then prints the env vars to configure. For testnet/dev only — for mainnet,
+ * then prints the env vars to configure. For testnet/dev only - for mainnet,
  * generate the keypair offline and fund it from a real account.
  *
  *   bun scripts/setup-mediator.ts

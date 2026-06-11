@@ -1,5 +1,5 @@
 flowchart TD
-    asset["Non-XLM balance"] --> q["Quote route<br/>(Soroswap aggregator; SDEX paths fallback)"]
+    asset["Non-XLM balance"] --> q["Quote route<br/>(Soroswap API; SDEX paths fallback)"]
     q --> hasroute{"Route found?"}
     hasroute -->|"yes"| minrecv["Compute minimum received<br/>(quote x (1 - slippage))"]
     minrecv --> kind{"Token kind"}

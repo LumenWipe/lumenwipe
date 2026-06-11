@@ -13,7 +13,7 @@ flowchart TB
         direction TB
         analysis["Account analysis<br/>aggregator"]
         defi["DeFi position adapter<br/>(OctoPos primary, Orion fallback)"]
-        route["Routing service<br/>(Soroswap aggregator + SDEX paths)"]
+        route["Routing service<br/>(Soroswap API + SDEX paths)"]
         med["Mediator factory<br/>(builds unsigned XDR)"]
         reg["Exchange + contract<br/>registries"]
         cache["Cache (Redis)"]
@@ -23,7 +23,7 @@ flowchart TB
         direction TB
         rpc["Stellar RPC<br/>(live reads, simulate, submit, events)"]
         idx["Existing indexer<br/>(stellar.expert API)"]
-        soro["Soroswap Aggregator API"]
+        soro["Soroswap API"]
         pos["DeFi Position API<br/>(OctoPos / Orion)"]
         net["Stellar ledger<br/>(classic + Soroban)"]
     end
