@@ -1,78 +1,80 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { stroopsToXlm } from "@/lib/utils/amounts";
+import { useStats } from "@/hooks/useStats";
 
-interface Stats {
-  testnet: number;
-  mainnet: number;
-  testnetXlmStroops: string;
-  mainnetXlmStroops: string;
-}
-
-const NETWORKS: { key: keyof Pick<Stats, "testnet" | "mainnet">; label: string }[] = [
-  { key: "testnet", label: "Testnet" },
-  { key: "mainnet", label: "Mainnet" },
-];
+const STALE_HINT = "Stats service unreachable - showing last known values";
 
 function formatXlmCompact(stroops: string): string {
   const xlm = parseFloat(stroopsToXlm(stroops));
-  if (isNaN(xlm) || xlm === 0) return "0 XLM";
-  return `${xlm.toLocaleString("en-US", { maximumFractionDigits: 2 })} XLM`;
+  if (isNaN(xlm) || xlm === 0) return "0";
+  return xlm.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
 export default function NetworkStats() {
-  const [stats, setStats] = useState<Stats | null>(null);
+  const { stats, stale } = useStats();
 
-  async function load() {
-    try {
-      const res = await fetch("/api/stats");
-      if (res.ok) setStats(await res.json());
-    } catch {
-      // non-critical - silently ignore
-    }
-  }
+  if (!stats) return null;
 
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 60_000);
-    return () => clearInterval(id);
-  }, []);
-
-  const totalStroops = stats ? stats.mainnetXlmStroops : null;
+  const dotClass = stale ? "bg-warning" : "bg-value mkt-pulse";
+  const xlmRecovered = formatXlmCompact(stats.mainnetXlmStroops);
 
   return (
-    <div className="space-y-3 mb-10">
-      <div className="grid grid-cols-2 gap-3">
-        {NETWORKS.map(({ key, label }) => {
-          const count = stats?.[key];
-          return (
-            <div key={key} className="mkt-panel rounded-xl p-4 text-center">
-              <p className="mkt-eyebrow text-white/40 mb-2">{label}</p>
-              <p className="mkt-display text-3xl font-bold text-stellar tabular-nums">
-                {count === undefined ? (
-                  <span className="inline-block w-8 h-7 bg-border rounded animate-pulse" />
-                ) : (
-                  count.toLocaleString()
-                )}
-              </p>
-              <p className="text-xs text-white/45 mt-1">accounts closed</p>
+    <>
+      {/* Floating card (large screens) */}
+      <div className="fixed bottom-4 right-4 z-40 hidden xl:block select-none">
+        <div
+          title={stale ? STALE_HINT : undefined}
+          className="rounded-2xl border border-white/10 bg-[#0b0b12]/85 backdrop-blur-md px-4 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+        >
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
+            <span className="mkt-eyebrow text-[0.6rem] text-white/40">
+              {stale ? "Stats · stale" : "Live stats"}
+            </span>
+          </div>
+          <div className="space-y-1 text-xs">
+            <div className="flex items-baseline justify-between gap-6">
+              <span className="text-white/45">Testnet closed</span>
+              <span className="tabular-nums font-semibold text-stellar">
+                {stats.testnet.toLocaleString()}
+              </span>
             </div>
-          );
-        })}
+            <div className="flex items-baseline justify-between gap-6">
+              <span className="text-white/45">Mainnet closed</span>
+              <span className="tabular-nums font-semibold text-stellar">
+                {stats.mainnet.toLocaleString()}
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between gap-6 border-t border-white/10 pt-1 mt-1">
+              <span className="text-white/45">Recovered on mainnet</span>
+              <span className="tabular-nums font-semibold text-value">{xlmRecovered} XLM</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="mkt-panel rounded-xl p-4 text-center">
-        <p className="mkt-eyebrow text-white/40 mb-2">Total Recovered</p>
-        <p className="mkt-display text-3xl font-bold text-value tabular-nums">
-          {totalStroops === null ? (
-            <span className="inline-block w-24 h-7 bg-border rounded animate-pulse" />
-          ) : (
-            formatXlmCompact(totalStroops)
-          )}
-        </p>
-        <p className="text-xs text-white/45 mt-1">recovered on mainnet</p>
+      {/* Floating pill (small screens) */}
+      <div className="fixed bottom-3 inset-x-0 z-40 flex justify-center px-4 xl:hidden select-none pointer-events-none">
+        <div
+          title={stale ? STALE_HINT : undefined}
+          className="inline-flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 rounded-full border border-white/10 bg-[#0b0b12]/85 backdrop-blur-md px-4 py-1.5 text-[0.7rem] shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
+          <span className="tabular-nums font-semibold text-stellar">
+            {stats.testnet.toLocaleString()}
+          </span>
+          <span className="text-white/45">testnet</span>
+          <span className="text-white/25">·</span>
+          <span className="tabular-nums font-semibold text-stellar">
+            {stats.mainnet.toLocaleString()}
+          </span>
+          <span className="text-white/45">mainnet</span>
+          <span className="text-white/25">·</span>
+          <span className="tabular-nums font-semibold text-value">{xlmRecovered} XLM</span>
+          <span className="text-white/45">recovered on mainnet</span>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

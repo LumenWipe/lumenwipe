@@ -53,16 +53,21 @@ async function verifyAccountMerge(txHash: string, network: Network): Promise<Ver
       }),
       signal: AbortSignal.timeout(8_000),
     });
-  } catch {
+  } catch (err) {
+    console.error(`Merge verification RPC request failed for tx ${txHash}:`, err);
     return { valid: false, xlmStroops: "0" };
   }
 
-  if (!rpcResp.ok) return { valid: false, xlmStroops: "0" };
+  if (!rpcResp.ok) {
+    console.error(`Merge verification RPC returned ${rpcResp.status} for tx ${txHash}`);
+    return { valid: false, xlmStroops: "0" };
+  }
 
   let data: RpcResponse;
   try {
     data = await rpcResp.json();
-  } catch {
+  } catch (err) {
+    console.error(`Merge verification RPC returned invalid JSON for tx ${txHash}:`, err);
     return { valid: false, xlmStroops: "0" };
   }
 
@@ -178,7 +183,11 @@ export async function POST(request: Request) {
   }
 
   // 4. Atomic deduplication + increment (Lua script)
-  const isNew = await recordMerge(network as Network, txHash, xlmStroops);
-
-  return NextResponse.json({ ok: true, new: isNew });
+  try {
+    const isNew = await recordMerge(network as Network, txHash, xlmStroops);
+    return NextResponse.json({ ok: true, new: isNew });
+  } catch (err) {
+    console.error(`Failed to record merge stats for tx ${txHash}:`, err);
+    return NextResponse.json({ error: "stats_unavailable" }, { status: 503 });
+  }
 }

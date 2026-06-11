@@ -40,23 +40,23 @@ export interface StatsResult {
   mainnetXlmStroops: string;
 }
 
+/**
+ * Reads the global counters. Throws when KV is unreachable so callers can
+ * report unavailability instead of serving misleading zero counts.
+ */
 export async function getStats(): Promise<StatsResult> {
-  try {
-    const [testnet, mainnet, testnetXlm, mainnetXlm] = await Promise.all([
-      kv.get<number>(COUNT_KEY.testnet),
-      kv.get<number>(COUNT_KEY.mainnet),
-      kv.get<string>(XLM_KEY.testnet),
-      kv.get<string>(XLM_KEY.mainnet),
-    ]);
-    return {
-      testnet: testnet ?? 0,
-      mainnet: mainnet ?? 0,
-      testnetXlmStroops: testnetXlm ?? "0",
-      mainnetXlmStroops: mainnetXlm ?? "0",
-    };
-  } catch {
-    return { testnet: 0, mainnet: 0, testnetXlmStroops: "0", mainnetXlmStroops: "0" };
-  }
+  const [testnet, mainnet, testnetXlm, mainnetXlm] = await Promise.all([
+    kv.get<number>(COUNT_KEY.testnet),
+    kv.get<number>(COUNT_KEY.mainnet),
+    kv.get<string>(XLM_KEY.testnet),
+    kv.get<string>(XLM_KEY.mainnet),
+  ]);
+  return {
+    testnet: testnet ?? 0,
+    mainnet: mainnet ?? 0,
+    testnetXlmStroops: testnetXlm ?? "0",
+    mainnetXlmStroops: mainnetXlm ?? "0",
+  };
 }
 
 /**
@@ -74,8 +74,33 @@ export async function checkRateLimit(ip: string): Promise<boolean> {
     const [rawCount] = await pipeline.exec();
     const count = typeof rawCount === "number" ? rawCount : RATE_LIMIT_PER_DAY + 1;
     return count <= RATE_LIMIT_PER_DAY;
-  } catch {
-    return true; // fail open rather than block legitimate users
+  } catch (err) {
+    // Fail open rather than block legitimate users, but leave a trace
+    console.error("Rate-limit check failed, allowing request:", err);
+    return true;
+  }
+}
+
+/**
+ * Like checkRateLimit but with a caller-supplied namespace and daily limit,
+ * so different features don't share one counter. Fails open like the original.
+ */
+export async function checkNamespacedRateLimit(
+  namespace: string,
+  ip: string,
+  limitPerDay: number
+): Promise<boolean> {
+  try {
+    const key = `${namespace}:ratelimit:${hashIp(ip)}:${new Date().toISOString().slice(0, 10)}`;
+    const pipeline = kv.pipeline();
+    pipeline.incr(key);
+    pipeline.expire(key, 86_400);
+    const [rawCount] = await pipeline.exec();
+    const count = typeof rawCount === "number" ? rawCount : limitPerDay + 1;
+    return count <= limitPerDay;
+  } catch (err) {
+    console.error(`Rate-limit check (${namespace}) failed, allowing request:`, err);
+    return true;
   }
 }
 
@@ -96,21 +121,17 @@ const RECORD_SCRIPT = `
 /**
  * Atomically records a merge for the given network.
  * Returns true when the txHash was new, false when it was a duplicate.
- * Never throws - stats are non-critical.
+ * Throws when KV is unreachable so the caller can report the failure.
  */
 export async function recordMerge(
   network: Network,
   txHash: string,
   xlmStroops: string
 ): Promise<boolean> {
-  try {
-    const result = await kv.eval(
-      RECORD_SCRIPT,
-      [PROCESSED_KEY(network), COUNT_KEY[network], XLM_KEY[network]],
-      [txHash, xlmStroops]
-    );
-    return result === 1;
-  } catch {
-    return false;
-  }
+  const result = await kv.eval(
+    RECORD_SCRIPT,
+    [PROCESSED_KEY(network), COUNT_KEY[network], XLM_KEY[network]],
+    [txHash, xlmStroops]
+  );
+  return result === 1;
 }

@@ -6,6 +6,7 @@ import { isValidNetwork } from "@/config/networks";
 import { useNetworkStore } from "@/store/network";
 import { useDemolishStore } from "@/store/demolish";
 import NavBar from "@/components/layout/NavBar";
+import NetworkStats from "@/components/stats/NetworkStats";
 import RiskDisclaimerModal from "@/components/RiskDisclaimerModal";
 
 export default function NetworkLayout({
@@ -38,8 +39,9 @@ export default function NetworkLayout({
       </div>
       <div className="relative z-10 flex min-h-screen flex-col">
         <NavBar network={network as "mainnet" | "testnet"} />
-        <main className="flex-1">{children}</main>
+        <main className="flex-1 pb-16 xl:pb-0">{children}</main>
       </div>
+      <NetworkStats />
       <RiskDisclaimerModal />
     </div>
   );
