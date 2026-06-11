@@ -119,7 +119,7 @@ export default function StepDetailPanel({
         {/* Pending / executing view */}
         {(step.status === "pending" || isExecuting) && (
           <>
-            {/* No DEX path warning — shown before user makes a choice */}
+            {/* No DEX path warning - shown before user makes a choice */}
             {noSwapPath && !isExecuting && (
               <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 space-y-3">
                 <div className="flex items-start gap-2">
@@ -140,7 +140,7 @@ export default function StepDetailPanel({
                         stellar.expert
                       </a>{" "}
                       or another exchange, then come back to continue. Alternatively, you can return
-                      the balance to the issuer — note that not all issuers accept returning tokens.
+                      the balance to the issuer - note that not all issuers accept returning tokens.
                     </p>
                   </div>
                 </div>
@@ -161,7 +161,7 @@ export default function StepDetailPanel({
               </div>
             )}
 
-            {/* Normal sign flow — hidden while waiting for no-path choice */}
+            {/* Normal sign flow - hidden while waiting for no-path choice */}
             {!noSwapPath && (
               <>
                 {/* Merge-specific warning */}

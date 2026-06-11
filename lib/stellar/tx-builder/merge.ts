@@ -40,7 +40,7 @@ export function buildMergeTx(
  * The payment forwards essentially the entire balance (minus the two-operation
  * network fee), so the user recovers ~100% of their XLM, including the source
  * account's freed base reserve. The mediator's own base reserve is never
- * touched — it is funded once by the operator and reused for everyone.
+ * touched - it is funded once by the operator and reused for everyone.
  *
  * Returns unsigned XDR. The user signs their half (the merge / the envelope)
  * and the backend co-signs the mediator's payment leg.

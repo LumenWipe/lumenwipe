@@ -51,7 +51,7 @@ export async function submitAndWait(
       result = await server.getTransaction(txHash);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      // Network/connectivity errors must propagate — don't treat them as success.
+      // Network/connectivity errors must propagate - don't treat them as success.
       if (/fetch|network|ECONNREFUSED|ETIMEDOUT|timeout|abort/i.test(msg)) throw err;
       // XDR parse error from protocol version mismatch (e.g. TransactionMetaV4):
       // NOT_FOUND responses carry no XDR, so a parse error here means the tx
