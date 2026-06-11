@@ -17,7 +17,7 @@ import { EPHEMERAL_ASSETS, LWDEMO_CODE, MESS_PLAN } from "@/lib/playground/mess-
 export const maxDuration = 60;
 
 const FRIENDBOT = "https://friendbot.stellar.org";
-const SESSIONS_PER_DAY_PER_IP = 5;
+const SESSIONS_PER_DAY_PER_IP = 25;
 
 export async function POST(req: NextRequest) {
   const ip =
