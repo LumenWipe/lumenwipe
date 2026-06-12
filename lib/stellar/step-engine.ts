@@ -1,6 +1,6 @@
 import { Account, Asset } from "@stellar/stellar-sdk";
 import { getMediatorPublicKey, type Network } from "@/config/networks";
-import { getRpcServer } from "@/lib/stellar/rpc";
+import { getRpcServer, getTrustlineEntry } from "@/lib/stellar/rpc";
 import { NoConversionPathError } from "@/lib/utils/errors";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import { fetchConversionPath } from "@/lib/se-api/paths";
@@ -42,8 +42,8 @@ export async function fetchLiveTrustlineBalance(
 ): Promise<string> {
   try {
     const asset = new Asset(tl.code, tl.issuer);
-    // server.getTrustline() replaces manual XDR LedgerKey construction (SDK v14+)
-    const entry = await server.getTrustline(accountAddress, asset);
+    const entry = await getTrustlineEntry(server, accountAddress, asset);
+    if (!entry) return tl.balance;
     return stroopsToXlm(BigInt(entry.balance().toString()));
   } catch {
     return tl.balance;

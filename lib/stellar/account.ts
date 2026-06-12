@@ -1,5 +1,5 @@
 import { Keypair, xdr, StrKey, Asset, rpc as StellarRpc } from "@stellar/stellar-sdk";
-import { getRpcServer } from "./rpc";
+import { getRpcServer, getTrustlineEntry } from "./rpc";
 import { fetchOffersFromAdapter } from "./horizon-adapter";
 import { seGet } from "@/lib/se-api/client";
 import { AccountNotFoundError } from "@/lib/utils/errors";
@@ -169,8 +169,7 @@ export async function getAccountState(address: string, network: Network): Promis
   // 5. Fetch open DEX offers via Horizon-compatible adapter (SE API endpoint is 404)
   const openOffers: OpenOffer[] = await fetchOffersFromAdapter(address, network);
 
-  // 6. Fetch per-trustline balances via server.getTrustline() (SDK v14+ high-level API,
-  //    replaces manual XDR LedgerKey construction + getLedgerEntries navigation)
+  // 6. Re-read each trustline's live state over RPC; the indexer list is only a hint
   const trustlines: Trustline[] = [];
   const nonNativeAssets = seAssets
     .map(parseSeAsset)
@@ -179,7 +178,8 @@ export async function getAccountState(address: string, network: Network): Promis
   for (const { code, issuer } of nonNativeAssets) {
     try {
       const asset = new Asset(code, issuer);
-      const tl = await server.getTrustline(address, asset);
+      const tl = await getTrustlineEntry(server, address, asset);
+      if (!tl) continue; // removed on-chain since the indexer saw it
 
       const balStroops = BigInt(tl.balance().toString());
       const limitStroops = BigInt(tl.limit().toString());
