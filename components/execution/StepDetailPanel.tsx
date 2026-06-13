@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useEffect } from "react";
 import { CheckCircle, AlertCircle, ExternalLink, Wallet } from "lucide-react";
 import type { PlannedStep } from "@/types/plan";
 import type { Network } from "@/config/networks";
 import { SE_EXPLORER_BASE, SV_EXPLORER_BASE } from "@/config/networks";
+import { useDemolishStore } from "@/store/demolish";
 import { cn } from "@/lib/utils/cn";
 import SecretKeyInput from "@/components/account-entry/SecretKeyInput";
 import XdrPreviewModal from "./XdrPreviewModal";
@@ -15,6 +16,9 @@ interface StepDetailPanelProps {
   step: PlannedStep;
   network: Network;
   secretKeyRef: React.MutableRefObject<string>;
+  keyEntered: boolean;
+  onKeyEntered: (valid: boolean) => void;
+  onForgetKey: () => void;
   onSign: () => Promise<void>;
   onRetry: () => void;
   progressStatus: string | null;
@@ -28,6 +32,9 @@ export default function StepDetailPanel({
   step,
   network,
   secretKeyRef,
+  keyEntered,
+  onKeyEntered,
+  onForgetKey,
   onSign,
   onRetry,
   progressStatus,
@@ -37,13 +44,24 @@ export default function StepDetailPanel({
   onSkipStep,
 }: StepDetailPanelProps) {
   const [confirmed, setConfirmed] = useState(false);
-  const [keyValid, setKeyValid] = useState(false);
+  const mediatorRequired = useDemolishStore((s) => s.mediatorRequired);
   const explorerBase = SE_EXPLORER_BASE[network];
   const svExplorerBase = SV_EXPLORER_BASE[network];
 
+  // Each step must be confirmed on its own; never carry a confirmation forward.
+  // Reset on mount, on step change, and when a failed step is retried back to
+  // pending - a retry does not change step.index, so it would otherwise keep a
+  // stale confirmation for an irreversible merge.
+  useEffect(() => {
+    if (step.status === "pending") setConfirmed(false);
+  }, [step.index, step.status]);
+
   const isExecuting = step.status === "signing" || step.status === "submitted";
-  const isMerge = step.type === "MERGE";
-  const canSign = confirmed && keyValid && !isExecuting;
+  // A MERGE removes the account, and so does a DIRECT (non-mediator) close,
+  // which fuses the merge into the close. An exchange close (mediatorRequired)
+  // is cleanup only - the merge is a separate MERGE step.
+  const isMerge = step.type === "MERGE" || (step.type === "CLOSE_ACCOUNT" && !mediatorRequired);
+  const canSign = confirmed && keyEntered && !isExecuting;
 
   const confirmText = isMerge
     ? "I have verified the destination address and understand that this account will be merged and removed from the Stellar ledger."
@@ -180,12 +198,34 @@ export default function StepDetailPanel({
                 {/* XDR preview */}
                 {step.txXdr && <XdrPreviewModal xdr={step.txXdr} network={network} />}
 
-                {/* Secret key */}
-                <SecretKeyInput
-                  secretKeyRef={secretKeyRef}
-                  onValidityChange={setKeyValid}
-                  disabled={isExecuting}
-                />
+                {/* Secret key - entered once per session, then held in memory */}
+                {keyEntered ? (
+                  <div className="flex items-center justify-between gap-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2.5">
+                    <span className="flex flex-col gap-0.5">
+                      <span className="flex items-center gap-2 text-sm text-emerald-400">
+                        <CheckCircle className="h-4 w-4 shrink-0" />
+                        Secret key loaded for this session
+                      </span>
+                      <span className="pl-6 text-xs text-white/45">
+                        Kept in memory until you finish or choose Forget key.
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={onForgetKey}
+                      disabled={isExecuting}
+                      className="text-xs text-white/60 hover:text-white underline-offset-2 hover:underline transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Forget key
+                    </button>
+                  </div>
+                ) : (
+                  <SecretKeyInput
+                    secretKeyRef={secretKeyRef}
+                    onValidityChange={onKeyEntered}
+                    disabled={isExecuting}
+                  />
+                )}
 
                 {/* Wallet extension - coming soon */}
                 <div className="flex items-center gap-2 text-white/25">
