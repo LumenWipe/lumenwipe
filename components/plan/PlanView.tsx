@@ -1,21 +1,27 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, RefreshCw } from "lucide-react";
+import { ArrowRight, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 import type { AccountState } from "@/types/account";
-import type { PlannedStep, PlanBlocker } from "@/types/plan";
+import type { PlanBlocker } from "@/types/plan";
 import type { Network } from "@/config/networks";
+import type { AssetConvertibility } from "@/lib/stellar/fast-path";
+import type { MediatorCheckResult } from "@/types/account";
+import { getMediatorPublicKey } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
+import { buildPlan } from "@/lib/stellar/tx-builder";
+import { isValidGAddress, isValidMemo } from "@/lib/utils/validation";
+import { getMemoRequirement } from "@/lib/exchange-registry";
 import AccountSummaryCard from "./AccountSummaryCard";
-import ExecutionPlanList from "./ExecutionPlanList";
 import BlockersPanel from "./BlockersPanel";
+import PlanAccordion from "./PlanAccordion";
+import DestinationInput from "@/components/account-entry/DestinationInput";
 
 interface PlanViewProps {
   account: AccountState;
-  plan: PlannedStep[];
+  conversions: AssetConvertibility[];
   blockers: PlanBlocker[];
-  destinationAddress: string;
-  mediatorRequired: boolean;
   network: Network;
   onRefresh: () => void;
   loading: boolean;
@@ -23,82 +29,191 @@ interface PlanViewProps {
 
 export default function PlanView({
   account,
-  plan,
+  conversions,
   blockers,
-  destinationAddress,
-  mediatorRequired,
   network,
   onRefresh,
   loading,
 }: PlanViewProps) {
   const router = useRouter();
-  const { setPhase, setPlan, setMediatorRequired } = useDemolishStore();
+  const {
+    assetDispositions,
+    setAssetDisposition,
+    setAddresses,
+    setMediatorRequired,
+    setPlan,
+    setPhase,
+  } = useDemolishStore();
 
-  const totalFee = plan.reduce((sum, s) => sum + parseFloat(s.estimatedFeeLumens), 0).toFixed(7);
+  const [destination, setDestination] = useState("");
+  const [memo, setMemo] = useState("");
+  const [proceeding, setProceeding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleProceed() {
-    setPlan(plan);
-    setMediatorRequired(mediatorRequired);
-    setPhase("STEP_EXECUTING");
-    router.push(`/${network}/execute`);
+  // Auto-set convertible assets to "convert" so they feed the builder without user action.
+  useEffect(() => {
+    for (const c of conversions) {
+      if (c.convertible && assetDispositions[c.asset] !== "convert") {
+        setAssetDisposition(c.asset, "convert");
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversions]);
+
+  // A non-convertible asset is resolved only once its store disposition is "issuer".
+  const returnConfirmed = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    for (const c of conversions) {
+      if (!c.convertible) map[c.asset] = assetDispositions[c.asset] === "issuer";
+    }
+    return map;
+  }, [conversions, assetDispositions]);
+
+  function handleToggleReturn(asset: string, confirmed: boolean) {
+    // The store has no delete; "convert" is the non-issuer sentinel for an unresolved
+    // non-convertible asset, which is never treated as resolved (see allAssetsResolved).
+    setAssetDisposition(asset, confirmed ? "issuer" : "convert");
+  }
+
+  const allAssetsResolved = conversions.every(
+    (c) => c.convertible || assetDispositions[c.asset] === "issuer"
+  );
+
+  const destinationStepReady = allAssetsResolved && blockers.length === 0;
+
+  const memoReq = isValidGAddress(destination) ? getMemoRequirement(destination) : null;
+  const memoRequired = memoReq?.requiresMemo ?? false;
+  const memoTypeForDest = memoReq?.memoType ?? "text";
+  const memoValid =
+    !memoRequired || (memo.trim().length > 0 && isValidMemo(memo.trim(), memoTypeForDest));
+
+  const canProceed =
+    destinationStepReady &&
+    isValidGAddress(destination) &&
+    destination !== account.address &&
+    memoValid;
+
+  const totalSubentries =
+    account.trustlines.length +
+    account.openOffers.length +
+    account.dataEntries.length +
+    account.signers.filter((s) => s.key !== account.address).length;
+  const previewFee = (totalSubentries * 0.00001).toFixed(7);
+
+  async function handleProceed() {
+    if (!canProceed) return;
+    setProceeding(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/${network}/mediator/check/${destination}`);
+      const mediatorData: MediatorCheckResult = await res.json();
+      const needsMediator = mediatorData.requiresMediator ?? false;
+      const mediatorPublicKey = needsMediator
+        ? getMediatorPublicKey(network) || undefined
+        : undefined;
+
+      const effectiveMemoType = memoRequired ? memoTypeForDest : undefined;
+      setAddresses(account.address, destination, memo.trim() || undefined, effectiveMemoType);
+      setMediatorRequired(needsMediator, mediatorPublicKey);
+
+      const fastPathEligible = allAssetsResolved && blockers.length === 0;
+      const { steps } = buildPlan(account, needsMediator, fastPathEligible);
+      setPlan(steps);
+      setPhase("STEP_EXECUTING");
+
+      router.push(`/${network}/execute`);
+    } catch {
+      setError("Failed to verify the destination. Please check your connection and try again.");
+    } finally {
+      setProceeding(false);
+    }
   }
 
   return (
     <div className="space-y-5">
       <AccountSummaryCard
         account={account}
-        destinationAddress={destinationAddress}
-        totalFee={totalFee}
+        destinationAddress={isValidGAddress(destination) ? destination : null}
+        totalFee={previewFee}
       />
 
       <BlockersPanel blockers={blockers} />
 
-      {mediatorRequired && (
-        <div className="bg-stellar/10 border border-stellar/25 rounded-2xl p-4 text-sm">
-          <p className="font-medium text-stellar mb-1">Exchange destination</p>
-          <p className="text-white/60">
-            Your destination doesn&apos;t support direct account merges, so the close is routed
-            through a shared intermediary account in one atomic transaction: your account merges
-            into it, and it forwards the full balance to your exchange address with the required
-            memo. You recover essentially all of your XLM; only standard network fees apply.
-          </p>
-        </div>
-      )}
-
       <div className="mkt-panel rounded-2xl">
-        <div className="border-b border-white/10 px-4 py-3 flex items-center justify-between">
-          <h3 className="mkt-eyebrow text-white/45">Execution plan</h3>
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+          <h3 className="mkt-eyebrow text-white/45">What this close will do</h3>
           <button
             onClick={onRefresh}
             disabled={loading}
-            className="text-white/50 hover:text-white transition-colors disabled:opacity-40"
+            className="text-white/50 transition-colors hover:text-white disabled:opacity-40"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
-        <div className="p-3 space-y-2">
-          <ExecutionPlanList steps={plan} />
-        </div>
-        <div className="border-t border-white/10 px-4 py-3 flex items-center justify-between text-sm">
-          <span className="text-white/50">
-            {plan.length} step{plan.length !== 1 ? "s" : ""} · estimated fees
-          </span>
-          <span className="mkt-mono text-xs text-white/50">{totalFee} XLM</span>
+        <div className="p-3">
+          <PlanAccordion
+            account={account}
+            conversions={conversions}
+            returnConfirmed={returnConfirmed}
+            onToggleReturn={handleToggleReturn}
+            destinationAddress={destinationStepReady && destination ? destination : null}
+            mediatorRequired={false}
+          />
         </div>
       </div>
 
-      <button
-        onClick={handleProceed}
-        disabled={plan.length === 0 || blockers.length > 0}
-        className="w-full flex items-center justify-center gap-2 bg-stellar text-black font-semibold py-3 px-4 rounded-xl hover:bg-stellar/90 hover:shadow-[0_0_28px_-6px_hsl(var(--stellar)/0.7)] disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition-all"
-      >
-        Begin execution
-        <ArrowRight className="h-4 w-4" />
-      </button>
+      {!destinationStepReady && (
+        <p className="text-center text-xs text-white/45">
+          {blockers.length > 0
+            ? "Resolve the blockers above to continue."
+            : "Decide what happens to each asset above to continue."}
+        </p>
+      )}
 
-      <p className="text-center text-xs text-white/45">
-        Each step requires your explicit confirmation before signing.
-      </p>
+      {destinationStepReady && (
+        <div className="mkt-panel rounded-2xl p-5 space-y-4">
+          <div>
+            <h3 className="mkt-eyebrow text-white/45 mb-1">Destination</h3>
+            <p className="text-xs text-white/45">
+              Every asset is resolved. Enter where the recovered XLM should go.
+            </p>
+          </div>
+
+          <DestinationInput
+            destination={destination}
+            onDestinationChange={setDestination}
+            memo={memo}
+            onMemoChange={setMemo}
+            source={account.address}
+          />
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              {error}
+            </div>
+          )}
+
+          <button
+            onClick={handleProceed}
+            disabled={!canProceed || proceeding}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-stellar px-4 py-3 font-semibold text-black transition-all hover:bg-stellar/90 hover:shadow-[0_0_28px_-6px_hsl(var(--stellar)/0.7)] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+          >
+            {proceeding ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Preparing transaction...
+              </>
+            ) : (
+              <>
+                Begin execution
+                <ArrowRight className="h-4 w-4" />
+              </>
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

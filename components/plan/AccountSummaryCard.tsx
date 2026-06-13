@@ -4,7 +4,7 @@ import { formatXlm, calcRecoverableReserve } from "@/lib/utils/amounts";
 
 interface AccountSummaryCardProps {
   account: AccountState;
-  destinationAddress: string;
+  destinationAddress: string | null;
   totalFee: string;
 }
 
@@ -81,9 +81,13 @@ export default function AccountSummaryCard({
 
       <div className="border-t border-white/10 px-4 py-2 text-xs text-white/45">
         Destination:{" "}
-        <span className="font-mono-address text-white/60">
-          {destinationAddress.slice(0, 12)}...{destinationAddress.slice(-8)}
-        </span>
+        {destinationAddress ? (
+          <span className="font-mono-address text-white/60">
+            {destinationAddress.slice(0, 12)}...{destinationAddress.slice(-8)}
+          </span>
+        ) : (
+          <span className="text-white/50">to be entered</span>
+        )}
       </div>
     </div>
   );

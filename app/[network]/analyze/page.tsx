@@ -6,8 +6,8 @@ import { Loader2, AlertTriangle, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import type { Network } from "@/config/networks";
 import type { AccountState } from "@/types/account";
-import type { PlannedStep, PlanBlocker } from "@/types/plan";
-import { getMediatorPublicKey } from "@/config/networks";
+import type { PlanBlocker } from "@/types/plan";
+import type { AssetConvertibility } from "@/lib/stellar/fast-path";
 import { useDemolishStore } from "@/store/demolish";
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import { assessConversions } from "@/lib/stellar/fast-path";
@@ -19,30 +19,19 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   const searchParams = useSearchParams();
 
   const source = searchParams.get("source");
-  const dest = searchParams.get("dest");
 
-  const {
-    setAccountState,
-    setAddresses,
-    setMediatorRequired: syncMediatorToStore,
-    sourceAddress,
-    destinationAddress,
-    memo,
-    memoType,
-  } = useDemolishStore();
+  const { setAccountState, sourceAddress } = useDemolishStore();
 
   const [account, setAccount] = useState<AccountState | null>(null);
-  const [plan, setPlanState] = useState<PlannedStep[]>([]);
+  const [conversions, setConversions] = useState<AssetConvertibility[]>([]);
   const [blockers, setBlockers] = useState<PlanBlocker[]>([]);
-  const [mediatorRequired, setMediatorRequired] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const effectiveSource = source ?? sourceAddress;
-  const effectiveDest = dest ?? destinationAddress;
 
   const fetchData = useCallback(async () => {
-    if (!effectiveSource || !effectiveDest) {
+    if (!effectiveSource) {
       router.push(`/${routeNetwork}`);
       return;
     }
@@ -51,10 +40,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     setError(null);
 
     try {
-      const [accountRes, mediatorRes] = await Promise.all([
-        fetch(`/api/${routeNetwork}/account/${effectiveSource}`),
-        fetch(`/api/${routeNetwork}/mediator/check/${effectiveDest}`),
-      ]);
+      const accountRes = await fetch(`/api/${routeNetwork}/account/${effectiveSource}`);
 
       if (!accountRes.ok) {
         const data = await accountRes.json();
@@ -63,51 +49,27 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       }
 
       const accountData: AccountState = await accountRes.json();
-      const mediatorData = await mediatorRes.json();
-      const needsMediator = mediatorData.requiresMediator ?? false;
-
-      // Shared mediator account (operator-funded once, reused for everyone).
-      const mediatorPublicKey = needsMediator
-        ? getMediatorPublicKey(routeNetwork) || undefined
-        : undefined;
-
       setAccount(accountData);
       setAccountState(accountData);
-      setAddresses(effectiveSource, effectiveDest, memo ?? undefined, memoType ?? undefined);
-      setMediatorRequired(needsMediator);
-      syncMediatorToStore(needsMediator, mediatorPublicKey);
 
-      // Probe for blockers first; only assess conversions when the account is otherwise clean.
-      const probe = buildPlan(accountData, needsMediator);
-      let fastPathEligible = false;
-      if (probe.blockers.length === 0) {
-        fastPathEligible = (await assessConversions(accountData, routeNetwork)).every(
-          (a) => a.convertible
-        );
-      }
-      const { steps, blockers: planBlockers } = buildPlan(
-        accountData,
-        needsMediator,
-        fastPathEligible
-      );
-      setPlanState(steps);
+      // Destination is unknown at this stage; build the preview plan with
+      // mediatorRequired=false and fastPathEligible=false purely for grouping and
+      // blocker detection. The final plan is built at the destination step.
+      const { blockers: planBlockers } = buildPlan(accountData, false, false);
       setBlockers(planBlockers);
+
+      // Only probe per-asset convertibility when the account is otherwise clean.
+      if (planBlockers.length === 0) {
+        setConversions(await assessConversions(accountData, routeNetwork));
+      } else {
+        setConversions([]);
+      }
     } catch {
       setError("Failed to analyze account. Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
-  }, [
-    effectiveSource,
-    effectiveDest,
-    routeNetwork,
-    router,
-    setAccountState,
-    setAddresses,
-    syncMediatorToStore,
-    memo,
-    memoType,
-  ]);
+  }, [effectiveSource, routeNetwork, router, setAccountState]);
 
   useEffect(() => {
     fetchData();
@@ -154,15 +116,13 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         >
           <ArrowLeft className="h-4 w-4" />
         </Link>
-        <h1 className="mkt-display text-xl font-bold text-white">Execution plan</h1>
+        <h1 className="mkt-display text-xl font-bold text-white">Review &amp; decide</h1>
       </div>
 
       <PlanView
         account={account}
-        plan={plan}
+        conversions={conversions}
         blockers={blockers}
-        destinationAddress={effectiveDest!}
-        mediatorRequired={mediatorRequired}
         network={routeNetwork}
         onRefresh={fetchData}
         loading={loading}
