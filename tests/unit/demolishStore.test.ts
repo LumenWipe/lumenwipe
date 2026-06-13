@@ -1,6 +1,28 @@
 import { test, expect, beforeEach } from "bun:test";
 import { useDemolishStore } from "@/store/demolish";
 import type { PlannedStep } from "@/types/plan";
+import type { AccountState } from "@/types/account";
+
+function accountState(): AccountState {
+  return {
+    address: "GSOURCE",
+    network: "testnet",
+    sequence: "1",
+    nativeBalanceLumens: "10.0000000",
+    dataEntries: [],
+    signers: [],
+    thresholds: { low: 0, med: 0, high: 0 },
+    numSubEntries: 0,
+    numSponsoring: 0,
+    sponsoredBy: null,
+    authImmutable: false,
+    trustlines: [],
+    openOffers: [],
+    poolShares: [],
+    claimableBalances: [],
+    subEntryMismatch: false,
+  };
+}
 
 function step(index: number): PlannedStep {
   return {
@@ -43,4 +65,31 @@ test("setPlan resets currentStepIndex so a new shorter plan is in range", () => 
 test("setPlan stores the provided plan", () => {
   useDemolishStore.getState().setPlan([step(0), step(1)]);
   expect(useDemolishStore.getState().executionPlan.map((s) => s.index)).toEqual([0, 1]);
+});
+
+test("assetDispositions defaults to empty", () => {
+  expect(useDemolishStore.getState().assetDispositions).toEqual({});
+});
+
+test("setAssetDisposition records a decision and merges further decisions", () => {
+  useDemolishStore.getState().setAssetDisposition("USDC:GISSUER", "issuer");
+  expect(useDemolishStore.getState().assetDispositions).toEqual({ "USDC:GISSUER": "issuer" });
+
+  useDemolishStore.getState().setAssetDisposition("EURC:GOTHER", "convert");
+  expect(useDemolishStore.getState().assetDispositions).toEqual({
+    "USDC:GISSUER": "issuer",
+    "EURC:GOTHER": "convert",
+  });
+});
+
+test("setAccountState clears prior asset dispositions", () => {
+  useDemolishStore.getState().setAssetDisposition("USDC:GISSUER", "issuer");
+  useDemolishStore.getState().setAccountState(accountState());
+  expect(useDemolishStore.getState().assetDispositions).toEqual({});
+});
+
+test("reset clears asset dispositions", () => {
+  useDemolishStore.getState().setAssetDisposition("USDC:GISSUER", "issuer");
+  useDemolishStore.getState().reset();
+  expect(useDemolishStore.getState().assetDispositions).toEqual({});
 });

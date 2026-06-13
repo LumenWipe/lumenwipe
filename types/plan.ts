@@ -10,6 +10,8 @@ export type StepType =
 
 export type StepStatus = "pending" | "signing" | "submitted" | "confirmed" | "failed" | "skipped";
 
+export type AssetDisposition = "convert" | "issuer";
+
 export interface PlannedStep {
   index: number;
   type: StepType;

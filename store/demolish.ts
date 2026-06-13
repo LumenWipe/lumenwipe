@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { v4 as uuidv4 } from "uuid";
 import type { AccountState } from "@/types/account";
-import type { PlannedStep, DemolishPhase } from "@/types/plan";
+import type { PlannedStep, DemolishPhase, AssetDisposition } from "@/types/plan";
 
 interface DemolishState {
   // Inputs
@@ -15,6 +15,9 @@ interface DemolishState {
   accountState: AccountState | null;
   executionPlan: PlannedStep[];
   currentStepIndex: number;
+
+  // Per-asset disposition: swap to XLM ("convert") or return to issuer ("issuer")
+  assetDispositions: Record<string, AssetDisposition>;
 
   // Multisig
   requiredSignatureCount: number;
@@ -39,6 +42,7 @@ interface DemolishState {
   setPhase: (phase: DemolishPhase) => void;
   setAccountState: (state: AccountState) => void;
   setPlan: (plan: PlannedStep[]) => void;
+  setAssetDisposition: (asset: string, action: AssetDisposition) => void;
   setMediatorRequired: (required: boolean, publicKey?: string) => void;
   setCurrentStepIndex: (index: number) => void;
   updateStep: (index: number, patch: Partial<PlannedStep>) => void;
@@ -58,6 +62,7 @@ const initialState = {
   accountState: null,
   executionPlan: [],
   currentStepIndex: 0,
+  assetDispositions: {},
   requiredSignatureCount: 1,
   mediatorRequired: false,
   mediatorPublicKey: null,
@@ -82,12 +87,16 @@ export const useDemolishStore = create<DemolishState>((set) => ({
     set({
       accountState,
       requiredSignatureCount: Math.max(1, accountState.thresholds.med),
+      assetDispositions: {},
     }),
 
   // Reset the step pointer whenever a new plan is installed: a prior run may have
   // advanced currentStepIndex, and a new (often shorter) plan must start at step 0
   // so executionPlan[currentStepIndex] never points past the end.
   setPlan: (executionPlan) => set({ executionPlan, currentStepIndex: 0 }),
+
+  setAssetDisposition: (asset, action) =>
+    set((s) => ({ assetDispositions: { ...s.assetDispositions, [asset]: action } })),
 
   setMediatorRequired: (required, publicKey) =>
     set({ mediatorRequired: required, mediatorPublicKey: publicKey ?? null }),
