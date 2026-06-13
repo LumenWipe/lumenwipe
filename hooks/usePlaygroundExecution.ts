@@ -175,6 +175,7 @@ export function usePlaygroundExecution() {
           memoType: null,
           mediatorRequired: false,
           executionPlan: plan,
+          assetDispositions: {},
         };
 
         setProgressStatus(`Building: ${step.title}`);

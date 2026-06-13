@@ -48,6 +48,7 @@ export function useStepExecution() {
         mediatorRequired,
         // Read live plan at call time to avoid staleness between batched steps.
         executionPlan: useDemolishStore.getState().executionPlan,
+        assetDispositions: useDemolishStore.getState().assetDispositions,
       });
     },
     [network, sourceAddress, accountState, destinationAddress, memo, memoType, mediatorRequired]

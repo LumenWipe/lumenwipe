@@ -1,7 +1,11 @@
 import { Account, Asset, xdr } from "@stellar/stellar-sdk";
 import { getMediatorPublicKey, type Network } from "@/config/networks";
 import { getRpcServer } from "@/lib/stellar/rpc";
-import { NoConversionPathError, FastPathUnavailableError } from "@/lib/utils/errors";
+import {
+  NoConversionPathError,
+  FastPathUnavailableError,
+  AssetRouteLostError,
+} from "@/lib/utils/errors";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import { fetchConversionPath } from "@/lib/se-api/paths";
 import { buildRemoveDataEntriesTx } from "@/lib/stellar/tx-builder/data-entries";
@@ -14,12 +18,17 @@ import { buildRemoveTrustlinesTx } from "@/lib/stellar/tx-builder/trustlines";
 import { buildNormalizeSignersTx } from "@/lib/stellar/tx-builder/signers";
 import { buildClaimBalancesTx } from "@/lib/stellar/tx-builder/claimable-balances";
 import { buildMergeTx, buildMediatorMergePaymentTx } from "@/lib/stellar/tx-builder/merge";
-import { assembleFusedCloseOps, buildFusedCloseTx } from "@/lib/stellar/tx-builder/fused-close";
+import {
+  assembleFusedCloseOps,
+  buildFusedCloseTx,
+  type AssetAction,
+  type FusedCloseInput,
+} from "@/lib/stellar/tx-builder/fused-close";
 import { computeNeedsSignerNormalization } from "@/lib/stellar/tx-builder";
 import { batchItems } from "@/lib/stellar/tx-builder/batching";
 import { OP_BATCH_LIMIT } from "@/config/constants";
 import type { AccountState, ClaimableBalance, Trustline } from "@/types/account";
-import type { ConversionPath, PlannedStep } from "@/types/plan";
+import type { AssetDisposition, PlannedStep } from "@/types/plan";
 
 // Engine core shared by the wallet flow (useStepExecution) and the testnet
 // playground (usePlaygroundExecution). Pure with respect to React: all state
@@ -34,6 +43,7 @@ export interface StepBuildContext {
   memoType: "text" | "id" | "hash" | null;
   mediatorRequired: boolean;
   executionPlan: PlannedStep[];
+  assetDispositions: Record<string, AssetDisposition>;
 }
 
 /** Signs an unsigned XDR and returns the signed envelope (local key or remote API). */
@@ -195,31 +205,42 @@ export async function buildStepXdrForPlan(
     }
 
     case "CLOSE_ACCOUNT": {
+      // Claimable-balance accounts are routed through the step-by-step CLAIM_BALANCES
+      // flow by buildPlan, so the fused path is claimable-free. Defend against a gate
+      // regression: fail loudly (degrade to step-by-step) rather than silently
+      // abandoning claimable funds at merge.
+      if (claimableBalances.length > 0) {
+        throw new FastPathUnavailableError(
+          "This account has claimable balances; using the step-by-step flow."
+        );
+      }
       // Re-read EVERY trustline's live balance, not the scan-time value: a line that
-      // was empty at scan but received a deposit since must still be converted, or the
+      // was empty at scan but received a deposit since must still be disposed of, or the
       // atomic close would fail at its changeTrust removal op (and retry the same way).
-      const quoted = await Promise.all(
-        trustlines.map(async (tl) => {
+      // On a lost route this rejects with the first offending asset; which one is
+      // nondeterministic, which is fine — the UI re-decides per asset and rebuilds.
+      const withBalanceActions = await Promise.all(
+        trustlines.map(async (tl): Promise<AssetAction | null> => {
           const liveBalance = await fetchLiveTrustlineBalance(tl, sourceAddress, server);
           if (parseFloat(liveBalance) <= 0) return null;
           const effectiveTl = { ...tl, balance: liveBalance };
+          const disposition = ctx.assetDispositions[tl.asset] ?? "convert";
+          if (disposition === "issuer") {
+            return { trustline: effectiveTl, action: "issuer" };
+          }
           const path = await fetchConversionPath(effectiveTl.asset, effectiveTl.balance, network);
-          if (!path)
-            throw new FastPathUnavailableError(
-              `No clean conversion path for ${tl.code}; falling back to step-by-step.`
-            );
-          return { trustline: effectiveTl, path };
+          if (!path) throw new AssetRouteLostError(tl.code);
+          return { trustline: effectiveTl, action: "convert", path };
         })
       );
-      const conversions = quoted.filter(
-        (c): c is { trustline: Trustline; path: ConversionPath } => c !== null
-      );
-      const input = {
+      const assetActions = withBalanceActions.filter((a): a is AssetAction => a !== null);
+      const input: FusedCloseInput = {
         needsSignerNormalization: computeNeedsSignerNormalization(accountState),
         signers,
         dataEntries,
         openOffers,
-        conversions,
+        claimableBalances: [],
+        assetActions,
         trustlines,
         destinationAddress,
         memo,
@@ -229,7 +250,7 @@ export async function buildStepXdrForPlan(
       // The Stellar SDK does not enforce the 100-operation protocol cap at build
       // time, so an oversized fused tx would build and submit and then be rejected
       // as an opaque failure. Count the ops up front and degrade to the stepwise
-      // plan instead. Live balances drive `conversions`, so a line that was empty
+      // plan instead. Live balances drive `assetActions`, so a line that was empty
       // at scan but funded since can push the count past the limit.
       const ops = assembleFusedCloseOps(sourceAddress, input);
       if (ops.length > OP_BATCH_LIMIT) {

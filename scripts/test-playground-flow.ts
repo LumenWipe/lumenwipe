@@ -152,6 +152,7 @@ for (const step of plan) {
     memoType: null,
     mediatorRequired: false,
     executionPlan: plan,
+    assetDispositions: {},
   };
 
   let unsigned: string;

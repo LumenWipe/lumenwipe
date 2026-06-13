@@ -238,3 +238,12 @@ export class FastPathUnavailableError extends Error {
     this.name = "FastPathUnavailableError";
   }
 }
+
+export class AssetRouteLostError extends Error {
+  constructor(public readonly assetCode: string) {
+    super(
+      `The swap route for ${assetCode} is no longer available. Choose to return it to the issuer to continue.`
+    );
+    this.name = "AssetRouteLostError";
+  }
+}
