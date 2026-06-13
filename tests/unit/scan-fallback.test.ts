@@ -18,9 +18,11 @@ function makeAccount(overrides: Partial<AccountState> = {}): AccountState {
     numSubEntries: 0,
     numSponsoring: 0,
     sponsoredBy: null,
+    authImmutable: false,
     trustlines: [],
     openOffers: [],
     poolShares: [],
+    claimableBalances: [],
     subEntryMismatch: false,
     ...overrides,
   };
@@ -50,7 +52,13 @@ test("detectSubEntryMismatch › undercounted scan → mismatch", () => {
     trustlines: [makeTrustline("AIRDROP1"), makeTrustline("RUGPULL"), makeTrustline("LWDEMO")],
     openOffers: [
       { id: "1", selling: "native", buying: `LWDEMO:${ISSUER}`, amount: "5", price: "2" },
-      { id: "2", selling: `AIRDROP1:${ISSUER}`, buying: "native", amount: "500000", price: "0.0001" },
+      {
+        id: "2",
+        selling: `AIRDROP1:${ISSUER}`,
+        buying: "native",
+        amount: "500000",
+        price: "0.0001",
+      },
       { id: "3", selling: `RUGPULL:${ISSUER}`, buying: "native", amount: "10", price: "42" },
     ],
     dataEntries: [],
@@ -98,7 +106,13 @@ test("needsLiveRescan › partially indexed account (trustlines seen, data entri
     trustlines: [makeTrustline("AIRDROP1"), makeTrustline("RUGPULL"), makeTrustline("LWDEMO")],
     openOffers: [
       { id: "1", selling: "native", buying: `LWDEMO:${ISSUER}`, amount: "5", price: "2" },
-      { id: "2", selling: `AIRDROP1:${ISSUER}`, buying: "native", amount: "500000", price: "0.0001" },
+      {
+        id: "2",
+        selling: `AIRDROP1:${ISSUER}`,
+        buying: "native",
+        amount: "500000",
+        price: "0.0001",
+      },
       { id: "3", selling: `RUGPULL:${ISSUER}`, buying: "native", amount: "10", price: "42" },
     ],
     numSubEntries: 10,
