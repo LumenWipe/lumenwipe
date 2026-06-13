@@ -1,4 +1,4 @@
-import { Account, Asset } from "@stellar/stellar-sdk";
+import { Account, Asset, xdr } from "@stellar/stellar-sdk";
 import { getMediatorPublicKey, type Network } from "@/config/networks";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { NoConversionPathError } from "@/lib/utils/errors";
@@ -12,9 +12,10 @@ import {
 } from "@/lib/stellar/tx-builder/asset-conversion";
 import { buildRemoveTrustlinesTx } from "@/lib/stellar/tx-builder/trustlines";
 import { buildNormalizeSignersTx } from "@/lib/stellar/tx-builder/signers";
+import { buildClaimBalancesTx } from "@/lib/stellar/tx-builder/claimable-balances";
 import { buildMergeTx, buildMediatorMergePaymentTx } from "@/lib/stellar/tx-builder/merge";
 import { batchItems } from "@/lib/stellar/tx-builder/batching";
-import type { AccountState, Trustline } from "@/types/account";
+import type { AccountState, ClaimableBalance, Trustline } from "@/types/account";
 import type { PlannedStep } from "@/types/plan";
 
 // Engine core shared by the wallet flow (useStepExecution) and the testnet
@@ -55,6 +56,38 @@ export function getBatchIndex(step: PlannedStep, type: string, plan: PlannedStep
   return stepsOfType.findIndex((s) => s.index === step.index);
 }
 
+/**
+ * Re-reads a batch of claimable balances over RPC and returns only those that
+ * still exist on-chain. This prevents a single already-claimed balance from
+ * failing the entire atomic transaction for the remaining claimants.
+ */
+async function filterExistingClaimableBalances(
+  balances: ClaimableBalance[],
+  server: ReturnType<typeof getRpcServer>
+): Promise<ClaimableBalance[]> {
+  if (balances.length === 0) return [];
+
+  const keys = balances.map((b) =>
+    xdr.LedgerKey.claimableBalance(
+      new xdr.LedgerKeyClaimableBalance({
+        balanceId: xdr.ClaimableBalanceId.fromXDR(b.id, "hex"),
+      })
+    )
+  );
+
+  try {
+    const res = await server.getLedgerEntries(...keys);
+    const existingIds = new Set(
+      (res.entries ?? []).map((e) => e.key.claimableBalance().balanceId().toXDR("hex"))
+    );
+    return balances.filter((b) => existingIds.has(b.id));
+  } catch {
+    // If the re-read fails, proceed with the full batch and let the network
+    // surface per-operation errors via the standard error map.
+    return balances;
+  }
+}
+
 /** Builds the unsigned XDR for a planned step using the current on-chain sequence. */
 export async function buildStepXdrForPlan(
   step: PlannedStep,
@@ -66,7 +99,7 @@ export async function buildStepXdrForPlan(
   const liveAccount = await server.getAccount(sourceAddress);
   const sdkAccount = new Account(sourceAddress, liveAccount.sequenceNumber());
 
-  const { dataEntries, openOffers, trustlines, signers } = accountState;
+  const { dataEntries, openOffers, trustlines, signers, claimableBalances } = accountState;
 
   switch (step.type) {
     case "NORMALIZE_SIGNERS": {
@@ -84,6 +117,32 @@ export async function buildStepXdrForPlan(
       const batches = batchItems(openOffers, 100);
       const batchIdx = getBatchIndex(step, "CANCEL_OFFERS", ctx.executionPlan);
       return buildCancelOffersTx(sdkAccount, batches[batchIdx] ?? openOffers, network);
+    }
+
+    case "CLAIM_BALANCES": {
+      // Only claim balances we can actually receive: XLM (no trustline needed) or
+      // assets with an authorized trustline. This matches the buildPlan filter.
+      const authorizedAssets = new Set(
+        trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset)
+      );
+      const claimable = claimableBalances.filter(
+        (b) => b.asset === "native" || authorizedAssets.has(b.asset)
+      );
+      const batches = batchItems(claimable, 100);
+      const batchIdx = getBatchIndex(step, "CLAIM_BALANCES", ctx.executionPlan);
+      const batch = batches[batchIdx] ?? claimable;
+
+      // Re-verify on-chain: drop any balances already claimed by other claimants
+      // so they don't fail the entire atomic transaction.
+      const existing = await filterExistingClaimableBalances(batch, server);
+      if (existing.length === 0) {
+        throw new Error(
+          "All claimable balances in this batch have already been claimed. " +
+            "You can safely skip this step."
+        );
+      }
+
+      return buildClaimBalancesTx(sdkAccount, existing, network);
     }
 
     case "CONVERT_ASSETS": {

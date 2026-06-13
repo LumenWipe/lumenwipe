@@ -32,17 +32,32 @@ export function buildPlan(accountState: AccountState, mediatorRequired: boolean)
   const blockers: PlanBlocker[] = [];
   let idx = 0;
 
-  const { signers, thresholds, dataEntries, openOffers, trustlines } = accountState;
+  const {
+    signers,
+    thresholds,
+    dataEntries,
+    openOffers,
+    trustlines,
+    claimableBalances,
+    authImmutable,
+  } = accountState;
   const masterKey = accountState.address;
   const extraSigners = signers.filter((s) => s.key !== masterKey);
 
-  const needsSignerNormalization =
-    extraSigners.length > 0 || thresholds.med > 1 || thresholds.high > 1;
+  // AUTH_IMMUTABLE: ACCOUNT_MERGE is permanently blocked regardless of other state.
+  // SetOptions is also disabled, so NORMALIZE_SIGNERS would fail too. Surface this
+  // as the first blocker so users don't read past a plan that can never execute.
+  if (authImmutable) {
+    blockers.push({
+      message:
+        "This account has the AUTH_IMMUTABLE flag set. ACCOUNT_MERGE is permanently disabled " +
+        "for AUTH_IMMUTABLE accounts - the flag cannot be cleared once set.",
+    });
+  }
 
   // Sponsoring blocker: numSponsoring > 0 means this account is the reserve sponsor for
-  // entries on other accounts. stellar-core refuses ACCOUNT_MERGE when getNumSponsoring > 0.
-  // Surface this before building the rest of the plan so users don't reach the final step
-  // only to fail.
+  // entries on other accounts (including claimable balances it created). stellar-core
+  // refuses ACCOUNT_MERGE when numSponsoring > 0.
   if (accountState.numSponsoring > 0) {
     blockers.push({
       message:
@@ -75,6 +90,9 @@ export function buildPlan(accountState: AccountState, mediatorRequired: boolean)
   // key's weight alone cannot reach the current high threshold, the normalization
   // tx can never be self-authorized - surface this as a blocker before building a
   // plan that would fail at signing time.
+  const needsSignerNormalization =
+    extraSigners.length > 0 || thresholds.med > 1 || thresholds.high > 1;
+
   if (needsSignerNormalization) {
     const masterSigner = signers.find((s) => s.key === masterKey);
     const masterWeight = masterSigner?.weight ?? 0;
@@ -88,6 +106,43 @@ export function buildPlan(accountState: AccountState, mediatorRequired: boolean)
       });
     }
   }
+
+  // Deauthorized trustlines with balance: the issuer has revoked authorization on these
+  // trustlines. PathPaymentStrictSend fails with src_not_authorized, and ChangeTrust
+  // limit=0 fails while balance > 0. The issuer must re-authorize before the account
+  // can convert or remove these trustlines.
+  const deauthorizedWithBalance = trustlines.filter(
+    (tl) => !tl.authorized && parseFloat(tl.balance) > 0
+  );
+  for (const tl of deauthorizedWithBalance) {
+    blockers.push({
+      message:
+        `Trustline for ${tl.code} has a non-zero balance (${tl.balance}) but is deauthorized ` +
+        `by the issuer. The issuer must re-authorize this trustline before it can be ` +
+        `converted or removed.`,
+    });
+  }
+
+  // Claimable balances without a trustline: the account is a claimant but cannot claim
+  // because no authorized trustline exists for the asset. After ACCOUNT_MERGE the
+  // account no longer exists, making these assets permanently inaccessible.
+  const authorizedTrustlineAssets = new Set(
+    trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset)
+  );
+  const unclaimableBalances = claimableBalances.filter(
+    (b) => b.asset !== "native" && !authorizedTrustlineAssets.has(b.asset)
+  );
+  for (const b of unclaimableBalances) {
+    const code = b.asset.split(":")[0];
+    blockers.push({
+      message:
+        `This account is a claimant for ${b.amount} ${code} but has no authorized trustline ` +
+        `for it. Establish a ${code} trustline and claim the balance manually before proceeding ` +
+        `- these funds will be permanently inaccessible once the account is merged.`,
+    });
+  }
+
+  // ─── Step generation ────────────────────────────────────────────────────────
 
   if (needsSignerNormalization) {
     steps.push(
@@ -137,8 +192,57 @@ export function buildPlan(accountState: AccountState, mediatorRequired: boolean)
     }
   }
 
-  const trustlinesWithBalance = trustlines.filter((tl) => parseFloat(tl.balance) > 0);
-  for (const tl of trustlinesWithBalance) {
+  // Claimable balances that can be automatically claimed: XLM (no trustline required)
+  // or assets where an authorized trustline already exists. Batched like other operations.
+  const claimable = claimableBalances.filter(
+    (b) => b.asset === "native" || authorizedTrustlineAssets.has(b.asset)
+  );
+  if (claimable.length > 0) {
+    const batches = batchItems(claimable, OP_BATCH_LIMIT);
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      const xlmCount = batch.filter((b) => b.asset === "native").length;
+      const tokenCount = batch.length - xlmCount;
+      let detail = "";
+      if (xlmCount > 0 && tokenCount > 0) {
+        detail = ` (${xlmCount} XLM, ${tokenCount} token${tokenCount === 1 ? "" : "s"})`;
+      } else if (tokenCount > 0) {
+        detail = ` (${tokenCount} token${tokenCount === 1 ? "" : "s"})`;
+      }
+      steps.push(
+        step(
+          idx++,
+          "CLAIM_BALANCES",
+          batches.length > 1
+            ? `Claim balances (batch ${i + 1}/${batches.length})`
+            : "Claim claimable balances",
+          `Claim ${batch.length} claimable balance${batch.length === 1 ? "" : "s"}${detail} and add the proceeds to this account.`,
+          batch.length
+        )
+      );
+    }
+  }
+
+  // CONVERT_ASSETS: include trustlines with a current balance OR whose asset appears
+  // in a claimable balance that will be claimed above - claiming runs first and increases
+  // the live trustline balance, which the executor reads on-chain at step build time.
+  const claimableNonXlmByAsset = new Map<string, number>();
+  for (const b of claimable) {
+    if (b.asset !== "native") {
+      claimableNonXlmByAsset.set(
+        b.asset,
+        (claimableNonXlmByAsset.get(b.asset) ?? 0) + parseFloat(b.amount)
+      );
+    }
+  }
+
+  const trustlinesNeedingConversion = trustlines.filter(
+    (tl) =>
+      tl.authorized &&
+      (parseFloat(tl.balance) > 0 || (claimableNonXlmByAsset.get(tl.asset) ?? 0) > 0)
+  );
+
+  for (const tl of trustlinesNeedingConversion) {
     steps.push(
       step(
         idx++,
