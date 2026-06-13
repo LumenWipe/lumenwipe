@@ -111,6 +111,22 @@ const RESULT_CODE_MESSAGES: Record<string, string> = {
   manage_data_name_not_found: "Data entry not found - it may have already been removed.",
   manage_data_low_reserve: "Insufficient XLM to cover the reserve for this data entry.",
   manage_data_invalid_name: "Invalid data entry name.",
+
+  // ── ClaimClaimableBalance (CLAIM_BALANCES) ───────────────────────────────────
+  claim_claimable_balance_does_not_exist:
+    "This claimable balance no longer exists - it may have already been claimed by another claimant.",
+  claim_claimable_balance_cannot_claim:
+    "This claimable balance has a predicate (e.g. a time lock) that prevents claiming it right now.",
+  claim_claimable_balance_line_full:
+    "The trustline for the claimed asset is at its limit and cannot receive more.",
+  claim_claimable_balance_no_trust:
+    "No trustline exists for the asset in this claimable balance. Establish a trustline first.",
+  claim_claimable_balance_not_authorized:
+    "This account is not authorized to receive the asset in this claimable balance.",
+  claim_claimable_balance_not_claimant:
+    "This account is not listed as a claimant for this balance.",
+  claim_claimable_balance_low_reserve:
+    "Insufficient XLM to cover the reserve required to claim this balance.",
 };
 
 // ─── XDR result code extraction ───────────────────────────────────────────────
