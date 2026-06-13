@@ -2,21 +2,30 @@ import type { Network } from "@/config/networks";
 import type { AccountState } from "@/types/account";
 import { fetchConversionPath } from "@/lib/se-api/paths";
 
+export interface AssetConvertibility {
+  asset: string;
+  code: string;
+  balance: string;
+  convertible: boolean;
+}
+
 /**
- * Returns true if every trustline with a balance has a usable conversion path,
- * so the whole close can be fused into one transaction. Returns true immediately
- * when there is nothing to convert. The authoritative re-quote happens later at
- * transaction-build time; this is the plan-time gate.
+ * Reports, per balance-bearing trustline, whether a usable conversion path to XLM
+ * exists. Resolves to an empty array when there is nothing to convert (no network
+ * call). The authoritative re-quote happens later at transaction-build time; this
+ * is the plan-time, per-asset gate that drives the preview's swap-or-return choice.
  */
-export async function assessConversionsClean(
+export async function assessConversions(
   accountState: AccountState,
   network: Network
-): Promise<boolean> {
-  const convertible = accountState.trustlines.filter((tl) => parseFloat(tl.balance) > 0);
-  if (convertible.length === 0) return true;
-
-  const results = await Promise.all(
-    convertible.map((tl) => fetchConversionPath(tl.asset, tl.balance, network).catch(() => null))
+): Promise<AssetConvertibility[]> {
+  const withBalance = accountState.trustlines.filter(
+    (tl) => tl.authorized && parseFloat(tl.balance) > 0
   );
-  return results.every((path) => path !== null);
+  return Promise.all(
+    withBalance.map(async (tl) => {
+      const path = await fetchConversionPath(tl.asset, tl.balance, network).catch(() => null);
+      return { asset: tl.asset, code: tl.code, balance: tl.balance, convertible: path !== null };
+    })
+  );
 }

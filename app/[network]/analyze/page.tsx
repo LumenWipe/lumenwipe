@@ -10,7 +10,7 @@ import type { PlannedStep, PlanBlocker } from "@/types/plan";
 import { getMediatorPublicKey } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { buildPlan } from "@/lib/stellar/tx-builder";
-import { assessConversionsClean } from "@/lib/stellar/fast-path";
+import { assessConversions } from "@/lib/stellar/fast-path";
 import PlanView from "@/components/plan/PlanView";
 
 export default function AnalyzePage({ params }: { params: Promise<{ network: Network }> }) {
@@ -81,7 +81,9 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       const probe = buildPlan(accountData, needsMediator);
       let fastPathEligible = false;
       if (probe.blockers.length === 0) {
-        fastPathEligible = await assessConversionsClean(accountData, routeNetwork);
+        fastPathEligible = (await assessConversions(accountData, routeNetwork)).every(
+          (a) => a.convertible
+        );
       }
       const { steps, blockers: planBlockers } = buildPlan(
         accountData,

@@ -56,37 +56,26 @@ afterEach(() => {
   mock.module("@/lib/se-api/paths", () => realPaths);
 });
 
-test("assessConversionsClean › no trustlines → true without calling the network", async () => {
+test("assessConversions › no balance-bearing trustlines → [] without calling the network", async () => {
   const fetcher = mock(() => Promise.resolve<ConversionPath | null>(null));
   mock.module("@/lib/se-api/paths", () => ({ fetchConversionPath: fetcher }));
-  const { assessConversionsClean } = await import("@/lib/stellar/fast-path");
-
-  const result = await assessConversionsClean(makeAccount({ trustlines: [] }), "testnet");
-
-  expect(result).toBe(true);
-  expect(fetcher).not.toHaveBeenCalled();
-});
-
-test("assessConversionsClean › only zero-balance trustlines → true without calling the network", async () => {
-  const fetcher = mock(() => Promise.resolve<ConversionPath | null>(null));
-  mock.module("@/lib/se-api/paths", () => ({ fetchConversionPath: fetcher }));
-  const { assessConversionsClean } = await import("@/lib/stellar/fast-path");
+  const { assessConversions } = await import("@/lib/stellar/fast-path");
 
   const account = makeAccount({
     trustlines: [makeTrustline({ balance: "0" }), makeTrustline({ balance: "0.0000000" })],
   });
-  const result = await assessConversionsClean(account, "testnet");
+  const result = await assessConversions(account, "testnet");
 
-  expect(result).toBe(true);
+  expect(result).toEqual([]);
   expect(fetcher).not.toHaveBeenCalled();
 });
 
-test("assessConversionsClean › every asset with balance has a path → true", async () => {
+test("assessConversions › every asset with balance has a path → all convertible", async () => {
   const fetcher = mock((fromAsset: string) =>
     Promise.resolve<ConversionPath | null>(makePath(fromAsset))
   );
   mock.module("@/lib/se-api/paths", () => ({ fetchConversionPath: fetcher }));
-  const { assessConversionsClean } = await import("@/lib/stellar/fast-path");
+  const { assessConversions } = await import("@/lib/stellar/fast-path");
 
   const account = makeAccount({
     trustlines: [
@@ -94,20 +83,25 @@ test("assessConversionsClean › every asset with balance has a path → true", 
       makeTrustline({ asset: `EURC:${ISSUER}`, code: "EURC", balance: "50" }),
     ],
   });
-  const result = await assessConversionsClean(account, "testnet");
+  const result = await assessConversions(account, "testnet");
 
-  expect(result).toBe(true);
+  expect(result).toHaveLength(2);
+  expect(result.every((a) => a.convertible)).toBe(true);
+  expect(result).toEqual([
+    { asset: `USDC:${ISSUER}`, code: "USDC", balance: "100", convertible: true },
+    { asset: `EURC:${ISSUER}`, code: "EURC", balance: "50", convertible: true },
+  ]);
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
 
-test("assessConversionsClean › at least one asset returns null → false", async () => {
+test("assessConversions › one asset returns null → only that entry is not convertible", async () => {
   const fetcher = mock((fromAsset: string) =>
     Promise.resolve<ConversionPath | null>(
       fromAsset.startsWith("EURC") ? null : makePath(fromAsset)
     )
   );
   mock.module("@/lib/se-api/paths", () => ({ fetchConversionPath: fetcher }));
-  const { assessConversionsClean } = await import("@/lib/stellar/fast-path");
+  const { assessConversions } = await import("@/lib/stellar/fast-path");
 
   const account = makeAccount({
     trustlines: [
@@ -115,18 +109,23 @@ test("assessConversionsClean › at least one asset returns null → false", asy
       makeTrustline({ asset: `EURC:${ISSUER}`, code: "EURC", balance: "50" }),
     ],
   });
-  const result = await assessConversionsClean(account, "testnet");
+  const result = await assessConversions(account, "testnet");
 
-  expect(result).toBe(false);
+  expect(result).toEqual([
+    { asset: `USDC:${ISSUER}`, code: "USDC", balance: "100", convertible: true },
+    { asset: `EURC:${ISSUER}`, code: "EURC", balance: "50", convertible: false },
+  ]);
 });
 
-test("assessConversionsClean › a thrown fetcher counts as no path → false", async () => {
+test("assessConversions › a thrown fetcher counts as not convertible", async () => {
   const fetcher = mock(() => Promise.reject<ConversionPath | null>(new Error("network down")));
   mock.module("@/lib/se-api/paths", () => ({ fetchConversionPath: fetcher }));
-  const { assessConversionsClean } = await import("@/lib/stellar/fast-path");
+  const { assessConversions } = await import("@/lib/stellar/fast-path");
 
   const account = makeAccount({ trustlines: [makeTrustline({ balance: "100" })] });
-  const result = await assessConversionsClean(account, "testnet");
+  const result = await assessConversions(account, "testnet");
 
-  expect(result).toBe(false);
+  expect(result).toEqual([
+    { asset: `USDC:${ISSUER}`, code: "USDC", balance: "100", convertible: false },
+  ]);
 });
