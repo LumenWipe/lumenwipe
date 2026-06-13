@@ -229,7 +229,7 @@ export async function buildStepXdrForPlan(
             return { trustline: effectiveTl, action: "issuer" };
           }
           const path = await fetchConversionPath(effectiveTl.asset, effectiveTl.balance, network);
-          if (!path) throw new AssetRouteLostError(tl.code);
+          if (!path) throw new AssetRouteLostError(tl.asset, tl.code);
           return { trustline: effectiveTl, action: "convert", path };
         })
       );

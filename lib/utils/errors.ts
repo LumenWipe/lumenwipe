@@ -240,9 +240,12 @@ export class FastPathUnavailableError extends Error {
 }
 
 export class AssetRouteLostError extends Error {
-  constructor(public readonly assetCode: string) {
+  constructor(
+    public readonly asset: string,
+    public readonly assetCode: string
+  ) {
     super(
-      `The swap route for ${assetCode} is no longer available. Choose to return it to the issuer to continue.`
+      `The swap route for ${assetCode} is no longer available. Return it to the issuer to continue.`
     );
     this.name = "AssetRouteLostError";
   }

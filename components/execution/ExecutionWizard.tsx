@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { useStepExecution } from "@/hooks/useStepExecution";
-import { NoConversionPathError, FastPathUnavailableError } from "@/lib/utils/errors";
+import {
+  NoConversionPathError,
+  FastPathUnavailableError,
+  AssetRouteLostError,
+} from "@/lib/utils/errors";
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import PlanSidebar from "./PlanSidebar";
 import StepDetailPanel from "./StepDetailPanel";
@@ -23,6 +27,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
   const { executeStep, progressStatus, buildStepXdr } = useStepExecution();
   const [noPathAsset, setNoPathAsset] = useState<string | null>(null);
+  const [routeLostAsset, setRouteLostAsset] = useState<{ asset: string; code: string } | null>(
+    null
+  );
   const [keyEntered, setKeyEntered] = useState(false);
 
   const forgetKey = useCallback(() => {
@@ -71,10 +78,16 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   useEffect(() => {
     if (!currentStep || currentStep.txXdr || currentStep.status !== "pending") return;
     setNoPathAsset(null);
+    setRouteLostAsset(null);
     buildStepXdr(currentStep)
       .then((xdr) => updateStep(currentStep.index, { txXdr: xdr }))
       .catch((err) => {
-        if (err instanceof NoConversionPathError) {
+        if (err instanceof AssetRouteLostError) {
+          // The fused close re-quotes "convert" assets at build time. A route that
+          // existed at analyze can vanish before signing; rather than degrading the
+          // single tx, ask the user to re-decide this asset to "issuer" and rebuild.
+          setRouteLostAsset({ asset: err.asset, code: err.assetCode });
+        } else if (err instanceof NoConversionPathError) {
           setNoPathAsset(currentStep.affectedAsset?.split(":")[0] ?? "token");
         } else if (err instanceof FastPathUnavailableError) {
           // The fused single-step close cannot resolve a clean conversion path.
@@ -113,6 +126,18 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     if (!currentStep) return;
     setNoPathAsset(null);
     updateStep(currentStep.index, { fallbackToIssuer: true, txXdr: null });
+  }
+
+  function handleReturnRouteLostAsset() {
+    if (!currentStep || !routeLostAsset) return;
+    // Re-decide this asset to "issuer" so the rebuilt fused close sends it back
+    // rather than swapping it, then re-trigger the pre-build effect by clearing
+    // the step's txXdr/error and setting it back to pending. The single tx is
+    // preserved - we rebuild it, we do not degrade to the stepwise plan.
+    useDemolishStore.getState().setAssetDisposition(routeLostAsset.asset, "issuer");
+    setRouteLostAsset(null);
+    updateStep(currentStep.index, { status: "pending", error: null, txXdr: null });
+    setPhase("STEP_EXECUTING");
   }
 
   function handleSkipStep() {
@@ -165,6 +190,8 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           noSwapPathAsset={noPathAsset}
           onSendToIssuer={handleSendToIssuer}
           onSkipStep={handleSkipStep}
+          routeLostAsset={routeLostAsset?.code ?? null}
+          onReturnRouteLostAsset={handleReturnRouteLostAsset}
         />
 
         {/* Mobile step list */}

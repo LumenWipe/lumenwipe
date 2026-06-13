@@ -26,6 +26,8 @@ interface StepDetailPanelProps {
   noSwapPathAsset?: string | null;
   onSendToIssuer?: () => void;
   onSkipStep?: () => void;
+  routeLostAsset?: string | null;
+  onReturnRouteLostAsset?: () => void;
 }
 
 export default function StepDetailPanel({
@@ -42,6 +44,8 @@ export default function StepDetailPanel({
   noSwapPathAsset,
   onSendToIssuer,
   onSkipStep,
+  routeLostAsset,
+  onReturnRouteLostAsset,
 }: StepDetailPanelProps) {
   const [confirmed, setConfirmed] = useState(false);
   const mediatorRequired = useDemolishStore((s) => s.mediatorRequired);
@@ -137,8 +141,34 @@ export default function StepDetailPanel({
         {/* Pending / executing view */}
         {(step.status === "pending" || isExecuting) && (
           <>
+            {/* Lost swap route at build time - re-decide this asset to the issuer
+                so the single close tx can be rebuilt and continue. */}
+            {routeLostAsset && !isExecuting && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 space-y-3">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-400">
+                      Swap route for {routeLostAsset} is no longer available
+                    </p>
+                    <p className="text-sm text-white/55 mt-1">
+                      The DEX route for this asset disappeared since you reviewed the plan, so it
+                      can no longer be swapped to XLM in this close. Return it to the issuer to
+                      continue - note that not all issuers accept returning tokens.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={onReturnRouteLostAsset}
+                  className="w-full py-2 px-3 rounded-lg text-sm font-semibold bg-stellar/15 text-stellar border border-stellar/30 hover:bg-stellar/25 transition-colors"
+                >
+                  Return {routeLostAsset} to the issuer and continue
+                </button>
+              </div>
+            )}
+
             {/* No DEX path warning - shown before user makes a choice */}
-            {noSwapPath && !isExecuting && (
+            {!routeLostAsset && noSwapPath && !isExecuting && (
               <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 space-y-3">
                 <div className="flex items-start gap-2">
                   <AlertCircle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
@@ -179,8 +209,8 @@ export default function StepDetailPanel({
               </div>
             )}
 
-            {/* Normal sign flow - hidden while waiting for no-path choice */}
-            {!noSwapPath && (
+            {/* Normal sign flow - hidden while waiting for a no-path or lost-route choice */}
+            {!noSwapPath && !routeLostAsset && (
               <>
                 {/* Merge-specific warning */}
                 {isMerge && (
