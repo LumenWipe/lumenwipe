@@ -251,30 +251,19 @@ test("redesigned flow: convertible asset shows a swap label and merges in one tx
 // issuer" - and then the fused close should return the balance to the issuer,
 // remove the trustline, and merge in one signed transaction.
 //
-// SKIPPED, honestly: this could not be driven to a clean issuer-return close on
-// testnet. The analyze gate behaves correctly (the no-route card renders and the
-// per-asset "return to issuer" checkbox unlocks the destination step), but the
-// fused close re-quotes assets at transaction-build time (step-engine
-// buildStepXdrForPlan). For the custom no-market asset, the sign-time rebuild
-// raised AssetRouteLostError and the step landed in "failed" (with a "Retry this
-// step" control) rather than producing the merge - so the close never reached
-// /complete and the account was not merged. A reliably-non-convertible-yet-
-// issuer-acceptable testnet asset that drives the UI to a clean single-tx close
-// was not available on this run, so we skip rather than ship a flaky or failing
-// assertion. See the route-lost recovery path in ExecutionWizard /
-// StepDetailPanel for the in-app handling of this case.
-//
-// The setup below is kept (and unreachable after the skip) to document the
-// intended on-chain fixture for when this path is made deterministic.
+// The analyze gate behaves correctly (the no-route card renders and the per-asset
+// "return to issuer" checkbox unlocks the destination step), and the fused close
+// returns the balance to the issuer, removes the trustline, and merges in one
+// signed transaction. This test previously failed because the analyze-page
+// refresh re-ran setAccountState, which wiped the user's "return to issuer"
+// decision; the fused close then defaulted to "convert", re-quoted the no-market
+// asset at build time, and raised AssetRouteLostError. Fixed in 6b6f568:
+// setAccountState now prunes dispositions to assets still present instead of
+// clearing them, so the issuer decision survives the re-scan.
 
 test("redesigned flow: non-convertible asset is returned to issuer, then merged in one tx", async ({
   page,
 }) => {
-  test.skip(
-    true,
-    "Non-convertible custom asset could not be driven to a clean issuer-return single-tx close on testnet: the sign-time fused-close re-quote raised AssetRouteLostError and the step failed instead of merging. No reliably issuer-acceptable, non-convertible testnet asset was available; skipping rather than faking a pass."
-  );
-
   test.setTimeout(240_000);
 
   const source = Keypair.random();
