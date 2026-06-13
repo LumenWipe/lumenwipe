@@ -1,7 +1,12 @@
 import { create } from "zustand";
 import type { AccountState } from "@/types/account";
 import type { PlannedStep } from "@/types/plan";
-import type { MessStepDef } from "@/lib/playground/mess-plan";
+import type {
+  MessStepDef,
+  PlaygroundCustomConfig,
+  PlaygroundMode,
+} from "@/lib/playground/mess-plan";
+import { DEFAULT_CUSTOM_CONFIG } from "@/lib/playground/mess-plan";
 
 export type PlaygroundPhase =
   | "IDLE"
@@ -57,6 +62,9 @@ interface PlaygroundState {
   lastError: string | null;
   /** XLM recovered so far during the demolish phase (for the core counter). */
   recoveredXlm: string | null;
+  /** Mode selected on the IDLE screen. Survives COMPLETE/EXPIRED resets. */
+  selectedMode: PlaygroundMode;
+  customConfig: PlaygroundCustomConfig;
 
   setPhase: (phase: PlaygroundPhase) => void;
   startSession: (payload: {
@@ -79,10 +87,12 @@ interface PlaygroundState {
   markStepFailed: (index: number, error: string) => void;
   setRecoveredXlm: (xlm: string) => void;
   setLastError: (error: string | null) => void;
+  setSelectedMode: (mode: PlaygroundMode) => void;
+  setCustomConfig: (config: PlaygroundCustomConfig) => void;
   reset: () => void;
 }
 
-const initialState = {
+const sessionInitialState = {
   phase: "IDLE" as PlaygroundPhase,
   sessionId: null,
   demoPublic: null,
@@ -102,20 +112,25 @@ const initialState = {
 let logCounter = 0;
 
 export const usePlaygroundStore = create<PlaygroundState>((set) => ({
-  ...initialState,
+  ...sessionInitialState,
+  selectedMode: "standard",
+  customConfig: DEFAULT_CUSTOM_CONFIG,
 
   setPhase: (phase) => set({ phase }),
 
   startSession: ({ sessionId, demoPublic, expiresAt, accounts, messPlan }) =>
-    set({
-      ...initialState,
+    set((state) => ({
+      ...sessionInitialState,
       phase: "MESSING",
       sessionId,
       demoPublic,
       expiresAt,
       accounts,
       messPlan,
-    }),
+      // Preserve mode selection across sessions.
+      selectedMode: state.selectedMode,
+      customConfig: state.customConfig,
+    })),
 
   setCurrentMessIndex: (currentMessIndex) => set({ currentMessIndex }),
 
@@ -175,5 +190,14 @@ export const usePlaygroundStore = create<PlaygroundState>((set) => ({
 
   setLastError: (lastError) => set({ lastError }),
 
-  reset: () => set(initialState),
+  setSelectedMode: (selectedMode) => set({ selectedMode }),
+
+  setCustomConfig: (customConfig) => set({ customConfig }),
+
+  reset: () =>
+    set((state) => ({
+      ...sessionInitialState,
+      selectedMode: state.selectedMode,
+      customConfig: state.customConfig,
+    })),
 }));

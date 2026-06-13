@@ -22,6 +22,12 @@ export interface PlaygroundSession {
   completedMessSteps: string[];
   signCount: number;
   createdAt: number;
+  /** Which ephemeral codes to fund in the FUND_RARE step (mode-dependent). */
+  fundRareAssets: string[];
+  /** How many junk offers to post in the OFFERS step. */
+  offerCount: number;
+  /** How many junk data entries to attach in the DATA_ENTRIES step. */
+  dataEntryCount: number;
 }
 
 const sessionKey = (id: string) => `playground:session:${id}`;

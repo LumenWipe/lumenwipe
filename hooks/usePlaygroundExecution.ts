@@ -8,7 +8,12 @@ import { buildStepXdrForPlan } from "@/lib/stellar/step-engine";
 import { submitAndWait } from "@/lib/stellar/submit";
 import { NoConversionPathError } from "@/lib/utils/errors";
 import { buildSceneNode } from "@/lib/playground/scene-nodes";
-import { EPHEMERAL_ASSETS, LWDEMO_AMOUNT, type MessStepDef } from "@/lib/playground/mess-plan";
+import {
+  EURC_DEMO_AMOUNT,
+  LWDEMO_AMOUNT,
+  USDC_DEMO_AMOUNT,
+  type MessStepDef,
+} from "@/lib/playground/mess-plan";
 import { parseAsset } from "@/lib/utils/assets";
 import type { AccountState } from "@/types/account";
 import type { PlannedStep } from "@/types/plan";
@@ -74,7 +79,11 @@ export function usePlaygroundExecution() {
       store.setPhase("CREATING_ACCOUNT");
       setProgressStatus("Creating & funding the demo account...");
 
-      const session = await api<SessionResponse>("/session", { method: "POST" });
+      const { selectedMode, customConfig } = usePlaygroundStore.getState();
+      const session = await api<SessionResponse>("/session", {
+        method: "POST",
+        body: JSON.stringify({ mode: selectedMode, customConfig }),
+      });
       usePlaygroundStore.getState().startSession(session);
       usePlaygroundStore.getState().addLog({
         label: `Demo account funded: ${session.demoPublic.slice(0, 8)}…`,
@@ -102,6 +111,13 @@ export function usePlaygroundExecution() {
           );
         }
         applyBalanceUpdates(step);
+
+        // After SETUP the account exists on-chain with its initial XLM balance.
+        // Fetch it immediately so CoreAccount shows the real balance rather than
+        // 0 throughout the entire mess phase.
+        if (step.id === "SETUP") {
+          await refreshState();
+        }
       }
 
       setProgressStatus("Reading the account state...");
@@ -222,13 +238,17 @@ export function usePlaygroundExecution() {
 function applyBalanceUpdates(step: MessStepDef): void {
   const { updateNode } = usePlaygroundStore.getState();
   if (step.id === "FUND_RARE") {
-    for (const { code, amount } of EPHEMERAL_ASSETS) {
-      updateNode(`tl:${code}`, { balance: amount });
+    // Update all nodes that are listed in the step's updatesNodeIds.
+    for (const nodeId of step.updatesNodeIds) {
+      const code = nodeId.startsWith("tl:") ? nodeId.slice(3) : null;
+      if (!code) continue;
+      const amount = code === "AIRDROP1" ? "1000000" : code === "RUGPULL" ? "13.37" : null;
+      if (amount) updateNode(nodeId, { balance: amount });
     }
   }
-  if (step.id === "FUND_LWDEMO") {
-    updateNode("tl:LWDEMO", { balance: LWDEMO_AMOUNT });
-  }
+  if (step.id === "FUND_LWDEMO") updateNode("tl:LWDEMO", { balance: LWDEMO_AMOUNT });
+  if (step.id === "FUND_USDC") updateNode("tl:USDC", { balance: USDC_DEMO_AMOUNT });
+  if (step.id === "FUND_EURC") updateNode("tl:EURC", { balance: EURC_DEMO_AMOUNT });
 }
 
 function markConverting(step: PlannedStep): void {

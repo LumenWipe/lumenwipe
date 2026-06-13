@@ -12,12 +12,14 @@ import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { TX_TIMEOUT_SECONDS } from "@/config/constants";
 import {
   DEMO_KEEP_XLM,
-  EPHEMERAL_ASSETS,
+  DEMO_SWAP_PRICE,
   EPHEMERAL_ISSUER_FUNDING_XLM,
+  EURC_DEMO_AMOUNT,
   JUNK_DATA_ENTRIES,
   JUNK_OFFERS,
   LWDEMO_AMOUNT,
   LWDEMO_CODE,
+  USDC_DEMO_AMOUNT,
   type MessStepId,
 } from "./mess-plan";
 
@@ -30,6 +32,12 @@ export interface MessContext {
   ephemeralIssuers: Map<string, Keypair>;
   persistentIssuer: Keypair;
   mmPublic: string;
+  /** Subset of ephemeral codes to fund in FUND_RARE (varies by mode). */
+  fundRareAssets: string[];
+  /** How many junk offers to post (≤ JUNK_OFFERS.length). */
+  offerCount: number;
+  /** How many junk data entries to attach (≤ JUNK_DATA_ENTRIES.length). */
+  dataEntryCount: number;
 }
 
 const PASSPHRASE = NETWORK_PASSPHRASES.testnet;
@@ -99,9 +107,13 @@ export async function executeMessStep(stepId: MessStepId, ctx: MessContext): Pro
 
   switch (stepId) {
     case "SETUP": {
-      const returnAmount = String(10000 - parseFloat(DEMO_KEEP_XLM));
+      // Create all ephemeral issuer accounts needed for this session's mode.
+      const ephemeralCodes = [...ctx.ephemeralIssuers.keys()];
+      const ephemeralCost = ephemeralCodes.length * parseFloat(EPHEMERAL_ISSUER_FUNDING_XLM);
+      const returnAmount = (10000 - parseFloat(DEMO_KEEP_XLM) - ephemeralCost).toFixed(7);
+
       const ops = [
-        ...EPHEMERAL_ASSETS.map(({ code }) =>
+        ...ephemeralCodes.map((code) =>
           Operation.createAccount({
             destination: ctx.ephemeralIssuers.get(code)!.publicKey(),
             startingBalance: EPHEMERAL_ISSUER_FUNDING_XLM,
@@ -131,18 +143,32 @@ export async function executeMessStep(stepId: MessStepId, ctx: MessContext): Pro
         Operation.changeTrust({ asset: resolveAsset(LWDEMO_CODE, ctx) }),
       ]);
 
+    case "TRUST_USDC":
+      return buildSignSubmit(ctx.demo, [
+        Operation.changeTrust({ asset: resolveAsset("USDC", ctx) }),
+      ]);
+
+    case "TRUST_EURC":
+      return buildSignSubmit(ctx.demo, [
+        Operation.changeTrust({ asset: resolveAsset("EURC", ctx) }),
+      ]);
+
     case "FUND_RARE": {
-      // One tx, source = demo, payment ops sourced from each ephemeral issuer:
-      // the server holds all three secrets, so it can multi-sign.
-      const ops = EPHEMERAL_ASSETS.map(({ code, amount }) =>
-        Operation.payment({
+      // Fund each "rare" ephemeral asset in one atomic tx. The server holds all
+      // ephemeral secrets so it can source each payment from the right issuer.
+      const assetsToFund = ctx.fundRareAssets;
+      if (assetsToFund.length === 0) throw new Error("FUND_RARE called with no assets to fund");
+      const ops = assetsToFund.map((code) => {
+        const amount = code === "AIRDROP1" ? "1000000" : "13.37";
+        return Operation.payment({
           source: ctx.ephemeralIssuers.get(code)!.publicKey(),
           destination: demoPublic,
           asset: resolveAsset(code, ctx),
           amount,
-        })
-      );
-      return buildSignSubmit(ctx.demo, ops, [...ctx.ephemeralIssuers.values()]);
+        });
+      });
+      const signers = assetsToFund.map((code) => ctx.ephemeralIssuers.get(code)!);
+      return buildSignSubmit(ctx.demo, ops, signers);
     }
 
     case "FUND_LWDEMO":
@@ -154,16 +180,79 @@ export async function executeMessStep(stepId: MessStepId, ctx: MessContext): Pro
         }),
       ]);
 
-    case "DATA_ENTRIES":
+    case "FUND_USDC": {
+      // Atomic DEX swap: issuer posts a sell offer; demo crosses it immediately
+      // with a pathPaymentStrictReceive in the same transaction.  Demo spends
+      // XLM and receives USDC via the order book - same mechanism as the real
+      // CONVERT_ASSETS step, just in the opposite direction.
+      const usdcIssuer = ctx.ephemeralIssuers.get("USDC")!;
+      const usdcAsset = resolveAsset("USDC", ctx);
+      const usdcCost = (parseFloat(USDC_DEMO_AMOUNT) * parseFloat(DEMO_SWAP_PRICE)).toFixed(7);
       return buildSignSubmit(
         ctx.demo,
-        JUNK_DATA_ENTRIES.map(({ key, value }) => Operation.manageData({ name: key, value }))
+        [
+          Operation.manageSellOffer({
+            source: usdcIssuer.publicKey(),
+            selling: usdcAsset,
+            buying: Asset.native(),
+            amount: USDC_DEMO_AMOUNT,
+            price: DEMO_SWAP_PRICE,
+          }),
+          Operation.pathPaymentStrictReceive({
+            sendAsset: Asset.native(),
+            sendMax: usdcCost,
+            destination: demoPublic,
+            destAsset: usdcAsset,
+            destAmount: USDC_DEMO_AMOUNT,
+            path: [],
+          }),
+        ],
+        [usdcIssuer]
       );
+    }
 
-    case "OFFERS":
+    case "FUND_EURC": {
+      const eurcIssuer = ctx.ephemeralIssuers.get("EURC")!;
+      const eurcAsset = resolveAsset("EURC", ctx);
+      const eurcCost = (parseFloat(EURC_DEMO_AMOUNT) * parseFloat(DEMO_SWAP_PRICE)).toFixed(7);
       return buildSignSubmit(
         ctx.demo,
-        JUNK_OFFERS.map((o) =>
+        [
+          Operation.manageSellOffer({
+            source: eurcIssuer.publicKey(),
+            selling: eurcAsset,
+            buying: Asset.native(),
+            amount: EURC_DEMO_AMOUNT,
+            price: DEMO_SWAP_PRICE,
+          }),
+          Operation.pathPaymentStrictReceive({
+            sendAsset: Asset.native(),
+            sendMax: eurcCost,
+            destination: demoPublic,
+            destAsset: eurcAsset,
+            destAmount: EURC_DEMO_AMOUNT,
+            path: [],
+          }),
+        ],
+        [eurcIssuer]
+      );
+    }
+
+    case "DATA_ENTRIES": {
+      const count = Math.min(ctx.dataEntryCount, JUNK_DATA_ENTRIES.length);
+      return buildSignSubmit(
+        ctx.demo,
+        JUNK_DATA_ENTRIES.slice(0, count).map(({ key, value }) =>
+          Operation.manageData({ name: key, value })
+        )
+      );
+    }
+
+    case "OFFERS": {
+      const count = Math.min(ctx.offerCount, JUNK_OFFERS.length);
+      return buildSignSubmit(
+        ctx.demo,
+        JUNK_OFFERS.slice(0, count).map((o) =>
           Operation.manageSellOffer({
             selling: resolveAsset(o.selling, ctx),
             buying: resolveAsset(o.buying, ctx),
@@ -172,6 +261,7 @@ export async function executeMessStep(stepId: MessStepId, ctx: MessContext): Pro
           })
         )
       );
+    }
 
     case "ADD_SIGNER": {
       // The extra signer's secret is discarded: weight 1 with thresholds 0/1/1

@@ -52,6 +52,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ),
       persistentIssuer: issuer,
       mmPublic: mm.publicKey(),
+      fundRareAssets: session.fundRareAssets ?? [],
+      offerCount: session.offerCount ?? 3,
+      dataEntryCount: session.dataEntryCount ?? 3,
     };
 
     const txHash = await executeMessStep(stepId, ctx);
