@@ -15,13 +15,37 @@ function account() {
   return new Account(MASTER, "100");
 }
 
+// A valid claimable balance id is an 8-char discriminant + 64 hex chars.
+function balanceId(hexChar: string) {
+  return `00000000${hexChar.repeat(64)}`;
+}
+
+const TL = {
+  asset: `USDC:${ISSUER}`,
+  balance: "10",
+  authorized: true,
+  issuer: ISSUER,
+  code: "USDC",
+};
+
+function convertPath() {
+  return {
+    fromAsset: TL.asset,
+    toAsset: "native",
+    path: [],
+    estimatedReceive: "9",
+    destMin: "8.9",
+  };
+}
+
 function baseInput(over: Partial<FusedCloseInput> = {}): FusedCloseInput {
   return {
     needsSignerNormalization: false,
     signers: [{ key: MASTER, weight: 1, type: "ed25519_public_key" }],
     dataEntries: [],
     openOffers: [],
-    conversions: [],
+    claimableBalances: [],
+    assetActions: [],
     trustlines: [],
     destinationAddress: DEST,
     memo: null,
@@ -53,13 +77,13 @@ test("buildFusedCloseTx > includeMerge=false -> no accountMerge op", () => {
   expect(ops).toHaveLength(1); // just the manageData
 });
 
-test("buildFusedCloseTx > operation order is signers, data, offers, conversion, trustlines, merge", () => {
-  const tl = {
-    asset: `USDC:${ISSUER}`,
-    balance: "10",
+test("buildFusedCloseTx > operation order is signers, data, offers, claim, convert, issuer, trustlines, merge", () => {
+  const issuerTl = {
+    asset: `EURC:${ISSUER}`,
+    balance: "5",
     authorized: true,
     issuer: ISSUER,
-    code: "USDC",
+    code: "EURC",
   };
   const ops = opsOf(
     buildFusedCloseTx(
@@ -74,19 +98,12 @@ test("buildFusedCloseTx > operation order is signers, data, offers, conversion, 
         openOffers: [
           { id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" },
         ],
-        conversions: [
-          {
-            trustline: tl,
-            path: {
-              fromAsset: tl.asset,
-              toAsset: "native",
-              path: [],
-              estimatedReceive: "9",
-              destMin: "8.9",
-            },
-          },
+        claimableBalances: [{ id: balanceId("d"), asset: "native", amount: "1" }],
+        assetActions: [
+          { trustline: TL, action: "convert", path: convertPath() },
+          { trustline: issuerTl, action: "issuer" },
         ],
-        trustlines: [tl],
+        trustlines: [TL, issuerTl],
       }),
       "testnet"
     )
@@ -96,10 +113,69 @@ test("buildFusedCloseTx > operation order is signers, data, offers, conversion, 
     "setOptions",
     "manageData",
     "manageSellOffer",
+    "claimClaimableBalance",
     "pathPaymentStrictSend",
+    "payment",
+    "changeTrust",
     "changeTrust",
     "accountMerge",
   ]);
+});
+
+test("buildFusedCloseTx > claim ops appear one per claimable balance", () => {
+  const ops = opsOf(
+    buildFusedCloseTx(
+      account(),
+      baseInput({
+        includeMerge: false,
+        claimableBalances: [
+          { id: balanceId("a"), asset: "native", amount: "1" },
+          { id: balanceId("b"), asset: `USDC:${ISSUER}`, amount: "2" },
+        ],
+      }),
+      "testnet"
+    )
+  );
+  expect(ops.filter((o) => o.type === "claimClaimableBalance")).toHaveLength(2);
+});
+
+test("buildFusedCloseTx > no claim ops when claimableBalances empty", () => {
+  const ops = opsOf(
+    buildFusedCloseTx(account(), baseInput({ dataEntries: [{ key: "k", value: "" }] }), "testnet")
+  );
+  expect(ops.every((o) => o.type !== "claimClaimableBalance")).toBe(true);
+});
+
+test("buildFusedCloseTx > issuer action produces a payment, not pathPaymentStrictSend", () => {
+  const ops = opsOf(
+    buildFusedCloseTx(
+      account(),
+      baseInput({
+        includeMerge: false,
+        assetActions: [{ trustline: TL, action: "issuer" }],
+        trustlines: [TL],
+      }),
+      "testnet"
+    )
+  );
+  expect(ops.some((o) => o.type === "payment")).toBe(true);
+  expect(ops.every((o) => o.type !== "pathPaymentStrictSend")).toBe(true);
+});
+
+test("buildFusedCloseTx > convert action produces a pathPaymentStrictSend", () => {
+  const ops = opsOf(
+    buildFusedCloseTx(
+      account(),
+      baseInput({
+        includeMerge: false,
+        assetActions: [{ trustline: TL, action: "convert", path: convertPath() }],
+        trustlines: [TL],
+      }),
+      "testnet"
+    )
+  );
+  expect(ops.some((o) => o.type === "pathPaymentStrictSend")).toBe(true);
+  expect(ops.every((o) => o.type !== "payment")).toBe(true);
 });
 
 test("buildFusedCloseTx > fee equals BASE_FEE * opCount", () => {
@@ -119,13 +195,6 @@ test("buildFusedCloseTx > no signer normalization when flag false (no stray setO
 });
 
 test("assembleFusedCloseOps > counts ops for a representative input", () => {
-  const tl = {
-    asset: `USDC:${ISSUER}`,
-    balance: "10",
-    authorized: true,
-    issuer: ISSUER,
-    code: "USDC",
-  };
   const ops = assembleFusedCloseOps(
     MASTER,
     baseInput({
@@ -141,25 +210,15 @@ test("assembleFusedCloseOps > counts ops for a representative input", () => {
       openOffers: [
         { id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" },
       ],
-      conversions: [
-        {
-          trustline: tl,
-          path: {
-            fromAsset: tl.asset,
-            toAsset: "native",
-            path: [],
-            estimatedReceive: "9",
-            destMin: "8.9",
-          },
-        },
-      ],
-      trustlines: [tl],
+      claimableBalances: [{ id: balanceId("c"), asset: "native", amount: "1" }],
+      assetActions: [{ trustline: TL, action: "convert", path: convertPath() }],
+      trustlines: [TL],
     })
   );
   // signer normalization = 1 setOptions per extra signer (1) + 1 threshold reset = 2;
-  // plus 2 manageData + 1 manageSellOffer + 1 pathPaymentStrictSend + 1 changeTrust +
-  // 1 accountMerge = 8
-  expect(ops).toHaveLength(8);
+  // plus 2 manageData + 1 manageSellOffer + 1 claimClaimableBalance +
+  // 1 pathPaymentStrictSend + 1 changeTrust + 1 accountMerge = 9
+  expect(ops).toHaveLength(9);
 });
 
 test("assembleFusedCloseOps > large input exceeds the 100-op protocol cap", () => {
