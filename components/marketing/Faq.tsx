@@ -70,8 +70,10 @@ const ITEMS: Item[] = [
       <>
         Any SEP-43 wallet through{" "}
         <span className="mkt-mono text-white/80">stellar-wallets-kit</span>: Freighter, xBull,
-        Albedo, LOBSTR, Hana, WalletConnect and more. Power users can also use an advanced in-memory
-        secret-key mode that clears the key after each signing operation.
+        Albedo, LOBSTR, Hana, WalletConnect and more. Power users can also use an advanced
+        secret-key mode where the key is held in memory only for the duration of the close, never
+        persisted and never sent to a server, and wiped when you finish, abort, navigate away, or
+        click &quot;Forget key&quot;.
       </>
     ),
   },
