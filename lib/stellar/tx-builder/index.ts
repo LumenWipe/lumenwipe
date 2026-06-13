@@ -168,12 +168,7 @@ export function buildPlan(
     trustlines.length > 0;
   const signerOps = needsSignerNormalization ? extraSigners.length + 1 : 0;
   const fusedOpCount =
-    signerOps +
-    dataEntries.length +
-    openOffers.length +
-    convertible.length +
-    trustlines.length +
-    1;
+    signerOps + dataEntries.length + openOffers.length + convertible.length + trustlines.length + 1;
 
   if (
     fastPathEligible &&

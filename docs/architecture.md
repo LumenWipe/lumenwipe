@@ -209,13 +209,15 @@ Consistency across the boundary between enumeration and execution is the harder 
 
 The frontend is a Next.js application in TypeScript. It owns all transaction construction, signing, and submission. It holds the entire flow as an explicit state machine so a user can leave and resume without losing progress, which matters because a full wind-down is several sequential transactions, not one.
 
+The user-facing flow asks for one thing at a time, in the order the work actually needs it. Entry collects only the source account's public key, nothing else. The analyze stage reads the account and presents a grouped accordion preview of everything that has to be unwound, and for each non-XLM balance the user makes a per-asset decision: swap it to XLM when a route exists, or return it to its issuer when no route does. The return-to-issuer choice is always an explicit confirmation, never a default, and the tool never labels it as a conversion. The destination address and an optional memo are entered last, on the same screen, once the user has decided what the close will do. Exchange detection happens at that point, because it depends on the destination. Only then does the tool build and run the close, and the completion page shows a grouped summary of what happened to each balance and where the reserves went.
+
 ### 6.1 State machine
 
 ```mermaid
 stateDiagram-v2
     [*] --> Idle
-    Idle --> Analyzing: submit source + destination
-    Analyzing --> PreflightComplete: analysis succeeds, plan built
+    Idle --> Analyzing: submit source public key
+    Analyzing --> PreflightComplete: analysis succeeds, preview built
     Analyzing --> Aborted: account not found or blocked
     PreflightComplete --> SignerSetup: multisig detected
     PreflightComplete --> StepExecuting: single-signer
@@ -338,9 +340,9 @@ A few details that matter for correctness:
 - Soroban steps are one `InvokeHostFunction` per transaction, because each needs its own RPC simulation for footprint, authorization, and resource fee.
 - The plan is recomputed on resume, so external changes between sessions are reconciled rather than blindly repeated.
 
-When an account is simple enough, the plan collapses into a single signed transaction. The fast-path is eligible when there are no blockers, every asset has a clean conversion path, and the total operation count fits one transaction (the 100-operation protocol limit). For a direct destination the whole close is emitted as one fused `CLOSE_ACCOUNT` transaction: signer normalization, data removal, offer cancellation, asset conversion, trustline removal, and the account merge, applied atomically in that order and signed once. For an exchange destination the same fused cleanup transaction runs first, followed by the existing co-signed mediator transfer, since exchanges do not accept a direct merge. Any account that fails an eligibility check falls back to the step-by-step plan above. The fast-path re-quotes conversion paths at build time, and if an asset has lost its path between analysis and signing it degrades gracefully back to the step-by-step plan rather than emitting a transaction that would fail. One forward note: when swap execution moves to the Soroswap aggregator, which uses a Soroban `InvokeHostFunction` that a transaction may not mix with other operations, the conversion becomes its own isolated transaction and leaves the fused builder.
+Most accounts never see the nine-step plan. When an account is simple enough, the whole close collapses into a single fused transaction that the user signs once. The fast-path is eligible when there are no blockers, no claimable balances, every asset has a clean disposition (a swap route or a confirmed return to issuer), and the total operation count fits one transaction (the 100-operation protocol limit). For a direct destination the entire close is emitted as one fused `CLOSE_ACCOUNT` transaction: signer normalization, data removal, offer cancellation, per-asset disposition (each balance swapped to XLM or returned to its issuer), trustline removal, and the account merge, applied atomically in that order and signed once. For an exchange destination the same fused cleanup runs first, then the co-signed mediator transfer, since exchanges do not accept a direct merge, which is two signatures rather than one. The tool always builds the minimum number of transactions the account needs: one for the common case, two for an exchange, and the full step-by-step plan above only when an account does not qualify for the fused path. Claimable-balance accounts are one such case: they route through the step-by-step `CLAIM_BALANCES` flow so the claimed proceeds are not lost. Accounts whose work exceeds one transaction's worth of operations split across the fewest transactions the 100-operation limit allows. The fast-path re-quotes swap routes at build time, and if an asset has lost its route between analysis and signing it re-decides that asset to a return-to-issuer disposition rather than emitting a transaction that would fail. One forward note: when swap execution moves to the Soroswap aggregator, which uses a Soroban `InvokeHostFunction` that a transaction may not mix with other operations, the conversion becomes its own isolated transaction and leaves the fused builder.
 
-Because a full wind-down is many sequential transactions, a single end-to-end dry run is not feasible. The tool's preview approach is two-tiered: a complete plan view up front (every step, its operations, its estimated fee, and the estimated final XLM that reaches the destination), and a per-step simulation immediately before each signature using `simulateTransaction` for Soroban steps and a build-and-validate check for classic steps. Any simulation failure is surfaced in plain language before the user is asked to sign, never after.
+Because a wind-down can be several sequential transactions, a single end-to-end dry run is not always feasible. The tool's preview approach is two-tiered: a grouped accordion preview up front that gathers everything to be unwound into sections (signers, data entries, offers, positions, and the per-asset dispositions), with the estimated fee and the estimated final XLM that reaches the destination, and a simulation immediately before each signature using `simulateTransaction` for Soroban steps and a build-and-validate check for classic steps. Any simulation failure is surfaced in plain language before the user is asked to sign, never after. The completion page mirrors the preview: a grouped summary of what happened to each balance, the transactions that ran, and where the reserves went.
 
 ### 8.1 Sponsored fees: closing accounts that cannot pay their own way
 
@@ -444,36 +446,31 @@ Because the operations are irreversible, every protocol exit adapter must satisf
 
 ## 10. Asset conversion and routing
 
-After positions are unwound, the account may hold several classic and Soroban tokens. Each non-XLM balance gets an explicit, per-asset disposition the user chooses in the plan view, because "convert everything" is the common case but not the only legitimate one:
+After positions are unwound, the account may hold several classic and Soroban tokens. Each non-XLM balance gets an explicit, per-asset disposition the user makes in the accordion preview, because "swap everything" is the common case but not the only one the ledger allows:
 
-- **Convert to XLM** (the default): swap through the best available route, then remove the trustline.
-- **Transfer to the destination**: send the balance as-is. The tool checks on-chain that the destination holds a trustline for the asset (or accepts it via the Soroban token balance) before offering this option, so a transfer can never bounce.
-- **Burn**: send the balance back to its issuer, which destroys it. This is the right call for spam tokens, worthless dust, and assets with no route, and the tool labels it clearly as irreversible.
+- **Swap to XLM** (offered whenever a route exists): swap through the best available route, then remove the trustline. This is the disposition the tool selects for any asset that has a route, and the user can leave it as is.
+- **Return to issuer**: send the balance back to its issuer, which clears it from the account. This is the right call for spam tokens, worthless dust, and assets with no route, and it is the only option the tool offers when no swap route exists. It is never the default and never labeled as a conversion: the user confirms it explicitly, and the tool states plainly that it is irreversible.
 
 Routing for the convert path has two engines. The primary is the Soroswap API, which finds optimal routes across Soroswap, Phoenix, Aquarius, and the classic SDEX, handles both classic and Soroban tokens, and builds the swap XDR. Like every server-built transaction, that XDR is decoded and verified client-side before signing (Section 9.9). The fallback for pure-classic assets is strict-send path finding from a Horizon-compatible endpoint, executed with `PathPaymentStrictSend` across SDEX order books and classic liquidity pools (up to six hops). Either way the tool computes a minimum-received amount from the quoted output and a slippage tolerance, and passes it as the destination minimum so a sudden price move cannot fill the swap at a bad rate.
 
 ```mermaid
 flowchart TD
-    asset["Non-XLM balance"] --> disp{"Per-asset disposition<br/>(user chooses)"}
-    disp -->|"transfer"| tl{"Destination holds<br/>trustline?"}
-    tl -->|"yes"| xfer["Payment to destination"]
-    tl -->|"no"| disp
-    disp -->|"burn"| burn["Payment to issuer<br/>(explicit irreversible confirm)"]
-    disp -->|"convert (default)"| q["Quote route<br/>(Soroswap API; SDEX paths fallback)"]
+    asset["Non-XLM balance"] --> q["Quote route<br/>(Soroswap API; SDEX paths fallback)"]
     q --> hasroute{"Route found?"}
-    hasroute -->|"yes"| minrecv["Compute minimum received<br/>(quote x (1 - slippage))"]
+    hasroute -->|"yes"| disp{"Per-asset disposition<br/>(user confirms)"}
+    disp -->|"swap (default)"| minrecv["Compute minimum received<br/>(quote x (1 - slippage))"]
     minrecv --> kind{"Token kind"}
     kind -->|"classic"| pp["PathPaymentStrictSend<br/>(dest_min = minimum received)"]
     kind -->|"Soroban"| inv["InvokeHostFunction swap<br/>(min_out = minimum received)"]
-    pp --> conv["Converted to XLM"]
+    pp --> conv["Swapped to XLM"]
     inv --> conv
-    hasroute -->|"no"| opt["Suggest transfer or burn<br/>instead of stranding the asset"]
+    hasroute -->|"no"| issuer["Return to issuer<br/>(explicit irreversible confirm)"]
+    disp -->|"return to issuer"| issuer
     conv --> rm["Remove trustline (ChangeTrust limit 0)"]
-    xfer --> rm
-    burn --> rm
+    issuer --> rm
 ```
 
-The user keeps control. A trustline is only removed once the protocol's full deletion preconditions hold: zero balance, zero buying liabilities (every open offer buying the asset cancelled, which the step order guarantees), and no pool-share trustline still referencing the asset (pool exits run earlier for the same reason). If a residual balance remains after conversion, the tool offers the same transfer and burn dispositions or lets the user lower slippage and retry, rather than silently failing the later merge.
+The user keeps control. A trustline is only removed once the protocol's full deletion preconditions hold: zero balance, zero buying liabilities (every open offer buying the asset cancelled, which the step order guarantees), and no pool-share trustline still referencing the asset (pool exits run earlier for the same reason). If a residual balance remains after a swap, the tool offers the return-to-issuer disposition or lets the user lower slippage and retry, rather than silently failing the later merge.
 
 ## 11. The mediator account flow for exchanges
 
