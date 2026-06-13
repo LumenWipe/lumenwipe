@@ -119,6 +119,23 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
         ))}
       </div>
 
+      {/* Receive-as row - XLM active; USDC coming soon */}
+      <div className="mt-3 flex items-center gap-3 mkt-panel rounded-xl px-4 py-3">
+        <span className="text-xs text-white/40 shrink-0">Receive as</span>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 rounded-lg border border-stellar/40 bg-stellar/10 px-3 py-1.5 text-xs font-medium text-stellar">
+            XLM
+            <span className="h-1.5 w-1.5 rounded-full bg-stellar" />
+          </div>
+          <div className="flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/30 opacity-50 select-none">
+            USDC
+            <span className="rounded-full border border-white/15 px-1.5 py-0.5 text-[0.55rem] uppercase tracking-wide text-white/30">
+              Soon
+            </span>
+          </div>
+        </div>
+      </div>
+
       {network === "testnet" && (
         <Link
           href="/playground"

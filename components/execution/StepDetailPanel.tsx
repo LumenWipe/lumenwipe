@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { CheckCircle, AlertCircle, ExternalLink } from "lucide-react";
+import { CheckCircle, AlertCircle, ExternalLink, Wallet } from "lucide-react";
 import type { PlannedStep } from "@/types/plan";
 import type { Network } from "@/config/networks";
 import { SE_EXPLORER_BASE, SV_EXPLORER_BASE } from "@/config/networks";
@@ -186,6 +186,25 @@ export default function StepDetailPanel({
                   onValidityChange={setKeyValid}
                   disabled={isExecuting}
                 />
+
+                {/* Wallet extension - coming soon */}
+                <div className="flex items-center gap-2 text-white/25">
+                  <div className="h-px flex-1 bg-white/10" />
+                  <span className="text-xs">or</span>
+                  <div className="h-px flex-1 bg-white/10" />
+                </div>
+                <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 opacity-45 cursor-not-allowed select-none">
+                  <Wallet className="h-4 w-4 shrink-0 text-white/50" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-white/70">Sign with browser wallet</p>
+                    <p className="text-xs text-white/40">
+                      Freighter, xBull, and others via Stellar Wallets Kit
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-white/15 px-2 py-0.5 text-[0.6rem] font-medium uppercase tracking-wide text-white/35">
+                    Soon
+                  </span>
+                </div>
 
                 {/* Confirmation checkbox */}
                 <label className="flex items-start gap-3 cursor-pointer select-none">

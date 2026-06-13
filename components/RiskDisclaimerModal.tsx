@@ -1,9 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, GitMerge, Unlink, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeftRight,
+  BookX,
+  Database,
+  Gift,
+  GitMerge,
+  KeyRound,
+  Unlink,
+} from "lucide-react";
 
 const STORAGE_KEY = "lumenwipe_risk_accepted";
+
+const CONFIRMED_FEATURES = [
+  { icon: GitMerge, label: "Account merge (direct and via exchange intermediary)" },
+  { icon: Unlink, label: "Trustline removal" },
+  { icon: ArrowLeftRight, label: "Asset-to-XLM conversion via DEX path payments" },
+  { icon: BookX, label: "DEX offer cancellation" },
+  { icon: Database, label: "Data entry removal" },
+  { icon: KeyRound, label: "Signer normalization and multisig cleanup" },
+  { icon: Gift, label: "Claimable balance claiming" },
+];
 
 export default function RiskDisclaimerModal() {
   const [visible, setVisible] = useState(false);
@@ -43,37 +62,28 @@ export default function RiskDisclaimerModal() {
         {/* Body */}
         <div className="px-5 py-4 space-y-4 text-sm text-white/65 leading-relaxed">
           <p>
-            LumenWipe is currently in{" "}
-            <span className="text-amber-400 font-medium">public beta</span>. While it has been
-            tested, bugs and unexpected behavior may still occur. Closing a Stellar account is{" "}
+            Closing a Stellar account is{" "}
             <span className="font-medium text-white/80">permanent and irreversible</span> - always
-            verify your destination address before signing any transaction.
+            verify your destination address before signing. Bugs may still exist; use at your own
+            risk.
           </p>
 
           <div>
-            <p className="text-xs uppercase tracking-wider text-white/35 mb-2 font-medium">
-              What is confirmed to work
+            <p className="text-xs uppercase tracking-wider text-white/35 mb-2.5 font-medium">
+              Confirmed working
             </p>
             <ul className="space-y-2">
-              <li className="flex items-center gap-2.5">
-                <GitMerge className="h-4 w-4 text-stellar shrink-0" />
-                <span className="font-medium text-white/80">Account merge</span>
-              </li>
-              <li className="flex items-center gap-2.5">
-                <Unlink className="h-4 w-4 text-stellar shrink-0" />
-                <span className="font-medium text-white/80">Trustline removal</span>
-              </li>
+              {CONFIRMED_FEATURES.map(({ icon: Icon, label }) => (
+                <li key={label} className="flex items-center gap-2.5">
+                  <Icon className="h-4 w-4 text-stellar shrink-0" />
+                  <span className="text-white/75">{label}</span>
+                </li>
+              ))}
             </ul>
           </div>
 
           <p className="text-xs text-white/40">
-            Soroban DeFi position unwinding (Blend, Aquarius, etc.) is under development and not yet
-            available.
-          </p>
-
-          <p className="text-xs text-white/40">
-            The codebase undergoes ongoing internal security reviews. External audits will be
-            conducted when possible.
+            Soroban DeFi positions (Blend, Aquarius, etc.) are not yet supported.
           </p>
         </div>
 
@@ -86,7 +96,7 @@ export default function RiskDisclaimerModal() {
             I understand, continue
           </button>
           <p className="mt-2.5 text-center text-[0.68rem] text-white/30">
-            This notice will appear once per browser session.
+            This notice appears once per browser session.
           </p>
         </div>
       </div>
