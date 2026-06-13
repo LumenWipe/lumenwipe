@@ -24,7 +24,7 @@ LumenWipe performs irreversible operations on Stellar accounts - it removes trus
 | `main` branch (latest) | Yes                 |
 | Previous releases      | Critical fixes only |
 
-We recommend always using the latest version. If you are self-hosting, keep your deployment up to date with the `main` branch.
+We recommend always using the latest version.
 
 ---
 
@@ -61,7 +61,7 @@ You will receive an acknowledgment within **48 hours**. If you do not hear back 
 | Fix for medium severity                        | Within 30 days                       |
 | Fix for low severity                           | Next regular release                 |
 
-We will coordinate the public disclosure date with you. We ask for a minimum of **14 days** after a fix is deployed before public disclosure, to allow users and self-hosters to update.
+We will coordinate the public disclosure date with you. We ask for a minimum of **14 days** after a fix is deployed before public disclosure, to allow users to update.
 
 ---
 

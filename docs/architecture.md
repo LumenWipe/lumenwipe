@@ -24,7 +24,7 @@ icon: "sitemap"
 11. [The mediator account flow for exchanges](#11-the-mediator-account-flow-for-exchanges)
 12. [Allowance inspection](#12-allowance-inspection)
 13. [Security model](#13-security-model)
-14. [Trust minimization, decentralization, and self-hosting](#14-trust-minimization-decentralization-and-self-hosting)
+14. [Trust minimization and decentralization](#14-trust-minimization-and-decentralization)
 15. [Infrastructure and deployment](#15-infrastructure-and-deployment)
 16. [User protection and privacy](#16-user-protection-and-privacy)
 17. [Testing strategy](#17-testing-strategy)
@@ -58,11 +58,11 @@ Core stack at a glance:
 
 | Layer          | Choice                                                          |
 | -------------- | --------------------------------------------------------------- |
-| Frontend       | Next.js, TypeScript, open source and self-hostable              |
+| Frontend       | Next.js, TypeScript, open source                                |
 | Stellar SDK    | `@stellar/stellar-sdk` (classic and Soroban)                    |
 | Wallets        | stellar-wallets-kit (SEP-43), plus an in-memory secret-key mode |
 | Network access | Stellar RPC: live reads, simulation, submission, events         |
-| Enumeration    | stellar.expert API (existing indexer), pluggable                |
+| Enumeration    | stellar.expert API + Horizon-compatible endpoints, pluggable    |
 | Routing        | Soroswap API, with SDEX paths as fallback                       |
 | DeFi detection | OctoPos DeFi Position API                                       |
 | Backend        | Read-only Next.js API routes, stateless, Redis cache            |
@@ -157,7 +157,7 @@ flowchart TB
     pos --> net
 ```
 
-Two things to read off this diagram. The signed-XDR arrow runs from the client directly to Stellar RPC; submission is always client-side. The backend is not in the signing path for a user's account - its only signature is the shared mediator's co-signature on the exchange forwarding payment (section 11). And every external read source is pluggable: RPC, the indexer, the routing API, and the DeFi position API can each be swapped or pointed at a self-hosted instance without touching the transaction logic.
+Two things to read off this diagram. The signed-XDR arrow runs from the client directly to Stellar RPC; submission is always client-side. The backend is not in the signing path for a user's account - its only signature is the shared mediator's co-signature on the exchange forwarding payment (section 11). And every external read source is pluggable: RPC, the indexer, the routing API, and the DeFi position API can each be swapped for another provider without touching the transaction logic.
 
 ## 5. Data sources, and why we run no indexer
 
@@ -165,7 +165,7 @@ Building LumenWipe requires reading account state, and that state lives in two p
 
 A practical constraint shapes the whole data design. Stellar RPC's `getLedgerEntries` can only return entries whose keys you already know. You pass it serialized `LedgerKey` values (up to 200 per request) and it returns those exact entries. It has no scan, filter, or "list all trustlines for this account" capability. To build a trustline `LedgerKey` you already need the asset; to read an offer you already need the offer ID. RPC alone therefore cannot tell you what an unknown account holds.
 
-Enumerating an account's subentries (every trustline, offer, data entry, claimable balance, pool share, signer, and sponsorship relationship) requires an indexer. The project takes a clear position here: we do not build or operate an indexer, and we do not depend on SDF-hosted Horizon. SDF reduced its hosted Horizon to one year of history in August 2024 and steers integrators toward Stellar RPC plus ecosystem data services. Running a bespoke indexer (Captive Core, Galexie, a database) is not the problem this project exists to solve, and it would be operational weight with no payoff for the tool.
+Enumerating an account's subentries (every trustline, offer, data entry, claimable balance, pool share, signer, and sponsorship relationship) requires an indexer. The project takes a clear position here: we do not build or operate an indexer. Stellar RPC is used wherever it serves the read, and the queries it cannot serve come from existing indexer APIs behind pluggable adapters: the stellar.expert API and Horizon-compatible endpoints. SDF reduced its hosted Horizon to one year of history in August 2024 and steers integrators toward Stellar RPC plus ecosystem data services; the reads this tool takes from Horizon-compatible endpoints are current-state queries, unaffected by that history truncation. Running a bespoke indexer (Captive Core, Galexie, a database) is not the problem this project exists to solve, and it would be operational weight with no payoff for the tool.
 
 Instead the tool reads from existing, production-grade sources through pluggable adapters:
 
@@ -173,13 +173,13 @@ Instead the tool reads from existing, production-grade sources through pluggable
 | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Enumerate trustlines, pool shares, claimable balances, signers, sponsorships              | stellar.expert API (existing indexer; primary)                                                                                      | RPC cannot enumerate. stellar.expert already indexes this and is the data layer behind the reference demolisher.                                                        |
 | Enumerate open DEX offers and data entries                                                | A Horizon-compatible current-state endpoint (Blockdaemon, QuickNode, Validation Cloud, and similar), via the same adapter interface | stellar.expert exposes no offer or data-entry listing. These are current-state queries, unaffected by any provider's history truncation, and the provider is pluggable. |
-| Alternate enumeration for self-hosting                                                    | Any Horizon-compatible provider or Stellar-native indexer (Mercury, SubQuery, and similar)                                          | Lets an operator who self-hosts avoid any single read dependency.                                                                                                       |
+| Alternate enumeration providers                                                            | Any Horizon-compatible provider or Stellar-native indexer (Mercury, SubQuery, and similar)                                          | Keeps any single read source from becoming a hard dependency.                                                                                                           |
 | Live ledger-entry reads for known keys, right before building each transaction            | Stellar RPC `getLedgerEntries`                                                                                                      | Authoritative current state. Builds exact transaction parameters and avoids acting on stale data.                                                                       |
 | Soroban simulation (footprint, authorization, resource fees)                              | Stellar RPC `simulateTransaction`                                                                                                   | Required for every `InvokeHostFunction` operation.                                                                                                                      |
 | Transaction submission and confirmation                                                   | Stellar RPC `sendTransaction`, `getTransaction`                                                                                     | Client submits and polls directly.                                                                                                                                      |
 | Contract events (for example, discovering `approve` spenders for the allowance inspector) | Stellar RPC `getEvents`, with the indexer for older windows                                                                         | RPC retains a bounded event window.                                                                                                                                     |
 | DeFi position detection across protocols                                                  | OctoPos DeFi Position API                                                                                                           | Builds on a funded DeFi Position API instead of reinventing protocol indexing.                                                                                          |
-| Swap routing and swap-XDR construction                                                    | Soroswap API (primary), stellar.expert paths (classic SDEX fallback)                                                                | Best-available routes across Soroban and classic venues without a Horizon dependency.                                                                                   |
+| Swap routing and swap-XDR construction                                                    | Soroswap API (primary), Horizon-compatible `/paths/strict-send` (classic SDEX fallback)                                             | Best-available routes across Soroban and classic venues.                                                                                                                |
 | Exchange and anchor registry (mediator and memo rules)                                    | Static JSON sourced from the stellar.expert directory                                                                               | Determines which destinations need the mediator flow and a memo.                                                                                                        |
 
 The split is deliberate. An indexer answers "what does this account hold". RPC answers "what is the exact current state of this specific entry, right now, and will this transaction succeed". The tool enumerates with the indexer, then re-reads each entry over RPC immediately before building the transaction that touches it, so it never signs a transaction based on stale enumeration data. As a completeness check, the enumeration result is reconciled against the account's `numSubEntries` counter from the live `AccountEntry`: if the counts disagree, the tool surfaces a blocker instead of building a plan that would miss an entry.
@@ -273,7 +273,7 @@ It exposes a small read-only REST surface:
 
 ### 7.1 DeFi position adapter
 
-The backend consumes OctoPos behind one adapter interface, so the rest of the system never sees provider-specific shapes. OctoPos is a funded DeFi Position API in the Stellar ecosystem, and the backend builds on it rather than reinventing protocol indexing. The adapter keeps the provider pluggable: a self-hoster can point it at a compatible provider, and if OctoPos is unavailable the tool enters a degraded mode: classic entries process normally, and the user is warned that DeFi positions could not be detected and must be checked manually.
+The backend consumes OctoPos behind one adapter interface, so the rest of the system never sees provider-specific shapes. OctoPos is a funded DeFi Position API in the Stellar ecosystem, and the backend builds on it rather than reinventing protocol indexing. The adapter keeps the provider pluggable: it can be pointed at any compatible provider, and if OctoPos is unavailable the tool enters a degraded mode: classic entries process normally, and the user is warned that DeFi positions could not be detected and must be checked manually.
 
 OctoPos covers position detection across Blend, Aquarius, Soroswap, Phoenix, and FxDAO, plus native wallet balances, and reports claimable AQUA rewards and pending Phoenix rewards alongside the positions. It also exposes two pieces the tool leans on directly: for unsubscribed addresses it returns `queryKeys` (ready-made ledger keys plus pool and pair metadata) so positions can be read straight over RPC `getLedgerEntries` without OctoPos storing anything server-side, which fits this tool's live re-read invariant exactly. One boundary matters for planning: OctoPos serves mainnet only. On testnet the tool discovers DeFi positions through direct contract reads driven by the contract registry, which is the same code path the degraded mode uses, so the fallback stays exercised by every test run.
 
@@ -448,7 +448,7 @@ After positions are unwound, the account may hold several classic and Soroban to
 - **Transfer to the destination**: send the balance as-is. The tool checks on-chain that the destination holds a trustline for the asset (or accepts it via the Soroban token balance) before offering this option, so a transfer can never bounce.
 - **Burn**: send the balance back to its issuer, which destroys it. This is the right call for spam tokens, worthless dust, and assets with no route, and the tool labels it clearly as irreversible.
 
-Routing for the convert path has two engines. The primary is the Soroswap API, which finds optimal routes across Soroswap, Phoenix, Aquarius, and the classic SDEX, handles both classic and Soroban tokens, and builds the swap XDR. Like every server-built transaction, that XDR is decoded and verified client-side before signing (Section 9.9). The fallback for pure-classic assets is strict-send path finding from the indexer, executed with `PathPaymentStrictSend` across SDEX order books and classic liquidity pools (up to six hops). Either way the tool computes a minimum-received amount from the quoted output and a slippage tolerance, and passes it as the destination minimum so a sudden price move cannot fill the swap at a bad rate.
+Routing for the convert path has two engines. The primary is the Soroswap API, which finds optimal routes across Soroswap, Phoenix, Aquarius, and the classic SDEX, handles both classic and Soroban tokens, and builds the swap XDR. Like every server-built transaction, that XDR is decoded and verified client-side before signing (Section 9.9). The fallback for pure-classic assets is strict-send path finding from a Horizon-compatible endpoint, executed with `PathPaymentStrictSend` across SDEX order books and classic liquidity pools (up to six hops). Either way the tool computes a minimum-received amount from the quoted output and a slippage tolerance, and passes it as the destination minimum so a sudden price move cannot fill the swap at a bad rate.
 
 ```mermaid
 flowchart TD
@@ -529,22 +529,22 @@ Every destructive step requires an explicit acknowledgment that states what will
 
 The codebase undergoes internal security reviews as part of our development process. External security audits will be conducted when possible.
 
-## 14. Trust minimization, decentralization, and self-hosting
+## 14. Trust minimization and decentralization
 
-For a tool that closes accounts, decentralization is first a matter of custody and control, and second a matter of who can run it.
+For a tool that closes accounts, decentralization is first a matter of custody and control, and second a matter of how little anyone has to trust the operator.
 
 Custody and control. The tool is non-custodial by construction. A user's account signing is client-side and their keys never reach a server. The backend holds one signing key, the shared exchange mediator, used only to co-sign a forwarding payment the user has already authorized in an atomic transaction. No operator of any component, including the maintainers, can change a destination, move a user's account funds, or close their account without the user's own signature. The user authorizes every transaction.
 
-Who can run it. The whole project is open source under a permissive license, and the code that builds and signs transactions runs in the user's browser where anyone can read it. The tool deploys as a single Next.js service, so anyone can run their own instance with Docker or any Node host. Every external read source is behind a pluggable adapter, so a self-hoster can point the tool at their own Stellar RPC node, their preferred indexer, and their preferred DeFi Position API instance. The canonical deployment is a convenience, not a requirement: nothing about the tool depends on a server only the maintainers can run.
+Open code, open surfaces. The whole project is open source under a permissive license, and the code that builds and signs transactions runs in the user's browser where anyone can read it. Integrators do not have to go through our UI at all: the REST API and the TypeScript SDK (Section 7.3) let a wallet or platform drive the same wind-down with its own interface and its own signers, so the security-critical path is auditable and embeddable rather than locked behind a hosted product. Every external read source sits behind a pluggable adapter, so the deployment can be pointed at any Stellar RPC provider, indexer, or DeFi Position API instance.
 
 Where centralization remains, and why. The remaining centralized pieces are all read-only data sources: RPC providers, the indexer, the routing API, and the DeFi Position API. None can affect custody. Each is pluggable and has multiple independent providers in the Stellar ecosystem, so no single one is a hard dependency. The DeFi Position API (OctoPos) is a deliberate dependency, kept behind an adapter with an explicit degraded mode, so even there an outage limits functionality rather than breaking the tool.
 
 | Component                          | Ownership                            | Reach               | Notes                                                                                                                         |
 | ---------------------------------- | ------------------------------------ | ------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Application (UI and read-only API) | Open source, self-hostable           | Open                | One Next.js service, deployable with Docker or any Node host; no user keys, no custody (only the shared mediator co-sign key) |
+| Application (UI and read-only API) | Open source                          | Open                | One Next.js service; no user keys, no custody (only the shared mediator co-sign key)                                          |
 | Transaction builder and signing    | Open source, runs client-side        | Open                | The security-critical code; signing never leaves the browser                                                                  |
 | Contract and exchange registries   | Open source, community pull requests | Open                | Versioned JSON, updated by reviewed pull request                                                                              |
-| Stellar RPC access                 | Pluggable provider                   | External, read-only | Ecosystem providers or a self-hosted node                                                                                     |
+| Stellar RPC access                 | Pluggable provider                   | External, read-only | Ecosystem providers, configurable per deployment                                                                              |
 | Subentry enumeration               | Pluggable indexer                    | External, read-only | stellar.expert API or a Horizon-compatible provider                                                                           |
 | Swap routing                       | Pluggable                            | External, read-only | Soroswap API or SDEX paths                                                                                                    |
 | DeFi position detection            | Pluggable                            | External, read-only | OctoPos behind an adapter, with an explicit degraded mode                                                                     |
@@ -555,9 +555,9 @@ Nothing in the open rows can move funds. Everything in the external rows is read
 
 The tool runs on light, replaceable infrastructure, which follows from the non-custodial design.
 
-- Application: a single Next.js service that serves the guided UI and the read-only API routes. It holds no per-user state and no user keys (only the shared mediator co-sign key, injected from the environment), so it scales horizontally behind a load balancer. A published Docker image lets anyone self-host it.
+- Application: a single Next.js service that serves the guided UI and the read-only API routes. It holds no per-user state and no user keys (only the shared mediator co-sign key, injected from the environment), so it scales horizontally behind a load balancer.
 - Cache: a Redis instance holds short-lived public read data only.
-- Stellar access: Stellar RPC through ecosystem providers, configurable per deployment, with the option to run a self-hosted RPC node.
+- Stellar access: Stellar RPC through ecosystem providers, configurable per deployment.
 - Data services: the stellar.expert API for enumeration and the Soroswap API for routing, both pluggable; the OctoPos DeFi Position API.
 
 The project commits to using the current stable Stellar stack: the latest `@stellar/stellar-sdk`, Stellar RPC, stellar-wallets-kit, and the live network protocol (Protocol 26, Yardstick, on mainnet since May 2026). The contract registry and protocol adapters are versioned so the tool tracks protocol and DeFi upgrades without a rebuild of its core logic.
@@ -597,13 +597,13 @@ The work is delivered in three cumulative tranches, each a working, independentl
 
 ## 20. Traction
 
-The classic wind-down already runs. The current codebase is a working Next.js application that, on both networks, reads account state over Stellar RPC and the stellar.expert API, builds and signs classic transactions client-side, and executes the full path: signer normalization, data entry removal, offer cancellation, asset conversion through SDEX path payments, trustline removal, and `AccountMerge`, including the mediator flow for exchange destinations with the correct memo handling. It carries an exchange registry, IndexedDB session recovery, unit tests over the plan builder and helpers, and Playwright end-to-end coverage. This is the foundation the Soroban and DeFi work builds on, and the evidence that the team is already executing rather than starting from a blank page.
+The classic wind-down already runs. The current codebase is a working Next.js application that, on both networks, reads account state over Stellar RPC, the stellar.expert API, and Horizon-compatible endpoints, builds and signs classic transactions client-side, and executes the full path: signer normalization, data entry removal, offer cancellation, asset conversion through SDEX path payments, trustline removal, and `AccountMerge`, including the mediator flow for exchange destinations with the correct memo handling. It carries an exchange registry, IndexedDB session recovery, unit tests over the plan builder and helpers, and Playwright end-to-end coverage. This is the foundation the Soroban and DeFi work builds on, and the evidence that the team is already executing rather than starting from a blank page.
 
 ## 21. Technology stack and standards
 
 Plain-English summary of what the tool is built from and why.
 
-- Frontend: Next.js and TypeScript, an open source and self-hostable web app, with TypeScript's type safety valuable when constructing transactions.
+- Frontend: Next.js and TypeScript, an open source web app, with TypeScript's type safety valuable when constructing transactions.
 - Stellar SDK: `@stellar/stellar-sdk`, the official SDK, which covers classic and Soroban.
 - Wallets: stellar-wallets-kit, for one interface across Freighter, xBull, Albedo, LOBSTR, Rabet, Hana, WalletConnect, and more, including Soroban authorization-entry signing.
 - Network access: Stellar RPC for live reads, simulation, submission, and events; the stellar.expert API for subentry enumeration; the Soroswap API for routing; OctoPos for DeFi position detection.

@@ -163,7 +163,7 @@ The system has three layers. The trust boundary is the browser - signing never l
 **Key design decisions:**
 
 - **No bespoke indexer.** Stellar RPC cannot enumerate unknown subentries. LumenWipe reads enumeration from `stellar.expert` (the same layer the reference demolisher uses), re-reads exact on-chain state over RPC immediately before building each transaction, and never signs based on stale data.
-- **Pluggable data sources.** Every read source (RPC provider, indexer, routing API, DeFi position API) is behind an adapter. Self-hosters can point the tool at any compatible provider.
+- **Pluggable data sources.** Every read source (RPC provider, indexer, routing API, DeFi position API) is behind an adapter, so any compatible provider can be swapped in without touching the transaction logic.
 - **Soroban exits are simulated before signing.** Every `InvokeHostFunction` is run through `simulateTransaction` to fill in footprint, authorization, and resource fees. The user sees the simulation result before being asked to sign.
 
 ---
@@ -190,11 +190,11 @@ The codebase undergoes internal security reviews as part of our development proc
 
 | Layer          | Choice                                              | Why                                                                                  |
 | -------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Frontend       | Next.js 15, TypeScript                              | Open source, self-hostable, type-safe transaction construction                       |
+| Frontend       | Next.js 15, TypeScript                              | Open source, type-safe transaction construction                                      |
 | Stellar SDK    | `@stellar/stellar-sdk`                              | Official SDK for classic and Soroban                                                 |
 | Wallets        | `stellar-wallets-kit` (SEP-43)                      | One interface across Freighter, xBull, Albedo, LOBSTR, Hana, WalletConnect, and more |
-| Network access | Stellar RPC                                         | Live reads, simulation, submission, events - no Horizon dependency                   |
-| Enumeration    | `stellar.expert` API                                | Existing production indexer, pluggable                                               |
+| Network access | Stellar RPC                                         | Live reads, simulation, submission, events                                           |
+| Enumeration    | `stellar.expert` API + Horizon-compatible endpoints | Existing production indexers, pluggable                                              |
 | Routing        | Soroswap API + SDEX paths                           | Best routes across Soroban and classic venues                                        |
 | DeFi detection | OctoPos                                             | Funded DeFi Position API, behind a pluggable adapter                                 |
 | State          | Zustand + IndexedDB                                 | Resumable sessions, never persists keys                                              |
@@ -299,7 +299,7 @@ LumenWipe is open source from day one. The full frontend, read-only backend, tra
 
 ## License
 
-[Apache 2.0](LICENSE) - permissive, allows reuse and self-hosting, includes a patent grant.
+[Apache 2.0](LICENSE) - permissive, allows reuse, includes a patent grant.
 
 This project builds upon the open-source work of [stellar.expert/demolisher/public](https://stellar.expert/demolisher/public) by Orbit Lens.
 

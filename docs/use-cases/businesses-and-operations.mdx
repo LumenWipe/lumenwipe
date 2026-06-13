@@ -19,6 +19,6 @@ Typical fleets:
 
 Leftover non-XLM balances are not an obstacle: the plan converts them to XLM before removing the trustlines, and anything that cannot be converted or closed safely is reported as a blocker for that account rather than silently skipped, so a batch run never half-closes anything.
 
-## Self-hosting
+## Keep your data in your stack
 
-Some operations teams will not route account lists through third-party infrastructure, and they do not have to. The whole service is open source under Apache 2.0 and runs as a single self-hosted unit on your own infrastructure.
+Some operations teams will not route account lists through third-party infrastructure, and they do not have to. The TypeScript SDK exposes the same analysis and transaction construction as a library: plans and unsigned transactions are built inside your own backend, reading the network through your own RPC and data providers, and signed with your own keys. Account lists never touch LumenWipe infrastructure.

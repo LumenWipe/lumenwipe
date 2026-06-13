@@ -32,7 +32,7 @@ Three layers with the trust boundary in the browser - private keys never leave t
 
 1. **Client** (`app/[network]/`, `components/`, `hooks/`, `store/`): all transaction construction and signing.
 2. **Read-only API routes** (`app/api/[network]/`): account analysis, conversion paths, mediator prepare/check. Stateless, no keys, not in the signing path.
-3. **External services**: Stellar RPC for live reads/simulation/submission (no Horizon - do not add Horizon dependencies), stellar.expert API for subentry enumeration (`lib/se-api/`), Vercel KV.
+3. **External services**: Stellar RPC for live reads/simulation/submission; Horizon-compatible endpoints (base URL `PATH_ROUTING_API_URLS`) for the reads RPC cannot serve: open offers (`lib/stellar/horizon-adapter.ts`), full account state with data entries and signers (`lib/stellar/account-live.ts`), classic path finding (`lib/se-api/paths.ts`); stellar.expert API for subentry enumeration (`lib/se-api/`); Vercel KV.
 
 Routing splits into two worlds: `app/(marketing)/` is the landing page and MDX blog (`content/blog/`, `lib/blog.ts`) with no transaction logic; `app/[network]/` is the actual tool, where `[network]` is `public` or `testnet` (`config/networks.ts`), with the flow pages `analyze → execute → complete`.
 
@@ -70,6 +70,6 @@ See CONTRIBUTING.md for the full rules. The essentials:
 Skills live canonically in `.agents/skills/` with symlinks in `.claude/skills/`, managed by the [skills CLI](https://github.com/vercel-labs/skills) and pinned in `skills-lock.json`. Manage with `npx skills list` / `npx skills update -p` / `npx skills add <repo> -s <skill> -a claude-code -a cursor -y`.
 
 - `dapp`, `data`, `assets` (stellar/stellar-dev-skill) - wallet integration, RPC queries, classic assets/trustlines/SAC.
-- `soroswap-sdk` (soroswap/sdk) - use when working on asset conversion via the Soroswap API/SDK; the `CONVERT_ASSETS` step routes through the Soroswap Aggregator per `docs/architecture.md`. Not in the lockfile: the upstream repo doesn't follow the `SKILL.md` convention, so update it manually from `https://raw.githubusercontent.com/soroswap/sdk/main/soroswap-sdk-skill.md`.
+- `soroswap-sdk` (soroswap/sdk) - use when working on asset conversion via the Soroswap API/SDK; the `CONVERT_ASSETS` step routes through the Soroswap API (which spans the Soroswap Aggregator and the classic SDEX) per `docs/architecture.md`. Not in the lockfile: the upstream repo doesn't follow the `SKILL.md` convention, so update it manually from `https://raw.githubusercontent.com/soroswap/sdk/main/soroswap-sdk-skill.md`.
 - `vercel-react-best-practices` (vercel-labs/agent-skills) - React 19 / Next.js performance rules.
 - `webapp-testing` (anthropics/skills) - Playwright-driven browser verification of the guided flow.

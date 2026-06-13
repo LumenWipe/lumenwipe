@@ -16,7 +16,7 @@ A guided web app that runs the whole wind-down in one flow and signs every trans
 
 ## Why us
 
-The classic wind-down already runs. The current codebase reads account state over Stellar RPC and the stellar.expert API, builds and signs classic transactions client-side, and executes the full path (signer normalization, data entry removal, offer cancellation, asset conversion via SDEX path payments, trustline removal, and `AccountMerge`, including the mediator flow for exchange destinations), with unit and end-to-end tests. We are extending a working foundation, not starting from a blank page.
+The classic wind-down already runs. The current codebase reads account state over Stellar RPC, the stellar.expert API, and Horizon-compatible endpoints, builds and signs classic transactions client-side, and executes the full path (signer normalization, data entry removal, offer cancellation, asset conversion via SDEX path payments, trustline removal, and `AccountMerge`, including the mediator flow for exchange destinations), with unit and end-to-end tests. We are extending a working foundation, not starting from a blank page.
 
 ## How it works
 
@@ -25,7 +25,7 @@ Analyze the account, generate a deterministic ordered plan, execute it step by s
 ## Technical pillars
 
 - Non-custodial by construction. A user's private keys never leave the browser. The backend is read-only apart from one signing key, the shared exchange mediator, which can only co-sign a forwarding payment the user already authorized in an atomic transaction; no operator (including us) can move a user's account funds or close their account.
-- No bespoke indexer, no Horizon dependency. Stellar RPC reads live state, simulates, and submits; an existing indexer (stellar.expert) handles enumeration; OctoPos provides DeFi position detection.
+- No bespoke indexer. Stellar RPC reads live state, simulates, and submits; existing indexers (the stellar.expert API and Horizon-compatible endpoints) handle enumeration and classic path finding; OctoPos provides DeFi position detection.
 - Per-protocol exit adapters and a versioned contract registry. Detect positions with the DeFi Position API, build the exit with each protocol's SDK, public API, or contract, and simulate before signing. A protocol upgrade is a registry update, not a rewrite.
 - CEX compatibility through a shared mediator account and an atomic forwarding payment, since exchanges do not support `ACCOUNT_MERGE`. The user recovers essentially all of their XLM.
 - Safety for irreversible operations. Per-step confirmation, simulation before signing, resumable sessions reconciled against on-chain state, and security reviews throughout development.
@@ -34,7 +34,7 @@ Analyze the account, generate a deterministic ordered plan, execute it step by s
 
 - The full account wind-down: sponsorship and multisig checks, signer and threshold normalization, trustline, data entry, offer, and DeFi position removal, claimable balances, asset conversion, and merge with the mediator flow.
 - Consumes a funded DeFi Position API recipient, OctoPos, behind a pluggable adapter with an explicit degraded mode.
-- Open source under Apache 2.0, self-hostable as a single service.
+- Open source under Apache 2.0, with a REST API and TypeScript SDK so wallets and platforms can integrate the same wind-down.
 
 ## Delivery
 

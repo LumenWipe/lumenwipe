@@ -11,11 +11,11 @@ Companion to the [technical architecture](/architecture). This document covers h
 
 LumenWipe is open source under Apache 2.0 from the start, not after a private build phase. That means a permissive license, a public repository, a public issue tracker, and a public roadmap. The reference tool this project extends, [stellar.expert/demolisher/public](https://stellar.expert/demolisher/public) by Orbit Lens, is itself open, and this project keeps that spirit: the full frontend, the read-only backend, the transaction construction layer, the contract registry, and the test suite are public.
 
-Anyone can read the code, file an issue, propose a change, or self-host the tool. Because the tool performs irreversible actions on real accounts, openness is also a security property: the more eyes on the signing and transaction-construction code, the better.
+Anyone can read the code, file an issue, or propose a change. Because the tool performs irreversible actions on real accounts, openness is also a security property: the more eyes on the signing and transaction-construction code, the better.
 
 ## 2. Licensing
 
-- License: Apache 2.0 (permissive, allows reuse and self-hosting, includes a patent grant).
+- License: Apache 2.0 (permissive, allows reuse, includes a patent grant).
 - Attribution: the project credits and builds upon the public-domain work of [stellar.expert/demolisher/public](https://stellar.expert/demolisher/public).
 - Dependencies: dependencies are tracked and their licenses are compatible with Apache 2.0.
 
@@ -39,7 +39,7 @@ The project maintains a presence across both standard ecosystem channels and dec
 | Matrix            | Decentralized, open source | A public room for project discussion, bridged where useful. Open-protocol, self-hostable, no single platform owner. |
 | Telegram          | Community                  | Real-time community chat, user support, and announcements.                                                          |
 
-The reasoning behind the decentralized channels is consistency with the project's own values. A non-custodial, self-hostable tool should not anchor its public communication to a single proprietary platform. Matrix is an open protocol that no single company controls, which matches the tool's design and reduces single-platform risk for the community that depends on it.
+The reasoning behind the decentralized channels is consistency with the project's own values. A non-custodial, open-source tool should not anchor its public communication to a single proprietary platform. Matrix is an open protocol that no single company controls, which matches the tool's design and reduces single-platform risk for the community that depends on it.
 
 ## 5. Coordination with protocol and ecosystem teams
 
