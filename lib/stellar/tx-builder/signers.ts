@@ -1,4 +1,4 @@
-import { TransactionBuilder, Operation, Account, StrKey } from "@stellar/stellar-sdk";
+import { TransactionBuilder, Operation, Account, StrKey, xdr } from "@stellar/stellar-sdk";
 import type { Network } from "@/config/networks";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { BASE_FEE_STROOPS, TX_TIMEOUT_SECONDS } from "@/config/constants";
@@ -25,35 +25,33 @@ function signerRemovalOption(
   return undefined;
 }
 
-export function buildNormalizeSignersTx(
-  sdkAccount: Account,
+export function signerNormalizationOps(
   signers: AccountSigner[],
-  network: Network
-): string {
-  const passphrase = NETWORK_PASSPHRASES[network];
-  const masterKey = sdkAccount.accountId();
-
-  const builder = new TransactionBuilder(sdkAccount, {
-    fee: String(BASE_FEE_STROOPS * (signers.length + 1)),
-    networkPassphrase: passphrase,
-  }).setTimeout(TX_TIMEOUT_SECONDS);
-
+  masterKey: string
+): xdr.Operation[] {
+  const ops: xdr.Operation[] = [];
   // Remove all non-master signers (ed25519, hash_x, and preauth_tx types)
   for (const signer of signers) {
     if (signer.key === masterKey) continue;
     const signerOpt = signerRemovalOption(signer);
     if (!signerOpt) continue;
-    builder.addOperation(Operation.setOptions({ signer: signerOpt }));
+    ops.push(Operation.setOptions({ signer: signerOpt }));
   }
+  // Reset thresholds to 0/1/1 (low/med/high) so master key alone is sufficient.
+  ops.push(Operation.setOptions({ lowThreshold: 0, medThreshold: 1, highThreshold: 1 }));
+  return ops;
+}
 
-  // Reset thresholds to 0/1/1 (low/med/high) so master key alone is sufficient
-  builder.addOperation(
-    Operation.setOptions({
-      lowThreshold: 0,
-      medThreshold: 1,
-      highThreshold: 1,
-    })
-  );
-
+export function buildNormalizeSignersTx(
+  sdkAccount: Account,
+  signers: AccountSigner[],
+  network: Network
+): string {
+  const ops = signerNormalizationOps(signers, sdkAccount.accountId());
+  const builder = new TransactionBuilder(sdkAccount, {
+    fee: String(BASE_FEE_STROOPS * ops.length),
+    networkPassphrase: NETWORK_PASSPHRASES[network],
+  }).setTimeout(TX_TIMEOUT_SECONDS);
+  for (const op of ops) builder.addOperation(op);
   return builder.build().toEnvelope().toXDR("base64");
 }

@@ -1,4 +1,4 @@
-import { TransactionBuilder, Operation, Asset, Memo, Account } from "@stellar/stellar-sdk";
+import { TransactionBuilder, Operation, Asset, Memo, Account, xdr } from "@stellar/stellar-sdk";
 import type { Network } from "@/config/networks";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { BASE_FEE_STROOPS, STROOPS_PER_XLM, TX_TIMEOUT_SECONDS } from "@/config/constants";
@@ -14,6 +14,10 @@ function applyMemo(
   } else {
     builder.addMemo(Memo.text(memo));
   }
+}
+
+export function mergeOp(destination: string): xdr.Operation {
+  return Operation.accountMerge({ destination });
 }
 
 export function buildMergeTx(
@@ -32,7 +36,7 @@ export function buildMergeTx(
 
   applyMemo(builder, memo, memoType);
 
-  builder.addOperation(Operation.accountMerge({ destination: destinationAddress }));
+  builder.addOperation(mergeOp(destinationAddress));
 
   return builder.build().toEnvelope().toXDR("base64");
 }

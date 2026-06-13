@@ -1,10 +1,25 @@
-import { TransactionBuilder, Operation, Asset, Account } from "@stellar/stellar-sdk";
+import { TransactionBuilder, Operation, Asset, Account, xdr } from "@stellar/stellar-sdk";
 import type { Network } from "@/config/networks";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { BASE_FEE_STROOPS, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import type { Trustline } from "@/types/account";
 import type { ConversionPath } from "@/types/plan";
 import { assetToSdkAsset } from "@/lib/utils/assets";
+
+export function assetConversionOp(
+  accountId: string,
+  trustline: Trustline,
+  path: ConversionPath
+): xdr.Operation {
+  return Operation.pathPaymentStrictSend({
+    sendAsset: assetToSdkAsset(trustline.asset),
+    sendAmount: trustline.balance,
+    destination: accountId,
+    destAsset: Asset.native(),
+    destMin: path.destMin,
+    path: path.path.map((p) => assetToSdkAsset(p)),
+  });
+}
 
 export function buildConvertAssetTx(
   sdkAccount: Account,
@@ -19,20 +34,7 @@ export function buildConvertAssetTx(
     networkPassphrase: passphrase,
   }).setTimeout(TX_TIMEOUT_SECONDS);
 
-  const sendAsset = assetToSdkAsset(trustline.asset);
-  const destAsset = Asset.native();
-  const intermediatePath = path.path.map((p) => assetToSdkAsset(p));
-
-  builder.addOperation(
-    Operation.pathPaymentStrictSend({
-      sendAsset,
-      sendAmount: trustline.balance,
-      destination: sdkAccount.accountId(),
-      destAsset,
-      destMin: path.destMin,
-      path: intermediatePath,
-    })
-  );
+  builder.addOperation(assetConversionOp(sdkAccount.accountId(), trustline, path));
 
   return builder.build().toEnvelope().toXDR("base64");
 }
