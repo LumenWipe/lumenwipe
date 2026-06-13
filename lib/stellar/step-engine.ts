@@ -1,7 +1,7 @@
 import { Account, Asset, xdr } from "@stellar/stellar-sdk";
 import { getMediatorPublicKey, type Network } from "@/config/networks";
 import { getRpcServer } from "@/lib/stellar/rpc";
-import { NoConversionPathError } from "@/lib/utils/errors";
+import { NoConversionPathError, FastPathUnavailableError } from "@/lib/utils/errors";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import { fetchConversionPath } from "@/lib/se-api/paths";
 import { buildRemoveDataEntriesTx } from "@/lib/stellar/tx-builder/data-entries";
@@ -14,9 +14,11 @@ import { buildRemoveTrustlinesTx } from "@/lib/stellar/tx-builder/trustlines";
 import { buildNormalizeSignersTx } from "@/lib/stellar/tx-builder/signers";
 import { buildClaimBalancesTx } from "@/lib/stellar/tx-builder/claimable-balances";
 import { buildMergeTx, buildMediatorMergePaymentTx } from "@/lib/stellar/tx-builder/merge";
+import { buildFusedCloseTx } from "@/lib/stellar/tx-builder/fused-close";
+import { computeNeedsSignerNormalization } from "@/lib/stellar/tx-builder";
 import { batchItems } from "@/lib/stellar/tx-builder/batching";
 import type { AccountState, ClaimableBalance, Trustline } from "@/types/account";
-import type { PlannedStep } from "@/types/plan";
+import type { ConversionPath, PlannedStep } from "@/types/plan";
 
 // Engine core shared by the wallet flow (useStepExecution) and the testnet
 // playground (usePlaygroundExecution). Pure with respect to React: all state
@@ -189,6 +191,41 @@ export async function buildStepXdrForPlan(
         );
       }
       return buildMergeTx(sdkAccount, destinationAddress, memo, network, memoType);
+    }
+
+    case "CLOSE_ACCOUNT": {
+      // Re-read EVERY trustline's live balance, not the scan-time value: a line that
+      // was empty at scan but received a deposit since must still be converted, or the
+      // atomic close would fail at its changeTrust removal op (and retry the same way).
+      const quoted = await Promise.all(
+        trustlines.map(async (tl) => {
+          const liveBalance = await fetchLiveTrustlineBalance(tl, sourceAddress, server);
+          if (parseFloat(liveBalance) <= 0) return null;
+          const effectiveTl = { ...tl, balance: liveBalance };
+          const path = await fetchConversionPath(effectiveTl.asset, effectiveTl.balance, network);
+          if (!path) throw new FastPathUnavailableError(tl.code);
+          return { trustline: effectiveTl, path };
+        })
+      );
+      const conversions = quoted.filter(
+        (c): c is { trustline: Trustline; path: ConversionPath } => c !== null
+      );
+      return buildFusedCloseTx(
+        sdkAccount,
+        {
+          needsSignerNormalization: computeNeedsSignerNormalization(accountState),
+          signers,
+          dataEntries,
+          openOffers,
+          conversions,
+          trustlines,
+          destinationAddress,
+          memo,
+          memoType,
+          includeMerge: !ctx.mediatorRequired,
+        },
+        network
+      );
     }
 
     default:

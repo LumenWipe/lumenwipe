@@ -231,3 +231,10 @@ export class NoConversionPathError extends Error {
     this.name = "NoConversionPathError";
   }
 }
+
+export class FastPathUnavailableError extends Error {
+  constructor(public readonly assetCode: string) {
+    super(`No clean conversion path for ${assetCode}; falling back to step-by-step.`);
+    this.name = "FastPathUnavailableError";
+  }
+}
