@@ -84,7 +84,10 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       requiredSignatureCount: Math.max(1, accountState.thresholds.med),
     }),
 
-  setPlan: (executionPlan) => set({ executionPlan }),
+  // Reset the step pointer whenever a new plan is installed: a prior run may have
+  // advanced currentStepIndex, and a new (often shorter) plan must start at step 0
+  // so executionPlan[currentStepIndex] never points past the end.
+  setPlan: (executionPlan) => set({ executionPlan, currentStepIndex: 0 }),
 
   setMediatorRequired: (required, publicKey) =>
     set({ mediatorRequired: required, mediatorPublicKey: publicKey ?? null }),
