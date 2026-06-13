@@ -1,5 +1,13 @@
 import type { Network } from "@/config/networks";
 
+export interface ClaimableBalance {
+  /** Full 72-char hex balance ID as returned by Horizon ("00000000" + 64-char hash). */
+  id: string;
+  /** "CODE:ISSUER" or "native" */
+  asset: string;
+  amount: string;
+}
+
 export interface AccountSigner {
   key: string;
   weight: number;
@@ -51,11 +59,19 @@ export interface AccountState {
   thresholds: AccountThresholds;
   numSubEntries: number;
   numSponsoring: number;
+  /** Account whose reserve covers this account's base reserve, or null. Populated by the
+   *  Horizon-based scan path only; the RPC getLedgerEntries response strips the outer
+   *  LedgerEntry extension where sponsoringID lives, so it remains null on that path. */
   sponsoredBy: string | null;
+  /** AUTH_IMMUTABLE flag is set - ACCOUNT_MERGE is permanently blocked. */
+  authImmutable: boolean;
   // From SE API / Horizon adapter
   trustlines: Trustline[];
   openOffers: OpenOffer[];
   poolShares: PoolShareEntry[];
+  /** Claimable balances where this account is listed as a claimant. Does not affect
+   *  numSubEntries on this account; populated via the Horizon adapter. */
+  claimableBalances: ClaimableBalance[];
   // True when the enumerated subentry count is lower than numSubEntries from the ledger -
   // indicates entries we could not enumerate (e.g. offers when adapter URL not configured).
   subEntryMismatch: boolean;

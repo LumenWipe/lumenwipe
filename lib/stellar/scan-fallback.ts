@@ -1,4 +1,11 @@
-import type { AccountState, AccountSigner, DataEntry, OpenOffer, PoolShareEntry, Trustline } from "@/types/account";
+import type {
+  AccountState,
+  AccountSigner,
+  DataEntry,
+  OpenOffer,
+  PoolShareEntry,
+  Trustline,
+} from "@/types/account";
 
 // Sub-entry reconciliation: the ledger's numSubEntries is the ground truth for
 // how many reserve-holding entries exist. If we enumerated fewer, the plan

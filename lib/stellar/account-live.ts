@@ -1,10 +1,12 @@
 import type { Network } from "@/config/networks";
 import { AccountNotFoundError } from "@/lib/utils/errors";
-import { fetchOffersFromAdapter } from "./horizon-adapter";
+import { fetchOffersFromAdapter, fetchClaimableBalancesForClaimant } from "./horizon-adapter";
 import { detectSubEntryMismatch } from "./scan-fallback";
+import { horizonAssetToString } from "@/lib/utils/assets";
 import type {
   AccountState,
   AccountSigner,
+  ClaimableBalance,
   DataEntry,
   Trustline,
   PoolShareEntry,
@@ -57,17 +59,9 @@ interface ApiAccount {
   signers: Array<{ key: string; weight: number; type: string }>;
   balances: ApiBalance[];
   data: Record<string, string>;
+  flags?: { auth_immutable: boolean };
   sponsor?: string;
   num_sponsoring?: number;
-}
-
-function balanceAssetStr(a: {
-  asset_type: string;
-  asset_code?: string;
-  asset_issuer?: string;
-}): string {
-  if (a.asset_type === "native") return "native";
-  return `${a.asset_code}:${a.asset_issuer}`;
 }
 
 export async function getLiveAccountState(
@@ -93,7 +87,7 @@ export async function getLiveAccountState(
   const trustlines: Trustline[] = account.balances
     .filter((b) => b.asset_type === "credit_alphanum4" || b.asset_type === "credit_alphanum12")
     .map((b) => ({
-      asset: balanceAssetStr(b),
+      asset: horizonAssetToString(b),
       balance: b.balance,
       limit: b.limit ?? "0",
       authorized: b.is_authorized ?? true,
@@ -119,6 +113,10 @@ export async function getLiveAccountState(
     .filter((s): s is AccountSigner => s !== null);
 
   const openOffers = await fetchOffersFromAdapter(address, network);
+  const claimableBalances: ClaimableBalance[] = await fetchClaimableBalancesForClaimant(
+    address,
+    network
+  );
   const numSubEntries = account.subentry_count;
 
   return {
@@ -136,9 +134,11 @@ export async function getLiveAccountState(
     numSubEntries,
     numSponsoring: account.num_sponsoring ?? 0,
     sponsoredBy: account.sponsor ?? null,
+    authImmutable: account.flags?.auth_immutable ?? false,
     trustlines,
     openOffers,
     poolShares,
+    claimableBalances,
     subEntryMismatch: detectSubEntryMismatch({
       address,
       signers,

@@ -1,6 +1,6 @@
-import { Keypair, xdr, StrKey, Asset, rpc as StellarRpc } from "@stellar/stellar-sdk";
+import { Keypair, xdr, StrKey, Asset } from "@stellar/stellar-sdk";
 import { getRpcServer } from "./rpc";
-import { fetchOffersFromAdapter } from "./horizon-adapter";
+import { fetchOffersFromAdapter, fetchClaimableBalancesForClaimant } from "./horizon-adapter";
 import { seGet } from "@/lib/se-api/client";
 import { AccountNotFoundError } from "@/lib/utils/errors";
 import { stroopsToXlm } from "@/lib/utils/amounts";
@@ -10,11 +10,16 @@ import type {
   AccountState,
   AccountSigner,
   AccountThresholds,
+  ClaimableBalance,
   DataEntry,
   Trustline,
   OpenOffer,
   PoolShareEntry,
 } from "@/types/account";
+
+// AUTH_IMMUTABLE is bit 2 (value 4) of the account flags uint32 (CAP-0035 / Protocol 14).
+// An account with this flag set permanently blocks ACCOUNT_MERGE.
+const AUTH_IMMUTABLE_FLAG = 4;
 
 // ─── XDR helpers ──────────────────────────────────────────────────────────────
 
@@ -83,12 +88,13 @@ export async function getAccountState(address: string, network: Network): Promis
     throw err;
   }
 
-  // 2. Read full AccountEntry XDR for signers, thresholds, balances, and sponsoring counters
+  // 2. Read full AccountEntry XDR for signers, thresholds, balances, flags, and sponsoring counters
   let signers: AccountSigner[] = [{ key: address, weight: 1, type: "ed25519_public_key" }];
   let thresholds: AccountThresholds = { low: 0, med: 1, high: 1 };
   let numSubEntries = 0;
   let numSponsoring = 0;
   let nativeBalanceLumens = "0";
+  let authImmutable = false;
 
   try {
     const accountKey = xdr.LedgerKey.account(
@@ -108,6 +114,8 @@ export async function getAccountState(address: string, network: Network): Promis
       const t = accountEntry.thresholds() as Buffer;
       thresholds = { low: t[1], med: t[2], high: t[3] };
       const masterWeight = t[0];
+
+      authImmutable = (accountEntry.flags() & AUTH_IMMUTABLE_FLAG) !== 0;
 
       const rawSigners = accountEntry.signers();
       const parsedSigners: AccountSigner[] = [];
@@ -193,9 +201,20 @@ export async function getAccountState(address: string, network: Network): Promis
     }
   }
 
-  // 7. numSubEntries reconciliation. This must run even when the offers adapter
-  // URL is unconfigured (openOffers=[]): an undercounted scan has to surface as
-  // a blocker rather than produce a plan that silently skips entries.
+  // 7. Fetch claimable balances where this account is a claimant via Horizon adapter.
+  //    These are separate ledger entries and do NOT affect numSubEntries, but the
+  //    assets will be inaccessible after ACCOUNT_MERGE unless claimed first.
+  const claimableBalances: ClaimableBalance[] = await fetchClaimableBalancesForClaimant(
+    address,
+    network
+  );
+
+  // 8. numSubEntries reconciliation. This must run even when the offers adapter
+  //    URL is unconfigured (openOffers=[]): an undercounted scan has to surface as
+  //    a blocker rather than produce a plan that silently skips entries.
+  //
+  //    sponsoredBy is not available on this path: getLedgerEntries returns
+  //    LedgerEntryData (stripped of the outer LedgerEntry.ext that carries sponsoringID).
   const subEntryMismatch = detectSubEntryMismatch({
     address,
     signers,
@@ -217,9 +236,11 @@ export async function getAccountState(address: string, network: Network): Promis
     numSubEntries,
     numSponsoring,
     sponsoredBy: null,
+    authImmutable,
     trustlines,
     openOffers,
     poolShares,
+    claimableBalances,
     subEntryMismatch,
   };
 }

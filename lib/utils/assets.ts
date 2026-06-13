@@ -1,3 +1,12 @@
+export function horizonAssetToString(a: {
+  asset_type: string;
+  asset_code?: string;
+  asset_issuer?: string;
+}): string {
+  if (a.asset_type === "native") return "native";
+  return `${a.asset_code}:${a.asset_issuer}`;
+}
+
 export function parseAsset(assetStr: string): { code: string; issuer: string | null } {
   if (assetStr === "native" || assetStr === "XLM") {
     return { code: "XLM", issuer: null };
