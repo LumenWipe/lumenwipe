@@ -5,7 +5,7 @@ import { dataEntryRemovalOps } from "@/lib/stellar/tx-builder/data-entries";
 import { offerCancellationOps } from "@/lib/stellar/tx-builder/offers";
 import { trustlineRemovalOps } from "@/lib/stellar/tx-builder/trustlines";
 import { mergeOp } from "@/lib/stellar/tx-builder/merge";
-import { assetConversionOp } from "@/lib/stellar/tx-builder/asset-conversion";
+import { assetConversionOp, issuerPaymentOp } from "@/lib/stellar/tx-builder/asset-conversion";
 import type { Trustline } from "@/types/account";
 import type { ConversionPath } from "@/types/plan";
 
@@ -77,4 +77,16 @@ test("assetConversionOp > builds a path payment strict send op", () => {
   };
   const op = assetConversionOp(accountId, trustline, path);
   expect(Operation.fromXDRObject(op).type).toBe("pathPaymentStrictSend");
+});
+
+test("issuerPaymentOp > builds a payment op to the issuer", () => {
+  const trustline: Trustline = {
+    asset: `USDC:${ISSUER}`,
+    balance: "100",
+    authorized: true,
+    issuer: ISSUER,
+    code: "USDC",
+  };
+  const op = issuerPaymentOp(trustline);
+  expect(Operation.fromXDRObject(op).type).toBe("payment");
 });

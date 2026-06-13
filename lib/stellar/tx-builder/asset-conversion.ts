@@ -21,6 +21,14 @@ export function assetConversionOp(
   });
 }
 
+export function issuerPaymentOp(trustline: Trustline): xdr.Operation {
+  return Operation.payment({
+    destination: trustline.issuer,
+    asset: assetToSdkAsset(trustline.asset),
+    amount: trustline.balance,
+  });
+}
+
 export function buildConvertAssetTx(
   sdkAccount: Account,
   trustline: Trustline,
@@ -51,15 +59,7 @@ export function buildSendToIssuerTx(
     networkPassphrase: passphrase,
   }).setTimeout(TX_TIMEOUT_SECONDS);
 
-  const asset = assetToSdkAsset(trustline.asset);
-
-  builder.addOperation(
-    Operation.payment({
-      destination: trustline.issuer,
-      asset,
-      amount: trustline.balance,
-    })
-  );
+  builder.addOperation(issuerPaymentOp(trustline));
 
   return builder.build().toEnvelope().toXDR("base64");
 }
