@@ -58,6 +58,11 @@ export function useStepExecution() {
       setPhase("STEP_EXECUTING");
       updateStep(step.index, { status: "signing" });
 
+      // A direct (mediator-free) CLOSE_ACCOUNT fuses the merge into a single
+      // step, so it must be counted for stats just like a standalone MERGE.
+      const carriesMerge =
+        step.type === "MERGE" || (step.type === "CLOSE_ACCOUNT" && !mediatorRequired);
+
       try {
         setProgressStatus("Building transaction...");
         const unsigned = await buildStepXdr(step);
@@ -86,7 +91,7 @@ export function useStepExecution() {
           setProgressStatus("Submitting to Stellar network...");
           const { txHash } = await submitAndWait(signedXdr, network, setProgressStatus);
           markStepConfirmed(step.index, txHash);
-          if (step.type === "MERGE") recordMergeStats(txHash, network);
+          if (carriesMerge) recordMergeStats(txHash, network);
         }
 
         // Read the live plan AFTER markStepConfirmed so the persisted record
