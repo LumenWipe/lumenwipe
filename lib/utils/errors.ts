@@ -233,8 +233,8 @@ export class NoConversionPathError extends Error {
 }
 
 export class FastPathUnavailableError extends Error {
-  constructor(public readonly assetCode: string) {
-    super(`No clean conversion path for ${assetCode}; falling back to step-by-step.`);
+  constructor(reason: string) {
+    super(reason);
     this.name = "FastPathUnavailableError";
   }
 }

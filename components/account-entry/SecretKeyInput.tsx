@@ -107,7 +107,8 @@ export default function SecretKeyInput({
 
       <p className="flex items-start gap-1.5 text-xs text-white/50">
         <ShieldAlert className="h-3.5 w-3.5 mt-0.5 shrink-0 text-warning" />
-        Your secret key never leaves your browser. It is held in memory only during signing.
+        Your secret key never leaves your browser. It is held in memory only, never persisted, and
+        cleared when you finish, leave, or click Forget key.
       </p>
     </div>
   );

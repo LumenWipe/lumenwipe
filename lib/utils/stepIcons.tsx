@@ -16,6 +16,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   CONVERT_ASSETS: ArrowLeftRight,
   REMOVE_TRUSTLINES: Unlink,
   MERGE: GitMerge,
+  CLOSE_ACCOUNT: GitMerge,
 };
 
 export function StepTypeIcon({

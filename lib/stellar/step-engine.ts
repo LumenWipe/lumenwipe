@@ -14,9 +14,10 @@ import { buildRemoveTrustlinesTx } from "@/lib/stellar/tx-builder/trustlines";
 import { buildNormalizeSignersTx } from "@/lib/stellar/tx-builder/signers";
 import { buildClaimBalancesTx } from "@/lib/stellar/tx-builder/claimable-balances";
 import { buildMergeTx, buildMediatorMergePaymentTx } from "@/lib/stellar/tx-builder/merge";
-import { buildFusedCloseTx } from "@/lib/stellar/tx-builder/fused-close";
+import { assembleFusedCloseOps, buildFusedCloseTx } from "@/lib/stellar/tx-builder/fused-close";
 import { computeNeedsSignerNormalization } from "@/lib/stellar/tx-builder";
 import { batchItems } from "@/lib/stellar/tx-builder/batching";
+import { OP_BATCH_LIMIT } from "@/config/constants";
 import type { AccountState, ClaimableBalance, Trustline } from "@/types/account";
 import type { ConversionPath, PlannedStep } from "@/types/plan";
 
@@ -203,29 +204,40 @@ export async function buildStepXdrForPlan(
           if (parseFloat(liveBalance) <= 0) return null;
           const effectiveTl = { ...tl, balance: liveBalance };
           const path = await fetchConversionPath(effectiveTl.asset, effectiveTl.balance, network);
-          if (!path) throw new FastPathUnavailableError(tl.code);
+          if (!path)
+            throw new FastPathUnavailableError(
+              `No clean conversion path for ${tl.code}; falling back to step-by-step.`
+            );
           return { trustline: effectiveTl, path };
         })
       );
       const conversions = quoted.filter(
         (c): c is { trustline: Trustline; path: ConversionPath } => c !== null
       );
-      return buildFusedCloseTx(
-        sdkAccount,
-        {
-          needsSignerNormalization: computeNeedsSignerNormalization(accountState),
-          signers,
-          dataEntries,
-          openOffers,
-          conversions,
-          trustlines,
-          destinationAddress,
-          memo,
-          memoType,
-          includeMerge: !ctx.mediatorRequired,
-        },
-        network
-      );
+      const input = {
+        needsSignerNormalization: computeNeedsSignerNormalization(accountState),
+        signers,
+        dataEntries,
+        openOffers,
+        conversions,
+        trustlines,
+        destinationAddress,
+        memo,
+        memoType,
+        includeMerge: !ctx.mediatorRequired,
+      };
+      // The Stellar SDK does not enforce the 100-operation protocol cap at build
+      // time, so an oversized fused tx would build and submit and then be rejected
+      // as an opaque failure. Count the ops up front and degrade to the stepwise
+      // plan instead. Live balances drive `conversions`, so a line that was empty
+      // at scan but funded since can push the count past the limit.
+      const ops = assembleFusedCloseOps(sourceAddress, input);
+      if (ops.length > OP_BATCH_LIMIT) {
+        throw new FastPathUnavailableError(
+          `This close needs ${ops.length} operations, over the ${OP_BATCH_LIMIT}-operation limit for one transaction; falling back to step-by-step.`
+        );
+      }
+      return buildFusedCloseTx(sdkAccount, input, network);
     }
 
     default:

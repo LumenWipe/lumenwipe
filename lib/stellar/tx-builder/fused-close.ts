@@ -25,6 +25,26 @@ export interface FusedCloseInput {
 }
 
 /**
+ * Assembles the ordered operation list for a fused close. Pure: account id and
+ * input in, operation envelopes out, no network side effects. Exported so the
+ * step engine can count operations before building, and so the assembly logic is
+ * not duplicated. Order is fixed: signer normalization, data removal, offer
+ * cancellation, asset conversion, trustline removal, and (for direct
+ * destinations) the account merge - so by the time accountMerge runs every
+ * subentry is already gone.
+ */
+export function assembleFusedCloseOps(masterKey: string, input: FusedCloseInput): xdr.Operation[] {
+  const ops: xdr.Operation[] = [];
+  if (input.needsSignerNormalization) ops.push(...signerNormalizationOps(input.signers, masterKey));
+  ops.push(...dataEntryRemovalOps(input.dataEntries));
+  ops.push(...offerCancellationOps(input.openOffers));
+  for (const c of input.conversions) ops.push(assetConversionOp(masterKey, c.trustline, c.path));
+  ops.push(...trustlineRemovalOps(input.trustlines));
+  if (input.includeMerge) ops.push(mergeOp(input.destinationAddress));
+  return ops;
+}
+
+/**
  * Builds one atomic classic transaction that closes an account: signer
  * normalization, data removal, offer cancellation, asset conversion, trustline
  * removal, and (for direct destinations) the account merge. Operations apply in
@@ -40,17 +60,7 @@ export function buildFusedCloseTx(
   input: FusedCloseInput,
   network: Network
 ): string {
-  const masterKey = sdkAccount.accountId();
-  const ops: xdr.Operation[] = [];
-
-  if (input.needsSignerNormalization) {
-    ops.push(...signerNormalizationOps(input.signers, masterKey));
-  }
-  ops.push(...dataEntryRemovalOps(input.dataEntries));
-  ops.push(...offerCancellationOps(input.openOffers));
-  for (const c of input.conversions) ops.push(assetConversionOp(masterKey, c.trustline, c.path));
-  ops.push(...trustlineRemovalOps(input.trustlines));
-  if (input.includeMerge) ops.push(mergeOp(input.destinationAddress));
+  const ops = assembleFusedCloseOps(sdkAccount.accountId(), input);
 
   // The SDK multiplies the `fee` option by the operation count, so passing the
   // per-operation base fee yields a total of BASE_FEE_STROOPS * opCount on-chain.

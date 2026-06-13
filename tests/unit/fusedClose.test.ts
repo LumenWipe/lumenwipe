@@ -1,6 +1,10 @@
 import { test, expect } from "bun:test";
 import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
-import { buildFusedCloseTx, type FusedCloseInput } from "@/lib/stellar/tx-builder/fused-close";
+import {
+  assembleFusedCloseOps,
+  buildFusedCloseTx,
+  type FusedCloseInput,
+} from "@/lib/stellar/tx-builder/fused-close";
 
 const MASTER = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -112,4 +116,56 @@ test("buildFusedCloseTx > no signer normalization when flag false (no stray setO
     buildFusedCloseTx(account(), baseInput({ dataEntries: [{ key: "k", value: "" }] }), "testnet")
   );
   expect(ops.every((o) => o.type !== "setOptions")).toBe(true);
+});
+
+test("assembleFusedCloseOps > counts ops for a representative input", () => {
+  const tl = {
+    asset: `USDC:${ISSUER}`,
+    balance: "10",
+    authorized: true,
+    issuer: ISSUER,
+    code: "USDC",
+  };
+  const ops = assembleFusedCloseOps(
+    MASTER,
+    baseInput({
+      needsSignerNormalization: true,
+      signers: [
+        { key: MASTER, weight: 1, type: "ed25519_public_key" },
+        { key: EXTRA, weight: 1, type: "ed25519_public_key" },
+      ],
+      dataEntries: [
+        { key: "a", value: "" },
+        { key: "b", value: "" },
+      ],
+      openOffers: [
+        { id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" },
+      ],
+      conversions: [
+        {
+          trustline: tl,
+          path: {
+            fromAsset: tl.asset,
+            toAsset: "native",
+            path: [],
+            estimatedReceive: "9",
+            destMin: "8.9",
+          },
+        },
+      ],
+      trustlines: [tl],
+    })
+  );
+  // signer normalization = 1 setOptions per extra signer (1) + 1 threshold reset = 2;
+  // plus 2 manageData + 1 manageSellOffer + 1 pathPaymentStrictSend + 1 changeTrust +
+  // 1 accountMerge = 8
+  expect(ops).toHaveLength(8);
+});
+
+test("assembleFusedCloseOps > large input exceeds the 100-op protocol cap", () => {
+  const dataEntries = Array.from({ length: 120 }, (_, i) => ({ key: `k${i}`, value: "" }));
+  const ops = assembleFusedCloseOps(MASTER, baseInput({ dataEntries, includeMerge: true }));
+  // 120 manageData + 1 accountMerge = 121, the count the build-time guard relies on
+  expect(ops.length).toBeGreaterThan(100);
+  expect(ops).toHaveLength(121);
 });
