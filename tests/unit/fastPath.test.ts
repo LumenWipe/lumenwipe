@@ -18,9 +18,11 @@ function makeAccount(over: Partial<AccountState> = {}): AccountState {
     numSubEntries: 0,
     numSponsoring: 0,
     sponsoredBy: null,
+    authImmutable: false,
     trustlines: [],
     openOffers: [],
     poolShares: [],
+    claimableBalances: [],
     subEntryMismatch: false,
     ...over,
   };
