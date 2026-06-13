@@ -53,6 +53,23 @@ interface DemolishState {
   reset: () => void;
 }
 
+/**
+ * Drops disposition entries for assets the new account state no longer holds a
+ * trustline for, while preserving decisions for assets that still exist. A fresh
+ * scan of the same account therefore keeps the user's per-asset choices.
+ */
+function pruneDispositions(
+  dispositions: Record<string, AssetDisposition>,
+  accountState: AccountState
+): Record<string, AssetDisposition> {
+  const present = new Set(accountState.trustlines.map((tl) => tl.asset));
+  const next: Record<string, AssetDisposition> = {};
+  for (const [asset, action] of Object.entries(dispositions)) {
+    if (present.has(asset)) next[asset] = action;
+  }
+  return next;
+}
+
 const initialState = {
   sourceAddress: null,
   destinationAddress: null,
@@ -84,11 +101,17 @@ export const useDemolishStore = create<DemolishState>((set) => ({
   setPhase: (phase) => set({ phase }),
 
   setAccountState: (accountState) =>
-    set({
+    set((s) => ({
       accountState,
       requiredSignatureCount: Math.max(1, accountState.thresholds.med),
-      assetDispositions: {},
-    }),
+      // Keep per-asset decisions across a re-scan of the SAME assets (e.g. the
+      // analyze-page refresh button, which re-runs the fetch and lands here):
+      // wiping them dropped a user's "return to issuer" choice, after which the
+      // fused close silently re-quoted the asset and failed with a lost route.
+      // Prune to assets still present so a genuinely-gone trustline can't carry a
+      // stale decision into the build.
+      assetDispositions: pruneDispositions(s.assetDispositions, accountState),
+    })),
 
   // Reset the step pointer whenever a new plan is installed: a prior run may have
   // advanced currentStepIndex, and a new (often shorter) plan must start at step 0

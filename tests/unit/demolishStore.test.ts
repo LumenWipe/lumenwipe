@@ -1,9 +1,9 @@
 import { test, expect, beforeEach } from "bun:test";
 import { useDemolishStore } from "@/store/demolish";
 import type { PlannedStep } from "@/types/plan";
-import type { AccountState } from "@/types/account";
+import type { AccountState, Trustline } from "@/types/account";
 
-function accountState(): AccountState {
+function accountState(over: Partial<AccountState> = {}): AccountState {
   return {
     address: "GSOURCE",
     network: "testnet",
@@ -21,7 +21,13 @@ function accountState(): AccountState {
     poolShares: [],
     claimableBalances: [],
     subEntryMismatch: false,
+    ...over,
   };
+}
+
+function trustline(asset: string): Trustline {
+  const [code, issuer] = asset.split(":");
+  return { asset, balance: "10.0000000", limit: "1", authorized: true, issuer, code };
 }
 
 function step(index: number): PlannedStep {
@@ -82,10 +88,26 @@ test("setAssetDisposition records a decision and merges further decisions", () =
   });
 });
 
-test("setAccountState clears prior asset dispositions", () => {
+// Regression: the analyze-page refresh button re-runs the account fetch, which
+// calls setAccountState. The old behavior wiped ALL dispositions, dropping a
+// user's "return to issuer" decision; the fused close then re-quoted that asset
+// and failed with a lost route. A re-scan of the SAME asset must keep the choice.
+test("setAccountState keeps dispositions for assets still present after a re-scan", () => {
+  useDemolishStore.getState().setAssetDisposition("NOSWAP:GISSUER", "issuer");
+  useDemolishStore
+    .getState()
+    .setAccountState(accountState({ trustlines: [trustline("NOSWAP:GISSUER")] }));
+  expect(useDemolishStore.getState().assetDispositions).toEqual({ "NOSWAP:GISSUER": "issuer" });
+});
+
+test("setAccountState prunes dispositions for assets no longer held", () => {
   useDemolishStore.getState().setAssetDisposition("USDC:GISSUER", "issuer");
-  useDemolishStore.getState().setAccountState(accountState());
-  expect(useDemolishStore.getState().assetDispositions).toEqual({});
+  useDemolishStore.getState().setAssetDisposition("EURC:GOTHER", "convert");
+  // The new state only holds USDC; the EURC decision is stale and must be dropped.
+  useDemolishStore
+    .getState()
+    .setAccountState(accountState({ trustlines: [trustline("USDC:GISSUER")] }));
+  expect(useDemolishStore.getState().assetDispositions).toEqual({ "USDC:GISSUER": "issuer" });
 });
 
 test("reset clears asset dispositions", () => {
