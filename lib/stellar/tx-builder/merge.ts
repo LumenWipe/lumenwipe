@@ -3,6 +3,19 @@ import type { Network } from "@/config/networks";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { BASE_FEE_STROOPS, STROOPS_PER_XLM, TX_TIMEOUT_SECONDS } from "@/config/constants";
 
+function applyMemo(
+  builder: TransactionBuilder,
+  memo: string | null,
+  memoType?: "text" | "id" | "hash" | null
+): void {
+  if (!memo) return;
+  if (memoType === "id") {
+    builder.addMemo(Memo.id(memo));
+  } else {
+    builder.addMemo(Memo.text(memo));
+  }
+}
+
 export function buildMergeTx(
   sdkAccount: Account,
   destinationAddress: string,
@@ -17,13 +30,7 @@ export function buildMergeTx(
     networkPassphrase: passphrase,
   }).setTimeout(TX_TIMEOUT_SECONDS);
 
-  if (memo) {
-    if (memoType === "id") {
-      builder.addMemo(Memo.id(memo));
-    } else {
-      builder.addMemo(Memo.text(memo));
-    }
-  }
+  applyMemo(builder, memo, memoType);
 
   builder.addOperation(Operation.accountMerge({ destination: destinationAddress }));
 
@@ -65,13 +72,7 @@ export function buildMediatorMergePaymentTx(
     networkPassphrase: passphrase,
   }).setTimeout(TX_TIMEOUT_SECONDS);
 
-  if (memo) {
-    if (memoType === "id") {
-      builder.addMemo(Memo.id(memo));
-    } else {
-      builder.addMemo(Memo.text(memo));
-    }
-  }
+  applyMemo(builder, memo, memoType);
 
   builder.addOperation(Operation.accountMerge({ destination: mediatorPublicKey }));
   builder.addOperation(
