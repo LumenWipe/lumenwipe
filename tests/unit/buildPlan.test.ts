@@ -570,6 +570,28 @@ test("buildPlan › default (no fastPath arg) is unchanged stepwise plan", () =>
   expect(steps.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(false);
 });
 
+test("buildPlan › fastPathEligible + multiple balance-bearing assets → single CLOSE_ACCOUNT", () => {
+  // The fused step is disposition-agnostic: buildPlan counts one op per asset-with-balance
+  // regardless of whether each asset is later swapped to XLM or returned to its issuer.
+  const account = makeAccount({
+    trustlines: [makeTrustline("USDC", "10"), makeTrustline("EURC", "5")],
+  });
+  const { steps } = buildPlan(account, false, true);
+  expect(steps).toHaveLength(1);
+  expect(steps[0].type).toBe("CLOSE_ACCOUNT");
+});
+
+test("buildPlan › CLOSE_ACCOUNT operationCount counts one op per balance-bearing asset", () => {
+  const account = makeAccount({
+    dataEntries: [{ key: "k", value: "" }],
+    trustlines: [makeTrustline("USDC", "10"), makeTrustline("EURC", "5")],
+  });
+  const { steps } = buildPlan(account, false, true);
+  const close = steps.find((s) => s.type === "CLOSE_ACCOUNT")!;
+  // 1 data + 2 asset ops (one per balance-bearing trustline) + 2 trustline removals + 1 merge = 6
+  expect(close.operationCount).toBe(6);
+});
+
 test("buildPlan › CLOSE_ACCOUNT operationCount sums all fused ops", () => {
   const account = makeAccount({
     dataEntries: [{ key: "k", value: "" }],
