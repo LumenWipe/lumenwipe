@@ -5,6 +5,7 @@ export type StepType =
   | "CLAIM_BALANCES"
   | "CONVERT_ASSETS"
   | "REMOVE_TRUSTLINES"
+  | "CLOSE_ACCOUNT"
   | "MERGE";
 
 export type StepStatus = "pending" | "signing" | "submitted" | "confirmed" | "failed" | "skipped";

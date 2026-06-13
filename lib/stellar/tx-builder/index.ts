@@ -27,7 +27,18 @@ function step(
   };
 }
 
-export function buildPlan(accountState: AccountState, mediatorRequired: boolean): BuildPlanResult {
+export function computeNeedsSignerNormalization(accountState: AccountState): boolean {
+  const extraSigners = accountState.signers.filter((s) => s.key !== accountState.address);
+  return (
+    extraSigners.length > 0 || accountState.thresholds.med > 1 || accountState.thresholds.high > 1
+  );
+}
+
+export function buildPlan(
+  accountState: AccountState,
+  mediatorRequired: boolean,
+  fastPathEligible = false
+): BuildPlanResult {
   const steps: PlannedStep[] = [];
   const blockers: PlanBlocker[] = [];
   let idx = 0;
@@ -90,8 +101,7 @@ export function buildPlan(accountState: AccountState, mediatorRequired: boolean)
   // key's weight alone cannot reach the current high threshold, the normalization
   // tx can never be self-authorized - surface this as a blocker before building a
   // plan that would fail at signing time.
-  const needsSignerNormalization =
-    extraSigners.length > 0 || thresholds.med > 1 || thresholds.high > 1;
+  const needsSignerNormalization = computeNeedsSignerNormalization(accountState);
 
   if (needsSignerNormalization) {
     const masterSigner = signers.find((s) => s.key === masterKey);
@@ -140,6 +150,62 @@ export function buildPlan(accountState: AccountState, mediatorRequired: boolean)
         `for it. Establish a ${code} trustline and claim the balance manually before proceeding ` +
         `- these funds will be permanently inaccessible once the account is merged.`,
     });
+  }
+
+  // ─── Fast path: fuse the whole close into one transaction when eligible ──────
+  // Direct destination: a single CLOSE_ACCOUNT (cleanup + merge). Exchange: a fused
+  // cleanup CLOSE_ACCOUNT plus the co-signed mediator MERGE. Excluded when any
+  // blocker exists, when claimable balances are present (those route through the
+  // step-by-step CLAIM_BALANCES flow so their proceeds are not lost), or when the
+  // fused tx would exceed the per-transaction operation limit. Conversion fuses
+  // while it is classic; it moves to its own isolated transaction once swaps
+  // execute via the Soroswap aggregator (a Soroban op that cannot share a tx).
+  const convertible = trustlines.filter((tl) => tl.authorized && parseFloat(tl.balance) > 0);
+  const hasCleanup =
+    needsSignerNormalization ||
+    dataEntries.length > 0 ||
+    openOffers.length > 0 ||
+    trustlines.length > 0;
+  const signerOps = needsSignerNormalization ? extraSigners.length + 1 : 0;
+  const fusedOpCount =
+    signerOps +
+    dataEntries.length +
+    openOffers.length +
+    convertible.length +
+    trustlines.length +
+    1;
+
+  if (
+    fastPathEligible &&
+    hasCleanup &&
+    blockers.length === 0 &&
+    claimableBalances.length === 0 &&
+    fusedOpCount <= OP_BATCH_LIMIT
+  ) {
+    const cleanupOps = fusedOpCount - 1; // ops without the merge
+    steps.push(
+      step(
+        idx++,
+        "CLOSE_ACCOUNT",
+        mediatorRequired ? "Clean up account" : "Close account",
+        mediatorRequired
+          ? "Remove signers, data, offers, and trustlines, and convert balances to XLM, in one transaction. The merge to your exchange address follows as a co-signed transfer."
+          : "Remove signers, data, offers, and trustlines, convert balances to XLM, and merge the account, all in one transaction.",
+        mediatorRequired ? cleanupOps : fusedOpCount
+      )
+    );
+    if (mediatorRequired) {
+      steps.push(
+        step(
+          idx++,
+          "MERGE",
+          "Merge and forward to exchange",
+          "Close this account and forward the full balance to your exchange deposit address in one atomic transaction, routed through a shared intermediary.",
+          2
+        )
+      );
+    }
+    return { steps, blockers };
   }
 
   // ─── Step generation ────────────────────────────────────────────────────────

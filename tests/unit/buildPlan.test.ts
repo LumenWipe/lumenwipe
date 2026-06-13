@@ -514,3 +514,69 @@ test("buildPlan › CLAIM_BALANCES comes before CONVERT_ASSETS for same asset", 
   expect(convertIdx).toBeGreaterThanOrEqual(0);
   expect(claimIdx).toBeLessThan(convertIdx);
 });
+
+// ─── Fast-path tests ─────────────────────────────────────────────────────────
+
+test("buildPlan › fastPathEligible + cleanup + direct → single CLOSE_ACCOUNT step", () => {
+  const account = makeAccount({
+    dataEntries: [{ key: "k", value: "" }],
+    trustlines: [makeTrustline("USDC", "0")],
+  });
+  const { steps } = buildPlan(account, false, true);
+  expect(steps).toHaveLength(1);
+  expect(steps[0].type).toBe("CLOSE_ACCOUNT");
+});
+
+test("buildPlan › fastPathEligible + cleanup + exchange → CLOSE_ACCOUNT then MERGE", () => {
+  const account = makeAccount({ dataEntries: [{ key: "k", value: "" }] });
+  const { steps } = buildPlan(account, true, true);
+  expect(steps.map((s) => s.type)).toEqual(["CLOSE_ACCOUNT", "MERGE"]);
+});
+
+test("buildPlan › fastPathEligible but clean account → single MERGE (nothing to fuse)", () => {
+  const { steps } = buildPlan(makeAccount(), false, true);
+  expect(steps).toHaveLength(1);
+  expect(steps[0].type).toBe("MERGE");
+});
+
+test("buildPlan › fastPathEligible but blocker present → falls back to stepwise", () => {
+  const account = makeAccount({ numSponsoring: 1, dataEntries: [{ key: "k", value: "" }] });
+  const { steps } = buildPlan(account, false, true);
+  expect(steps.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(false);
+  expect(steps.some((s) => s.type === "REMOVE_DATA_ENTRIES")).toBe(true);
+});
+
+test("buildPlan › fastPathEligible but claimable balances present → falls back to stepwise", () => {
+  const account = makeAccount({
+    dataEntries: [{ key: "k", value: "" }],
+    claimableBalances: [makeClaimableBalance("native")],
+  });
+  const { steps } = buildPlan(account, false, true);
+  expect(steps.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(false);
+  expect(steps.some((s) => s.type === "CLAIM_BALANCES")).toBe(true);
+});
+
+test("buildPlan › fastPathEligible but >100 fused ops → falls back to stepwise", () => {
+  const account = makeAccount({
+    dataEntries: Array.from({ length: 101 }, (_, i) => ({ key: `k${i}`, value: "" })),
+  });
+  const { steps } = buildPlan(account, false, true);
+  expect(steps.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(false);
+});
+
+test("buildPlan › default (no fastPath arg) is unchanged stepwise plan", () => {
+  const account = makeAccount({ dataEntries: [{ key: "k", value: "" }] });
+  const { steps } = buildPlan(account, false);
+  expect(steps.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(false);
+});
+
+test("buildPlan › CLOSE_ACCOUNT operationCount sums all fused ops", () => {
+  const account = makeAccount({
+    dataEntries: [{ key: "k", value: "" }],
+    openOffers: [{ id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" }],
+  });
+  const { steps } = buildPlan(account, false, true);
+  const close = steps.find((s) => s.type === "CLOSE_ACCOUNT")!;
+  // 1 data + 1 offer + 1 merge = 3
+  expect(close.operationCount).toBe(3);
+});
