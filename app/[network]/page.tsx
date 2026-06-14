@@ -24,12 +24,18 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
   const { network } = use(params);
   const router = useRouter();
   const { session, checked, clearSession } = useSessionRecovery(network);
-  const { setAddresses, setMediatorRequired, initSession } = useDemolishStore();
+  const { setAddresses, setMediatorRequired, restoreSession } = useDemolishStore();
 
   function handleResume() {
     if (!session) return;
-    const memoReq = getMemoRequirement(session.destinationAddress);
-    const memoType = memoReq.requiresMemo ? (memoReq.memoType ?? undefined) : undefined;
+    // Prefer the persisted memoType; fall back to the registry for records created
+    // before memoType was added to SessionRecord (backward-compat).
+    let memoType = session.memoType ?? undefined;
+    if (!memoType && session.memo) {
+      const req = getMemoRequirement(session.destinationAddress);
+      if (req.requiresMemo) memoType = req.memoType ?? undefined;
+    }
+    // Restore addresses into the store so PlanView can pre-fill the destination.
     setAddresses(
       session.sourceAddress,
       session.destinationAddress,
@@ -37,8 +43,13 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
       memoType
     );
     setMediatorRequired(!!session.mediatorPublicKey, session.mediatorPublicKey ?? undefined);
-    initSession();
-    router.push(`/${network}/execute`);
+    // Reuse the existing ID: subsequent saves overwrite the same record instead
+    // of creating a second "in_progress" entry that is never cleaned up.
+    restoreSession(session.id);
+    // Navigate to analyze so a fresh plan is built from current on-chain state.
+    // /execute requires an executionPlan in the store, which only exists after the
+    // user confirms the plan in the analyze → PlanView step.
+    router.push(`/${network}/analyze?source=${encodeURIComponent(session.sourceAddress)}`);
   }
 
   async function handleDismiss() {
