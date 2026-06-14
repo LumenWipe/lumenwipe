@@ -6,6 +6,8 @@ import type { Network } from "@/config/networks";
 // stats:{network}:count          → integer counter (accounts merged)
 // stats:{network}:xlm            → integer counter (stroops recovered)
 // stats:{network}:processed      → set of already-counted txHashes
+// stats:{network}:recent         → list (max 100) of MergeRecord JSON strings
+// stats:{network}:daily:{date}   → integer counter (merges per day, TTL ~13mo)
 // stats:ratelimit:{ipHash}:{date} → per-IP daily request counter
 
 const COUNT_KEY: Record<Network, string> = {
@@ -19,6 +21,9 @@ const XLM_KEY: Record<Network, string> = {
 };
 
 const PROCESSED_KEY = (n: Network) => `stats:${n}:processed`;
+const RECENT_KEY = (n: Network) => `stats:${n}:recent`;
+const DAILY_KEY = (n: Network, date: string) => `stats:${n}:daily:${date}`;
+const RECENT_MAX = 100;
 const RATE_KEY = (ipHash: string) =>
   `stats:ratelimit:${ipHash}:${new Date().toISOString().slice(0, 10)}`;
 
@@ -29,6 +34,20 @@ const RATE_LIMIT_PER_DAY = 20;
 function hashIp(ip: string): string {
   // One-way hash so no raw IP is stored in Redis
   return createHash("sha256").update(ip).digest("hex").slice(0, 16);
+}
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+export interface MergeRecord {
+  txHash: string;
+  xlmStroops: string;
+  timestamp: string; // ISO 8601
+  network: Network;
+}
+
+export interface DailyActivity {
+  date: string; // YYYY-MM-DD
+  count: number;
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -133,5 +152,60 @@ export async function recordMerge(
     [PROCESSED_KEY(network), COUNT_KEY[network], XLM_KEY[network]],
     [txHash, xlmStroops]
   );
-  return result === 1;
+  const isNew = result === 1;
+  if (isNew) {
+    const timestamp = new Date().toISOString();
+    pushRecentMerge(network, txHash, xlmStroops, timestamp).catch((err) =>
+      console.error(`Failed to push recent merge for tx ${txHash}:`, err)
+    );
+  }
+  return isNew;
+}
+
+async function pushRecentMerge(
+  network: Network,
+  txHash: string,
+  xlmStroops: string,
+  timestamp: string
+): Promise<void> {
+  const record: MergeRecord = { txHash, xlmStroops, timestamp, network };
+  const date = timestamp.slice(0, 10);
+  const pipeline = kv.pipeline();
+  pipeline.lpush(RECENT_KEY(network), JSON.stringify(record));
+  pipeline.ltrim(RECENT_KEY(network), 0, RECENT_MAX - 1);
+  pipeline.incr(DAILY_KEY(network, date));
+  pipeline.expire(DAILY_KEY(network, date), 400 * 86_400);
+  await pipeline.exec();
+}
+
+export async function getRecentMerges(network: Network, limit = 20): Promise<MergeRecord[]> {
+  const raw = await kv.lrange<string>(RECENT_KEY(network), 0, limit - 1);
+  return raw
+    .map((item) => {
+      try {
+        return JSON.parse(item) as MergeRecord;
+      } catch {
+        return null;
+      }
+    })
+    .filter((item): item is MergeRecord => item !== null);
+}
+
+export async function getDailyActivity(network: Network, days = 365): Promise<DailyActivity[]> {
+  const dates: string[] = [];
+  const now = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setUTCDate(d.getUTCDate() - i);
+    dates.push(d.toISOString().slice(0, 10));
+  }
+  const pipeline = kv.pipeline();
+  for (const date of dates) {
+    pipeline.get(DAILY_KEY(network, date));
+  }
+  const results = await pipeline.exec();
+  return dates.map((date, i) => ({
+    date,
+    count: typeof results[i] === "number" ? (results[i] as number) : 0,
+  }));
 }
