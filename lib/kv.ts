@@ -179,16 +179,11 @@ async function pushRecentMerge(
 }
 
 export async function getRecentMerges(network: Network, limit = 20): Promise<MergeRecord[]> {
-  const raw = await kv.lrange<string>(RECENT_KEY(network), 0, limit - 1);
-  return raw
-    .map((item) => {
-      try {
-        return JSON.parse(item) as MergeRecord;
-      } catch {
-        return null;
-      }
-    })
-    .filter((item): item is MergeRecord => item !== null);
+  const raw = await kv.lrange<MergeRecord>(RECENT_KEY(network), 0, limit - 1);
+  return raw.filter(
+    (item): item is MergeRecord =>
+      item !== null && typeof item === "object" && typeof item.txHash === "string"
+  );
 }
 
 export async function getDailyActivity(network: Network, days = 365): Promise<DailyActivity[]> {
