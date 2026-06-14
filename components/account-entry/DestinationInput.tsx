@@ -63,7 +63,7 @@ export default function DestinationInput({
           type={memoType === "id" ? "number" : "text"}
           value={memo}
           onChange={(e) => onMemoChange(e.target.value)}
-          placeholder={memoType === "id" ? "Enter numeric ID" : "Enter memo text (max 28 chars)"}
+          placeholder={memoType === "id" ? "Enter numeric ID" : "Enter memo text (max 28 bytes)"}
           maxLength={memoType === "text" ? 28 : undefined}
           className="w-full text-sm bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-stellar/40"
         />

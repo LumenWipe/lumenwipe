@@ -13,6 +13,7 @@ const LINKS: NavLink[] = [
   { href: "/#security", label: "Security", section: "security" },
   { href: "/#faq", label: "FAQ", section: "faq" },
   { href: "/playground", label: "Playground" },
+  { href: "/stats", label: "Stats" },
   { href: "/blog", label: "Blog" },
 ];
 

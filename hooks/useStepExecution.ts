@@ -106,6 +106,7 @@ export function useStepExecution() {
             sourceAddress,
             destinationAddress,
             memo,
+            memoType,
             mediatorPublicKey,
             completedSteps: currentPlan
               .filter((s) => s.status === "confirmed" && s.txHash)
@@ -134,6 +135,7 @@ export function useStepExecution() {
       sourceAddress,
       destinationAddress,
       memo,
+      memoType,
       mediatorRequired,
       mediatorPublicKey,
       sessionId,

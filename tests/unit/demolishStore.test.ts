@@ -1,4 +1,4 @@
-import { test, expect, beforeEach } from "bun:test";
+import { test, expect, beforeEach, describe } from "bun:test";
 import { useDemolishStore } from "@/store/demolish";
 import type { PlannedStep } from "@/types/plan";
 import type { AccountState, Trustline } from "@/types/account";
@@ -114,4 +114,411 @@ test("reset clears asset dispositions", () => {
   useDemolishStore.getState().setAssetDisposition("USDC:GISSUER", "issuer");
   useDemolishStore.getState().reset();
   expect(useDemolishStore.getState().assetDispositions).toEqual({});
+});
+
+// ─── Session identity ────────────────────────────────────────────────────────
+
+describe("session identity", () => {
+  test("initSession generates a non-empty ID", () => {
+    useDemolishStore.getState().initSession();
+    expect(useDemolishStore.getState().sessionId).not.toBeNull();
+    expect(useDemolishStore.getState().sessionId!.length).toBeGreaterThan(8);
+  });
+
+  test("initSession generates a different ID on each call", () => {
+    useDemolishStore.getState().initSession();
+    const first = useDemolishStore.getState().sessionId;
+    useDemolishStore.getState().initSession();
+    const second = useDemolishStore.getState().sessionId;
+    expect(first).not.toBe(second);
+  });
+
+  // Regression: the resume flow was calling initSession() which generated a fresh
+  // UUID, leaving the original "in_progress" session in IndexedDB forever.
+  // restoreSession must preserve the provided ID verbatim.
+  test("restoreSession stores the provided ID without modification", () => {
+    const id = "existing-session-from-idb";
+    useDemolishStore.getState().restoreSession(id);
+    expect(useDemolishStore.getState().sessionId).toBe(id);
+  });
+
+  test("restoreSession is idempotent for the same ID", () => {
+    const id = "stable-id";
+    useDemolishStore.getState().restoreSession(id);
+    useDemolishStore.getState().restoreSession(id);
+    expect(useDemolishStore.getState().sessionId).toBe(id);
+  });
+
+  test("reset clears the session ID", () => {
+    useDemolishStore.getState().restoreSession("some-id");
+    useDemolishStore.getState().reset();
+    expect(useDemolishStore.getState().sessionId).toBeNull();
+  });
+});
+
+// ─── Mediator state ──────────────────────────────────────────────────────────
+
+describe("mediator state", () => {
+  test("setMediatorRequired(true, key) stores both required and publicKey", () => {
+    useDemolishStore.getState().setMediatorRequired(true, "GMEDIATOR");
+    const s = useDemolishStore.getState();
+    expect(s.mediatorRequired).toBe(true);
+    expect(s.mediatorPublicKey).toBe("GMEDIATOR");
+  });
+
+  test("setMediatorRequired(true) without key clears publicKey to null", () => {
+    useDemolishStore.getState().setMediatorRequired(true, "GMEDIATOR");
+    useDemolishStore.getState().setMediatorRequired(true);
+    expect(useDemolishStore.getState().mediatorPublicKey).toBeNull();
+  });
+
+  test("setMediatorRequired(false) clears both fields", () => {
+    useDemolishStore.getState().setMediatorRequired(true, "GMEDIATOR");
+    useDemolishStore.getState().setMediatorRequired(false);
+    const s = useDemolishStore.getState();
+    expect(s.mediatorRequired).toBe(false);
+    expect(s.mediatorPublicKey).toBeNull();
+  });
+});
+
+// ─── Step lifecycle ───────────────────────────────────────────────────────────
+
+describe("step lifecycle", () => {
+  test("markStepConfirmed sets status=confirmed and records txHash", () => {
+    useDemolishStore.getState().setPlan([step(0), step(1)]);
+    useDemolishStore.getState().markStepConfirmed(0, "txhash_abc");
+    const s = useDemolishStore.getState().executionPlan.find((x) => x.index === 0)!;
+    expect(s.status).toBe("confirmed");
+    expect(s.txHash).toBe("txhash_abc");
+  });
+
+  test("markStepConfirmed only affects the targeted step", () => {
+    useDemolishStore.getState().setPlan([step(0), step(1), step(2)]);
+    useDemolishStore.getState().markStepConfirmed(1, "tx1");
+    const plan = useDemolishStore.getState().executionPlan;
+    expect(plan[0].status).toBe("pending");
+    expect(plan[1].status).toBe("confirmed");
+    expect(plan[2].status).toBe("pending");
+  });
+
+  test("markStepFailed sets status=failed, records error, and sets phase=STEP_FAILED", () => {
+    useDemolishStore.getState().setPlan([step(0)]);
+    useDemolishStore.getState().markStepFailed(0, "tx_bad_auth");
+    const s = useDemolishStore.getState();
+    expect(s.executionPlan[0].status).toBe("failed");
+    expect(s.executionPlan[0].error).toBe("tx_bad_auth");
+    expect(s.phase).toBe("STEP_FAILED");
+    expect(s.lastError).toBe("tx_bad_auth");
+  });
+});
+
+// ─── Session recovery: findResumableSession logic ───────────────────────────
+// Tests the pure filtering/sorting logic without hitting IndexedDB.
+
+import type { SessionRecord } from "@/types/session";
+
+function makeSession(over: Partial<SessionRecord> = {}): SessionRecord {
+  return {
+    id: "s1",
+    network: "testnet",
+    sourceAddress: "GSOURCE",
+    destinationAddress: "GDEST",
+    memo: null,
+    memoType: null,
+    mediatorPublicKey: null,
+    completedSteps: [],
+    currentStepIndex: 0,
+    status: "in_progress",
+    createdAt: "2025-01-01T00:00:00.000Z",
+    updatedAt: "2025-01-01T00:00:00.000Z",
+    ...over,
+  };
+}
+
+function findResumable(sessions: SessionRecord[], network: "testnet" | "mainnet") {
+  const matching = sessions
+    .filter((s) => s.network === network && s.status === "in_progress")
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  return matching[0] ?? null;
+}
+
+describe("findResumableSession logic", () => {
+  test("returns null when there are no sessions", () => {
+    expect(findResumable([], "testnet")).toBeNull();
+  });
+
+  test("returns null when no session matches the network", () => {
+    expect(findResumable([makeSession({ network: "mainnet" })], "testnet")).toBeNull();
+  });
+
+  test("returns null when the only matching session is completed", () => {
+    expect(findResumable([makeSession({ status: "completed" })], "testnet")).toBeNull();
+  });
+
+  test("returns the in_progress session for the correct network", () => {
+    const target = makeSession({ id: "target", network: "testnet" });
+    const other = makeSession({ id: "other", network: "mainnet" });
+    expect(findResumable([target, other], "testnet")?.id).toBe("target");
+  });
+
+  test("returns the most recently updated session when multiple in_progress exist", () => {
+    const older = makeSession({ id: "older", updatedAt: "2025-01-01T00:00:00.000Z" });
+    const newer = makeSession({ id: "newer", updatedAt: "2025-06-01T00:00:00.000Z" });
+    expect(findResumable([older, newer], "testnet")?.id).toBe("newer");
+    expect(findResumable([newer, older], "testnet")?.id).toBe("newer");
+  });
+
+  test("ignores completed sessions even if newer than in_progress ones", () => {
+    const completed = makeSession({
+      id: "done",
+      status: "completed",
+      updatedAt: "2025-12-31T00:00:00.000Z",
+    });
+    const active = makeSession({
+      id: "active",
+      status: "in_progress",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    });
+    expect(findResumable([completed, active], "testnet")?.id).toBe("active");
+  });
+});
+
+// ─── SessionRecord shape ──────────────────────────────────────────────────────
+
+describe("SessionRecord.memoType", () => {
+  // Regression: memoType was missing from the type before the QA pass.
+  // On resume, the stored memo type was re-derived from the exchange registry
+  // which is fragile. It must be persisted in the record itself.
+  test("accepts 'text' memoType", () => {
+    const r: SessionRecord = makeSession({ memoType: "text" });
+    expect(r.memoType).toBe("text");
+  });
+
+  test("accepts 'id' memoType", () => {
+    const r: SessionRecord = makeSession({ memoType: "id" });
+    expect(r.memoType).toBe("id");
+  });
+
+  test("accepts null memoType for non-memo destinations", () => {
+    const r: SessionRecord = makeSession({ memoType: null });
+    expect(r.memoType).toBeNull();
+  });
+});
+
+// ─── Resume flow store state ──────────────────────────────────────────────────
+// These test the sequence of store mutations that handleResume performs before
+// navigating to /analyze. The router.push itself is not testable here; what
+// matters is that all store values are correct by the time the analyze page mounts.
+
+describe("resume flow store mutations", () => {
+  test("setAddresses then restoreSession correctly populates source, destination, and sessionId", () => {
+    useDemolishStore.getState().setAddresses("GSOURCE", "GDEST", undefined, undefined);
+    useDemolishStore.getState().restoreSession("session-from-idb");
+    const s = useDemolishStore.getState();
+    expect(s.sourceAddress).toBe("GSOURCE");
+    expect(s.destinationAddress).toBe("GDEST");
+    expect(s.memo).toBeNull();
+    expect(s.memoType).toBeNull();
+    expect(s.sessionId).toBe("session-from-idb");
+  });
+
+  test("setAddresses with memo and memoType preserves them for PlanView pre-fill", () => {
+    useDemolishStore.getState().setAddresses("GSOURCE", "GDEST", "12345678", "id");
+    const s = useDemolishStore.getState();
+    expect(s.memo).toBe("12345678");
+    expect(s.memoType).toBe("id");
+  });
+
+  test("setAddresses without memo clears it to null (no stale data from prior session)", () => {
+    useDemolishStore.getState().setAddresses("GSOURCE1", "GDEST1", "old-memo", "text");
+    useDemolishStore.getState().setAddresses("GSOURCE2", "GDEST2");
+    const s = useDemolishStore.getState();
+    expect(s.memo).toBeNull();
+    expect(s.memoType).toBeNull();
+  });
+
+  test("setMediatorRequired(true, key) followed by restoreSession is fully set before navigate", () => {
+    useDemolishStore.getState().setAddresses("GSRC", "GDST");
+    useDemolishStore.getState().setMediatorRequired(true, "GMEDIATOR_KEY");
+    useDemolishStore.getState().restoreSession("s-abc");
+    const s = useDemolishStore.getState();
+    expect(s.mediatorRequired).toBe(true);
+    expect(s.mediatorPublicKey).toBe("GMEDIATOR_KEY");
+    expect(s.sessionId).toBe("s-abc");
+  });
+
+  test("setMediatorRequired(false) on resume clears mediator state", () => {
+    useDemolishStore.getState().setMediatorRequired(true, "GMED");
+    useDemolishStore.getState().setMediatorRequired(false);
+    const s = useDemolishStore.getState();
+    expect(s.mediatorRequired).toBe(false);
+    expect(s.mediatorPublicKey).toBeNull();
+  });
+
+  test("reset after a full resume clears all store fields including sessionId and addresses", () => {
+    useDemolishStore.getState().setAddresses("GSRC", "GDST", "memo", "text");
+    useDemolishStore.getState().setMediatorRequired(true, "GMED");
+    useDemolishStore.getState().restoreSession("sid");
+    useDemolishStore.getState().setPlan([step(0), step(1)]);
+    useDemolishStore.getState().reset();
+    const s = useDemolishStore.getState();
+    expect(s.sourceAddress).toBeNull();
+    expect(s.destinationAddress).toBeNull();
+    expect(s.memo).toBeNull();
+    expect(s.memoType).toBeNull();
+    expect(s.mediatorRequired).toBe(false);
+    expect(s.mediatorPublicKey).toBeNull();
+    expect(s.sessionId).toBeNull();
+    expect(s.executionPlan).toHaveLength(0);
+    expect(s.currentStepIndex).toBe(0);
+    expect(s.phase).toBe("IDLE");
+  });
+});
+
+// ─── memoType backward-compat for old SessionRecords ─────────────────────────
+// Old sessions (created before memoType was added to the type) have memoType=undefined
+// at runtime even though the type says null. The resume handler uses `?? undefined`
+// which correctly treats both null and undefined as "not set".
+
+describe("memoType backward-compat (runtime undefined)", () => {
+  test("session with null memoType is treated as absent", () => {
+    const s = makeSession({ memoType: null });
+    // Reproduce the exact logic from handleResume:
+    const memoType = s.memoType ?? undefined;
+    expect(memoType).toBeUndefined();
+  });
+
+  test("session with explicit memoType is preserved", () => {
+    const s = makeSession({ memoType: "text" });
+    const memoType = s.memoType ?? undefined;
+    expect(memoType).toBe("text");
+  });
+
+  test("session with id memoType and memo passes through to setAddresses correctly", () => {
+    const s = makeSession({ memo: "12345678", memoType: "id" });
+    const memoType = s.memoType ?? undefined;
+    useDemolishStore
+      .getState()
+      .setAddresses(s.sourceAddress, s.destinationAddress, s.memo ?? undefined, memoType);
+    const store = useDemolishStore.getState();
+    expect(store.memo).toBe("12345678");
+    expect(store.memoType).toBe("id");
+  });
+});
+
+// ─── buildPlan step ordering ──────────────────────────────────────────────────
+// The plan must always emit steps in canonical order. This is a regression guard:
+// if the builder gains a new step or the ordering logic is changed, tests below
+// will catch any reordering before it reaches users.
+
+import { buildPlan } from "@/lib/stellar/tx-builder";
+
+function orderAccount(): AccountState {
+  return {
+    address: "GSOURCE",
+    network: "testnet",
+    sequence: "1",
+    nativeBalanceLumens: "10.0000000",
+    dataEntries: [{ key: "k1", value: "" }],
+    signers: [
+      { key: "GSOURCE", weight: 1, type: "ed25519_public_key" },
+      {
+        key: "GEXTRA00000000000000000000000000000000000000000000000000000",
+        weight: 1,
+        type: "ed25519_public_key",
+      },
+    ],
+    thresholds: { low: 0, med: 1, high: 1 },
+    numSubEntries: 3,
+    numSponsoring: 0,
+    sponsoredBy: null,
+    authImmutable: false,
+    trustlines: [
+      {
+        asset: "USDC:GISSUER0000000000000000000000000000000000000000000000000000",
+        balance: "10.0000000",
+        limit: "1",
+        authorized: true,
+        issuer: "GISSUER0000000000000000000000000000000000000000000000000000",
+        code: "USDC",
+      },
+    ],
+    openOffers: [
+      {
+        id: "1",
+        selling: "native",
+        buying: "USDC:GISSUER0000000000000000000000000000000000000000000000000000",
+        amount: "5",
+        price: "1",
+      },
+    ],
+    poolShares: [],
+    claimableBalances: [],
+    subEntryMismatch: false,
+  };
+}
+
+describe("buildPlan step ordering", () => {
+  test("full account: steps are in canonical order (NORMALIZE → DATA → OFFERS → CONVERT → TRUSTLINES → MERGE)", () => {
+    const { steps } = buildPlan(orderAccount(), false);
+    const types = steps.map((s) => s.type);
+    expect(types).toEqual([
+      "NORMALIZE_SIGNERS",
+      "REMOVE_DATA_ENTRIES",
+      "CANCEL_OFFERS",
+      "CONVERT_ASSETS",
+      "REMOVE_TRUSTLINES",
+      "MERGE",
+    ]);
+  });
+
+  test("CLAIM_BALANCES always precedes CONVERT_ASSETS when claimable balance creates asset proceeds", () => {
+    const issuer = "GISSUER0000000000000000000000000000000000000000000000000000";
+    const account: AccountState = {
+      ...orderAccount(),
+      signers: [{ key: "GSOURCE", weight: 1, type: "ed25519_public_key" }],
+      dataEntries: [],
+      openOffers: [],
+      claimableBalances: [
+        { id: "00000000" + "0".repeat(64), asset: `USDC:${issuer}`, amount: "5.0" },
+      ],
+      trustlines: [
+        {
+          asset: `USDC:${issuer}`,
+          balance: "0",
+          limit: "1",
+          authorized: true,
+          issuer,
+          code: "USDC",
+        },
+      ],
+    };
+    const { steps } = buildPlan(account, false);
+    const types = steps.map((s) => s.type);
+    const claimIdx = types.indexOf("CLAIM_BALANCES");
+    const convertIdx = types.indexOf("CONVERT_ASSETS");
+    expect(claimIdx).toBeGreaterThanOrEqual(0);
+    expect(convertIdx).toBeGreaterThanOrEqual(0);
+    expect(claimIdx).toBeLessThan(convertIdx);
+  });
+
+  test("CONVERT_ASSETS always precedes REMOVE_TRUSTLINES", () => {
+    const { steps } = buildPlan(orderAccount(), false);
+    const types = steps.map((s) => s.type);
+    const convertIdx = types.indexOf("CONVERT_ASSETS");
+    const removeIdx = types.indexOf("REMOVE_TRUSTLINES");
+    expect(convertIdx).toBeLessThan(removeIdx);
+  });
+
+  test("MERGE is always the last step", () => {
+    const { steps } = buildPlan(orderAccount(), false);
+    expect(steps[steps.length - 1].type).toBe("MERGE");
+  });
+
+  test("with mediator, MERGE is still last and its description mentions exchange", () => {
+    const { steps } = buildPlan(orderAccount(), true);
+    const last = steps[steps.length - 1];
+    expect(last.type).toBe("MERGE");
+    expect(last.description.toLowerCase()).toMatch(/exchange|intermediary/);
+  });
 });

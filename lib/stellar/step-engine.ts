@@ -218,7 +218,7 @@ export async function buildStepXdrForPlan(
       // was empty at scan but received a deposit since must still be disposed of, or the
       // atomic close would fail at its changeTrust removal op (and retry the same way).
       // On a lost route this rejects with the first offending asset; which one is
-      // nondeterministic, which is fine — the UI re-decides per asset and rebuilds.
+      // nondeterministic, which is fine - the UI re-decides per asset and rebuilds.
       const withBalanceActions = await Promise.all(
         trustlines.map(async (tl): Promise<AssetAction | null> => {
           const liveBalance = await fetchLiveTrustlineBalance(tl, sourceAddress, server);
