@@ -12,7 +12,7 @@ import { getMediatorPublicKey } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import { isValidGAddress, isValidMemo } from "@/lib/utils/validation";
-import { getMemoRequirement } from "@/lib/exchange-registry";
+import { getMemoRequirement, requiresMediatorForAddress } from "@/lib/exchange-registry";
 import AccountSummaryCard from "./AccountSummaryCard";
 import BlockersPanel from "./BlockersPanel";
 import PlanAccordion from "./PlanAccordion";
@@ -43,10 +43,15 @@ export default function PlanView({
     setMediatorRequired,
     setPlan,
     setPhase,
+    destinationAddress: storedDest,
+    memo: storedMemo,
   } = useDemolishStore();
 
-  const [destination, setDestination] = useState("");
-  const [memo, setMemo] = useState("");
+  // Pre-fill destination/memo from the store when navigating here from a resume.
+  // On fresh flows the store values are null (reset by "Merge another account") so
+  // this is a no-op; on resume they hold the session's saved destination.
+  const [destination, setDestination] = useState(storedDest ?? "");
+  const [memo, setMemo] = useState(storedMemo ?? "");
   const [proceeding, setProceeding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,6 +92,12 @@ export default function PlanView({
   const memoValid =
     !memoRequired || (memo.trim().length > 0 && isValidMemo(memo.trim(), memoTypeForDest));
 
+  // Preview: derive mediator requirement from the registry synchronously so the
+  // plan accordion shows the correct step titles before the user clicks proceed.
+  // The authoritative check happens in handleProceed via the mediator/check API.
+  const previewMediatorRequired =
+    isValidGAddress(destination) && requiresMediatorForAddress(destination);
+
   const canProceed =
     destinationStepReady &&
     isValidGAddress(destination) &&
@@ -107,6 +118,7 @@ export default function PlanView({
 
     try {
       const res = await fetch(`/api/${network}/mediator/check/${destination}`);
+      if (!res.ok) throw new Error(`Mediator check failed with status ${res.status}`);
       const mediatorData: MediatorCheckResult = await res.json();
       const needsMediator = mediatorData.requiresMediator ?? false;
       const mediatorPublicKey = needsMediator
@@ -158,7 +170,7 @@ export default function PlanView({
             returnConfirmed={returnConfirmed}
             onToggleReturn={handleToggleReturn}
             destinationAddress={destinationStepReady && destination ? destination : null}
-            mediatorRequired={false}
+            mediatorRequired={previewMediatorRequired}
           />
         </div>
       </div>
