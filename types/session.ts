@@ -13,6 +13,7 @@ export interface SessionRecord {
   sourceAddress: string;
   destinationAddress: string;
   memo: string | null;
+  memoType: "text" | "id" | "hash" | null;
   mediatorPublicKey: string | null;
   completedSteps: CompletedStepRecord[];
   currentStepIndex: number;

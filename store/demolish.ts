@@ -50,6 +50,7 @@ interface DemolishState {
   markStepFailed: (index: number, error: string) => void;
   setLastError: (error: string | null) => void;
   initSession: () => void;
+  restoreSession: (id: string) => void;
   reset: () => void;
 }
 
@@ -151,6 +152,11 @@ export const useDemolishStore = create<DemolishState>((set) => ({
   setLastError: (lastError) => set({ lastError }),
 
   initSession: () => set({ sessionId: uuidv4() }),
+
+  // Reuses an existing session ID instead of generating a new one. Used by the
+  // resume flow so that subsequent saveSession calls overwrite the same IndexedDB
+  // record rather than creating an orphan that remains "in_progress" forever.
+  restoreSession: (id) => set({ sessionId: id }),
 
   reset: () => set(initialState),
 }));
