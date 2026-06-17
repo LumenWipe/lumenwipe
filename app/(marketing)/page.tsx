@@ -3,8 +3,6 @@ import Link from "next/link";
 import {
   ArrowRight,
   Check,
-  ShieldCheck,
-  Boxes,
   RefreshCw,
   Building2,
   Layers,
@@ -237,17 +235,6 @@ export default function LandingPage() {
           <Link href="/how-it-works" className={btnGhost}>
             See how it works
           </Link>
-        </div>
-
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mkt-mono text-[0.72rem] text-white/55">
-          <span className="inline-flex items-center gap-1.5">
-            <ShieldCheck className="h-3.5 w-3.5 text-stellar" />
-            Keys never leave your browser
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Boxes className="h-3.5 w-3.5 text-stellar" />
-            Open source · Apache 2.0
-          </span>
         </div>
 
         {/* animated scan console */}
