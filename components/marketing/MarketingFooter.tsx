@@ -9,7 +9,7 @@ const COLS: { title: string; links: { label: string; href: string; external?: bo
       { label: "Open the app", href: "/mainnet" },
       { label: "Try on testnet", href: "/testnet" },
       { label: "How it works", href: "/how-it-works" },
-      { label: "FAQ", href: "/#faq" },
+      { label: "FAQ", href: "/faq" },
     ],
   },
   {
@@ -17,7 +17,7 @@ const COLS: { title: string; links: { label: string; href: string; external?: bo
     links: [
       { label: "Documentation", href: "https://docs.lumenwipe.com", external: true },
       { label: "Architecture", href: "https://docs.lumenwipe.com/architecture", external: true },
-      { label: "Security", href: "/#security" },
+      { label: "Security", href: "/security" },
       { label: "Blog", href: "/blog" },
     ],
   },

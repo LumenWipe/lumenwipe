@@ -10,8 +10,8 @@ type NavLink = { href: string; label: string; external?: boolean; section?: stri
 
 const LINKS: NavLink[] = [
   { href: "/how-it-works", label: "How it works" },
-  { href: "/#security", label: "Security", section: "security" },
-  { href: "/#faq", label: "FAQ", section: "faq" },
+  { href: "/security", label: "Security" },
+  { href: "/faq", label: "FAQ" },
   { href: "/playground", label: "Playground" },
   { href: "/stats", label: "Stats" },
   { href: "/blog", label: "Blog" },
@@ -23,7 +23,8 @@ const DOCS: NavLink = { href: "https://docs.lumenwipe.com", label: "Docs", exter
 const MOBILE_LINKS: NavLink[] = [...LINKS, DOCS];
 
 // Landing sections the scroll-spy watches, in document order.
-const SPY_SECTIONS = ["security", "faq"];
+// Security and FAQ are now dedicated routes, so nothing is spied here.
+const SPY_SECTIONS: string[] = [];
 
 const GITHUB = "https://github.com/LumenWipe/lumenwipe";
 const APP = "/mainnet";
