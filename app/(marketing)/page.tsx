@@ -29,7 +29,7 @@ const TESTNET = "/testnet";
 const STATS = [
   { n: "10M+", l: "accounts on Stellar mainnet" },
   { n: "1 + 0.5n", l: "XLM locked per account" },
-  { n: "7", l: "DeFi protocols supported" },
+  { n: "7", l: "DeFi protocols mapped" },
   { n: "0", l: "servers that can move your funds" },
 ];
 
