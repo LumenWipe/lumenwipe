@@ -2,29 +2,20 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
+  Check,
   ShieldCheck,
-  KeyRound,
-  Eye,
-  GitMerge,
+  Boxes,
   RefreshCw,
-  Layers,
-  Coins,
   Building2,
-  Search,
-  Database,
-  XCircle,
-  ArrowLeftRight,
-  Unlink,
+  Layers,
+  Eye,
   ScanLine,
+  Gauge,
+  KeyRound,
   Server,
   Network,
-  Boxes,
-  Gauge,
-  Check,
 } from "lucide-react";
-import ExecutionPlanDemo from "@/components/marketing/ExecutionPlanDemo";
 import Faq from "@/components/marketing/Faq";
-import LiveStats from "@/components/marketing/LiveStats";
 import Reveal from "@/components/marketing/Reveal";
 
 export const metadata: Metadata = {
@@ -36,23 +27,58 @@ export const metadata: Metadata = {
 const APP = "/mainnet";
 const TESTNET = "/testnet";
 
-const STEPS = [
-  { icon: Search, label: "Analyze", desc: "Enumerate every subentry and DeFi position" },
-  { icon: KeyRound, label: "Normalize signers", desc: "Remove extra keys, reset thresholds" },
-  { icon: Database, label: "Clear data entries", desc: "Remove ManageData in batches" },
-  { icon: XCircle, label: "Cancel offers", desc: "Close every open DEX order" },
-  { icon: Layers, label: "Exit DeFi & AMM", desc: "Withdraw from pools and protocols" },
-  { icon: ArrowLeftRight, label: "Convert to XLM", desc: "Best route across SDEX & Soroswap" },
-  { icon: Unlink, label: "Remove trustlines", desc: "Release each 0.5 XLM reserve" },
-  { icon: GitMerge, label: "Merge", desc: "Direct, or via mediator for a CEX" },
+type ScanRow = { n: string; label: string; amt?: string; done?: boolean; running?: boolean };
+
+const SCAN: ScanRow[] = [
+  { n: "01", label: "Normalize signers", amt: "+0.50", done: true },
+  { n: "02", label: "Clear data entries", amt: "+0.50", done: true },
+  { n: "03", label: "Cancel open offers", amt: "+1.00", done: true },
+  { n: "04", label: "Convert assets to XLM", running: true },
+  { n: "05", label: "Remove trustlines", amt: "+2.00" },
+  { n: "06", label: "Merge to destination", amt: "+1.00" },
+];
+
+const STATS = [
+  { n: "10M+", l: "accounts on Stellar mainnet" },
+  { n: "1 + 0.5n", l: "XLM locked per account" },
+  { n: "7", l: "DeFi protocols covered" },
+  { n: "0", l: "servers that can move your funds" },
 ];
 
 const RESERVE = [
-  { label: "Account minimum", count: "2 base reserves", xlm: 1.0, w: 20 },
-  { label: "4 trustlines", count: "0.5 each", xlm: 2.0, w: 40 },
-  { label: "2 open offers", count: "0.5 each", xlm: 1.0, w: 20 },
-  { label: "1 data entry", count: "0.5 each", xlm: 0.5, w: 10 },
-  { label: "1 extra signer", count: "0.5 each", xlm: 0.5, w: 10 },
+  { label: "Account minimum", xlm: "1.00", w: 20 },
+  { label: "4 trustlines", xlm: "2.00", w: 40 },
+  { label: "2 open offers", xlm: "1.00", w: 20 },
+  { label: "1 data entry · 1 signer", xlm: "1.00", w: 20 },
+];
+
+const TRUTHS = [
+  {
+    icon: RefreshCw,
+    title: "One mistake and it all reverts",
+    body: "A single leftover subentry makes the final ACCOUNT_MERGE fail. Every offer, position, asset and entry must clear in the right order first.",
+  },
+  {
+    icon: Building2,
+    title: "Exchanges can't merge",
+    body: "No major exchange supports ACCOUNT_MERGE. Send your XLM to a CEX address and the 1 XLM minimum stays frozen forever.",
+  },
+  {
+    icon: Layers,
+    title: "DeFi has no tool at all",
+    body: "Any account with a Blend loan, an Aquarius LP or a Soroswap position simply cannot be closed with today's tools.",
+  },
+];
+
+const FLOW = [
+  { label: "Analyze", desc: "Enumerate every subentry and DeFi position." },
+  { label: "Normalize signers", desc: "Remove extra keys, reset thresholds." },
+  { label: "Clear data entries", desc: "Remove ManageData in batches." },
+  { label: "Cancel offers", desc: "Close every open DEX order." },
+  { label: "Exit DeFi & AMM", desc: "Withdraw from pools and protocols." },
+  { label: "Convert to XLM", desc: "Best route across SDEX & Soroswap." },
+  { label: "Remove trustlines", desc: "Release each 0.5 XLM reserve." },
+  { label: "Merge", desc: "Direct, or via mediator for a CEX." },
 ];
 
 const PROTOCOLS = [
@@ -65,30 +91,132 @@ const PROTOCOLS = [
   "Classic AMM",
 ];
 
-const ECOSYSTEM = [
-  "Freighter",
-  "xBull",
-  "Albedo",
-  "LOBSTR",
-  "Hana",
-  "WalletConnect",
-  "Blend",
-  "Aquarius",
-  "Soroswap",
-  "Phoenix",
-  "FxDAO",
-  "Stellar RPC",
-  "stellar.expert",
-  "Soroswap API",
-  "OctoPos",
+const FEATURES = [
+  {
+    icon: Building2,
+    title: "Exchange-compatible merge",
+    body: "A transparent, shared mediator bridges the merge to any CEX deposit address, with the right memo, validated.",
+  },
+  {
+    icon: Eye,
+    title: "Allowance inspector",
+    body: "See every token approval your account granted to DeFi contracts, and revoke risky ones, even without closing.",
+  },
+  {
+    icon: RefreshCw,
+    title: "Resumable sessions",
+    body: "An explicit state machine in IndexedDB. Close the tab mid-flow and resume exactly where you left off, reconciled on-chain.",
+  },
+  {
+    icon: ScanLine,
+    title: "Deterministic, auditable plan",
+    body: "The same account state always produces the same ordered plan: testable, reviewable, never built on stale data.",
+  },
+  {
+    icon: Gauge,
+    title: "Simulated before you sign",
+    body: "Every Soroban call runs through simulateTransaction first. You see the result before being asked for a signature.",
+  },
+];
+
+const LAYERS = [
+  {
+    label: "Your browser",
+    sub: "Wallet · transaction builder · signing · session",
+    note: "keys live here",
+    key: true,
+  },
+  {
+    label: "Read-only backend",
+    sub: "Account analysis · DeFi adapters · routing · cache",
+    note: "co-sign only · no custody",
+  },
+  {
+    label: "Stellar network & data",
+    sub: "Stellar RPC · stellar.expert · Soroswap API",
+    note: "read · simulate · submit",
+  },
+];
+
+const GUARANTEES = [
+  {
+    icon: KeyRound,
+    title: "Private key",
+    body: "Never transmitted. Stays in your wallet, or in memory only and cleared after each signing.",
+  },
+  {
+    icon: ScanLine,
+    title: "Every destructive step",
+    body: "Reviewed as raw XDR and explicitly confirmed before signing.",
+  },
+  {
+    icon: Building2,
+    title: "Exchange memo",
+    body: "Required and validated for known exchanges; a missing memo blocks submission.",
+  },
+  {
+    icon: Server,
+    title: "Backend compromise",
+    body: "Its only key is the shared mediator, which can't sign for your account or divert funds. Bad reads are caught by simulation and confirmations.",
+  },
+  {
+    icon: Network,
+    title: "Strict CSP",
+    body: "No inline scripts, no unsafe-eval. Dependencies are lockfile-pinned and audited in CI.",
+  },
+];
+
+const SOURCES = [
+  {
+    name: "OctoPos",
+    body: "Discovers Soroban DeFi positions across Blend, Aquarius, Soroswap, Phoenix and FxDAO.",
+  },
+  {
+    name: "stellar.expert",
+    body: "Enumerates every subentry holding the account open before we re-read it live.",
+  },
+  {
+    name: "Soroswap API + SDEX",
+    body: "Finds the best conversion route for leftover assets into XLM.",
+  },
+  {
+    name: "Stellar RPC",
+    body: "Live state re-read, transaction simulation and submission, the source of truth.",
+  },
 ];
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <span className="mkt-eyebrow inline-flex items-center gap-2 text-stellar/90">
-      <span className="h-px w-6 bg-stellar/50" />
+    <span className="mkt-eyebrow inline-flex items-center gap-2 text-white/55">
+      <span className="h-px w-5 bg-stellar/60" />
       {children}
     </span>
+  );
+}
+
+const btnGold =
+  "inline-flex items-center gap-2 rounded-xl bg-value px-5 py-3 text-sm font-semibold text-[hsl(var(--value-foreground))] transition-all hover:bg-value/90 hover:shadow-[0_12px_30px_-14px_hsl(var(--value)/0.7)]";
+const btnGhost =
+  "inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.02] px-5 py-3 text-sm font-semibold text-white/85 transition-colors hover:border-white/30 hover:text-white";
+
+function Step({ index, label, desc }: { index: number; label: string; desc: string }) {
+  const last = index === 3 || index === 7;
+  const fin = index === 7;
+  return (
+    <div className="relative pb-7 pl-11">
+      {!last && (
+        <span className="absolute left-[13.5px] top-1 -bottom-1 w-px bg-white/10" aria-hidden />
+      )}
+      <span
+        className={`mkt-node mkt-mono absolute left-0 top-0 grid place-items-center text-[10.5px] ${
+          fin ? "mkt-node-fin" : ""
+        }`}
+      >
+        {String(index + 1).padStart(2, "0")}
+      </span>
+      <h3 className="text-[0.95rem] font-semibold text-white">{label}</h3>
+      <p className="mt-1 text-[0.82rem] leading-relaxed text-white/55">{desc}</p>
+    </div>
   );
 }
 
@@ -96,135 +224,141 @@ export default function LandingPage() {
   return (
     <>
       {/* ============================ HERO ============================ */}
-      <section className="relative">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 pb-16 pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:gap-10 lg:px-8 lg:pb-24 lg:pt-24">
-          <div>
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 mkt-mono text-[0.68rem] uppercase tracking-wider text-white/65">
-              <span className="h-1.5 w-1.5 rounded-full bg-stellar mkt-pulse" />
-              Stellar Account Demolisher
-            </div>
-
-            <h1 className="mkt-display text-[2.6rem] font-extrabold leading-[0.98] text-white sm:text-6xl">
-              Get back the XLM{" "}
-              <span className="relative whitespace-nowrap text-value">
-                locked
-                <svg
-                  className="absolute -bottom-1 left-0 w-full text-value/50"
-                  viewBox="0 0 120 8"
-                  fill="none"
-                  preserveAspectRatio="none"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M1 5.5c30-4 88-4 118 0"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </span>{" "}
-              in your Stellar account.
-            </h1>
-
-            <p className="mt-6 max-w-xl text-[1.05rem] leading-relaxed text-white/85">
-              LumenWipe walks you through closing a Stellar account from start to finish:
-              trustlines, offers, data entries, signers, even Soroban DeFi positions. It converts
-              what&apos;s left to XLM and merges it out to your wallet or exchange. One guided flow,
-              signed entirely in your browser.
-            </p>
-
-            <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Link
-                href={APP}
-                className="group inline-flex items-center gap-2 rounded-xl bg-stellar px-5 py-3 text-sm font-semibold text-black transition-all hover:bg-stellar/90 hover:shadow-[0_0_32px_-6px_hsl(var(--stellar)/0.7)]"
-              >
-                Open the app
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </Link>
-              <Link
-                href="/how-it-works"
-                className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.02] px-5 py-3 text-sm font-semibold text-white/85 transition-colors hover:border-white/30 hover:text-white"
-              >
-                See how it works
-              </Link>
-            </div>
-
-            <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-2 mkt-mono text-[0.72rem] text-white/65">
-              <span className="inline-flex items-center gap-1.5">
-                <ShieldCheck className="h-3.5 w-3.5 text-stellar" />
-                Keys never leave your browser
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Boxes className="h-3.5 w-3.5 text-stellar" />
-                Open source · Apache 2.0
-              </span>
-            </div>
-
-            <div className="mt-6">
-              <LiveStats />
-            </div>
-          </div>
-
-          {/* instrument */}
-          <Reveal delay={120} className="relative">
-            <div className="pointer-events-none absolute -inset-6 -z-10 mkt-aura blur-2xl" />
-            <ExecutionPlanDemo />
-          </Reveal>
+      <section className="mx-auto max-w-5xl px-5 pb-10 pt-16 text-center lg:px-8 lg:pt-20">
+        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 mkt-mono text-[0.68rem] uppercase tracking-wider text-white/65">
+          <span className="h-1.5 w-1.5 rounded-full bg-stellar mkt-pulse" />
+          Stellar Account Demolisher
         </div>
 
-        {/* stat band */}
-        <div className="border-y border-white/8 bg-white/[0.015]">
-          <div className="mx-auto grid max-w-6xl grid-cols-2 divide-x divide-white/8 px-5 lg:grid-cols-4 lg:px-8">
-            {[
-              { n: "10M+", l: "accounts on Stellar mainnet" },
-              { n: "1 + 0.5n", l: "XLM locked per account" },
-              { n: "7", l: "DeFi protocols covered" },
-              { n: "0", l: "servers that can move your funds" },
-            ].map((s, i) => (
-              <div
-                key={s.l}
-                className={`px-4 py-6 ${i >= 2 ? "border-t border-white/8 lg:border-t-0" : ""}`}
-              >
-                <div className="mkt-display text-2xl font-bold text-white sm:text-3xl">{s.n}</div>
-                <div className="mt-1 text-[0.78rem] leading-snug text-white/65">{s.l}</div>
+        <h1 className="mkt-display mx-auto max-w-[15ch] text-[2.7rem] font-extrabold leading-[0.95] text-white sm:text-6xl lg:text-[4.2rem]">
+          Close the account. Keep the <span className="text-value">lumens.</span>
+        </h1>
+
+        <p className="mx-auto mt-6 max-w-xl text-[1.05rem] leading-relaxed text-white/70">
+          Unwind every trustline, offer, data entry, signer and Soroban position, convert the
+          leftovers, and merge out. Signed entirely in your browser.
+        </p>
+
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <Link href={APP} className={`group ${btnGold}`}>
+            Open the app
+            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+          </Link>
+          <Link href="/how-it-works" className={btnGhost}>
+            See how it works
+          </Link>
+        </div>
+
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mkt-mono text-[0.72rem] text-white/55">
+          <span className="inline-flex items-center gap-1.5">
+            <ShieldCheck className="h-3.5 w-3.5 text-stellar" />
+            Keys never leave your browser
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Boxes className="h-3.5 w-3.5 text-stellar" />
+            Open source · Apache 2.0
+          </span>
+        </div>
+
+        {/* console */}
+        <Reveal delay={120} className="mt-12">
+          <div className="mkt-card mx-auto max-w-4xl overflow-hidden text-left">
+            <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3.5 mkt-mono text-[0.7rem] uppercase tracking-wider text-white/45">
+              <span>account · GABC…WXYZ</span>
+              <span className="inline-flex items-center gap-2 text-stellar">
+                <span className="h-1.5 w-1.5 rounded-full bg-stellar mkt-pulse" />
+                scanning
+              </span>
+            </div>
+            <div className="grid sm:grid-cols-[1.4fr_1fr]">
+              <div className="p-4 sm:border-r sm:border-white/[0.06]">
+                {SCAN.map((s) => (
+                  <div
+                    key={s.n}
+                    className={`flex items-center gap-3 py-2.5 text-[0.85rem] ${
+                      s.running
+                        ? "-mx-4 border-l-2 border-stellar bg-white/[0.04] px-4 text-white"
+                        : "border-t border-white/[0.05] text-white/85 first:border-t-0"
+                    }`}
+                  >
+                    <span className="mkt-mono w-5 text-[0.72rem] text-white/40">{s.n}</span>
+                    <span>{s.label}</span>
+                    {s.done && <Check className="h-3.5 w-3.5 text-stellar" />}
+                    {s.running ? (
+                      <span className="ml-auto h-1 w-16 overflow-hidden rounded-full bg-white/10">
+                        <span className="block h-full w-[62%] rounded-full bg-stellar" />
+                      </span>
+                    ) : (
+                      <span className="mkt-mono ml-auto text-white/45">{s.amt}</span>
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
+              <div className="flex flex-col justify-center p-5">
+                <span className="mkt-mono text-[0.62rem] uppercase tracking-wider text-white/45">
+                  Recoverable reserve
+                </span>
+                <div className="mkt-display mt-2 text-4xl font-extrabold text-value">
+                  5.00 <span className="text-lg font-normal text-white/45">XLM</span>
+                </div>
+                <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                  <span className="block h-full w-full rounded-full bg-stellar" />
+                </div>
+                <p className="mt-3 text-[0.74rem] text-white/45">
+                  4 of 6 steps complete · 0 servers can move funds
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
+        </Reveal>
       </section>
 
+      {/* ============================ STAT BAND ============================ */}
+      <div className="border-y border-white/[0.07]">
+        <div className="mx-auto grid max-w-5xl grid-cols-2 divide-white/[0.07] px-5 lg:grid-cols-4 lg:divide-x lg:px-8">
+          {STATS.map((s, i) => (
+            <div
+              key={s.l}
+              className={`px-4 py-6 ${i >= 2 ? "border-t border-white/[0.07] lg:border-t-0" : ""}`}
+            >
+              <div className="mkt-display text-2xl font-bold text-value sm:text-3xl">{s.n}</div>
+              <div className="mt-1 text-[0.78rem] leading-snug text-white/55">{s.l}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* ============================ PROBLEM ============================ */}
-      <section className="mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-28">
+      <section className="mx-auto max-w-5xl px-5 py-20 lg:px-8 lg:py-24">
         <Reveal>
           <Eyebrow>The problem</Eyebrow>
-          <h2 className="mkt-display mt-4 max-w-2xl text-3xl font-bold text-white sm:text-[2.6rem] sm:leading-[1.05]">
+          <h2 className="mkt-display mt-4 max-w-2xl text-3xl font-bold text-white sm:text-[2.4rem] sm:leading-[1.05]">
             Your lumens are locked, and the exit is a maze.
           </h2>
-          <p className="mt-5 max-w-2xl text-[1.02rem] leading-relaxed text-white/85">
-            Every Stellar account holds XLM in reserve: 1 XLM for the account itself, plus 0.5 XLM
-            for every trustline, offer, data entry, and signer. That reserve is only recoverable by
-            closing the account, and closing one cleanly is harder than it sounds.
+          <p className="mt-5 max-w-2xl text-[1.02rem] leading-relaxed text-white/70">
+            Every Stellar account holds XLM in reserve: 1 XLM for the account, plus 0.5 for every
+            trustline, offer, data entry and signer. That reserve is only recoverable by closing the
+            account, and closing one cleanly is harder than it sounds.
           </p>
         </Reveal>
 
-        <div className="mt-12 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-          {/* reserve breakdown */}
-          <Reveal className="mkt-panel rounded-2xl p-6">
+        <div className="mt-11 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+          <Reveal className="mkt-card p-6">
             <div className="flex items-center justify-between">
-              <span className="mkt-eyebrow text-white/55">Locked reserve</span>
-              <span className="mkt-mono text-xs text-white/55">example account</span>
+              <span className="mkt-eyebrow text-white/45">Locked reserve</span>
+              <span className="mkt-mono text-xs text-white/45">example account</span>
             </div>
             <div className="mt-5 space-y-3.5">
               {RESERVE.map((r) => (
                 <div key={r.label}>
                   <div className="flex items-baseline justify-between text-sm">
                     <span className="text-white/75">{r.label}</span>
-                    <span className="mkt-mono text-value tabular-nums">{r.xlm.toFixed(2)}</span>
+                    <span className="mkt-mono text-value tabular-nums">{r.xlm}</span>
                   </div>
-                  <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/8">
+                  <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/[0.08]">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-value/60 to-value"
-                      style={{ width: `${r.w * 2.2}%` }}
+                      className="h-full rounded-full bg-value"
+                      style={{ width: `${r.w * 2}%` }}
                     />
                   </div>
                 </div>
@@ -233,40 +367,20 @@ export default function LandingPage() {
             <div className="mt-5 flex items-baseline justify-between border-t border-white/10 pt-4">
               <span className="text-sm font-semibold text-white">Total locked</span>
               <span className="mkt-display text-2xl font-bold text-value tabular-nums">
-                5.00 <span className="text-sm font-normal text-white/65">XLM</span>
+                5.00 <span className="text-sm font-normal text-white/45">XLM</span>
               </span>
             </div>
           </Reveal>
 
-          {/* hard truths */}
           <div className="grid gap-5">
-            {[
-              {
-                icon: RefreshCw,
-                title: "One mistake and it all reverts",
-                body: "A single leftover subentry makes the final ACCOUNT_MERGE fail. You have to cancel every offer, exit every position, sell every asset, and clear every entry, in the right order, before the merge will go through.",
-              },
-              {
-                icon: Building2,
-                title: "Exchanges can't merge",
-                body: "No major exchange supports ACCOUNT_MERGE. Send your remaining XLM to a CEX deposit address and the 1 XLM minimum balance stays frozen forever.",
-              },
-              {
-                icon: Layers,
-                title: "DeFi has no tool at all",
-                body: "Any account with a Blend loan, an Aquarius LP, or a Soroswap position simply cannot be closed with today's tools.",
-              },
-            ].map((t) => (
-              <Reveal
-                key={t.title}
-                className="group flex gap-4 rounded-2xl border border-white/10 bg-white/[0.02] p-5 transition-colors hover:border-white/20"
-              >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-stellar">
+            {TRUTHS.map((t) => (
+              <Reveal key={t.title} className="mkt-card flex gap-4 p-5">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-stellar">
                   <t.icon className="h-5 w-5" />
-                </div>
+                </span>
                 <div>
                   <h3 className="text-[0.98rem] font-semibold text-white">{t.title}</h3>
-                  <p className="mt-1.5 text-sm leading-relaxed text-white/85">{t.body}</p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-white/70">{t.body}</p>
                 </div>
               </Reveal>
             ))}
@@ -275,87 +389,66 @@ export default function LandingPage() {
       </section>
 
       {/* ============================ THE FLOW ============================ */}
-      <section className="relative border-y border-white/8 bg-white/[0.012]">
-        <div className="mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-28">
+      <section className="border-t border-white/[0.07]">
+        <div className="mx-auto max-w-5xl px-5 py-20 lg:px-8 lg:py-24">
           <Reveal className="max-w-2xl">
             <Eyebrow>The fix</Eyebrow>
-            <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-[2.6rem] sm:leading-[1.05]">
+            <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-[2.4rem] sm:leading-[1.05]">
               One guided flow. Eight steps. Everything recovered.
             </h2>
-            <p className="mt-5 text-[1.02rem] leading-relaxed text-white/85">
+            <p className="mt-5 text-[1.02rem] leading-relaxed text-white/70">
               LumenWipe reads the whole account, builds a deterministic ordered plan, and executes
               it step by step, re-reading live state and simulating before every signature. You
               confirm each move; nothing happens without you.
             </p>
           </Reveal>
 
-          <div className="mt-12 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {STEPS.map((s, i) => (
-              <Reveal key={s.label} delay={i * 60} className="relative h-full">
-                <div className="flex h-full flex-col rounded-xl border border-white/10 bg-[#0b0b11]/70 p-4 transition-colors hover:border-stellar/30">
-                  <div className="flex items-center justify-between">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-stellar/10 text-stellar">
-                      <s.icon className="h-4 w-4" />
-                    </span>
-                    <span className="mkt-mono text-xs text-white/25">
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                  </div>
-                  <h3 className="mt-3.5 text-sm font-semibold text-white">{s.label}</h3>
-                  <p className="mt-1 text-xs leading-relaxed text-white/65">{s.desc}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-
-          <div className="mt-9">
-            <Link
-              href="/how-it-works"
-              className="group inline-flex items-center gap-2 text-sm font-semibold text-stellar transition-colors hover:text-stellar/80"
-            >
-              See the full flow, step by step
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-            </Link>
-          </div>
+          <Reveal className="mt-11 grid gap-x-14 sm:grid-cols-2">
+            <div>
+              {FLOW.slice(0, 4).map((s, i) => (
+                <Step key={s.label} index={i} label={s.label} desc={s.desc} />
+              ))}
+            </div>
+            <div>
+              {FLOW.slice(4).map((s, i) => (
+                <Step key={s.label} index={i + 4} label={s.label} desc={s.desc} />
+              ))}
+            </div>
+          </Reveal>
         </div>
       </section>
 
       {/* ============================ CAPABILITIES ============================ */}
-      <section className="mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-28">
+      <section className="mx-auto max-w-5xl px-5 py-20 lg:px-8 lg:py-24">
         <Reveal className="max-w-2xl">
           <Eyebrow>What you get</Eyebrow>
-          <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-[2.6rem] sm:leading-[1.05]">
+          <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-[2.4rem] sm:leading-[1.05]">
             Built for the messy reality of real accounts.
           </h2>
         </Reveal>
 
-        <div className="mt-12 grid gap-4 lg:grid-cols-3">
-          {/* DeFi: wide feature */}
+        <div className="mt-11 grid gap-4 lg:grid-cols-3">
           <Reveal className="lg:col-span-2">
-            <div className="relative h-full overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-stellar/[0.07] via-transparent to-transparent p-6 sm:p-7">
+            <div className="mkt-card h-full p-6 [border-color:hsl(var(--value)/0.25)]">
               <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-stellar/12 text-stellar">
-                    <Layers className="h-5 w-5" />
-                  </div>
-                  <h3 className="mt-4 text-lg font-semibold text-white">
-                    Full Soroban DeFi coverage
-                  </h3>
-                  <p className="mt-2 max-w-md text-sm leading-relaxed text-white/85">
-                    The piece the original demolisher lacks. LumenWipe detects positions through
-                    OctoPos, then exits each one with its own protocol adapter, repaying loans,
-                    withdrawing liquidity, and unstaking before it removes the trustline.
-                  </p>
-                </div>
-                <span className="shrink-0 rounded-full border border-stellar/30 bg-stellar/10 px-2.5 py-1 mkt-mono text-[0.62rem] uppercase tracking-wider text-stellar/90">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-value/30 bg-value/10 text-value">
+                  <Layers className="h-5 w-5" />
+                </span>
+                <span className="rounded-full border border-value/40 px-2.5 py-1 mkt-mono text-[0.62rem] uppercase tracking-wider text-value">
                   Coming soon
                 </span>
               </div>
+              <h3 className="mt-4 text-lg font-semibold text-white">Full Soroban DeFi coverage</h3>
+              <p className="mt-2 max-w-md text-sm leading-relaxed text-white/70">
+                The piece the original demolisher lacks. LumenWipe detects positions through
+                OctoPos, then exits each one with its own protocol adapter, repaying loans,
+                withdrawing liquidity, and unstaking, before it removes the trustline.
+              </p>
               <div className="mt-5 flex flex-wrap gap-2">
                 {PROTOCOLS.map((p) => (
                   <span
                     key={p}
-                    className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 mkt-mono text-xs text-white/70"
+                    className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 mkt-mono text-xs text-white/65"
                   >
                     {p}
                   </span>
@@ -364,105 +457,58 @@ export default function LandingPage() {
             </div>
           </Reveal>
 
-          {[
-            {
-              icon: Building2,
-              title: "Exchange-compatible merge",
-              body: "A transparent, single-use mediator account bridges the merge to any CEX deposit address, with the right memo, validated.",
-            },
-            {
-              icon: Eye,
-              title: "Allowance inspector",
-              body: "See every token approval your account has granted to DeFi contracts, and revoke risky ones, even without closing.",
-            },
-            {
-              icon: RefreshCw,
-              title: "Resumable sessions",
-              body: "An explicit state machine in IndexedDB. Close the tab mid-flow and pick up exactly where you left off, reconciled on-chain.",
-            },
-            {
-              icon: ScanLine,
-              title: "Deterministic, auditable plan",
-              body: "The same account state always produces the same ordered plan: testable, reviewable, and never built on stale data.",
-            },
-            {
-              icon: Gauge,
-              title: "Simulated before you sign",
-              body: "Every Soroban call runs through simulateTransaction first. You see the result before being asked for a signature.",
-            },
-          ].map((f) => (
+          {FEATURES.map((f) => (
             <Reveal key={f.title}>
-              <div className="flex h-full flex-col rounded-2xl border border-white/10 bg-white/[0.02] p-5 transition-colors hover:border-white/20">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-stellar">
-                  <f.icon className="h-5 w-5" />
+              <div className="mkt-card flex h-full flex-col p-5">
+                <div className="flex items-center justify-between">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-stellar">
+                    <f.icon className="h-5 w-5" />
+                  </span>
+                  <span className="mkt-mono text-[0.6rem] uppercase tracking-wider text-stellar/80">
+                    Live
+                  </span>
                 </div>
                 <h3 className="mt-4 text-[0.98rem] font-semibold text-white">{f.title}</h3>
-                <p className="mt-1.5 text-sm leading-relaxed text-white/85">{f.body}</p>
+                <p className="mt-1.5 text-sm leading-relaxed text-white/70">{f.body}</p>
               </div>
             </Reveal>
           ))}
         </div>
       </section>
 
-      {/* ============================ SECURITY ============================ */}
-      <section
-        id="security"
-        className="relative scroll-mt-20 border-y border-white/8 bg-white/[0.012]"
-      >
-        <div className="mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-28">
-          <div className="grid gap-12 lg:grid-cols-[1fr_1fr] lg:gap-16">
+      {/* ============================ TRUST ============================ */}
+      <section id="security" className="scroll-mt-20 border-t border-white/[0.07]">
+        <div className="mx-auto max-w-5xl px-5 py-20 lg:px-8 lg:py-24">
+          <div className="grid gap-12 lg:grid-cols-2 lg:gap-16">
             <Reveal>
               <Eyebrow>Trust model</Eyebrow>
-              <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-[2.6rem] sm:leading-[1.05]">
+              <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-[2.4rem] sm:leading-[1.05]">
                 The trust boundary is your browser.
               </h2>
-              <p className="mt-5 text-[1.02rem] leading-relaxed text-white/85">
-                LumenWipe builds transactions that drain accounts irreversibly, so the design starts
-                from that fact. Your keys are created and used only in your browser and never reach
-                a server. The backend can&apos;t touch your account: its one signing key is the
-                shared exchange mediator, which can only co-sign a forwarding payment you already
-                authorized.
+              <p className="mt-5 text-[1.02rem] leading-relaxed text-white/70">
+                Your keys are created and used only in your browser and never reach a server. The
+                backend can&apos;t touch your account: its one signing key is the shared exchange
+                mediator, which can only co-sign a forwarding payment you already authorized.
               </p>
-
-              {/* layered diagram */}
               <div className="mt-8 space-y-2.5">
-                {[
-                  {
-                    label: "Your browser",
-                    sub: "Wallet · transaction builder · signing · session",
-                    tone: "stellar",
-                    note: "keys live here",
-                  },
-                  {
-                    label: "Read-only backend",
-                    sub: "Account analysis · DeFi adapters · routing · cache",
-                    tone: "muted",
-                    note: "co-sign only · no custody",
-                  },
-                  {
-                    label: "Stellar network & data",
-                    sub: "Stellar RPC · stellar.expert · Soroswap API",
-                    tone: "muted",
-                    note: "read · simulate · submit",
-                  },
-                ].map((layer) => (
+                {LAYERS.map((layer) => (
                   <div
                     key={layer.label}
                     className={`flex items-center justify-between gap-3 rounded-xl border p-3.5 ${
-                      layer.tone === "stellar"
-                        ? "border-stellar/40 bg-stellar/[0.06] mkt-glow-cyan"
+                      layer.key
+                        ? "border-value/40 bg-value/[0.06]"
                         : "border-white/10 bg-white/[0.02]"
                     }`}
                   >
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold text-white">{layer.label}</div>
-                      <div className="mkt-mono text-[0.68rem] text-white/55 leading-snug break-words">
+                      <div className="mkt-mono break-words text-[0.68rem] leading-snug text-white/45">
                         {layer.sub}
                       </div>
                     </div>
                     <span
-                      className={`shrink-0 mkt-mono text-[0.6rem] uppercase tracking-wider whitespace-nowrap ${
-                        layer.tone === "stellar" ? "text-stellar" : "text-white/50"
+                      className={`mkt-mono shrink-0 whitespace-nowrap text-[0.6rem] uppercase tracking-wider ${
+                        layer.key ? "text-value" : "text-white/45"
                       }`}
                     >
                       {layer.note}
@@ -473,44 +519,18 @@ export default function LandingPage() {
             </Reveal>
 
             <Reveal delay={100} className="lg:pt-2">
-              <ul className="space-y-px overflow-hidden rounded-2xl border border-white/10">
-                {[
-                  {
-                    icon: KeyRound,
-                    title: "Private key",
-                    body: "Never transmitted. Stays in your wallet, or in memory only and cleared after each signing.",
-                  },
-                  {
-                    icon: ScanLine,
-                    title: "Every destructive step",
-                    body: "Reviewed as raw XDR and explicitly confirmed before signing.",
-                  },
-                  {
-                    icon: Building2,
-                    title: "Exchange memo",
-                    body: "Required and validated for known exchanges; a missing memo blocks submission.",
-                  },
-                  {
-                    icon: Server,
-                    title: "Backend compromise",
-                    body: "Its only key is the shared mediator, which can't sign for your account and can't divert funds (atomic, validated). Wrong read data is caught by simulation and confirmations.",
-                  },
-                  {
-                    icon: Network,
-                    title: "Strict CSP",
-                    body: "No inline scripts, no unsafe-eval. Dependencies are lockfile-pinned and audited in CI.",
-                  },
-                ].map((row) => (
+              <ul className="overflow-hidden rounded-2xl border border-white/10">
+                {GUARANTEES.map((row) => (
                   <li
                     key={row.title}
-                    className="flex gap-3.5 bg-white/[0.02] p-4 transition-colors hover:bg-white/[0.04]"
+                    className="flex gap-3.5 border-t border-white/[0.06] bg-white/[0.02] p-4 first:border-t-0"
                   >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-stellar/10 text-stellar">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-stellar">
                       <row.icon className="h-4 w-4" />
-                    </div>
+                    </span>
                     <div>
                       <div className="text-sm font-semibold text-white">{row.title}</div>
-                      <div className="mt-0.5 text-sm leading-relaxed text-white/50">{row.body}</div>
+                      <div className="mt-0.5 text-sm leading-relaxed text-white/55">{row.body}</div>
                     </div>
                   </li>
                 ))}
@@ -520,46 +540,61 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ============================ ECOSYSTEM MARQUEE ============================ */}
-      <section className="py-14">
-        <p className="mb-6 text-center mkt-eyebrow text-white/55">
-          Wallets, protocols & data sources it speaks to
-        </p>
-        <div className="mkt-marquee-track relative flex overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_12%,#000_88%,transparent)]">
-          <div className="mkt-marquee flex shrink-0 items-center gap-3 pr-3">
-            {[...ECOSYSTEM, ...ECOSYSTEM].map((name, i) => (
-              <span
-                key={`${name}-${i}`}
-                className="shrink-0 rounded-lg border border-white/8 bg-white/[0.02] px-4 py-2 mkt-mono text-sm text-white/65"
-              >
-                {name}
-              </span>
-            ))}
-          </div>
+      {/* ============================ DATA LAYER ============================ */}
+      <section className="mx-auto max-w-5xl px-5 py-20 lg:px-8 lg:py-24">
+        <Reveal className="max-w-2xl">
+          <Eyebrow>Data layer</Eyebrow>
+          <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-[2.4rem] sm:leading-[1.05]">
+            We read the whole account, from sources others skip.
+          </h2>
+          <p className="mt-5 text-[1.02rem] leading-relaxed text-white/70">
+            Indexers lag and miss Soroban state. LumenWipe re-reads exact live state on-chain and
+            detects DeFi positions other tools can&apos;t see, so the plan is never built on stale
+            data.
+          </p>
+        </Reveal>
+
+        <div className="mt-11 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {SOURCES.map((s) => (
+            <Reveal key={s.name} className="mkt-card p-5">
+              <div className="mkt-mono flex items-center gap-2 text-[0.82rem] text-white">
+                <span className="h-1.5 w-1.5 rounded-full bg-value" />
+                {s.name}
+              </div>
+              <p className="mt-2.5 text-[0.82rem] leading-relaxed text-white/55">{s.body}</p>
+            </Reveal>
+          ))}
         </div>
+        <p className="mt-5 mkt-mono text-[0.8rem] text-white/45">
+          Works with <span className="text-white/75">Freighter, xBull, Albedo, LOBSTR, Hana</span>{" "}
+          and <span className="text-white/75">WalletConnect</span>.
+        </p>
       </section>
 
       {/* ============================ FAQ ============================ */}
-      <section id="faq" className="mx-auto max-w-3xl scroll-mt-20 px-5 py-20 lg:px-8 lg:py-28">
+      <section
+        id="faq"
+        className="mx-auto max-w-3xl scroll-mt-20 border-t border-white/[0.07] px-5 py-20 lg:px-8 lg:py-24"
+      >
         <Reveal className="text-center">
           <Eyebrow>FAQ</Eyebrow>
-          <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-[2.6rem]">
+          <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-[2.4rem]">
             Questions, answered.
           </h2>
-          <p className="mt-4 text-white/85">
+          <p className="mt-4 text-white/70">
             Closing an account is irreversible. Here&apos;s exactly how LumenWipe keeps it safe.
           </p>
         </Reveal>
         <div className="mt-10">
           <Faq />
         </div>
-        <p className="mt-6 text-center text-sm text-white/65">
+        <p className="mt-6 text-center text-sm text-white/55">
           Still curious?{" "}
           <a
             href="https://docs.lumenwipe.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-stellar underline-offset-4 hover:underline"
+            className="text-value underline-offset-4 hover:underline"
           >
             Read the full documentation
           </a>
@@ -568,45 +603,35 @@ export default function LandingPage() {
       </section>
 
       {/* ============================ FINAL CTA ============================ */}
-      <section className="mx-auto max-w-6xl px-5 pb-24 lg:px-8">
+      <section className="mx-auto max-w-5xl px-5 pb-24 lg:px-8">
         <Reveal>
-          <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#0a0a12] px-6 py-14 text-center sm:px-12 sm:py-20">
-            <div aria-hidden className="pointer-events-none absolute inset-0 mkt-aura" />
-            <div aria-hidden className="pointer-events-none absolute inset-0 mkt-dots opacity-40" />
-            <div className="relative">
-              <h2 className="mkt-display mx-auto max-w-2xl text-3xl font-bold leading-[1.05] text-white sm:text-5xl">
-                Reclaim the XLM that&apos;s been sitting locked.
-              </h2>
-              <p className="mx-auto mt-5 max-w-lg text-[1.02rem] text-white/85">
-                Try the entire flow on testnet with no funds at risk, then switch to mainnet for the
-                real close.
-              </p>
-              <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-                <Link
-                  href={APP}
-                  className="group inline-flex items-center gap-2 rounded-xl bg-stellar px-6 py-3.5 text-sm font-semibold text-black transition-all hover:bg-stellar/90 hover:shadow-[0_0_36px_-6px_hsl(var(--stellar)/0.7)]"
-                >
-                  Open the app
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                </Link>
-                <Link
-                  href={TESTNET}
-                  className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.02] px-6 py-3.5 text-sm font-semibold text-white/85 transition-colors hover:border-white/30 hover:text-white"
-                >
-                  Try on testnet
-                </Link>
-              </div>
-              <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mkt-mono text-[0.7rem] text-white/55">
-                <span className="inline-flex items-center gap-1.5">
-                  <Check className="h-3.5 w-3.5 text-stellar" /> No signup
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Check className="h-3.5 w-3.5 text-stellar" /> No custody
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Check className="h-3.5 w-3.5 text-stellar" /> Open source
-                </span>
-              </div>
+          <div className="mkt-card px-6 py-14 text-center sm:px-12 sm:py-20">
+            <h2 className="mkt-display mx-auto max-w-2xl text-3xl font-bold leading-[1.05] text-white sm:text-5xl">
+              Reclaim the XLM that&apos;s been sitting locked.
+            </h2>
+            <p className="mx-auto mt-5 max-w-lg text-[1.02rem] text-white/70">
+              Try the entire flow on testnet with no funds at risk, then switch to mainnet for the
+              real close.
+            </p>
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+              <Link href={APP} className={`group ${btnGold}`}>
+                Open the app
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+              <Link href={TESTNET} className={btnGhost}>
+                Try on testnet
+              </Link>
+            </div>
+            <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mkt-mono text-[0.7rem] text-white/55">
+              <span className="inline-flex items-center gap-1.5">
+                <Check className="h-3.5 w-3.5 text-stellar" /> No signup
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Check className="h-3.5 w-3.5 text-stellar" /> No custody
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Check className="h-3.5 w-3.5 text-stellar" /> Open source
+              </span>
             </div>
           </div>
         </Reveal>

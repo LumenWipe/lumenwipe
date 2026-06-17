@@ -5,12 +5,13 @@ import { marketingFontVars } from "./fonts";
 
 export default function MarketingLayout({ children }: { children: ReactNode }) {
   return (
-    <div className={`${marketingFontVars} mkt relative min-h-screen overflow-x-clip bg-[#07070b]`}>
-      {/* ambient blueprint + aura, fixed so it stays put while scrolling */}
+    <div
+      className={`${marketingFontVars} mkt relative min-h-screen overflow-x-clip bg-[hsl(var(--mkt-bg))]`}
+    >
+      {/* atmosphere: film grain + faint top hairline. No grid, no colour aura. */}
       <div aria-hidden className="pointer-events-none fixed inset-0 z-0">
-        <div className="absolute inset-0 mkt-grid opacity-70" />
-        <div className="absolute inset-0 mkt-aura" />
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-stellar/40 to-transparent" />
+        <div className="absolute inset-0 mkt-grain" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-stellar/30 to-transparent" />
       </div>
 
       <div className="relative z-10 flex min-h-screen flex-col">

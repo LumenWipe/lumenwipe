@@ -148,7 +148,7 @@ export default function MarketingNav() {
           </a>
           <Link
             href={APP}
-            className="hidden items-center gap-1.5 rounded-lg bg-stellar px-4 py-2 text-sm font-semibold text-black transition-all hover:bg-stellar/90 hover:shadow-[0_0_24px_-4px_hsl(var(--stellar)/0.6)] sm:inline-flex"
+            className="hidden items-center gap-1.5 rounded-lg bg-value px-4 py-2 text-sm font-semibold text-[hsl(var(--value-foreground))] transition-all hover:bg-value/90 hover:shadow-[0_0_24px_-4px_hsl(var(--value)/0.6)] sm:inline-flex"
           >
             Open the app
           </Link>
@@ -193,7 +193,7 @@ export default function MarketingNav() {
             <Link
               href={APP}
               onClick={() => setOpen(false)}
-              className="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-stellar px-4 py-2.5 text-sm font-semibold text-black"
+              className="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-value px-4 py-2.5 text-sm font-semibold text-[hsl(var(--value-foreground))]"
             >
               Open the app
             </Link>
