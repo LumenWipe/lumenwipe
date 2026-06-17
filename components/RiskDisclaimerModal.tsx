@@ -45,7 +45,7 @@ export default function RiskDisclaimerModal() {
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
 
       {/* Panel */}
-      <div className="relative w-full max-w-md rounded-2xl border border-white/15 bg-[#0d0d14] shadow-2xl">
+      <div className="relative w-full max-w-md rounded-2xl border border-white/15 bg-card shadow-2xl">
         {/* Header */}
         <div className="flex items-start gap-3 border-b border-white/10 px-5 py-4">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400">

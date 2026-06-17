@@ -27,7 +27,7 @@ export default function CoreAccount() {
         {!merged ? (
           <motion.div
             key="core"
-            className="relative flex h-24 w-24 sm:h-32 sm:w-32 lg:h-36 lg:w-36 flex-col items-center justify-center rounded-full border border-stellar/40 bg-[hsl(240_14%_6%/0.9)] text-center"
+            className="relative flex h-24 w-24 sm:h-32 sm:w-32 lg:h-36 lg:w-36 flex-col items-center justify-center rounded-full border border-stellar/40 bg-[hsl(200_16%_8%/0.9)] text-center"
             style={{
               boxShadow: "0 0 0 1px hsl(var(--stellar)/0.25), 0 0 60px hsl(var(--stellar)/0.25)",
             }}

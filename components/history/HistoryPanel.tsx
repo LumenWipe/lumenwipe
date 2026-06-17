@@ -39,7 +39,7 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
       <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
       {/* Panel */}
-      <div className="fixed right-0 top-0 z-50 h-full w-full max-w-sm bg-[#0a0a10] border-l border-white/10 flex flex-col shadow-2xl">
+      <div className="fixed right-0 top-0 z-50 h-full w-full max-w-sm bg-card border-l border-white/10 flex flex-col shadow-2xl">
         <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
           <div className="flex items-center gap-2">
             <History className="h-4 w-4 text-stellar" />
