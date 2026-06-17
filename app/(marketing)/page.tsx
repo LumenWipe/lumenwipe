@@ -84,26 +84,31 @@ const FEATURES = [
     icon: Building2,
     title: "Exchange-compatible merge",
     body: "A transparent, shared mediator bridges the merge to any CEX deposit address, with the right memo, validated.",
+    status: "Live",
   },
   {
     icon: Eye,
     title: "Allowance inspector",
     body: "See every token approval your account granted to DeFi contracts, and revoke risky ones, even without closing.",
+    status: "Soon",
   },
   {
     icon: RefreshCw,
     title: "Resumable sessions",
     body: "An explicit state machine in IndexedDB. Close the tab mid-flow and resume exactly where you left off, reconciled on-chain.",
+    status: "Live",
   },
   {
     icon: ScanLine,
     title: "Deterministic, auditable plan",
     body: "The same account state always produces the same ordered plan: testable, reviewable, never built on stale data.",
+    status: "Live",
   },
   {
     icon: Gauge,
     title: "Simulated before you sign",
     body: "Every Soroban call runs through simulateTransaction first. You see the result before being asked for a signature.",
+    status: "Live",
   },
 ];
 
@@ -365,7 +370,7 @@ export default function LandingPage() {
                   <Layers className="h-5 w-5" />
                 </span>
                 <span className="rounded-full border border-value/40 px-2.5 py-1 mkt-mono text-[0.62rem] uppercase tracking-wider text-value">
-                  Coming soon
+                  Classic live · Soroban on the way
                 </span>
               </div>
               <h3 className="mt-4 text-lg font-semibold text-white">Full Soroban DeFi coverage</h3>
@@ -394,8 +399,12 @@ export default function LandingPage() {
                   <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-stellar">
                     <f.icon className="h-5 w-5" />
                   </span>
-                  <span className="mkt-mono text-[0.6rem] uppercase tracking-wider text-stellar/80">
-                    Live
+                  <span
+                    className={`mkt-mono text-[0.6rem] uppercase tracking-wider ${
+                      f.status === "Live" ? "text-stellar/80" : "text-value/80"
+                    }`}
+                  >
+                    {f.status}
                   </span>
                 </div>
                 <h3 className="mt-4 text-[0.98rem] font-semibold text-white">{f.title}</h3>
