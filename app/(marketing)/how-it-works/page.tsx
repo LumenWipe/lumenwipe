@@ -125,7 +125,7 @@ export default function HowItWorksPage() {
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link
               href="/mainnet"
-              className="group inline-flex items-center gap-2 rounded-xl bg-stellar px-5 py-3 text-sm font-semibold text-black transition-all hover:bg-stellar/90 hover:shadow-[0_0_32px_-6px_hsl(var(--stellar)/0.7)]"
+              className="group inline-flex items-center gap-2 rounded-xl bg-value px-5 py-3 text-sm font-semibold text-[hsl(var(--value-foreground))] transition-all hover:bg-value/90 hover:shadow-[0_0_32px_-6px_hsl(var(--value)/0.7)]"
             >
               Open the app
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -376,7 +376,7 @@ export default function HowItWorksPage() {
           <h3 className="mkt-display text-xl font-bold text-white">Ready when you are.</h3>
           <Link
             href="/public"
-            className="group inline-flex items-center gap-2 rounded-xl bg-stellar px-5 py-3 text-sm font-semibold text-black transition-all hover:bg-stellar/90 hover:shadow-[0_0_32px_-6px_hsl(var(--stellar)/0.7)]"
+            className="group inline-flex items-center gap-2 rounded-xl bg-value px-5 py-3 text-sm font-semibold text-[hsl(var(--value-foreground))] transition-all hover:bg-value/90 hover:shadow-[0_0_32px_-6px_hsl(var(--value)/0.7)]"
           >
             Open the app
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />

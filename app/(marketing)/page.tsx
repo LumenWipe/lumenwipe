@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import Faq from "@/components/marketing/Faq";
 import Reveal from "@/components/marketing/Reveal";
+import HeroConsole from "@/components/marketing/HeroConsole";
 
 export const metadata: Metadata = {
   title: "LumenWipe: Recover the XLM locked in your Stellar account",
@@ -27,21 +28,10 @@ export const metadata: Metadata = {
 const APP = "/mainnet";
 const TESTNET = "/testnet";
 
-type ScanRow = { n: string; label: string; amt?: string; done?: boolean; running?: boolean };
-
-const SCAN: ScanRow[] = [
-  { n: "01", label: "Normalize signers", amt: "+0.50", done: true },
-  { n: "02", label: "Clear data entries", amt: "+0.50", done: true },
-  { n: "03", label: "Cancel open offers", amt: "+1.00", done: true },
-  { n: "04", label: "Convert assets to XLM", running: true },
-  { n: "05", label: "Remove trustlines", amt: "+2.00" },
-  { n: "06", label: "Merge to destination", amt: "+1.00" },
-];
-
 const STATS = [
   { n: "10M+", l: "accounts on Stellar mainnet" },
   { n: "1 + 0.5n", l: "XLM locked per account" },
-  { n: "7", l: "DeFi protocols covered" },
+  { n: "5", l: "DeFi protocols mapped" },
   { n: "0", l: "servers that can move your funds" },
 ];
 
@@ -260,56 +250,9 @@ export default function LandingPage() {
           </span>
         </div>
 
-        {/* console */}
+        {/* animated scan console */}
         <Reveal delay={120} className="mt-12">
-          <div className="mkt-card mx-auto max-w-4xl overflow-hidden text-left">
-            <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3.5 mkt-mono text-[0.7rem] uppercase tracking-wider text-white/45">
-              <span>account · GABC…WXYZ</span>
-              <span className="inline-flex items-center gap-2 text-stellar">
-                <span className="h-1.5 w-1.5 rounded-full bg-stellar mkt-pulse" />
-                scanning
-              </span>
-            </div>
-            <div className="grid sm:grid-cols-[1.4fr_1fr]">
-              <div className="p-4 sm:border-r sm:border-white/[0.06]">
-                {SCAN.map((s) => (
-                  <div
-                    key={s.n}
-                    className={`flex items-center gap-3 py-2.5 text-[0.85rem] ${
-                      s.running
-                        ? "-mx-4 border-l-2 border-stellar bg-white/[0.04] px-4 text-white"
-                        : "border-t border-white/[0.05] text-white/85 first:border-t-0"
-                    }`}
-                  >
-                    <span className="mkt-mono w-5 text-[0.72rem] text-white/40">{s.n}</span>
-                    <span>{s.label}</span>
-                    {s.done && <Check className="h-3.5 w-3.5 text-stellar" />}
-                    {s.running ? (
-                      <span className="ml-auto h-1 w-16 overflow-hidden rounded-full bg-white/10">
-                        <span className="block h-full w-[62%] rounded-full bg-stellar" />
-                      </span>
-                    ) : (
-                      <span className="mkt-mono ml-auto text-white/45">{s.amt}</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <div className="flex flex-col justify-center p-5">
-                <span className="mkt-mono text-[0.62rem] uppercase tracking-wider text-white/45">
-                  Recoverable reserve
-                </span>
-                <div className="mkt-display mt-2 text-4xl font-extrabold text-value">
-                  5.00 <span className="text-lg font-normal text-white/45">XLM</span>
-                </div>
-                <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                  <span className="block h-full w-full rounded-full bg-stellar" />
-                </div>
-                <p className="mt-3 text-[0.74rem] text-white/45">
-                  4 of 6 steps complete · 0 servers can move funds
-                </p>
-              </div>
-            </div>
-          </div>
+          <HeroConsole />
         </Reveal>
       </section>
 
