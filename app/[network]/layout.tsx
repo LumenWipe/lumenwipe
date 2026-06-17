@@ -31,11 +31,11 @@ export default function NetworkLayout({
   }, [network, currentNetwork, setNetwork, reset]);
 
   return (
-    <div className="relative min-h-screen overflow-x-clip bg-[#07070b]">
-      {/* calm instrument backdrop, quieter than the landing */}
+    <div className="relative min-h-screen overflow-x-clip bg-[hsl(var(--mkt-bg))]">
+      {/* calm instrument backdrop: grain + faint top hairline, matching the marketing surface */}
       <div aria-hidden className="pointer-events-none fixed inset-0 z-0">
-        <div className="absolute inset-0 mkt-grid opacity-40" />
-        <div className="absolute inset-x-0 top-0 h-72 bg-[radial-gradient(60%_100%_at_50%_0%,hsl(196_100%_47%/0.07),transparent)]" />
+        <div className="absolute inset-0 mkt-grain" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-stellar/30 to-transparent" />
       </div>
       <div className="relative z-10 flex min-h-screen flex-col">
         <NavBar network={network as "mainnet" | "testnet"} />
