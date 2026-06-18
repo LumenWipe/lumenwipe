@@ -53,7 +53,6 @@ export default function PlaygroundClient() {
     <>
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="mkt-panel relative overflow-hidden rounded-lg p-4 sm:p-8">
-          <div aria-hidden className="absolute inset-0 mkt-dots opacity-60" />
           <OrbitalScene />
         </div>
 

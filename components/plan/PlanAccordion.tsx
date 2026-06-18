@@ -198,7 +198,7 @@ export default function PlanAccordion({
   });
 
   return (
-    <div className="divide-y divide-white/8 overflow-hidden rounded-2xl border border-white/10 bg-[#0a0a10]/60">
+    <div className="divide-y divide-white/8 overflow-hidden rounded-2xl border border-white/10 bg-[hsl(var(--card)/0.6)]">
       {groups.map((g) => {
         const isOpen = open === g.type;
         return (

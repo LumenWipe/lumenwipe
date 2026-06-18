@@ -9,7 +9,7 @@ const COLS: { title: string; links: { label: string; href: string; external?: bo
       { label: "Open the app", href: "/mainnet" },
       { label: "Try on testnet", href: "/testnet" },
       { label: "How it works", href: "/how-it-works" },
-      { label: "FAQ", href: "/#faq" },
+      { label: "FAQ", href: "/faq" },
     ],
   },
   {
@@ -17,7 +17,7 @@ const COLS: { title: string; links: { label: string; href: string; external?: bo
     links: [
       { label: "Documentation", href: "https://docs.lumenwipe.com", external: true },
       { label: "Architecture", href: "https://docs.lumenwipe.com/architecture", external: true },
-      { label: "Security", href: "/#security" },
+      { label: "Security", href: "/security" },
       { label: "Blog", href: "/blog" },
     ],
   },
@@ -46,7 +46,7 @@ const COLS: { title: string; links: { label: string; href: string; external?: bo
 
 export default function MarketingFooter() {
   return (
-    <footer className="relative border-t border-white/10 bg-[#08080c]">
+    <footer className="relative border-t border-white/10 bg-[hsl(var(--mkt-bg))]">
       <div className="mx-auto max-w-6xl px-5 py-14 lg:px-8">
         <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div>

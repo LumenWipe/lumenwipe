@@ -36,3 +36,9 @@ next-env.d.ts
 # Claude Code local settings (skills in .agents/skills/ + .claude/skills/ symlinks ARE committed)
 .claude/settings.local.json
 
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

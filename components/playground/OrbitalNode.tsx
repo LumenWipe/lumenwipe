@@ -54,7 +54,7 @@ export default function OrbitalNode({ node }: { node: SceneNode }) {
         className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] mkt-mono backdrop-blur-sm ${
           converting
             ? "border-value/60 bg-[hsl(var(--value)/0.12)] text-value"
-            : "border-white/12 bg-[hsl(240_14%_8%/0.85)] text-white/80"
+            : "border-white/12 bg-[hsl(200_16%_10%/0.85)] text-white/80"
         }`}
         animate={converting ? { scale: [1, 1.18, 1] } : { scale: 1 }}
         transition={converting ? { duration: 0.9, repeat: Infinity } : undefined}

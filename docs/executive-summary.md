@@ -4,7 +4,7 @@ description: "One-page overview: problem, solution, technical pillars, and deliv
 icon: "file-lines"
 ---
 
-LumenWipe is an open-source, non-custodial tool that cleanly closes a Stellar account and returns its locked XLM to the user. It unwinds everything that holds an account open (trustlines, offers, data entries, extra signers, liquidity pool shares, and DeFi positions), converts whatever is left to XLM, and merges the account into a destination wallet or exchange. It extends the public-domain [stellar.expert/demolisher/public](https://stellar.expert/demolisher/public) by Orbit Lens with the piece that tool lacks: full Soroban and DeFi support.
+LumenWipe is an open-source, non-custodial tool that cleanly closes a Stellar account and returns its locked XLM to the user. It unwinds everything that holds an account open (trustlines, offers, data entries, extra signers, liquidity pool shares, and DeFi positions), converts whatever is left to XLM, and merges the account into a destination wallet or exchange. Its differentiator is full Soroban and DeFi support: the piece existing tools lack.
 
 ## The problem
 

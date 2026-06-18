@@ -22,17 +22,10 @@ const STATS = [
 
 export default function NotFound() {
   return (
-    <div className="mkt relative min-h-screen overflow-x-clip bg-[#07070b] flex flex-col">
-      {/* ambient */}
-      <div aria-hidden className="pointer-events-none fixed inset-0 z-0">
-        <div className="absolute inset-0 mkt-grid opacity-30" />
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(55% 45% at 50% 38%, hsl(196 100% 47% / 0.09), transparent 70%)",
-          }}
-        />
+    <div className="mkt relative min-h-screen overflow-x-clip bg-[hsl(var(--mkt-bg))] flex flex-col">
+      {/* ambient: grain + faint top hairline, matching the ink system (no grid, no glow) */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 z-0">
+        <div className="absolute inset-0 mkt-grain" />
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-stellar/30 to-transparent" />
       </div>
 
@@ -52,7 +45,7 @@ export default function NotFound() {
           <p className="mkt-eyebrow mb-7 text-stellar/50">ledger lookup · error_code: 404</p>
 
           {/* terminal panel */}
-          <div className="mb-9 overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0a0a10]/80 backdrop-blur-sm">
+          <div className="mb-9 overflow-hidden rounded-2xl border border-white/[0.09] bg-[hsl(var(--card)/0.8)] backdrop-blur-sm">
             {/* title bar */}
             <div className="flex items-center gap-1.5 border-b border-white/[0.07] bg-white/[0.02] px-4 py-3">
               <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]/70" />
@@ -129,7 +122,7 @@ export default function NotFound() {
           <div className="flex flex-wrap gap-3">
             <Link
               href="/"
-              className="inline-flex items-center gap-2 rounded-xl bg-stellar px-5 py-2.5 text-sm font-semibold text-black transition-all hover:bg-stellar/90 hover:shadow-[0_0_24px_-4px_hsl(var(--stellar)/0.5)]"
+              className="inline-flex items-center gap-2 rounded-xl bg-value px-5 py-2.5 text-sm font-semibold text-[hsl(var(--value-foreground))] transition-all hover:bg-value/90 hover:shadow-[0_0_24px_-4px_hsl(var(--value)/0.5)]"
             >
               <Home className="h-4 w-4" />
               Back to home

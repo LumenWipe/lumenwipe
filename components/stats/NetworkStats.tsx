@@ -25,7 +25,7 @@ export default function NetworkStats() {
       <div className="fixed bottom-4 right-4 z-40 hidden xl:block select-none">
         <div
           title={stale ? STALE_HINT : undefined}
-          className="rounded-2xl border border-white/10 bg-[#0b0b12]/85 backdrop-blur-md px-4 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+          className="rounded-2xl border border-white/10 bg-[hsl(var(--card)/0.85)] backdrop-blur-md px-4 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
         >
           <div className="flex items-center gap-1.5 mb-2">
             <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
@@ -58,7 +58,7 @@ export default function NetworkStats() {
       <div className="fixed bottom-3 inset-x-0 z-40 flex justify-center px-4 xl:hidden select-none pointer-events-none">
         <div
           title={stale ? STALE_HINT : undefined}
-          className="inline-flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 rounded-full border border-white/10 bg-[#0b0b12]/85 backdrop-blur-md px-4 py-1.5 text-[0.7rem] shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+          className="inline-flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 rounded-full border border-white/10 bg-[hsl(var(--card)/0.85)] backdrop-blur-md px-4 py-1.5 text-[0.7rem] shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
         >
           <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
           <span className="tabular-nums font-semibold text-stellar">

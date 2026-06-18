@@ -4,25 +4,27 @@
 
 @layer base {
   :root {
-    --background: 240 10% 3.9%;
+    /* Dark UI surfaces, teal-ink tinted to match the marketing redesign
+       (same lightness as the prior navy values, hue shifted 240 -> ~200). */
+    --background: 197 30% 4.5%;
     --foreground: 0 0% 98%;
-    --card: 240 10% 6%;
+    --card: 200 18% 8%;
     --card-foreground: 0 0% 98%;
-    --popover: 240 10% 6%;
+    --popover: 200 18% 8%;
     --popover-foreground: 0 0% 98%;
     --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
+    --primary-foreground: 200 12% 10%;
+    --secondary: 205 10% 15.9%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
+    --muted: 205 10% 15.9%;
+    --muted-foreground: 205 8% 64.9%;
+    --accent: 205 10% 15.9%;
     --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
+    --border: 205 12% 16%;
+    --input: 205 12% 16%;
+    --ring: 205 12% 83.9%;
     --radius: 0.5rem;
     /* Stellar brand color */
     --stellar: 196 100% 47%;
@@ -33,6 +35,11 @@
     /* Recovered value (XLM) accent */
     --value: 41 96% 56%;
     --value-foreground: 38 60% 8%;
+    /* Marketing redesign: obsidian-ink surface system (teal-tinted, not navy) */
+    --mkt-bg: 197 30% 4.5%;
+    --mkt-panel: 198 17% 10.5%;
+    --mkt-panel-2: 200 16% 13%;
+    --mkt-line: 190 30% 84%;
   }
 }
 
@@ -103,44 +110,50 @@
   font-size: 0.7rem;
 }
 
-/* Blueprint grid background */
-.mkt-grid {
-  background-image:
-    linear-gradient(hsl(0 0% 100% / 0.028) 1px, transparent 1px),
-    linear-gradient(90deg, hsl(0 0% 100% / 0.028) 1px, transparent 1px);
-  background-size: 56px 56px;
-  background-position: center top;
-}
-
-/* Fine dotted texture */
-.mkt-dots {
-  background-image: radial-gradient(hsl(0 0% 100% / 0.05) 1px, transparent 1px);
-  background-size: 22px 22px;
-}
-
-/* Hero cyan/amber atmosphere */
-.mkt-aura {
-  background:
-    radial-gradient(60% 50% at 78% 12%, hsl(196 100% 47% / 0.16), transparent 70%),
-    radial-gradient(45% 45% at 8% 0%, hsl(41 96% 56% / 0.08), transparent 70%);
-}
-
 .mkt-hairline {
   border-color: hsl(0 0% 100% / 0.08);
 }
 
-/* Card surface with subtle top sheen */
+/* Card surface with subtle top sheen (ink-tinted to match the redesign) */
 .mkt-panel {
   background:
-    linear-gradient(180deg, hsl(0 0% 100% / 0.025), transparent 40%), hsl(240 14% 6% / 0.7);
+    linear-gradient(180deg, hsl(0 0% 100% / 0.025), transparent 40%), hsl(200 16% 8% / 0.7);
   border: 1px solid hsl(0 0% 100% / 0.08);
   backdrop-filter: blur(8px);
 }
 
-.mkt-glow-cyan {
+/* Redesign: crisp, flat card — depth from edge-light + tight shadow, no glow halo. */
+.mkt-card {
+  background: hsl(var(--mkt-panel));
+  border: 1px solid hsl(var(--mkt-line) / 0.1);
+  border-radius: 14px;
   box-shadow:
-    0 0 0 1px hsl(196 100% 47% / 0.25),
-    0 18px 60px -20px hsl(196 100% 47% / 0.35);
+    inset 0 1px 0 hsl(var(--mkt-line) / 0.12),
+    0 18px 40px -26px rgba(0, 0, 0, 0.85);
+}
+
+/* Film grain overlay (atmosphere without gradient slop). */
+.mkt-grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  /* Kept very low: overlay grain lifts the near-black ink, so a heavier value
+     greys the bg away from the intended hsl(197 30% 4.5%). At 0.05 the ink reads
+     true (~rgb 10,15,17) with just a whisper of texture. */
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+}
+
+/* Timeline node for the 8-step flow. */
+.mkt-node {
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  border: 1px solid hsl(var(--stellar) / 0.45);
+  background: hsl(var(--mkt-panel));
+  color: hsl(var(--stellar));
+}
+.mkt-node-fin {
+  border-color: hsl(var(--value) / 0.6);
+  color: hsl(var(--value));
 }
 
 /* Animated corner ticks for the instrument panel */

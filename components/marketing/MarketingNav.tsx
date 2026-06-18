@@ -10,8 +10,8 @@ type NavLink = { href: string; label: string; external?: boolean; section?: stri
 
 const LINKS: NavLink[] = [
   { href: "/how-it-works", label: "How it works" },
-  { href: "/#security", label: "Security", section: "security" },
-  { href: "/#faq", label: "FAQ", section: "faq" },
+  { href: "/security", label: "Security" },
+  { href: "/faq", label: "FAQ" },
   { href: "/playground", label: "Playground" },
   { href: "/stats", label: "Stats" },
   { href: "/blog", label: "Blog" },
@@ -23,7 +23,8 @@ const DOCS: NavLink = { href: "https://docs.lumenwipe.com", label: "Docs", exter
 const MOBILE_LINKS: NavLink[] = [...LINKS, DOCS];
 
 // Landing sections the scroll-spy watches, in document order.
-const SPY_SECTIONS = ["security", "faq"];
+// Security and FAQ are now dedicated routes, so nothing is spied here.
+const SPY_SECTIONS: string[] = [];
 
 const GITHUB = "https://github.com/LumenWipe/lumenwipe";
 const APP = "/mainnet";
@@ -88,7 +89,7 @@ export default function MarketingNav() {
     <header
       className={`sticky top-0 z-50 transition-colors duration-300 ${
         scrolled
-          ? "border-b border-white/10 bg-[#08080c]/80 backdrop-blur-xl"
+          ? "border-b border-white/10 bg-[hsl(var(--mkt-bg)/0.8)] backdrop-blur-xl"
           : "border-b border-transparent"
       }`}
     >
@@ -148,7 +149,7 @@ export default function MarketingNav() {
           </a>
           <Link
             href={APP}
-            className="hidden items-center gap-1.5 rounded-lg bg-stellar px-4 py-2 text-sm font-semibold text-black transition-all hover:bg-stellar/90 hover:shadow-[0_0_24px_-4px_hsl(var(--stellar)/0.6)] sm:inline-flex"
+            className="hidden items-center gap-1.5 rounded-lg bg-value px-4 py-2 text-sm font-semibold text-[hsl(var(--value-foreground))] transition-all hover:bg-value/90 hover:shadow-[0_0_24px_-4px_hsl(var(--value)/0.6)] sm:inline-flex"
           >
             Open the app
           </Link>
@@ -164,7 +165,7 @@ export default function MarketingNav() {
 
       {/* mobile sheet */}
       {open && (
-        <div className="border-t border-white/10 bg-[#08080c]/95 backdrop-blur-xl lg:hidden">
+        <div className="border-t border-white/10 bg-[hsl(var(--mkt-bg)/0.95)] backdrop-blur-xl lg:hidden">
           <div className="mx-auto flex max-w-6xl flex-col gap-1 px-5 py-4">
             {MOBILE_LINKS.map((l) => {
               const active = isActive(l);
@@ -193,7 +194,7 @@ export default function MarketingNav() {
             <Link
               href={APP}
               onClick={() => setOpen(false)}
-              className="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-stellar px-4 py-2.5 text-sm font-semibold text-black"
+              className="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-value px-4 py-2.5 text-sm font-semibold text-[hsl(var(--value-foreground))]"
             >
               Open the app
             </Link>
