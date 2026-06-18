@@ -250,7 +250,13 @@ export default function LandingPage() {
             <Reveal key={f.title}>
               <div className="mkt-card flex h-full flex-col p-5">
                 <div className="flex items-center justify-between">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-stellar">
+                  <span
+                    className={`flex h-10 w-10 items-center justify-center rounded-lg border ${
+                      f.status === "Live"
+                        ? "border-white/10 bg-white/[0.03] text-stellar"
+                        : "border-value/30 bg-value/10 text-value"
+                    }`}
+                  >
                     <f.icon className="h-5 w-5" />
                   </span>
                   <span
