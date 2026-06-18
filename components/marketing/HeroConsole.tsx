@@ -17,6 +17,17 @@ const ROWS: Row[] = [
 
 const TOTAL = ROWS.reduce((s, r) => s + r.amount, 0);
 
+// Row height in px. MUST match the `h-11` on each row so the sliding highlight lines up.
+const ROW_HEIGHT_PX = 44;
+
+// Scan cadence in ms — tuned for a calm read (~8.5s per loop).
+const TIMING = {
+  startDelay: 800, // before the first step lights up
+  perStep: 850, // how long each step stays active
+  completeHold: 1600, // pause on the finished state before resetting
+  resetHold: 1000, // pause back at step 1 before re-scanning
+} as const;
+
 /**
  * Animated scan console for the hero: steps complete one by one, the active
  * row sweeps, and the recoverable reserve counts up. Loops gently. Honors
@@ -35,12 +46,21 @@ export default function HeroConsole() {
       return;
     }
     let step = 0;
-    const tick = () => {
-      step = step >= ROWS.length ? 0 : step + 1;
-      setActive(step);
-      timer.current = setTimeout(tick, step === 0 ? 1400 : step >= ROWS.length ? 1800 : 780);
+    const at = (fn: () => void, ms: number) => {
+      timer.current = setTimeout(fn, ms);
     };
-    timer.current = setTimeout(tick, 900);
+    const advance = () => {
+      if (step >= ROWS.length) {
+        step = 0;
+        setActive(0);
+        at(advance, TIMING.resetHold);
+        return;
+      }
+      step += 1;
+      setActive(step);
+      at(advance, step >= ROWS.length ? TIMING.completeHold : TIMING.perStep);
+    };
+    at(advance, TIMING.startDelay);
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
@@ -61,37 +81,39 @@ export default function HeroConsole() {
       </div>
       <div className="grid sm:grid-cols-[1.4fr_1fr]">
         <div className="p-4 sm:border-r sm:border-white/[0.06]">
-          {ROWS.map((r, i) => {
-            const done = i < active;
-            const running = i === active && scanning;
-            return (
+          <div className="relative">
+            {/* single highlight that glides between rows */}
+            {scanning && (
               <div
-                key={r.n}
-                className={`flex items-center gap-3 py-2.5 text-[0.85rem] transition-colors duration-300 ${
-                  running
-                    ? "-mx-4 border-l-2 border-stellar bg-white/[0.04] px-4 text-white"
-                    : "border-t border-white/[0.05] text-white/85 first:border-t-0"
-                }`}
-              >
-                <span className="mkt-mono w-5 text-[0.72rem] text-white/40">{r.n}</span>
-                <span>{r.label}</span>
-                {done && <Check className="h-3.5 w-3.5 text-stellar" />}
-                {running ? (
-                  <span className="ml-auto h-1 w-16 overflow-hidden rounded-full bg-white/10">
-                    <span className="mkt-sweep block h-full w-1/2 rounded-full bg-stellar" />
-                  </span>
-                ) : (
+                aria-hidden
+                className="pointer-events-none absolute inset-x-0 top-0 h-11 rounded-r-md border-l-2 border-l-[hsl(var(--stellar))] bg-white/[0.04] transition-transform duration-300 ease-out"
+                style={{ transform: `translateY(${active * ROW_HEIGHT_PX}px)` }}
+              />
+            )}
+            {ROWS.map((r, i) => {
+              const done = i < active;
+              const running = i === active && scanning;
+              return (
+                <div
+                  key={r.n}
+                  className={`relative z-10 flex h-11 items-center gap-3 border-t border-t-white/[0.06] px-3 text-[0.85rem] transition-colors duration-500 first:border-t-0 ${
+                    running || done ? "text-white" : "text-white/70"
+                  }`}
+                >
+                  <span className="mkt-mono w-5 text-[0.72rem] text-white/40">{r.n}</span>
+                  <span>{r.label}</span>
+                  {done && <Check className="h-3.5 w-3.5 text-stellar" />}
                   <span
-                    className={`mkt-mono ml-auto tabular-nums transition-colors ${
+                    className={`mkt-mono ml-auto tabular-nums transition-colors duration-500 ${
                       done ? "text-white/60" : "text-white/30"
                     }`}
                   >
                     {r.amount > 0 ? `+${r.amount.toFixed(2)}` : "—"}
                   </span>
-                )}
-              </div>
-            );
-          })}
+                </div>
+              );
+            })}
+          </div>
         </div>
         <div className="flex flex-col justify-center p-5">
           <span className="mkt-mono text-[0.62rem] uppercase tracking-wider text-white/45">
