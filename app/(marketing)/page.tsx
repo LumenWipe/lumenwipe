@@ -260,8 +260,10 @@ export default function LandingPage() {
                     <f.icon className="h-5 w-5" />
                   </span>
                   <span
-                    className={`mkt-mono text-[0.6rem] uppercase tracking-wider ${
-                      f.status === "Live" ? "text-stellar/80" : "text-value/80"
+                    className={`mkt-mono rounded-full border px-2.5 py-1 text-[0.62rem] uppercase tracking-wider ${
+                      f.status === "Live"
+                        ? "border-stellar/40 text-stellar"
+                        : "border-value/40 text-value"
                     }`}
                   >
                     {f.status}
