@@ -12,9 +12,9 @@
     "strict": true
   },
   "background": {
-    "decoration": "grid",
+    "decoration": "none",
     "color": {
-      "dark": "#07070B",
+      "dark": "#080D0F",
       "light": "#FFFFFF"
     }
   },
