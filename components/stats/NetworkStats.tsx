@@ -25,7 +25,7 @@ export default function NetworkStats() {
       <div className="fixed bottom-4 right-4 z-40 hidden xl:block select-none">
         <div
           title={stale ? STALE_HINT : undefined}
-          className="rounded-2xl border border-white/10 bg-[hsl(var(--card)/0.85)] backdrop-blur-md px-4 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+          className="rounded-2xl border border-white/10 bg-[hsl(var(--card)/0.85)] backdrop-blur-md px-4 py-3"
         >
           <div className="flex items-center gap-1.5 mb-2">
             <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
