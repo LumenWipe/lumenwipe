@@ -65,7 +65,7 @@ const GUARANTEES = [
 
 export default function SecurityPage() {
   return (
-    <section className="mx-auto max-w-5xl px-5 py-20 lg:px-8 lg:py-24">
+    <section className="mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-24">
       <div className="max-w-2xl">
         <span className="mkt-eyebrow inline-flex items-center gap-2 text-white/55">
           <span className="h-px w-5 bg-stellar/60" />

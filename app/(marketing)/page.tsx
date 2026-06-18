@@ -217,7 +217,7 @@ export default function LandingPage() {
   return (
     <>
       {/* ============================ HERO ============================ */}
-      <section className="mx-auto max-w-5xl px-5 pb-10 pt-16 text-center lg:px-8 lg:pt-20">
+      <section className="mx-auto max-w-6xl px-5 pb-10 pt-16 text-center lg:px-8 lg:pt-20">
         <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 mkt-mono text-[0.68rem] uppercase tracking-wider text-white/65">
           <span className="h-1.5 w-1.5 rounded-full bg-stellar mkt-pulse" />
           Stellar Account Demolisher
@@ -250,7 +250,7 @@ export default function LandingPage() {
 
       {/* ============================ STAT BAND ============================ */}
       <div className="border-y border-white/[0.07]">
-        <div className="mx-auto grid max-w-5xl grid-cols-2 divide-white/[0.07] px-5 lg:grid-cols-4 lg:divide-x lg:px-8">
+        <div className="mx-auto grid max-w-6xl grid-cols-2 divide-white/[0.07] px-5 lg:grid-cols-4 lg:divide-x lg:px-8">
           {STATS.map((s, i) => (
             <div
               key={s.l}
@@ -264,7 +264,7 @@ export default function LandingPage() {
       </div>
 
       {/* ============================ PROBLEM ============================ */}
-      <section className="mx-auto max-w-5xl px-5 py-20 lg:px-8 lg:py-24">
+      <section className="mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-24">
         <Reveal>
           <Eyebrow>The problem</Eyebrow>
           <h2 className="mkt-display mt-4 max-w-2xl text-3xl font-bold text-white sm:text-[2.4rem] sm:leading-[1.05]">
@@ -325,7 +325,7 @@ export default function LandingPage() {
 
       {/* ============================ THE FLOW ============================ */}
       <section className="border-t border-white/[0.07]">
-        <div className="mx-auto max-w-5xl px-5 py-20 lg:px-8 lg:py-24">
+        <div className="mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-24">
           <Reveal className="max-w-2xl">
             <Eyebrow>The fix</Eyebrow>
             <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-[2.4rem] sm:leading-[1.05]">
@@ -354,7 +354,7 @@ export default function LandingPage() {
       </section>
 
       {/* ============================ CAPABILITIES ============================ */}
-      <section className="mx-auto max-w-5xl px-5 py-20 lg:px-8 lg:py-24">
+      <section className="mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-24">
         <Reveal className="max-w-2xl">
           <Eyebrow>What you get</Eyebrow>
           <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-[2.4rem] sm:leading-[1.05]">
@@ -417,7 +417,7 @@ export default function LandingPage() {
 
       {/* ============================ TRUST ============================ */}
       <section id="security" className="scroll-mt-20 border-t border-white/[0.07]">
-        <div className="mx-auto max-w-5xl px-5 py-20 lg:px-8 lg:py-24">
+        <div className="mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-24">
           <div className="grid gap-12 lg:grid-cols-2 lg:gap-16">
             <Reveal>
               <Eyebrow>Trust model</Eyebrow>
@@ -480,7 +480,7 @@ export default function LandingPage() {
       </section>
 
       {/* ============================ DATA LAYER ============================ */}
-      <section className="mx-auto max-w-5xl px-5 py-20 lg:px-8 lg:py-24">
+      <section className="mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-24">
         <Reveal className="max-w-2xl">
           <Eyebrow>Data layer</Eyebrow>
           <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-[2.4rem] sm:leading-[1.05]">
@@ -542,7 +542,7 @@ export default function LandingPage() {
       </section>
 
       {/* ============================ FINAL CTA ============================ */}
-      <section className="mx-auto max-w-5xl px-5 pb-24 lg:px-8">
+      <section className="mx-auto max-w-6xl px-5 pb-24 lg:px-8">
         <Reveal>
           <div className="mkt-card px-6 py-14 text-center sm:px-12 sm:py-20">
             <h2 className="mkt-display mx-auto max-w-2xl text-3xl font-bold leading-[1.05] text-white sm:text-5xl">
