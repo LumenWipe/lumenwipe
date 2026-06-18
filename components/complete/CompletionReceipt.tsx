@@ -1,17 +1,18 @@
 "use client";
 
 import { useEffect } from "react";
-import { CheckCircle, ExternalLink, History } from "lucide-react";
+import { CheckCircle, ExternalLink, History, Link2 } from "lucide-react";
 import Link from "next/link";
 import type { Network } from "@/config/networks";
 import { SE_EXPLORER_BASE, SV_EXPLORER_BASE } from "@/config/networks";
-import type { StepType, AssetDisposition } from "@/types/plan";
+import type { AssetDisposition } from "@/types/plan";
 import type { Trustline } from "@/types/account";
 import { useDemolishStore } from "@/store/demolish";
 import { cleanupSession } from "@/lib/session/recovery";
 import { saveHistory } from "@/lib/session/history";
 import { formatXlm } from "@/lib/utils/amounts";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
+import { buildTxLedger } from "@/lib/utils/txLedger";
 
 interface CompletionReceiptProps {
   network: Network;
@@ -31,12 +32,14 @@ interface SummaryGroup {
   title: string;
   summary: string;
   body: React.ReactNode;
-  /** Transaction hash that effected this group, or null when it cannot be resolved. */
-  txHash: string | null;
 }
 
 function shortAddr(addr: string): string {
   return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
+}
+
+function shortHash(hash: string): string {
+  return `${hash.slice(0, 6)}…${hash.slice(-6)}`;
 }
 
 function assetCode(asset: string): string {
@@ -85,21 +88,11 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  // Map each step type to the hash that effected it. A fused CLOSE_ACCOUNT covers every
-  // cleanup group (and the merge when direct); an explicit step of the group's type wins
-  // when the plan ran stepwise.
-  const hashByType = new Map<StepType, string>();
-  for (const step of confirmedSteps) {
-    if (step.txHash && !hashByType.has(step.type)) hashByType.set(step.type, step.txHash);
-  }
-  const closeHash = hashByType.get("CLOSE_ACCOUNT") ?? null;
-
-  // Cleanup groups fall back to the fused close hash; the merge group prefers the dedicated
-  // MERGE hash (mediator transfer for exchanges) and falls back to the fused close hash.
-  function cleanupHash(type: StepType): string | null {
-    return hashByType.get(type) ?? closeHash;
-  }
-  const mergeHash = hashByType.get("MERGE") ?? closeHash;
+  // The "what was done" groups below describe state changes; the transaction ledger
+  // describes the real on-chain transactions. A fused close is one transaction, a
+  // mediator merge is two, and DeFi exits will each add their own — the ledger reflects
+  // that count instead of implying one transaction per group.
+  const ledger = buildTxLedger(confirmedSteps);
 
   const account = accountState;
   const groups: SummaryGroup[] = [];
@@ -111,7 +104,6 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
         type: "NORMALIZE_SIGNERS",
         title: "Signers removed",
         summary: `${extraSigners.length} extra signer${extraSigners.length === 1 ? "" : "s"}, thresholds reset`,
-        txHash: cleanupHash("NORMALIZE_SIGNERS"),
         body: (
           <ul className="space-y-1">
             {extraSigners.map((s) => (
@@ -129,7 +121,6 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
         type: "REMOVE_DATA_ENTRIES",
         title: "Data removed",
         summary: `${account.dataEntries.length} data entr${account.dataEntries.length === 1 ? "y" : "ies"}`,
-        txHash: cleanupHash("REMOVE_DATA_ENTRIES"),
         body: (
           <ul className="space-y-1">
             {account.dataEntries.map((d) => (
@@ -147,7 +138,6 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
         type: "CANCEL_OFFERS",
         title: "Offers cancelled",
         summary: `${account.openOffers.length} open offer${account.openOffers.length === 1 ? "" : "s"}`,
-        txHash: cleanupHash("CANCEL_OFFERS"),
         body: (
           <ul className="space-y-1">
             {account.openOffers.map((o) => (
@@ -166,7 +156,6 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
         type: "CLAIM_BALANCES",
         title: "Balances claimed",
         summary: `${account.claimableBalances.length} claimable balance${account.claimableBalances.length === 1 ? "" : "s"}`,
-        txHash: cleanupHash("CLAIM_BALANCES"),
         body: (
           <ul className="space-y-1">
             {account.claimableBalances.map((b) => (
@@ -200,7 +189,6 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
         type: "CONVERT_ASSETS",
         title: "Assets handled",
         summary: `${assetsWithBalance.length} asset${assetsWithBalance.length === 1 ? "" : "s"} with a balance`,
-        txHash: cleanupHash("CONVERT_ASSETS"),
         body: (
           <ul className="space-y-1.5">
             {assetsWithBalance.map((tl) => {
@@ -229,7 +217,6 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
         type: "REMOVE_TRUSTLINES",
         title: "Trustlines removed",
         summary: `${account.trustlines.length} trustline${account.trustlines.length === 1 ? "" : "s"}`,
-        txHash: cleanupHash("REMOVE_TRUSTLINES"),
         body: (
           <ul className="space-y-1">
             {account.trustlines.map((tl) => (
@@ -251,7 +238,6 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
         ? `via intermediary to ${shortAddr(destinationAddress)}`
         : `to ${shortAddr(destinationAddress)}`
       : "merged to destination",
-    txHash: mergeHash,
     body: (
       <div className="space-y-1 text-xs text-white/55">
         {destinationAddress && (
@@ -298,32 +284,58 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
                     <span className="block truncate text-xs text-white/45">{g.summary}</span>
                   </span>
                 </span>
-                {g.txHash && (
-                  <span className="flex shrink-0 items-center gap-2">
-                    <a
-                      href={`${explorerBase}/tx/${g.txHash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs text-stellar hover:underline"
-                    >
-                      SE <ExternalLink className="h-3 w-3" />
-                    </a>
-                    <a
-                      href={`${svExplorerBase}/tx/${g.txHash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs text-stellar hover:underline"
-                    >
-                      SV <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </span>
-                )}
               </div>
               <div className="mt-2 pl-[1.625rem]">{g.body}</div>
             </div>
           ))}
         </div>
       </div>
+
+      {/* Transaction ledger */}
+      {ledger.length > 0 && (
+        <div className="mkt-panel rounded-2xl overflow-hidden">
+          <div className="border-b border-white/10 px-4 py-3">
+            <h3 className="mkt-eyebrow text-white/45">
+              {ledger.length === 1 ? "Transaction" : `Transactions · ${ledger.length}`}
+            </h3>
+          </div>
+          <div className="divide-y divide-white/8">
+            {ledger.map((tx) => (
+              <div key={tx.txHash} className="flex items-center justify-between gap-4 px-4 py-3.5">
+                <span className="flex min-w-0 items-center gap-2.5">
+                  <Link2 className="h-4 w-4 shrink-0 text-stellar/70" />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-white/85">
+                      {tx.stepTitles.join(" + ")}
+                    </span>
+                    <span className="block font-mono-address text-xs text-white/40">
+                      {shortHash(tx.txHash)}
+                    </span>
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <a
+                    href={`${explorerBase}/tx/${tx.txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-stellar hover:underline"
+                  >
+                    SE <ExternalLink className="h-3 w-3" />
+                  </a>
+                  <a
+                    href={`${svExplorerBase}/tx/${tx.txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-stellar hover:underline"
+                  >
+                    SV <ExternalLink className="h-3 w-3" />
+                  </a>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Summary */}
       <div className="mkt-panel rounded-2xl p-4 space-y-3">
