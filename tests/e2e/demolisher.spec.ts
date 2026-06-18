@@ -1,4 +1,45 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+import { Keypair } from "@stellar/stellar-sdk";
+
+const FRIENDBOT = "https://friendbot.stellar.org";
+
+async function fund(pub: string): Promise<void> {
+  const res = await fetch(`${FRIENDBOT}/?addr=${encodeURIComponent(pub)}`);
+  if (!res.ok) throw new Error(`friendbot ${res.status}: ${await res.text()}`);
+}
+
+// The same-address warning and the exchange memo requirement now live on the
+// late-destination step (DestinationInput in PlanView), reached after analyzing a
+// real account. A plain freshly-funded account holds no trustlines/offers, so every
+// asset is "resolved" immediately and the destination step renders right away.
+async function analyzeFreshAccountToDestinationStep(page: Page): Promise<string> {
+  const source = Keypair.random();
+  await fund(source.publicKey());
+
+  await page.goto("/testnet");
+
+  // A risk-disclaimer modal blocks the page on the first visit of a session and
+  // intercepts pointer events until accepted. Dismiss it before driving the form.
+  const acceptRisk = page.getByRole("button", { name: /I understand, continue/i });
+  if (await acceptRisk.isVisible().catch(() => false)) {
+    await acceptRisk.click();
+  }
+
+  await page.getByPlaceholder(/G\.\.\. \(the account to merge\)/).fill(source.publicKey());
+
+  const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
+  await expect(analyzeButton).toBeEnabled();
+  await analyzeButton.click();
+
+  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
+
+  // The destination step is present once assets are resolved.
+  await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
+    timeout: 30_000,
+  });
+
+  return source.publicKey();
+}
 
 test("old /public route redirects to /mainnet", async ({ page }) => {
   await page.goto("/public");
@@ -9,7 +50,9 @@ test("home page renders the entry form and headline", async ({ page }) => {
   await page.goto("/testnet");
   await expect(page.getByText("Wind down your Stellar account")).toBeVisible();
   await expect(page.getByText("Account details")).toBeVisible();
-  await expect(page.getByText("Non-custodial")).toBeVisible();
+  // "Non-custodial" appears both in the hero badge and a feature card; assert the
+  // unambiguous badge copy to avoid a strict-mode multiple-match.
+  await expect(page.getByText("Non-custodial · Client-side signing only")).toBeVisible();
 });
 
 test("Analyze button is disabled until all inputs are valid", async ({ page }) => {
@@ -18,16 +61,18 @@ test("Analyze button is disabled until all inputs are valid", async ({ page }) =
   await expect(button).toBeDisabled();
 });
 
-test("same source and destination shows warning and keeps button disabled", async ({ page }) => {
-  await page.goto("/testnet");
+test("same source and destination shows warning and keeps the begin button disabled", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const address = await analyzeFreshAccountToDestinationStep(page);
 
-  const address = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
-
-  await page.getByPlaceholder(/G\.\.\. \(the account to merge\)/).fill(address);
+  // Entering the source account as its own destination must surface the warning
+  // and keep "Begin execution" disabled.
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(address);
 
   await expect(page.getByText(/Source and destination are the same/i)).toBeVisible();
-  await expect(page.getByRole("button", { name: /Analyze account/i })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /Begin execution/i })).toBeDisabled();
 });
 
 test("testnet page shows testnet badge in navbar", async ({ page }) => {
@@ -61,12 +106,13 @@ test("source address input rejects invalid input visually", async ({ page }) => 
 });
 
 test("exchange destination shows memo field requirement", async ({ page }) => {
-  await page.goto("/testnet");
+  test.setTimeout(120_000);
+  await analyzeFreshAccountToDestinationStep(page);
 
   // Coinbase Deposits address - verified in Stellar Expert directory as coinbase.com, memo-required
   const coinbaseAddress = "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D";
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(coinbaseAddress);
 
-  // Memo field or exchange name should appear
-  await expect(page.getByText(/memo/i)).toBeVisible();
+  // The registry-driven memo requirement should surface.
+  await expect(page.getByText(/requires a .* memo/i)).toBeVisible();
 });

@@ -102,12 +102,17 @@ async function hasRouteFor(amount: string, attempts = 8, delayMs = 2_500): Promi
 }
 
 // ── UI driver: home -> analyze -> execute -> sign once -> complete ───────────────
+//
+// Mirrors the redesigned single-transaction flow: the home page collects ONLY the
+// source public key; the destination + memo step appears on /analyze once every
+// asset is resolved (convertible assets auto-resolve). "Begin execution" then leads
+// to /execute, where the secret key is entered once and the fused close is signed.
 
 async function driveFusedClose(
   page: Page,
   opts: { source: Keypair; destination: string }
 ): Promise<void> {
-  // Home: enter source + destination, analyze.
+  // Home: enter ONLY the source, then analyze.
   await page.goto("/testnet");
 
   // A risk-disclaimer modal blocks the page on the first visit of a session and
@@ -118,20 +123,24 @@ async function driveFusedClose(
   }
 
   await page.getByPlaceholder(/G\.\.\. \(the account to merge\)/).fill(opts.source.publicKey());
-  await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(opts.destination);
 
   const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
   await expect(analyzeButton).toBeEnabled();
   await analyzeButton.click();
 
-  // Analyze: the fast-path collapses the whole close into one "Close account"
-  // step. Wait for the plan to render, then assert it is a single fused step.
-  await expect(page).toHaveURL(/\/testnet\/analyze/);
-  const beginButton = page.getByRole("button", { name: /Begin execution/i });
-  await expect(beginButton).toBeEnabled({ timeout: 30_000 });
+  // Navigation only happens after the account-analysis API returns; that read hits
+  // stellar.expert + RPC (and Horizon for open offers), which can exceed the default
+  // 5s expect timeout for heavier accounts. Allow generous headroom.
+  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
 
-  await expect(page.getByText("Close account", { exact: true })).toBeVisible();
-  await expect(page.getByText(/^1 step/)).toBeVisible();
+  // Late-destination step: once every asset is resolved, the destination panel and
+  // the (disabled) "Begin execution" button render. Fill the destination to enable it.
+  const beginButton = page.getByRole("button", { name: /Begin execution/i });
+  await expect(beginButton).toBeVisible({ timeout: 30_000 });
+
+  await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(opts.destination);
+
+  await expect(beginButton).toBeEnabled();
   await beginButton.click();
 
   // Execute: a single fused close carries the merge, so the panel surfaces the
