@@ -58,6 +58,12 @@ const PROTOCOLS = [
 
 const FEATURES = [
   {
+    icon: Eye,
+    title: "Allowance inspector",
+    body: "See every token approval your account granted to DeFi contracts, and revoke risky ones, even without closing.",
+    status: "Soon",
+  },
+  {
     icon: Building2,
     title: "Exchange-compatible merge",
     body: "A transparent, shared mediator bridges the merge to any CEX deposit address, with the right memo, validated.",
@@ -74,12 +80,6 @@ const FEATURES = [
     title: "Deterministic, auditable plan",
     body: "The same account state always produces the same ordered plan: testable, reviewable, never built on stale data.",
     status: "Live",
-  },
-  {
-    icon: Eye,
-    title: "Allowance inspector",
-    body: "See every token approval your account granted to DeFi contracts, and revoke risky ones, even without closing.",
-    status: "Soon",
   },
 ];
 
