@@ -135,7 +135,10 @@ async function enterSourceAndAnalyze(page: Page, source: string): Promise<void> 
   await expect(analyzeButton).toBeEnabled();
   await analyzeButton.click();
 
-  await expect(page).toHaveURL(/\/testnet\/analyze/);
+  // Navigation only happens after the account-analysis API returns; that read hits
+  // stellar.expert + RPC (and Horizon for open offers), which can exceed the default
+  // 5s expect timeout for heavier accounts. Allow generous headroom.
+  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
 }
 
 // Late-destination step: fills the destination, then "Begin execution" -> /execute.
