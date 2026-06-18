@@ -1,5 +1,0 @@
-/* Body prose matches the landing blog tone (--tw-prose-body in app/globals.css).
-   The maple theme default (#9ea3a5) is our muted/secondary tone, too dim for long-form text. */
-.dark .mdx-content {
-  color: #d9d9d9;
-}
