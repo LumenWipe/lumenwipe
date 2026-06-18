@@ -131,7 +131,7 @@ export default function HowItWorksPage() {
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </Link>
             <Link
-              href="/#faq"
+              href="/faq"
               className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.02] px-5 py-3 text-sm font-semibold text-white/85 transition-colors hover:border-white/30 hover:text-white"
             >
               Jump to FAQ
@@ -157,7 +157,7 @@ export default function HowItWorksPage() {
           <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {LOOP.map((s, i) => (
               <Reveal key={s.label} delay={i * 60}>
-                <div className="relative flex h-full flex-col items-start rounded-xl border border-white/10 bg-[#0b0b11]/70 p-4">
+                <div className="relative flex h-full flex-col items-start rounded-xl border border-white/10 bg-[hsl(var(--card)/0.7)] p-4">
                   <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-stellar/10 text-stellar">
                     <s.icon className="h-4 w-4" />
                   </span>
@@ -338,9 +338,7 @@ export default function HowItWorksPage() {
                 <div
                   key={row.l}
                   className={`flex items-center justify-between gap-3 rounded-xl border p-3.5 ${
-                    row.tone
-                      ? "border-stellar/40 bg-stellar/[0.06] mkt-glow-cyan"
-                      : "border-white/10 bg-white/[0.02]"
+                    row.tone ? "border-value/40 bg-value/[0.06]" : "border-white/10 bg-white/[0.02]"
                   }`}
                 >
                   <div className="min-w-0">
@@ -349,7 +347,7 @@ export default function HowItWorksPage() {
                   </div>
                   <span
                     className={`shrink-0 mkt-mono text-[0.58rem] uppercase tracking-wider ${
-                      row.tone ? "text-stellar" : "text-white/50"
+                      row.tone ? "text-value" : "text-white/50"
                     }`}
                   >
                     {row.note}
@@ -372,7 +370,7 @@ export default function HowItWorksPage() {
         <div className="mt-10">
           <Faq />
         </div>
-        <div className="mt-12 flex flex-col items-center gap-4 rounded-2xl border border-white/10 bg-[#0a0a12] p-8 text-center">
+        <div className="mt-12 flex flex-col items-center gap-4 rounded-2xl border border-white/10 bg-card p-8 text-center">
           <h3 className="mkt-display text-xl font-bold text-white">Ready when you are.</h3>
           <Link
             href="/public"

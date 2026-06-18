@@ -104,7 +104,7 @@ export default function Faq() {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
-    <div className="divide-y divide-white/8 overflow-hidden rounded-2xl border border-white/10 bg-[#0a0a10]/60">
+    <div className="divide-y divide-white/8 overflow-hidden rounded-2xl border border-white/10 bg-[hsl(var(--card)/0.6)]">
       {ITEMS.map((item, i) => {
         const isOpen = open === i;
         return (

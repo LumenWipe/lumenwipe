@@ -89,7 +89,7 @@ export default function MarketingNav() {
     <header
       className={`sticky top-0 z-50 transition-colors duration-300 ${
         scrolled
-          ? "border-b border-white/10 bg-[#08080c]/80 backdrop-blur-xl"
+          ? "border-b border-white/10 bg-[hsl(var(--mkt-bg)/0.8)] backdrop-blur-xl"
           : "border-b border-transparent"
       }`}
     >
@@ -165,7 +165,7 @@ export default function MarketingNav() {
 
       {/* mobile sheet */}
       {open && (
-        <div className="border-t border-white/10 bg-[#08080c]/95 backdrop-blur-xl lg:hidden">
+        <div className="border-t border-white/10 bg-[hsl(var(--mkt-bg)/0.95)] backdrop-blur-xl lg:hidden">
           <div className="mx-auto flex max-w-6xl flex-col gap-1 px-5 py-4">
             {MOBILE_LINKS.map((l) => {
               const active = isActive(l);

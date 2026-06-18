@@ -186,7 +186,7 @@ export default function DistributionStrip({ feed }: { feed: FeedData | null }) {
               marginTop: -8,
             }}
           >
-            <div className="flex flex-col gap-1 rounded-xl border border-white/15 bg-[#0a0a12]/95 px-3 py-2 shadow-xl backdrop-blur">
+            <div className="flex flex-col gap-1 rounded-xl border border-white/15 bg-[hsl(var(--card)/0.95)] px-3 py-2 shadow-xl backdrop-blur">
               <span className="mkt-mono text-[0.75rem] text-white">
                 {hovered.xlm.toLocaleString("en-US", {
                   minimumFractionDigits: 2,
