@@ -16,7 +16,17 @@ const ROWS: Row[] = [
 ];
 
 const TOTAL = ROWS.reduce((s, r) => s + r.amount, 0);
-const ROW_H = 44; // px, matches each row's h-11 so the sliding highlight aligns
+
+// Row height in px. MUST match the `h-11` on each row so the sliding highlight lines up.
+const ROW_HEIGHT_PX = 44;
+
+// Scan cadence in ms — tuned for a calm read (~8.5s per loop).
+const TIMING = {
+  startDelay: 800, // before the first step lights up
+  perStep: 850, // how long each step stays active
+  completeHold: 1600, // pause on the finished state before resetting
+  resetHold: 1000, // pause back at step 1 before re-scanning
+} as const;
 
 /**
  * Animated scan console for the hero: steps complete one by one, the active
@@ -43,14 +53,14 @@ export default function HeroConsole() {
       if (step >= ROWS.length) {
         step = 0;
         setActive(0);
-        at(advance, 1000);
+        at(advance, TIMING.resetHold);
         return;
       }
       step += 1;
       setActive(step);
-      at(advance, step >= ROWS.length ? 1600 : 850);
+      at(advance, step >= ROWS.length ? TIMING.completeHold : TIMING.perStep);
     };
-    at(advance, 800);
+    at(advance, TIMING.startDelay);
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
@@ -77,7 +87,7 @@ export default function HeroConsole() {
               <div
                 aria-hidden
                 className="pointer-events-none absolute inset-x-0 top-0 h-11 rounded-r-md border-l-2 border-l-[hsl(var(--stellar))] bg-white/[0.04] transition-transform duration-300 ease-out"
-                style={{ transform: `translateY(${active * ROW_H}px)` }}
+                style={{ transform: `translateY(${active * ROW_HEIGHT_PX}px)` }}
               />
             )}
             {ROWS.map((r, i) => {
