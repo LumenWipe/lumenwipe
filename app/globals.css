@@ -110,44 +110,16 @@
   font-size: 0.7rem;
 }
 
-/* Blueprint grid background */
-.mkt-grid {
-  background-image:
-    linear-gradient(hsl(0 0% 100% / 0.028) 1px, transparent 1px),
-    linear-gradient(90deg, hsl(0 0% 100% / 0.028) 1px, transparent 1px);
-  background-size: 56px 56px;
-  background-position: center top;
-}
-
-/* Fine dotted texture */
-.mkt-dots {
-  background-image: radial-gradient(hsl(0 0% 100% / 0.05) 1px, transparent 1px);
-  background-size: 22px 22px;
-}
-
-/* Hero cyan/amber atmosphere */
-.mkt-aura {
-  background:
-    radial-gradient(60% 50% at 78% 12%, hsl(196 100% 47% / 0.16), transparent 70%),
-    radial-gradient(45% 45% at 8% 0%, hsl(41 96% 56% / 0.08), transparent 70%);
-}
-
 .mkt-hairline {
   border-color: hsl(0 0% 100% / 0.08);
 }
 
-/* Card surface with subtle top sheen */
+/* Card surface with subtle top sheen (ink-tinted to match the redesign) */
 .mkt-panel {
   background:
-    linear-gradient(180deg, hsl(0 0% 100% / 0.025), transparent 40%), hsl(240 14% 6% / 0.7);
+    linear-gradient(180deg, hsl(0 0% 100% / 0.025), transparent 40%), hsl(200 16% 8% / 0.7);
   border: 1px solid hsl(0 0% 100% / 0.08);
   backdrop-filter: blur(8px);
-}
-
-.mkt-glow-cyan {
-  box-shadow:
-    0 0 0 1px hsl(196 100% 47% / 0.25),
-    0 18px 60px -20px hsl(196 100% 47% / 0.35);
 }
 
 /* Redesign: crisp, flat card — depth from edge-light + tight shadow, no glow halo. */
