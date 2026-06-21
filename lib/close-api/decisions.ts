@@ -4,7 +4,7 @@ import type { DecisionAnswer, DecisionPoint } from "@/types/close-api";
 
 // Stable, URL-safe id for an asset decision: "asset:CODE-ISSUER". The colon in the
 // canonical "CODE:ISSUER" asset string is replaced so the id reads cleanly in paths.
-function decisionId(asset: string): string {
+export function assetDecisionId(asset: string): string {
   return `asset:${asset.replace(":", "-")}`;
 }
 
@@ -35,7 +35,7 @@ export function deriveDecisionPoints(
             },
           ];
       return {
-        id: decisionId(tl.asset),
+        id: assetDecisionId(tl.asset),
         type: "asset_disposition" as const,
         subject: { kind: "trustline", asset: tl.asset, balance: tl.balance, convertible },
         options,
