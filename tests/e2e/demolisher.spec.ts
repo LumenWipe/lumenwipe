@@ -19,10 +19,14 @@ async function analyzeFreshAccountToDestinationStep(page: Page): Promise<string>
   await page.goto("/testnet");
 
   // A risk-disclaimer modal blocks the page on the first visit of a session and
-  // intercepts pointer events until accepted. Dismiss it before driving the form.
+  // intercepts pointer events until accepted. It animates in after load, so wait for
+  // it to mount before checking, then wait for it to detach before driving the form -
+  // an instant visibility check races the mount and leaves the overlay intercepting clicks.
   const acceptRisk = page.getByRole("button", { name: /I understand, continue/i });
+  await acceptRisk.waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
   if (await acceptRisk.isVisible().catch(() => false)) {
     await acceptRisk.click();
+    await acceptRisk.waitFor({ state: "hidden", timeout: 5_000 }).catch(() => {});
   }
 
   await page.getByPlaceholder(/G\.\.\. \(the account to merge\)/).fill(source.publicKey());
