@@ -4,6 +4,7 @@ import { ArrowRight, Check, RefreshCw, Building2, Layers, Eye, ScanLine } from "
 import Faq from "@/components/marketing/Faq";
 import Reveal from "@/components/marketing/Reveal";
 import HeroConsole from "@/components/marketing/HeroConsole";
+import HeroAccountInput from "@/components/marketing/HeroAccountInput";
 
 export const metadata: Metadata = {
   title: "LumenWipe: Recover the XLM locked in your Stellar account",
@@ -116,7 +117,12 @@ export default function LandingPage() {
           leftovers, and merge out. Signed entirely in your browser.
         </p>
 
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+        {/* Paste an account and jump straight into the analyze flow */}
+        <div className="mt-8">
+          <HeroAccountInput />
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
           <Link href={APP} className={`group ${btnGold}`}>
             Open the app
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
