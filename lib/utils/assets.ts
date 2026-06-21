@@ -1,3 +1,5 @@
+import { Asset } from "@stellar/stellar-sdk";
+
 export function horizonAssetToString(a: {
   asset_type: string;
   asset_code?: string;
@@ -24,8 +26,7 @@ export function isNativeAsset(assetStr: string): boolean {
   return assetStr === "native" || assetStr === "XLM";
 }
 
-export function assetToSdkAsset(assetStr: string) {
-  const { Asset } = require("@stellar/stellar-sdk");
+export function assetToSdkAsset(assetStr: string): Asset {
   if (isNativeAsset(assetStr)) return Asset.native();
   const { code, issuer } = parseAsset(assetStr);
   return new Asset(code, issuer!);
