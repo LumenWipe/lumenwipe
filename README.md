@@ -7,13 +7,10 @@
 
 Non-custodial &nbsp;·&nbsp; Client-side signing &nbsp;·&nbsp; Full Soroban & DeFi support &nbsp;·&nbsp; Open source
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Stellar](https://img.shields.io/badge/Stellar-Protocol%2026-7B3FE4?logo=stellar&logoColor=white)](https://stellar.org)
-[![Bun](https://img.shields.io/badge/Bun-1.3-F9F1E1?logo=bun&logoColor=black)](https://bun.sh)
-
-[**lumenwipe.com**](https://lumenwipe.com) &nbsp;·&nbsp; [**docs.lumenwipe.com**](https://docs.lumenwipe.com)
+[![Web app](https://img.shields.io/badge/Web_app-lumenwipe.com-0B6E8F?style=flat-square&labelColor=1b2330)](https://lumenwipe.com)
+[![Docs](https://img.shields.io/badge/Docs-docs.lumenwipe.com-3d444d?style=flat-square&labelColor=1b2330)](https://docs.lumenwipe.com)
+[![Built on Stellar](https://img.shields.io/badge/Built_on-Stellar-FFFFFF?style=flat-square&labelColor=1b2330&logo=stellar&logoColor=white)](https://stellar.org)
+[![License](https://img.shields.io/badge/License-Apache_2.0-30363d?style=flat-square&labelColor=1b2330)](LICENSE)
 
 </div>
 
