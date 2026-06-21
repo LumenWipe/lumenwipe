@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isValidNetwork } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
-import { getAccountState } from "@/lib/stellar/account";
+import { readAccountState } from "@/lib/close-api/read-account";
 import { fetchConversionPath } from "@/lib/se-api/paths";
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import { requiresMediatorForAddress } from "@/lib/exchange-registry";
@@ -48,7 +48,7 @@ export async function POST(
     : [];
 
   try {
-    const accountState = await getAccountState(source, network);
+    const accountState = await readAccountState(source, network);
     const mediatorRequired = destination ? requiresMediatorForAddress(destination) : false;
 
     // Best-effort convertibility: a balance is convertible if path finding returns a

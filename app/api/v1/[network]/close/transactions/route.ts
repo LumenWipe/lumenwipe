@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isValidNetwork } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
-import { getAccountState } from "@/lib/stellar/account";
+import { readAccountState } from "@/lib/close-api/read-account";
 import { requiresMediatorForAddress } from "@/lib/exchange-registry";
 import { assetDecisionId, resolveDispositions } from "@/lib/close-api/decisions";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
@@ -53,7 +53,7 @@ export async function POST(
     : [];
 
   try {
-    const accountState = await getAccountState(source, network);
+    const accountState = await readAccountState(source, network);
 
     const assetsById = accountState.trustlines.map((tl) => ({
       id: assetDecisionId(tl.asset),
