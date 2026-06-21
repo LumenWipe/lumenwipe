@@ -5,7 +5,7 @@
 
 **Close any Stellar account cleanly and recover your locked XLM.**
 
-Non-custodial &nbsp;·&nbsp; Client-side signing &nbsp;·&nbsp; Full Soroban & DeFi support &nbsp;·&nbsp; Open source
+Non-custodial &nbsp;·&nbsp; Client-side signing &nbsp;·&nbsp; Soroban & DeFi support &nbsp;·&nbsp; Open source
 
 [![Web app](https://img.shields.io/badge/Web_app-lumenwipe.com-0B6E8F?style=flat-square&labelColor=1b2330)](https://lumenwipe.com)
 [![Docs](https://img.shields.io/badge/Docs-docs.lumenwipe.com-3d444d?style=flat-square&labelColor=1b2330)](https://docs.lumenwipe.com)
@@ -22,7 +22,7 @@ LumenWipe is an open-source, non-custodial web app that walks you through closin
 
 Every transaction is built and signed in your browser. Your private keys never leave your device. The backend is read-only and stateless: it aggregates data, it never touches your funds.
 
-> **Built on top of the public-domain [stellar.expert/demolisher/public](https://stellar.expert/demolisher/public) by Orbit Lens**, extended with full Soroban support, DeFi protocol integration, and a production-grade UX designed for irreversible operations.
+> **Status:** the classic account wind-down runs today on testnet and mainnet. Soroban & DeFi protocol exits, the allowance inspector, and sponsored fees are in active development — see the [roadmap](#delivery-roadmap).
 
 ---
 
@@ -36,7 +36,7 @@ Stellar has over **10 million accounts on mainnet**, and a large share are stale
 
 **Exchanges compound the problem.** No major exchange supports `ACCOUNT_MERGE`. A user sending remaining XLM to a CEX cannot merge directly into the deposit address, so the final 1 XLM minimum balance stays permanently locked. LumenWipe solves this with a shared mediator account and an atomic forwarding payment.
 
-**DeFi users have no tool at all today.** The existing demolisher has no Soroban support. Any account with a Blend loan, an Aquarius LP position, or a Soroswap pair share cannot be closed with existing tools.
+**DeFi users have no tool at all today.** No existing tool supports closing Soroban positions, so any account with a Blend loan, an Aquarius LP position, or a Soroswap pair share cannot be closed with what exists today.
 
 ---
 
@@ -151,15 +151,15 @@ The system has three layers. The trust boundary is the browser - signing never l
 │  Routing service · Mediator factory · Redis cache    │   │
 └────────────────────┬─────────────────────────────────┘   │
                      │ read-only                            │
-┌────────────────────▼─────────────────────────────────────▼──┐
+┌────────────────────▼─────────────────────────────────────▼───┐
 │  Stellar network & data services                             │
-│  Stellar RPC · stellar.expert API · Soroswap API  │
+│  Stellar RPC · stellar.expert API · Soroswap API             │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 **Key design decisions:**
 
-- **No bespoke indexer.** Stellar RPC cannot enumerate unknown subentries. LumenWipe reads enumeration from `stellar.expert` (the same layer the reference demolisher uses), re-reads exact on-chain state over RPC immediately before building each transaction, and never signs based on stale data.
+- **No bespoke indexer.** Stellar RPC cannot enumerate unknown subentries. LumenWipe reads enumeration from `stellar.expert`, re-reads exact on-chain state over RPC immediately before building each transaction, and never signs based on stale data.
 - **Pluggable data sources.** Every read source (RPC provider, indexer, routing API, DeFi position API) is behind an adapter, so any compatible provider can be swapped in without touching the transaction logic.
 - **Soroban exits are simulated before signing.** Every `InvokeHostFunction` is run through `simulateTransaction` to fill in footprint, authorization, and resource fees. The user sees the simulation result before being asked to sign.
 
@@ -202,7 +202,7 @@ The codebase undergoes internal security reviews as part of our development proc
 
 ## Quick Start
 
-**Requirements:** [Bun](https://bun.sh) 1.3+, Node.js 20+
+**Requirements:** [Bun](https://bun.sh) 1.3+
 
 ```bash
 # Clone and install
@@ -218,33 +218,28 @@ Open [http://localhost:3000](http://localhost:3000). The tool defaults to Stella
 
 ### Environment variables
 
-Copy `.env.example` to `.env.local` and configure:
+Copy `.env.example` to `.env.local`. The minimum to run on testnet is the `NEXT_PUBLIC_STELLAR_RPC_*` endpoints; everything else has sensible defaults or is only needed for specific features.
 
-| Variable             | Description                                              |
-| -------------------- | -------------------------------------------------------- |
-| `STELLAR_RPC_URL`    | Stellar RPC endpoint (testnet or mainnet)                |
-| `STELLAR_EXPERT_API` | stellar.expert API base URL                              |
-| `REDIS_URL`          | Redis connection string for the read cache               |
-| `OCTOPOS_API_KEY`    | OctoPos API key (optional - uses public tier without it) |
+| Variable                                                              | Description                                                                    |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `NEXT_PUBLIC_STELLAR_RPC_TESTNET` / `NEXT_PUBLIC_STELLAR_RPC_MAINNET`  | Stellar RPC endpoints (testnet required for local dev)                         |
+| `NEXT_PUBLIC_PATH_ROUTING_API_TESTNET` / `_MAINNET`                    | Horizon-compatible endpoints for offers, full account state, and path finding  |
+| `NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET` / `_MAINNET`                     | Public key of the shared exchange mediator account                             |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN`                               | Vercel KV — only needed for the merge-stats counter                            |
+
+See `.env.example` for the full list, including operator-only secrets.
 
 ### Running tests
 
 ```bash
 # Unit tests
-bun test
+bun run test
 
 # End-to-end tests (Playwright, against testnet)
-bun test:e2e
+bun run test:e2e
 
 # Type check
-bun type-check
-```
-
-### Docker
-
-```bash
-docker build -t lumenwipe .
-docker run -p 3000:3000 --env-file .env.local lumenwipe
+bun run type-check
 ```
 
 ---
@@ -271,7 +266,7 @@ The project is delivered in three cumulative tranches, each a working and indepe
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
 | **1 - Classic MVP**          | Full classic wind-down on testnet: signer normalization, data entries, offer cancellation, classic liquidity pool withdrawal, asset conversion, trustline removal, merge, mediator flow, multisig, session recovery | **In progress** |
 | **2 - Soroban & DeFi**       | DeFi position detection via OctoPos; Blend, Aquarius, Soroswap, Phoenix, and FxDAO exits; Soroban token conversion; allowance inspector; per-step simulation; sponsored fees for reserve-locked accounts            | Planned         |
-| **3 - Production hardening** | Mainnet deployment, performance validation, final UX from user testing, complete public documentation, public REST API and TypeScript SDK for integrators                                                           | Planned         |
+| **3 - Production hardening** | Security review and remediation, performance validation, final UX from user testing, complete public documentation, public REST API and TypeScript SDK for integrators                                                           | Planned         |
 
 > The classic wind-down already runs. The current codebase builds and signs classic transactions client-side and executes the full path - signer normalization, offer cancellation, asset conversion, trustline removal, and `AccountMerge` including the mediator flow - on both testnet and mainnet.
 
