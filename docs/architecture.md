@@ -103,59 +103,7 @@ Note that being a _claimant_ of a claimable balance does not block the merge, bu
 
 The system has three layers: a browser client that builds and signs every transaction, a thin read-only backend that aggregates data (and co-signs one thing, the exchange forwarding payment), and the Stellar network plus the external data services the backend reads from. The trust boundary is the browser. A user's account keys and signing live entirely on the client side. The backend's only key is the shared mediator, which can co-sign the exchange forwarding payment but cannot sign for a user's account, change a destination, or move a user's funds.
 
-```mermaid
-flowchart TB
-    subgraph client["Browser client: trust boundary, keys never leave"]
-        direction TB
-        ui["Guided UI<br/>(plan, confirmations, dry-run preview)"]
-        wk["Wallet adapter<br/>(stellar-wallets-kit)"]
-        sk["Secret-key mode<br/>(in-memory only)"]
-        builder["Transaction builder<br/>(pure TypeScript)"]
-        signer["Signer + XDR review"]
-        sess["Session store<br/>(IndexedDB, no keys)"]
-    end
-
-    subgraph backend["Read-only backend: stateless, no custody, one mediator co-sign key"]
-        direction TB
-        analysis["Account analysis<br/>aggregator"]
-        defi["DeFi position adapter<br/>(OctoPos)"]
-        route["Routing service<br/>(Soroswap API + SDEX paths)"]
-        med["Mediator factory<br/>(builds unsigned XDR)"]
-        reg["Exchange + contract<br/>registries"]
-        cache["Cache (Redis)"]
-    end
-
-    subgraph data["Stellar network and data services"]
-        direction TB
-        rpc["Stellar RPC<br/>(live reads, simulate, submit, events)"]
-        idx["Existing indexer<br/>(stellar.expert API)"]
-        soro["Soroswap API"]
-        pos["DeFi Position API<br/>(OctoPos)"]
-        net["Stellar ledger<br/>(classic + Soroban)"]
-    end
-
-    ui --> builder
-    wk --> signer
-    sk --> signer
-    builder --> signer
-    signer -->|"signed XDR"| rpc
-    signer --> sess
-
-    ui -->|"read-only requests"| analysis
-    analysis --> idx
-    analysis --> rpc
-    analysis --> defi
-    defi --> pos
-    route --> soro
-    route --> idx
-    med --> rpc
-    analysis --> cache
-
-    rpc --> net
-    idx --> net
-    soro --> net
-    pos --> net
-```
+![Three-layer system architecture: browser trust boundary, read-only backend, and Stellar network with external data services](./diagrams/output/01-system-architecture.svg)
 
 Two things to read off this diagram. The signed-XDR arrow runs from the client directly to Stellar RPC; submission is always client-side. The backend is not in the signing path for a user's account - its only signature is the shared mediator's co-signature on the exchange forwarding payment (section 11). And every external read source is pluggable: RPC, the indexer, the routing API, and the DeFi position API can each be swapped for another provider without touching the transaction logic.
 
@@ -188,16 +136,7 @@ The split is deliberate. An indexer answers "what does this account hold". RPC a
 
 Account age never limits this design, and that is worth stating precisely because Stellar RPC does have a retention window. The window (at most 7 days) applies only to history-shaped methods: `getTransactions`, `getTransaction`, and `getEvents`. It does not apply to `getLedgerEntries`, which reads the current ledger snapshot: a trustline created in 2015 and a trustline created yesterday are the same read. Closing an account needs no transaction history at all; it needs current state, which RPC serves for any account regardless of age, and enumeration, which the indexer serves from full history. The one age-correlated wrinkle is Soroban state archival: a long-dormant account's contract entries (a DeFi position, a token balance) may have expired to the archive, where a plain read no longer sees them. The tool detects archived entries and inserts a `RestoreFootprint` step before the exit that needs them (Section 22). Classic entries never archive.
 
-```mermaid
-flowchart LR
-    acct["Source account"] --> enum["Enumerate subentries<br/>(stellar.expert indexer)"]
-    acct --> defiq["Detect DeFi positions<br/>(OctoPos)"]
-    enum --> verify["Re-read each entry live<br/>(Stellar RPC getLedgerEntries)"]
-    defiq --> verify
-    verify --> plan["Build execution plan"]
-    plan --> sim["Simulate Soroban steps<br/>(Stellar RPC simulateTransaction)"]
-    sim --> submit["Submit signed XDR<br/>(Stellar RPC sendTransaction)"]
-```
+![Data flow: enumerate via stellar.expert indexer, re-read live over RPC, build and simulate the execution plan, then submit](./diagrams/output/02-data-flow.svg)
 
 ### Data freshness and consistency
 
@@ -213,24 +152,7 @@ The user-facing flow asks for one thing at a time, in the order the work actuall
 
 ### 6.1 State machine
 
-```mermaid
-stateDiagram-v2
-    [*] --> Idle
-    Idle --> Analyzing: submit source public key
-    Analyzing --> PreflightComplete: analysis succeeds, preview built
-    Analyzing --> Aborted: account not found or blocked
-    PreflightComplete --> SignerSetup: multisig detected
-    PreflightComplete --> StepExecuting: single-signer
-    SignerSetup --> StepExecuting: enough signatures gathered
-    StepExecuting --> StepConfirmed: ledger confirms step
-    StepExecuting --> StepFailed: submission or simulation error
-    StepFailed --> StepExecuting: retry same step
-    StepConfirmed --> StepExecuting: next step
-    StepConfirmed --> Complete: merge confirmed
-    Complete --> [*]
-    StepExecuting --> Aborted: user cancels
-    StepFailed --> Aborted: user cancels
-```
+![Demolish flow state machine: Idle → Analyzing → PreflightComplete → StepExecuting ↔ StepFailed → Complete](./diagrams/output/03-state-machine.svg)
 
 Each transition is written to a local session store in IndexedDB. The store holds the source and destination addresses, the network, the ordered plan, which steps have confirmed and their transaction hashes, and the shared mediator public key when an exchange destination is in use. It never holds secret keys or fully-signed envelopes beyond the step currently in flight. On re-entry the tool re-runs the analysis and reconciles against on-chain state, so a step that already confirmed (or was completed externally) is skipped rather than repeated.
 
@@ -242,19 +164,7 @@ The builder is a pure module: account state in, an ordered list of unsigned tran
 
 Signing has two paths. The primary path is [stellar-wallets-kit](https://github.com/Creit-Tech/Stellar-Wallets-Kit), which gives a unified interface across Freighter, xBull, Albedo, LOBSTR, Rabet, Hana, WalletConnect, and others. The application passes an unsigned XDR and receives a signed XDR through `signTransaction`; the underlying private key never enters the application. For Soroban operations the kit also exposes `signAuthEntry`, though wallet support varies (Freighter, Hana, WalletConnect, and Ledger implement it; several others do not), so the tool builds its Soroban exits with source-account authorization, which the plain `signTransaction` path covers on every wallet, and reserves `signAuthEntry` for the cases that genuinely need a separate auth entry. The secondary path is an advanced secret-key mode for users whose keys are not in any wallet. In that mode the key lives only in memory for the duration of the execution session, never in any persisted storage and never in a network request, and is wiped on completion, on abort, on navigation away from the flow, or when the user explicitly clicks "Forget key". Section 13 details the handling.
 
-```mermaid
-flowchart TB
-    env["Unsigned transaction envelope"] --> review["XDR review (collapsible)"]
-    review --> choice{"Signing method"}
-    choice -->|"wallet"| kit["stellar-wallets-kit<br/>signTransaction / signAuthEntry"]
-    choice -->|"advanced"| key["Secret key in memory"]
-    kit --> signed["Signed XDR"]
-    key --> signed
-    signed --> confirm["Explicit irreversibility confirmation"]
-    confirm --> send["sendTransaction (Stellar RPC)"]
-    send --> poll["Poll getTransaction until confirmed"]
-    poll --> next["Mark step confirmed, advance"]
-```
+![Signing flow: XDR review, wallet or secret-key path, irreversibility confirmation, submit and poll until confirmed](./diagrams/output/04-signing-flow.svg)
 
 For multisig accounts the kit and secret-key paths both support accumulating signatures: the tool collects signatures from several keypairs or wallets in sequence on the same envelope until the account thresholds are met, then submits. Each individual key is cleared from memory immediately after its signature is applied.
 
@@ -291,15 +201,7 @@ The provider returns a position payload, an enrichment dictionary (asset symbols
 
 The adapter uses the authenticated tier where an API key is configured and the public tier otherwise. It sends only the address it was asked to analyze, and it caches only public position data.
 
-```mermaid
-flowchart TB
-    req["Position request for address"] --> octo["Query OctoPos (5s timeout)"]
-    octo -->|"fresh"| ok1["Return OctoPos data"]
-    octo -->|"stale"| retry["Refresh request"]
-    retry -->|"fresh"| ok1
-    octo -->|"error"| degraded["Degraded mode:<br/>classic steps only,<br/>warn user to verify DeFi manually"]
-    retry -->|"stale or error"| degraded
-```
+![DeFi position adapter: OctoPos query with freshness gate and degraded-mode fallback when the provider is unavailable](./diagrams/output/05-defi-adapter-fallback.svg)
 
 ### 7.2 Caching
 
@@ -318,19 +220,7 @@ The design cost of this is near zero precisely because of the existing constrain
 
 From the analysis the tool generates a deterministic, ordered plan. Same account state, same plan. The order satisfies ledger constraints: you cannot withdraw collateral while a loan is open, you cannot remove a trustline while it holds a balance, and you cannot merge while any subentry remains.
 
-```mermaid
-flowchart TD
-    s1["1. Normalize signers<br/>(SetOptions: remove extra signers, thresholds to 0/1/1)"]
-    s2["2. Remove data entries<br/>(ManageData, batched by 100)"]
-    s3["3. Claim selected claimable balances<br/>(ClaimClaimableBalance, optional)"]
-    s4["4. Cancel DEX offers<br/>(ManageSellOffer / ManageBuyOffer, amount 0)"]
-    s5["5. Withdraw AMM and LP positions<br/>(classic LiquidityPoolWithdraw + Soroban pool withdrawals)"]
-    s6["6. Exit DeFi protocols<br/>(Blend, Phoenix, FxDAO: repay then withdraw)"]
-    s7["7. Convert assets to XLM<br/>(PathPaymentStrictSend / Soroban swaps)"]
-    s8["8. Remove trustlines<br/>(ChangeTrust limit 0, batched by 100)"]
-    s9["9. Merge account<br/>(AccountMerge, direct or via mediator)"]
-    s1 --> s2 --> s3 --> s4 --> s5 --> s6 --> s7 --> s8 --> s9
-```
+![Ordered nine-step demolish execution plan: normalize signers → remove data entries → claim balances → cancel offers → withdraw LP/AMM → exit DeFi → convert assets → remove trustlines → merge account](./diagrams/output/06-execution-plan.svg)
 
 A few details that matter for correctness:
 
@@ -389,20 +279,7 @@ Stellar's native AMM (CAP-38, protocol 18 and later) holds a user's stake as a p
 
 Blend positions are detected by OctoPos: supply held as bTokens, debt as dTokens, with per-position health factors. The tool builds the exit itself with the official [`@blend-capital/blend-sdk`](https://www.npmjs.com/package/@blend-capital/blend-sdk) through the `Pool.submit` entry point, which takes a list of typed requests, each a `{ request_type, address, amount }`. The relevant request types are `Repay` (5), `Withdraw` (1), and `WithdrawCollateral` (3); supplied and collateralized balances are tracked separately, so the exit uses the request type matching how each position is held. For withdrawals, passing an amount larger than the position clamps down to the actual balance, which the tool uses to fully exit without dust. Repay behaves differently: the pool pulls the full stated amount from the account and refunds any excess in the same transaction, so the tool caps the repay amount at what the account actually holds rather than padding it. (OctoPos ships a Transaction Builder that can construct Blend exits server-side, but its own documentation marks it experimental and unmaintained, so the tool does not depend on it.)
 
-```mermaid
-flowchart TD
-    detect["Detect Blend position<br/>(OctoPos)"] --> ver["Resolve pool version<br/>(wasmHash: V1 or V2)"]
-    ver --> hasdebt{"Open dToken debt?"}
-    hasdebt -->|"yes"| acquire["Acquire repayment asset if needed<br/>(route + PathPayment / swap)"]
-    acquire --> repay["Repay (RequestType 5)"]
-    hasdebt -->|"no"| withdraw
-    repay --> hf{"Health factor stays >= 1.0?"}
-    hf -->|"yes"| withdraw["Withdraw / WithdrawCollateral<br/>(RequestType 1 / 3)"]
-    hf -->|"no"| block["Block step, explain risk"]
-    withdraw --> backstop{"Backstop deposit?"}
-    backstop -->|"queued (Q4W)"| wait["Show queue (21d V1 / 17d V2);<br/>proceed with rest, warn funds locked"]
-    backstop -->|"none"| done["Position closed"]
-```
+![Blend unwind: detect position, resolve pool version, repay dToken debt, verify health factor, withdraw bToken supply, handle backstop Q4W queue](./diagrams/output/07-blend-unwind.svg)
 
 The order is enforced: repay all dToken debt first, then withdraw bToken supply, because the protocol rejects collateral withdrawal that would leave a position undercollateralized. When the account lacks the asset to repay, the tool routes and acquires it first (Section 10).
 
@@ -453,22 +330,7 @@ After positions are unwound, the account may hold several classic and Soroban to
 
 Routing for the convert path has two engines. The primary is the Soroswap API, which finds optimal routes across Soroswap, Phoenix, Aquarius, and the classic SDEX, handles both classic and Soroban tokens, and builds the swap XDR. Like every server-built transaction, that XDR is decoded and verified client-side before signing (Section 9.9). The fallback for pure-classic assets is strict-send path finding from a Horizon-compatible endpoint, executed with `PathPaymentStrictSend` across SDEX order books and classic liquidity pools (up to six hops). Either way the tool computes a minimum-received amount from the quoted output and a slippage tolerance, and passes it as the destination minimum so a sudden price move cannot fill the swap at a bad rate.
 
-```mermaid
-flowchart TD
-    asset["Non-XLM balance"] --> q["Quote route<br/>(Soroswap API; SDEX paths fallback)"]
-    q --> hasroute{"Route found?"}
-    hasroute -->|"yes"| disp{"Per-asset disposition<br/>(user confirms)"}
-    disp -->|"swap (default)"| minrecv["Compute minimum received<br/>(quote x (1 - slippage))"]
-    minrecv --> kind{"Token kind"}
-    kind -->|"classic"| pp["PathPaymentStrictSend<br/>(dest_min = minimum received)"]
-    kind -->|"Soroban"| inv["InvokeHostFunction swap<br/>(min_out = minimum received)"]
-    pp --> conv["Swapped to XLM"]
-    inv --> conv
-    hasroute -->|"no"| issuer["Return to issuer<br/>(explicit irreversible confirm)"]
-    disp -->|"return to issuer"| issuer
-    conv --> rm["Remove trustline (ChangeTrust limit 0)"]
-    issuer --> rm
-```
+![Asset conversion routing: Soroswap Aggregator as primary route with SDEX PathPayment fallback, minimum-received bound, and return-to-issuer when no route exists](./diagrams/output/08-asset-conversion-routing.svg)
 
 The user keeps control. A trustline is only removed once the protocol's full deletion preconditions hold: zero balance, zero buying liabilities (every open offer buying the asset cancelled, which the step order guarantees), and no pool-share trustline still referencing the asset (pool exits run earlier for the same reason). If a residual balance remains after a swap, the tool offers the return-to-issuer disposition or lets the user lower slippage and retry, rather than silently failing the later merge.
 
@@ -476,18 +338,7 @@ The user keeps control. A trustline is only removed once the protocol's full del
 
 Exchanges do not support `ACCOUNT_MERGE`, and their crediting systems only recognize `Payment` operations with a memo, so a user cannot merge directly into a deposit address (a direct merge is typically lost). The tool bridges this with a single shared mediator account, the same pattern the reference demolisher uses, in one atomic transaction.
 
-```mermaid
-sequenceDiagram
-    participant S as Source account (user)
-    participant M as Shared mediator (operator-funded)
-    participant D as Destination (exchange deposit)
-
-    Note over S,D: One atomic transaction, two operations
-    S->>M: op1 AccountMerge (source into mediator)
-    M->>D: op2 Payment (mediator to exchange, with memo)
-    Note over D: Exchange credits the user by address + memo
-    Note over S,D: User signs op1, backend co-signs op2: both apply or neither
-```
+![Mediator account flow for exchange destinations: one atomic transaction where the user signs the AccountMerge and the backend co-signs the forwarding Payment with memo](./diagrams/output/09-mediator-flow.svg)
 
 The mediator is a single, persistent account that the operator funds once. Its ~1 XLM minimum balance is paid once and reused for every close, so the user recovers essentially all of their XLM, including the source account's freed reserves; only standard network fees apply. This is the key difference from a throwaway per-user intermediary, which would sacrifice ~1 XLM on every close.
 
