@@ -1,0 +1,130 @@
+"""
+LumenWipe - 01 System Architecture
+Three-layer view: browser (trust boundary), read-only backend, Stellar network.
+Private keys sign transactions in the browser and never reach any server.
+"""
+import sys, os
+sys.path.insert(0, os.path.dirname(__file__))
+from _style import *
+import graphviz
+
+g = graphviz.Digraph("system-architecture")
+g.attr(**base_graph_attr(
+    rankdir="TB",
+    splines="spline",
+    size="15,11",
+    label=hl(
+        "LumenWipe - System Architecture",
+        "Non-custodial Stellar account closure · private keys never leave the browser",
+    ),
+))
+g.attr("node", **base_node_attr())
+g.attr("edge", **base_edge_attr())
+
+# ── Browser (trust boundary) ──────────────────────────────────────────────────
+with g.subgraph(name="cluster_browser") as b:
+    b.attr(
+        label=hl("Browser  -  Trust Boundary", "All transaction construction, signing, and submission happen here"),
+        style="rounded",
+        color=B_CLIENT,
+        fontcolor=B_CLIENT,
+        fontname=FONT,
+        fontsize="12",
+        penwidth="2.5",
+        margin="18",
+    )
+    b.node("ui",      hl("Guided UI", "Analyze -> Execute -> Complete", "Plan preview · per-step confirmations · irreversibility warnings"),
+           fillcolor=F_CLIENT, color=B_CLIENT)
+    b.node("wallet",  hl("Wallet Adapter", "stellar-wallets-kit (SEP-43)", "Freighter · Albedo · LOBSTR · Hana · WalletConnect · more"),
+           fillcolor=F_CLIENT, color=B_CLIENT)
+    b.node("sk",      hl("Secret-Key Mode", "In-memory only · never persisted", "Wiped on completion, abort, or navigation away"),
+           fillcolor=F_CLIENT, color=B_CLIENT)
+    b.node("builder", hl("Transaction Builder", "Pure TypeScript · zero network calls", "Account state in -> unsigned XDR out · unit-testable"),
+           fillcolor=F_CLIENT, color=B_CLIENT)
+    b.node("signer",  hl("Signer + XDR Review", "Collects signatures (multi-sig accumulation)", "User inspects every operation before signing"),
+           fillcolor=F_CLIENT, color=B_CLIENT)
+    b.node("sess",    hl("Session Store", "IndexedDB · no keys · no signed envelopes", "Resumable after browser close · reconciles on-chain on re-entry"),
+           fillcolor=F_CLIENT, color=B_CLIENT)
+
+# ── Read-only backend ─────────────────────────────────────────────────────────
+with g.subgraph(name="cluster_backend") as b:
+    b.attr(
+        label=hl("Read-Only Backend  -  Stateless", "No user keys · no custody · one mediator co-sign key only"),
+        style="rounded",
+        color=B_BACKEND,
+        fontcolor=B_BACKEND,
+        fontname=FONT,
+        fontsize="12",
+        penwidth="2.5",
+        margin="18",
+    )
+    b.node("analysis", hl("Account Analysis", "Subentries · blockers · DeFi positions · reserves", "Full pre-flight merge check per §3 result codes"),
+           fillcolor=F_BACKEND, color=B_BACKEND)
+    b.node("defi",     hl("DeFi Position Adapter", "OctoPos proxy · freshness gate · degraded mode", "Blend · Aquarius · Soroswap · Phoenix · FxDAO"),
+           fillcolor=F_BACKEND, color=B_BACKEND)
+    b.node("route",    hl("Routing Service", "Soroswap API (primary) -> SDEX paths (fallback)", "Quote routes · compute min-received for slippage protection"),
+           fillcolor=F_BACKEND, color=B_BACKEND)
+    b.node("med_be",   hl("Mediator Factory", "Builds unsigned merge+forward XDR", "Co-signs only after validating exact transaction shape"),
+           fillcolor=F_BACKEND, color=B_BACKEND)
+    b.node("reg",      hl("Registries", "Exchange deposit addresses -> memo type rules", "Contract wasmHash -> protocol version (Blend V1/V2 · pool IDs)"),
+           fillcolor=F_BACKEND, color=B_BACKEND)
+    b.node("cache",    hl("Cache", "Redis · short TTLs (seconds)", "Public read data only · no identity · no user keys"),
+           fillcolor=F_BACKEND, color=B_BACKEND)
+
+# ── Stellar network & data services ──────────────────────────────────────────
+with g.subgraph(name="cluster_network") as n:
+    n.attr(
+        label=hl("Stellar Network  &amp;  Data Services"),
+        style="rounded",
+        color=B_EXTERNAL,
+        fontcolor=B_EXTERNAL,
+        fontname=FONT,
+        fontsize="12",
+        penwidth="2.5",
+        margin="18",
+    )
+    n.node("rpc", hl("Stellar RPC", "getLedgerEntries · simulateTransaction", "sendTransaction · getTransaction · getEvents"),
+           fillcolor=F_EXTERNAL, color=B_EXTERNAL)
+    n.node("idx", hl("stellar.expert Indexer API", "Enumerate trustlines · offers · signers · pool shares", "Primary source for account subentry discovery"),
+           fillcolor=F_EXTERNAL, color=B_EXTERNAL)
+    n.node("soro_api", hl("Soroswap API", "Optimal swap routes · LP pair data", "Builds Soroban swap XDR (client verifies before signing)"),
+           fillcolor=F_EXTERNAL, color=B_EXTERNAL)
+    n.node("octopos", hl("OctoPos DeFi Position API", "Detects positions across all Soroban DeFi protocols", "Returns freshness metadata · mainnet only"),
+           fillcolor=F_EXTERNAL, color=B_EXTERNAL)
+    n.node("ledger", hl("Stellar Ledger", "Classic + Soroban (Protocol 26 · Yardstick)", "Source of truth for all account state"),
+           fillcolor=F_EXTERNAL, color=B_EXTERNAL,
+           shape="cylinder", penwidth="2")
+
+# ── Client internal wiring ────────────────────────────────────────────────────
+g.edge("ui",      "builder")
+g.edge("wallet",  "signer")
+g.edge("sk",      "signer")
+g.edge("builder", "signer")
+g.edge("signer",  "sess",  label="saves step state", style="dashed")
+g.edge("signer",  "rpc",
+       label="signed XDR\n(direct - bypasses backend)",
+       color=B_CLIENT, fontcolor=B_CLIENT, penwidth="2", fontsize="9")
+
+# ── Client -> backend (read-only) ──────────────────────────────────────────────
+g.edge("ui", "analysis",
+       label="read-only requests", style="dashed", color=B_DEFAULT)
+
+# ── Backend internal ──────────────────────────────────────────────────────────
+g.edge("analysis", "defi")
+g.edge("analysis", "cache",   style="dashed")
+g.edge("med_be",   "rpc",     style="dashed")
+
+# ── Backend -> external ────────────────────────────────────────────────────────
+g.edge("analysis", "idx")
+g.edge("analysis", "rpc")
+g.edge("defi",     "octopos")
+g.edge("route",    "soro_api")
+g.edge("route",    "idx",    label="SDEX paths fallback", style="dashed")
+
+# ── External -> ledger ─────────────────────────────────────────────────────────
+g.edge("rpc",      "ledger", penwidth="2")
+g.edge("idx",      "ledger")
+g.edge("soro_api", "ledger")
+g.edge("octopos",  "ledger")
+
+render(g, "01-system-architecture")
