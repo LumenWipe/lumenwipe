@@ -11,8 +11,8 @@ export interface TxEntry {
  * Collapse confirmed steps into the distinct transactions that effected them.
  *
  * A fused fast-path close is a single CLOSE_ACCOUNT step (one entry); a mediator
- * merge adds a second MERGE step (two entries); a stepwise run — and, in future,
- * each Soroban DeFi exit — contributes its own transaction. Steps that share a
+ * merge adds a second MERGE step (two entries); a stepwise run - and, in future,
+ * each Soroban DeFi exit - contributes its own transaction. Steps that share a
  * hash collapse into one entry; steps without a hash are skipped.
  */
 export function buildTxLedger(confirmedSteps: PlannedStep[]): TxEntry[] {

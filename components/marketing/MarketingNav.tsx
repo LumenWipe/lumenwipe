@@ -82,11 +82,7 @@ export default function MarketingNav() {
     if (l.external) return false;
     if (l.section) return pathname === "/" && activeSection === l.section;
     if (l.href === "/content")
-      return (
-        pathname === "/content" ||
-        pathname === "/blog" ||
-        pathname.startsWith("/blog/")
-      );
+      return pathname === "/content" || pathname === "/blog" || pathname.startsWith("/blog/");
     return pathname === l.href;
   }
 

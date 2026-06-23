@@ -74,7 +74,12 @@ export async function POST(
       );
     }
 
-    const transactions = await buildCloseTransactions(accountState, destination, dispositions, network);
+    const transactions = await buildCloseTransactions(
+      accountState,
+      destination,
+      dispositions,
+      network
+    );
 
     const planHash = computePlanHash({
       source,
@@ -93,7 +98,11 @@ export async function POST(
   } catch (e) {
     if (e instanceof AccountNotFoundError) return err("account_not_found", e.message, 404);
     if (e instanceof AssetRouteLostError) {
-      return err("quote_drifted", "A conversion route is no longer available; re-plan and retry.", 409);
+      return err(
+        "quote_drifted",
+        "A conversion route is no longer available; re-plan and retry.",
+        409
+      );
     }
     if (e instanceof CloseBuildError) return err(e.code, e.message, e.status);
     console.error("close/transactions error:", e);

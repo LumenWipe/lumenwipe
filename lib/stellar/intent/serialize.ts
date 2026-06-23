@@ -61,9 +61,7 @@ function sumAmounts(a: string, b: string): string {
 export function intentFromXdr(xdr: string, networkPassphrase: string): TxIntent {
   const tx = TransactionBuilder.fromXDR(xdr, networkPassphrase) as Transaction;
 
-  const operations = tx.operations
-    .map(normalizeOp)
-    .filter((o): o is IntentOperation => o !== null);
+  const operations = tx.operations.map(normalizeOp).filter((o): o is IntentOperation => o !== null);
 
   const merge = operations.find(
     (o): o is Extract<IntentOperation, { type: "account_merge" }> => o.type === "account_merge"
@@ -82,7 +80,9 @@ export function intentFromXdr(xdr: string, networkPassphrase: string): TxIntent 
       (o): o is Extract<IntentOperation, { type: "path_payment_strict_send" }> =>
         o.type === "path_payment_strict_send"
     )
-    .reduce<string | null>((acc, o) => (acc === null ? o.destMin : sumAmounts(acc, o.destMin)), null);
+    .reduce<
+      string | null
+    >((acc, o) => (acc === null ? o.destMin : sumAmounts(acc, o.destMin)), null);
 
   const memoValue = tx.memo?.value;
 

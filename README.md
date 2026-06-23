@@ -22,7 +22,7 @@ LumenWipe is an open-source, non-custodial web app that walks you through closin
 
 **Every transaction is built and signed in your browser. Your private keys never leave your device.** The backend is read-only and stateless: it aggregates data and can never move funds.
 
-> **Status:** the classic account wind-down runs today on testnet and mainnet. Soroban & DeFi protocol exits, the allowance inspector, and sponsored fees are in active development — see the [roadmap](#delivery-roadmap).
+> **Status:** the classic account wind-down runs today on testnet and mainnet. Soroban & DeFi protocol exits, the allowance inspector, and sponsored fees are in active development - see the [roadmap](#delivery-roadmap).
 
 ---
 
@@ -68,17 +68,17 @@ LumenWipe builds a **deterministic, ordered execution plan** from the account's 
 
 ![Ordered execution plan](docs/diagrams/output/06-execution-plan.svg)
 
-| Step | Operation | Details |
-| ---- | --------- | ------- |
-| **1. Normalize signers** | `SetOptions` | Removes extra signers, normalizes thresholds to 0/1/1 so a single key can authorize all remaining steps |
-| **2. Remove data entries** | `ManageData` | Clears all `ManageData` entries in batches of 100 |
-| **3. Claim claimable balances** | `ClaimClaimableBalance` | Optional; claims any claimable balances before conversion |
-| **4. Cancel DEX offers** | `ManageSellOffer` / `ManageBuyOffer` | Sets amount to 0 on all open order-book offers, freeing reserves |
-| **5. Withdraw AMM & LP positions** | `LiquidityPoolWithdraw` + Soroban calls | Classic CAP-38 pools and all supported Soroban protocol exits |
-| **6. Exit DeFi protocols** | Soroban `InvokeHostFunction` | Blend, Phoenix, FxDAO: repay debt then withdraw collateral |
-| **7. Convert assets** | `PathPaymentStrictSend` / Soroban swaps | Every non-XLM balance converted to XLM via the best available route |
-| **8. Remove trustlines** | `ChangeTrust` (limit 0) | Removes all trustlines once their balances are zero, batched by 100 |
-| **9. Merge account** | `AccountMerge` | Direct merge, or via mediator account for exchange destinations |
+| Step                               | Operation                               | Details                                                                                                 |
+| ---------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **1. Normalize signers**           | `SetOptions`                            | Removes extra signers, normalizes thresholds to 0/1/1 so a single key can authorize all remaining steps |
+| **2. Remove data entries**         | `ManageData`                            | Clears all `ManageData` entries in batches of 100                                                       |
+| **3. Claim claimable balances**    | `ClaimClaimableBalance`                 | Optional; claims any claimable balances before conversion                                               |
+| **4. Cancel DEX offers**           | `ManageSellOffer` / `ManageBuyOffer`    | Sets amount to 0 on all open order-book offers, freeing reserves                                        |
+| **5. Withdraw AMM & LP positions** | `LiquidityPoolWithdraw` + Soroban calls | Classic CAP-38 pools and all supported Soroban protocol exits                                           |
+| **6. Exit DeFi protocols**         | Soroban `InvokeHostFunction`            | Blend, Phoenix, FxDAO: repay debt then withdraw collateral                                              |
+| **7. Convert assets**              | `PathPaymentStrictSend` / Soroban swaps | Every non-XLM balance converted to XLM via the best available route                                     |
+| **8. Remove trustlines**           | `ChangeTrust` (limit 0)                 | Removes all trustlines once their balances are zero, batched by 100                                     |
+| **9. Merge account**               | `AccountMerge`                          | Direct merge, or via mediator account for exchange destinations                                         |
 
 ### Session state machine
 
@@ -108,15 +108,15 @@ LumenWipe detects and unwinds positions across the major Soroban DeFi protocols 
 
 ![DeFi adapter and fallback logic](docs/diagrams/output/05-defi-adapter-fallback.svg)
 
-| Protocol | Position type | Exit mechanism |
-| -------- | ------------- | -------------- |
-| **Classic DEX** | Order-book offers | `ManageSellOffer` / `ManageBuyOffer` (amount = 0) |
-| **Classic AMM** | Pool-share trustline (CAP-38) | `LiquidityPoolWithdraw` |
-| **Blend** | Supply (bToken), borrow (dToken), backstop | `Pool.submit` - repay then withdraw, via `@blend-capital/blend-sdk` |
-| **Aquarius** | AMM LP, AQUA rewards | `withdraw`, `claim` via Aquarius contracts |
-| **Soroswap** | AMM LP | `remove_liquidity` via Soroswap Router API |
-| **Phoenix** | AMM LP, optional stake | `withdraw_liquidity`, `unstake` first if staked |
-| **FxDAO** | CDP vault (XLM collateral, stablecoin debt) | `pay_debt` then collateral withdrawal |
+| Protocol        | Position type                               | Exit mechanism                                                      |
+| --------------- | ------------------------------------------- | ------------------------------------------------------------------- |
+| **Classic DEX** | Order-book offers                           | `ManageSellOffer` / `ManageBuyOffer` (amount = 0)                   |
+| **Classic AMM** | Pool-share trustline (CAP-38)               | `LiquidityPoolWithdraw`                                             |
+| **Blend**       | Supply (bToken), borrow (dToken), backstop  | `Pool.submit` - repay then withdraw, via `@blend-capital/blend-sdk` |
+| **Aquarius**    | AMM LP, AQUA rewards                        | `withdraw`, `claim` via Aquarius contracts                          |
+| **Soroswap**    | AMM LP                                      | `remove_liquidity` via Soroswap Router API                          |
+| **Phoenix**     | AMM LP, optional stake                      | `withdraw_liquidity`, `unstake` first if staked                     |
+| **FxDAO**       | CDP vault (XLM collateral, stablecoin debt) | `pay_debt` then collateral withdrawal                               |
 
 If the DeFi position provider is unavailable, the tool enters **degraded mode**: classic entries process normally and the user is warned to verify DeFi positions manually. The flow never silently fails or skips a position.
 
@@ -132,15 +132,15 @@ All non-XLM balances are converted using the best available route: the Soroswap 
 
 LumenWipe builds transactions that drain accounts irreversibly. The security design starts from that fact.
 
-| What | How it's protected |
-| ---- | ------------------ |
-| **Private key** | Never transmitted. Wallet path keeps it in the wallet; advanced secret-key mode keeps it in memory only, cleared after each signing operation |
-| **Signed transaction** | Built and submitted entirely client-side; user reviews XDR and confirms before every destructive step |
-| **Destination address** | Full-address display, ledger existence check, and explicit confirmation before merge |
-| **Exchange memo** | Required and validated for known exchange destinations - missing memos block submission |
-| **Backend compromise** | Cannot move funds (no keys, not in signing path). Wrong read data is caught by on-chain simulation and explicit confirmations |
-| **XSS** | Strict Content Security Policy - no inline scripts, no `unsafe-eval` |
-| **Supply chain** | Lockfile-pinned dependencies, audited in CI |
+| What                    | How it's protected                                                                                                                            |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Private key**         | Never transmitted. Wallet path keeps it in the wallet; advanced secret-key mode keeps it in memory only, cleared after each signing operation |
+| **Signed transaction**  | Built and submitted entirely client-side; user reviews XDR and confirms before every destructive step                                         |
+| **Destination address** | Full-address display, ledger existence check, and explicit confirmation before merge                                                          |
+| **Exchange memo**       | Required and validated for known exchange destinations - missing memos block submission                                                       |
+| **Backend compromise**  | Cannot move funds (no keys, not in signing path). Wrong read data is caught by on-chain simulation and explicit confirmations                 |
+| **XSS**                 | Strict Content Security Policy - no inline scripts, no `unsafe-eval`                                                                          |
+| **Supply chain**        | Lockfile-pinned dependencies, audited in CI                                                                                                   |
 
 The codebase undergoes internal security reviews as part of the development process. External security audits will be conducted when possible.
 
@@ -148,18 +148,18 @@ The codebase undergoes internal security reviews as part of the development proc
 
 ## Technology Stack
 
-| Layer | Choice | Why |
-| ----- | ------ | --- |
-| Frontend | Next.js 15, TypeScript | Open source, type-safe transaction construction |
-| Stellar SDK | `@stellar/stellar-sdk` | Official SDK for classic and Soroban |
-| Wallets | `stellar-wallets-kit` (SEP-43) | One interface across Freighter, xBull, Albedo, LOBSTR, Hana, WalletConnect, and more |
-| Network access | Stellar RPC | Live reads, simulation, submission, events |
-| Enumeration | `stellar.expert` API + Horizon-compatible endpoints | Existing production indexers, pluggable |
-| Routing | Soroswap API + SDEX paths | Best routes across Soroban and classic venues |
-| DeFi detection | OctoPos | Funded DeFi Position API, behind a pluggable adapter |
-| State | Zustand + IndexedDB | Resumable sessions, never persists keys |
-| Backend | Read-only Next.js API routes, Redis cache | Stateless, single deployable service |
-| Testing | Bun test runner (unit), Playwright (E2E on testnet) | Automated tests never touch mainnet |
+| Layer          | Choice                                              | Why                                                                                  |
+| -------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Frontend       | Next.js 15, TypeScript                              | Open source, type-safe transaction construction                                      |
+| Stellar SDK    | `@stellar/stellar-sdk`                              | Official SDK for classic and Soroban                                                 |
+| Wallets        | `stellar-wallets-kit` (SEP-43)                      | One interface across Freighter, xBull, Albedo, LOBSTR, Hana, WalletConnect, and more |
+| Network access | Stellar RPC                                         | Live reads, simulation, submission, events                                           |
+| Enumeration    | `stellar.expert` API + Horizon-compatible endpoints | Existing production indexers, pluggable                                              |
+| Routing        | Soroswap API + SDEX paths                           | Best routes across Soroban and classic venues                                        |
+| DeFi detection | OctoPos                                             | Funded DeFi Position API, behind a pluggable adapter                                 |
+| State          | Zustand + IndexedDB                                 | Resumable sessions, never persists keys                                              |
+| Backend        | Read-only Next.js API routes, Redis cache           | Stateless, single deployable service                                                 |
+| Testing        | Bun test runner (unit), Playwright (E2E on testnet) | Automated tests never touch mainnet                                                  |
 
 ---
 
@@ -183,12 +183,12 @@ Open [http://localhost:3000](http://localhost:3000). The tool defaults to Stella
 
 Copy `.env.example` to `.env.local`. The minimum to run on testnet is the `NEXT_PUBLIC_STELLAR_RPC_*` endpoints; everything else has sensible defaults or is only needed for specific features.
 
-| Variable                                                              | Description                                                                    |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `NEXT_PUBLIC_STELLAR_RPC_TESTNET` / `NEXT_PUBLIC_STELLAR_RPC_MAINNET`  | Stellar RPC endpoints (testnet required for local dev)                         |
-| `NEXT_PUBLIC_PATH_ROUTING_API_TESTNET` / `_MAINNET`                    | Horizon-compatible endpoints for offers, full account state, and path finding  |
-| `NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET` / `_MAINNET`                     | Public key of the shared exchange mediator account                             |
-| `KV_REST_API_URL` / `KV_REST_API_TOKEN`                               | Vercel KV — only needed for the merge-stats counter                            |
+| Variable                                                              | Description                                                                   |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_STELLAR_RPC_TESTNET` / `NEXT_PUBLIC_STELLAR_RPC_MAINNET` | Stellar RPC endpoints (testnet required for local dev)                        |
+| `NEXT_PUBLIC_PATH_ROUTING_API_TESTNET` / `_MAINNET`                   | Horizon-compatible endpoints for offers, full account state, and path finding |
+| `NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET` / `_MAINNET`                    | Public key of the shared exchange mediator account                            |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN`                               | Vercel KV - only needed for the merge-stats counter                           |
 
 See `.env.example` for the full list, including operator-only secrets.
 
@@ -211,12 +211,12 @@ bun run type-check
 
 Full technical documentation is at [**docs.lumenwipe.com**](https://docs.lumenwipe.com).
 
-| Document | Description |
-| -------- | ----------- |
-| [Executive Summary](docs/executive-summary.md) | One-page overview: problem, solution, technical pillars, and delivery plan |
-| [Technical Architecture](docs/architecture.md) | Complete system design: data sources, execution plan, Soroban & DeFi integration, mediator flow, security, testing, and roadmap |
-| [Community & Communications](docs/community-and-communications.md) | Building in the open, update cadence, decentralized social channels, and post-launch maintenance |
-| [Diagram sources](docs/diagrams/) | All 9 Mermaid diagram sources with rendered PNG/SVG exports |
+| Document                                                           | Description                                                                                                                     |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| [Executive Summary](docs/executive-summary.md)                     | One-page overview: problem, solution, technical pillars, and delivery plan                                                      |
+| [Technical Architecture](docs/architecture.md)                     | Complete system design: data sources, execution plan, Soroban & DeFi integration, mediator flow, security, testing, and roadmap |
+| [Community & Communications](docs/community-and-communications.md) | Building in the open, update cadence, decentralized social channels, and post-launch maintenance                                |
+| [Diagram sources](docs/diagrams/)                                  | All 9 Mermaid diagram sources with rendered PNG/SVG exports                                                                     |
 
 ---
 
@@ -228,7 +228,7 @@ The project is delivered in three cumulative tranches, each independently verifi
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
 | **1 - Classic MVP**          | Full classic wind-down on testnet: signer normalization, data entries, offer cancellation, classic liquidity pool withdrawal, asset conversion, trustline removal, merge, mediator flow, multisig, session recovery | **In progress** |
 | **2 - Soroban & DeFi**       | DeFi position detection via OctoPos; Blend, Aquarius, Soroswap, Phoenix, and FxDAO exits; Soroban token conversion; allowance inspector; per-step simulation; sponsored fees for reserve-locked accounts            | Planned         |
-| **3 - Production hardening** | Security review and remediation, performance validation, final UX from user testing, complete public documentation, public REST API and TypeScript SDK for integrators                                               | Planned         |
+| **3 - Production hardening** | Security review and remediation, performance validation, final UX from user testing, complete public documentation, public REST API and TypeScript SDK for integrators                                              | Planned         |
 
 > The classic wind-down already runs. The current codebase builds and signs classic transactions client-side and executes the full path - signer normalization, offer cancellation, asset conversion, trustline removal, and `AccountMerge` including the mediator flow - on both testnet and mainnet.
 
@@ -238,12 +238,12 @@ The project is delivered in three cumulative tranches, each independently verifi
 
 LumenWipe is open source from day one. The full frontend, read-only backend, transaction construction layer, contract registry, and test suite are public.
 
-| Channel | Use |
-| ------- | --- |
-| [GitHub Issues](https://github.com/LumenWipe/lumenwipe/issues) | Bug reports, feature requests, roadmap |
-| [LumenWipe Discord](https://discord.gg/b37CPB7g) | Community chat, support, and project discussion |
-| [Matrix - #lumenwipe:matrix.org](https://matrix.to/#/#lumenwipe:matrix.org) | Project discussion (open, decentralized) |
-| [Telegram - t.me/lumenwipe](https://t.me/lumenwipe) | Real-time community chat, support, and announcements |
+| Channel                                                                     | Use                                                  |
+| --------------------------------------------------------------------------- | ---------------------------------------------------- |
+| [GitHub Issues](https://github.com/LumenWipe/lumenwipe/issues)              | Bug reports, feature requests, roadmap               |
+| [LumenWipe Discord](https://discord.gg/b37CPB7g)                            | Community chat, support, and project discussion      |
+| [Matrix - #lumenwipe:matrix.org](https://matrix.to/#/#lumenwipe:matrix.org) | Project discussion (open, decentralized)             |
+| [Telegram - t.me/lumenwipe](https://t.me/lumenwipe)                         | Real-time community chat, support, and announcements |
 
 **Contributing:** open an issue or pull request. The contract and exchange registries (versioned JSON) are especially easy to contribute to - new exchange addresses and protocol contract versions are reviewed pull requests, not code changes.
 

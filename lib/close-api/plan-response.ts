@@ -41,7 +41,10 @@ export function toExecutionBreakdown(steps: PlannedStep[]): {
   };
 }
 
-function deriveStatus(buildResult: BuildPlanResult, decisionPoints: DecisionPoint[]): CloseApiStatus {
+function deriveStatus(
+  buildResult: BuildPlanResult,
+  decisionPoints: DecisionPoint[]
+): CloseApiStatus {
   if (buildResult.blockers.length > 0) return "blocked";
   if (buildResult.steps.length === 0) return "complete";
   if (decisionPoints.length > 0) return "needs_decisions";

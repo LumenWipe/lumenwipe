@@ -21,7 +21,7 @@ export default function HeroAccountInput() {
       return;
     }
     if (!isValidStellarAddress(trimmed)) {
-      setError("Not a valid Stellar address — must start with G and be 56 characters.");
+      setError("Not a valid Stellar address - must start with G and be 56 characters.");
       return;
     }
     setError(null);
@@ -44,7 +44,7 @@ export default function HeroAccountInput() {
               setAddress(e.target.value);
               if (error) setError(null);
             }}
-            placeholder="Paste a Stellar account address — G…"
+            placeholder="Paste a Stellar account address - G…"
             className="flex-1 bg-transparent py-2 pr-2 mkt-mono text-[0.8rem] text-white placeholder:text-white/25 outline-none min-w-0"
             spellCheck={false}
             autoComplete="off"

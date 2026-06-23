@@ -90,7 +90,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
 
   // The "what was done" groups below describe state changes; the transaction ledger
   // describes the real on-chain transactions. A fused close is one transaction, a
-  // mediator merge is two, and DeFi exits will each add their own — the ledger reflects
+  // mediator merge is two, and DeFi exits will each add their own - the ledger reflects
   // that count instead of implying one transaction per group.
   const ledger = buildTxLedger(confirmedSteps);
 

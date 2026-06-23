@@ -103,7 +103,7 @@ export default function LandingPage() {
     <>
       {/* ============================ HERO ============================ */}
       <section className="mx-auto max-w-6xl px-5 pb-10 pt-16 text-center lg:px-8 lg:pt-20">
-        {/* Label — typographic, not a status pill */}
+        {/* Label - typographic, not a status pill */}
         <div className="mb-8 flex items-center justify-center gap-4">
           <span className="h-px w-12 bg-white/15" />
           <span className="mkt-mono text-[0.65rem] uppercase tracking-[0.2em] text-white/35">

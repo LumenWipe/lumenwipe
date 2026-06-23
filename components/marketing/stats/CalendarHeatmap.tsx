@@ -201,7 +201,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
                           className="h-[12px] w-[12px] cursor-default rounded-[2px] transition-[outline] duration-100"
                           style={{
                             backgroundColor: LEVEL_BG[cell.level],
-                            // outline instead of ring — doesn't affect layout and works
+                            // outline instead of ring - doesn't affect layout and works
                             // without Tailwind color tokens
                             outline:
                               hovered?.date === cell.date
@@ -232,7 +232,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
         </div>
       </div>
 
-      {/* Detail panel at fixed height — never changes size so the component never jumps. */}
+      {/* Detail panel at fixed height - never changes size so the component never jumps. */}
       <div className="h-[88px] overflow-hidden border-t border-white/5 px-4 py-3">
         {hovered ? (
           <div className="flex items-start gap-4">

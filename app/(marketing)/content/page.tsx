@@ -8,7 +8,7 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "";
 export const metadata: Metadata = {
   title: "Content",
   description:
-    "Videos, guides, and technical deep dives on LumenWipe — closing Stellar accounts, recovering XLM reserves, and DeFi position unwinding.",
+    "Videos, guides, and technical deep dives on LumenWipe - closing Stellar accounts, recovering XLM reserves, and DeFi position unwinding.",
   openGraph: {
     title: "Content | LumenWipe",
     description: "Videos and articles on Stellar account management and reserve recovery.",
@@ -41,7 +41,7 @@ const VIDEOS: Video[] = [
     id: "nVS2zI9mRzw",
     title: "Full walkthrough: testnet, playground & mainnet",
     description:
-      "An 11-minute demo covering the full demolition flow — from testnet dry run to a live mainnet account close.",
+      "An 11-minute demo covering the full demolition flow - from testnet dry run to a live mainnet account close.",
     lang: "EN",
     duration: "11 min",
   },
