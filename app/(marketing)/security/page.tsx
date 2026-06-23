@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Security — LumenWipe",
+  title: "Security - LumenWipe",
   description:
     "LumenWipe builds transactions that drain accounts irreversibly, so the design starts from that fact. Keys are created and used only in your browser; the read-only backend can never move your funds.",
 };

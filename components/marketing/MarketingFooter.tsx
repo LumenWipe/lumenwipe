@@ -18,7 +18,7 @@ const COLS: { title: string; links: { label: string; href: string; external?: bo
       { label: "Documentation", href: "https://docs.lumenwipe.com", external: true },
       { label: "Architecture", href: "https://docs.lumenwipe.com/architecture", external: true },
       { label: "Security", href: "/security" },
-      { label: "Blog", href: "/blog" },
+      { label: "Content", href: "/content" },
     ],
   },
   {
