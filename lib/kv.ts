@@ -123,10 +123,15 @@ export async function checkNamespacedRateLimit(
   }
 }
 
-// Lua script: atomically check deduplication, increment account counter, and add XLM stroops.
-// KEYS[1] = processed set, KEYS[2] = count key, KEYS[3] = xlm key
-// ARGV[1] = txHash, ARGV[2] = xlmStroops
-// Returns 1 when the txHash is new (counters updated), 0 when duplicate.
+// Lua script: atomically deduplicate, update all counters, and push the recent-list entry.
+// Running everything in one script guarantees that a KV failure cannot leave the
+// global count incremented but the recent list or daily counter missing.
+//
+// KEYS[1] = processed set, KEYS[2] = count key, KEYS[3] = xlm key,
+//           KEYS[4] = recent list key, KEYS[5] = daily counter key
+// ARGV[1] = txHash, ARGV[2] = xlmStroops, ARGV[3] = MergeRecord JSON,
+//           ARGV[4] = recentMax, ARGV[5] = daily TTL in seconds
+// Returns 1 when the txHash is new (all state updated), 0 when duplicate.
 const RECORD_SCRIPT = `
   if redis.call('SISMEMBER', KEYS[1], ARGV[1]) == 1 then
     return 0
@@ -134,6 +139,10 @@ const RECORD_SCRIPT = `
   redis.call('SADD', KEYS[1], ARGV[1])
   redis.call('INCR', KEYS[2])
   redis.call('INCRBY', KEYS[3], ARGV[2])
+  redis.call('LPUSH', KEYS[4], ARGV[3])
+  redis.call('LTRIM', KEYS[4], 0, tonumber(ARGV[4]) - 1)
+  redis.call('INCR', KEYS[5])
+  redis.call('EXPIRE', KEYS[5], tonumber(ARGV[5]))
   return 1
 `;
 
@@ -147,35 +156,22 @@ export async function recordMerge(
   txHash: string,
   xlmStroops: string
 ): Promise<boolean> {
+  const timestamp = new Date().toISOString();
+  const date = timestamp.slice(0, 10);
+  const record: MergeRecord = { txHash, xlmStroops, timestamp, network };
+
   const result = await kv.eval(
     RECORD_SCRIPT,
-    [PROCESSED_KEY(network), COUNT_KEY[network], XLM_KEY[network]],
-    [txHash, xlmStroops]
+    [
+      PROCESSED_KEY(network),
+      COUNT_KEY[network],
+      XLM_KEY[network],
+      RECENT_KEY(network),
+      DAILY_KEY(network, date),
+    ],
+    [txHash, xlmStroops, JSON.stringify(record), String(RECENT_MAX), String(400 * 86_400)]
   );
-  const isNew = result === 1;
-  if (isNew) {
-    const timestamp = new Date().toISOString();
-    pushRecentMerge(network, txHash, xlmStroops, timestamp).catch((err) =>
-      console.error(`Failed to push recent merge for tx ${txHash}:`, err)
-    );
-  }
-  return isNew;
-}
-
-async function pushRecentMerge(
-  network: Network,
-  txHash: string,
-  xlmStroops: string,
-  timestamp: string
-): Promise<void> {
-  const record: MergeRecord = { txHash, xlmStroops, timestamp, network };
-  const date = timestamp.slice(0, 10);
-  const pipeline = kv.pipeline();
-  pipeline.lpush(RECENT_KEY(network), JSON.stringify(record));
-  pipeline.ltrim(RECENT_KEY(network), 0, RECENT_MAX - 1);
-  pipeline.incr(DAILY_KEY(network, date));
-  pipeline.expire(DAILY_KEY(network, date), 400 * 86_400);
-  await pipeline.exec();
+  return result === 1;
 }
 
 export async function getRecentMerges(network: Network, limit = 20): Promise<MergeRecord[]> {
