@@ -4,6 +4,7 @@ import { ArrowRight, Check, RefreshCw, Building2, Layers, Eye, ScanLine } from "
 import Faq from "@/components/marketing/Faq";
 import Reveal from "@/components/marketing/Reveal";
 import HeroConsole from "@/components/marketing/HeroConsole";
+import HeroAccountInput from "@/components/marketing/HeroAccountInput";
 
 export const metadata: Metadata = {
   title: "LumenWipe: Recover the XLM locked in your Stellar account",
@@ -102,9 +103,13 @@ export default function LandingPage() {
     <>
       {/* ============================ HERO ============================ */}
       <section className="mx-auto max-w-6xl px-5 pb-10 pt-16 text-center lg:px-8 lg:pt-20">
-        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 mkt-mono text-[0.68rem] uppercase tracking-wider text-white/65">
-          <span className="h-1.5 w-1.5 rounded-full bg-stellar mkt-pulse" />
-          Stellar Account Demolisher
+        {/* Label - typographic, not a status pill */}
+        <div className="mb-8 flex items-center justify-center gap-4">
+          <span className="h-px w-12 bg-white/15" />
+          <span className="mkt-mono text-[0.65rem] uppercase tracking-[0.2em] text-white/35">
+            Stellar Account Demolisher
+          </span>
+          <span className="h-px w-12 bg-white/15" />
         </div>
 
         <h1 className="mkt-display mx-auto max-w-[15ch] text-[2.7rem] font-extrabold leading-[0.95] text-white sm:text-6xl lg:text-[4.2rem]">
@@ -116,7 +121,12 @@ export default function LandingPage() {
           leftovers, and merge out. Signed entirely in your browser.
         </p>
 
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+        {/* Inline account analyzer */}
+        <div className="mt-8">
+          <HeroAccountInput />
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
           <Link href={APP} className={`group ${btnGold}`}>
             Open the app
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />

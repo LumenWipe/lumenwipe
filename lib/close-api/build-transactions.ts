@@ -49,7 +49,9 @@ function buildSummary(input: FusedCloseInput): string {
   if (issuerReturns > 0)
     parts.push(`return ${issuerReturns} asset${issuerReturns === 1 ? "" : "s"} to the issuer`);
   if (input.trustlines.length > 0)
-    parts.push(`remove ${input.trustlines.length} trustline${input.trustlines.length === 1 ? "" : "s"}`);
+    parts.push(
+      `remove ${input.trustlines.length} trustline${input.trustlines.length === 1 ? "" : "s"}`
+    );
   if (input.includeMerge) parts.push("merge the account into the destination");
   const joined = parts.length > 0 ? parts.join(", ") : "close the account";
   return `${joined.charAt(0).toUpperCase()}${joined.slice(1)}.`;

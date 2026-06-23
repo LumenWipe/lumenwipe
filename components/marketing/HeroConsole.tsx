@@ -20,7 +20,7 @@ const TOTAL = ROWS.reduce((s, r) => s + r.amount, 0);
 // Row height in px. MUST match the `h-11` on each row so the sliding highlight lines up.
 const ROW_HEIGHT_PX = 44;
 
-// Scan cadence in ms — tuned for a calm read (~8.5s per loop).
+// Scan cadence in ms - tuned for a calm read (~8.5s per loop).
 const TIMING = {
   startDelay: 800, // before the first step lights up
   perStep: 850, // how long each step stays active
@@ -108,7 +108,7 @@ export default function HeroConsole() {
                       done ? "text-white/60" : "text-white/30"
                     }`}
                   >
-                    {r.amount > 0 ? `+${r.amount.toFixed(2)}` : "—"}
+                    {r.amount > 0 ? `+${r.amount.toFixed(2)}` : "-"}
                   </span>
                 </div>
               );

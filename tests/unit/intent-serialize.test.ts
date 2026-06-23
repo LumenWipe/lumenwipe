@@ -1,5 +1,12 @@
 import { test, expect } from "bun:test";
-import { Account, Asset, Operation, TransactionBuilder, Networks, Keypair } from "@stellar/stellar-sdk";
+import {
+  Account,
+  Asset,
+  Operation,
+  TransactionBuilder,
+  Networks,
+  Keypair,
+} from "@stellar/stellar-sdk";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 
 const SRC = Keypair.random().publicKey();

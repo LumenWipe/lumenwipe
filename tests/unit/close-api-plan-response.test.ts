@@ -42,12 +42,22 @@ test("computePlanHash is stable for the same inputs and changes when any input c
 
 test("computePlanHash ignores decision ordering", () => {
   const a = computePlanHash({
-    source: "GSRC", destination: null, snapshotLedger: 1,
-    decisions: [{ id: "b", choice: "x" }, { id: "a", choice: "y" }],
+    source: "GSRC",
+    destination: null,
+    snapshotLedger: 1,
+    decisions: [
+      { id: "b", choice: "x" },
+      { id: "a", choice: "y" },
+    ],
   });
   const b = computePlanHash({
-    source: "GSRC", destination: null, snapshotLedger: 1,
-    decisions: [{ id: "a", choice: "y" }, { id: "b", choice: "x" }],
+    source: "GSRC",
+    destination: null,
+    snapshotLedger: 1,
+    decisions: [
+      { id: "a", choice: "y" },
+      { id: "b", choice: "x" },
+    ],
   });
   expect(a).toBe(b);
 });
@@ -57,7 +67,11 @@ test("toExecutionBreakdown collapses a fused-eligible plan into one transaction"
   const breakdown = toExecutionBreakdown(steps);
   expect(breakdown.estimatedTransactionCount).toBe(1);
   expect(breakdown.transactions).toHaveLength(1);
-  expect(breakdown.transactions[0].covers).toEqual(["CONVERT_ASSETS", "REMOVE_TRUSTLINES", "MERGE"]);
+  expect(breakdown.transactions[0].covers).toEqual([
+    "CONVERT_ASSETS",
+    "REMOVE_TRUSTLINES",
+    "MERGE",
+  ]);
 });
 
 test("toExecutionBreakdown reports zero transactions for an empty plan", () => {

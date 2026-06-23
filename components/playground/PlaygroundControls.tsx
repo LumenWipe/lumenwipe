@@ -280,6 +280,7 @@ export default function PlaygroundControls({
   const customConfig = usePlaygroundStore((s) => s.customConfig);
   const setSelectedMode = usePlaygroundStore((s) => s.setSelectedMode);
   const setCustomConfig = usePlaygroundStore((s) => s.setCustomConfig);
+  const reset = usePlaygroundStore((s) => s.reset);
 
   const [credentials, setCredentials] = useState<Credentials | null>(null);
   const [loadingCredentials, setLoadingCredentials] = useState(false);
@@ -469,13 +470,21 @@ export default function PlaygroundControls({
             )}{" "}
             - check the activity log for the receipts.
           </div>
-          <button
-            className={`${primaryButton} border border-white/15 text-white hover:bg-white/5`}
-            onClick={start}
-          >
-            <RotateCcw className="h-4 w-4" />
-            Run it again
-          </button>
+          <div className="flex flex-col gap-2">
+            <button
+              className={`${primaryButton} bg-stellar text-black hover:opacity-90`}
+              onClick={start}
+            >
+              <RotateCcw className="h-4 w-4" />
+              Run {modeLabel.toLowerCase()} again
+            </button>
+            <button
+              className={`${primaryButton} border border-white/15 text-white/70 hover:bg-white/5`}
+              onClick={reset}
+            >
+              Choose a different mode
+            </button>
+          </div>
         </>
       )}
 

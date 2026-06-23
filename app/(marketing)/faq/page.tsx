@@ -4,7 +4,7 @@ import { ArrowRight } from "lucide-react";
 import Faq from "@/components/marketing/Faq";
 
 export const metadata: Metadata = {
-  title: "FAQ — LumenWipe",
+  title: "FAQ - LumenWipe",
   description:
     "Answers to the common questions about closing a Stellar account with LumenWipe: non-custodial signing, irreversibility, exchange merges, Soroban DeFi, supported wallets and resumable sessions.",
 };

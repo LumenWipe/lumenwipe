@@ -14,7 +14,7 @@ const LINKS: NavLink[] = [
   { href: "/faq", label: "FAQ" },
   { href: "/playground", label: "Playground" },
   { href: "/stats", label: "Stats" },
-  { href: "/blog", label: "Blog" },
+  { href: "/content", label: "Content" },
 ];
 
 const DOCS: NavLink = { href: "https://docs.lumenwipe.com", label: "Docs", external: true };
@@ -81,7 +81,8 @@ export default function MarketingNav() {
   function isActive(l: NavLink): boolean {
     if (l.external) return false;
     if (l.section) return pathname === "/" && activeSection === l.section;
-    if (l.href === "/blog") return pathname === "/blog" || pathname.startsWith("/blog/");
+    if (l.href === "/content")
+      return pathname === "/content" || pathname === "/blog" || pathname.startsWith("/blog/");
     return pathname === l.href;
   }
 
