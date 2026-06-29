@@ -9,7 +9,11 @@ import {
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { submitAndWait } from "@/lib/stellar/submit";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
-import { TX_TIMEOUT_SECONDS } from "@/config/constants";
+import {
+  ACCOUNT_VISIBILITY_DELAY_MS,
+  ACCOUNT_VISIBILITY_MAX_ATTEMPTS,
+  TX_TIMEOUT_SECONDS,
+} from "@/config/constants";
 import {
   DEMO_KEEP_XLM,
   DEMO_SWAP_PRICE,
@@ -50,13 +54,52 @@ function resolveAsset(code: string, ctx: MessContext): Asset {
   return new Asset(code, issuer.publicKey());
 }
 
+const isAccountNotFound = (err: unknown): boolean =>
+  /account not found/i.test(err instanceof Error ? err.message : String(err));
+
+/**
+ * getAccount, but tolerant of Soroban RPC ingestion lag. A freshly friendbot-funded
+ * account (or one whose latest tx just confirmed) can briefly read back as "Account
+ * not found" while the RPC catches up to the ledger. Retry that transient case with a
+ * fixed backoff; surface any other error immediately. Generic over the fetch result so
+ * it stays unit-testable without a live RPC server.
+ */
+export async function loadAccountWithRetry<T>(
+  fetchAccount: (address: string) => Promise<T>,
+  address: string,
+  opts: {
+    attempts?: number;
+    delayMs?: number;
+    sleep?: (ms: number) => Promise<void>;
+  } = {}
+): Promise<T> {
+  const attempts = opts.attempts ?? ACCOUNT_VISIBILITY_MAX_ATTEMPTS;
+  const delayMs = opts.delayMs ?? ACCOUNT_VISIBILITY_DELAY_MS;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await fetchAccount(address);
+    } catch (err) {
+      if (!isAccountNotFound(err)) throw err;
+      lastErr = err;
+      if (attempt < attempts - 1) await sleep(delayMs);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
 export async function buildSignSubmit(
   sourceKeypair: Keypair,
   ops: xdr.Operation[],
   extraSigners: Keypair[] = []
 ): Promise<string> {
   const server = getRpcServer("testnet");
-  const live = await server.getAccount(sourceKeypair.publicKey());
+  const live = await loadAccountWithRetry(
+    (address) => server.getAccount(address),
+    sourceKeypair.publicKey()
+  );
   const account = new Account(sourceKeypair.publicKey(), live.sequenceNumber());
 
   const builder = new TransactionBuilder(account, {
