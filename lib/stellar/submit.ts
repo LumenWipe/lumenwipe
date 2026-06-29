@@ -1,6 +1,6 @@
 import { TransactionBuilder, xdr } from "@stellar/stellar-sdk";
 import { getRpcServer } from "./rpc";
-import { translateRpcError, TxTimeoutError } from "@/lib/utils/errors";
+import { translateRpcError, TxTimeoutError, TxSubmitError, extractResultCode } from "@/lib/utils/errors";
 import { checkTransactionSignatures, InvalidSignatureError } from "@/lib/stellar/signature";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import type { Network } from "@/config/networks";
@@ -56,7 +56,7 @@ export async function submitAndWait(
 
   if (sendResult.status === "ERROR") {
     const raw = sendResult.errorResult != null ? sendResult.errorResult.toXDR("base64") : "";
-    throw new Error(translateRpcError("ERROR", raw));
+    throw new TxSubmitError(translateRpcError("ERROR", raw), extractResultCode(raw));
   }
 
   // DUPLICATE means the transaction was already submitted - treat as success and poll.
@@ -72,7 +72,7 @@ export async function submitAndWait(
 
   if (result.status === "FAILED") {
     const raw = serializeResultXdr(result.resultXdr);
-    throw new Error(translateRpcError("FAILED", raw));
+    throw new TxSubmitError(translateRpcError("FAILED", raw), extractResultCode(raw));
   }
 
   if (result.status === "NOT_FOUND") {
