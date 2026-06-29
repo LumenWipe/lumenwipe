@@ -8,10 +8,13 @@ import {
 } from "@stellar/stellar-sdk";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { submitAndWait } from "@/lib/stellar/submit";
+import { TxSubmitError } from "@/lib/utils/errors";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import {
   ACCOUNT_VISIBILITY_DELAY_MS,
   ACCOUNT_VISIBILITY_MAX_ATTEMPTS,
+  BAD_SEQ_MAX_ATTEMPTS,
+  BAD_SEQ_RETRY_DELAY_MS,
   TX_TIMEOUT_SECONDS,
 } from "@/config/constants";
 import {
@@ -90,29 +93,56 @@ export async function loadAccountWithRetry<T>(
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
+export interface BuildSignSubmitDeps {
+  loadAccount?: (address: string) => Promise<{ sequenceNumber: () => string }>;
+  submit?: (signedXdr: string) => Promise<{ txHash: string }>;
+  sleep?: (ms: number) => Promise<void>;
+}
+
 export async function buildSignSubmit(
   sourceKeypair: Keypair,
   ops: xdr.Operation[],
-  extraSigners: Keypair[] = []
+  extraSigners: Keypair[] = [],
+  deps: BuildSignSubmitDeps = {}
 ): Promise<string> {
   const server = getRpcServer("testnet");
-  const live = await loadAccountWithRetry(
-    (address) => server.getAccount(address),
-    sourceKeypair.publicKey()
-  );
-  const account = new Account(sourceKeypair.publicKey(), live.sequenceNumber());
+  const loadAccount = deps.loadAccount ?? ((address: string) => server.getAccount(address));
+  const submit = deps.submit ?? ((signedXdr: string) => submitAndWait(signedXdr, "testnet"));
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
-  const builder = new TransactionBuilder(account, {
-    fee: String(100 * Math.max(ops.length, 1) * 2),
-    networkPassphrase: PASSPHRASE,
-  }).setTimeout(TX_TIMEOUT_SECONDS);
-  ops.forEach((op) => builder.addOperation(op));
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < BAD_SEQ_MAX_ATTEMPTS; attempt++) {
+    // Re-read the source account on every attempt. The Soroban RPC can serve a
+    // sequence number that lags the previously confirmed tx, which the network
+    // then rejects as tx_bad_seq; a fresh read after a short wait picks up the
+    // advanced sequence. (loadAccountWithRetry also covers the not-yet-ingested
+    // "account not found" case for the very first read.)
+    const live = await loadAccountWithRetry(loadAccount, sourceKeypair.publicKey());
+    const account = new Account(sourceKeypair.publicKey(), live.sequenceNumber());
 
-  const tx = builder.build();
-  tx.sign(sourceKeypair, ...extraSigners);
+    const builder = new TransactionBuilder(account, {
+      fee: String(100 * Math.max(ops.length, 1) * 2),
+      networkPassphrase: PASSPHRASE,
+    }).setTimeout(TX_TIMEOUT_SECONDS);
+    ops.forEach((op) => builder.addOperation(op));
 
-  const { txHash } = await submitAndWait(tx.toEnvelope().toXDR("base64"), "testnet");
-  return txHash;
+    const tx = builder.build();
+    tx.sign(sourceKeypair, ...extraSigners);
+
+    try {
+      const { txHash } = await submit(tx.toEnvelope().toXDR("base64"));
+      return txHash;
+    } catch (err) {
+      lastErr = err;
+      const isBadSeq = err instanceof TxSubmitError && err.resultCode === "tx_bad_seq";
+      if (isBadSeq && attempt < BAD_SEQ_MAX_ATTEMPTS - 1) {
+        await sleep(BAD_SEQ_RETRY_DELAY_MS);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 /**

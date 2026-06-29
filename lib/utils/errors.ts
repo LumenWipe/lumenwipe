@@ -191,12 +191,10 @@ function extractFirstFailedOpCode(resultXdrBase64: string): string | null {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function translateRpcError(code: string, raw?: string): string {
-  // Direct map lookup for known codes (including op-level codes already extracted)
-  const message = RESULT_CODE_MESSAGES[code];
-  if (message) return message;
-
-  // For ERROR/FAILED statuses, try to decode the TransactionResult XDR to get
-  // a specific operation failure message instead of the generic fallback
+  // For the ERROR/FAILED envelope statuses, decode the TransactionResult XDR
+  // FIRST so the specific tx/op code surfaces - "ERROR"/"FAILED" themselves have
+  // generic entries in the map below that would otherwise short-circuit and hide
+  // the real reason (e.g. tx_bad_seq).
   if ((code === "ERROR" || code === "FAILED") && raw) {
     const specificCode = extractFirstFailedOpCode(raw);
     if (specificCode) {
@@ -206,7 +204,34 @@ export function translateRpcError(code: string, raw?: string): string {
     }
   }
 
+  // Direct map lookup for known codes (including op-level codes already extracted)
+  const message = RESULT_CODE_MESSAGES[code];
+  if (message) return message;
+
   return `An unexpected error occurred (code: ${code}).`;
+}
+
+/**
+ * The snake_case tx/op result code for a submission failure, or null if it can't
+ * be decoded. Lets callers react programmatically (e.g. retry on tx_bad_seq)
+ * instead of string-matching translated messages.
+ */
+export function extractResultCode(raw?: string): string | null {
+  return raw ? extractFirstFailedOpCode(raw) : null;
+}
+
+/**
+ * A transaction the network rejected (RPC status ERROR) or that failed after
+ * inclusion (status FAILED). `resultCode` carries the decoded tx/op code so
+ * callers can branch on it.
+ */
+export class TxSubmitError extends Error {
+  readonly resultCode: string | null;
+  constructor(message: string, resultCode: string | null) {
+    super(message);
+    this.name = "TxSubmitError";
+    this.resultCode = resultCode;
+  }
 }
 
 export class AccountNotFoundError extends Error {

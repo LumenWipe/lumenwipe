@@ -16,5 +16,12 @@ export const SE_API_MAX_RETRIES = 3;
 export const ACCOUNT_VISIBILITY_MAX_ATTEMPTS = 7; // ~12s of patience with the delay below
 export const ACCOUNT_VISIBILITY_DELAY_MS = 2000;
 
+// Playground: consecutive mess steps submit from the same account in quick
+// succession. When the RPC's sequence number lags a just-confirmed tx, the next
+// build reuses a stale sequence and the network rejects it as tx_bad_seq. Re-read
+// and resubmit a few times, giving the RPC a moment to catch up between attempts.
+export const BAD_SEQ_MAX_ATTEMPTS = 4;
+export const BAD_SEQ_RETRY_DELAY_MS = 2500;
+
 // XLM stroops per lumen
 export const STROOPS_PER_XLM = 10_000_000;
