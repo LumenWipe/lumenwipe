@@ -10,5 +10,11 @@ export const SLIPPAGE_BPS = 50; // 0.5% default slippage for path payments
 export const SE_API_TIMEOUT_MS = 10000; // 10 seconds
 export const SE_API_MAX_RETRIES = 3;
 
+// Playground: a freshly friendbot-funded account is visible on Horizon immediately
+// but the Soroban RPC lags a few ledgers behind ingesting it. Retry getAccount
+// until the RPC catches up before building the first transaction.
+export const ACCOUNT_VISIBILITY_MAX_ATTEMPTS = 7; // ~12s of patience with the delay below
+export const ACCOUNT_VISIBILITY_DELAY_MS = 2000;
+
 // XLM stroops per lumen
 export const STROOPS_PER_XLM = 10_000_000;

@@ -9,7 +9,10 @@ import {
 import { executeMessStep, type MessContext } from "@/lib/playground/mess-builders";
 import { isMessStepId } from "@/lib/playground/mess-plan";
 
-export const maxDuration = 60;
+// Must cover the full submit budget: account-visibility retry (~12s) plus the
+// 90s confirmation poll (POLL_MAX_ATTEMPTS × POLL_INTERVAL_MS). At 60s Vercel
+// killed the function mid-poll and returned a 504 before a slow tx could confirm.
+export const maxDuration = 120;
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
