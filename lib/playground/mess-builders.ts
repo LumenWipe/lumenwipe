@@ -6,15 +6,14 @@ import {
   TransactionBuilder,
   type xdr,
 } from "@stellar/stellar-sdk";
-import { getRpcServer } from "@/lib/stellar/rpc";
-import { submitAndWait } from "@/lib/stellar/submit";
+import { loadHorizonAccount, submitClassicViaHorizon } from "./horizon-submit";
 import { TxSubmitError } from "@/lib/utils/errors";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import {
   ACCOUNT_VISIBILITY_DELAY_MS,
   ACCOUNT_VISIBILITY_MAX_ATTEMPTS,
-  BAD_SEQ_MAX_ATTEMPTS,
-  BAD_SEQ_RETRY_DELAY_MS,
+  SUBMIT_RETRY_MAX_ATTEMPTS,
+  SUBMIT_RETRY_DELAY_MS,
   TX_TIMEOUT_SECONDS,
 } from "@/config/constants";
 import {
@@ -93,6 +92,10 @@ export async function loadAccountWithRetry<T>(
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
+// Submission rejections that mean "this RPC node hasn't caught up yet", not a
+// real problem with the tx - safe to re-read state and resubmit.
+const RETRYABLE_SUBMIT_CODES = new Set(["tx_bad_seq", "tx_no_account"]);
+
 export interface BuildSignSubmitDeps {
   loadAccount?: (address: string) => Promise<{ sequenceNumber: () => string }>;
   submit?: (signedXdr: string) => Promise<{ txHash: string }>;
@@ -105,18 +108,18 @@ export async function buildSignSubmit(
   extraSigners: Keypair[] = [],
   deps: BuildSignSubmitDeps = {}
 ): Promise<string> {
-  const server = getRpcServer("testnet");
-  const loadAccount = deps.loadAccount ?? ((address: string) => server.getAccount(address));
-  const submit = deps.submit ?? ((signedXdr: string) => submitAndWait(signedXdr, "testnet"));
+  // Classic txs go through Horizon (lag-free reads, synchronous inclusion) rather
+  // than the load-balanced Soroban RPC, which used to serve stale state and break
+  // consecutive same-account submissions. The retry below is now belt-and-braces.
+  const loadAccount = deps.loadAccount ?? loadHorizonAccount;
+  const submit = deps.submit ?? submitClassicViaHorizon;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
   let lastErr: unknown;
-  for (let attempt = 0; attempt < BAD_SEQ_MAX_ATTEMPTS; attempt++) {
-    // Re-read the source account on every attempt. The Soroban RPC can serve a
-    // sequence number that lags the previously confirmed tx, which the network
-    // then rejects as tx_bad_seq; a fresh read after a short wait picks up the
-    // advanced sequence. (loadAccountWithRetry also covers the not-yet-ingested
-    // "account not found" case for the very first read.)
+  for (let attempt = 0; attempt < SUBMIT_RETRY_MAX_ATTEMPTS; attempt++) {
+    // Re-read the source account on every attempt so a retry picks up the latest
+    // sequence. loadAccountWithRetry also covers a just-funded account that
+    // Horizon hasn't surfaced for the very first read.
     const live = await loadAccountWithRetry(loadAccount, sourceKeypair.publicKey());
     const account = new Account(sourceKeypair.publicKey(), live.sequenceNumber());
 
@@ -134,9 +137,10 @@ export async function buildSignSubmit(
       return txHash;
     } catch (err) {
       lastErr = err;
-      const isBadSeq = err instanceof TxSubmitError && err.resultCode === "tx_bad_seq";
-      if (isBadSeq && attempt < BAD_SEQ_MAX_ATTEMPTS - 1) {
-        await sleep(BAD_SEQ_RETRY_DELAY_MS);
+      const isTransient =
+        err instanceof TxSubmitError && err.resultCode != null && RETRYABLE_SUBMIT_CODES.has(err.resultCode);
+      if (isTransient && attempt < SUBMIT_RETRY_MAX_ATTEMPTS - 1) {
+        await sleep(SUBMIT_RETRY_DELAY_MS);
         continue;
       }
       throw err;

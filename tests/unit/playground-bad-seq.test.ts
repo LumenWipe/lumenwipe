@@ -46,7 +46,27 @@ test("buildSignSubmit retries on tx_bad_seq, re-reading the account each attempt
   expect(sleeps.length).toBe(2); // waited between the failed attempts
 });
 
-test("buildSignSubmit does not retry non-bad-seq submission errors", async () => {
+test("buildSignSubmit retries on tx_no_account (lagging RPC node), then succeeds", async () => {
+  const kp = Keypair.random();
+  let submits = 0;
+  const sleeps: number[] = [];
+
+  const txHash = await buildSignSubmit(kp, [manageDataOp()], [], {
+    loadAccount: async () => ({ sequenceNumber: () => "100" }),
+    submit: async () => {
+      submits++;
+      if (submits < 2) throw new TxSubmitError("source missing", "tx_no_account");
+      return { txHash: "cafe" };
+    },
+    sleep: async (ms) => void sleeps.push(ms),
+  });
+
+  expect(txHash).toBe("cafe");
+  expect(submits).toBe(2);
+  expect(sleeps.length).toBe(1);
+});
+
+test("buildSignSubmit does not retry non-transient submission errors", async () => {
   const kp = Keypair.random();
   let submits = 0;
 
@@ -63,7 +83,7 @@ test("buildSignSubmit does not retry non-bad-seq submission errors", async () =>
   expect(submits).toBe(1);
 });
 
-test("buildSignSubmit gives up after the bad-seq budget and rethrows", async () => {
+test("buildSignSubmit gives up after the retry budget and rethrows", async () => {
   const kp = Keypair.random();
   let submits = 0;
 
@@ -77,5 +97,5 @@ test("buildSignSubmit gives up after the bad-seq budget and rethrows", async () 
       sleep: async () => {},
     })
   ).rejects.toBeInstanceOf(TxSubmitError);
-  expect(submits).toBe(4); // BAD_SEQ_MAX_ATTEMPTS
+  expect(submits).toBe(5); // SUBMIT_RETRY_MAX_ATTEMPTS
 });
