@@ -19,6 +19,12 @@
       "skillPath": "skills/data/SKILL.md",
       "computedHash": "dfa3600447dd4cbc4c919d11576159fbd4effc714ddbcec8bd4c88ae3da379aa"
     },
+    "soroswap-sdk": {
+      "source": "soroswap/sdk",
+      "sourceType": "github",
+      "skillPath": "skills/soroswap-sdk/SKILL.md",
+      "computedHash": "f46f13a9fce2c5c760497f081e9deb4cba39bd924265209ee3587ac8093485bd"
+    },
     "vercel-react-best-practices": {
       "source": "vercel-labs/agent-skills",
       "sourceType": "github",

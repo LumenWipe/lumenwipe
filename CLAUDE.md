@@ -70,6 +70,6 @@ See CONTRIBUTING.md for the full rules. The essentials:
 Skills live canonically in `.agents/skills/` with symlinks in `.claude/skills/`, managed by the [skills CLI](https://github.com/vercel-labs/skills) and pinned in `skills-lock.json`. Manage with `npx skills list` / `npx skills update -p` / `npx skills add <repo> -s <skill> -a claude-code -a cursor -y`.
 
 - `dapp`, `data`, `assets` (stellar/stellar-dev-skill) - wallet integration, RPC queries, classic assets/trustlines/SAC.
-- `soroswap-sdk` (soroswap/sdk) - use when working on asset conversion via the Soroswap API/SDK; the `CONVERT_ASSETS` step routes through the Soroswap API (which spans the Soroswap Aggregator and the classic SDEX) per `docs/architecture.md`. Not in the lockfile: the upstream repo doesn't follow the `SKILL.md` convention, so update it manually from `https://raw.githubusercontent.com/soroswap/sdk/main/soroswap-sdk-skill.md`.
+- `soroswap-sdk` (soroswap/sdk) - use when working on asset conversion via the Soroswap API/SDK; the `CONVERT_ASSETS` step routes through the Soroswap API (which spans the Soroswap Aggregator and the classic SDEX) per `docs/architecture.md`. Now pinned in the lockfile like the others (upstream adopted the `skills/soroswap-sdk/SKILL.md` convention), so update it with `npx skills update -p`.
 - `vercel-react-best-practices` (vercel-labs/agent-skills) - React 19 / Next.js performance rules.
 - `webapp-testing` (anthropics/skills) - Playwright-driven browser verification of the guided flow.

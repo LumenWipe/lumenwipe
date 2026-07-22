@@ -41,10 +41,10 @@ pnpm add @stellar/stellar-sdk
 import { SoroswapSDK, SupportedNetworks } from "@soroswap/sdk";
 
 const sdk = new SoroswapSDK({
-  apiKey: process.env.SOROSWAP_API_KEY as string, // Required: starts with 'sk_'
-  baseUrl: process.env.SOROSWAP_API_URL, // Optional: defaults to 'https://api.soroswap.finance'
-  defaultNetwork: SupportedNetworks.MAINNET, // Optional: defaults to MAINNET
-  timeout: 30000, // Optional: defaults to 30000ms
+  apiKey: process.env.SOROSWAP_API_KEY as string,  // Required: starts with 'sk_'
+  baseUrl: process.env.SOROSWAP_API_URL,           // Optional: defaults to 'https://api.soroswap.finance'
+  defaultNetwork: SupportedNetworks.MAINNET,        // Optional: defaults to MAINNET
+  timeout: 30000,                                   // Optional: defaults to 30000ms
 });
 ```
 
@@ -62,7 +62,7 @@ import { Keypair, Networks, Transaction, TransactionBuilder } from "@stellar/ste
 // After receiving XDR from any SDK method:
 const transaction = TransactionBuilder.fromXDR(
   response.xdr,
-  Networks.PUBLIC // or Networks.TESTNET
+  Networks.PUBLIC  // or Networks.TESTNET
 ) as Transaction;
 
 transaction.sign(Keypair.fromSecret(process.env.STELLAR_SECRET_KEY as string));
@@ -105,13 +105,13 @@ import {
 
 // 1. Get a quote
 const quoteRequest: QuoteRequest = {
-  assetIn: "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75", // USDC contract
+  assetIn: "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",  // USDC contract
   assetOut: "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA", // XLM contract
-  amount: 1000000000n, // 100 USDC (7 decimals) - MUST be BigInt
-  tradeType: TradeType.EXACT_IN, // or TradeType.EXACT_OUT
+  amount: 1000000000n,                    // 100 USDC (7 decimals) - MUST be BigInt
+  tradeType: TradeType.EXACT_IN,          // or TradeType.EXACT_OUT
   protocols: [SupportedProtocols.SOROSWAP, SupportedProtocols.AQUA],
-  slippageBps: 50, // 0.5% slippage in basis points
-  maxHops: 2, // Optional: max routing hops
+  slippageBps: 50,                        // 0.5% slippage in basis points
+  maxHops: 2,                             // Optional: max routing hops
 };
 
 const quote = await sdk.quote(quoteRequest, SupportedNetworks.MAINNET);
@@ -120,8 +120,8 @@ const quote = await sdk.quote(quoteRequest, SupportedNetworks.MAINNET);
 // 2. Build transaction XDR from quote
 const buildRequest: BuildQuoteRequest = {
   quote,
-  from: "GXXXXXXX...", // Sender wallet address
-  to: "GXXXXXXX...", // Optional: recipient (defaults to 'from')
+  from: "GXXXXXXX...",                    // Sender wallet address
+  to: "GXXXXXXX...",                      // Optional: recipient (defaults to 'from')
 };
 
 const buildResponse = await sdk.build(buildRequest, SupportedNetworks.MAINNET);
@@ -140,17 +140,17 @@ if (result.success && result.result?.type === "swap") {
 
 ### Quote Request Options
 
-| Field         | Type                   | Required | Description                        |
-| ------------- | ---------------------- | -------- | ---------------------------------- |
-| `assetIn`     | `string`               | Yes      | Input token contract address       |
-| `assetOut`    | `string`               | Yes      | Output token contract address      |
-| `amount`      | `bigint`               | Yes      | Amount in smallest unit (stroops)  |
-| `tradeType`   | `TradeType`            | Yes      | `EXACT_IN` or `EXACT_OUT`          |
-| `protocols`   | `SupportedProtocols[]` | Yes      | Protocols to route through         |
-| `slippageBps` | `number`               | No       | Slippage tolerance in basis points |
-| `maxHops`     | `number`               | No       | Max routing hops                   |
-| `parts`       | `number`               | No       | Split parts for aggregation        |
-| `feeBps`      | `number`               | No       | Platform fee in basis points       |
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `assetIn` | `string` | Yes | Input token contract address |
+| `assetOut` | `string` | Yes | Output token contract address |
+| `amount` | `bigint` | Yes | Amount in smallest unit (stroops) |
+| `tradeType` | `TradeType` | Yes | `EXACT_IN` or `EXACT_OUT` |
+| `protocols` | `SupportedProtocols[]` | Yes | Protocols to route through |
+| `slippageBps` | `number` | No | Slippage tolerance in basis points |
+| `maxHops` | `number` | No | Max routing hops |
+| `parts` | `number` | No | Split parts for aggregation |
+| `feeBps` | `number` | No | Platform fee in basis points |
 
 ### Platform Fee & Referral
 
@@ -161,7 +161,7 @@ const quote = await sdk.quote({ ...quoteRequest, feeBps: 30 }); // 0.3% fee
 const build = await sdk.build({
   quote,
   from: walletAddress,
-  referralId: "GREFERRAL...", // Wallet receiving the fee
+  referralId: "GREFERRAL...",  // Wallet receiving the fee
 });
 ```
 
@@ -175,10 +175,10 @@ import { AddLiquidityRequest } from "@soroswap/sdk";
 const addRequest: AddLiquidityRequest = {
   assetA: "TOKEN_A_CONTRACT",
   assetB: "TOKEN_B_CONTRACT",
-  amountA: 1000000000n, // BigInt
-  amountB: 5000000000n, // BigInt - must match pool ratio
-  to: "GWALLET...", // Recipient of LP tokens
-  slippageBps: "100", // 1% - note: string for liquidity methods
+  amountA: 1000000000n,                // BigInt
+  amountB: 5000000000n,                // BigInt - must match pool ratio
+  to: "GWALLET...",                     // Recipient of LP tokens
+  slippageBps: "100",                   // 1% - note: string for liquidity methods
 };
 
 const response = await sdk.addLiquidity(addRequest, SupportedNetworks.MAINNET);
@@ -205,9 +205,9 @@ import { RemoveLiquidityRequest } from "@soroswap/sdk";
 const removeRequest: RemoveLiquidityRequest = {
   assetA: "TOKEN_A_CONTRACT",
   assetB: "TOKEN_B_CONTRACT",
-  liquidity: 500000000n, // LP tokens to burn
-  amountA: 400000000n, // Min expected token A
-  amountB: 2000000000n, // Min expected token B
+  liquidity: 500000000n,               // LP tokens to burn
+  amountA: 400000000n,                 // Min expected token A
+  amountB: 2000000000n,                // Min expected token B
   to: "GWALLET...",
   slippageBps: "100",
 };
@@ -223,8 +223,8 @@ const positions = await sdk.getUserPositions("GWALLET...", SupportedNetworks.MAI
 
 for (const pos of positions) {
   console.log(`Pool: ${pos.poolInformation.address}`);
-  console.log(`Position: ${pos.userPosition}`); // LP token amount (raw)
-  console.log(`Share of pool: ${pos.userShares}`); // Percentage (0-100)
+  console.log(`Position: ${pos.userPosition}`);           // LP token amount (raw)
+  console.log(`Share of pool: ${pos.userShares}`);          // Percentage (0-100)
   console.log(`Token A equivalent: ${pos.tokenAAmountEquivalent}`);
   console.log(`Token B equivalent: ${pos.tokenBAmountEquivalent}`);
 }
@@ -252,15 +252,17 @@ const batchPrices = await sdk.getPrice(
 
 ```typescript
 // All pools for specific protocols
-const pools = await sdk.getPools(SupportedNetworks.MAINNET, [
-  SupportedProtocols.SOROSWAP,
-  SupportedProtocols.AQUA,
-]);
+const pools = await sdk.getPools(
+  SupportedNetworks.MAINNET,
+  [SupportedProtocols.SOROSWAP, SupportedProtocols.AQUA]
+);
 
 // Pool for specific token pair
-const tokenPools = await sdk.getPoolByTokens("TOKEN_A", "TOKEN_B", SupportedNetworks.MAINNET, [
-  SupportedProtocols.SOROSWAP,
-]);
+const tokenPools = await sdk.getPoolByTokens(
+  "TOKEN_A", "TOKEN_B",
+  SupportedNetworks.MAINNET,
+  [SupportedProtocols.SOROSWAP]
+);
 ```
 
 ### Wallet Balances
@@ -273,7 +275,7 @@ const balances = await sdk.getBalances("GWALLET...", SupportedNetworks.MAINNET);
 // Single token balance
 const balance = await sdk.getTokenBalance(
   "GWALLET...",
-  "TOKEN_CONTRACT", // Contract ID (C...) or CODE:ISSUER format
+  "TOKEN_CONTRACT",   // Contract ID (C...) or CODE:ISSUER format
   SupportedNetworks.MAINNET
 );
 ```
@@ -306,47 +308,47 @@ All signed transactions submitted via `sdk.send()` return a typed response:
 interface SendTransactionResponse {
   txHash: string;
   success: boolean;
-  result: TransactionResult | null; // Discriminated union
+  result: TransactionResult | null;  // Discriminated union
   ledger: number;
   createdAt: string;
   feeBump: boolean;
-  feeCharged: string; // In stroops
+  feeCharged: string;               // In stroops
   protocol: "router" | "aggregator" | "sdex" | "unknown";
   submissionMethod: "soroban" | "horizon";
 }
 
 // Type-safe result access:
 if (result.result?.type === "swap") {
-  result.result.amountIn; // string
-  result.result.amountOut; // string
+  result.result.amountIn;   // string
+  result.result.amountOut;  // string
 } else if (result.result?.type === "add_liquidity") {
-  result.result.amountA; // string
-  result.result.amountB; // string
-  result.result.shares; // string
+  result.result.amountA;    // string
+  result.result.amountB;    // string
+  result.result.shares;     // string
 } else if (result.result?.type === "remove_liquidity") {
-  result.result.amountA; // string
-  result.result.amountB; // string
+  result.result.amountA;    // string
+  result.result.amountB;    // string
 }
 ```
 
 ## Quick Reference
 
-| Operation        | Method                                      | Returns XDR? |
-| ---------------- | ------------------------------------------- | ------------ |
-| Get quote        | `quote(request, network?)`                  | No           |
-| Build swap XDR   | `build(request, network?)`                  | Yes          |
-| Send signed TX   | `send(xdr, network?)`                       | N/A          |
-| Add liquidity    | `addLiquidity(request, network?)`           | Yes          |
-| Remove liquidity | `removeLiquidity(request, network?)`        | Yes          |
-| User positions   | `getUserPositions(address, network?)`       | No           |
-| Token prices     | `getPrice(assets, network?)`                | No           |
-| Get pools        | `getPools(network, protocols, assetList?)`  | No           |
-| Pool by tokens   | `getPoolByTokens(a, b, network, protocols)` | No           |
-| Asset list       | `getAssetList(name?)`                       | No           |
-| Wallet balances  | `getBalances(wallet, network?)`             | No           |
-| Token balance    | `getTokenBalance(wallet, token, network?)`  | No           |
-| Contract address | `getContractAddress(network, name)`         | No           |
-| Protocols        | `getProtocols(network?)`                    | No           |
+| Operation | Method | Returns XDR? |
+|---|---|---|
+| Get quote | `quote(request, network?)` | No |
+| Build swap XDR | `build(request, network?)` | Yes |
+| Send signed TX | `send(xdr, network?)` | N/A |
+| Add liquidity | `addLiquidity(request, network?)` | Yes |
+| Remove liquidity | `removeLiquidity(request, network?)` | Yes |
+| User positions | `getUserPositions(address, network?)` | No |
+| Token prices | `getPrice(assets, network?)` | No |
+| Get pools | `getPools(network, protocols, assetList?)` | No |
+| Pool by tokens | `getPoolByTokens(a, b, network, protocols)` | No |
+| Asset list | `getAssetList(name?)` | No |
+| Wallet balances | `getBalances(wallet, network?)` | No |
+| Token balance | `getTokenBalance(wallet, token, network?)` | No |
+| Contract address | `getContractAddress(network, name)` | No |
+| Protocols | `getProtocols(network?)` | No |
 
 ## Backend Architecture (Recommended)
 
@@ -439,7 +441,10 @@ try {
       // Invalid or missing API key
     } else if (err.statusCode === 429) {
       // Rate limited - implement exponential backoff
-    } else if (typeof err.message === "string" && err.message.includes("route not found")) {
+    } else if (
+      typeof err.message === "string" &&
+      err.message.includes("route not found")
+    ) {
       // No trading route between these tokens
     }
   }
@@ -453,7 +458,6 @@ try {
 **Amounts are in smallest units (stroops):** For a 7-decimal token: 1 token = 10,000,000 stroops. For XLM: 1 XLM = 10,000,000 stroops.
 
 **BigInt serialization in JSON:** `BigInt` cannot be serialized with `JSON.stringify()`. Use a custom replacer:
-
 ```typescript
 const bigIntReplacer = (_key: string, value: unknown) =>
   typeof value === "bigint" ? value.toString() : value;
