@@ -67,9 +67,16 @@ See CONTRIBUTING.md for the full rules. The essentials:
 
 ## Project skills
 
-Skills live canonically in `.agents/skills/` with symlinks in `.claude/skills/`, managed by the [skills CLI](https://github.com/vercel-labs/skills) and pinned in `skills-lock.json`. Manage with `npx skills list` / `npx skills update -p` / `npx skills add <repo> -s <skill> -a claude-code -a cursor -y`.
+Two systems provide the skills under `.claude/skills/` (and `.codex/skills/`):
 
-- `dapp`, `data`, `assets` (stellar/stellar-dev-skill) - wallet integration, RPC queries, classic assets/trustlines/SAC.
-- `soroswap-sdk` (soroswap/sdk) - use when working on asset conversion via the Soroswap API/SDK; the `CONVERT_ASSETS` step routes through the Soroswap API (which spans the Soroswap Aggregator and the classic SDEX) per `docs/architecture.md`. Now pinned in the lockfile like the others (upstream adopted the `skills/soroswap-sdk/SKILL.md` convention), so update it with `npx skills update -p`.
+**skills CLI** ([vercel-labs/skills](https://github.com/vercel-labs/skills)) - canonical in `.agents/skills/`, symlinked into `.claude/skills/`, pinned in `skills-lock.json`. Manage with `npx skills list` / `npx skills update -p` / `npx skills add <repo> -s <skill> -a claude-code -y`.
+
+- `soroswap-sdk` (soroswap/sdk) - use when working on asset conversion via the Soroswap API/SDK; the `CONVERT_ASSETS` step routes through the Soroswap API (which spans the Soroswap Aggregator and the classic SDEX) per `docs/architecture.md`.
 - `vercel-react-best-practices` (vercel-labs/agent-skills) - React 19 / Next.js performance rules.
 - `webapp-testing` (anthropics/skills) - Playwright-driven browser verification of the guided flow.
+
+**stellar-build** ([kaankacar/stellar-build](https://github.com/kaankacar/stellar-build)) - a broader Stellar dev toolkit (personas, methodology, ecosystem data) installed as plain folders under `.claude/skills/`, plus the local learning loop under `.stellar/` (git-ignored). This is where `dapp`, `data`, `assets` (wallet integration, RPC queries, classic assets/trustlines/SAC) now come from - not the lockfile. Update everything it manages with:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kaankacar/stellar-build/main/install.sh | bash -s -- --prefix=$(pwd) --update
+```
