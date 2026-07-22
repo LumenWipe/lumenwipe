@@ -1,23 +1,11 @@
 {
   "version": 1,
   "skills": {
-    "assets": {
-      "source": "stellar/stellar-dev-skill",
+    "soroswap-sdk": {
+      "source": "soroswap/sdk",
       "sourceType": "github",
-      "skillPath": "skills/assets/SKILL.md",
-      "computedHash": "5393c0b362431547abb3f2439ae506e42299587e02000c7630605a40361c862b"
-    },
-    "dapp": {
-      "source": "stellar/stellar-dev-skill",
-      "sourceType": "github",
-      "skillPath": "skills/dapp/SKILL.md",
-      "computedHash": "88e0aadc2edefcf5ccaaae537251af354a3b13cbc670b791bafad33ab242f1e1"
-    },
-    "data": {
-      "source": "stellar/stellar-dev-skill",
-      "sourceType": "github",
-      "skillPath": "skills/data/SKILL.md",
-      "computedHash": "dfa3600447dd4cbc4c919d11576159fbd4effc714ddbcec8bd4c88ae3da379aa"
+      "skillPath": "skills/soroswap-sdk/SKILL.md",
+      "computedHash": "f46f13a9fce2c5c760497f081e9deb4cba39bd924265209ee3587ac8093485bd"
     },
     "vercel-react-best-practices": {
       "source": "vercel-labs/agent-skills",

@@ -34,8 +34,13 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Claude Code local settings (skills in .agents/skills/ + .claude/skills/ symlinks ARE committed)
+# Claude Code local settings (skills in .agents/skills/ + .claude/skills/ ARE committed)
+.claude/settings.json
 .claude/settings.local.json
+
+# stellar-build learning loop (local only; machine-specific hook paths)
+.stellar/
+.codex/hooks.json
 
 
 # Playwright
@@ -43,3 +48,6 @@ next-env.d.ts
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Planning docs (local only)
+/docs/plans/
