@@ -38,8 +38,9 @@ next-env.d.ts
 .claude/settings.json
 .claude/settings.local.json
 
-# stellar-build learning loop (local only)
+# stellar-build learning loop (local only; machine-specific hook paths)
 .stellar/
+.codex/hooks.json
 
 
 # Playwright
