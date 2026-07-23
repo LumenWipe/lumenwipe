@@ -1,5 +1,5 @@
 import { Controller, Get } from "@nestjs/common";
-import { ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { SkipThrottle } from "@nestjs/throttler";
 import { Public } from "../auth/public.decorator";
 
@@ -9,6 +9,8 @@ export class HealthController {
   @Public()
   @SkipThrottle()
   @Get()
+  @ApiOperation({ summary: "Liveness check (public, no API key)." })
+  @ApiResponse({ status: 200, description: 'Service is up: `{ "status": "ok" }`.' })
   check(): { status: string } {
     return { status: "ok" };
   }

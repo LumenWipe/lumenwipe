@@ -1,4 +1,10 @@
 import { Body, Controller, HttpCode, HttpException, Logger, Param, Post } from "@nestjs/common";
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from "@nestjs/swagger";
+import {
+  ClosePlanRequestDto,
+  CloseTransactionsRequestDto,
+  SubmitRequestDto,
+} from "./dto/close-requests.dto";
 import { isValidNetwork } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { readAccountState } from "@/lib/close-api/read-account";
@@ -24,12 +30,22 @@ function fail(code: string, message: string, status: number, details?: unknown):
   throw new HttpException({ error }, status);
 }
 
+@ApiTags("close")
+@ApiBearerAuth("api-key")
+@ApiParam({ name: "network", enum: ["testnet", "mainnet"] })
+@ApiResponse({ status: 401, description: "Missing or invalid API key." })
+@ApiResponse({ status: 429, description: "Rate limit exceeded for this key." })
 @Controller("v1/:network")
 export class CloseController {
   private readonly logger = new Logger(CloseController.name);
 
   @Post("close/plan")
   @HttpCode(200)
+  @ApiOperation({ summary: "Build a deterministic close plan with decision points and estimates." })
+  @ApiBody({ type: ClosePlanRequestDto })
+  @ApiResponse({ status: 200, description: "Plan with pending decision points, fee and freed-reserve estimate." })
+  @ApiResponse({ status: 400, description: "Invalid network, source, destination, or JSON body." })
+  @ApiResponse({ status: 404, description: "Source account not found." })
   async plan(
     @Param("network") network: string,
     @Body() body: { source?: unknown; destination?: unknown; decisions?: unknown }
@@ -91,6 +107,13 @@ export class CloseController {
 
   @Post("close/transactions")
   @HttpCode(200)
+  @ApiOperation({ summary: "Build the unsigned close transactions for a resolved plan." })
+  @ApiBody({ type: CloseTransactionsRequestDto })
+  @ApiResponse({ status: 200, description: "Unsigned transaction envelopes ready for client signing." })
+  @ApiResponse({ status: 400, description: "Invalid network, source, destination, or JSON body." })
+  @ApiResponse({ status: 404, description: "Source account not found." })
+  @ApiResponse({ status: 409, description: "A conversion route drifted; re-plan and retry." })
+  @ApiResponse({ status: 422, description: "Unprocessable: unresolved asset dispositions, unsupported mediator destination, unsupported claimable balances, or too many operations." })
   async transactions(
     @Param("network") network: string,
     @Body() body: { source?: unknown; destination?: unknown; decisions?: unknown; planHash?: unknown }
@@ -171,6 +194,12 @@ export class CloseController {
 
   @Post("submit")
   @HttpCode(200)
+  @ApiOperation({ summary: "Submit a client-signed transaction and wait for confirmation." })
+  @ApiBody({ type: SubmitRequestDto })
+  @ApiResponse({ status: 200, description: "Confirmed: returns the transaction hash and ledger." })
+  @ApiResponse({ status: 400, description: "Invalid or unsigned/undecodable transaction envelope." })
+  @ApiResponse({ status: 502, description: "The network rejected the transaction." })
+  @ApiResponse({ status: 504, description: "The transaction did not confirm in time." })
   async submit(@Param("network") network: string, @Body() body: { signedXdr?: unknown }) {
     if (!isValidNetwork(network)) fail("invalid_network", "Invalid network.", 400);
 
