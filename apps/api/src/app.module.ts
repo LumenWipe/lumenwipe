@@ -20,7 +20,7 @@ function positiveIntEnv(name: string, fallback: number): number {
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: [".env.local", ".env"] }),
     // Per-API-key rate limit (tracker + key in ApiKeyThrottlerGuard); defaults
     // to 120 requests / minute, overridable via env. A non-numeric override
     // falls back to the default rather than silently disabling the limit.
