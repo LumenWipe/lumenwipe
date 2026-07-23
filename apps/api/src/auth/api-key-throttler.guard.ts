@@ -1,4 +1,5 @@
-import { Injectable } from "@nestjs/common";
+import { createHash } from "crypto";
+import { ExecutionContext, Injectable } from "@nestjs/common";
 import { ThrottlerGuard } from "@nestjs/throttler";
 
 /**
@@ -13,13 +14,23 @@ export function trackerForRequest(req: Record<string, unknown>): string {
   return (req as { ip?: string }).ip ?? "unknown";
 }
 
+/** Storage key for a limiter `name` + `tracker`, hashed so the raw key never lands in storage/logs. */
+export function throttleStorageKey(name: string, tracker: string): string {
+  return createHash("sha256").update(`${name}:${tracker}`).digest("hex");
+}
+
 /**
- * Rate-limits per API key rather than per IP, so one integrator's traffic
- * cannot exhaust another's budget.
+ * Rate-limits per API key rather than per IP, and applies one budget per key
+ * across ALL endpoints (the default `generateKey` mixes in the controller and
+ * handler, which would multiply the limit by the number of routes).
  */
 @Injectable()
 export class ApiKeyThrottlerGuard extends ThrottlerGuard {
   protected async getTracker(req: Record<string, unknown>): Promise<string> {
     return trackerForRequest(req);
+  }
+
+  protected generateKey(_context: ExecutionContext, suffix: string, name: string): string {
+    return throttleStorageKey(name, suffix);
   }
 }

@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import type { ConfigService } from "@nestjs/config";
 import { ApiKeyService } from "@/auth/api-key.service";
-import { trackerForRequest } from "@/auth/api-key-throttler.guard";
+import { throttleStorageKey, trackerForRequest } from "@/auth/api-key-throttler.guard";
 import { MeteringService } from "@/metering/metering.service";
 
 function service(apiKeys: string): ApiKeyService {
@@ -30,6 +30,14 @@ test("trackerForRequest prefers the bearer key, falls back to ip", () => {
   expect(trackerForRequest({ headers: { authorization: "Bearer key_abc" } })).toBe("key_abc");
   expect(trackerForRequest({ headers: {}, ip: "1.2.3.4" })).toBe("1.2.3.4");
   expect(trackerForRequest({})).toBe("unknown");
+});
+
+test("throttleStorageKey buckets per (name, tracker), one bucket per key across routes", () => {
+  // Takes no route input, so the same key maps to one bucket regardless of endpoint.
+  expect(throttleStorageKey("default", "key_abc")).toBe(throttleStorageKey("default", "key_abc"));
+  expect(throttleStorageKey("default", "key_abc")).not.toBe(throttleStorageKey("default", "key_xyz"));
+  // hashed: the raw key never appears in the storage key
+  expect(throttleStorageKey("default", "key_abc")).not.toContain("key_abc");
 });
 
 test("MeteringService counts requests per label", () => {

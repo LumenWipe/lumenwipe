@@ -12,16 +12,20 @@ import { ApiKeyThrottlerGuard } from "./auth/api-key-throttler.guard";
 import { MeteringService } from "./metering/metering.service";
 import { MeteringInterceptor } from "./metering/metering.interceptor";
 
+/** Reads a positive integer from env, falling back on missing/invalid values. */
+function positiveIntEnv(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    // Per-API-key rate limit (tracker in ApiKeyThrottlerGuard); defaults to 120
-    // requests / minute, overridable via env for different environments.
+    // Per-API-key rate limit (tracker + key in ApiKeyThrottlerGuard); defaults
+    // to 120 requests / minute, overridable via env. A non-numeric override
+    // falls back to the default rather than silently disabling the limit.
     ThrottlerModule.forRoot([
-      {
-        ttl: process.env.THROTTLE_TTL ? Number(process.env.THROTTLE_TTL) : 60_000,
-        limit: process.env.THROTTLE_LIMIT ? Number(process.env.THROTTLE_LIMIT) : 120,
-      },
+      { ttl: positiveIntEnv("THROTTLE_TTL", 60_000), limit: positiveIntEnv("THROTTLE_LIMIT", 120) },
     ]),
     CloseModule,
     AccountModule,
