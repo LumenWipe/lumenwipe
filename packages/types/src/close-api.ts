@@ -94,5 +94,10 @@ export interface TransactionsResponse {
   planHash: string;
   status: CloseApiStatus;
   transactions: CloseTransaction[];
+  /**
+   * `requiresAnotherCall` is true when more transactions follow the returned batch:
+   * submit these, wait for confirmation, then request transactions again. `steps` is the
+   * approximate number of build rounds still remaining.
+   */
   remaining: { steps: number; requiresAnotherCall: boolean };
 }

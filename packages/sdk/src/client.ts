@@ -60,6 +60,13 @@ export class LumenWipeClient {
     return this.http.request<PlanResponse>("POST", `/v1/${network}/close/plan`, body);
   }
 
+  /**
+   * Builds the next unsigned transaction(s) for a close. A close can span several
+   * transactions (a fused close, or separate claim / cleanup / mediator-merge steps),
+   * so the response's `remaining.requiresAnotherCall` says whether more follow: sign and
+   * submit the returned transactions in `order`, wait for confirmation, then call this
+   * again until `requiresAnotherCall` is false.
+   */
   closeTransactions(
     body: CloseTransactionsRequest,
     network: Network = this.defaultNetwork
