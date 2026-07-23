@@ -43,7 +43,14 @@ function normalizeOp(op: Transaction["operations"][number]): IntentOperation | n
         value: op.value ? op.value.toString("base64") : null,
       };
     case "setOptions":
-      return { type: "set_options", summary: "Adjust signers and/or thresholds" };
+      return {
+        type: "set_options",
+        signerWeight: op.signer ? Number(op.signer.weight) : null,
+        masterWeight: op.masterWeight == null ? null : Number(op.masterWeight),
+        lowThreshold: op.lowThreshold == null ? null : Number(op.lowThreshold),
+        medThreshold: op.medThreshold == null ? null : Number(op.medThreshold),
+        highThreshold: op.highThreshold == null ? null : Number(op.highThreshold),
+      };
     case "claimClaimableBalance":
       return { type: "claim_claimable_balance", balanceId: op.balanceId };
     default:

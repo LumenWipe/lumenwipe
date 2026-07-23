@@ -62,7 +62,15 @@ export type IntentOperation =
   | { type: "account_merge"; destination: string }
   | { type: "manage_sell_offer"; offerId: string; amount: string }
   | { type: "manage_data"; name: string; value: string | null }
-  | { type: "set_options"; summary: string }
+  | {
+      type: "set_options";
+      // Captured so verify() can reject an injected/empowered signer or a disabled master key.
+      signerWeight: number | null;
+      masterWeight: number | null;
+      lowThreshold: number | null;
+      medThreshold: number | null;
+      highThreshold: number | null;
+    }
   | { type: "claim_claimable_balance"; balanceId: string };
 
 export interface TxIntent {
