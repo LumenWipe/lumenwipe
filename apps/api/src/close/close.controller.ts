@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpException, Param, Post } from "@nestjs/common";
+import { Body, Controller, HttpCode, HttpException, Logger, Param, Post } from "@nestjs/common";
 import { isValidNetwork } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { readAccountState } from "@/lib/close-api/read-account";
@@ -26,6 +26,8 @@ function fail(code: string, message: string, status: number, details?: unknown):
 
 @Controller("v1/:network")
 export class CloseController {
+  private readonly logger = new Logger(CloseController.name);
+
   @Post("close/plan")
   @HttpCode(200)
   async plan(
@@ -82,7 +84,7 @@ export class CloseController {
     } catch (e) {
       if (e instanceof HttpException) throw e;
       if (e instanceof AccountNotFoundError) fail("account_not_found", e.message, 404);
-      console.error("close/plan error:", e);
+      this.logger.error("close/plan failed", e instanceof Error ? e.stack : String(e));
       fail("plan_failed", "Failed to build the close plan.", 500);
     }
   }
@@ -162,7 +164,7 @@ export class CloseController {
         fail("quote_drifted", "A conversion route is no longer available; re-plan and retry.", 409);
       }
       if (e instanceof CloseBuildError) fail(e.code, e.message, e.status);
-      console.error("close/transactions error:", e);
+      this.logger.error("close/transactions failed", e instanceof Error ? e.stack : String(e));
       fail("transactions_failed", "Failed to build the close transactions.", 500);
     }
   }
@@ -191,7 +193,7 @@ export class CloseController {
       if (e instanceof Error && /xdr|envelope|decode/i.test(e.message)) {
         fail("invalid_signed_xdr", "The transaction envelope could not be decoded.", 400);
       }
-      console.error("submit error:", e);
+      this.logger.error("submit failed", e instanceof Error ? e.stack : String(e));
       fail("submit_failed", "Failed to submit the transaction.", 502);
     }
   }
