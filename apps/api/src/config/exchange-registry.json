@@ -1,0 +1,166 @@
+{
+  "version": "2026-05-20",
+  "source": "https://api.stellar.expert/explorer/public/directory",
+  "entries": [
+    {
+      "address": "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D",
+      "name": "Coinbase",
+      "domain": "coinbase.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "text"
+    },
+    {
+      "address": "GBOYDKMW7MKSXV3UAPTEWVF3IX2EIJ4YOCEH6MOO5XTYOJKIH73YESVB",
+      "name": "Coinbase",
+      "domain": "coinbase.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "text"
+    },
+    {
+      "address": "GABFQIK63R2NETJM7T673EAMZN4RJLLGP3OFUEJU5SZVTGWUKULZJNL6",
+      "name": "Binance",
+      "domain": "binance.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "text"
+    },
+    {
+      "address": "GAHK7EEG2WWHVKDNT4CEQFZGKF2LGDSW2IVM4S5DP42RBW3K6BTODB4A",
+      "name": "Binance",
+      "domain": "binance.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "text"
+    },
+    {
+      "address": "GA5XIGA5C7QTPTWXQHY6MCJRMTRZDOSHR6EFIBNDQTCQHG262N4GGKTM",
+      "name": "Kraken",
+      "domain": "kraken.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "id"
+    },
+    {
+      "address": "GAQZU7Y7GB3E4XOA3ZXEZDOTIEIWQRYOAIVJ6STY2YTUQAGZL3GYJCXG",
+      "name": "Kraken",
+      "domain": "kraken.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "id"
+    },
+    {
+      "address": "GBBALM76B5OUPOZCMFCNT5PVIFV3WTUYX3VVGC7FMN4ZPQLGCG2C4X3D",
+      "name": "Kraken",
+      "domain": "kraken.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "id"
+    },
+    {
+      "address": "GAWPTHY6233GRWZZ7JXDMVXDUDCVQVVQ2SXCSTG3R3CNP5LQPDAHNBKL",
+      "name": "Bitfinex",
+      "domain": "bitfinex.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "text"
+    },
+    {
+      "address": "GBGII2C7M4TOEC2MVAZYG3TRFM3ATCCEWANSN4Q3AHEX3NRKXJCVZDEV",
+      "name": "OKX",
+      "domain": "okx.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "text"
+    },
+    {
+      "address": "GA3NTBDIKQVDDM6ZDKJLGXJFESWJ636AGRIW34RH5WL24LUMX3YASKX2",
+      "name": "Bitstamp",
+      "domain": "bitstamp.net",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "id"
+    },
+    {
+      "address": "GAJ4BSGJE6UQHZAZ5U5IUOABPDCYPKPS3RFS2NVNGFGFXGVQDLBQJW2P",
+      "name": "KuCoin",
+      "domain": "kucoin.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "text"
+    },
+    {
+      "address": "GBJNV2MQA7M5GNBRDFW46JLXIN7ZLYVVM4UW4CWDZO4KZKXIXCRYHMH2",
+      "name": "KuCoin",
+      "domain": "kucoin.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "text"
+    },
+    {
+      "address": "GB67TJFJO3GUA432EJ4JTODHFYSBTM44P4XQCDOFTXJNNPV2UKUJYVBF",
+      "name": "Crypto.com",
+      "domain": "crypto.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "text"
+    },
+    {
+      "address": "GBC6NRTTQLRCABQHIR5J4R4YDJWFWRAO4ZRQIM2SVI5GSIZ2HZ42RINW",
+      "name": "Gate.io",
+      "domain": "gate.io",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "text"
+    },
+    {
+      "address": "GB2ES2N326MZK4EGJBKN3ZARCQ5RTFQSAWIJAAKFVIIIJSCC35TXIMLB",
+      "name": "Robinhood",
+      "domain": "robinhood.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "id"
+    },
+    {
+      "address": "GAW4E6NGM4NPNX2LO2BKDPCCTUX3FJLKWHPU4VQPGBIBQGD6JTVF5C7C",
+      "name": "Upbit",
+      "domain": "upbit.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "text"
+    },
+    {
+      "address": "GABRNO3RCFT5VS3JZ5K6A5PBVI47BKKNO6SH3XFQQHIPCW5AWIU3F4SL",
+      "name": "Bitpanda",
+      "domain": "bitpanda.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "text"
+    },
+    {
+      "address": "GB3RMPTL47E4ULVANHBNCXSXM2ZA5JFY5ISDRERPCXNJUDEO73QFZUNK",
+      "name": "CEX.IO",
+      "domain": "cex.io",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "text"
+    },
+    {
+      "address": "GBF6SZEZ4AJY7BCBUV3ZYJ3Q27YMO4NJU6IZQP7ODY47MPVFWCO24SNW",
+      "name": "Blockchain.com",
+      "domain": "blockchain.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "text"
+    },
+    {
+      "address": "GARAR5QR7WRL24MQMSO4INWV7C5SE4EE2YVXTLD6ORONYFHSUAGZYSLN",
+      "name": "Blockchain.com",
+      "domain": "blockchain.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "text"
+    }
+  ]
+}
