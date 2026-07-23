@@ -117,7 +117,17 @@ export class LumenWipeClient {
     });
 
     const text = await res.text();
-    const parsed = text ? (JSON.parse(text) as unknown) : undefined;
+    let parsed: unknown = undefined;
+    if (text) {
+      // A proxy/CDN can return a non-JSON error body (e.g. an HTML 502). Fall
+      // back to the raw text so a non-2xx always surfaces as a LumenWipeApiError
+      // with its status, never a raw SyntaxError.
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = text;
+      }
+    }
     if (!res.ok) throw new LumenWipeApiError(res.status, parsed);
     return parsed as T;
   }
