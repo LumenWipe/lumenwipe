@@ -71,13 +71,15 @@ export type IntentOperation =
       medThreshold: number | null;
       highThreshold: number | null;
     }
-  | { type: "claim_claimable_balance"; balanceId: string };
+  | { type: "claim_claimable_balance"; balanceId: string }
+  | { type: "unknown" };
 
 export interface TxIntent {
   summary: string;
   source: string;
   fee: string;
   memo: string | null;
+  memoType: "text" | "id" | "hash" | null;
   guarantees: {
     mergeDestination: string | null;
     paymentsOnlyTo: string[];

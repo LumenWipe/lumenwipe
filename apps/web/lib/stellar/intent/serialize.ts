@@ -8,7 +8,7 @@ function assetToString(asset: Asset): string {
 // Normalizes a single SDK operation to the safety-critical fields the intent declares.
 // Returns null for operation types the close flow never emits, so they cannot smuggle
 // effects past verification unnoticed.
-function normalizeOp(op: Transaction["operations"][number]): IntentOperation | null {
+function normalizeOp(op: Transaction["operations"][number]): IntentOperation {
   switch (op.type) {
     case "pathPaymentStrictSend":
       return {
@@ -54,7 +54,9 @@ function normalizeOp(op: Transaction["operations"][number]): IntentOperation | n
     case "claimClaimableBalance":
       return { type: "claim_claimable_balance", balanceId: op.balanceId };
     default:
-      return null;
+      // Any operation the close vocabulary does not recognize is preserved as `unknown`
+      // (not dropped) so verify() can reject a smuggled effect it cannot describe.
+      return { type: "unknown" };
   }
 }
 
@@ -68,7 +70,7 @@ function sumAmounts(a: string, b: string): string {
 export function intentFromXdr(xdr: string, networkPassphrase: string): TxIntent {
   const tx = TransactionBuilder.fromXDR(xdr, networkPassphrase) as Transaction;
 
-  const operations = tx.operations.map(normalizeOp).filter((o): o is IntentOperation => o !== null);
+  const operations = tx.operations.map(normalizeOp);
 
   const merge = operations.find(
     (o): o is Extract<IntentOperation, { type: "account_merge" }> => o.type === "account_merge"
@@ -92,12 +94,16 @@ export function intentFromXdr(xdr: string, networkPassphrase: string): TxIntent 
     >((acc, o) => (acc === null ? o.destMin : sumAmounts(acc, o.destMin)), null);
 
   const memoValue = tx.memo?.value;
+  const memoTypeRaw = tx.memo?.type;
+  const memoType =
+    memoTypeRaw === "text" || memoTypeRaw === "id" || memoTypeRaw === "hash" ? memoTypeRaw : null;
 
   return {
     summary: "",
     source: tx.source,
     fee: tx.fee,
     memo: memoValue ? memoValue.toString() : null,
+    memoType,
     guarantees: {
       mergeDestination: merge ? merge.destination : null,
       paymentsOnlyTo,

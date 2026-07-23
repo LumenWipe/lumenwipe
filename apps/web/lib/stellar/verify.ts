@@ -1,6 +1,4 @@
-import { TransactionBuilder, type Transaction } from "@stellar/stellar-sdk";
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
-import { getAccountState } from "@/lib/stellar/account";
 import { lookupExchange } from "@/lib/exchange-registry";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import type { TxIntent } from "@/types/close-api";
@@ -25,15 +23,16 @@ export interface CloseExpectation {
   memo: string | null;
   /** Whether the destination requires a memo (from the client-bundled exchange registry). */
   memoRequired: boolean;
-  /** Issuers of the account's live trustlines — the only non-self payment recipients allowed. */
-  knownIssuers: readonly string[];
+  /** The memo type the destination requires (from the registry), or null. */
+  memoType: "text" | "id" | "hash" | null;
 }
 
 /**
  * Asserts a decoded close-transaction intent against what the client independently expects,
- * before the browser signs it. Pure: no network, no XDR decoding. This is the trust anchor
- * of the non-custodial model once the API builds transactions server-side — an irreversible
- * account merge must never move funds anywhere the user did not choose.
+ * before the browser signs it. Pure: no network, no XDR decoding, no dependency on the wrapper.
+ * This is the trust anchor of the non-custodial model once the API builds transactions
+ * server-side — an irreversible account merge must never move funds anywhere the user did not
+ * choose, and no operation may reach signing that verification cannot account for.
  */
 export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation): void {
   // The transaction must be for the account being closed.
@@ -50,20 +49,24 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
     throw new VerificationError("The account would be merged to an unexpected destination.");
   }
 
-  // Funds may only be paid to the account itself (conversions), the assets' issuers (returns),
-  // and — on the mediator forward — the chosen destination.
-  const allowedRecipients = new Set<string>([expected.source, ...expected.knownIssuers]);
-  if (expected.mediator !== null) allowedRecipients.add(expected.destination);
-  for (const to of intent.guarantees.paymentsOnlyTo) {
-    if (!allowedRecipients.has(to)) {
-      throw new VerificationError(
-        `The transaction would pay funds to an unexpected address (${to}).`
-      );
-    }
-  }
-
   for (const op of intent.operations) {
     switch (op.type) {
+      case "payment": {
+        // A payment is only ever a return-to-issuer (the asset paid back to its own issuer)
+        // or, in the mediator flow, the forward of native XLM to the chosen destination.
+        const issuer = op.asset.includes(":") ? op.asset.split(":")[1] : null;
+        const isIssuerReturn = op.asset !== "native" && issuer === op.destination;
+        const isMediatorForward =
+          expected.mediator !== null &&
+          op.asset === "native" &&
+          op.destination === expected.destination;
+        if (!isIssuerReturn && !isMediatorForward) {
+          throw new VerificationError(
+            `The transaction would pay funds to an unexpected address (${op.destination}).`
+          );
+        }
+        break;
+      }
       case "path_payment_strict_send":
         // Conversions must swap to XLM into the account itself, with a positive floor.
         if (op.destination !== expected.source) {
@@ -77,8 +80,8 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         }
         break;
       case "change_trust":
-        // The close only removes trustlines.
-        if (op.limit !== "0") {
+        // The close only removes trustlines (limit 0, however the amount decodes).
+        if (Number(op.limit) !== 0) {
           throw new VerificationError("A trustline would be created or raised, not removed.");
         }
         break;
@@ -89,19 +92,30 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         }
         break;
       case "manage_sell_offer":
-        // The close only cancels offers.
-        if (op.amount !== "0") {
+        // The close only cancels offers (amount 0).
+        if (Number(op.amount) !== 0) {
           throw new VerificationError("An offer would be created, not cancelled.");
         }
         break;
       case "set_options":
-        // Signer normalization may only remove signers and must never disable the master key.
+        // Signer normalization may only remove signers, never add/empower one or disable the
+        // master key, and only lowers thresholds (normalization sets them to 0/1/1).
         if (op.signerWeight !== null && op.signerWeight !== 0) {
           throw new VerificationError("A signer would be added or empowered.");
         }
         if (op.masterWeight === 0) {
           throw new VerificationError("The master key would be disabled.");
         }
+        if ((op.lowThreshold ?? 0) > 1 || (op.medThreshold ?? 0) > 1 || (op.highThreshold ?? 0) > 1) {
+          throw new VerificationError("Account thresholds would be raised.");
+        }
+        break;
+      case "unknown":
+        // normalizeOp preserves any unrecognized operation as `unknown` so it cannot be
+        // silently dropped; verification refuses to sign a transaction that carries one.
+        throw new VerificationError("The transaction contains an unrecognized operation.");
+      case "account_merge":
+      case "claim_claimable_balance":
         break;
       default:
         break;
@@ -112,38 +126,39 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
   if (intent.memo !== null && intent.memo !== expected.memo) {
     throw new VerificationError("The transaction carries a memo you did not set.");
   }
-  // Required-memo: the transaction that delivers funds to the destination must carry the memo.
+
+  // Required memo: the transaction delivering funds to the destination must carry the exact
+  // memo — value and type — the destination requires.
   const deliversToDestination =
     intent.guarantees.mergeDestination === expected.destination ||
     intent.guarantees.paymentsOnlyTo.includes(expected.destination);
-  if (deliversToDestination && expected.memoRequired && intent.memo !== expected.memo) {
-    throw new VerificationError("This destination requires a deposit memo.");
+  if (deliversToDestination && expected.memoRequired) {
+    if (intent.memo === null || intent.memo !== expected.memo) {
+      throw new VerificationError("This destination requires a deposit memo.");
+    }
+    if (intent.memoType !== expected.memoType) {
+      throw new VerificationError("The deposit memo has the wrong type for this destination.");
+    }
   }
 }
 
 /**
- * Decodes a server-built unsigned close transaction, re-reads live on-chain state, and asserts
- * the transaction against what the client expects. Throws on any mismatch; the browser must
- * only sign after this resolves. Run once per transaction, immediately before each sign.
+ * Decodes a server-built unsigned close transaction and asserts it against what the client
+ * expects, using the client-bundled exchange registry for the memo policy. Throws on any
+ * mismatch; the browser must only sign after this returns. Run once per transaction, before
+ * each sign. Fully client-side: safety follows from the transaction's own structure, so no
+ * on-chain read is needed (an over-stated amount or a stale build simply fails on submission).
  */
-export async function verifyCloseTransaction(opts: {
+export function verifyCloseTransaction(opts: {
   unsignedXdr: string;
   network: Network;
   expected: { source: string; destination: string; mediator: string | null; memo: string | null };
-}): Promise<void> {
-  const passphrase = NETWORK_PASSPHRASES[opts.network];
-  const tx = TransactionBuilder.fromXDR(opts.unsignedXdr, passphrase) as Transaction;
-  const intent = intentFromXdr(opts.unsignedXdr, passphrase);
-
-  // Every operation must be one the close vocabulary recognizes; a dropped op means the
-  // transaction smuggled an effect the intent cannot describe.
-  if (tx.operations.length !== intent.operations.length) {
-    throw new VerificationError("The transaction contains an unrecognized operation.");
-  }
-
-  const account = await getAccountState(opts.expected.source, opts.network);
-  const knownIssuers = account.trustlines.map((t) => t.issuer);
-  const memoRequired = lookupExchange(opts.expected.destination)?.requiresMemo ?? false;
-
-  assertCloseIntent(intent, { ...opts.expected, memoRequired, knownIssuers });
+}): void {
+  const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);
+  const exchange = lookupExchange(opts.expected.destination);
+  assertCloseIntent(intent, {
+    ...opts.expected,
+    memoRequired: exchange?.requiresMemo ?? false,
+    memoType: exchange?.memoType ?? null,
+  });
 }
