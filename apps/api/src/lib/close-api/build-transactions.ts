@@ -221,7 +221,7 @@ export function packFusedCloseTransactions(
   const tagged = assembleFusedCloseOpsTagged(sdkAccount.accountId(), input);
   const chunks = batchItems(tagged, OP_BATCH_LIMIT);
   const networkPassphrase = NETWORK_PASSPHRASES[network];
-  const summary = buildSummary(input);
+  const fullSummary = buildSummary(input);
 
   return chunks.map((chunk, i): CloseTransaction => {
     const isLast = i === chunks.length - 1;
@@ -249,7 +249,15 @@ export function packFusedCloseTransactions(
       sourceSequence,
       validUntilLedger,
       covers: [...new Set(chunk.map((t) => t.step))],
-      intent: { ...intentFromXdr(xdr, networkPassphrase), summary },
+      intent: {
+        ...intentFromXdr(xdr, networkPassphrase),
+        // A split close describes each transaction by position; the whole-close summary
+        // would wrongly claim actions (e.g. the merge) that this transaction does not do.
+        summary:
+          chunks.length === 1
+            ? fullSummary
+            : `Transaction ${i + 1} of ${chunks.length} of the account close.`,
+      },
     };
   });
 }

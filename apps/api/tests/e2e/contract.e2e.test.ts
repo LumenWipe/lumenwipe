@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
+import { Keypair } from "@stellar/stellar-sdk";
 import { AppModule } from "@/app.module";
 import { configureApp } from "@/configure-app";
 
@@ -138,4 +139,16 @@ test("responses carry Cache-Control: no-store (success and error)", async () => 
   const err = await authGet("/testnet/account/NOPE");
   expect(err.status).toBe(400);
   expect(err.headers["cache-control"]).toBe("no-store");
+});
+
+test("close/transactions rejects a text memo over 28 bytes with 422 (before any network read)", async () => {
+  const res = await authPost("/v1/testnet/close/transactions").send({
+    source: Keypair.random().publicKey(),
+    destination: Keypair.random().publicKey(),
+    memo: "x".repeat(29),
+  });
+  expect(res.status).toBe(422);
+  expect(res.body).toEqual({
+    error: { code: "invalid_memo", message: "A text memo must be at most 28 bytes." },
+  });
 });
