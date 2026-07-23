@@ -1,0 +1,85 @@
+export type Network = "mainnet" | "testnet";
+
+export const NETWORK_PASSPHRASES: Record<Network, string> = {
+  mainnet: "Public Global Stellar Network ; September 2015",
+  testnet: "Test SDF Network ; September 2015",
+};
+
+export const RPC_URLS: Record<Network, string> = {
+  mainnet: process.env.NEXT_PUBLIC_STELLAR_RPC_MAINNET || "https://mainnet.sorobanrpc.com",
+  testnet: process.env.NEXT_PUBLIC_STELLAR_RPC_TESTNET || "https://soroban-testnet.stellar.org",
+};
+
+export const PATH_ROUTING_API_URLS: Record<Network, string> = {
+  mainnet: process.env.NEXT_PUBLIC_PATH_ROUTING_API_MAINNET || "",
+  testnet: process.env.NEXT_PUBLIC_PATH_ROUTING_API_TESTNET || "",
+};
+
+// Full Horizon endpoints. Horizon serves a single consistent view with no
+// indexing lag and submits classic transactions synchronously (it holds the
+// request until the tx is included), unlike the load-balanced Soroban RPC whose
+// nodes lag each other. The playground uses these for its classic txs.
+export const HORIZON_URLS: Record<Network, string> = {
+  mainnet: process.env.NEXT_PUBLIC_HORIZON_MAINNET || "https://horizon.stellar.org",
+  testnet: process.env.NEXT_PUBLIC_HORIZON_TESTNET || "https://horizon-testnet.stellar.org",
+};
+
+export const SE_API_BASE: Record<Network, string> = {
+  mainnet:
+    process.env.NEXT_PUBLIC_SE_API_BASE_MAINNET || "https://api.stellar.expert/explorer/public",
+  testnet:
+    process.env.NEXT_PUBLIC_SE_API_BASE_TESTNET || "https://api.stellar.expert/explorer/testnet",
+};
+
+export const SE_EXPLORER_BASE: Record<Network, string> = {
+  mainnet: "https://stellar.expert/explorer/public",
+  testnet: "https://stellar.expert/explorer/testnet",
+};
+
+export const SV_EXPLORER_BASE: Record<Network, string> = {
+  mainnet: "https://stellarview.acachete.xyz/en/mainnet",
+  testnet: "https://stellarview.acachete.xyz/en/testnet",
+};
+
+export const NETWORK_LABELS: Record<Network, string> = {
+  mainnet: "Mainnet",
+  testnet: "Testnet",
+};
+
+export const VALID_NETWORKS: Network[] = ["mainnet", "testnet"];
+
+export function isValidNetwork(value: string): value is Network {
+  return VALID_NETWORKS.includes(value as Network);
+}
+
+function buildRpcHeaders(name?: string, value?: string): Record<string, string> {
+  if (!name) return {};
+  return { [name]: value ?? "" };
+}
+
+export const RPC_HEADERS: Record<Network, Record<string, string>> = {
+  mainnet: buildRpcHeaders(
+    process.env.NEXT_PUBLIC_STELLAR_RPC_HEADER_NAME_MAINNET,
+    process.env.NEXT_PUBLIC_STELLAR_RPC_HEADER_VALUE_MAINNET
+  ),
+  testnet: buildRpcHeaders(
+    process.env.NEXT_PUBLIC_STELLAR_RPC_HEADER_NAME_TESTNET,
+    process.env.NEXT_PUBLIC_STELLAR_RPC_HEADER_VALUE_TESTNET
+  ),
+};
+
+/**
+ * Shared mediator (intermediary) account used to forward funds to exchange
+ * destinations that don't support ACCOUNT_MERGE. The operator funds this
+ * account once (its ~1 XLM base reserve is paid once and reused for everyone),
+ * so users recover essentially all of their XLM. Public key is safe to expose;
+ * the matching secret lives server-side only (see lib/stellar/mediator-server).
+ */
+export const MEDIATOR_PUBLIC_KEYS: Record<Network, string> = {
+  mainnet: process.env.NEXT_PUBLIC_MEDIATOR_PUBLIC_MAINNET || "",
+  testnet: process.env.NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET || "",
+};
+
+export function getMediatorPublicKey(network: Network): string {
+  return MEDIATOR_PUBLIC_KEYS[network];
+}

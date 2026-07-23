@@ -1,0 +1,77 @@
+import { test, expect } from "bun:test";
+import {
+  Account,
+  Asset,
+  Operation,
+  TransactionBuilder,
+  Networks,
+  Keypair,
+} from "@stellar/stellar-sdk";
+import { intentFromXdr } from "@/lib/stellar/intent/serialize";
+
+const SRC = Keypair.random().publicKey();
+const DEST = Keypair.random().publicKey();
+const ISSUER = Keypair.random().publicKey();
+
+function txWith(...ops: ReturnType<typeof Operation.accountMerge>[]): string {
+  const account = new Account(SRC, "100");
+  const b = new TransactionBuilder(account, {
+    fee: "100",
+    networkPassphrase: Networks.TESTNET,
+  }).setTimeout(300);
+  for (const op of ops) b.addOperation(op);
+  return b.build().toEnvelope().toXDR("base64");
+}
+
+test("intentFromXdr normalizes change_trust and account_merge", () => {
+  const xdr = txWith(
+    Operation.changeTrust({ asset: new Asset("USDC", ISSUER), limit: "0" }),
+    Operation.accountMerge({ destination: DEST })
+  );
+  const intent = intentFromXdr(xdr, Networks.TESTNET);
+
+  expect(intent.source).toBe(SRC);
+  expect(intent.operations).toContainEqual({
+    type: "change_trust",
+    asset: `USDC:${ISSUER}`,
+    limit: "0.0000000",
+  });
+  expect(intent.operations).toContainEqual({ type: "account_merge", destination: DEST });
+  expect(intent.guarantees.mergeDestination).toBe(DEST);
+});
+
+test("intentFromXdr captures the conversion floor and self-payment destination", () => {
+  const xdr = txWith(
+    Operation.pathPaymentStrictSend({
+      sendAsset: new Asset("USDC", ISSUER),
+      sendAmount: "120.50",
+      destination: SRC,
+      destAsset: Asset.native(),
+      destMin: "118.20",
+      path: [],
+    }),
+    Operation.changeTrust({ asset: new Asset("USDC", ISSUER), limit: "0" }),
+    Operation.accountMerge({ destination: DEST })
+  );
+  const intent = intentFromXdr(xdr, Networks.TESTNET);
+
+  expect(intent.operations[0]).toEqual({
+    type: "path_payment_strict_send",
+    sendAsset: `USDC:${ISSUER}`,
+    sendAmount: "120.5000000",
+    destination: SRC,
+    destAsset: "native",
+    destMin: "118.2000000",
+    path: [],
+  });
+  expect(intent.guarantees.minXlmFromConversions).toBe("118.2000000");
+  expect(intent.guarantees.paymentsOnlyTo).toContain(SRC);
+  expect(intent.guarantees.mergeDestination).toBe(DEST);
+});
+
+test("intentFromXdr returns null merge destination when there is no merge", () => {
+  const xdr = txWith(Operation.changeTrust({ asset: new Asset("USDC", ISSUER), limit: "0" }));
+  const intent = intentFromXdr(xdr, Networks.TESTNET);
+  expect(intent.guarantees.mergeDestination).toBeNull();
+  expect(intent.guarantees.minXlmFromConversions).toBeNull();
+});
