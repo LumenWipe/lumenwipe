@@ -3,6 +3,7 @@ import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "@/app.module";
+import { configureApp } from "@/configure-app";
 
 // These cover the deterministic error contracts (validation / bad input) that
 // require no network access, asserting the exact status + body shape the
@@ -14,7 +15,8 @@ let http: ReturnType<INestApplication["getHttpServer"]>;
 
 beforeAll(async () => {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-  app = moduleRef.createNestApplication();
+  app = moduleRef.createNestApplication({ bodyParser: false });
+  configureApp(app);
   await app.init();
   http = app.getHttpServer();
 });
@@ -82,4 +84,32 @@ test("mediator/check rejects an invalid address", async () => {
   const res = await request(http).get("/testnet/mediator/check/NOPE");
   expect(res.status).toBe(400);
   expect(res.body).toEqual({ error: "Invalid address" });
+});
+
+test("malformed JSON on a v1 endpoint returns the invalid_body contract", async () => {
+  const res = await request(http)
+    .post("/v1/testnet/close/plan")
+    .set("Content-Type", "application/json")
+    .send('{ "source": ');
+  expect(res.status).toBe(400);
+  expect(res.body).toEqual({
+    error: { code: "invalid_body", message: "Request body must be valid JSON." },
+  });
+});
+
+test("malformed JSON on mediator/sign returns its plain error contract", async () => {
+  const res = await request(http)
+    .post("/testnet/mediator/sign")
+    .set("Content-Type", "application/json")
+    .send("{ not json");
+  expect(res.status).toBe(400);
+  expect(res.body).toEqual({ error: "Invalid JSON body" });
+});
+
+test("responses carry Cache-Control: no-store (success and error)", async () => {
+  const ok = await request(http).get("/health");
+  expect(ok.headers["cache-control"]).toBe("no-store");
+  const err = await request(http).get("/testnet/account/NOPE");
+  expect(err.status).toBe(400);
+  expect(err.headers["cache-control"]).toBe("no-store");
 });

@@ -1,4 +1,4 @@
-import { Controller, Get, Header, HttpException, Param, Query } from "@nestjs/common";
+import { Controller, Get, HttpException, Param, Query } from "@nestjs/common";
 import { isValidNetwork } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { getAccountState } from "@/lib/stellar/account";
@@ -10,7 +10,6 @@ import { AccountNotFoundError } from "@/lib/utils/errors";
 @Controller(":network")
 export class AccountController {
   @Get("account/:address")
-  @Header("Cache-Control", "no-store")
   async account(@Param("network") network: string, @Param("address") address: string) {
     if (!isValidNetwork(network)) throw new HttpException({ error: "Invalid network" }, 400);
     if (!isValidGAddress(address)) {

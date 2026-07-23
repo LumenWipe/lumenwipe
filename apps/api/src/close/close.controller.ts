@@ -1,4 +1,4 @@
-import { Body, Controller, Header, HttpCode, HttpException, Param, Post } from "@nestjs/common";
+import { Body, Controller, HttpCode, HttpException, Param, Post } from "@nestjs/common";
 import { isValidNetwork } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { readAccountState } from "@/lib/close-api/read-account";
@@ -28,7 +28,6 @@ function fail(code: string, message: string, status: number, details?: unknown):
 export class CloseController {
   @Post("close/plan")
   @HttpCode(200)
-  @Header("Cache-Control", "no-store")
   async plan(
     @Param("network") network: string,
     @Body() body: { source?: unknown; destination?: unknown; decisions?: unknown }
@@ -90,7 +89,6 @@ export class CloseController {
 
   @Post("close/transactions")
   @HttpCode(200)
-  @Header("Cache-Control", "no-store")
   async transactions(
     @Param("network") network: string,
     @Body() body: { source?: unknown; destination?: unknown; decisions?: unknown; planHash?: unknown }
@@ -171,7 +169,6 @@ export class CloseController {
 
   @Post("submit")
   @HttpCode(200)
-  @Header("Cache-Control", "no-store")
   async submit(@Param("network") network: string, @Body() body: { signedXdr?: unknown }) {
     if (!isValidNetwork(network)) fail("invalid_network", "Invalid network.", 400);
 
