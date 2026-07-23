@@ -1,5 +1,7 @@
 import { Body, Controller, Get, HttpCode, HttpException, Param, Post } from "@nestjs/common";
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { Transaction } from "@stellar/stellar-sdk";
+import { MediatorSignRequestDto } from "./dto/mediator-sign.dto";
 import { isValidNetwork, NETWORK_PASSPHRASES, getMediatorPublicKey } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { lookupExchange } from "@/lib/exchange-registry";
@@ -7,6 +9,11 @@ import { getMediatorKeypair } from "@/lib/stellar/mediator-server";
 import { getAccountState } from "@/lib/stellar/account";
 import { AccountNotFoundError } from "@/lib/utils/errors";
 
+@ApiTags("mediator")
+@ApiBearerAuth("api-key")
+@ApiParam({ name: "network", enum: ["testnet", "mainnet"] })
+@ApiResponse({ status: 401, description: "Missing or invalid API key." })
+@ApiResponse({ status: 429, description: "Rate limit exceeded for this key." })
 @Controller(":network/mediator")
 export class MediatorController {
   /**
@@ -16,6 +23,11 @@ export class MediatorController {
    */
   @Post("sign")
   @HttpCode(200)
+  @ApiOperation({ summary: "Co-sign the mediator forwarding payment of an exchange close." })
+  @ApiBody({ type: MediatorSignRequestDto })
+  @ApiResponse({ status: 200, description: "The transaction with the mediator signature added (base64 XDR)." })
+  @ApiResponse({ status: 400, description: "Missing/invalid transaction or disallowed structure." })
+  @ApiResponse({ status: 503, description: "Mediator flow not configured on this server." })
   async sign(@Param("network") network: string, @Body() body: { transaction?: string }) {
     if (!isValidNetwork(network)) throw new HttpException({ error: "Invalid network" }, 400);
 
@@ -68,6 +80,10 @@ export class MediatorController {
   }
 
   @Get("check/:address")
+  @ApiOperation({ summary: "Check whether a destination needs the mediator flow and/or a memo." })
+  @ApiParam({ name: "address", description: "Destination account (G...)." })
+  @ApiResponse({ status: 200, description: "Mediator/memo requirements for the destination." })
+  @ApiResponse({ status: 400, description: "Invalid network or address." })
   async check(@Param("network") network: string, @Param("address") address: string) {
     if (!isValidNetwork(network)) throw new HttpException({ error: "Invalid network" }, 400);
     if (!isValidGAddress(address)) throw new HttpException({ error: "Invalid address" }, 400);
