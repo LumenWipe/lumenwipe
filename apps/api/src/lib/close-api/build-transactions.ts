@@ -2,7 +2,7 @@ import { Account, Memo, TransactionBuilder } from "@stellar/stellar-sdk";
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
 import { BASE_FEE_STROOPS, OP_BATCH_LIMIT, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import { getRpcServer } from "@/lib/stellar/rpc";
-import { fetchLiveTrustlineBalance } from "@/lib/stellar/step-engine";
+import { fetchLiveTrustlineBalance, filterExistingClaimableBalances } from "@/lib/stellar/step-engine";
 import { fetchConversionPath } from "@/lib/se-api/paths";
 import { computeNeedsSignerNormalization } from "@/lib/stellar/tx-builder";
 import { batchItems } from "@/lib/stellar/tx-builder/batching";
@@ -32,6 +32,10 @@ export class CloseBuildError extends Error {
 
 function buildSummary(input: FusedCloseInput): string {
   const parts: string[] = [];
+  if (input.claimableBalances.length > 0)
+    parts.push(
+      `claim ${input.claimableBalances.length} balance${input.claimableBalances.length === 1 ? "" : "s"}`
+    );
   const converts = input.assetActions.filter((a) => a.action === "convert").length;
   const issuerReturns = input.assetActions.filter((a) => a.action === "issuer").length;
   if (converts > 0) parts.push(`convert ${converts} asset${converts === 1 ? "" : "s"} to XLM`);
@@ -46,27 +50,60 @@ function buildSummary(input: FusedCloseInput): string {
   return `${joined.charAt(0).toUpperCase()}${joined.slice(1)}.`;
 }
 
-// Builds the unsigned transaction(s) that close an account. Phase 1 supports direct
-// destinations only and produces a single atomic fused transaction. Exchange/mediator
-// destinations and claimable-balance accounts (which need the multi-step flow) and
-// closes that exceed the per-transaction operation cap are rejected with a
-// CloseBuildError; those paths are follow-ups. Re-reads live on-chain state.
+/** The next batch of unsigned transactions plus whether the client must call again. */
+export interface CloseBuildResult {
+  transactions: CloseTransaction[];
+  requiresAnotherCall: boolean;
+  remainingSteps: number;
+}
+
+// Builds the next unsigned transaction(s) for a close, re-reading live on-chain state.
+// Direct destinations are produced as a single fused transaction, or a sequence-chained
+// series when they exceed the per-transaction operation cap. Claimable-balance accounts
+// are handled in two rounds: this call returns the claim transaction(s) with
+// requiresAnotherCall=true, and once they confirm the next call sees a claimable-free
+// account and returns the close itself. Exchange/mediator destinations are still rejected
+// with a CloseBuildError; that path is a follow-up.
 export async function buildCloseTransactions(
   accountState: AccountState,
   destinationAddress: string,
   dispositions: Record<string, AssetDisposition>,
   network: Network
-): Promise<CloseTransaction[]> {
-  if (accountState.claimableBalances.length > 0) {
-    throw new CloseBuildError(
-      "claimable_balances_unsupported",
-      "Accounts with claimable balances require the multi-step close, not yet exposed by this API."
-    );
-  }
-
+): Promise<CloseBuildResult> {
   const server = getRpcServer(network);
   const liveAccount = await server.getAccount(accountState.address);
   const sdkAccount = new Account(accountState.address, liveAccount.sequenceNumber());
+  const latest = await server.getLatestLedger();
+  // Ledgers close roughly every 5s; surface an approximate ledger bound for the tx time bound.
+  const validUntilLedger = latest.sequence + Math.ceil(TX_TIMEOUT_SECONDS / 5);
+
+  // Round 1 for claimable-balance accounts: claim first (re-reading which are still
+  // on-chain), then the client calls again to build the now claimable-free close. The
+  // claim must precede the close because a claim raises the balance the close disposes of.
+  if (accountState.claimableBalances.length > 0) {
+    const existing = await filterExistingClaimableBalances(accountState.claimableBalances, server);
+    if (existing.length > 0) {
+      const claimInput: FusedCloseInput = {
+        needsSignerNormalization: false,
+        signers: accountState.signers,
+        dataEntries: [],
+        openOffers: [],
+        claimableBalances: existing,
+        assetActions: [],
+        trustlines: [],
+        destinationAddress,
+        memo: null,
+        memoType: null,
+        includeMerge: false,
+      };
+      return {
+        transactions: packFusedCloseTransactions(sdkAccount, claimInput, network, validUntilLedger),
+        requiresAnotherCall: true,
+        remainingSteps: 1,
+      };
+    }
+    // All reported balances were already claimed; fall through and build the close now.
+  }
 
   // Re-read every trustline's live balance: a line empty at scan but funded since must
   // still be disposed of, or the atomic close fails at its trustline-removal op.
@@ -98,11 +135,11 @@ export async function buildCloseTransactions(
     includeMerge: true,
   };
 
-  const latest = await server.getLatestLedger();
-  // Ledgers close roughly every 5s; surface an approximate ledger bound for the tx time bound.
-  const validUntilLedger = latest.sequence + Math.ceil(TX_TIMEOUT_SECONDS / 5);
-
-  return packFusedCloseTransactions(sdkAccount, input, network, validUntilLedger);
+  return {
+    transactions: packFusedCloseTransactions(sdkAccount, input, network, validUntilLedger),
+    requiresAnotherCall: false,
+    remainingSteps: 0,
+  };
 }
 
 /**

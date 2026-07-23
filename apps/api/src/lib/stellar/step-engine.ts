@@ -74,7 +74,7 @@ export function getBatchIndex(step: PlannedStep, type: string, plan: PlannedStep
  * still exist on-chain. This prevents a single already-claimed balance from
  * failing the entire atomic transaction for the remaining claimants.
  */
-async function filterExistingClaimableBalances(
+export async function filterExistingClaimableBalances(
   balances: ClaimableBalance[],
   server: ReturnType<typeof getRpcServer>
 ): Promise<ClaimableBalance[]> {

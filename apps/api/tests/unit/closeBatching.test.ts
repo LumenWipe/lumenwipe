@@ -85,3 +85,38 @@ test("a close over the op cap is split into sequence-chained transactions with t
   // Reported sourceSequence is the account sequence the first tx builds on.
   expect(txs[0].sourceSequence).toBe(START_SEQ);
 });
+
+function claimables(n: number) {
+  return Array.from({ length: n }, (_, i) => ({
+    id: `00000000${i.toString(16).padStart(64, "0")}`,
+    asset: `AST${i}:${ISSUER}`,
+    amount: "1",
+  }));
+}
+
+test("a claim-only round produces claim transactions with no merge", () => {
+  const txs = packFusedCloseTransactions(
+    new Account(MASTER, START_SEQ),
+    input({ claimableBalances: claimables(3), includeMerge: false }),
+    "testnet",
+    999
+  );
+  expect(txs).toHaveLength(1);
+  expect(opCount(txs[0].xdr)).toBe(3);
+  expect(txs[0].covers).toEqual(["CLAIM_BALANCES"]);
+  expect(txs.some((t) => t.covers.includes("MERGE"))).toBe(false);
+});
+
+test("claims over the op cap are split into sequence-chained transactions", () => {
+  const txs = packFusedCloseTransactions(
+    new Account(MASTER, START_SEQ),
+    input({ claimableBalances: claimables(150), includeMerge: false }),
+    "testnet",
+    999
+  );
+  expect(txs.length).toBeGreaterThan(1);
+  for (const t of txs) {
+    expect(opCount(t.xdr)).toBeLessThanOrEqual(100);
+    expect(t.covers).toEqual(["CLAIM_BALANCES"]);
+  }
+});

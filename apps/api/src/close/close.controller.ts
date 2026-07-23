@@ -159,12 +159,7 @@ export class CloseController {
         );
       }
 
-      const transactions = await buildCloseTransactions(
-        accountState,
-        destination,
-        dispositions,
-        network
-      );
+      const result = await buildCloseTransactions(accountState, destination, dispositions, network);
 
       const planHash = computePlanHash({
         source,
@@ -176,8 +171,11 @@ export class CloseController {
       const response: TransactionsResponse = {
         planHash,
         status: "ready",
-        transactions,
-        remaining: { steps: 0, requiresAnotherCall: false },
+        transactions: result.transactions,
+        remaining: {
+          steps: result.remainingSteps,
+          requiresAnotherCall: result.requiresAnotherCall,
+        },
       };
       return response;
     } catch (e) {
