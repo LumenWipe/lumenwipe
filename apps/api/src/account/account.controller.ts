@@ -1,4 +1,4 @@
-import { Controller, Get, HttpException, Param, Query } from "@nestjs/common";
+import { Controller, Get, HttpException, Logger, Param, Query } from "@nestjs/common";
 import { isValidNetwork } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { getAccountState } from "@/lib/stellar/account";
@@ -9,6 +9,8 @@ import { AccountNotFoundError } from "@/lib/utils/errors";
 
 @Controller(":network")
 export class AccountController {
+  private readonly logger = new Logger(AccountController.name);
+
   @Get("account/:address")
   async account(@Param("network") network: string, @Param("address") address: string) {
     if (!isValidNetwork(network)) throw new HttpException({ error: "Invalid network" }, 400);
@@ -36,7 +38,7 @@ export class AccountController {
       if (err instanceof AccountNotFoundError) {
         throw new HttpException({ error: err.message }, 404);
       }
-      console.error("Account fetch error:", err);
+      this.logger.error("account fetch failed", err instanceof Error ? err.stack : String(err));
       throw new HttpException({ error: "Failed to fetch account data" }, 500);
     }
   }
@@ -56,7 +58,7 @@ export class AccountController {
       const path = await fetchConversionPath(fromAsset, amount, network);
       return { path };
     } catch (err) {
-      console.error("Path fetch error:", err);
+      this.logger.error("path fetch failed", err instanceof Error ? err.stack : String(err));
       throw new HttpException({ error: "Failed to fetch conversion path" }, 500);
     }
   }
