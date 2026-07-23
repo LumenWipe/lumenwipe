@@ -9,7 +9,7 @@ import type {
   OpenOffer,
   Trustline,
 } from "@/types/account";
-import type { ConversionPath } from "@/types/plan";
+import type { ConversionPath, StepType } from "@/types/plan";
 import { signerNormalizationOps } from "./signers";
 import { dataEntryRemovalOps } from "./data-entries";
 import { offerCancellationOps } from "./offers";
@@ -41,32 +41,55 @@ export interface FusedCloseInput {
   includeMerge: boolean;
 }
 
+/** A close operation tagged with the plan step it belongs to. */
+export interface TaggedCloseOp {
+  op: xdr.Operation;
+  step: StepType;
+}
+
 /**
- * Assembles the ordered operation list for a fused close. Pure: account id and
- * input in, operation envelopes out, no network side effects. Exported so the
- * step engine can count operations before building, and so the assembly logic is
- * not duplicated. Order is fixed: signer normalization, data removal, offer
- * cancellation, claimable-balance claiming, per-asset disposition, trustline
- * removal, and (for direct destinations) the account merge - so by the time
- * accountMerge runs every subentry is already gone. Claiming runs before the
- * asset dispositions because a claim raises the held balance an action spends.
+ * Assembles the ordered close operations, each tagged with its plan step. Pure:
+ * account id and input in, tagged operations out, no network side effects. Order
+ * is fixed: signer normalization, data removal, offer cancellation,
+ * claimable-balance claiming, per-asset disposition, trustline removal, and (for
+ * direct destinations) the account merge - so by the time accountMerge runs every
+ * subentry is already gone. Claiming runs before the asset dispositions because a
+ * claim raises the held balance an action spends. The tags let a multi-transaction
+ * (batched) close report which steps each transaction covers.
  */
-export function assembleFusedCloseOps(masterKey: string, input: FusedCloseInput): xdr.Operation[] {
-  const ops: xdr.Operation[] = [];
-  if (input.needsSignerNormalization) ops.push(...signerNormalizationOps(input.signers, masterKey));
-  ops.push(...dataEntryRemovalOps(input.dataEntries));
-  ops.push(...offerCancellationOps(input.openOffers));
-  ops.push(...claimBalanceOps(input.claimableBalances));
+export function assembleFusedCloseOpsTagged(
+  masterKey: string,
+  input: FusedCloseInput
+): TaggedCloseOp[] {
+  const tagged: TaggedCloseOp[] = [];
+  const push = (step: StepType, ops: xdr.Operation[]) => {
+    for (const op of ops) tagged.push({ op, step });
+  };
+  if (input.needsSignerNormalization) {
+    push("NORMALIZE_SIGNERS", signerNormalizationOps(input.signers, masterKey));
+  }
+  push("REMOVE_DATA_ENTRIES", dataEntryRemovalOps(input.dataEntries));
+  push("CANCEL_OFFERS", offerCancellationOps(input.openOffers));
+  push("CLAIM_BALANCES", claimBalanceOps(input.claimableBalances));
   for (const a of input.assetActions) {
-    ops.push(
+    push("CONVERT_ASSETS", [
       a.action === "convert"
         ? assetConversionOp(masterKey, a.trustline, a.path)
-        : issuerPaymentOp(a.trustline)
-    );
+        : issuerPaymentOp(a.trustline),
+    ]);
   }
-  ops.push(...trustlineRemovalOps(input.trustlines));
-  if (input.includeMerge) ops.push(mergeOp(input.destinationAddress));
-  return ops;
+  push("REMOVE_TRUSTLINES", trustlineRemovalOps(input.trustlines));
+  if (input.includeMerge) push("MERGE", [mergeOp(input.destinationAddress)]);
+  return tagged;
+}
+
+/**
+ * The ordered close operation list (untagged). Exported so the step engine can
+ * count operations before building. Derived from the tagged assembler so the
+ * operation order lives in exactly one place.
+ */
+export function assembleFusedCloseOps(masterKey: string, input: FusedCloseInput): xdr.Operation[] {
+  return assembleFusedCloseOpsTagged(masterKey, input).map((t) => t.op);
 }
 
 /**

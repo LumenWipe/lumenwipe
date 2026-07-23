@@ -1,20 +1,20 @@
-import { Account } from "@stellar/stellar-sdk";
+import { Account, Memo, TransactionBuilder } from "@stellar/stellar-sdk";
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
-import { OP_BATCH_LIMIT, TX_TIMEOUT_SECONDS } from "@/config/constants";
+import { BASE_FEE_STROOPS, OP_BATCH_LIMIT, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { fetchLiveTrustlineBalance } from "@/lib/stellar/step-engine";
 import { fetchConversionPath } from "@/lib/se-api/paths";
 import { computeNeedsSignerNormalization } from "@/lib/stellar/tx-builder";
+import { batchItems } from "@/lib/stellar/tx-builder/batching";
 import {
-  assembleFusedCloseOps,
-  buildFusedCloseTx,
+  assembleFusedCloseOpsTagged,
   type AssetAction,
   type FusedCloseInput,
 } from "@/lib/stellar/tx-builder/fused-close";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { AssetRouteLostError } from "@/lib/utils/errors";
 import type { AccountState } from "@/types/account";
-import type { AssetDisposition, StepType } from "@/types/plan";
+import type { AssetDisposition } from "@/types/plan";
 import type { CloseTransaction } from "@/types/close-api";
 
 // Raised when a close cannot be expressed as the phase-1 single fused transaction.
@@ -28,17 +28,6 @@ export class CloseBuildError extends Error {
     super(message);
     this.name = "CloseBuildError";
   }
-}
-
-function collectCovers(input: FusedCloseInput): StepType[] {
-  const covers: StepType[] = [];
-  if (input.needsSignerNormalization) covers.push("NORMALIZE_SIGNERS");
-  if (input.dataEntries.length > 0) covers.push("REMOVE_DATA_ENTRIES");
-  if (input.openOffers.length > 0) covers.push("CANCEL_OFFERS");
-  if (input.assetActions.length > 0) covers.push("CONVERT_ASSETS");
-  if (input.trustlines.length > 0) covers.push("REMOVE_TRUSTLINES");
-  if (input.includeMerge) covers.push("MERGE");
-  return covers;
 }
 
 function buildSummary(input: FusedCloseInput): string {
@@ -109,30 +98,60 @@ export async function buildCloseTransactions(
     includeMerge: true,
   };
 
-  const ops = assembleFusedCloseOps(accountState.address, input);
-  if (ops.length > OP_BATCH_LIMIT) {
-    throw new CloseBuildError(
-      "too_many_operations",
-      `This close needs ${ops.length} operations, over the ${OP_BATCH_LIMIT}-operation limit for one transaction; multi-transaction closes are not yet exposed by this API.`
-    );
-  }
-
-  const xdr = buildFusedCloseTx(sdkAccount, input, network);
-  const networkPassphrase = NETWORK_PASSPHRASES[network];
   const latest = await server.getLatestLedger();
+  // Ledgers close roughly every 5s; surface an approximate ledger bound for the tx time bound.
+  const validUntilLedger = latest.sequence + Math.ceil(TX_TIMEOUT_SECONDS / 5);
 
-  return [
-    {
-      id: "tx-1",
-      order: 0,
-      dependsOn: [],
+  return packFusedCloseTransactions(sdkAccount, input, network, validUntilLedger);
+}
+
+/**
+ * Packs an assembled fused close into the minimal set of unsigned transactions:
+ * a single fused tx when it fits under the per-transaction operation cap, or a
+ * sequence-chained series of at most OP_BATCH_LIMIT operations each when it does
+ * not. The account merge always lands in the last transaction, so every subentry
+ * is gone before it runs, and the memo (if any) rides that same last transaction.
+ * Pure: reusing one Account across builds chains the sequence numbers with no
+ * network access. The client submits the transactions in `order`.
+ */
+export function packFusedCloseTransactions(
+  sdkAccount: Account,
+  input: FusedCloseInput,
+  network: Network,
+  validUntilLedger: number
+): CloseTransaction[] {
+  const tagged = assembleFusedCloseOpsTagged(sdkAccount.accountId(), input);
+  const chunks = batchItems(tagged, OP_BATCH_LIMIT);
+  const networkPassphrase = NETWORK_PASSPHRASES[network];
+  const summary = buildSummary(input);
+
+  return chunks.map((chunk, i): CloseTransaction => {
+    const isLast = i === chunks.length - 1;
+    const sourceSequence = sdkAccount.sequenceNumber();
+
+    // The SDK multiplies `fee` by the operation count, so the per-operation base
+    // fee yields BASE_FEE_STROOPS * opCount on-chain.
+    const builder = new TransactionBuilder(sdkAccount, {
+      fee: String(BASE_FEE_STROOPS),
+      networkPassphrase,
+    }).setTimeout(TX_TIMEOUT_SECONDS);
+    // The memo only belongs on the merge-carrying (last) transaction.
+    if (isLast && input.includeMerge && input.memo) {
+      builder.addMemo(input.memoType === "id" ? Memo.id(input.memo) : Memo.text(input.memo));
+    }
+    for (const t of chunk) builder.addOperation(t.op);
+    const xdr = builder.build().toEnvelope().toXDR("base64");
+
+    return {
+      id: `tx-${i + 1}`,
+      order: i,
+      dependsOn: i === 0 ? [] : [`tx-${i}`],
       xdr,
       networkPassphrase,
-      sourceSequence: liveAccount.sequenceNumber(),
-      // Ledgers close roughly every 5s; surface an approximate ledger bound for the tx's time bound.
-      validUntilLedger: latest.sequence + Math.ceil(TX_TIMEOUT_SECONDS / 5),
-      covers: collectCovers(input),
-      intent: { ...intentFromXdr(xdr, networkPassphrase), summary: buildSummary(input) },
-    },
-  ];
+      sourceSequence,
+      validUntilLedger,
+      covers: [...new Set(chunk.map((t) => t.step))],
+      intent: { ...intentFromXdr(xdr, networkPassphrase), summary },
+    };
+  });
 }
