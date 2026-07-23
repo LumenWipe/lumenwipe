@@ -1,4 +1,4 @@
-import type { Network } from "@/config/networks";
+import { type Network, PATH_ROUTING_API_URLS } from "@/config/networks";
 import { AccountNotFoundError } from "@/lib/utils/errors";
 import { fetchOffersFromAdapter, fetchClaimableBalancesForClaimant } from "./horizon-adapter";
 import { detectSubEntryMismatch } from "./scan-fallback";
@@ -68,7 +68,6 @@ export async function getLiveAccountState(
   address: string,
   network: Network = "testnet"
 ): Promise<AccountState> {
-  const { PATH_ROUTING_API_URLS } = await import("@/config/networks");
   const base = PATH_ROUTING_API_URLS[network];
   if (!base) {
     throw new Error(`NEXT_PUBLIC_PATH_ROUTING_API_${network.toUpperCase()} is not configured`);
