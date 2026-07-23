@@ -36,6 +36,13 @@ export class CloseTransactionsRequestDto {
     items: { type: "object" },
   })
   decisions?: DecisionAnswer[];
+
+  @ApiPropertyOptional({
+    description:
+      "Deposit memo value for exchange destinations that require one. The memo type is taken from the exchange registry, not the client.",
+    example: "1234567890",
+  })
+  memo?: string;
 }
 
 export class SubmitRequestDto {

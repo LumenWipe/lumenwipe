@@ -1,9 +1,10 @@
 import { Account, Memo, TransactionBuilder } from "@stellar/stellar-sdk";
-import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
+import { NETWORK_PASSPHRASES, getMediatorPublicKey, type Network } from "@/config/networks";
 import { BASE_FEE_STROOPS, OP_BATCH_LIMIT, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { fetchLiveTrustlineBalance, filterExistingClaimableBalances } from "@/lib/stellar/step-engine";
 import { fetchConversionPath } from "@/lib/se-api/paths";
+import { lookupExchange, requiresMediatorForAddress } from "@/lib/exchange-registry";
 import { computeNeedsSignerNormalization } from "@/lib/stellar/tx-builder";
 import { batchItems } from "@/lib/stellar/tx-builder/batching";
 import {
@@ -11,6 +12,7 @@ import {
   type AssetAction,
   type FusedCloseInput,
 } from "@/lib/stellar/tx-builder/fused-close";
+import { buildMediatorMergePaymentTx } from "@/lib/stellar/tx-builder/merge";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { AssetRouteLostError } from "@/lib/utils/errors";
 import type { AccountState } from "@/types/account";
@@ -58,17 +60,21 @@ export interface CloseBuildResult {
 }
 
 // Builds the next unsigned transaction(s) for a close, re-reading live on-chain state.
-// Direct destinations are produced as a single fused transaction, or a sequence-chained
-// series when they exceed the per-transaction operation cap. Claimable-balance accounts
-// are handled in two rounds: this call returns the claim transaction(s) with
-// requiresAnotherCall=true, and once they confirm the next call sees a claimable-free
-// account and returns the close itself. Exchange/mediator destinations are still rejected
-// with a CloseBuildError; that path is a follow-up.
+// The close is produced as the minimal set of transactions and driven over as many rounds
+// as needed (the client submits, waits for confirmation, then calls again):
+//   - direct destination: a single fused transaction, or a sequence-chained series when it
+//     exceeds the per-transaction operation cap;
+//   - claimable balances: a claim round first, then the close once they confirm;
+//   - exchange (mediator) destination: a cleanup round first (subentries + conversion, no
+//     merge), then the mediator merge + forward payment built against the post-cleanup
+//     balance.
+// `requiresAnotherCall` is true whenever more transactions follow the returned batch.
 export async function buildCloseTransactions(
   accountState: AccountState,
   destinationAddress: string,
   dispositions: Record<string, AssetDisposition>,
-  network: Network
+  network: Network,
+  memo: string | null = null
 ): Promise<CloseBuildResult> {
   const server = getRpcServer(network);
   const liveAccount = await server.getAccount(accountState.address);
@@ -121,6 +127,11 @@ export async function buildCloseTransactions(
   );
   const assetActions = withActions.filter((a): a is AssetAction => a !== null);
 
+  // The exchange registry dictates the memo type; the client only supplies the value.
+  const needsMediator = requiresMediatorForAddress(destinationAddress);
+  const exchange = lookupExchange(destinationAddress);
+  const memoType = exchange?.memoType ?? (memo ? "text" : null);
+
   const input: FusedCloseInput = {
     needsSignerNormalization: computeNeedsSignerNormalization(accountState),
     signers: accountState.signers,
@@ -130,13 +141,63 @@ export async function buildCloseTransactions(
     assetActions,
     trustlines: accountState.trustlines,
     destinationAddress,
-    memo: null,
-    memoType: null,
-    includeMerge: true,
+    memo,
+    memoType,
+    // Direct destinations merge inside the fused tx; exchange destinations merge through
+    // the mediator in a separate transaction built once cleanup confirms.
+    includeMerge: !needsMediator,
   };
 
+  const closeTxs = packFusedCloseTransactions(sdkAccount, input, network, validUntilLedger);
+
+  if (!needsMediator) {
+    return { transactions: closeTxs, requiresAnotherCall: false, remainingSteps: 0 };
+  }
+
+  // Exchange destination. Clean up first (remove subentries, convert assets); once those
+  // confirm, the account holds only XLM and the next call builds the mediator merge.
+  if (closeTxs.length > 0) {
+    return { transactions: closeTxs, requiresAnotherCall: true, remainingSteps: 1 };
+  }
+
+  const mediatorPublicKey = getMediatorPublicKey(network);
+  if (!mediatorPublicKey) {
+    throw new CloseBuildError(
+      "mediator_not_configured",
+      "The exchange (mediator) flow is not configured on this server.",
+      503
+    );
+  }
+
+  const networkPassphrase = NETWORK_PASSPHRASES[network];
+  const sourceSequence = sdkAccount.sequenceNumber();
+  const xdr = buildMediatorMergePaymentTx(
+    sdkAccount,
+    mediatorPublicKey,
+    destinationAddress,
+    accountState.nativeBalanceLumens,
+    memo,
+    network,
+    memoType
+  );
+
   return {
-    transactions: packFusedCloseTransactions(sdkAccount, input, network, validUntilLedger),
+    transactions: [
+      {
+        id: "tx-1",
+        order: 0,
+        dependsOn: [],
+        xdr,
+        networkPassphrase,
+        sourceSequence,
+        validUntilLedger,
+        covers: ["MERGE"],
+        intent: {
+          ...intentFromXdr(xdr, networkPassphrase),
+          summary: "Merge the account through the mediator and forward the balance to the destination.",
+        },
+      },
+    ],
     requiresAnotherCall: false,
     remainingSteps: 0,
   };

@@ -10,7 +10,7 @@ import { isValidGAddress } from "@/lib/utils/validation";
 import { readAccountState } from "@/lib/close-api/read-account";
 import { fetchConversionPath } from "@/lib/se-api/paths";
 import { buildPlan } from "@/lib/stellar/tx-builder";
-import { requiresMediatorForAddress } from "@/lib/exchange-registry";
+import { lookupExchange, requiresMediatorForAddress } from "@/lib/exchange-registry";
 import {
   assetDecisionId,
   deriveDecisionPoints,
@@ -113,10 +113,18 @@ export class CloseController {
   @ApiResponse({ status: 400, description: "Invalid network, source, destination, or JSON body." })
   @ApiResponse({ status: 404, description: "Source account not found." })
   @ApiResponse({ status: 409, description: "A conversion route drifted; re-plan and retry." })
-  @ApiResponse({ status: 422, description: "Unprocessable: unresolved asset dispositions, unsupported mediator destination, unsupported claimable balances, or too many operations." })
+  @ApiResponse({ status: 422, description: "Unprocessable: unresolved asset dispositions, or a required exchange memo is missing." })
+  @ApiResponse({ status: 503, description: "The exchange (mediator) flow is not configured on this server." })
   async transactions(
     @Param("network") network: string,
-    @Body() body: { source?: unknown; destination?: unknown; decisions?: unknown; planHash?: unknown }
+    @Body()
+    body: {
+      source?: unknown;
+      destination?: unknown;
+      decisions?: unknown;
+      planHash?: unknown;
+      memo?: unknown;
+    }
   ) {
     if (!isValidNetwork(network)) fail("invalid_network", "Invalid network.", 400);
 
@@ -127,12 +135,14 @@ export class CloseController {
     if (typeof destination !== "string" || !isValidGAddress(destination)) {
       fail("invalid_destination", "A valid destination account (G...) is required.", 400);
     }
+    const memo = typeof body.memo === "string" ? body.memo : null;
     if (requiresMediatorForAddress(destination)) {
-      fail(
-        "mediator_destination_unsupported",
-        "Exchange destinations that require a mediator are not yet supported by this API.",
-        422
-      );
+      const exchange = lookupExchange(destination);
+      if (exchange?.requiresMemo && !memo) {
+        fail("memo_required", "This exchange destination requires a deposit memo.", 422, {
+          memoType: exchange.memoType,
+        });
+      }
     }
     const decisions: DecisionAnswer[] = Array.isArray(body.decisions)
       ? (body.decisions as DecisionAnswer[])
@@ -159,7 +169,13 @@ export class CloseController {
         );
       }
 
-      const result = await buildCloseTransactions(accountState, destination, dispositions, network);
+      const result = await buildCloseTransactions(
+        accountState,
+        destination,
+        dispositions,
+        network,
+        memo
+      );
 
       const planHash = computePlanHash({
         source,
