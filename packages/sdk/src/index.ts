@@ -23,6 +23,8 @@ export interface LumenWipeClientOptions {
   network?: Network;
   /** Custom fetch (for environments without a global `fetch`, or for testing). */
   fetch?: FetchLike;
+  /** Per-request timeout in milliseconds. Defaults to 30000. `0`/`Infinity` disables it. */
+  timeout?: number;
 }
 
 /** Thrown when the API responds with a non-2xx status. `body` is the parsed error payload. */
@@ -36,6 +38,14 @@ export class LumenWipeApiError extends Error {
   }
 }
 
+/** Thrown when a request exceeds the configured timeout. */
+export class LumenWipeTimeoutError extends Error {
+  constructor(readonly timeoutMs: number) {
+    super(`LumenWipe API request timed out after ${timeoutMs}ms`);
+    this.name = "LumenWipeTimeoutError";
+  }
+}
+
 /**
  * Thin, typed client over the LumenWipe REST API. It only relays JSON and XDR
  * strings — transaction building and signing stay with the caller, so this
@@ -46,11 +56,13 @@ export class LumenWipeClient {
   private readonly apiKey: string;
   private readonly defaultNetwork: Network;
   private readonly doFetch: FetchLike;
+  private readonly timeout: number;
 
   constructor(options: LumenWipeClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.apiKey = options.apiKey;
     this.defaultNetwork = options.network ?? "testnet";
+    this.timeout = options.timeout ?? 30_000;
     const resolved = options.fetch ?? globalThis.fetch;
     if (!resolved) {
       throw new Error("No fetch implementation available; pass one via options.fetch.");
@@ -110,26 +122,38 @@ export class LumenWipeClient {
     const headers: Record<string, string> = { Authorization: `Bearer ${this.apiKey}` };
     if (body !== undefined) headers["Content-Type"] = "application/json";
 
-    const res = await this.doFetch(`${this.baseUrl}${path}`, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    const controller = new AbortController();
+    const bounded = Number.isFinite(this.timeout) && this.timeout > 0;
+    const timer = bounded ? setTimeout(() => controller.abort(), this.timeout) : undefined;
 
-    const text = await res.text();
-    let parsed: unknown = undefined;
-    if (text) {
-      // A proxy/CDN can return a non-JSON error body (e.g. an HTML 502). Fall
-      // back to the raw text so a non-2xx always surfaces as a LumenWipeApiError
-      // with its status, never a raw SyntaxError.
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        parsed = text;
+    try {
+      const res = await this.doFetch(`${this.baseUrl}${path}`, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
+
+      const text = await res.text();
+      let parsed: unknown = undefined;
+      if (text) {
+        // A proxy/CDN can return a non-JSON error body (e.g. an HTML 502). Fall
+        // back to the raw text so a non-2xx always surfaces as a LumenWipeApiError
+        // with its status, never a raw SyntaxError.
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          parsed = text;
+        }
       }
+      if (!res.ok) throw new LumenWipeApiError(res.status, parsed);
+      return parsed as T;
+    } catch (e) {
+      if (controller.signal.aborted) throw new LumenWipeTimeoutError(this.timeout);
+      throw e;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
-    if (!res.ok) throw new LumenWipeApiError(res.status, parsed);
-    return parsed as T;
   }
 }
 

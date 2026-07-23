@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
-import { LumenWipeApiError, LumenWipeClient, type FetchLike } from "../../src/index";
+import {
+  LumenWipeApiError,
+  LumenWipeClient,
+  LumenWipeTimeoutError,
+  type FetchLike,
+} from "../../src/index";
 
 interface Call {
   url: string;
@@ -17,6 +22,16 @@ function mockFetch(status: number, body: unknown): { fetch: FetchLike; calls: Ca
 
 function mockRawFetch(status: number, text: string): FetchLike {
   return () => Promise.resolve(new Response(text, { status }));
+}
+
+/** A fetch that never resolves, but rejects (like real fetch) when the signal aborts. */
+function hangingFetch(): FetchLike {
+  return (_url, init) =>
+    new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () =>
+        reject(new DOMException("The operation was aborted.", "AbortError"))
+      );
+    });
 }
 
 test("closePlan posts to the v1 path with the bearer key and JSON body", async () => {
@@ -99,4 +114,22 @@ test("a non-JSON error body (e.g. a proxy 502) still throws LumenWipeApiError wi
   expect(error).toBeInstanceOf(LumenWipeApiError);
   expect((error as LumenWipeApiError).status).toBe(502);
   expect((error as LumenWipeApiError).body).toBe("<html>502 Bad Gateway</html>");
+});
+
+test("a request that exceeds the timeout throws LumenWipeTimeoutError", async () => {
+  const client = new LumenWipeClient({
+    baseUrl: "https://x",
+    apiKey: "k",
+    timeout: 10,
+    fetch: hangingFetch(),
+  });
+
+  let error: unknown;
+  try {
+    await client.getAccount("GABC");
+  } catch (e) {
+    error = e;
+  }
+  expect(error).toBeInstanceOf(LumenWipeTimeoutError);
+  expect((error as LumenWipeTimeoutError).timeoutMs).toBe(10);
 });
