@@ -36,9 +36,6 @@ export class CloseTransactionsRequestDto {
     items: { type: "object" },
   })
   decisions?: DecisionAnswer[];
-
-  @ApiPropertyOptional({ description: "Plan hash returned by /close/plan." })
-  planHash?: string;
 }
 
 export class SubmitRequestDto {

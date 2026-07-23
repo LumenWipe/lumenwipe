@@ -113,7 +113,7 @@ export class CloseController {
   @ApiResponse({ status: 400, description: "Invalid network, source, destination, or JSON body." })
   @ApiResponse({ status: 404, description: "Source account not found." })
   @ApiResponse({ status: 409, description: "A conversion route drifted; re-plan and retry." })
-  @ApiResponse({ status: 422, description: "Unresolved asset dispositions, or unsupported mediator destination." })
+  @ApiResponse({ status: 422, description: "Unprocessable: unresolved asset dispositions, unsupported mediator destination, unsupported claimable balances, or too many operations." })
   async transactions(
     @Param("network") network: string,
     @Body() body: { source?: unknown; destination?: unknown; decisions?: unknown; planHash?: unknown }

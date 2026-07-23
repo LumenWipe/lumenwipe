@@ -11,7 +11,9 @@ export function buildOpenApiConfig() {
     .setDescription("Programmatic close-out of Stellar accounts.")
     .setVersion("0.1.0")
     .addBearerAuth(
-      { type: "http", scheme: "bearer", description: "Integrator API key" },
+      // bearerFormat is set explicitly: the default is "JWT", but this credential
+      // is an opaque integrator API key, not a JWT.
+      { type: "http", scheme: "bearer", bearerFormat: "opaque", description: "Integrator API key" },
       "api-key"
     )
     .addTag("close", "Build and submit an account close-out")

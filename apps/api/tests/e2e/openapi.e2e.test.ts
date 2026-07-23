@@ -26,6 +26,7 @@ test("spec declares the Bearer API-key security scheme", () => {
   expect(spec.components?.securitySchemes?.["api-key"]).toMatchObject({
     type: "http",
     scheme: "bearer",
+    bearerFormat: "opaque", // not "JWT" — the credential is an opaque API key
   });
 });
 
