@@ -1,11 +1,23 @@
 import type { Network } from "./network";
 
+export type ClaimPredicate =
+  | { type: "unconditional" }
+  | { type: "and"; predicates: ClaimPredicate[] }
+  | { type: "or"; predicates: ClaimPredicate[] }
+  | { type: "not"; predicate: ClaimPredicate }
+  | { type: "before_absolute_time"; absBeforeEpoch: string }
+  | { type: "before_relative_time"; relBeforeSeconds: string; deadlineEpoch: string };
+
 export interface ClaimableBalance {
   /** Full 72-char hex balance ID as returned by Horizon ("00000000" + 64-char hash). */
   id: string;
   /** "CODE:ISSUER" or "native" */
   asset: string;
   amount: string;
+  /** One entry per claimant on the balance, each with its own predicate. */
+  claimants: { destination: string; predicate: ClaimPredicate }[];
+  /** Account sponsoring this balance's reserve, or null if unsponsored. */
+  sponsor: string | null;
 }
 
 export interface AccountSigner {

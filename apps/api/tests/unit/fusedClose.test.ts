@@ -20,6 +20,17 @@ function balanceId(hexChar: string) {
   return `00000000${hexChar.repeat(64)}`;
 }
 
+// Structurally valid claimable balance with an unconditional predicate for MASTER.
+function cb(hexChar: string, asset: string, amount: string) {
+  return {
+    id: balanceId(hexChar),
+    asset,
+    amount,
+    claimants: [{ destination: MASTER, predicate: { type: "unconditional" as const } }],
+    sponsor: null,
+  };
+}
+
 const TL = {
   asset: `USDC:${ISSUER}`,
   balance: "10",
@@ -98,7 +109,7 @@ test("buildFusedCloseTx > operation order is signers, data, offers, claim, conve
         openOffers: [
           { id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" },
         ],
-        claimableBalances: [{ id: balanceId("d"), asset: "native", amount: "1" }],
+        claimableBalances: [cb("d", "native", "1")],
         assetActions: [
           { trustline: TL, action: "convert", path: convertPath() },
           { trustline: issuerTl, action: "issuer" },
@@ -128,10 +139,7 @@ test("buildFusedCloseTx > claim ops appear one per claimable balance", () => {
       account(),
       baseInput({
         includeMerge: false,
-        claimableBalances: [
-          { id: balanceId("a"), asset: "native", amount: "1" },
-          { id: balanceId("b"), asset: `USDC:${ISSUER}`, amount: "2" },
-        ],
+        claimableBalances: [cb("a", "native", "1"), cb("b", `USDC:${ISSUER}`, "2")],
       }),
       "testnet"
     )
@@ -210,7 +218,7 @@ test("assembleFusedCloseOps > counts ops for a representative input", () => {
       openOffers: [
         { id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" },
       ],
-      claimableBalances: [{ id: balanceId("c"), asset: "native", amount: "1" }],
+      claimableBalances: [cb("c", "native", "1")],
       assetActions: [{ trustline: TL, action: "convert", path: convertPath() }],
       trustlines: [TL],
     })

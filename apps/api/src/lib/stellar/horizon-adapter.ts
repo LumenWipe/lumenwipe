@@ -1,6 +1,6 @@
 import { PATH_ROUTING_API_URLS } from "@/config/networks";
 import type { Network } from "@/config/networks";
-import type { ClaimableBalance, OpenOffer } from "@/types/account";
+import type { ClaimableBalance, ClaimPredicate, OpenOffer } from "@/types/account";
 import { horizonAssetToString } from "@/lib/utils/assets";
 
 interface HorizonOffer {
@@ -16,10 +16,28 @@ interface HorizonOffersPage {
   _links?: { next?: { href?: string } };
 }
 
+interface HorizonClaimPredicate {
+  unconditional?: boolean;
+  and?: HorizonClaimPredicate[];
+  or?: HorizonClaimPredicate[];
+  not?: HorizonClaimPredicate;
+  abs_before?: string;
+  abs_before_epoch?: string;
+  rel_before?: string;
+}
+
+interface HorizonClaimant {
+  destination: string;
+  predicate: HorizonClaimPredicate;
+}
+
 interface HorizonClaimableBalance {
   id: string;
   asset: string; // "native" or "CODE:ISSUER"
   amount: string;
+  sponsor?: string;
+  last_modified_time: string;
+  claimants: HorizonClaimant[];
 }
 
 interface HorizonClaimableBalancesPage {
@@ -29,6 +47,47 @@ interface HorizonClaimableBalancesPage {
 
 const PAGE_LIMIT = 200;
 const MAX_TOTAL = 1000;
+
+// Horizon has no separate "created" timestamp for a claimable balance; last_modified_time
+// is the creation time for the (overwhelmingly common) case of a balance nothing has
+// touched since it was created, so it's used as the anchor for rel_before predicates.
+export function parseClaimPredicate(
+  raw: HorizonClaimPredicate,
+  createdAtEpochSeconds: number
+): ClaimPredicate {
+  if (raw.and) {
+    return {
+      type: "and",
+      predicates: raw.and.map((p) => parseClaimPredicate(p, createdAtEpochSeconds)),
+    };
+  }
+  if (raw.or) {
+    return {
+      type: "or",
+      predicates: raw.or.map((p) => parseClaimPredicate(p, createdAtEpochSeconds)),
+    };
+  }
+  if (raw.not) {
+    return { type: "not", predicate: parseClaimPredicate(raw.not, createdAtEpochSeconds) };
+  }
+  if (raw.abs_before_epoch !== undefined) {
+    return { type: "before_absolute_time", absBeforeEpoch: raw.abs_before_epoch };
+  }
+  if (raw.abs_before !== undefined) {
+    return {
+      type: "before_absolute_time",
+      absBeforeEpoch: String(Math.floor(Date.parse(raw.abs_before) / 1000)),
+    };
+  }
+  if (raw.rel_before !== undefined) {
+    return {
+      type: "before_relative_time",
+      relBeforeSeconds: raw.rel_before,
+      deadlineEpoch: String(createdAtEpochSeconds + Number(raw.rel_before)),
+    };
+  }
+  return { type: "unconditional" };
+}
 
 /**
  * Fetches open DEX offers for an account from a Horizon-compatible API.
@@ -110,7 +169,17 @@ export async function fetchClaimableBalancesForClaimant(
     const records = page._embedded?.records ?? [];
 
     for (const b of records) {
-      all.push({ id: b.id, asset: b.asset, amount: b.amount });
+      const createdAtEpochSeconds = Math.floor(Date.parse(b.last_modified_time) / 1000);
+      all.push({
+        id: b.id,
+        asset: b.asset,
+        amount: b.amount,
+        sponsor: b.sponsor ?? null,
+        claimants: b.claimants.map((c) => ({
+          destination: c.destination,
+          predicate: parseClaimPredicate(c.predicate, createdAtEpochSeconds),
+        })),
+      });
     }
 
     const nextHref = page._links?.next?.href;
