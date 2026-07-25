@@ -9,6 +9,9 @@ WORKDIR /app
 # bun install --frozen-lockfile needs EVERY workspace manifest present, even when
 # building a single app. Copy the root lockfile + all workspace package.json first
 # so dependency install caches independently of source changes.
+# NOTE: the api imports no workspace package today, so only the manifests are needed.
+# When #63 makes it import @lumenwipe/types, also COPY that package's source into the
+# builder (and build it) or node dist/main.js won't resolve the workspace dep.
 COPY package.json bun.lock ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/

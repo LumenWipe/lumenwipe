@@ -8,6 +8,8 @@ on:
     paths:
       - "apps/api/**"
       - "packages/**"
+      - "package.json" # root workspace config affects the image
+      - "tsconfig.base.json" # copied into the builder; affects compilation
       - "bun.lock"
       - ".github/workflows/deploy-api.yml"
   workflow_dispatch:
