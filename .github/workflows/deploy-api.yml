@@ -44,7 +44,9 @@ jobs:
       - name: Build and push image
         run: |
           gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
-          docker build -f apps/api/Dockerfile -t "$IMAGE" .
+          # Cloud Run needs a plain linux/amd64 image manifest: --provenance=false
+          # avoids BuildKit's OCI image-index + attestation manifest that Cloud Run rejects.
+          docker build --platform linux/amd64 --provenance=false -f apps/api/Dockerfile -t "$IMAGE" .
           docker push "$IMAGE"
 
       # Deploys a new revision from the image. Resource flags below are applied;
