@@ -91,6 +91,8 @@ function claimables(n: number) {
     id: `00000000${i.toString(16).padStart(64, "0")}`,
     asset: `AST${i}:${ISSUER}`,
     amount: "1",
+    claimants: [{ destination: MASTER, predicate: { type: "unconditional" as const } }],
+    sponsor: null,
   }));
 }
 

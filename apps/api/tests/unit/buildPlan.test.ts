@@ -47,7 +47,13 @@ function makeClaimableBalance(asset: string, amount = "10.0000000"): ClaimableBa
     .replace(/[^a-z0-9]/gi, "0")
     .padEnd(64, "0")
     .slice(0, 64);
-  return { id: `00000000${hash}`, asset, amount };
+  return {
+    id: `00000000${hash}`,
+    asset,
+    amount,
+    claimants: [{ destination: MASTER, predicate: { type: "unconditional" } }],
+    sponsor: null,
+  };
 }
 
 // ─── Basic plan structure ────────────────────────────────────────────────────
@@ -472,6 +478,8 @@ test("buildPlan › 101 XLM claimable balances → 2 CLAIM_BALANCES batches", ()
       id: `00000000${"0".repeat(63)}${i.toString(16).slice(-1)}`,
       asset: "native",
       amount: "1.0000000",
+      claimants: [{ destination: MASTER, predicate: { type: "unconditional" as const } }],
+      sponsor: null,
     })),
   });
   const { steps } = buildPlan(account, false);
