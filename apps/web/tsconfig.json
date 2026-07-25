@@ -13,7 +13,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@lumenwipe/sdk": ["../../packages/sdk/src/index.ts"],
+      "@lumenwipe/types": ["../../packages/types/src/index.ts"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

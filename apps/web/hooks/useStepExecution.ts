@@ -5,7 +5,7 @@ import { Keypair, TransactionBuilder } from "@stellar/stellar-sdk";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
-import { submitAndWait } from "@/lib/stellar/submit";
+import { submitViaApi } from "@/lib/stellar/submit-via-api";
 import { saveSession } from "@/lib/session/store";
 import { buildStepXdrForPlan } from "@/lib/stellar/step-engine";
 import { requestMediatorCosignature } from "@/lib/stellar/mediator";
@@ -85,12 +85,12 @@ export function useStepExecution() {
           setProgressStatus("Co-signing the forward payment...");
           const cosignedXdr = await requestMediatorCosignature(signedXdr, network);
           setProgressStatus("Submitting to Stellar network...");
-          const { txHash } = await submitAndWait(cosignedXdr, network, setProgressStatus);
+          const { txHash } = await submitViaApi(cosignedXdr, network);
           markStepConfirmed(step.index, txHash);
           recordMergeStats(txHash, network);
         } else {
           setProgressStatus("Submitting to Stellar network...");
-          const { txHash } = await submitAndWait(signedXdr, network, setProgressStatus);
+          const { txHash } = await submitViaApi(signedXdr, network);
           markStepConfirmed(step.index, txHash);
           if (carriesMerge) recordMergeStats(txHash, network);
         }
