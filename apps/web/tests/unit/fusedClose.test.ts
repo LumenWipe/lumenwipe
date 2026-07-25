@@ -5,6 +5,7 @@ import {
   buildFusedCloseTx,
   type FusedCloseInput,
 } from "@/lib/stellar/tx-builder/fused-close";
+import type { ClaimableBalance } from "@/types/account";
 
 const MASTER = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -18,6 +19,16 @@ function account() {
 // A valid claimable balance id is an 8-char discriminant + 64 hex chars.
 function balanceId(hexChar: string) {
   return `00000000${hexChar.repeat(64)}`;
+}
+
+function makeClaimableBalance(id: string, asset: string, amount: string): ClaimableBalance {
+  return {
+    id,
+    asset,
+    amount,
+    claimants: [{ destination: MASTER, predicate: { type: "unconditional" } }],
+    sponsor: null,
+  };
 }
 
 const TL = {
@@ -98,7 +109,7 @@ test("buildFusedCloseTx > operation order is signers, data, offers, claim, conve
         openOffers: [
           { id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" },
         ],
-        claimableBalances: [{ id: balanceId("d"), asset: "native", amount: "1" }],
+        claimableBalances: [makeClaimableBalance(balanceId("d"), "native", "1")],
         assetActions: [
           { trustline: TL, action: "convert", path: convertPath() },
           { trustline: issuerTl, action: "issuer" },
@@ -129,8 +140,8 @@ test("buildFusedCloseTx > claim ops appear one per claimable balance", () => {
       baseInput({
         includeMerge: false,
         claimableBalances: [
-          { id: balanceId("a"), asset: "native", amount: "1" },
-          { id: balanceId("b"), asset: `USDC:${ISSUER}`, amount: "2" },
+          makeClaimableBalance(balanceId("a"), "native", "1"),
+          makeClaimableBalance(balanceId("b"), `USDC:${ISSUER}`, "2"),
         ],
       }),
       "testnet"
@@ -210,7 +221,7 @@ test("assembleFusedCloseOps > counts ops for a representative input", () => {
       openOffers: [
         { id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" },
       ],
-      claimableBalances: [{ id: balanceId("c"), asset: "native", amount: "1" }],
+      claimableBalances: [makeClaimableBalance(balanceId("c"), "native", "1")],
       assetActions: [{ trustline: TL, action: "convert", path: convertPath() }],
       trustlines: [TL],
     })
