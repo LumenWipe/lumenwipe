@@ -1,0 +1,66 @@
+name: Deploy API (Cloud Run)
+
+# Runs on merge to main. main is branch-protected (requires the CI check), so a
+# commit reaching main is already CI-green. Also triggerable by hand.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/**"
+      - "packages/**"
+      - "bun.lock"
+      - ".github/workflows/deploy-api.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # required for keyless auth (Workload Identity Federation)
+
+env:
+  SERVICE: lumenwipe-api
+  REGION: ${{ vars.GCP_REGION }}
+  IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_AR_REPO }}/lumenwipe-api:${{ github.sha }}
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (keyless / WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push image
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker build -f apps/api/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      # Deploys a new revision from the image. Resource flags below are applied;
+      # env vars and Secret Manager bindings are set once on the service (see the
+      # runbook) and inherited by each new revision, so they're not repeated here.
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE }}
+          region: ${{ env.REGION }}
+          image: ${{ env.IMAGE }}
+          flags: >-
+            --min-instances=0
+            --max-instances=1
+            --cpu=1
+            --memory=512Mi
+            --execution-environment=gen1
+            --cpu-boost
+
+      - run: echo "Deployed ${SERVICE} -> ${{ steps.deploy.outputs.url }}"
