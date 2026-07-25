@@ -1,0 +1,13 @@
+# Never copy host installs/builds or secrets into the image build context.
+**/node_modules
+**/dist
+.git
+.github
+**/.env
+**/.env.*
+!**/.env.example
+apps/web/.next
+apps/web/playwright-report
+apps/web/test-results
+**/*.log
+docs
