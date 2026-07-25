@@ -34,5 +34,11 @@ export async function submitViaApi(signedXdr: string, network: Network): Promise
     throw new Error(message);
   }
 
-  return { txHash: data.hash ?? "", ledger: data.ledger ?? 0 };
+  // A 2xx with no hash means the response contract drifted; fail loudly rather
+  // than marking a step "confirmed" with an empty hash.
+  if (!data.hash) {
+    throw new Error("The transaction was submitted but the server returned no hash.");
+  }
+
+  return { txHash: data.hash, ledger: data.ledger ?? 0 };
 }

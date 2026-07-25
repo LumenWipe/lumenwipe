@@ -19,7 +19,12 @@ import {
 import { assemblePlanResponse, computePlanHash } from "@/lib/close-api/plan-response";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
 import { submitAndWait, InvalidSignatureError } from "@/lib/stellar/submit";
-import { AccountNotFoundError, AssetRouteLostError, TxTimeoutError } from "@/lib/utils/errors";
+import {
+  AccountNotFoundError,
+  AssetRouteLostError,
+  TxTimeoutError,
+  TxSubmitError,
+} from "@/lib/utils/errors";
 import { BASE_FEE_STROOPS } from "@/config/constants";
 import type { DecisionAnswer, TransactionsResponse } from "@/types/close-api";
 
@@ -243,6 +248,12 @@ export class CloseController {
       }
       if (e instanceof TxTimeoutError) {
         fail("confirmation_timeout", "The transaction did not confirm in time.", 504);
+      }
+      // Surface the network's plain-language rejection reason (insufficient
+      // balance, bad sequence, no destination, ...) instead of a generic error,
+      // so a failed close in the guided flow stays diagnosable.
+      if (e instanceof TxSubmitError) {
+        fail("submit_rejected", e.message, 502, e.resultCode ? { resultCode: e.resultCode } : undefined);
       }
       if (e instanceof Error && /xdr|envelope|decode/i.test(e.message)) {
         fail("invalid_signed_xdr", "The transaction envelope could not be decoded.", 400);

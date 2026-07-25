@@ -21,7 +21,9 @@ export async function proxy<T>(
         typeof e.body === "object" && e.body !== null
           ? e.body
           : { error: String(e.body ?? "Upstream error") };
-      return NextResponse.json(body, { status: e.status });
+      // Guard against a 0/undefined status defaulting NextResponse to 200,
+      // which would relay an error body as a success.
+      return NextResponse.json(body, { status: e.status || 502 });
     }
     if (e instanceof LumenWipeTimeoutError) {
       return NextResponse.json({ error: "The API request timed out." }, { status: 504 });
