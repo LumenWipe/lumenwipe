@@ -480,7 +480,13 @@ describe("buildPlan step ordering", () => {
       dataEntries: [],
       openOffers: [],
       claimableBalances: [
-        { id: "00000000" + "0".repeat(64), asset: `USDC:${issuer}`, amount: "5.0" },
+        {
+          id: "00000000" + "0".repeat(64),
+          asset: `USDC:${issuer}`,
+          amount: "5.0",
+          claimants: [{ destination: "GSOURCE", predicate: { type: "unconditional" } }],
+          sponsor: null,
+        },
       ],
       trustlines: [
         {
