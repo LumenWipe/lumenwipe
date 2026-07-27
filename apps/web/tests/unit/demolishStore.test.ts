@@ -1,6 +1,6 @@
 import { test, expect, beforeEach, describe } from "bun:test";
 import { useDemolishStore } from "@/store/demolish";
-import type { PlannedStep } from "@/types/plan";
+import type { PlannedStep, StepType } from "@/types/plan";
 import type { AccountState, Trustline } from "@/types/account";
 
 function accountState(over: Partial<AccountState> = {}): AccountState {
@@ -71,6 +71,30 @@ test("setPlan resets currentStepIndex so a new shorter plan is in range", () => 
 test("setPlan stores the provided plan", () => {
   useDemolishStore.getState().setPlan([step(0), step(1)]);
   expect(useDemolishStore.getState().executionPlan.map((s) => s.index)).toEqual([0, 1]);
+});
+
+test("markCoveredConfirmed confirms every step whose type a transaction covers", () => {
+  const mk = (index: number, type: StepType): PlannedStep => ({ ...step(index), type });
+  useDemolishStore
+    .getState()
+    .setPlan([mk(0, "NORMALIZE_SIGNERS"), mk(1, "REMOVE_TRUSTLINES"), mk(2, "MERGE")]);
+
+  // A first fused transaction covers the signer + trustline steps at once.
+  useDemolishStore.getState().markCoveredConfirmed(["NORMALIZE_SIGNERS", "REMOVE_TRUSTLINES"], "hashA");
+  let plan = useDemolishStore.getState().executionPlan;
+  expect(plan.filter((p) => p.status === "confirmed").map((p) => p.type)).toEqual([
+    "NORMALIZE_SIGNERS",
+    "REMOVE_TRUSTLINES",
+  ]);
+  expect(plan.find((p) => p.type === "MERGE")!.status).toBe("pending"); // not yet
+  expect(plan[0].txHash).toBe("hashA");
+  expect(useDemolishStore.getState().phase).toBe("STEP_CONFIRMED");
+
+  // A second transaction covers the merge.
+  useDemolishStore.getState().markCoveredConfirmed(["MERGE"], "hashB");
+  plan = useDemolishStore.getState().executionPlan;
+  expect(plan.every((p) => p.status === "confirmed")).toBe(true);
+  expect(plan.find((p) => p.type === "MERGE")!.txHash).toBe("hashB");
 });
 
 test("assetDispositions defaults to empty", () => {

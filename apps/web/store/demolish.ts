@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { v4 as uuidv4 } from "uuid";
 import type { AccountState } from "@/types/account";
-import type { PlannedStep, DemolishPhase, AssetDisposition } from "@/types/plan";
+import type { PlannedStep, DemolishPhase, AssetDisposition, StepType } from "@/types/plan";
 
 interface DemolishState {
   // Inputs
@@ -47,6 +47,12 @@ interface DemolishState {
   setCurrentStepIndex: (index: number) => void;
   updateStep: (index: number, patch: Partial<PlannedStep>) => void;
   markStepConfirmed: (index: number, txHash: string) => void;
+  /**
+   * Marks every not-yet-confirmed step whose type appears in `coveredTypes` as confirmed.
+   * A single API-built transaction can cover several plan steps (a fused close), so one
+   * confirmation lands multiple steps at once.
+   */
+  markCoveredConfirmed: (coveredTypes: StepType[], txHash: string) => void;
   markStepFailed: (index: number, error: string) => void;
   setLastError: (error: string | null) => void;
   initSession: () => void;
@@ -139,6 +145,19 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       ),
       phase: "STEP_CONFIRMED",
     })),
+
+  markCoveredConfirmed: (coveredTypes, txHash) =>
+    set((state) => {
+      const covered = new Set<StepType>(coveredTypes);
+      return {
+        executionPlan: state.executionPlan.map((s) =>
+          covered.has(s.type) && s.status !== "confirmed"
+            ? { ...s, status: "confirmed", txHash }
+            : s
+        ),
+        phase: "STEP_CONFIRMED",
+      };
+    }),
 
   markStepFailed: (index, error) =>
     set((state) => ({
