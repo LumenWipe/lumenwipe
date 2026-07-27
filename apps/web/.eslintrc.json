@@ -1,3 +1,36 @@
 {
-  "extends": ["next/core-web-vitals", "prettier"]
+  "extends": ["next/core-web-vitals", "prettier"],
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": [
+              "@/lib/stellar/tx-builder",
+              "@/lib/stellar/tx-builder/*",
+              "@/lib/stellar/step-engine",
+              "@/lib/stellar/fast-path",
+              "@/lib/stellar/submit",
+              "@/lib/stellar/account",
+              "@/lib/stellar/account-live",
+              "@/lib/stellar/horizon-adapter",
+              "@/lib/stellar/scan-fallback",
+              "@/lib/stellar/rpc",
+              "@/lib/stellar/mediator-server",
+              "@/lib/close-api",
+              "@/lib/close-api/*",
+              "@/lib/se-api",
+              "@/lib/se-api/*"
+            ],
+            "message": "Account-closing logic lives in the API. Reach the backend through @lumenwipe/sdk (via the /api proxy routes), never a local closing module."
+          },
+          {
+            "group": ["@lumenwipe/api", "@lumenwipe/api/*"],
+            "message": "The web must not import apps/api directly. Use @lumenwipe/sdk."
+          }
+        ]
+      }
+    ]
+  }
 }

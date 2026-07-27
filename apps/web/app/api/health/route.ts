@@ -1,38 +1,16 @@
 import { NextResponse } from "next/server";
-import { getRpcServer } from "@/lib/stellar/rpc";
+import { getApiClient } from "@/lib/api/server-client";
 
-async function pingRpc(network: "mainnet" | "testnet"): Promise<"ok" | "error"> {
-  try {
-    const server = getRpcServer(network);
-    await server.getLatestLedger();
-    return "ok";
-  } catch {
-    return "error";
-  }
-}
-
-async function pingSeApi(): Promise<"ok" | "error"> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch("https://api.stellar.expert/explorer/public/asset?limit=1", {
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    return res.ok ? "ok" : "error";
-  } catch {
-    return "error";
-  }
-}
-
+/**
+ * Web health. The web's backend dependency is now the LumenWipe API (reads, building,
+ * and submission all proxy to it), so health reflects API reachability rather than
+ * pinging Stellar RPC directly.
+ */
 export async function GET() {
-  const [rpcMainnet, rpcTestnet, seApi] = await Promise.all([
-    pingRpc("mainnet"),
-    pingRpc("testnet"),
-    pingSeApi(),
-  ]);
-
-  const allOk = rpcMainnet === "ok" && rpcTestnet === "ok" && seApi === "ok";
-
-  return NextResponse.json({ rpcMainnet, rpcTestnet, seApi }, { status: allOk ? 200 : 503 });
+  try {
+    await getApiClient().health();
+    return NextResponse.json({ status: "ok", api: "ok" }, { status: 200 });
+  } catch {
+    return NextResponse.json({ status: "degraded", api: "error" }, { status: 503 });
+  }
 }

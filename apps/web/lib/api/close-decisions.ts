@@ -1,6 +1,10 @@
-import { assetDecisionId } from "@/lib/close-api/decisions";
 import type { AssetDisposition } from "@/types/plan";
-import type { DecisionAnswer } from "@/types/close-api";
+import type { DecisionAnswer } from "@lumenwipe/sdk";
+
+/** Stable decision id for a per-asset disposition. Must match the API's `assetDecisionId`. */
+function assetDecisionId(asset: string): string {
+  return `asset:${asset.replace(":", "-")}`;
+}
 
 /**
  * Maps the store's per-asset dispositions (convert to XLM / return to issuer) into the
