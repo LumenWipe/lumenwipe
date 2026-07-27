@@ -123,6 +123,17 @@ export default function PlanView({
       if (!res.ok) throw new Error(`Mediator check failed with status ${res.status}`);
       const mediatorData: MediatorCheckResult = await res.json();
       const needsMediator = mediatorData.requiresMediator ?? false;
+
+      // Exchange destinations go through the shared mediator. If the API can't co-sign it
+      // (no mediator configured), stop here — before the user enters a key or signs —
+      // rather than failing at execution time.
+      if (needsMediator && mediatorData.available === false) {
+        setError(
+          "Closing directly to this exchange is temporarily unavailable. For now, merge to a personal wallet address and withdraw to the exchange from there."
+        );
+        return;
+      }
+
       const mediatorPublicKey = needsMediator
         ? getMediatorPublicKey(network) || undefined
         : undefined;
