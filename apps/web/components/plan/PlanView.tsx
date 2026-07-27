@@ -6,11 +6,13 @@ import { ArrowRight, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 import type { AccountState } from "@/types/account";
 import type { PlanBlocker } from "@/types/plan";
 import type { Network } from "@/config/networks";
-import type { AssetConvertibility } from "@/lib/stellar/fast-path";
+import type { AssetConvertibility } from "@/lib/api/plan-adapters";
 import type { MediatorCheckResult } from "@/types/account";
 import { getMediatorPublicKey } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
-import { buildPlan } from "@/lib/stellar/tx-builder";
+import { fetchClosePlan } from "@/lib/api/close-client";
+import { dispositionsToDecisions } from "@/lib/api/close-decisions";
+import { apiStepsToPlannedSteps } from "@/lib/api/plan-adapters";
 import { isValidGAddress, isValidMemo } from "@/lib/utils/validation";
 import { getMemoRequirement, requiresMediatorForAddress } from "@/lib/exchange-registry";
 import AccountSummaryCard from "./AccountSummaryCard";
@@ -129,9 +131,14 @@ export default function PlanView({
       setAddresses(account.address, destination, memo.trim() || undefined, effectiveMemoType);
       setMediatorRequired(needsMediator, mediatorPublicKey);
 
-      const fastPathEligible = allAssetsResolved && blockers.length === 0;
-      const { steps } = buildPlan(account, needsMediator, fastPathEligible);
-      setPlan(steps);
+      // Request the final plan (for the execute sidebar) from the API with the destination
+      // and the user's asset decisions. Execution itself re-requests the transactions.
+      const decisions = dispositionsToDecisions(useDemolishStore.getState().assetDispositions);
+      const plan = await fetchClosePlan(
+        { source: account.address, destination, decisions },
+        network
+      );
+      setPlan(apiStepsToPlannedSteps(plan));
       setPhase("STEP_EXECUTING");
 
       router.push(`/${network}/execute`);
