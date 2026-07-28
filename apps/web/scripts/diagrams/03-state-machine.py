@@ -51,7 +51,7 @@ g.node("signer_setup",
 
 g.node("executing",
        hl("STEP EXECUTING", "Active transaction in flight",
-          "Built · signed · submitted to Stellar RPC"),
+          "API-built · verified against intent · signed · submitted via the API"),
        fillcolor=F_BACKEND, color=B_BACKEND, penwidth="2.5")
 
 g.node("confirmed",

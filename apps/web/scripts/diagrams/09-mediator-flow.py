@@ -2,7 +2,7 @@
 LumenWipe - 09 Mediator Account Flow
 Exchanges don't support AccountMerge. They require Payment + memo to credit the user.
 The mediator bridges this: one atomic two-operation transaction.
-User signs the merge half; backend co-signs the forward payment - only after strict validation.
+The API builds the transaction; the user verifies and signs the merge half; the API co-signs the forward payment - only after strict validation.
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
@@ -70,7 +70,7 @@ g.node("memo_block",
 
 # ── Build atomic transaction ──────────────────────────────────────────────────
 with g.subgraph(name="cluster_tx") as tx:
-    tx.attr(label=hl("Client Builds One Atomic Transaction  (two operations)",
+    tx.attr(label=hl("API Builds One Atomic Transaction  (two operations)",
                      "Both operations apply or neither - atomicity guaranteed by Stellar protocol"),
             style="rounded", color=B_CLIENT, fontcolor=B_CLIENT,
             fontname=FONT, fontsize="10", penwidth="2")
@@ -85,14 +85,14 @@ with g.subgraph(name="cluster_tx") as tx:
 
 # ── Signing split ─────────────────────────────────────────────────────────────
 g.node("user_sign",
-       hl("User Signs the Transaction", "User's private key signs op1 (AccountMerge)",
+       hl("User Verifies + Signs", "verify() confirms op1 merges into the mediator, then the key signs",
           "Key stays in browser · never transmitted · wallet adapter or secret-key mode"),
-       fillcolor=F_CLIENT, color=B_CLIENT)
+       fillcolor=F_CLIENT, color=B_CLIENT, penwidth="2.5")
 
 # ── Backend validation + co-sign ─────────────────────────────────────────────
 with g.subgraph(name="cluster_validate") as v:
-    v.attr(label=hl("Backend Co-Sign  -  Strict Validation First",
-                    "Backend holds mediator key · cannot sign for user's account"),
+    v.attr(label=hl("API Co-Sign  -  Strict Validation First",
+                    "API holds mediator key · cannot sign for user's account"),
            style="rounded", color=B_BACKEND, fontcolor=B_BACKEND,
            fontname=FONT, fontsize="10", penwidth="2")
     v.node("validate",
@@ -107,7 +107,7 @@ with g.subgraph(name="cluster_validate") as v:
 
 # ── Submission and outcome ────────────────────────────────────────────────────
 g.node("submit",
-       hl("Submit Combined Transaction", "Client submits to Stellar RPC · sendTransaction",
+       hl("Submit Combined Transaction", "Client submits via the API · POST /submit",
           "Signed by user (op1) + mediator key (op2) - both signatures present"),
        fillcolor=F_EXTERNAL, color=B_EXTERNAL)
 
