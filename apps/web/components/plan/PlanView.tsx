@@ -136,6 +136,17 @@ export default function PlanView({
         return;
       }
 
+      // verify() must independently know the legitimate mediator to allow the merge to it.
+      // If the API can co-sign but this deployment doesn't carry the mediator public key,
+      // block cleanly here rather than letting the flow fail in verify() after the user has
+      // entered their key. (The two configs are set separately; this covers the gap.)
+      if (needsMediator && !getMediatorPublicKey(network)) {
+        setError(
+          "Closing directly to this exchange is temporarily unavailable. For now, merge to a personal wallet address and withdraw to the exchange from there."
+        );
+        return;
+      }
+
       const mediatorPublicKey = needsMediator
         ? getMediatorPublicKey(network) || undefined
         : undefined;
