@@ -131,7 +131,7 @@ export default function PlanView({
       // rather than failing at execution time.
       if (needsMediator && mediatorData.available === false) {
         setError(
-          "Closing directly to this exchange is temporarily unavailable. For now, merge to a personal wallet address and withdraw to the exchange from there."
+          "Sending your balance straight to this exchange isn't available right now. Instead, merge to a personal Stellar wallet you control, then send it to the exchange from there — remember to include the exchange's deposit memo, or it won't be credited."
         );
         return;
       }
@@ -142,7 +142,7 @@ export default function PlanView({
       // entered their key. (The two configs are set separately; this covers the gap.)
       if (needsMediator && !getMediatorPublicKey(network)) {
         setError(
-          "Closing directly to this exchange is temporarily unavailable. For now, merge to a personal wallet address and withdraw to the exchange from there."
+          "Sending your balance straight to this exchange isn't available right now. Instead, merge to a personal Stellar wallet you control, then send it to the exchange from there — remember to include the exchange's deposit memo, or it won't be credited."
         );
         return;
       }
