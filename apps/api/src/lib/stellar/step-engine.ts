@@ -27,8 +27,13 @@ import {
 import { computeNeedsSignerNormalization } from "@/lib/stellar/tx-builder";
 import { batchItems } from "@/lib/stellar/tx-builder/batching";
 import { OP_BATCH_LIMIT } from "@/config/constants";
-import type { AccountState, ClaimableBalance, Trustline } from "@/types/account";
-import type { AssetDisposition, PlannedStep } from "@/types/plan";
+import type {
+  AccountState,
+  ClaimableBalance,
+  Trustline,
+  AssetDisposition,
+  PlannedStep,
+} from "@lumenwipe/types";
 
 // Engine core shared by the wallet flow (useStepExecution) and the testnet
 // playground (usePlaygroundExecution). Pure with respect to React: all state

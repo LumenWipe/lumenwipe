@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { deriveDecisionPoints, resolveDispositions } from "@/lib/close-api/decisions";
-import type { AccountState, Trustline } from "@/types/account";
+import type { AccountState, Trustline } from "@lumenwipe/types";
 
 const MASTER = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();

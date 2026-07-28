@@ -1,5 +1,5 @@
 import type { Network } from "@/config/networks";
-import type { AccountState } from "@/types/account";
+import type { AccountState } from "@lumenwipe/types";
 import { getAccountState } from "@/lib/stellar/account";
 import { getLiveAccountState } from "@/lib/stellar/account-live";
 import { needsLiveRescan } from "@/lib/stellar/scan-fallback";

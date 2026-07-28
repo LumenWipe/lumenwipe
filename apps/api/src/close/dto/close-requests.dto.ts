@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import type { DecisionAnswer } from "@/types/close-api";
+import type { DecisionAnswer } from "@lumenwipe/types";
 
 // Documentation-only DTOs: they shape the OpenAPI spec (and the generated SDK
 // types). Validation stays manual in the controllers to preserve the exact

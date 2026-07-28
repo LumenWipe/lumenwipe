@@ -15,9 +15,7 @@ import {
 import { buildMediatorMergePaymentTx } from "@/lib/stellar/tx-builder/merge";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { AssetRouteLostError } from "@/lib/utils/errors";
-import type { AccountState } from "@/types/account";
-import type { AssetDisposition } from "@/types/plan";
-import type { CloseTransaction } from "@/types/close-api";
+import type { AccountState, AssetDisposition, CloseTransaction } from "@lumenwipe/types";
 
 // Raised when a close cannot be expressed as the phase-1 single fused transaction.
 // The route handler maps `code` to an error response.

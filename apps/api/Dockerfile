@@ -9,9 +9,10 @@ WORKDIR /app
 # bun install --frozen-lockfile needs EVERY workspace manifest present, even when
 # building a single app. Copy the root lockfile + all workspace package.json first
 # so dependency install caches independently of source changes.
-# NOTE: the api imports no workspace package today, so only the manifests are needed.
-# When #63 makes it import @lumenwipe/types, also COPY that package's source into the
-# builder (and build it) or node dist/main.js won't resolve the workspace dep.
+# NOTE: the api imports @lumenwipe/types (type-only). tsc needs that package's SOURCE
+# at build time to resolve it, so the builder copies packages/types/ before the build.
+# It is type-only (import type -> erased at compile), so the runtime image needs neither
+# the package nor its source, and the prod-deps stage rightly omits it.
 COPY package.json bun.lock ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
@@ -21,6 +22,7 @@ COPY packages/types/package.json packages/types/
 RUN bun install --frozen-lockfile --filter '@lumenwipe/api'
 # Compile: nest build (tsc + asset copy) -> apps/api/dist/main.js
 COPY tsconfig.base.json ./
+COPY packages/types/ packages/types/
 COPY apps/api/ apps/api/
 RUN bun run --filter '@lumenwipe/api' build
 

@@ -26,7 +26,7 @@ import {
   TxSubmitError,
 } from "@/lib/utils/errors";
 import { BASE_FEE_STROOPS } from "@/config/constants";
-import type { DecisionAnswer, TransactionsResponse } from "@/types/close-api";
+import type { DecisionAnswer, TransactionsResponse } from "@lumenwipe/types";
 
 /** Throws an HttpException carrying the API's `{ error: { code, message, details? } }` body. */
 function fail(code: string, message: string, status: number, details?: unknown): never {

@@ -15,7 +15,7 @@ import type {
   Trustline,
   OpenOffer,
   PoolShareEntry,
-} from "@/types/account";
+} from "@lumenwipe/types";
 
 // AUTH_IMMUTABLE is bit 2 (value 4) of the account flags uint32 (CAP-0035 / Protocol 14).
 // An account with this flag set permanently blocks ACCOUNT_MERGE.

@@ -1,6 +1,4 @@
-import type { AccountState } from "@/types/account";
-import type { AssetDisposition } from "@/types/plan";
-import type { DecisionAnswer, DecisionPoint } from "@/types/close-api";
+import type { AccountState, AssetDisposition, DecisionAnswer, DecisionPoint } from "@lumenwipe/types";
 
 // Stable, URL-safe id for an asset decision: "asset:CODE-ISSUER". The colon in the
 // canonical "CODE:ISSUER" asset string is replaced so the id reads cleanly in paths.

@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { buildPlan } from "@/lib/stellar/tx-builder";
-import type { AccountState, ClaimableBalance, Trustline } from "@/types/account";
+import type { AccountState, ClaimableBalance, Trustline } from "@lumenwipe/types";
 
 const MASTER_KP = Keypair.random();
 const EXTRA_KP = Keypair.random();

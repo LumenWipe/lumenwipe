@@ -4,8 +4,7 @@ import {
   toExecutionBreakdown,
   assemblePlanResponse,
 } from "@/lib/close-api/plan-response";
-import type { PlannedStep, StepType } from "@/types/plan";
-import type { DecisionPoint } from "@/types/close-api";
+import type { PlannedStep, StepType, DecisionPoint } from "@lumenwipe/types";
 
 function step(index: number, type: StepType): PlannedStep {
   return {

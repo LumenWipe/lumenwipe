@@ -24,6 +24,7 @@
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
+    "@lumenwipe/types": "workspace:*",
     "@nestjs/cli": "^10.4.0",
     "@nestjs/schematics": "^10.2.0",
     "@nestjs/testing": "^10.4.0",

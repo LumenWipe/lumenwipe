@@ -1,6 +1,6 @@
 import { PATH_ROUTING_API_URLS } from "@/config/networks";
 import type { Network } from "@/config/networks";
-import type { ClaimableBalance, ClaimPredicate, OpenOffer } from "@/types/account";
+import type { ClaimableBalance, ClaimPredicate, OpenOffer } from "@lumenwipe/types";
 import { horizonAssetToString } from "@/lib/utils/assets";
 
 interface HorizonOffer {

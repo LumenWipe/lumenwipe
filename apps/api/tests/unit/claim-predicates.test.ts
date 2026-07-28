@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import { isClaimableNow } from "@/lib/stellar/claim-predicates";
-import type { ClaimPredicate } from "@/types/account";
+import type { ClaimPredicate } from "@lumenwipe/types";
 
 const CLAIMANT = "GCLAIMANT00000000000000000000000000000000000000000000000000";
 const NOW = new Date("2024-01-15T00:00:00Z");

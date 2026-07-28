@@ -2,7 +2,7 @@ import { TransactionBuilder, Operation, Account, xdr } from "@stellar/stellar-sd
 import type { Network } from "@/config/networks";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { BASE_FEE_STROOPS, TX_TIMEOUT_SECONDS } from "@/config/constants";
-import type { Trustline } from "@/types/account";
+import type { Trustline } from "@lumenwipe/types";
 import { assetToSdkAsset } from "@/lib/utils/assets";
 
 export function trustlineRemovalOps(trustlines: Trustline[]): xdr.Operation[] {

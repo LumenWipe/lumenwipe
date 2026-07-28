@@ -1,5 +1,5 @@
 import { TransactionBuilder, type Asset, type Transaction } from "@stellar/stellar-sdk";
-import type { IntentOperation, TxIntent } from "@/types/close-api";
+import type { IntentOperation, TxIntent } from "@lumenwipe/types";
 
 function assetToString(asset: Asset): string {
   return asset.isNative() ? "native" : `${asset.getCode()}:${asset.getIssuer()}`;

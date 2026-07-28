@@ -1,4 +1,4 @@
-import type { ClaimPredicate } from "@/types/account";
+import type { ClaimPredicate } from "@lumenwipe/types";
 
 /**
  * Evaluates whether `claimant` could submit ClaimClaimableBalance right now under `predicate`.

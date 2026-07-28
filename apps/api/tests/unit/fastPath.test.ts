@@ -1,7 +1,6 @@
 import { test, expect, mock, afterEach } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
-import type { AccountState, Trustline } from "@/types/account";
-import type { ConversionPath } from "@/types/plan";
+import type { AccountState, Trustline, ConversionPath } from "@lumenwipe/types";
 
 const MASTER = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();

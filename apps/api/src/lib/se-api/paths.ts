@@ -1,7 +1,7 @@
 import type { Network } from "@/config/networks";
 import { PATH_ROUTING_API_URLS } from "@/config/networks";
 import { SE_API_TIMEOUT_MS, SLIPPAGE_BPS } from "@/config/constants";
-import type { ConversionPath } from "@/types/plan";
+import type { ConversionPath } from "@lumenwipe/types";
 import { isNativeAsset, parseAsset } from "@/lib/utils/assets";
 import { stroopsToXlm, xlmToStroops } from "@/lib/utils/amounts";
 
