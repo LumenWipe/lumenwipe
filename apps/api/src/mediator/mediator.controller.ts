@@ -88,6 +88,9 @@ export class MediatorController {
     if (!isValidNetwork(network)) throw new HttpException({ error: "Invalid network" }, 400);
     if (!isValidGAddress(address)) throw new HttpException({ error: "Invalid address" }, 400);
 
+    // Whether this server can actually co-sign the mediator flow (secret configured).
+    const available = getMediatorKeypair(network) !== null;
+
     const exchange = lookupExchange(address);
     if (exchange) {
       return {
@@ -96,6 +99,7 @@ export class MediatorController {
         requiresMemo: exchange.requiresMemo,
         memoType: exchange.memoType,
         exchangeName: exchange.name,
+        available,
       };
     }
 
@@ -107,6 +111,7 @@ export class MediatorController {
         requiresMemo: false,
         memoType: null,
         exchangeName: null,
+        available,
       };
     } catch (err) {
       if (err instanceof AccountNotFoundError) {
@@ -116,6 +121,7 @@ export class MediatorController {
           requiresMemo: false,
           memoType: null,
           exchangeName: null,
+          available,
         };
       }
       throw err;

@@ -1,6 +1,6 @@
 import { test, expect, beforeEach, describe } from "bun:test";
 import { useDemolishStore } from "@/store/demolish";
-import type { PlannedStep } from "@/types/plan";
+import type { PlannedStep, StepType } from "@/types/plan";
 import type { AccountState, Trustline } from "@/types/account";
 
 function accountState(over: Partial<AccountState> = {}): AccountState {
@@ -71,6 +71,30 @@ test("setPlan resets currentStepIndex so a new shorter plan is in range", () => 
 test("setPlan stores the provided plan", () => {
   useDemolishStore.getState().setPlan([step(0), step(1)]);
   expect(useDemolishStore.getState().executionPlan.map((s) => s.index)).toEqual([0, 1]);
+});
+
+test("markCoveredConfirmed confirms every step whose type a transaction covers", () => {
+  const mk = (index: number, type: StepType): PlannedStep => ({ ...step(index), type });
+  useDemolishStore
+    .getState()
+    .setPlan([mk(0, "NORMALIZE_SIGNERS"), mk(1, "REMOVE_TRUSTLINES"), mk(2, "MERGE")]);
+
+  // A first fused transaction covers the signer + trustline steps at once.
+  useDemolishStore.getState().markCoveredConfirmed(["NORMALIZE_SIGNERS", "REMOVE_TRUSTLINES"], "hashA");
+  let plan = useDemolishStore.getState().executionPlan;
+  expect(plan.filter((p) => p.status === "confirmed").map((p) => p.type)).toEqual([
+    "NORMALIZE_SIGNERS",
+    "REMOVE_TRUSTLINES",
+  ]);
+  expect(plan.find((p) => p.type === "MERGE")!.status).toBe("pending"); // not yet
+  expect(plan[0].txHash).toBe("hashA");
+  expect(useDemolishStore.getState().phase).toBe("STEP_CONFIRMED");
+
+  // A second transaction covers the merge.
+  useDemolishStore.getState().markCoveredConfirmed(["MERGE"], "hashB");
+  plan = useDemolishStore.getState().executionPlan;
+  expect(plan.every((p) => p.status === "confirmed")).toBe(true);
+  expect(plan.find((p) => p.type === "MERGE")!.txHash).toBe("hashB");
 });
 
 test("assetDispositions defaults to empty", () => {
@@ -403,128 +427,5 @@ describe("memoType backward-compat (runtime undefined)", () => {
     const store = useDemolishStore.getState();
     expect(store.memo).toBe("12345678");
     expect(store.memoType).toBe("id");
-  });
-});
-
-// ─── buildPlan step ordering ──────────────────────────────────────────────────
-// The plan must always emit steps in canonical order. This is a regression guard:
-// if the builder gains a new step or the ordering logic is changed, tests below
-// will catch any reordering before it reaches users.
-
-import { buildPlan } from "@/lib/stellar/tx-builder";
-
-function orderAccount(): AccountState {
-  return {
-    address: "GSOURCE",
-    network: "testnet",
-    sequence: "1",
-    nativeBalanceLumens: "10.0000000",
-    dataEntries: [{ key: "k1", value: "" }],
-    signers: [
-      { key: "GSOURCE", weight: 1, type: "ed25519_public_key" },
-      {
-        key: "GEXTRA00000000000000000000000000000000000000000000000000000",
-        weight: 1,
-        type: "ed25519_public_key",
-      },
-    ],
-    thresholds: { low: 0, med: 1, high: 1 },
-    numSubEntries: 3,
-    numSponsoring: 0,
-    sponsoredBy: null,
-    authImmutable: false,
-    trustlines: [
-      {
-        asset: "USDC:GISSUER0000000000000000000000000000000000000000000000000000",
-        balance: "10.0000000",
-        limit: "1",
-        authorized: true,
-        issuer: "GISSUER0000000000000000000000000000000000000000000000000000",
-        code: "USDC",
-      },
-    ],
-    openOffers: [
-      {
-        id: "1",
-        selling: "native",
-        buying: "USDC:GISSUER0000000000000000000000000000000000000000000000000000",
-        amount: "5",
-        price: "1",
-      },
-    ],
-    poolShares: [],
-    claimableBalances: [],
-    subEntryMismatch: false,
-  };
-}
-
-describe("buildPlan step ordering", () => {
-  test("full account: steps are in canonical order (NORMALIZE → DATA → OFFERS → CONVERT → TRUSTLINES → MERGE)", () => {
-    const { steps } = buildPlan(orderAccount(), false);
-    const types = steps.map((s) => s.type);
-    expect(types).toEqual([
-      "NORMALIZE_SIGNERS",
-      "REMOVE_DATA_ENTRIES",
-      "CANCEL_OFFERS",
-      "CONVERT_ASSETS",
-      "REMOVE_TRUSTLINES",
-      "MERGE",
-    ]);
-  });
-
-  test("CLAIM_BALANCES always precedes CONVERT_ASSETS when claimable balance creates asset proceeds", () => {
-    const issuer = "GISSUER0000000000000000000000000000000000000000000000000000";
-    const account: AccountState = {
-      ...orderAccount(),
-      signers: [{ key: "GSOURCE", weight: 1, type: "ed25519_public_key" }],
-      dataEntries: [],
-      openOffers: [],
-      claimableBalances: [
-        {
-          id: "00000000" + "0".repeat(64),
-          asset: `USDC:${issuer}`,
-          amount: "5.0",
-          claimants: [{ destination: "GSOURCE", predicate: { type: "unconditional" } }],
-          sponsor: null,
-        },
-      ],
-      trustlines: [
-        {
-          asset: `USDC:${issuer}`,
-          balance: "0",
-          limit: "1",
-          authorized: true,
-          issuer,
-          code: "USDC",
-        },
-      ],
-    };
-    const { steps } = buildPlan(account, false);
-    const types = steps.map((s) => s.type);
-    const claimIdx = types.indexOf("CLAIM_BALANCES");
-    const convertIdx = types.indexOf("CONVERT_ASSETS");
-    expect(claimIdx).toBeGreaterThanOrEqual(0);
-    expect(convertIdx).toBeGreaterThanOrEqual(0);
-    expect(claimIdx).toBeLessThan(convertIdx);
-  });
-
-  test("CONVERT_ASSETS always precedes REMOVE_TRUSTLINES", () => {
-    const { steps } = buildPlan(orderAccount(), false);
-    const types = steps.map((s) => s.type);
-    const convertIdx = types.indexOf("CONVERT_ASSETS");
-    const removeIdx = types.indexOf("REMOVE_TRUSTLINES");
-    expect(convertIdx).toBeLessThan(removeIdx);
-  });
-
-  test("MERGE is always the last step", () => {
-    const { steps } = buildPlan(orderAccount(), false);
-    expect(steps[steps.length - 1].type).toBe("MERGE");
-  });
-
-  test("with mediator, MERGE is still last and its description mentions exchange", () => {
-    const { steps } = buildPlan(orderAccount(), true);
-    const last = steps[steps.length - 1];
-    expect(last.type).toBe("MERGE");
-    expect(last.description.toLowerCase()).toMatch(/exchange|intermediary/);
   });
 });

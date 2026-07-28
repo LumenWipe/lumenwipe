@@ -6,11 +6,14 @@ import { ArrowRight, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 import type { AccountState } from "@/types/account";
 import type { PlanBlocker } from "@/types/plan";
 import type { Network } from "@/config/networks";
-import type { AssetConvertibility } from "@/lib/stellar/fast-path";
+import type { AssetConvertibility } from "@/lib/api/plan-adapters";
 import type { MediatorCheckResult } from "@/types/account";
 import { getMediatorPublicKey } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
-import { buildPlan } from "@/lib/stellar/tx-builder";
+import { saveSession } from "@/lib/session/store";
+import { fetchClosePlan } from "@/lib/api/close-client";
+import { dispositionsToDecisions } from "@/lib/api/close-decisions";
+import { apiStepsToPlannedSteps } from "@/lib/api/plan-adapters";
 import { isValidGAddress, isValidMemo } from "@/lib/utils/validation";
 import { getMemoRequirement, requiresMediatorForAddress } from "@/lib/exchange-registry";
 import AccountSummaryCard from "./AccountSummaryCard";
@@ -43,6 +46,7 @@ export default function PlanView({
     setMediatorRequired,
     setPlan,
     setPhase,
+    initSession,
     destinationAddress: storedDest,
     memo: storedMemo,
   } = useDemolishStore();
@@ -121,6 +125,28 @@ export default function PlanView({
       if (!res.ok) throw new Error(`Mediator check failed with status ${res.status}`);
       const mediatorData: MediatorCheckResult = await res.json();
       const needsMediator = mediatorData.requiresMediator ?? false;
+
+      // Exchange destinations go through the shared mediator. If the API can't co-sign it
+      // (no mediator configured), stop here — before the user enters a key or signs —
+      // rather than failing at execution time.
+      if (needsMediator && mediatorData.available === false) {
+        setError(
+          "Closing directly to this exchange is temporarily unavailable. For now, merge to a personal wallet address and withdraw to the exchange from there."
+        );
+        return;
+      }
+
+      // verify() must independently know the legitimate mediator to allow the merge to it.
+      // If the API can co-sign but this deployment doesn't carry the mediator public key,
+      // block cleanly here rather than letting the flow fail in verify() after the user has
+      // entered their key. (The two configs are set separately; this covers the gap.)
+      if (needsMediator && !getMediatorPublicKey(network)) {
+        setError(
+          "Closing directly to this exchange is temporarily unavailable. For now, merge to a personal wallet address and withdraw to the exchange from there."
+        );
+        return;
+      }
+
       const mediatorPublicKey = needsMediator
         ? getMediatorPublicKey(network) || undefined
         : undefined;
@@ -129,10 +155,40 @@ export default function PlanView({
       setAddresses(account.address, destination, memo.trim() || undefined, effectiveMemoType);
       setMediatorRequired(needsMediator, mediatorPublicKey);
 
-      const fastPathEligible = allAssetsResolved && blockers.length === 0;
-      const { steps } = buildPlan(account, needsMediator, fastPathEligible);
-      setPlan(steps);
+      // Request the final plan (for the execute sidebar) from the API with the destination
+      // and the user's asset decisions. Execution itself re-requests the transactions.
+      const decisions = dispositionsToDecisions(useDemolishStore.getState().assetDispositions);
+      const plan = await fetchClosePlan(
+        { source: account.address, destination, decisions },
+        network
+      );
+      setPlan(apiStepsToPlannedSteps(plan));
       setPhase("STEP_EXECUTING");
+
+      // Persist a resumable session (inputs only). If the close is interrupted, the tool
+      // page offers to resume it; on resume the API re-derives the remaining work from
+      // live on-chain state, so no per-step progress needs to be tracked here.
+      // Reuse the existing id on a resumed flow (restoreSession set it) so the resumed
+      // session is overwritten in place rather than orphaned as a stale "in_progress".
+      if (!useDemolishStore.getState().sessionId) initSession();
+      const sessionId = useDemolishStore.getState().sessionId;
+      if (sessionId) {
+        const now = new Date().toISOString();
+        await saveSession({
+          id: sessionId,
+          network,
+          sourceAddress: account.address,
+          destinationAddress: destination,
+          memo: memo.trim() || null,
+          memoType: effectiveMemoType ?? null,
+          mediatorPublicKey: mediatorPublicKey ?? null,
+          completedSteps: [],
+          currentStepIndex: 0,
+          status: "in_progress",
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
 
       router.push(`/${network}/execute`);
     } catch {

@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Network } from "@lumenwipe/sdk";
 import { getApiClient } from "@/lib/api/server-client";
 import { proxy } from "@/lib/api/proxy";
+import { rateLimitProxy } from "@/lib/api/rate-limit";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ network: string }> }
 ) {
   const { network } = await params;
+
+  const limited = await rateLimitProxy(req, "submit");
+  if (limited) return limited;
 
   let body: { signedXdr?: unknown };
   try {

@@ -1,27 +1,27 @@
 import type { Metadata } from "next";
-import PlaygroundClient from "@/components/playground/PlaygroundClient";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Playground - LumenWipe",
-  description:
-    "Watch LumenWipe work on a real testnet account: one click buries a demo account in junk trustlines, offers and data entries - then the demolition engine takes it all apart, live on-chain.",
+  description: "The interactive testnet playground is being rebuilt on the LumenWipe API.",
 };
 
 export default function PlaygroundPage() {
   return (
-    <section className="mx-auto w-full max-w-6xl px-4 pb-24 pt-16 sm:px-6">
-      <div className="mb-10 max-w-2xl">
-        <p className="mkt-eyebrow mb-3 text-stellar">Testnet playground</p>
-        <h1 className="mkt-display text-4xl text-white sm:text-5xl">
-          Trash an account. Then watch it vanish.
-        </h1>
-        <p className="mt-4 text-base leading-relaxed text-white/85">
-          Everything here happens on the Stellar testnet with a throwaway custodial account - no
-          wallet, no risk, real transactions. Every animation is backed by an on-chain transaction
-          you can verify in the explorer.
-        </p>
-      </div>
-      <PlaygroundClient />
+    <section className="mx-auto w-full max-w-2xl px-4 pb-24 pt-24 text-center sm:px-6">
+      <p className="mkt-eyebrow mb-3 text-stellar">Testnet playground</p>
+      <h1 className="mkt-display text-4xl text-white sm:text-5xl">Coming back soon</h1>
+      <p className="mt-4 text-base leading-relaxed text-white/70">
+        We&apos;re rebuilding the interactive playground on top of the LumenWipe API so it runs the
+        exact same close flow as the app — no separate account-closing logic in the browser. It will
+        be back shortly.
+      </p>
+      <Link
+        href="/testnet"
+        className="mt-8 inline-block text-sm text-stellar underline-offset-2 hover:underline"
+      >
+        Try the tool on testnet →
+      </Link>
     </section>
   );
 }

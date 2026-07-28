@@ -2,17 +2,7 @@
 
 import { use } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ShieldCheck,
-  Zap,
-  GitMerge,
-  AlertOctagon,
-  RotateCcw,
-  X,
-  FlaskConical,
-  ArrowRight,
-} from "lucide-react";
-import Link from "next/link";
+import { ShieldCheck, Zap, GitMerge, AlertOctagon, RotateCcw, X } from "lucide-react";
 import type { Network } from "@/config/networks";
 import AccountEntryForm from "@/components/account-entry/AccountEntryForm";
 import { useSessionRecovery } from "@/hooks/useSessionRecovery";
@@ -147,23 +137,6 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
         </div>
       </div>
 
-      {network === "testnet" && (
-        <Link
-          href="/playground"
-          className="mt-4 flex items-center justify-between gap-4 mkt-panel rounded-xl px-4 py-3.5 group hover:border-stellar/30 transition-colors"
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            <FlaskConical className="h-4 w-4 text-stellar/60 shrink-0" />
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-white/75">No account to test with?</p>
-              <p className="text-xs text-white/40 truncate">
-                Try the Playground - we create a demo and walk you through the full flow.
-              </p>
-            </div>
-          </div>
-          <ArrowRight className="h-4 w-4 text-white/25 group-hover:text-stellar/60 transition-colors shrink-0" />
-        </Link>
-      )}
     </div>
   );
 }

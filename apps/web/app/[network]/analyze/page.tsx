@@ -7,10 +7,9 @@ import Link from "next/link";
 import type { Network } from "@/config/networks";
 import type { AccountState } from "@/types/account";
 import type { PlanBlocker } from "@/types/plan";
-import type { AssetConvertibility } from "@/lib/stellar/fast-path";
 import { useDemolishStore } from "@/store/demolish";
-import { buildPlan } from "@/lib/stellar/tx-builder";
-import { assessConversions } from "@/lib/stellar/fast-path";
+import { fetchClosePlan } from "@/lib/api/close-client";
+import { decisionPointsToConversions, type AssetConvertibility } from "@/lib/api/plan-adapters";
 import PlanView from "@/components/plan/PlanView";
 
 export default function AnalyzePage({ params }: { params: Promise<{ network: Network }> }) {
@@ -52,18 +51,12 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       setAccount(accountData);
       setAccountState(accountData);
 
-      // Destination is unknown at this stage; build the preview plan with
-      // mediatorRequired=false and fastPathEligible=false purely for grouping and
-      // blocker detection. The final plan is built at the destination step.
-      const { blockers: planBlockers } = buildPlan(accountData, false, false);
-      setBlockers(planBlockers);
-
-      // Only probe per-asset convertibility when the account is otherwise clean.
-      if (planBlockers.length === 0) {
-        setConversions(await assessConversions(accountData, routeNetwork));
-      } else {
-        setConversions([]);
-      }
+      // The API derives blockers and per-asset convertibility (via server-side path
+      // finding) from a plan built with no destination yet. The final plan is requested
+      // with the destination + decisions at the "Begin execution" step.
+      const plan = await fetchClosePlan({ source: effectiveSource }, routeNetwork);
+      setBlockers(plan.blockers.map((b) => ({ message: b.message, helpUrl: b.helpUrl })));
+      setConversions(plan.blockers.length === 0 ? decisionPointsToConversions(plan) : []);
     } catch {
       setError("Failed to analyze account. Please check your connection and try again.");
     } finally {

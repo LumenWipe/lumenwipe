@@ -95,4 +95,6 @@ export interface MediatorCheckResult {
   requiresMemo: boolean;
   memoType: "text" | "id" | "hash" | null;
   exchangeName: string | null;
+  /** Whether the server can actually perform the mediator flow (secret configured). */
+  available: boolean;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowRightLeft, AlertTriangle, CheckCircle2 } from "lucide-react";
-import type { AssetConvertibility } from "@/lib/stellar/fast-path";
+import type { AssetConvertibility } from "@/lib/api/plan-adapters";
 import { cn } from "@/lib/utils/cn";
 
 interface AssetDispositionCardProps {

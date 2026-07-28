@@ -3,9 +3,8 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import type { AccountState } from "@/types/account";
-import type { AssetConvertibility } from "@/lib/stellar/fast-path";
+import type { AssetConvertibility } from "@/lib/api/plan-adapters";
 import type { AssetDisposition } from "@/types/plan";
-import { computeNeedsSignerNormalization } from "@/lib/stellar/tx-builder";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
 import AssetDispositionCard from "./AssetDispositionCard";
 
@@ -53,7 +52,9 @@ export default function PlanAccordion({
   const groups: Group[] = [];
 
   const extraSigners = account.signers.filter((s) => s.key !== account.address);
-  if (computeNeedsSignerNormalization(account)) {
+  const needsSignerNormalization =
+    extraSigners.length > 0 || account.thresholds.med > 1 || account.thresholds.high > 1;
+  if (needsSignerNormalization) {
     groups.push({
       type: "NORMALIZE_SIGNERS",
       title: "Remove signers",

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Network } from "@lumenwipe/sdk";
 import { getApiClient } from "@/lib/api/server-client";
 import { proxy } from "@/lib/api/proxy";
+import { rateLimitProxy } from "@/lib/api/rate-limit";
 
 /**
  * Co-signs the shared-mediator forward payment. The API validates the exact
@@ -13,6 +14,9 @@ export async function POST(
   { params }: { params: Promise<{ network: string }> }
 ) {
   const { network } = await params;
+
+  const limited = await rateLimitProxy(req, "mediator-sign");
+  if (limited) return limited;
 
   let body: { transaction?: unknown };
   try {
