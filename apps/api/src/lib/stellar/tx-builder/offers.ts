@@ -2,7 +2,7 @@ import { TransactionBuilder, Operation, Account, xdr } from "@stellar/stellar-sd
 import type { Network } from "@/config/networks";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { BASE_FEE_STROOPS, TX_TIMEOUT_SECONDS } from "@/config/constants";
-import type { OpenOffer } from "@/types/account";
+import type { OpenOffer } from "@lumenwipe/types";
 import { assetToSdkAsset } from "@/lib/utils/assets";
 
 export function offerCancellationOps(offers: OpenOffer[]): xdr.Operation[] {

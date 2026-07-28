@@ -1,8 +1,7 @@
 import { test, expect, mock, afterEach } from "bun:test";
 import { Account, Keypair, Operation, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import { AssetRouteLostError } from "@/lib/utils/errors";
-import type { AccountState, Trustline } from "@/types/account";
-import type { AssetDisposition, PlannedStep } from "@/types/plan";
+import type { AccountState, Trustline, AssetDisposition, PlannedStep } from "@lumenwipe/types";
 import type { StepBuildContext } from "@/lib/stellar/step-engine";
 
 // Regression coverage for the fused CLOSE_ACCOUNT build honoring the per-asset

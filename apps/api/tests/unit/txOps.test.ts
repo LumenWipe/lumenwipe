@@ -6,8 +6,7 @@ import { offerCancellationOps } from "@/lib/stellar/tx-builder/offers";
 import { trustlineRemovalOps } from "@/lib/stellar/tx-builder/trustlines";
 import { mergeOp } from "@/lib/stellar/tx-builder/merge";
 import { assetConversionOp, issuerPaymentOp } from "@/lib/stellar/tx-builder/asset-conversion";
-import type { Trustline } from "@/types/account";
-import type { ConversionPath } from "@/types/plan";
+import type { Trustline, ConversionPath } from "@lumenwipe/types";
 
 const MASTER = Keypair.random().publicKey();
 const EXTRA = Keypair.random().publicKey();

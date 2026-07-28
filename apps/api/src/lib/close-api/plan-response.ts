@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
-import type { BuildPlanResult, PlannedStep } from "@/types/plan";
 import type {
+  BuildPlanResult,
   CloseApiStatus,
   DecisionAnswer,
   DecisionPoint,
   ExecutionTxBreakdown,
   PlanResponse,
-} from "@/types/close-api";
+  PlannedStep,
+} from "@lumenwipe/types";
 
 // Hash of everything that determines a plan: the source, destination, the resolved
 // decisions, and the snapshot ledger. Decisions are sorted so ordering does not change

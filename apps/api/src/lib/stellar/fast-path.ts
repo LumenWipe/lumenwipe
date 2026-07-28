@@ -1,5 +1,5 @@
 import type { Network } from "@/config/networks";
-import type { AccountState } from "@/types/account";
+import type { AccountState } from "@lumenwipe/types";
 import { fetchConversionPath } from "@/lib/se-api/paths";
 
 export interface AssetConvertibility {

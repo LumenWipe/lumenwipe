@@ -2,8 +2,7 @@ import { TransactionBuilder, Operation, Asset, Account, xdr } from "@stellar/ste
 import type { Network } from "@/config/networks";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { BASE_FEE_STROOPS, TX_TIMEOUT_SECONDS } from "@/config/constants";
-import type { Trustline } from "@/types/account";
-import type { ConversionPath } from "@/types/plan";
+import type { Trustline, ConversionPath } from "@lumenwipe/types";
 import { assetToSdkAsset } from "@/lib/utils/assets";
 
 export function assetConversionOp(

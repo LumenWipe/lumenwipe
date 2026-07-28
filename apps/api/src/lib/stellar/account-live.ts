@@ -10,7 +10,7 @@ import type {
   DataEntry,
   Trustline,
   PoolShareEntry,
-} from "@/types/account";
+} from "@lumenwipe/types";
 
 // Reads the full account state via a Horizon-compatible API.
 //

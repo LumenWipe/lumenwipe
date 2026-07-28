@@ -5,7 +5,7 @@ import type {
   OpenOffer,
   PoolShareEntry,
   Trustline,
-} from "@/types/account";
+} from "@lumenwipe/types";
 
 // Sub-entry reconciliation: the ledger's numSubEntries is the ground truth for
 // how many reserve-holding entries exist. If we enumerated fewer, the plan

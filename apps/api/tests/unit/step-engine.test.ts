@@ -2,7 +2,7 @@ import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { fetchLiveTrustlineBalance } from "@/lib/stellar/step-engine";
 import { getRpcServer } from "@/lib/stellar/rpc";
-import type { Trustline } from "@/types/account";
+import type { Trustline } from "@lumenwipe/types";
 
 type RpcServer = ReturnType<typeof getRpcServer>;
 

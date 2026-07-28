@@ -2,7 +2,7 @@ import { TransactionBuilder, Operation, Account, StrKey, xdr } from "@stellar/st
 import type { Network } from "@/config/networks";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { BASE_FEE_STROOPS, TX_TIMEOUT_SECONDS } from "@/config/constants";
-import type { AccountSigner } from "@/types/account";
+import type { AccountSigner } from "@lumenwipe/types";
 
 // Builds the setOptions operation that removes a single signer (weight 0). The op is
 // constructed per signer type so each literal narrows to the correct SDK signer-option

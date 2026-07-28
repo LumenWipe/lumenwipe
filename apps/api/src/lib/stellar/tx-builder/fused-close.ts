@@ -5,11 +5,12 @@ import { BASE_FEE_STROOPS, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import type {
   AccountSigner,
   ClaimableBalance,
+  ConversionPath,
   DataEntry,
   OpenOffer,
+  StepType,
   Trustline,
-} from "@/types/account";
-import type { ConversionPath, StepType } from "@/types/plan";
+} from "@lumenwipe/types";
 import { signerNormalizationOps } from "./signers";
 import { dataEntryRemovalOps } from "./data-entries";
 import { offerCancellationOps } from "./offers";

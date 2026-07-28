@@ -1,5 +1,10 @@
-import type { AccountState } from "@/types/account";
-import type { PlannedStep, StepType, BuildPlanResult, PlanBlocker } from "@/types/plan";
+import type {
+  AccountState,
+  PlannedStep,
+  StepType,
+  BuildPlanResult,
+  PlanBlocker,
+} from "@lumenwipe/types";
 import { estimateFeeLumens } from "@/lib/utils/amounts";
 import { batchItems } from "./batching";
 import { OP_BATCH_LIMIT } from "@/config/constants";
