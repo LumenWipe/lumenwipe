@@ -7,9 +7,14 @@ import { checkNamespacedRateLimit } from "@/lib/kv";
 const PROXY_LIMIT_PER_DAY = 500;
 
 function clientIp(req: NextRequest): string {
+  // Prefer x-real-ip: on Vercel it's the platform-set, trusted single client IP. The
+  // leftmost x-forwarded-for entry can be client-spoofed behind proxies that append
+  // rather than overwrite, which would let a caller rotate buckets to dodge the limit.
+  const realIp = req.headers.get("x-real-ip");
+  if (realIp) return realIp.trim();
   const forwarded = req.headers.get("x-forwarded-for");
   if (forwarded) return forwarded.split(",")[0]!.trim();
-  return req.headers.get("x-real-ip") ?? "unknown";
+  return "unknown";
 }
 
 /**
@@ -23,11 +28,13 @@ export async function rateLimitProxy(
   req: NextRequest,
   namespace: string
 ): Promise<NextResponse | null> {
-  const allowed = await checkNamespacedRateLimit(
-    `proxy:${namespace}`,
-    clientIp(req),
-    PROXY_LIMIT_PER_DAY
-  );
+  let allowed = true;
+  try {
+    allowed = await checkNamespacedRateLimit(`proxy:${namespace}`, clientIp(req), PROXY_LIMIT_PER_DAY);
+  } catch {
+    // Fail open — limiter trouble must never block a legitimate, irreversible close.
+    return null;
+  }
   if (allowed) return null;
   return NextResponse.json(
     { error: "Too many requests. Please slow down and try again later." },

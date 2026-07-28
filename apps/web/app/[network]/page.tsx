@@ -2,17 +2,7 @@
 
 import { use } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ShieldCheck,
-  Zap,
-  GitMerge,
-  AlertOctagon,
-  RotateCcw,
-  X,
-  FlaskConical,
-  ArrowRight,
-} from "lucide-react";
-import Link from "next/link";
+import { ShieldCheck, Zap, GitMerge, AlertOctagon, RotateCcw, X } from "lucide-react";
 import type { Network } from "@/config/networks";
 import AccountEntryForm from "@/components/account-entry/AccountEntryForm";
 import { useSessionRecovery } from "@/hooks/useSessionRecovery";

@@ -157,7 +157,9 @@ export default function PlanView({
       // Persist a resumable session (inputs only). If the close is interrupted, the tool
       // page offers to resume it; on resume the API re-derives the remaining work from
       // live on-chain state, so no per-step progress needs to be tracked here.
-      initSession();
+      // Reuse the existing id on a resumed flow (restoreSession set it) so the resumed
+      // session is overwritten in place rather than orphaned as a stale "in_progress".
+      if (!useDemolishStore.getState().sessionId) initSession();
       const sessionId = useDemolishStore.getState().sessionId;
       if (sessionId) {
         const now = new Date().toISOString();

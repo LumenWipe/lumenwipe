@@ -78,7 +78,16 @@ export function useCloseExecution() {
             // cannot change destination or amount, so funds can never be diverted.
             if (mediator && tx.covers.includes("MERGE")) {
               setProgressStatus("Co-signing the forward payment…");
-              signedXdr = await requestMediatorCosignature(signedXdr, network);
+              // The user's signature already binds the exact transaction verify() approved.
+              // Defense-in-depth: the mediator may ONLY add its signature — assert it did not
+              // alter the body (the tx hash is over the body, not the signatures) before submit.
+              const approvedHash = built.hash().toString("hex");
+              const cosignedXdr = await requestMediatorCosignature(signedXdr, network);
+              const cosigned = TransactionBuilder.fromXDR(cosignedXdr, passphrase);
+              if (cosigned.hash().toString("hex") !== approvedHash) {
+                throw new Error("The co-signed transaction does not match what you approved.");
+              }
+              signedXdr = cosignedXdr;
             }
 
             setProgressStatus("Submitting to Stellar network…");
