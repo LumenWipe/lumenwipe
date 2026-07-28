@@ -1,11 +1,13 @@
 sequenceDiagram
     participant S as Source account
-    participant M as Mediator (temporary)
+    participant M as Mediator (shared, operator-funded)
+    participant API as API (mediator co-sign)
     participant D as Destination (exchange deposit)
 
-    Note over S,M: Mediator created and funded from the source account
-    S->>M: AccountMerge (transfers all XLM into mediator)
-    Note over M: Mediator now holds the recovered funds
-    M->>D: Payment (forwards funds, with required memo)
+    Note over S,API: The API builds one atomic transaction: AccountMerge + forward Payment
+    Note over S: Browser verify() confirms the merge goes to the mediator, then signs op1
+    Note over API: Co-signs op2 (mediator forward) after validating the exact shape
+    S->>M: op1 AccountMerge (transfers all XLM into the mediator)
+    M->>D: op2 Payment (forwards funds, with required memo)
     Note over D: Exchange credits the user by address + memo
-    Note over M: Mediator retains 1 XLM base reserve (disclosed cost)
+    Note over M: Shared mediator, funded once and reused - only ~1 XLM reserve, not per close

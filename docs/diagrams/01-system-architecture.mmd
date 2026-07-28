@@ -1,44 +1,53 @@
 flowchart TB
-    subgraph client["Browser client: trust boundary, keys never leave"]
+    subgraph client["Browser client: trust boundary, verifies and signs"]
         direction TB
-        ui["Guided UI<br/>(plan, confirmations, dry-run preview)"]
+        ui["Guided UI<br/>(plan, confirmations, review)"]
         wk["Wallet adapter<br/>(stellar-wallets-kit)"]
         sk["Secret-key mode<br/>(in-memory only)"]
-        builder["Transaction builder<br/>(pure TypeScript)"]
-        signer["Signer + XDR review"]
+        verify["verify() - trust anchor<br/>(checks API-built XDR vs user intent)"]
+        signer["Signer<br/>(signs only after verify passes)"]
         sess["Session store<br/>(IndexedDB, no keys)"]
     end
 
-    subgraph backend["Read-only backend: stateless, no keys, no custody"]
+    proxy["Web proxy (Next.js, server-side)<br/>injects API key - rate-limit - cache"]
+
+    subgraph backend["API service: builds transactions, stateless, no keys"]
         direction TB
         analysis["Account analysis<br/>aggregator"]
+        close["Close builder<br/>(minimal unsigned tx set)"]
         defi["DeFi position adapter<br/>(OctoPos)"]
-        route["Routing service<br/>(Soroswap aggregator + SDEX paths)"]
-        med["Mediator factory<br/>(builds unsigned XDR)"]
+        route["Routing service<br/>(Soroswap + SDEX paths)"]
+        med["Mediator co-sign<br/>(forward payment only)"]
         reg["Exchange + contract<br/>registries"]
-        cache["Cache (Redis)"]
+        cache["Cache (short TTL)"]
     end
 
     subgraph data["Stellar network and data services"]
         direction TB
-        rpc["Stellar RPC<br/>(live reads, simulate, submit, events)"]
+        rpc["Stellar RPC<br/>(reads, simulate, submit, events)"]
         idx["Existing indexer<br/>(stellar.expert API)"]
         soro["Soroswap Aggregator API"]
         pos["DeFi Position API<br/>(OctoPos)"]
         net["Stellar ledger<br/>(classic + Soroban)"]
     end
 
-    ui --> builder
+    close -->|"unsigned XDR"| verify
+    verify -->|"if intent matches"| signer
     wk --> signer
     sk --> signer
-    builder --> signer
-    signer -->|"signed XDR"| rpc
     signer --> sess
 
-    ui -->|"read-only requests"| analysis
+    ui -->|"fetch plan + tx"| proxy
+    proxy -->|"read + build (key injected)"| analysis
+    proxy --> close
+    signer -->|"signed XDR -> submit"| proxy
+    proxy -->|"mediator co-sign"| med
+
+    close --> analysis
     analysis --> idx
     analysis --> rpc
     analysis --> defi
+    close --> rpc
     defi --> pos
     route --> soro
     route --> idx

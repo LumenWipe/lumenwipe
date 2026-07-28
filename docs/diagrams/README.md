@@ -8,10 +8,10 @@ The architecture document embeds the SVG exports directly. The `.mmd` files here
 
 | #   | File                                                                 | Description                                                                          | Section |
 | --- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------- |
-| 1   | [01-system-architecture.mmd](./01-system-architecture.mmd)           | Three-layer architecture: browser trust boundary, read-only backend, Stellar network | §4      |
-| 2   | [02-data-flow.mmd](./02-data-flow.mmd)                               | Data flow: enumerate via indexer, re-read live via RPC, build plan                   | §5      |
+| 1   | [01-system-architecture.mmd](./01-system-architecture.mmd)           | Three-layer architecture: browser trust boundary (verify + sign), API service (builds transactions), Stellar network | §4      |
+| 2   | [02-data-flow.mmd](./02-data-flow.mmd)                               | Data flow: enumerate, API re-reads live via RPC and builds the plan, browser verifies and signs, submit via API | §5      |
 | 3   | [03-state-machine.mmd](./03-state-machine.mmd)                       | Demolish flow state machine (Idle → Analyzing → Executing → Complete)                | §6.1    |
-| 4   | [04-signing-flow.mmd](./04-signing-flow.mmd)                         | Signing flow: wallet or secret key, XDR review, submit, poll                         | §6.3    |
+| 4   | [04-signing-flow.mmd](./04-signing-flow.mmd)                         | Signing flow: API-built envelope, verify(), wallet or secret key, submit via API, poll | §6.3    |
 | 5   | [05-defi-adapter-fallback.mmd](./05-defi-adapter-fallback.mmd)       | DeFi position adapter: OctoPos, freshness gate, degraded mode                        | §7.1    |
 | 6   | [06-execution-plan.mmd](./06-execution-plan.mmd)                     | Ordered 9-step demolish execution plan                                               | §8      |
 | 7   | [07-blend-unwind.mmd](./07-blend-unwind.mmd)                         | Blend unwind: repay debt, withdraw supply, backstop Q4W                              | §9.3    |

@@ -1,8 +1,12 @@
 flowchart LR
     acct["Source account"] --> enum["Enumerate subentries<br/>(stellar.expert indexer)"]
     acct --> defiq["Detect DeFi positions<br/>(OctoPos)"]
-    enum --> verify["Re-read each entry live<br/>(Stellar RPC getLedgerEntries)"]
-    defiq --> verify
-    verify --> plan["Build execution plan"]
+    enum --> reread["API re-reads each entry live<br/>(Stellar RPC getLedgerEntries)"]
+    defiq --> reread
+    reread --> plan["API builds execution plan<br/>(minimal unsigned tx set)"]
     plan --> sim["Simulate Soroban steps<br/>(Stellar RPC simulateTransaction)"]
-    sim --> submit["Submit signed XDR<br/>(Stellar RPC sendTransaction)"]
+    sim --> verify["verify() - trust anchor<br/>(browser checks XDR vs user intent)"]
+    verify --> sign["Sign in browser"]
+    sign --> submit["Submit via API<br/>(POST /submit -> Stellar RPC)"]
+    submit --> poll["Poll to confirmation"]
+    poll -->|"next round"| verify

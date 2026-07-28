@@ -4,79 +4,102 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-LumenWipe is a non-custodial web app that closes Stellar accounts: it unwinds everything holding an account open (signers, data entries, offers, trustlines, DeFi positions), converts leftovers to XLM, and merges the account into a destination wallet or exchange. Every transaction is built and signed in the browser; the backend is read-only and can never move funds. Operations are irreversible, so correctness beats speed everywhere in this codebase.
+LumenWipe closes Stellar accounts non-custodially: it unwinds everything holding an account open (signers, data entries, offers, trustlines, DeFi positions), converts leftovers to XLM, and merges the account into a destination wallet or exchange. Operations are irreversible, so correctness beats speed everywhere.
+
+The architecture is **API-first and single-channel**. The NestJS **API** is the product: it reads on-chain state and builds every unsigned transaction. The browser only **verifies, signs, and orchestrates** — it holds no transaction-building logic, and the private key never leaves the client. Reads and transaction-building always go through the API.
+
+## Repository layout
+
+Bun-workspaces monorepo. One pinned `@stellar/stellar-sdk` (16.0.1) via root `overrides`, used **server-side only**.
+
+- `apps/api` — NestJS service, the product. Controllers under `src/{account,close,mediator,health}`. Builds the minimal unsigned transaction set, co-signs the mediator forward payment, submits. Stateless across a multi-round close.
+- `apps/web` — Next.js thin client. Fetches unsigned XDR, verifies it, signs, submits — all through a server-side proxy. No closing logic.
+- `packages/sdk` (`@lumenwipe/sdk`) — thin fetch client over the API (tsup ESM+CJS, **does not bundle the Stellar SDK**).
+- `packages/types` (`@lumenwipe/types`) — request/response types shared by API, SDK, and web.
 
 ## Commands
 
-Bun (1.3+) is the package manager and unit test runner.
+Bun 1.3+ is the package manager and unit-test runner. Run from the repo root:
 
 ```bash
 bun install
-bun dev                              # dev server at localhost:3000, testnet by default
-bun run build                        # next build
-bun lint                             # ESLint, zero errors required
-bun format                           # Prettier (authoritative for formatting)
-bun type-check                       # tsc for app AND tests/tsconfig.json, strict, zero errors
-bun run test                         # unit tests (Bun test runner, tests/unit/ only)
-bun test tests/unit/buildPlan.test.ts  # single test file (bare `bun test` also picks up the Playwright spec and fails)
-bun test:e2e                         # Playwright E2E, runs against testnet only
+bun dev                                   # web dev server (localhost:3000, testnet); needs the API running too
+bun run dev:api                           # API dev server (nest start --watch)
+bun run lint | type-check | test          # ALL packages, as a matrix (bun run --filter '*' ...)
+bun run build:web | build:api
+bun run format                            # Prettier (authoritative for formatting)
 ```
 
-All of `bun type-check && bun lint && bun test` must pass before pushing.
+Target one package with `--filter`:
 
-Setup: copy `.env.example` to `.env.local`. Minimum config is the `NEXT_PUBLIC_STELLAR_RPC_*` endpoints. `KV_REST_API_*` (Vercel KV) is only needed for the merge stats counter (`lib/kv.ts`).
+```bash
+bun run --filter '@lumenwipe/web' type-check     # tsc for app AND tests/tsconfig.json
+bun run --filter '@lumenwipe/api' test           # bun test tests
+bun run --filter '@lumenwipe/web' test:e2e       # Playwright, testnet only
+```
+
+Single unit test — run from inside the package (bare `bun test` at root/`apps/web` also picks up the Playwright spec and fails; the `test` scripts scope the path):
+
+```bash
+cd apps/web && bun test tests/unit/verify.test.ts
+cd apps/api && bun test tests/close-transactions.test.ts
+```
+
+`bun type-check && bun lint && bun test` must pass before pushing. CI (`.github/workflows/ci.yml`) runs every package's checks on each change as a matrix — a shared `packages/types` change is validated against every consumer, not skipped by a path filter. `deploy-api.yml` deploys the API to Cloud Run on push to `main` (keyless WIF).
+
+### Local full-flow dev
+
+The full close needs **both** services. The web reaches the API only through its own proxy, so:
+
+- `apps/api/.env.local` needs `API_KEYS` (label=key) and the read endpoints (RPC / Horizon-compatible `PATH_ROUTING` / mediator secret for exchange closes). All gitignored.
+- `apps/web/.env.local` needs `LUMENWIPE_API_URL` + `LUMENWIPE_API_KEY` (server-side, injected by the proxy), plus `NEXT_PUBLIC_MEDIATOR_PUBLIC_*` so `verify()` can recognize the mediator (see below).
 
 ## Architecture
 
-Three layers with the trust boundary in the browser - private keys never leave the client:
+### The trust boundary moved to `verify()`
 
-1. **Client** (`app/[network]/`, `components/`, `hooks/`, `store/`): all transaction construction and signing.
-2. **Read-only API routes** (`app/api/[network]/`): account analysis, conversion paths, mediator prepare/check. Stateless, no keys, not in the signing path.
-3. **External services**: Stellar RPC for live reads/simulation/submission; Horizon-compatible endpoints (base URL `PATH_ROUTING_API_URLS`) for the reads RPC cannot serve: open offers (`lib/stellar/horizon-adapter.ts`), full account state with data entries and signers (`lib/stellar/account-live.ts`), classic path finding (`lib/se-api/paths.ts`); stellar.expert API for subentry enumeration (`lib/se-api/`); Vercel KV.
+The API builds the bytes; the browser decides whether to sign them. `apps/web/lib/stellar/verify.ts` (`verifyCloseTransaction` / the pure `assertCloseIntent`) is the **trust anchor**: before signing, it decodes the API-built XDR and asserts it does exactly what the user asked — merge only to the stated destination or the shared mediator, payments only return-to-issuer or the mediator forward, conversions to self/native with a positive destination minimum, only removals of trustlines/data/offers, `SetOptions` that never adds a signer or raises thresholds, matching memo, no unknown operation. Its expected values come from the **user's own inputs, never the API response**, so a compromised API cannot get funds diverted. A mismatch aborts before signing.
 
-Routing splits into two worlds: `app/(marketing)/` is the landing page and MDX blog (`content/blog/`, `lib/blog.ts`) with no transaction logic; `app/[network]/` is the actual tool, where `[network]` is `public` or `testnet` (`config/networks.ts`), with the flow pages `analyze → execute → complete`.
+**Consequence for any new close operation** (e.g. a sponsorship-revoke or a new claiming step): add it in **two** places — the API's transaction builder **and** `verify()`'s allowlist — or the anchor rejects the transaction as an unknown op.
 
-### The demolition pipeline
+### The close loop
 
-This is the core of the app and spans several modules:
+`analyze → POST close/plan → POST close/transactions (per round) → verify → sign → POST submit → repeat until done`. The API is stateless: each round it re-reads live state and re-derives the remaining work (`remaining.requiresAnotherCall`), so an interrupted close resumes by simply calling again — there is no per-step server progress to reconcile. Driven client-side by `apps/web/lib/api/close-engine.ts` (pure, dependency-injected runner) via `hooks/useCloseExecution.ts`.
 
-- **Scan**: `lib/se-api/` enumerates subentries from stellar.expert; `lib/stellar/account.ts` + `lib/stellar/rpc.ts` re-read exact live state over RPC. Never build or sign a transaction from indexer data alone - always re-read on-chain state first.
-- **Plan**: a deterministic, ordered list of `PlannedStep` (`types/plan.ts`). Step order is fixed: `NORMALIZE_SIGNERS → REMOVE_DATA_ENTRIES → CANCEL_OFFERS → CLAIM_BALANCES → CONVERT_ASSETS → REMOVE_TRUSTLINES → FUND_MEDIATOR → MERGE`. The same account state must always produce the same plan (covered by `tests/unit/buildPlan.test.ts`).
-- **Execute**: `hooks/useStepExecution.ts` drives the loop. Transaction XDR is built lazily per step by `lib/stellar/tx-builder/`, signed in the browser, submitted via `lib/stellar/submit.ts`, and polled to confirmation before advancing.
-- **State machine**: `store/demolish.ts` (Zustand) holds the `DemolishPhase` (`IDLE → ANALYZING → PREFLIGHT_COMPLETE → STEP_EXECUTING ⇄ STEP_FAILED → ... → COMPLETE`). Sessions persist to IndexedDB via `lib/session/` (never keys). `hooks/useSessionRecovery.ts` reconciles a resumed session against on-chain state so completed steps are skipped, never re-executed.
-- **Mediator flow**: exchanges don't support `ACCOUNT_MERGE`, so merges to exchange destinations go through a temporary mediator account (`lib/stellar/mediator.ts`, `lib/stellar/mediator-session.ts`, `app/api/[network]/mediator/`). Exchange destinations are validated against `config/exchange-registry.json`, which enforces the memo type - a missing memo for a known exchange must block submission.
+There is no "fast path" or "fused" mode: producing the minimal set of transactions is just how a close works. Most accounts are one transaction; an exchange adds the mediator transfer; claimable balances, a Soroswap-aggregator swap, or >100 operations force additional transactions.
 
-### Hard invariants
+### The proxy (no key in the browser)
 
-- `lib/stellar/tx-builder/` is a **pure module**: account state in, unsigned transaction envelopes out, zero network side effects. This is what makes it unit-testable and auditable. Keep it that way.
-- Automated tests never touch mainnet. E2E runs against testnet.
-- A position or step that cannot be closed safely surfaces as a blocker with an explanation - never silently skipped.
-- User-facing errors are plain language; never expose raw SDK error codes or stack traces in the UI.
-- Changes to key handling, transaction construction, confirmation flows, the mediator flow, or CSP are security-sensitive and get closer review - flag them explicitly in PRs.
+`apps/web/app/api/**/route.ts` are thin server-side proxies: each injects the API key via `getApiClient()` and forwards to the NestJS API, with per-IP rate limiting and short-TTL caching. The browser never holds an API key. A `no-restricted-imports` boundary lint in `apps/web/.eslintrc.json` (no exemptions) forbids the web from importing any closing/tx-building module or `@lumenwipe/api`, so the thin-client boundary can't erode.
+
+### Mediator flow (exchanges)
+
+Exchanges don't accept `ACCOUNT_MERGE`. The user merges into a shared, persistent mediator account, and the API co-signs the mediator's forward payment to the exchange (mediator secret `MEDIATOR_SECRET_*` lives server-side). The web must carry the mediator **public** key (`NEXT_PUBLIC_MEDIATOR_PUBLIC_*`) so `verify()` can allow the merge-to-mediator — this is by design (the anchor can't trust the API to name its own mediator). Being replaced by a config endpoint (issue #81).
 
 ## Conventions
 
-See CONTRIBUTING.md for the full rules. The essentials:
+CONTRIBUTING.md has the full rules. Essentials:
 
-- Conventional Commits; types include `security` for hardening changes. Scopes: `builder`, `mediator`, `registry`, `ui`, `backend`, protocol names (`blend`, `soroswap`, ...). Branches: `<type>/<short-description>`.
-- Strict TypeScript, no `any` (use `unknown` + type guard); explicit return types on exported functions. Prettier config: double quotes, semicolons, printWidth 100.
-- Comments only when the _why_ is non-obvious; never describe what the code does.
-- Bug fixes require a unit test reproducing the bug. New protocol adapters require testnet integration tests and must satisfy the exit adapter invariants in `docs/architecture.md` §9.9.
+- Conventional Commits; `security` type for hardening. Scopes: `builder`, `mediator`, `registry`, `ui`, `backend`, `web`, protocol names. Branches `<type>/<short-description>`.
+- Strict TypeScript, no `any` (use `unknown` + a guard); explicit return types on exported functions. Prettier: double quotes, semicolons, printWidth 100.
+- Comments only when the _why_ is non-obvious.
+- Bug fixes require a unit test reproducing the bug. Automated tests never touch mainnet; E2E runs on testnet.
+- Security-sensitive changes — key handling, transaction construction, `verify()`, confirmation flows, the mediator flow, CSP — get closer review; flag them explicitly in PRs.
 
-`docs/` is both the deep design documentation and the Mintlify site source (docs.lumenwipe.com); `docs/architecture.md` is the authoritative system design, including the security model (§13).
+## Hard invariants
 
-## Project skills
+- The API's transaction builder is a **pure module** (state in, unsigned envelopes out, no network side effects) — keep it unit-testable and auditable.
+- Never build or sign from indexer data alone: the API re-reads exact on-chain state over RPC immediately before building.
+- A position or step that cannot be closed safely surfaces as a blocker with an explanation, never silently skipped.
+- User-facing errors are plain language; never surface raw SDK codes or stack traces.
 
-Two systems provide the skills under `.claude/skills/` (and `.codex/skills/`):
+## Gotchas
 
-**skills CLI** ([vercel-labs/skills](https://github.com/vercel-labs/skills)) - canonical in `.agents/skills/`, symlinked into `.claude/skills/`, pinned in `skills-lock.json`. Manage with `npx skills list` / `npx skills update -p` / `npx skills add <repo> -s <skill> -a claude-code -y`.
+- **`@stellar/stellar-sdk` v16 dual-build hazard**: never mix `require()` and `import` of the SDK in the same runtime — the CJS and ESM builds each bundle their own `js-xdr`, and objects don't cross the boundary. Keep it server-side (API) only.
+- **SDK-from-source resolution**: the web resolves `@lumenwipe/sdk` and `@lumenwipe/types` from TS **source** via tsconfig `paths` + Next `transpilePackages`, so there is no build-order dependency on the packages' `dist` (works in CI, Vercel, and local without a prior package build).
+- **API build**: `nest build` does not rewrite `@/*` tsconfig aliases, so the api build script runs `tsc-alias` after it — otherwise `node dist/main.js` fails with `Cannot find module '@/...'` (latent because dev uses `nest start` and tests run from source).
+- The **playground** is currently a placeholder; it built transactions client-side and was removed to keep the boundary clean. Rebuilding it on the SDK/API is a follow-up.
 
-- `soroswap-sdk` (soroswap/sdk) - use when working on asset conversion via the Soroswap API/SDK; the `CONVERT_ASSETS` step routes through the Soroswap API (which spans the Soroswap Aggregator and the classic SDEX) per `docs/architecture.md`.
-- `vercel-react-best-practices` (vercel-labs/agent-skills) - React 19 / Next.js performance rules.
-- `webapp-testing` (anthropics/skills) - Playwright-driven browser verification of the guided flow.
+## Docs
 
-**stellar-build** ([kaankacar/stellar-build](https://github.com/kaankacar/stellar-build)) - a broader Stellar dev toolkit (personas, methodology, ecosystem data) installed as plain folders under `.claude/skills/`, plus the local learning loop under `.stellar/` (git-ignored). This is where `dapp`, `data`, `assets` (wallet integration, RPC queries, classic assets/trustlines/SAC) now come from - not the lockfile. Update everything it manages with:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/kaankacar/stellar-build/main/install.sh | bash -s -- --prefix=$(pwd) --update
-```
+`docs/architecture.md` is the authoritative system design (security model in §13). `docs/` is also the Mintlify site source (docs.lumenwipe.com). Diagrams live in `docs/diagrams/*.mmd` with rendered SVG/PNG in `output/`; re-export with `npx @mermaid-js/mermaid-cli -i <file>.mmd -o output/<name>.svg`.

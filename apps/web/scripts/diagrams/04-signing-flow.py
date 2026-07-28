@@ -1,8 +1,9 @@
 """
 LumenWipe - 04 Signing Flow
-Unsigned transaction envelope -> XDR review -> wallet or secret key -> sign
--> irreversibility confirmation -> submit -> poll -> advance.
-All steps happen in the browser. The backend is never in the signing path.
+API-built unsigned envelope -> XDR review -> verify() (trust anchor) -> wallet
+or secret key -> sign -> irreversibility confirmation -> submit via API -> poll
+-> advance. The API builds the transaction; the browser verifies it against the
+user's own choices before signing; the private key never leaves the browser.
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
@@ -13,10 +14,10 @@ g = graphviz.Digraph("signing-flow")
 g.attr(**base_graph_attr(
     rankdir="TB",
     splines="polyline",
-    size="12,13",
+    size="12,14",
     label=hl(
         "LumenWipe - Transaction Signing Flow",
-        "Happens entirely in the browser · private key never transmitted · backend not in signing path",
+        "The browser verifies the API-built transaction, then signs · private key never transmitted · submission routed through the API",
     ),
 ))
 g.attr("node", **base_node_attr())
@@ -24,14 +25,21 @@ g.attr("edge", **base_edge_attr())
 
 # ── Entry ─────────────────────────────────────────────────────────────────────
 g.node("env",
-       hl("Unsigned Transaction Envelope", "Built by the pure TypeScript transaction builder",
-          "Each step's envelope is built fresh with a live RPC re-read"),
-       fillcolor=F_CLIENT, color=B_CLIENT)
+       hl("Unsigned Transaction Envelope", "Built by the API from a live on-chain re-read",
+          "Fetched through the key-injecting web proxy · one transaction per round"),
+       fillcolor=F_ACCENT, color=B_ACCENT)
 
 g.node("review",
        hl("XDR Review Panel", "Collapsible · human-readable operation list",
           "User can inspect every operation, fee, and sequence number before signing"),
        fillcolor=F_CLIENT, color=B_CLIENT)
+
+# ── Trust anchor ──────────────────────────────────────────────────────────────
+g.node("verify",
+       hl("verify()  -  Trust Anchor", "Checks the API-built XDR against the user's own choices",
+          "Merge only to the destination or mediator · matching memo · no unknown op\n"
+          "Expected values come from the user, never the API - a mismatch aborts before signing"),
+       fillcolor=F_CLIENT, color=B_CLIENT, penwidth="2.5")
 
 # ── Signing method decision ───────────────────────────────────────────────────
 g.node("choice",
@@ -76,9 +84,9 @@ g.node("confirm",
        fillcolor=F_DANGER, color=B_DANGER, penwidth="2")
 
 g.node("send",
-       hl("sendTransaction", "Stellar RPC · client-to-network directly",
-          "Backend not in path for user account transactions"),
-       fillcolor=F_EXTERNAL, color=B_EXTERNAL)
+       hl("Submit via API", "POST /submit -> Stellar RPC sendTransaction",
+          "The API forwards the signed transaction to the network"),
+       fillcolor=F_ACCENT, color=B_ACCENT)
 
 g.node("poll",
        hl("Poll getTransaction", "Exponential backoff until ledger response",
@@ -87,12 +95,13 @@ g.node("poll",
 
 g.node("next",
        hl("Step Confirmed - Advance Plan", "Transaction hash recorded in IndexedDB session",
-          "Session state transitions to STEP_CONFIRMED -> STEP_EXECUTING (next)"),
+          "Session state transitions to STEP_CONFIRMED -> STEP_EXECUTING (next round)"),
        fillcolor=F_SUCCESS, color=B_SUCCESS, penwidth="2")
 
 # ── Edges ─────────────────────────────────────────────────────────────────────
 g.edge("env",    "review")
-g.edge("review", "choice")
+g.edge("review", "verify")
+g.edge("verify", "choice", label="intent matches")
 g.edge("choice", "kit",    label="wallet mode")
 g.edge("choice", "sk_in",  label="secret-key mode")
 g.edge("kit",    "multisig",  style="dashed")

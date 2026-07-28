@@ -20,7 +20,7 @@ Non-custodial &nbsp;·&nbsp; Client-side signing &nbsp;·&nbsp; Soroban & DeFi s
 
 LumenWipe is an open-source, non-custodial web app that walks you through closing a Stellar account from start to finish - automatically. It detects everything holding your account open (trustlines, DEX offers, DeFi positions, data entries, extra signers), unwinds it step by step, converts leftover tokens to XLM, and merges the account into your destination wallet or exchange address.
 
-**Every transaction is built and signed in your browser. Your private keys never leave your device.** The backend is read-only and stateless: it aggregates data and can never move funds.
+**The API builds every unsigned transaction; the browser verifies it against your own choices and signs it. Your private keys never leave your device.** The API holds no user keys and can never move your funds.
 
 > **Status:** the classic account wind-down runs today on testnet and mainnet. Soroban & DeFi protocol exits, the allowance inspector, and sponsored fees are in active development - see the [roadmap](#delivery-roadmap).
 
@@ -42,13 +42,13 @@ Stellar has over **10 million accounts on mainnet**, and a large share are stale
 
 ## Architecture
 
-The system has three layers. The trust boundary is the browser - signing never leaves the client.
+The system has three layers. The trust boundary is the browser: it verifies every transaction and signs it; keys never leave the client.
 
 ![System architecture diagram](docs/diagrams/output/01-system-architecture.svg)
 
-**Browser (trust boundary)** - The guided UI, wallet adapter, and a pure-TypeScript transaction builder all live in the browser. The signer receives unsigned envelopes, presents them for review, and sends signed XDR directly to Stellar RPC. The session is persisted to IndexedDB; keys are never stored.
+**Browser (trust boundary)** - The guided UI, wallet adapter, and `verify()` (the trust anchor) live in the browser. It fetches unsigned transactions from the API through a key-injecting server-side proxy, verifies each one against the user's own choices before signing, signs locally, and submits back through the API. The session is persisted to IndexedDB; keys are never stored.
 
-**Read-only backend** - Stateless Next.js API routes aggregate account data, detect DeFi positions, build routing quotes, and construct the mediator's unsigned forwarding transaction. The backend holds no keys and is not in the signing path. A backend compromise cannot move funds.
+**API service** - A stateless NestJS service, and the product itself: it reads account state, detects DeFi positions, quotes routes, and builds the minimal set of unsigned transactions that close an account. It holds no user keys and is not in the signing path; its one signing key co-signs only the mediator's forward payment. A fully compromised API still cannot move funds, because `verify()` refuses to sign anything that does not match the user's intent.
 
 **Stellar network and data services** - Stellar RPC for live reads, simulation, submission, and events; `stellar.expert` API for subentry enumeration; Soroswap Aggregator API for conversion routing; OctoPos for DeFi position detection.
 
@@ -88,7 +88,7 @@ The entire wind-down is held as an explicit state machine persisted to IndexedDB
 
 ### Signing flow
 
-Every step follows the same pattern: build unsigned envelope → present for review → sign in browser → submit → poll to confirmation → advance.
+Every step follows the same pattern: the API builds the unsigned envelope → present for review → `verify()` against the user's intent → sign in browser → submit via the API → poll to confirmation → advance.
 
 ![Transaction signing flow](docs/diagrams/output/04-signing-flow.svg)
 
@@ -98,7 +98,7 @@ Exchanges don't support `ACCOUNT_MERGE`. LumenWipe routes the merge through a sh
 
 ![Mediator flow for exchange destinations](docs/diagrams/output/09-mediator-flow.svg)
 
-The mediator is a persistent account funded once by the operator and reused for every close. You recover essentially all of your XLM; only standard network fees apply. The merge half is signed in your browser. The backend co-signs only the mediator's forward payment, after validating the exact transaction shape, and cannot alter the destination or amount. Known exchange destinations are validated against a registry that enforces the correct memo type - a missing memo blocks submission.
+The mediator is a persistent account funded once by the operator and reused for every close. You recover essentially all of your XLM; only standard network fees apply. The API builds the transaction, `verify()` confirms the merge goes to the shared mediator, and your browser signs the merge half. The API co-signs only the mediator's forward payment, after validating the exact transaction shape, and cannot alter the destination or amount. Known exchange destinations are validated against a registry that enforces the correct memo type - a missing memo blocks submission.
 
 ---
 
@@ -135,10 +135,10 @@ LumenWipe builds transactions that drain accounts irreversibly. The security des
 | What                    | How it's protected                                                                                                                            |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Private key**         | Never transmitted. Wallet path keeps it in the wallet; advanced secret-key mode keeps it in memory only, cleared after each signing operation |
-| **Signed transaction**  | Built and submitted entirely client-side; user reviews XDR and confirms before every destructive step                                         |
+| **API-built transaction** | Verified client-side against the user's own choices before signing (`verify()`); the browser never signs bytes it did not verify               |
 | **Destination address** | Full-address display, ledger existence check, and explicit confirmation before merge                                                          |
 | **Exchange memo**       | Required and validated for known exchange destinations - missing memos block submission                                                       |
-| **Backend compromise**  | Cannot move funds (no keys, not in signing path). Wrong read data is caught by on-chain simulation and explicit confirmations                 |
+| **API compromise**      | Cannot move funds: `verify()` checks every transaction against the user's own inputs, never the API's response, so a diverting transaction is never signed |
 | **XSS**                 | Strict Content Security Policy - no inline scripts, no `unsafe-eval`                                                                          |
 | **Supply chain**        | Lockfile-pinned dependencies, audited in CI                                                                                                   |
 
@@ -150,7 +150,9 @@ The codebase undergoes internal security reviews as part of the development proc
 
 | Layer          | Choice                                              | Why                                                                                  |
 | -------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Frontend       | Next.js 15, TypeScript                              | Open source, type-safe transaction construction                                      |
+| Web client     | Next.js 15, TypeScript                              | Thin open-source client: verifies (`verify()`) and signs, no transaction-building    |
+| API            | NestJS, TypeScript, cache                           | Builds transactions; stateless; own deployable, reached via a key-injecting proxy    |
+| Packaging      | Bun workspaces monorepo                             | `apps/{web,api}` + `packages/{sdk,types}`; `@lumenwipe/sdk` is a thin API fetch client |
 | Stellar SDK    | `@stellar/stellar-sdk`                              | Official SDK for classic and Soroban                                                 |
 | Wallets        | `stellar-wallets-kit` (SEP-43)                      | One interface across Freighter, xBull, Albedo, LOBSTR, Hana, WalletConnect, and more |
 | Network access | Stellar RPC                                         | Live reads, simulation, submission, events                                           |
@@ -158,8 +160,7 @@ The codebase undergoes internal security reviews as part of the development proc
 | Routing        | Soroswap API + SDEX paths                           | Best routes across Soroban and classic venues                                        |
 | DeFi detection | OctoPos                                             | Funded DeFi Position API, behind a pluggable adapter                                 |
 | State          | Zustand + IndexedDB                                 | Resumable sessions, never persists keys                                              |
-| Backend        | Read-only Next.js API routes, Redis cache           | Stateless, single deployable service                                                 |
-| Testing        | Bun test runner (unit), Playwright (E2E on testnet) | Automated tests never touch mainnet                                                  |
+| Testing        | Bun test runner (unit), Playwright (E2E on testnet) | Automated tests never touch mainnet; per-package CI across the monorepo              |
 
 ---
 
@@ -173,24 +174,33 @@ git clone https://github.com/LumenWipe/lumenwipe.git
 cd lumenwipe
 bun install
 
-# Run in development (testnet by default)
-bun dev
+# Run in development (testnet by default) - the full flow needs BOTH services
+bun run dev:api      # NestJS API (localhost:3001)
+bun dev              # web (localhost:3000), reaches the API through its proxy
 ```
 
 Open [http://localhost:3000](http://localhost:3000). The tool defaults to Stellar testnet - no real funds are at risk while developing.
 
 ### Environment variables
 
-Copy `.env.example` to `.env.local`. The minimum to run on testnet is the `NEXT_PUBLIC_STELLAR_RPC_*` endpoints; everything else has sensible defaults or is only needed for specific features.
+The web and the API each read their own `.env.local` (copy from each app's `.env.example`).
 
-| Variable                                                              | Description                                                                   |
-| --------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_STELLAR_RPC_TESTNET` / `NEXT_PUBLIC_STELLAR_RPC_MAINNET` | Stellar RPC endpoints (testnet required for local dev)                        |
-| `NEXT_PUBLIC_PATH_ROUTING_API_TESTNET` / `_MAINNET`                   | Horizon-compatible endpoints for offers, full account state, and path finding |
-| `NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET` / `_MAINNET`                    | Public key of the shared exchange mediator account                            |
-| `KV_REST_API_URL` / `KV_REST_API_TOKEN`                               | Vercel KV - only needed for the merge-stats counter                           |
+**`apps/api/.env.local`** - the API:
 
-See `.env.example` for the full list, including operator-only secrets.
+| Variable                                            | Description                                                                    |
+| --------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `API_KEYS`                                          | Accepted API keys as `label=key` (the web's key must be listed here)           |
+| `NEXT_PUBLIC_STELLAR_RPC_TESTNET` / `_MAINNET`      | Stellar RPC endpoints                                                          |
+| `NEXT_PUBLIC_PATH_ROUTING_API_TESTNET` / `_MAINNET` | Horizon-compatible endpoints for offers, full account state, and path finding  |
+| `MEDIATOR_SECRET_TESTNET` / `_MAINNET`              | Shared mediator secret (operator-only; enables exchange closes)                |
+
+**`apps/web/.env.local`** - the web:
+
+| Variable                                            | Description                                                                    |
+| --------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `LUMENWIPE_API_URL` / `LUMENWIPE_API_KEY`           | API base URL and key, injected server-side by the proxy (never sent to the browser) |
+| `NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET` / `_MAINNET`  | Public key of the shared mediator, so `verify()` can recognize the merge target |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN`             | Vercel KV - for the merge-stats counter and the proxy rate limit               |
 
 ### Running tests
 
@@ -230,13 +240,13 @@ The project is delivered in three cumulative tranches, each independently verifi
 | **2 - Soroban & DeFi**       | DeFi position detection via OctoPos; Blend, Aquarius, Soroswap, Phoenix, and FxDAO exits; Soroban token conversion; allowance inspector; per-step simulation; sponsored fees for reserve-locked accounts            | Planned         |
 | **3 - Production hardening** | Security review and remediation, performance validation, final UX from user testing, complete public documentation, public REST API and TypeScript SDK for integrators                                              | Planned         |
 
-> The classic wind-down already runs. The current codebase builds and signs classic transactions client-side and executes the full path - signer normalization, offer cancellation, asset conversion, trustline removal, and `AccountMerge` including the mediator flow - on both testnet and mainnet.
+> The classic wind-down already runs. The API builds the classic transactions, the browser verifies and signs them, and the tool executes the full path - signer normalization, offer cancellation, asset conversion, trustline removal, and `AccountMerge` including the mediator flow - on both testnet and mainnet.
 
 ---
 
 ## Community & Contributing
 
-LumenWipe is open source from day one. The full frontend, read-only backend, transaction construction layer, contract registry, and test suite are public.
+LumenWipe is open source from day one. The full API, web client, SDK, contract registry, and test suite are public.
 
 | Channel                                                                     | Use                                                  |
 | --------------------------------------------------------------------------- | ---------------------------------------------------- |
