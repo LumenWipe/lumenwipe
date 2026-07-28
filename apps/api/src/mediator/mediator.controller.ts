@@ -8,6 +8,7 @@ import { lookupExchange } from "@/lib/exchange-registry";
 import { getMediatorKeypair } from "@/lib/stellar/mediator-server";
 import { getAccountState } from "@/lib/stellar/account";
 import { AccountNotFoundError } from "@/lib/utils/errors";
+import { forwardExceedsMergedBalance } from "./mediator-validation";
 
 @ApiTags("mediator")
 @ApiBearerAuth("api-key")
@@ -73,6 +74,31 @@ export class MediatorController {
       parseFloat(transfer.amount) < 1
     ) {
       throw new HttpException({ error: "Transaction structure not allowed" }, 400);
+    }
+
+    // The mediator must not be the transaction's fee/sequence source (that would consume
+    // its sequence number and make it pay the fee) nor the account being merged.
+    const mergedSource = merge.source ?? tx.source;
+    if (tx.source === mediator || mergedSource === mediator || !isValidGAddress(mergedSource)) {
+      throw new HttpException({ error: "Transaction structure not allowed" }, 400);
+    }
+
+    // Bound the forward payment to what the merge delivers — defense-in-depth against a
+    // naive/accidental over-forward on this public endpoint. This is not a full guarantee
+    // against an active adversary (see forwardExceedsMergedBalance for the TOCTOU limit);
+    // the primary protection stays the operational invariant that the mediator holds no
+    // surplus. Fail closed: if the balance can't be read, do not co-sign.
+    let mergedBalance: string;
+    try {
+      mergedBalance = (await getAccountState(mergedSource, network)).nativeBalanceLumens;
+    } catch (err) {
+      if (err instanceof AccountNotFoundError) {
+        throw new HttpException({ error: "Merged account not found" }, 400);
+      }
+      throw err;
+    }
+    if (forwardExceedsMergedBalance(transfer.amount, mergedBalance, Number(tx.fee))) {
+      throw new HttpException({ error: "Forward amount exceeds the merged balance" }, 400);
     }
 
     tx.sign(mediatorKeypair);
