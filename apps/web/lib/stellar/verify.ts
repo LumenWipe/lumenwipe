@@ -25,6 +25,11 @@ export interface CloseExpectation {
   memoRequired: boolean;
   /** The memo type the destination requires (from the registry), or null. */
   memoType: "text" | "id" | "hash" | null;
+  /** Assets the user themselves chose to add a trustline for, to claim a balance the account
+   *  otherwise cannot reach ("add trustline and claim"). Sourced from the user's own claimable-
+   *  balance decisions, never from the API response - the only case a raised (non-removal)
+   *  `change_trust` is allowed to pass verification. */
+  claimTrustlineAssets: string[];
 }
 
 /**
@@ -80,8 +85,10 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         }
         break;
       case "change_trust":
-        // The close only removes trustlines (limit 0, however the amount decodes).
-        if (Number(op.limit) !== 0) {
+        // The close only removes trustlines (limit 0, however the amount decodes) - with one
+        // narrow exception: a raised trustline for an asset the user themselves chose to add
+        // in order to claim an otherwise-unreachable balance ("add trustline and claim").
+        if (Number(op.limit) !== 0 && !expected.claimTrustlineAssets.includes(op.asset)) {
           throw new VerificationError("A trustline would be created or raised, not removed.");
         }
         break;
@@ -152,7 +159,13 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
 export function verifyCloseTransaction(opts: {
   unsignedXdr: string;
   network: Network;
-  expected: { source: string; destination: string; mediator: string | null; memo: string | null };
+  expected: {
+    source: string;
+    destination: string;
+    mediator: string | null;
+    memo: string | null;
+    claimTrustlineAssets: string[];
+  };
 }): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);
   const exchange = lookupExchange(opts.expected.destination);
