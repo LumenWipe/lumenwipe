@@ -18,12 +18,18 @@ export interface DecisionOption {
 
 export interface DecisionPoint {
   id: string; // stable, e.g. "asset:USDC-GISSUER..."
-  type: "asset_disposition" | "confirmation" | "choice";
+  type: "asset_disposition" | "confirmation" | "choice" | "claimable_balance";
   subject: Record<string, unknown>;
   options: DecisionOption[];
   default: string;
   required: boolean;
 }
+
+// Per-claimable-balance disposition: claim it now, add a trustline first then claim, or give it
+// up. "claim" is the opt-out default for a balance the account can already claim (native asset or
+// an authorized trustline exists); "add_trustline_then_claim" and "forfeit" only apply to a
+// balance the account cannot currently claim.
+export type ClaimableBalanceSelection = "claim" | "add_trustline_then_claim" | "forfeit";
 
 export interface DecisionAnswer {
   id: string;
