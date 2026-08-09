@@ -18,7 +18,7 @@ export interface DecisionOption {
 
 export interface DecisionPoint {
   id: string; // stable, e.g. "asset:USDC-GISSUER..."
-  type: "asset_disposition" | "confirmation" | "choice";
+  type: "asset_disposition" | "confirmation" | "choice" | "claimable_balance";
   subject: Record<string, unknown>;
   options: DecisionOption[];
   default: string;

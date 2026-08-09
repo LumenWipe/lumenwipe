@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { isClaimableNow } from "@/lib/stellar/claim-predicates";
+import { describeClaimPredicate, isClaimableNow } from "@/lib/stellar/claim-predicates";
 import type { ClaimPredicate } from "@/types/account";
 
 const CLAIMANT = "GCLAIMANT00000000000000000000000000000000000000000000000000";
@@ -107,4 +107,44 @@ test("isClaimableNow › nested and/or/not combination", () => {
     ],
   };
   expect(isClaimableNow(predicate, CLAIMANT, NOW)).toBe(true);
+});
+
+test("describeClaimPredicate › unconditional has nothing to say", () => {
+  expect(describeClaimPredicate({ type: "unconditional" })).toBeNull();
+});
+
+test("describeClaimPredicate › before_absolute_time mentions a claimable-until date", () => {
+  const description = describeClaimPredicate({
+    type: "before_absolute_time",
+    absBeforeEpoch: String(NOW_EPOCH + 3600),
+  });
+  expect(description).toContain("Claimable until");
+});
+
+test("describeClaimPredicate › before_relative_time mentions a claimable-until date", () => {
+  const description = describeClaimPredicate({
+    type: "before_relative_time",
+    relBeforeSeconds: "3600",
+    deadlineEpoch: String(NOW_EPOCH + 3600),
+  });
+  expect(description).toContain("Claimable until");
+});
+
+test("describeClaimPredicate › and joins non-null sub-descriptions", () => {
+  const description = describeClaimPredicate({
+    type: "and",
+    predicates: [
+      { type: "unconditional" },
+      { type: "before_absolute_time", absBeforeEpoch: String(NOW_EPOCH + 3600) },
+    ],
+  });
+  expect(description).toContain("Claimable until");
+});
+
+test("describeClaimPredicate › not returns a generic caution", () => {
+  const description = describeClaimPredicate({
+    type: "not",
+    predicate: { type: "before_absolute_time", absBeforeEpoch: String(NOW_EPOCH + 3600) },
+  });
+  expect(description).not.toBeNull();
 });

@@ -1,7 +1,13 @@
 import { create } from "zustand";
 import { v4 as uuidv4 } from "uuid";
 import type { AccountState } from "@/types/account";
-import type { PlannedStep, DemolishPhase, AssetDisposition, StepType } from "@/types/plan";
+import type {
+  PlannedStep,
+  DemolishPhase,
+  AssetDisposition,
+  ClaimableBalanceSelection,
+  StepType,
+} from "@/types/plan";
 
 interface DemolishState {
   // Inputs
@@ -18,6 +24,10 @@ interface DemolishState {
 
   // Per-asset disposition: swap to XLM ("convert") or return to issuer ("issuer")
   assetDispositions: Record<string, AssetDisposition>;
+
+  // Per-claimable-balance selection, keyed by balance id: claim it, add a trustline then
+  // claim it, or forfeit it.
+  claimableBalanceSelections: Record<string, ClaimableBalanceSelection>;
 
   // Multisig
   requiredSignatureCount: number;
@@ -43,6 +53,7 @@ interface DemolishState {
   setAccountState: (state: AccountState) => void;
   setPlan: (plan: PlannedStep[]) => void;
   setAssetDisposition: (asset: string, action: AssetDisposition) => void;
+  setClaimableBalanceSelection: (balanceId: string, selection: ClaimableBalanceSelection) => void;
   setMediatorRequired: (required: boolean, publicKey?: string) => void;
   setCurrentStepIndex: (index: number) => void;
   updateStep: (index: number, patch: Partial<PlannedStep>) => void;
@@ -77,6 +88,23 @@ function pruneDispositions(
   return next;
 }
 
+/**
+ * Drops selection entries for claimable balances the new account state no longer reports
+ * (already claimed by another claimant, or expired), while preserving selections for balances
+ * that still exist - same rationale as `pruneDispositions`.
+ */
+function pruneClaimableSelections(
+  selections: Record<string, ClaimableBalanceSelection>,
+  accountState: AccountState
+): Record<string, ClaimableBalanceSelection> {
+  const present = new Set(accountState.claimableBalances.map((b) => b.id));
+  const next: Record<string, ClaimableBalanceSelection> = {};
+  for (const [balanceId, selection] of Object.entries(selections)) {
+    if (present.has(balanceId)) next[balanceId] = selection;
+  }
+  return next;
+}
+
 const initialState = {
   sourceAddress: null,
   destinationAddress: null,
@@ -87,6 +115,7 @@ const initialState = {
   executionPlan: [],
   currentStepIndex: 0,
   assetDispositions: {},
+  claimableBalanceSelections: {},
   requiredSignatureCount: 1,
   mediatorRequired: false,
   mediatorPublicKey: null,
@@ -118,6 +147,10 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       // Prune to assets still present so a genuinely-gone trustline can't carry a
       // stale decision into the build.
       assetDispositions: pruneDispositions(s.assetDispositions, accountState),
+      claimableBalanceSelections: pruneClaimableSelections(
+        s.claimableBalanceSelections,
+        accountState
+      ),
     })),
 
   // Reset the step pointer whenever a new plan is installed: a prior run may have
@@ -127,6 +160,11 @@ export const useDemolishStore = create<DemolishState>((set) => ({
 
   setAssetDisposition: (asset, action) =>
     set((s) => ({ assetDispositions: { ...s.assetDispositions, [asset]: action } })),
+
+  setClaimableBalanceSelection: (balanceId, selection) =>
+    set((s) => ({
+      claimableBalanceSelections: { ...s.claimableBalanceSelections, [balanceId]: selection },
+    })),
 
   setMediatorRequired: (required, publicKey) =>
     set({ mediatorRequired: required, mediatorPublicKey: publicKey ?? null }),

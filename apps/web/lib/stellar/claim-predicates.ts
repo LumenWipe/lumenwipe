@@ -24,3 +24,26 @@ export function isClaimableNow(predicate: ClaimPredicate, claimant: string, now:
       return nowEpochSeconds < Number(predicate.deadlineEpoch);
   }
 }
+
+/**
+ * Plain-language description of a claim predicate, for surfacing next to a claimable-balance
+ * decision. Returns null for the unconditional case (nothing worth saying).
+ */
+export function describeClaimPredicate(predicate: ClaimPredicate): string | null {
+  switch (predicate.type) {
+    case "unconditional":
+      return null;
+    case "before_absolute_time":
+      return `Claimable until ${new Date(Number(predicate.absBeforeEpoch) * 1000).toLocaleDateString()}.`;
+    case "before_relative_time":
+      return `Claimable until ${new Date(Number(predicate.deadlineEpoch) * 1000).toLocaleDateString()}.`;
+    case "and":
+    case "or": {
+      const parts = predicate.predicates.map(describeClaimPredicate).filter((p): p is string => p !== null);
+      if (parts.length === 0) return null;
+      return parts.join(predicate.type === "and" ? " and " : " or ");
+    }
+    case "not":
+      return "This balance has a claim condition beyond a simple deadline; verify it before proceeding.";
+  }
+}

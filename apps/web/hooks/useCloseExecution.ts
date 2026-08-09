@@ -8,7 +8,7 @@ import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import { runClose } from "@/lib/api/close-engine";
 import { fetchCloseTransactions } from "@/lib/api/close-client";
-import { dispositionsToDecisions } from "@/lib/api/close-decisions";
+import { claimableSelectionsToDecisions, dispositionsToDecisions } from "@/lib/api/close-decisions";
 import { verifyCloseTransaction } from "@/lib/stellar/verify";
 import { submitViaApi } from "@/lib/stellar/submit-via-api";
 import { requestMediatorCosignature } from "@/lib/stellar/mediator";
@@ -44,8 +44,24 @@ export function useCloseExecution() {
 
       const passphrase = NETWORK_PASSPHRASES[network];
       const mediator = mediatorRequired ? mediatorPublicKey : null;
-      // Read dispositions live so a mid-flow "return to issuer" re-decision is honored.
-      const decisions = dispositionsToDecisions(useDemolishStore.getState().assetDispositions);
+      // Read dispositions/selections live so a mid-flow re-decision is honored.
+      const claimableBalanceSelections = useDemolishStore.getState().claimableBalanceSelections;
+      const decisions = [
+        ...dispositionsToDecisions(useDemolishStore.getState().assetDispositions),
+        ...claimableSelectionsToDecisions(claimableBalanceSelections),
+      ];
+      // The set of assets the user themselves chose to add a trustline for, to claim an
+      // otherwise-unreachable balance - verify()'s only basis for allowing a raised (non-
+      // removal) change_trust op. Sourced from the user's own decisions, never the API.
+      const claimTrustlineAssets = Object.entries(claimableBalanceSelections)
+        .filter(([, selection]) => selection === "add_trustline_then_claim")
+        .map(([balanceId]) => {
+          const balance = useDemolishStore
+            .getState()
+            .accountState?.claimableBalances.find((b) => b.id === balanceId);
+          return balance?.asset ?? null;
+        })
+        .filter((asset): asset is string => asset !== null);
       const keypair = Keypair.fromSecret(secretKey);
 
       setPhase("STEP_EXECUTING");
@@ -65,7 +81,13 @@ export function useCloseExecution() {
             verifyCloseTransaction({
               unsignedXdr: tx.xdr,
               network,
-              expected: { source: sourceAddress, destination: destinationAddress, mediator, memo },
+              expected: {
+                source: sourceAddress,
+                destination: destinationAddress,
+                mediator,
+                memo,
+                claimTrustlineAssets,
+              },
             }),
           signAndSubmit: async (tx: CloseTransaction) => {
             setProgressStatus("Signing transaction…");

@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import type { AccountState } from "@/types/account";
-import type { AssetConvertibility } from "@/lib/api/plan-adapters";
-import type { AssetDisposition } from "@/types/plan";
+import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
+import type { AssetDisposition, ClaimableBalanceSelection } from "@/types/plan";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
 import AssetDispositionCard from "./AssetDispositionCard";
+import ClaimableBalanceCard from "./ClaimableBalanceCard";
 
 interface PlanAccordionProps {
   account: AccountState;
@@ -14,6 +15,9 @@ interface PlanAccordionProps {
   /** Confirmed "return to issuer" decisions for non-convertible assets, keyed by asset. */
   returnConfirmed: Record<string, boolean>;
   onToggleReturn: (asset: string, confirmed: boolean) => void;
+  claimableBalanceDecisions: ClaimableBalanceDecision[];
+  claimableBalanceSelections: Record<string, ClaimableBalanceSelection>;
+  onSelectClaimableBalance: (balanceId: string, selection: ClaimableBalanceSelection) => void;
   /** Set once the destination is entered; the merge group shows it. */
   destinationAddress: string | null;
   mediatorRequired: boolean;
@@ -44,6 +48,9 @@ export default function PlanAccordion({
   conversions,
   returnConfirmed,
   onToggleReturn,
+  claimableBalanceDecisions,
+  claimableBalanceSelections,
+  onSelectClaimableBalance,
   destinationAddress,
   mediatorRequired,
 }: PlanAccordionProps) {
@@ -110,20 +117,22 @@ export default function PlanAccordion({
     });
   }
 
-  if (account.claimableBalances.length > 0) {
+  if (claimableBalanceDecisions.length > 0) {
     groups.push({
       type: "CLAIM_BALANCES",
       title: "Claim balances",
-      summary: `${account.claimableBalances.length} claimable balance${account.claimableBalances.length === 1 ? "" : "s"}`,
+      summary: `${claimableBalanceDecisions.length} claimable balance${claimableBalanceDecisions.length === 1 ? "" : "s"}`,
       body: (
-        <ul className="space-y-1">
-          {account.claimableBalances.map((b) => (
-            <li key={b.id} className="text-xs text-white/55">
-              <span className="text-white/70">{b.amount}</span>{" "}
-              {b.asset === "native" ? "XLM" : b.asset.split(":")[0]}
-            </li>
+        <div className="space-y-2">
+          {claimableBalanceDecisions.map((b) => (
+            <ClaimableBalanceCard
+              key={b.balanceId}
+              item={b}
+              selection={claimableBalanceSelections[b.balanceId]}
+              onSelect={onSelectClaimableBalance}
+            />
           ))}
-        </ul>
+        </div>
       ),
     });
   }

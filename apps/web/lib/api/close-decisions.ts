@@ -1,9 +1,15 @@
-import type { AssetDisposition } from "@/types/plan";
+import type { AssetDisposition, ClaimableBalanceSelection } from "@/types/plan";
 import type { DecisionAnswer } from "@lumenwipe/sdk";
 
 /** Stable decision id for a per-asset disposition. Must match the API's `assetDecisionId`. */
 function assetDecisionId(asset: string): string {
   return `asset:${asset.replace(":", "-")}`;
+}
+
+/** Stable decision id for a claimable-balance selection. Must match the API's
+ *  `claimableBalanceDecisionId`. */
+function claimableBalanceDecisionId(balanceId: string): string {
+  return `claim:${balanceId}`;
 }
 
 /**
@@ -17,5 +23,19 @@ export function dispositionsToDecisions(
   return Object.entries(dispositions).map(([asset, disposition]) => ({
     id: assetDecisionId(asset),
     choice: disposition === "convert" ? "convert_to_xlm" : "return_to_issuer",
+  }));
+}
+
+/**
+ * Maps the store's per-claimable-balance selections into the `DecisionAnswer[]` the API's
+ * close endpoints expect. The decision id and choice strings must match the API's
+ * `deriveClaimableBalanceDecisionPoints`/`resolveClaimableBalanceSelections` contract exactly.
+ */
+export function claimableSelectionsToDecisions(
+  selections: Record<string, ClaimableBalanceSelection>
+): DecisionAnswer[] {
+  return Object.entries(selections).map(([balanceId, selection]) => ({
+    id: claimableBalanceDecisionId(balanceId),
+    choice: selection,
   }));
 }
