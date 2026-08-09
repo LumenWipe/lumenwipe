@@ -99,6 +99,7 @@ CONTRIBUTING.md has the full rules. Essentials:
 - **SDK-from-source resolution**: the web resolves `@lumenwipe/sdk` and `@lumenwipe/types` from TS **source** via tsconfig `paths` + Next `transpilePackages`, so there is no build-order dependency on the packages' `dist` (works in CI, Vercel, and local without a prior package build).
 - **API build**: `nest build` does not rewrite `@/*` tsconfig aliases, so the api build script runs `tsc-alias` after it — otherwise `node dist/main.js` fails with `Cannot find module '@/...'` (latent because dev uses `nest start` and tests run from source).
 - The **playground** is currently a placeholder; it built transactions client-side and was removed to keep the boundary clean. Rebuilding it on the SDK/API is a follow-up.
+- **`.env.local` load order**: `config/networks.ts` reads `process.env` in top-level `const` initializers, which run at import time, before `ConfigModule.forRoot()`'s dotenv side effect (declared in `app.module.ts`) gets a chance to run, since `AppModule`'s own imports load first. `apps/api/src/main.ts` works around this with `import "./env"` as its literal first line; keep it first, or vars with no working default (like `PATH_ROUTING_API_URLS`) silently go missing from `.env.local`-only setups.
 
 ## Docs
 
