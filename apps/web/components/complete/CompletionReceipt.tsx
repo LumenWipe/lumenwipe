@@ -56,6 +56,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
     mediatorRequired,
     accountState,
     assetDispositions,
+    claimableBalanceSelections,
   } = useDemolishStore();
   const explorerBase = SE_EXPLORER_BASE[network];
   const svExplorerBase = SV_EXPLORER_BASE[network];
@@ -151,14 +152,19 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       });
     }
 
-    if (account.claimableBalances.length > 0) {
+    // A balance explicitly forfeited was never claimed - exclude it from "what was done" so
+    // an intentionally-abandoned balance doesn't read as claimed.
+    const claimedBalances = account.claimableBalances.filter(
+      (b) => claimableBalanceSelections[b.id] !== "forfeit"
+    );
+    if (claimedBalances.length > 0) {
       groups.push({
         type: "CLAIM_BALANCES",
         title: "Balances claimed",
-        summary: `${account.claimableBalances.length} claimable balance${account.claimableBalances.length === 1 ? "" : "s"}`,
+        summary: `${claimedBalances.length} claimable balance${claimedBalances.length === 1 ? "" : "s"}`,
         body: (
           <ul className="space-y-1">
-            {account.claimableBalances.map((b) => (
+            {claimedBalances.map((b) => (
               <li key={b.id} className="text-xs text-white/55">
                 <span className="text-white/70">{b.amount}</span> {assetCode(b.asset)}
               </li>

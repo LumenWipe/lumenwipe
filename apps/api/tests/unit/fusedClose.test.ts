@@ -56,6 +56,7 @@ function baseInput(over: Partial<FusedCloseInput> = {}): FusedCloseInput {
     dataEntries: [],
     openOffers: [],
     claimableBalances: [],
+    trustlinesToAddForClaim: [],
     assetActions: [],
     trustlines: [],
     destinationAddress: DEST,
@@ -145,6 +146,21 @@ test("buildFusedCloseTx > claim ops appear one per claimable balance", () => {
     )
   );
   expect(ops.filter((o) => o.type === "claimClaimableBalance")).toHaveLength(2);
+});
+
+test("buildFusedCloseTx > trustlinesToAddForClaim emits a changeTrust immediately before the claim", () => {
+  const ops = opsOf(
+    buildFusedCloseTx(
+      account(),
+      baseInput({
+        includeMerge: false,
+        claimableBalances: [cb("f", `USDC:${ISSUER}`, "5")],
+        trustlinesToAddForClaim: [cb("f", `USDC:${ISSUER}`, "5")],
+      }),
+      "testnet"
+    )
+  );
+  expect(ops.map((o) => o.type)).toEqual(["changeTrust", "claimClaimableBalance"]);
 });
 
 test("buildFusedCloseTx > no claim ops when claimableBalances empty", () => {

@@ -13,7 +13,10 @@ import { buildPlan } from "@/lib/stellar/tx-builder";
 import { lookupExchange, requiresMediatorForAddress } from "@/lib/exchange-registry";
 import {
   assetDecisionId,
+  claimableBalanceDecisionId,
+  deriveClaimableBalanceDecisionPoints,
   deriveDecisionPoints,
+  resolveClaimableBalanceSelections,
   resolveDispositions,
 } from "@/lib/close-api/decisions";
 import { assemblePlanResponse, computePlanHash } from "@/lib/close-api/plan-response";
@@ -83,8 +86,20 @@ export class CloseController {
           })
       );
 
-      const buildResult = buildPlan(accountState, mediatorRequired, false);
-      const decisionPoints = deriveDecisionPoints(accountState, convertibility);
+      const claimableBalanceSelections = resolveClaimableBalanceSelections(
+        decisions,
+        accountState.claimableBalances.map((b) => b.id)
+      );
+      const buildResult = buildPlan(
+        accountState,
+        mediatorRequired,
+        false,
+        claimableBalanceSelections
+      );
+      const decisionPoints = [
+        ...deriveDecisionPoints(accountState, convertibility),
+        ...deriveClaimableBalanceDecisionPoints(accountState),
+      ];
       const answeredIds = new Set(decisions.map((d) => d.id));
       const pending = decisionPoints.filter((dp) => !answeredIds.has(dp.id));
 
@@ -176,10 +191,28 @@ export class CloseController {
       const missing = accountState.trustlines
         .filter((tl) => Number(tl.balance) > 0 && !(tl.asset in dispositions))
         .map((tl) => assetDecisionId(tl.asset));
+
+      const claimableBalanceSelections = resolveClaimableBalanceSelections(
+        decisions,
+        accountState.claimableBalances.map((b) => b.id)
+      );
+      const authorizedTrustlineAssets = new Set(
+        accountState.trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset)
+      );
+      const missingClaimDecisions = accountState.claimableBalances
+        .filter(
+          (b) =>
+            b.asset !== "native" &&
+            !authorizedTrustlineAssets.has(b.asset) &&
+            !claimableBalanceSelections[b.id]
+        )
+        .map((b) => claimableBalanceDecisionId(b.id));
+      missing.push(...missingClaimDecisions);
+
       if (missing.length > 0) {
         fail(
           "needs_decisions",
-          "Resolve every asset disposition before requesting transactions.",
+          "Resolve every pending decision before requesting transactions.",
           422,
           { missing }
         );
@@ -190,7 +223,8 @@ export class CloseController {
         destination,
         dispositions,
         network,
-        memo
+        memo,
+        claimableBalanceSelections
       );
 
       const planHash = computePlanHash({

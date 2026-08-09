@@ -88,6 +88,29 @@ test("assemblePlanResponse status: blocked when blockers exist", () => {
   expect(res.blockers[0].message).toBe("nope");
 });
 
+test("assemblePlanResponse passes through a blocker's own code", () => {
+  const res = assemblePlanResponse({
+    buildResult: {
+      steps: [step(0, "MERGE")],
+      blockers: [{ message: "you chose to forfeit", code: "claimable_balance_forfeited" }],
+    },
+    decisionPoints: [],
+    planHash: "h",
+    estimate: { feeStroops: "100", freedReserveXlm: "1" },
+  });
+  expect(res.blockers[0].code).toBe("claimable_balance_forfeited");
+});
+
+test("assemblePlanResponse falls back to the generic code when a blocker has none", () => {
+  const res = assemblePlanResponse({
+    buildResult: { steps: [step(0, "MERGE")], blockers: [{ message: "nope" }] },
+    decisionPoints: [],
+    planHash: "h",
+    estimate: { feeStroops: "100", freedReserveXlm: "1" },
+  });
+  expect(res.blockers[0].code).toBe("plan_blocker");
+});
+
 test("assemblePlanResponse status: needs_decisions when decision points remain", () => {
   const res = assemblePlanResponse({
     buildResult: { steps: [step(0, "MERGE")], blockers: [] },

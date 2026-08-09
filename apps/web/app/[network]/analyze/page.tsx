@@ -9,7 +9,12 @@ import type { AccountState } from "@/types/account";
 import type { PlanBlocker } from "@/types/plan";
 import { useDemolishStore } from "@/store/demolish";
 import { fetchClosePlan } from "@/lib/api/close-client";
-import { decisionPointsToConversions, type AssetConvertibility } from "@/lib/api/plan-adapters";
+import {
+  decisionPointsToClaimableBalances,
+  decisionPointsToConversions,
+  type AssetConvertibility,
+  type ClaimableBalanceDecision,
+} from "@/lib/api/plan-adapters";
 import PlanView from "@/components/plan/PlanView";
 
 export default function AnalyzePage({ params }: { params: Promise<{ network: Network }> }) {
@@ -23,6 +28,9 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
 
   const [account, setAccount] = useState<AccountState | null>(null);
   const [conversions, setConversions] = useState<AssetConvertibility[]>([]);
+  const [claimableBalanceDecisions, setClaimableBalanceDecisions] = useState<
+    ClaimableBalanceDecision[]
+  >([]);
   const [blockers, setBlockers] = useState<PlanBlocker[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,8 +63,14 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       // finding) from a plan built with no destination yet. The final plan is requested
       // with the destination + decisions at the "Begin execution" step.
       const plan = await fetchClosePlan({ source: effectiveSource }, routeNetwork);
-      setBlockers(plan.blockers.map((b) => ({ message: b.message, helpUrl: b.helpUrl })));
+      setBlockers(
+        plan.blockers.map((b) => ({ message: b.message, helpUrl: b.helpUrl, code: b.code }))
+      );
       setConversions(plan.blockers.length === 0 ? decisionPointsToConversions(plan) : []);
+      // Unlike other blockers, an unresolved claimable balance is resolvable right here - the
+      // decision itself is what clears it - so it must render regardless of blocker state, or
+      // the user could never reach the card that resolves it.
+      setClaimableBalanceDecisions(decisionPointsToClaimableBalances(plan));
     } catch {
       setError("Failed to analyze account. Please check your connection and try again.");
     } finally {
@@ -115,6 +129,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       <PlanView
         account={account}
         conversions={conversions}
+        claimableBalanceDecisions={claimableBalanceDecisions}
         blockers={blockers}
         network={routeNetwork}
         onRefresh={fetchData}

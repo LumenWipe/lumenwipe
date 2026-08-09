@@ -2,6 +2,7 @@ export type StepType =
   | "NORMALIZE_SIGNERS"
   | "REMOVE_DATA_ENTRIES"
   | "CANCEL_OFFERS"
+  | "ADD_TRUSTLINE_FOR_CLAIM"
   | "CLAIM_BALANCES"
   | "CONVERT_ASSETS"
   | "REMOVE_TRUSTLINES"
@@ -11,6 +12,8 @@ export type StepType =
 export type StepStatus = "pending" | "signing" | "submitted" | "confirmed" | "failed" | "skipped";
 
 export type AssetDisposition = "convert" | "issuer";
+
+export type ClaimableBalanceSelection = "claim" | "add_trustline_then_claim" | "forfeit";
 
 export interface PlannedStep {
   index: number;
@@ -44,6 +47,9 @@ export type DemolishPhase =
 export interface PlanBlocker {
   message: string;
   helpUrl?: string;
+  /** Distinguishes an acknowledged, non-trapping warning (e.g. a chosen forfeit) from a hard
+   *  blocker. Absent means the generic hard-blocking case. */
+  code?: string;
 }
 
 export interface BuildPlanResult {

@@ -4,15 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 import type { AccountState } from "@/types/account";
-import type { PlanBlocker } from "@/types/plan";
+import type { ClaimableBalanceSelection, PlanBlocker } from "@/types/plan";
 import type { Network } from "@/config/networks";
-import type { AssetConvertibility } from "@/lib/api/plan-adapters";
+import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
 import type { MediatorCheckResult } from "@/types/account";
 import { getMediatorPublicKey } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { saveSession } from "@/lib/session/store";
 import { fetchClosePlan } from "@/lib/api/close-client";
-import { dispositionsToDecisions } from "@/lib/api/close-decisions";
+import { claimableSelectionsToDecisions, dispositionsToDecisions } from "@/lib/api/close-decisions";
 import { apiStepsToPlannedSteps } from "@/lib/api/plan-adapters";
 import { isValidGAddress, isValidMemo } from "@/lib/utils/validation";
 import { getMemoRequirement, requiresMediatorForAddress } from "@/lib/exchange-registry";
@@ -24,6 +24,7 @@ import DestinationInput from "@/components/account-entry/DestinationInput";
 interface PlanViewProps {
   account: AccountState;
   conversions: AssetConvertibility[];
+  claimableBalanceDecisions: ClaimableBalanceDecision[];
   blockers: PlanBlocker[];
   network: Network;
   onRefresh: () => void;
@@ -33,6 +34,7 @@ interface PlanViewProps {
 export default function PlanView({
   account,
   conversions,
+  claimableBalanceDecisions,
   blockers,
   network,
   onRefresh,
@@ -42,6 +44,8 @@ export default function PlanView({
   const {
     assetDispositions,
     setAssetDisposition,
+    claimableBalanceSelections,
+    setClaimableBalanceSelection,
     setAddresses,
     setMediatorRequired,
     setPlan,
@@ -69,6 +73,17 @@ export default function PlanView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversions]);
 
+  // Auto-select "claim" for balances the account can already claim (the opt-out default),
+  // mirroring the convertible-assets effect above.
+  useEffect(() => {
+    for (const b of claimableBalanceDecisions) {
+      if (b.currentlyClaimable && claimableBalanceSelections[b.balanceId] === undefined) {
+        setClaimableBalanceSelection(b.balanceId, "claim");
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claimableBalanceDecisions]);
+
   // A non-convertible asset is resolved only once its store disposition is "issuer".
   const returnConfirmed = useMemo(() => {
     const map: Record<string, boolean> = {};
@@ -84,11 +99,44 @@ export default function PlanView({
     setAssetDisposition(asset, confirmed ? "issuer" : "convert");
   }
 
+  // Choosing "add a trustline and claim" also pre-resolves what happens to the asset once
+  // claimed: it defaults to "convert" (the same opt-out default as any other asset), matching
+  // the issue's framing - the trustline doesn't exist yet at plan time, so no separate
+  // asset_disposition decision point is ever offered for it, and the second close round would
+  // otherwise 422 on a disposition nobody had the chance to answer.
+  function handleSelectClaimableBalance(balanceId: string, selection: ClaimableBalanceSelection) {
+    setClaimableBalanceSelection(balanceId, selection);
+    if (selection === "add_trustline_then_claim") {
+      const decision = claimableBalanceDecisions.find((b) => b.balanceId === balanceId);
+      if (decision) setAssetDisposition(decision.asset, "convert");
+    }
+  }
+
   const allAssetsResolved = conversions.every(
     (c) => c.convertible || assetDispositions[c.asset] === "issuer"
   );
 
-  const destinationStepReady = allAssetsResolved && blockers.length === 0;
+  // A not-currently-claimable balance is resolved once the user picked a remediation path;
+  // a currently-claimable one is always resolved (it defaults to "claim" above).
+  const allClaimsResolved = claimableBalanceDecisions.every(
+    (b) =>
+      b.currentlyClaimable ||
+      claimableBalanceSelections[b.balanceId] === "add_trustline_then_claim" ||
+      claimableBalanceSelections[b.balanceId] === "forfeit"
+  );
+
+  // Both claimable-balance blocker codes are resolved locally by `allClaimsResolved` above,
+  // computed live from the user's own selections - not by refetching the plan on every card
+  // interaction. The initial `blockers` fetch (before any decision) always reports the
+  // "unclaimable" wording for an unresolved balance, and a forfeit choice keeps producing its
+  // own (acknowledged, non-trapping) blocker - neither should hard-block once the local
+  // resolution check says the decision is made. Every other blocker code still hard-blocks.
+  const hardBlockers = blockers.filter(
+    (b) =>
+      b.code !== "claimable_balance_forfeited" && b.code !== "claimable_balance_unclaimable"
+  );
+
+  const destinationStepReady = allAssetsResolved && allClaimsResolved && hardBlockers.length === 0;
 
   const memoReq = isValidGAddress(destination) ? getMemoRequirement(destination) : null;
   const memoRequired = memoReq?.requiresMemo ?? false;
@@ -156,8 +204,12 @@ export default function PlanView({
       setMediatorRequired(needsMediator, mediatorPublicKey);
 
       // Request the final plan (for the execute sidebar) from the API with the destination
-      // and the user's asset decisions. Execution itself re-requests the transactions.
-      const decisions = dispositionsToDecisions(useDemolishStore.getState().assetDispositions);
+      // and the user's asset + claimable-balance decisions. Execution itself re-requests the
+      // transactions.
+      const decisions = [
+        ...dispositionsToDecisions(useDemolishStore.getState().assetDispositions),
+        ...claimableSelectionsToDecisions(useDemolishStore.getState().claimableBalanceSelections),
+      ];
       const plan = await fetchClosePlan(
         { source: account.address, destination, decisions },
         network
@@ -206,7 +258,10 @@ export default function PlanView({
         totalFee={previewFee}
       />
 
-      <BlockersPanel blockers={blockers} />
+      {/* Claimable-balance blockers are already fully conveyed live by the cards below (an
+          unresolved or forfeited balance shows its own up-to-date state there); a stale
+          snapshot repeating the same thing here would only confuse once the user has acted. */}
+      <BlockersPanel blockers={hardBlockers} />
 
       <div className="mkt-panel rounded-2xl">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
@@ -225,6 +280,9 @@ export default function PlanView({
             conversions={conversions}
             returnConfirmed={returnConfirmed}
             onToggleReturn={handleToggleReturn}
+            claimableBalanceDecisions={claimableBalanceDecisions}
+            claimableBalanceSelections={claimableBalanceSelections}
+            onSelectClaimableBalance={handleSelectClaimableBalance}
             destinationAddress={destinationStepReady && destination ? destination : null}
             mediatorRequired={previewMediatorRequired}
           />
@@ -233,9 +291,9 @@ export default function PlanView({
 
       {!destinationStepReady && (
         <p className="text-center text-xs text-white/45">
-          {blockers.length > 0
+          {hardBlockers.length > 0
             ? "Resolve the blockers above to continue."
-            : "Decide what happens to each asset above to continue."}
+            : "Decide what happens to each asset and claimable balance above to continue."}
         </p>
       )}
 

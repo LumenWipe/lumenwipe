@@ -140,6 +140,63 @@ test("reset clears asset dispositions", () => {
   expect(useDemolishStore.getState().assetDispositions).toEqual({});
 });
 
+// ─── Claimable balance selections ─────────────────────────────────────────────
+
+test("claimableBalanceSelections defaults to empty", () => {
+  expect(useDemolishStore.getState().claimableBalanceSelections).toEqual({});
+});
+
+test("setClaimableBalanceSelection records a decision and merges further decisions", () => {
+  useDemolishStore.getState().setClaimableBalanceSelection("bal1", "add_trustline_then_claim");
+  expect(useDemolishStore.getState().claimableBalanceSelections).toEqual({
+    bal1: "add_trustline_then_claim",
+  });
+
+  useDemolishStore.getState().setClaimableBalanceSelection("bal2", "forfeit");
+  expect(useDemolishStore.getState().claimableBalanceSelections).toEqual({
+    bal1: "add_trustline_then_claim",
+    bal2: "forfeit",
+  });
+});
+
+test("setAccountState keeps claimable balance selections for balances still present after a re-scan", () => {
+  useDemolishStore.getState().setClaimableBalanceSelection("bal1", "forfeit");
+  useDemolishStore.getState().setAccountState(
+    accountState({
+      claimableBalances: [
+        {
+          id: "bal1",
+          asset: "native",
+          amount: "1.0000000",
+          claimants: [],
+          sponsor: null,
+        },
+      ],
+    })
+  );
+  expect(useDemolishStore.getState().claimableBalanceSelections).toEqual({ bal1: "forfeit" });
+});
+
+test("setAccountState prunes claimable balance selections for balances no longer reported", () => {
+  useDemolishStore.getState().setClaimableBalanceSelection("bal1", "forfeit");
+  useDemolishStore.getState().setClaimableBalanceSelection("bal2", "claim");
+  // The new state only reports bal1; the bal2 selection is stale and must be dropped.
+  useDemolishStore.getState().setAccountState(
+    accountState({
+      claimableBalances: [
+        { id: "bal1", asset: "native", amount: "1.0000000", claimants: [], sponsor: null },
+      ],
+    })
+  );
+  expect(useDemolishStore.getState().claimableBalanceSelections).toEqual({ bal1: "forfeit" });
+});
+
+test("reset clears claimable balance selections", () => {
+  useDemolishStore.getState().setClaimableBalanceSelection("bal1", "forfeit");
+  useDemolishStore.getState().reset();
+  expect(useDemolishStore.getState().claimableBalanceSelections).toEqual({});
+});
+
 // ─── Session identity ────────────────────────────────────────────────────────
 
 describe("session identity", () => {

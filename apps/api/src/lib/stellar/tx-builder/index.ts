@@ -1,5 +1,6 @@
 import type {
   AccountState,
+  ClaimableBalanceSelection,
   PlannedStep,
   StepType,
   BuildPlanResult,
@@ -42,7 +43,8 @@ export function computeNeedsSignerNormalization(accountState: AccountState): boo
 export function buildPlan(
   accountState: AccountState,
   mediatorRequired: boolean,
-  fastPathEligible = false
+  fastPathEligible = false,
+  claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {}
 ): BuildPlanResult {
   const steps: PlannedStep[] = [];
   const blockers: PlanBlocker[] = [];
@@ -138,24 +140,52 @@ export function buildPlan(
     });
   }
 
-  // Claimable balances without a trustline: the account is a claimant but cannot claim
-  // because no authorized trustline exists for the asset. After ACCOUNT_MERGE the
-  // account no longer exists, making these assets permanently inaccessible.
+  // Claimable balances: each resolves to a per-balance selection - "claim" (the opt-out
+  // default once the account can already claim it), "add_trustline_then_claim" (adds a
+  // trustline for the asset, then claims - the remediation path for a balance the account
+  // holds no trustline for), or "forfeit". A balance the account cannot currently claim and
+  // has no selection remains a hard blocker; an explicit forfeit still surfaces a warning
+  // (differently worded, and non-trapping - see close.controller.ts's blocker-code handling)
+  // so giving up the funds is never silent.
   const authorizedTrustlineAssets = new Set(
     trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset)
   );
-  const unclaimableBalances = claimableBalances.filter(
-    (b) => b.asset !== "native" && !authorizedTrustlineAssets.has(b.asset)
-  );
-  for (const b of unclaimableBalances) {
+  const isCurrentlyClaimable = (b: (typeof claimableBalances)[number]): boolean =>
+    b.asset === "native" || authorizedTrustlineAssets.has(b.asset);
+
+  for (const b of claimableBalances) {
+    if (isCurrentlyClaimable(b)) continue;
     const code = b.asset.split(":")[0];
+    const selection = claimableBalanceSelections[b.id];
+    if (selection === "add_trustline_then_claim") continue;
+    if (selection === "forfeit") {
+      blockers.push({
+        code: "claimable_balance_forfeited",
+        message: `You chose to forfeit ${b.amount} ${code}; it will be permanently inaccessible once the account is merged.`,
+      });
+      continue;
+    }
     blockers.push({
+      code: "claimable_balance_unclaimable",
       message:
         `This account is a claimant for ${b.amount} ${code} but has no authorized trustline ` +
         `for it. Establish a ${code} trustline and claim the balance manually before proceeding ` +
         `- these funds will be permanently inaccessible once the account is merged.`,
     });
   }
+
+  // Balances that will actually need an operation: currently-claimable ones not explicitly
+  // forfeited (the opt-out default), plus not-currently-claimable ones the caller chose to
+  // remediate. Forfeited/unresolved balances need no operation at all - they're simply left
+  // behind. Reused by both the fast-path gate below and step generation further down.
+  const balancesNeedingClaimStep = claimableBalances.filter((b) =>
+    isCurrentlyClaimable(b)
+      ? claimableBalanceSelections[b.id] !== "forfeit"
+      : claimableBalanceSelections[b.id] === "add_trustline_then_claim"
+  );
+  const balancesNeedingTrustline = claimableBalances.filter(
+    (b) => !isCurrentlyClaimable(b) && claimableBalanceSelections[b.id] === "add_trustline_then_claim"
+  );
 
   // ─── Fast path: fuse the whole close into one transaction when eligible ──────
   // Direct destination: a single CLOSE_ACCOUNT (cleanup + merge). Exchange: a fused
@@ -175,11 +205,15 @@ export function buildPlan(
   const fusedOpCount =
     signerOps + dataEntries.length + openOffers.length + convertible.length + trustlines.length + 1;
 
+  // A forfeited-balance blocker is an acknowledged warning, not a hard stop (the user already
+  // chose to give up those funds) - every other blocker code still excludes the fast path.
+  const hasHardBlocker = blockers.some((b) => b.code !== "claimable_balance_forfeited");
+
   if (
     fastPathEligible &&
     hasCleanup &&
-    blockers.length === 0 &&
-    claimableBalances.length === 0 &&
+    !hasHardBlocker &&
+    balancesNeedingClaimStep.length === 0 &&
     fusedOpCount <= OP_BATCH_LIMIT
   ) {
     const cleanupOps = fusedOpCount - 1; // ops without the merge
@@ -258,11 +292,31 @@ export function buildPlan(
     }
   }
 
-  // Claimable balances that can be automatically claimed: XLM (no trustline required)
-  // or assets where an authorized trustline already exists. Batched like other operations.
-  const claimable = claimableBalances.filter(
-    (b) => b.asset === "native" || authorizedTrustlineAssets.has(b.asset)
-  );
+  // Balances that need a trustline added before they can be claimed (the remediation path).
+  // Always emitted immediately before the CLAIM_BALANCES step so the claim never runs against
+  // a still-untrusted asset.
+  if (balancesNeedingTrustline.length > 0) {
+    const batches = batchItems(balancesNeedingTrustline, OP_BATCH_LIMIT);
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      steps.push(
+        step(
+          idx++,
+          "ADD_TRUSTLINE_FOR_CLAIM",
+          batches.length > 1
+            ? `Add trustlines to claim (batch ${i + 1}/${batches.length})`
+            : "Add trustlines to claim",
+          `Establish ${batch.length} trustline${batch.length === 1 ? "" : "s"} so the following claimable balance${batch.length === 1 ? "" : "s"} can be claimed.`,
+          batch.length
+        )
+      );
+    }
+  }
+
+  // Claimable balances the caller resolved to actually claim: currently-claimable ones not
+  // opted out, plus ones just remediated with a new trustline above. Batched like other
+  // operations. Excludes forfeited/unresolved balances entirely.
+  const claimable = balancesNeedingClaimStep;
   if (claimable.length > 0) {
     const batches = batchItems(claimable, OP_BATCH_LIMIT);
     for (let i = 0; i < batches.length; i++) {

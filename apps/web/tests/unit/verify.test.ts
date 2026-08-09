@@ -18,6 +18,7 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
     memo: null,
     memoRequired: false,
     memoType: null,
+    claimTrustlineAssets: [],
     ...over,
   };
 }
@@ -154,6 +155,22 @@ test("rejects a conversion with no minimum floor", () => {
 test("rejects a trustline that is created/raised instead of removed", () => {
   const i = intent({ operations: [{ type: "change_trust", asset: `USDC:${ISSUER}`, limit: "100" }] });
   expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+});
+
+test("allows a raised trustline for an asset the user chose to claim-remediate", () => {
+  const asset = `USDC:${ISSUER}`;
+  const i = intent({ operations: [{ type: "change_trust", asset, limit: "100" }] });
+  expect(() =>
+    assertCloseIntent(i, expectation({ claimTrustlineAssets: [asset] }))
+  ).not.toThrow();
+});
+
+test("rejects a raised trustline for an asset not in the user's own claim-remediation choice", () => {
+  const asset = `USDC:${ISSUER}`;
+  const i = intent({ operations: [{ type: "change_trust", asset, limit: "100" }] });
+  expect(() =>
+    assertCloseIntent(i, expectation({ claimTrustlineAssets: [`EURC:${ISSUER}`] }))
+  ).toThrow(VerificationError);
 });
 
 test("rejects a data entry that is written instead of removed", () => {

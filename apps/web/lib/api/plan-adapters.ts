@@ -1,5 +1,6 @@
 import type { PlanResponse } from "@lumenwipe/sdk";
 import type { PlannedStep } from "@/types/plan";
+import type { ClaimPredicate } from "@/types/account";
 
 /**
  * Per-asset convertibility consumed by the analyze UI. Relocated here from the old
@@ -27,6 +28,40 @@ export function decisionPointsToConversions(plan: PlanResponse): AssetConvertibi
         code: asset.includes(":") ? asset.split(":")[0] : asset,
         balance: String(dp.subject.balance ?? "0"),
         convertible: dp.options.some((o) => o.id === "convert_to_xlm"),
+      };
+    });
+}
+
+/** Per-claimable-balance decision consumed by the analyze UI. */
+export interface ClaimableBalanceDecision {
+  balanceId: string;
+  asset: string;
+  code: string;
+  amount: string;
+  /** Claimable now (native, or an authorized trustline exists) vs. needs remediation. */
+  currentlyClaimable: boolean;
+  /** This account's own claim predicate on the balance. */
+  predicate: ClaimPredicate;
+}
+
+const UNCONDITIONAL: ClaimPredicate = { type: "unconditional" };
+
+/**
+ * Derives the analyze-page claimable-balance decision list from the API plan's
+ * `claimable_balance` decision points.
+ */
+export function decisionPointsToClaimableBalances(plan: PlanResponse): ClaimableBalanceDecision[] {
+  return plan.decisionPoints
+    .filter((dp) => dp.type === "claimable_balance")
+    .map((dp) => {
+      const asset = String(dp.subject.asset ?? "");
+      return {
+        balanceId: String(dp.subject.balanceId ?? ""),
+        asset,
+        code: asset === "native" ? "XLM" : asset.split(":")[0],
+        amount: String(dp.subject.amount ?? "0"),
+        currentlyClaimable: Boolean(dp.subject.currentlyClaimable),
+        predicate: (dp.subject.predicate as ClaimPredicate | undefined) ?? UNCONDITIONAL,
       };
     });
 }

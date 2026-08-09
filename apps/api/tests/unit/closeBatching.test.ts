@@ -25,6 +25,7 @@ function input(over: Partial<FusedCloseInput> = {}): FusedCloseInput {
     dataEntries: [],
     openOffers: [],
     claimableBalances: [],
+    trustlinesToAddForClaim: [],
     assetActions: [],
     trustlines: [],
     destinationAddress: DEST,

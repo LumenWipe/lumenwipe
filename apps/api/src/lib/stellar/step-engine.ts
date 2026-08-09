@@ -245,6 +245,7 @@ export async function buildStepXdrForPlan(
         dataEntries,
         openOffers,
         claimableBalances: [],
+        trustlinesToAddForClaim: [],
         assetActions,
         trustlines,
         destinationAddress,
