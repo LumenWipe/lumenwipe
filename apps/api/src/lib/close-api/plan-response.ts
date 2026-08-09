@@ -64,10 +64,12 @@ export function assemblePlanResponse(args: {
     status: deriveStatus(buildResult, decisionPoints),
     steps: buildResult.steps,
     decisionPoints,
-    // PlanBlocker carries no stable code yet; emit a generic one until buildPlan is
-    // enriched with per-blocker codes (e.g. exchange_destination_missing_memo).
+    // Most blockers still carry no stable code; fall back to a generic one for those
+    // (e.g. exchange_destination_missing_memo is still TODO). buildPlan sets a specific
+    // code for the ones a client needs to distinguish, e.g. a forfeited claimable balance
+    // must not read as a hard blocker once the caller already made that choice.
     blockers: buildResult.blockers.map((b) => ({
-      code: "plan_blocker",
+      code: b.code ?? "plan_blocker",
       message: b.message,
       helpUrl: b.helpUrl,
     })),

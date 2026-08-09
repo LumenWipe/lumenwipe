@@ -461,6 +461,61 @@ test("buildPlan › claimable balance for asset with deauthorized trustline → 
   );
 });
 
+// ─── Claimable balance selections (issue #70) ────────────────────────────────
+
+test("buildPlan › currently-claimable balance opted out (forfeit) → excluded from any step, no blocker", () => {
+  const asset = `USDC:${ISSUER}`;
+  const balance = makeClaimableBalance(asset);
+  const account = makeAccount({
+    trustlines: [makeTrustline("USDC", "0", true)],
+    claimableBalances: [balance],
+  });
+  const { steps, blockers } = buildPlan(account, false, false, { [balance.id]: "forfeit" });
+  expect(steps.every((s) => s.type !== "CLAIM_BALANCES")).toBe(true);
+  expect(blockers).toHaveLength(0);
+});
+
+test("buildPlan › unclaimable balance with add_trustline_then_claim → ADD_TRUSTLINE_FOR_CLAIM precedes CLAIM_BALANCES", () => {
+  const asset = `USDC:${ISSUER}`;
+  const balance = makeClaimableBalance(asset);
+  const account = makeAccount({ claimableBalances: [balance] });
+  const { steps, blockers } = buildPlan(account, false, false, {
+    [balance.id]: "add_trustline_then_claim",
+  });
+  expect(blockers).toHaveLength(0);
+  const addTrustlineIdx = steps.findIndex((s) => s.type === "ADD_TRUSTLINE_FOR_CLAIM");
+  const claimIdx = steps.findIndex((s) => s.type === "CLAIM_BALANCES");
+  expect(addTrustlineIdx).toBeGreaterThanOrEqual(0);
+  expect(claimIdx).toBeGreaterThan(addTrustlineIdx);
+});
+
+test("buildPlan › unclaimable balance with forfeit → blocker says forfeit, not establish a trustline", () => {
+  const asset = `USDC:${ISSUER}`;
+  const balance = makeClaimableBalance(asset);
+  const account = makeAccount({ claimableBalances: [balance] });
+  const { steps, blockers } = buildPlan(account, false, false, { [balance.id]: "forfeit" });
+  expect(steps.every((s) => s.type !== "CLAIM_BALANCES" && s.type !== "ADD_TRUSTLINE_FOR_CLAIM")).toBe(
+    true
+  );
+  expect(blockers).toHaveLength(1);
+  expect(blockers[0].code).toBe("claimable_balance_forfeited");
+  expect(blockers[0].message).toContain("forfeit");
+  expect(blockers[0].message).not.toContain("Establish");
+});
+
+test("buildPlan › unresolved unclaimable balance (no selection) → unchanged blocker behavior", () => {
+  const asset = `USDC:${ISSUER}`;
+  const balance = makeClaimableBalance(asset);
+  const account = makeAccount({ claimableBalances: [balance] });
+  const { steps, blockers } = buildPlan(account, false);
+  expect(steps.every((s) => s.type !== "CLAIM_BALANCES" && s.type !== "ADD_TRUSTLINE_FOR_CLAIM")).toBe(
+    true
+  );
+  expect(blockers).toHaveLength(1);
+  expect(blockers[0].code).toBe("claimable_balance_unclaimable");
+  expect(blockers[0].message).toContain("Establish");
+});
+
 test("buildPlan › CLAIM_BALANCES comes after CANCEL_OFFERS and before CONVERT_ASSETS", () => {
   const account = makeAccount({
     openOffers: [{ id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" }],

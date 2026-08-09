@@ -2,7 +2,7 @@ import { TransactionBuilder, Operation, Account, xdr } from "@stellar/stellar-sd
 import type { Network } from "@/config/networks";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { BASE_FEE_STROOPS, TX_TIMEOUT_SECONDS } from "@/config/constants";
-import type { Trustline } from "@lumenwipe/types";
+import type { ClaimableBalance, Trustline } from "@lumenwipe/types";
 import { assetToSdkAsset } from "@/lib/utils/assets";
 
 export function trustlineRemovalOps(trustlines: Trustline[]): xdr.Operation[] {
@@ -10,6 +10,15 @@ export function trustlineRemovalOps(trustlines: Trustline[]): xdr.Operation[] {
   return trustlines.map((tl) =>
     Operation.changeTrust({ asset: assetToSdkAsset(tl.asset), limit: "0" })
   );
+}
+
+/**
+ * Adds a trustline for each balance's asset ahead of claiming it (the claim-remediation path:
+ * a balance for an asset the account does not yet hold). The limit is omitted, which the SDK
+ * defaults to its maximum - simpler and safer than computing a limit from the claimed amount.
+ */
+export function trustlineAddForClaimOps(balances: ClaimableBalance[]): xdr.Operation[] {
+  return balances.map((b) => Operation.changeTrust({ asset: assetToSdkAsset(b.asset) }));
 }
 
 export function buildRemoveTrustlinesTx(

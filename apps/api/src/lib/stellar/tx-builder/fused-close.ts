@@ -16,7 +16,7 @@ import { dataEntryRemovalOps } from "./data-entries";
 import { offerCancellationOps } from "./offers";
 import { assetConversionOp, issuerPaymentOp } from "./asset-conversion";
 import { claimBalanceOps } from "./claimable-balances";
-import { trustlineRemovalOps } from "./trustlines";
+import { trustlineAddForClaimOps, trustlineRemovalOps } from "./trustlines";
 import { mergeOp } from "./merge";
 
 /**
@@ -33,7 +33,11 @@ export interface FusedCloseInput {
   signers: AccountSigner[];
   dataEntries: DataEntry[];
   openOffers: OpenOffer[];
+  /** Balances the account can claim without further remediation. */
   claimableBalances: ClaimableBalance[];
+  /** Balances that need a trustline added first (the claim-remediation path) - claimed in the
+   *  same batch as `claimableBalances`, but preceded by an ADD_TRUSTLINE_FOR_CLAIM op each. */
+  trustlinesToAddForClaim: ClaimableBalance[];
   assetActions: AssetAction[];
   trustlines: Trustline[];
   destinationAddress: string;
@@ -51,12 +55,13 @@ export interface TaggedCloseOp {
 /**
  * Assembles the ordered close operations, each tagged with its plan step. Pure:
  * account id and input in, tagged operations out, no network side effects. Order
- * is fixed: signer normalization, data removal, offer cancellation,
- * claimable-balance claiming, per-asset disposition, trustline removal, and (for
- * direct destinations) the account merge - so by the time accountMerge runs every
- * subentry is already gone. Claiming runs before the asset dispositions because a
- * claim raises the held balance an action spends. The tags let a multi-transaction
- * (batched) close report which steps each transaction covers.
+ * is fixed: signer normalization, data removal, offer cancellation, trustlines added
+ * for claim remediation, claimable-balance claiming, per-asset disposition, trustline
+ * removal, and (for direct destinations) the account merge - so by the time accountMerge
+ * runs every subentry is already gone. Trustline-adding runs immediately before claiming
+ * so a remediated balance is never claimed against a still-untrusted asset; claiming runs
+ * before the asset dispositions because a claim raises the held balance an action spends.
+ * The tags let a multi-transaction (batched) close report which steps each transaction covers.
  */
 export function assembleFusedCloseOpsTagged(
   masterKey: string,
@@ -71,6 +76,7 @@ export function assembleFusedCloseOpsTagged(
   }
   push("REMOVE_DATA_ENTRIES", dataEntryRemovalOps(input.dataEntries));
   push("CANCEL_OFFERS", offerCancellationOps(input.openOffers));
+  push("ADD_TRUSTLINE_FOR_CLAIM", trustlineAddForClaimOps(input.trustlinesToAddForClaim));
   push("CLAIM_BALANCES", claimBalanceOps(input.claimableBalances));
   for (const a of input.assetActions) {
     push("CONVERT_ASSETS", [

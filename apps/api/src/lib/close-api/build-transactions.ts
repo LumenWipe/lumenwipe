@@ -15,7 +15,13 @@ import {
 import { buildMediatorMergePaymentTx } from "@/lib/stellar/tx-builder/merge";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { AssetRouteLostError } from "@/lib/utils/errors";
-import type { AccountState, AssetDisposition, CloseTransaction } from "@lumenwipe/types";
+import type {
+  AccountState,
+  AssetDisposition,
+  ClaimableBalance,
+  ClaimableBalanceSelection,
+  CloseTransaction,
+} from "@lumenwipe/types";
 
 // Raised when a close cannot be expressed as the phase-1 single fused transaction.
 // The route handler maps `code` to an error response.
@@ -72,7 +78,8 @@ export async function buildCloseTransactions(
   destinationAddress: string,
   dispositions: Record<string, AssetDisposition>,
   network: Network,
-  memo: string | null = null
+  memo: string | null = null,
+  claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {}
 ): Promise<CloseBuildResult> {
   const server = getRpcServer(network);
   const liveAccount = await server.getAccount(accountState.address);
@@ -86,13 +93,31 @@ export async function buildCloseTransactions(
   // claim must precede the close because a claim raises the balance the close disposes of.
   if (accountState.claimableBalances.length > 0) {
     const existing = await filterExistingClaimableBalances(accountState.claimableBalances, server);
-    if (existing.length > 0) {
+    const authorizedTrustlineAssets = new Set(
+      accountState.trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset)
+    );
+    const isCurrentlyClaimable = (b: ClaimableBalance): boolean =>
+      b.asset === "native" || authorizedTrustlineAssets.has(b.asset);
+    // Currently claimable and not opted out (the opt-out default), plus the ones remediated
+    // with a new trustline. Forfeited or unresolved balances are excluded entirely - never
+    // claimed, never blocking the close.
+    const toAddTrustlineThenClaim = existing.filter(
+      (b) =>
+        !isCurrentlyClaimable(b) &&
+        claimableBalanceSelections[b.id] === "add_trustline_then_claim"
+    );
+    const toClaim = existing.filter(
+      (b) => isCurrentlyClaimable(b) && claimableBalanceSelections[b.id] !== "forfeit"
+    );
+    const claimRoundBalances = toClaim.concat(toAddTrustlineThenClaim);
+    if (claimRoundBalances.length > 0) {
       const claimInput: FusedCloseInput = {
         needsSignerNormalization: false,
         signers: accountState.signers,
         dataEntries: [],
         openOffers: [],
-        claimableBalances: existing,
+        claimableBalances: claimRoundBalances,
+        trustlinesToAddForClaim: toAddTrustlineThenClaim,
         assetActions: [],
         trustlines: [],
         destinationAddress,
@@ -106,7 +131,8 @@ export async function buildCloseTransactions(
         remainingSteps: 1,
       };
     }
-    // All reported balances were already claimed; fall through and build the close now.
+    // Every reported balance was already claimed, or every remaining one is
+    // forfeited/unresolved; fall through and build the close now.
   }
 
   // Re-read every trustline's live balance: a line empty at scan but funded since must
@@ -136,6 +162,7 @@ export async function buildCloseTransactions(
     dataEntries: accountState.dataEntries,
     openOffers: accountState.openOffers,
     claimableBalances: [],
+    trustlinesToAddForClaim: [],
     assetActions,
     trustlines: accountState.trustlines,
     destinationAddress,
