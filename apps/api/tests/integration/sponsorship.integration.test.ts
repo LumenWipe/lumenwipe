@@ -15,6 +15,8 @@ import {
   Horizon,
 } from "@stellar/stellar-sdk";
 import { getAccountState } from "@/lib/stellar/account";
+import { assessSponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
+import { revokeSponsorshipOps } from "@/lib/stellar/tx-builder/sponsorship";
 import type { AccountState } from "@lumenwipe/types";
 
 const FRIENDBOT = "https://friendbot.stellar.org";
@@ -61,6 +63,29 @@ async function readAccountStateUntilSponsoring(publicKey: string): Promise<Accou
   // below report the real mismatch, rather than masking it behind a retry error.
   if (lastState) return lastState;
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+// Mirror of readAccountStateUntilSponsoring but for the opposite direction: after a real
+// REVOKE_SPONSORSHIP submission, RPC's ingestion lag can still report the trustline as
+// sponsored for a few seconds even though Horizon already confirmed the revoke. Polls
+// for the specific entry to disappear rather than a flat sleep, same rationale as above.
+async function readAccountStateUntilTrustlineNotSponsored(
+  publicKey: string,
+  owner: string,
+  asset: string
+): Promise<AccountState> {
+  let lastState: AccountState | null = null;
+  for (let attempt = 0; attempt < ACCOUNT_STATE_POLL_MAX_ATTEMPTS; attempt++) {
+    lastState = await getAccountState(publicKey, "testnet");
+    const stillSponsored = lastState.sponsoredEntries.some(
+      (entry) => entry.kind === "trustline" && entry.owner === owner && entry.asset === asset
+    );
+    if (!stillSponsored) return lastState;
+    await new Promise((resolve) => setTimeout(resolve, ACCOUNT_STATE_POLL_DELAY_MS));
+  }
+  // Out of attempts: return the last read so the assertion below reports the real
+  // mismatch (e.g. genuinely stuck) rather than masking it behind a retry error.
+  return lastState!;
 }
 
 test.skipIf(!RUN_INTEGRATION)(
@@ -110,4 +135,92 @@ test.skipIf(!RUN_INTEGRATION)(
     });
   },
   60000
+);
+
+test.skipIf(!RUN_INTEGRATION)(
+  "assessSponsorshipAffordability + revokeSponsorshipOps › revoking a real sponsored trustline on testnet clears the sponsorship",
+  async () => {
+    const server = new Horizon.Server(HORIZON_URL);
+    const sponsor = Keypair.random();
+    const sponsored = Keypair.random();
+    const issuer = Keypair.random();
+
+    await Promise.all([
+      fund(sponsor.publicKey()),
+      fund(sponsored.publicKey()),
+      fund(issuer.publicKey()),
+    ]);
+    const asset = new Asset("LWTEST2", issuer.publicKey());
+    const assetString = `LWTEST2:${issuer.publicKey()}`;
+
+    const sponsorAccount = await server.loadAccount(sponsor.publicKey());
+    const setupTx = new TransactionBuilder(sponsorAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(
+        Operation.beginSponsoringFutureReserves({
+          sponsoredId: sponsored.publicKey(),
+          source: sponsor.publicKey(),
+        })
+      )
+      .addOperation(Operation.changeTrust({ asset, source: sponsored.publicKey() }))
+      .addOperation(Operation.endSponsoringFutureReserves({ source: sponsored.publicKey() }))
+      .setTimeout(60)
+      .build();
+    setupTx.sign(sponsor);
+    setupTx.sign(sponsored);
+    await server.submitTransaction(setupTx);
+
+    const state = await readAccountStateUntilSponsoring(sponsor.publicKey());
+    expect(state.sponsoredEntries).toContainEqual({
+      kind: "trustline",
+      owner: sponsored.publicKey(),
+      asset: assetString,
+    });
+
+    // This is the function under test (Task 3): re-reads live on-chain reserve state for
+    // the sponsored owner and decides whether shifting the reserve back is affordable.
+    const affordability = await assessSponsorshipAffordability(
+      sponsor.publicKey(),
+      state.sponsoredEntries,
+      "testnet"
+    );
+    expect(affordability.revocable).toHaveLength(1);
+    expect(affordability.unaffordableOwners.size).toBe(0);
+
+    // This is the function under test (Task 4): builds the real REVOKE_SPONSORSHIP op(s).
+    const ops = revokeSponsorshipOps(affordability.revocable);
+    expect(ops).toHaveLength(1);
+
+    // Re-load rather than reuse sponsorAccount: its sequence number is stale after
+    // submitting setupTx above.
+    const freshSponsorAccount = await server.loadAccount(sponsor.publicKey());
+    const revokeTx = new TransactionBuilder(freshSponsorAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(ops[0])
+      .setTimeout(60)
+      .build();
+    revokeTx.sign(sponsor);
+    const result = await server.submitTransaction(revokeTx);
+    expect(result.successful).toBe(true);
+
+    // Fresh read (not the pre-revoke `state` above, and not readAccountStateUntilSponsoring,
+    // which polls FOR numSponsoring >= 1 - the opposite of what should be true now): confirm
+    // the sponsored account has absorbed its own reserve and the trustline no longer shows up
+    // as sponsored by `sponsor`.
+    const after = await readAccountStateUntilTrustlineNotSponsored(
+      sponsor.publicKey(),
+      sponsored.publicKey(),
+      assetString
+    );
+    expect(after.sponsoredEntries).not.toContainEqual({
+      kind: "trustline",
+      owner: sponsored.publicKey(),
+      asset: assetString,
+    });
+  },
+  120000
 );
