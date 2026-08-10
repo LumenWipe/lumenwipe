@@ -53,6 +53,7 @@ function baseInput(over: Partial<FusedCloseInput> = {}): FusedCloseInput {
   return {
     needsSignerNormalization: false,
     signers: [{ key: MASTER, weight: 1, type: "ed25519_public_key" }],
+    revokeSponsorshipEntries: [],
     dataEntries: [],
     openOffers: [],
     claimableBalances: [],

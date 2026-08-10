@@ -242,6 +242,10 @@ export async function buildStepXdrForPlan(
       const input: FusedCloseInput = {
         needsSignerNormalization: computeNeedsSignerNormalization(accountState),
         signers,
+        // The fast path above already rejects any account with claimable balances; the
+        // same buildPlan gate keeps sponsored-entry accounts off this branch entirely
+        // (see the fast-path eligibility check), so this is always correctly empty here.
+        revokeSponsorshipEntries: [],
         dataEntries,
         openOffers,
         claimableBalances: [],

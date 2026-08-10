@@ -114,6 +114,9 @@ export async function buildCloseTransactions(
       const claimInput: FusedCloseInput = {
         needsSignerNormalization: false,
         signers: accountState.signers,
+        // TODO(revoke-sponsorship): wire the live, affordability-filtered sponsored
+        // entries here once that data flow lands (tracked separately).
+        revokeSponsorshipEntries: [],
         dataEntries: [],
         openOffers: [],
         claimableBalances: claimRoundBalances,
@@ -159,6 +162,9 @@ export async function buildCloseTransactions(
   const input: FusedCloseInput = {
     needsSignerNormalization: computeNeedsSignerNormalization(accountState),
     signers: accountState.signers,
+    // TODO(revoke-sponsorship): wire the live, affordability-filtered sponsored
+    // entries here once that data flow lands (tracked separately).
+    revokeSponsorshipEntries: [],
     dataEntries: accountState.dataEntries,
     openOffers: accountState.openOffers,
     claimableBalances: [],
