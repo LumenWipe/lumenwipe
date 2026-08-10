@@ -88,19 +88,30 @@ Three groups of users feel this most: individuals consolidating or abandoning wa
 
 The merge fails with one of these result codes if a precondition is unmet:
 
-| Result code                     | Cause                                                                                                       | How the tool resolves it                                                               |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `ACCOUNT_MERGE_HAS_SUB_ENTRIES` | Source still has trustlines, offers, or data entries (signers are excluded from this check by the protocol) | Remove every blocking subentry in earlier steps before the merge                       |
-| `ACCOUNT_MERGE_IS_SPONSOR`      | Source sponsors reserves for another account                                                                | Detect in pre-flight, block the merge, explain that sponsorships must be revoked first |
-| `ACCOUNT_MERGE_IMMUTABLE_SET`   | Source has the `AUTH_IMMUTABLE` flag set                                                                    | Detect in pre-flight, block with a clear explanation (the account cannot be merged)    |
-| `ACCOUNT_MERGE_SEQNUM_TOO_FAR`  | Source sequence number is above the current ledger bound                                                    | Surface the condition; rarely hit in practice                                          |
-| `ACCOUNT_MERGE_NO_ACCOUNT`      | Destination does not exist                                                                                  | Verify the destination on the ledger before submitting                                 |
-| `ACCOUNT_MERGE_DEST_FULL`       | Destination balance would overflow the int64 maximum, accounting for its XLM buying liabilities             | Surface as a blocker                                                                   |
-| `ACCOUNT_MERGE_MALFORMED`       | Source equals destination, or otherwise malformed                                                           | Validation rejects this at input time                                                  |
+| Result code                     | Cause                                                                                                       | How the tool resolves it                                                                                                                                                                                               |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ACCOUNT_MERGE_HAS_SUB_ENTRIES` | Source still has trustlines, offers, or data entries (signers are excluded from this check by the protocol) | Remove every blocking subentry in earlier steps before the merge                                                                                                                                                       |
+| `ACCOUNT_MERGE_IS_SPONSOR`      | Source sponsors reserves for another account                                                                | Detected in pre-flight; entries whose owner can absorb the shifted reserve are auto-resolved via `RevokeSponsorship` (per-owner affordability check), the rest surface as a specific per-entry blocker — see issue #72 |
+| `ACCOUNT_MERGE_IMMUTABLE_SET`   | Source has the `AUTH_IMMUTABLE` flag set                                                                    | Detect in pre-flight, block with a clear explanation (the account cannot be merged)                                                                                                                                    |
+| `ACCOUNT_MERGE_SEQNUM_TOO_FAR`  | Source sequence number is above the current ledger bound                                                    | Surface the condition; rarely hit in practice                                                                                                                                                                          |
+| `ACCOUNT_MERGE_NO_ACCOUNT`      | Destination does not exist                                                                                  | Verify the destination on the ledger before submitting                                                                                                                                                                 |
+| `ACCOUNT_MERGE_DEST_FULL`       | Destination balance would overflow the int64 maximum, accounting for its XLM buying liabilities             | Surface as a blocker                                                                                                                                                                                                   |
+| `ACCOUNT_MERGE_MALFORMED`       | Source equals destination, or otherwise malformed                                                           | Validation rejects this at input time                                                                                                                                                                                  |
 
-The pre-flight checks map directly onto these codes. Sponsorship detection prevents `ACCOUNT_MERGE_IS_SPONSOR`. Subentry enumeration and removal prevent `ACCOUNT_MERGE_HAS_SUB_ENTRIES`. Destination verification prevents `ACCOUNT_MERGE_NO_ACCOUNT`. The tool never submits a merge it expects to fail.
+The pre-flight checks map directly onto these codes. Sponsorship detection and revocation resolve `ACCOUNT_MERGE_IS_SPONSOR` for every sponsored entry kind that can be revoked. Subentry enumeration and removal prevent `ACCOUNT_MERGE_HAS_SUB_ENTRIES`. Destination verification prevents `ACCOUNT_MERGE_NO_ACCOUNT`. The tool never submits a merge it expects to fail.
 
 Note that being a _claimant_ of a claimable balance does not block the merge, but _sponsoring_ one does, because the sponsor carries its reserve (one base reserve per claimant, not per balance). An account that created claimable balances is their sponsor unless the sponsorship was later transferred, so those must be resolved first.
+
+**Claimable-balance sponsorships cannot be self-revoked.** CAP-33's `RevokeSponsorshipOp` fails
+with `REVOKE_SPONSORSHIP_ONLY_TRANSFERABLE` when applied to a `CLAIMABLE_BALANCE` ledger entry
+unless a cooperating new sponsor is sandwiched around it via `BeginSponsoringFutureReserves` /
+`EndSponsoringFutureReserves` in the same transaction - every other sponsorable entry kind
+(account, trustline, offer, data entry, signer) instead reverts to its own owning account's
+default sponsorship, which is what this tool's `REVOKE_SPONSORSHIP` step relies on. A guided
+close has no third party willing to become that new sponsor, so a claimable balance this account
+sponsors is a permanent blocker until a claimant claims it (removing the entry, and its
+sponsorship, entirely) - there is no self-service remediation. See issue #72's implementation
+plan for the full CAP-33 citation.
 
 ## 4. System architecture
 
@@ -524,7 +535,7 @@ These are the items the team is actively resolving. Listing them is deliberate: 
 - Base reserve: the unit of locked XLM, currently 0.5 XLM (network-voted). An account's minimum balance is two base reserves plus one per subentry, adjusted by sponsorship (`+ numSponsoring - numSponsored`).
 - Subentry: a trustline, offer, data entry, or signer attached to an account. Each adds one base reserve to the minimum balance; a pool-share trustline adds two.
 - `ACCOUNT_MERGE`: the operation that transfers an account's full XLM balance to a destination and deletes the source account. Requires no subentries apart from signers, and no sponsorships.
-- Sponsorship: an arrangement where one account pays the reserve for another account's entry. A sponsoring account cannot be merged until it stops sponsoring.
+- Sponsorship: an arrangement where one account pays the reserve for another account's entry. A sponsoring account cannot be merged until it stops sponsoring; for most entry kinds this tool revokes the sponsorship automatically when the entry's owner can absorb the shifted reserve, but a sponsored claimable balance has no self-service revocation path (§3) and remains a permanent blocker until claimed.
 - Trustline: an account's declared ability to hold a given asset, with a balance and a limit. Removed with `ChangeTrust` set to limit 0 once the balance is zero.
 - Stellar RPC: the JSON-RPC interface for live ledger reads (`getLedgerEntries`), Soroban simulation (`simulateTransaction`), submission (`sendTransaction`), confirmation (`getTransaction`), and events (`getEvents`). It cannot enumerate an account's unknown subentries.
 - Indexer: a service that indexes ledger history and exposes enumeration, such as the stellar.expert API or a Horizon-compatible provider. The tool reads enumeration from an existing indexer rather than running its own.
