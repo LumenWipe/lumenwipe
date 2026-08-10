@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { buildPlan } from "@/lib/stellar/tx-builder";
-import type { AccountState, ClaimableBalance, Trustline } from "@lumenwipe/types";
+import type { AccountState, ClaimableBalance, SponsoredEntry, Trustline } from "@lumenwipe/types";
 
 const MASTER_KP = Keypair.random();
 const EXTRA_KP = Keypair.random();
@@ -666,4 +666,80 @@ test("buildPlan › CLOSE_ACCOUNT operationCount sums all fused ops", () => {
   const close = steps.find((s) => s.type === "CLOSE_ACCOUNT")!;
   // 1 data + 1 offer + 1 merge = 3
   expect(close.operationCount).toBe(3);
+});
+
+// ─── Sponsorship affordability (issue #72) ───────────────────────────────────
+
+const SPONSORED_OWNER = Keypair.random().publicKey();
+
+test("buildPlan › affordable sponsored entry → REVOKE_SPONSORSHIP step, no sponsoring blocker", () => {
+  const entry: SponsoredEntry = { kind: "trustline", owner: SPONSORED_OWNER, asset: `USDC:${ISSUER}` };
+  const account = makeAccount({ numSponsoring: 1, sponsoredEntries: [entry] });
+  const { steps, blockers } = buildPlan(account, false, false, {}, {
+    revocable: [entry],
+    unaffordableOwners: new Map(),
+  });
+  expect(steps.some((s) => s.type === "REVOKE_SPONSORSHIP")).toBe(true);
+  expect(blockers.some((b) => b.message.toLowerCase().includes("sponsor"))).toBe(false);
+});
+
+test("buildPlan › unaffordable sponsored entry → per-owner blocker, no REVOKE_SPONSORSHIP step", () => {
+  const entry: SponsoredEntry = { kind: "trustline", owner: SPONSORED_OWNER, asset: `USDC:${ISSUER}` };
+  const account = makeAccount({ numSponsoring: 1, sponsoredEntries: [entry] });
+  const { steps, blockers } = buildPlan(account, false, false, {}, {
+    revocable: [],
+    unaffordableOwners: new Map([[SPONSORED_OWNER, { entries: [entry], shortfallXlm: "0.5000000" }]]),
+  });
+  expect(steps.some((s) => s.type === "REVOKE_SPONSORSHIP")).toBe(false);
+  expect(blockers.some((b) => b.message.includes("0.5000000"))).toBe(true);
+});
+
+test("buildPlan › mixed affordable + unaffordable owners → partial resolution, not all-or-nothing", () => {
+  const affordableOwner = Keypair.random().publicKey();
+  const affordableEntry: SponsoredEntry = { kind: "trustline", owner: affordableOwner, asset: `USDC:${ISSUER}` };
+  const unaffordableEntry: SponsoredEntry = { kind: "signer", owner: SPONSORED_OWNER, signerKey: Keypair.random().publicKey() };
+  const account = makeAccount({
+    numSponsoring: 2,
+    sponsoredEntries: [affordableEntry, unaffordableEntry],
+  });
+  const { steps, blockers } = buildPlan(account, false, false, {}, {
+    revocable: [affordableEntry],
+    unaffordableOwners: new Map([[SPONSORED_OWNER, { entries: [unaffordableEntry], shortfallXlm: "0.5000000" }]]),
+  });
+  const revokeStep = steps.find((s) => s.type === "REVOKE_SPONSORSHIP");
+  expect(revokeStep?.operationCount).toBe(1); // only the affordable one
+  expect(blockers).toHaveLength(1);
+});
+
+test("buildPlan › sponsorshipEnumerationIncomplete → old blanket blocker, ignores affordability result", () => {
+  const entry: SponsoredEntry = { kind: "trustline", owner: SPONSORED_OWNER, asset: `USDC:${ISSUER}` };
+  const account = makeAccount({
+    numSponsoring: 1,
+    sponsoredEntries: [entry],
+    sponsorshipEnumerationIncomplete: true,
+  });
+  const { steps, blockers } = buildPlan(account, false, false, {}, {
+    revocable: [entry], // even though the caller says it's affordable, incompleteness wins
+    unaffordableOwners: new Map(),
+  });
+  expect(steps.some((s) => s.type === "REVOKE_SPONSORSHIP")).toBe(false);
+  expect(blockers.some((b) => b.message.includes("sponsoring 1 entr"))).toBe(true);
+});
+
+test("buildPlan › claimable-balance sponsorship is always a permanent blocker, never a step", () => {
+  const entry: SponsoredEntry = { kind: "claimable_balance", balanceId: "00000000" + "ab".repeat(32) };
+  const account = makeAccount({ numSponsoring: 1, sponsoredEntries: [entry] });
+  const { steps, blockers } = buildPlan(account, false, false, {}, {
+    revocable: [],
+    unaffordableOwners: new Map(),
+  });
+  expect(steps.some((s) => s.type === "REVOKE_SPONSORSHIP")).toBe(false);
+  expect(blockers.some((b) => b.code === "sponsorship_claimable_balance_unrevocable")).toBe(true);
+});
+
+test("buildPlan › numSponsoring > 0 but no entries found (defensive fallback) → old blanket blocker", () => {
+  // Existing behavior preserved: a numSponsoring/sponsoredEntries disagreement even when
+  // enumeration claims complete must never silently resolve to "nothing to do."
+  const { blockers } = buildPlan(makeAccount({ numSponsoring: 2 }), false);
+  expect(blockers.some((b) => b.message.includes("sponsoring"))).toBe(true);
 });
