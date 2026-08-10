@@ -60,16 +60,7 @@ export async function assessSponsorshipAffordability(
   const unaffordableOwners: SponsorshipAffordability["unaffordableOwners"] = new Map();
 
   const owners = Array.from(byOwner.keys());
-  const liveStateByOwner = await fetchOwnerLiveStatesBounded(
-    owners,
-    network,
-    (owner) => byOwner.get(owner)!.some((e) => e.kind === "offer"),
-    (owner) =>
-      byOwner
-        .get(owner)!
-        .filter((e): e is Extract<OwnedEntry, { kind: "data_entry" }> => e.kind === "data_entry")
-        .map((e) => e.name)
-  );
+  const liveStateByOwner = await fetchOwnerLiveStatesBounded(owners, network);
 
   owners.forEach((owner) => {
     const ownerEntries = byOwner.get(owner)!;

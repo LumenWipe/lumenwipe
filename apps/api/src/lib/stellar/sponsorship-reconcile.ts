@@ -94,17 +94,11 @@ export function reconcileSponsoredEntries(
       continue;
     }
 
-    if (candidate.kind === "offer") {
-      for (const [offerId, sponsor] of Object.entries(live.offerSponsors)) {
-        if (sponsor !== address) continue;
-        const dedupeKey = `offer:${candidate.owner}:${offerId}`;
-        if (seen.has(dedupeKey)) continue;
-        seen.add(dedupeKey);
-        sponsoredEntries.push({ kind: "offer", owner: candidate.owner, offerId });
-      }
-      continue;
-    }
-
+    // Offer and claimable_balance entries are never matched here - offers are fully
+    // covered by the unconditional per-owner sweep below (every fetched owner's full
+    // current offer list, not just owners a candidate happened to name), and claimable
+    // balances are handled separately above.
+    if (candidate.kind === "offer") continue;
     if (candidate.kind === "claimable_balance") continue; // handled above
 
     const currentSponsor =
@@ -133,15 +127,18 @@ export function reconcileSponsoredEntries(
     }
   }
 
-  // Trustline/signer candidates only fire when the specific historical operation that
-  // created or removed the sponsorship happened to carry an explicit `sponsor` field
-  // (see sponsorship.ts's discoverSponsorshipCandidates). A wrapped change_trust/
-  // set_options inside an open sponsorship bracket might not carry that field, in which
-  // case the exact-key candidate above is never produced - even though the owner's live
-  // state (already fetched, because *some* candidate for that owner triggered the fetch)
-  // contains the answer. Mirror the "offer" branch above: sweep every already-fetched
-  // owner's full current trustline/signer sponsor set, not just the keys candidates
-  // happened to name, so a missing exact-key candidate can't cause a silent omission.
+  // Trustline/signer/offer/data-entry candidates only fire when the specific historical
+  // operation that created or removed the sponsorship happened to carry an explicit
+  // `sponsor` field (see sponsorship.ts's discoverSponsorshipCandidates). A wrapped
+  // change_trust/set_options/manage_data/manage_offer inside an open sponsorship bracket
+  // might not carry that field, in which case the exact-key candidate above is never
+  // produced - even though the owner's live state (already fetched, because *some*
+  // candidate for that owner triggered the fetch) contains the answer. Sweep every
+  // already-fetched owner's full current state for all four kinds, not just the keys
+  // candidates happened to name, so a missing exact-key candidate can't cause a silent
+  // omission. ("account" has no analogous sweep: begin_sponsoring_future_reserves always
+  // carries sponsored_id and is always sourced directly by the sponsor - never wrapped
+  // inside someone else's bracket - so its candidate can't have this gap.)
   for (const [owner, live] of liveStateByOwner) {
     if (live.fetchFailed) continue; // already counted via the candidate loop above
 
@@ -159,6 +156,22 @@ export function reconcileSponsoredEntries(
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
       sponsoredEntries.push({ kind: "signer", owner, signerKey });
+    }
+
+    for (const [offerId, sponsor] of Object.entries(live.offerSponsors)) {
+      if (sponsor !== address) continue;
+      const dedupeKey = `offer:${owner}:${offerId}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      sponsoredEntries.push({ kind: "offer", owner, offerId });
+    }
+
+    for (const [name, sponsor] of Object.entries(live.dataSponsors)) {
+      if (sponsor !== address) continue;
+      const dedupeKey = `data_entry:${owner}:${name}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      sponsoredEntries.push({ kind: "data_entry", owner, name });
     }
   }
 
