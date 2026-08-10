@@ -18,6 +18,7 @@ function liveState(overrides: Partial<OwnerLiveState> = {}): OwnerLiveState {
     offerSponsors: {},
     dataSponsors: {},
     fetchFailed: false,
+    reserve: null,
     ...overrides,
   };
 }

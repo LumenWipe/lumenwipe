@@ -167,10 +167,14 @@ async function discoverSponsorshipCandidates(
 
 interface HorizonAccountForSponsorship {
   sponsor?: string;
+  subentry_count: number;
+  num_sponsoring?: number;
+  num_sponsored?: number;
   balances: Array<{
     asset_type: string;
     asset_code?: string;
     asset_issuer?: string;
+    balance?: string;
     sponsor?: string;
   }>;
   signers: Array<{ key: string; sponsor?: string }>;
@@ -188,7 +192,7 @@ interface HorizonOffersPage {
 
 // Phase 2: for one owner account discovered in Phase 1, read its CURRENT sponsor
 // fields directly from Horizon - this is the actual source of truth, not the history.
-async function fetchOwnerLiveState(
+export async function fetchOwnerLiveState(
   owner: string,
   network: Network,
   needsOffers: boolean,
@@ -202,6 +206,7 @@ async function fetchOwnerLiveState(
     offerSponsors: {},
     dataSponsors: {},
     fetchFailed: true,
+    reserve: null,
   };
   if (!base) return empty;
 
@@ -210,11 +215,20 @@ async function fetchOwnerLiveState(
     if (accountRes.status === 404) {
       // The owner account no longer exists (merged away) - a normal terminal state and
       // unambiguous proof it holds nothing we still sponsor. Same distinction the
-      // per-key data read below already makes: 404 is an answer, not a failure.
-      return { ...empty, fetchFailed: false };
+      // per-key data read below already makes: 404 is an answer, not a failure. There is
+      // no reserve left to check for an account that no longer exists.
+      return { ...empty, fetchFailed: false, reserve: null };
     }
     if (!accountRes.ok) return empty;
     const account = (await accountRes.json()) as HorizonAccountForSponsorship;
+
+    const nativeBalance = account.balances.find((b) => b.asset_type === "native")?.balance ?? "0";
+    const reserve = {
+      balanceLumens: nativeBalance,
+      numSubEntries: account.subentry_count,
+      numSponsoring: account.num_sponsoring ?? 0,
+      numSponsored: account.num_sponsored ?? 0,
+    };
 
     const trustlineSponsors: Record<string, string | null> = {};
     for (const b of account.balances) {
@@ -248,6 +262,7 @@ async function fetchOwnerLiveState(
             trustlineSponsors,
             signerSponsors,
             fetchFailed: true,
+            reserve: null,
           };
         } else {
           dataSponsors[key] = ((await dataRes.json()).sponsor ?? null) as string | null;
@@ -259,6 +274,7 @@ async function fetchOwnerLiveState(
           trustlineSponsors,
           signerSponsors,
           fetchFailed: true,
+          reserve: null,
         };
       }
     }
@@ -297,6 +313,7 @@ async function fetchOwnerLiveState(
         signerSponsors,
         dataSponsors,
         fetchFailed: true,
+        reserve: null,
       };
     }
 
@@ -307,6 +324,7 @@ async function fetchOwnerLiveState(
       offerSponsors,
       dataSponsors,
       fetchFailed: false,
+      reserve,
     };
   } catch {
     return empty;

@@ -25,6 +25,16 @@ export interface OwnerLiveState {
   // True if any live fetch for this owner failed - the candidate can't be
   // confirmed or ruled out, so it must never be silently dropped.
   fetchFailed: boolean;
+  /** This owner's live reserve numbers, straight off the same Horizon-compatible account
+   *  resource already fetched for the sponsor-field checks above - null when that fetch
+   *  failed (fetchFailed is the source of truth for "don't trust anything else on this
+   *  object"), never a placeholder zero. */
+  reserve: {
+    balanceLumens: string;
+    numSubEntries: number;
+    numSponsoring: number;
+    numSponsored: number;
+  } | null;
 }
 
 // Base reserves each enumerated entry kind costs its sponsor. numSponsoring counts
@@ -35,7 +45,10 @@ export interface OwnerLiveState {
 // reserves, but SponsoredEntry has no way to distinguish one from a regular trustline,
 // so every trustline is counted as 1. That can only make the expected total too low,
 // which errs toward flagging incomplete - never toward a silent "sponsors nothing".
-const RESERVES_PER_ENTRY: Record<Exclude<SponsoredEntry["kind"], "claimable_balance">, number> = {
+export const RESERVES_PER_ENTRY: Record<
+  Exclude<SponsoredEntry["kind"], "claimable_balance">,
+  number
+> = {
   account: 2, // a fully-sponsored account creation costs 2 base reserves
   trustline: 1,
   offer: 1,
