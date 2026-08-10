@@ -10,6 +10,11 @@ export const SLIPPAGE_BPS = 50; // 0.5% default slippage for path payments
 export const SE_API_TIMEOUT_MS = 10000; // 10 seconds
 export const SE_API_MAX_RETRIES = 3;
 
+// Sponsorship enumeration: how many of the sponsor's own operations we'll page through
+// (oldest-first, from account creation) looking for sponsorship-bracket candidates
+// before giving up and flagging the read as incomplete. 2000 = 10 pages at 200/page.
+export const SPONSORSHIP_MAX_OPERATIONS_SCANNED = 2000;
+
 // Playground: a freshly friendbot-funded account is visible on Horizon immediately
 // but the Soroban RPC lags a few ledgers behind ingesting it. Retry getAccount
 // until the RPC catches up before building the first transaction.
