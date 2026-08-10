@@ -27,6 +27,22 @@ export interface OwnerLiveState {
   fetchFailed: boolean;
 }
 
+// Base reserves each enumerated entry kind costs its sponsor. numSponsoring counts
+// sponsored *reserves*, not sponsored *entries*, so the cross-check below can only
+// compare like with like after this conversion.
+//
+// Known minor imprecision: a sponsored liquidity-pool-share trustline actually costs 2
+// reserves, but SponsoredEntry has no way to distinguish one from a regular trustline,
+// so every trustline is counted as 1. That can only make the expected total too low,
+// which errs toward flagging incomplete - never toward a silent "sponsors nothing".
+const RESERVES_PER_ENTRY: Record<Exclude<SponsoredEntry["kind"], "claimable_balance">, number> = {
+  account: 2, // a fully-sponsored account creation costs 2 base reserves
+  trustline: 1,
+  offer: 1,
+  data_entry: 1,
+  signer: 1,
+};
+
 // Phase 2 always re-derives truth from current chain state, so a Phase 1 gap can only
 // produce a missed candidate (caught by the numSponsoring cross-check below), never a
 // wrong inclusion. This is why this function does not need to model the sponsorship
@@ -38,7 +54,12 @@ export function reconcileSponsoredEntries(
   claimableBalanceEntries: SponsoredEntry[],
   discoveryIncomplete: boolean,
   claimableBalanceIncomplete: boolean,
-  numSponsoring: number
+  numSponsoring: number,
+  // balanceId -> number of claimants, from the same Horizon page the entries came from.
+  // A claimable balance costs its sponsor one base reserve *per claimant*, so its
+  // reserve cost cannot be derived from SponsoredEntry alone. A missing entry here
+  // falls back to 1 (the minimum), which again can only over-flag, never under-flag.
+  claimantCountsByBalanceId: ReadonlyMap<string, number> = new Map()
 ): { sponsoredEntries: SponsoredEntry[]; sponsorshipEnumerationIncomplete: boolean } {
   const seen = new Set<string>();
   const sponsoredEntries: SponsoredEntry[] = [...claimableBalanceEntries];
@@ -124,11 +145,23 @@ export function reconcileSponsoredEntries(
     }
   }
 
-  const countMismatch = sponsoredEntries.length !== numSponsoring;
+  // Convert the enumerated entries into the reserve count numSponsoring actually
+  // reports, then mirror detectSubEntryMismatch's direction: only an UNDERCOUNT is
+  // dangerous. An equal-or-over total (a stale/racing read of numSponsoring, or the
+  // pool-share imprecision above resolving the other way) must not raise a spurious
+  // incomplete flag on a healthy account.
+  let expectedReserves = 0;
+  for (const entry of sponsoredEntries) {
+    expectedReserves +=
+      entry.kind === "claimable_balance"
+        ? (claimantCountsByBalanceId.get(entry.balanceId) ?? 1)
+        : RESERVES_PER_ENTRY[entry.kind];
+  }
+  const reserveUndercount = expectedReserves < numSponsoring;
 
   return {
     sponsoredEntries,
     sponsorshipEnumerationIncomplete:
-      discoveryIncomplete || claimableBalanceIncomplete || anyLiveFetchFailed || countMismatch,
+      discoveryIncomplete || claimableBalanceIncomplete || anyLiveFetchFailed || reserveUndercount,
   };
 }

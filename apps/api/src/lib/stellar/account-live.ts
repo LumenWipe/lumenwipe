@@ -119,11 +119,18 @@ export async function getLiveAccountState(
   );
   const numSubEntries = account.subentry_count;
 
+  // This path's failure mode differs from account.ts's: a failed account read throws
+  // above rather than falling through, so reaching here means the resource was fetched.
+  // What is still not guaranteed is that the resource CARRIES num_sponsoring - the
+  // endpoint is only Horizon-compatible, not Horizon - and `?? 0` would silently turn a
+  // missing field into a confident "sponsors nothing". Presence is the trust signal here.
+  const numSponsoringKnown = typeof account.num_sponsoring === "number";
   const numSponsoring = account.num_sponsoring ?? 0;
   const { sponsoredEntries, sponsorshipEnumerationIncomplete } = await enumerateSponsoredEntries(
     address,
     network,
-    numSponsoring
+    numSponsoring,
+    numSponsoringKnown
   );
 
   return {
