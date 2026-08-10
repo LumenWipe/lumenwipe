@@ -10,10 +10,10 @@ import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/pl
 import type { MediatorCheckResult } from "@/types/account";
 import { getMediatorPublicKey } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
-import { saveSession } from "@/lib/session/store";
 import { fetchClosePlan } from "@/lib/api/close-client";
 import { claimableSelectionsToDecisions, dispositionsToDecisions } from "@/lib/api/close-decisions";
 import { apiStepsToPlannedSteps } from "@/lib/api/plan-adapters";
+import { goToReview } from "@/lib/plan/confirm-plan";
 import { isValidGAddress, isValidMemo } from "@/lib/utils/validation";
 import { getMemoRequirement, requiresMediatorForAddress } from "@/lib/exchange-registry";
 import AccountSummaryCard from "./AccountSummaryCard";
@@ -50,7 +50,6 @@ export default function PlanView({
     setMediatorRequired,
     setPlan,
     setPhase,
-    initSession,
     destinationAddress: storedDest,
     memo: storedMemo,
   } = useDemolishStore();
@@ -215,34 +214,11 @@ export default function PlanView({
         network
       );
       setPlan(apiStepsToPlannedSteps(plan));
-      setPhase("STEP_EXECUTING");
 
-      // Persist a resumable session (inputs only). If the close is interrupted, the tool
-      // page offers to resume it; on resume the API re-derives the remaining work from
-      // live on-chain state, so no per-step progress needs to be tracked here.
-      // Reuse the existing id on a resumed flow (restoreSession set it) so the resumed
-      // session is overwritten in place rather than orphaned as a stale "in_progress".
-      if (!useDemolishStore.getState().sessionId) initSession();
-      const sessionId = useDemolishStore.getState().sessionId;
-      if (sessionId) {
-        const now = new Date().toISOString();
-        await saveSession({
-          id: sessionId,
-          network,
-          sourceAddress: account.address,
-          destinationAddress: destination,
-          memo: memo.trim() || null,
-          memoType: effectiveMemoType ?? null,
-          mediatorPublicKey: mediatorPublicKey ?? null,
-          completedSteps: [],
-          currentStepIndex: 0,
-          status: "in_progress",
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-
-      router.push(`/${network}/execute`);
+      // No session is persisted here: the review page's own confirmation is the only
+      // caller allowed to write a resumable record, so an interruption on /review before
+      // the user clicks through leaves nothing behind to resume.
+      goToReview(setPhase, router, network);
     } catch {
       setError("Failed to verify the destination. Please check your connection and try again.");
     } finally {

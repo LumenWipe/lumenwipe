@@ -17,8 +17,8 @@ import {
 //   - /analyze shows an accordion plan preview plus a per-asset decision
 //     (swap on the DEX vs. return to issuer).
 //   - Once every asset is resolved, a destination + memo step appears.
-//   - "Begin execution" -> /execute, where the secret key is entered ONCE and
-//     the fused single close transaction is signed.
+//   - "Begin execution" -> /review, the whole-plan gate; confirming there -> /execute,
+//     where the secret key is entered ONCE and the fused single close transaction is signed.
 //   - /complete is the terminal page.
 //
 // Each test funds a throwaway testnet account, drives the full redesigned path,
@@ -141,7 +141,7 @@ async function enterSourceAndAnalyze(page: Page, source: string): Promise<void> 
   await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
 }
 
-// Late-destination step: fills the destination, then "Begin execution" -> /execute.
+// Late-destination step: fills the destination, then "Begin execution" -> /review -> /execute.
 async function enterDestinationAndBegin(page: Page, destination: string): Promise<void> {
   const beginButton = page.getByRole("button", { name: /Begin execution/i });
   await expect(beginButton).toBeVisible({ timeout: 30_000 });
@@ -150,6 +150,14 @@ async function enterDestinationAndBegin(page: Page, destination: string): Promis
 
   await expect(beginButton).toBeEnabled();
   await beginButton.click();
+
+  // Whole-plan review gate: the user must explicitly confirm before anything is built.
+  await expect(page).toHaveURL(/\/testnet\/review/);
+  const proceedButton = page.getByRole("button", {
+    name: /I understand this plan and want to proceed/i,
+  });
+  await expect(proceedButton).toBeEnabled();
+  await proceedButton.click();
 
   await expect(page).toHaveURL(/\/testnet\/execute/);
 }
