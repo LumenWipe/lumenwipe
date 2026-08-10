@@ -46,6 +46,16 @@ function normalizeOp(op: Transaction["operations"][number]): IntentOperation | n
       return { type: "set_options", summary: "Adjust signers and/or thresholds" };
     case "claimClaimableBalance":
       return { type: "claim_claimable_balance", balanceId: op.balanceId };
+    case "revokeAccountSponsorship":
+      return { type: "revoke_sponsorship", entryKind: "account", owner: op.account };
+    case "revokeTrustlineSponsorship":
+      return { type: "revoke_sponsorship", entryKind: "trustline", owner: op.account };
+    case "revokeOfferSponsorship":
+      return { type: "revoke_sponsorship", entryKind: "offer", owner: op.seller };
+    case "revokeDataSponsorship":
+      return { type: "revoke_sponsorship", entryKind: "data_entry", owner: op.account };
+    case "revokeSignerSponsorship":
+      return { type: "revoke_sponsorship", entryKind: "signer", owner: op.account };
     default:
       return null;
   }
