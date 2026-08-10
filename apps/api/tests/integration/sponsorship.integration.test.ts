@@ -9,13 +9,46 @@ import {
   Horizon,
 } from "@stellar/stellar-sdk";
 import { getAccountState } from "@/lib/stellar/account";
+import type { AccountState } from "@lumenwipe/types";
 
 const FRIENDBOT = "https://friendbot.stellar.org";
 const HORIZON_URL = "https://horizon-testnet.stellar.org";
 
+// The public Soroban RPC testnet endpoint is load-balanced across nodes that lag
+// each other and lag Horizon (see the ACCOUNT_VISIBILITY_* comment in
+// src/config/constants.ts for the same phenomenon on a different call path). A
+// transaction Horizon has already confirmed as successful may briefly read back
+// from getAccountState as not-yet-sponsoring (numSponsoring: 0), or even throw
+// AccountNotFoundError for an account Horizon already shows as funded, until RPC
+// catches up. ~20s of total patience observed sufficient during manual testnet runs.
+const ACCOUNT_STATE_POLL_MAX_ATTEMPTS = 8;
+const ACCOUNT_STATE_POLL_DELAY_MS = 2500;
+
 async function fund(publicKey: string): Promise<void> {
   const res = await fetch(`${FRIENDBOT}?addr=${publicKey}`);
   if (!res.ok) throw new Error(`friendbot funding failed for ${publicKey}: ${res.status}`);
+}
+
+// Retries getAccountState until numSponsoring reflects the just-submitted sponsorship
+// (or the attempt cap is hit), absorbing Soroban RPC's ingestion lag. Also retries
+// through a transient AccountNotFoundError, which real testnet runs of this test have
+// shown RPC can throw for an account Horizon already confirms exists.
+async function readAccountStateUntilSponsoring(publicKey: string): Promise<AccountState> {
+  let lastState: AccountState | null = null;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < ACCOUNT_STATE_POLL_MAX_ATTEMPTS; attempt++) {
+    try {
+      lastState = await getAccountState(publicKey, "testnet");
+      if (lastState.numSponsoring >= 1) return lastState;
+    } catch (err) {
+      lastError = err;
+    }
+    await new Promise((resolve) => setTimeout(resolve, ACCOUNT_STATE_POLL_DELAY_MS));
+  }
+  // Out of attempts: return the last successful read (if any) so the assertions
+  // below report the real mismatch, rather than masking it behind a retry error.
+  if (lastState) return lastState;
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 test(
@@ -52,10 +85,9 @@ test(
     tx.sign(sponsored);
     await server.submitTransaction(tx);
 
-    // Horizon indexing lag for the account this test's assertions read through.
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-
-    const state = await getAccountState(sponsor.publicKey(), "testnet");
+    // Soroban RPC indexing lag for the account this test's assertions read through -
+    // poll rather than a flat sleep, since observed lag varies run to run.
+    const state = await readAccountStateUntilSponsoring(sponsor.publicKey());
 
     expect(state.numSponsoring).toBe(1);
     expect(state.sponsorshipEnumerationIncomplete).toBe(false);
@@ -65,5 +97,5 @@ test(
       asset: `LWTEST:${issuer.publicKey()}`,
     });
   },
-  30000
+  60000
 );
