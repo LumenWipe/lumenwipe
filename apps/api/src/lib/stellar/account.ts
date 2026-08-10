@@ -5,6 +5,7 @@ import { seGet } from "@/lib/se-api/client";
 import { AccountNotFoundError } from "@/lib/utils/errors";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import { detectSubEntryMismatch } from "@/lib/stellar/scan-fallback";
+import { enumerateSponsoredEntries } from "@/lib/stellar/sponsorship";
 import type { Network } from "@/config/networks";
 import type {
   AccountState,
@@ -225,6 +226,12 @@ export async function getAccountState(address: string, network: Network): Promis
     numSubEntries,
   });
 
+  const { sponsoredEntries, sponsorshipEnumerationIncomplete } = await enumerateSponsoredEntries(
+    address,
+    network,
+    numSponsoring
+  );
+
   return {
     address,
     network,
@@ -235,6 +242,8 @@ export async function getAccountState(address: string, network: Network): Promis
     thresholds,
     numSubEntries,
     numSponsoring,
+    sponsoredEntries,
+    sponsorshipEnumerationIncomplete,
     sponsoredBy: null,
     authImmutable,
     trustlines,
@@ -242,7 +251,5 @@ export async function getAccountState(address: string, network: Network): Promis
     poolShares,
     claimableBalances,
     subEntryMismatch,
-    sponsoredEntries: [],
-    sponsorshipEnumerationIncomplete: false,
   };
 }

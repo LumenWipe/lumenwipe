@@ -3,6 +3,7 @@ import { AccountNotFoundError } from "@/lib/utils/errors";
 import { fetchOffersFromAdapter, fetchClaimableBalancesForClaimant } from "./horizon-adapter";
 import { detectSubEntryMismatch } from "./scan-fallback";
 import { horizonAssetToString } from "@/lib/utils/assets";
+import { enumerateSponsoredEntries } from "@/lib/stellar/sponsorship";
 import type {
   AccountState,
   AccountSigner,
@@ -118,6 +119,13 @@ export async function getLiveAccountState(
   );
   const numSubEntries = account.subentry_count;
 
+  const numSponsoring = account.num_sponsoring ?? 0;
+  const { sponsoredEntries, sponsorshipEnumerationIncomplete } = await enumerateSponsoredEntries(
+    address,
+    network,
+    numSponsoring
+  );
+
   return {
     address,
     network,
@@ -131,7 +139,9 @@ export async function getLiveAccountState(
       high: account.thresholds.high_threshold,
     },
     numSubEntries,
-    numSponsoring: account.num_sponsoring ?? 0,
+    numSponsoring,
+    sponsoredEntries,
+    sponsorshipEnumerationIncomplete,
     sponsoredBy: account.sponsor ?? null,
     authImmutable: account.flags?.auth_immutable ?? false,
     trustlines,
@@ -147,7 +157,5 @@ export async function getLiveAccountState(
       poolShares,
       numSubEntries,
     }),
-    sponsoredEntries: [],
-    sponsorshipEnumerationIncomplete: false,
   };
 }
