@@ -343,12 +343,22 @@ Because the operations are irreversible, every protocol exit adapter must satisf
 | No silent skips            | A position the tool cannot safely close (undercollateralized vault, unknown version, missing route) is surfaced as a blocker with an explanation, never quietly ignored                                                          |
 | Deterministic plan         | The same account state produces the same ordered plan, which keeps the flow auditable and testable                                                                                                                               |
 
+These invariants aren't scoped to Soroban exits alone. The two classic-op builders that resolve the merge preconditions from Section 3 hold to the same contract by different means: the `REVOKE_SPONSORSHIP` step re-reads each owner's live sponsorship and reserve headroom immediately before building — a dedicated call, separate from the plan-time affordability check, since minutes can pass between them — and an owner that can no longer absorb the shifted reserve simply drops out of that build rather than failing partway, because it was already surfaced as a `sponsorship_unaffordable` blocker at plan time. The claimable-balance trustline-remediation path reads from the same fresh per-request account state the round already re-read, and a balance that's no longer claimable likewise surfaces as a blocker (`claimable_balance_unclaimable`) or a deliberate, recorded no-op (`claimable_balance_forfeited`) rather than disappearing quietly.
+
 ## 10. Asset conversion and routing
 
 After positions are unwound, the account may hold several classic and Soroban tokens. Each non-XLM balance gets an explicit, per-asset disposition the user makes in the accordion preview, because "swap everything" is the common case but not the only one the ledger allows:
 
 - **Swap to XLM** (offered whenever a route exists): swap through the best available route, then remove the trustline. This is the disposition the tool selects for any asset that has a route, and the user can leave it as is.
 - **Return to issuer**: send the balance back to its issuer, which clears it from the account. This is the right call for spam tokens, worthless dust, and assets with no route, and it is the only option the tool offers when no swap route exists. It is never the default and never labeled as a conversion: the user confirms it explicitly, and the tool states plainly that it is irreversible.
+
+Claimable balances follow the same explicit-choice pattern through a distinct `DecisionPoint` (`type: "claimable_balance"`, resolved to a `ClaimableBalanceSelection` in `@lumenwipe/types`), since a balance the account is claimant of is a separate ledger entry, not a balance the account already holds:
+
+- **Claim**: submit `ClaimClaimableBalance` for the balance now. Offered, and the opt-out default, whenever the account can already claim it — the asset is native XLM, or an authorized trustline already exists.
+- **Add a trustline, then claim**: add the missing trustline first, then claim in the same round. The only path to claiming a balance in an asset the account doesn't yet trust.
+- **Forfeit**: leave the balance unclaimed and proceed with the rest of the close. No operation is built; the choice is recorded as an acknowledged blocker so the plan stays auditable about what it chose not to do.
+
+There is no default when a balance isn't currently claimable: the user must pick add-trustline-then-claim or forfeit explicitly, and the API holds the plan at `needs_decisions` until every such balance has an answer.
 
 Routing for the convert path has two engines. The primary is the Soroswap API, which finds optimal routes across Soroswap, Phoenix, Aquarius, and the classic SDEX, handles both classic and Soroban tokens, and builds the swap XDR. Like every server-built transaction, that XDR is decoded and verified client-side before signing (Section 9.9). The fallback for pure-classic assets is strict-send path finding from a Horizon-compatible endpoint, executed with `PathPaymentStrictSend` across SDEX order books and classic liquidity pools (up to six hops). Either way the tool computes a minimum-received amount from the quoted output and a slippage tolerance, and passes it as the destination minimum so a sudden price move cannot fill the swap at a bad rate.
 
@@ -396,6 +406,8 @@ The wallet path is primary: through stellar-wallets-kit the private key never en
 ### 13.3 Confirmation and irreversibility controls
 
 Every destructive step requires an explicit acknowledgment that states what will happen, shows the affected entry or balance, and warns that it cannot be undone. The tool never auto-submits; the user triggers each submission. The merge gets its own full-screen confirmation with the destination shown in full, a ledger existence check, and memo validation for exchange destinations.
+
+A third layer sits above these two: before any transaction is built or signed, the whole plan is shown at once on a dedicated review step. The client-side `DemolishPhase` state machine (Section 6.1) gates this explicitly — the plan-generation phase (`PREFLIGHT_COMPLETE`) only advances to execution (`STEP_EXECUTING`) through that page's own confirmation, and nothing is written to the resumable session store before it fires, so leaving the tab mid-review has nothing to resume. This is additive to the per-step and per-merge confirmations, not a replacement — confirming the whole plan doesn't skip confirming each step and the merge itself as they happen.
 
 ### 13.4 Security reviews
 
