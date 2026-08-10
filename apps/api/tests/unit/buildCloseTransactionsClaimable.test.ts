@@ -163,7 +163,11 @@ test("buildCloseTransactions › currently-claimable balance explicitly forfeite
 // must call assessSponsorshipAffordability itself, immediately before building, rather than
 // trusting whatever /close/plan decided minutes earlier - the sponsored owner's on-chain
 // reserve state can change in between.
-const SPONSORED_ENTRY: SponsoredEntry = { kind: "signer", owner: ISSUER, signerKey: Keypair.random().publicKey() };
+const SPONSORED_ENTRY: SponsoredEntry = {
+  kind: "signer",
+  owner: ISSUER,
+  signerKey: Keypair.random().publicKey(),
+};
 
 test("buildCloseTransactions › sponsored entry the live re-read marks revocable → REVOKE_SPONSORSHIP is included", async () => {
   mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
@@ -188,7 +192,9 @@ test("buildCloseTransactions › sponsored entry the live re-read marks unafford
     assessSponsorshipAffordability: () =>
       Promise.resolve({
         revocable: [],
-        unaffordableOwners: new Map([[ISSUER, { entries: [SPONSORED_ENTRY], shortfallXlm: "0.5000000" }]]),
+        unaffordableOwners: new Map([
+          [ISSUER, { entries: [SPONSORED_ENTRY], shortfallXlm: "0.5000000" }],
+        ]),
       }),
   }));
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");

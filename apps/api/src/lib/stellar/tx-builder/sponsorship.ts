@@ -9,10 +9,16 @@ import { assetToSdkAsset } from "@/lib/utils/assets";
 // op for, matching signerRemovalOp's "skip, don't fail the batch" precedent.
 function revokeSignerSponsorshipOp(owner: string, signerKey: string): xdr.Operation | null {
   if (StrKey.isValidEd25519PublicKey(signerKey)) {
-    return Operation.revokeSignerSponsorship({ account: owner, signer: { ed25519PublicKey: signerKey } });
+    return Operation.revokeSignerSponsorship({
+      account: owner,
+      signer: { ed25519PublicKey: signerKey },
+    });
   }
   if (StrKey.isValidSignedPayload(signerKey)) {
-    return Operation.revokeSignerSponsorship({ account: owner, signer: { ed25519SignedPayload: signerKey } });
+    return Operation.revokeSignerSponsorship({
+      account: owner,
+      signer: { ed25519SignedPayload: signerKey },
+    });
   }
   try {
     return Operation.revokeSignerSponsorship({

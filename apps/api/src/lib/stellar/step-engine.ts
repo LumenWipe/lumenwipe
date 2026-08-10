@@ -271,6 +271,12 @@ export async function buildStepXdrForPlan(
       return buildFusedCloseTx(sdkAccount, input, network);
     }
 
+    // No case for "REVOKE_SPONSORSHIP": this function's step-by-step dispatch path is
+    // legacy/unreachable for the real close flow (CLOSE_ACCOUNT above is fast-path-only,
+    // and buildPlan already routes any account with sponsoredEntries away from the fast
+    // path). The real transaction builder for revoking sponsorships lives in
+    // build-transactions.ts's FusedCloseInput/assembleFusedCloseOpsTagged flow. Don't
+    // mistake this omission for a bug - see build-transactions.ts for the live path.
     default:
       throw new Error(`Unknown step type: ${step.type}`);
   }

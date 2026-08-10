@@ -34,6 +34,10 @@ export interface OwnerLiveState {
     numSubEntries: number;
     numSponsoring: number;
     numSponsored: number;
+    // Horizon's native-balance `selling_liabilities` - XLM tied up in open sell offers
+    // that stellar-core's own getAvailableBalance() (and thus the LOW_RESERVE gate on
+    // RevokeSponsorship) subtracts before comparing against the minimum balance.
+    sellingLiabilities: string;
   } | null;
 }
 

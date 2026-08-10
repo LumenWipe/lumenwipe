@@ -176,6 +176,7 @@ interface HorizonAccountForSponsorship {
     asset_issuer?: string;
     balance?: string;
     sponsor?: string;
+    selling_liabilities?: string;
   }>;
   signers: Array<{ key: string; sponsor?: string }>;
 }
@@ -222,12 +223,13 @@ export async function fetchOwnerLiveState(
     if (!accountRes.ok) return empty;
     const account = (await accountRes.json()) as HorizonAccountForSponsorship;
 
-    const nativeBalance = account.balances.find((b) => b.asset_type === "native")?.balance ?? "0";
+    const nativeBalanceRecord = account.balances.find((b) => b.asset_type === "native");
     const reserve = {
-      balanceLumens: nativeBalance,
+      balanceLumens: nativeBalanceRecord?.balance ?? "0",
       numSubEntries: account.subentry_count,
       numSponsoring: account.num_sponsoring ?? 0,
       numSponsored: account.num_sponsored ?? 0,
+      sellingLiabilities: nativeBalanceRecord?.selling_liabilities ?? "0",
     };
 
     const trustlineSponsors: Record<string, string | null> = {};
@@ -329,6 +331,35 @@ export async function fetchOwnerLiveState(
   } catch {
     return empty;
   }
+}
+
+/**
+ * Fan out `fetchOwnerLiveState` over a list of owners in bounded batches rather than one
+ * unbounded Promise.all - a sponsor of many accounts must not self-inflict rate limiting,
+ * and fetchWithTimeout already bounds how long any single hung connection can stall.
+ * Shared by enumerateSponsoredEntriesUnguarded and assessSponsorshipAffordability, the two
+ * call sites that fan out this same per-owner read over an owner list.
+ */
+export async function fetchOwnerLiveStatesBounded(
+  owners: string[],
+  network: Network,
+  needsOffersFor: (owner: string) => boolean,
+  dataKeysFor: (owner: string) => string[]
+): Promise<Map<string, OwnerLiveState>> {
+  const liveStateEntries: Array<[string, OwnerLiveState]> = [];
+  for (let i = 0; i < owners.length; i += OWNER_FETCH_CONCURRENCY) {
+    const batch = owners.slice(i, i + OWNER_FETCH_CONCURRENCY);
+    const batchResults = await Promise.all(
+      batch.map(
+        async (owner): Promise<[string, OwnerLiveState]> => [
+          owner,
+          await fetchOwnerLiveState(owner, network, needsOffersFor(owner), dataKeysFor(owner)),
+        ]
+      )
+    );
+    liveStateEntries.push(...batchResults);
+  }
+  return new Map(liveStateEntries);
 }
 
 interface HorizonClaimableBalance {
@@ -464,29 +495,12 @@ async function enumerateSponsoredEntriesUnguarded(
     }
   }
 
-  // Fan out in bounded batches rather than one unbounded Promise.all over every
-  // discovered owner - a sponsor of many accounts must not self-inflict rate limiting,
-  // and fetchWithTimeout already bounds how long any single hung connection can stall.
-  const ownerList = Array.from(owners);
-  const liveStateEntries: Array<[string, OwnerLiveState]> = [];
-  for (let i = 0; i < ownerList.length; i += OWNER_FETCH_CONCURRENCY) {
-    const batch = ownerList.slice(i, i + OWNER_FETCH_CONCURRENCY);
-    const batchResults = await Promise.all(
-      batch.map(
-        async (owner): Promise<[string, OwnerLiveState]> => [
-          owner,
-          await fetchOwnerLiveState(
-            owner,
-            network,
-            ownersNeedingOffers.has(owner),
-            Array.from(dataKeysByOwner.get(owner) ?? [])
-          ),
-        ]
-      )
-    );
-    liveStateEntries.push(...batchResults);
-  }
-  const liveStateByOwner = new Map<string, OwnerLiveState>(liveStateEntries);
+  const liveStateByOwner = await fetchOwnerLiveStatesBounded(
+    Array.from(owners),
+    network,
+    (owner) => ownersNeedingOffers.has(owner),
+    (owner) => Array.from(dataKeysByOwner.get(owner) ?? [])
+  );
 
   const reconciled = reconcileSponsoredEntries(
     address,

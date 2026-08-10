@@ -28,12 +28,16 @@ test("revokeSponsorshipOps › builds one op per non-claimable-balance kind", ()
 });
 
 test("revokeSponsorshipOps › claimable_balance entries never produce an op (CAP-33: unrevocable without a new sponsor)", () => {
-  const entries: SponsoredEntry[] = [{ kind: "claimable_balance", balanceId: "00000000" + "ab".repeat(32) }];
+  const entries: SponsoredEntry[] = [
+    { kind: "claimable_balance", balanceId: "00000000" + "ab".repeat(32) },
+  ];
   expect(revokeSponsorshipOps(entries)).toEqual([]);
 });
 
 test("revokeSponsorshipOps › signer kind dispatches by StrKey prefix (ed25519)", () => {
-  const entries: SponsoredEntry[] = [{ kind: "signer", owner: OWNER, signerKey: SIGNER_KP.publicKey() }];
+  const entries: SponsoredEntry[] = [
+    { kind: "signer", owner: OWNER, signerKey: SIGNER_KP.publicKey() },
+  ];
   const decoded = Operation.fromXDRObject(revokeSponsorshipOps(entries)[0]);
   expect(decoded.type).toBe("revokeSignerSponsorship");
   // @ts-expect-error - narrow for the assertion only

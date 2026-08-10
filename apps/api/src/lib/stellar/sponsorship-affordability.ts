@@ -1,6 +1,6 @@
 import type { Network } from "@/config/networks";
 import { BASE_RESERVE_XLM } from "@/config/constants";
-import { fetchOwnerLiveState } from "@/lib/stellar/sponsorship";
+import { fetchOwnerLiveStatesBounded } from "@/lib/stellar/sponsorship";
 import { RESERVES_PER_ENTRY, type OwnerLiveState } from "@/lib/stellar/sponsorship-reconcile";
 import type { SponsoredEntry } from "@lumenwipe/types";
 
@@ -60,20 +60,20 @@ export async function assessSponsorshipAffordability(
   const unaffordableOwners: SponsorshipAffordability["unaffordableOwners"] = new Map();
 
   const owners = Array.from(byOwner.keys());
-  const liveStates = await Promise.all(
-    owners.map((owner) => {
-      const ownerEntries = byOwner.get(owner)!;
-      const needsOffers = ownerEntries.some((e) => e.kind === "offer");
-      const dataKeys = ownerEntries
+  const liveStateByOwner = await fetchOwnerLiveStatesBounded(
+    owners,
+    network,
+    (owner) => byOwner.get(owner)!.some((e) => e.kind === "offer"),
+    (owner) =>
+      byOwner
+        .get(owner)!
         .filter((e): e is Extract<OwnedEntry, { kind: "data_entry" }> => e.kind === "data_entry")
-        .map((e) => e.name);
-      return fetchOwnerLiveState(owner, network, needsOffers, dataKeys);
-    })
+        .map((e) => e.name)
   );
 
-  owners.forEach((owner, i) => {
+  owners.forEach((owner) => {
     const ownerEntries = byOwner.get(owner)!;
-    const live = liveStates[i];
+    const live = liveStateByOwner.get(owner)!;
     if (live.fetchFailed || live.reserve === null) return; // can't verify - drop silently, matches "unknown, don't guess"
 
     const stillSponsored = ownerEntries.filter((e) => currentSponsorFor(live, e) === address);
@@ -83,7 +83,10 @@ export async function assessSponsorshipAffordability(
     const currentMinBalance =
       (2 + live.reserve.numSubEntries + live.reserve.numSponsoring - live.reserve.numSponsored) *
       BASE_RESERVE_XLM;
-    const availableBalance = Number(live.reserve.balanceLumens) - currentMinBalance;
+    const availableBalance =
+      Number(live.reserve.balanceLumens) -
+      currentMinBalance -
+      Number(live.reserve.sellingLiabilities);
     const neededXlm = totalMult * BASE_RESERVE_XLM;
 
     if (availableBalance >= neededXlm) {
