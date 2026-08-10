@@ -1,3 +1,9 @@
+// Must stay the first import, exactly as in src/main.ts: config/networks.ts reads
+// process.env in top-level const initializers at import time. Bun does not auto-load
+// .env.local when NODE_ENV=test (which `bun test` sets), so without this the
+// Horizon-compatible base URL is "" and enumeration reports incomplete for every
+// account regardless of what is really on chain.
+import "@/env";
 import { test, expect } from "bun:test";
 import {
   Keypair,
@@ -23,6 +29,12 @@ const HORIZON_URL = "https://horizon-testnet.stellar.org";
 // catches up. ~20s of total patience observed sufficient during manual testnet runs.
 const ACCOUNT_STATE_POLL_MAX_ATTEMPTS = 8;
 const ACCOUNT_STATE_POLL_DELAY_MS = 2500;
+
+// This test funds real testnet accounts and submits a real transaction. The package's
+// `test` script scopes itself to tests/unit + tests/e2e, but a bare `bun test` (an easy
+// mistake in this repo - CLAUDE.md warns about it) globs **/*.test.ts and would pick
+// this up. Only `bun run test:integration` sets the opt-in flag.
+const RUN_INTEGRATION = !!process.env.LUMENWIPE_RUN_INTEGRATION;
 
 async function fund(publicKey: string): Promise<void> {
   const res = await fetch(`${FRIENDBOT}?addr=${publicKey}`);
@@ -51,47 +63,51 @@ async function readAccountStateUntilSponsoring(publicKey: string): Promise<Accou
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
-test("getAccountState › reports a real sponsored trustline created on testnet", async () => {
-  const server = new Horizon.Server(HORIZON_URL);
-  const sponsor = Keypair.random();
-  const sponsored = Keypair.random();
-  const issuer = Keypair.random();
+test.skipIf(!RUN_INTEGRATION)(
+  "getAccountState › reports a real sponsored trustline created on testnet",
+  async () => {
+    const server = new Horizon.Server(HORIZON_URL);
+    const sponsor = Keypair.random();
+    const sponsored = Keypair.random();
+    const issuer = Keypair.random();
 
-  await Promise.all([
-    fund(sponsor.publicKey()),
-    fund(sponsored.publicKey()),
-    fund(issuer.publicKey()),
-  ]);
-  const asset = new Asset("LWTEST", issuer.publicKey());
+    await Promise.all([
+      fund(sponsor.publicKey()),
+      fund(sponsored.publicKey()),
+      fund(issuer.publicKey()),
+    ]);
+    const asset = new Asset("LWTEST", issuer.publicKey());
 
-  const sponsorAccount = await server.loadAccount(sponsor.publicKey());
-  const tx = new TransactionBuilder(sponsorAccount, {
-    fee: BASE_FEE,
-    networkPassphrase: Networks.TESTNET,
-  })
-    .addOperation(
-      Operation.beginSponsoringFutureReserves({
-        sponsoredId: sponsored.publicKey(),
-        source: sponsor.publicKey(),
-      })
-    )
-    .addOperation(Operation.changeTrust({ asset, source: sponsored.publicKey() }))
-    .addOperation(Operation.endSponsoringFutureReserves({ source: sponsored.publicKey() }))
-    .setTimeout(60)
-    .build();
-  tx.sign(sponsor);
-  tx.sign(sponsored);
-  await server.submitTransaction(tx);
+    const sponsorAccount = await server.loadAccount(sponsor.publicKey());
+    const tx = new TransactionBuilder(sponsorAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(
+        Operation.beginSponsoringFutureReserves({
+          sponsoredId: sponsored.publicKey(),
+          source: sponsor.publicKey(),
+        })
+      )
+      .addOperation(Operation.changeTrust({ asset, source: sponsored.publicKey() }))
+      .addOperation(Operation.endSponsoringFutureReserves({ source: sponsored.publicKey() }))
+      .setTimeout(60)
+      .build();
+    tx.sign(sponsor);
+    tx.sign(sponsored);
+    await server.submitTransaction(tx);
 
-  // Soroban RPC indexing lag for the account this test's assertions read through -
-  // poll rather than a flat sleep, since observed lag varies run to run.
-  const state = await readAccountStateUntilSponsoring(sponsor.publicKey());
+    // Soroban RPC indexing lag for the account this test's assertions read through -
+    // poll rather than a flat sleep, since observed lag varies run to run.
+    const state = await readAccountStateUntilSponsoring(sponsor.publicKey());
 
-  expect(state.numSponsoring).toBe(1);
-  expect(state.sponsorshipEnumerationIncomplete).toBe(false);
-  expect(state.sponsoredEntries).toContainEqual({
-    kind: "trustline",
-    owner: sponsored.publicKey(),
-    asset: `LWTEST:${issuer.publicKey()}`,
-  });
-}, 60000);
+    expect(state.numSponsoring).toBe(1);
+    expect(state.sponsorshipEnumerationIncomplete).toBe(false);
+    expect(state.sponsoredEntries).toContainEqual({
+      kind: "trustline",
+      owner: sponsored.publicKey(),
+      asset: `LWTEST:${issuer.publicKey()}`,
+    });
+  },
+  60000
+);
