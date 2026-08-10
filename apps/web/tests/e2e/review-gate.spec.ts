@@ -50,6 +50,26 @@ async function accountExists(id: string): Promise<boolean> {
   return res.status !== 404;
 }
 
+// Same indexing-lag class as waitUntilIndexed below, one level deeper: the account can be
+// visible before a manageData op submitted a moment ago is reflected in its data map, so
+// asserting on the resulting REMOVE_DATA_ENTRIES group can race the read the app itself makes.
+async function waitUntilDataEntryIndexed(
+  id: string,
+  name: string,
+  attempts = 10,
+  delayMs = 1_500
+): Promise<void> {
+  for (let i = 0; i < attempts; i++) {
+    const res = await fetch(`${HORIZON}/accounts/${id}`);
+    if (res.ok) {
+      const account = (await res.json()) as { data?: Record<string, string> };
+      if (account.data?.[name] !== undefined) return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  throw new Error(`data entry ${name} was not indexed in time`);
+}
+
 // friendbot's 200 response lands before the account is reliably visible to every read
 // path the app hits (RPC, stellar.expert); wait for Horizon to see it before driving
 // the UI, or "Analyze account" can 404 on an account that funded a moment ago.
@@ -100,6 +120,7 @@ test("begin execution lands on the review gate, not directly on execute", async 
   await fund(destination.publicKey());
   await waitUntilIndexed(source.publicKey());
   await submitOps(source, [Operation.manageData({ name: "lw-e2e-review", value: "1" })]);
+  await waitUntilDataEntryIndexed(source.publicKey(), "lw-e2e-review");
 
   await reachReviewWithoutConfirming(page, source, destination.publicKey());
 
@@ -117,8 +138,8 @@ test("begin execution lands on the review gate, not directly on execute", async 
   await expect(
     page.getByText(new RegExp(destination.publicKey().slice(0, 8))).first()
   ).toBeVisible();
-  await expect(page.getByText("Remove data")).toBeVisible();
-  await expect(page.getByText("Merge account")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Remove data/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Merge account/i })).toBeVisible();
 
   // Execution must not be reachable before the explicit acknowledgment is checked.
   await expect(proceedButton).toBeDisabled();
