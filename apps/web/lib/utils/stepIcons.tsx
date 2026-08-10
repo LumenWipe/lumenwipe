@@ -7,10 +7,12 @@ import {
   ArrowLeftRight,
   Unlink,
   GitMerge,
+  ShieldOff,
 } from "lucide-react";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   NORMALIZE_SIGNERS: KeyRound,
+  REVOKE_SPONSORSHIP: ShieldOff,
   REMOVE_DATA_ENTRIES: Database,
   CANCEL_OFFERS: BarChart2,
   ADD_TRUSTLINE_FOR_CLAIM: Link2,

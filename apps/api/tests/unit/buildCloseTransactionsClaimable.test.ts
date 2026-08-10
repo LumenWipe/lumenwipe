@@ -1,6 +1,6 @@
 import { test, expect, mock, afterEach } from "bun:test";
 import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
-import type { AccountState } from "@lumenwipe/types";
+import type { AccountState, SponsoredEntry } from "@lumenwipe/types";
 
 // Regression coverage for the real (money-moving) close builder honoring per-balance
 // claimable-balance selections, not just the /close/plan preview (tx-builder/index.ts's
@@ -64,8 +64,10 @@ function rpcServerStub() {
 }
 
 const realRpc = await import("@/lib/stellar/rpc");
+const realSponsorshipAffordability = await import("@/lib/stellar/sponsorship-affordability");
 afterEach(() => {
   mock.module("@/lib/stellar/rpc", () => realRpc);
+  mock.module("@/lib/stellar/sponsorship-affordability", () => realSponsorshipAffordability);
 });
 
 function opsOf(xdr: string) {
@@ -155,4 +157,53 @@ test("buildCloseTransactions › currently-claimable balance explicitly forfeite
   expect(result.transactions).toHaveLength(1);
   const ops = opsOf(result.transactions[0].xdr);
   expect(ops.some((o) => o.type === "claimClaimableBalance")).toBe(false);
+});
+
+// Regression coverage for the "live re-read before build" invariant: buildCloseTransactions
+// must call assessSponsorshipAffordability itself, immediately before building, rather than
+// trusting whatever /close/plan decided minutes earlier - the sponsored owner's on-chain
+// reserve state can change in between.
+const SPONSORED_ENTRY: SponsoredEntry = {
+  kind: "signer",
+  owner: ISSUER,
+  signerKey: Keypair.random().publicKey(),
+};
+
+test("buildCloseTransactions › sponsored entry the live re-read marks revocable → REVOKE_SPONSORSHIP is included", async () => {
+  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  mock.module("@/lib/stellar/sponsorship-affordability", () => ({
+    assessSponsorshipAffordability: () =>
+      Promise.resolve({ revocable: [SPONSORED_ENTRY], unaffordableOwners: new Map() }),
+  }));
+  const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
+
+  const state = accountState({ sponsoredEntries: [SPONSORED_ENTRY], numSponsoring: 1 });
+  const result = await buildCloseTransactions(state, DEST, {}, "testnet");
+
+  expect(result.transactions).toHaveLength(1);
+  expect(result.transactions[0].covers).toContain("REVOKE_SPONSORSHIP");
+  const ops = opsOf(result.transactions[0].xdr);
+  expect(ops.some((o) => o.type === "revokeSignerSponsorship")).toBe(true);
+});
+
+test("buildCloseTransactions › sponsored entry the live re-read marks unaffordable → REVOKE_SPONSORSHIP is omitted, no error", async () => {
+  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  mock.module("@/lib/stellar/sponsorship-affordability", () => ({
+    assessSponsorshipAffordability: () =>
+      Promise.resolve({
+        revocable: [],
+        unaffordableOwners: new Map([
+          [ISSUER, { entries: [SPONSORED_ENTRY], shortfallXlm: "0.5000000" }],
+        ]),
+      }),
+  }));
+  const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
+
+  const state = accountState({ sponsoredEntries: [SPONSORED_ENTRY], numSponsoring: 1 });
+  const result = await buildCloseTransactions(state, DEST, {}, "testnet");
+
+  expect(result.transactions).toHaveLength(1);
+  expect(result.transactions[0].covers).not.toContain("REVOKE_SPONSORSHIP");
+  const ops = opsOf(result.transactions[0].xdr);
+  expect(ops.some((o) => o.type === "revokeSignerSponsorship")).toBe(false);
 });

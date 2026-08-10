@@ -69,7 +69,12 @@ export type IntentOperation =
   | { type: "manage_sell_offer"; offerId: string; amount: string }
   | { type: "manage_data"; name: string; value: string | null }
   | { type: "set_options"; summary: string }
-  | { type: "claim_claimable_balance"; balanceId: string };
+  | { type: "claim_claimable_balance"; balanceId: string }
+  | {
+      type: "revoke_sponsorship";
+      entryKind: "account" | "trustline" | "offer" | "data_entry" | "signer";
+      owner: string;
+    };
 
 export interface TxIntent {
   summary: string;

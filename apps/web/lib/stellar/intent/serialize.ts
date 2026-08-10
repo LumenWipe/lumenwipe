@@ -53,6 +53,21 @@ function normalizeOp(op: Transaction["operations"][number]): IntentOperation {
       };
     case "claimClaimableBalance":
       return { type: "claim_claimable_balance", balanceId: op.balanceId };
+    // CAP-33 revoke transitions. Deliberately absent from this list, and required to stay
+    // absent: "beginSponsoringFutureReserves" and "endSponsoringFutureReserves". They fall
+    // through to `unknown`, which verify.ts rejects outright - and a sponsorship-transfer
+    // bracket is the only construct that can point a revoked entry's reserve at an account
+    // other than the entry's own owner. Recognizing either would silently unlock that.
+    case "revokeAccountSponsorship":
+      return { type: "revoke_sponsorship", entryKind: "account", owner: op.account };
+    case "revokeTrustlineSponsorship":
+      return { type: "revoke_sponsorship", entryKind: "trustline", owner: op.account };
+    case "revokeOfferSponsorship":
+      return { type: "revoke_sponsorship", entryKind: "offer", owner: op.seller };
+    case "revokeDataSponsorship":
+      return { type: "revoke_sponsorship", entryKind: "data_entry", owner: op.account };
+    case "revokeSignerSponsorship":
+      return { type: "revoke_sponsorship", entryKind: "signer", owner: op.account };
     default:
       // Any operation the close vocabulary does not recognize is preserved as `unknown`
       // (not dropped) so verify() can reject a smuggled effect it cannot describe.

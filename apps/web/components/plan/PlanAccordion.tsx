@@ -25,6 +25,7 @@ interface PlanAccordionProps {
 
 type GroupType =
   | "NORMALIZE_SIGNERS"
+  | "REVOKE_SPONSORSHIP"
   | "REMOVE_DATA_ENTRIES"
   | "CANCEL_OFFERS"
   | "CLAIM_BALANCES"
@@ -76,6 +77,31 @@ export default function PlanAccordion({
           {extraSigners.length === 0 && (
             <li className="text-xs text-white/55">Reset authorization thresholds to single-key.</li>
           )}
+        </ul>
+      ),
+    });
+  }
+
+  const revocableSponsorships = account.sponsoredEntries.filter(
+    (e) => e.kind !== "claimable_balance"
+  );
+  if (revocableSponsorships.length > 0) {
+    groups.push({
+      type: "REVOKE_SPONSORSHIP",
+      title: "Revoke sponsorships",
+      summary: `${revocableSponsorships.length} sponsored entr${revocableSponsorships.length === 1 ? "y" : "ies"} on other accounts`,
+      body: (
+        <ul className="space-y-1">
+          {revocableSponsorships.map((entry, i) => (
+            <li key={i} className="text-xs text-white/55">
+              {entry.kind === "trustline" && `Trustline for ${entry.asset.split(":")[0]}`}
+              {entry.kind === "offer" && `Offer ${entry.offerId}`}
+              {entry.kind === "data_entry" && `Data entry "${entry.name}"`}
+              {entry.kind === "signer" && "Signer"}
+              {entry.kind === "account" && "Account creation"}{" "}
+              <span className="font-mono-address text-white/35">on {shortAddr(entry.owner)}</span>
+            </li>
+          ))}
         </ul>
       ),
     });

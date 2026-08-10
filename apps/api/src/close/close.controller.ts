@@ -10,6 +10,10 @@ import { isValidGAddress } from "@/lib/utils/validation";
 import { readAccountState } from "@/lib/close-api/read-account";
 import { fetchConversionPath } from "@/lib/se-api/paths";
 import { buildPlan } from "@/lib/stellar/tx-builder";
+import {
+  assessSponsorshipAffordability,
+  type SponsorshipAffordability,
+} from "@/lib/stellar/sponsorship-affordability";
 import { lookupExchange, requiresMediatorForAddress } from "@/lib/exchange-registry";
 import {
   assetDecisionId,
@@ -77,7 +81,10 @@ export class CloseController {
       const mediatorRequired = destination ? requiresMediatorForAddress(destination) : false;
 
       const convertibility: Record<string, boolean> = {};
-      await Promise.all(
+      const nonClaimableSponsoredEntries = accountState.sponsoredEntries.filter(
+        (e) => e.kind !== "claimable_balance"
+      );
+      const convertibilityPromise = Promise.all(
         accountState.trustlines
           .filter((tl) => Number(tl.balance) > 0)
           .map(async (tl) => {
@@ -85,6 +92,14 @@ export class CloseController {
             convertibility[tl.asset] = path !== null;
           })
       );
+      const sponsorshipAffordabilityPromise: Promise<SponsorshipAffordability> =
+        accountState.sponsorshipEnumerationIncomplete
+          ? Promise.resolve({ revocable: [], unaffordableOwners: new Map() })
+          : assessSponsorshipAffordability(source, nonClaimableSponsoredEntries, network);
+      const [, sponsorshipAffordability] = await Promise.all([
+        convertibilityPromise,
+        sponsorshipAffordabilityPromise,
+      ]);
 
       const claimableBalanceSelections = resolveClaimableBalanceSelections(
         decisions,
@@ -94,7 +109,8 @@ export class CloseController {
         accountState,
         mediatorRequired,
         false,
-        claimableBalanceSelections
+        claimableBalanceSelections,
+        sponsorshipAffordability
       );
       const decisionPoints = [
         ...deriveDecisionPoints(accountState, convertibility),

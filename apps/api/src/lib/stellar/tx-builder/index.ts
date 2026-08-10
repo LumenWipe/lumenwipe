@@ -5,10 +5,33 @@ import type {
   StepType,
   BuildPlanResult,
   PlanBlocker,
+  SponsoredEntry,
 } from "@lumenwipe/types";
+import type { SponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
 import { estimateFeeLumens } from "@/lib/utils/amounts";
 import { batchItems } from "./batching";
 import { OP_BATCH_LIMIT } from "@/config/constants";
+
+function shortAddr(addr: string): string {
+  return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
+}
+
+function describeSponsoredEntry(entry: SponsoredEntry): string {
+  switch (entry.kind) {
+    case "account":
+      return "an account creation";
+    case "trustline":
+      return `a trustline for ${entry.asset.split(":")[0]}`;
+    case "offer":
+      return `offer ${entry.offerId}`;
+    case "data_entry":
+      return `data entry "${entry.name}"`;
+    case "signer":
+      return "a signer";
+    case "claimable_balance":
+      return "a claimable balance";
+  }
+}
 
 function step(
   index: number,
@@ -44,7 +67,8 @@ export function buildPlan(
   accountState: AccountState,
   mediatorRequired: boolean,
   fastPathEligible = false,
-  claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {}
+  claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {},
+  sponsorshipAffordability: SponsorshipAffordability = { revocable: [], unaffordableOwners: new Map() }
 ): BuildPlanResult {
   const steps: PlannedStep[] = [];
   const blockers: PlanBlocker[] = [];
@@ -73,15 +97,50 @@ export function buildPlan(
     });
   }
 
-  // Sponsoring blocker: numSponsoring > 0 means this account is the reserve sponsor for
-  // entries on other accounts (including claimable balances it created). stellar-core
-  // refuses ACCOUNT_MERGE when numSponsoring > 0.
-  if (accountState.numSponsoring > 0) {
+  // Sponsoring: numSponsoring > 0 means this account is the reserve sponsor for entries on
+  // other accounts. Per-owner affordability (computed by the caller via
+  // assessSponsorshipAffordability, since it requires a live on-chain read) decides step vs.
+  // blocker for each owner - this is the actual fix for the bug this replaces (an unconditional
+  // blocker regardless of whether the sponsored owner could actually absorb the reserve).
+  //
+  // Falls back to the old blanket blocker whenever the enumeration behind sponsoredEntries is
+  // admittedly incomplete (no partial resolution against a list that might be missing entries),
+  // or - defensively - whenever numSponsoring disagrees with what was actually enumerated (an
+  // enumeration bug should never silently read as "sponsors nothing").
+  const noEntriesFound = accountState.sponsoredEntries.length === 0;
+  const sponsorshipUsesBlanketBlocker =
+    accountState.numSponsoring > 0 &&
+    (accountState.sponsorshipEnumerationIncomplete || noEntriesFound);
+  if (sponsorshipUsesBlanketBlocker) {
     blockers.push({
       message:
         `This account is sponsoring ${accountState.numSponsoring} entr${accountState.numSponsoring === 1 ? "y" : "ies"} ` +
         `on other accounts. All sponsorships must be revoked before the account can be merged.`,
     });
+  } else {
+    // Claimable balances can never be self-revoked (CAP-33 requires a cooperating new
+    // sponsor this close flow cannot arrange) - always a permanent blocker, independent of
+    // affordability.
+    for (const entry of accountState.sponsoredEntries) {
+      if (entry.kind !== "claimable_balance") continue;
+      blockers.push({
+        code: "sponsorship_claimable_balance_unrevocable",
+        message:
+          "This account sponsors a claimable balance, which cannot be revoked without a " +
+          "cooperating new sponsor. It resolves automatically once a claimant claims the " +
+          "balance - there is no self-service action to take here.",
+      });
+    }
+    for (const [owner, info] of sponsorshipAffordability.unaffordableOwners) {
+      for (const entry of info.entries) {
+        blockers.push({
+          code: "sponsorship_unaffordable",
+          message:
+            `Revoking sponsorship of ${describeSponsoredEntry(entry)} on ${shortAddr(owner)} would ` +
+            `leave that account below its minimum balance - it needs ${info.shortfallXlm} more XLM first.`,
+        });
+      }
+    }
   }
 
   // Pool share blocker: liquidity pool share trustlines cost 2 base reserves each and must
@@ -214,6 +273,7 @@ export function buildPlan(
     hasCleanup &&
     !hasHardBlocker &&
     balancesNeedingClaimStep.length === 0 &&
+    accountState.sponsoredEntries.length === 0 &&
     fusedOpCount <= OP_BATCH_LIMIT
   ) {
     const cleanupOps = fusedOpCount - 1; // ops without the merge
@@ -254,6 +314,24 @@ export function buildPlan(
         extraSigners.length + 1
       )
     );
+  }
+
+  if (!sponsorshipUsesBlanketBlocker && sponsorshipAffordability.revocable.length > 0) {
+    const batches = batchItems(sponsorshipAffordability.revocable, OP_BATCH_LIMIT);
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      steps.push(
+        step(
+          idx++,
+          "REVOKE_SPONSORSHIP",
+          batches.length > 1
+            ? `Revoke sponsorships (batch ${i + 1}/${batches.length})`
+            : "Revoke sponsorships",
+          `Transfer reserve responsibility for ${batch.length} sponsored entr${batch.length === 1 ? "y" : "ies"} back to their own accounts.`,
+          batch.length
+        )
+      );
+    }
   }
 
   if (dataEntries.length > 0) {

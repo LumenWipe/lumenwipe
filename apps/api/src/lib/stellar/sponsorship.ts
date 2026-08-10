@@ -167,13 +167,23 @@ async function discoverSponsorshipCandidates(
 
 interface HorizonAccountForSponsorship {
   sponsor?: string;
+  subentry_count: number;
+  num_sponsoring?: number;
+  num_sponsored?: number;
   balances: Array<{
     asset_type: string;
     asset_code?: string;
     asset_issuer?: string;
+    balance?: string;
     sponsor?: string;
+    selling_liabilities?: string;
   }>;
   signers: Array<{ key: string; sponsor?: string }>;
+  // name -> base64 value, every data entry the account currently holds. Horizon's main
+  // account resource lists all of them for free (no per-entry sponsor here, only the
+  // key set) - used to derive the FULL set of data-entry names to check the sponsor of,
+  // not just the ones a historical candidate happened to name.
+  data?: Record<string, string>;
 }
 
 interface HorizonOffer {
@@ -188,11 +198,15 @@ interface HorizonOffersPage {
 
 // Phase 2: for one owner account discovered in Phase 1, read its CURRENT sponsor
 // fields directly from Horizon - this is the actual source of truth, not the history.
-async function fetchOwnerLiveState(
+// Sweeps every entry kind unconditionally (trustlines/signers from the account resource
+// directly, data-entry names from the same resource's `data` field then a per-key sponsor
+// lookup, offers via the owner's full current offer list) rather than only checking the
+// keys a historical candidate happened to name - a wrapped operation inside someone
+// else's sponsorship bracket may never have recorded an explicit `sponsor` field, and
+// this is the only way to still catch that entry once the owner is fetched for any reason.
+export async function fetchOwnerLiveState(
   owner: string,
-  network: Network,
-  needsOffers: boolean,
-  dataKeys: string[]
+  network: Network
 ): Promise<OwnerLiveState> {
   const base = PATH_ROUTING_API_URLS[network];
   const empty: OwnerLiveState = {
@@ -202,6 +216,7 @@ async function fetchOwnerLiveState(
     offerSponsors: {},
     dataSponsors: {},
     fetchFailed: true,
+    reserve: null,
   };
   if (!base) return empty;
 
@@ -210,11 +225,21 @@ async function fetchOwnerLiveState(
     if (accountRes.status === 404) {
       // The owner account no longer exists (merged away) - a normal terminal state and
       // unambiguous proof it holds nothing we still sponsor. Same distinction the
-      // per-key data read below already makes: 404 is an answer, not a failure.
-      return { ...empty, fetchFailed: false };
+      // per-key data read below already makes: 404 is an answer, not a failure. There is
+      // no reserve left to check for an account that no longer exists.
+      return { ...empty, fetchFailed: false, reserve: null };
     }
     if (!accountRes.ok) return empty;
     const account = (await accountRes.json()) as HorizonAccountForSponsorship;
+
+    const nativeBalanceRecord = account.balances.find((b) => b.asset_type === "native");
+    const reserve = {
+      balanceLumens: nativeBalanceRecord?.balance ?? "0",
+      numSubEntries: account.subentry_count,
+      numSponsoring: account.num_sponsoring ?? 0,
+      numSponsored: account.num_sponsored ?? 0,
+      sellingLiabilities: nativeBalanceRecord?.selling_liabilities ?? "0",
+    };
 
     const trustlineSponsors: Record<string, string | null> = {};
     for (const b of account.balances) {
@@ -228,7 +253,7 @@ async function fetchOwnerLiveState(
     }
 
     const dataSponsors: Record<string, string | null> = {};
-    for (const key of dataKeys) {
+    for (const key of Object.keys(account.data ?? {})) {
       try {
         // Data-entry names are arbitrary strings and can contain "/", "#", "?", spaces,
         // etc. - encode, or such a name silently truncates the path and queries a
@@ -248,6 +273,7 @@ async function fetchOwnerLiveState(
             trustlineSponsors,
             signerSponsors,
             fetchFailed: true,
+            reserve: null,
           };
         } else {
           dataSponsors[key] = ((await dataRes.json()).sponsor ?? null) as string | null;
@@ -259,13 +285,18 @@ async function fetchOwnerLiveState(
           trustlineSponsors,
           signerSponsors,
           fetchFailed: true,
+          reserve: null,
         };
       }
     }
 
+    // Always fetched, unconditionally: Horizon's main account resource never exposes an
+    // owner's open offers, so this is the only way to sweep them, and gating it on a
+    // historical "offer candidate" (as an earlier version of this function did) would
+    // recreate exactly the wrapped-operation blind spot described in the function comment.
     const offerSponsors: Record<string, string | null> = {};
     let offersFetchFailed = false;
-    if (needsOffers) {
+    {
       let nextUrl: string | null = `${base}/accounts/${owner}/offers?limit=200`;
       while (nextUrl) {
         let res: Response;
@@ -297,6 +328,7 @@ async function fetchOwnerLiveState(
         signerSponsors,
         dataSponsors,
         fetchFailed: true,
+        reserve: null,
       };
     }
 
@@ -307,10 +339,38 @@ async function fetchOwnerLiveState(
       offerSponsors,
       dataSponsors,
       fetchFailed: false,
+      reserve,
     };
   } catch {
     return empty;
   }
+}
+
+/**
+ * Fan out `fetchOwnerLiveState` over a list of owners in bounded batches rather than one
+ * unbounded Promise.all - a sponsor of many accounts must not self-inflict rate limiting,
+ * and fetchWithTimeout already bounds how long any single hung connection can stall.
+ * Shared by enumerateSponsoredEntriesUnguarded and assessSponsorshipAffordability, the two
+ * call sites that fan out this same per-owner read over an owner list.
+ */
+export async function fetchOwnerLiveStatesBounded(
+  owners: string[],
+  network: Network
+): Promise<Map<string, OwnerLiveState>> {
+  const liveStateEntries: Array<[string, OwnerLiveState]> = [];
+  for (let i = 0; i < owners.length; i += OWNER_FETCH_CONCURRENCY) {
+    const batch = owners.slice(i, i + OWNER_FETCH_CONCURRENCY);
+    const batchResults = await Promise.all(
+      batch.map(
+        async (owner): Promise<[string, OwnerLiveState]> => [
+          owner,
+          await fetchOwnerLiveState(owner, network),
+        ]
+      )
+    );
+    liveStateEntries.push(...batchResults);
+  }
+  return new Map(liveStateEntries);
 }
 
 interface HorizonClaimableBalance {
@@ -434,41 +494,10 @@ async function enumerateSponsoredEntriesUnguarded(
     fetchClaimableBalancesBySponsor(address, network),
   ]);
 
-  const ownersNeedingOffers = new Set<string>();
-  const dataKeysByOwner = new Map<string, Set<string>>();
   const owners = new Set<string>();
-  for (const c of candidates) {
-    owners.add(c.owner);
-    if (c.kind === "offer") ownersNeedingOffers.add(c.owner);
-    if (c.kind === "data_entry") {
-      if (!dataKeysByOwner.has(c.owner)) dataKeysByOwner.set(c.owner, new Set());
-      dataKeysByOwner.get(c.owner)!.add(c.key);
-    }
-  }
+  for (const c of candidates) owners.add(c.owner);
 
-  // Fan out in bounded batches rather than one unbounded Promise.all over every
-  // discovered owner - a sponsor of many accounts must not self-inflict rate limiting,
-  // and fetchWithTimeout already bounds how long any single hung connection can stall.
-  const ownerList = Array.from(owners);
-  const liveStateEntries: Array<[string, OwnerLiveState]> = [];
-  for (let i = 0; i < ownerList.length; i += OWNER_FETCH_CONCURRENCY) {
-    const batch = ownerList.slice(i, i + OWNER_FETCH_CONCURRENCY);
-    const batchResults = await Promise.all(
-      batch.map(
-        async (owner): Promise<[string, OwnerLiveState]> => [
-          owner,
-          await fetchOwnerLiveState(
-            owner,
-            network,
-            ownersNeedingOffers.has(owner),
-            Array.from(dataKeysByOwner.get(owner) ?? [])
-          ),
-        ]
-      )
-    );
-    liveStateEntries.push(...batchResults);
-  }
-  const liveStateByOwner = new Map<string, OwnerLiveState>(liveStateEntries);
+  const liveStateByOwner = await fetchOwnerLiveStatesBounded(Array.from(owners), network);
 
   const reconciled = reconcileSponsoredEntries(
     address,

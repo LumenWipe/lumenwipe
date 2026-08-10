@@ -14,6 +14,8 @@ function accountState(over: Partial<AccountState> = {}): AccountState {
     thresholds: { low: 0, med: 0, high: 0 },
     numSubEntries: 0,
     numSponsoring: 0,
+    sponsoredEntries: [],
+    sponsorshipEnumerationIncomplete: false,
     sponsoredBy: null,
     authImmutable: false,
     trustlines: [],
@@ -80,7 +82,9 @@ test("markCoveredConfirmed confirms every step whose type a transaction covers",
     .setPlan([mk(0, "NORMALIZE_SIGNERS"), mk(1, "REMOVE_TRUSTLINES"), mk(2, "MERGE")]);
 
   // A first fused transaction covers the signer + trustline steps at once.
-  useDemolishStore.getState().markCoveredConfirmed(["NORMALIZE_SIGNERS", "REMOVE_TRUSTLINES"], "hashA");
+  useDemolishStore
+    .getState()
+    .markCoveredConfirmed(["NORMALIZE_SIGNERS", "REMOVE_TRUSTLINES"], "hashA");
   let plan = useDemolishStore.getState().executionPlan;
   expect(plan.filter((p) => p.status === "confirmed").map((p) => p.type)).toEqual([
     "NORMALIZE_SIGNERS",

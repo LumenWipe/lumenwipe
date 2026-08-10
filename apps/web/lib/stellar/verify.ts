@@ -121,11 +121,31 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         // normalizeOp preserves any unrecognized operation as `unknown` so it cannot be
         // silently dropped; verification refuses to sign a transaction that carries one.
         throw new VerificationError("The transaction contains an unrecognized operation.");
+      case "revoke_sponsorship":
+        // CAP-33: RevokeSponsorship always reverts the entry's reserve burden to its own
+        // owning account UNLESS the operation's source account is sandwiched inside a
+        // BeginSponsoringFutureReserves/EndSponsoringFutureReserves bracket, which would
+        // instead transfer it to a new sponsor. normalizeOp never recognizes those two op
+        // types (by design - see the case list in intent/serialize.ts), so any transaction
+        // containing one already fails at the `case "unknown"` branch above before reaching
+        // here, wherever in the operation list it sits. That is the entire safety guarantee
+        // for this op family: it structurally cannot redirect reserve to a third party once
+        // sponsorship-transfer brackets are unreachable. The op itself carries no field that
+        // could name a beneficiary, so there is nothing further to check here.
+        break;
       case "account_merge":
       case "claim_claimable_balance":
         break;
-      default:
-        break;
+      default: {
+        // Exhaustiveness guard, deliberately fail-closed. Adding a member to IntentOperation
+        // without also deciding here how verification treats it is a compile error, not a
+        // silent pass: this switch is the allowlist CLAUDE.md requires every new close
+        // operation to be added to alongside the API's builder. At runtime it is unreachable
+        // (normalizeOp maps anything it does not recognize to `unknown`), so it doubles as a
+        // backstop for an intent that reached here from some other producer.
+        const _exhaustive: never = op;
+        throw new VerificationError("The transaction contains an unrecognized operation.");
+      }
     }
   }
 

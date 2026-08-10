@@ -6,6 +6,7 @@ import { fetchLiveTrustlineBalance, filterExistingClaimableBalances } from "@/li
 import { fetchConversionPath } from "@/lib/se-api/paths";
 import { lookupExchange, requiresMediatorForAddress } from "@/lib/exchange-registry";
 import { computeNeedsSignerNormalization } from "@/lib/stellar/tx-builder";
+import { assessSponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
 import { batchItems } from "@/lib/stellar/tx-builder/batching";
 import {
   assembleFusedCloseOpsTagged,
@@ -38,6 +39,10 @@ export class CloseBuildError extends Error {
 
 function buildSummary(input: FusedCloseInput): string {
   const parts: string[] = [];
+  if (input.revokeSponsorshipEntries.length > 0)
+    parts.push(
+      `revoke ${input.revokeSponsorshipEntries.length} sponsorship${input.revokeSponsorshipEntries.length === 1 ? "" : "s"}`
+    );
   if (input.claimableBalances.length > 0)
     parts.push(
       `claim ${input.claimableBalances.length} balance${input.claimableBalances.length === 1 ? "" : "s"}`
@@ -114,6 +119,11 @@ export async function buildCloseTransactions(
       const claimInput: FusedCloseInput = {
         needsSignerNormalization: false,
         signers: accountState.signers,
+        // Sponsorship revocation never belongs in the claim round: it has no ordering
+        // dependency on claiming, and Task 5's plan-time gate already excludes any
+        // account with sponsoredEntries from the fused/fast path, so the claim round
+        // (which only ever runs ahead of that fused close) never needs to carry it.
+        revokeSponsorshipEntries: [],
         dataEntries: [],
         openOffers: [],
         claimableBalances: claimRoundBalances,
@@ -156,9 +166,20 @@ export async function buildCloseTransactions(
   const exchange = lookupExchange(destinationAddress);
   const memoType = exchange?.memoType ?? (memo ? "text" : null);
 
+  // Live re-read immediately before build: /close/plan may have assessed affordability
+  // minutes ago, and the sponsored owner's on-chain reserve state can have changed since -
+  // this is a deliberate, separate call, not a reuse of the plan-time result.
+  const nonClaimableSponsoredEntries = accountState.sponsoredEntries.filter(
+    (e) => e.kind !== "claimable_balance"
+  );
+  const sponsorshipAffordability = accountState.sponsorshipEnumerationIncomplete
+    ? { revocable: [], unaffordableOwners: new Map() }
+    : await assessSponsorshipAffordability(accountState.address, nonClaimableSponsoredEntries, network);
+
   const input: FusedCloseInput = {
     needsSignerNormalization: computeNeedsSignerNormalization(accountState),
     signers: accountState.signers,
+    revokeSponsorshipEntries: sponsorshipAffordability.revocable,
     dataEntries: accountState.dataEntries,
     openOffers: accountState.openOffers,
     claimableBalances: [],

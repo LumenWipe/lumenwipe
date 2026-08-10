@@ -72,6 +72,11 @@ export type IntentOperation =
       highThreshold: number | null;
     }
   | { type: "claim_claimable_balance"; balanceId: string }
+  | {
+      type: "revoke_sponsorship";
+      entryKind: "account" | "trustline" | "offer" | "data_entry" | "signer";
+      owner: string;
+    }
   | { type: "unknown" };
 
 export interface TxIntent {

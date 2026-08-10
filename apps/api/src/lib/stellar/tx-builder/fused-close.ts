@@ -8,6 +8,7 @@ import type {
   ConversionPath,
   DataEntry,
   OpenOffer,
+  SponsoredEntry,
   StepType,
   Trustline,
 } from "@lumenwipe/types";
@@ -18,6 +19,7 @@ import { assetConversionOp, issuerPaymentOp } from "./asset-conversion";
 import { claimBalanceOps } from "./claimable-balances";
 import { trustlineAddForClaimOps, trustlineRemovalOps } from "./trustlines";
 import { mergeOp } from "./merge";
+import { revokeSponsorshipOps } from "./sponsorship";
 
 /**
  * Per-asset disposition. A held asset is either swapped to XLM via a path
@@ -31,6 +33,10 @@ export type AssetAction =
 export interface FusedCloseInput {
   needsSignerNormalization: boolean;
   signers: AccountSigner[];
+  /** Entries confirmed affordable AND still live-sponsored by this account immediately
+   *  before build (see sponsorship-affordability.ts) - never includes claimable_balance
+   *  entries, which can never be self-revoked (see the CAP-33 note where this is built). */
+  revokeSponsorshipEntries: SponsoredEntry[];
   dataEntries: DataEntry[];
   openOffers: OpenOffer[];
   /** Balances the account can claim without further remediation. */
@@ -55,12 +61,15 @@ export interface TaggedCloseOp {
 /**
  * Assembles the ordered close operations, each tagged with its plan step. Pure:
  * account id and input in, tagged operations out, no network side effects. Order
- * is fixed: signer normalization, data removal, offer cancellation, trustlines added
+ * is fixed: signer normalization, revoking sponsorship of this account's own
+ * sponsored subentries, data removal, offer cancellation, trustlines added
  * for claim remediation, claimable-balance claiming, per-asset disposition, trustline
  * removal, and (for direct destinations) the account merge - so by the time accountMerge
- * runs every subentry is already gone. Trustline-adding runs immediately before claiming
- * so a remediated balance is never claimed against a still-untrusted asset; claiming runs
- * before the asset dispositions because a claim raises the held balance an action spends.
+ * runs every subentry is already gone. Sponsorship revocation runs right after signer
+ * normalization and before any subentry removal so those removals never race a still-live
+ * sponsorship transfer. Trustline-adding runs immediately before claiming so a remediated
+ * balance is never claimed against a still-untrusted asset; claiming runs before the asset
+ * dispositions because a claim raises the held balance an action spends.
  * The tags let a multi-transaction (batched) close report which steps each transaction covers.
  */
 export function assembleFusedCloseOpsTagged(
@@ -74,6 +83,7 @@ export function assembleFusedCloseOpsTagged(
   if (input.needsSignerNormalization) {
     push("NORMALIZE_SIGNERS", signerNormalizationOps(input.signers, masterKey));
   }
+  push("REVOKE_SPONSORSHIP", revokeSponsorshipOps(input.revokeSponsorshipEntries));
   push("REMOVE_DATA_ENTRIES", dataEntryRemovalOps(input.dataEntries));
   push("CANCEL_OFFERS", offerCancellationOps(input.openOffers));
   push("ADD_TRUSTLINE_FOR_CLAIM", trustlineAddForClaimOps(input.trustlinesToAddForClaim));
@@ -101,10 +111,11 @@ export function assembleFusedCloseOps(masterKey: string, input: FusedCloseInput)
 
 /**
  * Builds one atomic classic transaction that closes an account: signer
- * normalization, data removal, offer cancellation, claimable-balance claiming,
- * per-asset disposition (swap to XLM or return to issuer), trustline removal,
- * and (for direct destinations) the account merge. Operations apply in order,
- * so by the time accountMerge runs every subentry is already gone.
+ * normalization, sponsorship revocation, data removal, offer cancellation,
+ * claimable-balance claiming, per-asset disposition (swap to XLM or return to
+ * issuer), trustline removal, and (for direct destinations) the account merge.
+ * Operations apply in order, so by the time accountMerge runs every subentry
+ * is already gone.
  *
  * FUTURE: when swap execution moves to the Soroswap aggregator, conversion
  * becomes a Soroban InvokeHostFunction, which a transaction may not mix with any

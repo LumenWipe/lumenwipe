@@ -18,6 +18,7 @@ function liveState(overrides: Partial<OwnerLiveState> = {}): OwnerLiveState {
     offerSponsors: {},
     dataSponsors: {},
     fetchFailed: false,
+    reserve: null,
     ...overrides,
   };
 }
@@ -149,6 +150,88 @@ test("reconcileSponsoredEntries › offer candidates sweep the owner's full curr
   );
 
   expect(result.sponsoredEntries).toEqual([{ kind: "offer", owner: OWNER, offerId: "12345" }]);
+  expect(result.sponsorshipEnumerationIncomplete).toBe(false);
+});
+
+test("reconcileSponsoredEntries › offer sponsorship with NO offer candidate at all is still swept, as long as the owner was fetched for another reason", () => {
+  // Regression test: a wrapped manage_sell_offer inside an open sponsorship bracket may
+  // never record an explicit `sponsor` field, so no "offer" candidate is ever produced -
+  // but the owner's live state was already fetched because a trustline candidate for the
+  // SAME owner triggered it, and fetchOwnerLiveState now always fetches the owner's full
+  // offer list unconditionally (see sponsorship.ts). The sweep below must still find it.
+  const candidates: SponsorshipCandidate[] = [
+    { kind: "trustline", owner: OWNER, key: "native" },
+    // deliberately no "offer" candidate for OWNER
+  ];
+  const liveStateByOwner = new Map([
+    [
+      OWNER,
+      liveState({
+        trustlineSponsors: { native: SPONSOR },
+        offerSponsors: { "99999": SPONSOR },
+      }),
+    ],
+  ]);
+
+  const result = reconcileSponsoredEntries(
+    SPONSOR,
+    candidates,
+    liveStateByOwner,
+    [],
+    false,
+    false,
+    2 // 1 reserve for the trustline + 1 for the offer
+  );
+
+  expect(result.sponsoredEntries).toContainEqual({
+    kind: "trustline",
+    owner: OWNER,
+    asset: "native",
+  });
+  expect(result.sponsoredEntries).toContainEqual({ kind: "offer", owner: OWNER, offerId: "99999" });
+  expect(result.sponsoredEntries).toHaveLength(2);
+  expect(result.sponsorshipEnumerationIncomplete).toBe(false);
+});
+
+test("reconcileSponsoredEntries › data-entry sponsorship with NO data_entry candidate at all is still swept, as long as the owner was fetched for another reason", () => {
+  // Same gap, for data entries: a wrapped manage_data op may never record `sponsor`, so
+  // no candidate names it - but fetchOwnerLiveState now derives the full data-entry key
+  // list from the account resource itself and checks every key's sponsor unconditionally.
+  const candidates: SponsorshipCandidate[] = [
+    { kind: "signer", owner: OWNER, key: "GSIGNER00000000000000000000000000000000000000000000000" },
+    // deliberately no "data_entry" candidate for OWNER
+  ];
+  const liveStateByOwner = new Map([
+    [
+      OWNER,
+      liveState({
+        signerSponsors: { GSIGNER00000000000000000000000000000000000000000000000: SPONSOR },
+        dataSponsors: { config: SPONSOR },
+      }),
+    ],
+  ]);
+
+  const result = reconcileSponsoredEntries(
+    SPONSOR,
+    candidates,
+    liveStateByOwner,
+    [],
+    false,
+    false,
+    2 // 1 reserve for the signer + 1 for the data entry
+  );
+
+  expect(result.sponsoredEntries).toContainEqual({
+    kind: "signer",
+    owner: OWNER,
+    signerKey: "GSIGNER00000000000000000000000000000000000000000000000",
+  });
+  expect(result.sponsoredEntries).toContainEqual({
+    kind: "data_entry",
+    owner: OWNER,
+    name: "config",
+  });
+  expect(result.sponsoredEntries).toHaveLength(2);
   expect(result.sponsorshipEnumerationIncomplete).toBe(false);
 });
 

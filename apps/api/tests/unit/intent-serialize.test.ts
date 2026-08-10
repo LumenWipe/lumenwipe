@@ -75,3 +75,56 @@ test("intentFromXdr returns null merge destination when there is no merge", () =
   expect(intent.guarantees.mergeDestination).toBeNull();
   expect(intent.guarantees.minXlmFromConversions).toBeNull();
 });
+
+test("intentFromXdr normalizes revokeAccountSponsorship operation", () => {
+  const sponsor = Keypair.random().publicKey();
+  const xdr = txWith(Operation.revokeAccountSponsorship({ account: sponsor }));
+  const intent = intentFromXdr(xdr, Networks.TESTNET);
+
+  expect(intent.operations).toContainEqual({
+    type: "revoke_sponsorship",
+    entryKind: "account",
+    owner: sponsor,
+  });
+});
+
+test("intentFromXdr normalizes all revoke-sponsorship operation types", () => {
+  const account = Keypair.random().publicKey();
+  const seller = Keypair.random().publicKey();
+  const signer = Keypair.random().publicKey();
+
+  const xdr = txWith(
+    Operation.revokeAccountSponsorship({ account }),
+    Operation.revokeTrustlineSponsorship({ account, asset: new Asset("USDC", ISSUER) }),
+    Operation.revokeOfferSponsorship({ seller, offerId: "12345" }),
+    Operation.revokeDataSponsorship({ account, name: "test" }),
+    Operation.revokeSignerSponsorship({ account, signer: { ed25519PublicKey: signer } })
+  );
+  const intent = intentFromXdr(xdr, Networks.TESTNET);
+
+  expect(intent.operations).toContainEqual({
+    type: "revoke_sponsorship",
+    entryKind: "account",
+    owner: account,
+  });
+  expect(intent.operations).toContainEqual({
+    type: "revoke_sponsorship",
+    entryKind: "trustline",
+    owner: account,
+  });
+  expect(intent.operations).toContainEqual({
+    type: "revoke_sponsorship",
+    entryKind: "offer",
+    owner: seller,
+  });
+  expect(intent.operations).toContainEqual({
+    type: "revoke_sponsorship",
+    entryKind: "data_entry",
+    owner: account,
+  });
+  expect(intent.operations).toContainEqual({
+    type: "revoke_sponsorship",
+    entryKind: "signer",
+    owner: account,
+  });
+});

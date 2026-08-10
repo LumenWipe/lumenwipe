@@ -127,6 +127,17 @@ const RESULT_CODE_MESSAGES: Record<string, string> = {
     "This account is not listed as a claimant for this balance.",
   claim_claimable_balance_low_reserve:
     "Insufficient XLM to cover the reserve required to claim this balance.",
+
+  // ── RevokeSponsorship (REVOKE_SPONSORSHIP) ──────────────────────────────────
+  revoke_sponsorship_does_not_exist:
+    "The sponsored entry no longer exists - it may have already been removed.",
+  revoke_sponsorship_not_sponsor:
+    "This account no longer sponsors that entry - someone else may have already resolved it.",
+  revoke_sponsorship_low_reserve:
+    "The account that owns this entry does not have enough XLM to take over its reserve.",
+  revoke_sponsorship_only_transferable:
+    "This entry requires a new sponsor to take over before its current sponsorship can be revoked.",
+  revoke_sponsorship_malformed: "The sponsorship revocation is malformed.",
 };
 
 // ─── XDR result code extraction ───────────────────────────────────────────────
