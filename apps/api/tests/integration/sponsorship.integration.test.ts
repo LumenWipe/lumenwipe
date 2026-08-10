@@ -51,51 +51,47 @@ async function readAccountStateUntilSponsoring(publicKey: string): Promise<Accou
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
-test(
-  "getAccountState › reports a real sponsored trustline created on testnet",
-  async () => {
-    const server = new Horizon.Server(HORIZON_URL);
-    const sponsor = Keypair.random();
-    const sponsored = Keypair.random();
-    const issuer = Keypair.random();
+test("getAccountState › reports a real sponsored trustline created on testnet", async () => {
+  const server = new Horizon.Server(HORIZON_URL);
+  const sponsor = Keypair.random();
+  const sponsored = Keypair.random();
+  const issuer = Keypair.random();
 
-    await Promise.all([
-      fund(sponsor.publicKey()),
-      fund(sponsored.publicKey()),
-      fund(issuer.publicKey()),
-    ]);
-    const asset = new Asset("LWTEST", issuer.publicKey());
+  await Promise.all([
+    fund(sponsor.publicKey()),
+    fund(sponsored.publicKey()),
+    fund(issuer.publicKey()),
+  ]);
+  const asset = new Asset("LWTEST", issuer.publicKey());
 
-    const sponsorAccount = await server.loadAccount(sponsor.publicKey());
-    const tx = new TransactionBuilder(sponsorAccount, {
-      fee: BASE_FEE,
-      networkPassphrase: Networks.TESTNET,
-    })
-      .addOperation(
-        Operation.beginSponsoringFutureReserves({
-          sponsoredId: sponsored.publicKey(),
-          source: sponsor.publicKey(),
-        })
-      )
-      .addOperation(Operation.changeTrust({ asset, source: sponsored.publicKey() }))
-      .addOperation(Operation.endSponsoringFutureReserves({ source: sponsored.publicKey() }))
-      .setTimeout(60)
-      .build();
-    tx.sign(sponsor);
-    tx.sign(sponsored);
-    await server.submitTransaction(tx);
+  const sponsorAccount = await server.loadAccount(sponsor.publicKey());
+  const tx = new TransactionBuilder(sponsorAccount, {
+    fee: BASE_FEE,
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(
+      Operation.beginSponsoringFutureReserves({
+        sponsoredId: sponsored.publicKey(),
+        source: sponsor.publicKey(),
+      })
+    )
+    .addOperation(Operation.changeTrust({ asset, source: sponsored.publicKey() }))
+    .addOperation(Operation.endSponsoringFutureReserves({ source: sponsored.publicKey() }))
+    .setTimeout(60)
+    .build();
+  tx.sign(sponsor);
+  tx.sign(sponsored);
+  await server.submitTransaction(tx);
 
-    // Soroban RPC indexing lag for the account this test's assertions read through -
-    // poll rather than a flat sleep, since observed lag varies run to run.
-    const state = await readAccountStateUntilSponsoring(sponsor.publicKey());
+  // Soroban RPC indexing lag for the account this test's assertions read through -
+  // poll rather than a flat sleep, since observed lag varies run to run.
+  const state = await readAccountStateUntilSponsoring(sponsor.publicKey());
 
-    expect(state.numSponsoring).toBe(1);
-    expect(state.sponsorshipEnumerationIncomplete).toBe(false);
-    expect(state.sponsoredEntries).toContainEqual({
-      kind: "trustline",
-      owner: sponsored.publicKey(),
-      asset: `LWTEST:${issuer.publicKey()}`,
-    });
-  },
-  60000
-);
+  expect(state.numSponsoring).toBe(1);
+  expect(state.sponsorshipEnumerationIncomplete).toBe(false);
+  expect(state.sponsoredEntries).toContainEqual({
+    kind: "trustline",
+    owner: sponsored.publicKey(),
+    asset: `LWTEST:${issuer.publicKey()}`,
+  });
+}, 60000);

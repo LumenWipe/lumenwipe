@@ -139,7 +139,10 @@ test("the subject carries the account's own claim predicate", () => {
         asset: "native",
         amount: "1.0000000",
         claimants: [
-          { destination: MASTER, predicate: { type: "before_absolute_time", absBeforeEpoch: "999" } },
+          {
+            destination: MASTER,
+            predicate: { type: "before_absolute_time", absBeforeEpoch: "999" },
+          },
         ],
         sponsor: null,
       },

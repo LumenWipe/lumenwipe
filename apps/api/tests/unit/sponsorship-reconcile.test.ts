@@ -24,13 +24,30 @@ function liveState(overrides: Partial<OwnerLiveState> = {}): OwnerLiveState {
 
 test("reconcileSponsoredEntries › entry sponsored then later un-sponsored (net zero) → excluded", () => {
   const candidates: SponsorshipCandidate[] = [
-    { kind: "trustline", owner: OWNER, key: "USD:GISSUER0000000000000000000000000000000000000000000" },
+    {
+      kind: "trustline",
+      owner: OWNER,
+      key: "USD:GISSUER0000000000000000000000000000000000000000000",
+    },
   ];
   const liveStateByOwner = new Map([
-    [OWNER, liveState({ trustlineSponsors: { "USD:GISSUER0000000000000000000000000000000000000000000": null } })],
+    [
+      OWNER,
+      liveState({
+        trustlineSponsors: { "USD:GISSUER0000000000000000000000000000000000000000000": null },
+      }),
+    ],
   ]);
 
-  const result = reconcileSponsoredEntries(SPONSOR, candidates, liveStateByOwner, [], false, false, 0);
+  const result = reconcileSponsoredEntries(
+    SPONSOR,
+    candidates,
+    liveStateByOwner,
+    [],
+    false,
+    false,
+    0
+  );
 
   expect(result.sponsoredEntries).toEqual([]);
   expect(result.sponsorshipEnumerationIncomplete).toBe(false);
@@ -38,18 +55,32 @@ test("reconcileSponsoredEntries › entry sponsored then later un-sponsored (net
 
 test("reconcileSponsoredEntries › entry re-sponsored by a different account → excluded", () => {
   const candidates: SponsorshipCandidate[] = [
-    { kind: "trustline", owner: OWNER, key: "USD:GISSUER0000000000000000000000000000000000000000000" },
+    {
+      kind: "trustline",
+      owner: OWNER,
+      key: "USD:GISSUER0000000000000000000000000000000000000000000",
+    },
   ];
   const liveStateByOwner = new Map([
     [
       OWNER,
       liveState({
-        trustlineSponsors: { "USD:GISSUER0000000000000000000000000000000000000000000": OTHER_SPONSOR },
+        trustlineSponsors: {
+          "USD:GISSUER0000000000000000000000000000000000000000000": OTHER_SPONSOR,
+        },
       }),
     ],
   ]);
 
-  const result = reconcileSponsoredEntries(SPONSOR, candidates, liveStateByOwner, [], false, false, 0);
+  const result = reconcileSponsoredEntries(
+    SPONSOR,
+    candidates,
+    liveStateByOwner,
+    [],
+    false,
+    false,
+    0
+  );
 
   expect(result.sponsoredEntries).toEqual([]);
   expect(result.sponsorshipEnumerationIncomplete).toBe(false);
@@ -57,7 +88,11 @@ test("reconcileSponsoredEntries › entry re-sponsored by a different account �
 
 test("reconcileSponsoredEntries › still-current sponsorship → included with the right shape", () => {
   const candidates: SponsorshipCandidate[] = [
-    { kind: "trustline", owner: OWNER, key: "USD:GISSUER0000000000000000000000000000000000000000000" },
+    {
+      kind: "trustline",
+      owner: OWNER,
+      key: "USD:GISSUER0000000000000000000000000000000000000000000",
+    },
     { kind: "signer", owner: OWNER, key: "GSIGNER00000000000000000000000000000000000000000000000" },
     { kind: "account", owner: OWNER, key: "" },
   ];
@@ -67,12 +102,20 @@ test("reconcileSponsoredEntries › still-current sponsorship → included with 
       liveState({
         accountSponsor: SPONSOR,
         trustlineSponsors: { "USD:GISSUER0000000000000000000000000000000000000000000": SPONSOR },
-        signerSponsors: { "GSIGNER00000000000000000000000000000000000000000000000": SPONSOR },
+        signerSponsors: { GSIGNER00000000000000000000000000000000000000000000000: SPONSOR },
       }),
     ],
   ]);
 
-  const result = reconcileSponsoredEntries(SPONSOR, candidates, liveStateByOwner, [], false, false, 3);
+  const result = reconcileSponsoredEntries(
+    SPONSOR,
+    candidates,
+    liveStateByOwner,
+    [],
+    false,
+    false,
+    3
+  );
 
   expect(result.sponsoredEntries).toContainEqual({ kind: "account", owner: OWNER });
   expect(result.sponsoredEntries).toContainEqual({
@@ -95,7 +138,15 @@ test("reconcileSponsoredEntries › offer candidates sweep the owner's full curr
     [OWNER, liveState({ offerSponsors: { "12345": SPONSOR, "67890": OTHER_SPONSOR } })],
   ]);
 
-  const result = reconcileSponsoredEntries(SPONSOR, candidates, liveStateByOwner, [], false, false, 1);
+  const result = reconcileSponsoredEntries(
+    SPONSOR,
+    candidates,
+    liveStateByOwner,
+    [],
+    false,
+    false,
+    1
+  );
 
   expect(result.sponsoredEntries).toEqual([{ kind: "offer", owner: OWNER, offerId: "12345" }]);
   expect(result.sponsorshipEnumerationIncomplete).toBe(false);
@@ -126,7 +177,15 @@ test("reconcileSponsoredEntries › a live re-verification fetch failed → inco
   const candidates: SponsorshipCandidate[] = [{ kind: "trustline", owner: OWNER, key: "native" }];
   const liveStateByOwner = new Map([[OWNER, liveState({ fetchFailed: true })]]);
 
-  const result = reconcileSponsoredEntries(SPONSOR, candidates, liveStateByOwner, [], false, false, 1);
+  const result = reconcileSponsoredEntries(
+    SPONSOR,
+    candidates,
+    liveStateByOwner,
+    [],
+    false,
+    false,
+    1
+  );
 
   expect(result.sponsorshipEnumerationIncomplete).toBe(true);
 });
@@ -135,9 +194,19 @@ test("reconcileSponsoredEntries › enumerated count disagrees with ledger-truth
   // Everything reported complete, but we only found 1 entry while the ledger says 2 -
   // mirrors detectSubEntryMismatch's philosophy: an undercount is never trusted silently.
   const candidates: SponsorshipCandidate[] = [{ kind: "trustline", owner: OWNER, key: "native" }];
-  const liveStateByOwner = new Map([[OWNER, liveState({ trustlineSponsors: { native: SPONSOR } })]]);
+  const liveStateByOwner = new Map([
+    [OWNER, liveState({ trustlineSponsors: { native: SPONSOR } })],
+  ]);
 
-  const result = reconcileSponsoredEntries(SPONSOR, candidates, liveStateByOwner, [], false, false, 2);
+  const result = reconcileSponsoredEntries(
+    SPONSOR,
+    candidates,
+    liveStateByOwner,
+    [],
+    false,
+    false,
+    2
+  );
 
   expect(result.sponsoredEntries).toHaveLength(1);
   expect(result.sponsorshipEnumerationIncomplete).toBe(true);

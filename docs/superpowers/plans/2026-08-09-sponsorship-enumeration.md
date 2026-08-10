@@ -4,7 +4,7 @@
 
 **Goal:** Give `AccountState` a `sponsoredEntries: SponsoredEntry[]` list (which ledger entries this account currently sponsors, and on whose accounts) alongside the existing `numSponsoring` count, with an honest `sponsorshipEnumerationIncomplete` flag whenever the enumeration cannot be trusted as complete. Closes GitHub issue #71.
 
-**Architecture:** Two-phase read, not event replay. Phase 1 (discovery) pages through `GET /accounts/{sponsor}/operations` — confirmed empirically to be participant-inclusive, unlike `/effects` — to find candidate `(owner, kind, key)` tuples this account has ever been involved in sponsoring. Phase 2 (verification) does one live read per discovered owner account and checks each entry's *current* `sponsor` field (Horizon exposes this directly on trustlines, signers, offers, per-key data, and the account resource itself). Only entries whose live sponsor still equals our address survive. This means Phase 1 only has to be reasonably complete, never perfectly correct — any parsing gap in Phase 1 can only produce a missed *candidate* (caught by the `numSponsoring` cross-check below), never a wrong *inclusion*, because Phase 2 always re-derives truth from current chain state. Claimable balances skip both phases and use Horizon's direct `?sponsor=` list filter, mirroring the existing `?claimant=` fetcher.
+**Architecture:** Two-phase read, not event replay. Phase 1 (discovery) pages through `GET /accounts/{sponsor}/operations` — confirmed empirically to be participant-inclusive, unlike `/effects` — to find candidate `(owner, kind, key)` tuples this account has ever been involved in sponsoring. Phase 2 (verification) does one live read per discovered owner account and checks each entry's _current_ `sponsor` field (Horizon exposes this directly on trustlines, signers, offers, per-key data, and the account resource itself). Only entries whose live sponsor still equals our address survive. This means Phase 1 only has to be reasonably complete, never perfectly correct — any parsing gap in Phase 1 can only produce a missed _candidate_ (caught by the `numSponsoring` cross-check below), never a wrong _inclusion_, because Phase 2 always re-derives truth from current chain state. Claimable balances skip both phases and use Horizon's direct `?sponsor=` list filter, mirroring the existing `?claimant=` fetcher.
 
 **Tech Stack:** TypeScript, `@stellar/stellar-sdk` (server-side only), Horizon-compatible REST adapter (`PATH_ROUTING_API_URLS`), Bun test runner, NestJS (apps/api).
 
@@ -15,7 +15,7 @@
 - This issue is enumeration only. Do not touch `tx-builder/index.ts`'s existing `numSponsoring > 0` blocker — that stays until #72.
 - `bun type-check && bun lint && bun test` must pass for `@lumenwipe/api` (and the repo-wide matrix, since `packages/types` is shared).
 - No mainnet calls from automated tests. The new testnet-dependent test must not run inside the default `bun test` / CI path (mirrors how `apps/web`'s Playwright testnet suite is `test:e2e`, excluded from CI's `test` step).
-- Comments only where the *why* is non-obvious (existing repo convention).
+- Comments only where the _why_ is non-obvious (existing repo convention).
 
 ---
 
@@ -25,9 +25,9 @@ The issue names two candidate data sources and asks which is "actually complete 
 
 1. **stellar.expert's `/account/{address}` endpoint exposes nothing about sponsorship.** A sponsor account with `num_sponsoring: 1` on Horizon returns only `{account, created, creator, payments, trades, activity, assets}` from stellar.expert — no sponsoring count, no sponsored-entry list. Ruled out entirely; `apps/api/src/lib/se-api/client.ts` (`seGet`) is not usable for this.
 
-2. **The literal reading of "replay effects from `GET /accounts/{id}/effects`" is broken for the sponsor's own account, and would silently produce exactly the false-negative the issue warns against.** Horizon attributes sponsorship-effect types (`trustline_sponsorship_created`, `_updated`, `_removed`, and the equivalent for data/signers/accounts/claimable balances) **only to the entry's owning account's effects stream, never to the sponsor's.** Verified directly: after the sponsor above sponsored a trustline, `GET /accounts/{sponsor}/effects` returned only `account_created` and `signer_created` — zero sponsorship effects — while `GET /accounts/{trustee}/effects` showed `trustline_created` and `trustline_sponsorship_created` (with the correct `sponsor` field) for the exact same operation. A sponsorship-transfer test (sponsor A → sponsor B, real testnet tx) confirmed the same asymmetry: A's effects show nothing, the *trustee's* effects show `trustline_sponsorship_updated` with `former_sponsor`/`new_sponsor`. Naively porting the issue's suggested approach onto the sponsor's own effects stream would always return `[]` and get silently read as "sponsors nothing" — the exact bug the issue's "Security-sensitive" section is warning about.
+2. **The literal reading of "replay effects from `GET /accounts/{id}/effects`" is broken for the sponsor's own account, and would silently produce exactly the false-negative the issue warns against.** Horizon attributes sponsorship-effect types (`trustline_sponsorship_created`, `_updated`, `_removed`, and the equivalent for data/signers/accounts/claimable balances) **only to the entry's owning account's effects stream, never to the sponsor's.** Verified directly: after the sponsor above sponsored a trustline, `GET /accounts/{sponsor}/effects` returned only `account_created` and `signer_created` — zero sponsorship effects — while `GET /accounts/{trustee}/effects` showed `trustline_created` and `trustline_sponsorship_created` (with the correct `sponsor` field) for the exact same operation. A sponsorship-transfer test (sponsor A → sponsor B, real testnet tx) confirmed the same asymmetry: A's effects show nothing, the _trustee's_ effects show `trustline_sponsorship_updated` with `former_sponsor`/`new_sponsor`. Naively porting the issue's suggested approach onto the sponsor's own effects stream would always return `[]` and get silently read as "sponsors nothing" — the exact bug the issue's "Security-sensitive" section is warning about.
 
-3. **What does work, verified empirically:** `GET /accounts/{sponsor}/operations` is *participant-inclusive* — it returns every operation in a transaction that touches the sponsor, including `begin_sponsoring_future_reserves`/`end_sponsoring_future_reserves`/`revoke_sponsorship` operations *sourced by the sponsoree*, as long as the sponsor is a party via an open sponsorship bracket in that transaction. Confirmed on all three probe transactions. Separately, Horizon's live per-entry resources already expose a `sponsor` field directly: trustline balances (`/accounts/{id}` → `balances[].sponsor`), signers (`/accounts/{id}` → `signers[].sponsor`), offers (`/accounts/{id}/offers` → records `.sponsor`), per-key data (`/accounts/{id}/data/{key}` → `.sponsor`), and the account resource itself (`/accounts/{id}` → `.sponsor`, already read today in `account-live.ts`). Operation resources for `change_trust`, `manage_data`, and `set_options` also carry a `sponsor` field directly at creation time (confirmed via JSON dump) — offers do not carry a resolvable ID on creation (`manage_sell_offer`'s `offer_id` field stays `"0"` for a fresh offer; the real ID only appears on the live `/accounts/{id}/offers` resource), so offer discovery relies on owner-level candidates rather than a specific offer ID from history.
+3. **What does work, verified empirically:** `GET /accounts/{sponsor}/operations` is _participant-inclusive_ — it returns every operation in a transaction that touches the sponsor, including `begin_sponsoring_future_reserves`/`end_sponsoring_future_reserves`/`revoke_sponsorship` operations _sourced by the sponsoree_, as long as the sponsor is a party via an open sponsorship bracket in that transaction. Confirmed on all three probe transactions. Separately, Horizon's live per-entry resources already expose a `sponsor` field directly: trustline balances (`/accounts/{id}` → `balances[].sponsor`), signers (`/accounts/{id}` → `signers[].sponsor`), offers (`/accounts/{id}/offers` → records `.sponsor`), per-key data (`/accounts/{id}/data/{key}` → `.sponsor`), and the account resource itself (`/accounts/{id}` → `.sponsor`, already read today in `account-live.ts`). Operation resources for `change_trust`, `manage_data`, and `set_options` also carry a `sponsor` field directly at creation time (confirmed via JSON dump) — offers do not carry a resolvable ID on creation (`manage_sell_offer`'s `offer_id` field stays `"0"` for a fresh offer; the real ID only appears on the live `/accounts/{id}/offers` resource), so offer discovery relies on owner-level candidates rather than a specific offer ID from history.
    `RevokeSponsorship`'s per-kind field names (confirmed against Horizon's API reference): `account_id`; `trustline_account_id` + `trustline_asset`; `offer_id`; `data_account_id` + `data_name`; `claimable_balance_id`; `signer_account_id` + `signer_key`.
 
 4. **Claimable balances have a direct, complete source**: Horizon's `GET /claimable_balances?sponsor=<address>` list filter (the existing `fetchClaimableBalancesForClaimant` in `horizon-adapter.ts` already uses the sibling `?claimant=` filter against the same endpoint) — no discovery/replay needed for this one kind.
@@ -57,10 +57,12 @@ The issue names two candidate data sources and asks which is "actually complete 
 ### Task 1: Post investigation findings to issue #71, then add `SponsoredEntry` and extend `AccountState`
 
 **Files:**
+
 - Modify: `packages/types/src/account.ts`
 - Modify (fixture-only additions): `apps/api/tests/unit/close-api-decisions.test.ts`, `apps/api/tests/unit/fastPath.test.ts`, `apps/api/tests/unit/scan-fallback.test.ts`, `apps/api/tests/unit/closeAccountDisposition.test.ts`, `apps/api/tests/unit/buildPlan.test.ts`, `apps/api/tests/unit/buildCloseTransactionsClaimable.test.ts`
 
 **Interfaces:**
+
 - Produces: `SponsoredEntry` (discriminated union on `kind`), `AccountState.sponsoredEntries: SponsoredEntry[]`, `AccountState.sponsorshipEnumerationIncomplete: boolean` — every later task consumes these exact names.
 
 - [ ] **Step 1: Post the investigation comment on issue #71**
@@ -80,7 +82,7 @@ sponsorship, even for an account with `num_sponsoring > 0` on Horizon.
 **A literal reading of "replay effects from `GET /accounts/{id}/effects`" is broken for
 the sponsor's own account.** Horizon attributes sponsorship effect types
 (`trustline_sponsorship_created`/`_updated`/`_removed`, and the data/signer/account/CB
-equivalents) only to the entry's *owning* account's effects stream, never to the
+equivalents) only to the entry's _owning_ account's effects stream, never to the
 sponsor's. Confirmed: the sponsor's own `/effects` showed zero sponsorship-related
 effects for an entry it was actively sponsoring; the trustee's `/effects` showed
 `trustline_sponsorship_created` with the correct `sponsor` field for the same
@@ -94,7 +96,7 @@ even when sourced by the sponsoree, as long as the sponsor has an open sponsorsh
 bracket in that transaction. Combined with Horizon's live per-entry `sponsor` fields
 (present on trustlines, signers, offers, per-key data, and the account resource
 itself), this gives a two-phase approach: discover candidate owner accounts from
-operation history, then re-verify each entry's *current* sponsor live. Claimable
+operation history, then re-verify each entry's _current_ sponsor live. Claimable
 balances skip both phases — `GET /claimable_balances?sponsor=<address>` is a direct,
 complete filter, mirroring the existing `?claimant=` fetcher in
 `apps/api/src/lib/stellar/horizon-adapter.ts`.
@@ -169,10 +171,12 @@ git commit -m "feat(types): add SponsoredEntry and sponsoredEntries to AccountSt
 ### Task 2: Pure reconciliation logic (`sponsorship-reconcile.ts`) + unit tests
 
 **Files:**
+
 - Create: `apps/api/src/lib/stellar/sponsorship-reconcile.ts`
 - Test: `apps/api/tests/unit/sponsorship-reconcile.test.ts`
 
 **Interfaces:**
+
 - Consumes: `SponsoredEntry` from `@lumenwipe/types` (Task 1).
 - Produces: `SponsorshipCandidate`, `OwnerLiveState`, `reconcileSponsoredEntries(...)` — consumed by Task 3's I/O layer.
 
@@ -207,13 +211,30 @@ function liveState(overrides: Partial<OwnerLiveState> = {}): OwnerLiveState {
 
 test("reconcileSponsoredEntries › entry sponsored then later un-sponsored (net zero) → excluded", () => {
   const candidates: SponsorshipCandidate[] = [
-    { kind: "trustline", owner: OWNER, key: "USD:GISSUER0000000000000000000000000000000000000000000" },
+    {
+      kind: "trustline",
+      owner: OWNER,
+      key: "USD:GISSUER0000000000000000000000000000000000000000000",
+    },
   ];
   const liveStateByOwner = new Map([
-    [OWNER, liveState({ trustlineSponsors: { "USD:GISSUER0000000000000000000000000000000000000000000": null } })],
+    [
+      OWNER,
+      liveState({
+        trustlineSponsors: { "USD:GISSUER0000000000000000000000000000000000000000000": null },
+      }),
+    ],
   ]);
 
-  const result = reconcileSponsoredEntries(SPONSOR, candidates, liveStateByOwner, [], false, false, 0);
+  const result = reconcileSponsoredEntries(
+    SPONSOR,
+    candidates,
+    liveStateByOwner,
+    [],
+    false,
+    false,
+    0
+  );
 
   expect(result.sponsoredEntries).toEqual([]);
   expect(result.sponsorshipEnumerationIncomplete).toBe(false);
@@ -221,18 +242,32 @@ test("reconcileSponsoredEntries › entry sponsored then later un-sponsored (net
 
 test("reconcileSponsoredEntries › entry re-sponsored by a different account → excluded", () => {
   const candidates: SponsorshipCandidate[] = [
-    { kind: "trustline", owner: OWNER, key: "USD:GISSUER0000000000000000000000000000000000000000000" },
+    {
+      kind: "trustline",
+      owner: OWNER,
+      key: "USD:GISSUER0000000000000000000000000000000000000000000",
+    },
   ];
   const liveStateByOwner = new Map([
     [
       OWNER,
       liveState({
-        trustlineSponsors: { "USD:GISSUER0000000000000000000000000000000000000000000": OTHER_SPONSOR },
+        trustlineSponsors: {
+          "USD:GISSUER0000000000000000000000000000000000000000000": OTHER_SPONSOR,
+        },
       }),
     ],
   ]);
 
-  const result = reconcileSponsoredEntries(SPONSOR, candidates, liveStateByOwner, [], false, false, 0);
+  const result = reconcileSponsoredEntries(
+    SPONSOR,
+    candidates,
+    liveStateByOwner,
+    [],
+    false,
+    false,
+    0
+  );
 
   expect(result.sponsoredEntries).toEqual([]);
   expect(result.sponsorshipEnumerationIncomplete).toBe(false);
@@ -240,7 +275,11 @@ test("reconcileSponsoredEntries › entry re-sponsored by a different account �
 
 test("reconcileSponsoredEntries › still-current sponsorship → included with the right shape", () => {
   const candidates: SponsorshipCandidate[] = [
-    { kind: "trustline", owner: OWNER, key: "USD:GISSUER0000000000000000000000000000000000000000000" },
+    {
+      kind: "trustline",
+      owner: OWNER,
+      key: "USD:GISSUER0000000000000000000000000000000000000000000",
+    },
     { kind: "signer", owner: OWNER, key: "GSIGNER00000000000000000000000000000000000000000000000" },
     { kind: "account", owner: OWNER, key: "" },
   ];
@@ -250,12 +289,20 @@ test("reconcileSponsoredEntries › still-current sponsorship → included with 
       liveState({
         accountSponsor: SPONSOR,
         trustlineSponsors: { "USD:GISSUER0000000000000000000000000000000000000000000": SPONSOR },
-        signerSponsors: { "GSIGNER00000000000000000000000000000000000000000000000": SPONSOR },
+        signerSponsors: { GSIGNER00000000000000000000000000000000000000000000000: SPONSOR },
       }),
     ],
   ]);
 
-  const result = reconcileSponsoredEntries(SPONSOR, candidates, liveStateByOwner, [], false, false, 3);
+  const result = reconcileSponsoredEntries(
+    SPONSOR,
+    candidates,
+    liveStateByOwner,
+    [],
+    false,
+    false,
+    3
+  );
 
   expect(result.sponsoredEntries).toContainEqual({ kind: "account", owner: OWNER });
   expect(result.sponsoredEntries).toContainEqual({
@@ -278,7 +325,15 @@ test("reconcileSponsoredEntries › offer candidates sweep the owner's full curr
     [OWNER, liveState({ offerSponsors: { "12345": SPONSOR, "67890": OTHER_SPONSOR } })],
   ]);
 
-  const result = reconcileSponsoredEntries(SPONSOR, candidates, liveStateByOwner, [], false, false, 1);
+  const result = reconcileSponsoredEntries(
+    SPONSOR,
+    candidates,
+    liveStateByOwner,
+    [],
+    false,
+    false,
+    1
+  );
 
   expect(result.sponsoredEntries).toEqual([{ kind: "offer", owner: OWNER, offerId: "12345" }]);
   expect(result.sponsorshipEnumerationIncomplete).toBe(false);
@@ -309,7 +364,15 @@ test("reconcileSponsoredEntries › a live re-verification fetch failed → inco
   const candidates: SponsorshipCandidate[] = [{ kind: "trustline", owner: OWNER, key: "native" }];
   const liveStateByOwner = new Map([[OWNER, liveState({ fetchFailed: true })]]);
 
-  const result = reconcileSponsoredEntries(SPONSOR, candidates, liveStateByOwner, [], false, false, 1);
+  const result = reconcileSponsoredEntries(
+    SPONSOR,
+    candidates,
+    liveStateByOwner,
+    [],
+    false,
+    false,
+    1
+  );
 
   expect(result.sponsorshipEnumerationIncomplete).toBe(true);
 });
@@ -318,9 +381,19 @@ test("reconcileSponsoredEntries › enumerated count disagrees with ledger-truth
   // Everything reported complete, but we only found 1 entry while the ledger says 2 -
   // mirrors detectSubEntryMismatch's philosophy: an undercount is never trusted silently.
   const candidates: SponsorshipCandidate[] = [{ kind: "trustline", owner: OWNER, key: "native" }];
-  const liveStateByOwner = new Map([[OWNER, liveState({ trustlineSponsors: { native: SPONSOR } })]]);
+  const liveStateByOwner = new Map([
+    [OWNER, liveState({ trustlineSponsors: { native: SPONSOR } })],
+  ]);
 
-  const result = reconcileSponsoredEntries(SPONSOR, candidates, liveStateByOwner, [], false, false, 2);
+  const result = reconcileSponsoredEntries(
+    SPONSOR,
+    candidates,
+    liveStateByOwner,
+    [],
+    false,
+    false,
+    2
+  );
 
   expect(result.sponsoredEntries).toHaveLength(1);
   expect(result.sponsorshipEnumerationIncomplete).toBe(true);
@@ -461,10 +534,12 @@ git commit -m "feat(api): add pure sponsorship enumeration reconciliation logic"
 ### Task 3: I/O layer (`sponsorship.ts`) — discovery, live verification, orchestration
 
 **Files:**
+
 - Create: `apps/api/src/lib/stellar/sponsorship.ts`
 - Modify: `apps/api/src/config/constants.ts`
 
 **Interfaces:**
+
 - Consumes: `SponsorshipCandidate`, `OwnerLiveState`, `reconcileSponsoredEntries` (Task 2); `PATH_ROUTING_API_URLS`, `Network` (`@/config/networks`); `horizonAssetToString` (`@/lib/utils/assets`); `parseClaimPredicate` (`@/lib/stellar/horizon-adapter`, reused for the CB fetch).
 - Produces: `enumerateSponsoredEntries(address: string, network: Network, numSponsoring: number): Promise<{ sponsoredEntries: SponsoredEntry[]; sponsorshipEnumerationIncomplete: boolean }>` — consumed by Task 4.
 
@@ -689,7 +764,12 @@ async function fetchOwnerLiveState(
         });
         dataSponsors[key] = dataRes.ok ? ((await dataRes.json()).sponsor ?? null) : null;
       } catch {
-        return { ...empty, accountSponsor: account.sponsor ?? null, trustlineSponsors, signerSponsors };
+        return {
+          ...empty,
+          accountSponsor: account.sponsor ?? null,
+          trustlineSponsors,
+          signerSponsors,
+        };
       }
     }
 
@@ -746,7 +826,8 @@ async function fetchClaimableBalancesBySponsor(
 
   const entries: SponsoredEntry[] = [];
   let incomplete = false;
-  let nextUrl: string | null = `${base}/claimable_balances?sponsor=${address}&limit=${CB_PAGE_LIMIT}`;
+  let nextUrl: string | null =
+    `${base}/claimable_balances?sponsor=${address}&limit=${CB_PAGE_LIMIT}`;
 
   while (nextUrl && entries.length < CB_MAX_TOTAL) {
     let res: Response;
@@ -845,10 +926,12 @@ git commit -m "feat(api): add sponsorship enumeration io layer over horizon"
 ### Task 4: Wire into `getAccountState` and `getLiveAccountState`
 
 **Files:**
+
 - Modify: `apps/api/src/lib/stellar/account.ts`
 - Modify: `apps/api/src/lib/stellar/account-live.ts`
 
 **Interfaces:**
+
 - Consumes: `enumerateSponsoredEntries` (Task 3).
 
 - [ ] **Step 1: Wire into `account.ts` (RPC + SE-API path)**
@@ -862,11 +945,11 @@ import { enumerateSponsoredEntries } from "@/lib/stellar/sponsorship";
 After the block that computes `numSponsoring` from the RPC ledger entry (the `try { const ext = accountEntry.ext(); ... } catch { ... }` block) and before the final `return`, add:
 
 ```typescript
-  const { sponsoredEntries, sponsorshipEnumerationIncomplete } = await enumerateSponsoredEntries(
-    address,
-    network,
-    numSponsoring
-  );
+const { sponsoredEntries, sponsorshipEnumerationIncomplete } = await enumerateSponsoredEntries(
+  address,
+  network,
+  numSponsoring
+);
 ```
 
 In the returned `AccountState` object literal, add the two fields (near `numSponsoring`, matching the type's field order):
@@ -888,12 +971,12 @@ import { enumerateSponsoredEntries } from "@/lib/stellar/sponsorship";
 After `const numSubEntries = account.subentry_count;` and before the `return`, add:
 
 ```typescript
-  const numSponsoring = account.num_sponsoring ?? 0;
-  const { sponsoredEntries, sponsorshipEnumerationIncomplete } = await enumerateSponsoredEntries(
-    address,
-    network,
-    numSponsoring
-  );
+const numSponsoring = account.num_sponsoring ?? 0;
+const { sponsoredEntries, sponsorshipEnumerationIncomplete } = await enumerateSponsoredEntries(
+  address,
+  network,
+  numSponsoring
+);
 ```
 
 In the returned object, replace the inline `numSponsoring: account.num_sponsoring ?? 0,` with the now-precomputed variable, and add the two new fields:
@@ -921,11 +1004,13 @@ git commit -m "feat(api): populate sponsoredEntries in both account-state read p
 ### Task 5: Testnet integration test tier + the required integration test
 
 **Files:**
+
 - Create: `apps/api/tests/integration/sponsorship.integration.test.ts`
 - Modify: `apps/api/package.json`
 - Modify: `CONTRIBUTING.md`
 
 **Interfaces:**
+
 - Consumes: `getAccountState` (`@/lib/stellar/account`), `@stellar/stellar-sdk` (Friendbot funding + real tx submission).
 
 - [ ] **Step 1: Split the test script so this tier never runs in default `bun test` / CI**
@@ -984,55 +1069,51 @@ async function fund(publicKey: string): Promise<void> {
   if (!res.ok) throw new Error(`friendbot funding failed for ${publicKey}: ${res.status}`);
 }
 
-test(
-  "getAccountState › reports a real sponsored trustline created on testnet",
-  async () => {
-    const server = new Horizon.Server(HORIZON_URL);
-    const sponsor = Keypair.random();
-    const sponsored = Keypair.random();
-    const issuer = Keypair.random();
+test("getAccountState › reports a real sponsored trustline created on testnet", async () => {
+  const server = new Horizon.Server(HORIZON_URL);
+  const sponsor = Keypair.random();
+  const sponsored = Keypair.random();
+  const issuer = Keypair.random();
 
-    await Promise.all([
-      fund(sponsor.publicKey()),
-      fund(sponsored.publicKey()),
-      fund(issuer.publicKey()),
-    ]);
-    const asset = new Asset("LWTEST", issuer.publicKey());
+  await Promise.all([
+    fund(sponsor.publicKey()),
+    fund(sponsored.publicKey()),
+    fund(issuer.publicKey()),
+  ]);
+  const asset = new Asset("LWTEST", issuer.publicKey());
 
-    const sponsorAccount = await server.loadAccount(sponsor.publicKey());
-    const tx = new TransactionBuilder(sponsorAccount, {
-      fee: BASE_FEE,
-      networkPassphrase: Networks.TESTNET,
-    })
-      .addOperation(
-        Operation.beginSponsoringFutureReserves({
-          sponsoredId: sponsored.publicKey(),
-          source: sponsor.publicKey(),
-        })
-      )
-      .addOperation(Operation.changeTrust({ asset, source: sponsored.publicKey() }))
-      .addOperation(Operation.endSponsoringFutureReserves({ source: sponsored.publicKey() }))
-      .setTimeout(60)
-      .build();
-    tx.sign(sponsor);
-    tx.sign(sponsored);
-    await server.submitTransaction(tx);
+  const sponsorAccount = await server.loadAccount(sponsor.publicKey());
+  const tx = new TransactionBuilder(sponsorAccount, {
+    fee: BASE_FEE,
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(
+      Operation.beginSponsoringFutureReserves({
+        sponsoredId: sponsored.publicKey(),
+        source: sponsor.publicKey(),
+      })
+    )
+    .addOperation(Operation.changeTrust({ asset, source: sponsored.publicKey() }))
+    .addOperation(Operation.endSponsoringFutureReserves({ source: sponsored.publicKey() }))
+    .setTimeout(60)
+    .build();
+  tx.sign(sponsor);
+  tx.sign(sponsored);
+  await server.submitTransaction(tx);
 
-    // Horizon indexing lag for the account this test's assertions read through.
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+  // Horizon indexing lag for the account this test's assertions read through.
+  await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    const state = await getAccountState(sponsor.publicKey(), "testnet");
+  const state = await getAccountState(sponsor.publicKey(), "testnet");
 
-    expect(state.numSponsoring).toBe(1);
-    expect(state.sponsorshipEnumerationIncomplete).toBe(false);
-    expect(state.sponsoredEntries).toContainEqual({
-      kind: "trustline",
-      owner: sponsored.publicKey(),
-      asset: `LWTEST:${issuer.publicKey()}`,
-    });
-  },
-  30000
-);
+  expect(state.numSponsoring).toBe(1);
+  expect(state.sponsorshipEnumerationIncomplete).toBe(false);
+  expect(state.sponsoredEntries).toContainEqual({
+    kind: "trustline",
+    owner: sponsored.publicKey(),
+    asset: `LWTEST:${issuer.publicKey()}`,
+  });
+}, 30000);
 ```
 
 - [ ] **Step 4: Run it (manually — not part of the standard verification loop for this plan)**

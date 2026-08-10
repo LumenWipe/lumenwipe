@@ -496,9 +496,9 @@ test("buildPlan › unclaimable balance with forfeit → blocker says forfeit, n
   const balance = makeClaimableBalance(asset);
   const account = makeAccount({ claimableBalances: [balance] });
   const { steps, blockers } = buildPlan(account, false, false, { [balance.id]: "forfeit" });
-  expect(steps.every((s) => s.type !== "CLAIM_BALANCES" && s.type !== "ADD_TRUSTLINE_FOR_CLAIM")).toBe(
-    true
-  );
+  expect(
+    steps.every((s) => s.type !== "CLAIM_BALANCES" && s.type !== "ADD_TRUSTLINE_FOR_CLAIM")
+  ).toBe(true);
   expect(blockers).toHaveLength(1);
   expect(blockers[0].code).toBe("claimable_balance_forfeited");
   expect(blockers[0].message).toContain("forfeit");
@@ -510,9 +510,9 @@ test("buildPlan › unresolved unclaimable balance (no selection) → unchanged 
   const balance = makeClaimableBalance(asset);
   const account = makeAccount({ claimableBalances: [balance] });
   const { steps, blockers } = buildPlan(account, false);
-  expect(steps.every((s) => s.type !== "CLAIM_BALANCES" && s.type !== "ADD_TRUSTLINE_FOR_CLAIM")).toBe(
-    true
-  );
+  expect(
+    steps.every((s) => s.type !== "CLAIM_BALANCES" && s.type !== "ADD_TRUSTLINE_FOR_CLAIM")
+  ).toBe(true);
   expect(blockers).toHaveLength(1);
   expect(blockers[0].code).toBe("claimable_balance_unclaimable");
   expect(blockers[0].message).toContain("Establish");

@@ -321,7 +321,8 @@ async function fetchClaimableBalancesBySponsor(
 
   const entries: SponsoredEntry[] = [];
   let incomplete = false;
-  let nextUrl: string | null = `${base}/claimable_balances?sponsor=${address}&limit=${CB_PAGE_LIMIT}`;
+  let nextUrl: string | null =
+    `${base}/claimable_balances?sponsor=${address}&limit=${CB_PAGE_LIMIT}`;
 
   while (nextUrl && entries.length < CB_MAX_TOTAL) {
     let res: Response;
