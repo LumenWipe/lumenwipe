@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { goToReview } from "@/lib/plan/confirm-plan";
+import { goToReview, goBackToAnalyze } from "@/lib/plan/confirm-plan";
 import type { DemolishPhase } from "@/types/plan";
 import type { Network } from "@/config/networks";
 
@@ -40,4 +40,33 @@ test.each<Network>(["testnet", "mainnet"])("goToReview targets /%s/review", (net
   goToReview(setPhase, nav, network);
 
   expect(nav.pushed).toEqual([`/${network}/review`]);
+});
+
+test("goBackToAnalyze sets phase to PREFLIGHT_COMPLETE, never past it", () => {
+  const { calls, setPhase } = fakeSetPhase();
+  const nav = fakeNav();
+
+  goBackToAnalyze(setPhase, nav, "testnet");
+
+  expect(calls).toEqual(["PREFLIGHT_COMPLETE"]);
+  expect(calls).not.toContain("STEP_EXECUTING");
+});
+
+test("goBackToAnalyze navigates to /analyze, never to /execute", () => {
+  const { setPhase } = fakeSetPhase();
+  const nav = fakeNav();
+
+  goBackToAnalyze(setPhase, nav, "testnet");
+
+  expect(nav.pushed).toEqual(["/testnet/analyze"]);
+  expect(nav.pushed.some((p) => p.includes("/execute"))).toBe(false);
+});
+
+test.each<Network>(["testnet", "mainnet"])("goBackToAnalyze targets /%s/analyze", (network) => {
+  const { setPhase } = fakeSetPhase();
+  const nav = fakeNav();
+
+  goBackToAnalyze(setPhase, nav, network);
+
+  expect(nav.pushed).toEqual([`/${network}/analyze`]);
 });

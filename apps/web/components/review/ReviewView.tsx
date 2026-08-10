@@ -7,7 +7,7 @@ import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { saveSession } from "@/lib/session/store";
 import { formatXlm } from "@/lib/utils/amounts";
-import PlanSidebar from "@/components/execution/PlanSidebar";
+import PlanStepAccordion from "@/components/review/PlanStepAccordion";
 import AccountSummaryCard from "@/components/plan/AccountSummaryCard";
 
 interface ReviewViewProps {
@@ -31,6 +31,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
   } = useDemolishStore();
 
   const [confirming, setConfirming] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(false);
 
   const totalFee = executionPlan
     .reduce((sum, step) => sum + parseFloat(step.estimatedFeeLumens), 0)
@@ -79,33 +80,57 @@ export default function ReviewView({ network }: ReviewViewProps) {
 
       <div className="mkt-panel rounded-2xl">
         <div className="border-b border-white/10 px-4 py-3">
-          <h3 className="mkt-eyebrow text-white/45">Full plan · {executionPlan.length} step(s)</h3>
+          <h3 className="mkt-eyebrow text-white/45">Full plan</h3>
         </div>
         <div className="p-3">
-          <PlanSidebar steps={executionPlan} currentIndex={-1} />
+          <PlanStepAccordion
+            steps={executionPlan}
+            destinationAddress={destinationAddress}
+            mediatorRequired={mediatorRequired}
+          />
         </div>
       </div>
 
       <div className="flex items-start gap-2.5 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2.5 text-sm text-white/60">
         <ShieldCheck className="h-4 w-4 shrink-0 mt-0.5 text-stellar" />
         <span>
-          Every transaction above is verified against your own choices before it is signed. Once
-          you proceed, you&apos;ll sign each step on the next screen.
+          Every transaction above is verified against your own choices before it is signed. Once you
+          proceed, you&apos;ll sign each step on the next screen.
         </span>
       </div>
 
       <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-sm">
-        <p className="font-semibold text-destructive mb-1">This plan is permanent and irreversible.</p>
+        <p className="font-semibold text-destructive mb-1">
+          This plan is permanent and irreversible.
+        </p>
         <p className="text-white/60">
           The account will be removed from the Stellar ledger and its balance sent to{" "}
           <span className="font-mono text-white/80 break-all">{destinationAddress}</span>
           {mediatorRequired ? " through the exchange mediator." : "."}
         </p>
+        {memo && (
+          <p className="text-white/60 mt-1">
+            Memo: <span className="font-mono text-white/80">{memo}</span>
+            {memoType ? ` (${memoType})` : ""}
+          </p>
+        )}
       </div>
+
+      <label className="flex items-start gap-3 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={acknowledged}
+          onChange={(e) => setAcknowledged(e.target.checked)}
+          className="mt-0.5 accent-stellar"
+        />
+        <span className="text-sm text-white/60">
+          I have reviewed this plan and want to execute it.
+        </span>
+      </label>
 
       <button
         onClick={handleConfirm}
-        disabled={confirming || executionPlan.length === 0}
+        disabled={confirming || executionPlan.length === 0 || !acknowledged}
         className="flex w-full items-center justify-center gap-2 rounded-xl bg-stellar px-4 py-3 font-semibold text-black transition-all hover:bg-stellar/90 hover:shadow-[0_0_28px_-6px_hsl(var(--stellar)/0.7)] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
       >
         {confirming ? (
@@ -128,7 +153,9 @@ export default function ReviewView({ network }: ReviewViewProps) {
         </p>
       )}
 
-      <p className="text-center text-xs text-white/45">{formatXlm(totalFee)} in estimated network fees</p>
+      <p className="text-center text-xs text-white/45">
+        {formatXlm(totalFee)} in estimated network fees
+      </p>
     </div>
   );
 }
