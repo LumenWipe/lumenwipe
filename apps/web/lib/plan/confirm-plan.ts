@@ -18,3 +18,17 @@ export function goToReview(
   setPhase("PREFLIGHT_COMPLETE");
   nav.push(`/${network}/review`);
 }
+
+/**
+ * The review gate's escape hatch: explicitly re-asserts PREFLIGHT_COMPLETE (never advances past
+ * it) and returns to /analyze. Destination/memo survive the round trip because they live in the
+ * store, not component state - PlanView already pre-fills its inputs from them on mount.
+ */
+export function goBackToAnalyze(
+  setPhase: (phase: DemolishPhase) => void,
+  nav: PlanNavigator,
+  network: Network
+): void {
+  setPhase("PREFLIGHT_COMPLETE");
+  nav.push(`/${network}/analyze`);
+}
