@@ -5,6 +5,7 @@ import { seGet } from "@/lib/se-api/client";
 import { AccountNotFoundError } from "@/lib/utils/errors";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import { detectSubEntryMismatch } from "@/lib/stellar/scan-fallback";
+import { enumerateSponsoredEntries } from "@/lib/stellar/sponsorship";
 import type { Network } from "@/config/networks";
 import type {
   AccountState,
@@ -93,6 +94,11 @@ export async function getAccountState(address: string, network: Network): Promis
   let thresholds: AccountThresholds = { low: 0, med: 1, high: 1 };
   let numSubEntries = 0;
   let numSponsoring = 0;
+  // Whether the AccountEntry read below actually produced an entry. numSponsoring's
+  // initial 0 is a placeholder, not a fact: an RPC failure or an empty entries array
+  // (ingestion lag is routinely observed on the public testnet endpoint) would otherwise
+  // be indistinguishable from a genuine "sponsors nothing".
+  let accountLedgerEntryRead = false;
   let nativeBalanceLumens = "0";
   let authImmutable = false;
 
@@ -150,6 +156,10 @@ export async function getAccountState(address: string, network: Network): Promis
       } catch {
         // Extension not present - numSponsoring stays 0
       }
+
+      // Set only here: reached exactly when a real AccountEntry was decoded, so
+      // numSponsoring above is now ledger truth rather than its placeholder default.
+      accountLedgerEntryRead = true;
     }
   } catch (err) {
     if (process.env.NODE_ENV !== "production")
@@ -225,6 +235,13 @@ export async function getAccountState(address: string, network: Network): Promis
     numSubEntries,
   });
 
+  const { sponsoredEntries, sponsorshipEnumerationIncomplete } = await enumerateSponsoredEntries(
+    address,
+    network,
+    numSponsoring,
+    accountLedgerEntryRead
+  );
+
   return {
     address,
     network,
@@ -235,6 +252,8 @@ export async function getAccountState(address: string, network: Network): Promis
     thresholds,
     numSubEntries,
     numSponsoring,
+    sponsoredEntries,
+    sponsorshipEnumerationIncomplete,
     sponsoredBy: null,
     authImmutable,
     trustlines,

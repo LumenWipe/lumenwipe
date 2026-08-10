@@ -9,7 +9,8 @@
     "start:prod": "node dist/main.js",
     "type-check": "tsc --noEmit && tsc -p tests/tsconfig.json --noEmit",
     "lint": "eslint src",
-    "test": "bun test tests"
+    "test": "bun test tests/unit tests/e2e",
+    "test:integration": "LUMENWIPE_RUN_INTEGRATION=1 bun test tests/integration"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",

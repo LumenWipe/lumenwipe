@@ -3,6 +3,7 @@ import { AccountNotFoundError } from "@/lib/utils/errors";
 import { fetchOffersFromAdapter, fetchClaimableBalancesForClaimant } from "./horizon-adapter";
 import { detectSubEntryMismatch } from "./scan-fallback";
 import { horizonAssetToString } from "@/lib/utils/assets";
+import { enumerateSponsoredEntries } from "@/lib/stellar/sponsorship";
 import type {
   AccountState,
   AccountSigner,
@@ -118,6 +119,20 @@ export async function getLiveAccountState(
   );
   const numSubEntries = account.subentry_count;
 
+  // This path's failure mode differs from account.ts's: a failed account read throws
+  // above rather than falling through, so reaching here means the resource was fetched.
+  // What is still not guaranteed is that the resource CARRIES num_sponsoring - the
+  // endpoint is only Horizon-compatible, not Horizon - and `?? 0` would silently turn a
+  // missing field into a confident "sponsors nothing". Presence is the trust signal here.
+  const numSponsoringKnown = typeof account.num_sponsoring === "number";
+  const numSponsoring = account.num_sponsoring ?? 0;
+  const { sponsoredEntries, sponsorshipEnumerationIncomplete } = await enumerateSponsoredEntries(
+    address,
+    network,
+    numSponsoring,
+    numSponsoringKnown
+  );
+
   return {
     address,
     network,
@@ -131,7 +146,9 @@ export async function getLiveAccountState(
       high: account.thresholds.high_threshold,
     },
     numSubEntries,
-    numSponsoring: account.num_sponsoring ?? 0,
+    numSponsoring,
+    sponsoredEntries,
+    sponsorshipEnumerationIncomplete,
     sponsoredBy: account.sponsor ?? null,
     authImmutable: account.flags?.auth_immutable ?? false,
     trustlines,

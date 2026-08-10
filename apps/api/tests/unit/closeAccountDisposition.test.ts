@@ -48,6 +48,8 @@ function accountState(): AccountState {
     poolShares: [],
     claimableBalances: [],
     subEntryMismatch: false,
+    sponsoredEntries: [],
+    sponsorshipEnumerationIncomplete: false,
   };
 }
 

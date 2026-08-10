@@ -225,6 +225,14 @@ At minimum:
 - Clamp to balance: exit does not over-withdraw (amount larger than position is clamped)
 - Repay before withdraw (for lending protocols): debt is repaid before collateral is touched
 
+### Integration tests (`tests/integration/`)
+
+Run manually with `bun run test:integration` (apps/api only) - not part of `bun test`
+or CI, since it makes real Friendbot/testnet Horizon calls. For server-side-only logic
+with no UI to drive through Playwright (e.g. account-state enumeration), this is the
+tier that actually touches testnet, matching the integration tier docs/architecture.md
+§17 already describes but that had no directory on disk until this tier existed.
+
 ---
 
 ## 9. Contributing to registries
