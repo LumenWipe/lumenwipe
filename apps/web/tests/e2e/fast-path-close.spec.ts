@@ -101,12 +101,13 @@ async function hasRouteFor(amount: string, attempts = 8, delayMs = 2_500): Promi
   return false;
 }
 
-// ── UI driver: home -> analyze -> execute -> sign once -> complete ───────────────
+// ── UI driver: home -> analyze -> review -> execute -> sign once -> complete ─────
 //
 // Mirrors the redesigned single-transaction flow: the home page collects ONLY the
 // source public key; the destination + memo step appears on /analyze once every
 // asset is resolved (convertible assets auto-resolve). "Begin execution" then leads
-// to /execute, where the secret key is entered once and the fused close is signed.
+// to /review, the whole-plan gate; confirming there leads to /execute, where the
+// secret key is entered once and the fused close is signed.
 
 async function driveFusedClose(
   page: Page,
@@ -142,6 +143,14 @@ async function driveFusedClose(
 
   await expect(beginButton).toBeEnabled();
   await beginButton.click();
+
+  // Whole-plan review gate: the user must explicitly confirm before anything is built.
+  await expect(page).toHaveURL(/\/testnet\/review/);
+  const proceedButton = page.getByRole("button", {
+    name: /I understand this plan and want to proceed/i,
+  });
+  await expect(proceedButton).toBeEnabled();
+  await proceedButton.click();
 
   // Execute: a single fused close carries the merge, so the panel surfaces the
   // irreversible-merge warning and the "Sign and merge account" button.

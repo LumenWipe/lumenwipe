@@ -132,6 +132,14 @@ async function enterDestinationAndBegin(page: Page, destination: string): Promis
   await expect(beginButton).toBeEnabled();
   await beginButton.click();
 
+  // Whole-plan review gate: the user must explicitly confirm before anything is built.
+  await expect(page).toHaveURL(/\/testnet\/review/);
+  const proceedButton = page.getByRole("button", {
+    name: /I understand this plan and want to proceed/i,
+  });
+  await expect(proceedButton).toBeEnabled();
+  await proceedButton.click();
+
   await expect(page).toHaveURL(/\/testnet\/execute/);
 }
 
