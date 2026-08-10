@@ -1,6 +1,6 @@
 import { PATH_ROUTING_API_URLS } from "@/config/networks";
 import type { Network } from "@/config/networks";
-import { SPONSORSHIP_MAX_OPERATIONS_SCANNED } from "@/config/constants";
+import { SPONSORSHIP_MAX_OPERATIONS_SCANNED, SE_API_TIMEOUT_MS } from "@/config/constants";
 import { horizonAssetToString } from "@/lib/utils/assets";
 import { parseClaimPredicate } from "@/lib/stellar/horizon-adapter";
 import {
@@ -13,6 +13,27 @@ import type { SponsoredEntry } from "@lumenwipe/types";
 const OPERATIONS_PAGE_LIMIT = 200;
 const CB_PAGE_LIMIT = 200;
 const CB_MAX_TOTAL = 1000;
+// How many owners' live state we fetch concurrently in enumerateSponsoredEntries - a
+// sponsor of many accounts must not self-inflict rate limiting or let one hung
+// connection stall the whole read indefinitely.
+const OWNER_FETCH_CONCURRENCY = 10;
+
+// Same AbortController + setTimeout idiom as apps/api/src/lib/se-api/client.ts, applied
+// to every fetch in this module so a slow/hung Horizon-compatible endpoint can't stall
+// enumeration indefinitely.
+async function fetchWithTimeout(url: string): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SE_API_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      signal: controller.signal,
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 interface HorizonOperation {
   type: string;
@@ -64,7 +85,7 @@ async function discoverSponsorshipCandidates(
 
     let res: Response;
     try {
-      res = await fetch(nextUrl, { headers: { Accept: "application/json" }, cache: "no-store" });
+      res = await fetchWithTimeout(nextUrl);
     } catch {
       incomplete = true;
       break;
@@ -176,10 +197,7 @@ async function fetchOwnerLiveState(
   if (!base) return empty;
 
   try {
-    const accountRes = await fetch(`${base}/accounts/${owner}`, {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
+    const accountRes = await fetchWithTimeout(`${base}/accounts/${owner}`);
     if (!accountRes.ok) return empty;
     const account = (await accountRes.json()) as HorizonAccountForSponsorship;
 
@@ -197,31 +215,74 @@ async function fetchOwnerLiveState(
     const dataSponsors: Record<string, string | null> = {};
     for (const key of dataKeys) {
       try {
-        const dataRes = await fetch(`${base}/accounts/${owner}/data/${key}`, {
-          headers: { Accept: "application/json" },
-          cache: "no-store",
-        });
-        dataSponsors[key] = dataRes.ok ? ((await dataRes.json()).sponsor ?? null) : null;
+        // Data-entry names are arbitrary strings and can contain "/", "#", "?", spaces,
+        // etc. - encode, or such a name silently truncates the path and queries a
+        // different key entirely (a wrong-inclusion risk, not just a missed one).
+        const dataRes = await fetchWithTimeout(
+          `${base}/accounts/${owner}/data/${encodeURIComponent(key)}`
+        );
+        if (dataRes.status === 404) {
+          // Genuine "this data entry doesn't exist (or isn't sponsored)" - null is correct.
+          dataSponsors[key] = null;
+        } else if (!dataRes.ok) {
+          // Any other non-OK (429/500/503/...) is an unknown state, not a confirmed
+          // "not sponsored" - must not be silently recorded as null.
+          return {
+            ...empty,
+            accountSponsor: account.sponsor ?? null,
+            trustlineSponsors,
+            signerSponsors,
+            fetchFailed: true,
+          };
+        } else {
+          dataSponsors[key] = ((await dataRes.json()).sponsor ?? null) as string | null;
+        }
       } catch {
-        return { ...empty, accountSponsor: account.sponsor ?? null, trustlineSponsors, signerSponsors };
+        return {
+          ...empty,
+          accountSponsor: account.sponsor ?? null,
+          trustlineSponsors,
+          signerSponsors,
+          fetchFailed: true,
+        };
       }
     }
 
     const offerSponsors: Record<string, string | null> = {};
+    let offersFetchFailed = false;
     if (needsOffers) {
       let nextUrl: string | null = `${base}/accounts/${owner}/offers?limit=200`;
       while (nextUrl) {
-        const res: Response = await fetch(nextUrl, {
-          headers: { Accept: "application/json" },
-          cache: "no-store",
-        });
-        if (!res.ok) break;
+        let res: Response;
+        try {
+          res = await fetchWithTimeout(nextUrl);
+        } catch {
+          offersFetchFailed = true;
+          break;
+        }
+        if (!res.ok) {
+          offersFetchFailed = true;
+          break;
+        }
         const page = (await res.json()) as HorizonOffersPage;
         const records = page._embedded?.records ?? [];
         for (const o of records) offerSponsors[String(o.id)] = o.sponsor ?? null;
         const nextHref = page._links?.next?.href;
         nextUrl = nextHref && records.length === 200 ? nextHref : null;
       }
+    }
+
+    if (offersFetchFailed) {
+      // Partial offer data can't be trusted either way - same "unknown, don't guess"
+      // rule as the data-entry non-OK case above.
+      return {
+        ...empty,
+        accountSponsor: account.sponsor ?? null,
+        trustlineSponsors,
+        signerSponsors,
+        dataSponsors,
+        fetchFailed: true,
+      };
     }
 
     return {
@@ -265,7 +326,7 @@ async function fetchClaimableBalancesBySponsor(
   while (nextUrl && entries.length < CB_MAX_TOTAL) {
     let res: Response;
     try {
-      res = await fetch(nextUrl, { headers: { Accept: "application/json" }, cache: "no-store" });
+      res = await fetchWithTimeout(nextUrl);
     } catch {
       incomplete = true;
       break;
@@ -314,9 +375,15 @@ export async function enumerateSponsoredEntries(
     }
   }
 
-  const liveStateByOwner = new Map<string, OwnerLiveState>(
-    await Promise.all(
-      Array.from(owners).map(
+  // Fan out in bounded batches rather than one unbounded Promise.all over every
+  // discovered owner - a sponsor of many accounts must not self-inflict rate limiting,
+  // and fetchWithTimeout already bounds how long any single hung connection can stall.
+  const ownerList = Array.from(owners);
+  const liveStateEntries: Array<[string, OwnerLiveState]> = [];
+  for (let i = 0; i < ownerList.length; i += OWNER_FETCH_CONCURRENCY) {
+    const batch = ownerList.slice(i, i + OWNER_FETCH_CONCURRENCY);
+    const batchResults = await Promise.all(
+      batch.map(
         async (owner): Promise<[string, OwnerLiveState]> => [
           owner,
           await fetchOwnerLiveState(
@@ -327,8 +394,10 @@ export async function enumerateSponsoredEntries(
           ),
         ]
       )
-    )
-  );
+    );
+    liveStateEntries.push(...batchResults);
+  }
+  const liveStateByOwner = new Map<string, OwnerLiveState>(liveStateEntries);
 
   return reconcileSponsoredEntries(
     address,

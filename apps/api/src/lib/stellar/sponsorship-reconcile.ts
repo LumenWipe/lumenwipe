@@ -95,6 +95,35 @@ export function reconcileSponsoredEntries(
     }
   }
 
+  // Trustline/signer candidates only fire when the specific historical operation that
+  // created or removed the sponsorship happened to carry an explicit `sponsor` field
+  // (see sponsorship.ts's discoverSponsorshipCandidates). A wrapped change_trust/
+  // set_options inside an open sponsorship bracket might not carry that field, in which
+  // case the exact-key candidate above is never produced - even though the owner's live
+  // state (already fetched, because *some* candidate for that owner triggered the fetch)
+  // contains the answer. Mirror the "offer" branch above: sweep every already-fetched
+  // owner's full current trustline/signer sponsor set, not just the keys candidates
+  // happened to name, so a missing exact-key candidate can't cause a silent omission.
+  for (const [owner, live] of liveStateByOwner) {
+    if (live.fetchFailed) continue; // already counted via the candidate loop above
+
+    for (const [asset, sponsor] of Object.entries(live.trustlineSponsors)) {
+      if (sponsor !== address) continue;
+      const dedupeKey = `trustline:${owner}:${asset}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      sponsoredEntries.push({ kind: "trustline", owner, asset });
+    }
+
+    for (const [signerKey, sponsor] of Object.entries(live.signerSponsors)) {
+      if (sponsor !== address) continue;
+      const dedupeKey = `signer:${owner}:${signerKey}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      sponsoredEntries.push({ kind: "signer", owner, signerKey });
+    }
+  }
+
   const countMismatch = sponsoredEntries.length !== numSponsoring;
 
   return {
