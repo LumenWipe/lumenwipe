@@ -23,7 +23,10 @@ async function loadSequence(id: string): Promise<string> {
   return ((await res.json()) as { sequence: string }).sequence;
 }
 
-async function submitOps(kp: Keypair, ops: ReturnType<typeof Operation.manageData>[]): Promise<void> {
+async function submitOps(
+  kp: Keypair,
+  ops: ReturnType<typeof Operation.manageData>[]
+): Promise<void> {
   const builder = new TransactionBuilder(
     new Account(kp.publicKey(), await loadSequence(kp.publicKey())),
     { fee: BASE_FEE, networkPassphrase: PASSPHRASE }
@@ -102,12 +105,53 @@ test("begin execution lands on the review gate, not directly on execute", async 
 
   await expect(page).toHaveURL(/\/testnet\/review/);
   await expect(page.getByRole("heading", { name: /Review the full plan/i })).toBeVisible();
+  const proceedButton = page.getByRole("button", {
+    name: /I understand this plan and want to proceed/i,
+  });
+  await expect(proceedButton).toBeVisible();
+
+  // Renders the resolved destination (it appears in more than one summary card, so assert
+  // presence rather than a single strict-mode match) and the plan grouped by step type - not
+  // a generic "N steps" summary. This account's plan has exactly a REMOVE_DATA_ENTRIES group
+  // (from the manageData op above) and the trailing MERGE group.
   await expect(
-    page.getByRole("button", { name: /I understand this plan and want to proceed/i })
+    page.getByText(new RegExp(destination.publicKey().slice(0, 8))).first()
   ).toBeVisible();
+  await expect(page.getByText("Remove data")).toBeVisible();
+  await expect(page.getByText("Merge account")).toBeVisible();
+
+  // Execution must not be reachable before the explicit acknowledgment is checked.
+  await expect(proceedButton).toBeDisabled();
+  await page.getByRole("checkbox").check();
+  await expect(proceedButton).toBeEnabled();
 
   // The account was never touched - the gate is client-side and read-only.
   expect(await accountExists(source.publicKey())).toBe(true);
+});
+
+test("back to analyze preserves the entered destination without discarding it", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+
+  const source = Keypair.random();
+  const destination = Keypair.random();
+  await fund(source.publicKey());
+  await fund(destination.publicKey());
+  await waitUntilIndexed(source.publicKey());
+  await submitOps(source, [Operation.manageData({ name: "lw-e2e-review-back", value: "1" })]);
+
+  await reachReviewWithoutConfirming(page, source, destination.publicKey());
+  await expect(page).toHaveURL(/\/testnet\/review/);
+
+  await page.getByRole("button", { name: /Back to analyze/i }).click();
+
+  await expect(page).toHaveURL(/\/testnet\/analyze/);
+  // /analyze re-runs the account analysis on mount, so give it the same headroom the other
+  // specs give the initial visit before asserting the pre-filled destination.
+  const destinationInput = page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/);
+  await expect(destinationInput).toBeVisible({ timeout: 30_000 });
+  await expect(destinationInput).toHaveValue(destination.publicKey());
 });
 
 test("no resumable session is persisted while sitting on the review gate", async ({ page }) => {

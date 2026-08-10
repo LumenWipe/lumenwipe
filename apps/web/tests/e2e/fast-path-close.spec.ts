@@ -149,6 +149,10 @@ async function driveFusedClose(
   const proceedButton = page.getByRole("button", {
     name: /I understand this plan and want to proceed/i,
   });
+  await expect(proceedButton).toBeDisabled();
+
+  // Explicit acknowledgment checkbox (the only checkbox on the review panel) gates the button.
+  await page.getByRole("checkbox").check();
   await expect(proceedButton).toBeEnabled();
   await proceedButton.click();
 
