@@ -100,6 +100,55 @@ test("verify › a sponsorship bracket is rejected wherever it sits in the opera
   expect(() => assertCloseIntent(intent, baseExpected())).toThrow(/unrecognized operation/);
 });
 
+test("verify › the reverse bracket orientation (closing account becomes the new sponsor) is rejected", () => {
+  // The mirror image of the attack above: instead of a third party taking over the reserve,
+  // the CLOSING account is made the new sponsor of someone else's entry, locking its own XLM
+  // into a sponsorship it never agreed to. Rejection keys on the bracket op TYPE, not on the
+  // direction of the transfer, so the same `unknown` branch catches both orientations.
+  const otherKp = Keypair.random();
+  const tx = new TransactionBuilder(sourceAccount(), {
+    fee: "400",
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(
+      Operation.beginSponsoringFutureReserves({
+        sponsoredId: otherKp.publicKey(),
+        source: SOURCE_KP.publicKey(),
+      })
+    )
+    .addOperation(
+      Operation.revokeAccountSponsorship({
+        account: OWNER_KP.publicKey(),
+        source: otherKp.publicKey(),
+      })
+    )
+    .addOperation(Operation.endSponsoringFutureReserves({ source: otherKp.publicKey() }))
+    .addOperation(Operation.accountMerge({ destination: DEST_KP.publicKey() }))
+    .setTimeout(60)
+    .build();
+  const intent = intentFromXdr(tx.toEnvelope().toXDR("base64"), Networks.TESTNET);
+  expect(() => assertCloseIntent(intent, baseExpected())).toThrow(/unrecognized operation/);
+});
+
+test("verify › revokeClaimableBalanceSponsorship stays unrecognized and is rejected", () => {
+  // Deliberately absent from normalizeOp's case list: CAP-33 requires a cooperating new sponsor
+  // to revoke a claimable balance's sponsorship, which this self-service close flow can never
+  // arrange, so the API builder skips such entries entirely (they stay a blocker). If the API
+  // ever emits one anyway, the anchor must fail closed rather than wave it through.
+  const balanceId = `00000000${"ab".repeat(32)}`.slice(0, 72);
+  const tx = new TransactionBuilder(sourceAccount(), {
+    fee: "200",
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(Operation.revokeClaimableBalanceSponsorship({ balanceId }))
+    .addOperation(Operation.accountMerge({ destination: DEST_KP.publicKey() }))
+    .setTimeout(60)
+    .build();
+  const intent = intentFromXdr(tx.toEnvelope().toXDR("base64"), Networks.TESTNET);
+  expect(intent.operations[0]).toEqual({ type: "unknown" });
+  expect(() => assertCloseIntent(intent, baseExpected())).toThrow(/unrecognized operation/);
+});
+
 test("verify › every revoke-sponsorship op kind is recognized and accepted", () => {
   const tx = new TransactionBuilder(sourceAccount(), {
     fee: "600",
