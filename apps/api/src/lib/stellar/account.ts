@@ -242,5 +242,7 @@ export async function getAccountState(address: string, network: Network): Promis
     poolShares,
     claimableBalances,
     subEntryMismatch,
+    sponsoredEntries: [],
+    sponsorshipEnumerationIncomplete: false,
   };
 }

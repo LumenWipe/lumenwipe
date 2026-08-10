@@ -27,6 +27,8 @@ function makeAccount(overrides: Partial<AccountState> = {}): AccountState {
     poolShares: [],
     claimableBalances: [],
     subEntryMismatch: false,
+    sponsoredEntries: [],
+    sponsorshipEnumerationIncomplete: false,
     ...overrides,
   };
 }

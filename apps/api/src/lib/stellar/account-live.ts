@@ -147,5 +147,7 @@ export async function getLiveAccountState(
       poolShares,
       numSubEntries,
     }),
+    sponsoredEntries: [],
+    sponsorshipEnumerationIncomplete: false,
   };
 }
