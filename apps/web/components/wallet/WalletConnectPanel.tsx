@@ -7,9 +7,10 @@ import type { WalletKitConnection } from "@/hooks/useWalletKitConnection";
 interface Props {
   connection: WalletKitConnection;
   disabled?: boolean;
-  /** Shown instead of the normal connected state when the connected wallet is
-   *  valid but wrong for the current context (e.g. doesn't match the account
-   *  being closed). Absent/undefined means no such context-specific check applies. */
+  /** Shown alongside the connected pill (not instead of it — the user should
+   *  still see what's connected) when that wallet is valid but wrong for the
+   *  current context (e.g. doesn't match the account being closed). Absent/
+   *  undefined means no such context-specific check applies. */
   mismatchWarning?: string;
 }
 
@@ -21,7 +22,11 @@ export default function WalletConnectPanel({
   const { address, connecting, error, networkMismatch, connect, disconnect } = connection;
 
   if (address) {
-    const warning = mismatchWarning ?? (networkMismatch ? "Your wallet is on a different network than this page. Switch networks in your wallet, or disconnect and reconnect the right one." : null);
+    const warning =
+      mismatchWarning ??
+      (networkMismatch
+        ? "Your wallet is on a different network than this page. Switch networks in your wallet, or disconnect and reconnect the right one."
+        : null);
 
     return (
       <div className="space-y-1.5">

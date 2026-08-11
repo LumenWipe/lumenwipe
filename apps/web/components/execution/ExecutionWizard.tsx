@@ -46,6 +46,10 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const [walletDismissed, setWalletDismissed] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [running, setRunning] = useState(false);
+  // Lets the user step out of the "failed" view to reconnect a wallet or switch
+  // to the secret-key path, without touching the store's `phase` — purely a
+  // local UI override. Reset whenever a fresh attempt starts.
+  const [changingSigner, setChangingSigner] = useState(false);
 
   const walletAddressMatchesSource =
     walletConnection.address !== null && walletConnection.address === sourceAddress;
@@ -148,6 +152,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
   const execute = useCallback(async () => {
     if (!signerRef.current || running) return;
+    setChangingSigner(false);
     setRunning(true);
     try {
       // The engine re-reads on-chain state each round, so a retry after a failure
@@ -166,7 +171,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     );
   }
 
-  const failed = phase === "STEP_FAILED" && !running;
+  const failed = phase === "STEP_FAILED" && !running && !changingSigner;
   const busy = running || progressStatus !== null;
   const walletMismatchWarning =
     walletConnection.address && !walletAddressMatchesSource
@@ -223,6 +228,13 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-destructive" />
                 <span>{lastError ?? "The close could not be completed."}</span>
               </div>
+              <button
+                type="button"
+                onClick={() => setChangingSigner(true)}
+                className="self-start text-xs text-white/60 hover:text-white underline-offset-2 hover:underline transition-colors"
+              >
+                Change wallet or key
+              </button>
               <button
                 onClick={execute}
                 disabled={!signerReady}

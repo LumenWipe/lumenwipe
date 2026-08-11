@@ -43,9 +43,10 @@ export function vettedDefaultModules(): ModuleInterface[] {
  * a project ID is configured — without it, LOBSTR (reachable only via WalletConnect)
  * is unavailable but the five vetted extension wallets still work.
  *
- * This must never throw: it runs inside a React effect with no error boundary
- * scoped tighter than the whole `/execute` page, so an uncaught error here would
- * take the secret-key fallback down too, on the screen where funds get closed.
+ * This must never throw: it runs inside a React effect on both the account-entry
+ * route and `/execute`, with no error boundary scoped tighter than the whole page
+ * in either case, so an uncaught error here would take the rest of that page's UI
+ * down too — including the secret-key fallback on the screen where funds get closed.
  */
 export function walletKitModules(): ModuleInterface[] {
   const projectId = process.env.NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID;
