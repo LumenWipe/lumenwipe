@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Package source: `@creit-tech/stellar-wallets-kit` is JSR-only (scope `creit-tech`, not the old npm `@creit.tech` v1 scope). Install with `bun add jsr:@creit-tech/stellar-wallets-kit` from inside `apps/web`. Its own `deno.json` declares `"@stellar/stellar-sdk": "npm:@stellar/stellar-sdk@^16.0.0"`, satisfied by this repo's root `overrides["@stellar/stellar-sdk"] = "16.0.1"`.
+- Package source: `@creit-tech/stellar-wallets-kit` is JSR-only (scope `creit-tech`, not the old npm `@creit.tech` v1 scope), version 2.5.0. Install via JSR's npm-compatible registry (a repo-root `.npmrc` scoping `@jsr` to `https://npm.jsr.io`, plus an aliased `bun add` from `apps/web` — see Task 1), **not** Bun's native `jsr:` specifier, which fails in this environment. Its own `deno.json` declares `"@stellar/stellar-sdk": "npm:@stellar/stellar-sdk@^16.0.0"`, satisfied by this repo's root `overrides["@stellar/stellar-sdk"] = "16.0.1"`.
 - **CLAUDE.md's CJS/ESM stellar-sdk dual-build hazard does not apply here**: every kit module's `signTransaction`/`getAddress` exchanges plain XDR/address **strings**, never `Transaction`/`Keypair` instances — confirmed by reading `freighter.module.ts`, `lobstr.module.ts`, and `wallet-connect.module.ts` upstream. No stellar-sdk object ever crosses the kit boundary, so there is no `instanceof`/class-identity risk to guard against.
 - Wallet allowlist is exactly: Freighter (`FREIGHTER_ID = "freighter"`), xBull (`XBULL_ID = "xbull"`), Albedo (`ALBEDO_ID = "albedo"`), Rabet (`RABET_ID = "rabet"`), Hana (`HANA_ID = "hana"`), plus WalletConnect (`WALLET_CONNECT_ID = "wallet_connect"`). **LOBSTR's own module (`LOBSTR_ID = "lobstr"`) is permanently excluded** — it cannot sign. LOBSTR mobile is reachable through WalletConnect instead. Adding any other wallet later (Fordefi, Klever, OneKey, Bitget, CactusLink, Dcent, Scopuly, Ledger, Trezor) is a deliberate future change to the whitelist array, never automatic.
 - WalletConnect Cloud Project ID: `ccc0507b2c00ecec3ff2d8aee670e449`. Not a secret (same trust level as an OAuth client ID) — goes in `NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID`, following this repo's existing `NEXT_PUBLIC_MEDIATOR_PUBLIC_*` convention for client-exposed public identifiers.
@@ -55,24 +55,39 @@ Not modified (reused as-is):
 ### Task 1: Add the wallet-kit dependency and WalletConnect env var
 
 **Files:**
+- Create: `.npmrc` (repo root)
 - Modify: `apps/web/package.json`
 - Modify: `apps/web/.env.example`
 - Modify: `apps/web/.env.local` (gitignored — create the key if the file doesn't already have it)
 
 **Interfaces:**
-- Produces: the `@creit-tech/stellar-wallets-kit` package available to import from `apps/web`, and `process.env.NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID` resolvable at build/runtime.
+- Produces: the `@creit-tech/stellar-wallets-kit` package available to import from `apps/web` under its real name (so every `@creit-tech/stellar-wallets-kit/...` import in later tasks resolves), and `process.env.NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID` resolvable at build/runtime.
 
-- [ ] **Step 1: Install the package from JSR**
+- [ ] **Step 1: Install the package via JSR's npm-compatible registry**
 
-Run from the repo root:
-```bash
-cd apps/web && bun add jsr:@creit-tech/stellar-wallets-kit && cd ../..
+Bun's native `jsr:` specifier (`bun add jsr:@creit-tech/stellar-wallets-kit`) resolves this particular package by shelling out to `git clone`, which fails in this environment (`error: "git clone" for "jsr:@creit-tech/stellar-wallets-kit" failed`) even though plain `git clone`/`curl` to GitHub and to jsr.io both work — a Bun-side quirk with this resolution path, not a network restriction. Use JSR's npm-compatible registry instead, which is a plain HTTPS/tarball install Bun handles the normal way.
+
+Create `.npmrc` at the **repo root** (not `apps/web`) with exactly:
 ```
+@jsr:registry=https://npm.jsr.io
+```
+
+Then, from `apps/web`, install the real package under its real name, aliased to the JSR npm-compat package:
+```bash
+cd apps/web
+bun add "@creit-tech/stellar-wallets-kit@npm:@jsr/creit-tech__stellar-wallets-kit@^2.5.0"
+cd ..
+```
+
+This must resolve to version `2.5.0` and land as `@creit-tech/stellar-wallets-kit` in `apps/web/package.json` — not `@jsr/creit-tech__stellar-wallets-kit` and not an unscoped `stellar-wallets-kit` — so that every subpath import in later tasks (`@creit-tech/stellar-wallets-kit/modules/freighter`, `/types`, `/sdk`, etc.) resolves without any code needing to know about the JSR alias.
 
 - [ ] **Step 2: Verify the version and dependency resolution**
 
-Run: `grep stellar-wallets-kit apps/web/package.json`
-Expected: a line like `"@creit-tech/stellar-wallets-kit": "^2.5.0"` (or `jsr:^2.5.0`, depending on how Bun records JSR deps) under `dependencies`.
+Run: `grep -A1 '"@creit-tech/stellar-wallets-kit"' apps/web/package.json`
+Expected: `"@creit-tech/stellar-wallets-kit": "npm:@jsr/creit-tech__stellar-wallets-kit@^2.5.0"` under `dependencies`.
+
+Run: `ls node_modules/@creit-tech/stellar-wallets-kit/package.json`
+Expected: the file exists (confirms the package landed under its real scoped name, not just the JSR alias name, and that Bun's hoisting put it at the workspace root `node_modules` alongside every other dependency).
 
 Run: `bun run --filter '@lumenwipe/web' type-check`
 Expected: PASS — confirms the new dependency's own `@stellar/stellar-sdk@^16.0.0` requirement resolves cleanly against this repo's pinned `16.0.1`, with no lockfile conflict, before any code uses the package.
@@ -100,10 +115,10 @@ NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID=ccc0507b2c00ecec3ff2d8aee670e449
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/web/package.json apps/web/bun.lock apps/web/.env.example
+git add .npmrc apps/web/package.json bun.lock apps/web/.env.example
 git commit -m "chore(web): add stellar-wallets-kit dependency and WalletConnect project id"
 ```
-(`.env.local` is gitignored and is not part of this commit.)
+(The lockfile is `bun.lock` at the repo root — this is a Bun workspaces monorepo, there is no per-package lockfile. `.env.local` is gitignored and is not part of this commit.)
 
 ---
 
