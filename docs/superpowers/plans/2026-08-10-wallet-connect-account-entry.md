@@ -100,20 +100,23 @@ export function useWalletKitConnection(network: Network): WalletKitConnection {
   const [error, setError] = useState<string | null>(null);
   const [networkMismatch, setNetworkMismatch] = useState(false);
 
-  const checkNetwork = useCallback(async () => {
+  const checkNetworkMismatch = useCallback(async (): Promise<boolean> => {
     try {
       const kit = ensureWalletKitInitialized(network);
       const { networkPassphrase } = await kit.getNetwork();
-      setNetworkMismatch(networkPassphrase !== NETWORK_PASSPHRASES[network]);
+      return networkPassphrase !== NETWORK_PASSPHRASES[network];
     } catch {
       // Some wallets don't implement getNetwork (e.g. LOBSTR via its own module,
       // per the kit's own source) — treat as unknown, not a mismatch.
-      setNetworkMismatch(false);
+      return false;
     }
   }, [network]);
 
   // Detect a session already connected earlier in the flow, instead of requiring
-  // a fresh click every time this hook mounts on a new page.
+  // a fresh click every time this hook mounts on a new page. `checkNetworkMismatch`
+  // is a pure function (not a state setter) precisely so this effect's `cancelled`
+  // guard can cover its result too — a naive version that let it set state directly
+  // could still fire after unmount.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -122,7 +125,8 @@ export function useWalletKitConnection(network: Network): WalletKitConnection {
         const { address: existing } = await kit.getAddress();
         if (cancelled) return;
         setAddress(existing);
-        await checkNetwork();
+        const mismatch = await checkNetworkMismatch();
+        if (!cancelled) setNetworkMismatch(mismatch);
       } catch {
         // No existing session — nothing to restore.
       }
@@ -130,7 +134,7 @@ export function useWalletKitConnection(network: Network): WalletKitConnection {
     return () => {
       cancelled = true;
     };
-  }, [network, checkNetwork]);
+  }, [network, checkNetworkMismatch]);
 
   useEffect(() => {
     try {
@@ -151,18 +155,23 @@ export function useWalletKitConnection(network: Network): WalletKitConnection {
       const kit = ensureWalletKitInitialized(network);
       const { address: connected } = await kit.authModal();
       setAddress(connected);
-      await checkNetwork();
+      setNetworkMismatch(await checkNetworkMismatch());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not connect the wallet.");
     } finally {
       setConnecting(false);
     }
-  }, [network, checkNetwork]);
+  }, [network, checkNetworkMismatch]);
 
   const disconnect = useCallback(async () => {
-    await ensureWalletKitInitialized(network).disconnect();
-    setAddress(null);
-    setNetworkMismatch(false);
+    setError(null);
+    try {
+      await ensureWalletKitInitialized(network).disconnect();
+      setAddress(null);
+      setNetworkMismatch(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not disconnect the wallet.");
+    }
   }, [network]);
 
   return { address, connecting, error, networkMismatch, connect, disconnect };
