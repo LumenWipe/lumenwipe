@@ -356,6 +356,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const [mode, setMode] = useState<SignMode>("wallet");
   const [keyEntered, setKeyEntered] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  // True once the user has explicitly chosen the secret-key path over an available,
+  // matching wallet. Without this, the reactive sync effect below would immediately
+  // re-populate the wallet signer on the very next render — it's still connected
+  // and still matching in the background — undoing the user's choice. Reset when
+  // the user explicitly switches back to the wallet tab.
+  const [walletDismissed, setWalletDismissed] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [running, setRunning] = useState(false);
 
@@ -374,11 +380,28 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   // both an explicit "Connect wallet" click AND a session already connected during
   // account entry, which the hook detects on mount without any click at all. Only
   // treat the connected wallet as the active signer when it matches the account
-  // actually being closed and its network matches the app's; a mismatch on either
+  // actually being closed, its network matches the app's, and the user hasn't
+  // explicitly dismissed it in favor of the secret-key path; a mismatch on either
   // axis is surfaced by WalletConnectPanel's `mismatchWarning`/`networkMismatch`
   // instead of being silently accepted or silently ignored.
+  //
+  // The `else if (walletAddress !== null)` branch matters beyond the obvious
+  // "wallet disconnected" case: `useWalletKitConnection` commits `address` and
+  // `networkMismatch` in two separate state updates (there's a real `await`
+  // between them), so this effect can fire once with a matching address and no
+  // known mismatch yet, populate the signer, and then fire again a moment later
+  // once the mismatch becomes known. Without this branch, that second run would
+  // hit neither condition and leave the already-populated (but now known-bad)
+  // signer in place — this branch is what actually retracts it. It only ever
+  // clears the *wallet* side (checked via `walletAddress`, not `keyEntered`), so
+  // it can never stomp a live `SecretKeySigner`.
   useEffect(() => {
-    if (walletConnection.address && walletAddressMatchesSource && !walletConnection.networkMismatch) {
+    if (
+      !walletDismissed &&
+      walletConnection.address &&
+      walletAddressMatchesSource &&
+      !walletConnection.networkMismatch
+    ) {
       signerRef.current = new WalletKitSigner(walletConnection.address, (xdr, opts) =>
         ensureWalletKitInitialized(network).signTransaction(xdr, opts)
       );
@@ -389,15 +412,18 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
       // is what `execute()` will actually use.
       secretKeyRef.current = "";
       setKeyEntered(false);
-    } else if (!walletConnection.address) {
+    } else if (walletAddress !== null) {
       signerRef.current = null;
       setWalletAddress(null);
     }
-    // If a wallet is connected but doesn't match (address or network), deliberately
-    // leave signerRef/walletAddress untouched — WalletConnectPanel shows why, and
-    // the user must disconnect/reconnect the right one rather than have the app
-    // silently pick a signer that doesn't correspond to what's being closed.
-  }, [walletConnection.address, walletConnection.networkMismatch, walletAddressMatchesSource, network]);
+  }, [
+    walletConnection.address,
+    walletConnection.networkMismatch,
+    walletAddressMatchesSource,
+    walletDismissed,
+    walletAddress,
+    network,
+  ]);
 
   // Wipe signing material when the wizard unmounts (navigation away).
   useEffect(() => () => clearSigner(), [clearSigner]);
@@ -423,8 +449,11 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
         signerRef.current = new SecretKeySigner(secretKeyRef.current);
         // Entering a working secret key supersedes any previously connected wallet —
         // exactly one signer is ever live, so the two tabs can never disagree about
-        // which one `execute()` will actually use.
+        // which one `execute()` will actually use. Marking the wallet dismissed also
+        // stops the reactive sync effect above from immediately re-populating it
+        // just because it's still connected in the background.
         setWalletAddress(null);
+        setWalletDismissed(true);
       } else if (!walletAddress) {
         // Only clear the shared signer if a wallet isn't the one currently holding
         // it — otherwise typing an incomplete key while a wallet is connected would
@@ -525,7 +554,13 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               <div className="flex gap-2 rounded-lg bg-white/[0.03] p-1">
                 <button
                   type="button"
-                  onClick={() => setMode("wallet")}
+                  onClick={() => {
+                    setMode("wallet");
+                    // Explicitly re-engaging the wallet tab re-arms the reactive
+                    // sync effect above, so an already-connected, matching wallet
+                    // is picked back up without requiring another "Connect" click.
+                    setWalletDismissed(false);
+                  }}
                   className={cn(
                     "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
                     mode === "wallet"
