@@ -92,19 +92,34 @@ export function useCloseExecution() {
             }),
           signAndSubmit: async (tx: CloseTransaction) => {
             setProgressStatus("Signing transaction…");
+            // Computed from the exact XDR verify() approved, before any signer touches it —
+            // the anchor for both checks below. The hash covers only the transaction body
+            // (source, ops, sequence, memo, fee), never signatures, so it stays valid
+            // whether taken before or after signing.
+            const approvedHash = TransactionBuilder.fromXDR(tx.xdr, passphrase)
+              .hash()
+              .toString("hex");
             let signedXdr = await signer.sign(tx.xdr, passphrase);
+
+            // A connected wallet (WalletKitSigner) is a black box outside this app's trust
+            // boundary — unlike SecretKeySigner, which signs by parsing this exact xdr and
+            // re-serializing it (so its output can never diverge in body), an external signer
+            // could in principle return a signature over a different transaction. Assert it
+            // didn't before trusting the result any further.
+            const signedHash = TransactionBuilder.fromXDR(signedXdr, passphrase)
+              .hash()
+              .toString("hex");
+            if (signedHash !== approvedHash) {
+              throw new Error("The signed transaction does not match what you approved.");
+            }
 
             // A merge through the shared mediator is one atomic transaction: the user
             // signed the merge; the backend co-signs the mediator's forward payment. It
             // cannot change destination or amount, so funds can never be diverted.
             if (mediator && tx.covers.includes("MERGE")) {
               setProgressStatus("Co-signing the forward payment…");
-              // The user's signature already binds the exact transaction verify() approved.
               // Defense-in-depth: the mediator may ONLY add its signature — assert it did not
-              // alter the body (the tx hash is over the body, not the signatures) before submit.
-              const approvedHash = TransactionBuilder.fromXDR(signedXdr, passphrase)
-                .hash()
-                .toString("hex");
+              // alter the body before submit.
               const cosignedXdr = await requestMediatorCosignature(signedXdr, network);
               const cosigned = TransactionBuilder.fromXDR(cosignedXdr, passphrase);
               if (cosigned.hash().toString("hex") !== approvedHash) {
