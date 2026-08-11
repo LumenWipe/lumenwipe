@@ -12,6 +12,12 @@ import type { ModuleInterface } from "@creit-tech/stellar-wallets-kit/types";
  * module instead. This is a deliberate whitelist, not `defaultModules()` minus
  * Lobstr — the kit ships 13 default modules today (most unreviewed by us);
  * add a new one here only after vetting it, never automatically.
+ *
+ * Note: We import and instantiate only the vetted five module classes directly,
+ * rather than using `defaultModules({ filterBy })`, because the latter eagerly
+ * constructs every default module upfront — including ones like BitgetModule that
+ * read `window` in their constructor, which throws outside a browser environment
+ * (unit tests, SSR). Manual construction of only the vetted modules avoids this.
  */
 export const ALLOWED_DEFAULT_MODULE_IDS: readonly string[] = [
   FREIGHTER_ID,
