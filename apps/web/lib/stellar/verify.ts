@@ -1,6 +1,7 @@
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
 import { lookupExchange } from "@/lib/exchange-registry";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
+import type { AccountSigner, AccountThresholds } from "@/types/account";
 import type { TxIntent } from "@/types/close-api";
 
 /** Thrown when a server-built close transaction fails verification. Never sign past this. */
@@ -30,6 +31,16 @@ export interface CloseExpectation {
    *  balance decisions, never from the API response - the only case a raised (non-removal)
    *  `change_trust` is allowed to pass verification. */
   claimTrustlineAssets: string[];
+  /** The account's real signer set at the time it was last read, so a set_options op can be
+   *  checked against signers that actually exist on the account, not trusted from the op
+   *  alone. Sourced from the account-state read the guided flow already performs, never from
+   *  the transaction being verified. */
+  accountSigners: AccountSigner[];
+  /** The account's real per-category thresholds at the time it was last read. Not consumed by
+   *  any check in this module yet - carried through for the signature-accumulation engine
+   *  (multisig epic #97, issue #2) that computes how much signing weight a transaction
+   *  actually needs. */
+  accountThresholds: AccountThresholds;
 }
 
 /**
@@ -105,15 +116,31 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         }
         break;
       case "set_options":
-        // Signer normalization may only remove signers, never add/empower one or disable the
+        // Signer normalization may only remove signers, never add/empower one, and the signer
+        // it touches must be one that actually exists on the account - otherwise the op has no
+        // legitimate purpose in a close and its presence is unexplained. Never disables the
         // master key, and only lowers thresholds (normalization sets them to 0/1/1).
-        if (op.signerWeight !== null && op.signerWeight !== 0) {
-          throw new VerificationError("A signer would be added or empowered.");
+        if (op.signer !== null) {
+          if (op.signer.weight !== 0) {
+            throw new VerificationError("A signer would be added or empowered.");
+          }
+          const touchesKnownSigner = expected.accountSigners.some(
+            (s) => s.key === op.signer!.key && s.type === op.signer!.type
+          );
+          if (!touchesKnownSigner) {
+            throw new VerificationError(
+              "The transaction would modify a signer that is not on this account."
+            );
+          }
         }
         if (op.masterWeight === 0) {
           throw new VerificationError("The master key would be disabled.");
         }
-        if ((op.lowThreshold ?? 0) > 1 || (op.medThreshold ?? 0) > 1 || (op.highThreshold ?? 0) > 1) {
+        if (
+          (op.lowThreshold ?? 0) > 1 ||
+          (op.medThreshold ?? 0) > 1 ||
+          (op.highThreshold ?? 0) > 1
+        ) {
           throw new VerificationError("Account thresholds would be raised.");
         }
         break;
@@ -185,6 +212,8 @@ export function verifyCloseTransaction(opts: {
     mediator: string | null;
     memo: string | null;
     claimTrustlineAssets: string[];
+    accountSigners: AccountSigner[];
+    accountThresholds: AccountThresholds;
   };
 }): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);
