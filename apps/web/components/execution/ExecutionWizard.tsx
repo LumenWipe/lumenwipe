@@ -8,16 +8,22 @@ import { useDemolishStore } from "@/store/demolish";
 import { useCloseExecution } from "@/hooks/useCloseExecution";
 import { cn } from "@/lib/utils/cn";
 import SecretKeyInput from "@/components/account-entry/SecretKeyInput";
+import WalletConnectPanel from "./WalletConnectPanel";
 import PlanSidebar from "./PlanSidebar";
 import ProgressIndicator from "./ProgressIndicator";
+import { SecretKeySigner, WalletKitSigner, type TransactionSigner } from "@/lib/stellar/signer";
+import { ensureWalletKitInitialized } from "@/lib/wallet-kit/client";
 
 interface ExecutionWizardProps {
   network: Network;
 }
 
+type SignMode = "wallet" | "secret-key";
+
 export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const router = useRouter();
   const secretKeyRef = useRef<string>("");
+  const signerRef = useRef<TransactionSigner | null>(null);
 
   const executionPlan = useDemolishStore((s) => s.executionPlan);
   const destinationAddress = useDemolishStore((s) => s.destinationAddress);
@@ -26,34 +32,65 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const lastError = useDemolishStore((s) => s.lastError);
 
   const { run, progressStatus } = useCloseExecution();
+  const [mode, setMode] = useState<SignMode>("wallet");
   const [keyEntered, setKeyEntered] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [running, setRunning] = useState(false);
 
-  // Wipe the key from memory when the wizard unmounts (navigation away).
-  useEffect(() => () => void (secretKeyRef.current = ""), []);
+  const signerReady = mode === "wallet" ? walletAddress !== null : keyEntered;
 
-  // On success, wipe the key and advance to the completion screen.
+  const clearSigner = useCallback(() => {
+    secretKeyRef.current = "";
+    signerRef.current = null;
+    setKeyEntered(false);
+    setWalletAddress(null);
+  }, []);
+
+  // Wipe signing material when the wizard unmounts (navigation away).
+  useEffect(() => () => clearSigner(), [clearSigner]);
+
+  // On success, wipe signing material and advance to the completion screen.
   useEffect(() => {
     if (phase === "COMPLETE") {
-      secretKeyRef.current = "";
-      setKeyEntered(false);
+      clearSigner();
       router.push(`/${network}/complete`);
     }
-  }, [phase, network, router]);
+  }, [phase, network, router, clearSigner]);
 
   const forgetKey = useCallback(() => {
     secretKeyRef.current = "";
+    signerRef.current = null;
     setKeyEntered(false);
   }, []);
 
+  const onSecretKeyValidityChange = useCallback((valid: boolean) => {
+    setKeyEntered(valid);
+    signerRef.current = valid ? new SecretKeySigner(secretKeyRef.current) : null;
+  }, []);
+
+  const onWalletConnected = useCallback(
+    (publicKey: string) => {
+      signerRef.current = new WalletKitSigner(publicKey, (xdr, opts) =>
+        ensureWalletKitInitialized(network).signTransaction(xdr, opts)
+      );
+      setWalletAddress(publicKey);
+    },
+    [network]
+  );
+
+  const onWalletDisconnected = useCallback(() => {
+    signerRef.current = null;
+    setWalletAddress(null);
+  }, []);
+
   const execute = useCallback(async () => {
-    if (!secretKeyRef.current || running) return;
+    if (!signerRef.current || running) return;
     setRunning(true);
     try {
       // The engine re-reads on-chain state each round, so a retry after a failure
       // resumes: already-confirmed steps are not rebuilt or re-submitted.
-      await run(secretKeyRef.current);
+      await run(signerRef.current);
     } finally {
       setRunning(false);
     }
@@ -95,8 +132,8 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           <div className="flex items-start gap-2.5 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2.5 text-sm text-white/60">
             <ShieldCheck className="h-4 w-4 shrink-0 mt-0.5 text-stellar" />
             <span>
-              Every transaction is verified against your own choices — destination, asset
-              decisions, and memo — before it is signed. Anything unexpected is rejected.
+              Every transaction is verified against your own choices — destination, asset decisions,
+              and memo — before it is signed. Anything unexpected is rejected.
             </span>
           </div>
 
@@ -122,7 +159,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               </div>
               <button
                 onClick={execute}
-                disabled={!keyEntered}
+                disabled={!signerReady}
                 className="w-full py-3 px-4 rounded-xl font-semibold text-sm bg-stellar text-black hover:bg-stellar/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
               >
                 Retry
@@ -130,7 +167,41 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
             </div>
           ) : (
             <>
-              {keyEntered ? (
+              <div className="flex gap-2 rounded-lg bg-white/[0.03] p-1">
+                <button
+                  type="button"
+                  onClick={() => setMode("wallet")}
+                  className={cn(
+                    "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
+                    mode === "wallet"
+                      ? "bg-white/10 text-white"
+                      : "text-white/50 hover:text-white/80"
+                  )}
+                >
+                  Connect wallet
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode("secret-key")}
+                  className={cn(
+                    "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
+                    mode === "secret-key"
+                      ? "bg-white/10 text-white"
+                      : "text-white/50 hover:text-white/80"
+                  )}
+                >
+                  Use secret key (advanced)
+                </button>
+              </div>
+
+              {mode === "wallet" ? (
+                <WalletConnectPanel
+                  network={network}
+                  onConnected={onWalletConnected}
+                  onDisconnected={onWalletDisconnected}
+                  disabled={running}
+                />
+              ) : keyEntered ? (
                 <div className="flex items-center justify-between gap-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2.5">
                   <span className="flex items-center gap-2 text-sm text-emerald-400">
                     <CheckCircle className="h-4 w-4 shrink-0" />
@@ -147,7 +218,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               ) : (
                 <SecretKeyInput
                   secretKeyRef={secretKeyRef}
-                  onValidityChange={setKeyEntered}
+                  onValidityChange={onSecretKeyValidityChange}
                   disabled={running}
                 />
               )}
@@ -167,7 +238,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
               <button
                 onClick={execute}
-                disabled={!keyEntered || !confirmed}
+                disabled={!signerReady || !confirmed}
                 className={cn(
                   "w-full py-3 px-4 rounded-xl font-semibold text-sm transition-all",
                   "flex items-center justify-center gap-2",
