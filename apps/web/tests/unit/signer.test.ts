@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import { Account, Keypair, Networks, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
-import { SecretKeySigner } from "@/lib/stellar/signer";
+import { SecretKeySigner, WalletKitSigner } from "@/lib/stellar/signer";
 
 function unsignedXdr(sourceKeypair: Keypair): string {
   const builder = new TransactionBuilder(new Account(sourceKeypair.publicKey(), "100"), {
@@ -39,4 +39,24 @@ test("SecretKeySigner › sign() does not mutate the original unsigned xdr strin
   await signer.sign(xdr, Networks.TESTNET);
 
   expect(xdr).toBe(before);
+});
+
+test("WalletKitSigner › delegates to the injected kit signer with the right args and returns its result", async () => {
+  const calls: Array<{ xdr: string; opts: { networkPassphrase: string; address: string } }> = [];
+  const signer = new WalletKitSigner("GPUBLICKEYEXAMPLE", async (xdr, opts) => {
+    calls.push({ xdr, opts });
+    return { signedTxXdr: `signed:${xdr}` };
+  });
+
+  const result = await signer.sign("raw-xdr", Networks.TESTNET);
+
+  expect(result).toBe("signed:raw-xdr");
+  expect(calls).toEqual([
+    { xdr: "raw-xdr", opts: { networkPassphrase: Networks.TESTNET, address: "GPUBLICKEYEXAMPLE" } },
+  ]);
+});
+
+test("WalletKitSigner › publicKey is the address it was constructed with", () => {
+  const signer = new WalletKitSigner("GPUBLICKEYEXAMPLE", async () => ({ signedTxXdr: "" }));
+  expect(signer.publicKey).toBe("GPUBLICKEYEXAMPLE");
 });
