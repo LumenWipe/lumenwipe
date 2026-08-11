@@ -3,13 +3,13 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle, ShieldCheck } from "lucide-react";
-import { KitEventType } from "@creit-tech/stellar-wallets-kit/types";
 import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { useCloseExecution } from "@/hooks/useCloseExecution";
+import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
 import { cn } from "@/lib/utils/cn";
 import SecretKeyInput from "@/components/account-entry/SecretKeyInput";
-import WalletConnectPanel from "./WalletConnectPanel";
+import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import PlanSidebar from "./PlanSidebar";
 import ProgressIndicator from "./ProgressIndicator";
 import { SecretKeySigner, WalletKitSigner, type TransactionSigner } from "@/lib/stellar/signer";
@@ -27,18 +27,22 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const signerRef = useRef<TransactionSigner | null>(null);
 
   const executionPlan = useDemolishStore((s) => s.executionPlan);
+  const sourceAddress = useDemolishStore((s) => s.sourceAddress);
   const destinationAddress = useDemolishStore((s) => s.destinationAddress);
   const mediatorRequired = useDemolishStore((s) => s.mediatorRequired);
   const phase = useDemolishStore((s) => s.phase);
   const lastError = useDemolishStore((s) => s.lastError);
 
   const { run, progressStatus } = useCloseExecution();
+  const walletConnection = useWalletKitConnection(network);
   const [mode, setMode] = useState<SignMode>("wallet");
   const [keyEntered, setKeyEntered] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [running, setRunning] = useState(false);
 
+  const walletAddressMatchesSource =
+    walletConnection.address !== null && walletConnection.address === sourceAddress;
   const signerReady = mode === "wallet" ? walletAddress !== null : keyEntered;
 
   const clearSigner = useCallback(() => {
@@ -48,23 +52,34 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     setWalletAddress(null);
   }, []);
 
-  const onWalletDisconnected = useCallback(() => {
-    signerRef.current = null;
-    setWalletAddress(null);
-  }, []);
-
-  // Listen for the wallet disconnecting for the wizard's whole mount lifetime, not
-  // just while the wallet tab happens to be visible — a disconnect while the
-  // secret-key tab is showing, or mid-close, must still clear the live signer.
+  // Sync the active signer from the shared wallet-connection hook — this covers
+  // both an explicit "Connect wallet" click AND a session already connected during
+  // account entry, which the hook detects on mount without any click at all. Only
+  // treat the connected wallet as the active signer when it matches the account
+  // actually being closed and its network matches the app's; a mismatch on either
+  // axis is surfaced by WalletConnectPanel's `mismatchWarning`/`networkMismatch`
+  // instead of being silently accepted or silently ignored.
   useEffect(() => {
-    try {
-      const kit = ensureWalletKitInitialized(network);
-      return kit.on(KitEventType.DISCONNECT, onWalletDisconnected);
-    } catch {
-      // Wallet kit unavailable (e.g. SSR guard edge case) — nothing to subscribe to.
-      return undefined;
+    if (walletConnection.address && walletAddressMatchesSource && !walletConnection.networkMismatch) {
+      signerRef.current = new WalletKitSigner(walletConnection.address, (xdr, opts) =>
+        ensureWalletKitInitialized(network).signTransaction(xdr, opts)
+      );
+      setWalletAddress(walletConnection.address);
+      // A connected wallet supersedes any previously entered secret key, for the
+      // same reason the secret-key handler supersedes a connected wallet below:
+      // the secret-key tab must not keep showing "loaded" once a different signer
+      // is what `execute()` will actually use.
+      secretKeyRef.current = "";
+      setKeyEntered(false);
+    } else if (!walletConnection.address) {
+      signerRef.current = null;
+      setWalletAddress(null);
     }
-  }, [network, onWalletDisconnected]);
+    // If a wallet is connected but doesn't match (address or network), deliberately
+    // leave signerRef/walletAddress untouched — WalletConnectPanel shows why, and
+    // the user must disconnect/reconnect the right one rather than have the app
+    // silently pick a signer that doesn't correspond to what's being closed.
+  }, [walletConnection.address, walletConnection.networkMismatch, walletAddressMatchesSource, network]);
 
   // Wipe signing material when the wizard unmounts (navigation away).
   useEffect(() => () => clearSigner(), [clearSigner]);
@@ -102,21 +117,6 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     [walletAddress]
   );
 
-  const onWalletConnected = useCallback(
-    (publicKey: string) => {
-      signerRef.current = new WalletKitSigner(publicKey, (xdr, opts) =>
-        ensureWalletKitInitialized(network).signTransaction(xdr, opts)
-      );
-      setWalletAddress(publicKey);
-      // Connecting a wallet supersedes any previously entered secret key, for the
-      // same reason: the secret-key tab must not keep showing "loaded" once a
-      // different signer is what `execute()` will actually use.
-      secretKeyRef.current = "";
-      setKeyEntered(false);
-    },
-    [network]
-  );
-
   const execute = useCallback(async () => {
     if (!signerRef.current || running) return;
     setRunning(true);
@@ -139,6 +139,10 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
   const failed = phase === "STEP_FAILED" && !running;
   const busy = running || progressStatus !== null;
+  const walletMismatchWarning =
+    walletConnection.address && !walletAddressMatchesSource
+      ? `Connected to ${walletConnection.address.slice(0, 4)}…${walletConnection.address.slice(-4)}, but you're closing ${sourceAddress ? `${sourceAddress.slice(0, 4)}…${sourceAddress.slice(-4)}` : "a different account"}. Disconnect and reconnect the right wallet.`
+      : undefined;
 
   return (
     <div className="flex gap-5">
@@ -229,11 +233,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
               {mode === "wallet" ? (
                 <WalletConnectPanel
-                  network={network}
-                  address={walletAddress}
-                  onConnected={onWalletConnected}
-                  onDisconnected={onWalletDisconnected}
+                  connection={walletConnection}
                   disabled={running}
+                  mismatchWarning={walletMismatchWarning}
                 />
               ) : keyEntered ? (
                 <div className="flex items-center justify-between gap-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2.5">
