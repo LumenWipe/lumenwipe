@@ -1288,6 +1288,45 @@ And add `nonce={nonce}` to both existing `<script>` tags:
 
 (These two scripts are the only ones in `layout.tsx` today; without the nonce, the JSON-LD structured-data script and the optional Umami analytics script would silently stop executing once `script-src` goes strict, breaking SEO structured data and analytics — this is why `layout.tsx` is in scope for a task that is nominally "add CSP for the wallet kit.")
 
+**Known, accepted trade-off (not a defect):** a per-request nonce cannot be baked into a statically-generated HTML file, so any route that renders under this now-dynamic root layout can no longer be fully static-rendered at build time — confirmed by comparing production builds before/after this task: `/`, `/blog`, `/content`, `/faq`, `/how-it-works`, `/playground`, `/security`, and `/stats` move from `○ (Static)` to `ƒ (Dynamic)`. (`/blog/[slug]` is unaffected — its `generateStaticParams` keeps it `● (SSG)`; the `/[network]/*` functional routes were already dynamic before this task, for unrelated reasons.) This is the documented cost of Next.js's own official nonce + `strict-dynamic` CSP pattern, not something to avoid or work around — every request to those routes now renders server-side instead of being served as a cached static file. Accepted as-is: the security value of a strict CSP across the whole site outweighs the hosting-cost/latency difference on marketing pages. Do not attempt to scope the CSP down to only the functional routes as a "fix" — that trade-off was explicitly considered and declined.
+
+- [ ] **Step 2b: Fix the same missing-nonce problem on the blog post page**
+
+`apps/web/app/(marketing)/blog/[slug]/page.tsx` has its own inline JSON-LD script — a third one that `layout.tsx`'s Step 2 doesn't cover, easy to miss since it's a different file entirely:
+
+```tsx
+<script
+  type="application/ld+json"
+  dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+/>
+```
+
+Without a nonce, this would be silently blocked by the new CSP on every blog post — breaking that page's structured data exactly the way `layout.tsx`'s two scripts would have been broken without Step 2's fix. Add the same nonce plumbing to this file:
+
+```tsx
+import { headers } from "next/headers";
+```
+
+`BlogPostPage` is already `async` (it awaits `params`); add the nonce read alongside its existing `await params`:
+
+```tsx
+export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+```
+
+And add `nonce={nonce}` to the script tag:
+
+```tsx
+<script
+  type="application/ld+json"
+  nonce={nonce}
+  dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+/>
+```
+
+This is the only other `<script>`/`dangerouslySetInnerHTML` usage in the app besides `layout.tsx`'s two — confirmed by `grep -rn "dangerouslySetInnerHTML\|<script" apps/web/app --include="*.tsx" -l`, which returns exactly `layout.tsx` and this file. No other file needs the same fix.
+
 - [ ] **Step 3: Type-check**
 
 Run: `bun run --filter '@lumenwipe/web' type-check`
@@ -1306,7 +1345,7 @@ Then load the site in a browser, open DevTools → Console, and confirm there ar
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/web/middleware.ts apps/web/app/layout.tsx
+git add apps/web/middleware.ts apps/web/app/layout.tsx "apps/web/app/(marketing)/blog/[slug]/page.tsx"
 git commit -m "feat(web): add strict nonce-based CSP scoped to the wallet kit's requirements"
 ```
 
