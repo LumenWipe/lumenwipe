@@ -133,7 +133,9 @@ test("intentFromXdr normalizes all revoke-sponsorship operation types", () => {
 
 test("intentFromXdr decodes an ed25519 signer removal with its type and key", () => {
   const signerKey = Keypair.random().publicKey();
-  const txXdr = txWith(Operation.setOptions({ signer: { ed25519PublicKey: signerKey, weight: 0 } }));
+  const txXdr = txWith(
+    Operation.setOptions({ signer: { ed25519PublicKey: signerKey, weight: 0 } })
+  );
   const intent = intentFromXdr(txXdr, Networks.TESTNET);
   expect(intent.operations).toContainEqual({
     type: "set_options",
@@ -194,7 +196,9 @@ test("intentFromXdr decodes an ed25519 signed-payload (CAP-40) signer removal", 
 });
 
 test("intentFromXdr decodes a set_options op with no signer field as signer: null", () => {
-  const txXdr = txWith(Operation.setOptions({ lowThreshold: 0, medThreshold: 1, highThreshold: 1 }));
+  const txXdr = txWith(
+    Operation.setOptions({ lowThreshold: 0, medThreshold: 1, highThreshold: 1 })
+  );
   const intent = intentFromXdr(txXdr, Networks.TESTNET);
   expect(intent.operations).toContainEqual({
     type: "set_options",
