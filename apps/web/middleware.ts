@@ -27,7 +27,7 @@ export function middleware(request: NextRequest): NextResponse {
     `img-src 'self' data: https:`,
     `font-src 'self'`,
     `connect-src 'self' ${WALLET_CONNECT_RELAY_HOSTS} ${WALLET_CONNECT_AUX_HOSTS}`,
-    `frame-src ${WALLET_CONNECT_VERIFY_HOSTS}`,
+    `frame-src ${WALLET_CONNECT_VERIFY_HOSTS} https://www.youtube-nocookie.com`,
     `frame-ancestors 'none'`,
     `base-uri 'self'`,
     `form-action 'self'`,
