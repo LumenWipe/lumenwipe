@@ -1,8 +1,49 @@
-import { TransactionBuilder, type Asset, type Transaction } from "@stellar/stellar-sdk";
+import { TransactionBuilder, StrKey, type Asset, type Transaction } from "@stellar/stellar-sdk";
+import type { AccountSigner } from "@/types/account";
 import type { IntentOperation, TxIntent } from "@/types/close-api";
 
 function assetToString(asset: Asset): string {
   return asset.isNative() ? "native" : `${asset.getCode()}:${asset.getIssuer()}`;
+}
+
+type DecodedSetOptions = Extract<Transaction["operations"][number], { type: "setOptions" }>;
+
+// Decodes a SetOptions signer to the same { type, key, weight } shape AccountSigner uses
+// elsewhere (apps/web/types/account.ts), so verify() can match it against the
+// account's real signer set. The SDK decodes hash(x)/pre-auth-tx signers to raw buffers (unlike
+// ed25519 and ed25519-signed-payload, which it already strkey-encodes) - re-encode them so every
+// signer type produces a comparable strkey.
+function decodeSigner(signer: NonNullable<DecodedSetOptions["signer"]>): AccountSigner {
+  if ("ed25519PublicKey" in signer) {
+    return {
+      type: "ed25519_public_key",
+      key: signer.ed25519PublicKey!,
+      weight: Number(signer.weight),
+    };
+  }
+  if ("sha256Hash" in signer) {
+    const hash = signer.sha256Hash!;
+    const hashBuffer = typeof hash === "string" ? Buffer.from(hash, "base64") : hash;
+    return {
+      type: "hash_x",
+      key: StrKey.encodeSha256Hash(hashBuffer),
+      weight: Number(signer.weight),
+    };
+  }
+  if ("preAuthTx" in signer) {
+    const tx = signer.preAuthTx!;
+    const txBuffer = typeof tx === "string" ? Buffer.from(tx, "base64") : tx;
+    return {
+      type: "preauth_tx",
+      key: StrKey.encodePreAuthTx(txBuffer),
+      weight: Number(signer.weight),
+    };
+  }
+  return {
+    type: "ed25519_signed_payload",
+    key: signer.ed25519SignedPayload!,
+    weight: Number(signer.weight),
+  };
 }
 
 // Normalizes a single SDK operation to the safety-critical fields the intent declares.
@@ -45,7 +86,7 @@ function normalizeOp(op: Transaction["operations"][number]): IntentOperation {
     case "setOptions":
       return {
         type: "set_options",
-        signerWeight: op.signer ? Number(op.signer.weight) : null,
+        signer: op.signer ? decodeSigner(op.signer) : null,
         masterWeight: op.masterWeight == null ? null : Number(op.masterWeight),
         lowThreshold: op.lowThreshold == null ? null : Number(op.lowThreshold),
         medThreshold: op.medThreshold == null ? null : Number(op.medThreshold),
