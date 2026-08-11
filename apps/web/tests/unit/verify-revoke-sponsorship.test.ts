@@ -24,6 +24,8 @@ function baseExpected(): CloseExpectation {
     memoRequired: false,
     memoType: null,
     claimTrustlineAssets: [],
+    accountSigners: [],
+    accountThresholds: { low: 0, med: 1, high: 1 },
   };
 }
 

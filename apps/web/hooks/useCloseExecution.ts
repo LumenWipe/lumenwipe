@@ -56,6 +56,7 @@ export function useCloseExecution() {
       const mediator = mediatorRequired ? mediatorPublicKey : null;
       // Read dispositions/selections live so a mid-flow re-decision is honored.
       const claimableBalanceSelections = useDemolishStore.getState().claimableBalanceSelections;
+      const accountState = useDemolishStore.getState().accountState;
       const decisions = [
         ...dispositionsToDecisions(useDemolishStore.getState().assetDispositions),
         ...claimableSelectionsToDecisions(claimableBalanceSelections),
@@ -96,6 +97,11 @@ export function useCloseExecution() {
                 mediator,
                 memo,
                 claimTrustlineAssets,
+                // Empty defaults fail closed: if account state somehow wasn't loaded by
+                // execution time, a set_options op touching any signer is rejected rather
+                // than trusted.
+                accountSigners: accountState?.signers ?? [],
+                accountThresholds: accountState?.thresholds ?? { low: 0, med: 1, high: 1 },
               },
             }),
           signAndSubmit: async (tx: CloseTransaction) => {
