@@ -752,19 +752,34 @@ export function useCloseExecution() {
             }),
           signAndSubmit: async (tx: CloseTransaction) => {
             setProgressStatus("Signing transaction…");
+            // Computed from the exact XDR verify() approved, before any signer touches it —
+            // the anchor for both checks below. The hash covers only the transaction body
+            // (source, ops, sequence, memo, fee), never signatures, so it stays valid
+            // whether taken before or after signing.
+            const approvedHash = TransactionBuilder.fromXDR(tx.xdr, passphrase)
+              .hash()
+              .toString("hex");
             let signedXdr = await signer.sign(tx.xdr, passphrase);
+
+            // A connected wallet (WalletKitSigner) is a black box outside this app's trust
+            // boundary — unlike SecretKeySigner, which signs by parsing this exact xdr and
+            // re-serializing it (so its output can never diverge in body), an external signer
+            // could in principle return a signature over a different transaction. Assert it
+            // didn't before trusting the result any further.
+            const signedHash = TransactionBuilder.fromXDR(signedXdr, passphrase)
+              .hash()
+              .toString("hex");
+            if (signedHash !== approvedHash) {
+              throw new Error("The signed transaction does not match what you approved.");
+            }
 
             // A merge through the shared mediator is one atomic transaction: the user
             // signed the merge; the backend co-signs the mediator's forward payment. It
             // cannot change destination or amount, so funds can never be diverted.
             if (mediator && tx.covers.includes("MERGE")) {
               setProgressStatus("Co-signing the forward payment…");
-              // The user's signature already binds the exact transaction verify() approved.
               // Defense-in-depth: the mediator may ONLY add its signature — assert it did not
-              // alter the body (the tx hash is over the body, not the signatures) before submit.
-              const approvedHash = TransactionBuilder.fromXDR(signedXdr, passphrase)
-                .hash()
-                .toString("hex");
+              // alter the body before submit.
               const cosignedXdr = await requestMediatorCosignature(signedXdr, network);
               const cosigned = TransactionBuilder.fromXDR(cosignedXdr, passphrase);
               if (cosigned.hash().toString("hex") !== approvedHash) {
@@ -831,7 +846,9 @@ function recordMergeStats(txHash: string, network: string): void {
 }
 ```
 
-The only substantive changes from the previous version: the `Keypair` import and `import { Keypair, TransactionBuilder }` line becomes `import { TransactionBuilder }` only; `run`'s parameter changes from `secretKey: string` to `signer: TransactionSigner`; the `const keypair = Keypair.fromSecret(secretKey);` line is removed; `built.sign(keypair)` + `built.toEnvelope().toXDR("base64")` becomes `await signer.sign(tx.xdr, passphrase)`; the mediator hash check re-derives `approvedHash` from the already-signed XDR instead of the pre-signature `built` object (equivalent — the hash covers the transaction body, not its signatures, so this is not a behavior change).
+The substantive changes from the previous version: the `Keypair` import and `import { Keypair, TransactionBuilder }` line becomes `import { TransactionBuilder }` only; `run`'s parameter changes from `secretKey: string` to `signer: TransactionSigner`; the `const keypair = Keypair.fromSecret(secretKey);` line is removed; `built.sign(keypair)` + `built.toEnvelope().toXDR("base64")` becomes `await signer.sign(tx.xdr, passphrase)`; `approvedHash` is now computed once, up front, from `tx.xdr` (the exact XDR `verify()` approved) rather than from the post-signature `built`/`signedXdr` object — this is the anchor for a **new** post-sign integrity check (added after this task was first reviewed): once `signer.sign()` returns, the code re-parses `signedXdr` and asserts its hash equals `approvedHash` before doing anything else with it, and throws `"The signed transaction does not match what you approved."` if not.
+
+This new check exists because `SecretKeySigner` and `WalletKitSigner` are not equally trustworthy by construction: `SecretKeySigner.sign()` parses the exact given `xdr`, appends a signature, and re-serializes — its output can never diverge in transaction body from its input. `WalletKitSigner.sign()`, by contrast, delegates to an external, black-box wallet and returns whatever XDR it hands back, with no in-process guarantee it corresponds to the same transaction body it was asked to sign. Trusting a wallet to sign exactly what it's given is the standard model for any wallet integration (SEP-43 requires it, and the wallet's own UI is the user's last line of defense) — but this app's `verify()` architecture already goes beyond that industry baseline, and the mediator co-sign check already defends the exact same class of concern for a different actor (the mediator). Adding the equivalent check for the signer itself closes the one gap where a compromised or buggy external signer could submit a transaction never actually seen by the trust anchor: no other task in this plan touches this behavior, and the mediator check below is otherwise unaffected — `approvedHash` continues to mean "the hash of the transaction body `verify()` approved," it's simply computed earlier now, before `signer.sign()` is even called instead of after.
 
 - [ ] **Step 3: Type-check**
 
