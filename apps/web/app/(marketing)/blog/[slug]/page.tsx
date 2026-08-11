@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { Calendar, Clock, ArrowLeft } from "lucide-react";
 import { MDXRemote } from "next-mdx-remote/rsc";
@@ -91,6 +92,7 @@ const mdxComponents = {
 
 export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   let post;
   try {
@@ -129,6 +131,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
     <>
       <script
         type="application/ld+json"
+        nonce={nonce}
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 

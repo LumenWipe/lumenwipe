@@ -6,54 +6,158 @@ import { AlertCircle, CheckCircle, ShieldCheck } from "lucide-react";
 import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { useCloseExecution } from "@/hooks/useCloseExecution";
+import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
 import { cn } from "@/lib/utils/cn";
 import SecretKeyInput from "@/components/account-entry/SecretKeyInput";
+import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import PlanSidebar from "./PlanSidebar";
 import ProgressIndicator from "./ProgressIndicator";
+import { SecretKeySigner, WalletKitSigner, type TransactionSigner } from "@/lib/stellar/signer";
+import { ensureWalletKitInitialized } from "@/lib/wallet-kit/client";
 
 interface ExecutionWizardProps {
   network: Network;
 }
 
+type SignMode = "wallet" | "secret-key";
+
 export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const router = useRouter();
   const secretKeyRef = useRef<string>("");
+  const signerRef = useRef<TransactionSigner | null>(null);
 
   const executionPlan = useDemolishStore((s) => s.executionPlan);
+  const sourceAddress = useDemolishStore((s) => s.sourceAddress);
   const destinationAddress = useDemolishStore((s) => s.destinationAddress);
   const mediatorRequired = useDemolishStore((s) => s.mediatorRequired);
   const phase = useDemolishStore((s) => s.phase);
   const lastError = useDemolishStore((s) => s.lastError);
 
   const { run, progressStatus } = useCloseExecution();
+  const walletConnection = useWalletKitConnection(network);
+  const [mode, setMode] = useState<SignMode>("wallet");
   const [keyEntered, setKeyEntered] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  // True once the user has explicitly chosen the secret-key path over an available,
+  // matching wallet. Without this, the reactive sync effect below would immediately
+  // re-populate the wallet signer on the very next render — it's still connected
+  // and still matching in the background — undoing the user's choice. Reset when
+  // the user explicitly switches back to the wallet tab.
+  const [walletDismissed, setWalletDismissed] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [running, setRunning] = useState(false);
+  // Lets the user step out of the "failed" view to reconnect a wallet or switch
+  // to the secret-key path, without touching the store's `phase` — purely a
+  // local UI override. Reset whenever a fresh attempt starts.
+  const [changingSigner, setChangingSigner] = useState(false);
 
-  // Wipe the key from memory when the wizard unmounts (navigation away).
-  useEffect(() => () => void (secretKeyRef.current = ""), []);
+  const walletAddressMatchesSource =
+    walletConnection.address !== null && walletConnection.address === sourceAddress;
+  const signerReady = mode === "wallet" ? walletAddress !== null : keyEntered;
 
-  // On success, wipe the key and advance to the completion screen.
+  const clearSigner = useCallback(() => {
+    secretKeyRef.current = "";
+    signerRef.current = null;
+    setKeyEntered(false);
+    setWalletAddress(null);
+  }, []);
+
+  // Sync the active signer from the shared wallet-connection hook — this covers
+  // both an explicit "Connect wallet" click AND a session already connected during
+  // account entry, which the hook detects on mount without any click at all. Only
+  // treat the connected wallet as the active signer when it matches the account
+  // actually being closed, its network matches the app's, and the user hasn't
+  // explicitly dismissed it in favor of the secret-key path; a mismatch on either
+  // axis is surfaced by WalletConnectPanel's `mismatchWarning`/`networkMismatch`
+  // instead of being silently accepted or silently ignored.
+  //
+  // The `else if (walletAddress !== null)` branch matters beyond the obvious
+  // "wallet disconnected" case: `useWalletKitConnection` commits `address` and
+  // `networkMismatch` in two separate state updates (there's a real `await`
+  // between them), so this effect can fire once with a matching address and no
+  // known mismatch yet, populate the signer, and then fire again a moment later
+  // once the mismatch becomes known. Without this branch, that second run would
+  // hit neither condition and leave the already-populated (but now known-bad)
+  // signer in place — this branch is what actually retracts it. It only ever
+  // clears the *wallet* side (checked via `walletAddress`, not `keyEntered`), so
+  // it can never stomp a live `SecretKeySigner`.
   useEffect(() => {
-    if (phase === "COMPLETE") {
+    if (
+      !walletDismissed &&
+      walletConnection.address &&
+      walletAddressMatchesSource &&
+      !walletConnection.networkMismatch
+    ) {
+      signerRef.current = new WalletKitSigner(walletConnection.address, (xdr, opts) =>
+        ensureWalletKitInitialized(network).signTransaction(xdr, opts)
+      );
+      setWalletAddress(walletConnection.address);
+      // A connected wallet supersedes any previously entered secret key, for the
+      // same reason the secret-key handler supersedes a connected wallet below:
+      // the secret-key tab must not keep showing "loaded" once a different signer
+      // is what `execute()` will actually use.
       secretKeyRef.current = "";
       setKeyEntered(false);
+    } else if (walletAddress !== null) {
+      signerRef.current = null;
+      setWalletAddress(null);
+    }
+  }, [
+    walletConnection.address,
+    walletConnection.networkMismatch,
+    walletAddressMatchesSource,
+    walletDismissed,
+    walletAddress,
+    network,
+  ]);
+
+  // Wipe signing material when the wizard unmounts (navigation away).
+  useEffect(() => () => clearSigner(), [clearSigner]);
+
+  // On success, wipe signing material and advance to the completion screen.
+  useEffect(() => {
+    if (phase === "COMPLETE") {
+      clearSigner();
       router.push(`/${network}/complete`);
     }
-  }, [phase, network, router]);
+  }, [phase, network, router, clearSigner]);
 
   const forgetKey = useCallback(() => {
     secretKeyRef.current = "";
+    signerRef.current = null;
     setKeyEntered(false);
   }, []);
 
+  const onSecretKeyValidityChange = useCallback(
+    (valid: boolean) => {
+      setKeyEntered(valid);
+      if (valid) {
+        signerRef.current = new SecretKeySigner(secretKeyRef.current);
+        // Entering a working secret key supersedes any previously connected wallet —
+        // exactly one signer is ever live, so the two tabs can never disagree about
+        // which one `execute()` will actually use. Marking the wallet dismissed also
+        // stops the reactive sync effect above from immediately re-populating it
+        // just because it's still connected in the background.
+        setWalletAddress(null);
+        setWalletDismissed(true);
+      } else if (!walletAddress) {
+        // Only clear the shared signer if a wallet isn't the one currently holding
+        // it — otherwise typing an incomplete key while a wallet is connected would
+        // silently discard the wallet's signer without any visible feedback.
+        signerRef.current = null;
+      }
+    },
+    [walletAddress]
+  );
+
   const execute = useCallback(async () => {
-    if (!secretKeyRef.current || running) return;
+    if (!signerRef.current || running) return;
+    setChangingSigner(false);
     setRunning(true);
     try {
       // The engine re-reads on-chain state each round, so a retry after a failure
       // resumes: already-confirmed steps are not rebuilt or re-submitted.
-      await run(secretKeyRef.current);
+      await run(signerRef.current);
     } finally {
       setRunning(false);
     }
@@ -67,8 +171,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     );
   }
 
-  const failed = phase === "STEP_FAILED" && !running;
+  const failed = phase === "STEP_FAILED" && !running && !changingSigner;
   const busy = running || progressStatus !== null;
+  const walletMismatchWarning =
+    walletConnection.address && !walletAddressMatchesSource
+      ? `Connected to ${walletConnection.address.slice(0, 4)}…${walletConnection.address.slice(-4)}, but you're closing ${sourceAddress ? `${sourceAddress.slice(0, 4)}…${sourceAddress.slice(-4)}` : "a different account"}. Disconnect and reconnect the right wallet.`
+      : undefined;
 
   return (
     <div className="flex gap-5">
@@ -95,8 +203,8 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           <div className="flex items-start gap-2.5 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2.5 text-sm text-white/60">
             <ShieldCheck className="h-4 w-4 shrink-0 mt-0.5 text-stellar" />
             <span>
-              Every transaction is verified against your own choices — destination, asset
-              decisions, and memo — before it is signed. Anything unexpected is rejected.
+              Every transaction is verified against your own choices — destination, asset decisions,
+              and memo — before it is signed. Anything unexpected is rejected.
             </span>
           </div>
 
@@ -121,8 +229,15 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 <span>{lastError ?? "The close could not be completed."}</span>
               </div>
               <button
+                type="button"
+                onClick={() => setChangingSigner(true)}
+                className="self-start text-xs text-white/60 hover:text-white underline-offset-2 hover:underline transition-colors"
+              >
+                Change wallet or key
+              </button>
+              <button
                 onClick={execute}
-                disabled={!keyEntered}
+                disabled={!signerReady}
                 className="w-full py-3 px-4 rounded-xl font-semibold text-sm bg-stellar text-black hover:bg-stellar/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
               >
                 Retry
@@ -130,7 +245,46 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
             </div>
           ) : (
             <>
-              {keyEntered ? (
+              <div className="flex gap-2 rounded-lg bg-white/[0.03] p-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode("wallet");
+                    // Explicitly re-engaging the wallet tab re-arms the reactive
+                    // sync effect above, so an already-connected, matching wallet
+                    // is picked back up without requiring another "Connect" click.
+                    setWalletDismissed(false);
+                  }}
+                  className={cn(
+                    "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
+                    mode === "wallet"
+                      ? "bg-white/10 text-white"
+                      : "text-white/50 hover:text-white/80"
+                  )}
+                >
+                  Connect wallet
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode("secret-key")}
+                  className={cn(
+                    "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
+                    mode === "secret-key"
+                      ? "bg-white/10 text-white"
+                      : "text-white/50 hover:text-white/80"
+                  )}
+                >
+                  Use secret key (advanced)
+                </button>
+              </div>
+
+              {mode === "wallet" ? (
+                <WalletConnectPanel
+                  connection={walletConnection}
+                  disabled={running}
+                  mismatchWarning={walletMismatchWarning}
+                />
+              ) : keyEntered ? (
                 <div className="flex items-center justify-between gap-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2.5">
                   <span className="flex items-center gap-2 text-sm text-emerald-400">
                     <CheckCircle className="h-4 w-4 shrink-0" />
@@ -147,7 +301,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               ) : (
                 <SecretKeyInput
                   secretKeyRef={secretKeyRef}
-                  onValidityChange={setKeyEntered}
+                  onValidityChange={onSecretKeyValidityChange}
                   disabled={running}
                 />
               )}
@@ -167,7 +321,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
               <button
                 onClick={execute}
-                disabled={!keyEntered || !confirmed}
+                disabled={!signerReady || !confirmed}
                 className={cn(
                   "w-full py-3 px-4 rounded-xl font-semibold text-sm transition-all",
                   "flex items-center justify-center gap-2",
