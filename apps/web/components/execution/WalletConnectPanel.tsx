@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { CheckCircle } from "lucide-react";
 import { KitEventType } from "@creit-tech/stellar-wallets-kit/types";
 import type { Network } from "@/config/networks";
@@ -13,7 +13,7 @@ interface Props {
   disabled?: boolean;
 }
 
-export default function WalletConnectPanel({ network, onConnected, onDisconnected, disabled }: Props) {
+export default function WalletConnectPanel({ network, onConnected, onDisconnected, disabled }: Props): React.ReactElement {
   const [address, setAddress] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
