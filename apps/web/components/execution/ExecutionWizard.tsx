@@ -64,10 +64,24 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     setKeyEntered(false);
   }, []);
 
-  const onSecretKeyValidityChange = useCallback((valid: boolean) => {
-    setKeyEntered(valid);
-    signerRef.current = valid ? new SecretKeySigner(secretKeyRef.current) : null;
-  }, []);
+  const onSecretKeyValidityChange = useCallback(
+    (valid: boolean) => {
+      setKeyEntered(valid);
+      if (valid) {
+        signerRef.current = new SecretKeySigner(secretKeyRef.current);
+        // Entering a working secret key supersedes any previously connected wallet —
+        // exactly one signer is ever live, so the two tabs can never disagree about
+        // which one `execute()` will actually use.
+        setWalletAddress(null);
+      } else if (!walletAddress) {
+        // Only clear the shared signer if a wallet isn't the one currently holding
+        // it — otherwise typing an incomplete key while a wallet is connected would
+        // silently discard the wallet's signer without any visible feedback.
+        signerRef.current = null;
+      }
+    },
+    [walletAddress]
+  );
 
   const onWalletConnected = useCallback(
     (publicKey: string) => {
@@ -75,6 +89,11 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
         ensureWalletKitInitialized(network).signTransaction(xdr, opts)
       );
       setWalletAddress(publicKey);
+      // Connecting a wallet supersedes any previously entered secret key, for the
+      // same reason: the secret-key tab must not keep showing "loaded" once a
+      // different signer is what `execute()` will actually use.
+      secretKeyRef.current = "";
+      setKeyEntered(false);
     },
     [network]
   );
