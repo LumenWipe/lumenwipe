@@ -6,18 +6,27 @@ import { ArrowRight, Loader2, AlertTriangle } from "lucide-react";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
+import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
+import { cn } from "@/lib/utils/cn";
 import AddressInput from "./AddressInput";
+import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
+
+type EntryMode = "wallet" | "address";
 
 export default function AccountEntryForm() {
   const router = useRouter();
   const network = useNetworkStore((s) => s.network);
   const { setPhase, initSession } = useDemolishStore();
+  const walletConnection = useWalletKitConnection(network);
 
-  const [source, setSource] = useState("");
+  const [mode, setMode] = useState<EntryMode>("wallet");
+  const [pastedSource, setPastedSource] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canProceed = isValidGAddress(source);
+  const source = mode === "wallet" ? (walletConnection.address ?? "") : pastedSource;
+  const canProceed =
+    isValidGAddress(source) && !(mode === "wallet" && walletConnection.networkMismatch);
 
   async function handleAnalyze() {
     if (!canProceed) return;
@@ -46,14 +55,51 @@ export default function AccountEntryForm() {
 
   return (
     <div className="space-y-6">
-      <AddressInput
-        label="Account to close"
-        value={source}
-        onChange={setSource}
-        placeholder="G... (the account to merge)"
-        helpText="Enter the account you want to close. We'll analyze its state so you can review and decide what happens to each balance before choosing a destination."
-        required
-      />
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium text-white">
+          Account to close
+          <span className="text-destructive ml-1">*</span>
+        </label>
+
+        <div className="flex gap-2 rounded-lg bg-white/[0.03] p-1">
+          <button
+            type="button"
+            onClick={() => setMode("wallet")}
+            className={cn(
+              "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
+              mode === "wallet" ? "bg-white/10 text-white" : "text-white/50 hover:text-white/80"
+            )}
+          >
+            Connect wallet
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("address")}
+            className={cn(
+              "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
+              mode === "address" ? "bg-white/10 text-white" : "text-white/50 hover:text-white/80"
+            )}
+          >
+            Paste address
+          </button>
+        </div>
+
+        {mode === "wallet" ? (
+          <WalletConnectPanel connection={walletConnection} disabled={analyzing} />
+        ) : (
+          <AddressInput
+            label=""
+            value={pastedSource}
+            onChange={setPastedSource}
+            placeholder="G... (the account to merge)"
+          />
+        )}
+
+        <p className="text-xs text-muted-foreground">
+          We&apos;ll analyze this account&apos;s state so you can review and decide what happens to
+          each balance before choosing a destination.
+        </p>
+      </div>
 
       {error && (
         <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-3">
