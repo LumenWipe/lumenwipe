@@ -7,11 +7,12 @@ import { HanaModule, HANA_ID } from "@creit-tech/stellar-wallets-kit/modules/han
 import type { ModuleInterface } from "@creit-tech/stellar-wallets-kit/types";
 
 /**
- * LOBSTR's own browser-extension module is intentionally excluded: it cannot
- * sign transactions. LOBSTR mobile is reachable through the WalletConnect
- * module instead. This is a deliberate whitelist, not `defaultModules()` minus
- * Lobstr — the kit ships 13 default modules today (most unreviewed by us);
- * add a new one here only after vetting it, never automatically.
+ * LOBSTR's own browser-extension module is intentionally excluded: LOBSTR's browser
+ * extension is unreliable in practice and not something we can vouch for signing
+ * against. LOBSTR mobile is reachable through the WalletConnect module instead. This
+ * is a deliberate whitelist, not `defaultModules()` minus Lobstr — the kit ships 13
+ * default modules today (most unreviewed by us); add a new one here only after
+ * vetting it, never automatically.
  *
  * Note: We import and instantiate only the vetted five module classes directly,
  * rather than using `defaultModules({ filterBy })`, because the latter eagerly
@@ -37,23 +38,37 @@ export function vettedDefaultModules(): ModuleInterface[] {
   ];
 }
 
-/** Full module list for `StellarWalletsKit.init`, including WalletConnect. */
+/**
+ * Full module list for `StellarWalletsKit.init`. WalletConnect is included only when
+ * a project ID is configured — without it, LOBSTR (reachable only via WalletConnect)
+ * is unavailable but the five vetted extension wallets still work.
+ *
+ * This must never throw: it runs inside a React effect with no error boundary
+ * scoped tighter than the whole `/execute` page, so an uncaught error here would
+ * take the secret-key fallback down too, on the screen where funds get closed.
+ */
 export function walletKitModules(): ModuleInterface[] {
   const projectId = process.env.NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID;
-  if (!projectId) {
-    throw new Error("Missing NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID.");
+  const modules: ModuleInterface[] = [...vettedDefaultModules()];
+
+  if (projectId) {
+    modules.push(
+      new WalletConnectModule({
+        projectId,
+        metadata: {
+          name: "LumenWipe",
+          description: "Close your Stellar account safely and recover your XLM.",
+          url: process.env.NEXT_PUBLIC_APP_URL || "https://lumenwipe.com",
+          icons: ["https://lumenwipe.com/favicon-96x96.png"],
+        },
+      })
+    );
+  } else {
+    // Dev/ops visibility only — never shown to end users, and this must not throw.
+    console.warn(
+      "NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID is not set — WalletConnect (and LOBSTR) will be unavailable."
+    );
   }
 
-  return [
-    ...vettedDefaultModules(),
-    new WalletConnectModule({
-      projectId,
-      metadata: {
-        name: "LumenWipe",
-        description: "Close your Stellar account safely and recover your XLM.",
-        url: process.env.NEXT_PUBLIC_APP_URL || "https://lumenwipe.com",
-        icons: ["https://lumenwipe.com/favicon-96x96.png"],
-      },
-    }),
-  ];
+  return modules;
 }

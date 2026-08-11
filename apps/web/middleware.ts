@@ -7,14 +7,19 @@ import { NextRequest, NextResponse } from "next/server";
 const WALLET_CONNECT_RELAY_HOSTS = "wss://relay.walletconnect.org wss://relay.walletconnect.com";
 const WALLET_CONNECT_AUX_HOSTS =
   "https://pulse.walletconnect.org https://api.web3modal.org https://explorer-api.walletconnect.com";
-const WALLET_CONNECT_VERIFY_HOSTS = "https://verify.walletconnect.com https://verify.walletconnect.org";
+const WALLET_CONNECT_VERIFY_HOSTS =
+  "https://verify.walletconnect.com https://verify.walletconnect.org";
 
 export function middleware(request: NextRequest): NextResponse {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  // Next.js's dev-mode webpack build wraps every client module in eval() for fast
+  // source maps — script-src needs 'unsafe-eval' only in development. The
+  // production bundle never uses eval() and stays fully strict.
+  const scriptSrcEval = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
 
   const csp = [
     `default-src 'self'`,
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${scriptSrcEval}`,
     // The wallet kit's connect modal renders via twind (runtime CSS-in-JS),
     // which injects <style> tags with no nonce support — the one deliberate
     // exception here. script-src stays strict (no unsafe-inline, no unsafe-eval).

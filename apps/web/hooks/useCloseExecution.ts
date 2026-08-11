@@ -44,6 +44,14 @@ export function useCloseExecution() {
         return;
       }
 
+      if (signer.publicKey !== sourceAddress) {
+        setLastError(
+          "The signer you're using doesn't match the account being closed. Reconnect the correct wallet or secret key and try again."
+        );
+        setPhase("STEP_FAILED");
+        return;
+      }
+
       const passphrase = NETWORK_PASSPHRASES[network];
       const mediator = mediatorRequired ? mediatorPublicKey : null;
       // Read dispositions/selections live so a mid-flow re-decision is honored.
@@ -104,12 +112,13 @@ export function useCloseExecution() {
             // A connected wallet (WalletKitSigner) is a black box outside this app's trust
             // boundary — unlike SecretKeySigner, which signs by parsing this exact xdr and
             // re-serializing it (so its output can never diverge in body), an external signer
-            // could in principle return a signature over a different transaction. Assert it
-            // didn't before trusting the result any further.
-            const signedHash = TransactionBuilder.fromXDR(signedXdr, passphrase)
-              .hash()
-              .toString("hex");
-            if (signedHash !== approvedHash) {
+            // could in principle return a signature over a different transaction, or no
+            // signature at all. Assert both before trusting the result any further.
+            const signedTx = TransactionBuilder.fromXDR(signedXdr, passphrase);
+            if (signedTx.signatures.length === 0) {
+              throw new Error("The signer did not add a signature.");
+            }
+            if (signedTx.hash().toString("hex") !== approvedHash) {
               throw new Error("The signed transaction does not match what you approved.");
             }
 
@@ -119,11 +128,14 @@ export function useCloseExecution() {
             if (mediator && tx.covers.includes("MERGE")) {
               setProgressStatus("Co-signing the forward payment…");
               // Defense-in-depth: the mediator may ONLY add its signature — assert it did not
-              // alter the body before submit.
+              // alter the body, and that it actually added one, before submit.
               const cosignedXdr = await requestMediatorCosignature(signedXdr, network);
               const cosigned = TransactionBuilder.fromXDR(cosignedXdr, passphrase);
               if (cosigned.hash().toString("hex") !== approvedHash) {
                 throw new Error("The co-signed transaction does not match what you approved.");
+              }
+              if (cosigned.signatures.length <= signedTx.signatures.length) {
+                throw new Error("The mediator did not add its signature.");
               }
               signedXdr = cosignedXdr;
             }

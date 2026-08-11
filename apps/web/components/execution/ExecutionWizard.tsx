@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle, ShieldCheck } from "lucide-react";
+import { KitEventType } from "@creit-tech/stellar-wallets-kit/types";
 import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { useCloseExecution } from "@/hooks/useCloseExecution";
@@ -46,6 +47,24 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     setKeyEntered(false);
     setWalletAddress(null);
   }, []);
+
+  const onWalletDisconnected = useCallback(() => {
+    signerRef.current = null;
+    setWalletAddress(null);
+  }, []);
+
+  // Listen for the wallet disconnecting for the wizard's whole mount lifetime, not
+  // just while the wallet tab happens to be visible — a disconnect while the
+  // secret-key tab is showing, or mid-close, must still clear the live signer.
+  useEffect(() => {
+    try {
+      const kit = ensureWalletKitInitialized(network);
+      return kit.on(KitEventType.DISCONNECT, onWalletDisconnected);
+    } catch {
+      // Wallet kit unavailable (e.g. SSR guard edge case) — nothing to subscribe to.
+      return undefined;
+    }
+  }, [network, onWalletDisconnected]);
 
   // Wipe signing material when the wizard unmounts (navigation away).
   useEffect(() => () => clearSigner(), [clearSigner]);
@@ -97,11 +116,6 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     },
     [network]
   );
-
-  const onWalletDisconnected = useCallback(() => {
-    signerRef.current = null;
-    setWalletAddress(null);
-  }, []);
 
   const execute = useCallback(async () => {
     if (!signerRef.current || running) return;
@@ -216,6 +230,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               {mode === "wallet" ? (
                 <WalletConnectPanel
                   network={network}
+                  address={walletAddress}
                   onConnected={onWalletConnected}
                   onDisconnected={onWalletDisconnected}
                   disabled={running}

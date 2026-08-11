@@ -1,30 +1,28 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import type { JSX } from "react";
 import { CheckCircle } from "lucide-react";
-import { KitEventType } from "@creit-tech/stellar-wallets-kit/types";
 import type { Network } from "@/config/networks";
 import { ensureWalletKitInitialized } from "@/lib/wallet-kit/client";
 
 interface Props {
   network: Network;
+  address: string | null;
   onConnected: (publicKey: string) => void;
   onDisconnected: () => void;
   disabled?: boolean;
 }
 
-export default function WalletConnectPanel({ network, onConnected, onDisconnected, disabled }: Props): React.ReactElement {
-  const [address, setAddress] = useState<string | null>(null);
+export default function WalletConnectPanel({
+  network,
+  address,
+  onConnected,
+  onDisconnected,
+  disabled,
+}: Props): JSX.Element {
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const kit = ensureWalletKitInitialized(network);
-    return kit.on(KitEventType.DISCONNECT, () => {
-      setAddress(null);
-      onDisconnected();
-    });
-  }, [network, onDisconnected]);
 
   const connect = useCallback(async () => {
     setError(null);
@@ -32,7 +30,6 @@ export default function WalletConnectPanel({ network, onConnected, onDisconnecte
     try {
       const kit = ensureWalletKitInitialized(network);
       const { address: connected } = await kit.authModal();
-      setAddress(connected);
       onConnected(connected);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not connect the wallet.");
@@ -43,7 +40,6 @@ export default function WalletConnectPanel({ network, onConnected, onDisconnecte
 
   const disconnect = useCallback(async () => {
     await ensureWalletKitInitialized(network).disconnect();
-    setAddress(null);
     onDisconnected();
   }, [network, onDisconnected]);
 
