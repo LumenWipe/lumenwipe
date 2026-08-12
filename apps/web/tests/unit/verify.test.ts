@@ -220,6 +220,28 @@ test("rejects a set_options signer removal for a key that is not on the account"
   expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
 });
 
+test("rejects a signer removal when accountSigners is empty (fail-closed default)", () => {
+  // Pins the fail-closed default `useCloseExecution.ts` relies on
+  // (`accountSigners: accountState?.signers ?? []`): an empty accountSigners must never be
+  // read as "unknown, allow" for an otherwise legitimate-shaped removal.
+  const i = intent({
+    operations: [
+      setOptions({ signer: { type: "ed25519_public_key", key: REMOVED_SIGNER, weight: 0 } }),
+    ],
+  });
+  expect(() => assertCloseIntent(i, expectation({ accountSigners: [] }))).toThrow(
+    VerificationError
+  );
+});
+
+test("rejects a signer removal whose key matches a known signer but whose type does not", () => {
+  // The match must require both `key` AND `type`, not `key` alone.
+  const i = intent({
+    operations: [setOptions({ signer: { type: "hash_x", key: REMOVED_SIGNER, weight: 0 } })],
+  });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+});
+
 test("allows a set_options that only touches thresholds (no signer field)", () => {
   const i = intent({ operations: [setOptions({ signer: null, highThreshold: 1 })] });
   expect(() => assertCloseIntent(i, expectation())).not.toThrow();

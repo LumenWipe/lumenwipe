@@ -33,10 +33,15 @@ export interface CloseExpectation {
   claimTrustlineAssets: string[];
   /** The account's real signer set at the time it was last read, so a set_options op can be
    *  checked against signers that actually exist on the account, not trusted from the op
-   *  alone. Sourced from the account-state read the guided flow already performs, never from
-   *  the transaction being verified. */
+   *  alone. Sourced from the account-state read the guided flow already performs (`GET
+   *  /api/{network}/account/{id}`) - not from the transaction being verified, but also NOT a
+   *  user-input-only guarantee like `destination`/`memo`/`claimTrustlineAssets` above: it comes
+   *  from the same API that builds the transaction under verification, so this check hardens
+   *  against transaction-builder bugs and partial compromise, not against a wholly hostile API
+   *  that could keep its account-state read and its transaction mutually consistent. */
   accountSigners: AccountSigner[];
-  /** The account's real per-category thresholds at the time it was last read. Not consumed by
+  /** The account's real per-category thresholds at the time it was last read, from the same
+   *  account-state read as `accountSigners` above (same caveat applies). Not consumed by
    *  any check in this module yet - carried through for the signature-accumulation engine
    *  (multisig epic #97, issue #2) that computes how much signing weight a transaction
    *  actually needs. */
@@ -121,15 +126,16 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         // legitimate purpose in a close and its presence is unexplained. Never disables the
         // master key, and only lowers thresholds (normalization sets them to 0/1/1).
         if (op.signer !== null) {
-          if (op.signer.weight !== 0) {
+          const signer = op.signer;
+          if (signer.weight !== 0) {
             throw new VerificationError("A signer would be added or empowered.");
           }
           const touchesKnownSigner = expected.accountSigners.some(
-            (s) => s.key === op.signer!.key && s.type === op.signer!.type
+            (s) => s.key === signer.key && s.type === signer.type
           );
           if (!touchesKnownSigner) {
             throw new VerificationError(
-              "The transaction would modify a signer that is not on this account."
+              "This transaction touches a signer that wasn't on your account when we last read it. Re-run the analysis and try again."
             );
           }
         }

@@ -26,11 +26,11 @@ function txWith(...ops: ReturnType<typeof Operation.accountMerge>[]): string {
 }
 
 test("intentFromXdr normalizes change_trust and account_merge", () => {
-  const xdr = txWith(
+  const xdrValue = txWith(
     Operation.changeTrust({ asset: new Asset("USDC", ISSUER), limit: "0" }),
     Operation.accountMerge({ destination: DEST })
   );
-  const intent = intentFromXdr(xdr, Networks.TESTNET);
+  const intent = intentFromXdr(xdrValue, Networks.TESTNET);
 
   expect(intent.source).toBe(SRC);
   expect(intent.operations).toContainEqual({
@@ -43,7 +43,7 @@ test("intentFromXdr normalizes change_trust and account_merge", () => {
 });
 
 test("intentFromXdr captures the conversion floor and self-payment destination", () => {
-  const xdr = txWith(
+  const xdrValue = txWith(
     Operation.pathPaymentStrictSend({
       sendAsset: new Asset("USDC", ISSUER),
       sendAmount: "120.50",
@@ -55,7 +55,7 @@ test("intentFromXdr captures the conversion floor and self-payment destination",
     Operation.changeTrust({ asset: new Asset("USDC", ISSUER), limit: "0" }),
     Operation.accountMerge({ destination: DEST })
   );
-  const intent = intentFromXdr(xdr, Networks.TESTNET);
+  const intent = intentFromXdr(xdrValue, Networks.TESTNET);
 
   expect(intent.operations[0]).toEqual({
     type: "path_payment_strict_send",

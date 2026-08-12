@@ -11,8 +11,10 @@ type DecodedSetOptions = Extract<Transaction["operations"][number], { type: "set
 // elsewhere (apps/api/src/lib/stellar/account.ts:27-53), so verify() can match it against the
 // account's real signer set. The SDK decodes hash(x)/pre-auth-tx signers to raw buffers (unlike
 // ed25519 and ed25519-signed-payload, which it already strkey-encodes) - re-encode them so every
-// signer type produces a comparable strkey.
-function decodeSigner(signer: NonNullable<DecodedSetOptions["signer"]>): AccountSigner {
+// signer type produces a comparable strkey. Mirrors parseXdrSigner's fail-closed shape
+// (apps/api/src/lib/stellar/account.ts:27-52): an unrecognized SignerKey arm returns null rather
+// than silently falling through to the last branch.
+function decodeSigner(signer: NonNullable<DecodedSetOptions["signer"]>): AccountSigner | null {
   if ("ed25519PublicKey" in signer) {
     return {
       type: "ed25519_public_key",
@@ -21,28 +23,30 @@ function decodeSigner(signer: NonNullable<DecodedSetOptions["signer"]>): Account
     };
   }
   if ("sha256Hash" in signer) {
-    const hash = signer.sha256Hash!;
-    const hashBuffer = typeof hash === "string" ? Buffer.from(hash, "base64") : hash;
+    // The decode path (Transaction.operations via TransactionBuilder.fromXDR) always yields a
+    // raw Buffer here - the SDK's `Buffer | string` type only allows `string` for the
+    // operation-*building* input, never what decoding produces.
     return {
       type: "hash_x",
-      key: StrKey.encodeSha256Hash(hashBuffer),
+      key: StrKey.encodeSha256Hash(signer.sha256Hash! as Buffer),
       weight: Number(signer.weight),
     };
   }
   if ("preAuthTx" in signer) {
-    const tx = signer.preAuthTx!;
-    const txBuffer = typeof tx === "string" ? Buffer.from(tx, "base64") : tx;
     return {
       type: "preauth_tx",
-      key: StrKey.encodePreAuthTx(txBuffer),
+      key: StrKey.encodePreAuthTx(signer.preAuthTx! as Buffer),
       weight: Number(signer.weight),
     };
   }
-  return {
-    type: "ed25519_signed_payload",
-    key: signer.ed25519SignedPayload!,
-    weight: Number(signer.weight),
-  };
+  if ("ed25519SignedPayload" in signer) {
+    return {
+      type: "ed25519_signed_payload",
+      key: signer.ed25519SignedPayload!,
+      weight: Number(signer.weight),
+    };
+  }
+  return null;
 }
 
 // Normalizes a single SDK operation to the safety-critical fields the intent declares.

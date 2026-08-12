@@ -4,7 +4,7 @@
 
 **Issue:** [LumenWipe/lumenwipe#98](https://github.com/LumenWipe/lumenwipe/issues/98) — sub-issue 1/6 of the multisig-hardening epic (#97), per `docs/superpowers/specs/2026-08-11-multisig-hardening-design.md`.
 
-**Goal:** Stop collapsing a `SetOptions` signer-removal operation to a bare weight number. Carry the signer's real type and key (ed25519, hash(x), pre-auth-tx, ed25519 signed-payload) through the API's intent serializer, the web's independent trust-anchor decoder, and `verify()`'s `CloseExpectation`, so `verify()` can check a `SetOptions` op against the account's *actual* signer set instead of judging the op in isolation. Foundation for the multisig epic; no user-facing behavior changes beyond a new rejection path for an op touching a signer that isn't really on the account.
+**Goal:** Stop collapsing a `SetOptions` signer-removal operation to a bare weight number. Carry the signer's real type and key (ed25519, hash(x), pre-auth-tx, ed25519 signed-payload) through the API's intent serializer, the web's independent trust-anchor decoder, and `verify()`'s `CloseExpectation`, so `verify()` can check a `SetOptions` op against the account's _actual_ signer set instead of judging the op in isolation. Foundation for the multisig epic; no user-facing behavior changes beyond a new rejection path for an op touching a signer that isn't really on the account.
 
 **Architecture:** Two independent, already-duplicated decode pipelines exist by design — `apps/api/src/lib/stellar/intent/serialize.ts` (server-declared `intent` on `CloseTransaction`, informational) and `apps/web/lib/stellar/intent/serialize.ts` (the client's own independent re-decode of the raw XDR, which `verify()` actually trusts). Both currently reduce a `SetOptions` signer to a number or a canned string. Both get the same fix: decode the SDK's discriminated `Signer` union to the same `{ type, key, weight }` shape `AccountSigner` already uses elsewhere in the codebase (`packages/types/src/account.ts`), re-encoding the raw `Buffer` the SDK returns for hash(x)/pre-auth-tx signers to strkey via `StrKey.encodeSha256Hash`/`StrKey.encodePreAuthTx` — exactly mirroring the existing `parseXdrSigner` helper in `apps/api/src/lib/stellar/account.ts:27-53`, so the resulting key strings are directly comparable to `AccountState.signers[].key`. `verify()`'s `CloseExpectation` then gains the account's real `signers`/`thresholds` (already read into `AccountState` and already sitting in the web `accountState` store — no new read), and the `set_options` check in `assertCloseIntent` uses it to confirm the touched signer is one that genuinely exists on the account, not just that its weight is 0.
 
@@ -14,7 +14,7 @@
 
 - Strict TypeScript, no `any` (use `unknown` + a guard); explicit return types on exported functions.
 - Prettier formatting: double quotes, semicolons, printWidth 100 — run `bun run format` if unsure.
-- Comments only when the *why* is non-obvious (this codebase already does this consistently — match the existing tone).
+- Comments only when the _why_ is non-obvious (this codebase already does this consistently — match the existing tone).
 - Bug fixes/behavior changes require a unit test; this touches the trust anchor (`verify()`), so **every** new check needs both a positive and negative test.
 - `bun type-check && bun lint && bun test` must pass across `apps/api`, `apps/web`, and `packages/types` before this is done.
 - Never mix `require()`/`import` of `@stellar/stellar-sdk` in the same runtime (not at risk here — both serialize.ts files already import it correctly, one per app).
@@ -26,11 +26,13 @@
 ## Task 1: API-side signer identity (`packages/types` + `apps/api`)
 
 **Files:**
+
 - Modify: `packages/types/src/close-api.ts` (the `set_options` variant of `IntentOperation`)
 - Modify: `apps/api/src/lib/stellar/intent/serialize.ts:1-2,45-46`
 - Modify: `apps/api/tests/unit/intent-serialize.test.ts`
 
 **Interfaces:**
+
 - Consumes: `AccountSigner` from `packages/types/src/account.ts` (`{ key: string; weight: number; type: "ed25519_public_key" | "hash_x" | "preauth_tx" | "ed25519_signed_payload" }`), already exported by `@lumenwipe/types`.
 - Produces: `IntentOperation`'s `set_options` variant now carries `signer: AccountSigner | null` instead of `summary: string`. `intentFromXdr` (api) populates it from the decoded XDR. This is the type Task 2 mirrors locally in `apps/web`.
 
@@ -82,7 +84,9 @@ import {
 ```ts
 test("intentFromXdr decodes an ed25519 signer removal with its type and key", () => {
   const signerKey = Keypair.random().publicKey();
-  const txXdr = txWith(Operation.setOptions({ signer: { ed25519PublicKey: signerKey, weight: 0 } }));
+  const txXdr = txWith(
+    Operation.setOptions({ signer: { ed25519PublicKey: signerKey, weight: 0 } })
+  );
   const intent = intentFromXdr(txXdr, Networks.TESTNET);
   expect(intent.operations).toContainEqual({
     type: "set_options",
@@ -143,7 +147,9 @@ test("intentFromXdr decodes an ed25519 signed-payload (CAP-40) signer removal", 
 });
 
 test("intentFromXdr decodes a set_options op with no signer field as signer: null", () => {
-  const txXdr = txWith(Operation.setOptions({ lowThreshold: 0, medThreshold: 1, highThreshold: 1 }));
+  const txXdr = txWith(
+    Operation.setOptions({ lowThreshold: 0, medThreshold: 1, highThreshold: 1 })
+  );
   const intent = intentFromXdr(txXdr, Networks.TESTNET);
   expect(intent.operations).toContainEqual({
     type: "set_options",
@@ -246,11 +252,13 @@ git commit -m "feat(api): decode setoptions signer type and key instead of a sum
 ## Task 2: Web-side signer identity (local trust-anchor type + independent decoder)
 
 **Files:**
+
 - Modify: `apps/web/types/close-api.ts` (the `set_options` variant of `IntentOperation`)
 - Modify: `apps/web/lib/stellar/intent/serialize.ts:1-2,45-53`
 - Modify: `apps/web/tests/unit/intent-serialize.test.ts`
 
 **Interfaces:**
+
 - Consumes: `AccountSigner` from `apps/web/types/account.ts` (identical shape to `packages/types`' — local duplicate, per the Global Constraints note).
 - Produces: same `set_options.signer: AccountSigner | null` shape as Task 1, but decoded independently by the web's own `intentFromXdr` (this is the function `verify()` actually calls — see Task 3).
 
@@ -351,10 +359,12 @@ git commit -m "feat(web): decode setoptions signer type and key instead of a bar
 ## Task 3: Extend `verify()`'s trust anchor with the account's real signer set
 
 **Files:**
+
 - Modify: `apps/web/lib/stellar/verify.ts`
 - Modify: `apps/web/tests/unit/verify.test.ts`
 
 **Interfaces:**
+
 - Consumes: `IntentOperation`'s new `set_options.signer: AccountSigner | null` (Task 2); `AccountSigner`/`AccountThresholds` from `@/types/account`.
 - Produces: `CloseExpectation` gains two new **required** fields (`accountSigners: AccountSigner[]`, `accountThresholds: AccountThresholds`) — Task 4's call site must supply them or the build fails. `verifyCloseTransaction`'s public `opts.expected` gains the same two fields.
 
@@ -365,7 +375,16 @@ In `apps/web/tests/unit/verify.test.ts`:
 Add `StrKey` to the existing `@stellar/stellar-sdk` import (already imports `xdr`):
 
 ```ts
-import { Account, Asset, Keypair, Networks, Operation, StrKey, TransactionBuilder, xdr } from "@stellar/stellar-sdk";
+import {
+  Account,
+  Asset,
+  Keypair,
+  Networks,
+  Operation,
+  StrKey,
+  TransactionBuilder,
+  xdr,
+} from "@stellar/stellar-sdk";
 ```
 
 Add a new fixture constant near the top (with `SRC`, `DEST`, etc.):
@@ -417,7 +436,9 @@ Update the one existing test that used the old shape — `"rejects a set_options
 ```ts
 test("rejects a set_options that adds or empowers a signer", () => {
   const i = intent({
-    operations: [setOptions({ signer: { type: "ed25519_public_key", key: REMOVED_SIGNER, weight: 1 } })],
+    operations: [
+      setOptions({ signer: { type: "ed25519_public_key", key: REMOVED_SIGNER, weight: 1 } }),
+    ],
   });
   expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
 });
@@ -575,7 +596,7 @@ Expected: PASS, all tests including the 4 new ones.
 - [ ] **Step 7: Type-check and lint**
 
 Run: `cd apps/web && bun run type-check && bun run lint`
-Expected: FAIL at this point — `apps/web/hooks/useCloseExecution.ts` calls `verifyCloseTransaction` without the two new required fields. This is expected; Task 4 fixes it. Confirm the *only* failure is that one call site (read the error output) before moving to Task 4.
+Expected: FAIL at this point — `apps/web/hooks/useCloseExecution.ts` calls `verifyCloseTransaction` without the two new required fields. This is expected; Task 4 fixes it. Confirm the _only_ failure is that one call site (read the error output) before moving to Task 4.
 
 - [ ] **Step 8: Commit**
 
@@ -589,9 +610,11 @@ git commit -m "feat(web): check setoptions signer removals against the account's
 ## Task 4: Wire the account's real signer set into the execution hook
 
 **Files:**
+
 - Modify: `apps/web/hooks/useCloseExecution.ts`
 
 **Interfaces:**
+
 - Consumes: `verifyCloseTransaction`'s extended `opts.expected` (Task 3); `useDemolishStore`'s existing `accountState: AccountState | null` (`apps/web/store/demolish.ts` — already populated by the analyze/preflight flow, no new read needed).
 - Produces: nothing new for later tasks — this closes the loop for issue #98.
 
@@ -600,8 +623,8 @@ git commit -m "feat(web): check setoptions signer removals against the account's
 In `apps/web/hooks/useCloseExecution.ts`, inside the `run` callback, add a line near the other "read live so a mid-flow re-decision is honored" reads (after the `claimableBalanceSelections` line, before `decisions`):
 
 ```ts
-      const claimableBalanceSelections = useDemolishStore.getState().claimableBalanceSelections;
-      const accountState = useDemolishStore.getState().accountState;
+const claimableBalanceSelections = useDemolishStore.getState().claimableBalanceSelections;
+const accountState = useDemolishStore.getState().accountState;
 ```
 
 Update the `verify` callback passed to `runClose` (currently lines 89-100):
@@ -652,9 +675,11 @@ git commit -m "feat(web): pass the account's real signer set into verify()"
 ## Task 5: Remove the dead `requiredSignatureCount` stub
 
 **Files:**
+
 - Modify: `apps/web/store/demolish.ts:32-33,119,142`
 
 **Interfaces:**
+
 - Consumes: nothing.
 - Produces: nothing — this is a deletion. Confirmed via grep that `requiredSignatureCount` has exactly three references in the entire repo (the interface field, the initial value, and the `setAccountState` computation) and zero consumers anywhere in `apps/web`. Issue #2 of the multisig epic (per `docs/superpowers/specs/2026-08-11-multisig-hardening-design.md`) owns the real per-operation threshold computation and will introduce its own state for it — keeping this stub around would leave a second dead stub, which the issue explicitly calls out to avoid.
 
@@ -663,8 +688,8 @@ git commit -m "feat(web): pass the account's real signer set into verify()"
 Delete lines 32-33:
 
 ```ts
-  // Multisig
-  requiredSignatureCount: number;
+// Multisig
+requiredSignatureCount: number;
 ```
 
 - [ ] **Step 2: Remove it from `initialState`**
@@ -722,7 +747,7 @@ Expected: no output. (Confirmed during planning that the only four references we
 
 - [ ] **Step 2: Confirm CAP-40 (ed25519 signed-payload) has no client-side gap**
 
-No code change expected — this is a confirmation to record in the PR description. `apps/api/src/lib/stellar/tx-builder/signers.ts:25-29` and `apps/api/src/lib/stellar/account.ts:42-47` already build/enumerate ed25519-signed-payload signers correctly. This plan's Task 1/2 decoders now also surface that signer type end-to-end on the client (`StrKey.encodeSignedPayload`, matching the SDK's own decode — verified during planning by reading `@stellar/stellar-sdk`'s `operation.js` decode path), and Task 3's tests exercise it explicitly. State in the PR description: *"Confirmed ed25519 signed-payload (CAP-40) enumeration/removal has no client-side gap — the new decoder in `intent/serialize.ts` surfaces it end to end, exercised by the round-trip test in `verify.test.ts`."*
+No code change expected — this is a confirmation to record in the PR description. `apps/api/src/lib/stellar/tx-builder/signers.ts:25-29` and `apps/api/src/lib/stellar/account.ts:42-47` already build/enumerate ed25519-signed-payload signers correctly. This plan's Task 1/2 decoders now also surface that signer type end-to-end on the client (`StrKey.encodeSignedPayload`, matching the SDK's own decode — verified during planning by reading `@stellar/stellar-sdk`'s `operation.js` decode path), and Task 3's tests exercise it explicitly. State in the PR description: _"Confirmed ed25519 signed-payload (CAP-40) enumeration/removal has no client-side gap — the new decoder in `intent/serialize.ts` surfaces it end to end, exercised by the round-trip test in `verify.test.ts`."_
 
 - [ ] **Step 3: Full monorepo verification**
 
@@ -737,6 +762,7 @@ Expected: PASS. If it fails, run `bun run format` and re-verify Step 3, then ame
 - [ ] **Step 5: Final review pass**
 
 Re-read the diff end to end (`git diff main...HEAD` once on a branch) against the issue's task list and acceptance criteria one more time:
+
 - [ ] `IntentOperation`'s `set_options` variant carries signer type/key (Task 1, 2).
 - [ ] `apps/web/lib/stellar/intent/serialize.ts:45-53` no longer collapses to `signerWeight` (Task 2).
 - [ ] `CloseExpectation` carries the account's real signer set and thresholds; `set_options` checks reason against it; no regression on the existing single-signer-removal case (Task 3).
