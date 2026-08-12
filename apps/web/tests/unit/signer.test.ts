@@ -60,3 +60,42 @@ test("WalletKitSigner › publicKey is the address it was constructed with", () 
   const signer = new WalletKitSigner("GPUBLICKEYEXAMPLE", async () => ({ signedTxXdr: "" }));
   expect(signer.publicKey).toBe("GPUBLICKEYEXAMPLE");
 });
+
+test("SecretKeySigner › sign() appends a second signature to an envelope that already carries one", async () => {
+  const kpA = Keypair.random();
+  const kpB = Keypair.random();
+  const xdr = unsignedXdr(kpA);
+
+  const signerA = new SecretKeySigner(kpA.secret());
+  const onceSignedXdr = await signerA.sign(xdr, Networks.TESTNET);
+
+  const signerB = new SecretKeySigner(kpB.secret());
+  const twiceSignedXdr = await signerB.sign(onceSignedXdr, Networks.TESTNET);
+
+  const finalTx = TransactionBuilder.fromXDR(twiceSignedXdr, Networks.TESTNET);
+  expect(finalTx.signatures.length).toBe(2);
+  expect(finalTx.signatures[0].hint().equals(kpA.signatureHint())).toBe(true);
+  expect(finalTx.signatures[1].hint().equals(kpB.signatureHint())).toBe(true);
+
+  // The first signature is untouched by the second sign() call.
+  const onlyA = TransactionBuilder.fromXDR(onceSignedXdr, Networks.TESTNET);
+  expect(onlyA.signatures[0].toXDR("base64")).toBe(finalTx.signatures[0].toXDR("base64"));
+});
+
+test("WalletKitSigner › passes an already-signed xdr through unmodified for the kit to append to", async () => {
+  const kpA = Keypair.random();
+  const preSignedXdr = await new SecretKeySigner(kpA.secret()).sign(
+    unsignedXdr(kpA),
+    Networks.TESTNET
+  );
+
+  let receivedXdr: string | null = null;
+  const signer = new WalletKitSigner("GPUBLICKEYEXAMPLE", async (xdr) => {
+    receivedXdr = xdr;
+    return { signedTxXdr: xdr }; // stand-in for the kit appending its own signature
+  });
+
+  await signer.sign(preSignedXdr, Networks.TESTNET);
+
+  expect(receivedXdr === preSignedXdr).toBe(true); // the class itself never strips or rebuilds the input
+});
