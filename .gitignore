@@ -52,5 +52,6 @@ blob-report/
 playwright/.cache/
 
 # Planning docs and agent working state (local only, never committed)
+/docs/plans/
 /docs/superpowers/plans/
 /.superpowers/
