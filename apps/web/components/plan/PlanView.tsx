@@ -174,11 +174,11 @@ export default function PlanView({
       const needsMediator = mediatorData.requiresMediator ?? false;
 
       // Exchange destinations go through the shared mediator. If the API can't co-sign it
-      // (no mediator configured), stop here — before the user enters a key or signs —
+      // (no mediator configured), stop here - before the user enters a key or signs -
       // rather than failing at execution time.
       if (needsMediator && mediatorData.available === false) {
         setError(
-          "Sending your balance straight to this exchange isn't available right now. Instead, merge to a personal Stellar wallet you control, then send it to the exchange from there — remember to include the exchange's deposit memo, or it won't be credited."
+          "Sending your balance straight to this exchange isn't available right now. Instead, merge to a personal Stellar wallet you control, then send it to the exchange from there - remember to include the exchange's deposit memo, or it won't be credited."
         );
         return;
       }
@@ -189,7 +189,7 @@ export default function PlanView({
       // entered their key. (The two configs are set separately; this covers the gap.)
       if (needsMediator && !getMediatorPublicKey(network)) {
         setError(
-          "Sending your balance straight to this exchange isn't available right now. Instead, merge to a personal Stellar wallet you control, then send it to the exchange from there — remember to include the exchange's deposit memo, or it won't be credited."
+          "Sending your balance straight to this exchange isn't available right now. Instead, merge to a personal Stellar wallet you control, then send it to the exchange from there - remember to include the exchange's deposit memo, or it won't be credited."
         );
         return;
       }

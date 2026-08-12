@@ -32,7 +32,7 @@ export async function rateLimitProxy(
   try {
     allowed = await checkNamespacedRateLimit(`proxy:${namespace}`, clientIp(req), PROXY_LIMIT_PER_DAY);
   } catch {
-    // Fail open — limiter trouble must never block a legitimate, irreversible close.
+    // Fail open - limiter trouble must never block a legitimate, irreversible close.
     return null;
   }
   if (allowed) return null;

@@ -10,14 +10,14 @@ Assume the attacker controls:
 - Transaction ordering and timing
 - All accounts except those requiring signatures
 - The ability to deploy contracts that mimic your interface
-- The shape of on-chain state they can legally create (entry counts, TTLs — they can even extend your entries' TTLs)
+- The shape of on-chain state they can legally create (entry counts, TTLs - they can even extend your entries' TTLs)
 
 ## What the platform rules out
 
-- **No `delegatecall`** — contracts cannot execute foreign bytecode in their own context; proxy-style hijacks don't exist.
-- **No reentrancy** — the host blocks reentrant calls, direct or indirect, on normal cross-contract paths. External calls remain failure/budget/side-effect boundaries — still order state updates deliberately.
-- **Host-managed auth replay protection** — nonces and expirations on authorization entries are enforced by the host, not by your code.
-- **Explicit authorization** — `require_auth()` is opt-in, which means *forgetting it* is the failure mode to hunt for.
+- **No `delegatecall`** - contracts cannot execute foreign bytecode in their own context; proxy-style hijacks don't exist.
+- **No reentrancy** - the host blocks reentrant calls, direct or indirect, on normal cross-contract paths. External calls remain failure/budget/side-effect boundaries - still order state updates deliberately.
+- **Host-managed auth replay protection** - nonces and expirations on authorization entries are enforced by the host, not by your code.
+- **Explicit authorization** - `require_auth()` is opt-in, which means *forgetting it* is the failure mode to hunt for.
 
 ## Vulnerability classes
 
@@ -37,7 +37,7 @@ pub fn withdraw(env: Env, to: Address, amount: i128) {
 }
 ```
 
-Every privileged path needs `require_auth()` on the right address — and "right" means the address with policy authority, loaded from storage, not a caller-supplied parameter (`who.require_auth()` on an arbitrary `who` proves nothing). Auth variants: [development.md](development.md#authorization).
+Every privileged path needs `require_auth()` on the right address - and "right" means the address with policy authority, loaded from storage, not a caller-supplied parameter (`who.require_auth()` on an arbitrary `who` proves nothing). Auth variants: [development.md](development.md#authorization).
 
 ### 2. Auth replay through middleware (missing outer `require_auth`)
 
@@ -94,11 +94,11 @@ A user-supplied contract address is arbitrary code: it can fail, trap, burn budg
 let new_balance = balance.checked_add(amount).expect("overflow");
 ```
 
-Also validate sign and range on inputs — `i128` amounts can be negative, and `transfer(from, to, -1000)` is a withdrawal from `to` if unchecked. For 256-bit types, use the `checked_*` methods (protocol 26+).
+Also validate sign and range on inputs - `i128` amounts can be negative, and `transfer(from, to, -1000)` is a withdrawal from `to` if unchecked. For 256-bit types, use the `checked_*` methods (protocol 26+).
 
 ### 6. Storage key collisions
 
-Untyped keys can silently overwrite unrelated data. Always use a `#[contracttype]` key enum — see [development.md](development.md#typed-storage-keys).
+Untyped keys can silently overwrite unrelated data. Always use a `#[contracttype]` key enum - see [development.md](development.md#typed-storage-keys).
 
 ### 7. Check-then-act races
 
@@ -121,12 +121,12 @@ The token-allowance variant: `approve` overwrites, so reducing a non-zero allowa
 
 Two distinct failure modes:
 
-- **Critical state expires**: a temporary entry silently disappears (permanently), or persistent entries archive and add restoration friction. Extend TTLs in hot paths; monitor entry TTLs in production — see [development.md](development.md#ttl-management).
+- **Critical state expires**: a temporary entry silently disappears (permanently), or persistent entries archive and add restoration friction. Extend TTLs in hot paths; monitor entry TTLs in production - see [development.md](development.md#ttl-management).
 - **TTL used as a security mechanism**: anyone can extend any entry's TTL via `ExtendFootprintTTLOp`, so "this entry expires, therefore the permission ends" is broken by design. Store an explicit deadline in the value and check it.
 
 ### 9. Trusting cross-contract return values
 
-Validate data from external contracts — allowlist oracles, sanity-check magnitudes, enforce freshness:
+Validate data from external contracts - allowlist oracles, sanity-check magnitudes, enforce freshness:
 
 ```rust
 let price: i128 = oracle_client.get_price(&asset);
@@ -137,23 +137,23 @@ if price <= 0 || price > MAX_REASONABLE_PRICE {
 
 ### 10. Resource exhaustion / fee griefing
 
-A function whose worst-case cost on attacker-shaped input exceeds network limits is a denial of service on legitimate users. Hunt for: loops bounded by user-controlled collections or entry counts, per-iteration storage reads or events, unbounded signature counts in `__check_auth`. Cap iteration counts explicitly and keep footprints small — limits and costs: [development.md](development.md#fees-and-resource-limits).
+A function whose worst-case cost on attacker-shaped input exceeds network limits is a denial of service on legitimate users. Hunt for: loops bounded by user-controlled collections or entry counts, per-iteration storage reads or events, unbounded signature counts in `__check_auth`. Cap iteration counts explicitly and keep footprints small - limits and costs: [development.md](development.md#fees-and-resource-limits).
 
 ### 11. Custom account (`__check_auth`) pitfalls
 
-- Verify `signature_payload` itself — verifying any other message authorizes arbitrary calls.
+- Verify `signature_payload` itself - verifying any other message authorizes arbitrary calls.
 - Enforce policies from `auth_contexts` (spend limits, function allowlists); ignoring it makes "policy" wallets decorative.
-- CAP-71 delegation: `get_delegated_signers()` returns **unsanitized** user input — verify each address is actually a registered delegate before calling `delegate_auth`.
+- CAP-71 delegation: `get_delegated_signers()` returns **unsanitized** user input - verify each address is actually a registered delegate before calling `delegate_auth`.
 - Details: [development.md](development.md#custom-accounts-__check_auth).
 
 ## Token-consumer review (AMMs, vaults, escrows, lenders)
 
 Any contract that takes a token address must assume it may be native XLM's SAC, a wrapped classic asset's SAC, or a custom contract:
 
-- [ ] Which tokens are accepted — allowlisted or permissionless? (Permissionless ⇒ class #4 applies)
+- [ ] Which tokens are accepted - allowlisted or permissionless? (Permissionless ⇒ class #4 applies)
 - [ ] Decimals handled? Query and store at registration; never assume 7.
 - [ ] Received amount re-checked after `transfer` where it matters? (Fee-on-transfer or non-standard tokens deliver less than requested)
-- [ ] SAC/classic quirks survivable — recipient missing a trustline, `AUTH_REQUIRED` assets, frozen accounts, issuer clawback? (Semantics: [development.md](development.md#tokens-from-the-contract-side))
+- [ ] SAC/classic quirks survivable - recipient missing a trustline, `AUTH_REQUIRED` assets, frozen accounts, issuer clawback? (Semantics: [development.md](development.md#tokens-from-the-contract-side))
 - [ ] `transfer_from` flows: does UX coordinate the allowance, and does the code auth the `spender` (not `from`)?
 - [ ] Standard token event shapes emitted, so indexers/wallets see the flows?
 
@@ -185,7 +185,7 @@ Any contract that takes a token address must assume it may be native XLM's SAC, 
 
 **Static analysis**
 
-- [Scout](https://github.com/CoinFabrik/scout-soroban) (CoinFabrik): `cargo install cargo-scout-audit && cargo scout-audit` — 20+ detectors (missing overflow checks, unprotected WASM update, unrestricted transfers, unsafe unwrap, DoS-unbounded ops). SARIF output for CI; VSCode extension available.
+- [Scout](https://github.com/CoinFabrik/scout-soroban) (CoinFabrik): `cargo install cargo-scout-audit && cargo scout-audit` - 20+ detectors (missing overflow checks, unprotected WASM update, unrestricted transfers, unsafe unwrap, DoS-unbounded ops). SARIF output for CI; VSCode extension available.
 - [Security Detectors SDK](https://github.com/OpenZeppelin/soroban-security-detectors-sdk) (OpenZeppelin): pre-built detectors (`auth_missing`, `unchecked_ft_transfer`, improper TTL extension) plus a framework for writing custom ones.
 
 **Formal verification**
@@ -193,14 +193,14 @@ Any contract that takes a token address must assume it may be native XLM's SAC, 
 - [Certora Sunbeam](https://docs.certora.com/en/latest/docs/sunbeam/index.html): specs as Rust macros (`cvlr_assert!`), operates on WASM bytecode.
 - [Komet](https://docs.runtimeverification.com/komet) (Runtime Verification): property tests + formal verification via KWasm semantics.
 
-**Monitoring**: [OpenZeppelin Monitor](https://www.openzeppelin.com/news/monitor-and-relayers-are-now-open-source) — self-hosted contract monitoring with Stellar support.
+**Monitoring**: [OpenZeppelin Monitor](https://www.openzeppelin.com/news/monitor-and-relayers-are-now-open-source) - self-hosted contract monitoring with Stellar support.
 
-**Knowledge base**: [sorobansecurity.com](https://sorobansecurity.com) — searchable audit reports and vulnerability database.
+**Knowledge base**: [sorobansecurity.com](https://sorobansecurity.com) - searchable audit reports and vulnerability database.
 
 ## Audits and bounties
 
-- **[Audit Bank](https://stellar.org/grants-and-funding/soroban-audit-bank)** — SDF-subsidized audits for SCF-funded protocols ($3M+ across 43+ audits to date). Partner firms include OtterSec, Veridise, Runtime Verification, CoinFabrik, Certora, Zellic, Code4rena. Follow-up audits trigger at TVL milestones.
-- **[Immunefi — Stellar](https://immunefi.com/bug-bounty/stellar/)** — up to $250K for core/SDK/CLI vulnerabilities (PoC required, local forks only).
-- **[Immunefi — OpenZeppelin on Stellar](https://immunefi.com/bug-bounty/openzeppelin-stellar/)** — up to $25K for the audited contracts library.
+- **[Audit Bank](https://stellar.org/grants-and-funding/soroban-audit-bank)** - SDF-subsidized audits for SCF-funded protocols ($3M+ across 43+ audits to date). Partner firms include OtterSec, Veridise, Runtime Verification, CoinFabrik, Certora, Zellic, Code4rena. Follow-up audits trigger at TVL milestones.
+- **[Immunefi - Stellar](https://immunefi.com/bug-bounty/stellar/)** - up to $250K for core/SDK/CLI vulnerabilities (PoC required, local forks only).
+- **[Immunefi - OpenZeppelin on Stellar](https://immunefi.com/bug-bounty/openzeppelin-stellar/)** - up to $25K for the audited contracts library.
 
-Before requesting an audit: run the static analyzers, complete the checklists above, document your threat model and trust assumptions, and have the test suite from [testing.md](testing.md) green — auditors' time is better spent on logic than on lint.
+Before requesting an audit: run the static analyzers, complete the checklists above, document your threat model and trust assumptions, and have the test suite from [testing.md](testing.md) green - auditors' time is better spent on logic than on lint.

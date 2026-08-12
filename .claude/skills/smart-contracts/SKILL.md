@@ -1,15 +1,15 @@
 ---
 name: smart-contracts
-description: Stellar smart contract development (Rust, soroban-sdk). Entry point with project setup, contract anatomy, and build/deploy workflow, routing to three companion files in this directory — development.md (storage/TTL, authorization, cross-contract calls, tokens, events, errors, upgrades, fees, troubleshooting), testing.md (unit, fuzz, property, fork, mutation, integration), and security.md (vulnerability classes, checklists, tooling, audits). Use when writing, testing, reviewing, securing, debugging, or shipping Stellar smart contracts, including anything the user calls "Soroban" — Soroban contracts, soroban-sdk, Soroban auth/storage/TTL errors, SEP-41 tokens, or SAC integration from contract code.
+description: Stellar smart contract development (Rust, soroban-sdk). Entry point with project setup, contract anatomy, and build/deploy workflow, routing to three companion files in this directory - development.md (storage/TTL, authorization, cross-contract calls, tokens, events, errors, upgrades, fees, troubleshooting), testing.md (unit, fuzz, property, fork, mutation, integration), and security.md (vulnerability classes, checklists, tooling, audits). Use when writing, testing, reviewing, securing, debugging, or shipping Stellar smart contracts, including anything the user calls "Soroban" - Soroban contracts, soroban-sdk, Soroban auth/storage/TTL errors, SEP-41 tokens, or SAC integration from contract code.
 user-invocable: true
 argument-hint: "[contract task]"
 ---
 
 # Stellar Smart Contracts
 
-Guide for building Stellar smart contracts in Rust. Smart contracts on Stellar were formerly branded "Soroban" — the platform name is retired, but the Rust SDK (`soroban-sdk`) and several tool names keep the prefix.
+Guide for building Stellar smart contracts in Rust. Smart contracts on Stellar were formerly branded "Soroban" - the platform name is retired, but the Rust SDK (`soroban-sdk`) and several tool names keep the prefix.
 
-This file covers setup and the core workflow. The deep dives live alongside it — **read the file that matches the task**:
+This file covers setup and the core workflow. The deep dives live alongside it - **read the file that matches the task**:
 
 | Task | File |
 |------|------|
@@ -33,24 +33,24 @@ This file covers setup and the core workflow. The deep dives live alongside it �
 
 ## Versions
 
-This skill was written against **protocol 27** (`soroban-sdk` v27, `rs-soroban-env` v27, `stellar-cli` v27). Version numbers in examples are illustrative — resolve the current ones from these sources rather than trusting any doc:
+This skill was written against **protocol 27** (`soroban-sdk` v27, `rs-soroban-env` v27, `stellar-cli` v27). Version numbers in examples are illustrative - resolve the current ones from these sources rather than trusting any doc:
 
 - **`soroban-sdk` major version tracks the protocol version** (SDK 27 ↔ protocol 27). This rule outlives any specific release.
 - Latest SDK release: [crates.io/crates/soroban-sdk](https://crates.io/crates/soroban-sdk) (or `cargo add soroban-sdk`, which resolves it). Pre-releases (`-rc.x`) exist only during a protocol rollout and must be pinned with the exact version string; [GitHub releases](https://github.com/stellar/rs-soroban-sdk/releases) lists them with changelogs.
-- Networks upgrade by validator vote, testnet before mainnet — pin the SDK major matching the network you deploy to. Live protocol version: RPC `getVersionInfo` or [Stellar Lab](https://lab.stellar.org).
-- Numeric network limits quoted here are mainnet settings at time of writing; they change by vote — [Stellar Lab's Network Limits page](https://lab.stellar.org/network-limits) and `stellar network settings --network mainnet` show the live values.
+- Networks upgrade by validator vote, testnet before mainnet - pin the SDK major matching the network you deploy to. Live protocol version: RPC `getVersionInfo` or [Stellar Lab](https://lab.stellar.org).
+- Numeric network limits quoted here are mainnet settings at time of writing; they change by vote - [Stellar Lab's Network Limits page](https://lab.stellar.org/network-limits) and `stellar network settings --network mainnet` show the live values.
 
 ## Platform constraints
 
 Contracts are Rust compiled to WebAssembly, run in a sandboxed host:
 
-- `#![no_std]` required — use `soroban_sdk` types (`String`, `Vec`, `Map`, `Symbol`), not the Rust standard library
-- Compile for the **`wasm32v1-none`** target (Rust ≥ 1.84) — the only Wasm target the Stellar runtime supports
+- `#![no_std]` required - use `soroban_sdk` types (`String`, `Vec`, `Map`, `Symbol`), not the Rust standard library
+- Compile for the **`wasm32v1-none`** target (Rust ≥ 1.84) - the only Wasm target the Stellar runtime supports
 - 128KB compiled contract size limit (network-configured)
 - `Symbol` is limited to 32 characters (`a-zA-Z0-9_`); `symbol_short!()` covers up to 9
-- Storage is rented: every entry has a TTL and can be archived — see [development.md](development.md#storage)
-- No `delegatecall`, and cross-contract reentrancy is blocked by the host — see [security.md](security.md)
-- No I/O, no networking, no clock beyond the ledger timestamp — everything a contract can do hangs off `Env`
+- Storage is rented: every entry has a TTL and can be archived - see [development.md](development.md#storage)
+- No `delegatecall`, and cross-contract reentrancy is blocked by the host - see [security.md](security.md)
+- No I/O, no networking, no clock beyond the ledger timestamp - everything a contract can do hangs off `Env`
 
 ## Project setup
 
@@ -68,7 +68,7 @@ crate-type = ["lib", "cdylib"]   # lib is needed for tests and fuzzing
 
 [dependencies]
 soroban-sdk = "27.0.0-rc.1"  # protocol 27; pre-releases need the exact version string.
-                             # Mainnet is on protocol 26 at the time of writing — use "26" there
+                             # Mainnet is on protocol 26 at the time of writing - use "26" there
                              # until the network upgrades. Check crates.io for the latest.
 
 [dev-dependencies]
@@ -109,7 +109,7 @@ pub enum Error {
     NotInitialized = 1,
 }
 
-// Emitted as topics ("incremented", by) with data {count} — #[topic] fields
+// Emitted as topics ("incremented", by) with data {count} - #[topic] fields
 // become topics, the rest go in the data payload.
 #[contractevent]
 pub struct Incremented {
@@ -189,7 +189,7 @@ To upload WASM without instantiating (e.g. for factories or upgrades), use `stel
 ## Minimal test
 
 ```rust
-// src/test.rs — included from lib.rs with `mod test;`
+// src/test.rs - included from lib.rs with `mod test;`
 #![cfg(test)]
 use super::*;
 use soroban_sdk::{testutils::Address as _, Address, Env};
@@ -211,7 +211,7 @@ Auth mocking, event assertions, fuzzing, fork tests, and CI setup: [testing.md](
 
 ## Before mainnet
 
-Work through the checklists in [security.md](security.md) — authorization, reinitialization, arithmetic, storage TTLs, and cross-contract validation are the recurring failure modes.
+Work through the checklists in [security.md](security.md) - authorization, reinitialization, arithmetic, storage TTLs, and cross-contract validation are the recurring failure modes.
 
 ## Documentation
 

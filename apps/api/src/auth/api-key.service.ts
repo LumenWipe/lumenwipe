@@ -24,7 +24,7 @@ export class ApiKeyService {
       if (label && key) this.keyToLabel.set(key, label);
     }
     if (this.keyToLabel.size === 0) {
-      this.logger.warn("No API_KEYS configured — every authenticated route will reject requests.");
+      this.logger.warn("No API_KEYS configured - every authenticated route will reject requests.");
     }
   }
 

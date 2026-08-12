@@ -13,7 +13,7 @@ export default function PlaygroundPage() {
       <h1 className="mkt-display text-4xl text-white sm:text-5xl">Coming back soon</h1>
       <p className="mt-4 text-base leading-relaxed text-white/70">
         We&apos;re rebuilding the interactive playground on top of the LumenWipe API so it runs the
-        exact same close flow as the app — no separate account-closing logic in the browser. It will
+        exact same close flow as the app - no separate account-closing logic in the browser. It will
         be back shortly.
       </p>
       <Link

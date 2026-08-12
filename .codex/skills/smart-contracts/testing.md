@@ -4,15 +4,15 @@ Testing strategy for Stellar smart contracts, from fast native unit tests to mai
 
 Layers, fastest first:
 
-1. **Unit tests** — native Rust with `soroban-sdk` testutils (not WASM, full debugger support)
-2. **Local integration** — Stellar Quickstart container
-3. **Testnet** — public network rehearsal
-4. **Fork tests** — replay against real ledger state
+1. **Unit tests** - native Rust with `soroban-sdk` testutils (not WASM, full debugger support)
+2. **Local integration** - Stellar Quickstart container
+3. **Testnet** - public network rehearsal
+4. **Fork tests** - replay against real ledger state
 
 ## Unit testing
 
 ```rust
-// src/test.rs — a separate file included from lib.rs with `mod test;`
+// src/test.rs - a separate file included from lib.rs with `mod test;`
 // (the layout `stellar contract init` scaffolds). The inner `#![cfg(test)]`
 // gates this whole module; don't paste it into lib.rs itself.
 #![cfg(test)]
@@ -35,13 +35,13 @@ fn test_basic() {
 }
 ```
 
-`env.register` takes constructor args as its second parameter — `env.register(Contract, (admin.clone(),))` for a contract with `__constructor(env, admin)`. Use `env.register_at(&address, Contract, args)` to pin a specific address.
+`env.register` takes constructor args as its second parameter - `env.register(Contract, (admin.clone(),))` for a contract with `__constructor(env, admin)`. Use `env.register_at(&address, Contract, args)` to pin a specific address.
 
-**Resource limits are enforced in tests** (SDK 25+): `Env::default()` applies mainnet CPU/memory limits to invocations, so a contract that would blow the budget in production fails in unit tests — that's a feature. For deliberately heavy tests: `env.cost_estimate().disable_resource_limits()`; to read consumption, `env.cost_estimate().resources()`.
+**Resource limits are enforced in tests** (SDK 25+): `Env::default()` applies mainnet CPU/memory limits to invocations, so a contract that would blow the budget in production fails in unit tests - that's a feature. For deliberately heavy tests: `env.cost_estimate().disable_resource_limits()`; to read consumption, `env.cost_estimate().resources()`.
 
 ### Authorization
 
-`mock_all_auths()` approves everything — convenient, but it can hide missing `require_auth` calls. Always pair it with `env.auths()` assertions, or mock specific auths:
+`mock_all_auths()` approves everything - convenient, but it can hide missing `require_auth` calls. Always pair it with `env.auths()` assertions, or mock specific auths:
 
 ```rust
 #[test]
@@ -67,7 +67,7 @@ fn test_auth() {
 }
 ```
 
-`env.auths()` returns `(Address, AuthorizedInvocation)` pairs **for the most recent invocation only** — any later client call (even a read) resets it, so assert immediately after the call under test. Assert the exact tree (function, args, sub-invocations) on security-critical paths so a dropped `require_auth` fails the test. If a contract authorizes calls below the entry point (e.g. via `authorize_as_current_contract`), use `mock_all_auths_allowing_non_root_auth()`.
+`env.auths()` returns `(Address, AuthorizedInvocation)` pairs **for the most recent invocation only** - any later client call (even a read) resets it, so assert immediately after the call under test. Assert the exact tree (function, args, sub-invocations) on security-critical paths so a dropped `require_auth` fails the test. If a contract authorizes calls below the entry point (e.g. via `authorize_as_current_contract`), use `mock_all_auths_allowing_non_root_auth()`.
 
 ### Time and ledger state
 
@@ -92,7 +92,7 @@ assert_eq!(
 );
 ```
 
-`env.events().all()` returns the events of the **most recent invocation** as `ContractEvents` (like `env.auths()`, it resets on every call — assert right after the call under test); `event.to_xdr(&env, &contract_id)` builds the expected `xdr::ContractEvent` from the struct.
+`env.events().all()` returns the events of the **most recent invocation** as `ContractEvents` (like `env.auths()`, it resets on every call - assert right after the call under test); `event.to_xdr(&env, &contract_id)` builds the expected `xdr::ContractEvent` from the struct.
 
 ### Storage TTL
 
@@ -137,12 +137,12 @@ stellar contract deploy --wasm ... --source-account my-key --network testnet
 
 - RPC: `https://soroban-testnet.stellar.org` · Horizon: `https://horizon-testnet.stellar.org`
 - Passphrase: `"Test SDF Network ; September 2015"` · Friendbot: `https://friendbot.stellar.org`
-- **Testnet resets quarterly** — everything is deleted. Script your deployments; never treat testnet state as durable.
-- Testnet runs the next protocol version before mainnet — it's where you verify against an upcoming upgrade.
+- **Testnet resets quarterly** - everything is deleted. Script your deployments; never treat testnet state as durable.
+- Testnet runs the next protocol version before mainnet - it's where you verify against an upcoming upgrade.
 
 ## Integration tests
 
-TypeScript, against local or testnet (the same flow a frontend uses — simulate, assemble, sign, send):
+TypeScript, against local or testnet (the same flow a frontend uses - simulate, assemble, sign, send):
 
 ```typescript
 import * as StellarSdk from "@stellar/stellar-sdk";
@@ -198,7 +198,7 @@ Run with `cargo +nightly fuzz run fuzz_deposit`. For token contracts there's a r
 
 ## Property-based testing
 
-`proptest` + `SorobanArbitrary` runs in plain `cargo test` — use it to lock in invariants found by fuzzing:
+`proptest` + `SorobanArbitrary` runs in plain `cargo test` - use it to lock in invariants found by fuzzing:
 
 ```rust
 proptest! {
@@ -218,9 +218,9 @@ Workflow: fuzz interactively to find deep bugs → convert findings to proptest 
 
 Three techniques worth knowing; each is one command plus a doc link:
 
-- **Test snapshots**: every test writes a JSON snapshot of events + final ledger state to `test_snapshots/`. Commit them — diffs expose unintended behavioral changes. (Disable per-env with `Env::new_with_config` if they're noise.) [Docs](https://developers.stellar.org/docs/build/guides/testing/differential-tests-with-test-snapshots)
+- **Test snapshots**: every test writes a JSON snapshot of events + final ledger state to `test_snapshots/`. Commit them - diffs expose unintended behavioral changes. (Disable per-env with `Env::new_with_config` if they're noise.) [Docs](https://developers.stellar.org/docs/build/guides/testing/differential-tests-with-test-snapshots)
 - **Fork testing**: `stellar snapshot create --address C... --output json --out snapshot.json`, then `Env::from_ledger_snapshot_file("snapshot.json")` to test against real network state. Also useful for upgrade rehearsals: `stellar contract fetch --id C... --out-file deployed.wasm`, register both old and new versions, compare behavior. [Docs](https://developers.stellar.org/docs/build/guides/testing/fork-testing)
-- **Mutation testing**: `cargo install --locked cargo-mutants && cargo mutants` — mutates your source and reports `MISSED` where tests didn't notice. [Docs](https://developers.stellar.org/docs/build/guides/testing/mutation-testing)
+- **Mutation testing**: `cargo install --locked cargo-mutants && cargo mutants` - mutates your source and reports `MISSED` where tests didn't notice. [Docs](https://developers.stellar.org/docs/build/guides/testing/mutation-testing)
 
 ## Resource profiling
 

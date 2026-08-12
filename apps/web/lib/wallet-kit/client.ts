@@ -13,7 +13,7 @@ let initialized = false;
 /**
  * Initializes the kit's static singleton on first use and keeps its network in
  * sync afterward. Must only be called client-side (inside useEffect or an
- * event handler) — `StellarWalletsKit.init` touches the DOM and preact
+ * event handler) - `StellarWalletsKit.init` touches the DOM and preact
  * signals, which do not exist during Next.js's server render pass.
  */
 export function ensureWalletKitInitialized(network: Network): typeof StellarWalletsKit {

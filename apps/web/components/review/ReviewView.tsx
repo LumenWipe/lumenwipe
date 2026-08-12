@@ -149,7 +149,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
       {!accountState && (
         <p className="flex items-center gap-1.5 text-xs text-white/45">
           <AlertTriangle className="h-3.5 w-3.5" />
-          Account summary unavailable — the plan below is still accurate.
+          Account summary unavailable - the plan below is still accurate.
         </p>
       )}
 

@@ -73,7 +73,7 @@ test("runClose › an async verification that rejects aborts before signing", as
   try {
     await runClose({
       getTransactions: async () => resp([tx(0)], false),
-      // async verifier that rejects — the engine must await it and not sign.
+      // async verifier that rejects - the engine must await it and not sign.
       verify: async () => {
         throw new Error("async verify rejected");
       },
@@ -89,7 +89,7 @@ test("runClose › an async verification that rejects aborts before signing", as
   expect(submitted).toEqual([]); // nothing signed or submitted
 });
 
-test("runClose › bounded rounds — never loops forever", async () => {
+test("runClose › bounded rounds - never loops forever", async () => {
   let err: Error | null = null;
   try {
     await runClose({

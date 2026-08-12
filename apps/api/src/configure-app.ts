@@ -12,7 +12,7 @@ import type { ErrorRequestHandler, NextFunction, Request, Response } from "expre
  */
 export function configureApp(app: INestApplication): void {
   // Every response is dynamic and non-cacheable (account state, plans, unsigned
-  // XDR, mediator co-signatures) — no client, proxy, or CDN should store any of
+  // XDR, mediator co-signatures) - no client, proxy, or CDN should store any of
   // it, success or error.
   app.use((_req: Request, res: Response, next: NextFunction) => {
     res.setHeader("Cache-Control", "no-store");

@@ -52,7 +52,7 @@ export interface CloseExpectation {
  * Asserts a decoded close-transaction intent against what the client independently expects,
  * before the browser signs it. Pure: no network, no XDR decoding, no dependency on the wrapper.
  * This is the trust anchor of the non-custodial model once the API builds transactions
- * server-side — an irreversible account merge must never move funds anywhere the user did not
+ * server-side - an irreversible account merge must never move funds anywhere the user did not
  * choose, and no operation may reach signing that verification cannot account for.
  */
 export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation): void {
@@ -188,7 +188,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
   }
 
   // Required memo: the transaction delivering funds to the destination must carry the exact
-  // memo — value and type — the destination requires.
+  // memo - value and type - the destination requires.
   const deliversToDestination =
     intent.guarantees.mergeDestination === expected.destination ||
     intent.guarantees.paymentsOnlyTo.includes(expected.destination);

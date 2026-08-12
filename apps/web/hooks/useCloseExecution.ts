@@ -106,7 +106,7 @@ export function useCloseExecution() {
             }),
           signAndSubmit: async (tx: CloseTransaction) => {
             setProgressStatus("Signing transaction…");
-            // Computed from the exact XDR verify() approved, before any signer touches it —
+            // Computed from the exact XDR verify() approved, before any signer touches it -
             // the anchor for both checks below. The hash covers only the transaction body
             // (source, ops, sequence, memo, fee), never signatures, so it stays valid
             // whether taken before or after signing.
@@ -116,7 +116,7 @@ export function useCloseExecution() {
             let signedXdr = await signer.sign(tx.xdr, passphrase);
 
             // A connected wallet (WalletKitSigner) is a black box outside this app's trust
-            // boundary — unlike SecretKeySigner, which signs by parsing this exact xdr and
+            // boundary - unlike SecretKeySigner, which signs by parsing this exact xdr and
             // re-serializing it (so its output can never diverge in body), an external signer
             // could in principle return a signature over a different transaction, or no
             // signature at all. Assert both before trusting the result any further.
@@ -133,7 +133,7 @@ export function useCloseExecution() {
             // cannot change destination or amount, so funds can never be diverted.
             if (mediator && tx.covers.includes("MERGE")) {
               setProgressStatus("Co-signing the forward payment…");
-              // Defense-in-depth: the mediator may ONLY add its signature — assert it did not
+              // Defense-in-depth: the mediator may ONLY add its signature - assert it did not
               // alter the body, and that it actually added one, before submit.
               const cosignedXdr = await requestMediatorCosignature(signedXdr, network);
               const cosigned = TransactionBuilder.fromXDR(cosignedXdr, passphrase);
@@ -186,7 +186,7 @@ export function useCloseExecution() {
 
 /**
  * Records a confirmed merge for the live stats counter without blocking execution.
- * Failures are logged, not surfaced — the close already succeeded.
+ * Failures are logged, not surfaced - the close already succeeded.
  */
 function recordMergeStats(txHash: string, network: string): void {
   fetch("/api/stats/record", {
