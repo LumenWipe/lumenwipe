@@ -5,8 +5,14 @@ import type { AccountThresholds } from "@/types/account";
 
 const thresholds: AccountThresholds = { low: 1, med: 2, high: 3 };
 
-test("operationThresholdCategory › manage_data is low", () => {
-  expect(operationThresholdCategory({ type: "manage_data", name: "k", value: null })).toBe("low");
+test("operationThresholdCategory › manage_data is medium", () => {
+  expect(operationThresholdCategory({ type: "manage_data", name: "k", value: null })).toBe("med");
+});
+
+test("operationThresholdCategory › claim_claimable_balance is low", () => {
+  expect(operationThresholdCategory({ type: "claim_claimable_balance", balanceId: "b1" })).toBe(
+    "low"
+  );
 });
 
 test("operationThresholdCategory › account_merge is high", () => {
@@ -92,7 +98,7 @@ test("requiredSignatureWeight › account_merge alone requires thresholds.high",
 
 test("requiredSignatureWeight › a mixed set requires the max across operations", () => {
   const ops: IntentOperation[] = [
-    { type: "manage_data", name: "k", value: null }, // low
+    { type: "claim_claimable_balance", balanceId: "b1" }, // low
     { type: "payment", destination: "G...", asset: "native", amount: "1" }, // med
     { type: "account_merge", destination: "G..." }, // high
   ];

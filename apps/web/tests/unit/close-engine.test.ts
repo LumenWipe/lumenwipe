@@ -79,6 +79,29 @@ test("runClose › a failed verification aborts before anything is signed", asyn
   expect(signed).toEqual([]);
 });
 
+test("runClose › a rejected async verification aborts before anything is signed", async () => {
+  const signed: number[] = [];
+  let err: Error | null = null;
+  try {
+    await runClose({
+      getTransactions: async () => resp([tx(0), tx(1)], false),
+      verify: async (t) => {
+        if (t.order === 0) throw new Error("merge to attacker (async)");
+      },
+      requiredWeight: () => 1,
+      sign: async (t, xdr) => {
+        signed.push(t.order);
+        return { xdr, weight: 1 };
+      },
+      submit: async () => "h",
+    });
+  } catch (e) {
+    err = e as Error;
+  }
+  expect(err?.message).toBe("merge to attacker (async)");
+  expect(signed).toEqual([]);
+});
+
 test("runClose › weight exactly meeting the requirement submits (boundary, not just exceeding)", async () => {
   const submitted: number[] = [];
   await runClose({

@@ -9,11 +9,13 @@ const CATEGORY_RANK: Record<ThresholdCategory, number> = { low: 0, med: 1, high:
  * Stellar's real per-operation threshold category (stellar-core's OperationFrame::
  * getThresholdLevel). SetOptions is the one conditional case: it only needs the account's high
  * threshold when it touches a signer, master weight, or any threshold field - every other
- * SetOptions field (home domain, flags, ...) needs only medium.
+ * SetOptions field (home domain, flags, ...) needs only medium. ManageData does not override
+ * getThresholdLevel() in stellar-core, so it inherits the medium default; ClaimClaimableBalance
+ * does override it, returning low.
  */
 export function operationThresholdCategory(op: IntentOperation): ThresholdCategory {
   switch (op.type) {
-    case "manage_data":
+    case "claim_claimable_balance":
       return "low";
     case "account_merge":
       return "high";
@@ -25,11 +27,11 @@ export function operationThresholdCategory(op: IntentOperation): ThresholdCatego
         op.highThreshold !== null
         ? "high"
         : "med";
+    case "manage_data":
     case "payment":
     case "path_payment_strict_send":
     case "change_trust":
     case "manage_sell_offer":
-    case "claim_claimable_balance":
     case "revoke_sponsorship":
       return "med";
     case "unknown":
