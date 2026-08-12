@@ -7,7 +7,7 @@ argument-hint: "[zk task]"
 
 # Zero-Knowledge Proofs & Privacy
 
-ZK verification on Stellar. Capability is protocol- and SDK-version dependent — always verify CAP status, network version, and `soroban-sdk` host-function support before relying on a primitive.
+ZK verification on Stellar. Capability is protocol- and SDK-version dependent - always verify CAP status, network version, and `soroban-sdk` host-function support before relying on a primitive.
 
 ## When to use this skill
 - Implementing a Groth16 (or other SNARK) verifier as a Stellar smart contract
@@ -20,13 +20,13 @@ ZK verification on Stellar. Capability is protocol- and SDK-version dependent �
 - Verifier security review → `../smart-contracts/security.md`
 - CAPs referenced here → `../standards/SKILL.md`
 
-## What's available — verify before building
+## What's available - verify before building
 
 | Primitive | CAP | Status |
 |-----------|-----|--------|
 | BLS12-381 ops (G1/G2 add, mul, MSM, pairing check, hash-to-curve, Fr arithmetic) | [CAP-0059](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0059.md) | **Available** (Protocol 22+) |
-| BN254 host functions | [CAP-0074](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0074.md) | Proposed — check current status |
-| Poseidon/Poseidon2 hash | [CAP-0075](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0075.md) | Proposed — check current status |
+| BN254 host functions | [CAP-0074](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0074.md) | Proposed - check current status |
+| Poseidon/Poseidon2 hash | [CAP-0075](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0075.md) | Proposed - check current status |
 
 Before implementation, always confirm:
 1. CAP status in the preamble (`Accepted`/`Implemented` vs draft)
@@ -39,12 +39,12 @@ Before implementation, always confirm:
 |-----------|--------------|-------|---------------------|
 | Circom + snarkjs (`-p bls12381`) | Groth16 | BLS12-381 | ✅ Today, via CAP-0059 |
 | Circom + snarkjs (default) | Groth16 | BN254 | Gated on CAP-0074 |
-| Noir + Barretenberg | UltraHonk | BN254 | Not yet — attest off-chain verification |
-| RISC Zero (STARK → Groth16 wrap) | Groth16 | BN254 | Gated on CAP-0074 — attest meanwhile |
+| Noir + Barretenberg | UltraHonk | BN254 | Not yet - attest off-chain verification |
+| RISC Zero (STARK → Groth16 wrap) | Groth16 | BN254 | Gated on CAP-0074 - attest meanwhile |
 
 ## The on-chain verifier (Groth16 over BLS12-381)
 
-The official [groth16_verifier example](https://github.com/stellar/soroban-examples/tree/main/groth16_verifier) is the canonical implementation — the full contract:
+The official [groth16_verifier example](https://github.com/stellar/soroban-examples/tree/main/groth16_verifier) is the canonical implementation - the full contract:
 
 ```rust
 #![no_std]
@@ -112,13 +112,13 @@ impl Groth16Verifier {
 }
 ```
 
-Point encodings are uncompressed big-endian: `G1Affine` wraps 96 bytes, `G2Affine` 192 bytes, `Fr` 32 bytes. The example's test suite shows the exact conversion from arkworks types (`ark-bls12-381` + `ark-serialize`) — reuse it when building fixtures from your proving toolchain's JSON output.
+Point encodings are uncompressed big-endian: `G1Affine` wraps 96 bytes, `G2Affine` 192 bytes, `Fr` 32 bytes. The example's test suite shows the exact conversion from arkworks types (`ark-bls12-381` + `ark-serialize`) - reuse it when building fixtures from your proving toolchain's JSON output.
 
 In production, wrap this verifier with application logic: fix the `VerificationKey` at deploy time (constructor) instead of taking it as a call argument, and bind proofs to context (see [Pitfalls](#pitfalls)).
 
 ## Walkthrough: Circom → on-chain verification (works today)
 
-Circom supports BLS12-381 as a target field — this makes it the toolchain that verifies natively on Stellar right now.
+Circom supports BLS12-381 as a target field - this makes it the toolchain that verifies natively on Stellar right now.
 
 ```bash
 # 1. Circuit
@@ -133,7 +133,7 @@ template Multiplier() {
 component main = Multiplier();
 EOF
 
-# 2. Compile for BLS12-381 (NOT the default bn128 — that's gated on CAP-0074)
+# 2. Compile for BLS12-381 (NOT the default bn128 - that's gated on CAP-0074)
 circom multiplier.circom --r1cs --wasm -p bls12381
 
 # 3. Trusted setup (powers of tau on bls12-381, then circuit-specific phase 2)
@@ -152,13 +152,13 @@ snarkjs groth16 prove multiplier.zkey witness.wtns proof.json public.json
 snarkjs groth16 verify verification_key.json public.json proof.json
 ```
 
-Then convert `proof.json` / `verification_key.json` (decimal-string coordinates) into the contract's types — serialize each point uncompressed big-endian into the 96/192-byte layouts, e.g. via arkworks as in the example's tests — and invoke `verify_proof`. Public signals (`public.json`) become the `Vec<Fr>` argument; the contract must also validate what those signals *mean* (see [Pitfalls](#pitfalls)).
+Then convert `proof.json` / `verification_key.json` (decimal-string coordinates) into the contract's types - serialize each point uncompressed big-endian into the 96/192-byte layouts, e.g. via arkworks as in the example's tests - and invoke `verify_proof`. Public signals (`public.json`) become the `Vec<Fr>` argument; the contract must also validate what those signals *mean* (see [Pitfalls](#pitfalls)).
 
 For real applications the per-proof flow is: client proves locally (WASM prover or native), submits `(proof, public_signals)` in a contract invocation, contract verifies + applies policy + updates state.
 
 ## Walkthrough: Noir (off-chain verify + attestation, for now)
 
-Noir's standard backend (Barretenberg) produces UltraHonk proofs over BN254 — neither the proof system nor the curve is on-chain verifiable on Stellar today.
+Noir's standard backend (Barretenberg) produces UltraHonk proofs over BN254 - neither the proof system nor the curve is on-chain verifiable on Stellar today.
 
 ```bash
 # Local proving workflow
@@ -176,14 +176,14 @@ bb verify -k target/vk -p target/proof   # off-chain verification
 
 On Stellar, two patterns until the curve/system gap closes:
 
-1. **Attestation oracle**: a verifier service runs `bb verify` (or the Noir JS verifier) off-chain and submits a signed attestation; the contract `require_auth()`s the attester address and applies policy. The trust assumption (the attester) must be explicit and documented — this is *not* trustless ZK, it's a verifiable-computation oracle.
+1. **Attestation oracle**: a verifier service runs `bb verify` (or the Noir JS verifier) off-chain and submits a signed attestation; the contract `require_auth()`s the attester address and applies policy. The trust assumption (the attester) must be explicit and documented - this is *not* trustless ZK, it's a verifiable-computation oracle.
 2. **Switch the proving stack for on-chain parts**: express the on-chain-critical statement as a Circom/Groth16-BLS12-381 circuit (walkthrough above) and keep Noir for off-chain components.
 
-Track CAP-0074 (BN254): when implemented, BN254 Groth16 verification becomes possible — but UltraHonk would additionally need a verifier implementation in-contract, so Groth16-based paths will land first.
+Track CAP-0074 (BN254): when implemented, BN254 Groth16 verification becomes possible - but UltraHonk would additionally need a verifier implementation in-contract, so Groth16-based paths will land first.
 
 ## Walkthrough: RISC Zero (same gate, clear path)
 
-RISC Zero proves arbitrary Rust execution (zkVM) and can wrap its STARK receipts into a Groth16 proof over BN254 ("stark-to-snark") — small enough for on-chain verification where BN254 is supported.
+RISC Zero proves arbitrary Rust execution (zkVM) and can wrap its STARK receipts into a Groth16 proof over BN254 ("stark-to-snark") - small enough for on-chain verification where BN254 is supported.
 
 ```rust
 // Guest (runs inside the zkVM): the computation being proven
@@ -202,15 +202,15 @@ let receipt = prover.prove(env, ELF)?.receipt;
 receipt.verify(IMAGE_ID)?;         // off-chain verification
 ```
 
-On Stellar today, use the **attestation pattern** (as with Noir): verify the receipt off-chain — locally or via a proving service — and have an authorized attester submit the journal + attestation to your contract. Once CAP-0074 (BN254) is implemented, the Groth16-wrapped receipt becomes verifiable natively with a BN254 verifier contract mirroring the BLS12-381 one above; the `IMAGE_ID` (which program ran) and journal digest become public inputs. See the [RISC Zero docs](https://dev.risczero.com/api) for the wrapping workflow.
+On Stellar today, use the **attestation pattern** (as with Noir): verify the receipt off-chain - locally or via a proving service - and have an authorized attester submit the journal + attestation to your contract. Once CAP-0074 (BN254) is implemented, the Groth16-wrapped receipt becomes verifiable natively with a BN254 verifier contract mirroring the BLS12-381 one above; the `IMAGE_ID` (which program ran) and journal digest become public inputs. See the [RISC Zero docs](https://dev.risczero.com/api) for the wrapping workflow.
 
 ## Architecture patterns
 
-- **Verification gateway**: isolate cryptographic checks in a dedicated verifier contract/module — normalize inputs, verify, emit explicit success/failure events. Smaller audit surface, cleaner upgrades.
+- **Verification gateway**: isolate cryptographic checks in a dedicated verifier contract/module - normalize inputs, verify, emit explicit success/failure events. Smaller audit surface, cleaner upgrades.
 - **Policy-and-proof split**: `Verifier` (cryptographic validity) → `Policy` (business/compliance rules) → `Application` (state transition). Each independently testable and upgradeable.
 - **Capability gating**: enable ZK flows only where required primitives are confirmed available; keep deterministic fallbacks and document the supported network/protocol matrix.
 
-For Merkle-tree commitments (privacy pools, allowlists): until Poseidon (CAP-0075) lands, in-circuit-friendly hashing on-chain is expensive — design trees so the contract only needs root comparisons and membership proofs verified inside the SNARK.
+For Merkle-tree commitments (privacy pools, allowlists): until Poseidon (CAP-0075) lands, in-circuit-friendly hashing on-chain is expensive - design trees so the contract only needs root comparisons and membership proofs verified inside the SNARK.
 
 ## Pitfalls
 
@@ -224,11 +224,11 @@ For Merkle-tree commitments (privacy pools, allowlists): until Poseidon (CAP-007
 
 - Unit: input domain validation, replay protection, event correctness, malformed/tampered proof rejection (negative paths are the important ones)
 - Integration: full prove → submit → verify → state-transition flow against a local network
-- Operational: resource costs for realistic proof sizes via simulation (`--send=no`) — pairing checks are expensive; budget before committing to per-transaction verification
+- Operational: resource costs for realistic proof sizes via simulation (`--send=no`) - pairing checks are expensive; budget before committing to per-transaction verification
 
 ## References
 
-- [groth16_verifier example](https://github.com/stellar/soroban-examples/tree/main/groth16_verifier) — canonical verifier + arkworks test fixtures
+- [groth16_verifier example](https://github.com/stellar/soroban-examples/tree/main/groth16_verifier) - canonical verifier + arkworks test fixtures
 - [soroban-examples](https://github.com/stellar/soroban-examples)
 - [BLS12-381 SDK docs](https://docs.rs/soroban-sdk/latest/soroban_sdk/crypto/bls12_381/index.html)
 - [Circom docs](https://docs.circom.io) · [snarkjs](https://github.com/iden3/snarkjs) · [Noir docs](https://noir-lang.org/docs) · [RISC Zero docs](https://dev.risczero.com)

@@ -5,7 +5,7 @@ description: Benchmark stellar-build skills to measure quality and the lift from
 
 ## What this skill does
 
-This is the **measurement** half of the stellar-build learning loop — the analog of
+This is the **measurement** half of the stellar-build learning loop - the analog of
 `jarvis bench skills --max-samples 5 --seeds 42`. It scores a skill's quality on a
 held-out set of eval prompts so you can tell whether `/optimize-skills` actually
 helped, instead of guessing.
@@ -15,8 +15,8 @@ It is read-only: it never edits skills. It only produces scores and a report.
 ## Arguments (optional, natural language is fine)
 
 - a **skill name** to bench just one skill (default: all skills that have an eval set)
-- `--max-samples N` — cap eval prompts per skill (default 5)
-- `--seeds a,b,...` — fixed seeds for reproducible sampling/judging (default 42)
+- `--max-samples N` - cap eval prompts per skill (default 5)
+- `--seeds a,b,...` - fixed seeds for reproducible sampling/judging (default 42)
 
 ## How to run it
 
@@ -32,7 +32,7 @@ For each target skill, build a small held-out set of representative prompts:
    out** (do not also use them as optimization demos), and pair each with a short
    rubric you infer from the skill's stated purpose. Use one prompt **per span**,
    not per turn, and skip legacy / coverage-only records (no `kind`, mount-stub
-   `result_preview`) — they carry no usable trigger. Then persist them to
+   `result_preview`) - they carry no usable trigger. Then persist them to
    `~/.stellar/bench/<skill>.jsonl` so future runs are stable.
 3. If there is neither a saved set nor enough traces, synthesize 3 plausible prompts
    from the skill's `description` and note that the set is synthetic.
@@ -48,13 +48,13 @@ and reason about how that skill, as written, would handle the prompt. Then act a
 strict judge and score the **expected response quality** on a 1–5 scale against the
 rubric:
 
-- 5 — nails the rubric, no gaps
-- 4 — strong, minor gaps
-- 3 — acceptable, real gaps
-- 2 — weak / partially off-target
-- 1 — wrong or unusable
+- 5 - nails the rubric, no gaps
+- 4 - strong, minor gaps
+- 3 - acceptable, real gaps
+- 2 - weak / partially off-target
+- 1 - wrong or unusable
 
-Judge the skill *as instructions* — clarity, correct triggering, whether its steps
+Judge the skill *as instructions* - clarity, correct triggering, whether its steps
 and any `LEARNED` block would produce a rubric-satisfying result. Be consistent
 across runs; the same skill text and seed should yield the same score.
 
@@ -68,7 +68,7 @@ If the user wants the lift from a recent optimization (or just asks "did it help
 
 ### 4. Report
 
-Per skill: mean score, per-prompt scores, and — in before/after mode — the lift
+Per skill: mean score, per-prompt scores, and - in before/after mode - the lift
 (`after − before`) with a one-line interpretation. Roll up an overall mean across
 skills. Call out any skill that regressed (after < before) and suggest
 `stellar-loop restore <skill>`.
@@ -84,5 +84,5 @@ Optionally append a run record to `~/.stellar/bench/results.jsonl`:
 - **Read-only.** Never modify a skill from this flow.
 - **Reproducible.** Same skill text + same seed ⇒ same score. Hold seeds fixed
   across before/after.
-- **Honest.** A synthetic or tiny eval set is a weak signal — say so in the report.
+- **Honest.** A synthetic or tiny eval set is a weak signal - say so in the report.
 - **Local only.** Everything reads from `~/.stellar` and the installed skills.

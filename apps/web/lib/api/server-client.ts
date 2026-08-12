@@ -4,7 +4,7 @@ import { LumenWipeClient } from "@lumenwipe/sdk";
 /**
  * Server-only accessor for the LumenWipe API client.
  *
- * The API key lives in `LUMENWIPE_API_KEY` — deliberately NOT a `NEXT_PUBLIC_*`
+ * The API key lives in `LUMENWIPE_API_KEY` - deliberately NOT a `NEXT_PUBLIC_*`
  * var, so Next.js never inlines it into the browser bundle. The `server-only`
  * import above is a second guard: importing this module from a Client Component
  * fails the build. The browser reaches the API only through the same-origin

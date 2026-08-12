@@ -83,7 +83,7 @@ export class MediatorController {
       throw new HttpException({ error: "Transaction structure not allowed" }, 400);
     }
 
-    // Bound the forward payment to what the merge delivers — defense-in-depth against a
+    // Bound the forward payment to what the merge delivers - defense-in-depth against a
     // naive/accidental over-forward on this public endpoint. This is not a full guarantee
     // against an active adversary (see forwardExceedsMergedBalance for the TOCTOU limit);
     // the primary protection stays the operational invariant that the mediator holds no

@@ -16,8 +16,8 @@ import { xlmToStroops } from "@/lib/utils/amounts";
  * balance. An active adversary who controls the merged account can therefore still forward
  * up to the mediator's spendable surplus. The primary protection remains the operational
  * invariant that the shared mediator holds no spendable surplus (funded to its base reserve
- * only) plus balance monitoring; this bound stops the passive cases — a client bug, dust,
- * or a naive over-forward — and raises the bar otherwise.
+ * only) plus balance monitoring; this bound stops the passive cases - a client bug, dust,
+ * or a naive over-forward - and raises the bar otherwise.
  */
 export function forwardExceedsMergedBalance(
   forwardAmountLumens: string,

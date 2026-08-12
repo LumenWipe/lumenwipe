@@ -7,7 +7,7 @@ import type { WalletKitConnection } from "@/hooks/useWalletKitConnection";
 interface Props {
   connection: WalletKitConnection;
   disabled?: boolean;
-  /** Shown alongside the connected pill (not instead of it — the user should
+  /** Shown alongside the connected pill (not instead of it - the user should
    *  still see what's connected) when that wallet is valid but wrong for the
    *  current context (e.g. doesn't match the account being closed). Absent/
    *  undefined means no such context-specific check applies. */

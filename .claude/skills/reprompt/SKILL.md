@@ -5,7 +5,7 @@ description: Rewrite a rough request into a sharp, structured prompt before acti
 
 ## What this skill does
 
-Turns a rough ask into a tight working spec, then acts on it — the explicit,
+Turns a rough ask into a tight working spec, then acts on it - the explicit,
 on-demand counterpart to the loop's automatic per-turn sharpener. Use it when a
 request is vague enough to be worth structuring out loud, or when the user
 literally asks you to "reprompt this".
@@ -20,8 +20,8 @@ the preceding message if they just say "reprompt that").
 ### 2. Load any learned profile
 
 If `~/.stellar/profile.md` exists (the optimizer distills it from real usage),
-read it and treat it as defaults — domain, typical scope, preferred stack,
-tone — unless the request contradicts them. Honor `STELLAR_HOME` if set.
+read it and treat it as defaults - domain, typical scope, preferred stack,
+tone - unless the request contradicts them. Honor `STELLAR_HOME` if set.
 
 ### 3. Produce the sharpened spec
 
@@ -44,7 +44,7 @@ proceed directly.
 ### 5. Act
 
 Show the sharpened spec briefly, then execute on it (or hand off to the right
-stellar-build skill — e.g. `find-stellar-idea`, `nicole-pm`, `tyler-architect`).
+stellar-build skill - e.g. `find-stellar-idea`, `nicole-pm`, `tyler-architect`).
 Don't make the user re-approve unless a clarifying answer is still pending.
 
 ## Notes

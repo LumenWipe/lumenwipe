@@ -4,7 +4,7 @@ import { Keypair, TransactionBuilder } from "@stellar/stellar-sdk";
  * Abstracts "how a transaction gets signed" so useCloseExecution can drive the
  * close loop the same way regardless of whether the user is signing with a
  * pasted secret key or a connected wallet. Implementations must never persist
- * key material beyond their own lifetime — the caller owns disposal.
+ * key material beyond their own lifetime - the caller owns disposal.
  */
 export interface TransactionSigner {
   publicKey: string;
@@ -32,7 +32,7 @@ export class SecretKeySigner implements TransactionSigner {
 
 /**
  * Signs by delegating to a wallet-kit-shaped signing function, injected rather
- * than imported directly — keeps this class free of any DOM/browser-extension
+ * than imported directly - keeps this class free of any DOM/browser-extension
  * dependency and independently testable. Construct with
  * `StellarWalletsKit.signTransaction` in real usage.
  */

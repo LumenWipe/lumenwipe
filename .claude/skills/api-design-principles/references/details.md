@@ -1,4 +1,4 @@
-# api-design-principles — detailed patterns and worked examples
+# api-design-principles - detailed patterns and worked examples
 
 ## REST API Design Patterns
 

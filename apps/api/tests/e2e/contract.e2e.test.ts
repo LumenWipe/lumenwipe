@@ -15,7 +15,7 @@ const KEY = "e2e_test_key";
 let app: INestApplication;
 let http: ReturnType<INestApplication["getHttpServer"]>;
 
-// Authenticated request helpers — every route except /health requires the key.
+// Authenticated request helpers - every route except /health requires the key.
 const authGet = (path: string) =>
   request(http).get(path).set("Authorization", `Bearer ${KEY}`);
 const authPost = (path: string) =>

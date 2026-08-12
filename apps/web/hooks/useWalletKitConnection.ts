@@ -10,7 +10,7 @@ export interface WalletKitConnection {
   connecting: boolean;
   error: string | null;
   /** True once a wallet is connected but its active network doesn't match this
-   *  page's network — connected, but not usable until resolved. */
+   *  page's network - connected, but not usable until resolved. */
   networkMismatch: boolean;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
@@ -21,7 +21,7 @@ export interface WalletKitConnection {
  * disconnect, detecting a session already established elsewhere in the flow (the
  * kit is a static singleton that persists `activeAddress`/`selectedModuleId` to
  * localStorage, so a wallet connected during account entry is still connected by
- * the time the user reaches the sign step — this hook is what notices that,
+ * the time the user reaches the sign step - this hook is what notices that,
  * instead of requiring a fresh click), and flagging a wallet/app network mismatch.
  */
 export function useWalletKitConnection(network: Network): WalletKitConnection {
@@ -37,7 +37,7 @@ export function useWalletKitConnection(network: Network): WalletKitConnection {
       return networkPassphrase !== NETWORK_PASSPHRASES[network];
     } catch {
       // Some wallets don't implement getNetwork (e.g. LOBSTR via its own module,
-      // per the kit's own source) — treat as unknown, not a mismatch.
+      // per the kit's own source) - treat as unknown, not a mismatch.
       return false;
     }
   }, [network]);
@@ -55,7 +55,7 @@ export function useWalletKitConnection(network: Network): WalletKitConnection {
         const mismatch = await checkNetworkMismatch();
         if (!cancelled) setNetworkMismatch(mismatch);
       } catch {
-        // No existing session — nothing to restore.
+        // No existing session - nothing to restore.
       }
     })();
     return () => {

@@ -16,7 +16,7 @@ import type { LumenWipeClientOptions } from "./options";
 
 /**
  * Thin, typed client over the LumenWipe REST API. It only relays JSON and XDR
- * strings — transaction building and signing stay with the caller, so this
+ * strings - transaction building and signing stay with the caller, so this
  * package has no `@stellar/stellar-sdk` dependency.
  */
 export class LumenWipeClient {

@@ -1,6 +1,6 @@
 ---
 name: dapp
-description: Stellar dApp / frontend development. Covers the JavaScript stellar-sdk (browser + Node.js), Freighter wallet, Stellar Wallets Kit (multi-wallet), Wallet Standard, smart accounts with passkeys, transaction building / signing / submission, smart contract invocation from the client, simulation, and error handling. Use when building a React/Next.js/Node.js app that talks to Stellar — classic operations or smart contracts.
+description: Stellar dApp / frontend development. Covers the JavaScript stellar-sdk (browser + Node.js), Freighter wallet, Stellar Wallets Kit (multi-wallet), Wallet Standard, smart accounts with passkeys, transaction building / signing / submission, smart contract invocation from the client, simulation, and error handling. Use when building a React/Next.js/Node.js app that talks to Stellar - classic operations or smart contracts.
 user-invocable: true
 argument-hint: "[dapp task]"
 ---
@@ -46,11 +46,11 @@ Client-side development with `@stellar/stellar-sdk`, wallet connection, signing,
 
 ```bash
 npm install @stellar/stellar-sdk @stellar/freighter-api
-# Or for multi-wallet support — Wallets Kit v2 is distributed on JSR, not npm:
+# Or for multi-wallet support - Wallets Kit v2 is distributed on JSR, not npm:
 npx jsr add @creit-tech/stellar-wallets-kit
 ```
 
-> **Sourcing:** SDK mechanics below (init, transaction building, contract invocation, submission, data fetching, error handling) track the official [JS SDK docs](https://stellar.github.io/js-stellar-sdk/) (which also publish [`llms.txt`](https://stellar.github.io/js-stellar-sdk/llms.txt) / [`llms-full.txt`](https://stellar.github.io/js-stellar-sdk/llms-full.txt) bundles for agents). Wallet integrations (Freighter, Stellar Wallets Kit), passkey smart accounts, and the OpenZeppelin relayer are separate packages, not part of the JS SDK — verify those against their own upstream docs.
+> **Sourcing:** SDK mechanics below (init, transaction building, contract invocation, submission, data fetching, error handling) track the official [JS SDK docs](https://stellar.github.io/js-stellar-sdk/) (which also publish [`llms.txt`](https://stellar.github.io/js-stellar-sdk/llms.txt) / [`llms-full.txt`](https://stellar.github.io/js-stellar-sdk/llms-full.txt) bundles for agents). Wallet integrations (Freighter, Stellar Wallets Kit), passkey smart accounts, and the OpenZeppelin relayer are separate packages, not part of the JS SDK - verify those against their own upstream docs.
 
 ## SDK Initialization
 
@@ -204,7 +204,7 @@ import { useState, useCallback } from "react";
 import { StellarWalletsKit, Networks } from "@creit-tech/stellar-wallets-kit";
 import { defaultModules } from "@creit-tech/stellar-wallets-kit/modules/utils";
 
-// v2 is a static singleton: init once at module load, then call static methods —
+// v2 is a static singleton: init once at module load, then call static methods -
 // there is no instance to construct or pass around.
 // defaultModules() loads every wallet that needs no extra setup; modules with
 // prerequisites (WalletConnect, Ledger, Trezor) must be imported and added explicitly.
@@ -218,7 +218,7 @@ export function useStellarWallet() {
 
   const connect = useCallback(async () => {
     // authModal() opens the wallet picker, sets the chosen module active,
-    // and returns the address — one call replaces v1's openModal callback dance.
+    // and returns the address - one call replaces v1's openModal callback dance.
     const { address } = await StellarWalletsKit.authModal();
     setAddress(address);
   }, []);
@@ -237,7 +237,7 @@ export function useStellarWallet() {
 }
 ```
 
-> **Migrating from v1?** (noted July 2026) v1 lived on npm under the dotted scope `@creit.tech/stellar-wallets-kit`, with `new StellarWalletsKit({...})`, `allowAllModules()`, and `openModal({ onWalletSelected })`. v2 moved to JSR under `@creit-tech/stellar-wallets-kit`, made the kit fully static, replaced `allowAllModules()` with `defaultModules()`, and folded wallet selection + address fetch into `authModal()`. npm parity is maintained for now, but the maintainers say npm updates will eventually stop — install from JSR. Pre-selecting a wallet (`setWallet(FREIGHTER_ID)`) still works; the ID constants now live in per-wallet module subpaths like `@creit-tech/stellar-wallets-kit/modules/freighter`.
+> **Migrating from v1?** (noted July 2026) v1 lived on npm under the dotted scope `@creit.tech/stellar-wallets-kit`, with `new StellarWalletsKit({...})`, `allowAllModules()`, and `openModal({ onWalletSelected })`. v2 moved to JSR under `@creit-tech/stellar-wallets-kit`, made the kit fully static, replaced `allowAllModules()` with `defaultModules()`, and folded wallet selection + address fetch into `authModal()`. npm parity is maintained for now, but the maintainers say npm updates will eventually stop - install from JSR. Pre-selecting a wallet (`setWallet(FREIGHTER_ID)`) still works; the ID constants now live in per-wallet module subpaths like `@creit-tech/stellar-wallets-kit/modules/freighter`.
 
 ## Transaction Building
 
@@ -281,7 +281,7 @@ import { contract } from "@stellar/stellar-sdk";
 import { config } from "@/lib/stellar";
 
 // Describe just the methods you call. `Client.from<T>()` uses this to type
-// the returned client, so calls are checked and autocompleted — no codegen.
+// the returned client, so calls are checked and autocompleted - no codegen.
 // For a contract with many methods, generate this interface from its spec
 // with the SDK's binding CLI instead of writing it by hand.
 interface CounterContract {
@@ -351,7 +351,7 @@ export async function invokeContract(
 }
 ```
 
-**Building ScVal arguments by hand** (only needed for the low-level path — `contract.Client` converts native JS args for you):
+**Building ScVal arguments by hand** (only needed for the low-level path - `contract.Client` converts native JS args for you):
 
 ```typescript
 import * as StellarSdk from "@stellar/stellar-sdk";
@@ -373,7 +373,7 @@ const structVal = StellarSdk.nativeToScVal(
   }
 );
 
-// Vec of i128 — the element type is applied to each item
+// Vec of i128 - the element type is applied to each item
 const vecVal = StellarSdk.nativeToScVal(
   [1, 2, 3].map((n) => BigInt(n)),
   { type: "i128" }
@@ -417,7 +417,7 @@ async function submitSorobanTransaction(signedXdr: string) {
   }
 
   // Poll for completion. pollTransaction handles the retry loop (default 5
-  // attempts, 1s apart — tune with { attempts, sleepStrategy }) instead of a
+  // attempts, 1s apart - tune with { attempts, sleepStrategy }) instead of a
   // hand-rolled while loop that can spin forever.
   const getResponse = await rpc.pollTransaction(response.hash);
 

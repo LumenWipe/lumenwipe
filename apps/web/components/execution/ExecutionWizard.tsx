@@ -40,14 +40,14 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   // True once the user has explicitly chosen the secret-key path over an available,
   // matching wallet. Without this, the reactive sync effect below would immediately
-  // re-populate the wallet signer on the very next render — it's still connected
-  // and still matching in the background — undoing the user's choice. Reset when
+  // re-populate the wallet signer on the very next render - it's still connected
+  // and still matching in the background - undoing the user's choice. Reset when
   // the user explicitly switches back to the wallet tab.
   const [walletDismissed, setWalletDismissed] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [running, setRunning] = useState(false);
   // Lets the user step out of the "failed" view to reconnect a wallet or switch
-  // to the secret-key path, without touching the store's `phase` — purely a
+  // to the secret-key path, without touching the store's `phase` - purely a
   // local UI override. Reset whenever a fresh attempt starts.
   const [changingSigner, setChangingSigner] = useState(false);
 
@@ -62,7 +62,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     setWalletAddress(null);
   }, []);
 
-  // Sync the active signer from the shared wallet-connection hook — this covers
+  // Sync the active signer from the shared wallet-connection hook - this covers
   // both an explicit "Connect wallet" click AND a session already connected during
   // account entry, which the hook detects on mount without any click at all. Only
   // treat the connected wallet as the active signer when it matches the account
@@ -78,7 +78,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   // known mismatch yet, populate the signer, and then fire again a moment later
   // once the mismatch becomes known. Without this branch, that second run would
   // hit neither condition and leave the already-populated (but now known-bad)
-  // signer in place — this branch is what actually retracts it. It only ever
+  // signer in place - this branch is what actually retracts it. It only ever
   // clears the *wallet* side (checked via `walletAddress`, not `keyEntered`), so
   // it can never stomp a live `SecretKeySigner`.
   useEffect(() => {
@@ -133,7 +133,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
       setKeyEntered(valid);
       if (valid) {
         signerRef.current = new SecretKeySigner(secretKeyRef.current);
-        // Entering a working secret key supersedes any previously connected wallet —
+        // Entering a working secret key supersedes any previously connected wallet -
         // exactly one signer is ever live, so the two tabs can never disagree about
         // which one `execute()` will actually use. Marking the wallet dismissed also
         // stops the reactive sync effect above from immediately re-populating it
@@ -142,7 +142,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
         setWalletDismissed(true);
       } else if (!walletAddress) {
         // Only clear the shared signer if a wallet isn't the one currently holding
-        // it — otherwise typing an incomplete key while a wallet is connected would
+        // it - otherwise typing an incomplete key while a wallet is connected would
         // silently discard the wallet's signer without any visible feedback.
         signerRef.current = null;
       }
@@ -203,8 +203,8 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           <div className="flex items-start gap-2.5 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2.5 text-sm text-white/60">
             <ShieldCheck className="h-4 w-4 shrink-0 mt-0.5 text-stellar" />
             <span>
-              Every transaction is verified against your own choices — destination, asset decisions,
-              and memo — before it is signed. Anything unexpected is rejected.
+              Every transaction is verified against your own choices - destination, asset decisions,
+              and memo - before it is signed. Anything unexpected is rejected.
             </span>
           </div>
 
