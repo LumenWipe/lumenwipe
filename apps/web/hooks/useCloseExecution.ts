@@ -6,14 +6,31 @@ import type { CloseTransaction } from "@lumenwipe/sdk";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
-import { runClose } from "@/lib/api/close-engine";
+import { runClose, InsufficientSignatureWeightError } from "@/lib/api/close-engine";
 import { fetchCloseTransactions } from "@/lib/api/close-client";
 import { claimableSelectionsToDecisions, dispositionsToDecisions } from "@/lib/api/close-decisions";
 import { verifyCloseTransaction } from "@/lib/stellar/verify";
+import { intentFromXdr } from "@/lib/stellar/intent/serialize";
+import { requiredSignatureWeight } from "@/lib/stellar/thresholds";
+import {
+  evaluateSignatureContributions,
+  accumulatedWeight,
+  type SignerContribution,
+} from "@/lib/stellar/signature-weight";
 import { submitViaApi } from "@/lib/stellar/submit-via-api";
 import { requestMediatorCosignature } from "@/lib/stellar/mediator";
 import { notifyStatsRefresh } from "@/lib/stats-events";
 import type { TransactionSigner } from "@/lib/stellar/signer";
+import type { AccountSigner } from "@/types/account";
+
+/** Required vs. accumulated signing weight for the transaction that stopped a close, plus the
+ *  account's known signers who haven't contributed yet - consumed by the multi-wallet-switch UI
+ *  (issue #100) to let the user bring in another signer without re-deriving this state. */
+export interface SignatureStatus {
+  requiredWeight: number;
+  accumulatedWeight: number;
+  remainingSigners: AccountSigner[];
+}
 
 /**
  * Drives a full close against the API: the browser fetches unsigned transactions round by
@@ -35,6 +52,7 @@ export function useCloseExecution() {
   const setLastError = useDemolishStore((s) => s.setLastError);
 
   const [progressStatus, setProgressStatus] = useState<string | null>(null);
+  const [signatureStatus, setSignatureStatus] = useState<SignatureStatus | null>(null);
 
   const run = useCallback(
     async (signer: TransactionSigner): Promise<void> => {
@@ -75,6 +93,8 @@ export function useCloseExecution() {
         .filter((asset): asset is string => asset !== null);
 
       setPhase("STEP_EXECUTING");
+      setSignatureStatus(null);
+      let lastContributions: SignerContribution[] = [];
       try {
         await runClose({
           getTransactions: () =>
@@ -104,16 +124,19 @@ export function useCloseExecution() {
                 accountThresholds: accountState?.thresholds ?? { low: 0, med: 1, high: 1 },
               },
             }),
-          signAndSubmit: async (tx: CloseTransaction) => {
+          requiredWeight: (tx: CloseTransaction) =>
+            requiredSignatureWeight(
+              intentFromXdr(tx.xdr, passphrase).operations,
+              accountState?.thresholds ?? { low: 0, med: 1, high: 1 }
+            ),
+          sign: async (tx: CloseTransaction, xdr: string) => {
             setProgressStatus("Signing transaction…");
             // Computed from the exact XDR verify() approved, before any signer touches it -
             // the anchor for both checks below. The hash covers only the transaction body
             // (source, ops, sequence, memo, fee), never signatures, so it stays valid
             // whether taken before or after signing.
-            const approvedHash = TransactionBuilder.fromXDR(tx.xdr, passphrase)
-              .hash()
-              .toString("hex");
-            let signedXdr = await signer.sign(tx.xdr, passphrase);
+            const approvedHash = TransactionBuilder.fromXDR(xdr, passphrase).hash().toString("hex");
+            const signedXdr = await signer.sign(xdr, passphrase);
 
             // A connected wallet (WalletKitSigner) is a black box outside this app's trust
             // boundary - unlike SecretKeySigner, which signs by parsing this exact xdr and
@@ -128,6 +151,16 @@ export function useCloseExecution() {
               throw new Error("The signed transaction does not match what you approved.");
             }
 
+            lastContributions = evaluateSignatureContributions(
+              signedXdr,
+              passphrase,
+              accountState?.signers ?? []
+            );
+            return { xdr: signedXdr, weight: accumulatedWeight(lastContributions) };
+          },
+          submit: async (tx: CloseTransaction, xdr: string) => {
+            let finalXdr = xdr;
+
             // A merge through the shared mediator is one atomic transaction: the user
             // signed the merge; the backend co-signs the mediator's forward payment. It
             // cannot change destination or amount, so funds can never be diverted.
@@ -135,19 +168,23 @@ export function useCloseExecution() {
               setProgressStatus("Co-signing the forward payment…");
               // Defense-in-depth: the mediator may ONLY add its signature - assert it did not
               // alter the body, and that it actually added one, before submit.
-              const cosignedXdr = await requestMediatorCosignature(signedXdr, network);
+              const approvedHash = TransactionBuilder.fromXDR(xdr, passphrase)
+                .hash()
+                .toString("hex");
+              const preCosignCount = TransactionBuilder.fromXDR(xdr, passphrase).signatures.length;
+              const cosignedXdr = await requestMediatorCosignature(xdr, network);
               const cosigned = TransactionBuilder.fromXDR(cosignedXdr, passphrase);
               if (cosigned.hash().toString("hex") !== approvedHash) {
                 throw new Error("The co-signed transaction does not match what you approved.");
               }
-              if (cosigned.signatures.length <= signedTx.signatures.length) {
+              if (cosigned.signatures.length <= preCosignCount) {
                 throw new Error("The mediator did not add its signature.");
               }
-              signedXdr = cosignedXdr;
+              finalXdr = cosignedXdr;
             }
 
             setProgressStatus("Submitting to Stellar network…");
-            const { txHash } = await submitViaApi(signedXdr, network);
+            const { txHash } = await submitViaApi(finalXdr, network);
             return txHash;
           },
           onConfirmed: (tx, hash) => {
@@ -160,6 +197,18 @@ export function useCloseExecution() {
         });
         setPhase("COMPLETE");
       } catch (err) {
+        if (err instanceof InsufficientSignatureWeightError) {
+          setSignatureStatus({
+            requiredWeight: err.requiredWeight,
+            accumulatedWeight: err.accumulatedWeight,
+            remainingSigners: lastContributions.filter((c) => !c.contributed).map((c) => c.signer),
+          });
+          setLastError(
+            `This account needs more signing weight (${err.requiredWeight}) than the connected signer currently provides (${err.accumulatedWeight}). Closing an account that needs more than one signer isn't supported yet.`
+          );
+          setPhase("STEP_FAILED");
+          return;
+        }
         const message =
           err instanceof Error ? err.message : typeof err === "string" ? err : "The close failed.";
         setLastError(message);
@@ -181,7 +230,7 @@ export function useCloseExecution() {
     ]
   );
 
-  return { run, progressStatus };
+  return { run, progressStatus, signatureStatus };
 }
 
 /**

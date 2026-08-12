@@ -1,5 +1,21 @@
 import type { CloseTransaction, TransactionsResponse } from "@lumenwipe/sdk";
 
+/** Thrown when a transaction's accumulated signing weight is still short of what it actually
+ *  needs after the currently available signer has contributed. The close aborts rather than
+ *  submitting an under-signed transaction Stellar would reject anyway. */
+export class InsufficientSignatureWeightError extends Error {
+  constructor(
+    public readonly tx: CloseTransaction,
+    public readonly accumulatedWeight: number,
+    public readonly requiredWeight: number
+  ) {
+    super(
+      `Transaction ${tx.id} needs signing weight ${requiredWeight} but only has ${accumulatedWeight}.`
+    );
+    this.name = "InsufficientSignatureWeightError";
+  }
+}
+
 export interface CloseEngineDeps {
   /** Fetches the next round of unsigned transactions from the API (via the proxy). */
   getTransactions: () => Promise<TransactionsResponse>;
@@ -12,8 +28,16 @@ export interface CloseEngineDeps {
    * (e.g. one that resolves a key or does a lookup) can never be silently bypassed.
    */
   verify: (tx: CloseTransaction) => void | Promise<void>;
-  /** Signs (and, for a mediator transaction, co-signs) then submits; resolves to the tx hash. */
-  signAndSubmit: (tx: CloseTransaction) => Promise<string>;
+  /** The signing weight this transaction actually needs, from its operation set and the
+   *  account's real per-category thresholds - never a single account-wide number. */
+  requiredWeight: (tx: CloseTransaction) => number;
+  /** Signs the given xdr (which may already carry earlier signatures) with the currently
+   *  available signer, returning the updated xdr and its total accumulated signing weight
+   *  against the account's known signer set. */
+  sign: (tx: CloseTransaction, xdr: string) => Promise<{ xdr: string; weight: number }>;
+  /** Submits a transaction whose accumulated weight already meets its requirement; resolves
+   *  to the tx hash. */
+  submit: (tx: CloseTransaction, xdr: string) => Promise<string>;
   /** Called after a transaction confirms, with the transaction and its hash. */
   onConfirmed?: (tx: CloseTransaction, hash: string) => void;
   onProgress?: (message: string) => void;
@@ -23,9 +47,10 @@ export interface CloseEngineDeps {
 
 /**
  * Runs the full multi-round close. Each round: fetch a batch of unsigned transactions,
- * **verify every one before signing**, then sign + submit them in `order`, and repeat while
- * the API reports more rounds remain. Verification runs before signing for each transaction;
- * a failed verification aborts the whole close before any signature is produced.
+ * **verify every one before signing**, sign it, and submit only once its accumulated signing
+ * weight meets what its operations actually require - otherwise abort with
+ * `InsufficientSignatureWeightError` rather than submit a transaction Stellar would reject.
+ * Repeats while the API reports more rounds remain.
  */
 export async function runClose(deps: CloseEngineDeps): Promise<void> {
   const maxRounds = deps.maxRounds ?? 25;
@@ -39,7 +64,12 @@ export async function runClose(deps: CloseEngineDeps): Promise<void> {
       // Trust anchor: verify BEFORE signing. Awaited so an async verifier can't be
       // bypassed; throwing (sync or rejected) means nothing is signed.
       await deps.verify(tx);
-      const hash = await deps.signAndSubmit(tx);
+      const required = deps.requiredWeight(tx);
+      const { xdr: signedXdr, weight } = await deps.sign(tx, tx.xdr);
+      if (weight < required) {
+        throw new InsufficientSignatureWeightError(tx, weight, required);
+      }
+      const hash = await deps.submit(tx, signedXdr);
       deps.onConfirmed?.(tx, hash);
     }
 
