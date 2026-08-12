@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/LumenWipe/lumenwipe/security/policy
+    about: Do not open a public issue for security vulnerabilities - follow SECURITY.md instead.
+  - name: Registry update (exchange or contract)
+    url: https://github.com/LumenWipe/lumenwipe/blob/main/CONTRIBUTING.md#9-contributing-to-registries
+    about: Adding an exchange deposit address or a contract wasmHash mapping - open a PR directly, per CONTRIBUTING.md §9.
