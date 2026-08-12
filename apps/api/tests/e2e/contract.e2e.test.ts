@@ -152,3 +152,31 @@ test("close/transactions rejects a text memo over 28 bytes with 422 (before any 
     error: { code: "invalid_memo", message: "A text memo must be at most 28 bytes." },
   });
 });
+
+// The plan endpoint surfaces this as a decision, but the plan is advisory: an SDK caller can
+// reach /close/transactions without ever requesting one, so the refusal has to live here too.
+test("close/transactions refuses an unacknowledged unrecognized destination with 422 (before any network read)", async () => {
+  const res = await authPost("/v1/testnet/close/transactions").send({
+    source: Keypair.random().publicKey(),
+    destination: Keypair.random().publicKey(),
+  });
+  expect(res.status).toBe(422);
+  expect(res.body.error.code).toBe("destination_not_acknowledged");
+  // The details tell a caller exactly which decision to answer and with what, so an SDK
+  // integrator can recover from the 422 without reading our source.
+  expect(res.body.error.details).toEqual({
+    decisionId: "destination:unrecognized",
+    choice: "i_control_this_address",
+  });
+});
+
+test("close/transactions does not demand an acknowledgement for a recognized exchange destination", async () => {
+  // A registry entry that requires a memo: it fails on the missing memo, which proves the
+  // acknowledgement gate was never reached, and stays network-free.
+  const res = await authPost("/v1/testnet/close/transactions").send({
+    source: Keypair.random().publicKey(),
+    destination: "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D",
+  });
+  expect(res.status).toBe(422);
+  expect(res.body.error.code).toBe("memo_required");
+});

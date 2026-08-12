@@ -20,8 +20,12 @@ import {
   claimableBalanceDecisionId,
   deriveClaimableBalanceDecisionPoints,
   deriveDecisionPoints,
+  deriveDestinationDecisionPoints,
+  isDestinationAcknowledged,
   resolveClaimableBalanceSelections,
   resolveDispositions,
+  DESTINATION_ACK_CHOICE,
+  DESTINATION_DECISION_ID,
 } from "@/lib/close-api/decisions";
 import { assemblePlanResponse, computePlanHash } from "@/lib/close-api/plan-response";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
@@ -113,6 +117,7 @@ export class CloseController {
         sponsorshipAffordability
       );
       const decisionPoints = [
+        ...deriveDestinationDecisionPoints(destination),
         ...deriveDecisionPoints(accountState, convertibility),
         ...deriveClaimableBalanceDecisionPoints(accountState),
       ];
@@ -194,6 +199,22 @@ export class CloseController {
     const decisions: DecisionAnswer[] = Array.isArray(body.decisions)
       ? (body.decisions as DecisionAnswer[])
       : [];
+
+    // A destination the registry does not recognize cannot be assumed to be a personal wallet,
+    // and a direct merge into an exchange deposit address is unrecoverable (see
+    // deriveDestinationDecisionPoints). The caller must assert control of it explicitly. This
+    // gate lives here rather than only in the plan because the plan is advisory: an SDK caller
+    // can reach this endpoint without ever having requested one.
+    if (exchange === null && !isDestinationAcknowledged(decisions)) {
+      fail(
+        "destination_not_acknowledged",
+        "This destination is not a recognized exchange deposit address. Confirm it is an account " +
+          "you control before closing into it: a direct close into an exchange or custodial " +
+          "address cannot be credited and the funds are lost.",
+        422,
+        { decisionId: DESTINATION_DECISION_ID, choice: DESTINATION_ACK_CHOICE }
+      );
+    }
 
     try {
       const accountState = await readAccountState(source, network);
