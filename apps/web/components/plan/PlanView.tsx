@@ -11,11 +11,15 @@ import type { MediatorCheckResult } from "@/types/account";
 import { getMediatorPublicKey } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { fetchClosePlan } from "@/lib/api/close-client";
-import { claimableSelectionsToDecisions, dispositionsToDecisions } from "@/lib/api/close-decisions";
+import {
+  claimableSelectionsToDecisions,
+  destinationAcknowledgementToDecisions,
+  dispositionsToDecisions,
+} from "@/lib/api/close-decisions";
 import { apiStepsToPlannedSteps } from "@/lib/api/plan-adapters";
 import { goToReview } from "@/lib/plan/confirm-plan";
 import { isValidGAddress, isValidMemo } from "@/lib/utils/validation";
-import { getMemoRequirement, requiresMediatorForAddress } from "@/lib/exchange-registry";
+import { getMemoRequirement, isCexAddress, requiresMediatorForAddress } from "@/lib/exchange-registry";
 import AccountSummaryCard from "./AccountSummaryCard";
 import BlockersPanel from "./BlockersPanel";
 import PlanAccordion from "./PlanAccordion";
@@ -52,6 +56,8 @@ export default function PlanView({
     setPhase,
     destinationAddress: storedDest,
     memo: storedMemo,
+    destinationAcknowledgedFor,
+    acknowledgeDestination,
   } = useDemolishStore();
 
   // Pre-fill destination/memo from the store when navigating here from a resume.
@@ -149,11 +155,20 @@ export default function PlanView({
   const previewMediatorRequired =
     isValidGAddress(destination) && requiresMediatorForAddress(destination);
 
+  // A destination the registry doesn't list may still be an exchange deposit address, and
+  // closing directly into one is unrecoverable. Only the user knows where the address came
+  // from, so their confirmation gates the flow (the API refuses the build without it too).
+  const destinationAcknowledged =
+    !isValidGAddress(destination) ||
+    isCexAddress(destination) ||
+    destinationAcknowledgedFor === destination;
+
   const canProceed =
     destinationStepReady &&
     isValidGAddress(destination) &&
     destination !== account.address &&
-    memoValid;
+    memoValid &&
+    destinationAcknowledged;
 
   const totalSubentries =
     account.trustlines.length +
@@ -208,6 +223,10 @@ export default function PlanView({
       const decisions = [
         ...dispositionsToDecisions(useDemolishStore.getState().assetDispositions),
         ...claimableSelectionsToDecisions(useDemolishStore.getState().claimableBalanceSelections),
+        ...destinationAcknowledgementToDecisions(
+          useDemolishStore.getState().destinationAcknowledgedFor,
+          destination
+        ),
       ];
       const plan = await fetchClosePlan(
         { source: account.address, destination, decisions },
@@ -288,6 +307,8 @@ export default function PlanView({
             memo={memo}
             onMemoChange={setMemo}
             source={account.address}
+            acknowledged={destinationAcknowledgedFor === destination}
+            onAcknowledgedChange={(ack) => acknowledgeDestination(ack ? destination : null)}
           />
 
           {error && (

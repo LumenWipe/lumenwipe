@@ -8,7 +8,11 @@ import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import { runClose } from "@/lib/api/close-engine";
 import { fetchCloseTransactions } from "@/lib/api/close-client";
-import { claimableSelectionsToDecisions, dispositionsToDecisions } from "@/lib/api/close-decisions";
+import {
+  claimableSelectionsToDecisions,
+  destinationAcknowledgementToDecisions,
+  dispositionsToDecisions,
+} from "@/lib/api/close-decisions";
 import { verifyCloseTransaction } from "@/lib/stellar/verify";
 import { submitViaApi } from "@/lib/stellar/submit-via-api";
 import { requestMediatorCosignature } from "@/lib/stellar/mediator";
@@ -60,6 +64,12 @@ export function useCloseExecution() {
       const decisions = [
         ...dispositionsToDecisions(useDemolishStore.getState().assetDispositions),
         ...claimableSelectionsToDecisions(claimableBalanceSelections),
+        // Carried through to every build round: the API refuses to build a close into a
+        // destination it doesn't recognize until the user has confirmed they control it.
+        ...destinationAcknowledgementToDecisions(
+          useDemolishStore.getState().destinationAcknowledgedFor,
+          useDemolishStore.getState().destinationAddress
+        ),
       ];
       // The set of assets the user themselves chose to add a trustline for, to claim an
       // otherwise-unreachable balance - verify()'s only basis for allowing a raised (non-
