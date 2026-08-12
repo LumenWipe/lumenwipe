@@ -2,8 +2,8 @@ import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import {
   DESTINATION_ACK_CHOICE,
-  DESTINATION_DECISION_ID,
   deriveDestinationDecisionPoints,
+  destinationDecisionId,
   isDestinationAcknowledged,
 } from "@/lib/close-api/decisions";
 import { lookupExchange } from "@/lib/exchange-registry";
@@ -22,7 +22,7 @@ test("the known-exchange fixture is actually in the registry", () => {
 test("an unrecognized destination requires an acknowledgement", () => {
   const points = deriveDestinationDecisionPoints(UNKNOWN);
   expect(points).toHaveLength(1);
-  expect(points[0]!.id).toBe(DESTINATION_DECISION_ID);
+  expect(points[0]!.id).toBe(destinationDecisionId(UNKNOWN));
   expect(points[0]!.type).toBe("confirmation");
   expect(points[0]!.required).toBe(true);
   expect(points[0]!.subject).toEqual({ kind: "destination", address: UNKNOWN });
@@ -47,25 +47,27 @@ test("a null destination produces no decision", () => {
 
 test("the correct answer acknowledges the destination", () => {
   const answers: DecisionAnswer[] = [
-    { id: DESTINATION_DECISION_ID, choice: DESTINATION_ACK_CHOICE },
+    { id: destinationDecisionId(UNKNOWN), choice: DESTINATION_ACK_CHOICE },
   ];
-  expect(isDestinationAcknowledged(answers)).toBe(true);
+  expect(isDestinationAcknowledged(answers, UNKNOWN)).toBe(true);
 });
 
 test("silence is not consent", () => {
-  expect(isDestinationAcknowledged([])).toBe(false);
+  expect(isDestinationAcknowledged([], UNKNOWN)).toBe(false);
 });
 
 // Answering the right decision with any other value must not pass. The plan endpoint's generic
 // "pending" filter only checks that an id was answered, so the choice has to be validated here.
 test("answering the destination decision with a different choice does not acknowledge it", () => {
-  const answers: DecisionAnswer[] = [{ id: DESTINATION_DECISION_ID, choice: "acknowledged" }];
-  expect(isDestinationAcknowledged(answers)).toBe(false);
+  const answers: DecisionAnswer[] = [
+    { id: destinationDecisionId(UNKNOWN), choice: "acknowledged" },
+  ];
+  expect(isDestinationAcknowledged(answers, UNKNOWN)).toBe(false);
 });
 
 test("the acknowledgement choice on a different decision does not acknowledge the destination", () => {
   const answers: DecisionAnswer[] = [{ id: "asset:USDC-GISSUER", choice: DESTINATION_ACK_CHOICE }];
-  expect(isDestinationAcknowledged(answers)).toBe(false);
+  expect(isDestinationAcknowledged(answers, UNKNOWN)).toBe(false);
 });
 
 test("unrelated answers leave the destination unacknowledged", () => {
@@ -73,5 +75,26 @@ test("unrelated answers leave the destination unacknowledged", () => {
     { id: "asset:USDC-GISSUER", choice: "convert_to_xlm" },
     { id: "claim:0000abcd", choice: "forfeit" },
   ];
-  expect(isDestinationAcknowledged(answers)).toBe(false);
+  expect(isDestinationAcknowledged(answers, UNKNOWN)).toBe(false);
+});
+
+// The reason the decision id carries the address. An answer is just `{id, choice}`, so an id
+// that did not name the address would make this a bare boolean a caller could carry from one
+// destination to another: confirm control of a wallet, edit the destination to an exchange
+// deposit address, resend the same answers. That is the original bug reached through the gate.
+test("an acknowledgement given for one address does not acknowledge another", () => {
+  const other = Keypair.random().publicKey();
+  const answers: DecisionAnswer[] = [
+    { id: destinationDecisionId(other), choice: DESTINATION_ACK_CHOICE },
+  ];
+  expect(isDestinationAcknowledged(answers, other)).toBe(true);
+  expect(isDestinationAcknowledged(answers, UNKNOWN)).toBe(false);
+});
+
+// `decisions` arrives as an unvalidated array from the request body, and this gate runs before
+// the controller's try block - an unguarded property access here is a 500, not a typed 4xx.
+test("malformed answers do not throw", () => {
+  const answers = [null, undefined, 42, "nope", {}] as unknown as DecisionAnswer[];
+  expect(() => isDestinationAcknowledged(answers, UNKNOWN)).not.toThrow();
+  expect(isDestinationAcknowledged(answers, UNKNOWN)).toBe(false);
 });

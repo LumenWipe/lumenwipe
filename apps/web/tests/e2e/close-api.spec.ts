@@ -30,10 +30,32 @@ test("close API: plan -> transactions -> sign -> submit merges a fresh account",
   await fund(source.publicKey());
   await fund(destination.publicKey());
 
-  // 1. Plan: a freshly funded account holds nothing, so there is one transaction and
-  //    no decisions to resolve.
-  const planRes = await request.post("/api/v1/testnet/close/plan", {
+  // A random destination is not in the exchange registry, so the close cannot be built until
+  // the caller asserts control of it (issue #115). This is the SDK-caller shape: no UI, no
+  // plan required - the acknowledgement is answered directly. Scoped to the address, so it
+  // cannot be replayed for a different destination.
+  const acknowledgement = {
+    id: `destination:${destination.publicKey()}`,
+    choice: "i_control_this_address",
+  };
+
+  // 1. Plan: a freshly funded account holds nothing, so the only decision to resolve is the
+  //    destination acknowledgement - and once answered, nothing is pending.
+  const unansweredPlanRes = await request.post("/api/v1/testnet/close/plan", {
     data: { source: source.publicKey(), destination: destination.publicKey() },
+  });
+  expect(unansweredPlanRes.ok()).toBeTruthy();
+  const unansweredPlan = await unansweredPlanRes.json();
+  expect(unansweredPlan.status).toBe("needs_decisions");
+  expect(unansweredPlan.decisionPoints).toHaveLength(1);
+  expect(unansweredPlan.decisionPoints[0].id).toBe(acknowledgement.id);
+
+  const planRes = await request.post("/api/v1/testnet/close/plan", {
+    data: {
+      source: source.publicKey(),
+      destination: destination.publicKey(),
+      decisions: [acknowledgement],
+    },
   });
   expect(planRes.ok()).toBeTruthy();
   const plan = await planRes.json();
@@ -41,10 +63,21 @@ test("close API: plan -> transactions -> sign -> submit merges a fresh account",
   expect(plan.execution.estimatedTransactionCount).toBe(1);
   expect(plan.decisionPoints).toHaveLength(0);
 
-  // 2. Transactions: one unsigned fused close, with an intent that merges to the
-  //    requested destination and nowhere else.
-  const txRes = await request.post("/api/v1/testnet/close/transactions", {
+  // 2. Transactions: the build refuses an unacknowledged destination, and accepts it once
+  //    answered - one unsigned fused close, with an intent that merges to the requested
+  //    destination and nowhere else.
+  const unacknowledgedRes = await request.post("/api/v1/testnet/close/transactions", {
     data: { source: source.publicKey(), destination: destination.publicKey(), decisions: [] },
+  });
+  expect(unacknowledgedRes.status()).toBe(422);
+  expect((await unacknowledgedRes.json()).error.code).toBe("destination_not_acknowledged");
+
+  const txRes = await request.post("/api/v1/testnet/close/transactions", {
+    data: {
+      source: source.publicKey(),
+      destination: destination.publicKey(),
+      decisions: [acknowledgement],
+    },
   });
   expect(txRes.ok()).toBeTruthy();
   const txBody = await txRes.json();

@@ -21,11 +21,11 @@ import {
   deriveClaimableBalanceDecisionPoints,
   deriveDecisionPoints,
   deriveDestinationDecisionPoints,
+  destinationDecisionId,
   isDestinationAcknowledged,
   resolveClaimableBalanceSelections,
   resolveDispositions,
   DESTINATION_ACK_CHOICE,
-  DESTINATION_DECISION_ID,
 } from "@/lib/close-api/decisions";
 import { assemblePlanResponse, computePlanHash } from "@/lib/close-api/plan-response";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
@@ -121,8 +121,17 @@ export class CloseController {
         ...deriveDecisionPoints(accountState, convertibility),
         ...deriveClaimableBalanceDecisionPoints(accountState),
       ];
-      const answeredIds = new Set(decisions.map((d) => d.id));
-      const pending = decisionPoints.filter((dp) => !answeredIds.has(dp.id));
+      const answeredIds = new Set(decisions.map((d) => d?.id));
+      // The destination acknowledgement is judged on its choice, not merely on having been
+      // answered. For every other decision the choice is re-validated downstream against a
+      // known value set, so presence is a fair proxy; here the choice IS the content, and
+      // reporting "ready" for an answer that /transactions will refuse leaves a caller with
+      // a 422 and no pending decision to point at.
+      const pending = decisionPoints.filter((dp) =>
+        destination !== null && dp.id === destinationDecisionId(destination)
+          ? !isDestinationAcknowledged(decisions, destination)
+          : !answeredIds.has(dp.id)
+      );
 
       const planHash = computePlanHash({
         source,
@@ -154,7 +163,7 @@ export class CloseController {
   @ApiResponse({ status: 400, description: "Invalid network, source, destination, or JSON body." })
   @ApiResponse({ status: 404, description: "Source account not found." })
   @ApiResponse({ status: 409, description: "A conversion route drifted; re-plan and retry." })
-  @ApiResponse({ status: 422, description: "Unprocessable: unresolved asset dispositions, or a required exchange memo is missing." })
+  @ApiResponse({ status: 422, description: "Unprocessable: unresolved asset dispositions, a required exchange memo is missing, or the destination is not a recognized exchange address and has not been acknowledged (destination_not_acknowledged)." })
   @ApiResponse({ status: 503, description: "The exchange (mediator) flow is not configured on this server." })
   async transactions(
     @Param("network") network: string,
@@ -205,14 +214,14 @@ export class CloseController {
     // deriveDestinationDecisionPoints). The caller must assert control of it explicitly. This
     // gate lives here rather than only in the plan because the plan is advisory: an SDK caller
     // can reach this endpoint without ever having requested one.
-    if (exchange === null && !isDestinationAcknowledged(decisions)) {
+    if (exchange === null && !isDestinationAcknowledged(decisions, destination)) {
       fail(
         "destination_not_acknowledged",
         "This destination is not a recognized exchange deposit address. Confirm it is an account " +
           "you control before closing into it: a direct close into an exchange or custodial " +
           "address cannot be credited and the funds are lost.",
         422,
-        { decisionId: DESTINATION_DECISION_ID, choice: DESTINATION_ACK_CHOICE }
+        { decisionId: destinationDecisionId(destination), choice: DESTINATION_ACK_CHOICE }
       );
     }
 

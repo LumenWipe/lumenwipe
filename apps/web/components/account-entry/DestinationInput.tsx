@@ -11,9 +11,14 @@ interface DestinationInputProps {
   memo: string;
   onMemoChange: (value: string) => void;
   source: string;
-  /** True when the user has confirmed they control an unrecognized destination. */
-  acknowledged?: boolean;
-  onAcknowledgedChange?: (acknowledged: boolean) => void;
+  /**
+   * True when the user has confirmed they control an unrecognized destination. Both of these
+   * are required, not optional: this component is the only place the risk is explained, and an
+   * optional prop a future call site forgets would silently restore the fail-open default this
+   * exists to close. Omitting them is a type error, not a silent downgrade.
+   */
+  acknowledged: boolean;
+  onAcknowledgedChange: (acknowledged: boolean) => void;
 }
 
 /**
@@ -27,7 +32,7 @@ export default function DestinationInput({
   memo,
   onMemoChange,
   source,
-  acknowledged = false,
+  acknowledged,
   onAcknowledgedChange,
 }: DestinationInputProps) {
   const memoReq = isValidGAddress(destination) ? getMemoRequirement(destination) : null;
@@ -39,8 +44,7 @@ export default function DestinationInput({
   // exchange deposit address is unrecoverable - exchanges credit payments carrying a memo and
   // cannot credit an account merge - so an address we do not recognize is confirmed by the only
   // party who knows where it came from, rather than assumed safe.
-  const needsAcknowledgement =
-    onAcknowledgedChange !== undefined && isValidGAddress(destination) && !isCexAddress(destination);
+  const needsAcknowledgement = isValidGAddress(destination) && !isCexAddress(destination);
 
   return (
     <div className="space-y-4">
@@ -98,7 +102,7 @@ export default function DestinationInput({
             <input
               type="checkbox"
               checked={acknowledged}
-              onChange={(e) => onAcknowledgedChange?.(e.target.checked)}
+              onChange={(e) => onAcknowledgedChange(e.target.checked)}
               className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-stellar"
             />
             This is a wallet I control, not an exchange or custodial account.

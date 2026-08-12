@@ -118,8 +118,11 @@ test("exchange destination shows memo field requirement", async ({ page }) => {
   // Coinbase Deposits address - verified in Stellar Expert directory as coinbase.com, memo-required
   const coinbaseAddress = "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D";
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(coinbaseAddress);
-  await confirmDestinationControl(page);
 
-  // The registry-driven memo requirement should surface.
+  // The registry-driven memo requirement should surface, and a registry address is never
+  // asked to confirm control - the registry already knows what it is.
   await expect(page.getByText(/requires a .* memo/i)).toBeVisible();
+  await expect(
+    page.getByRole("checkbox", { name: /wallet I control, not an exchange/i })
+  ).toHaveCount(0);
 });

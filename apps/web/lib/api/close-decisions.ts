@@ -12,9 +12,15 @@ function claimableBalanceDecisionId(balanceId: string): string {
   return `claim:${balanceId}`;
 }
 
-/** Must match the API's `DESTINATION_DECISION_ID` / `DESTINATION_ACK_CHOICE`. Drift fails
- *  loud: the API answers an unacknowledged destination with 422. */
-const DESTINATION_DECISION_ID = "destination:unrecognized";
+/** Stable decision id for the unrecognized-destination acknowledgement. Must match the API's
+ *  `destinationDecisionId`. Scoped to the address so the answer cannot be replayed for a
+ *  different destination - the API enforces the same scoping. */
+function destinationDecisionId(address: string): string {
+  return `destination:${address}`;
+}
+
+/** Must match the API's `DESTINATION_ACK_CHOICE`. Drift fails loud: the API answers an
+ *  unacknowledged destination with 422. */
 const DESTINATION_ACK_CHOICE = "i_control_this_address";
 
 /**
@@ -30,7 +36,7 @@ export function destinationAcknowledgementToDecisions(
   destination: string | null
 ): DecisionAnswer[] {
   if (!destination || acknowledgedFor !== destination) return [];
-  return [{ id: DESTINATION_DECISION_ID, choice: DESTINATION_ACK_CHOICE }];
+  return [{ id: destinationDecisionId(destination), choice: DESTINATION_ACK_CHOICE }];
 }
 
 /**

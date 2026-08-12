@@ -29,8 +29,10 @@ async function fund(pub: string): Promise<void> {
 // hits, so wait for Horizon to see it before driving the UI.
 async function waitUntilIndexed(id: string, attempts = 10, delayMs = 1_500): Promise<void> {
   for (let i = 0; i < attempts; i++) {
+    // Only a genuine 200 means indexed. Treating any non-404 as success reads a Horizon
+    // 429 or 500 as "ready" and pushes the resulting failure onto whatever the spec asserts next.
     const res = await fetch(`${HORIZON}/accounts/${id}`);
-    if (res.status !== 404) return;
+    if (res.ok) return;
     await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
   throw new Error(`account ${id} was not indexed in time`);

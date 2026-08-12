@@ -7,8 +7,19 @@ import type {
 } from "@lumenwipe/types";
 import { lookupExchange } from "@/lib/exchange-registry";
 
-// Stable id for the unrecognized-destination acknowledgement.
-export const DESTINATION_DECISION_ID = "destination:unrecognized";
+/**
+ * Stable id for the unrecognized-destination acknowledgement, scoped to the address it is
+ * about: "destination:G...". The scoping is the point. An answer carries only an id and a
+ * choice (`DecisionAnswer`), so an id that did not name the address would make the
+ * acknowledgement a bare boolean a caller could carry from one destination to another - the
+ * caller confirms control of a wallet, then edits the destination to an exchange deposit
+ * address and resends the same answers, and the gate below waves it through. Scoping by
+ * address makes that structurally impossible, and matches how every other decision here is
+ * keyed (`assetDecisionId`, `claimableBalanceDecisionId`).
+ */
+export function destinationDecisionId(address: string): string {
+  return `destination:${address}`;
+}
 
 // The only choice that resolves it. Naming it after what the caller is asserting, rather
 // than a generic "acknowledged", keeps the claim legible in an API log or an SDK call site.
@@ -30,7 +41,7 @@ export function deriveDestinationDecisionPoints(destination: string | null): Dec
   if (!destination || lookupExchange(destination) !== null) return [];
   return [
     {
-      id: DESTINATION_DECISION_ID,
+      id: destinationDecisionId(destination),
       type: "confirmation" as const,
       subject: { kind: "destination", address: destination },
       options: [
@@ -48,13 +59,16 @@ export function deriveDestinationDecisionPoints(destination: string | null): Dec
   ];
 }
 
-// True when the caller has explicitly asserted control of an unrecognized destination.
-// Defaults to false on a missing or unrecognized answer - the whole point is that silence
-// is not consent.
-export function isDestinationAcknowledged(answers: DecisionAnswer[]): boolean {
-  return answers.some(
-    (a) => a.id === DESTINATION_DECISION_ID && a.choice === DESTINATION_ACK_CHOICE
-  );
+// True when the caller has explicitly asserted control of THIS destination. Defaults to false
+// on a missing, malformed, or differently-addressed answer - silence is not consent, and
+// neither is consent given for some other address. Element-level optional chaining because
+// `decisions` reaches here as an unvalidated array from the request body.
+export function isDestinationAcknowledged(
+  answers: DecisionAnswer[],
+  destination: string
+): boolean {
+  const id = destinationDecisionId(destination);
+  return answers.some((a) => a?.id === id && a?.choice === DESTINATION_ACK_CHOICE);
 }
 
 // Stable, URL-safe id for an asset decision: "asset:CODE-ISSUER". The colon in the

@@ -156,18 +156,45 @@ test("close/transactions rejects a text memo over 28 bytes with 422 (before any 
 // The plan endpoint surfaces this as a decision, but the plan is advisory: an SDK caller can
 // reach /close/transactions without ever requesting one, so the refusal has to live here too.
 test("close/transactions refuses an unacknowledged unrecognized destination with 422 (before any network read)", async () => {
+  const destination = Keypair.random().publicKey();
   const res = await authPost("/v1/testnet/close/transactions").send({
     source: Keypair.random().publicKey(),
-    destination: Keypair.random().publicKey(),
+    destination,
   });
   expect(res.status).toBe(422);
   expect(res.body.error.code).toBe("destination_not_acknowledged");
   // The details tell a caller exactly which decision to answer and with what, so an SDK
-  // integrator can recover from the 422 without reading our source.
+  // integrator can recover from the 422 without reading our source. The decision id names the
+  // destination, so the answer cannot be replayed for a different one.
   expect(res.body.error.details).toEqual({
-    decisionId: "destination:unrecognized",
+    decisionId: `destination:${destination}`,
     choice: "i_control_this_address",
   });
+});
+
+test("close/transactions does not accept an acknowledgement given for a different destination", async () => {
+  const res = await authPost("/v1/testnet/close/transactions").send({
+    source: Keypair.random().publicKey(),
+    destination: Keypair.random().publicKey(),
+    decisions: [
+      {
+        id: `destination:${Keypair.random().publicKey()}`,
+        choice: "i_control_this_address",
+      },
+    ],
+  });
+  expect(res.status).toBe(422);
+  expect(res.body.error.code).toBe("destination_not_acknowledged");
+});
+
+test("close/transactions survives malformed decision entries with a typed error, not a 500", async () => {
+  const res = await authPost("/v1/testnet/close/transactions").send({
+    source: Keypair.random().publicKey(),
+    destination: Keypair.random().publicKey(),
+    decisions: [null, 42],
+  });
+  expect(res.status).toBe(422);
+  expect(res.body.error.code).toBe("destination_not_acknowledged");
 });
 
 test("close/transactions does not demand an acknowledgement for a recognized exchange destination", async () => {

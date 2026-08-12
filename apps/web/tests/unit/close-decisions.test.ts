@@ -52,13 +52,14 @@ test("claimableSelectionsToDecisions › empty selections → empty decisions", 
 
 const DEST = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H";
 const OTHER_DEST = "GAK5Q2SDKTMFMO3EUEKWAFRB2QPH4W5WU6X6RIWRN4MNNTSOUKUB6YVX";
-// Must match the API's DESTINATION_DECISION_ID / DESTINATION_ACK_CHOICE.
-const DESTINATION_DECISION_ID = "destination:unrecognized";
+// Must match the API's destinationDecisionId / DESTINATION_ACK_CHOICE. The id names the
+// address so an answer cannot be replayed for a different destination.
+const destinationDecisionId = (address: string) => `destination:${address}`;
 const DESTINATION_ACK_CHOICE = "i_control_this_address";
 
 test("destinationAcknowledgementToDecisions › emits the API's decision id and choice", () => {
   expect(destinationAcknowledgementToDecisions(DEST, DEST)).toEqual([
-    { id: DESTINATION_DECISION_ID, choice: DESTINATION_ACK_CHOICE },
+    { id: destinationDecisionId(DEST), choice: DESTINATION_ACK_CHOICE },
   ]);
 });
 
