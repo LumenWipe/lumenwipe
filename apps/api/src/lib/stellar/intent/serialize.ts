@@ -1,8 +1,52 @@
-import { TransactionBuilder, type Asset, type Transaction } from "@stellar/stellar-sdk";
-import type { IntentOperation, TxIntent } from "@lumenwipe/types";
+import { TransactionBuilder, StrKey, type Asset, type Transaction } from "@stellar/stellar-sdk";
+import type { AccountSigner, IntentOperation, TxIntent } from "@lumenwipe/types";
 
 function assetToString(asset: Asset): string {
   return asset.isNative() ? "native" : `${asset.getCode()}:${asset.getIssuer()}`;
+}
+
+type DecodedSetOptions = Extract<Transaction["operations"][number], { type: "setOptions" }>;
+
+// Decodes a SetOptions signer to the same { type, key, weight } shape AccountSigner uses
+// elsewhere (apps/api/src/lib/stellar/account.ts:27-53), so verify() can match it against the
+// account's real signer set. The SDK decodes hash(x)/pre-auth-tx signers to raw buffers (unlike
+// ed25519 and ed25519-signed-payload, which it already strkey-encodes) - re-encode them so every
+// signer type produces a comparable strkey. Mirrors parseXdrSigner's fail-closed shape
+// (apps/api/src/lib/stellar/account.ts:27-52): an unrecognized SignerKey arm returns null rather
+// than silently falling through to the last branch.
+function decodeSigner(signer: NonNullable<DecodedSetOptions["signer"]>): AccountSigner | null {
+  if ("ed25519PublicKey" in signer) {
+    return {
+      type: "ed25519_public_key",
+      key: signer.ed25519PublicKey!,
+      weight: Number(signer.weight),
+    };
+  }
+  if ("sha256Hash" in signer) {
+    // The decode path (Transaction.operations via TransactionBuilder.fromXDR) always yields a
+    // raw Buffer here - the SDK's `Buffer | string` type only allows `string` for the
+    // operation-*building* input, never what decoding produces.
+    return {
+      type: "hash_x",
+      key: StrKey.encodeSha256Hash(signer.sha256Hash! as Buffer),
+      weight: Number(signer.weight),
+    };
+  }
+  if ("preAuthTx" in signer) {
+    return {
+      type: "preauth_tx",
+      key: StrKey.encodePreAuthTx(signer.preAuthTx! as Buffer),
+      weight: Number(signer.weight),
+    };
+  }
+  if ("ed25519SignedPayload" in signer) {
+    return {
+      type: "ed25519_signed_payload",
+      key: signer.ed25519SignedPayload!,
+      weight: Number(signer.weight),
+    };
+  }
+  return null;
 }
 
 // Normalizes a single SDK operation to the safety-critical fields the intent declares.
@@ -43,7 +87,14 @@ function normalizeOp(op: Transaction["operations"][number]): IntentOperation | n
         value: op.value ? op.value.toString("base64") : null,
       };
     case "setOptions":
-      return { type: "set_options", summary: "Adjust signers and/or thresholds" };
+      return {
+        type: "set_options",
+        signer: op.signer ? decodeSigner(op.signer) : null,
+        masterWeight: op.masterWeight == null ? null : Number(op.masterWeight),
+        lowThreshold: op.lowThreshold == null ? null : Number(op.lowThreshold),
+        medThreshold: op.medThreshold == null ? null : Number(op.medThreshold),
+        highThreshold: op.highThreshold == null ? null : Number(op.highThreshold),
+      };
     case "claimClaimableBalance":
       return { type: "claim_claimable_balance", balanceId: op.balanceId };
     case "revokeAccountSponsorship":

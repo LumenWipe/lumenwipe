@@ -1,4 +1,5 @@
 import type { StepType } from "./plan";
+import type { AccountSigner } from "./account";
 
 export type CloseApiStatus = "ready" | "needs_decisions" | "blocked" | "complete";
 
@@ -68,7 +69,17 @@ export type IntentOperation =
   | { type: "account_merge"; destination: string }
   | { type: "manage_sell_offer"; offerId: string; amount: string }
   | { type: "manage_data"; name: string; value: string | null }
-  | { type: "set_options"; summary: string }
+  | {
+      type: "set_options";
+      // The signer a SetOptions op touches, decoded to its real type/key (not just weight),
+      // so verify() can check it against the account's actual signer set. Null when the op
+      // only touches thresholds/master weight and carries no signer field.
+      signer: AccountSigner | null;
+      masterWeight: number | null;
+      lowThreshold: number | null;
+      medThreshold: number | null;
+      highThreshold: number | null;
+    }
   | { type: "claim_claimable_balance"; balanceId: string }
   | {
       type: "revoke_sponsorship";

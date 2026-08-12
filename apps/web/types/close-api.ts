@@ -1,4 +1,5 @@
 import type { StepType } from "@/types/plan";
+import type { AccountSigner } from "@/types/account";
 
 export type CloseApiStatus = "ready" | "needs_decisions" | "blocked" | "complete";
 
@@ -64,8 +65,10 @@ export type IntentOperation =
   | { type: "manage_data"; name: string; value: string | null }
   | {
       type: "set_options";
-      // Captured so verify() can reject an injected/empowered signer or a disabled master key.
-      signerWeight: number | null;
+      // The signer a SetOptions op touches, decoded to its real type/key (not just weight), so
+      // verify() can check it against the account's actual signer set. Null when the op only
+      // touches thresholds/master weight and carries no signer field.
+      signer: AccountSigner | null;
       masterWeight: number | null;
       lowThreshold: number | null;
       medThreshold: number | null;

@@ -29,9 +29,6 @@ interface DemolishState {
   // claim it, or forfeit it.
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection>;
 
-  // Multisig
-  requiredSignatureCount: number;
-
   // Mediator
   mediatorRequired: boolean;
   mediatorPublicKey: string | null;
@@ -116,7 +113,6 @@ const initialState = {
   currentStepIndex: 0,
   assetDispositions: {},
   claimableBalanceSelections: {},
-  requiredSignatureCount: 1,
   mediatorRequired: false,
   mediatorPublicKey: null,
   lastError: null,
@@ -139,7 +135,6 @@ export const useDemolishStore = create<DemolishState>((set) => ({
   setAccountState: (accountState) =>
     set((s) => ({
       accountState,
-      requiredSignatureCount: Math.max(1, accountState.thresholds.med),
       // Keep per-asset decisions across a re-scan of the SAME assets (e.g. the
       // analyze-page refresh button, which re-runs the fetch and lands here):
       // wiping them dropped a user's "return to issuer" choice, after which the

@@ -1,5 +1,14 @@
 import { test, expect } from "bun:test";
-import { Account, Asset, Keypair, Networks, Operation, TransactionBuilder, xdr } from "@stellar/stellar-sdk";
+import {
+  Account,
+  Asset,
+  Keypair,
+  Networks,
+  Operation,
+  StrKey,
+  TransactionBuilder,
+  xdr,
+} from "@stellar/stellar-sdk";
 import { assertCloseIntent, VerificationError, type CloseExpectation } from "@/lib/stellar/verify";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import type { IntentOperation, TxIntent } from "@/types/close-api";
@@ -9,6 +18,7 @@ const DEST = Keypair.random().publicKey();
 const MED = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
 const ATTACKER = Keypair.random().publicKey();
+const REMOVED_SIGNER = Keypair.random().publicKey();
 
 function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
   return {
@@ -19,6 +29,11 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
     memoRequired: false,
     memoType: null,
     claimTrustlineAssets: [],
+    accountSigners: [
+      { key: SRC, weight: 1, type: "ed25519_public_key" },
+      { key: REMOVED_SIGNER, weight: 1, type: "ed25519_public_key" },
+    ],
+    accountThresholds: { low: 0, med: 1, high: 1 },
     ...over,
   };
 }
@@ -52,9 +67,11 @@ const payment = (destination: string, asset = `USDC:${ISSUER}`): IntentOperation
   asset,
   amount: "5",
 });
-const setOptions = (over: Record<string, number | null> = {}): IntentOperation => ({
+const setOptions = (
+  over: Partial<Extract<IntentOperation, { type: "set_options" }>> = {}
+): IntentOperation => ({
   type: "set_options",
-  signerWeight: 0,
+  signer: { type: "ed25519_public_key", key: REMOVED_SIGNER, weight: 0 },
   masterWeight: null,
   lowThreshold: null,
   medThreshold: null,
@@ -66,7 +83,11 @@ const setOptions = (over: Record<string, number | null> = {}): IntentOperation =
 
 test("a well-formed direct close passes", () => {
   const i = intent({
-    guarantees: { mergeDestination: DEST, paymentsOnlyTo: [SRC, ISSUER], minXlmFromConversions: "9" },
+    guarantees: {
+      mergeDestination: DEST,
+      paymentsOnlyTo: [SRC, ISSUER],
+      minXlmFromConversions: "9",
+    },
     operations: [setOptions(), conversion(), payment(ISSUER), merge(DEST)],
   });
   expect(() => assertCloseIntent(i, expectation())).not.toThrow();
@@ -153,16 +174,16 @@ test("rejects a conversion with no minimum floor", () => {
 });
 
 test("rejects a trustline that is created/raised instead of removed", () => {
-  const i = intent({ operations: [{ type: "change_trust", asset: `USDC:${ISSUER}`, limit: "100" }] });
+  const i = intent({
+    operations: [{ type: "change_trust", asset: `USDC:${ISSUER}`, limit: "100" }],
+  });
   expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
 });
 
 test("allows a raised trustline for an asset the user chose to claim-remediate", () => {
   const asset = `USDC:${ISSUER}`;
   const i = intent({ operations: [{ type: "change_trust", asset, limit: "100" }] });
-  expect(() =>
-    assertCloseIntent(i, expectation({ claimTrustlineAssets: [asset] }))
-  ).not.toThrow();
+  expect(() => assertCloseIntent(i, expectation({ claimTrustlineAssets: [asset] }))).not.toThrow();
 });
 
 test("rejects a raised trustline for an asset not in the user's own claim-remediation choice", () => {
@@ -184,7 +205,87 @@ test("rejects an offer that is created instead of cancelled", () => {
 });
 
 test("rejects a set_options that adds or empowers a signer", () => {
-  const i = intent({ operations: [setOptions({ signerWeight: 1 })] });
+  const i = intent({
+    operations: [
+      setOptions({ signer: { type: "ed25519_public_key", key: REMOVED_SIGNER, weight: 1 } }),
+    ],
+  });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+});
+
+test("rejects a set_options signer removal for a key that is not on the account", () => {
+  const i = intent({
+    operations: [setOptions({ signer: { type: "ed25519_public_key", key: ATTACKER, weight: 0 } })],
+  });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+});
+
+test("rejects a signer removal when accountSigners is empty (fail-closed default)", () => {
+  // Pins the fail-closed default `useCloseExecution.ts` relies on
+  // (`accountSigners: accountState?.signers ?? []`): an empty accountSigners must never be
+  // read as "unknown, allow" for an otherwise legitimate-shaped removal.
+  const i = intent({
+    operations: [
+      setOptions({ signer: { type: "ed25519_public_key", key: REMOVED_SIGNER, weight: 0 } }),
+    ],
+  });
+  expect(() => assertCloseIntent(i, expectation({ accountSigners: [] }))).toThrow(
+    VerificationError
+  );
+});
+
+test("rejects a signer removal whose key matches a known signer but whose type does not", () => {
+  // The match must require both `key` AND `type`, not `key` alone.
+  const i = intent({
+    operations: [setOptions({ signer: { type: "hash_x", key: REMOVED_SIGNER, weight: 0 } })],
+  });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+});
+
+test("allows a set_options that only touches thresholds (no signer field)", () => {
+  const i = intent({ operations: [setOptions({ signer: null, highThreshold: 1 })] });
+  expect(() => assertCloseIntent(i, expectation())).not.toThrow();
+});
+
+test("a real close removing all four signer types passes when each is genuinely on the account", () => {
+  const hashXRaw = Keypair.random().rawPublicKey();
+  const preAuthRaw = Keypair.random().rawPublicKey();
+  const signedPayloadXdr = new xdr.SignerKeyEd25519SignedPayload({
+    ed25519: Keypair.random().rawPublicKey(),
+    payload: Buffer.from("cafebabe", "hex"),
+  }).toXDR();
+  const signedPayloadKey = StrKey.encodeSignedPayload(signedPayloadXdr);
+  const hashXKey = StrKey.encodeSha256Hash(hashXRaw);
+  const preAuthKey = StrKey.encodePreAuthTx(preAuthRaw);
+
+  const txXdr = buildXdr([
+    Operation.setOptions({ signer: { ed25519PublicKey: REMOVED_SIGNER, weight: 0 } }),
+    Operation.setOptions({ signer: { sha256Hash: hashXRaw, weight: 0 } }),
+    Operation.setOptions({ signer: { preAuthTx: preAuthRaw, weight: 0 } }),
+    Operation.setOptions({ signer: { ed25519SignedPayload: signedPayloadKey, weight: 0 } }),
+    Operation.accountMerge({ destination: DEST }),
+  ]);
+  const i = intentFromXdr(txXdr, Networks.TESTNET);
+  expect(() =>
+    assertCloseIntent(
+      i,
+      expectation({
+        accountSigners: [
+          { key: SRC, weight: 1, type: "ed25519_public_key" },
+          { key: REMOVED_SIGNER, weight: 1, type: "ed25519_public_key" },
+          { key: hashXKey, weight: 1, type: "hash_x" },
+          { key: preAuthKey, weight: 1, type: "preauth_tx" },
+          { key: signedPayloadKey, weight: 1, type: "ed25519_signed_payload" },
+        ],
+      })
+    )
+  ).not.toThrow();
+});
+
+test("rejects a hash(x) signer removal for a hash that is not a known signer", () => {
+  const hashXRaw = Keypair.random().rawPublicKey();
+  const txXdr = buildXdr([Operation.setOptions({ signer: { sha256Hash: hashXRaw, weight: 0 } })]);
+  const i = intentFromXdr(txXdr, Networks.TESTNET);
   expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
 });
 
