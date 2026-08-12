@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Keypair } from "@stellar/stellar-sdk";
+import { confirmDestinationControl } from "./helpers/destination";
 
 const FRIENDBOT = "https://friendbot.stellar.org";
 
@@ -74,6 +75,7 @@ test("same source and destination shows warning and keeps the begin button disab
   // Entering the source account as its own destination must surface the warning
   // and keep "Begin execution" disabled.
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(address);
+  await confirmDestinationControl(page);
 
   await expect(page.getByText(/Source and destination are the same/i)).toBeVisible();
   await expect(page.getByRole("button", { name: /Begin execution/i })).toBeDisabled();
@@ -116,6 +118,7 @@ test("exchange destination shows memo field requirement", async ({ page }) => {
   // Coinbase Deposits address - verified in Stellar Expert directory as coinbase.com, memo-required
   const coinbaseAddress = "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D";
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(coinbaseAddress);
+  await confirmDestinationControl(page);
 
   // The registry-driven memo requirement should surface.
   await expect(page.getByText(/requires a .* memo/i)).toBeVisible();

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Account, Keypair, Networks, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
+import { confirmDestinationControl } from "./helpers/destination";
 
 // Regression coverage for issue #73: "Begin execution" must land on the whole-plan review
 // gate (/review), not skip straight into /execute, and nothing may be persisted to a
@@ -107,6 +108,7 @@ async function reachReviewWithoutConfirming(
   const beginButton = page.getByRole("button", { name: /Begin execution/i });
   await expect(beginButton).toBeVisible({ timeout: 30_000 });
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination);
+  await confirmDestinationControl(page);
   await expect(beginButton).toBeEnabled();
   await beginButton.click();
 }

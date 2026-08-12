@@ -8,6 +8,7 @@ import {
   TransactionBuilder,
   type xdr,
 } from "@stellar/stellar-sdk";
+import { confirmDestinationControl } from "./helpers/destination";
 
 // E2E coverage for the REDESIGNED single-transaction flow, exercised end-to-end
 // against TESTNET through the real secret-key UI.
@@ -147,6 +148,7 @@ async function enterDestinationAndBegin(page: Page, destination: string): Promis
   await expect(beginButton).toBeVisible({ timeout: 30_000 });
 
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination);
+  await confirmDestinationControl(page);
 
   await expect(beginButton).toBeEnabled();
   await beginButton.click();
