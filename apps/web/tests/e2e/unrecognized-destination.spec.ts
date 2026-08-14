@@ -88,9 +88,12 @@ test("an unrecognized destination blocks execution until control is confirmed", 
   const beginButton = page.getByRole("button", { name: /Begin execution/i });
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination.publicKey());
 
-  // The warning states the actual risk, not a generic "double-check the address".
+  // The warning states the actual risk, not a generic "double-check the address", and does not
+  // misdescribe the product: LumenWipe does route recognized exchanges through the mediator, so
+  // the manual fallback is advice for this address only, not how exchanges work in general.
   await expect(page.getByText(/don't recognize this address/i)).toBeVisible();
-  await expect(page.getByText(/the funds are lost/i)).toBeVisible();
+  await expect(page.getByText(/loses the funds/i)).toBeVisible();
+  await expect(page.getByText(/exchanges it recognizes/i)).toBeVisible();
 
   // This is the regression: before the fix the flow proceeded with no confirmation at all.
   await expect(beginButton).toBeDisabled();
