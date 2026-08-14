@@ -7,7 +7,7 @@ import {
   AssetRouteLostError,
 } from "@/lib/utils/errors";
 import { stroopsToXlm } from "@/lib/utils/amounts";
-import { fetchConversionPath } from "@/lib/se-api/paths";
+import { fetchConversionPath } from "@/lib/stellar/path-finding";
 import { buildRemoveDataEntriesTx } from "@/lib/stellar/tx-builder/data-entries";
 import { buildCancelOffersTx } from "@/lib/stellar/tx-builder/offers";
 import {

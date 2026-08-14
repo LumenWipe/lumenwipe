@@ -1,6 +1,6 @@
 import type { Network } from "@/config/networks";
 import { PATH_ROUTING_API_URLS } from "@/config/networks";
-import { SE_API_TIMEOUT_MS, SLIPPAGE_BPS } from "@/config/constants";
+import { HORIZON_TIMEOUT_MS, SLIPPAGE_BPS } from "@/config/constants";
 import type { ConversionPath } from "@lumenwipe/types";
 import { isNativeAsset, parseAsset } from "@/lib/utils/assets";
 import { stroopsToXlm, xlmToStroops } from "@/lib/utils/amounts";
@@ -55,7 +55,7 @@ export async function fetchConversionPath(
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), SE_API_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), HORIZON_TIMEOUT_MS);
 
     const res = await fetch(url.toString(), {
       signal: controller.signal,

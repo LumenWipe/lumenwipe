@@ -4,6 +4,7 @@ import { fetchOffersFromAdapter, fetchClaimableBalancesForClaimant } from "./hor
 import { detectSubEntryMismatch } from "./scan-fallback";
 import { horizonAssetToString } from "@/lib/utils/assets";
 import { enumerateSponsoredEntries } from "@/lib/stellar/sponsorship";
+import { horizonGet, type HorizonDeps } from "./horizon-http";
 import type {
   AccountState,
   AccountSigner,
@@ -13,15 +14,25 @@ import type {
   PoolShareEntry,
 } from "@lumenwipe/types";
 
-// Reads the full account state via a Horizon-compatible API.
-//
-// Why Horizon and not Stellar RPC: the Soroban RPC getAccount call only returns
-// sequence number and base reserve - it does not expose trustlines, open offers,
-// data entries, or signers. Horizon returns all of that in a single call,
-// with zero indexing lag for newly created accounts.
-//
-// Future: once Soroswap API or the xBull router expose an equivalent
-// account-state endpoint we can drop the Horizon dependency here entirely.
+/**
+ * Reads full account state from one Horizon-compatible provider.
+ *
+ * Why Horizon and not Stellar RPC: `getAccount` returns only the sequence number and base
+ * reserve, and `getLedgerEntries` can fetch a ledger entry whose key you already know but
+ * cannot *enumerate* an account's trustlines or offers. Closing an account requires
+ * enumerating every sub-entry and proving the enumeration is complete, which structurally
+ * needs an indexer. Horizon's deprecation does not change this: its named successor cannot do
+ * this job.
+ *
+ * Why one call and not a per-asset loop: `/accounts/{id}` returns balances, data entries,
+ * signers, thresholds, flags and subentry_count together. The previous implementation
+ * enumerated asset codes from an indexer that did not carry balances and then issued one RPC
+ * read per trustline, so a single inbound request fanned out to hundreds of upstream calls.
+ *
+ * Swapping providers is a `baseUrl` change - SDF, Blockdaemon, Validation Cloud, a
+ * self-hosted instance - which is why the seam is configuration plus an injectable transport
+ * rather than a provider interface.
+ */
 
 // Horizon returns signer types with different naming conventions than the SDK.
 // Validate explicitly rather than casting to catch unknown types early.
@@ -36,7 +47,7 @@ function parseHorizonSignerType(raw: string, address: string): AccountSigner["ty
   const mapped = HORIZON_SIGNER_TYPE_MAP[raw];
   if (!mapped) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn(`[account-live] unknown signer type "${raw}" on ${address}, skipping`);
+      console.warn(`[account-state] unknown signer type "${raw}" on ${address}, skipping`);
     }
     return null;
   }
@@ -65,22 +76,22 @@ interface ApiAccount {
   num_sponsoring?: number;
 }
 
-export async function getLiveAccountState(
-  address: string,
-  network: Network = "testnet"
-): Promise<AccountState> {
-  const base = PATH_ROUTING_API_URLS[network];
-  if (!base) {
+/** Resolves the configured provider for a network. Throws rather than reading from nowhere. */
+export function horizonDepsFor(network: Network, fetchImpl?: typeof globalThis.fetch): HorizonDeps {
+  const baseUrl = PATH_ROUTING_API_URLS[network];
+  if (!baseUrl) {
     throw new Error(`NEXT_PUBLIC_PATH_ROUTING_API_${network.toUpperCase()} is not configured`);
   }
+  return { baseUrl, fetch: fetchImpl };
+}
 
-  const accountRes = await fetch(`${base}/accounts/${address}`, {
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-  });
-  if (accountRes.status === 404) throw new AccountNotFoundError(address);
-  if (!accountRes.ok) throw new Error(`Account fetch failed: ${accountRes.status}`);
-  const account = (await accountRes.json()) as ApiAccount;
+export async function readAccountStateFrom(
+  address: string,
+  network: Network,
+  deps: HorizonDeps
+): Promise<AccountState> {
+  const account = await horizonGet<ApiAccount>(`/accounts/${address}`, deps);
+  if (!account) throw new AccountNotFoundError(address);
 
   const nativeBalance = account.balances.find((b) => b.asset_type === "native");
 
@@ -112,18 +123,15 @@ export async function getLiveAccountState(
     })
     .filter((s): s is AccountSigner => s !== null);
 
-  const openOffers = await fetchOffersFromAdapter(address, network);
-  const claimableBalances: ClaimableBalance[] = await fetchClaimableBalancesForClaimant(
-    address,
-    network
-  );
+  const [openOffers, claimableBalances] = await Promise.all([
+    fetchOffersFromAdapter(address, deps),
+    fetchClaimableBalancesForClaimant(address, deps) as Promise<ClaimableBalance[]>,
+  ]);
   const numSubEntries = account.subentry_count;
 
-  // This path's failure mode differs from account.ts's: a failed account read throws
-  // above rather than falling through, so reaching here means the resource was fetched.
-  // What is still not guaranteed is that the resource CARRIES num_sponsoring - the
-  // endpoint is only Horizon-compatible, not Horizon - and `?? 0` would silently turn a
-  // missing field into a confident "sponsors nothing". Presence is the trust signal here.
+  // `?? 0` would turn a missing field into a confident "sponsors nothing". The endpoint is
+  // only Horizon-compatible, not Horizon, so presence is the trust signal: an absent
+  // num_sponsoring means we do not know, and enumerateSponsoredEntries is told so.
   const numSponsoringKnown = typeof account.num_sponsoring === "number";
   const numSponsoring = account.num_sponsoring ?? 0;
   const { sponsoredEntries, sponsorshipEnumerationIncomplete } = await enumerateSponsoredEntries(
@@ -155,6 +163,11 @@ export async function getLiveAccountState(
     openOffers,
     poolShares,
     claimableBalances,
+    // Ground truth for completeness: numSubEntries is what the ledger says the account holds.
+    // Enumerating fewer means the plan would leave entries behind and the merge would fail
+    // with op_has_sub_entries, so a mismatch has to reach the caller as a blocker. There is no
+    // second path to re-check against any more - with one zero-lag provider a mismatch is the
+    // answer, not a prompt to look again.
     subEntryMismatch: detectSubEntryMismatch({
       address,
       signers,
@@ -165,4 +178,12 @@ export async function getLiveAccountState(
       numSubEntries,
     }),
   };
+}
+
+/** Reads account state from the provider configured for `network`. */
+export async function getAccountState(
+  address: string,
+  network: Network = "testnet"
+): Promise<AccountState> {
+  return readAccountStateFrom(address, network, horizonDepsFor(network));
 }

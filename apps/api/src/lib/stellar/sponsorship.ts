@@ -1,6 +1,6 @@
 import { PATH_ROUTING_API_URLS } from "@/config/networks";
 import type { Network } from "@/config/networks";
-import { SPONSORSHIP_MAX_OPERATIONS_SCANNED, SE_API_TIMEOUT_MS } from "@/config/constants";
+import { SPONSORSHIP_MAX_OPERATIONS_SCANNED, HORIZON_TIMEOUT_MS } from "@/config/constants";
 import { horizonAssetToString } from "@/lib/utils/assets";
 import { parseClaimPredicate } from "@/lib/stellar/horizon-adapter";
 import {
@@ -18,12 +18,12 @@ const CB_MAX_TOTAL = 1000;
 // connection stall the whole read indefinitely.
 const OWNER_FETCH_CONCURRENCY = 10;
 
-// Same AbortController + setTimeout idiom as apps/api/src/lib/se-api/client.ts, applied
+// Same AbortController + setTimeout idiom the Horizon reads use, applied
 // to every fetch in this module so a slow/hung Horizon-compatible endpoint can't stall
 // enumeration indefinitely.
 async function fetchWithTimeout(url: string): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), SE_API_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), HORIZON_TIMEOUT_MS);
   try {
     return await fetch(url, {
       signal: controller.signal,

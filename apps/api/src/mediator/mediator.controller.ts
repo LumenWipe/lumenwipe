@@ -6,7 +6,7 @@ import { isValidNetwork, NETWORK_PASSPHRASES, getMediatorPublicKey } from "@/con
 import { isValidGAddress } from "@/lib/utils/validation";
 import { lookupExchange } from "@/lib/exchange-registry";
 import { getMediatorKeypair } from "@/lib/stellar/mediator-server";
-import { getAccountState } from "@/lib/stellar/account";
+import { getAccountState } from "@/lib/stellar/account-state";
 import { AccountNotFoundError } from "@/lib/utils/errors";
 import { forwardExceedsMergedBalance } from "./mediator-validation";
 

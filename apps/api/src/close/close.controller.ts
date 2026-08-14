@@ -8,7 +8,7 @@ import {
 import { isValidNetwork } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { readAccountState } from "@/lib/close-api/read-account";
-import { fetchConversionPath } from "@/lib/se-api/paths";
+import { fetchConversionPath } from "@/lib/stellar/path-finding";
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import {
   assessSponsorshipAffordability,

@@ -57,7 +57,9 @@ test("retries a 429 and succeeds once the provider relents", async () => {
       ? new Response("", { status: 429, headers: { "Retry-After": "0" } })
       : jsonResponse({ ok: true });
   });
-  expect(await horizonGet("/accounts/G1", { baseUrl: BASE, fetch })).toEqual({ ok: true });
+  expect(await horizonGet<{ ok: boolean }>("/accounts/G1", { baseUrl: BASE, fetch })).toEqual({
+    ok: true,
+  });
   expect(calls).toHaveLength(2);
 });
 

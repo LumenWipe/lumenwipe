@@ -113,10 +113,10 @@ export async function horizonPaginate<R>(
   while (path && out.length < maxTotal) {
     const page: Page<R> | null = await horizonGet<Page<R>>(path, deps);
     if (!page) break;
-    const records = page._embedded?.records ?? [];
+    const records: R[] = page._embedded?.records ?? [];
     out.push(...records);
 
-    const nextHref = page._links?.next?.href;
+    const nextHref: string | undefined = page._links?.next?.href;
     // A page shorter than the limit is the last one, whatever `next` says.
     path = nextHref && records.length === pageLimit ? toRelative(nextHref, deps.baseUrl) : null;
   }

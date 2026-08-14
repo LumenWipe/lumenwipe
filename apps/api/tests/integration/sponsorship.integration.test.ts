@@ -14,7 +14,7 @@ import {
   BASE_FEE,
   Horizon,
 } from "@stellar/stellar-sdk";
-import { getAccountState } from "@/lib/stellar/account";
+import { getAccountState } from "@/lib/stellar/account-state";
 import { assessSponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
 import { revokeSponsorshipOps } from "@/lib/stellar/tx-builder/sponsorship";
 import type { AccountState } from "@lumenwipe/types";

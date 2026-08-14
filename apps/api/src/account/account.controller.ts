@@ -2,10 +2,8 @@ import { Controller, Get, HttpException, Logger, Param, Query } from "@nestjs/co
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { isValidNetwork } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
-import { getAccountState } from "@/lib/stellar/account";
-import { getLiveAccountState } from "@/lib/stellar/account-live";
-import { needsLiveRescan } from "@/lib/stellar/scan-fallback";
-import { fetchConversionPath } from "@/lib/se-api/paths";
+import { getAccountState } from "@/lib/stellar/account-state";
+import { fetchConversionPath } from "@/lib/stellar/path-finding";
 import { AccountNotFoundError } from "@/lib/utils/errors";
 
 @ApiTags("account")
@@ -30,20 +28,7 @@ export class AccountController {
     }
 
     try {
-      let accountData = await getAccountState(address, network);
-
-      // stellar.expert lags for freshly created accounts and never returns
-      // manage-data entries. On any mismatch, fall back to the Horizon-based
-      // live path which has zero indexing lag and full enumeration.
-      if (needsLiveRescan(accountData)) {
-        try {
-          accountData = await getLiveAccountState(address, network);
-        } catch {
-          // Keep the SE-based result if the live path also fails.
-        }
-      }
-
-      return accountData;
+      return await getAccountState(address, network);
     } catch (err) {
       if (err instanceof HttpException) throw err;
       if (err instanceof AccountNotFoundError) {
