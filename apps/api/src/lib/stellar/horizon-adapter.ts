@@ -124,7 +124,17 @@ export async function fetchClaimableBalancesForClaimant(
     MAX_TOTAL
   );
   return records.map((b) => {
-    const createdAtEpochSeconds = Math.floor(Date.parse(b.last_modified_time) / 1000);
+    const parsed = Date.parse(b.last_modified_time);
+    if (!Number.isFinite(parsed)) {
+      // This anchors every `rel_before` predicate. A NaN would resolve relative deadlines to
+      // NaN, so a balance that is claimable right now could be presented as not claimable and
+      // left behind, unreachable once the account is merged.
+      throw new Error(
+        `Claimable balance ${b.id} has an unusable last_modified_time ` +
+          `(${String(b.last_modified_time)}); claim predicates cannot be evaluated against it.`
+      );
+    }
+    const createdAtEpochSeconds = Math.floor(parsed / 1000);
     return {
       id: b.id,
       asset: b.asset,

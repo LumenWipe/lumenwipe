@@ -107,7 +107,12 @@ test("drains every page of a paginated collection", async () => {
           _links: { next: { href: `${BASE}/offers?cursor=2` } },
         })
   );
-  const all = await horizonPaginate<{ n: number }>("/offers", { baseUrl: BASE, fetch }, PAGE_LIMIT, 100);
+  const all = await horizonPaginate<{ n: number }>(
+    "/offers",
+    { baseUrl: BASE, fetch },
+    PAGE_LIMIT,
+    100
+  );
   expect(all.map((r) => r.n)).toEqual([1, 2, 3]);
 });
 
@@ -123,7 +128,12 @@ test("a next link that yields nothing returns a short result rather than hanging
           _links: { next: { href: `${BASE}/offers?cursor=2` } },
         })
   );
-  const all = await horizonPaginate<{ n: number }>("/offers", { baseUrl: BASE, fetch }, PAGE_LIMIT, 100);
+  const all = await horizonPaginate<{ n: number }>(
+    "/offers",
+    { baseUrl: BASE, fetch },
+    PAGE_LIMIT,
+    100
+  );
   expect(all).toHaveLength(2);
   expect(calls).toHaveLength(2);
 });
@@ -135,27 +145,36 @@ test("stops at a short page even when next is advertised", async () => {
       _links: { next: { href: `${BASE}/offers?cursor=9` } },
     })
   );
-  const all = await horizonPaginate<{ n: number }>("/offers", { baseUrl: BASE, fetch }, PAGE_LIMIT, 100);
+  const all = await horizonPaginate<{ n: number }>(
+    "/offers",
+    { baseUrl: BASE, fetch },
+    PAGE_LIMIT,
+    100
+  );
   expect(all).toHaveLength(1);
   expect(calls).toHaveLength(1);
 });
 
-test("caps the total so an endlessly paginating provider cannot hang a close", async () => {
+test("refuses a collection that exceeds the cap rather than returning a subset", async () => {
   const { fetch } = recordingFetch(() =>
     jsonResponse({
       _embedded: { records: [{ n: 1 }, { n: 2 }] },
       _links: { next: { href: `${BASE}/offers?cursor=x` } },
     })
   );
-  const all = await horizonPaginate<{ n: number }>("/offers", { baseUrl: BASE, fetch }, PAGE_LIMIT, 5);
-  expect(all.length).toBeGreaterThanOrEqual(5);
-  expect(all.length).toBeLessThan(10);
+  // Returning what it got would hand back a subset that reads like the whole set. For
+  // claimable balances the sub-entry reconciliation cannot catch that, so it is a silent,
+  // permanent loss at merge time - the read has to fail instead.
+  await expect(
+    horizonPaginate<{ n: number }>("/offers", { baseUrl: BASE, fetch }, PAGE_LIMIT, 5)
+  ).rejects.toThrow(/truncated read/);
 });
 
-// A `next` pointing at another host must not redirect pagination away from the provider the
-// operator configured.
-test("pagination stays on the configured host even if next points elsewhere", async () => {
-  const { fetch, calls } = recordingFetch((url) =>
+// A `next` pointing anywhere but the configured provider is a fault, not something to
+// silently rewrite: pages 2+ of a collection coming from somewhere else means forged or
+// omitted records, and claimable balances have no reconciliation to catch it.
+test("refuses a pagination link pointing at a different host", async () => {
+  const { fetch } = recordingFetch((url) =>
     url.includes("cursor=2")
       ? jsonResponse({ _embedded: { records: [{ n: 3 }] } })
       : jsonResponse({
@@ -163,6 +182,104 @@ test("pagination stays on the configured host even if next points elsewhere", as
           _links: { next: { href: "https://evil.example/offers?cursor=2" } },
         })
   );
-  await horizonPaginate<{ n: number }>("/offers", { baseUrl: BASE, fetch }, PAGE_LIMIT, 100);
-  expect(calls.every((c) => c.startsWith(BASE))).toBe(true);
+  await expect(
+    horizonPaginate<{ n: number }>("/offers", { baseUrl: BASE, fetch }, PAGE_LIMIT, 100)
+  ).rejects.toThrow(/not the configured provider/);
 });
+
+// The case a string-prefix check waves through: "https://horizon.example.attacker.com"
+// startsWith "https://horizon.example". Origins are compared, not prefixes.
+test("refuses a pagination link on a host that merely prefixes the provider", async () => {
+  const { fetch, calls } = recordingFetch(() =>
+    jsonResponse({
+      _embedded: { records: [{ n: 1 }, { n: 2 }] },
+      _links: { next: { href: "https://horizon.example.attacker.com/offers?cursor=2" } },
+    })
+  );
+  await expect(
+    horizonPaginate<{ n: number }>("/offers", { baseUrl: BASE, fetch }, PAGE_LIMIT, 100)
+  ).rejects.toThrow(/not the configured provider/);
+  expect(calls.every((c) => c.startsWith(`${BASE}/`))).toBe(true);
+});
+
+test("follows a relative pagination link on the configured provider", async () => {
+  const { fetch, calls } = recordingFetch((url) =>
+    url.includes("cursor=2")
+      ? jsonResponse({ _embedded: { records: [{ n: 3 }] } })
+      : jsonResponse({
+          _embedded: { records: [{ n: 1 }, { n: 2 }] },
+          _links: { next: { href: "/offers?cursor=2" } },
+        })
+  );
+  const all = await horizonPaginate<{ n: number }>(
+    "/offers",
+    { baseUrl: BASE, fetch },
+    PAGE_LIMIT,
+    100
+  );
+  expect(all.map((r) => r.n)).toEqual([1, 2, 3]);
+  expect(calls.every((c) => c.startsWith(`${BASE}/`))).toBe(true);
+});
+
+// A 404 mid-collection used to read as "end of collection" and return a short list.
+test("refuses a 404 on a collection page instead of treating it as the end", async () => {
+  const { fetch } = recordingFetch((url) =>
+    url.includes("cursor=2")
+      ? new Response("", { status: 404 })
+      : jsonResponse({
+          _embedded: { records: [{ n: 1 }, { n: 2 }] },
+          _links: { next: { href: `${BASE}/offers?cursor=2` } },
+        })
+  );
+  await expect(
+    horizonPaginate<{ n: number }>("/offers", { baseUrl: BASE, fetch }, PAGE_LIMIT, 100)
+  ).rejects.toThrow(/not an empty result/);
+});
+
+test("a trailing slash on the configured base does not produce a double slash", async () => {
+  const { fetch, calls } = recordingFetch(() => jsonResponse({ id: "abc" }));
+  await horizonGet("/accounts/G1", { baseUrl: `${BASE}/`, fetch });
+  expect(calls).toEqual([`${BASE}/accounts/G1`]);
+});
+
+test("retries a 5xx and succeeds once the provider recovers", async () => {
+  let n = 0;
+  const { fetch, calls } = recordingFetch(() => {
+    n++;
+    return n === 1 ? new Response("", { status: 503 }) : jsonResponse({ ok: true });
+  });
+  expect(await horizonGet<{ ok: boolean }>("/accounts/G1", { baseUrl: BASE, fetch })).toEqual({
+    ok: true,
+  });
+  expect(calls).toHaveLength(2);
+});
+
+test("retries a network failure rather than failing the whole read on one bad packet", async () => {
+  let n = 0;
+  const { fetch, calls } = recordingFetch(() => {
+    n++;
+    if (n === 1) throw new Error("ECONNRESET");
+    return jsonResponse({ ok: true });
+  });
+  expect(await horizonGet<{ ok: boolean }>("/accounts/G1", { baseUrl: BASE, fetch })).toEqual({
+    ok: true,
+  });
+  expect(calls).toHaveLength(2);
+});
+
+test("honors Retry-After and caps it so a hostile value cannot park a close", async () => {
+  const started = Date.now();
+  let n = 0;
+  const { fetch } = recordingFetch(() => {
+    n++;
+    return n === 1
+      ? new Response("", { status: 429, headers: { "Retry-After": "600" } })
+      : jsonResponse({ ok: true });
+  });
+  await horizonGet("/accounts/G1", { baseUrl: BASE, fetch });
+  // 600s honored literally would be ten minutes; the cap is 5s. Asserting both ends so a
+  // regression that ignored the header entirely (falling back to a 400ms backoff) also fails.
+  const elapsed = Date.now() - started;
+  expect(elapsed).toBeGreaterThan(4_000);
+  expect(elapsed).toBeLessThan(7_000);
+}, 15_000);

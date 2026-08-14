@@ -50,11 +50,11 @@ The system has three layers. The trust boundary is the browser: it verifies ever
 
 **API service** - A stateless NestJS service, and the product itself: it reads account state, detects DeFi positions, quotes routes, and builds the minimal set of unsigned transactions that close an account. It holds no user keys and is not in the signing path; its one signing key co-signs only the mediator's forward payment. A fully compromised API still cannot move funds, because `verify()` refuses to sign anything that does not match the user's intent.
 
-**Stellar network and data services** - Stellar RPC for live reads, simulation, submission, and events; `stellar.expert` API for subentry enumeration; Soroswap Aggregator API for conversion routing; OctoPos for DeFi position detection.
+**Stellar network and data services** - Stellar RPC for live reads, simulation, submission, and events; one Horizon-compatible endpoint for subentry enumeration; Soroswap Aggregator API for conversion routing; OctoPos for DeFi position detection.
 
 **Key design decisions:**
 
-- **No bespoke indexer.** Stellar RPC cannot enumerate unknown subentries. LumenWipe reads enumeration from `stellar.expert`, re-reads exact on-chain state over RPC immediately before building each transaction, and never signs based on stale data.
+- **No bespoke indexer.** Stellar RPC cannot enumerate unknown subentries, so enumeration comes from one Horizon-compatible endpoint set by configuration. LumenWipe re-reads exact on-chain state over RPC immediately before building each transaction, and never signs based on stale data.
 - **Pluggable data sources.** Every read source (RPC provider, indexer, routing API, DeFi position API) is behind an adapter, so any compatible provider can be swapped in without touching the transaction logic.
 - **Soroban exits are simulated before signing.** Every `InvokeHostFunction` is run through `simulateTransaction` to fill in footprint, authorization, and resource fees. The user sees the simulation result before being asked to sign.
 
@@ -156,7 +156,7 @@ The codebase undergoes internal security reviews as part of the development proc
 | Stellar SDK    | `@stellar/stellar-sdk`                              | Official SDK for classic and Soroban                                                 |
 | Wallets        | `stellar-wallets-kit` (SEP-43)                      | One interface across Freighter, xBull, Albedo, LOBSTR, Hana, WalletConnect, and more |
 | Network access | Stellar RPC                                         | Live reads, simulation, submission, events                                           |
-| Enumeration    | `stellar.expert` API + Horizon-compatible endpoints | Existing production indexers, pluggable                                              |
+| Enumeration    | One Horizon-compatible endpoint                     | Existing production indexers; the provider is set by configuration                   |
 | Routing        | Soroswap API + SDEX paths                           | Best routes across Soroban and classic venues                                        |
 | DeFi detection | OctoPos                                             | Funded DeFi Position API, behind a pluggable adapter                                 |
 | State          | Zustand + IndexedDB                                 | Resumable sessions, never persists keys                                              |

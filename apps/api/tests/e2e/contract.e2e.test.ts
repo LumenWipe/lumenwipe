@@ -39,7 +39,10 @@ afterAll(async () => {
 test("health is public (no key required)", async () => {
   const res = await request(http).get("/health");
   expect(res.status).toBe(200);
-  expect(res.body).toEqual({ status: "ok" });
+  expect(res.body.status).toBe("ok");
+  // Surfaced so an operator can see the upstream provider refusing requests before it becomes
+  // an outage; a lifetime count for this process, so only its trend is meaningful.
+  expect(typeof res.body.upstreamRateLimitHits).toBe("number");
 });
 
 test("an authenticated route without a key is rejected 401", async () => {

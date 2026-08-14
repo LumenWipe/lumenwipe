@@ -127,7 +127,14 @@ test("a missing account is not found rather than an empty state", async () => {
 
 // Pointing at a different Horizon-compatible host is configuration, not code. This is the
 // "pluggable provider" property, asserted at the only place it can be: the requests themselves.
-test("every request goes to the configured provider", async () => {
+//
+// Scope, stated so this is not read as more than it is: this covers the account-state read.
+// `enumerateSponsoredEntries` still resolves its own base from PATH_ROUTING_API_URLS rather
+// than taking these deps, so an account that sponsors entries has part of its state read
+// outside this seam. That path is unaffected by `baseUrl` here, and its 429s do not reach
+// `rateLimitHits()`. Every fixture uses `num_sponsoring: 0`, which short-circuits it - so this
+// test would pass either way, and says nothing about that path.
+test("every account-state request goes to the configured provider", async () => {
   const other = "https://horizon.other-provider.example";
   const calls: string[] = [];
   const fetch = (async (input: string | URL | Request) => {

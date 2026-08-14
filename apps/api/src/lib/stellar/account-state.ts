@@ -8,7 +8,6 @@ import { horizonGet, type HorizonDeps } from "./horizon-http";
 import type {
   AccountState,
   AccountSigner,
-  ClaimableBalance,
   DataEntry,
   Trustline,
   PoolShareEntry,
@@ -76,6 +75,40 @@ interface ApiAccount {
   num_sponsoring?: number;
 }
 
+/**
+ * Rejects a response we cannot build a safe plan from.
+ *
+ * The endpoint is Horizon-*compatible*, not Horizon, so field presence is a trust signal
+ * rather than an assumption. `subentry_count` matters most: the completeness check is
+ * `enumerated < numSubEntries`, and JavaScript evaluates `7 < undefined` as false, so a
+ * provider that omits the field would turn the one guard this design rests on into a
+ * permanent, silent "everything is fine". `flags` matters for the same reason in the other
+ * direction - a missing AUTH_IMMUTABLE would let the tool walk a user through selling assets
+ * and removing trustlines for an account that can never be merged.
+ *
+ * Everything here fails the read rather than defaulting, because there is no safe default for
+ * "we could not tell".
+ */
+function assertUsableAccountBody(account: ApiAccount, address: string): void {
+  const missing: string[] = [];
+  if (typeof account.subentry_count !== "number") missing.push("subentry_count");
+  if (!Array.isArray(account.balances)) missing.push("balances");
+  if (!Array.isArray(account.signers)) missing.push("signers");
+  if (!account.thresholds || typeof account.thresholds.high_threshold !== "number") {
+    missing.push("thresholds");
+  }
+  if (typeof account.flags?.auth_immutable !== "boolean") missing.push("flags.auth_immutable");
+  if (typeof account.sequence !== "string") missing.push("sequence");
+
+  if (missing.length > 0) {
+    throw new Error(
+      `The configured account-state provider returned an unusable response for ${address}: ` +
+        `missing or malformed ${missing.join(", ")}. Closing an account requires proving the ` +
+        `enumeration is complete, which these fields carry.`
+    );
+  }
+}
+
 /** Resolves the configured provider for a network. Throws rather than reading from nowhere. */
 export function horizonDepsFor(network: Network, fetchImpl?: typeof globalThis.fetch): HorizonDeps {
   const baseUrl = PATH_ROUTING_API_URLS[network];
@@ -92,6 +125,7 @@ export async function readAccountStateFrom(
 ): Promise<AccountState> {
   const account = await horizonGet<ApiAccount>(`/accounts/${address}`, deps);
   if (!account) throw new AccountNotFoundError(address);
+  assertUsableAccountBody(account, address);
 
   const nativeBalance = account.balances.find((b) => b.asset_type === "native");
 
@@ -125,7 +159,7 @@ export async function readAccountStateFrom(
 
   const [openOffers, claimableBalances] = await Promise.all([
     fetchOffersFromAdapter(address, deps),
-    fetchClaimableBalancesForClaimant(address, deps) as Promise<ClaimableBalance[]>,
+    fetchClaimableBalancesForClaimant(address, deps),
   ]);
   const numSubEntries = account.subentry_count;
 

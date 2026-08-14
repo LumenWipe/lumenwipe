@@ -24,12 +24,6 @@ export const HORIZON_URLS: Record<Network, string> = {
   testnet: process.env.NEXT_PUBLIC_HORIZON_TESTNET || "https://horizon-testnet.stellar.org",
 };
 
-export const SE_API_BASE: Record<Network, string> = {
-  mainnet:
-    process.env.NEXT_PUBLIC_SE_API_BASE_MAINNET || "https://api.stellar.expert/explorer/public",
-  testnet:
-    process.env.NEXT_PUBLIC_SE_API_BASE_TESTNET || "https://api.stellar.expert/explorer/testnet",
-};
 
 export const SE_EXPLORER_BASE: Record<Network, string> = {
   mainnet: "https://stellar.expert/explorer/public",
