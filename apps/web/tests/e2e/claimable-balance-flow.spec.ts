@@ -9,6 +9,7 @@ import {
   TransactionBuilder,
   type xdr,
 } from "@stellar/stellar-sdk";
+import { confirmDestinationControl } from "./helpers/destination";
 
 // E2E coverage for issue #70: a claimable balance for an asset the account holds no trustline
 // for is no longer an unconditional blocker. The guided flow offers "add a trustline and
@@ -128,6 +129,7 @@ async function enterDestinationAndBegin(page: Page, destination: string): Promis
   await expect(beginButton).toBeVisible({ timeout: 30_000 });
 
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination);
+  await confirmDestinationControl(page);
 
   await expect(beginButton).toBeEnabled();
   await beginButton.click();

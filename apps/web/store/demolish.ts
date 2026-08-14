@@ -15,6 +15,13 @@ interface DemolishState {
   destinationAddress: string | null;
   memo: string | null;
   memoType: "text" | "id" | "hash" | null;
+  /**
+   * The destination the user explicitly confirmed they control, for a destination the
+   * exchange registry does not recognize. Stored as the address rather than a boolean so
+   * the confirmation cannot outlive the address it was given for: editing the destination
+   * leaves this pointing at the old one, which no longer matches.
+   */
+  destinationAcknowledgedFor: string | null;
 
   // Preflight
   phase: DemolishPhase;
@@ -46,6 +53,8 @@ interface DemolishState {
     memo?: string,
     memoType?: "text" | "id" | "hash"
   ) => void;
+  /** Records (or clears, with null) the destination the user confirmed they control. */
+  acknowledgeDestination: (address: string | null) => void;
   setPhase: (phase: DemolishPhase) => void;
   setAccountState: (state: AccountState) => void;
   setPlan: (plan: PlannedStep[]) => void;
@@ -107,6 +116,7 @@ const initialState = {
   destinationAddress: null,
   memo: null,
   memoType: null,
+  destinationAcknowledgedFor: null,
   phase: "IDLE" as DemolishPhase,
   accountState: null,
   executionPlan: [],
@@ -129,6 +139,8 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       memo: memo ?? null,
       memoType: memoType ?? null,
     }),
+
+  acknowledgeDestination: (address) => set({ destinationAcknowledgedFor: address }),
 
   setPhase: (phase) => set({ phase }),
 

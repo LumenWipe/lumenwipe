@@ -378,6 +378,8 @@ The transaction is built by the API and verified in the user's browser, where th
 
 When the destination is a known exchange or anchor, the tool requires the correct memo and blocks submission without it, because funds sent to an exchange without a memo are typically lost. A registry of known exchange and anchor addresses, sourced from the stellar.expert directory, drives two decisions: whether a destination needs the mediator flow, and whether it requires a memo and of which type (text, id, or hash).
 
+The registry is a curated list, not a complete one, so its silence carries no information: an address it does not list may still be an exchange deposit address it has simply never been told about, and every deposit address issued from now on is unlisted by default. Because a direct merge into such an address is unrecoverable, an unrecognized destination is not assumed to be a personal wallet. The close API emits a required `confirmation` decision point, keyed by the address (`destination:G...`), and `close/transactions` refuses to build until it is answered (`422 destination_not_acknowledged`). The decision id names the address so an answer cannot be replayed for a different destination, and the refusal lives on the build endpoint rather than only in the plan because the plan is advisory - an API or SDK caller can reach the build without ever requesting one. Only the user knows where an address came from, so the tool asks them rather than guessing.
+
 ## 12. Allowance inspection
 
 Independent of closing an account, the tool offers a read-only allowance inspector. This is a security utility: a user who has approved token spending to DeFi contracts can audit and revoke those approvals, which limits exposure if a protocol is later exploited.

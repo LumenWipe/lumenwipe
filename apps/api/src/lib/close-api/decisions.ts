@@ -5,6 +5,71 @@ import type {
   DecisionAnswer,
   DecisionPoint,
 } from "@lumenwipe/types";
+import { lookupExchange } from "@/lib/exchange-registry";
+
+/**
+ * Stable id for the unrecognized-destination acknowledgement, scoped to the address it is
+ * about: "destination:G...". The scoping is the point. An answer carries only an id and a
+ * choice (`DecisionAnswer`), so an id that did not name the address would make the
+ * acknowledgement a bare boolean a caller could carry from one destination to another - the
+ * caller confirms control of a wallet, then edits the destination to an exchange deposit
+ * address and resends the same answers, and the gate below waves it through. Scoping by
+ * address makes that structurally impossible, and matches how every other decision here is
+ * keyed (`assetDecisionId`, `claimableBalanceDecisionId`).
+ */
+export function destinationDecisionId(address: string): string {
+  return `destination:${address}`;
+}
+
+// The only choice that resolves it. Naming it after what the caller is asserting, rather
+// than a generic "acknowledged", keeps the claim legible in an API log or an SDK call site.
+export const DESTINATION_ACK_CHOICE = "i_control_this_address";
+
+// Derives the acknowledgement required when the destination is not in the exchange registry.
+//
+// Absence from the registry is not evidence that an address is a personal wallet - the registry
+// holds 20 curated deposit addresses, so every address any exchange issues from here on is
+// unrecognized by default. Treating "unknown" as "personal wallet" is what makes a direct
+// ACCOUNT_MERGE into an exchange deposit address possible, and exchanges credit only Payment
+// operations carrying a memo: the merge succeeds on-chain and the funds are never credited to
+// anyone. There is no error, and the source account no longer exists to investigate from.
+//
+// We cannot tell an exchange address from a personal one, so the only party who can resolve this
+// is the caller, who knows where the address came from. No default: like a claimable balance the
+// account cannot yet claim, this is never silently resolved.
+export function deriveDestinationDecisionPoints(destination: string | null): DecisionPoint[] {
+  if (!destination || lookupExchange(destination) !== null) return [];
+  return [
+    {
+      id: destinationDecisionId(destination),
+      type: "confirmation" as const,
+      subject: { kind: "destination", address: destination },
+      options: [
+        {
+          id: DESTINATION_ACK_CHOICE,
+          note:
+            "This address is a wallet you control. Closing directly into an exchange or custodial " +
+            "deposit address loses the funds: exchanges credit deposits from payments carrying a " +
+            "memo, and cannot credit an account merge.",
+        },
+      ],
+      default: "",
+      required: true,
+    },
+  ];
+}
+
+// True when the caller has explicitly asserted control of THIS destination. Defaults to false
+// on a missing, malformed, or differently-addressed answer - silence is not consent, and
+// neither is consent given for some other address. Element-level optional chaining because
+// `decisions` reaches here as an unvalidated array from the request body.
+export function isDestinationAcknowledged(
+  answers: DecisionAnswer[],
+  destination: string
+): boolean {
+  const id = destinationDecisionId(destination);
+  return answers.some((a) => a?.id === id && a?.choice === DESTINATION_ACK_CHOICE);
+}
 
 // Stable, URL-safe id for an asset decision: "asset:CODE-ISSUER". The colon in the
 // canonical "CODE:ISSUER" asset string is replaced so the id reads cleanly in paths.

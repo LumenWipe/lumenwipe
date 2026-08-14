@@ -7,6 +7,7 @@ import {
   Operation,
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
+import { confirmDestinationControl } from "./helpers/destination";
 
 // E2E coverage for the fused single-transaction fast-path, exercised end-to-end
 // against TESTNET through the real secret-key UI (not the custodial playground
@@ -140,6 +141,7 @@ async function driveFusedClose(
   await expect(beginButton).toBeVisible({ timeout: 30_000 });
 
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(opts.destination);
+  await confirmDestinationControl(page);
 
   await expect(beginButton).toBeEnabled();
   await beginButton.click();

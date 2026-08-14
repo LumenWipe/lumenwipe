@@ -1,5 +1,9 @@
 import { test, expect } from "bun:test";
-import { claimableSelectionsToDecisions, dispositionsToDecisions } from "@/lib/api/close-decisions";
+import {
+  claimableSelectionsToDecisions,
+  destinationAcknowledgementToDecisions,
+  dispositionsToDecisions,
+} from "@/lib/api/close-decisions";
 
 const ASSET = "USDC:GISSUER0000000000000000000000000000000000000000000000000000";
 // Must match the API's assetDecisionId contract: "asset:" + first ":" replaced with "-".
@@ -42,4 +46,35 @@ test("claimableSelectionsToDecisions › maps multiple selections", () => {
 
 test("claimableSelectionsToDecisions › empty selections → empty decisions", () => {
   expect(claimableSelectionsToDecisions({})).toEqual([]);
+});
+
+// ─── destination acknowledgement ─────────────────────────────────────────────
+
+const DEST = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H";
+const OTHER_DEST = "GAK5Q2SDKTMFMO3EUEKWAFRB2QPH4W5WU6X6RIWRN4MNNTSOUKUB6YVX";
+// Must match the API's destinationDecisionId / DESTINATION_ACK_CHOICE. The id names the
+// address so an answer cannot be replayed for a different destination.
+const destinationDecisionId = (address: string) => `destination:${address}`;
+const DESTINATION_ACK_CHOICE = "i_control_this_address";
+
+test("destinationAcknowledgementToDecisions › emits the API's decision id and choice", () => {
+  expect(destinationAcknowledgementToDecisions(DEST, DEST)).toEqual([
+    { id: destinationDecisionId(DEST), choice: DESTINATION_ACK_CHOICE },
+  ]);
+});
+
+test("destinationAcknowledgementToDecisions › emits nothing when nothing was acknowledged", () => {
+  expect(destinationAcknowledgementToDecisions(null, DEST)).toEqual([]);
+});
+
+// The acknowledgement is recorded as the address it was given for precisely so it cannot be
+// reused: confirming control of one address says nothing about another. Editing the destination
+// after ticking the box must not carry the confirmation across.
+test("destinationAcknowledgementToDecisions › does not carry an acknowledgement to a different destination", () => {
+  expect(destinationAcknowledgementToDecisions(OTHER_DEST, DEST)).toEqual([]);
+});
+
+test("destinationAcknowledgementToDecisions › emits nothing without a destination", () => {
+  expect(destinationAcknowledgementToDecisions(DEST, null)).toEqual([]);
+  expect(destinationAcknowledgementToDecisions(null, null)).toEqual([]);
 });
