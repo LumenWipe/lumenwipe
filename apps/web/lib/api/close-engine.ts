@@ -1,16 +1,25 @@
 import type { CloseTransaction, TransactionsResponse } from "@lumenwipe/sdk";
 
+/** Everything needed to resume signing a transaction that stopped short of its required
+ *  signing weight, without re-fetching (which would discard any signature already
+ *  collected) or re-verifying (the tx body is unchanged - verified once, before the first
+ *  signature; a later signer only adds a signature, never alters the body). */
+export interface PendingRound {
+  tx: CloseTransaction;
+  xdr: string;
+  requiredWeight: number;
+  accumulatedWeight: number;
+  queue: CloseTransaction[];
+  requiresAnotherCall: boolean;
+}
+
 /** Thrown when a transaction's accumulated signing weight is still short of what it actually
- *  needs after the currently available signer has contributed. The close aborts rather than
- *  submitting an under-signed transaction Stellar would reject anyway. */
+ *  needs after the currently available signer has contributed. Carries everything needed to
+ *  resume with a different signer onto the same partially-signed envelope. */
 export class InsufficientSignatureWeightError extends Error {
-  constructor(
-    public readonly tx: CloseTransaction,
-    public readonly accumulatedWeight: number,
-    public readonly requiredWeight: number
-  ) {
+  constructor(public readonly pending: PendingRound) {
     super(
-      `Transaction ${tx.id} needs signing weight ${requiredWeight} but only has ${accumulatedWeight}.`
+      `Transaction ${pending.tx.id} needs signing weight ${pending.requiredWeight} but only has ${pending.accumulatedWeight}.`
     );
     this.name = "InsufficientSignatureWeightError";
   }
@@ -47,34 +56,63 @@ export interface CloseEngineDeps {
 
 /**
  * Runs the full multi-round close. Each round: fetch a batch of unsigned transactions,
- * **verify every one before signing**, sign it, and submit only once its accumulated signing
- * weight meets what its operations actually require - otherwise abort with
- * `InsufficientSignatureWeightError` rather than submit a transaction Stellar would reject.
- * Repeats while the API reports more rounds remain.
+ * verify every one before signing, sign it, and submit only once its accumulated signing
+ * weight meets what its operations actually require - otherwise throw
+ * InsufficientSignatureWeightError with everything needed to resume onto the same
+ * envelope once a different signer is available. Pass that error's `.pending` back in as
+ * `resume` to continue exactly where it stopped.
  */
-export async function runClose(deps: CloseEngineDeps): Promise<void> {
+export async function runClose(deps: CloseEngineDeps, resume?: PendingRound): Promise<void> {
   const maxRounds = deps.maxRounds ?? 25;
+
+  if (resume) {
+    await signOrThrow(deps, resume.tx, resume.xdr, resume.queue, resume.requiresAnotherCall);
+    await processTxs(deps, resume.queue, resume.requiresAnotherCall);
+    if (!resume.requiresAnotherCall) return;
+  }
 
   for (let round = 0; round < maxRounds; round++) {
     deps.onProgress?.("Preparing transactions…");
     const batch = await deps.getTransactions();
     const txs = [...batch.transactions].sort((a, b) => a.order - b.order);
-
-    for (const tx of txs) {
-      // Trust anchor: verify BEFORE signing. Awaited so an async verifier can't be
-      // bypassed; throwing (sync or rejected) means nothing is signed.
-      await deps.verify(tx);
-      const required = deps.requiredWeight(tx);
-      const { xdr: signedXdr, weight } = await deps.sign(tx, tx.xdr);
-      if (weight < required) {
-        throw new InsufficientSignatureWeightError(tx, weight, required);
-      }
-      const hash = await deps.submit(tx, signedXdr);
-      deps.onConfirmed?.(tx, hash);
-    }
-
+    await processTxs(deps, txs, batch.remaining.requiresAnotherCall);
     if (!batch.remaining.requiresAnotherCall) return;
   }
 
   throw new Error("The close did not converge after the maximum number of rounds.");
+}
+
+async function processTxs(
+  deps: CloseEngineDeps,
+  txs: CloseTransaction[],
+  requiresAnotherCall: boolean
+): Promise<void> {
+  for (let i = 0; i < txs.length; i++) {
+    const tx = txs[i];
+    await deps.verify(tx);
+    await signOrThrow(deps, tx, tx.xdr, txs.slice(i + 1), requiresAnotherCall);
+  }
+}
+
+async function signOrThrow(
+  deps: CloseEngineDeps,
+  tx: CloseTransaction,
+  xdr: string,
+  queue: CloseTransaction[],
+  requiresAnotherCall: boolean
+): Promise<void> {
+  const required = deps.requiredWeight(tx);
+  const { xdr: signedXdr, weight } = await deps.sign(tx, xdr);
+  if (weight < required) {
+    throw new InsufficientSignatureWeightError({
+      tx,
+      xdr: signedXdr,
+      requiredWeight: required,
+      accumulatedWeight: weight,
+      queue,
+      requiresAnotherCall,
+    });
+  }
+  const hash = await deps.submit(tx, signedXdr);
+  deps.onConfirmed?.(tx, hash);
 }
