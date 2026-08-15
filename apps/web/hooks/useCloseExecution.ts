@@ -1,12 +1,16 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { TransactionBuilder } from "@stellar/stellar-sdk";
 import type { CloseTransaction } from "@lumenwipe/sdk";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
-import { runClose, InsufficientSignatureWeightError } from "@/lib/api/close-engine";
+import {
+  runClose,
+  InsufficientSignatureWeightError,
+  type PendingRound,
+} from "@/lib/api/close-engine";
 import { fetchCloseTransactions } from "@/lib/api/close-client";
 import {
   claimableSelectionsToDecisions,
@@ -16,11 +20,7 @@ import {
 import { verifyCloseTransaction } from "@/lib/stellar/verify";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { requiredSignatureWeight } from "@/lib/stellar/thresholds";
-import {
-  evaluateSignatureContributions,
-  accumulatedWeight,
-  type SignerContribution,
-} from "@/lib/stellar/signature-weight";
+import { evaluateSignatureContributions, accumulatedWeight } from "@/lib/stellar/signature-weight";
 import { submitViaApi } from "@/lib/stellar/submit-via-api";
 import { requestMediatorCosignature } from "@/lib/stellar/mediator";
 import { notifyStatsRefresh } from "@/lib/stats-events";
@@ -57,6 +57,11 @@ export function useCloseExecution() {
 
   const [progressStatus, setProgressStatus] = useState<string | null>(null);
   const [signatureStatus, setSignatureStatus] = useState<SignatureStatus | null>(null);
+  // Survives across separate run() calls on the same hook instance (unlike state, a ref
+  // update doesn't itself trigger a re-render) so a second signer resumes onto the exact
+  // partially-signed envelope the first signer left behind, instead of re-fetching and
+  // discarding that signature.
+  const pendingRoundRef = useRef<PendingRound | null>(null);
 
   const run = useCallback(
     async (signer: TransactionSigner): Promise<void> => {
@@ -108,121 +113,139 @@ export function useCloseExecution() {
 
       setPhase("STEP_EXECUTING");
       setSignatureStatus(null);
-      let lastContributions: SignerContribution[] = [];
       try {
-        await runClose({
-          getTransactions: () =>
-            fetchCloseTransactions(
-              {
-                source: sourceAddress,
-                destination: destinationAddress,
-                decisions,
-                memo: memo ?? undefined,
-              },
-              network
-            ),
-          verify: (tx: CloseTransaction) =>
-            verifyCloseTransaction({
-              unsignedXdr: tx.xdr,
-              network,
-              expected: {
-                source: sourceAddress,
-                destination: destinationAddress,
-                mediator,
-                memo,
-                claimTrustlineAssets,
-                // Empty defaults fail closed: if account state somehow wasn't loaded by
-                // execution time, a set_options op touching any signer is rejected rather
-                // than trusted.
-                accountSigners: accountState?.signers ?? [],
-                accountThresholds: accountState?.thresholds ?? { low: 0, med: 1, high: 1 },
-              },
-            }),
-          requiredWeight: (tx: CloseTransaction) =>
-            requiredSignatureWeight(
-              intentFromXdr(tx.xdr, passphrase).operations,
-              accountState?.thresholds ?? { low: 0, med: 1, high: 1 }
-            ),
-          sign: async (tx: CloseTransaction, xdr: string) => {
-            setProgressStatus("Signing transaction…");
-            // Computed from the exact XDR verify() approved, before any signer touches it -
-            // the anchor for both checks below. The hash covers only the transaction body
-            // (source, ops, sequence, memo, fee), never signatures, so it stays valid
-            // whether taken before or after signing.
-            const approvedHash = TransactionBuilder.fromXDR(xdr, passphrase).hash().toString("hex");
-            const signedXdr = await signer.sign(xdr, passphrase);
-
-            // A connected wallet (WalletKitSigner) is a black box outside this app's trust
-            // boundary - unlike SecretKeySigner, which signs by parsing this exact xdr and
-            // re-serializing it (so its output can never diverge in body), an external signer
-            // could in principle return a signature over a different transaction, or no
-            // signature at all. Assert both before trusting the result any further.
-            const signedTx = TransactionBuilder.fromXDR(signedXdr, passphrase);
-            if (signedTx.signatures.length === 0) {
-              throw new Error("The signer did not add a signature.");
-            }
-            if (signedTx.hash().toString("hex") !== approvedHash) {
-              throw new Error("The signed transaction does not match what you approved.");
-            }
-
-            lastContributions = evaluateSignatureContributions(
-              signedXdr,
-              passphrase,
-              accountState?.signers ?? []
-            );
-            return { xdr: signedXdr, weight: accumulatedWeight(lastContributions) };
-          },
-          submit: async (tx: CloseTransaction, xdr: string) => {
-            let finalXdr = xdr;
-
-            // A merge through the shared mediator is one atomic transaction: the user
-            // signed the merge; the backend co-signs the mediator's forward payment. It
-            // cannot change destination or amount, so funds can never be diverted.
-            if (mediator && tx.covers.includes("MERGE")) {
-              setProgressStatus("Co-signing the forward payment…");
-              // Defense-in-depth: the mediator may ONLY add its signature - assert it did not
-              // alter the body, and that it actually added one, before submit.
+        await runClose(
+          {
+            getTransactions: () =>
+              fetchCloseTransactions(
+                {
+                  source: sourceAddress,
+                  destination: destinationAddress,
+                  decisions,
+                  memo: memo ?? undefined,
+                },
+                network
+              ),
+            verify: (tx: CloseTransaction) =>
+              verifyCloseTransaction({
+                unsignedXdr: tx.xdr,
+                network,
+                expected: {
+                  source: sourceAddress,
+                  destination: destinationAddress,
+                  mediator,
+                  memo,
+                  claimTrustlineAssets,
+                  // Empty defaults fail closed: if account state somehow wasn't loaded by
+                  // execution time, a set_options op touching any signer is rejected rather
+                  // than trusted.
+                  accountSigners: accountState?.signers ?? [],
+                  accountThresholds: accountState?.thresholds ?? { low: 0, med: 1, high: 1 },
+                },
+              }),
+            requiredWeight: (tx: CloseTransaction) =>
+              requiredSignatureWeight(
+                intentFromXdr(tx.xdr, passphrase).operations,
+                accountState?.thresholds ?? { low: 0, med: 1, high: 1 }
+              ),
+            sign: async (tx: CloseTransaction, xdr: string) => {
+              setProgressStatus("Signing transaction…");
+              // Computed from the exact XDR verify() approved, before any signer touches it -
+              // the anchor for both checks below. The hash covers only the transaction body
+              // (source, ops, sequence, memo, fee), never signatures, so it stays valid
+              // whether taken before or after signing.
               const approvedHash = TransactionBuilder.fromXDR(xdr, passphrase)
                 .hash()
                 .toString("hex");
-              const preCosignCount = TransactionBuilder.fromXDR(xdr, passphrase).signatures.length;
-              const cosignedXdr = await requestMediatorCosignature(xdr, network);
-              const cosigned = TransactionBuilder.fromXDR(cosignedXdr, passphrase);
-              if (cosigned.hash().toString("hex") !== approvedHash) {
-                throw new Error("The co-signed transaction does not match what you approved.");
-              }
-              if (cosigned.signatures.length <= preCosignCount) {
-                throw new Error("The mediator did not add its signature.");
-              }
-              finalXdr = cosignedXdr;
-            }
+              const signedXdr = await signer.sign(xdr, passphrase);
 
-            setProgressStatus("Submitting to Stellar network…");
-            const { txHash } = await submitViaApi(finalXdr, network);
-            return txHash;
+              // A connected wallet (WalletKitSigner) is a black box outside this app's trust
+              // boundary - unlike SecretKeySigner, which signs by parsing this exact xdr and
+              // re-serializing it (so its output can never diverge in body), an external signer
+              // could in principle return a signature over a different transaction, or no
+              // signature at all. Assert both before trusting the result any further.
+              const signedTx = TransactionBuilder.fromXDR(signedXdr, passphrase);
+              if (signedTx.signatures.length === 0) {
+                throw new Error("The signer did not add a signature.");
+              }
+              if (signedTx.hash().toString("hex") !== approvedHash) {
+                throw new Error("The signed transaction does not match what you approved.");
+              }
+
+              const contributions = evaluateSignatureContributions(
+                signedXdr,
+                passphrase,
+                accountState?.signers ?? []
+              );
+              return { xdr: signedXdr, weight: accumulatedWeight(contributions) };
+            },
+            submit: async (tx: CloseTransaction, xdr: string) => {
+              let finalXdr = xdr;
+
+              // A merge through the shared mediator is one atomic transaction: the user
+              // signed the merge; the backend co-signs the mediator's forward payment. It
+              // cannot change destination or amount, so funds can never be diverted.
+              if (mediator && tx.covers.includes("MERGE")) {
+                setProgressStatus("Co-signing the forward payment…");
+                // Defense-in-depth: the mediator may ONLY add its signature - assert it did not
+                // alter the body, and that it actually added one, before submit.
+                const approvedHash = TransactionBuilder.fromXDR(xdr, passphrase)
+                  .hash()
+                  .toString("hex");
+                const preCosignCount = TransactionBuilder.fromXDR(
+                  xdr,
+                  passphrase
+                ).signatures.length;
+                const cosignedXdr = await requestMediatorCosignature(xdr, network);
+                const cosigned = TransactionBuilder.fromXDR(cosignedXdr, passphrase);
+                if (cosigned.hash().toString("hex") !== approvedHash) {
+                  throw new Error("The co-signed transaction does not match what you approved.");
+                }
+                if (cosigned.signatures.length <= preCosignCount) {
+                  throw new Error("The mediator did not add its signature.");
+                }
+                finalXdr = cosignedXdr;
+              }
+
+              setProgressStatus("Submitting to Stellar network…");
+              const { txHash } = await submitViaApi(finalXdr, network);
+              return txHash;
+            },
+            onConfirmed: (tx, hash) => {
+              markCoveredConfirmed(tx.covers, hash);
+              if (tx.covers.includes("MERGE") || tx.covers.includes("CLOSE_ACCOUNT")) {
+                recordMergeStats(hash, network);
+              }
+            },
+            onProgress: setProgressStatus,
           },
-          onConfirmed: (tx, hash) => {
-            markCoveredConfirmed(tx.covers, hash);
-            if (tx.covers.includes("MERGE") || tx.covers.includes("CLOSE_ACCOUNT")) {
-              recordMergeStats(hash, network);
-            }
-          },
-          onProgress: setProgressStatus,
-        });
+          pendingRoundRef.current ?? undefined
+        );
+        pendingRoundRef.current = null; // full success - nothing left to resume
         setPhase("COMPLETE");
       } catch (err) {
         if (err instanceof InsufficientSignatureWeightError) {
+          pendingRoundRef.current = err.pending;
           setSignatureStatus({
-            requiredWeight: err.requiredWeight,
-            accumulatedWeight: err.accumulatedWeight,
-            remainingSigners: lastContributions.filter((c) => !c.contributed).map((c) => c.signer),
+            requiredWeight: err.pending.requiredWeight,
+            accumulatedWeight: err.pending.accumulatedWeight,
+            remainingSigners: evaluateSignatureContributions(
+              err.pending.xdr,
+              passphrase,
+              accountState?.signers ?? []
+            )
+              .filter((c) => !c.contributed)
+              .map((c) => c.signer),
           });
           setLastError(
-            `This account needs more signing weight (${err.requiredWeight}) than the connected signer currently provides (${err.accumulatedWeight}). Closing an account that needs more than one signer isn't supported yet.`
+            `This account needs ${err.pending.requiredWeight - err.pending.accumulatedWeight} more signing weight. Connect another signer to continue.`
           );
           setPhase("STEP_FAILED");
           return;
         }
+        // A non-weight failure (network error, verify rejection) invalidates any resumable
+        // state - retrying should start clean, not silently reuse a possibly-stale envelope.
+        pendingRoundRef.current = null;
         const message =
           err instanceof Error ? err.message : typeof err === "string" ? err : "The close failed.";
         setLastError(message);
