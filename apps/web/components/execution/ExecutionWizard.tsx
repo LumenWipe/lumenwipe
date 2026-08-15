@@ -12,6 +12,7 @@ import SecretKeyInput from "@/components/account-entry/SecretKeyInput";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import PlanSidebar from "./PlanSidebar";
 import ProgressIndicator from "./ProgressIndicator";
+import SigningProgress from "./SigningProgress";
 import { SecretKeySigner, WalletKitSigner, type TransactionSigner } from "@/lib/stellar/signer";
 import { ensureWalletKitInitialized } from "@/lib/wallet-kit/client";
 
@@ -33,7 +34,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const phase = useDemolishStore((s) => s.phase);
   const lastError = useDemolishStore((s) => s.lastError);
 
-  const { run, progressStatus } = useCloseExecution();
+  const { run, progressStatus, signatureStatus } = useCloseExecution();
   const walletConnection = useWalletKitConnection(network);
   const [mode, setMode] = useState<SignMode>("wallet");
   const [keyEntered, setKeyEntered] = useState(false);
@@ -171,12 +172,78 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     );
   }
 
-  const failed = phase === "STEP_FAILED" && !running && !changingSigner;
   const busy = running || progressStatus !== null;
+  const pendingMoreSignatures = phase === "STEP_FAILED" && !running && signatureStatus !== null;
+  const failed = phase === "STEP_FAILED" && !running && !changingSigner && !pendingMoreSignatures;
   const walletMismatchWarning =
     walletConnection.address && !walletAddressMatchesSource
       ? `Connected to ${walletConnection.address.slice(0, 4)}…${walletConnection.address.slice(-4)}, but you're closing ${sourceAddress ? `${sourceAddress.slice(0, 4)}…${sourceAddress.slice(-4)}` : "a different account"}. Disconnect and reconnect the right wallet.`
       : undefined;
+
+  // Shared by both the "pending more signatures" branch and the normal, first-attempt
+  // branch below - a second signer picks up mid-close via the exact same mode tabs and
+  // WalletConnectPanel/SecretKeyInput UI as the first, so the two call sites must never
+  // drift apart into two implementations of the same picker.
+  const renderSignerPicker = () => (
+    <>
+      <div className="flex gap-2 rounded-lg bg-white/[0.03] p-1">
+        <button
+          type="button"
+          onClick={() => {
+            setMode("wallet");
+            // Explicitly re-engaging the wallet tab re-arms the reactive
+            // sync effect above, so an already-connected, matching wallet
+            // is picked back up without requiring another "Connect" click.
+            setWalletDismissed(false);
+          }}
+          className={cn(
+            "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
+            mode === "wallet" ? "bg-white/10 text-white" : "text-white/50 hover:text-white/80"
+          )}
+        >
+          Connect wallet
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("secret-key")}
+          className={cn(
+            "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
+            mode === "secret-key" ? "bg-white/10 text-white" : "text-white/50 hover:text-white/80"
+          )}
+        >
+          Use secret key (advanced)
+        </button>
+      </div>
+
+      {mode === "wallet" ? (
+        <WalletConnectPanel
+          connection={walletConnection}
+          disabled={running}
+          mismatchWarning={walletMismatchWarning}
+        />
+      ) : keyEntered ? (
+        <div className="flex items-center justify-between gap-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2.5">
+          <span className="flex items-center gap-2 text-sm text-emerald-400">
+            <CheckCircle className="h-4 w-4 shrink-0" />
+            Secret key loaded for this session
+          </span>
+          <button
+            type="button"
+            onClick={forgetKey}
+            className="text-xs text-white/60 hover:text-white underline-offset-2 hover:underline transition-colors"
+          >
+            Forget key
+          </button>
+        </div>
+      ) : (
+        <SecretKeyInput
+          secretKeyRef={secretKeyRef}
+          onValidityChange={onSecretKeyValidityChange}
+          disabled={running}
+        />
+      )}
+    </>
+  );
 
   return (
     <div className="flex gap-5">
@@ -222,6 +289,18 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
           {busy ? (
             <ProgressIndicator status={progressStatus ?? "Working…"} />
+          ) : pendingMoreSignatures ? (
+            <div className="flex flex-col gap-4">
+              <SigningProgress status={signatureStatus} />
+              {renderSignerPicker()}
+              <button
+                onClick={execute}
+                disabled={!signerReady}
+                className="w-full py-3 px-4 rounded-xl font-semibold text-sm bg-stellar text-black hover:bg-stellar/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                Add signature
+              </button>
+            </div>
           ) : failed ? (
             <div className="flex flex-col gap-3">
               <div className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-white/70">
@@ -245,66 +324,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
             </div>
           ) : (
             <>
-              <div className="flex gap-2 rounded-lg bg-white/[0.03] p-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode("wallet");
-                    // Explicitly re-engaging the wallet tab re-arms the reactive
-                    // sync effect above, so an already-connected, matching wallet
-                    // is picked back up without requiring another "Connect" click.
-                    setWalletDismissed(false);
-                  }}
-                  className={cn(
-                    "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
-                    mode === "wallet"
-                      ? "bg-white/10 text-white"
-                      : "text-white/50 hover:text-white/80"
-                  )}
-                >
-                  Connect wallet
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode("secret-key")}
-                  className={cn(
-                    "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
-                    mode === "secret-key"
-                      ? "bg-white/10 text-white"
-                      : "text-white/50 hover:text-white/80"
-                  )}
-                >
-                  Use secret key (advanced)
-                </button>
-              </div>
-
-              {mode === "wallet" ? (
-                <WalletConnectPanel
-                  connection={walletConnection}
-                  disabled={running}
-                  mismatchWarning={walletMismatchWarning}
-                />
-              ) : keyEntered ? (
-                <div className="flex items-center justify-between gap-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2.5">
-                  <span className="flex items-center gap-2 text-sm text-emerald-400">
-                    <CheckCircle className="h-4 w-4 shrink-0" />
-                    Secret key loaded for this session
-                  </span>
-                  <button
-                    type="button"
-                    onClick={forgetKey}
-                    className="text-xs text-white/60 hover:text-white underline-offset-2 hover:underline transition-colors"
-                  >
-                    Forget key
-                  </button>
-                </div>
-              ) : (
-                <SecretKeyInput
-                  secretKeyRef={secretKeyRef}
-                  onValidityChange={onSecretKeyValidityChange}
-                  disabled={running}
-                />
-              )}
+              {renderSignerPicker()}
 
               <label className="flex items-start gap-3 cursor-pointer select-none">
                 <input
