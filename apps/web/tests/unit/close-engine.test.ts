@@ -189,7 +189,9 @@ test("runClose › resume signs onto the carried xdr, never re-fetching or re-ve
         getTransactionsCalls++;
         return resp([], false);
       },
-      verify: (t) => verifyCalls.push(t.order),
+      verify: (t) => {
+        verifyCalls.push(t.order);
+      },
       requiredWeight: () => 2,
       sign: async (t, xdr) => {
         signXdrs.push(xdr);
