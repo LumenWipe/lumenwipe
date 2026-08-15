@@ -66,9 +66,13 @@ export function useCloseExecution() {
         return;
       }
 
-      if (signer.publicKey !== sourceAddress) {
+      // A valid signer is any key the account actually recognizes - for a single-sig account
+      // that's just the master key (itself listed in accountState.signers, per
+      // apps/api/src/lib/stellar/account.ts), for a multisig account it's any co-signer.
+      const knownSigners = useDemolishStore.getState().accountState?.signers ?? [];
+      if (!knownSigners.some((s) => s.key === signer.publicKey)) {
         setLastError(
-          "The signer you're using doesn't match the account being closed. Reconnect the correct wallet or secret key and try again."
+          "The signer you're using isn't one of this account's known signers. Reconnect the correct wallet or secret key and try again."
         );
         setPhase("STEP_FAILED");
         return;
