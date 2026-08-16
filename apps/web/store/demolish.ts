@@ -38,7 +38,6 @@ interface DemolishState {
 
   // Mediator
   mediatorRequired: boolean;
-  mediatorPublicKey: string | null;
 
   // Error
   lastError: string | null;
@@ -124,7 +123,6 @@ const initialState = {
   assetDispositions: {},
   claimableBalanceSelections: {},
   mediatorRequired: false,
-  mediatorPublicKey: null,
   lastError: null,
   sessionId: null,
 };
@@ -174,7 +172,7 @@ export const useDemolishStore = create<DemolishState>((set) => ({
     })),
 
   setMediatorRequired: (required, publicKey) =>
-    set({ mediatorRequired: required, mediatorPublicKey: publicKey ?? null }),
+    set({ mediatorRequired: required }),
 
   setCurrentStepIndex: (currentStepIndex) => set({ currentStepIndex }),
 

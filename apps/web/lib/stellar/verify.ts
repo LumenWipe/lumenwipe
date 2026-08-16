@@ -2,7 +2,7 @@ import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
 import { lookupExchange } from "@/lib/exchange-registry";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import type { AccountSigner, AccountThresholds } from "@/types/account";
-import type { TxIntent } from "@/types/close-api";
+import type { IntentOperation, TxIntent } from "@/types/close-api";
 
 /** Thrown when a server-built close transaction fails verification. Never sign past this. */
 export class VerificationError extends Error {
@@ -18,8 +18,6 @@ export interface CloseExpectation {
   source: string;
   /** The user's chosen final destination. */
   destination: string;
-  /** The mediator public key for an exchange flow, or null for a direct destination. */
-  mediator: string | null;
   /** The memo the user entered, or null. */
   memo: string | null;
   /** Whether the destination requires a memo (from the client-bundled exchange registry). */
@@ -49,6 +47,72 @@ export interface CloseExpectation {
 }
 
 /**
+ * Checks how the account's balance leaves it, and returns the forward payment when the close
+ * is mediated (null when it merges straight to the user's own address).
+ *
+ * Two shapes are legitimate. A direct close merges to the address the user typed. A mediated
+ * close merges into an intermediary that forwards the balance on, because exchanges credit
+ * payments carrying a memo and cannot credit a merge.
+ *
+ * The mediated shape is accepted on structure, never on the intermediary's identity:
+ *
+ *   - exactly two operations, merge first
+ *   - the merge is sourced from the account being closed
+ *   - the forward is **sent by the account the merge just paid into**
+ *   - the forward goes to the address the user typed, in XLM
+ *
+ * The third condition is the load-bearing one. It makes the intermediary a conduit rather than
+ * a destination: it cannot keep the balance, because the same atomic transaction that hands it
+ * over also sends it on. Pinning its address instead would prove less - a pinned address that
+ * simply never forwards still passes - while forcing every consumer to be told which address
+ * to expect, and re-told whenever it rotates.
+ */
+function assertMergeShape(
+  intent: TxIntent,
+  expected: CloseExpectation
+): Extract<IntentOperation, { type: "payment" }> | null {
+  const mergeDestination = intent.guarantees.mergeDestination;
+  if (mergeDestination === null) return null;
+
+  // Merging to the address the user typed needs no intermediary and no further shape checks.
+  if (mergeDestination === expected.destination) return null;
+
+  // Anywhere else, the transaction has to be the two-operation hand-off. Anything more is an
+  // effect this cannot account for, and anything less means the balance stops at an address
+  // the user never named.
+  const ops = intent.operations;
+  if (ops.length !== 2 || ops[0]!.type !== "account_merge" || ops[1]!.type !== "payment") {
+    throw new VerificationError(
+      "The account would be merged to an address you did not choose, and this transaction does not hand the balance straight on to your destination."
+    );
+  }
+
+  const merge = ops[0]!;
+  const forward = ops[1]!;
+
+  if (merge.source !== expected.source) {
+    throw new VerificationError("The account merge is not sent by the account being closed.");
+  }
+  if (forward.source !== merge.destination) {
+    // Without this the intermediary is just an address funds go to. With it, the account that
+    // received the balance is the one sending it on, in the same transaction.
+    throw new VerificationError(
+      "The balance would be handed to one account and forwarded by another. Nothing guarantees the account receiving your funds is the one passing them on."
+    );
+  }
+  if (forward.destination !== expected.destination) {
+    throw new VerificationError(
+      `The transaction would pay funds to an unexpected address (${forward.destination}).`
+    );
+  }
+  if (forward.asset !== "native") {
+    throw new VerificationError("The forwarded balance would not be XLM.");
+  }
+
+  return forward;
+}
+
+/**
  * Asserts a decoded close-transaction intent against what the client independently expects,
  * before the browser signs it. Pure: no network, no XDR decoding, no dependency on the wrapper.
  * This is the trust anchor of the non-custodial model once the API builds transactions
@@ -61,27 +125,23 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
     throw new VerificationError("The transaction is not for your account.");
   }
 
-  // The account merge may only target the chosen destination (direct) or the mediator (exchange).
-  const allowedMerge = expected.mediator ?? expected.destination;
-  if (
-    intent.guarantees.mergeDestination !== null &&
-    intent.guarantees.mergeDestination !== allowedMerge
-  ) {
-    throw new VerificationError("The account would be merged to an unexpected destination.");
-  }
+  // An exchange close cannot merge to the address the user typed - exchanges credit payments
+  // carrying a memo and cannot credit a merge - so the balance goes to an intermediary that
+  // immediately forwards it. What makes that safe is not knowing which account the
+  // intermediary is, but that the transaction cannot separate the two halves: whoever receives
+  // the merge is, in the same atomic transaction, sending the balance on to the address the
+  // user chose. Asserting that relationship is strictly stronger than pinning an address, and
+  // it needs no configuration - so the intermediary can be rotated without telling anyone.
+  const forward = assertMergeShape(intent, expected);
 
   for (const op of intent.operations) {
     switch (op.type) {
       case "payment": {
         // A payment is only ever a return-to-issuer (the asset paid back to its own issuer)
-        // or, in the mediator flow, the forward of native XLM to the chosen destination.
+        // or the mediated forward, which `assertMergeShape` has already vouched for.
         const issuer = op.asset.includes(":") ? op.asset.split(":")[1] : null;
         const isIssuerReturn = op.asset !== "native" && issuer === op.destination;
-        const isMediatorForward =
-          expected.mediator !== null &&
-          op.asset === "native" &&
-          op.destination === expected.destination;
-        if (!isIssuerReturn && !isMediatorForward) {
+        if (!isIssuerReturn && op !== forward) {
           throw new VerificationError(
             `The transaction would pay funds to an unexpected address (${op.destination}).`
           );
@@ -215,7 +275,6 @@ export function verifyCloseTransaction(opts: {
   expected: {
     source: string;
     destination: string;
-    mediator: string | null;
     memo: string | null;
     claimTrustlineAssets: string[];
     accountSigners: AccountSigner[];

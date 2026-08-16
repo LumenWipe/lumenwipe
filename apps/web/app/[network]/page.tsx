@@ -32,7 +32,7 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
       session.memo ?? undefined,
       memoType
     );
-    setMediatorRequired(!!session.mediatorPublicKey, session.mediatorPublicKey ?? undefined);
+    setMediatorRequired(session.mediatorRequired);
     // Reuse the existing ID: subsequent saves overwrite the same record instead
     // of creating a second "in_progress" entry that is never cleaned up.
     restoreSession(session.id);

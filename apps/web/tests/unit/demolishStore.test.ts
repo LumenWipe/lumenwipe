@@ -245,24 +245,21 @@ describe("session identity", () => {
 
 describe("mediator state", () => {
   test("setMediatorRequired(true, key) stores both required and publicKey", () => {
-    useDemolishStore.getState().setMediatorRequired(true, "GMEDIATOR");
+    useDemolishStore.getState().setMediatorRequired(true);
     const s = useDemolishStore.getState();
     expect(s.mediatorRequired).toBe(true);
-    expect(s.mediatorPublicKey).toBe("GMEDIATOR");
   });
 
   test("setMediatorRequired(true) without key clears publicKey to null", () => {
-    useDemolishStore.getState().setMediatorRequired(true, "GMEDIATOR");
     useDemolishStore.getState().setMediatorRequired(true);
-    expect(useDemolishStore.getState().mediatorPublicKey).toBeNull();
+    useDemolishStore.getState().setMediatorRequired(true);
   });
 
   test("setMediatorRequired(false) clears both fields", () => {
-    useDemolishStore.getState().setMediatorRequired(true, "GMEDIATOR");
+    useDemolishStore.getState().setMediatorRequired(true);
     useDemolishStore.getState().setMediatorRequired(false);
     const s = useDemolishStore.getState();
     expect(s.mediatorRequired).toBe(false);
-    expect(s.mediatorPublicKey).toBeNull();
   });
 });
 
@@ -310,7 +307,7 @@ function makeSession(over: Partial<SessionRecord> = {}): SessionRecord {
     destinationAddress: "GDEST",
     memo: null,
     memoType: null,
-    mediatorPublicKey: null,
+    mediatorRequired: false,
     completedSteps: [],
     currentStepIndex: 0,
     status: "in_progress",
@@ -424,25 +421,23 @@ describe("resume flow store mutations", () => {
 
   test("setMediatorRequired(true, key) followed by restoreSession is fully set before navigate", () => {
     useDemolishStore.getState().setAddresses("GSRC", "GDST");
-    useDemolishStore.getState().setMediatorRequired(true, "GMEDIATOR_KEY");
+    useDemolishStore.getState().setMediatorRequired(true);
     useDemolishStore.getState().restoreSession("s-abc");
     const s = useDemolishStore.getState();
     expect(s.mediatorRequired).toBe(true);
-    expect(s.mediatorPublicKey).toBe("GMEDIATOR_KEY");
     expect(s.sessionId).toBe("s-abc");
   });
 
   test("setMediatorRequired(false) on resume clears mediator state", () => {
-    useDemolishStore.getState().setMediatorRequired(true, "GMED");
+    useDemolishStore.getState().setMediatorRequired(true);
     useDemolishStore.getState().setMediatorRequired(false);
     const s = useDemolishStore.getState();
     expect(s.mediatorRequired).toBe(false);
-    expect(s.mediatorPublicKey).toBeNull();
   });
 
   test("reset after a full resume clears all store fields including sessionId and addresses", () => {
     useDemolishStore.getState().setAddresses("GSRC", "GDST", "memo", "text");
-    useDemolishStore.getState().setMediatorRequired(true, "GMED");
+    useDemolishStore.getState().setMediatorRequired(true);
     useDemolishStore.getState().restoreSession("sid");
     useDemolishStore.getState().setPlan([step(0), step(1)]);
     useDemolishStore.getState().reset();
@@ -452,7 +447,6 @@ describe("resume flow store mutations", () => {
     expect(s.memo).toBeNull();
     expect(s.memoType).toBeNull();
     expect(s.mediatorRequired).toBe(false);
-    expect(s.mediatorPublicKey).toBeNull();
     expect(s.sessionId).toBeNull();
     expect(s.executionPlan).toHaveLength(0);
     expect(s.currentStepIndex).toBe(0);

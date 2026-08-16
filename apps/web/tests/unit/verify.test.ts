@@ -26,7 +26,6 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
   return {
     source: SRC,
     destination: DEST,
-    mediator: null,
     memo: null,
     memoRequired: false,
     memoType: null,
@@ -54,6 +53,7 @@ function intent(over: Partial<TxIntent> = {}): TxIntent {
 }
 
 const conversion = (destination = SRC, destAsset = "native", destMin = "9"): IntentOperation => ({
+  source: SRC,
   type: "path_payment_strict_send",
   sendAsset: `USDC:${ISSUER}`,
   sendAmount: "10",
@@ -62,8 +62,17 @@ const conversion = (destination = SRC, destAsset = "native", destMin = "9"): Int
   destMin,
   path: [],
 });
-const merge = (destination: string): IntentOperation => ({ type: "account_merge", destination });
-const payment = (destination: string, asset = `USDC:${ISSUER}`): IntentOperation => ({
+const merge = (destination: string, source = SRC): IntentOperation => ({
+  source,
+  type: "account_merge",
+  destination,
+});
+const payment = (
+  destination: string,
+  asset = `USDC:${ISSUER}`,
+  source = SRC
+): IntentOperation => ({
+  source,
   type: "payment",
   destination,
   asset,
@@ -72,6 +81,7 @@ const payment = (destination: string, asset = `USDC:${ISSUER}`): IntentOperation
 const setOptions = (
   over: Partial<Extract<IntentOperation, { type: "set_options" }>> = {}
 ): IntentOperation => ({
+  source: SRC,
   type: "set_options",
   signer: { type: "ed25519_public_key", key: REMOVED_SIGNER, weight: 0 },
   masterWeight: null,
@@ -100,12 +110,12 @@ test("a well-formed mediator close passes (merge to mediator, forward to destina
     memo: "deposit-1",
     memoType: "text",
     guarantees: { mergeDestination: MED, paymentsOnlyTo: [DEST], minXlmFromConversions: null },
-    operations: [merge(MED), payment(DEST, "native")],
+    operations: [merge(MED), payment(DEST, "native", MED)],
   });
   expect(() =>
     assertCloseIntent(
       i,
-      expectation({ mediator: MED, memo: "deposit-1", memoRequired: true, memoType: "text" })
+      expectation({ memo: "deposit-1", memoRequired: true, memoType: "text" })
     )
   ).not.toThrow();
 });
@@ -177,32 +187,32 @@ test("rejects a conversion with no minimum floor", () => {
 
 test("rejects a trustline that is created/raised instead of removed", () => {
   const i = intent({
-    operations: [{ type: "change_trust", asset: `USDC:${ISSUER}`, limit: "100" }],
+    operations: [{ source: SRC, type: "change_trust", asset: `USDC:${ISSUER}`, limit: "100" }],
   });
   expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
 });
 
 test("allows a raised trustline for an asset the user chose to claim-remediate", () => {
   const asset = `USDC:${ISSUER}`;
-  const i = intent({ operations: [{ type: "change_trust", asset, limit: "100" }] });
+  const i = intent({ operations: [{ source: SRC, type: "change_trust", asset, limit: "100" }] });
   expect(() => assertCloseIntent(i, expectation({ claimTrustlineAssets: [asset] }))).not.toThrow();
 });
 
 test("rejects a raised trustline for an asset not in the user's own claim-remediation choice", () => {
   const asset = `USDC:${ISSUER}`;
-  const i = intent({ operations: [{ type: "change_trust", asset, limit: "100" }] });
+  const i = intent({ operations: [{ source: SRC, type: "change_trust", asset, limit: "100" }] });
   expect(() =>
     assertCloseIntent(i, expectation({ claimTrustlineAssets: [`EURC:${ISSUER}`] }))
   ).toThrow(VerificationError);
 });
 
 test("rejects a data entry that is written instead of removed", () => {
-  const i = intent({ operations: [{ type: "manage_data", name: "k", value: "dmFsdWU=" }] });
+  const i = intent({ operations: [{ source: SRC, type: "manage_data", name: "k", value: "dmFsdWU=" }] });
   expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
 });
 
 test("rejects an offer that is created instead of cancelled", () => {
-  const i = intent({ operations: [{ type: "manage_sell_offer", offerId: "0", amount: "50" }] });
+  const i = intent({ operations: [{ source: SRC, type: "manage_sell_offer", offerId: "0", amount: "50" }] });
   expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
 });
 
@@ -366,11 +376,96 @@ test("rejects a pasted pre-auth-tx transaction that merges to an unexpected dest
     guarantees: { mergeDestination: ATTACKER, paymentsOnlyTo: [], minXlmFromConversions: null },
   });
   expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/unexpected destination/i);
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/did not choose/i);
 });
 
 test("rejects a pasted pre-auth-tx transaction carrying an unrecognized operation", () => {
-  const i = intent({ operations: [{ type: "unknown" }] });
+  const i = intent({ operations: [{ source: SRC, type: "unknown" }] });
   expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
   expect(() => assertCloseIntent(i, expectation())).toThrow(/unrecognized operation/i);
+});
+
+// ─── the mediated close is accepted on structure, not on identity (#116) ─────
+
+// The point of the change: no address is configured anywhere, and the close still verifies.
+// The intermediary can be rotated without telling any client.
+test("a mediated close passes without the client knowing the intermediary's address", () => {
+  const anyIntermediary = Keypair.random().publicKey();
+  const i = intent({
+    guarantees: {
+      mergeDestination: anyIntermediary,
+      paymentsOnlyTo: [DEST],
+      minXlmFromConversions: null,
+    },
+    operations: [merge(anyIntermediary), payment(DEST, "native", anyIntermediary)],
+  });
+  expect(() => assertCloseIntent(i, expectation())).not.toThrow();
+});
+
+// The load-bearing assertion. Merge into one account, forward from another: the account that
+// received the balance is under no obligation to pass it on, so it keeps it. Pinning the
+// intermediary's address would have waved this through - the merge destination is "correct".
+test("rejects a forward sent by an account other than the one the merge paid into", () => {
+  const intermediary = Keypair.random().publicKey();
+  const i = intent({
+    guarantees: { mergeDestination: intermediary, paymentsOnlyTo: [DEST], minXlmFromConversions: null },
+    operations: [merge(intermediary), payment(DEST, "native", ATTACKER)],
+  });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/is the one passing them on/);
+});
+
+test("rejects a merge to an unexpected address with no forward at all", () => {
+  const i = intent({
+    guarantees: { mergeDestination: ATTACKER, paymentsOnlyTo: [], minXlmFromConversions: null },
+    operations: [merge(ATTACKER)],
+  });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/did not choose/);
+});
+
+test("rejects a mediated close carrying an extra operation", () => {
+  const intermediary = Keypair.random().publicKey();
+  const i = intent({
+    guarantees: { mergeDestination: intermediary, paymentsOnlyTo: [DEST], minXlmFromConversions: null },
+    operations: [merge(intermediary), payment(DEST, "native", intermediary), setOptions()],
+  });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+});
+
+test("rejects a forward to an address the user did not type", () => {
+  const intermediary = Keypair.random().publicKey();
+  const i = intent({
+    guarantees: { mergeDestination: intermediary, paymentsOnlyTo: [ATTACKER], minXlmFromConversions: null },
+    operations: [merge(intermediary), payment(ATTACKER, "native", intermediary)],
+  });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/unexpected address/);
+});
+
+test("rejects a forward that is not XLM", () => {
+  const intermediary = Keypair.random().publicKey();
+  const i = intent({
+    guarantees: { mergeDestination: intermediary, paymentsOnlyTo: [DEST], minXlmFromConversions: null },
+    operations: [merge(intermediary), payment(DEST, `USDC:${ISSUER}`, intermediary)],
+  });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+});
+
+// The merge must be sent by the account being closed - otherwise some other account is being
+// drained and the user's own balance never moves.
+test("rejects a merge not sent by the account being closed", () => {
+  const intermediary = Keypair.random().publicKey();
+  const i = intent({
+    guarantees: { mergeDestination: intermediary, paymentsOnlyTo: [DEST], minXlmFromConversions: null },
+    operations: [merge(intermediary, ATTACKER), payment(DEST, "native", intermediary)],
+  });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/not sent by the account being closed/);
+});
+
+// Reversing the order breaks the hand-off: the forward would run before the balance arrives.
+test("rejects the two operations in the wrong order", () => {
+  const intermediary = Keypair.random().publicKey();
+  const i = intent({
+    guarantees: { mergeDestination: intermediary, paymentsOnlyTo: [DEST], minXlmFromConversions: null },
+    operations: [payment(DEST, "native", intermediary), merge(intermediary)],
+  });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
 });
