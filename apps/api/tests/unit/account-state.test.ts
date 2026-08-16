@@ -151,3 +151,27 @@ test("every account-state request goes to the configured provider", async () => 
   expect(calls).toHaveLength(3);
   expect(calls.every((c) => c.startsWith(other))).toBe(true);
 });
+
+// The defect that motivated `assertUsableAccountBody`: `detectSubEntryMismatch` is
+// `enumerated < numSubEntries`, and `7 < undefined` is false, so a provider omitting the field
+// would have reported "complete" for every account, silently, forever. Each field below fails
+// the read rather than defaulting, because there is no safe default for "we could not tell".
+const LOAD_BEARING: Array<[string, Record<string, unknown>]> = [
+  ["subentry_count", { subentry_count: undefined }],
+  ["balances", { balances: undefined }],
+  ["signers", { signers: undefined }],
+  ["thresholds", { thresholds: undefined }],
+  // `med` gates signer normalization; an undefined there compares false and skips it.
+  ["thresholds.med", { thresholds: { low_threshold: 0, high_threshold: 1 } }],
+  // A missing AUTH_IMMUTABLE would walk a user through selling assets and removing trustlines
+  // for an account that can never be merged.
+  ["flags", { flags: undefined }],
+  ["sequence", { sequence: undefined }],
+];
+
+for (const [label, override] of LOAD_BEARING) {
+  test(`refuses a provider response missing ${label}`, async () => {
+    const { deps } = stubProvider(accountBody(override));
+    await expect(readAccountStateFrom(ADDRESS, "testnet", deps)).rejects.toThrow(/unusable/i);
+  });
+}

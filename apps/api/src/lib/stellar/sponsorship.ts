@@ -18,7 +18,7 @@ const CB_MAX_TOTAL = 1000;
 // connection stall the whole read indefinitely.
 const OWNER_FETCH_CONCURRENCY = 10;
 
-// Same AbortController + setTimeout idiom the Horizon reads use, applied
+// Same AbortController + setTimeout idiom, applied
 // to every fetch in this module so a slow/hung Horizon-compatible endpoint can't stall
 // enumeration indefinitely.
 async function fetchWithTimeout(url: string): Promise<Response> {

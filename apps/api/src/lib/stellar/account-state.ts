@@ -94,7 +94,16 @@ function assertUsableAccountBody(account: ApiAccount, address: string): void {
   if (typeof account.subentry_count !== "number") missing.push("subentry_count");
   if (!Array.isArray(account.balances)) missing.push("balances");
   if (!Array.isArray(account.signers)) missing.push("signers");
-  if (!account.thresholds || typeof account.thresholds.high_threshold !== "number") {
+  const t = account.thresholds;
+  // All three, not just `high`: `med` gates signer normalization
+  // (`thresholds.med > 1` in the plan builder), and an undefined there compares false, so an
+  // account needing normalization would skip it.
+  if (
+    !t ||
+    typeof t.low_threshold !== "number" ||
+    typeof t.med_threshold !== "number" ||
+    typeof t.high_threshold !== "number"
+  ) {
     missing.push("thresholds");
   }
   if (typeof account.flags?.auth_immutable !== "boolean") missing.push("flags.auth_immutable");

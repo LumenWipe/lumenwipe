@@ -164,16 +164,6 @@ export async function horizonPaginate<R>(
   let pageNumber = 0;
 
   while (path) {
-    if (out.length >= maxTotal) {
-      // Stopping here would hand back a subset that reads like the whole set. For a
-      // collection the sub-entry reconciliation cannot check - claimable balances do not
-      // count toward numSubEntries - that is a silent, permanent loss at merge time.
-      throw new Error(
-        `Horizon collection exceeded ${maxTotal} records (${firstPath}); refusing to build ` +
-          `from a truncated read.`
-      );
-    }
-
     const page: Page<R> | null = await horizonGet<Page<R>>(path, deps);
     if (!page) {
       // A collection endpoint answers "nothing here" with 200 and an empty array. A 404 means
@@ -193,11 +183,38 @@ export async function horizonPaginate<R>(
     // *longer* means the provider ignored the limit, so trusting `records.length === pageLimit`
     // alone would stop early; treat any short page as the end and anything else as more.
     const looksLikeLastPage = records.length < pageLimit;
-    path =
-      nextHref && !looksLikeLastPage ? sameOriginPath(nextHref, deps.baseUrl, pageNumber) : null;
+    const more: boolean = Boolean(nextHref) && !looksLikeLastPage;
+
+    // Strictly greater, checked after accumulating. Horizon advertises `next` on every full
+    // page including the last, and the only way to learn a collection ended is to ask for the
+    // page after it and get nothing back. Refusing at `>= maxTotal` would reject a complete
+    // collection of exactly `maxTotal` - an account with exactly 1000 offers - as truncated.
+    if (out.length > maxTotal) {
+      throw new TruncatedCollectionError(
+        `This account has more than ${maxTotal} entries in ${firstPath.split("?")[0]}, more ` +
+          `than a close can enumerate in a single read. Building a plan from a partial list ` +
+          `would leave the rest behind permanently, so it is refused.`
+      );
+    }
+
+    path = more ? sameOriginPath(nextHref!, deps.baseUrl, pageNumber) : null;
   }
 
   return out;
+}
+
+/**
+ * A collection too large to enumerate completely.
+ *
+ * Its own type because the caller has to tell it apart from a provider fault: this one is a
+ * property of the account rather than the infrastructure, its message is safe to show a user,
+ * and it is the read failure that will not resolve itself on a retry.
+ */
+export class TruncatedCollectionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TruncatedCollectionError";
+  }
 }
 
 /**
@@ -209,14 +226,15 @@ export async function horizonPaginate<R>(
  * us elsewhere mid-collection is a fault worth surfacing, not something to silently correct.
  */
 function sameOriginPath(href: string, baseUrl: string, pageNumber: number): string {
-  // A relative href is already on the configured provider.
-  if (href.startsWith("/")) return href;
-
+  const normalized = normalizeBase(baseUrl);
   let target: URL;
   let base: URL;
   try {
-    target = new URL(href);
-    base = new URL(normalizeBase(baseUrl));
+    // Resolved against the base, so a relative href works and a protocol-relative one
+    // ("//evil.example/...") is parsed as the absolute URL it actually is rather than waved
+    // through by a `startsWith("/")` test.
+    base = new URL(normalized);
+    target = new URL(href, base);
   } catch {
     throw new Error(`Horizon returned an unparseable pagination link on page ${pageNumber}`);
   }
@@ -227,5 +245,14 @@ function sameOriginPath(href: string, baseUrl: string, pageNumber: number): stri
         `${base.origin} (page ${pageNumber}).`
     );
   }
-  return `${target.pathname}${target.search}`;
+
+  // The result is re-appended to the base URL by horizonGet, so it has to be relative to the
+  // base's own path - not the full pathname. Providers that serve Horizon under a prefix
+  // (`https://host/horizon/v1`) are exactly the commercial ones this seam exists to support,
+  // and returning the absolute pathname would duplicate that prefix on page two onward.
+  const basePath = base.pathname.replace(/\/+$/, "");
+  const full = `${target.pathname}${target.search}`;
+  if (basePath && full.startsWith(`${basePath}/`)) return full.slice(basePath.length);
+  if (basePath && full === basePath) return "";
+  return full;
 }

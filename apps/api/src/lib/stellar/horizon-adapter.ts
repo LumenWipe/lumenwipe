@@ -63,16 +63,24 @@ export function parseClaimPredicate(
     return { type: "before_absolute_time", absBeforeEpoch: raw.abs_before_epoch };
   }
   if (raw.abs_before !== undefined) {
-    return {
-      type: "before_absolute_time",
-      absBeforeEpoch: String(Math.floor(Date.parse(raw.abs_before) / 1000)),
-    };
+    // A "NaN" deadline makes every comparison false downstream, so the client reads a
+    // currently-claimable balance as unclaimable and the close leaves it behind, unreachable
+    // after the merge. Refuse the read instead of encoding an unusable predicate.
+    const epoch = Date.parse(raw.abs_before);
+    if (!Number.isFinite(epoch)) {
+      throw new Error(`Unparseable abs_before in a claim predicate: ${String(raw.abs_before)}`);
+    }
+    return { type: "before_absolute_time", absBeforeEpoch: String(Math.floor(epoch / 1000)) };
   }
   if (raw.rel_before !== undefined) {
+    const relSeconds = Number(raw.rel_before);
+    if (!Number.isFinite(relSeconds)) {
+      throw new Error(`Unparseable rel_before in a claim predicate: ${String(raw.rel_before)}`);
+    }
     return {
       type: "before_relative_time",
       relBeforeSeconds: raw.rel_before,
-      deadlineEpoch: String(createdAtEpochSeconds + Number(raw.rel_before)),
+      deadlineEpoch: String(createdAtEpochSeconds + relSeconds),
     };
   }
   return { type: "unconditional" };

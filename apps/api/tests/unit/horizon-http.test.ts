@@ -4,6 +4,7 @@ import {
   horizonPaginate,
   rateLimitHits,
   resetRateLimitHits,
+  TruncatedCollectionError,
 } from "@/lib/stellar/horizon-http";
 
 const BASE = "https://horizon.example";
@@ -167,7 +168,7 @@ test("refuses a collection that exceeds the cap rather than returning a subset",
   // permanent loss at merge time - the read has to fail instead.
   await expect(
     horizonPaginate<{ n: number }>("/offers", { baseUrl: BASE, fetch }, PAGE_LIMIT, 5)
-  ).rejects.toThrow(/truncated read/);
+  ).rejects.toThrow(/more than a close can enumerate/);
 });
 
 // A `next` pointing anywhere but the configured provider is a fault, not something to
@@ -283,3 +284,65 @@ test("honors Retry-After and caps it so a hostile value cannot park a close", as
   expect(elapsed).toBeGreaterThan(4_000);
   expect(elapsed).toBeLessThan(7_000);
 }, 15_000);
+
+// Horizon advertises `next` on every full page, including the last one. Checking the cap
+// before knowing whether another page exists rejected a *complete* collection of exactly
+// maxTotal as truncated - so an account with exactly 1000 offers could not be read at all.
+test("accepts a complete collection of exactly maxTotal records", async () => {
+  let page = 0;
+  const { fetch } = recordingFetch(() => {
+    page++;
+    // Two full pages, then the empty page Horizon serves past the end - `next` is advertised
+    // on the last full page too, so an empty follow-up is the only end-of-collection signal.
+    if (page > 2) return jsonResponse({ _embedded: { records: [] } });
+    return jsonResponse({
+      _embedded: { records: [{ n: page * 2 - 1 }, { n: page * 2 }] },
+      _links: { next: { href: `${BASE}/offers?cursor=${page}` } },
+    });
+  });
+  const all = await horizonPaginate<{ n: number }>("/offers", { baseUrl: BASE, fetch }, 2, 4);
+  expect(all).toHaveLength(4);
+});
+
+test("an over-cap collection is a typed error the caller can tell from a provider fault", async () => {
+  const { fetch } = recordingFetch(() =>
+    jsonResponse({
+      _embedded: { records: [{ n: 1 }, { n: 2 }] },
+      _links: { next: { href: `${BASE}/offers?cursor=x` } },
+    })
+  );
+  await expect(
+    horizonPaginate<{ n: number }>("/offers", { baseUrl: BASE, fetch }, 2, 4)
+  ).rejects.toBeInstanceOf(TruncatedCollectionError);
+});
+
+// Commercial providers serve Horizon under a path prefix. Returning the absolute pathname
+// duplicated that prefix from page two onward, so pagination 404'd against exactly the
+// providers this seam exists to support.
+test("follows pagination on a provider served under a path prefix", async () => {
+  const base = "https://prov.example/horizon/v1";
+  const { fetch, calls } = recordingFetch((url) =>
+    url.includes("cursor=2")
+      ? jsonResponse({ _embedded: { records: [{ n: 3 }] } })
+      : jsonResponse({
+          _embedded: { records: [{ n: 1 }, { n: 2 }] },
+          _links: { next: { href: `${base}/offers?cursor=2` } },
+        })
+  );
+  const all = await horizonPaginate<{ n: number }>("/offers", { baseUrl: base, fetch }, 2, 100);
+  expect(all.map((r) => r.n)).toEqual([1, 2, 3]);
+  expect(calls).toEqual([`${base}/offers`, `${base}/offers?cursor=2`]);
+});
+
+// "//evil.example/..." satisfies startsWith("/") but is an absolute URL on another host.
+test("refuses a protocol-relative pagination link", async () => {
+  const { fetch } = recordingFetch(() =>
+    jsonResponse({
+      _embedded: { records: [{ n: 1 }, { n: 2 }] },
+      _links: { next: { href: "//evil.example/offers?cursor=2" } },
+    })
+  );
+  await expect(
+    horizonPaginate<{ n: number }>("/offers", { baseUrl: BASE, fetch }, 2, 100)
+  ).rejects.toThrow(/not the configured provider/);
+});
