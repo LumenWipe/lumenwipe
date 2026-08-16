@@ -93,7 +93,7 @@ with g.subgraph(name="cluster_network") as n:
     )
     n.node("rpc", hl("Stellar RPC", "getLedgerEntries · simulateTransaction", "sendTransaction · getTransaction · getEvents"),
            fillcolor=F_EXTERNAL, color=B_EXTERNAL)
-    n.node("idx", hl("stellar.expert Indexer API", "Enumerate trustlines · offers · signers · pool shares", "Primary source for account subentry discovery"),
+    n.node("idx", hl("Horizon-compatible provider", "Enumerate trustlines · offers · data · signers · pool shares", "Set by configuration; swapping providers needs no code change"),
            fillcolor=F_EXTERNAL, color=B_EXTERNAL)
     n.node("soro_api", hl("Soroswap API", "Optimal swap routes · LP pair data", "Builds Soroban swap XDR (client verifies before signing)"),
            fillcolor=F_EXTERNAL, color=B_EXTERNAL)

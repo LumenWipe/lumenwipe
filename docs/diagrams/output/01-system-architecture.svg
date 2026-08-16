@@ -24,8 +24,8 @@
 </g>
 <g id="clust3" class="cluster">
 <title>cluster_network</title>
-<path fill="none" stroke="#9333ea" stroke-width="2.5" d="M1236,-8C1236,-8 2323,-8 2323,-8 2329,-8 2335,-14 2335,-20 2335,-20 2335,-245.83 2335,-245.83 2335,-251.83 2329,-257.83 2323,-257.83 2323,-257.83 1236,-257.83 1236,-257.83 1230,-257.83 1224,-251.83 1224,-245.83 1224,-245.83 1224,-20 1224,-20 1224,-14 1230,-8 1236,-8"/>
-<text xml:space="preserve" text-anchor="start" x="1232" y="-243.43" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="12.00" fill="#9333ea">Stellar Network &#160;&amp; &#160;Data Services</text>
+<path fill="none" stroke="#9333ea" stroke-width="2.5" d="M1208,-8C1208,-8 2352,-8 2352,-8 2358,-8 2364,-14 2364,-20 2364,-20 2364,-245.83 2364,-245.83 2364,-251.83 2358,-257.83 2352,-257.83 2352,-257.83 1208,-257.83 1208,-257.83 1202,-257.83 1196,-251.83 1196,-245.83 1196,-245.83 1196,-20 1196,-20 1196,-14 1202,-8 1208,-8"/>
+<text xml:space="preserve" text-anchor="start" x="1204" y="-243.43" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="12.00" fill="#9333ea">Stellar Network &#160;&amp; &#160;Data Services</text>
 </g>
 <!-- ui -->
 <g id="node1" class="node">
@@ -199,24 +199,24 @@
 <!-- rpc -->
 <g id="node15" class="node">
 <title>rpc</title>
-<path fill="#faf5ff" stroke="#9333ea" stroke-width="1.6" d="M2305.34,-198.33C2305.34,-198.33 2114.66,-198.33 2114.66,-198.33 2108.66,-198.33 2102.66,-192.33 2102.66,-186.33 2102.66,-186.33 2102.66,-162.62 2102.66,-162.62 2102.66,-156.62 2108.66,-150.62 2114.66,-150.62 2114.66,-150.62 2305.34,-150.62 2305.34,-150.62 2311.34,-150.62 2317.34,-156.62 2317.34,-162.62 2317.34,-162.62 2317.34,-186.33 2317.34,-186.33 2317.34,-192.33 2311.34,-198.33 2305.34,-198.33"/>
-<text xml:space="preserve" text-anchor="start" x="2179.62" y="-179.53" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00" fill="#1e293b">Stellar RPC</text>
-<text xml:space="preserve" text-anchor="start" x="2130.12" y="-170.43" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">getLedgerEntries · simulateTransaction</text>
-<text xml:space="preserve" text-anchor="start" x="2118.5" y="-161.43" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">sendTransaction · getTransaction · getEvents</text>
+<path fill="#faf5ff" stroke="#9333ea" stroke-width="1.6" d="M2334.34,-198.33C2334.34,-198.33 2143.66,-198.33 2143.66,-198.33 2137.66,-198.33 2131.66,-192.33 2131.66,-186.33 2131.66,-186.33 2131.66,-162.62 2131.66,-162.62 2131.66,-156.62 2137.66,-150.62 2143.66,-150.62 2143.66,-150.62 2334.34,-150.62 2334.34,-150.62 2340.34,-150.62 2346.34,-156.62 2346.34,-162.62 2346.34,-162.62 2346.34,-186.33 2346.34,-186.33 2346.34,-192.33 2340.34,-198.33 2334.34,-198.33"/>
+<text xml:space="preserve" text-anchor="start" x="2208.62" y="-179.53" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00" fill="#1e293b">Stellar RPC</text>
+<text xml:space="preserve" text-anchor="start" x="2159.12" y="-170.43" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">getLedgerEntries · simulateTransaction</text>
+<text xml:space="preserve" text-anchor="start" x="2147.5" y="-161.43" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">sendTransaction · getTransaction · getEvents</text>
 </g>
 <!-- analysis&#45;&gt;rpc -->
 <g id="edge16" class="edge">
 <title>analysis&#45;&gt;rpc</title>
-<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M2166.97,-426.68C2222.99,-415.85 2285.99,-392.67 2321,-343.56 2354.85,-296.07 2297.5,-239.13 2253.41,-205.2"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="2255.35,-202.94 2246.77,-200.21 2251.77,-207.7 2255.35,-202.94"/>
+<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M2166.97,-426.68C2222.99,-415.85 2285.99,-392.67 2321,-343.56 2352.5,-299.37 2307.93,-241.25 2273.18,-206.21"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="2275.61,-204.42 2267.46,-200.59 2271.44,-208.67 2275.61,-204.42"/>
 </g>
 <!-- idx -->
 <g id="node16" class="node">
 <title>idx</title>
-<path fill="#faf5ff" stroke="#9333ea" stroke-width="1.6" d="M1769.21,-198.33C1769.21,-198.33 1556.79,-198.33 1556.79,-198.33 1550.79,-198.33 1544.79,-192.33 1544.79,-186.33 1544.79,-186.33 1544.79,-162.62 1544.79,-162.62 1544.79,-156.62 1550.79,-150.62 1556.79,-150.62 1556.79,-150.62 1769.21,-150.62 1769.21,-150.62 1775.21,-150.62 1781.21,-156.62 1781.21,-162.62 1781.21,-162.62 1781.21,-186.33 1781.21,-186.33 1781.21,-192.33 1775.21,-198.33 1769.21,-198.33"/>
-<text xml:space="preserve" text-anchor="start" x="1597.75" y="-179.53" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00" fill="#1e293b">stellar.expert Indexer API</text>
-<text xml:space="preserve" text-anchor="start" x="1560.62" y="-170.43" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Enumerate trustlines · offers · signers · pool shares</text>
-<text xml:space="preserve" text-anchor="start" x="1569.25" y="-161.43" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Primary source for account subentry discovery</text>
+<path fill="#faf5ff" stroke="#9333ea" stroke-width="1.6" d="M1797.71,-198.33C1797.71,-198.33 1528.29,-198.33 1528.29,-198.33 1522.29,-198.33 1516.29,-192.33 1516.29,-186.33 1516.29,-186.33 1516.29,-162.62 1516.29,-162.62 1516.29,-156.62 1522.29,-150.62 1528.29,-150.62 1528.29,-150.62 1797.71,-150.62 1797.71,-150.62 1803.71,-150.62 1809.71,-156.62 1809.71,-162.62 1809.71,-162.62 1809.71,-186.33 1809.71,-186.33 1809.71,-192.33 1803.71,-198.33 1797.71,-198.33"/>
+<text xml:space="preserve" text-anchor="start" x="1588" y="-179.53" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00" fill="#1e293b">Horizon&#45;compatible provider</text>
+<text xml:space="preserve" text-anchor="start" x="1548.25" y="-170.43" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Enumerate trustlines · offers · data · signers · pool shares</text>
+<text xml:space="preserve" text-anchor="start" x="1532.12" y="-161.43" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Set by configuration; swapping providers needs no code change</text>
 </g>
 <!-- analysis&#45;&gt;idx -->
 <g id="edge15" class="edge">
@@ -240,23 +240,23 @@
 <!-- close&#45;&gt;rpc -->
 <g id="edge17" class="edge">
 <title>close&#45;&gt;rpc</title>
-<path fill="none" stroke="#94a3b8" stroke-width="2" d="M1785.28,-518.43C1764.02,-466.83 1723.69,-344.48 1786,-277.83 1808.59,-253.67 2051.62,-268.28 2083,-257.83 2116.61,-246.65 2150.03,-224.41 2174.15,-205.86"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="2" points="2175.7,-208.43 2180.54,-200.84 2172.02,-203.75 2175.7,-208.43"/>
-<text xml:space="preserve" text-anchor="middle" x="1792.97" y="-374.31" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#475569">live reads · submit</text>
+<path fill="none" stroke="#94a3b8" stroke-width="2" d="M1785.25,-518.4C1763.93,-466.74 1723.49,-344.29 1786,-277.83 1810.86,-251.4 2077.53,-269.19 2112,-257.83 2145.64,-246.75 2179.06,-224.51 2203.17,-205.93"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="2" points="2204.72,-208.49 2209.56,-200.89 2201.04,-203.82 2204.72,-208.49"/>
+<text xml:space="preserve" text-anchor="middle" x="1792.86" y="-374.31" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#475569">live reads · submit</text>
 </g>
 <!-- octopos -->
 <g id="node18" class="node">
 <title>octopos</title>
-<path fill="#faf5ff" stroke="#9333ea" stroke-width="1.6" d="M2050.84,-198.33C2050.84,-198.33 1833.16,-198.33 1833.16,-198.33 1827.16,-198.33 1821.16,-192.33 1821.16,-186.33 1821.16,-186.33 1821.16,-162.62 1821.16,-162.62 1821.16,-156.62 1827.16,-150.62 1833.16,-150.62 1833.16,-150.62 2050.84,-150.62 2050.84,-150.62 2056.84,-150.62 2062.84,-156.62 2062.84,-162.62 2062.84,-162.62 2062.84,-186.33 2062.84,-186.33 2062.84,-192.33 2056.84,-198.33 2050.84,-198.33"/>
-<text xml:space="preserve" text-anchor="start" x="1872.25" y="-179.53" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00" fill="#1e293b">OctoPos DeFi Position API</text>
-<text xml:space="preserve" text-anchor="start" x="1837" y="-170.43" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Detects positions across all Soroban DeFi protocols</text>
-<text xml:space="preserve" text-anchor="start" x="1855" y="-161.43" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Returns freshness metadata · mainnet only</text>
+<path fill="#faf5ff" stroke="#9333ea" stroke-width="1.6" d="M2079.84,-198.33C2079.84,-198.33 1862.16,-198.33 1862.16,-198.33 1856.16,-198.33 1850.16,-192.33 1850.16,-186.33 1850.16,-186.33 1850.16,-162.62 1850.16,-162.62 1850.16,-156.62 1856.16,-150.62 1862.16,-150.62 1862.16,-150.62 2079.84,-150.62 2079.84,-150.62 2085.84,-150.62 2091.84,-156.62 2091.84,-162.62 2091.84,-162.62 2091.84,-186.33 2091.84,-186.33 2091.84,-192.33 2085.84,-198.33 2079.84,-198.33"/>
+<text xml:space="preserve" text-anchor="start" x="1901.25" y="-179.53" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00" fill="#1e293b">OctoPos DeFi Position API</text>
+<text xml:space="preserve" text-anchor="start" x="1866" y="-170.43" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Detects positions across all Soroban DeFi protocols</text>
+<text xml:space="preserve" text-anchor="start" x="1884" y="-161.43" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Returns freshness metadata · mainnet only</text>
 </g>
 <!-- defi&#45;&gt;octopos -->
 <g id="edge18" class="edge">
 <title>defi&#45;&gt;octopos</title>
-<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M1924.47,-295.05C1927.91,-271.58 1933.21,-235.41 1937.09,-208.99"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="1940,-209.62 1938.29,-200.78 1934.11,-208.76 1940,-209.62"/>
+<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M1929.26,-295.05C1937.48,-271.48 1950.19,-235.09 1959.42,-208.64"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="1962.21,-209.69 1962.2,-200.69 1956.59,-207.73 1962.21,-209.69"/>
 </g>
 <!-- route -->
 <g id="node11" class="node">
@@ -276,22 +276,22 @@
 <!-- soro_api -->
 <g id="node17" class="node">
 <title>soro_api</title>
-<path fill="#faf5ff" stroke="#9333ea" stroke-width="1.6" d="M1492.34,-198.33C1492.34,-198.33 1253.66,-198.33 1253.66,-198.33 1247.66,-198.33 1241.66,-192.33 1241.66,-186.33 1241.66,-186.33 1241.66,-162.62 1241.66,-162.62 1241.66,-156.62 1247.66,-150.62 1253.66,-150.62 1253.66,-150.62 1492.34,-150.62 1492.34,-150.62 1498.34,-150.62 1504.34,-156.62 1504.34,-162.62 1504.34,-162.62 1504.34,-186.33 1504.34,-186.33 1504.34,-192.33 1498.34,-198.33 1492.34,-198.33"/>
-<text xml:space="preserve" text-anchor="start" x="1336.25" y="-179.53" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00" fill="#1e293b">Soroswap API</text>
-<text xml:space="preserve" text-anchor="start" x="1303.25" y="-170.43" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Optimal swap routes · LP pair data</text>
-<text xml:space="preserve" text-anchor="start" x="1257.5" y="-161.43" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Builds Soroban swap XDR (client verifies before signing)</text>
+<path fill="#faf5ff" stroke="#9333ea" stroke-width="1.6" d="M1464.34,-198.33C1464.34,-198.33 1225.66,-198.33 1225.66,-198.33 1219.66,-198.33 1213.66,-192.33 1213.66,-186.33 1213.66,-186.33 1213.66,-162.62 1213.66,-162.62 1213.66,-156.62 1219.66,-150.62 1225.66,-150.62 1225.66,-150.62 1464.34,-150.62 1464.34,-150.62 1470.34,-150.62 1476.34,-156.62 1476.34,-162.62 1476.34,-162.62 1476.34,-186.33 1476.34,-186.33 1476.34,-192.33 1470.34,-198.33 1464.34,-198.33"/>
+<text xml:space="preserve" text-anchor="start" x="1308.25" y="-179.53" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00" fill="#1e293b">Soroswap API</text>
+<text xml:space="preserve" text-anchor="start" x="1275.25" y="-170.43" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Optimal swap routes · LP pair data</text>
+<text xml:space="preserve" text-anchor="start" x="1229.5" y="-161.43" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Builds Soroban swap XDR (client verifies before signing)</text>
 </g>
 <!-- route&#45;&gt;soro_api -->
 <g id="edge19" class="edge">
 <title>route&#45;&gt;soro_api</title>
-<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M1440.39,-518.87C1427.99,-455.71 1393.93,-282.16 1379.55,-208.85"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="1382.54,-208.64 1377.98,-200.87 1376.7,-209.78 1382.54,-208.64"/>
+<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M1438.59,-518.87C1421.38,-455.71 1374.08,-282.16 1354.1,-208.85"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="1357.02,-208.25 1351.91,-200.83 1351.28,-209.82 1357.02,-208.25"/>
 </g>
 <!-- med_be&#45;&gt;rpc -->
 <g id="edge14" class="edge">
 <title>med_be&#45;&gt;rpc</title>
-<path fill="none" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="5,2" d="M2189.15,-518.99C2239.68,-486.89 2323.86,-423.91 2357,-343.56 2368.14,-316.55 2368.18,-304.82 2357,-277.83 2343.19,-244.51 2311.72,-220.37 2281.42,-203.93"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="2282.87,-201.33 2273.96,-200.05 2280.13,-206.61 2282.87,-201.33"/>
+<path fill="none" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="5,2" d="M2189.15,-518.99C2239.68,-486.89 2323.86,-423.91 2357,-343.56 2370.22,-311.49 2372.55,-292.19 2350,-265.83 2330.46,-243 2304.61,-221.57 2282.77,-205.32"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="2284.64,-203 2276.02,-200.38 2281.12,-207.8 2284.64,-203"/>
 </g>
 <!-- reg -->
 <g id="node13" class="node">
@@ -304,35 +304,35 @@
 <!-- ledger -->
 <g id="node19" class="node">
 <title>ledger</title>
-<path fill="#faf5ff" stroke="#9333ea" stroke-width="2" d="M1904.09,-85.65C1904.09,-88.94 1858.33,-91.61 1802,-91.61 1745.67,-91.61 1699.91,-88.94 1699.91,-85.65 1699.91,-85.65 1699.91,-31.96 1699.91,-31.96 1699.91,-28.67 1745.67,-26 1802,-26 1858.33,-26 1904.09,-28.67 1904.09,-31.96 1904.09,-31.96 1904.09,-85.65 1904.09,-85.65"/>
-<path fill="none" stroke="#9333ea" stroke-width="2" d="M1904.09,-85.65C1904.09,-82.36 1858.33,-79.68 1802,-79.68 1745.67,-79.68 1699.91,-82.36 1699.91,-85.65"/>
-<text xml:space="preserve" text-anchor="start" x="1765.25" y="-63.86" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00" fill="#1e293b">Stellar Ledger</text>
-<text xml:space="preserve" text-anchor="start" x="1715.75" y="-54.76" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Classic + Soroban (Protocol 26 · Yardstick)</text>
-<text xml:space="preserve" text-anchor="start" x="1731.88" y="-45.76" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Source of truth for all account state</text>
+<path fill="#faf5ff" stroke="#9333ea" stroke-width="2" d="M1918.09,-85.65C1918.09,-88.94 1872.33,-91.61 1816,-91.61 1759.67,-91.61 1713.91,-88.94 1713.91,-85.65 1713.91,-85.65 1713.91,-31.96 1713.91,-31.96 1713.91,-28.67 1759.67,-26 1816,-26 1872.33,-26 1918.09,-28.67 1918.09,-31.96 1918.09,-31.96 1918.09,-85.65 1918.09,-85.65"/>
+<path fill="none" stroke="#9333ea" stroke-width="2" d="M1918.09,-85.65C1918.09,-82.36 1872.33,-79.68 1816,-79.68 1759.67,-79.68 1713.91,-82.36 1713.91,-85.65"/>
+<text xml:space="preserve" text-anchor="start" x="1779.25" y="-63.86" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00" fill="#1e293b">Stellar Ledger</text>
+<text xml:space="preserve" text-anchor="start" x="1729.75" y="-54.76" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Classic + Soroban (Protocol 26 · Yardstick)</text>
+<text xml:space="preserve" text-anchor="start" x="1745.88" y="-45.76" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Source of truth for all account state</text>
 </g>
 <!-- rpc&#45;&gt;ledger -->
 <g id="edge21" class="edge">
 <title>rpc&#45;&gt;ledger</title>
-<path fill="none" stroke="#94a3b8" stroke-width="2" d="M2125.46,-149.92C2064.77,-133.01 1982.3,-110.04 1915.82,-91.52"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="2" points="1916.77,-88.69 1907.79,-89.28 1915.18,-94.43 1916.77,-88.69"/>
+<path fill="none" stroke="#94a3b8" stroke-width="2" d="M2151.1,-149.85C2086.99,-132.63 1999.55,-109.13 1930.06,-90.46"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="2" points="1930.98,-87.62 1921.99,-88.29 1929.43,-93.37 1930.98,-87.62"/>
 </g>
 <!-- idx&#45;&gt;ledger -->
 <g id="edge22" class="edge">
 <title>idx&#45;&gt;ledger</title>
-<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M1691.8,-149.92C1709.7,-135.28 1733.17,-116.1 1753.84,-99.19"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="1755.57,-101.62 1760.26,-93.94 1751.8,-97.01 1755.57,-101.62"/>
+<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M1694.7,-149.92C1714.58,-135.15 1740.69,-115.76 1763.59,-98.74"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="1765.12,-101.32 1770.17,-93.86 1761.57,-96.54 1765.12,-101.32"/>
 </g>
 <!-- soro_api&#45;&gt;ledger -->
 <g id="edge23" class="edge">
 <title>soro_api&#45;&gt;ledger</title>
-<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M1462.15,-149.85C1528.03,-132.4 1618.23,-108.5 1689.14,-89.71"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="1689.51,-92.69 1696.96,-87.64 1687.99,-86.94 1689.51,-92.69"/>
+<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M1442.88,-149.85C1518.61,-131.58 1623.59,-106.24 1702.92,-87.1"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="1703.32,-90.06 1710.89,-85.17 1701.93,-84.28 1703.32,-90.06"/>
 </g>
 <!-- octopos&#45;&gt;ledger -->
 <g id="edge24" class="edge">
 <title>octopos&#45;&gt;ledger</title>
-<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M1912.99,-149.92C1894.96,-135.28 1871.33,-116.1 1850.51,-99.19"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="1852.5,-96.98 1844.03,-93.93 1848.75,-101.6 1852.5,-96.98"/>
+<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M1938.88,-149.92C1918.75,-135.15 1892.29,-115.76 1869.09,-98.74"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="1871.03,-96.48 1862.42,-93.85 1867.51,-101.27 1871.03,-96.48"/>
 </g>
 </g>
 </svg>
