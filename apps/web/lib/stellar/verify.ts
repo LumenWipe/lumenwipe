@@ -1,6 +1,7 @@
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
 import { lookupExchange } from "@/lib/exchange-registry";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
+import { xlmToStroops } from "@/lib/utils/amounts";
 import type { AccountSigner, AccountThresholds } from "@/types/account";
 import type { IntentOperation, TxIntent } from "@/types/close-api";
 
@@ -18,6 +19,14 @@ export interface CloseExpectation {
   source: string;
   /** The user's chosen final destination. */
   destination: string;
+  /** Whether the user's destination routes through the shared intermediary, from the client's
+   *  own registry lookup. Without it the two-operation hand-off would be accepted for a close
+   *  the user asked to send straight to their own wallet - so a shape that only makes sense
+   *  for an exchange would become reachable for everyone. */
+  mediatorRequired: boolean;
+  /** The account's native balance in XLM as the client last read it. The floor under the
+   *  forwarded amount: the intermediary is only a conduit if what leaves it is what arrived. */
+  nativeBalance: string;
   /** The memo the user entered, or null. */
   memo: string | null;
   /** Whether the destination requires a memo (from the client-bundled exchange registry). */
@@ -71,11 +80,31 @@ function assertMergeShape(
   intent: TxIntent,
   expected: CloseExpectation
 ): Extract<IntentOperation, { type: "payment" }> | null {
-  const mergeDestination = intent.guarantees.mergeDestination;
-  if (mergeDestination === null) return null;
+  // Every merge, not just the first. `guarantees.mergeDestination` reports the first one, so
+  // reading only that would let a second merge - of this account or another the signer has
+  // weight on - ride along unexamined behind a well-formed first.
+  const merges = intent.operations.filter((o) => o.type === "account_merge");
+  if (merges.length === 0) return null;
+  if (merges.length > 1) {
+    throw new VerificationError("The transaction would merge more than one account.");
+  }
+  const merge = merges[0]!;
+
+  if (merge.source !== expected.source) {
+    throw new VerificationError("The account merge is not sent by the account being closed.");
+  }
 
   // Merging to the address the user typed needs no intermediary and no further shape checks.
-  if (mergeDestination === expected.destination) return null;
+  if (merge.destination === expected.destination) return null;
+
+  // The hand-off exists because exchanges cannot be merged into. Accepting it for a close the
+  // user routed straight to their own wallet would make an attacker-nominated intermediary
+  // reachable for every user, not only the ones closing to an exchange.
+  if (!expected.mediatorRequired) {
+    throw new VerificationError(
+      "The account would be merged to an address you did not choose."
+    );
+  }
 
   // Anywhere else, the transaction has to be the two-operation hand-off. Anything more is an
   // effect this cannot account for, and anything less means the balance stops at an address
@@ -87,12 +116,8 @@ function assertMergeShape(
     );
   }
 
-  const merge = ops[0]!;
   const forward = ops[1]!;
 
-  if (merge.source !== expected.source) {
-    throw new VerificationError("The account merge is not sent by the account being closed.");
-  }
   if (forward.source !== merge.destination) {
     // Without this the intermediary is just an address funds go to. With it, the account that
     // received the balance is the one sending it on, in the same transaction.
@@ -108,6 +133,7 @@ function assertMergeShape(
   if (forward.asset !== "native") {
     throw new VerificationError("The forwarded balance would not be XLM.");
   }
+  assertForwardCarriesTheBalance(forward.amount, expected.nativeBalance);
 
   return forward;
 }
@@ -119,6 +145,42 @@ function assertMergeShape(
  * server-side - an irreversible account merge must never move funds anywhere the user did not
  * choose, and no operation may reach signing that verification cannot account for.
  */
+/**
+ * Asserts the forwarded amount is the balance, not a token of it.
+ *
+ * Structure alone does not make an intermediary a conduit. "Whoever received the merge sends a
+ * payment onward" is satisfied by forwarding one stroop and keeping the rest - atomicity
+ * constrains whether the payment happens, never how much it carries. This is the check that
+ * closes that gap, and it is why the mediated shape cannot be accepted on structure alone.
+ *
+ * A lower bound, not equality: the merge delivers whatever the balance is at execution, which
+ * is not known when the transaction is built. The bound is one-sided on purpose - the
+ * intermediary gets no freedom upward, only a bounded amount it could retain. Two honest
+ * limits: funds arriving between the client's balance read and submission are not covered, and
+ * the balance is read from the same API that built the transaction, so this catches builder
+ * bugs and partial compromise rather than an adversary who keeps both consistent.
+ */
+function assertForwardCarriesTheBalance(forwardAmount: string, nativeBalance: string): void {
+  // Compared in whole stroops - a decimal-string comparison would round exactly where an
+  // attacker would aim.
+  const forwarded = BigInt(xlmToStroops(forwardAmount));
+  const observed = BigInt(xlmToStroops(nativeBalance));
+  const floor = observed - FORWARD_SHORTFALL_TOLERANCE_STROOPS;
+
+  if (forwarded < floor) {
+    throw new VerificationError(
+      "This transaction would hand your balance to an intermediary and pass on only part of it."
+    );
+  }
+}
+
+/**
+ * How far under the observed balance a forward may fall before it is refused: 0.01 XLM, which
+ * covers the network fee the merge consumes and a little drift, and is small enough that
+ * anything worth stealing trips it. Raising this raises what an intermediary can keep.
+ */
+const FORWARD_SHORTFALL_TOLERANCE_STROOPS = BigInt("100000");
+
 export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation): void {
   // The transaction must be for the account being closed.
   if (intent.source !== expected.source) {
@@ -275,6 +337,8 @@ export function verifyCloseTransaction(opts: {
   expected: {
     source: string;
     destination: string;
+    mediatorRequired: boolean;
+    nativeBalance: string;
     memo: string | null;
     claimTrustlineAssets: string[];
     accountSigners: AccountSigner[];

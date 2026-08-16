@@ -244,13 +244,13 @@ describe("session identity", () => {
 // ─── Mediator state ──────────────────────────────────────────────────────────
 
 describe("mediator state", () => {
-  test("setMediatorRequired(true, key) stores both required and publicKey", () => {
+  test("setMediatorRequired(true) records that the close routes through an intermediary", () => {
     useDemolishStore.getState().setMediatorRequired(true);
     const s = useDemolishStore.getState();
     expect(s.mediatorRequired).toBe(true);
   });
 
-  test("setMediatorRequired(true) without key clears publicKey to null", () => {
+  test("setMediatorRequired(false) records a direct close", () => {
     useDemolishStore.getState().setMediatorRequired(true);
     useDemolishStore.getState().setMediatorRequired(true);
   });

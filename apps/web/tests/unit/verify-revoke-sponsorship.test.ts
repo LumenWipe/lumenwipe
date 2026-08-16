@@ -19,6 +19,8 @@ function baseExpected(): CloseExpectation {
   return {
     source: SOURCE_KP.publicKey(),
     destination: DEST_KP.publicKey(),
+    mediatorRequired: false,
+    nativeBalance: "100.0000000",
     memo: null,
     memoRequired: false,
     memoType: null,
