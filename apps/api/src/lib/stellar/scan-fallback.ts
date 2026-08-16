@@ -1,5 +1,4 @@
 import type {
-  AccountState,
   AccountSigner,
   DataEntry,
   OpenOffer,
@@ -29,15 +28,4 @@ export function detectSubEntryMismatch(scan: {
     extraSigners +
     scan.poolShares.length * 2; // pool share trustlines cost 2 base reserves per ledger spec
   return expectedSubEntries < scan.numSubEntries;
-}
-
-// The stellar.expert account-stats endpoint cannot enumerate everything:
-// it never returns manage-data entries at all (its response has no `data`
-// field - see queryAccountStats in stellar-expert-explorer), and it indexes
-// new accounts with a lag. Any sub-entry mismatch in the SE-based scan is
-// therefore a signal to re-read the account through the zero-lag live path,
-// which does enumerate data entries - the mismatch only becomes a plan
-// blocker if the live scan confirms it.
-export function needsLiveRescan(state: AccountState): boolean {
-  return state.subEntryMismatch;
 }

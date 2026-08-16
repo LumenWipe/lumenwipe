@@ -32,7 +32,7 @@ with g.subgraph(name="cluster_scan") as s:
     s.attr(label=hl("Phase 1 · Scan", "Discover everything the account holds"),
            style="rounded,dashed", color=B_DEFAULT, fontcolor=T_MED,
            fontname=FONT, fontsize="10", penwidth="1.2")
-    s.node("enum", hl("Enumerate Subentries", "stellar.expert Indexer API",
+    s.node("enum", hl("Enumerate Subentries", "Horizon-compatible provider",
                        "Trustlines · offers · data entries · pool shares · signers · sponsorships"),
            fillcolor=F_EXTERNAL, color=B_EXTERNAL)
     s.node("defi", hl("Detect DeFi Positions", "OctoPos API (mainnet)",

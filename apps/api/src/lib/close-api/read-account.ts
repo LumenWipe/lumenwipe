@@ -1,23 +1,14 @@
 import type { Network } from "@/config/networks";
 import type { AccountState } from "@lumenwipe/types";
-import { getAccountState } from "@/lib/stellar/account";
-import { getLiveAccountState } from "@/lib/stellar/account-live";
-import { needsLiveRescan } from "@/lib/stellar/scan-fallback";
+import { getAccountState } from "@/lib/stellar/account-state";
 
-// Reads account state for the close API, mirroring the read-only account route:
-// stellar.expert lags for freshly created accounts and never returns manage-data
-// entries, so on any mismatch fall back to the Horizon-based live scan, which has
-// zero indexing lag and full enumeration. The blocker only stands if the live scan
-// confirms it. Never build a plan or transaction from indexer data that the live
-// scan contradicts.
+// Reads account state for the close API from the single Horizon-compatible provider.
+//
+// This used to be a two-step dance: an indexer-backed read first, then a re-read through a
+// zero-lag path whenever the first one came up short. That existed because the indexer lagged
+// for freshly created accounts and never returned manage-data entries at all. With one
+// zero-lag provider there is nothing to re-check against, so a sub-entry mismatch is now the
+// answer rather than a prompt to look again - and it reaches the plan builder as a blocker.
 export async function readAccountState(address: string, network: Network): Promise<AccountState> {
-  let state = await getAccountState(address, network);
-  if (needsLiveRescan(state)) {
-    try {
-      state = await getLiveAccountState(address, network);
-    } catch {
-      // Keep the stellar.expert result if the live path also fails.
-    }
-  }
-  return state;
+  return getAccountState(address, network);
 }

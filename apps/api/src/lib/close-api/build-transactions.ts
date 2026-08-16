@@ -3,7 +3,7 @@ import { NETWORK_PASSPHRASES, getMediatorPublicKey, type Network } from "@/confi
 import { BASE_FEE_STROOPS, OP_BATCH_LIMIT, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { fetchLiveTrustlineBalance, filterExistingClaimableBalances } from "@/lib/stellar/step-engine";
-import { fetchConversionPath } from "@/lib/se-api/paths";
+import { fetchConversionPath } from "@/lib/stellar/path-finding";
 import { lookupExchange, requiresMediatorForAddress } from "@/lib/exchange-registry";
 import { computeNeedsSignerNormalization } from "@/lib/stellar/tx-builder";
 import { assessSponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";

@@ -1,12 +1,18 @@
 import { Controller, Get, HttpException, Logger, Param, Query } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from "@nestjs/swagger";
 import { isValidNetwork } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
-import { getAccountState } from "@/lib/stellar/account";
-import { getLiveAccountState } from "@/lib/stellar/account-live";
-import { needsLiveRescan } from "@/lib/stellar/scan-fallback";
-import { fetchConversionPath } from "@/lib/se-api/paths";
+import { getAccountState } from "@/lib/stellar/account-state";
+import { fetchConversionPath } from "@/lib/stellar/path-finding";
 import { AccountNotFoundError } from "@/lib/utils/errors";
+import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 
 @ApiTags("account")
 @ApiBearerAuth("api-key")
@@ -18,7 +24,9 @@ export class AccountController {
   private readonly logger = new Logger(AccountController.name);
 
   @Get("account/:address")
-  @ApiOperation({ summary: "Read full on-chain account state (balances, trustlines, offers, signers)." })
+  @ApiOperation({
+    summary: "Read full on-chain account state (balances, trustlines, offers, signers).",
+  })
   @ApiParam({ name: "address", description: "Stellar account (G...)." })
   @ApiResponse({ status: 200, description: "Aggregated account state." })
   @ApiResponse({ status: 400, description: "Invalid network or address." })
@@ -30,24 +38,19 @@ export class AccountController {
     }
 
     try {
-      let accountData = await getAccountState(address, network);
-
-      // stellar.expert lags for freshly created accounts and never returns
-      // manage-data entries. On any mismatch, fall back to the Horizon-based
-      // live path which has zero indexing lag and full enumeration.
-      if (needsLiveRescan(accountData)) {
-        try {
-          accountData = await getLiveAccountState(address, network);
-        } catch {
-          // Keep the SE-based result if the live path also fails.
-        }
-      }
-
-      return accountData;
+      return await getAccountState(address, network);
     } catch (err) {
       if (err instanceof HttpException) throw err;
       if (err instanceof AccountNotFoundError) {
         throw new HttpException({ error: err.message }, 404);
+      }
+      // A collection too large to enumerate is a property of the account, not a fault of ours,
+      // and its message explains what the caller is up against. Collapsing it into a generic
+      // 500 would leave someone staring at "Failed to fetch account data" with no idea why
+      // their account cannot be read - the opposite of the "blocker with an explanation"
+      // invariant.
+      if (err instanceof TruncatedCollectionError) {
+        throw new HttpException({ error: err.message }, 422);
       }
       this.logger.error("account fetch failed", err instanceof Error ? err.stack : String(err));
       throw new HttpException({ error: "Failed to fetch account data" }, 500);

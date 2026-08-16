@@ -13,15 +13,15 @@
               "@/lib/stellar/fast-path",
               "@/lib/stellar/submit",
               "@/lib/stellar/account",
-              "@/lib/stellar/account-live",
+              "@/lib/stellar/account-state",
               "@/lib/stellar/horizon-adapter",
+              "@/lib/stellar/horizon-http",
+              "@/lib/stellar/path-finding",
               "@/lib/stellar/scan-fallback",
               "@/lib/stellar/rpc",
               "@/lib/stellar/mediator-server",
               "@/lib/close-api",
-              "@/lib/close-api/*",
-              "@/lib/se-api",
-              "@/lib/se-api/*"
+              "@/lib/close-api/*"
             ],
             "message": "Account-closing logic lives in the API. Reach the backend through @lumenwipe/sdk (via the /api proxy routes), never a local closing module."
           },

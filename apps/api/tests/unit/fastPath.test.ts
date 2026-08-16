@@ -52,14 +52,14 @@ function makePath(fromAsset: string): ConversionPath {
 
 // Bun's mock.module is module-global, so restore the real implementation after
 // each test to keep the mock from leaking into other test files in the suite.
-const realPaths = await import("@/lib/se-api/paths");
+const realPaths = await import("@/lib/stellar/path-finding");
 afterEach(() => {
-  mock.module("@/lib/se-api/paths", () => realPaths);
+  mock.module("@/lib/stellar/path-finding", () => realPaths);
 });
 
 test("assessConversions › no balance-bearing trustlines → [] without calling the network", async () => {
   const fetcher = mock(() => Promise.resolve<ConversionPath | null>(null));
-  mock.module("@/lib/se-api/paths", () => ({ fetchConversionPath: fetcher }));
+  mock.module("@/lib/stellar/path-finding", () => ({ fetchConversionPath: fetcher }));
   const { assessConversions } = await import("@/lib/stellar/fast-path");
 
   const account = makeAccount({
@@ -75,7 +75,7 @@ test("assessConversions › every asset with balance has a path → all converti
   const fetcher = mock((fromAsset: string) =>
     Promise.resolve<ConversionPath | null>(makePath(fromAsset))
   );
-  mock.module("@/lib/se-api/paths", () => ({ fetchConversionPath: fetcher }));
+  mock.module("@/lib/stellar/path-finding", () => ({ fetchConversionPath: fetcher }));
   const { assessConversions } = await import("@/lib/stellar/fast-path");
 
   const account = makeAccount({
@@ -101,7 +101,7 @@ test("assessConversions › one asset returns null → only that entry is not co
       fromAsset.startsWith("EURC") ? null : makePath(fromAsset)
     )
   );
-  mock.module("@/lib/se-api/paths", () => ({ fetchConversionPath: fetcher }));
+  mock.module("@/lib/stellar/path-finding", () => ({ fetchConversionPath: fetcher }));
   const { assessConversions } = await import("@/lib/stellar/fast-path");
 
   const account = makeAccount({
@@ -120,7 +120,7 @@ test("assessConversions › one asset returns null → only that entry is not co
 
 test("assessConversions › a thrown fetcher counts as not convertible", async () => {
   const fetcher = mock(() => Promise.reject<ConversionPath | null>(new Error("network down")));
-  mock.module("@/lib/se-api/paths", () => ({ fetchConversionPath: fetcher }));
+  mock.module("@/lib/stellar/path-finding", () => ({ fetchConversionPath: fetcher }));
   const { assessConversions } = await import("@/lib/stellar/fast-path");
 
   const account = makeAccount({ trustlines: [makeTrustline({ balance: "100" })] });

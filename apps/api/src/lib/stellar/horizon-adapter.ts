@@ -1,7 +1,6 @@
-import { PATH_ROUTING_API_URLS } from "@/config/networks";
-import type { Network } from "@/config/networks";
 import type { ClaimableBalance, ClaimPredicate, OpenOffer } from "@lumenwipe/types";
 import { horizonAssetToString } from "@/lib/utils/assets";
+import { horizonPaginate, type HorizonDeps } from "./horizon-http";
 
 interface HorizonOffer {
   id: string | number;
@@ -9,11 +8,6 @@ interface HorizonOffer {
   buying: { asset_type: string; asset_code?: string; asset_issuer?: string };
   amount: string;
   price: string;
-}
-
-interface HorizonOffersPage {
-  _embedded?: { records?: HorizonOffer[] };
-  _links?: { next?: { href?: string } };
 }
 
 interface HorizonClaimPredicate {
@@ -38,11 +32,6 @@ interface HorizonClaimableBalance {
   sponsor?: string;
   last_modified_time: string;
   claimants: HorizonClaimant[];
-}
-
-interface HorizonClaimableBalancesPage {
-  _embedded?: { records?: HorizonClaimableBalance[] };
-  _links?: { next?: { href?: string } };
 }
 
 const PAGE_LIMIT = 200;
@@ -74,117 +63,95 @@ export function parseClaimPredicate(
     return { type: "before_absolute_time", absBeforeEpoch: raw.abs_before_epoch };
   }
   if (raw.abs_before !== undefined) {
-    return {
-      type: "before_absolute_time",
-      absBeforeEpoch: String(Math.floor(Date.parse(raw.abs_before) / 1000)),
-    };
+    // A "NaN" deadline makes every comparison false downstream, so the client reads a
+    // currently-claimable balance as unclaimable and the close leaves it behind, unreachable
+    // after the merge. Refuse the read instead of encoding an unusable predicate.
+    const epoch = Date.parse(raw.abs_before);
+    if (!Number.isFinite(epoch)) {
+      throw new Error(`Unparseable abs_before in a claim predicate: ${String(raw.abs_before)}`);
+    }
+    return { type: "before_absolute_time", absBeforeEpoch: String(Math.floor(epoch / 1000)) };
   }
   if (raw.rel_before !== undefined) {
+    const relSeconds = Number(raw.rel_before);
+    if (!Number.isFinite(relSeconds)) {
+      throw new Error(`Unparseable rel_before in a claim predicate: ${String(raw.rel_before)}`);
+    }
     return {
       type: "before_relative_time",
       relBeforeSeconds: raw.rel_before,
-      deadlineEpoch: String(createdAtEpochSeconds + Number(raw.rel_before)),
+      deadlineEpoch: String(createdAtEpochSeconds + relSeconds),
     };
   }
   return { type: "unconditional" };
 }
 
 /**
- * Fetches open DEX offers for an account from a Horizon-compatible API.
- * Uses PATH_ROUTING_API_URLS[network] as the base. Returns [] if the URL
- * is not configured rather than throwing - callers must treat missing offers
- * as an unverified state and surface an appropriate warning.
+ * Fetches open DEX offers for an account.
+ *
+ * Errors propagate rather than yielding []: an offer is a sub-entry, and a silently empty
+ * list would let a plan omit its removal and then fail the merge with op_has_sub_entries.
+ * A short read still reaches the caller's sub-entry reconciliation, which is what turns
+ * incomplete enumeration into a blocker.
  */
 export async function fetchOffersFromAdapter(
   address: string,
-  network: Network
+  deps: HorizonDeps
 ): Promise<OpenOffer[]> {
-  const base = PATH_ROUTING_API_URLS[network];
-  if (!base) return [];
-
-  const allOffers: OpenOffer[] = [];
-  let nextUrl: string | null = `${base}/accounts/${address}/offers?limit=${PAGE_LIMIT}`;
-
-  while (nextUrl && allOffers.length < MAX_TOTAL) {
-    let res: Response;
-    try {
-      res = await fetch(nextUrl, {
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-      });
-    } catch {
-      break;
-    }
-    if (!res.ok) break;
-
-    const page = (await res.json()) as HorizonOffersPage;
-    const records = page._embedded?.records ?? [];
-
-    for (const o of records) {
-      allOffers.push({
-        id: String(o.id),
-        selling: horizonAssetToString(o.selling),
-        buying: horizonAssetToString(o.buying),
-        amount: o.amount,
-        price: o.price,
-      });
-    }
-
-    const nextHref = page._links?.next?.href;
-    nextUrl = nextHref && records.length === PAGE_LIMIT ? nextHref : null;
-  }
-
-  return allOffers;
+  const records = await horizonPaginate<HorizonOffer>(
+    `/accounts/${address}/offers?limit=${PAGE_LIMIT}`,
+    deps,
+    PAGE_LIMIT,
+    MAX_TOTAL
+  );
+  return records.map((o) => ({
+    id: String(o.id),
+    selling: horizonAssetToString(o.selling),
+    buying: horizonAssetToString(o.buying),
+    amount: o.amount,
+    price: o.price,
+  }));
 }
 
 /**
- * Fetches claimable balances where `address` is a claimant from a
- * Horizon-compatible API. Returns [] when the adapter URL is not configured.
- * These balances do not affect the account's numSubEntries but represent
- * recoverable assets that will be inaccessible after ACCOUNT_MERGE if unclaimed.
+ * Fetches claimable balances where `address` is a claimant.
+ *
+ * These do not count toward numSubEntries, so the reconciliation check cannot catch a short
+ * read here - the consequence of missing one is a balance left permanently unreachable after
+ * the merge rather than a failed transaction. Errors therefore propagate: an empty list must
+ * mean "none exist", never "the read failed".
  */
 export async function fetchClaimableBalancesForClaimant(
   address: string,
-  network: Network
+  deps: HorizonDeps
 ): Promise<ClaimableBalance[]> {
-  const base = PATH_ROUTING_API_URLS[network];
-  if (!base) return [];
-
-  const all: ClaimableBalance[] = [];
-  let nextUrl: string | null = `${base}/claimable_balances?claimant=${address}&limit=${PAGE_LIMIT}`;
-
-  while (nextUrl && all.length < MAX_TOTAL) {
-    let res: Response;
-    try {
-      res = await fetch(nextUrl, {
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-      });
-    } catch {
-      break;
+  const records = await horizonPaginate<HorizonClaimableBalance>(
+    `/claimable_balances?claimant=${address}&limit=${PAGE_LIMIT}`,
+    deps,
+    PAGE_LIMIT,
+    MAX_TOTAL
+  );
+  return records.map((b) => {
+    const parsed = Date.parse(b.last_modified_time);
+    if (!Number.isFinite(parsed)) {
+      // This anchors every `rel_before` predicate. A NaN would resolve relative deadlines to
+      // NaN, so a balance that is claimable right now could be presented as not claimable and
+      // left behind, unreachable once the account is merged.
+      throw new Error(
+        `Claimable balance ${b.id} has an unusable last_modified_time ` +
+          `(${String(b.last_modified_time)}); claim predicates cannot be evaluated against it.`
+      );
     }
-    if (!res.ok) break;
-
-    const page = (await res.json()) as HorizonClaimableBalancesPage;
-    const records = page._embedded?.records ?? [];
-
-    for (const b of records) {
-      const createdAtEpochSeconds = Math.floor(Date.parse(b.last_modified_time) / 1000);
-      all.push({
-        id: b.id,
-        asset: b.asset,
-        amount: b.amount,
-        sponsor: b.sponsor ?? null,
-        claimants: b.claimants.map((c) => ({
-          destination: c.destination,
-          predicate: parseClaimPredicate(c.predicate, createdAtEpochSeconds),
-        })),
-      });
-    }
-
-    const nextHref = page._links?.next?.href;
-    nextUrl = nextHref && records.length === PAGE_LIMIT ? nextHref : null;
-  }
-
-  return all;
+    const createdAtEpochSeconds = Math.floor(parsed / 1000);
+    return {
+      id: b.id,
+      asset: b.asset,
+      amount: b.amount,
+      sponsor: b.sponsor ?? null,
+      claimants: b.claimants.map((c) => ({
+        destination: c.destination,
+        predicate: parseClaimPredicate(c.predicate, createdAtEpochSeconds),
+      })),
+    };
+  });
 }

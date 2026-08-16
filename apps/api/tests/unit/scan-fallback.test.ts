@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
-import { detectSubEntryMismatch, needsLiveRescan } from "@/lib/stellar/scan-fallback";
+import { detectSubEntryMismatch } from "@/lib/stellar/scan-fallback";
 import type { AccountState, Trustline } from "@lumenwipe/types";
 
 const MASTER = Keypair.random().publicKey();
@@ -100,39 +100,49 @@ test("detectSubEntryMismatch › pool shares weigh 2 sub-entries each", () => {
   expect(detectSubEntryMismatch({ ...scan, numSubEntries: 3 })).toBe(true);
 });
 
-test("needsLiveRescan › partially indexed account (trustlines seen, data entries missing) → rescan", () => {
-  // Repro for the playground → /testnet false blocker: stellar.expert had
-  // indexed the 3 trustlines but not yet the 3 data entries, so the ledger
-  // reported 10 sub-entries while the scan enumerated 7.
-  const state = makeAccount({
-    trustlines: [makeTrustline("AIRDROP1"), makeTrustline("RUGPULL"), makeTrustline("LWDEMO")],
-    openOffers: [
-      { id: "1", selling: "native", buying: `LWDEMO:${ISSUER}`, amount: "5", price: "2" },
-      {
-        id: "2",
-        selling: `AIRDROP1:${ISSUER}`,
-        buying: "native",
-        amount: "500000",
-        price: "0.0001",
-      },
-      { id: "3", selling: `RUGPULL:${ISSUER}`, buying: "native", amount: "10", price: "42" },
-    ],
-    numSubEntries: 10,
-    subEntryMismatch: true,
-  });
-  expect(needsLiveRescan(state)).toBe(true);
+// The three cases below used to assert that a mismatch merely triggered a re-read through a
+// second, zero-lag path. That two-step existed because the primary source was an indexer that
+// lagged on new accounts and never returned manage-data entries at all. With a single zero-lag
+// provider there is nothing to re-check against, so the mismatch itself is the answer and
+// reaches the plan builder as a blocker. What still has to hold is that these shapes are
+// detected as mismatches in the first place.
+
+test("a partially enumerated account is a mismatch (trustlines seen, data entries missing)", () => {
+  // Repro for the playground -> /testnet false blocker: 3 trustlines and 3 offers enumerated
+  // while the ledger reported 10 sub-entries.
+  expect(
+    detectSubEntryMismatch({
+      address: MASTER,
+      signers: [{ key: MASTER, weight: 1, type: "ed25519_public_key" }],
+      trustlines: [makeTrustline("AIRDROP1"), makeTrustline("RUGPULL"), makeTrustline("LWDEMO")],
+      openOffers: [
+        { id: "1", selling: "native", buying: `LWDEMO:${ISSUER}`, amount: "5", price: "2" },
+        {
+          id: "2",
+          selling: `AIRDROP1:${ISSUER}`,
+          buying: "native",
+          amount: "500000",
+          price: "0.0001",
+        },
+        { id: "3", selling: `RUGPULL:${ISSUER}`, buying: "native", amount: "10", price: "42" },
+      ],
+      dataEntries: [],
+      poolShares: [],
+      numSubEntries: 10,
+    })
+  ).toBe(true);
 });
 
-test("needsLiveRescan › completely unindexed account → rescan", () => {
-  const state = makeAccount({ numSubEntries: 10, subEntryMismatch: true });
-  expect(needsLiveRescan(state)).toBe(true);
-});
-
-test("needsLiveRescan › fully enumerated account → no rescan", () => {
-  const state = makeAccount({
-    trustlines: [makeTrustline("LWDEMO")],
-    numSubEntries: 1,
-    subEntryMismatch: false,
-  });
-  expect(needsLiveRescan(state)).toBe(false);
+test("an account enumerated as empty against a non-zero ledger count is a mismatch", () => {
+  expect(
+    detectSubEntryMismatch({
+      address: MASTER,
+      signers: [{ key: MASTER, weight: 1, type: "ed25519_public_key" }],
+      trustlines: [],
+      openOffers: [],
+      dataEntries: [],
+      poolShares: [],
+      numSubEntries: 10,
+    })
+  ).toBe(true);
 });

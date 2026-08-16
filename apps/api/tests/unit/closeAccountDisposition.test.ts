@@ -96,10 +96,10 @@ function rpcServerStub() {
   };
 }
 
-const realPaths = await import("@/lib/se-api/paths");
+const realPaths = await import("@/lib/stellar/path-finding");
 const realRpc = await import("@/lib/stellar/rpc");
 afterEach(() => {
-  mock.module("@/lib/se-api/paths", () => realPaths);
+  mock.module("@/lib/stellar/path-finding", () => realPaths);
   mock.module("@/lib/stellar/rpc", () => realRpc);
 });
 
@@ -111,7 +111,7 @@ test("CLOSE_ACCOUNT › issuer disposition returns the balance to the issuer wit
   // No route exists for this asset. With a "convert" decision this would raise
   // AssetRouteLostError; with the user's "issuer" decision it must not even ask.
   const fetcher = mock(() => Promise.resolve(null));
-  mock.module("@/lib/se-api/paths", () => ({ fetchConversionPath: fetcher }));
+  mock.module("@/lib/stellar/path-finding", () => ({ fetchConversionPath: fetcher }));
   mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
 
   const { buildStepXdrForPlan } = await import("@/lib/stellar/step-engine");
@@ -136,7 +136,7 @@ test("CLOSE_ACCOUNT › a genuinely lost route for a convert asset still surface
   // Safety invariant: the issuer fix must not mask a lost route for an asset the
   // user actually wants converted. Default disposition is "convert".
   const fetcher = mock(() => Promise.resolve(null));
-  mock.module("@/lib/se-api/paths", () => ({ fetchConversionPath: fetcher }));
+  mock.module("@/lib/stellar/path-finding", () => ({ fetchConversionPath: fetcher }));
   mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
 
   const { buildStepXdrForPlan } = await import("@/lib/stellar/step-engine");

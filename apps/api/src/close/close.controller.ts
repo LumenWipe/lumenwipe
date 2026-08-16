@@ -1,5 +1,12 @@
 import { Body, Controller, HttpCode, HttpException, Logger, Param, Post } from "@nestjs/common";
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from "@nestjs/swagger";
 import {
   ClosePlanRequestDto,
   CloseTransactionsRequestDto,
@@ -8,7 +15,7 @@ import {
 import { isValidNetwork } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { readAccountState } from "@/lib/close-api/read-account";
-import { fetchConversionPath } from "@/lib/se-api/paths";
+import { fetchConversionPath } from "@/lib/stellar/path-finding";
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import {
   assessSponsorshipAffordability,
@@ -30,6 +37,7 @@ import {
 import { assemblePlanResponse, computePlanHash } from "@/lib/close-api/plan-response";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
 import { submitAndWait, InvalidSignatureError } from "@/lib/stellar/submit";
+import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 import {
   AccountNotFoundError,
   AssetRouteLostError,
@@ -59,7 +67,10 @@ export class CloseController {
   @HttpCode(200)
   @ApiOperation({ summary: "Build a deterministic close plan with decision points and estimates." })
   @ApiBody({ type: ClosePlanRequestDto })
-  @ApiResponse({ status: 200, description: "Plan with pending decision points, fee and freed-reserve estimate." })
+  @ApiResponse({
+    status: 200,
+    description: "Plan with pending decision points, fee and freed-reserve estimate.",
+  })
   @ApiResponse({ status: 400, description: "Invalid network, source, destination, or JSON body." })
   @ApiResponse({ status: 404, description: "Source account not found." })
   async plan(
@@ -150,6 +161,8 @@ export class CloseController {
     } catch (e) {
       if (e instanceof HttpException) throw e;
       if (e instanceof AccountNotFoundError) fail("account_not_found", e.message, 404);
+      // A property of the account, with a message that explains it - not a server fault.
+      if (e instanceof TruncatedCollectionError) fail("account_too_large", e.message, 422);
       this.logger.error("close/plan failed", e instanceof Error ? e.stack : String(e));
       fail("plan_failed", "Failed to build the close plan.", 500);
     }
@@ -159,12 +172,22 @@ export class CloseController {
   @HttpCode(200)
   @ApiOperation({ summary: "Build the unsigned close transactions for a resolved plan." })
   @ApiBody({ type: CloseTransactionsRequestDto })
-  @ApiResponse({ status: 200, description: "Unsigned transaction envelopes ready for client signing." })
+  @ApiResponse({
+    status: 200,
+    description: "Unsigned transaction envelopes ready for client signing.",
+  })
   @ApiResponse({ status: 400, description: "Invalid network, source, destination, or JSON body." })
   @ApiResponse({ status: 404, description: "Source account not found." })
   @ApiResponse({ status: 409, description: "A conversion route drifted; re-plan and retry." })
-  @ApiResponse({ status: 422, description: "Unprocessable: unresolved asset dispositions, a required exchange memo is missing, or the destination is not a recognized exchange address and has not been acknowledged (destination_not_acknowledged)." })
-  @ApiResponse({ status: 503, description: "The exchange (mediator) flow is not configured on this server." })
+  @ApiResponse({
+    status: 422,
+    description:
+      "Unprocessable: unresolved asset dispositions, a required exchange memo is missing, or the destination is not a recognized exchange address and has not been acknowledged (destination_not_acknowledged).",
+  })
+  @ApiResponse({
+    status: 503,
+    description: "The exchange (mediator) flow is not configured on this server.",
+  })
   async transactions(
     @Param("network") network: string,
     @Body()
@@ -199,7 +222,11 @@ export class CloseController {
         fail("unsupported_memo_type", "Hash memos are not supported.", 422);
       }
       if (memoType === "id" && !(/^\d+$/.test(memo) && BigInt(memo) <= 18446744073709551615n)) {
-        fail("invalid_memo", "This destination requires a numeric id memo within the uint64 range.", 422);
+        fail(
+          "invalid_memo",
+          "This destination requires a numeric id memo within the uint64 range.",
+          422
+        );
       }
       if (memoType === "text" && Buffer.byteLength(memo, "utf8") > 28) {
         fail("invalid_memo", "A text memo must be at most 28 bytes.", 422);
@@ -307,7 +334,10 @@ export class CloseController {
   @ApiOperation({ summary: "Submit a client-signed transaction and wait for confirmation." })
   @ApiBody({ type: SubmitRequestDto })
   @ApiResponse({ status: 200, description: "Confirmed: returns the transaction hash and ledger." })
-  @ApiResponse({ status: 400, description: "Invalid or unsigned/undecodable transaction envelope." })
+  @ApiResponse({
+    status: 400,
+    description: "Invalid or unsigned/undecodable transaction envelope.",
+  })
   @ApiResponse({ status: 502, description: "The network rejected the transaction." })
   @ApiResponse({ status: 504, description: "The transaction did not confirm in time." })
   async submit(@Param("network") network: string, @Body() body: { signedXdr?: unknown }) {
@@ -333,7 +363,12 @@ export class CloseController {
       // balance, bad sequence, no destination, ...) instead of a generic error,
       // so a failed close in the guided flow stays diagnosable.
       if (e instanceof TxSubmitError) {
-        fail("submit_rejected", e.message, 502, e.resultCode ? { resultCode: e.resultCode } : undefined);
+        fail(
+          "submit_rejected",
+          e.message,
+          502,
+          e.resultCode ? { resultCode: e.resultCode } : undefined
+        );
       }
       if (e instanceof Error && /xdr|envelope|decode/i.test(e.message)) {
         fail("invalid_signed_xdr", "The transaction envelope could not be decoded.", 400);

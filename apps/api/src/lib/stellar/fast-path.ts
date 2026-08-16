@@ -1,6 +1,6 @@
 import type { Network } from "@/config/networks";
 import type { AccountState } from "@lumenwipe/types";
-import { fetchConversionPath } from "@/lib/se-api/paths";
+import { fetchConversionPath } from "@/lib/stellar/path-finding";
 
 export interface AssetConvertibility {
   asset: string;
