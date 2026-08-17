@@ -366,6 +366,22 @@ test("buildPlan › master weight meets high threshold → no threshold blocker"
   expect(blockers).toHaveLength(0);
 });
 
+test("buildPlan › master key weight 0, satisfiable co-signer weight alone meets threshold → still blocked (normalization would strip the only usable signer)", () => {
+  // signerNormalizationOps always removes every non-master signer and resets thresholds to
+  // 0/1/1, but never raises masterWeight. If the master key is weight 0 and the account
+  // proceeds because *combined* weight clears the threshold, normalization leaves an
+  // account with a weight-0 master key and threshold 1 - no signer can authorize anything.
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 0, type: "ed25519_public_key" },
+      { key: EXTRA, weight: 5, type: "ed25519_public_key" },
+    ],
+    thresholds: { low: 0, med: 5, high: 5 },
+  });
+  const { blockers } = buildPlan(account, false);
+  expect(blockers.some((b) => b.message.includes("weight 0"))).toBe(true);
+});
+
 test("buildPlan › numSponsoring > 0 → blocker emitted", () => {
   const { blockers } = buildPlan(makeAccount({ numSponsoring: 2 }), false);
   expect(blockers.some((b) => b.message.includes("sponsoring"))).toBe(true);

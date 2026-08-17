@@ -170,6 +170,22 @@ export function buildPlan(
   const needsSignerNormalization = computeNeedsSignerNormalization(accountState);
 
   if (needsSignerNormalization) {
+    // signerNormalizationOps() (signers.ts) always removes every non-master signer and resets
+    // thresholds to 0/1/1 - it never raises masterWeight. If the master key's own weight is 0,
+    // normalization would strip away every other signer and leave an account with a weight-0
+    // master key and threshold 1: nothing left able to authorize anything, ever. This is
+    // independent of the combined-weight check below - block it up front regardless of how
+    // much weight the co-signers carry.
+    const masterWeight = signers.find((s) => s.key === masterKey)?.weight ?? 0;
+    if (masterWeight < 1) {
+      blockers.push({
+        message:
+          "The master key on this account has weight 0. Removing the account's other signers " +
+          "would leave no key able to authorize any further changes to this account, so this " +
+          "flow cannot safely proceed.",
+      });
+    }
+
     // Combined weight, not the master key's alone: the signature-accumulation engine
     // (multisig epic #97) can gather a normalization/merge signature from any signer whose
     // type this app can actually satisfy - ed25519 (connected wallet or secret key), hash(x)
@@ -183,13 +199,17 @@ export function buildPlan(
       )
       .reduce((sum, s) => sum + s.weight, 0);
     if (satisfiableWeight < thresholds.high) {
-      blockers.push({
-        message:
-          `This account's signers can contribute at most weight ${satisfiableWeight} toward removing ` +
-          `signers or changing thresholds, but that requires weight ${thresholds.high} (the current ` +
-          `high threshold). At least one of its signers cannot be authorized through this flow, so this ` +
-          `change can never be fully authorized.`,
-      });
+      const totalWeight = signers.reduce((sum, s) => sum + s.weight, 0);
+      const message =
+        satisfiableWeight === totalWeight
+          ? `This account's signers can contribute at most weight ${satisfiableWeight} toward removing ` +
+            `signers or changing thresholds, but that requires weight ${thresholds.high} (the current ` +
+            `high threshold).`
+          : `This account's signers can contribute at most weight ${satisfiableWeight} toward removing ` +
+            `signers or changing thresholds, but that requires weight ${thresholds.high} (the current ` +
+            `high threshold). At least one of its signers cannot be authorized through this flow, so this ` +
+            `change can never be fully authorized.`;
+      blockers.push({ message });
     }
   }
 
