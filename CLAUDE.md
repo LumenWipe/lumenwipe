@@ -74,7 +74,7 @@ There is no "fast path" or "fused" mode: producing the minimal set of transactio
 
 ### Mediator flow (exchanges)
 
-Exchanges don't accept `ACCOUNT_MERGE`. The user merges into a shared, persistent mediator account, and the API co-signs the mediator's forward payment to the exchange (mediator secret `MEDIATOR_SECRET_*` lives server-side). The web must carry the mediator **public** key (`NEXT_PUBLIC_MEDIATOR_PUBLIC_*`) so `verify()` can allow the merge-to-mediator - this is by design (the anchor can't trust the API to name its own mediator). Being replaced by a config endpoint (issue #81).
+Exchanges don't accept `ACCOUNT_MERGE`. The user merges into a shared, persistent mediator account, and the API co-signs the mediator's forward payment to the exchange (mediator secret `MEDIATOR_SECRET_*` lives server-side). The web needs no knowledge of which account the mediator is. `verify()` accepts the merge on **structure**: exactly two operations, the merge sourced from the account being closed, and a forward **sent by the account the merge just paid into**, to the address the user typed, in XLM, for at least the balance the client observed. That makes the mediator a conduit rather than a destination, so it rotates without touching any client - and it is stronger than pinning an address, which proved identity but never that the balance moved on.
 
 ## Conventions
 

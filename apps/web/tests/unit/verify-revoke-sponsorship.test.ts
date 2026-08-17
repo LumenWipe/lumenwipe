@@ -19,7 +19,8 @@ function baseExpected(): CloseExpectation {
   return {
     source: SOURCE_KP.publicKey(),
     destination: DEST_KP.publicKey(),
-    mediator: null,
+    mediatorRequired: false,
+    nativeBalance: "100.0000000",
     memo: null,
     memoRequired: false,
     memoType: null,
@@ -44,6 +45,7 @@ test("verify › a plain revoke-account-sponsorship op is accepted", () => {
     .build();
   const intent = intentFromXdr(tx.toEnvelope().toXDR("base64"), Networks.TESTNET);
   expect(intent.operations[0]).toEqual({
+    source: SOURCE_KP.publicKey(),
     type: "revoke_sponsorship",
     entryKind: "account",
     owner: OWNER_KP.publicKey(),
@@ -73,8 +75,11 @@ test("verify › a revoke op wrapped in a sponsorship-transfer bracket is reject
     .build();
   const intent = intentFromXdr(tx.toEnvelope().toXDR("base64"), Networks.TESTNET);
   // The bracket ops must stay unrecognized - that, and only that, is what rejects the attack.
-  expect(intent.operations[0]).toEqual({ type: "unknown" });
-  expect(intent.operations[2]).toEqual({ type: "unknown" });
+  // Their sources differ (the sponsor opens the bracket, the sponsored account closes it),
+  // which is exactly why operations carry the account they act as rather than inheriting the
+  // transaction's.
+  expect(intent.operations[0]).toEqual({ source: attackerKp.publicKey(), type: "unknown" });
+  expect(intent.operations[2]).toEqual({ source: SOURCE_KP.publicKey(), type: "unknown" });
   expect(() => assertCloseIntent(intent, baseExpected())).toThrow(VerificationError);
   expect(() => assertCloseIntent(intent, baseExpected())).toThrow(/unrecognized operation/);
 });
@@ -147,7 +152,7 @@ test("verify › revokeClaimableBalanceSponsorship stays unrecognized and is rej
     .setTimeout(60)
     .build();
   const intent = intentFromXdr(tx.toEnvelope().toXDR("base64"), Networks.TESTNET);
-  expect(intent.operations[0]).toEqual({ type: "unknown" });
+  expect(intent.operations[0]).toEqual({ source: SOURCE_KP.publicKey(), type: "unknown" });
   expect(() => assertCloseIntent(intent, baseExpected())).toThrow(/unrecognized operation/);
 });
 
@@ -183,11 +188,11 @@ test("verify › every revoke-sponsorship op kind is recognized and accepted", (
     "revoke_sponsorship",
   ]);
   expect(intent.operations.slice(0, 5)).toEqual([
-    { type: "revoke_sponsorship", entryKind: "account", owner: OWNER_KP.publicKey() },
-    { type: "revoke_sponsorship", entryKind: "trustline", owner: OWNER_KP.publicKey() },
-    { type: "revoke_sponsorship", entryKind: "offer", owner: OWNER_KP.publicKey() },
-    { type: "revoke_sponsorship", entryKind: "data_entry", owner: OWNER_KP.publicKey() },
-    { type: "revoke_sponsorship", entryKind: "signer", owner: OWNER_KP.publicKey() },
+    { source: SOURCE_KP.publicKey(), type: "revoke_sponsorship", entryKind: "account", owner: OWNER_KP.publicKey() },
+    { source: SOURCE_KP.publicKey(), type: "revoke_sponsorship", entryKind: "trustline", owner: OWNER_KP.publicKey() },
+    { source: SOURCE_KP.publicKey(), type: "revoke_sponsorship", entryKind: "offer", owner: OWNER_KP.publicKey() },
+    { source: SOURCE_KP.publicKey(), type: "revoke_sponsorship", entryKind: "data_entry", owner: OWNER_KP.publicKey() },
+    { source: SOURCE_KP.publicKey(), type: "revoke_sponsorship", entryKind: "signer", owner: OWNER_KP.publicKey() },
   ]);
   expect(() => assertCloseIntent(intent, baseExpected())).not.toThrow();
 });

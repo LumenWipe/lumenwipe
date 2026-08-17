@@ -34,11 +34,16 @@ test("intentFromXdr normalizes change_trust and account_merge", () => {
 
   expect(intent.source).toBe(SRC);
   expect(intent.operations).toContainEqual({
+    source: SRC,
     type: "change_trust",
     asset: `USDC:${ISSUER}`,
     limit: "0.0000000",
   });
-  expect(intent.operations).toContainEqual({ type: "account_merge", destination: DEST });
+  expect(intent.operations).toContainEqual({
+    source: SRC,
+    type: "account_merge",
+    destination: DEST,
+  });
   expect(intent.guarantees.mergeDestination).toBe(DEST);
 });
 
@@ -58,6 +63,7 @@ test("intentFromXdr captures the conversion floor and self-payment destination",
   const intent = intentFromXdr(xdrValue, Networks.TESTNET);
 
   expect(intent.operations[0]).toEqual({
+    source: SRC,
     type: "path_payment_strict_send",
     sendAsset: `USDC:${ISSUER}`,
     sendAmount: "120.5000000",
@@ -85,6 +91,7 @@ test("intentFromXdr decodes an ed25519 signer removal with its type and key", ()
   );
   const intent = intentFromXdr(txXdr, Networks.TESTNET);
   expect(intent.operations).toContainEqual({
+    source: SRC,
     type: "set_options",
     signer: { type: "ed25519_public_key", key: signerKey, weight: 0 },
     masterWeight: null,
@@ -103,6 +110,7 @@ test("intentFromXdr decodes a hash(x) signer removal, re-encoding the raw hash t
   const txXdr = txWith(Operation.setOptions({ signer: { sha256Hash: rawHash, weight: 0 } }));
   const intent = intentFromXdr(txXdr, Networks.TESTNET);
   expect(intent.operations).toContainEqual({
+    source: SRC,
     type: "set_options",
     signer: { type: "hash_x", key: StrKey.encodeSha256Hash(rawHash), weight: 0 },
     masterWeight: null,
@@ -121,6 +129,7 @@ test("intentFromXdr decodes a pre-auth-tx signer removal, re-encoding the raw ha
   const txXdr = txWith(Operation.setOptions({ signer: { preAuthTx: rawHash, weight: 0 } }));
   const intent = intentFromXdr(txXdr, Networks.TESTNET);
   expect(intent.operations).toContainEqual({
+    source: SRC,
     type: "set_options",
     signer: { type: "preauth_tx", key: StrKey.encodePreAuthTx(rawHash), weight: 0 },
     masterWeight: null,
@@ -145,6 +154,7 @@ test("intentFromXdr decodes an ed25519 signed-payload (CAP-40) signer removal", 
   );
   const intent = intentFromXdr(txXdr, Networks.TESTNET);
   expect(intent.operations).toContainEqual({
+    source: SRC,
     type: "set_options",
     signer: { type: "ed25519_signed_payload", key: signedPayloadKey, weight: 0 },
     masterWeight: null,
@@ -164,6 +174,7 @@ test("intentFromXdr decodes a set_options op with no signer field as signer: nul
   );
   const intent = intentFromXdr(txXdr, Networks.TESTNET);
   expect(intent.operations).toContainEqual({
+    source: SRC,
     type: "set_options",
     signer: null,
     masterWeight: null,
@@ -189,6 +200,7 @@ test("intentFromXdr decodes a set_options op's flags, home domain, and inflation
   );
   const intent = intentFromXdr(xdr, Networks.TESTNET);
   expect(intent.operations).toContainEqual({
+    source: SRC,
     type: "set_options",
     signer: null,
     masterWeight: null,

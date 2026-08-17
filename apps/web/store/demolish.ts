@@ -38,7 +38,6 @@ interface DemolishState {
 
   // Mediator
   mediatorRequired: boolean;
-  mediatorPublicKey: string | null;
 
   // Error
   lastError: string | null;
@@ -60,7 +59,7 @@ interface DemolishState {
   setPlan: (plan: PlannedStep[]) => void;
   setAssetDisposition: (asset: string, action: AssetDisposition) => void;
   setClaimableBalanceSelection: (balanceId: string, selection: ClaimableBalanceSelection) => void;
-  setMediatorRequired: (required: boolean, publicKey?: string) => void;
+  setMediatorRequired: (required: boolean) => void;
   setCurrentStepIndex: (index: number) => void;
   updateStep: (index: number, patch: Partial<PlannedStep>) => void;
   markStepConfirmed: (index: number, txHash: string) => void;
@@ -124,7 +123,6 @@ const initialState = {
   assetDispositions: {},
   claimableBalanceSelections: {},
   mediatorRequired: false,
-  mediatorPublicKey: null,
   lastError: null,
   sessionId: null,
 };
@@ -173,8 +171,8 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       claimableBalanceSelections: { ...s.claimableBalanceSelections, [balanceId]: selection },
     })),
 
-  setMediatorRequired: (required, publicKey) =>
-    set({ mediatorRequired: required, mediatorPublicKey: publicKey ?? null }),
+  setMediatorRequired: (required) =>
+    set({ mediatorRequired: required }),
 
   setCurrentStepIndex: (currentStepIndex) => set({ currentStepIndex }),
 

@@ -8,7 +8,6 @@ import type { ClaimableBalanceSelection, PlanBlocker } from "@/types/plan";
 import type { Network } from "@/config/networks";
 import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
 import type { MediatorCheckResult } from "@/types/account";
-import { getMediatorPublicKey } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { fetchClosePlan } from "@/lib/api/close-client";
 import {
@@ -198,24 +197,12 @@ export default function PlanView({
         return;
       }
 
-      // verify() must independently know the legitimate mediator to allow the merge to it.
-      // If the API can co-sign but this deployment doesn't carry the mediator public key,
-      // block cleanly here rather than letting the flow fail in verify() after the user has
-      // entered their key. (The two configs are set separately; this covers the gap.)
-      if (needsMediator && !getMediatorPublicKey(network)) {
-        setError(
-          "Sending your balance straight to this exchange isn't available right now. Instead, merge to a personal Stellar wallet you control, then send it to the exchange from there - remember to include the exchange's deposit memo, or it won't be credited."
-        );
-        return;
-      }
-
-      const mediatorPublicKey = needsMediator
-        ? getMediatorPublicKey(network) || undefined
-        : undefined;
+      // No second gate on knowing the intermediary's address: verification asserts the
+      // hand-off structurally, so nothing client-side needs to be told which account it is.
 
       const effectiveMemoType = memoRequired ? memoTypeForDest : undefined;
       setAddresses(account.address, destination, memo.trim() || undefined, effectiveMemoType);
-      setMediatorRequired(needsMediator, mediatorPublicKey);
+      setMediatorRequired(needsMediator);
 
       // Request the final plan (for the execute sidebar) from the API with the destination
       // and the user's asset + claimable-balance decisions. Execution itself re-requests the

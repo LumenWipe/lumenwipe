@@ -48,7 +48,19 @@ export interface PlanResponse {
   execution: { estimatedTransactionCount: number; transactions: ExecutionTxBreakdown[] };
 }
 
-export type IntentOperation =
+/**
+ * One operation in a decoded close transaction.
+ *
+ * `source` is the account the operation acts as - the operation's own source account when it
+ * carries one, otherwise the transaction's. It is what lets verification assert relationships
+ * *between* operations rather than trusting each in isolation: in a mediated close the forward
+ * payment must be sent by the very account the merge just paid into, which is what makes the
+ * intermediary a conduit rather than a destination. Without it the only available check is
+ * pinning the intermediary's address, which every consumer would then have to be told.
+ */
+export type IntentOperation = IntentOperationBody & { source: string };
+
+export type IntentOperationBody =
   | {
       type: "path_payment_strict_send";
       sendAsset: string;

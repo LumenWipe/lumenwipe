@@ -51,7 +51,6 @@ export function useCloseExecution() {
   const destinationAddress = useDemolishStore((s) => s.destinationAddress);
   const memo = useDemolishStore((s) => s.memo);
   const mediatorRequired = useDemolishStore((s) => s.mediatorRequired);
-  const mediatorPublicKey = useDemolishStore((s) => s.mediatorPublicKey);
   const markCoveredConfirmed = useDemolishStore((s) => s.markCoveredConfirmed);
   const setPhase = useDemolishStore((s) => s.setPhase);
   const setLastError = useDemolishStore((s) => s.setLastError);
@@ -94,7 +93,6 @@ export function useCloseExecution() {
       }
 
       const passphrase = NETWORK_PASSPHRASES[network];
-      const mediator = mediatorRequired ? mediatorPublicKey : null;
       // Read dispositions/selections live so a mid-flow re-decision is honored.
       const claimableBalanceSelections = useDemolishStore.getState().claimableBalanceSelections;
       const accountState = useDemolishStore.getState().accountState;
@@ -143,7 +141,10 @@ export function useCloseExecution() {
                 expected: {
                   source: sourceAddress,
                   destination: destinationAddress,
-                  mediator,
+                  mediatorRequired,
+                  // The floor under the forwarded amount. Empty defaults fail closed: with no
+                  // balance read, any forward is judged short rather than trusted.
+                  nativeBalance: accountState?.nativeBalanceLumens ?? "0",
                   memo,
                   claimTrustlineAssets,
                   // Empty defaults fail closed: if account state somehow wasn't loaded by
@@ -210,7 +211,7 @@ export function useCloseExecution() {
               // A merge through the shared mediator is one atomic transaction: the user
               // signed the merge; the backend co-signs the mediator's forward payment. It
               // cannot change destination or amount, so funds can never be diverted.
-              if (mediator && tx.covers.includes("MERGE")) {
+              if (mediatorRequired && tx.covers.includes("MERGE")) {
                 setProgressStatus("Co-signing the forward payment…");
                 // Defense-in-depth: the mediator may ONLY add its signature - assert it did not
                 // alter the body, and that it actually added one, before submit.
@@ -287,7 +288,6 @@ export function useCloseExecution() {
       destinationAddress,
       memo,
       mediatorRequired,
-      mediatorPublicKey,
       markCoveredConfirmed,
       setPhase,
       setLastError,
@@ -313,7 +313,6 @@ export function useCloseExecution() {
       const passphrase = NETWORK_PASSPHRASES[network];
       verifyPreAuthTxHash(xdr, passphrase, signer.key);
 
-      const mediator = mediatorRequired ? mediatorPublicKey : null;
       const claimableBalanceSelections = useDemolishStore.getState().claimableBalanceSelections;
       const accountState = useDemolishStore.getState().accountState;
       const claimTrustlineAssets = Object.entries(claimableBalanceSelections)
@@ -339,7 +338,8 @@ export function useCloseExecution() {
         expected: {
           source: sourceAddress,
           destination: destinationAddress,
-          mediator,
+          mediatorRequired,
+          nativeBalance: accountState?.nativeBalanceLumens ?? "0",
           memo,
           claimTrustlineAssets,
           accountSigners: accountState?.signers ?? [],
@@ -349,7 +349,7 @@ export function useCloseExecution() {
 
       await submitViaApi(xdr, network);
     },
-    [network, sourceAddress, destinationAddress, memo, mediatorRequired, mediatorPublicKey]
+    [network, sourceAddress, destinationAddress, memo, mediatorRequired]
   );
 
   return { run, progressStatus, signatureStatus, submitPreAuthTransaction };

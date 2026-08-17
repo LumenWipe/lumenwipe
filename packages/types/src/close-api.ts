@@ -54,7 +54,19 @@ export interface PlanResponse {
   execution: { estimatedTransactionCount: number; transactions: ExecutionTxBreakdown[] };
 }
 
-export type IntentOperation =
+/**
+ * One operation in a decoded close transaction.
+ *
+ * `source` is the account the operation acts as - the operation's own source account when it
+ * carries one, otherwise the transaction's. It is what lets verification assert relationships
+ * *between* operations rather than trusting each in isolation: in a mediated close the forward
+ * payment must be sent by the very account the merge just paid into, which is what makes the
+ * intermediary a conduit rather than a destination. Without it the only available check is
+ * pinning the intermediary's address, which every consumer would then have to be told.
+ */
+export type IntentOperation = IntentOperationBody & { source: string };
+
+export type IntentOperationBody =
   | {
       type: "path_payment_strict_send";
       sendAsset: string;
@@ -92,13 +104,19 @@ export type IntentOperation =
       type: "revoke_sponsorship";
       entryKind: "account" | "trustline" | "offer" | "data_entry" | "signer";
       owner: string;
-    };
+    }
+  // Any operation the close vocabulary does not recognize, preserved rather than dropped so
+  // verification can reject an effect it cannot describe.
+  | { type: "unknown" };
 
 export interface TxIntent {
   summary: string;
   source: string;
   fee: string;
   memo: string | null;
+  /** The memo's type, so a check can assert it matches what the destination requires rather
+   *  than only that some memo is present. */
+  memoType: "text" | "id" | "hash" | null;
   guarantees: {
     mergeDestination: string | null;
     paymentsOnlyTo: string[];

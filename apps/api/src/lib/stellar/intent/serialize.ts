@@ -1,5 +1,10 @@
 import { TransactionBuilder, StrKey, type Asset, type Transaction } from "@stellar/stellar-sdk";
-import type { AccountSigner, IntentOperation, TxIntent } from "@lumenwipe/types";
+import type {
+  AccountSigner,
+  IntentOperation,
+  IntentOperationBody,
+  TxIntent,
+} from "@lumenwipe/types";
 
 function assetToString(asset: Asset): string {
   return asset.isNative() ? "native" : `${asset.getCode()}:${asset.getIssuer()}`;
@@ -52,7 +57,7 @@ function decodeSigner(signer: NonNullable<DecodedSetOptions["signer"]>): Account
 // Normalizes a single SDK operation to the safety-critical fields the intent declares.
 // Returns null for operation types the close flow never emits, so they cannot smuggle
 // effects past verification unnoticed.
-function normalizeOp(op: Transaction["operations"][number]): IntentOperation | null {
+function normalizeOp(op: Transaction["operations"][number]): IntentOperationBody {
   switch (op.type) {
     case "pathPaymentStrictSend":
       return {
@@ -112,7 +117,10 @@ function normalizeOp(op: Transaction["operations"][number]): IntentOperation | n
     case "revokeSignerSponsorship":
       return { type: "revoke_sponsorship", entryKind: "signer", owner: op.account };
     default:
-      return null;
+      // Preserved as `unknown` rather than dropped. Filtering it out made the published intent
+      // under-report the transaction: an integrator reading `response.intent` instead of
+      // decoding the XDR would have been shown a close missing one of its operations.
+      return { type: "unknown" };
   }
 }
 
@@ -126,7 +134,17 @@ function sumAmounts(a: string, b: string): string {
 export function intentFromXdr(xdr: string, networkPassphrase: string): TxIntent {
   const tx = TransactionBuilder.fromXDR(xdr, networkPassphrase) as Transaction;
 
-  const operations = tx.operations.map(normalizeOp).filter((o): o is IntentOperation => o !== null);
+  // `op.source ?? tx.source` is the account an operation acts as. Carrying it per operation is
+  // what lets verification check relationships between operations - that the account which
+  // received a merge is the one forwarding the payment - instead of trusting each in isolation.
+  const memoTypeRaw = tx.memo?.type;
+  const memoType =
+    memoTypeRaw === "text" || memoTypeRaw === "id" || memoTypeRaw === "hash" ? memoTypeRaw : null;
+
+  const operations: IntentOperation[] = tx.operations.map((op) => ({
+    ...normalizeOp(op),
+    source: op.source ?? tx.source,
+  }));
 
   const merge = operations.find(
     (o): o is Extract<IntentOperation, { type: "account_merge" }> => o.type === "account_merge"
@@ -156,6 +174,7 @@ export function intentFromXdr(xdr: string, networkPassphrase: string): TxIntent 
     source: tx.source,
     fee: tx.fee,
     memo: memoValue ? memoValue.toString() : null,
+    memoType,
     guarantees: {
       mergeDestination: merge ? merge.destination : null,
       paymentsOnlyTo,

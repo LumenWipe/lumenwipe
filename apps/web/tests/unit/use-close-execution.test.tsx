@@ -596,6 +596,8 @@ test("useCloseExecution › submitPreAuthTransaction rejects a transaction with 
       { key: preAuthKey, weight: 1, type: "preauth_tx" },
       preAuthXdr
     )
-  ).rejects.toThrow(/unexpected destination/i);
+    // Wording changed with #116: the merge is now refused against the address the user chose
+    // rather than against a configured intermediary, so the message speaks to their choice.
+  ).rejects.toThrow(/did not choose/i);
   expect(submitCalls).toBe(0);
 });
