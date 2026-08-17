@@ -291,7 +291,7 @@ test("buildPlan › clean account → no blockers", () => {
   expect(blockers).toHaveLength(0);
 });
 
-test("buildPlan › master weight below high threshold → blocker, still has NORMALIZE_SIGNERS", () => {
+test("buildPlan › combined signer weight meets high threshold → no blocker even if master alone falls short", () => {
   const account = makeAccount({
     signers: [
       { key: MASTER, weight: 1, type: "ed25519_public_key" },
@@ -300,9 +300,35 @@ test("buildPlan › master weight below high threshold → blocker, still has NO
     thresholds: { low: 0, med: 3, high: 5 },
   });
   const { steps, blockers } = buildPlan(account, false);
+  expect(blockers).toHaveLength(0);
+  expect(steps.some((s) => s.type === "NORMALIZE_SIGNERS")).toBe(true);
+});
+
+test("buildPlan › combined satisfiable signer weight below high threshold → blocker", () => {
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      { key: EXTRA, weight: 2, type: "ed25519_public_key" },
+    ],
+    thresholds: { low: 0, med: 3, high: 5 },
+  });
+  const { blockers } = buildPlan(account, false);
   expect(blockers).toHaveLength(1);
   expect(blockers[0].message).toContain("high threshold");
-  expect(steps.some((s) => s.type === "NORMALIZE_SIGNERS")).toBe(true);
+});
+
+test("buildPlan › a signed-payload signer's weight never counts toward the combined total (genuinely unsatisfiable)", () => {
+  const signedPayloadKey = "PA" + "A".repeat(103); // shape only; buildPlan doesn't validate strkeys
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      { key: signedPayloadKey, weight: 10, type: "ed25519_signed_payload" },
+    ],
+    thresholds: { low: 0, med: 3, high: 5 },
+  });
+  const { blockers } = buildPlan(account, false);
+  expect(blockers).toHaveLength(1);
+  expect(blockers[0].message).toContain("high threshold");
 });
 
 test("buildPlan › master weight meets high threshold → no threshold blocker", () => {

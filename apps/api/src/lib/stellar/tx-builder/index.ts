@@ -163,22 +163,32 @@ export function buildPlan(
     });
   }
 
-  // Threshold gating: SetOptions is a HIGH-threshold operation. If the master
-  // key's weight alone cannot reach the current high threshold, the normalization
-  // tx can never be self-authorized - surface this as a blocker before building a
-  // plan that would fail at signing time.
+  // Threshold gating: SetOptions is a HIGH-threshold operation. If no combination of
+  // this app's satisfiable signers can reach the current high threshold, the normalization
+  // tx can never be authorized - surface this as a blocker before building a plan that
+  // would fail at signing time.
   const needsSignerNormalization = computeNeedsSignerNormalization(accountState);
 
   if (needsSignerNormalization) {
-    const masterSigner = signers.find((s) => s.key === masterKey);
-    const masterWeight = masterSigner?.weight ?? 0;
-    if (masterWeight < thresholds.high) {
+    // Combined weight, not the master key's alone: the signature-accumulation engine
+    // (multisig epic #97) can gather a normalization/merge signature from any signer whose
+    // type this app can actually satisfy - ed25519 (connected wallet or secret key), hash(x)
+    // (manual preimage), or pre-auth-tx (manual pre-authorized transaction) - matching
+    // apps/web/components/execution/SigningProgress.tsx's own satisfiable-weight reasoning,
+    // applied here before the guided UI ever reaches the signing step. An ed25519
+    // signed-payload signer's weight never counts: this flow has no path to satisfy one.
+    const satisfiableWeight = signers
+      .filter(
+        (s) => s.type === "ed25519_public_key" || s.type === "hash_x" || s.type === "preauth_tx"
+      )
+      .reduce((sum, s) => sum + s.weight, 0);
+    if (satisfiableWeight < thresholds.high) {
       blockers.push({
         message:
-          `The master key has weight ${masterWeight}, but removing signers or changing thresholds ` +
-          `requires weight ${thresholds.high} (the current high threshold). ` +
-          `A hash preimage or pre-authorized transaction is needed to authorize this change. ` +
-          `This flow supports single-key authorization only.`,
+          `This account's signers can contribute at most weight ${satisfiableWeight} toward removing ` +
+          `signers or changing thresholds, but that requires weight ${thresholds.high} (the current ` +
+          `high threshold). At least one of its signers cannot be authorized through this flow, so this ` +
+          `change can never be fully authorized.`,
       });
     }
   }
