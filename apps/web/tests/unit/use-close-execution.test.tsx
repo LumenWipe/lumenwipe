@@ -1,6 +1,14 @@
 import { test, expect, mock } from "bun:test";
 import { renderHook, act } from "@testing-library/react";
-import { Account, Keypair, Networks, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
+import {
+  Account,
+  hash,
+  Keypair,
+  Networks,
+  Operation,
+  StrKey,
+  TransactionBuilder,
+} from "@stellar/stellar-sdk";
 import { useCloseExecution } from "@/hooks/useCloseExecution";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
@@ -42,6 +50,19 @@ function realSigner(keypair: Keypair): TransactionSigner {
     sign: async (xdr, networkPassphrase) => {
       const built = TransactionBuilder.fromXDR(xdr, networkPassphrase);
       built.sign(keypair);
+      return built.toEnvelope().toXDR("base64");
+    },
+  };
+}
+
+/** Mirrors HashXPreimageSigner.sign(): applies the preimage via signHashX. publicKey is the
+ *  hash(x) signer's own "X..." strkey, matching how HashXPreimageInput constructs it. */
+function realHashXSigner(preimage: Buffer): TransactionSigner {
+  return {
+    publicKey: StrKey.encodeSha256Hash(hash(preimage)),
+    sign: async (xdr, networkPassphrase) => {
+      const built = TransactionBuilder.fromXDR(xdr, networkPassphrase);
+      built.signHashX(preimage);
       return built.toEnvelope().toXDR("base64");
     },
   };
@@ -141,6 +162,67 @@ test("useCloseExecution › a second signer completes the close by resuming, not
     await result.current.run(realSigner(cosignerKeypair));
   });
   expect(getTransactionsCalls).toBe(1); // still 1 - resumed, did not re-fetch
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+});
+
+test("useCloseExecution › a hash(x) signer's preimage completes the close by resuming, same as a second wallet (#101)", async () => {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  const preimage = Buffer.from("deadbeef", "hex");
+  const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
+
+  const mergeXdr = unsignedMergeXdr(sourceKeypair, destination);
+
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    accountState: {
+      signers: [
+        { key: source, weight: 1, type: "ed25519_public_key" },
+        { key: hashXKey, weight: 1, type: "hash_x" },
+      ],
+      thresholds: { low: 1, med: 2, high: 2 },
+    } as never,
+  } as never);
+
+  let getTransactionsCalls = 0;
+  mock.module("@/lib/api/close-client", () => ({
+    fetchCloseTransactions: async () => {
+      getTransactionsCalls++;
+      return {
+        planHash: "h",
+        status: "ready",
+        transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+        remaining: { steps: 0, requiresAnotherCall: false },
+      };
+    },
+  }));
+  mock.module("@/lib/stellar/submit-via-api", () => ({
+    submitViaApi: async () => ({ txHash: "final-hash" }),
+  }));
+
+  const { result } = renderHook(() => useCloseExecution());
+
+  // First signer (ed25519): weight 1 of 2 required - pauses.
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(result.current.signatureStatus?.accumulatedWeight).toBe(1);
+  expect(result.current.signatureStatus?.remainingSigners).toEqual([
+    { key: hashXKey, weight: 1, type: "hash_x" },
+  ]);
+
+  // Second signer: the hash(x) signer's validated preimage, applied the same way a second
+  // wallet would be - resumes onto the same envelope, no re-fetch, and its weight counts.
+  await act(async () => {
+    await result.current.run(realHashXSigner(preimage));
+  });
+
+  expect(getTransactionsCalls).toBe(1); // resumed, did not re-fetch
   expect(useDemolishStore.getState().phase).toBe("COMPLETE");
 });
 

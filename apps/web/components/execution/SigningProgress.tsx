@@ -1,20 +1,35 @@
 import type { SignatureStatus } from "@/hooks/useCloseExecution";
+import type { TransactionSigner } from "@/lib/stellar/signer";
+import HashXPreimageInput from "./HashXPreimageInput";
 
 function shortAddr(addr: string): string {
   return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
 }
 
-export default function SigningProgress({ status }: { status: SignatureStatus }) {
+interface Props {
+  status: SignatureStatus;
+  /** Applies a hash(x) signer's validated preimage as this round's signer and re-attempts.
+   *  Omitted in contexts that don't drive the close loop (e.g. this component's own tests). */
+  onApplyHashX?: (signer: TransactionSigner) => void;
+  disabled?: boolean;
+}
+
+export default function SigningProgress({ status, onApplyHashX, disabled }: Props) {
   const { requiredWeight, accumulatedWeight, remainingSigners } = status;
   const remaining = Math.max(0, requiredWeight - accumulatedWeight);
   const pct = Math.min(100, Math.round((accumulatedWeight / requiredWeight) * 100));
   const satisfiable = remainingSigners.filter((s) => s.type === "ed25519_public_key");
-  const unsatisfiable = remainingSigners.filter((s) => s.type !== "ed25519_public_key");
-  // The unsatisfiable signers only actually block completion when the satisfiable ones
-  // alone can't clear the remaining weight - e.g. a 2-of-3 account short by 1 with two
-  // ed25519 co-signers still un-contributed and one pre-auth-tx signer un-contributed
-  // is NOT blocked, since either ed25519 signer closes it out.
-  const satisfiableWeight = satisfiable.reduce((sum, s) => sum + s.weight, 0);
+  const hashXSigners = remainingSigners.filter((s) => s.type === "hash_x");
+  const unsatisfiable = remainingSigners.filter(
+    (s) => s.type !== "ed25519_public_key" && s.type !== "hash_x"
+  );
+  // Only the fully-unsatisfiable signers (pre-auth-tx, ed25519-signed-payload - #102's scope)
+  // block completion purely by existing; hash(x) signers have a path (below), so they're
+  // excluded from this "nothing can be done" gate even before one is actually resolved.
+  const satisfiableWeight = [...satisfiable, ...hashXSigners].reduce(
+    (sum, s) => sum + s.weight,
+    0
+  );
   const blockedByUnsatisfiable = satisfiableWeight < remaining;
 
   return (
@@ -37,6 +52,18 @@ export default function SigningProgress({ status }: { status: SignatureStatus })
             </li>
           ))}
         </ul>
+      )}
+      {hashXSigners.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {hashXSigners.map((s) => (
+            <HashXPreimageInput
+              key={s.key}
+              signer={s}
+              disabled={disabled}
+              onApply={(signer) => onApplyHashX?.(signer)}
+            />
+          ))}
+        </div>
       )}
       {unsatisfiable.length > 0 && (
         <p className="text-xs text-white/45">

@@ -1,6 +1,14 @@
 import { test, expect } from "bun:test";
-import { Account, Keypair, Networks, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
-import { SecretKeySigner, WalletKitSigner } from "@/lib/stellar/signer";
+import {
+  Account,
+  hash,
+  Keypair,
+  Networks,
+  Operation,
+  StrKey,
+  TransactionBuilder,
+} from "@stellar/stellar-sdk";
+import { HashXPreimageSigner, SecretKeySigner, WalletKitSigner } from "@/lib/stellar/signer";
 
 function unsignedXdr(sourceKeypair: Keypair): string {
   const builder = new TransactionBuilder(new Account(sourceKeypair.publicKey(), "100"), {
@@ -98,4 +106,46 @@ test("WalletKitSigner › passes an already-signed xdr through unmodified for th
   await signer.sign(preSignedXdr, Networks.TESTNET);
 
   expect(receivedXdr === preSignedXdr).toBe(true); // the class itself never strips or rebuilds the input
+});
+
+test("HashXPreimageSigner › publicKey is the hash(x) signer's X... strkey it was constructed with", () => {
+  const preimage = Buffer.from("deadbeef", "hex");
+  const signerKey = StrKey.encodeSha256Hash(hash(preimage));
+  const signer = new HashXPreimageSigner(signerKey, preimage);
+
+  expect(signer.publicKey).toBe(signerKey);
+});
+
+test("HashXPreimageSigner › sign() appends a decorated signature carrying the raw preimage", async () => {
+  const source = Keypair.random();
+  const preimage = Buffer.from("deadbeef", "hex");
+  const signerKey = StrKey.encodeSha256Hash(hash(preimage));
+  const signer = new HashXPreimageSigner(signerKey, preimage);
+  const xdr = unsignedXdr(source);
+
+  const signedXdr = await signer.sign(xdr, Networks.TESTNET);
+
+  const signedTx = TransactionBuilder.fromXDR(signedXdr, Networks.TESTNET);
+  expect(signedTx.signatures.length).toBe(1);
+  const sig = signedTx.signatures[0];
+  expect(sig.signature().equals(preimage)).toBe(true);
+  const expectedHint = hash(preimage).subarray(-4);
+  expect(sig.hint().equals(expectedHint)).toBe(true);
+});
+
+test("HashXPreimageSigner › sign() appends onto an envelope that already carries an ed25519 signature", async () => {
+  const source = Keypair.random();
+  const preimage = Buffer.from("cafebabe", "hex");
+  const signerKey = StrKey.encodeSha256Hash(hash(preimage));
+  const xdr = unsignedXdr(source);
+
+  const onceSignedXdr = await new SecretKeySigner(source.secret()).sign(xdr, Networks.TESTNET);
+  const twiceSignedXdr = await new HashXPreimageSigner(signerKey, preimage).sign(
+    onceSignedXdr,
+    Networks.TESTNET
+  );
+
+  const finalTx = TransactionBuilder.fromXDR(twiceSignedXdr, Networks.TESTNET);
+  expect(finalTx.signatures.length).toBe(2);
+  expect(finalTx.signatures[1].signature().equals(preimage)).toBe(true);
 });

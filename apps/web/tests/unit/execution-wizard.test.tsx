@@ -1,6 +1,6 @@
 import { test, expect, mock, beforeEach } from "bun:test";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { Keypair } from "@stellar/stellar-sdk";
+import { hash, Keypair, StrKey } from "@stellar/stellar-sdk";
 import ExecutionWizard from "@/components/execution/ExecutionWizard";
 import { useDemolishStore } from "@/store/demolish";
 
@@ -148,6 +148,73 @@ test("execution-wizard › connecting a second (co-signer) wallet enables and dr
   // sessionStorage is checked above only as an unrelated second layer of evidence - it isn't
   // the storage layer this criterion is actually about.
   expect(mockSaveSession).not.toHaveBeenCalled();
+});
+
+test("execution-wizard › a hash(x) signer among remainingSigners renders its explanation and a preimage input", async () => {
+  const preimage = Buffer.from("deadbeef", "hex");
+  const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    remainingSigners: [{ key: hashXKey, weight: 1, type: "hash_x" }],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+  runImpl = async () => {};
+
+  render(<ExecutionWizard network="testnet" />);
+
+  expect(await screen.findByText(/hash\(x\) signer/i)).toBeDefined();
+  expect(screen.getByPlaceholderText(/hex-encoded preimage/i)).toBeDefined();
+  // Not lumped into the generic "can't yet contribute automatically" line.
+  expect(screen.queryByText(/can't yet contribute automatically/i)).toBeNull();
+});
+
+test("execution-wizard › a correct hash(x) preimage calls run() with a signer keyed to the hash(x) signer", async () => {
+  const preimage = Buffer.from("deadbeef", "hex");
+  const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    remainingSigners: [{ key: hashXKey, weight: 1, type: "hash_x" }],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+
+  const runSpy = mock(async (_signer: { publicKey: string }) => {
+    currentSignatureStatus = null;
+    useDemolishStore.setState({ phase: "COMPLETE" } as never);
+  });
+  runImpl = runSpy;
+
+  render(<ExecutionWizard network="testnet" />);
+
+  const input = screen.getByPlaceholderText(/hex-encoded preimage/i);
+  fireEvent.change(input, { target: { value: "deadbeef" } });
+  fireEvent.click(screen.getByRole("button", { name: /apply preimage/i }));
+
+  await waitFor(() => expect(runSpy).toHaveBeenCalledTimes(1));
+  expect(runSpy.mock.calls[0]?.[0]?.publicKey).toBe(hashXKey);
+});
+
+test("execution-wizard › an incorrect hash(x) preimage shows an inline error and never calls run()", async () => {
+  const hashXKey = StrKey.encodeSha256Hash(hash(Buffer.from("deadbeef", "hex")));
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    remainingSigners: [{ key: hashXKey, weight: 1, type: "hash_x" }],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+
+  const runSpy = mock(async (_signer: { publicKey: string }) => {});
+  runImpl = runSpy;
+
+  render(<ExecutionWizard network="testnet" />);
+
+  const input = screen.getByPlaceholderText(/hex-encoded preimage/i);
+  fireEvent.change(input, { target: { value: "cafebabe" } }); // does not hash to hashXKey
+  fireEvent.click(screen.getByRole("button", { name: /apply preimage/i }));
+
+  expect(await screen.findByText(/does not hash to the signer's key/i)).toBeDefined();
+  expect(runSpy).not.toHaveBeenCalled();
 });
 
 test("execution-wizard › normal (non-multisig) failure still shows the retry branch, not signing progress", async () => {
