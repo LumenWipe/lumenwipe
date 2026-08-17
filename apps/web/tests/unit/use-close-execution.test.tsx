@@ -8,6 +8,7 @@ import {
   Operation,
   StrKey,
   TransactionBuilder,
+  type Transaction,
 } from "@stellar/stellar-sdk";
 import { useCloseExecution } from "@/hooks/useCloseExecution";
 import { useDemolishStore } from "@/store/demolish";
@@ -357,4 +358,136 @@ test("useCloseExecution › resigning with an already-contributed key on resume 
   // entirely rather than left pointing at a now-corrupted envelope.
   expect(result.current.signatureStatus).toBeNull();
   expect(getTransactionsCalls).toBe(1); // resumed onto the paused envelope, did not re-fetch
+});
+
+// #102: pre-auth-tx signer support. submitPreAuthTransaction bypasses the round loop entirely -
+// it never calls fetchCloseTransactions - so these tests only ever mock submit-via-api, and
+// deliberately drive the real verifyPreAuthTxHash/verifyCloseTransaction/intentFromXdr, exactly
+// like the #101 hash(x) tests above drive the real verify()/intentFromXdr rather than mocking them.
+test("useCloseExecution › submitPreAuthTransaction submits a hash-matched, intent-valid transaction directly", async () => {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  const preAuthXdr = unsignedMergeXdr(sourceKeypair, destination);
+  const preAuthTx = TransactionBuilder.fromXDR(preAuthXdr, Networks.TESTNET) as Transaction;
+  const preAuthKey = StrKey.encodePreAuthTx(preAuthTx.hash());
+
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    accountState: {
+      signers: [
+        { key: source, weight: 1, type: "ed25519_public_key" },
+        { key: preAuthKey, weight: 1, type: "preauth_tx" },
+      ],
+      thresholds: { low: 1, med: 2, high: 2 },
+    } as never,
+  } as never);
+
+  let submitCalls = 0;
+  mock.module("@/lib/stellar/submit-via-api", () => ({
+    submitViaApi: async () => {
+      submitCalls++;
+      return { txHash: "preauth-hash" };
+    },
+  }));
+
+  const { result } = renderHook(() => useCloseExecution());
+
+  await result.current.submitPreAuthTransaction(
+    { key: preAuthKey, weight: 1, type: "preauth_tx" },
+    preAuthXdr
+  );
+
+  expect(submitCalls).toBe(1);
+});
+
+test("useCloseExecution › submitPreAuthTransaction rejects a hash mismatch without submitting", async () => {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  const preAuthXdr = unsignedMergeXdr(sourceKeypair, destination);
+  // Deliberately unrelated to preAuthXdr's real hash.
+  const wrongKey = StrKey.encodePreAuthTx(Buffer.alloc(32, 9));
+
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    accountState: {
+      signers: [
+        { key: source, weight: 1, type: "ed25519_public_key" },
+        { key: wrongKey, weight: 1, type: "preauth_tx" },
+      ],
+      thresholds: { low: 1, med: 2, high: 2 },
+    } as never,
+  } as never);
+
+  let submitCalls = 0;
+  mock.module("@/lib/stellar/submit-via-api", () => ({
+    submitViaApi: async () => {
+      submitCalls++;
+      return { txHash: "preauth-hash" };
+    },
+  }));
+
+  const { result } = renderHook(() => useCloseExecution());
+
+  await expect(
+    result.current.submitPreAuthTransaction(
+      { key: wrongKey, weight: 1, type: "preauth_tx" },
+      preAuthXdr
+    )
+  ).rejects.toThrow(/does not match/i);
+  expect(submitCalls).toBe(0);
+});
+
+test("useCloseExecution › submitPreAuthTransaction rejects a transaction with an unexpected destination without submitting", async () => {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  const attacker = Keypair.random().publicKey();
+  // Hash-matches its own signer key, but merges to someone other than the user's own chosen
+  // destination - exactly the hostile-pasted-XDR shape assertCloseIntent must still reject.
+  const preAuthXdr = unsignedMergeXdr(sourceKeypair, attacker);
+  const preAuthTx = TransactionBuilder.fromXDR(preAuthXdr, Networks.TESTNET) as Transaction;
+  const preAuthKey = StrKey.encodePreAuthTx(preAuthTx.hash());
+
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    accountState: {
+      signers: [
+        { key: source, weight: 1, type: "ed25519_public_key" },
+        { key: preAuthKey, weight: 1, type: "preauth_tx" },
+      ],
+      thresholds: { low: 1, med: 2, high: 2 },
+    } as never,
+  } as never);
+
+  let submitCalls = 0;
+  mock.module("@/lib/stellar/submit-via-api", () => ({
+    submitViaApi: async () => {
+      submitCalls++;
+      return { txHash: "preauth-hash" };
+    },
+  }));
+
+  const { result } = renderHook(() => useCloseExecution());
+
+  await expect(
+    result.current.submitPreAuthTransaction(
+      { key: preAuthKey, weight: 1, type: "preauth_tx" },
+      preAuthXdr
+    )
+  ).rejects.toThrow(/unexpected destination/i);
+  expect(submitCalls).toBe(0);
 });

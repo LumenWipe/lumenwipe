@@ -34,7 +34,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const lastError = useDemolishStore((s) => s.lastError);
   const accountState = useDemolishStore((s) => s.accountState);
 
-  const { run, progressStatus, signatureStatus } = useCloseExecution();
+  const { run, progressStatus, signatureStatus, submitPreAuthTransaction } = useCloseExecution();
   const walletConnection = useWalletKitConnection(network);
   const [mode, setMode] = useState<SignMode>("wallet");
   const [keyEntered, setKeyEntered] = useState(false);
@@ -318,6 +318,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               <SigningProgress
                 status={signatureStatus}
                 onApplyHashX={applyHashXPreimage}
+                onSubmitPreAuthTx={submitPreAuthTransaction}
                 disabled={running}
               />
               {renderSignerPicker()}

@@ -21,6 +21,7 @@ import { verifyCloseTransaction } from "@/lib/stellar/verify";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { requiredSignatureWeight } from "@/lib/stellar/thresholds";
 import { evaluateSignatureContributions, accumulatedWeight } from "@/lib/stellar/signature-weight";
+import { verifyPreAuthTxHash } from "@/lib/stellar/pre-auth-tx";
 import { submitViaApi } from "@/lib/stellar/submit-via-api";
 import { requestMediatorCosignature } from "@/lib/stellar/mediator";
 import { notifyStatsRefresh } from "@/lib/stats-events";
@@ -293,7 +294,65 @@ export function useCloseExecution() {
     ]
   );
 
-  return { run, progressStatus, signatureStatus };
+  // Satisfies a pre-auth-tx signer: unlike every other signing path, the transaction here was
+  // never built by the API - it's the user's own, already-fully-authorized transaction, whose
+  // hash IS the signer's key (see docs on verifyPreAuthTxHash). It cannot be merged onto
+  // whatever the round loop currently has pending (different sequence number/operations each
+  // round), so it bypasses close-engine.ts entirely and goes straight to /submit. Deliberately
+  // leaves pendingRoundRef/signatureStatus/phase untouched: this envelope has nothing to do
+  // with whatever round-loop envelope might be mid-accumulation, and clearing that state here
+  // would destroy real progress on an unrelated transaction. The caller continues the normal
+  // flow afterward (Retry/Add signature) - the API re-reads live state every round, so any work
+  // this submission completed is simply absent from the next round's build.
+  const submitPreAuthTransaction = useCallback(
+    async (signer: AccountSigner, xdr: string): Promise<void> => {
+      if (!sourceAddress || !destinationAddress) {
+        throw new Error("Missing account or destination.");
+      }
+
+      const passphrase = NETWORK_PASSPHRASES[network];
+      verifyPreAuthTxHash(xdr, passphrase, signer.key);
+
+      const mediator = mediatorRequired ? mediatorPublicKey : null;
+      const claimableBalanceSelections = useDemolishStore.getState().claimableBalanceSelections;
+      const accountState = useDemolishStore.getState().accountState;
+      const claimTrustlineAssets = Object.entries(claimableBalanceSelections)
+        .filter(([, selection]) => selection === "add_trustline_then_claim")
+        .map(([balanceId]) => {
+          const balance = useDemolishStore
+            .getState()
+            .accountState?.claimableBalances.find((b) => b.id === balanceId);
+          return balance?.asset ?? null;
+        })
+        .filter((asset): asset is string => asset !== null);
+
+      // Every assertCloseIntent check is a self-contained structural assertion (only removals,
+      // no signer added/empowered, merge only to an allowed destination, memo integrity, no
+      // unrecognized op) rather than a comparison against a per-step "expected operation list"
+      // the API would otherwise supply - so all of them apply unmodified to a transaction the
+      // API never built. What this cannot check is the transaction's PROVENANCE (whether the
+      // user really authorized it, on purpose, for this close) - that's why this path also
+      // requires the persistent UI warning, not a code-level check.
+      verifyCloseTransaction({
+        unsignedXdr: xdr,
+        network,
+        expected: {
+          source: sourceAddress,
+          destination: destinationAddress,
+          mediator,
+          memo,
+          claimTrustlineAssets,
+          accountSigners: accountState?.signers ?? [],
+          accountThresholds: accountState?.thresholds ?? { low: 0, med: 1, high: 1 },
+        },
+      });
+
+      await submitViaApi(xdr, network);
+    },
+    [network, sourceAddress, destinationAddress, memo, mediatorRequired, mediatorPublicKey]
+  );
+
+  return { run, progressStatus, signatureStatus, submitPreAuthTransaction };
 }
 
 /**
