@@ -166,6 +166,114 @@ test("useCloseExecution › a second signer completes the close by resuming, not
   expect(useDemolishStore.getState().phase).toBe("COMPLETE");
 });
 
+/** Simulates a compromised or buggy wallet extension (the shape WalletKitSigner delegates
+ *  to): instead of adding a signature to the exact xdr it was handed, like realSigner does,
+ *  it discards the body it was given and builds a genuinely DIFFERENT transaction - same
+ *  source and sequence, but with a smuggled-in extra operation (a raised high threshold) -
+ *  before signing and returning that. useCloseExecution's approvedHash check (computed from
+ *  the xdr handed to sign(), before the signer touches it) must catch this: the returned
+ *  envelope is not a signed version of what verify() approved, it's a signature over
+ *  something else entirely. */
+function tamperingSigner(
+  keypair: Keypair,
+  sourcePublicKey: string,
+  destination: string
+): TransactionSigner {
+  return {
+    publicKey: keypair.publicKey(),
+    sign: async (xdr, networkPassphrase) => {
+      const original = TransactionBuilder.fromXDR(xdr, networkPassphrase) as Transaction;
+      // Same source account and sequence number as the approved envelope - only the
+      // operation set differs - so a hash mismatch below can only be attributed to the
+      // smuggled-in operation, never to sequence drift or a different source account.
+      const account = new Account(
+        sourcePublicKey,
+        (BigInt(original.sequence) - BigInt(1)).toString()
+      );
+      const tampered = new TransactionBuilder(account, {
+        fee: original.fee,
+        networkPassphrase,
+      })
+        .setTimeout(300)
+        .addOperation(Operation.accountMerge({ destination }))
+        // The smuggled-in change: raising the high threshold was never part of what the
+        // user asked to sign, nor of what verify() approved.
+        .addOperation(Operation.setOptions({ highThreshold: 2 }))
+        .build();
+      tampered.sign(keypair);
+      return tampered.toEnvelope().toXDR("base64");
+    },
+  };
+}
+
+test("useCloseExecution › a signer that returns a body-tampered envelope on resume is rejected, not signed through", async () => {
+  const sourceKeypair = Keypair.random();
+  const cosignerKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const cosigner = cosignerKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+
+  const mergeXdr = unsignedMergeXdr(sourceKeypair, destination);
+
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    accountState: {
+      signers: [
+        { key: source, weight: 1, type: "ed25519_public_key" },
+        { key: cosigner, weight: 1, type: "ed25519_public_key" },
+      ],
+      thresholds: { low: 1, med: 2, high: 2 },
+    } as never,
+  } as never);
+
+  let getTransactionsCalls = 0;
+  mock.module("@/lib/api/close-client", () => ({
+    fetchCloseTransactions: async () => {
+      getTransactionsCalls++;
+      return {
+        planHash: "h",
+        status: "ready",
+        transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+        remaining: { steps: 0, requiresAnotherCall: false },
+      };
+    },
+  }));
+  let submitCalls = 0;
+  mock.module("@/lib/stellar/submit-via-api", () => ({
+    submitViaApi: async () => {
+      submitCalls++;
+      return { txHash: "final-hash" };
+    },
+  }));
+
+  const { result } = renderHook(() => useCloseExecution());
+
+  // First signer: weight 1 of 2 required - pauses, leaving a resumable envelope carrying
+  // one real signature, exactly like the resume test above.
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(result.current.signatureStatus?.accumulatedWeight).toBe(1);
+  expect(getTransactionsCalls).toBe(1);
+
+  // Second signer resumes onto that same envelope, but is a black-box wallet that returns
+  // a signed envelope over a DIFFERENT transaction body (a smuggled-in raised threshold)
+  // instead of just co-signing the one it was actually handed.
+  await act(async () => {
+    await result.current.run(tamperingSigner(cosignerKeypair, source, destination));
+  });
+
+  expect(useDemolishStore.getState().lastError).toMatch(/does not match what you approved/i);
+  expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
+  expect(getTransactionsCalls).toBe(1); // resumed, did not re-fetch
+  expect(submitCalls).toBe(0); // rejected before ever reaching submit
+});
+
 test("useCloseExecution › a hash(x) signer's preimage completes the close by resuming, same as a second wallet (#101)", async () => {
   const sourceKeypair = Keypair.random();
   const source = sourceKeypair.publicKey();
