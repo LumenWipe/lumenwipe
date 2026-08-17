@@ -307,9 +307,7 @@ test("verifyCloseTransaction still approves a transaction whose only change is a
   ];
 
   const unsignedIntent = intentFromXdr(unsignedXdr, Networks.TESTNET);
-  expect(() =>
-    assertCloseIntent(unsignedIntent, expectation({ accountSigners }))
-  ).not.toThrow();
+  expect(() => assertCloseIntent(unsignedIntent, expectation({ accountSigners }))).not.toThrow();
 
   // Apply the hash(x) contribution exactly as HashXPreimageSigner does - the transaction
   // body is untouched, only a decorated signature is appended.
@@ -354,4 +352,25 @@ test("rejects a memo of the wrong type for the destination", () => {
 test("rejects a transaction for a different account", () => {
   const i = intent({ source: ATTACKER });
   expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+});
+
+// #102: pre-auth-tx signer support. The manual pre-auth-tx path (useCloseExecution's
+// submitPreAuthTransaction) runs a user-supplied transaction - never built by the API - through
+// this exact same assertCloseIntent, since every check here is a self-contained structural
+// assertion (never a comparison against a per-step "expected operation list"). These two tests
+// prove the checks the issue calls out by name still reject a hostile/malformed pasted
+// transaction, exactly as they would for an API-built one.
+test("rejects a pasted pre-auth-tx transaction that merges to an unexpected destination", () => {
+  const i = intent({
+    operations: [merge(ATTACKER)],
+    guarantees: { mergeDestination: ATTACKER, paymentsOnlyTo: [], minXlmFromConversions: null },
+  });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/unexpected destination/i);
+});
+
+test("rejects a pasted pre-auth-tx transaction carrying an unrecognized operation", () => {
+  const i = intent({ operations: [{ type: "unknown" }] });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/unrecognized operation/i);
 });

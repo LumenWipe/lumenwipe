@@ -1,6 +1,8 @@
 import type { SignatureStatus } from "@/hooks/useCloseExecution";
 import type { TransactionSigner } from "@/lib/stellar/signer";
+import type { AccountSigner } from "@/types/account";
 import HashXPreimageInput from "./HashXPreimageInput";
+import PreAuthTxInput from "./PreAuthTxInput";
 
 function shortAddr(addr: string): string {
   return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
@@ -11,22 +13,34 @@ interface Props {
   /** Applies a hash(x) signer's validated preimage as this round's signer and re-attempts.
    *  Omitted in contexts that don't drive the close loop (e.g. this component's own tests). */
   onApplyHashX?: (signer: TransactionSigner) => void;
+  /** Validates and submits a pre-auth-tx signer's pasted transaction directly, bypassing the
+   *  round loop entirely (see useCloseExecution's submitPreAuthTransaction). Omitted in
+   *  contexts that don't drive the close loop. */
+  onSubmitPreAuthTx?: (signer: AccountSigner, xdr: string) => Promise<void>;
   disabled?: boolean;
 }
 
-export default function SigningProgress({ status, onApplyHashX, disabled }: Props) {
+export default function SigningProgress({
+  status,
+  onApplyHashX,
+  onSubmitPreAuthTx,
+  disabled,
+}: Props) {
   const { requiredWeight, accumulatedWeight, remainingSigners } = status;
   const remaining = Math.max(0, requiredWeight - accumulatedWeight);
   const pct = Math.min(100, Math.round((accumulatedWeight / requiredWeight) * 100));
   const satisfiable = remainingSigners.filter((s) => s.type === "ed25519_public_key");
   const hashXSigners = remainingSigners.filter((s) => s.type === "hash_x");
+  const preAuthTxSigners = remainingSigners.filter((s) => s.type === "preauth_tx");
   const unsatisfiable = remainingSigners.filter(
-    (s) => s.type !== "ed25519_public_key" && s.type !== "hash_x"
+    (s) => s.type !== "ed25519_public_key" && s.type !== "hash_x" && s.type !== "preauth_tx"
   );
-  // Only the fully-unsatisfiable signers (pre-auth-tx, ed25519-signed-payload - #102's scope)
-  // block completion purely by existing; hash(x) signers have a path (below), so they're
-  // excluded from this "nothing can be done" gate even before one is actually resolved.
-  const satisfiableWeight = [...satisfiable, ...hashXSigners].reduce(
+  // Only the fully-unsatisfiable signers (ed25519-signed-payload, which #98/#1 already confirmed
+  // is fully removed before signing is ever needed, so it should never actually appear here)
+  // block completion purely by existing; hash(x) and pre-auth-tx signers each have a path
+  // (below), so they're excluded from this "nothing can be done" gate even before one is
+  // actually resolved.
+  const satisfiableWeight = [...satisfiable, ...hashXSigners, ...preAuthTxSigners].reduce(
     (sum, s) => sum + s.weight,
     0
   );
@@ -61,6 +75,21 @@ export default function SigningProgress({ status, onApplyHashX, disabled }: Prop
               signer={s}
               disabled={disabled}
               onApply={(signer) => onApplyHashX?.(signer)}
+            />
+          ))}
+        </div>
+      )}
+      {preAuthTxSigners.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {preAuthTxSigners.map((s) => (
+            <PreAuthTxInput
+              key={s.key}
+              signer={s}
+              disabled={disabled}
+              onSubmit={async (signer, xdr) => {
+                if (!onSubmitPreAuthTx) throw new Error("Not available.");
+                await onSubmitPreAuthTx(signer, xdr);
+              }}
             />
           ))}
         </div>

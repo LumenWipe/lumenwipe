@@ -15,11 +15,19 @@ mock.module("next/navigation", () => ({
 // state machine (signature-progress rendering, signer switching, no persisted writes),
 // not the full close pipeline - that's Task 3/4's job.
 let runImpl: (signer: { publicKey: string }) => Promise<void>;
+let submitPreAuthTxImpl: (
+  signer: { key: string; weight: number; type: string },
+  xdr: string
+) => Promise<void>;
 mock.module("@/hooks/useCloseExecution", () => ({
   useCloseExecution: () => ({
     run: (signer: { publicKey: string }) => runImpl(signer),
     progressStatus: null,
     signatureStatus: currentSignatureStatus,
+    submitPreAuthTransaction: (
+      signer: { key: string; weight: number; type: string },
+      xdr: string
+    ) => submitPreAuthTxImpl(signer, xdr),
   }),
 }));
 
@@ -61,6 +69,7 @@ const cosigner = Keypair.random().publicKey();
 beforeEach(() => {
   currentSignatureStatus = null;
   currentWalletAddress = null;
+  submitPreAuthTxImpl = async () => {};
   mockSaveSession.mockClear();
   useDemolishStore.setState({
     executionPlan: [{ id: "s1" } as never],
@@ -227,4 +236,75 @@ test("execution-wizard › normal (non-multisig) failure still shows the retry b
   expect(await screen.findByRole("button", { name: /retry/i })).toBeDefined();
   expect(screen.queryByText(/more signing weight/)).toBeNull();
   expect(screen.queryByRole("button", { name: /add signature/i })).toBeNull();
+});
+
+// #102: pre-auth-tx signer support.
+test("execution-wizard › a preauth_tx signer among remainingSigners renders its explanation, an XDR textarea, and the persistent warning", async () => {
+  const preAuthKey = "TAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJRY"; // any-shaped preauth key for display purposes
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    remainingSigners: [{ key: preAuthKey, weight: 1, type: "preauth_tx" }],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+  runImpl = async () => {};
+
+  render(<ExecutionWizard network="testnet" />);
+
+  expect(await screen.findByText(/pre-auth-tx signer/i)).toBeDefined();
+  expect(screen.getByPlaceholderText(/paste the pre-authorized transaction xdr/i)).toBeDefined();
+  // The persistent, non-dismissible warning the issue requires wherever this path is active.
+  expect(screen.getByText(/not built or verified by lumenwipe the way the rest/i)).toBeDefined();
+  // Not lumped into the generic "can't yet contribute automatically" line.
+  expect(screen.queryByText(/can't yet contribute automatically/i)).toBeNull();
+});
+
+test("execution-wizard › a successful pre-auth-tx submission calls submitPreAuthTransaction and shows the success state", async () => {
+  const preAuthKey = "TAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJRY";
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    remainingSigners: [{ key: preAuthKey, weight: 1, type: "preauth_tx" }],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+  runImpl = async () => {};
+
+  const submitSpy = mock(
+    async (_signer: { key: string; weight: number; type: string }, _xdr: string) => {}
+  );
+  submitPreAuthTxImpl = submitSpy;
+
+  render(<ExecutionWizard network="testnet" />);
+
+  const textarea = screen.getByPlaceholderText(/paste the pre-authorized transaction xdr/i);
+  fireEvent.change(textarea, { target: { value: "AAAAAgAAAAA=" } });
+  fireEvent.click(screen.getByRole("button", { name: /submit pre-authorized transaction/i }));
+
+  expect(await screen.findByText(/pre-authorized transaction submitted/i)).toBeDefined();
+  expect(submitSpy).toHaveBeenCalledTimes(1);
+  expect(submitSpy.mock.calls[0]?.[0]?.key).toBe(preAuthKey);
+  expect(submitSpy.mock.calls[0]?.[1]).toBe("AAAAAgAAAAA=");
+});
+
+test("execution-wizard › a rejected pre-auth-tx submission shows an inline error", async () => {
+  const preAuthKey = "TAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJRY";
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    remainingSigners: [{ key: preAuthKey, weight: 1, type: "preauth_tx" }],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+  runImpl = async () => {};
+  submitPreAuthTxImpl = async () => {
+    throw new Error("This transaction's hash does not match the pre-auth-tx signer's key.");
+  };
+
+  render(<ExecutionWizard network="testnet" />);
+
+  const textarea = screen.getByPlaceholderText(/paste the pre-authorized transaction xdr/i);
+  fireEvent.change(textarea, { target: { value: "AAAAAgAAAAA=" } });
+  fireEvent.click(screen.getByRole("button", { name: /submit pre-authorized transaction/i }));
+
+  expect(await screen.findByText(/does not match the pre-auth-tx signer's key/i)).toBeDefined();
+  expect(screen.queryByText(/pre-authorized transaction submitted/i)).toBeNull();
 });
