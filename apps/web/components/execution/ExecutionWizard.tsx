@@ -177,6 +177,17 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     }
   }, [run, running]);
 
+  // A hash(x) signer's preimage has already been validated (HashXPreimageInput only calls
+  // this with a confirmed match) - apply it as this round's signer exactly like a connected
+  // wallet or secret key would be, through the same execute() path.
+  const applyHashXPreimage = useCallback(
+    (signer: TransactionSigner) => {
+      signerRef.current = signer;
+      void execute();
+    },
+    [execute]
+  );
+
   if (executionPlan.length === 0 || !destinationAddress) {
     return (
       <div className="text-center py-12 text-white/45 text-sm">
@@ -304,7 +315,11 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
             <ProgressIndicator status={progressStatus ?? "Working…"} />
           ) : pendingMoreSignatures ? (
             <div className="flex flex-col gap-4">
-              <SigningProgress status={signatureStatus} />
+              <SigningProgress
+                status={signatureStatus}
+                onApplyHashX={applyHashXPreimage}
+                disabled={running}
+              />
               {renderSignerPicker()}
               <button
                 onClick={execute}

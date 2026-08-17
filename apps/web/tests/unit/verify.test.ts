@@ -2,6 +2,7 @@ import { test, expect } from "bun:test";
 import {
   Account,
   Asset,
+  hash,
   Keypair,
   Networks,
   Operation,
@@ -12,6 +13,7 @@ import {
 import { assertCloseIntent, VerificationError, type CloseExpectation } from "@/lib/stellar/verify";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import type { IntentOperation, TxIntent } from "@/types/close-api";
+import type { AccountSigner } from "@/types/account";
 
 const SRC = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -287,6 +289,37 @@ test("rejects a hash(x) signer removal for a hash that is not a known signer", (
   const txXdr = buildXdr([Operation.setOptions({ signer: { sha256Hash: hashXRaw, weight: 0 } })]);
   const i = intentFromXdr(txXdr, Networks.TESTNET);
   expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+});
+
+// ─── Multisig: a hash(x) decorated signature needs no special-casing (#101) ──
+
+test("verifyCloseTransaction still approves a transaction whose only change is an added hash(x) signature", () => {
+  const preimage = Buffer.from("deadbeef", "hex");
+  const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
+
+  const unsignedXdr = buildXdr([
+    Operation.setOptions({ signer: { sha256Hash: hash(preimage), weight: 0 } }),
+    Operation.accountMerge({ destination: DEST }),
+  ]);
+  const accountSigners: AccountSigner[] = [
+    { key: SRC, weight: 1, type: "ed25519_public_key" },
+    { key: hashXKey, weight: 1, type: "hash_x" },
+  ];
+
+  const unsignedIntent = intentFromXdr(unsignedXdr, Networks.TESTNET);
+  expect(() =>
+    assertCloseIntent(unsignedIntent, expectation({ accountSigners }))
+  ).not.toThrow();
+
+  // Apply the hash(x) contribution exactly as HashXPreimageSigner does - the transaction
+  // body is untouched, only a decorated signature is appended.
+  const built = TransactionBuilder.fromXDR(unsignedXdr, Networks.TESTNET);
+  built.signHashX(preimage);
+  const signedXdr = built.toEnvelope().toXDR("base64");
+
+  const signedIntent = intentFromXdr(signedXdr, Networks.TESTNET);
+  expect(signedIntent).toEqual(unsignedIntent);
+  expect(() => assertCloseIntent(signedIntent, expectation({ accountSigners }))).not.toThrow();
 });
 
 test("rejects a set_options that disables the master key", () => {

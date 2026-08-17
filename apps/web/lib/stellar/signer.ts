@@ -31,6 +31,28 @@ export class SecretKeySigner implements TransactionSigner {
 }
 
 /**
+ * Satisfies a hash(x) signer by appending a decorated signature whose bytes are the
+ * preimage itself (`Transaction.signHashX`), not an ed25519 signature - a hash(x) signer's
+ * key IS sha256(preimage), so there is no keypair to sign with. `publicKey` is the signer's
+ * "X..." strkey, matching the shape `accountState.signers` already uses so the engine's
+ * known-signer check (useCloseExecution.ts) works unmodified. The caller must only ever
+ * construct this with a preimage already validated by `verifyHashXPreimage` - this class
+ * does not re-validate.
+ */
+export class HashXPreimageSigner implements TransactionSigner {
+  constructor(
+    public readonly publicKey: string,
+    private readonly preimage: Buffer
+  ) {}
+
+  async sign(xdr: string, networkPassphrase: string): Promise<string> {
+    const built = TransactionBuilder.fromXDR(xdr, networkPassphrase);
+    built.signHashX(this.preimage);
+    return built.toEnvelope().toXDR("base64");
+  }
+}
+
+/**
  * Signs by delegating to a wallet-kit-shaped signing function, injected rather
  * than imported directly - keeps this class free of any DOM/browser-extension
  * dependency and independently testable. Construct with
