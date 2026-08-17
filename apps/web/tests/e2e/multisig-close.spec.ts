@@ -30,6 +30,26 @@ async function accountExists(id: string): Promise<boolean> {
   return res.status !== 404;
 }
 
+// The UI (via the API's read provider) can lag the Horizon endpoint the configuring
+// transaction below is confirmed against - the same ingestion-lag hazard the sibling
+// integration test's readAccountStateUntilSignersConfigured absorbs for its own
+// (different) read path. Poll Horizon's own /accounts/:id here since that's the provider
+// configureTwoOfThree just wrote through, before ever driving the UI.
+const SIGNERS_POLL_MAX_ATTEMPTS = 8;
+const SIGNERS_POLL_DELAY_MS = 2500;
+
+async function waitForThreeSigners(id: string): Promise<void> {
+  for (let attempt = 0; attempt < SIGNERS_POLL_MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(`${HORIZON}/accounts/${id}`);
+    if (res.ok) {
+      const account = (await res.json()) as { signers: unknown[] };
+      if (account.signers.length === 3) return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, SIGNERS_POLL_DELAY_MS));
+  }
+  throw new Error(`timed out waiting for ${id} to show 3 signers on ${HORIZON}`);
+}
+
 async function configureTwoOfThree(master: Keypair, coSignerB: Keypair, coSignerC: Keypair) {
   const res = await fetch(`${HORIZON}/accounts/${master.publicKey()}`);
   const { sequence } = (await res.json()) as { sequence: string };
@@ -47,11 +67,17 @@ async function configureTwoOfThree(master: Keypair, coSignerB: Keypair, coSigner
     .setTimeout(60)
     .build();
   tx.sign(master);
-  await fetch(`${HORIZON}/transactions`, {
+  const submitRes = await fetch(`${HORIZON}/transactions`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ tx: tx.toEnvelope().toXDR("base64") }),
   });
+  if (!submitRes.ok) {
+    throw new Error(
+      `configureTwoOfThree submission failed ${submitRes.status}: ${await submitRes.text()}`
+    );
+  }
+  await waitForThreeSigners(master.publicKey());
 }
 
 test("multisig close: a 2-of-3 account signs with two keys in sequence and merges", async ({
