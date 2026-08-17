@@ -41,12 +41,27 @@ mock.module("@/hooks/useWalletKitConnection", () => ({
   }),
 }));
 
+// The app's real resumable session mechanism is IndexedDB via saveSession
+// (apps/web/lib/session/store.ts), not sessionStorage - the only real sessionStorage.setItem
+// caller anywhere in apps/web is an unrelated risk-disclaimer modal. Mocking this module (not
+// spying on sessionStorage) is what actually lets the "no session-store write between two
+// signers" assertion below catch a real regression, since it intercepts every import of the
+// module across ExecutionWizard's render tree, not just a direct call from this component.
+const mockSaveSession = mock(async (..._args: unknown[]) => {});
+mock.module("@/lib/session/store", () => ({
+  saveSession: mockSaveSession,
+  loadSession: async () => null,
+  listSessions: async () => [],
+  deleteSession: async () => {},
+}));
+
 const source = Keypair.random().publicKey();
 const cosigner = Keypair.random().publicKey();
 
 beforeEach(() => {
   currentSignatureStatus = null;
   currentWalletAddress = null;
+  mockSaveSession.mockClear();
   useDemolishStore.setState({
     executionPlan: [{ id: "s1" } as never],
     sourceAddress: source,
@@ -128,6 +143,11 @@ test("execution-wizard › connecting a second (co-signer) wallet enables and dr
 
   window.sessionStorage.setItem = originalSetItem;
   expect(setItemSpy).not.toHaveBeenCalled();
+  // The real acceptance criterion (issue #100): switching signers within the same round
+  // must not write to the app's actual resumable session store (IndexedDB via saveSession).
+  // sessionStorage is checked above only as an unrelated second layer of evidence - it isn't
+  // the storage layer this criterion is actually about.
+  expect(mockSaveSession).not.toHaveBeenCalled();
 });
 
 test("execution-wizard › normal (non-multisig) failure still shows the retry branch, not signing progress", async () => {

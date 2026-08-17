@@ -40,8 +40,8 @@ export default function SigningProgress({ status }: { status: SignatureStatus })
       )}
       {unsatisfiable.length > 0 && (
         <p className="text-xs text-white/45">
-          {unsatisfiable.length} signer{unsatisfiable.length === 1 ? "" : "s"} on this account use
-          a signature method LumenWipe can&apos;t yet contribute automatically
+          {unsatisfiable.length} signer{unsatisfiable.length === 1 ? "" : "s"} on this account use a
+          signature method LumenWipe can&apos;t yet contribute automatically
           {blockedByUnsatisfiable
             ? " - this close cannot complete until manual support for them ships."
             : "."}

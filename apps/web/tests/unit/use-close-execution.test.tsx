@@ -143,3 +143,136 @@ test("useCloseExecution › a second signer completes the close by resuming, not
   expect(getTransactionsCalls).toBe(1); // still 1 - resumed, did not re-fetch
   expect(useDemolishStore.getState().phase).toBe("COMPLETE");
 });
+
+// I-1: a paused signing round used to swallow a subsequent guard/generic failure with zero
+// user feedback - signatureStatus stayed non-null forever, so ExecutionWizard's
+// pendingMoreSignatures branch (phase === "STEP_FAILED" && signatureStatus !== null) kept
+// re-rendering the identical progress panel instead of ever falling through to the branch
+// that renders lastError.
+test("useCloseExecution › a guard failure while paused clears signatureStatus so the UI doesn't loop the progress panel forever", async () => {
+  const sourceKeypair = Keypair.random();
+  const cosignerKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const cosigner = cosignerKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  // Deliberately NOT one of this account's known signers - mirrors the repro in the finding:
+  // the user pastes a syntactically valid secret key that isn't actually a signer here.
+  const stranger = Keypair.random().publicKey();
+
+  const mergeXdr = unsignedMergeXdr(sourceKeypair, destination);
+
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    accountState: {
+      signers: [
+        { key: source, weight: 1, type: "ed25519_public_key" },
+        { key: cosigner, weight: 1, type: "ed25519_public_key" },
+      ],
+      thresholds: { low: 1, med: 2, high: 2 },
+    } as never,
+  } as never);
+
+  mock.module("@/lib/api/close-client", () => ({
+    fetchCloseTransactions: async () => ({
+      planHash: "h",
+      status: "ready",
+      transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+      remaining: { steps: 0, requiresAnotherCall: false },
+    }),
+  }));
+
+  const { result } = renderHook(() => useCloseExecution());
+
+  // First signer: weight 1 of 2 - pauses with a real, non-null signatureStatus.
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(result.current.signatureStatus).not.toBeNull();
+
+  // A key that isn't a known signer on this account is presented next. This hits the
+  // signer-identity guard near the top of run() - before the fix, that guard set
+  // lastError/phase but never touched signatureStatus, leaving the stale paused state in
+  // place forever.
+  await act(async () => {
+    await result.current.run(coSigner(stranger));
+  });
+
+  expect(result.current.signatureStatus).toBeNull();
+  expect(useDemolishStore.getState().lastError).toMatch(
+    /isn't one of this account's known signers/
+  );
+  expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
+});
+
+// I-2: on a RESUMED envelope, the old `signedTx.signatures.length === 0` guard is vacuous -
+// the envelope already carries >= 1 signature before this signer even touches it. Re-signing
+// with an already-contributed key still increases raw signature count (stellar-sdk's
+// Transaction.sign() doesn't dedupe), so only a check that's actually about THIS signer's
+// contribution (weight, which evaluateSignatureContributions dedupes by key) can catch it.
+test("useCloseExecution › resigning with an already-contributed key on resume throws instead of corrupting the envelope", async () => {
+  const sourceKeypair = Keypair.random();
+  const cosignerKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const cosigner = cosignerKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+
+  const mergeXdr = unsignedMergeXdr(sourceKeypair, destination);
+
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    accountState: {
+      signers: [
+        { key: source, weight: 1, type: "ed25519_public_key" },
+        { key: cosigner, weight: 1, type: "ed25519_public_key" },
+      ],
+      thresholds: { low: 1, med: 2, high: 2 },
+    } as never,
+  } as never);
+
+  let getTransactionsCalls = 0;
+  mock.module("@/lib/api/close-client", () => ({
+    fetchCloseTransactions: async () => {
+      getTransactionsCalls++;
+      return {
+        planHash: "h",
+        status: "ready",
+        transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+        remaining: { steps: 0, requiresAnotherCall: false },
+      };
+    },
+  }));
+
+  const { result } = renderHook(() => useCloseExecution());
+
+  // First signer: weight 1 of 2 required - pauses.
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(result.current.signatureStatus?.accumulatedWeight).toBe(1);
+  expect(getTransactionsCalls).toBe(1);
+
+  // The SAME key resumes and signs again - e.g. the user re-clicked "Add signature" without
+  // switching wallets. Before the fix this silently appended a redundant duplicate signature
+  // and paused again looking "normal"; the corruption only surfaced later as tx_bad_auth_extra
+  // once a real second signer's signature pushed the total past what the network accepts.
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+
+  expect(useDemolishStore.getState().lastError).toMatch(/didn't add a new signature/);
+  expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
+  // A genuine (non-weight) failure - per the I-1 fix, the resumable pending state is cleared
+  // entirely rather than left pointing at a now-corrupted envelope.
+  expect(result.current.signatureStatus).toBeNull();
+  expect(getTransactionsCalls).toBe(1); // resumed onto the paused envelope, did not re-fetch
+});

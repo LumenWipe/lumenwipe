@@ -66,6 +66,13 @@ export function useCloseExecution() {
   const run = useCallback(
     async (signer: TransactionSigner): Promise<void> => {
       if (!sourceAddress || !destinationAddress) {
+        // Both guards below run before the try/catch that normally clears this pending
+        // state on an unrelated failure - without clearing it here too, a paused
+        // ("needs another signer") panel would stay stuck on screen forever with no
+        // indication anything went wrong, since ExecutionWizard only renders `lastError`
+        // once `signatureStatus` is cleared.
+        pendingRoundRef.current = null;
+        setSignatureStatus(null);
         setLastError("Missing account or destination.");
         setPhase("STEP_FAILED");
         return;
@@ -76,6 +83,8 @@ export function useCloseExecution() {
       // apps/api/src/lib/stellar/account.ts), for a multisig account it's any co-signer.
       const knownSigners = useDemolishStore.getState().accountState?.signers ?? [];
       if (!knownSigners.some((s) => s.key === signer.publicKey)) {
+        pendingRoundRef.current = null;
+        setSignatureStatus(null);
         setLastError(
           "The signer you're using isn't one of this account's known signers. Reconnect the correct wallet or secret key and try again."
         );
@@ -157,6 +166,18 @@ export function useCloseExecution() {
               const approvedHash = TransactionBuilder.fromXDR(xdr, passphrase)
                 .hash()
                 .toString("hex");
+              // On a fresh envelope this is 0. On a RESUMED envelope it already carries a
+              // prior signer's contribution - captured here (not just "length === 0" on the
+              // result) so a signer who does nothing, OR re-signs with a key that already
+              // contributed, is caught below rather than silently passing. Weight, not raw
+              // signature count: Transaction.sign() unconditionally appends a decorated
+              // signature even for an already-used key (stellar-sdk doesn't dedupe), so a
+              // same-key re-sign would still increase signature count while contributing
+              // nothing new - evaluateSignatureContributions dedupes by signer key, so weight
+              // only goes up when a signer that hadn't yet contributed actually does.
+              const preSignWeight = accumulatedWeight(
+                evaluateSignatureContributions(xdr, passphrase, accountState?.signers ?? [])
+              );
               const signedXdr = await signer.sign(xdr, passphrase);
 
               // A connected wallet (WalletKitSigner) is a black box outside this app's trust
@@ -165,9 +186,6 @@ export function useCloseExecution() {
               // could in principle return a signature over a different transaction, or no
               // signature at all. Assert both before trusting the result any further.
               const signedTx = TransactionBuilder.fromXDR(signedXdr, passphrase);
-              if (signedTx.signatures.length === 0) {
-                throw new Error("The signer did not add a signature.");
-              }
               if (signedTx.hash().toString("hex") !== approvedHash) {
                 throw new Error("The signed transaction does not match what you approved.");
               }
@@ -177,7 +195,13 @@ export function useCloseExecution() {
                 passphrase,
                 accountState?.signers ?? []
               );
-              return { xdr: signedXdr, weight: accumulatedWeight(contributions) };
+              const weight = accumulatedWeight(contributions);
+              if (weight <= preSignWeight) {
+                throw new Error(
+                  "This signer didn't add a new signature. If you already signed with this key, connect a different signer."
+                );
+              }
+              return { xdr: signedXdr, weight };
             },
             submit: async (tx: CloseTransaction, xdr: string) => {
               let finalXdr = xdr;
@@ -192,10 +216,8 @@ export function useCloseExecution() {
                 const approvedHash = TransactionBuilder.fromXDR(xdr, passphrase)
                   .hash()
                   .toString("hex");
-                const preCosignCount = TransactionBuilder.fromXDR(
-                  xdr,
-                  passphrase
-                ).signatures.length;
+                const preCosignCount = TransactionBuilder.fromXDR(xdr, passphrase).signatures
+                  .length;
                 const cosignedXdr = await requestMediatorCosignature(xdr, network);
                 const cosigned = TransactionBuilder.fromXDR(cosignedXdr, passphrase);
                 if (cosigned.hash().toString("hex") !== approvedHash) {
@@ -245,7 +267,11 @@ export function useCloseExecution() {
         }
         // A non-weight failure (network error, verify rejection) invalidates any resumable
         // state - retrying should start clean, not silently reuse a possibly-stale envelope.
+        // Clearing signatureStatus too ensures the UI falls through to the "failed" branch
+        // (which renders lastError) instead of re-rendering the "pending more signatures"
+        // panel with no explanation of what went wrong.
         pendingRoundRef.current = null;
+        setSignatureStatus(null);
         const message =
           err instanceof Error ? err.message : typeof err === "string" ? err : "The close failed.";
         setLastError(message);
