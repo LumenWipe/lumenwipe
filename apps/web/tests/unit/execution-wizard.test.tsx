@@ -119,9 +119,7 @@ test("execution-wizard › connecting a second (co-signer) wallet enables and dr
   rerender(<ExecutionWizard network="testnet" />);
 
   const addButtonAfter = await screen.findByRole("button", { name: /add signature/i });
-  await waitFor(() =>
-    expect((addButtonAfter as HTMLButtonElement).disabled).toBe(false)
-  );
+  await waitFor(() => expect((addButtonAfter as HTMLButtonElement).disabled).toBe(false));
 
   fireEvent.click(addButtonAfter);
 

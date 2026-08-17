@@ -61,9 +61,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   // unusable. For the common single-sig case, accountState.signers has just the one
   // master-key entry, so this degrades to exactly {sourceAddress} - unchanged behavior.
   const knownEd25519SignerKeys = new Set(
-    (accountState?.signers ?? [])
-      .filter((s) => s.type === "ed25519_public_key")
-      .map((s) => s.key)
+    (accountState?.signers ?? []).filter((s) => s.type === "ed25519_public_key").map((s) => s.key)
   );
   const walletAddressIsKnownSigner =
     walletConnection.address !== null && knownEd25519SignerKeys.has(walletConnection.address);
