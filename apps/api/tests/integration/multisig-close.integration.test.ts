@@ -44,6 +44,37 @@ async function accountExists(server: Horizon.Server, id: string): Promise<boolea
   }
 }
 
+// Horizon's submitTransaction rejects with an axios-style error carrying the actual result
+// codes at response.data.extras.result_codes. Narrowed with a type guard (no `any`, per this
+// repo's conventions) so the one-signer-submission assertion below can confirm the rejection
+// is genuinely an authorization failure - transaction-level "tx_failed" with an "op_bad_auth"
+// operation code, confirmed empirically against real testnet - not merely "some rejection
+// happened" (a network blip, bad sequence, etc. would carry different codes entirely).
+function transactionResultCodes(
+  err: unknown
+): { transaction: string; operations: string[] } | undefined {
+  if (typeof err !== "object" || err === null || !("response" in err)) return undefined;
+  const response = (err as { response?: unknown }).response;
+  if (typeof response !== "object" || response === null || !("data" in response)) return undefined;
+  const data = (response as { data?: unknown }).data;
+  if (typeof data !== "object" || data === null || !("extras" in data)) return undefined;
+  const extras = (data as { extras?: unknown }).extras;
+  if (typeof extras !== "object" || extras === null || !("result_codes" in extras)) return undefined;
+  const resultCodes = (extras as { result_codes?: unknown }).result_codes;
+  if (
+    typeof resultCodes !== "object" ||
+    resultCodes === null ||
+    !("transaction" in resultCodes) ||
+    !("operations" in resultCodes)
+  ) {
+    return undefined;
+  }
+  const { transaction, operations } = resultCodes as { transaction: unknown; operations: unknown };
+  if (typeof transaction !== "string" || !Array.isArray(operations)) return undefined;
+  if (!operations.every((op) => typeof op === "string")) return undefined;
+  return { transaction, operations: operations as string[] };
+}
+
 // Retries getAccountState until it reflects the just-submitted 2-of-3 SetOptions
 // configuration (all 3 signers present), or the attempt cap is hit, absorbing Soroban RPC's
 // ingestion lag relative to the Horizon-compatible endpoint the configuring transaction was
@@ -126,7 +157,19 @@ test.skipIf(!RUN_INTEGRATION)(
     // genuine 2-of-3 account on-chain, not accidentally satisfiable by one key.
     const oneSigTx = TransactionBuilder.fromXDR(unsignedXdr, Networks.TESTNET);
     oneSigTx.sign(master);
-    await expect(server.submitTransaction(oneSigTx)).rejects.toThrow();
+    let oneSigError: unknown;
+    try {
+      await server.submitTransaction(oneSigTx);
+    } catch (err) {
+      oneSigError = err;
+    }
+    expect(oneSigError).toBeDefined();
+    // Specifically an authorization failure, not just "any rejection" - confirms the
+    // account genuinely required two signatures rather than failing for an unrelated
+    // reason (bad sequence, network blip, etc).
+    const codes = transactionResultCodes(oneSigError);
+    expect(codes?.transaction).toBe("tx_failed");
+    expect(codes?.operations).toContain("op_bad_auth");
     expect(await accountExists(server, master.publicKey())).toBe(true);
 
     // A second signer (co-signer B) brings accumulated weight to 2, meeting the threshold -
