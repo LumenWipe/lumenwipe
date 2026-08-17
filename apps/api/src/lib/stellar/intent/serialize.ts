@@ -94,6 +94,10 @@ function normalizeOp(op: Transaction["operations"][number]): IntentOperation | n
         lowThreshold: op.lowThreshold == null ? null : Number(op.lowThreshold),
         medThreshold: op.medThreshold == null ? null : Number(op.medThreshold),
         highThreshold: op.highThreshold == null ? null : Number(op.highThreshold),
+        homeDomain: op.homeDomain ?? null,
+        setFlags: op.setFlags == null ? null : Number(op.setFlags),
+        clearFlags: op.clearFlags == null ? null : Number(op.clearFlags),
+        inflationDest: op.inflationDest ?? null,
       };
     case "claimClaimableBalance":
       return { type: "claim_claimable_balance", balanceId: op.balanceId };

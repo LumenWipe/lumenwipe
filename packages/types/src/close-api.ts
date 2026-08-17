@@ -79,6 +79,14 @@ export type IntentOperation =
       lowThreshold: number | null;
       medThreshold: number | null;
       highThreshold: number | null;
+      // The close flow's own normalization step never legitimately sets these - carried
+      // through so verify() can reject a SetOptions that touches them instead of silently
+      // dropping the field during decode (see docs/superpowers/plans/2026-08-17-issue-103-
+      // multisig-hardening.md Task 1 for the gap this closes).
+      homeDomain: string | null;
+      setFlags: number | null;
+      clearFlags: number | null;
+      inflationDest: string | null;
     }
   | { type: "claim_claimable_balance"; balanceId: string }
   | {
