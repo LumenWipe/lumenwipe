@@ -14,7 +14,10 @@ export interface SessionRecord {
   destinationAddress: string;
   memo: string | null;
   memoType: "text" | "id" | "hash" | null;
-  mediatorPublicKey: string | null;
+  /** Whether the close routes through the shared intermediary. The intermediary's address is
+   *  deliberately not stored: verification asserts the hand-off structurally, so nothing needs
+   *  to remember which account it was - and a resumed session cannot go stale on a rotation. */
+  mediatorRequired: boolean;
   completedSteps: CompletedStepRecord[];
   currentStepIndex: number;
   status: "in_progress" | "completed";

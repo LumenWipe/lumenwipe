@@ -1,6 +1,6 @@
 import { TransactionBuilder, StrKey, type Asset, type Transaction } from "@stellar/stellar-sdk";
 import type { AccountSigner } from "@/types/account";
-import type { IntentOperation, TxIntent } from "@/types/close-api";
+import type { IntentOperation, IntentOperationBody, TxIntent } from "@/types/close-api";
 
 function assetToString(asset: Asset): string {
   return asset.isNative() ? "native" : `${asset.getCode()}:${asset.getIssuer()}`;
@@ -53,7 +53,7 @@ function decodeSigner(signer: NonNullable<DecodedSetOptions["signer"]>): Account
 // Normalizes a single SDK operation to the safety-critical fields the intent declares.
 // Returns null for operation types the close flow never emits, so they cannot smuggle
 // effects past verification unnoticed.
-function normalizeOp(op: Transaction["operations"][number]): IntentOperation {
+function normalizeOp(op: Transaction["operations"][number]): IntentOperationBody {
   switch (op.type) {
     case "pathPaymentStrictSend":
       return {
@@ -130,7 +130,13 @@ function sumAmounts(a: string, b: string): string {
 export function intentFromXdr(xdr: string, networkPassphrase: string): TxIntent {
   const tx = TransactionBuilder.fromXDR(xdr, networkPassphrase) as Transaction;
 
-  const operations = tx.operations.map(normalizeOp);
+  // `op.source ?? tx.source` is the account an operation acts as. Carrying it per operation is
+  // what lets verification check relationships between operations - that the account which
+  // received a merge is the one forwarding the payment - instead of trusting each in isolation.
+  const operations: IntentOperation[] = tx.operations.map((op) => ({
+    ...normalizeOp(op),
+    source: op.source ?? tx.source,
+  }));
 
   const merge = operations.find(
     (o): o is Extract<IntentOperation, { type: "account_merge" }> => o.type === "account_merge"
