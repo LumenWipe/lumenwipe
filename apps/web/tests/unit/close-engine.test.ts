@@ -136,10 +136,122 @@ test("runClose › insufficient weight throws instead of submitting", async () =
   }
   expect(err).toBeInstanceOf(InsufficientSignatureWeightError);
   const weightErr = err as InsufficientSignatureWeightError;
-  expect(weightErr.accumulatedWeight).toBe(1);
-  expect(weightErr.requiredWeight).toBe(2);
-  expect(weightErr.tx.order).toBe(0);
+  expect(weightErr.pending.accumulatedWeight).toBe(1);
+  expect(weightErr.pending.requiredWeight).toBe(2);
+  expect(weightErr.pending.tx.order).toBe(0);
   expect(submitted).toEqual([]); // never submitted an under-signed transaction
+});
+
+// Bun 1.3.11's `.rejects.toSatisfy` hands the predicate the un-awaited Promise (not the
+// rejection reason) and still rethrows regardless of the predicate's return value, so this
+// uses the same try/catch pattern as the rest of this file rather than the brief's original
+// `.rejects.toSatisfy(...)` form. Assertions are unchanged from the brief.
+test("runClose › insufficient weight throws a resumable PendingRound carrying the partial xdr", async () => {
+  let err: unknown = null;
+  try {
+    await runClose({
+      getTransactions: async () => resp([tx(0), tx(1)], false),
+      verify: () => {},
+      requiredWeight: () => 2,
+      sign: async (t, xdr) => ({ xdr: `${xdr}-signed`, weight: 1 }),
+      submit: async () => "hash",
+    });
+  } catch (e) {
+    err = e;
+  }
+  expect(err).toBeInstanceOf(InsufficientSignatureWeightError);
+  const pending = (err as InstanceType<typeof InsufficientSignatureWeightError>).pending;
+  expect(pending.tx.order).toBe(0);
+  expect(pending.xdr).toBe("xdr-tx0-signed");
+  expect(pending.requiredWeight).toBe(2);
+  expect(pending.accumulatedWeight).toBe(1);
+  expect(pending.queue.map((t) => t.order)).toEqual([1]);
+  expect(pending.requiresAnotherCall).toBe(false);
+});
+
+test("runClose › resume signs onto the carried xdr, never re-fetching or re-verifying that tx", async () => {
+  const verifyCalls: number[] = [];
+  const signXdrs: string[] = [];
+  let getTransactionsCalls = 0;
+
+  const pending = {
+    tx: tx(0),
+    xdr: "xdr-tx0-signed-by-A",
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    queue: [tx(1)],
+    requiresAnotherCall: false,
+  };
+
+  await runClose(
+    {
+      getTransactions: async () => {
+        getTransactionsCalls++;
+        return resp([], false);
+      },
+      verify: (t) => {
+        verifyCalls.push(t.order);
+      },
+      requiredWeight: () => 2,
+      sign: async (t, xdr) => {
+        signXdrs.push(xdr);
+        return { xdr: `${xdr}-by-B`, weight: 2 };
+      },
+      submit: async () => "hash",
+    },
+    pending
+  );
+
+  expect(signXdrs[0]).toBe("xdr-tx0-signed-by-A"); // resumed onto the carried xdr, not tx.xdr
+  expect(verifyCalls).toEqual([1]); // tx0 not re-verified; tx1 (the queue) is verified once
+  expect(getTransactionsCalls).toBe(0); // requiresAnotherCall was false - no refetch
+});
+
+test("runClose › resume that clears threshold continues the queue, then fetches another round if required", async () => {
+  const submitted: number[] = [];
+  const rounds = [resp([tx(2)], false)];
+  let i = 0;
+
+  const pending = {
+    tx: tx(0),
+    xdr: "xdr-tx0-partial",
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    queue: [tx(1)],
+    requiresAnotherCall: true,
+  };
+
+  await runClose(
+    {
+      getTransactions: async () => rounds[i++],
+      verify: () => {},
+      requiredWeight: () => 2,
+      sign: async (t, xdr) => ({ xdr, weight: 2 }),
+      submit: async (t) => {
+        submitted.push(t.order);
+        return `hash-${t.order}`;
+      },
+    },
+    pending
+  );
+
+  expect(submitted).toEqual([0, 1, 2]);
+  expect(i).toBe(1);
+});
+
+test("runClose › exact boundary (accumulated === required) submits, does not throw", async () => {
+  const submitted: number[] = [];
+  await runClose({
+    getTransactions: async () => resp([tx(0)], false),
+    verify: () => {},
+    requiredWeight: () => 2,
+    sign: async (t, xdr) => ({ xdr, weight: 2 }),
+    submit: async (t) => {
+      submitted.push(t.order);
+      return "hash";
+    },
+  });
+  expect(submitted).toEqual([0]);
 });
 
 test("runClose › bounded rounds - never loops forever", async () => {
