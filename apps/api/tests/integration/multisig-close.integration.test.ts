@@ -12,10 +12,23 @@ import {
 } from "@stellar/stellar-sdk";
 import { getAccountState } from "@/lib/stellar/account-state";
 import { buildCloseTransactions } from "@/lib/close-api/build-transactions";
+import type { AccountState } from "@lumenwipe/types";
 
 const FRIENDBOT = "https://friendbot.stellar.org";
 const HORIZON_URL = "https://horizon-testnet.stellar.org";
 const RUN_INTEGRATION = !!process.env.LUMENWIPE_RUN_INTEGRATION;
+
+// The public Soroban RPC testnet endpoint is a different provider from the Horizon-compatible
+// one configureTx below is confirmed against, and is load-balanced across nodes that lag each
+// other and lag Horizon (see the same phenomenon documented in sponsorship.integration.test.ts
+// and src/config/constants.ts's ACCOUNT_VISIBILITY_* comment). buildCloseTransactions reads the
+// account's live sequence number from RPC (build-transactions.ts:89-91), so if RPC hasn't yet
+// ingested the just-submitted SetOptions transaction that configures the 2-of-3, it could build
+// against a stale sequence number - a spurious tx_bad_seq unrelated to the security property
+// this test actually proves. ~20s of total patience observed sufficient during manual testnet
+// runs of the same lag on the sponsorship path.
+const ACCOUNT_STATE_POLL_MAX_ATTEMPTS = 8;
+const ACCOUNT_STATE_POLL_DELAY_MS = 2500;
 
 async function fund(publicKey: string): Promise<void> {
   const res = await fetch(`${FRIENDBOT}?addr=${publicKey}`);
@@ -29,6 +42,29 @@ async function accountExists(server: Horizon.Server, id: string): Promise<boolea
   } catch {
     return false;
   }
+}
+
+// Retries getAccountState until it reflects the just-submitted 2-of-3 SetOptions
+// configuration (all 3 signers present), or the attempt cap is hit, absorbing Soroban RPC's
+// ingestion lag relative to the Horizon-compatible endpoint the configuring transaction was
+// confirmed against. Also retries through a transient AccountNotFoundError, matching
+// readAccountStateUntilSponsoring's rationale in sponsorship.integration.test.ts.
+async function readAccountStateUntilSignersConfigured(publicKey: string): Promise<AccountState> {
+  let lastState: AccountState | null = null;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < ACCOUNT_STATE_POLL_MAX_ATTEMPTS; attempt++) {
+    try {
+      lastState = await getAccountState(publicKey, "testnet");
+      if (lastState.signers.length === 3) return lastState;
+    } catch (err) {
+      lastError = err;
+    }
+    await new Promise((resolve) => setTimeout(resolve, ACCOUNT_STATE_POLL_DELAY_MS));
+  }
+  // Out of attempts: return the last successful read (if any) so the assertions below
+  // report the real mismatch, rather than masking it behind a retry error.
+  if (lastState) return lastState;
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 test.skipIf(!RUN_INTEGRATION)(
@@ -64,8 +100,10 @@ test.skipIf(!RUN_INTEGRATION)(
     await server.submitTransaction(configureTx);
 
     // This is the function under test: confirms account-state reading surfaces the real
-    // multisig signer set and thresholds this close will need to satisfy.
-    const accountState = await getAccountState(master.publicKey(), "testnet");
+    // multisig signer set and thresholds this close will need to satisfy. Polls rather than
+    // reading once immediately, since RPC (the provider buildCloseTransactions reads from
+    // below) can lag Horizon's already-confirmed configureTx by several seconds.
+    const accountState = await readAccountStateUntilSignersConfigured(master.publicKey());
     expect(accountState.signers).toHaveLength(3);
     expect(accountState.thresholds).toEqual({ low: 1, med: 2, high: 2 });
 
