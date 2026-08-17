@@ -1,5 +1,5 @@
 import { test, expect, mock, beforeEach } from "bun:test";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { Keypair } from "@stellar/stellar-sdk";
 import ExecutionWizard from "@/components/execution/ExecutionWizard";
 import { useDemolishStore } from "@/store/demolish";
@@ -54,6 +54,17 @@ beforeEach(() => {
     mediatorRequired: false,
     phase: "STEP_EXECUTING",
     lastError: null,
+    // Required for the I1 fix: ExecutionWizard only treats a connected wallet as the
+    // active signer when its address is a known ed25519 signer on the account, per
+    // accountState.signers - not bare equality to sourceAddress. Without this, the
+    // second-wallet-switch test below couldn't pass even with the fix correctly applied.
+    accountState: {
+      signers: [
+        { key: source, weight: 1, type: "ed25519_public_key" },
+        { key: cosigner, weight: 1, type: "ed25519_public_key" },
+      ],
+      thresholds: { low: 1, med: 2, high: 2 },
+    } as never,
   } as never);
 });
 
@@ -73,7 +84,7 @@ test("execution-wizard › shows signing progress and remaining signers when wei
   expect(screen.getByRole("button", { name: /add signature/i })).toBeDefined();
 });
 
-test("execution-wizard › switching to a second wallet updates weight without resetting progress", async () => {
+test("execution-wizard › connecting a second (co-signer) wallet enables and drives the Add signature CTA", async () => {
   currentSignatureStatus = {
     requiredWeight: 2,
     accumulatedWeight: 1,
@@ -85,17 +96,37 @@ test("execution-wizard › switching to a second wallet updates weight without r
   const originalSetItem = window.sessionStorage.setItem.bind(window.sessionStorage);
   window.sessionStorage.setItem = setItemSpy as typeof originalSetItem;
 
-  runImpl = async () => {
+  const runSpy = mock(async (_signer: { publicKey: string }) => {
     // Simulate the second signer clearing the threshold.
     currentSignatureStatus = null;
     useDemolishStore.setState({ phase: "COMPLETE" } as never);
-  };
+  });
+  runImpl = runSpy;
 
-  render(<ExecutionWizard network="testnet" />);
-  currentWalletAddress = cosigner; // second wallet connects, matching a remaining signer
+  const { rerender } = render(<ExecutionWizard network="testnet" />);
 
-  const addButton = await screen.findByRole("button", { name: /add signature/i });
-  expect(addButton).toBeDefined();
+  // Before the co-signer's wallet connects, the CTA has no signer to use yet.
+  const addButtonBefore = await screen.findByRole("button", { name: /add signature/i });
+  expect((addButtonBefore as HTMLButtonElement).disabled).toBe(true);
+
+  // The co-signer's wallet connects - this is exactly what I1 fixed: previously
+  // ExecutionWizard only ever recognized a connected wallet matching sourceAddress, so a
+  // correctly-connected co-signer wallet (necessarily a DIFFERENT key from sourceAddress)
+  // would never populate the signer and this CTA would stay disabled forever. Re-rendering
+  // with the updated mock wallet address is what actually drives that code path, unlike a
+  // plain module-level variable assignment with no render in between.
+  currentWalletAddress = cosigner;
+  rerender(<ExecutionWizard network="testnet" />);
+
+  const addButtonAfter = await screen.findByRole("button", { name: /add signature/i });
+  await waitFor(() =>
+    expect((addButtonAfter as HTMLButtonElement).disabled).toBe(false)
+  );
+
+  fireEvent.click(addButtonAfter);
+
+  await waitFor(() => expect(runSpy).toHaveBeenCalledTimes(1));
+  expect(runSpy.mock.calls[0]?.[0]?.publicKey).toBe(cosigner);
 
   window.sessionStorage.setItem = originalSetItem;
   expect(setItemSpy).not.toHaveBeenCalled();

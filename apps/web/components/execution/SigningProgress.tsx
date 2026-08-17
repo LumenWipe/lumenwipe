@@ -10,6 +10,12 @@ export default function SigningProgress({ status }: { status: SignatureStatus })
   const pct = Math.min(100, Math.round((accumulatedWeight / requiredWeight) * 100));
   const satisfiable = remainingSigners.filter((s) => s.type === "ed25519_public_key");
   const unsatisfiable = remainingSigners.filter((s) => s.type !== "ed25519_public_key");
+  // The unsatisfiable signers only actually block completion when the satisfiable ones
+  // alone can't clear the remaining weight - e.g. a 2-of-3 account short by 1 with two
+  // ed25519 co-signers still un-contributed and one pre-auth-tx signer un-contributed
+  // is NOT blocked, since either ed25519 signer closes it out.
+  const satisfiableWeight = satisfiable.reduce((sum, s) => sum + s.weight, 0);
+  const blockedByUnsatisfiable = satisfiableWeight < remaining;
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-white/10 bg-white/[0.02] p-4">
@@ -35,8 +41,10 @@ export default function SigningProgress({ status }: { status: SignatureStatus })
       {unsatisfiable.length > 0 && (
         <p className="text-xs text-white/45">
           {unsatisfiable.length} signer{unsatisfiable.length === 1 ? "" : "s"} on this account use
-          a signature method LumenWipe can&apos;t yet contribute automatically - this close cannot
-          complete until manual support for them ships.
+          a signature method LumenWipe can&apos;t yet contribute automatically
+          {blockedByUnsatisfiable
+            ? " - this close cannot complete until manual support for them ships."
+            : "."}
         </p>
       )}
     </div>

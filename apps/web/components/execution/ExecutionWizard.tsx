@@ -28,11 +28,11 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const signerRef = useRef<TransactionSigner | null>(null);
 
   const executionPlan = useDemolishStore((s) => s.executionPlan);
-  const sourceAddress = useDemolishStore((s) => s.sourceAddress);
   const destinationAddress = useDemolishStore((s) => s.destinationAddress);
   const mediatorRequired = useDemolishStore((s) => s.mediatorRequired);
   const phase = useDemolishStore((s) => s.phase);
   const lastError = useDemolishStore((s) => s.lastError);
+  const accountState = useDemolishStore((s) => s.accountState);
 
   const { run, progressStatus, signatureStatus } = useCloseExecution();
   const walletConnection = useWalletKitConnection(network);
@@ -52,8 +52,21 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   // local UI override. Reset whenever a fresh attempt starts.
   const [changingSigner, setChangingSigner] = useState(false);
 
-  const walletAddressMatchesSource =
-    walletConnection.address !== null && walletConnection.address === sourceAddress;
+  // Only ed25519 signers can ever be satisfied by a connected wallet - hash(x)/pre-auth-tx
+  // signers use different strkey prefixes and could never equal a wallet's `G...` address.
+  // Matches the criterion Task 2 already applies one layer down in useCloseExecution.ts
+  // (membership in accountState.signers, not bare equality to sourceAddress) - for a
+  // multisig account, a co-signer's public key is by definition never === sourceAddress,
+  // so gating on that alone would leave a correctly-connected co-signer wallet permanently
+  // unusable. For the common single-sig case, accountState.signers has just the one
+  // master-key entry, so this degrades to exactly {sourceAddress} - unchanged behavior.
+  const knownEd25519SignerKeys = new Set(
+    (accountState?.signers ?? [])
+      .filter((s) => s.type === "ed25519_public_key")
+      .map((s) => s.key)
+  );
+  const walletAddressIsKnownSigner =
+    walletConnection.address !== null && knownEd25519SignerKeys.has(walletConnection.address);
   const signerReady = mode === "wallet" ? walletAddress !== null : keyEntered;
 
   const clearSigner = useCallback(() => {
@@ -66,11 +79,13 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   // Sync the active signer from the shared wallet-connection hook - this covers
   // both an explicit "Connect wallet" click AND a session already connected during
   // account entry, which the hook detects on mount without any click at all. Only
-  // treat the connected wallet as the active signer when it matches the account
-  // actually being closed, its network matches the app's, and the user hasn't
-  // explicitly dismissed it in favor of the secret-key path; a mismatch on either
-  // axis is surfaced by WalletConnectPanel's `mismatchWarning`/`networkMismatch`
-  // instead of being silently accepted or silently ignored.
+  // treat the connected wallet as the active signer when it's a known signer on the
+  // account actually being closed (the source account's own key for single-sig, or
+  // any co-signer for multisig - see walletAddressIsKnownSigner above), its network
+  // matches the app's, and the user hasn't explicitly dismissed it in favor of the
+  // secret-key path; a mismatch on any axis is surfaced by WalletConnectPanel's
+  // `mismatchWarning`/`networkMismatch` instead of being silently accepted or
+  // silently ignored.
   //
   // The `else if (walletAddress !== null)` branch matters beyond the obvious
   // "wallet disconnected" case: `useWalletKitConnection` commits `address` and
@@ -86,7 +101,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     if (
       !walletDismissed &&
       walletConnection.address &&
-      walletAddressMatchesSource &&
+      walletAddressIsKnownSigner &&
       !walletConnection.networkMismatch
     ) {
       signerRef.current = new WalletKitSigner(walletConnection.address, (xdr, opts) =>
@@ -106,7 +121,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   }, [
     walletConnection.address,
     walletConnection.networkMismatch,
-    walletAddressMatchesSource,
+    walletAddressIsKnownSigner,
     walletDismissed,
     walletAddress,
     network,
@@ -176,8 +191,8 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const pendingMoreSignatures = phase === "STEP_FAILED" && !running && signatureStatus !== null;
   const failed = phase === "STEP_FAILED" && !running && !changingSigner && !pendingMoreSignatures;
   const walletMismatchWarning =
-    walletConnection.address && !walletAddressMatchesSource
-      ? `Connected to ${walletConnection.address.slice(0, 4)}…${walletConnection.address.slice(-4)}, but you're closing ${sourceAddress ? `${sourceAddress.slice(0, 4)}…${sourceAddress.slice(-4)}` : "a different account"}. Disconnect and reconnect the right wallet.`
+    walletConnection.address && !walletAddressIsKnownSigner
+      ? `Connected to ${walletConnection.address.slice(0, 4)}…${walletConnection.address.slice(-4)}, but this isn't one of this account's known signers. Disconnect and reconnect a wallet that can sign for it.`
       : undefined;
 
   // Shared by both the "pending more signatures" branch and the normal, first-attempt
