@@ -331,6 +331,29 @@ test("buildPlan › a signed-payload signer's weight never counts toward the com
   expect(blockers[0].message).toContain("high threshold");
 });
 
+test("buildPlan › identical combined weight blocks or doesn't purely based on whether the extra signer's type is satisfiable", () => {
+  const thresholds = { low: 0, med: 3, high: 5 };
+  const signedPayloadKey = "PA" + "A".repeat(103); // shape only; buildPlan doesn't validate strkeys
+
+  const withSignedPayload = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      { key: signedPayloadKey, weight: 10, type: "ed25519_signed_payload" },
+    ],
+    thresholds,
+  });
+  expect(buildPlan(withSignedPayload, false).blockers).toHaveLength(1);
+
+  const withEd25519 = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      { key: EXTRA, weight: 10, type: "ed25519_public_key" }, // same weight, only the type changed
+    ],
+    thresholds,
+  });
+  expect(buildPlan(withEd25519, false).blockers).toHaveLength(0);
+});
+
 test("buildPlan › master weight meets high threshold → no threshold blocker", () => {
   const account = makeAccount({
     signers: [
