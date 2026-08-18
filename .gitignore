@@ -7,6 +7,9 @@ node_modules
 # testing
 coverage
 
+# Stryker mutation testing report
+reports/
+
 # next.js
 .next/
 out/
