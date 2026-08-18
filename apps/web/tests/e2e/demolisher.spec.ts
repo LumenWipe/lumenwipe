@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { confirmDestinationControl } from "./helpers/destination";
+import { dismissRiskModal, enterSourceAddress, openTestnetHome } from "./helpers/flow";
 
 const FRIENDBOT = "https://friendbot.stellar.org";
 
@@ -30,10 +31,7 @@ async function analyzeFreshAccountToDestinationStep(page: Page): Promise<string>
     await acceptRisk.waitFor({ state: "hidden", timeout: 5_000 }).catch(() => {});
   }
 
-  // AccountEntryForm defaults to the "Connect wallet" tab (AccountEntryForm.tsx L22);
-  // the "Paste address" tab must be selected explicitly before its "G..." input exists.
-  await page.getByRole("button", { name: /Paste address/i }).click();
-  await page.getByPlaceholder(/G\.\.\. \(the account to merge\)/).fill(source.publicKey());
+  await enterSourceAddress(page, source.publicKey());
 
   const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
   await expect(analyzeButton).toBeEnabled();
@@ -105,22 +103,8 @@ test("analyze page redirects to home when no source param", async ({ page }) => 
 });
 
 test("source address input rejects invalid input visually", async ({ page }) => {
-  await page.goto("/testnet");
-
-  // The risk-disclaimer modal blocks the page on the first visit of a session and
-  // intercepts pointer events until accepted - dismiss it before driving the form.
-  const acceptRisk = page.getByRole("button", { name: /I understand, continue/i });
-  await acceptRisk.waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
-  if (await acceptRisk.isVisible().catch(() => false)) {
-    await acceptRisk.click();
-    await acceptRisk.waitFor({ state: "hidden", timeout: 5_000 }).catch(() => {});
-  }
-
-  // AccountEntryForm defaults to the "Connect wallet" tab (AccountEntryForm.tsx L22);
-  // the "Paste address" tab must be selected explicitly before its "G..." input exists.
-  await page.getByRole("button", { name: /Paste address/i }).click();
-  const sourceInput = page.getByPlaceholder(/G\.\.\. \(the account to merge\)/);
-  await sourceInput.fill("NOTANADDRESS");
+  await openTestnetHome(page);
+  await enterSourceAddress(page, "NOTANADDRESS");
 
   const button = page.getByRole("button", { name: /Analyze account/i });
   await expect(button).toBeDisabled();

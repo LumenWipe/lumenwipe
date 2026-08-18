@@ -215,6 +215,15 @@ Run with `bun test:e2e`. Playwright drives a real browser against **testnet** th
 bun test:e2e
 ```
 
+Playwright starts both the API and the web app itself, so this works from a clean checkout with no second terminal.
+
+**When it runs, and who looks.** These specs hit live testnet and take ten-plus minutes, so they are deliberately not part of the per-PR checks — `ci.yml` runs `type-check lint test` only. They run on a schedule instead, at 07:00 UTC daily (`.github/workflows/e2e-nightly.yml`), and can be triggered by hand from the Actions tab. **A failing night opens a GitHub issue, and the next green run closes it.** That is the mechanism: a red run in the Actions tab is the same as no signal at all if nobody is looking, which is exactly how five specs stayed broken for days after a UI change (#95, #119).
+
+Two consequences worth knowing:
+
+- **A UI change can break these without any check going red on your PR.** If you move or rename something the flows drive - the account-address field, the risk notice, a button label - update `tests/e2e/helpers/` in the same change. The shared steps live there so it is one edit rather than one per spec.
+- **A nightly failure means the irreversible close path is unverified until it is fixed.** Testnet is occasionally flaky, so read the report artifact before concluding the tests are simply wrong.
+
 ### What to test for a new protocol exit
 
 At minimum:

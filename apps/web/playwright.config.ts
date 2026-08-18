@@ -16,10 +16,23 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
-    command: "bun run dev",
-    url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  // Both services, because the web reaches the backend only through its own proxy - a suite
+  // started against the web alone fails on the first analyze with a connection error that
+  // looks like an application bug. Starting them here means `bun test:e2e` works from a clean
+  // checkout instead of depending on a second terminal nobody documented.
+  webServer: [
+    {
+      command: "bun run dev:api",
+      cwd: "../..",
+      url: "http://localhost:3001/health",
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      command: "bun run dev",
+      url: "http://localhost:3000",
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+  ],
 });
