@@ -8,6 +8,13 @@ import {
   BASE_FEE,
 } from "@stellar/stellar-sdk";
 import { confirmDestinationControl } from "./helpers/destination";
+import {
+  enterSecretKey,
+  enterSourceAddress,
+  expectSigningPanel,
+  openTestnetHome,
+  TESTNET_STEP_TIMEOUT,
+} from "./helpers/flow";
 
 // E2E coverage for "the multisig path" - named as an explicit target in
 // docs/architecture.md §17 and never previously exercised end to end. Configures a real
@@ -99,11 +106,8 @@ test("multisig close: a 2-of-3 account signs with two keys in sequence and merge
   await driveToExecute(page, { source: master.publicKey(), destination: destination.publicKey() });
 
   // Round 1: sign with the master key alone (weight 1) - insufficient for the high
-  // threshold (2) this fused merge needs. ExecutionWizard defaults to the "Connect
-  // wallet" tab, so the secret-key tab must be selected explicitly before its "S..."
-  // input exists in the DOM (ExecutionWizard.tsx renderSignerPicker, ~L211-269).
-  await page.getByRole("button", { name: /Use secret key \(advanced\)/i }).click();
-  await page.getByPlaceholder("S...").fill(master.secret());
+  // threshold (2) this fused merge needs.
+  await enterSecretKey(page, master.secret());
   await page.getByRole("checkbox").check();
   await page.getByRole("button", { name: /Sign .* execute close/i }).click();
 
@@ -112,10 +116,10 @@ test("multisig close: a 2-of-3 account signs with two keys in sequence and merge
   await expect(page.getByText(/more signing weight/i)).toBeVisible({ timeout: 30_000 });
 
   // Round 2: swap to the second co-signer via the secret-key tab's "Forget key" control,
-  // then add its signature. The signer picker stays on the secret-key tab (mode is
-  // unchanged by forgetKey()), so the "S..." input reappears without reselecting the tab.
+  // then add its signature. Reselecting the already-active tab is a no-op, so the shared
+  // helper works here too rather than a second way of doing the same thing.
   await page.getByRole("button", { name: /Forget key/i }).click();
-  await page.getByPlaceholder("S...").fill(coSignerB.secret());
+  await enterSecretKey(page, coSignerB.secret());
   await page.getByRole("button", { name: /Add signature/i }).click();
 
   await expect(page).toHaveURL(/\/testnet\/complete/, { timeout: 90_000 });
@@ -129,17 +133,8 @@ async function driveToExecute(
   page: Page,
   opts: { source: string; destination: string }
 ): Promise<void> {
-  await page.goto("/testnet");
-
-  const acceptRisk = page.getByRole("button", { name: /I understand, continue/i });
-  if (await acceptRisk.isVisible().catch(() => false)) {
-    await acceptRisk.click();
-  }
-
-  // AccountEntryForm defaults to the "Connect wallet" tab (AccountEntryForm.tsx L22);
-  // the "Paste address" tab must be selected explicitly before its "G..." input exists.
-  await page.getByRole("button", { name: /Paste address/i }).click();
-  await page.getByPlaceholder(/G\.\.\. \(the account to merge\)/).fill(opts.source);
+  await openTestnetHome(page);
+  await enterSourceAddress(page, opts.source);
   const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
   await expect(analyzeButton).toBeEnabled();
   await analyzeButton.click();
@@ -152,19 +147,15 @@ async function driveToExecute(
   await expect(beginButton).toBeEnabled();
   await beginButton.click();
 
-  await expect(page).toHaveURL(/\/testnet\/review/);
+  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
   const proceedButton = page.getByRole("button", {
     name: /I understand this plan and want to proceed/i,
   });
+  await expect(proceedButton).toBeDisabled({ timeout: TESTNET_STEP_TIMEOUT });
   await page.getByRole("checkbox").check();
   await expect(proceedButton).toBeEnabled();
   await proceedButton.click();
 
-  await expect(page).toHaveURL(/\/testnet\/execute/);
-  // ExecutionWizard's own panel heading ("Executing plan" is the page-level h1;
-  // this h2 confirms the sign-and-execute panel itself has mounted - see
-  // ExecutionWizard.tsx L286).
-  await expect(page.getByRole("heading", { name: /Sign .* execute the close/i })).toBeVisible({
-    timeout: 30_000,
-  });
+  await expect(page).toHaveURL(/\/testnet\/execute/, { timeout: TESTNET_STEP_TIMEOUT });
+  await expectSigningPanel(page);
 }

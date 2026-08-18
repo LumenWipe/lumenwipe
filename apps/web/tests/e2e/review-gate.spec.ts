@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Account, Keypair, Networks, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
 import { confirmDestinationControl } from "./helpers/destination";
+import { enterSourceAddress, openTestnetHome, TESTNET_STEP_TIMEOUT } from "./helpers/flow";
 
 // Regression coverage for issue #73: "Begin execution" must land on the whole-plan review
 // gate (/review), not skip straight into /execute, and nothing may be persisted to a
@@ -82,13 +83,6 @@ async function waitUntilIndexed(id: string, attempts = 10, delayMs = 1_500): Pro
   throw new Error(`account ${id} was not indexed in time`);
 }
 
-async function dismissRiskModal(page: Page): Promise<void> {
-  const acceptRisk = page.getByRole("button", { name: /I understand, continue/i });
-  if (await acceptRisk.isVisible().catch(() => false)) {
-    await acceptRisk.click();
-  }
-}
-
 // Drives home -> analyze -> fills destination -> clicks "Begin execution", stopping the
 // instant navigation happens - never confirms the review page.
 async function reachReviewWithoutConfirming(
@@ -96,13 +90,9 @@ async function reachReviewWithoutConfirming(
   source: Keypair,
   destination: string
 ): Promise<void> {
-  await page.goto("/testnet");
-  await dismissRiskModal(page);
+  await openTestnetHome(page);
 
-  // AccountEntryForm defaults to the "Connect wallet" tab (AccountEntryForm.tsx L22);
-  // the "Paste address" tab must be selected explicitly before its "G..." input exists.
-  await page.getByRole("button", { name: /Paste address/i }).click();
-  await page.getByPlaceholder(/G\.\.\. \(the account to merge\)/).fill(source.publicKey());
+  await enterSourceAddress(page, source.publicKey());
   const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
   await expect(analyzeButton).toBeEnabled();
   await analyzeButton.click();
@@ -129,8 +119,10 @@ test("begin execution lands on the review gate, not directly on execute", async 
 
   await reachReviewWithoutConfirming(page, source, destination.publicKey());
 
-  await expect(page).toHaveURL(/\/testnet\/review/);
-  await expect(page.getByRole("heading", { name: /Review the full plan/i })).toBeVisible();
+  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
+  await expect(page.getByRole("heading", { name: /Review the full plan/i })).toBeVisible({
+    timeout: TESTNET_STEP_TIMEOUT,
+  });
   const proceedButton = page.getByRole("button", {
     name: /I understand this plan and want to proceed/i,
   });
@@ -168,7 +160,7 @@ test("back to analyze preserves the entered destination without discarding it", 
   await submitOps(source, [Operation.manageData({ name: "lw-e2e-review-back", value: "1" })]);
 
   await reachReviewWithoutConfirming(page, source, destination.publicKey());
-  await expect(page).toHaveURL(/\/testnet\/review/);
+  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
 
   await page.getByRole("button", { name: /Back to analyze/i }).click();
 
@@ -191,7 +183,7 @@ test("no resumable session is persisted while sitting on the review gate", async
   await submitOps(source, [Operation.manageData({ name: "lw-e2e-review-2", value: "1" })]);
 
   await reachReviewWithoutConfirming(page, source, destination.publicKey());
-  await expect(page).toHaveURL(/\/testnet\/review/);
+  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
 
   // Simulate closing the tab before confirming, then reopening at home - where the
   // resumable-session recovery banner actually renders (not on /analyze).

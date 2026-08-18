@@ -9,6 +9,13 @@ import {
   type xdr,
 } from "@stellar/stellar-sdk";
 import { confirmDestinationControl } from "./helpers/destination";
+import {
+  enterSecretKey,
+  enterSourceAddress,
+  expectSigningPanel,
+  openTestnetHome,
+  TESTNET_STEP_TIMEOUT,
+} from "./helpers/flow";
 
 // E2E coverage for the REDESIGNED single-transaction flow, exercised end-to-end
 // against TESTNET through the real secret-key UI.
@@ -115,25 +122,12 @@ async function hasUsdcRouteFor(amount: string, attempts = 8, delayMs = 2_500): P
 
 // ── Shared UI fragments ──────────────────────────────────────────────────────────
 
-// The risk-disclaimer modal blocks the page on the first visit of a session and
-// intercepts pointer events until accepted. Dismiss it before driving the form.
-async function dismissRiskModal(page: Page): Promise<void> {
-  const acceptRisk = page.getByRole("button", { name: /I understand, continue/i });
-  if (await acceptRisk.isVisible().catch(() => false)) {
-    await acceptRisk.click();
-  }
-}
-
 // Home -> analyze with ONLY the public key (the redesigned home no longer takes a
 // destination). Lands on the analyze page once the plan preview has rendered.
 async function enterSourceAndAnalyze(page: Page, source: string): Promise<void> {
-  await page.goto("/testnet");
-  await dismissRiskModal(page);
+  await openTestnetHome(page);
 
-  // AccountEntryForm defaults to the "Connect wallet" tab (AccountEntryForm.tsx L22);
-  // the "Paste address" tab must be selected explicitly before its "G..." input exists.
-  await page.getByRole("button", { name: /Paste address/i }).click();
-  await page.getByPlaceholder(/G\.\.\. \(the account to merge\)/).fill(source);
+  await enterSourceAddress(page, source);
 
   const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
   await expect(analyzeButton).toBeEnabled();
@@ -157,40 +151,32 @@ async function enterDestinationAndBegin(page: Page, destination: string): Promis
   await beginButton.click();
 
   // Whole-plan review gate: the user must explicitly confirm before anything is built.
-  await expect(page).toHaveURL(/\/testnet\/review/);
+  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
   const proceedButton = page.getByRole("button", {
     name: /I understand this plan and want to proceed/i,
   });
-  await expect(proceedButton).toBeDisabled();
+  await expect(proceedButton).toBeDisabled({ timeout: TESTNET_STEP_TIMEOUT });
 
   // Explicit acknowledgment checkbox (the only checkbox on the review panel) gates the button.
   await page.getByRole("checkbox").check();
   await expect(proceedButton).toBeEnabled();
   await proceedButton.click();
 
-  await expect(page).toHaveURL(/\/testnet\/execute/);
+  await expect(page).toHaveURL(/\/testnet\/execute/, { timeout: TESTNET_STEP_TIMEOUT });
 }
 
 // Execute: a single fused close carries the merge, so the panel surfaces the
 // irreversible-merge warning and the "Sign & execute close" button. The secret
 // key is entered ONCE for the whole session.
 async function signSingleCloseOnce(page: Page, source: Keypair): Promise<void> {
-  // ExecutionWizard's own panel heading confirms the sign-and-execute panel itself
-  // has mounted - see ExecutionWizard.tsx L286.
-  await expect(page.getByRole("heading", { name: /Sign .* execute the close/i })).toBeVisible({
-    timeout: 30_000,
-  });
+  await expectSigningPanel(page);
 
-  // ExecutionWizard defaults to the "Connect wallet" tab; the "Use secret key
-  // (advanced)" tab must be selected explicitly before its "S..." input exists.
-  await page.getByRole("button", { name: /Use secret key \(advanced\)/i }).click();
-
-  await page.getByPlaceholder("S...").fill(source.secret());
+  await enterSecretKey(page, source.secret());
 
   // Per-step confirmation checkbox (the only checkbox on the execute panel).
   await page.getByRole("checkbox").check();
 
-  const signButton = page.getByRole("button", { name: /Sign .* execute close/i });
+  const signButton = page.getByRole("button", { name: /Sign & execute close/i });
   await expect(signButton).toBeEnabled();
   await signButton.click();
 

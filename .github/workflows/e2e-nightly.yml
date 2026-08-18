@@ -1,0 +1,135 @@
+name: e2e (testnet)
+
+# The end-to-end suite is the only automated coverage of the full irreversible close path, and
+# it cannot run on pull requests: it drives live testnet, funds accounts through friendbot, and
+# takes ten-plus minutes. Leaving it out of CI entirely is what let five specs sit broken for
+# days after #95 moved the source-address field, with nothing to say so - so it runs nightly
+# instead, and a failure opens an issue rather than sitting in a tab nobody opens.
+
+on:
+  schedule:
+    # 07:00 UTC daily - after Europe's morning, before the Americas start.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-testnet
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    name: close flow against testnet
+    runs-on: ubuntu-latest
+    # The suite's own per-test budgets sum to roughly 38 minutes, and `retries: 2` lets one
+    # failing test consume three times its own. A kill here is reported as a plain failure with
+    # no artifact, which is indistinguishable from the close path actually breaking.
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: bunx playwright install --with-deps chromium
+        working-directory: apps/web
+
+      - name: Run the suite
+        working-directory: apps/web
+        env:
+          # Public testnet endpoints. No secret is needed for the paths under test: the
+          # exchange/mediator flow requires a server-side mediator key and is exercised
+          # manually, so nothing here signs on behalf of an operator-held account.
+          NEXT_PUBLIC_STELLAR_RPC_TESTNET: https://soroban-testnet.stellar.org
+          NEXT_PUBLIC_HORIZON_TESTNET: https://horizon-testnet.stellar.org
+          NEXT_PUBLIC_PATH_ROUTING_API_TESTNET: https://horizon-testnet.stellar.org
+          # API_KEYS is a label=key map, so the key the API accepts is everything after the
+          # first `=`. Both sides must therefore carry the same string, not the same shape.
+          API_KEYS: ci=${{ github.run_id }}-e2e
+          LUMENWIPE_API_URL: http://localhost:3001
+          LUMENWIPE_API_KEY: ${{ github.run_id }}-e2e
+        run: bun run --filter '@lumenwipe/web' test:e2e
+
+      # Always, not only on failure: a green run that mostly skipped is the outcome worth
+      # inspecting, and it is invisible without the report. Three specs call test.skip() on
+      # live testnet conditions (no USDC liquidity, no strict-send route), and a skip does not
+      # fail the job - so "green" can mean the conversion and claim paths never ran at all.
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # A red run in the Actions tab is the same as no signal at all if nobody is looking, which is
+  # the state this workflow exists to fix. A failure becomes an issue; a later green run closes
+  # it, so a flaky night does not leave a stale one behind.
+  report:
+    name: open an issue on failure
+    needs: e2e
+    # Manual runs report too. Gating this on `schedule` meant the run you would actually use to
+    # confirm a fix could not close the issue, and left the whole reporting path impossible to
+    # exercise except by waiting for a 07:00 UTC failure.
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or close the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RESULT: ${{ needs.e2e.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE="Nightly e2e is failing against testnet"
+
+          # Exact title match against the list endpoint, not `--search ... in:title`. That
+          # qualifier tokenizes, so an unrelated open issue mentioning these words could be
+          # commented on - or closed as "green again" - and it reads a search index that lags
+          # issue creation by minutes, which duplicates the tracker. `|| true` because a
+          # transient API error here must not abort the job and swallow the whole report.
+          EXISTING=$(gh issue list --repo "$REPO" --state open --limit 200 --json number,title 2>/dev/null \
+            | jq -r --arg t "$TITLE" 'map(select(.title == $t)) | .[0].number // empty' || true)
+
+          # Only a real failure opens an issue. `needs.e2e.result` is also `cancelled` and
+          # `skipped` - a queued run superseded by a newer one, or a human stopping a hung job -
+          # and reporting those as "the close path is unverified" is the noise that trains
+          # people to ignore the tracker.
+          if [ "$RESULT" != "failure" ]; then
+            if [ "$RESULT" = "success" ] && [ -n "$EXISTING" ]; then
+              gh issue comment "$EXISTING" --repo "$REPO" --body "Nightly e2e is green again: $RUN_URL"
+              gh issue close "$EXISTING" --repo "$REPO" --reason completed
+            fi
+            exit 0
+          fi
+
+          BODY=$(printf '%s\n' \
+            "The nightly end-to-end suite failed against testnet." \
+            "" \
+            "Run: $RUN_URL" \
+            "" \
+            "This suite is the only automated coverage of the full irreversible close path, so a" \
+            "failure here means that path is unverified until it is fixed - it does not mean the" \
+            "tests are wrong. Testnet flakiness is possible; download the playwright-report" \
+            "artifact from the run above before assuming either." \
+            "" \
+            "This issue closes itself on the next green run, including a manual one from the" \
+            "Actions tab - so a fix can be confirmed without waiting for 07:00 UTC.")
+
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --repo "$REPO" --body "Still failing: $RUN_URL"
+          else
+            # Assigned, not just labelled: an unassigned issue in the backlog is the same
+            # "nobody is looking" failure this workflow exists to fix, one level removed.
+            gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY" \
+              --label bug --label area:web --assignee miguelnietoa
+          fi

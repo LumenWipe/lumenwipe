@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Keypair } from "@stellar/stellar-sdk";
+import { enterSourceAddress, openTestnetHome } from "./helpers/flow";
 
 // Regression coverage for issue #115: the exchange registry used to fail open. An address it
 // did not recognize was treated as a personal wallet, so the close built a direct
@@ -38,27 +39,10 @@ async function waitUntilIndexed(id: string, attempts = 10, delayMs = 1_500): Pro
   throw new Error(`account ${id} was not indexed in time`);
 }
 
-async function dismissRiskModal(page: Page): Promise<void> {
-  const acceptRisk = page.getByRole("button", { name: /I understand, continue/i });
-  // The notice renders after hydration, so a bare isVisible() check can run before it exists
-  // and leave the overlay silently intercepting clicks on the form beneath it. Wait for it,
-  // then wait for it to go away, rather than racing it.
-  await acceptRisk.waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
-  if (await acceptRisk.isVisible().catch(() => false)) {
-    await acceptRisk.click();
-    await acceptRisk.waitFor({ state: "detached", timeout: 10_000 }).catch(() => {});
-  }
-}
-
 // Drives home -> analyze and stops at the destination panel, without entering a destination.
 async function reachDestinationStep(page: Page, source: Keypair): Promise<void> {
-  await page.goto("/testnet");
-  await dismissRiskModal(page);
-
-  // Connecting a wallet is the primary path since #95, so the raw address field is behind
-  // "Paste address". These tests drive an address only - they never sign anything.
-  await page.getByRole("button", { name: /Paste address/i }).click();
-  await page.getByPlaceholder(/G\.\.\. \(the account to merge\)/).fill(source.publicKey());
+  await openTestnetHome(page);
+  await enterSourceAddress(page, source.publicKey());
   const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
   await expect(analyzeButton).toBeEnabled();
   await analyzeButton.click();

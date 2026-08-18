@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { confirmDestinationControl } from "./helpers/destination";
+import { enterSourceAddress, openTestnetHome, TESTNET_STEP_TIMEOUT } from "./helpers/flow";
 
 const FRIENDBOT = "https://friendbot.stellar.org";
 
@@ -17,23 +18,9 @@ async function analyzeFreshAccountToDestinationStep(page: Page): Promise<string>
   const source = Keypair.random();
   await fund(source.publicKey());
 
-  await page.goto("/testnet");
+  await openTestnetHome(page);
 
-  // A risk-disclaimer modal blocks the page on the first visit of a session and
-  // intercepts pointer events until accepted. It animates in after load, so wait for
-  // it to mount before checking, then wait for it to detach before driving the form -
-  // an instant visibility check races the mount and leaves the overlay intercepting clicks.
-  const acceptRisk = page.getByRole("button", { name: /I understand, continue/i });
-  await acceptRisk.waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
-  if (await acceptRisk.isVisible().catch(() => false)) {
-    await acceptRisk.click();
-    await acceptRisk.waitFor({ state: "hidden", timeout: 5_000 }).catch(() => {});
-  }
-
-  // AccountEntryForm defaults to the "Connect wallet" tab (AccountEntryForm.tsx L22);
-  // the "Paste address" tab must be selected explicitly before its "G..." input exists.
-  await page.getByRole("button", { name: /Paste address/i }).click();
-  await page.getByPlaceholder(/G\.\.\. \(the account to merge\)/).fill(source.publicKey());
+  await enterSourceAddress(page, source.publicKey());
 
   const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
   await expect(analyzeButton).toBeEnabled();
@@ -49,9 +36,13 @@ async function analyzeFreshAccountToDestinationStep(page: Page): Promise<string>
   return source.publicKey();
 }
 
+// Both redirect assertions wait on a route being reached for the first time, which under
+// `next dev` includes compiling it. That is a build step, not a rendered-DOM check, so the 5s
+// default is a coin flip on ordering: whichever test happens to touch the route first pays the
+// compile and the others do not.
 test("old /public route redirects to /mainnet", async ({ page }) => {
   await page.goto("/public");
-  await expect(page).toHaveURL(/\/mainnet/);
+  await expect(page).toHaveURL(/\/mainnet/, { timeout: TESTNET_STEP_TIMEOUT });
 });
 
 test("home page renders the entry form and headline", async ({ page }) => {
@@ -101,28 +92,20 @@ test("irreversible warning is visible on home page", async ({ page }) => {
 
 test("analyze page redirects to home when no source param", async ({ page }) => {
   await page.goto("/testnet/analyze");
-  await expect(page).toHaveURL(/\/testnet$/);
+  await expect(page).toHaveURL(/\/testnet$/, { timeout: TESTNET_STEP_TIMEOUT });
 });
 
 test("source address input rejects invalid input visually", async ({ page }) => {
-  await page.goto("/testnet");
-
-  // The risk-disclaimer modal blocks the page on the first visit of a session and
-  // intercepts pointer events until accepted - dismiss it before driving the form.
-  const acceptRisk = page.getByRole("button", { name: /I understand, continue/i });
-  await acceptRisk.waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
-  if (await acceptRisk.isVisible().catch(() => false)) {
-    await acceptRisk.click();
-    await acceptRisk.waitFor({ state: "hidden", timeout: 5_000 }).catch(() => {});
-  }
-
-  // AccountEntryForm defaults to the "Connect wallet" tab (AccountEntryForm.tsx L22);
-  // the "Paste address" tab must be selected explicitly before its "G..." input exists.
-  await page.getByRole("button", { name: /Paste address/i }).click();
-  const sourceInput = page.getByPlaceholder(/G\.\.\. \(the account to merge\)/);
-  await sourceInput.fill("NOTANADDRESS");
-
+  await openTestnetHome(page);
   const button = page.getByRole("button", { name: /Analyze account/i });
+
+  // Assert the enabled state first. "Disabled" is also what an empty field, a mistargeted
+  // fill, or a deleted validator produce, so without a positive control this test passes no
+  // matter what the validator does.
+  await enterSourceAddress(page, Keypair.random().publicKey());
+  await expect(button).toBeEnabled();
+
+  await page.getByPlaceholder(/G\.\.\. \(the account to merge\)/).fill("NOTANADDRESS");
   await expect(button).toBeDisabled();
 });
 

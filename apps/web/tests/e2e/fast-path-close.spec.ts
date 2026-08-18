@@ -8,6 +8,13 @@ import {
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 import { confirmDestinationControl } from "./helpers/destination";
+import {
+  enterSecretKey,
+  enterSourceAddress,
+  expectSigningPanel,
+  openTestnetHome,
+  TESTNET_STEP_TIMEOUT,
+} from "./helpers/flow";
 
 // E2E coverage for the fused single-transaction fast-path, exercised end-to-end
 // against TESTNET through the real secret-key UI (not the custodial playground
@@ -115,19 +122,9 @@ async function driveFusedClose(
   opts: { source: Keypair; destination: string }
 ): Promise<void> {
   // Home: enter ONLY the source, then analyze.
-  await page.goto("/testnet");
+  await openTestnetHome(page);
 
-  // A risk-disclaimer modal blocks the page on the first visit of a session and
-  // intercepts pointer events until accepted. Dismiss it before driving the form.
-  const acceptRisk = page.getByRole("button", { name: /I understand, continue/i });
-  if (await acceptRisk.isVisible().catch(() => false)) {
-    await acceptRisk.click();
-  }
-
-  // AccountEntryForm defaults to the "Connect wallet" tab (AccountEntryForm.tsx L22);
-  // the "Paste address" tab must be selected explicitly before its "G..." input exists.
-  await page.getByRole("button", { name: /Paste address/i }).click();
-  await page.getByPlaceholder(/G\.\.\. \(the account to merge\)/).fill(opts.source.publicKey());
+  await enterSourceAddress(page, opts.source.publicKey());
 
   const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
   await expect(analyzeButton).toBeEnabled();
@@ -150,11 +147,11 @@ async function driveFusedClose(
   await beginButton.click();
 
   // Whole-plan review gate: the user must explicitly confirm before anything is built.
-  await expect(page).toHaveURL(/\/testnet\/review/);
+  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
   const proceedButton = page.getByRole("button", {
     name: /I understand this plan and want to proceed/i,
   });
-  await expect(proceedButton).toBeDisabled();
+  await expect(proceedButton).toBeDisabled({ timeout: TESTNET_STEP_TIMEOUT });
 
   // Explicit acknowledgment checkbox (the only checkbox on the review panel) gates the button.
   await page.getByRole("checkbox").check();
@@ -163,24 +160,16 @@ async function driveFusedClose(
 
   // Execute: a single fused close carries the merge, so the panel surfaces the
   // irreversible-merge warning and the "Sign & execute close" button.
-  await expect(page).toHaveURL(/\/testnet\/execute/);
-  // ExecutionWizard's own panel heading confirms the sign-and-execute panel itself
-  // has mounted - see ExecutionWizard.tsx L286.
-  await expect(page.getByRole("heading", { name: /Sign .* execute the close/i })).toBeVisible({
-    timeout: 30_000,
-  });
-
-  // ExecutionWizard defaults to the "Connect wallet" tab; the "Use secret key
-  // (advanced)" tab must be selected explicitly before its "S..." input exists.
-  await page.getByRole("button", { name: /Use secret key \(advanced\)/i }).click();
+  await expect(page).toHaveURL(/\/testnet\/execute/, { timeout: TESTNET_STEP_TIMEOUT });
+  await expectSigningPanel(page);
 
   // Secret key (entered once, held in memory for the session).
-  await page.getByPlaceholder("S...").fill(opts.source.secret());
+  await enterSecretKey(page, opts.source.secret());
 
   // Per-step confirmation checkbox.
   await page.getByRole("checkbox").check();
 
-  const signButton = page.getByRole("button", { name: /Sign .* execute close/i });
+  const signButton = page.getByRole("button", { name: /Sign & execute close/i });
   await expect(signButton).toBeEnabled();
   await signButton.click();
 
