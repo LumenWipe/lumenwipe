@@ -91,6 +91,13 @@ export type IntentOperationBody =
       lowThreshold: number | null;
       medThreshold: number | null;
       highThreshold: number | null;
+      // The close flow's own normalization step never legitimately sets these - carried
+      // through so verify() can reject a SetOptions that touches them instead of silently
+      // dropping the field during decode (see issue #103 for the gap this closes).
+      homeDomain: string | null;
+      setFlags: number | null;
+      clearFlags: number | null;
+      inflationDest: string | null;
     }
   | { type: "claim_claimable_balance"; balanceId: string }
   | {

@@ -106,6 +106,10 @@ const setOptions = (
   lowThreshold: null,
   medThreshold: null,
   highThreshold: null,
+  homeDomain: null,
+  setFlags: null,
+  clearFlags: null,
+  inflationDest: null,
   ...over,
 });
 
@@ -362,6 +366,35 @@ test("rejects a set_options that disables the master key", () => {
 
 test("rejects a set_options that raises a threshold", () => {
   const i = intent({ operations: [setOptions({ highThreshold: 2 })] });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+});
+
+test("rejects a set_options that sets account flags", () => {
+  const i = intent({ operations: [setOptions({ signer: null, setFlags: 1 })] });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+});
+
+test("rejects a set_options that clears account flags", () => {
+  const i = intent({ operations: [setOptions({ signer: null, clearFlags: 1 })] });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+});
+
+test("rejects a set_options that changes the home domain", () => {
+  const i = intent({ operations: [setOptions({ signer: null, homeDomain: "evil.example" })] });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+});
+
+test("rejects a set_options that changes the inflation destination", () => {
+  const i = intent({ operations: [setOptions({ signer: null, inflationDest: ATTACKER })] });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+});
+
+test("a real SetOptions carrying a home-domain change is decoded and rejected (catches decode-shape bugs)", () => {
+  const txXdr = buildXdr([
+    Operation.setOptions({ homeDomain: "evil.example" }),
+    Operation.accountMerge({ destination: DEST }),
+  ]);
+  const i = intentFromXdr(txXdr, Networks.TESTNET);
   expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
 });
 

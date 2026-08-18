@@ -54,6 +54,10 @@ test("operationThresholdCategory › set_options touching a signer is high", () 
       lowThreshold: null,
       medThreshold: null,
       highThreshold: null,
+      homeDomain: null,
+      setFlags: null,
+      clearFlags: null,
+      inflationDest: null,
     }))
   ).toBe("high");
 });
@@ -67,6 +71,10 @@ test("operationThresholdCategory › set_options touching only thresholds is hig
       lowThreshold: 1,
       medThreshold: null,
       highThreshold: null,
+      homeDomain: null,
+      setFlags: null,
+      clearFlags: null,
+      inflationDest: null,
     }))
   ).toBe("high");
 });
@@ -80,6 +88,10 @@ test("operationThresholdCategory › set_options touching neither signer nor thr
       lowThreshold: null,
       medThreshold: null,
       highThreshold: null,
+      homeDomain: null,
+      setFlags: null,
+      clearFlags: null,
+      inflationDest: null,
     }))
   ).toBe("med");
 });

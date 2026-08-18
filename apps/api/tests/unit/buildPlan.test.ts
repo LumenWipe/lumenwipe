@@ -291,7 +291,7 @@ test("buildPlan › clean account → no blockers", () => {
   expect(blockers).toHaveLength(0);
 });
 
-test("buildPlan › master weight below high threshold → blocker, still has NORMALIZE_SIGNERS", () => {
+test("buildPlan › combined signer weight meets high threshold → no blocker even if master alone falls short", () => {
   const account = makeAccount({
     signers: [
       { key: MASTER, weight: 1, type: "ed25519_public_key" },
@@ -300,9 +300,58 @@ test("buildPlan › master weight below high threshold → blocker, still has NO
     thresholds: { low: 0, med: 3, high: 5 },
   });
   const { steps, blockers } = buildPlan(account, false);
+  expect(blockers).toHaveLength(0);
+  expect(steps.some((s) => s.type === "NORMALIZE_SIGNERS")).toBe(true);
+});
+
+test("buildPlan › combined satisfiable signer weight below high threshold → blocker", () => {
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      { key: EXTRA, weight: 2, type: "ed25519_public_key" },
+    ],
+    thresholds: { low: 0, med: 3, high: 5 },
+  });
+  const { blockers } = buildPlan(account, false);
   expect(blockers).toHaveLength(1);
   expect(blockers[0].message).toContain("high threshold");
-  expect(steps.some((s) => s.type === "NORMALIZE_SIGNERS")).toBe(true);
+});
+
+test("buildPlan › a signed-payload signer's weight never counts toward the combined total (genuinely unsatisfiable)", () => {
+  const signedPayloadKey = "PA" + "A".repeat(103); // shape only; buildPlan doesn't validate strkeys
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      { key: signedPayloadKey, weight: 10, type: "ed25519_signed_payload" },
+    ],
+    thresholds: { low: 0, med: 3, high: 5 },
+  });
+  const { blockers } = buildPlan(account, false);
+  expect(blockers).toHaveLength(1);
+  expect(blockers[0].message).toContain("high threshold");
+});
+
+test("buildPlan › identical combined weight blocks or doesn't purely based on whether the extra signer's type is satisfiable", () => {
+  const thresholds = { low: 0, med: 3, high: 5 };
+  const signedPayloadKey = "PA" + "A".repeat(103); // shape only; buildPlan doesn't validate strkeys
+
+  const withSignedPayload = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      { key: signedPayloadKey, weight: 10, type: "ed25519_signed_payload" },
+    ],
+    thresholds,
+  });
+  expect(buildPlan(withSignedPayload, false).blockers).toHaveLength(1);
+
+  const withEd25519 = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      { key: EXTRA, weight: 10, type: "ed25519_public_key" }, // same weight, only the type changed
+    ],
+    thresholds,
+  });
+  expect(buildPlan(withEd25519, false).blockers).toHaveLength(0);
 });
 
 test("buildPlan › master weight meets high threshold → no threshold blocker", () => {
@@ -315,6 +364,22 @@ test("buildPlan › master weight meets high threshold → no threshold blocker"
   });
   const { blockers } = buildPlan(account, false);
   expect(blockers).toHaveLength(0);
+});
+
+test("buildPlan › master key weight 0, satisfiable co-signer weight alone meets threshold → still blocked (normalization would strip the only usable signer)", () => {
+  // signerNormalizationOps always removes every non-master signer and resets thresholds to
+  // 0/1/1, but never raises masterWeight. If the master key is weight 0 and the account
+  // proceeds because *combined* weight clears the threshold, normalization leaves an
+  // account with a weight-0 master key and threshold 1 - no signer can authorize anything.
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 0, type: "ed25519_public_key" },
+      { key: EXTRA, weight: 5, type: "ed25519_public_key" },
+    ],
+    thresholds: { low: 0, med: 5, high: 5 },
+  });
+  const { blockers } = buildPlan(account, false);
+  expect(blockers.some((b) => b.message.includes("weight 0"))).toBe(true);
 });
 
 test("buildPlan › numSponsoring > 0 → blocker emitted", () => {

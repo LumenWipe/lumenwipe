@@ -271,6 +271,16 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         ) {
           throw new VerificationError("Account thresholds would be raised.");
         }
+        if (
+          op.homeDomain !== null ||
+          op.setFlags !== null ||
+          op.clearFlags !== null ||
+          op.inflationDest !== null
+        ) {
+          throw new VerificationError(
+            "This transaction would change account flags, the home domain, or the inflation destination, which a close never legitimately needs to touch."
+          );
+        }
         break;
       case "unknown":
         // normalizeOp preserves any unrecognized operation as `unknown` so it cannot be

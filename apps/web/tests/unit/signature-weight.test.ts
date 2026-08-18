@@ -211,3 +211,21 @@ test("evaluateSignatureContributions › recognizes HashXPreimageSigner's output
   ]);
   expect(accumulatedWeight(contributions)).toBe(2);
 });
+
+test("evaluateSignatureContributions › a decorated signature from a key that isn't a known signer at all contributes nothing", () => {
+  const knownSigner = Keypair.random();
+  const attacker = Keypair.random(); // not in the account's signer list at all
+  const xdr = unsignedXdr(knownSigner.publicKey());
+
+  const built = TransactionBuilder.fromXDR(xdr, Networks.TESTNET);
+  built.sign(attacker); // a real, valid signature - just from an unrelated key
+  const tamperedXdr = built.toEnvelope().toXDR("base64");
+
+  const signers: AccountSigner[] = [
+    { type: "ed25519_public_key", key: knownSigner.publicKey(), weight: 1 },
+  ];
+  const contributions = evaluateSignatureContributions(tamperedXdr, Networks.TESTNET, signers);
+
+  expect(contributions).toEqual([{ signer: signers[0], contributed: false }]);
+  expect(accumulatedWeight(contributions)).toBe(0);
+});

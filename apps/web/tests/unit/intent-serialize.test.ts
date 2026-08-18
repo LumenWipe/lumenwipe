@@ -98,6 +98,10 @@ test("intentFromXdr decodes an ed25519 signer removal with its type and key", ()
     lowThreshold: null,
     medThreshold: null,
     highThreshold: null,
+    homeDomain: null,
+    setFlags: null,
+    clearFlags: null,
+    inflationDest: null,
   });
 });
 
@@ -113,6 +117,10 @@ test("intentFromXdr decodes a hash(x) signer removal, re-encoding the raw hash t
     lowThreshold: null,
     medThreshold: null,
     highThreshold: null,
+    homeDomain: null,
+    setFlags: null,
+    clearFlags: null,
+    inflationDest: null,
   });
 });
 
@@ -128,6 +136,10 @@ test("intentFromXdr decodes a pre-auth-tx signer removal, re-encoding the raw ha
     lowThreshold: null,
     medThreshold: null,
     highThreshold: null,
+    homeDomain: null,
+    setFlags: null,
+    clearFlags: null,
+    inflationDest: null,
   });
 });
 
@@ -149,6 +161,10 @@ test("intentFromXdr decodes an ed25519 signed-payload (CAP-40) signer removal", 
     lowThreshold: null,
     medThreshold: null,
     highThreshold: null,
+    homeDomain: null,
+    setFlags: null,
+    clearFlags: null,
+    inflationDest: null,
   });
 });
 
@@ -165,5 +181,35 @@ test("intentFromXdr decodes a set_options op with no signer field as signer: nul
     lowThreshold: 0,
     medThreshold: 1,
     highThreshold: 1,
+    homeDomain: null,
+    setFlags: null,
+    clearFlags: null,
+    inflationDest: null,
+  });
+});
+
+test("intentFromXdr decodes a set_options op's flags, home domain, and inflation destination", () => {
+  const inflationTarget = Keypair.random().publicKey();
+  const xdr = txWith(
+    Operation.setOptions({
+      homeDomain: "example.com",
+      setFlags: 1,
+      clearFlags: 2,
+      inflationDest: inflationTarget,
+    })
+  );
+  const intent = intentFromXdr(xdr, Networks.TESTNET);
+  expect(intent.operations).toContainEqual({
+    source: SRC,
+    type: "set_options",
+    signer: null,
+    masterWeight: null,
+    lowThreshold: null,
+    medThreshold: null,
+    highThreshold: null,
+    homeDomain: "example.com",
+    setFlags: 1,
+    clearFlags: 2,
+    inflationDest: inflationTarget,
   });
 });

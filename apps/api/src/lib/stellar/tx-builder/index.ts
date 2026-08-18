@@ -163,23 +163,53 @@ export function buildPlan(
     });
   }
 
-  // Threshold gating: SetOptions is a HIGH-threshold operation. If the master
-  // key's weight alone cannot reach the current high threshold, the normalization
-  // tx can never be self-authorized - surface this as a blocker before building a
-  // plan that would fail at signing time.
+  // Threshold gating: SetOptions is a HIGH-threshold operation. If no combination of
+  // this app's satisfiable signers can reach the current high threshold, the normalization
+  // tx can never be authorized - surface this as a blocker before building a plan that
+  // would fail at signing time.
   const needsSignerNormalization = computeNeedsSignerNormalization(accountState);
 
   if (needsSignerNormalization) {
-    const masterSigner = signers.find((s) => s.key === masterKey);
-    const masterWeight = masterSigner?.weight ?? 0;
-    if (masterWeight < thresholds.high) {
+    // signerNormalizationOps() (signers.ts) always removes every non-master signer and resets
+    // thresholds to 0/1/1 - it never raises masterWeight. If the master key's own weight is 0,
+    // normalization would strip away every other signer and leave an account with a weight-0
+    // master key and threshold 1: nothing left able to authorize anything, ever. This is
+    // independent of the combined-weight check below - block it up front regardless of how
+    // much weight the co-signers carry.
+    const masterWeight = signers.find((s) => s.key === masterKey)?.weight ?? 0;
+    if (masterWeight < 1) {
       blockers.push({
         message:
-          `The master key has weight ${masterWeight}, but removing signers or changing thresholds ` +
-          `requires weight ${thresholds.high} (the current high threshold). ` +
-          `A hash preimage or pre-authorized transaction is needed to authorize this change. ` +
-          `This flow supports single-key authorization only.`,
+          "The master key on this account has weight 0. Removing the account's other signers " +
+          "would leave no key able to authorize any further changes to this account, so this " +
+          "flow cannot safely proceed.",
       });
+    }
+
+    // Combined weight, not the master key's alone: the signature-accumulation engine
+    // (multisig epic #97) can gather a normalization/merge signature from any signer whose
+    // type this app can actually satisfy - ed25519 (connected wallet or secret key), hash(x)
+    // (manual preimage), or pre-auth-tx (manual pre-authorized transaction) - matching
+    // apps/web/components/execution/SigningProgress.tsx's own satisfiable-weight reasoning,
+    // applied here before the guided UI ever reaches the signing step. An ed25519
+    // signed-payload signer's weight never counts: this flow has no path to satisfy one.
+    const satisfiableWeight = signers
+      .filter(
+        (s) => s.type === "ed25519_public_key" || s.type === "hash_x" || s.type === "preauth_tx"
+      )
+      .reduce((sum, s) => sum + s.weight, 0);
+    if (satisfiableWeight < thresholds.high) {
+      const totalWeight = signers.reduce((sum, s) => sum + s.weight, 0);
+      const message =
+        satisfiableWeight === totalWeight
+          ? `This account's signers can contribute at most weight ${satisfiableWeight} toward removing ` +
+            `signers or changing thresholds, but that requires weight ${thresholds.high} (the current ` +
+            `high threshold).`
+          : `This account's signers can contribute at most weight ${satisfiableWeight} toward removing ` +
+            `signers or changing thresholds, but that requires weight ${thresholds.high} (the current ` +
+            `high threshold). At least one of its signers cannot be authorized through this flow, so this ` +
+            `change can never be fully authorized.`;
+      blockers.push({ message });
     }
   }
 
