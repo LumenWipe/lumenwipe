@@ -27,8 +27,11 @@ export function buildRemoveTrustlinesTx(
   network: Network
 ): string {
   const ops = trustlineRemovalOps(trustlines);
+  // Per-operation fee: TransactionBuilder multiplies this by the operation count itself, so
+  // pre-multiplying here would double-count it (BASE_FEE_STROOPS * N passed in, then * N again
+  // by the SDK, charging N^2 instead of N).
   const builder = new TransactionBuilder(sdkAccount, {
-    fee: String(BASE_FEE_STROOPS * trustlines.length),
+    fee: String(BASE_FEE_STROOPS),
     networkPassphrase: NETWORK_PASSPHRASES[network],
   }).setTimeout(TX_TIMEOUT_SECONDS);
   for (const op of ops) builder.addOperation(op);
