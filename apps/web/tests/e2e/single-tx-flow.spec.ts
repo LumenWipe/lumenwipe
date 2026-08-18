@@ -10,10 +10,10 @@ import {
 } from "@stellar/stellar-sdk";
 import { confirmDestinationControl } from "./helpers/destination";
 import {
-  dismissRiskModal,
   enterSecretKey,
   enterSourceAddress,
   expectSigningPanel,
+  openTestnetHome,
   TESTNET_STEP_TIMEOUT,
 } from "./helpers/flow";
 
@@ -125,8 +125,7 @@ async function hasUsdcRouteFor(amount: string, attempts = 8, delayMs = 2_500): P
 // Home -> analyze with ONLY the public key (the redesigned home no longer takes a
 // destination). Lands on the analyze page once the plan preview has rendered.
 async function enterSourceAndAnalyze(page: Page, source: string): Promise<void> {
-  await page.goto("/testnet");
-  await dismissRiskModal(page);
+  await openTestnetHome(page);
 
   await enterSourceAddress(page, source);
 
@@ -156,7 +155,7 @@ async function enterDestinationAndBegin(page: Page, destination: string): Promis
   const proceedButton = page.getByRole("button", {
     name: /I understand this plan and want to proceed/i,
   });
-  await expect(proceedButton).toBeDisabled();
+  await expect(proceedButton).toBeDisabled({ timeout: TESTNET_STEP_TIMEOUT });
 
   // Explicit acknowledgment checkbox (the only checkbox on the review panel) gates the button.
   await page.getByRole("checkbox").check();

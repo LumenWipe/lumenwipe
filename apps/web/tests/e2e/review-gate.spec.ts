@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Account, Keypair, Networks, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
 import { confirmDestinationControl } from "./helpers/destination";
-import { dismissRiskModal, enterSourceAddress, TESTNET_STEP_TIMEOUT } from "./helpers/flow";
+import { enterSourceAddress, openTestnetHome, TESTNET_STEP_TIMEOUT } from "./helpers/flow";
 
 // Regression coverage for issue #73: "Begin execution" must land on the whole-plan review
 // gate (/review), not skip straight into /execute, and nothing may be persisted to a
@@ -90,8 +90,7 @@ async function reachReviewWithoutConfirming(
   source: Keypair,
   destination: string
 ): Promise<void> {
-  await page.goto("/testnet");
-  await dismissRiskModal(page);
+  await openTestnetHome(page);
 
   await enterSourceAddress(page, source.publicKey());
   const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
@@ -121,7 +120,9 @@ test("begin execution lands on the review gate, not directly on execute", async 
   await reachReviewWithoutConfirming(page, source, destination.publicKey());
 
   await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
-  await expect(page.getByRole("heading", { name: /Review the full plan/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Review the full plan/i })).toBeVisible({
+    timeout: TESTNET_STEP_TIMEOUT,
+  });
   const proceedButton = page.getByRole("button", {
     name: /I understand this plan and want to proceed/i,
   });

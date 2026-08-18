@@ -19,12 +19,21 @@ import { expect, type Page } from "@playwright/test";
  * closes the same race on the way out.
  */
 export async function dismissRiskModal(page: Page): Promise<void> {
-  const acceptRisk = page.getByRole("button", { name: /I understand, continue/i });
-  await acceptRisk.waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
-  if (await acceptRisk.isVisible().catch(() => false)) {
-    await acceptRisk.click();
-    await acceptRisk.waitFor({ state: "detached", timeout: 10_000 }).catch(() => {});
-  }
+  const notice = page.getByRole("heading", { name: /Beta Software/i });
+
+  // Absence is legitimate: the notice mounts from an effect keyed on sessionStorage, so a
+  // second navigation inside the same test never shows it. Only this wait is allowed to fail
+  // quietly.
+  await notice.waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
+  if (!(await notice.isVisible().catch(() => false))) return;
+
+  // From here the notice is provably up, so every failure is real and must surface here.
+  // Swallowing them is what left a full-screen overlay silently intercepting clicks and made
+  // the spec fail later on an unrelated locator. Anchoring on the heading rather than the
+  // button means a renamed button fails as "cannot click accept", not as a mystery timeout
+  // three steps downstream.
+  await page.getByRole("button", { name: /I understand, continue/i }).click();
+  await notice.waitFor({ state: "detached", timeout: 10_000 });
 }
 
 /**
@@ -72,9 +81,17 @@ export async function enterSecretKey(page: Page, secret: string): Promise<void> 
   await page.getByPlaceholder("S...").fill(secret);
 }
 
-/** Waits for the execute page's signing panel to be ready. */
+/**
+ * Waits for the execute page to be ready to take a signature.
+ *
+ * Deliberately not the panel heading. That heading is painted the moment `ExecutionWizard`
+ * mounts, outside the `busy` branch, so asserting on it proves only that the route rendered -
+ * it passes happily while the plan is still building, which makes it a gate that gates
+ * nothing. The signer picker renders only in the non-busy branches, so it is the first thing
+ * on the page that means what every call site here assumes.
+ */
 export async function expectSigningPanel(page: Page): Promise<void> {
-  await expect(page.getByRole("heading", { name: /Sign & execute the close/i })).toBeVisible({
+  await expect(page.getByRole("button", { name: /Use secret key \(advanced\)/i })).toBeVisible({
     timeout: TESTNET_STEP_TIMEOUT,
   });
 }

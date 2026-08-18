@@ -9,10 +9,10 @@ import {
 } from "@stellar/stellar-sdk";
 import { confirmDestinationControl } from "./helpers/destination";
 import {
-  dismissRiskModal,
   enterSecretKey,
   enterSourceAddress,
   expectSigningPanel,
+  openTestnetHome,
   TESTNET_STEP_TIMEOUT,
 } from "./helpers/flow";
 
@@ -122,14 +122,7 @@ async function driveFusedClose(
   opts: { source: Keypair; destination: string }
 ): Promise<void> {
   // Home: enter ONLY the source, then analyze.
-  await page.goto("/testnet");
-
-  // A risk-disclaimer modal blocks the page on the first visit of a session and
-  // intercepts pointer events until accepted. Dismiss it before driving the form.
-  const acceptRisk = page.getByRole("button", { name: /I understand, continue/i });
-  if (await acceptRisk.isVisible().catch(() => false)) {
-    await acceptRisk.click();
-  }
+  await openTestnetHome(page);
 
   await enterSourceAddress(page, opts.source.publicKey());
 
@@ -158,7 +151,7 @@ async function driveFusedClose(
   const proceedButton = page.getByRole("button", {
     name: /I understand this plan and want to proceed/i,
   });
-  await expect(proceedButton).toBeDisabled();
+  await expect(proceedButton).toBeDisabled({ timeout: TESTNET_STEP_TIMEOUT });
 
   // Explicit acknowledgment checkbox (the only checkbox on the review panel) gates the button.
   await page.getByRole("checkbox").check();

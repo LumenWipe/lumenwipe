@@ -209,20 +209,21 @@ bun test:watch        # watch mode during development
 
 ### End-to-end tests (`tests/e2e/`)
 
-Run with `bun test:e2e`. Playwright drives a real browser against **testnet** through full flows: account analysis, each step category, the mediator flow, session recovery. New protocol integrations require a matching E2E test that executes the full exit against a testnet account with a real position.
+Playwright drives a real browser against **testnet** through full flows: account analysis, each step category, the mediator flow, session recovery. New protocol integrations require a matching E2E test that executes the full exit against a testnet account with a real position.
 
 ```bash
-bun test:e2e
+bun run --filter '@lumenwipe/web' test:e2e
 ```
 
-Playwright starts both the API and the web app itself, so this works from a clean checkout with no second terminal.
+Playwright starts both the API and the web app itself, so no second terminal is needed — but both still read their own `.env.local`, which is gitignored and therefore absent from a fresh clone (see [Development setup](#3-development-setup)). Without `API_KEYS` on the API and `LUMENWIPE_API_URL` / `LUMENWIPE_API_KEY` on the web, every proxied call is rejected and the whole suite fails at the first analyze.
 
-**When it runs, and who looks.** These specs hit live testnet and take ten-plus minutes, so they are deliberately not part of the per-PR checks — `ci.yml` runs `type-check lint test` only. They run on a schedule instead, at 07:00 UTC daily (`.github/workflows/e2e-nightly.yml`), and can be triggered by hand from the Actions tab. **A failing night opens a GitHub issue, and the next green run closes it.** That is the mechanism: a red run in the Actions tab is the same as no signal at all if nobody is looking, which is exactly how five specs stayed broken for days after a UI change (#95, #119).
+**When it runs, and who looks.** These specs hit live testnet and take ten-plus minutes, so they are deliberately not part of the per-PR checks — `ci.yml` runs `type-check lint test` only. They run on a schedule instead, at 07:00 UTC daily (`.github/workflows/e2e-nightly.yml`), and can be triggered by hand from the Actions tab. **A failing night opens a GitHub issue assigned to the maintainer (@miguelnietoa), and the next green run — including a manual one — closes it.** That is the mechanism, and the assignment is the point: a red run in the Actions tab is the same as no signal at all if nobody is looking, and so is an unassigned issue in the backlog. It is exactly how five specs stayed broken for days after a UI change (#95, #119).
 
-Two consequences worth knowing:
+Three consequences worth knowing:
 
 - **A UI change can break these without any check going red on your PR.** If you move or rename something the flows drive - the account-address field, the risk notice, a button label - update `tests/e2e/helpers/` in the same change. The shared steps live there so it is one edit rather than one per spec.
-- **A nightly failure means the irreversible close path is unverified until it is fixed.** Testnet is occasionally flaky, so read the report artifact before concluding the tests are simply wrong.
+- **A nightly failure means the irreversible close path is unverified until it is fixed.** Testnet is occasionally flaky, so download the `playwright-report` artifact from the run before concluding the tests are simply wrong.
+- **Green does not always mean "everything ran".** Three specs call `test.skip()` when live testnet has no USDC liquidity or no strict-send route, and a skip does not fail the job. The report artifact is uploaded on every run, not just failures, so the skip count is there when a result looks suspiciously easy.
 
 ### What to test for a new protocol exit
 

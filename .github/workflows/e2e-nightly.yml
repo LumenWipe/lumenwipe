@@ -20,7 +20,10 @@ jobs:
   e2e:
     name: close flow against testnet
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The suite's own per-test budgets sum to roughly 38 minutes, and `retries: 2` lets one
+    # failing test consume three times its own. A kill here is reported as a plain failure with
+    # no artifact, which is indistinguishable from the close path actually breaking.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
 
@@ -43,18 +46,27 @@ jobs:
           NEXT_PUBLIC_STELLAR_RPC_TESTNET: https://soroban-testnet.stellar.org
           NEXT_PUBLIC_HORIZON_TESTNET: https://horizon-testnet.stellar.org
           NEXT_PUBLIC_PATH_ROUTING_API_TESTNET: https://horizon-testnet.stellar.org
+          # API_KEYS is a label=key map, so the key the API accepts is everything after the
+          # first `=`. Both sides must therefore carry the same string, not the same shape.
           API_KEYS: ci=${{ github.run_id }}-e2e
           LUMENWIPE_API_URL: http://localhost:3001
-          LUMENWIPE_API_KEY: ci-${{ github.run_id }}-e2e
-        run: bun run test:e2e
+          LUMENWIPE_API_KEY: ${{ github.run_id }}-e2e
+        run: bun run --filter '@lumenwipe/web' test:e2e
 
-      - name: Upload the report on failure
-        if: failure()
+      # Always, not only on failure: a green run that mostly skipped is the outcome worth
+      # inspecting, and it is invisible without the report. Three specs call test.skip() on
+      # live testnet conditions (no USDC liquidity, no strict-send route), and a skip does not
+      # fail the job - so "green" can mean the conversion and claim paths never ran at all.
+      - name: Upload the report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: apps/web/playwright-report/
-          retention-days: 14
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          retention-days: 30
+          if-no-files-found: warn
 
   # A red run in the Actions tab is the same as no signal at all if nobody is looking, which is
   # the state this workflow exists to fix. A failure becomes an issue; a later green run closes
@@ -62,7 +74,10 @@ jobs:
   report:
     name: open an issue on failure
     needs: e2e
-    if: always() && github.event_name == 'schedule'
+    # Manual runs report too. Gating this on `schedule` meant the run you would actually use to
+    # confirm a fix could not close the issue, and left the whole reporting path impossible to
+    # exercise except by waiting for a 07:00 UTC failure.
+    if: always()
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -76,10 +91,21 @@ jobs:
         run: |
           set -euo pipefail
           TITLE="Nightly e2e is failing against testnet"
-          EXISTING=$(gh issue list --repo "$REPO" --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
 
-          if [ "$RESULT" = "success" ]; then
-            if [ -n "$EXISTING" ]; then
+          # Exact title match against the list endpoint, not `--search ... in:title`. That
+          # qualifier tokenizes, so an unrelated open issue mentioning these words could be
+          # commented on - or closed as "green again" - and it reads a search index that lags
+          # issue creation by minutes, which duplicates the tracker. `|| true` because a
+          # transient API error here must not abort the job and swallow the whole report.
+          EXISTING=$(gh issue list --repo "$REPO" --state open --limit 200 --json number,title 2>/dev/null \
+            | jq -r --arg t "$TITLE" 'map(select(.title == $t)) | .[0].number // empty' || true)
+
+          # Only a real failure opens an issue. `needs.e2e.result` is also `cancelled` and
+          # `skipped` - a queued run superseded by a newer one, or a human stopping a hung job -
+          # and reporting those as "the close path is unverified" is the noise that trains
+          # people to ignore the tracker.
+          if [ "$RESULT" != "failure" ]; then
+            if [ "$RESULT" = "success" ] && [ -n "$EXISTING" ]; then
               gh issue comment "$EXISTING" --repo "$REPO" --body "Nightly e2e is green again: $RUN_URL"
               gh issue close "$EXISTING" --repo "$REPO" --reason completed
             fi
@@ -93,13 +119,17 @@ jobs:
             "" \
             "This suite is the only automated coverage of the full irreversible close path, so a" \
             "failure here means that path is unverified until it is fixed - it does not mean the" \
-            "tests are wrong. Testnet flakiness is possible; check the report artifact before" \
-            "assuming either." \
+            "tests are wrong. Testnet flakiness is possible; download the playwright-report" \
+            "artifact from the run above before assuming either." \
             "" \
-            "This issue closes itself on the next green run.")
+            "This issue closes itself on the next green run, including a manual one from the" \
+            "Actions tab - so a fix can be confirmed without waiting for 07:00 UTC.")
 
           if [ -n "$EXISTING" ]; then
             gh issue comment "$EXISTING" --repo "$REPO" --body "Still failing: $RUN_URL"
           else
-            gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY" --label bug --label area:web
+            # Assigned, not just labelled: an unassigned issue in the backlog is the same
+            # "nobody is looking" failure this workflow exists to fix, one level removed.
+            gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY" \
+              --label bug --label area:web --assignee miguelnietoa
           fi

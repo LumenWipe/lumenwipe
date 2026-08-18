@@ -11,10 +11,10 @@ import {
 } from "@stellar/stellar-sdk";
 import { confirmDestinationControl } from "./helpers/destination";
 import {
-  dismissRiskModal,
   enterSecretKey,
   enterSourceAddress,
   expectSigningPanel,
+  openTestnetHome,
   TESTNET_STEP_TIMEOUT,
 } from "./helpers/flow";
 
@@ -112,8 +112,7 @@ async function hasUsdcRouteFor(amount: string, attempts = 8, delayMs = 2_500): P
 }
 
 async function enterSourceAndAnalyze(page: Page, source: string): Promise<void> {
-  await page.goto("/testnet");
-  await dismissRiskModal(page);
+  await openTestnetHome(page);
 
   await enterSourceAddress(page, source);
 
@@ -139,7 +138,7 @@ async function enterDestinationAndBegin(page: Page, destination: string): Promis
   const proceedButton = page.getByRole("button", {
     name: /I understand this plan and want to proceed/i,
   });
-  await expect(proceedButton).toBeDisabled();
+  await expect(proceedButton).toBeDisabled({ timeout: TESTNET_STEP_TIMEOUT });
 
   // Explicit acknowledgment checkbox (the only checkbox on the review panel) gates the button.
   await page.getByRole("checkbox").check();
@@ -152,15 +151,13 @@ async function enterDestinationAndBegin(page: Page, destination: string): Promis
 // The secret key is entered once; the engine drives every round (claim, then cleanup+merge)
 // under the hood before the wizard advances to /complete.
 async function signMultiRoundCloseOnce(page: Page, source: Keypair): Promise<void> {
-  await expect(page.getByRole("heading", { name: /Sign.*execute the close/i })).toBeVisible({
-    timeout: 30_000,
-  });
+  await expectSigningPanel(page);
 
   await enterSecretKey(page, source.secret());
 
   await page.getByRole("checkbox").check();
 
-  const signButton = page.getByRole("button", { name: /Sign.*execute close/i });
+  const signButton = page.getByRole("button", { name: /Sign & execute close/i });
   await expect(signButton).toBeEnabled();
   await signButton.click();
 
