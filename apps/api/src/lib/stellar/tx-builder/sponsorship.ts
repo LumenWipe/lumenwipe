@@ -78,6 +78,9 @@ export function revokeSponsorshipOps(entries: SponsoredEntry[]): xdr.Operation[]
         if (op) ops.push(op);
         break;
       }
+      // Stryker disable next-line StringLiteral,ConditionalExpression: the last case in a switch
+      // with no `default` - whether it matches and does nothing, or fails to match and falls off
+      // the end, `ops` is unaffected either way. Unobservable by construction.
       case "claimable_balance":
         break;
     }

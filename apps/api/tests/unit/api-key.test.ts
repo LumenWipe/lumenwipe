@@ -35,7 +35,9 @@ test("trackerForRequest prefers the bearer key, falls back to ip", () => {
 test("throttleStorageKey buckets per (name, tracker), one bucket per key across routes", () => {
   // Takes no route input, so the same key maps to one bucket regardless of endpoint.
   expect(throttleStorageKey("default", "key_abc")).toBe(throttleStorageKey("default", "key_abc"));
-  expect(throttleStorageKey("default", "key_abc")).not.toBe(throttleStorageKey("default", "key_xyz"));
+  expect(throttleStorageKey("default", "key_abc")).not.toBe(
+    throttleStorageKey("default", "key_xyz")
+  );
   // hashed: the raw key never appears in the storage key
   expect(throttleStorageKey("default", "key_abc")).not.toContain("key_abc");
 });

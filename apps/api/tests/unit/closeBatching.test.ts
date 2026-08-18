@@ -1,6 +1,9 @@
 import { test, expect } from "bun:test";
 import { Account, Keypair, TransactionBuilder, Transaction, Networks } from "@stellar/stellar-sdk";
-import { assembleFusedCloseOpsTagged, type FusedCloseInput } from "@/lib/stellar/tx-builder/fused-close";
+import {
+  assembleFusedCloseOpsTagged,
+  type FusedCloseInput,
+} from "@/lib/stellar/tx-builder/fused-close";
 import { revokeSponsorshipOps } from "@/lib/stellar/tx-builder/sponsorship";
 import { packFusedCloseTransactions } from "@/lib/close-api/build-transactions";
 import type { SponsoredEntry } from "@lumenwipe/types";
@@ -81,7 +84,9 @@ test("a close over the op cap is split into sequence-chained transactions with t
   for (const t of txs.slice(0, -1)) expect(t.covers).not.toContain("MERGE");
 
   // Sequence numbers are chained: each built tx is the previous + 1, starting at START_SEQ + 1.
-  const seqs = txs.map((t) => (TransactionBuilder.fromXDR(t.xdr, Networks.TESTNET) as Transaction).sequence);
+  const seqs = txs.map(
+    (t) => (TransactionBuilder.fromXDR(t.xdr, Networks.TESTNET) as Transaction).sequence
+  );
   expect(BigInt(seqs[0])).toBe(BigInt(START_SEQ) + 1n);
   seqs.forEach((s, i) => {
     if (i > 0) expect(BigInt(s)).toBe(BigInt(seqs[i - 1]) + 1n);

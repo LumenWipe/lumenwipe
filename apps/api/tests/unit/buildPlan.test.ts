@@ -865,3 +865,848 @@ test("buildPlan › numSponsoring > 0 but no entries found (defensive fallback) 
   const { blockers } = buildPlan(makeAccount({ numSponsoring: 2 }), false);
   expect(blockers.some((b) => b.message.includes("sponsoring"))).toBe(true);
 });
+
+// ─── Step indices are sequential across every step type (idx++, not idx--) ───
+
+test("buildPlan › step indices are sequential from 0 across every non-fast-path step type", () => {
+  const entry: SponsoredEntry = {
+    kind: "trustline",
+    owner: SPONSORED_OWNER,
+    asset: `USDC:${ISSUER}`,
+  };
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      { key: EXTRA, weight: 1, type: "ed25519_public_key" },
+    ],
+    numSponsoring: 1,
+    sponsoredEntries: [entry],
+    dataEntries: [{ key: "k", value: "" }],
+    openOffers: [{ id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" }],
+    claimableBalances: [makeClaimableBalance(`EURC:${ISSUER}`)],
+    trustlines: [makeTrustline("EURC", "10"), makeTrustline("USDC", "5")],
+  });
+  const { steps } = buildPlan(
+    account,
+    false,
+    false,
+    { [makeClaimableBalance(`EURC:${ISSUER}`).id]: "add_trustline_then_claim" },
+    { revocable: [entry], unaffordableOwners: new Map() }
+  );
+  expect(steps.length).toBeGreaterThan(5);
+  steps.forEach((s, i) => expect(s.index).toBe(i));
+});
+
+test("buildPlan › step indices are sequential from 0 on the fast path (both CLOSE_ACCOUNT and MERGE)", () => {
+  const account = makeAccount({ dataEntries: [{ key: "k", value: "" }] });
+  const { steps } = buildPlan(account, true, true);
+  expect(steps).toHaveLength(2);
+  steps.forEach((s, i) => expect(s.index).toBe(i));
+});
+
+// ─── Helper functions: shortAddr and describeSponsoredEntry (via the unaffordable-owner blocker) ─
+
+test("buildPlan › unaffordable-owner blocker names the entry kind and shortens the owner address", () => {
+  const owner = Keypair.random().publicKey();
+  const entry: SponsoredEntry = { kind: "account", owner };
+  const account = makeAccount({ numSponsoring: 1, sponsoredEntries: [entry] });
+  const { blockers } = buildPlan(
+    account,
+    false,
+    false,
+    {},
+    {
+      revocable: [],
+      unaffordableOwners: new Map([[owner, { entries: [entry], shortfallXlm: "1.5000000" }]]),
+    }
+  );
+  const b = blockers.find((x) => x.code === "sponsorship_unaffordable")!;
+  expect(b.message).toBe(
+    `Revoking sponsorship of an account creation on ${owner.slice(0, 4)}…${owner.slice(-4)} would ` +
+      `leave that account below its minimum balance - it needs 1.5000000 more XLM first.`
+  );
+});
+
+test.each([
+  ["account" as const, {}, "an account creation"],
+  ["trustline" as const, { asset: `USDC:${ISSUER}` }, "a trustline for USDC"],
+  ["offer" as const, { offerId: "42" }, "offer 42"],
+  ["data_entry" as const, { name: "memo" }, 'data entry "memo"'],
+  ["signer" as const, { signerKey: "GABC" }, "a signer"],
+])("buildPlan › describes a %s sponsored entry as %j -> %s", (kind, fields, expected) => {
+  const owner = Keypair.random().publicKey();
+  const entry = { kind, owner, ...fields } as SponsoredEntry;
+  const account = makeAccount({ numSponsoring: 1, sponsoredEntries: [entry] });
+  const { blockers } = buildPlan(
+    account,
+    false,
+    false,
+    {},
+    {
+      revocable: [],
+      unaffordableOwners: new Map([[owner, { entries: [entry], shortfallXlm: "1.0000000" }]]),
+    }
+  );
+  const b = blockers.find((x) => x.code === "sponsorship_unaffordable")!;
+  expect(b.message).toContain(expected);
+});
+
+// ─── Sponsoring blanket-blocker pluralization ─────────────────────────────────
+
+test("buildPlan › blanket sponsorship blocker says 'entry' (singular) for exactly one", () => {
+  const { blockers } = buildPlan(
+    makeAccount({ numSponsoring: 1, sponsorshipEnumerationIncomplete: true }),
+    false
+  );
+  const b = blockers.find((x) => x.message.includes("sponsoring"))!;
+  expect(b.message).toBe(
+    "This account is sponsoring 1 entry on other accounts. All sponsorships must be revoked before the account can be merged."
+  );
+});
+
+test("buildPlan › blanket sponsorship blocker says 'entries' (plural) for more than one", () => {
+  const { blockers } = buildPlan(
+    makeAccount({ numSponsoring: 3, sponsorshipEnumerationIncomplete: true }),
+    false
+  );
+  const b = blockers.find((x) => x.message.includes("sponsoring"))!;
+  expect(b.message).toBe(
+    "This account is sponsoring 3 entries on other accounts. All sponsorships must be revoked before the account can be merged."
+  );
+});
+
+// ─── NORMALIZE_SIGNERS step content ───────────────────────────────────────────
+
+test("buildPlan › NORMALIZE_SIGNERS title, description and operationCount are exact", () => {
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      { key: EXTRA, weight: 1, type: "ed25519_public_key" },
+    ],
+  });
+  const { steps } = buildPlan(account, false);
+  const s = steps.find((x) => x.type === "NORMALIZE_SIGNERS")!;
+  expect(s.title).toBe("Remove extra signers");
+  expect(s.description).toBe(
+    "Remove 1 additional signer(s) and reset authorization thresholds so this key alone can authorize transactions."
+  );
+  expect(s.operationCount).toBe(2); // 1 extra signer removal + 1 threshold reset
+});
+
+// ─── Signer-threshold blockers: exact boundaries and messages ─────────────────
+
+test("buildPlan › master key at weight 0 is always blocked, regardless of co-signer weight", () => {
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 0, type: "ed25519_public_key" },
+      { key: EXTRA, weight: 10, type: "ed25519_public_key" },
+    ],
+    thresholds: { low: 0, med: 1, high: 1 },
+  });
+  const { blockers } = buildPlan(account, false);
+  expect(blockers.some((b) => b.message.includes("weight 0"))).toBe(true);
+});
+
+test("buildPlan › master key entirely absent from the signers list is treated as weight 0, not a crash", () => {
+  // Defensive: `signers.find(...)?.weight ?? 0` - if the master key is somehow not in its own
+  // signers list, this must default to 0 (blocked) rather than throw on `.weight` of undefined.
+  const account = makeAccount({
+    signers: [{ key: EXTRA, weight: 1, type: "ed25519_public_key" }],
+  });
+  const { blockers } = buildPlan(account, false);
+  expect(blockers.some((b) => b.message.includes("weight 0"))).toBe(true);
+});
+
+test("buildPlan › a weight-0 master key with no extra signers and no raised thresholds needs no normalization, so the section (and its blocker) is skipped entirely", () => {
+  const account = makeAccount({
+    signers: [{ key: MASTER, weight: 0, type: "ed25519_public_key" }],
+    thresholds: { low: 0, med: 1, high: 1 },
+  });
+  const { blockers } = buildPlan(account, false);
+  expect(blockers).toHaveLength(0);
+});
+
+test("buildPlan › master key at weight 1 (not 0) is not blocked on that ground alone", () => {
+  const account = makeAccount({
+    signers: [{ key: MASTER, weight: 1, type: "ed25519_public_key" }],
+    thresholds: { low: 0, med: 1, high: 1 },
+  });
+  const { blockers } = buildPlan(account, false);
+  expect(blockers.some((b) => b.message.includes("weight 0"))).toBe(false);
+});
+
+test("buildPlan › satisfiable weight exactly meeting the high threshold is not blocked", () => {
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      { key: EXTRA, weight: 1, type: "hash_x" },
+    ],
+    thresholds: { low: 0, med: 2, high: 2 },
+  });
+  const { blockers } = buildPlan(account, false);
+  expect(blockers.some((b) => b.message.includes("can contribute at most"))).toBe(false);
+});
+
+test("buildPlan › satisfiable weight one below the high threshold is blocked, exact message when it equals total weight", () => {
+  const account = makeAccount({
+    signers: [{ key: MASTER, weight: 1, type: "ed25519_public_key" }],
+    thresholds: { low: 0, med: 2, high: 2 },
+  });
+  const { blockers } = buildPlan(account, false);
+  const b = blockers.find((x) => x.message.includes("can contribute at most"))!;
+  expect(b.message).toBe(
+    "This account's signers can contribute at most weight 1 toward removing signers or changing " +
+      "thresholds, but that requires weight 2 (the current high threshold)."
+  );
+});
+
+test("buildPlan › satisfiable weight below threshold, with an unsatisfiable signer, names that fact explicitly", () => {
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      { key: EXTRA, weight: 5, type: "ed25519_signed_payload" }, // never satisfiable
+    ],
+    thresholds: { low: 0, med: 2, high: 2 },
+  });
+  const { blockers } = buildPlan(account, false);
+  const b = blockers.find((x) => x.message.includes("can contribute at most"))!;
+  expect(b.message).toContain("At least one of its signers cannot be authorized through this flow");
+});
+
+// ─── Batch loops: title suffix, pluralization, and the zero-item gate, per step type ──
+
+test("buildPlan › a single REVOKE_SPONSORSHIP batch has no '(batch n/m)' suffix and singular wording for one entry", () => {
+  const entry: SponsoredEntry = {
+    kind: "trustline",
+    owner: SPONSORED_OWNER,
+    asset: `USDC:${ISSUER}`,
+  };
+  const account = makeAccount({ numSponsoring: 1, sponsoredEntries: [entry] });
+  const { steps } = buildPlan(
+    account,
+    false,
+    false,
+    {},
+    {
+      revocable: [entry],
+      unaffordableOwners: new Map(),
+    }
+  );
+  const s = steps.find((x) => x.type === "REVOKE_SPONSORSHIP")!;
+  expect(s.title).toBe("Revoke sponsorships");
+  expect(s.description).toBe(
+    "Transfer reserve responsibility for 1 sponsored entry back to their own accounts."
+  );
+});
+
+test("buildPlan › 101 revocable sponsorships → 2 REVOKE_SPONSORSHIP batches, titled and worded exactly", () => {
+  const entries: SponsoredEntry[] = Array.from({ length: 101 }, (_, i) => ({
+    kind: "trustline" as const,
+    owner: SPONSORED_OWNER,
+    asset: `T${i}:${ISSUER}`,
+  }));
+  const account = makeAccount({ numSponsoring: 101, sponsoredEntries: entries });
+  const { steps } = buildPlan(
+    account,
+    false,
+    false,
+    {},
+    {
+      revocable: entries,
+      unaffordableOwners: new Map(),
+    }
+  );
+  const batches = steps.filter((x) => x.type === "REVOKE_SPONSORSHIP");
+  expect(batches).toHaveLength(2);
+  expect(batches[0]!.title).toBe("Revoke sponsorships (batch 1/2)");
+  expect(batches[0]!.description).toBe(
+    "Transfer reserve responsibility for 100 sponsored entries back to their own accounts."
+  );
+  expect(batches[1]!.title).toBe("Revoke sponsorships (batch 2/2)");
+  expect(batches[1]!.description).toBe(
+    "Transfer reserve responsibility for 1 sponsored entry back to their own accounts."
+  );
+});
+
+test("buildPlan › a single REMOVE_DATA_ENTRIES batch has no batch suffix, singular wording for one entry", () => {
+  const account = makeAccount({ dataEntries: [{ key: "k", value: "" }] });
+  const { steps } = buildPlan(account, false);
+  const s = steps.find((x) => x.type === "REMOVE_DATA_ENTRIES")!;
+  expect(s.title).toBe("Remove data entries");
+  expect(s.description).toBe("Clear 1 data entry stored on this account.");
+});
+
+test("buildPlan › 101 data entries → batch titles and wording are exact", () => {
+  const account = makeAccount({
+    dataEntries: Array.from({ length: 101 }, (_, i) => ({ key: `k${i}`, value: "" })),
+  });
+  const { steps } = buildPlan(account, false);
+  const batches = steps.filter((x) => x.type === "REMOVE_DATA_ENTRIES");
+  expect(batches[0]!.title).toBe("Remove data entries (batch 1/2)");
+  expect(batches[0]!.description).toBe("Clear 100 data entries stored on this account.");
+  expect(batches[1]!.title).toBe("Remove data entries (batch 2/2)");
+  expect(batches[1]!.description).toBe("Clear 1 data entry stored on this account.");
+});
+
+test("buildPlan › a single CANCEL_OFFERS batch has no batch suffix, singular wording for one offer", () => {
+  const account = makeAccount({
+    openOffers: [{ id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" }],
+  });
+  const { steps } = buildPlan(account, false);
+  const s = steps.find((x) => x.type === "CANCEL_OFFERS")!;
+  expect(s.title).toBe("Cancel open DEX offers");
+  expect(s.description).toBe("Cancel 1 open offer on the Stellar DEX.");
+});
+
+test("buildPlan › 101 offers → batch titles and wording are exact", () => {
+  const account = makeAccount({
+    openOffers: Array.from({ length: 101 }, (_, i) => ({
+      id: `${i}`,
+      selling: "native",
+      buying: `USDC:${ISSUER}`,
+      amount: "1",
+      price: "1",
+    })),
+  });
+  const { steps } = buildPlan(account, false);
+  const batches = steps.filter((x) => x.type === "CANCEL_OFFERS");
+  expect(batches[0]!.title).toBe("Cancel DEX offers (batch 1/2)");
+  expect(batches[0]!.description).toBe("Cancel 100 open offers on the Stellar DEX.");
+  expect(batches[1]!.title).toBe("Cancel DEX offers (batch 2/2)");
+  expect(batches[1]!.description).toBe("Cancel 1 open offer on the Stellar DEX.");
+});
+
+test("buildPlan › a single ADD_TRUSTLINE_FOR_CLAIM batch has no batch suffix, singular wording for one balance", () => {
+  const cb = makeClaimableBalance(`USDC:${ISSUER}`);
+  const account = makeAccount({ claimableBalances: [cb] });
+  const { steps } = buildPlan(account, false, false, { [cb.id]: "add_trustline_then_claim" });
+  const s = steps.find((x) => x.type === "ADD_TRUSTLINE_FOR_CLAIM")!;
+  expect(s.title).toBe("Add trustlines to claim");
+  expect(s.description).toBe(
+    "Establish 1 trustline so the following claimable balance can be claimed."
+  );
+});
+
+test("buildPlan › ADD_TRUSTLINE_FOR_CLAIM step index is sequential with the steps around it", () => {
+  const cb = makeClaimableBalance(`USDC:${ISSUER}`);
+  const account = makeAccount({ claimableBalances: [cb] });
+  const { steps } = buildPlan(account, false, false, { [cb.id]: "add_trustline_then_claim" });
+  expect(steps.map((s) => s.type)).toEqual(["ADD_TRUSTLINE_FOR_CLAIM", "CLAIM_BALANCES", "MERGE"]);
+  steps.forEach((s, i) => expect(s.index).toBe(i));
+});
+
+test("buildPlan › 101 remediated balances → ADD_TRUSTLINE_FOR_CLAIM batch titles and wording are exact", () => {
+  const balances = Array.from({ length: 101 }, (_, i) => makeClaimableBalance(`T${i}:${ISSUER}`));
+  const selections = Object.fromEntries(
+    balances.map((b) => [b.id, "add_trustline_then_claim" as const])
+  );
+  const account = makeAccount({ claimableBalances: balances });
+  const { steps } = buildPlan(account, false, false, selections);
+  const batches = steps.filter((x) => x.type === "ADD_TRUSTLINE_FOR_CLAIM");
+  expect(batches).toHaveLength(2);
+  expect(batches[0]!.title).toBe("Add trustlines to claim (batch 1/2)");
+  expect(batches[0]!.description).toBe(
+    "Establish 100 trustlines so the following claimable balances can be claimed."
+  );
+  expect(batches[1]!.title).toBe("Add trustlines to claim (batch 2/2)");
+  expect(batches[1]!.description).toBe(
+    "Establish 1 trustline so the following claimable balance can be claimed."
+  );
+});
+
+test("buildPlan › a single REMOVE_TRUSTLINES batch has no batch suffix, singular wording for one trustline", () => {
+  const account = makeAccount({ trustlines: [makeTrustline("USDC", "0")] });
+  const { steps } = buildPlan(account, false);
+  const s = steps.find((x) => x.type === "REMOVE_TRUSTLINES")!;
+  expect(s.title).toBe("Remove trustlines");
+  expect(s.description).toBe("Remove 1 trustline to recover the base reserve.");
+});
+
+test("buildPlan › 101 trustlines → REMOVE_TRUSTLINES batch titles and wording are exact", () => {
+  const account = makeAccount({
+    trustlines: Array.from({ length: 101 }, (_, i) => makeTrustline(`T${i}`, "0")),
+  });
+  const { steps } = buildPlan(account, false);
+  const batches = steps.filter((x) => x.type === "REMOVE_TRUSTLINES");
+  expect(batches[0]!.title).toBe("Remove trustlines (batch 1/2)");
+  expect(batches[0]!.description).toBe("Remove 100 trustlines to recover the base reserve.");
+  expect(batches[1]!.title).toBe("Remove trustlines (batch 2/2)");
+  expect(batches[1]!.description).toBe("Remove 1 trustline to recover the base reserve.");
+});
+
+// ─── CLAIM_BALANCES detail string: xlmCount/tokenCount combinations ───────────
+
+test("buildPlan › CLAIM_BALANCES detail is omitted when the batch is all-XLM", () => {
+  const account = makeAccount({ claimableBalances: [makeClaimableBalance("native")] });
+  const { steps } = buildPlan(account, false);
+  const s = steps.find((x) => x.type === "CLAIM_BALANCES")!;
+  expect(s.title).toBe("Claim claimable balances");
+  expect(s.description).toBe("Claim 1 claimable balance and add the proceeds to this account.");
+});
+
+test("buildPlan › CLAIM_BALANCES detail says '1 token' (singular) for exactly one non-XLM balance", () => {
+  const account = makeAccount({
+    trustlines: [makeTrustline("USDC", "0")],
+    claimableBalances: [makeClaimableBalance(`USDC:${ISSUER}`)],
+  });
+  const { steps } = buildPlan(account, false);
+  const s = steps.find((x) => x.type === "CLAIM_BALANCES")!;
+  expect(s.description).toBe(
+    "Claim 1 claimable balance (1 token) and add the proceeds to this account."
+  );
+});
+
+test("buildPlan › CLAIM_BALANCES detail says 'N tokens' (plural) for more than one non-XLM balance", () => {
+  const account = makeAccount({
+    trustlines: [makeTrustline("USDC", "0"), makeTrustline("EURC", "0")],
+    claimableBalances: [
+      makeClaimableBalance(`USDC:${ISSUER}`),
+      makeClaimableBalance(`EURC:${ISSUER}`),
+    ],
+  });
+  const { steps } = buildPlan(account, false);
+  const s = steps.find((x) => x.type === "CLAIM_BALANCES")!;
+  expect(s.description).toBe(
+    "Claim 2 claimable balances (2 tokens) and add the proceeds to this account."
+  );
+});
+
+test("buildPlan › CLAIM_BALANCES detail combines XLM and token counts when both are present", () => {
+  const account = makeAccount({
+    trustlines: [makeTrustline("USDC", "0")],
+    claimableBalances: [makeClaimableBalance("native"), makeClaimableBalance(`USDC:${ISSUER}`)],
+  });
+  const { steps } = buildPlan(account, false);
+  const s = steps.find((x) => x.type === "CLAIM_BALANCES")!;
+  expect(s.description).toBe(
+    "Claim 2 claimable balances (1 XLM, 1 token) and add the proceeds to this account."
+  );
+});
+
+// ─── Fast-path gate: each of the six conditions isolated ──────────────────────
+
+test("buildPlan › fast path requires hasCleanup - a clean account with nothing to fuse stays a plain MERGE", () => {
+  const { steps } = buildPlan(makeAccount(), false, true);
+  expect(steps).toHaveLength(1);
+  expect(steps[0]!.type).toBe("MERGE");
+});
+
+test("buildPlan › fast path is refused when sponsoredEntries is non-empty even without a blocker", () => {
+  const entry: SponsoredEntry = {
+    kind: "trustline",
+    owner: SPONSORED_OWNER,
+    asset: `USDC:${ISSUER}`,
+  };
+  const account = makeAccount({
+    numSponsoring: 1,
+    sponsoredEntries: [entry],
+    dataEntries: [{ key: "k", value: "" }],
+  });
+  const { steps } = buildPlan(
+    account,
+    false,
+    true,
+    {},
+    { revocable: [entry], unaffordableOwners: new Map() }
+  );
+  expect(steps.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(false);
+});
+
+test("buildPlan › fast path fuses exactly at the 100-op boundary, refuses at 101", () => {
+  const at100 = makeAccount({
+    dataEntries: Array.from({ length: 99 }, (_, i) => ({ key: `k${i}`, value: "" })), // 99 + 1 merge = 100
+  });
+  const { steps: steps100 } = buildPlan(at100, false, true);
+  expect(steps100.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(true);
+
+  const at101 = makeAccount({
+    dataEntries: Array.from({ length: 100 }, (_, i) => ({ key: `k${i}`, value: "" })), // 100 + 1 merge = 101
+  });
+  const { steps: steps101 } = buildPlan(at101, false, true);
+  expect(steps101.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(false);
+});
+
+test("buildPlan › CLOSE_ACCOUNT operationCount for a mediated close excludes the merge (forwarded separately)", () => {
+  const account = makeAccount({ dataEntries: [{ key: "k", value: "" }] });
+  const { steps } = buildPlan(account, true, true);
+  const close = steps.find((s) => s.type === "CLOSE_ACCOUNT")!;
+  // 1 data entry only - the merge is its own separate MERGE step for a mediated close.
+  expect(close.operationCount).toBe(1);
+});
+
+// ─── Convertible/needs-conversion filters: authorized and balance boundaries ──
+
+test("buildPlan › an unauthorized trustline with a balance is not converted (fast-path fuse count excludes it)", () => {
+  const account = makeAccount({
+    dataEntries: [{ key: "k", value: "" }],
+    trustlines: [makeTrustline("USDC", "10", false)],
+  });
+  const { steps } = buildPlan(account, false, true);
+  const close = steps.find((s) => s.type === "CLOSE_ACCOUNT");
+  // hasCleanup is true (trustlines.length > 0), but the unauthorized trustline with a balance is
+  // a deauthorized-with-balance blocker, so the fast path is refused entirely.
+  expect(close).toBeUndefined();
+});
+
+test("buildPlan › a zero-balance trustline needs no CONVERT_ASSETS step even when authorized", () => {
+  const account = makeAccount({ trustlines: [makeTrustline("USDC", "0", true)] });
+  const { steps } = buildPlan(account, false);
+  expect(steps.some((s) => s.type === "CONVERT_ASSETS")).toBe(false);
+  expect(steps.some((s) => s.type === "REMOVE_TRUSTLINES")).toBe(true);
+});
+
+test("buildPlan › CONVERT_ASSETS title, description and affectedAsset are exact", () => {
+  const account = makeAccount({ trustlines: [makeTrustline("USDC", "50.0")] });
+  const { steps } = buildPlan(account, false);
+  const s = steps.find((x) => x.type === "CONVERT_ASSETS")!;
+  expect(s.title).toBe("Convert USDC to XLM");
+  expect(s.description).toBe("Exchange 50.0 USDC for XLM via the Stellar DEX.");
+  expect(s.operationCount).toBe(1);
+});
+
+// ─── computeNeedsSignerNormalization: each OR clause isolated ────────────────
+
+test("buildPlan › a raised med threshold alone (high not raised) still triggers NORMALIZE_SIGNERS", () => {
+  const account = makeAccount({ thresholds: { low: 0, med: 2, high: 1 } });
+  const { steps } = buildPlan(account, false);
+  expect(steps[0]!.type).toBe("NORMALIZE_SIGNERS");
+});
+
+test("buildPlan › neither extra signers nor raised thresholds → no NORMALIZE_SIGNERS, no threshold blockers", () => {
+  const account = makeAccount({ thresholds: { low: 0, med: 1, high: 1 } });
+  const { steps, blockers } = buildPlan(account, false);
+  expect(steps.some((s) => s.type === "NORMALIZE_SIGNERS")).toBe(false);
+  expect(blockers.some((b) => b.message.includes("weight 0"))).toBe(false);
+  expect(blockers.some((b) => b.message.includes("can contribute at most"))).toBe(false);
+});
+
+// ─── extraSigners is "everyone but the master key", not "just the master key" ─
+
+test("buildPlan › extraSigners counts every non-master signer, not just the master key itself", () => {
+  const extra2 = Keypair.random().publicKey();
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      { key: EXTRA, weight: 1, type: "ed25519_public_key" },
+      { key: extra2, weight: 1, type: "ed25519_public_key" },
+    ],
+  });
+  const { steps } = buildPlan(account, false);
+  const s = steps.find((x) => x.type === "NORMALIZE_SIGNERS")!;
+  // 2 extra signers + 1 threshold reset = 3. A filter that kept only the master key
+  // (s.key === masterKey instead of !==) would report length 1, giving operationCount 2.
+  expect(s.operationCount).toBe(3);
+  expect(s.description).toBe(
+    "Remove 2 additional signer(s) and reset authorization thresholds so this key alone can authorize transactions."
+  );
+});
+
+// ─── Exact text of every fixed (non-pluralized) blocker message ──────────────
+
+test("buildPlan › AUTH_IMMUTABLE blocker message is exact", () => {
+  const { blockers } = buildPlan(makeAccount({ authImmutable: true }), false);
+  expect(blockers[0]!.message).toBe(
+    "This account has the AUTH_IMMUTABLE flag set. ACCOUNT_MERGE is permanently disabled for " +
+      "AUTH_IMMUTABLE accounts - the flag cannot be cleared once set."
+  );
+});
+
+test("buildPlan › sponsored claimable-balance blocker message is exact", () => {
+  const entry: SponsoredEntry = { kind: "claimable_balance", balanceId: "0".repeat(72) };
+  const account = makeAccount({ numSponsoring: 1, sponsoredEntries: [entry] });
+  const { blockers } = buildPlan(
+    account,
+    false,
+    false,
+    {},
+    {
+      revocable: [],
+      unaffordableOwners: new Map(),
+    }
+  );
+  const b = blockers.find((x) => x.code === "sponsorship_claimable_balance_unrevocable")!;
+  expect(b.message).toBe(
+    "This account sponsors a claimable balance, which cannot be revoked without a cooperating " +
+      "new sponsor. It resolves automatically once a claimant claims the balance - there is no " +
+      "self-service action to take here."
+  );
+});
+
+test("buildPlan › pool-share blocker message is exact", () => {
+  const account = makeAccount({ poolShares: [{ poolId: "p1" }] });
+  const { blockers } = buildPlan(account, false);
+  expect(blockers[0]!.message).toBe(
+    "This account holds 1 liquidity pool share(s). Withdraw from the pool using a DEX interface " +
+      "(e.g. Stellar Expert) before continuing."
+  );
+});
+
+test("buildPlan › sub-entry mismatch blocker message is exact", () => {
+  const { blockers } = buildPlan(makeAccount({ subEntryMismatch: true }), false);
+  expect(blockers[0]!.message).toBe(
+    "This account has entries that could not be enumerated. The analysis may be incomplete - " +
+      "do not proceed until the discrepancy is resolved."
+  );
+});
+
+test("buildPlan › deauthorized-trustline-with-balance blocker message is exact", () => {
+  const account = makeAccount({ trustlines: [makeTrustline("USDC", "5", false)] });
+  const { blockers } = buildPlan(account, false);
+  const b = blockers[0]!;
+  expect(b.message).toBe(
+    "Trustline for USDC has a non-zero balance (5) but is deauthorized by the issuer. The " +
+      "issuer must re-authorize this trustline before it can be converted or removed."
+  );
+});
+
+test("buildPlan › unclaimable-balance blocker message is exact", () => {
+  const cb = makeClaimableBalance(`USDC:${ISSUER}`, "3.0000000");
+  const account = makeAccount({ claimableBalances: [cb] });
+  const { blockers } = buildPlan(account, false);
+  const b = blockers.find((x) => x.code === "claimable_balance_unclaimable")!;
+  expect(b.message).toBe(
+    "This account is a claimant for 3.0000000 USDC but has no authorized trustline for it. " +
+      "Establish a USDC trustline and claim the balance manually before proceeding - these " +
+      "funds will be permanently inaccessible once the account is merged."
+  );
+});
+
+test("buildPlan › master-key-weight-0 blocker message is exact", () => {
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 0, type: "ed25519_public_key" },
+      { key: EXTRA, weight: 1, type: "ed25519_public_key" },
+    ],
+  });
+  const { blockers } = buildPlan(account, false);
+  const b = blockers.find((x) => x.message.includes("weight 0"))!;
+  expect(b.message).toBe(
+    "The master key on this account has weight 0. Removing the account's other signers would " +
+      "leave no key able to authorize any further changes to this account, so this flow cannot " +
+      "safely proceed."
+  );
+});
+
+test("buildPlan › unsatisfiable-signer blocker message is exact (the full sentence, both halves)", () => {
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      { key: EXTRA, weight: 5, type: "ed25519_signed_payload" },
+    ],
+    thresholds: { low: 0, med: 2, high: 2 },
+  });
+  const { blockers } = buildPlan(account, false);
+  const b = blockers.find((x) => x.message.includes("can contribute at most"))!;
+  expect(b.message).toBe(
+    "This account's signers can contribute at most weight 1 toward removing signers or " +
+      "changing thresholds, but that requires weight 2 (the current high threshold). At least " +
+      "one of its signers cannot be authorized through this flow, so this change can never be " +
+      "fully authorized."
+  );
+});
+
+// ─── satisfiableWeight: hash_x and preauth_tx each count on their own ─────────
+
+test("buildPlan › a hash_x signer's weight alone can satisfy the high threshold", () => {
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      {
+        key: "XHASH0000000000000000000000000000000000000000000000000000",
+        weight: 1,
+        type: "hash_x",
+      },
+    ],
+    thresholds: { low: 0, med: 2, high: 2 },
+  });
+  const { blockers } = buildPlan(account, false);
+  expect(blockers.some((b) => b.message.includes("can contribute at most"))).toBe(false);
+});
+
+test("buildPlan › a preauth_tx signer's weight alone can satisfy the high threshold", () => {
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      {
+        key: "TPREAUTH0000000000000000000000000000000000000000000000000",
+        weight: 1,
+        type: "preauth_tx",
+      },
+    ],
+    thresholds: { low: 0, med: 2, high: 2 },
+  });
+  const { blockers } = buildPlan(account, false);
+  expect(blockers.some((b) => b.message.includes("can contribute at most"))).toBe(false);
+});
+
+// ─── describeSponsoredEntry: the claimable_balance case, via the unaffordable-owner path ─
+
+test("buildPlan › describes a claimable_balance sponsored entry (even though buildPlan itself never routes one here)", () => {
+  const owner = Keypair.random().publicKey();
+  const entry: SponsoredEntry = { kind: "claimable_balance", balanceId: "0".repeat(72) };
+  const account = makeAccount({ numSponsoring: 1, sponsoredEntries: [{ kind: "account", owner }] });
+  const { blockers } = buildPlan(
+    account,
+    false,
+    false,
+    {},
+    {
+      revocable: [],
+      unaffordableOwners: new Map([[owner, { entries: [entry], shortfallXlm: "1.0000000" }]]),
+    }
+  );
+  const b = blockers.find((x) => x.code === "sponsorship_unaffordable")!;
+  expect(b.message).toContain("a claimable balance");
+});
+
+// ─── convertible/fast-path fuse count: balance and authorization boundaries ──
+
+test("buildPlan › fast path: a trustline with balance exactly 0 is not counted toward the fuse (still just cleanup)", () => {
+  const account = makeAccount({
+    dataEntries: [{ key: "k", value: "" }],
+    trustlines: [makeTrustline("USDC", "0", true)],
+  });
+  const { steps } = buildPlan(account, false, true);
+  const close = steps.find((s) => s.type === "CLOSE_ACCOUNT")!;
+  // 1 data entry + 0 conversion ops + 1 trustline removal + 1 merge = 3 (not 4, which an
+  // off-by-one on the balance boundary would give).
+  expect(close.operationCount).toBe(3);
+});
+
+// ─── hasCleanup: openOffers alone is sufficient to trigger the fast path ──────
+
+test("buildPlan › fast path triggers on open offers alone, with nothing else to clean up", () => {
+  const account = makeAccount({
+    openOffers: [{ id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" }],
+  });
+  const { steps } = buildPlan(account, false, true);
+  expect(steps.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(true);
+});
+
+// ─── hasHardBlocker: a forfeited-balance blocker alone never excludes the fast path ───
+
+test("buildPlan › fast path proceeds when the only blocker is an acknowledged forfeiture", () => {
+  const cb = makeClaimableBalance(`USDC:${ISSUER}`);
+  const account = makeAccount({ dataEntries: [{ key: "k", value: "" }], claimableBalances: [cb] });
+  const { steps } = buildPlan(account, false, true, { [cb.id]: "forfeit" });
+  // balancesNeedingClaimStep is empty (forfeited), so the fast path is otherwise eligible; the
+  // forfeiture blocker alone must not block it.
+  expect(steps.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(true);
+});
+
+test("buildPlan › fast path is excluded by any blocker other than an acknowledged forfeiture", () => {
+  const account = makeAccount({
+    dataEntries: [{ key: "k", value: "" }],
+    trustlines: [makeTrustline("USDC", "5", false)], // deauthorized-with-balance: a real blocker
+  });
+  const { steps } = buildPlan(account, false, true);
+  expect(steps.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(false);
+});
+
+// ─── Fast-path CLOSE_ACCOUNT: exact title/description, both mediatorRequired branches ─
+
+test("buildPlan › fast-path CLOSE_ACCOUNT title/description, direct destination", () => {
+  const account = makeAccount({ dataEntries: [{ key: "k", value: "" }] });
+  const { steps } = buildPlan(account, false, true);
+  const s = steps.find((x) => x.type === "CLOSE_ACCOUNT")!;
+  expect(s.title).toBe("Close account");
+  expect(s.description).toBe(
+    "Remove signers, data, offers, and trustlines, convert balances to XLM, and merge the " +
+      "account, all in one transaction."
+  );
+});
+
+test("buildPlan › fast-path CLOSE_ACCOUNT title/description, mediator (exchange) destination", () => {
+  const account = makeAccount({ dataEntries: [{ key: "k", value: "" }] });
+  const { steps } = buildPlan(account, true, true);
+  const s = steps.find((x) => x.type === "CLOSE_ACCOUNT")!;
+  expect(s.title).toBe("Clean up account");
+  expect(s.description).toBe(
+    "Remove signers, data, offers, and trustlines, and convert balances to XLM, in one " +
+      "transaction. The merge to your exchange address follows as a co-signed transfer."
+  );
+});
+
+test("buildPlan › fast-path's own MERGE step (the co-signed forward) has its own exact title/description, distinct from CLOSE_ACCOUNT and the non-fast-path MERGE", () => {
+  const account = makeAccount({ dataEntries: [{ key: "k", value: "" }] });
+  const { steps } = buildPlan(account, true, true);
+  const s = steps.find((x) => x.type === "MERGE")!;
+  expect(s.title).toBe("Merge and forward to exchange");
+  expect(s.description).toBe(
+    "Close this account and forward the full balance to your exchange deposit address in one " +
+      "atomic transaction, routed through a shared intermediary."
+  );
+  expect(s.operationCount).toBe(2);
+});
+
+test("buildPlan › fast-path CLOSE_ACCOUNT operationCount for extra signers uses +1 (removal + threshold reset), not -1", () => {
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      { key: EXTRA, weight: 1, type: "ed25519_public_key" },
+    ],
+  });
+  const { steps } = buildPlan(account, false, true);
+  const close = steps.find((s) => s.type === "CLOSE_ACCOUNT")!;
+  // signerOps = 1 extra signer removal + 1 threshold reset = 2; plus the merge = 3.
+  expect(close.operationCount).toBe(3);
+});
+
+// ─── Final MERGE step: exact description, both mediatorRequired branches ─────
+
+test("buildPlan › final MERGE step description, direct destination", () => {
+  const { steps } = buildPlan(makeAccount(), false);
+  const s = steps.find((x) => x.type === "MERGE")!;
+  expect(s.description).toBe(
+    "Merge this account, transferring the XLM balance to the destination account and removing " +
+      "it from the Stellar ledger."
+  );
+});
+
+test("buildPlan › final MERGE step description, mediator (exchange) destination", () => {
+  const { steps } = buildPlan(makeAccount(), true);
+  const s = steps.find((x) => x.type === "MERGE")!;
+  expect(s.description).toBe(
+    "Close this account and forward the full balance to your exchange deposit address in one " +
+      "atomic transaction, routed through a shared intermediary. You recover essentially all of " +
+      "your XLM; only standard network fees apply."
+  );
+});
+
+// ─── CLAIM_BALANCES: mixed XLM+token detail pluralizes the token count on its own ─
+
+test("buildPlan › CLAIM_BALANCES detail pluralizes 'tokens' inside the mixed XLM+token branch", () => {
+  const account = makeAccount({
+    trustlines: [makeTrustline("USDC", "0"), makeTrustline("EURC", "0")],
+    claimableBalances: [
+      makeClaimableBalance("native"),
+      makeClaimableBalance(`USDC:${ISSUER}`),
+      makeClaimableBalance(`EURC:${ISSUER}`),
+    ],
+  });
+  const { steps } = buildPlan(account, false);
+  const s = steps.find((x) => x.type === "CLAIM_BALANCES")!;
+  expect(s.description).toBe(
+    "Claim 3 claimable balances (1 XLM, 2 tokens) and add the proceeds to this account."
+  );
+});
+
+// ─── CLAIM_BALANCES batching: the 101-item boundary, exact titles ────────────
+
+test("buildPlan › 101 claimable balances → 2 CLAIM_BALANCES batches, titled exactly", () => {
+  const balances = Array.from({ length: 101 }, (_, i) =>
+    makeClaimableBalance("native", `${i + 1}.0000000`)
+  );
+  // makeClaimableBalance derives the id from the asset, which is identical ("native") for every
+  // entry here - give each a distinct id directly so all 101 survive as distinct balances.
+  const distinct = balances.map((b, i) => ({ ...b, id: `${i}`.padStart(8, "0").padEnd(72, "0") }));
+  const account = makeAccount({ claimableBalances: distinct });
+  const { steps } = buildPlan(account, false);
+  const batches = steps.filter((x) => x.type === "CLAIM_BALANCES");
+  expect(batches).toHaveLength(2);
+  expect(batches[0]!.title).toBe("Claim balances (batch 1/2)");
+  expect(batches[1]!.title).toBe("Claim balances (batch 2/2)");
+  expect(batches[1]!.description).toBe(
+    "Claim 1 claimable balance and add the proceeds to this account."
+  );
+});

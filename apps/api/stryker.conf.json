@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "packageManager": "npm",
+  "reporters": ["clear-text", "progress", "json"],
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "bun test tests/unit/mediator-validation.test.ts tests/unit/batching.test.ts tests/unit/tx-builder-sponsorship.test.ts tests/unit/closeBatching.test.ts tests/unit/fusedClose.test.ts tests/unit/buildPlan.test.ts tests/unit/txOps.test.ts tests/unit/buildCloseTransactionsClaimable.test.ts tests/unit/mediatorMerge.test.ts tests/unit/closeAccountDisposition.test.ts tests/unit/step-engine.test.ts tests/unit/asset-conversion.test.ts tests/unit/claimable-balances.test.ts tests/unit/data-entries.test.ts tests/unit/offers.test.ts tests/unit/trustlines.test.ts tests/unit/merge.test.ts tests/unit/signers.test.ts"
+  },
+  "mutate": ["src/lib/stellar/tx-builder/**/*.ts"],
+  "ignoreStatic": true,
+  "concurrency": 4,
+  "timeoutMS": 15000
+}

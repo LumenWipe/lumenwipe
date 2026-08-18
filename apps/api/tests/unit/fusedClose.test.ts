@@ -1,7 +1,15 @@
 import { test, expect } from "bun:test";
-import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
+import {
+  Account,
+  Keypair,
+  Operation,
+  Transaction,
+  TransactionBuilder,
+  Networks,
+} from "@stellar/stellar-sdk";
 import {
   assembleFusedCloseOps,
+  assembleFusedCloseOpsTagged,
   buildFusedCloseTx,
   type FusedCloseInput,
 } from "@/lib/stellar/tx-builder/fused-close";
@@ -244,6 +252,71 @@ test("assembleFusedCloseOps > counts ops for a representative input", () => {
   // plus 2 manageData + 1 manageSellOffer + 1 claimClaimableBalance +
   // 1 pathPaymentStrictSend + 1 changeTrust + 1 accountMerge = 9
   expect(ops).toHaveLength(9);
+});
+
+test("assembleFusedCloseOpsTagged > each op group is tagged with its own step, not a neighbor's", () => {
+  const tagged = assembleFusedCloseOpsTagged(
+    MASTER,
+    baseInput({
+      needsSignerNormalization: true,
+      signers: [
+        { key: MASTER, weight: 1, type: "ed25519_public_key" },
+        { key: EXTRA, weight: 1, type: "ed25519_public_key" },
+      ],
+      openOffers: [
+        { id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" },
+      ],
+      assetActions: [{ trustline: TL, action: "convert", path: convertPath() }],
+      trustlines: [TL],
+    })
+  );
+  const stepsByType = new Map(tagged.map((t) => [Operation.fromXDRObject(t.op).type, t.step]));
+  expect(stepsByType.get("setOptions")).toBe("NORMALIZE_SIGNERS");
+  expect(stepsByType.get("manageSellOffer")).toBe("CANCEL_OFFERS");
+  expect(stepsByType.get("pathPaymentStrictSend")).toBe("CONVERT_ASSETS");
+  expect(stepsByType.get("changeTrust")).toBe("REMOVE_TRUSTLINES");
+});
+
+test("buildFusedCloseTx > attaches the memo to the merge-carrying transaction (text by default)", () => {
+  const tx = TransactionBuilder.fromXDR(
+    buildFusedCloseTx(account(), baseInput({ memo: "hello", memoType: null }), "testnet"),
+    Networks.TESTNET
+  ) as Transaction;
+  expect(tx.memo.type).toBe("text");
+  expect(tx.memo.value?.toString()).toBe("hello");
+});
+
+test("buildFusedCloseTx > uses an id memo when memoType is 'id'", () => {
+  const tx = TransactionBuilder.fromXDR(
+    buildFusedCloseTx(account(), baseInput({ memo: "12345", memoType: "id" }), "testnet"),
+    Networks.TESTNET
+  ) as Transaction;
+  expect(tx.memo.type).toBe("id");
+  expect(tx.memo.value?.toString()).toBe("12345");
+});
+
+test("buildFusedCloseTx > no memo attached when memo is null", () => {
+  const tx = TransactionBuilder.fromXDR(
+    buildFusedCloseTx(account(), baseInput({ memo: null }), "testnet"),
+    Networks.TESTNET
+  ) as Transaction;
+  expect(tx.memo.type).toBe("none");
+});
+
+test("buildFusedCloseTx > no memo attached when the transaction does not carry the merge", () => {
+  const tx = TransactionBuilder.fromXDR(
+    buildFusedCloseTx(
+      account(),
+      baseInput({
+        includeMerge: false,
+        memo: "should-not-appear",
+        dataEntries: [{ key: "k", value: "" }],
+      }),
+      "testnet"
+    ),
+    Networks.TESTNET
+  ) as Transaction;
+  expect(tx.memo.type).toBe("none");
 });
 
 test("assembleFusedCloseOps > large input exceeds the 100-op protocol cap", () => {
