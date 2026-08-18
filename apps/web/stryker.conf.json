@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "packageManager": "npm",
+  "reporters": ["clear-text", "progress", "json"],
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "bun test tests/unit/verify.test.ts"
+  },
+  "mutate": ["lib/stellar/verify.ts"],
+  "ignoreStatic": true,
+  "concurrency": 4,
+  "timeoutMS": 15000
+}

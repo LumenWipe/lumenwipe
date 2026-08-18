@@ -4,13 +4,19 @@ import {
   Asset,
   hash,
   Keypair,
+  Memo,
   Networks,
   Operation,
   StrKey,
   TransactionBuilder,
   xdr,
 } from "@stellar/stellar-sdk";
-import { assertCloseIntent, VerificationError, type CloseExpectation } from "@/lib/stellar/verify";
+import {
+  assertCloseIntent,
+  verifyCloseTransaction,
+  VerificationError,
+  type CloseExpectation,
+} from "@/lib/stellar/verify";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import type { IntentOperation, TxIntent } from "@/types/close-api";
 import type { AccountSigner } from "@/types/account";
@@ -85,7 +91,10 @@ const payment = (
 // A mediated close the client would accept: the balance it observed leaves the intermediary
 // whole. `BALANCE` is what `expectation()` reports as the account's native balance.
 const BALANCE = "100.0000000";
-const mediated = (intermediary: string, over: Partial<{ forwardSource: string; forwardTo: string; amount: string }> = {}) => ({
+const mediated = (
+  intermediary: string,
+  over: Partial<{ forwardSource: string; forwardTo: string; amount: string }> = {}
+) => ({
   guarantees: {
     mergeDestination: intermediary,
     paymentsOnlyTo: [over.forwardTo ?? DEST],
@@ -93,7 +102,12 @@ const mediated = (intermediary: string, over: Partial<{ forwardSource: string; f
   },
   operations: [
     merge(intermediary),
-    payment(over.forwardTo ?? DEST, "native", over.forwardSource ?? intermediary, over.amount ?? BALANCE),
+    payment(
+      over.forwardTo ?? DEST,
+      "native",
+      over.forwardSource ?? intermediary,
+      over.amount ?? BALANCE
+    ),
   ],
 });
 const setOptions = (
@@ -148,14 +162,25 @@ test("a well-formed mediator close passes (merge to mediator, forward to destina
   ).not.toThrow();
 });
 
+test("a VerificationError carries the class's own name, not the generic Error name", () => {
+  try {
+    assertCloseIntent(intent({ source: ATTACKER }), expectation());
+    throw new Error("expected assertCloseIntent to throw");
+  } catch (e) {
+    expect(e).toBeInstanceOf(VerificationError);
+    expect((e as VerificationError).name).toBe("VerificationError");
+  }
+});
+
 // ─── Round-trip through intentFromXdr (catches decode-shape bugs) ─────────────
 
-function buildXdr(ops: xdr.Operation[]): string {
+function buildXdr(ops: xdr.Operation[], memo?: Memo): string {
   const builder = new TransactionBuilder(new Account(SRC, "100"), {
     fee: "100",
     networkPassphrase: Networks.TESTNET,
   }).setTimeout(300);
   for (const op of ops) builder.addOperation(op);
+  if (memo) builder.addMemo(memo);
   return builder.build().toEnvelope().toXDR("base64");
 }
 
@@ -201,24 +226,29 @@ test("rejects a native-XLM payment to a trustline issuer", () => {
 
 test("rejects a payment to an unexpected address", () => {
   const i = intent({ operations: [payment(ATTACKER)] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/unexpected address/);
 });
 
 test("rejects a conversion that pays out of the account", () => {
   const i = intent({ operations: [conversion(ATTACKER)] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/send funds out of your account/);
+});
+
+test("rejects a conversion that would not settle in XLM", () => {
+  const i = intent({ operations: [conversion(SRC, `USDC:${ISSUER}`, "9")] });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/would not settle in XLM/);
 });
 
 test("rejects a conversion with no minimum floor", () => {
   const i = intent({ operations: [conversion(SRC, "native", "0")] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/no minimum-received floor/);
 });
 
 test("rejects a trustline that is created/raised instead of removed", () => {
   const i = intent({
     operations: [{ source: SRC, type: "change_trust", asset: `USDC:${ISSUER}`, limit: "100" }],
   });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/created or raised, not removed/);
 });
 
 test("allows a raised trustline for an asset the user chose to claim-remediate", () => {
@@ -236,13 +266,22 @@ test("rejects a raised trustline for an asset not in the user's own claim-remedi
 });
 
 test("rejects a data entry that is written instead of removed", () => {
-  const i = intent({ operations: [{ source: SRC, type: "manage_data", name: "k", value: "dmFsdWU=" }] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  const i = intent({
+    operations: [{ source: SRC, type: "manage_data", name: "k", value: "dmFsdWU=" }],
+  });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/would be written, not removed/);
+});
+
+test("allows a data entry deletion", () => {
+  const i = intent({ operations: [{ source: SRC, type: "manage_data", name: "k", value: null }] });
+  expect(() => assertCloseIntent(i, expectation())).not.toThrow();
 });
 
 test("rejects an offer that is created instead of cancelled", () => {
-  const i = intent({ operations: [{ source: SRC, type: "manage_sell_offer", offerId: "0", amount: "50" }] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  const i = intent({
+    operations: [{ source: SRC, type: "manage_sell_offer", offerId: "0", amount: "50" }],
+  });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/created, not cancelled/);
 });
 
 test("rejects a set_options that adds or empowers a signer", () => {
@@ -251,14 +290,14 @@ test("rejects a set_options that adds or empowers a signer", () => {
       setOptions({ signer: { type: "ed25519_public_key", key: REMOVED_SIGNER, weight: 1 } }),
     ],
   });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/signer would be added or empowered/);
 });
 
 test("rejects a set_options signer removal for a key that is not on the account", () => {
   const i = intent({
     operations: [setOptions({ signer: { type: "ed25519_public_key", key: ATTACKER, weight: 0 } })],
   });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/wasn't on your account/);
 });
 
 test("rejects a signer removal when accountSigners is empty (fail-closed default)", () => {
@@ -361,17 +400,47 @@ test("verifyCloseTransaction still approves a transaction whose only change is a
 
 test("rejects a set_options that disables the master key", () => {
   const i = intent({ operations: [setOptions({ masterWeight: 0 })] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/master key would be disabled/);
 });
 
-test("rejects a set_options that raises a threshold", () => {
-  const i = intent({ operations: [setOptions({ highThreshold: 2 })] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+test("rejects a set_options that raises the high threshold", () => {
+  const i = intent({ operations: [setOptions({ signer: null, highThreshold: 2 })] });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/thresholds would be raised/);
+});
+
+// Each threshold field is checked independently - a mutation collapsing any single one of the
+// three OR'd comparisons must still be caught, not just masked by whichever field a test happens
+// to set. Isolating low/med here (high is already isolated above, since low/med default to null).
+test("rejects a set_options that raises only the low threshold", () => {
+  const i = intent({ operations: [setOptions({ signer: null, lowThreshold: 2 })] });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/thresholds would be raised/);
+});
+
+test("allows a set_options that sets the low threshold to exactly 1 (the close's own normalization)", () => {
+  const i = intent({ operations: [setOptions({ signer: null, lowThreshold: 1 })] });
+  expect(() => assertCloseIntent(i, expectation())).not.toThrow();
+});
+
+test("rejects a set_options that raises only the med threshold", () => {
+  const i = intent({ operations: [setOptions({ signer: null, medThreshold: 2 })] });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/thresholds would be raised/);
+});
+
+test("allows a set_options that sets the med threshold to exactly 1 (the close's own normalization)", () => {
+  const i = intent({ operations: [setOptions({ signer: null, medThreshold: 1 })] });
+  expect(() => assertCloseIntent(i, expectation())).not.toThrow();
+});
+
+test("allows a set_options that sets the high threshold to exactly 1 (the close's own normalization)", () => {
+  const i = intent({ operations: [setOptions({ signer: null, highThreshold: 1 })] });
+  expect(() => assertCloseIntent(i, expectation())).not.toThrow();
 });
 
 test("rejects a set_options that sets account flags", () => {
   const i = intent({ operations: [setOptions({ signer: null, setFlags: 1 })] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expect(() => assertCloseIntent(i, expectation())).toThrow(
+    /change account flags, the home domain, or the inflation destination/
+  );
 });
 
 test("rejects a set_options that clears account flags", () => {
@@ -400,26 +469,49 @@ test("a real SetOptions carrying a home-domain change is decoded and rejected (c
 
 test("rejects a memo the user did not set", () => {
   const i = intent({ memo: "not-mine" });
-  expect(() => assertCloseIntent(i, expectation({ memo: "mine" }))).toThrow(VerificationError);
+  expect(() => assertCloseIntent(i, expectation({ memo: "mine" }))).toThrow(/memo you did not set/);
+});
+
+// A missing memo is not the same claim as a memo the user did not set - the transaction simply
+// carries none, which the later "required memo" check (not this one) is responsible for.
+test("does not reject a memo-less transaction just because the user typed one elsewhere", () => {
+  const i = intent({ memo: null });
+  expect(() =>
+    assertCloseIntent(i, expectation({ memo: "typed-but-irrelevant-here" }))
+  ).not.toThrow();
 });
 
 test("rejects a missing memo when the destination requires one (even if the user left it blank)", () => {
   const i = intent({ memo: null });
   expect(() =>
     assertCloseIntent(i, expectation({ memo: null, memoRequired: true, memoType: "id" }))
-  ).toThrow(VerificationError);
+  ).toThrow(/requires a deposit memo/);
 });
 
 test("rejects a memo of the wrong type for the destination", () => {
   const i = intent({ memo: "12345", memoType: "text" });
   expect(() =>
     assertCloseIntent(i, expectation({ memo: "12345", memoRequired: true, memoType: "id" }))
-  ).toThrow(VerificationError);
+  ).toThrow(/wrong type for this destination/);
+});
+
+// The required-memo check only applies to a transaction that actually delivers to the
+// destination (a merge into it, or a payment restricted to only it). A step that does neither -
+// an interim conversion, say - must not be held to a memo requirement that doesn't apply to it.
+test("does not require a memo for an operation that does not deliver to the destination", () => {
+  const i = intent({
+    memo: null,
+    guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: "9" },
+    operations: [conversion()],
+  });
+  expect(() =>
+    assertCloseIntent(i, expectation({ memoRequired: true, memoType: "id" }))
+  ).not.toThrow();
 });
 
 test("rejects a transaction for a different account", () => {
   const i = intent({ source: ATTACKER });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/not for your account/);
 });
 
 // #102: pre-auth-tx signer support. The manual pre-auth-tx path (useCloseExecution's
@@ -440,6 +532,34 @@ test("rejects a pasted pre-auth-tx transaction that merges to an unexpected dest
 test("rejects a pasted pre-auth-tx transaction carrying an unrecognized operation", () => {
   const i = intent({ operations: [{ source: SRC, type: "unknown" }] });
   expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/unrecognized operation/i);
+});
+
+// CAP-33's reserve-burden reversion makes this op family safe by construction (see the comment
+// on the switch case) - there is nothing on the operation itself to check, but that "nothing to
+// check" must still mean "passes", not "falls through to the fail-closed default and gets
+// rejected as unrecognized".
+test("allows a revoke_sponsorship operation", () => {
+  const i = intent({
+    operations: [{ source: SRC, type: "revoke_sponsorship", entryKind: "trustline", owner: SRC }],
+  });
+  expect(() => assertCloseIntent(i, expectation())).not.toThrow();
+});
+
+test("allows a claim_claimable_balance operation", () => {
+  const i = intent({
+    operations: [{ source: SRC, type: "claim_claimable_balance", balanceId: "deadbeef" }],
+  });
+  expect(() => assertCloseIntent(i, expectation())).not.toThrow();
+});
+
+// The exhaustiveness guard is unreachable through normalizeOp at runtime (anything it doesn't
+// recognize becomes "unknown"), but assertCloseIntent is also called directly on hand-built
+// intents (the pre-auth-tx manual path never goes through normalizeOp at all), so a producer
+// bug or a genuinely novel op type must still fail closed here rather than silently pass.
+test("fails closed on an operation type the switch does not recognize at all", () => {
+  const bogus = { source: SRC, type: "totally_bogus_operation" } as unknown as IntentOperation;
+  const i = intent({ operations: [bogus] });
   expect(() => assertCloseIntent(i, expectation())).toThrow(/unrecognized operation/i);
 });
 
@@ -473,6 +593,29 @@ test("rejects a forward that is short by more than the fee tolerance", () => {
 test("accepts a forward short only by the network fee", () => {
   const i = intent(mediated(Keypair.random().publicKey(), { amount: "99.9999000" }));
   expect(() => assertCloseIntent(i, MEDIATED())).not.toThrow();
+});
+
+// The tolerance is a floor: a forward landing exactly on it must pass, not just one comfortably
+// inside it - pins the `<` boundary against an off-by-one toward `<=`.
+test("accepts a forward exactly at the shortfall-tolerance floor", () => {
+  const i = intent(mediated(Keypair.random().publicKey(), { amount: "99.9900000" }));
+  expect(() => assertCloseIntent(i, MEDIATED())).not.toThrow();
+});
+
+// Isolates the "ops[1] must be a payment" half of the two-op shape check from the "ops[0] must
+// be the merge" half: here ops[0] genuinely is the merge, so only ops[1] being a non-payment can
+// be the reason this throws.
+test("rejects a mediated close whose second operation is not a payment", () => {
+  const intermediary = Keypair.random().publicKey();
+  const i = intent({
+    guarantees: {
+      mergeDestination: intermediary,
+      paymentsOnlyTo: [DEST],
+      minXlmFromConversions: null,
+    },
+    operations: [merge(intermediary), setOptions()],
+  });
+  expect(() => assertCloseIntent(i, MEDIATED())).toThrow(/hand the balance straight on/);
 });
 
 // The hand-off shape only makes sense for a destination that cannot be merged into. Accepting
@@ -514,7 +657,11 @@ test("rejects a forward to an address the user did not type", () => {
 test("rejects a forward that is not XLM", () => {
   const intermediary = Keypair.random().publicKey();
   const i = intent({
-    guarantees: { mergeDestination: intermediary, paymentsOnlyTo: [DEST], minXlmFromConversions: null },
+    guarantees: {
+      mergeDestination: intermediary,
+      paymentsOnlyTo: [DEST],
+      minXlmFromConversions: null,
+    },
     operations: [merge(intermediary), payment(DEST, `USDC:${ISSUER}`, intermediary, BALANCE)],
   });
   expect(() => assertCloseIntent(i, MEDIATED())).toThrow(/would not be XLM/);
@@ -523,7 +670,11 @@ test("rejects a forward that is not XLM", () => {
 test("rejects a merge not sent by the account being closed", () => {
   const intermediary = Keypair.random().publicKey();
   const i = intent({
-    guarantees: { mergeDestination: intermediary, paymentsOnlyTo: [DEST], minXlmFromConversions: null },
+    guarantees: {
+      mergeDestination: intermediary,
+      paymentsOnlyTo: [DEST],
+      minXlmFromConversions: null,
+    },
     operations: [merge(intermediary, ATTACKER), payment(DEST, "native", intermediary, BALANCE)],
   });
   expect(() => assertCloseIntent(i, MEDIATED())).toThrow(/not sent by the account being closed/);
@@ -532,7 +683,11 @@ test("rejects a merge not sent by the account being closed", () => {
 test("rejects the two operations in the wrong order", () => {
   const intermediary = Keypair.random().publicKey();
   const i = intent({
-    guarantees: { mergeDestination: intermediary, paymentsOnlyTo: [DEST], minXlmFromConversions: null },
+    guarantees: {
+      mergeDestination: intermediary,
+      paymentsOnlyTo: [DEST],
+      minXlmFromConversions: null,
+    },
     operations: [payment(DEST, "native", intermediary, BALANCE), merge(intermediary)],
   });
   expect(() => assertCloseIntent(i, MEDIATED())).toThrow(VerificationError);
@@ -546,4 +701,102 @@ test("rejects a transaction carrying a second account merge", () => {
     operations: [merge(DEST), merge(ATTACKER)],
   });
   expect(() => assertCloseIntent(i, expectation())).toThrow(/more than one account/);
+});
+
+// ─── verifyCloseTransaction: the exchange-derived memo policy (the wrapper, not assertCloseIntent) ──
+//
+// Every test above exercises assertCloseIntent directly, given an already-resolved
+// memoRequired/memoType. Nothing above calls the actual entry point the guided flow uses before
+// signing - verifyCloseTransaction - which is the only place that looks the destination up in
+// the exchange registry and derives those two fields itself. A bug there (or the wrapper being
+// dropped entirely) would be invisible to every test above.
+
+// A real, curated exchange address (Coinbase) that requires a text memo, so the lookup exercises
+// the actual registry rather than a stand-in.
+const COINBASE = "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D";
+
+function wrapperSigners(): AccountSigner[] {
+  return [{ key: SRC, weight: 1, type: "ed25519_public_key" }];
+}
+const wrapperThresholds = { low: 0, med: 1, high: 1 };
+
+test("verifyCloseTransaction passes a mediated close to a memo-requiring exchange when the memo is present", () => {
+  const intermediary = Keypair.random().publicKey();
+  const unsignedXdr = buildXdr(
+    [
+      Operation.accountMerge({ destination: intermediary }),
+      Operation.payment({
+        destination: COINBASE,
+        asset: Asset.native(),
+        amount: "100",
+        source: intermediary,
+      }),
+    ],
+    Memo.text("deposit-1")
+  );
+  expect(() =>
+    verifyCloseTransaction({
+      unsignedXdr,
+      network: "testnet",
+      expected: {
+        source: SRC,
+        destination: COINBASE,
+        mediatorRequired: true,
+        nativeBalance: "100.0000000",
+        memo: "deposit-1",
+        claimTrustlineAssets: [],
+        accountSigners: wrapperSigners(),
+        accountThresholds: wrapperThresholds,
+      },
+    })
+  ).not.toThrow();
+});
+
+test("verifyCloseTransaction rejects a mediated close to a memo-requiring exchange when the memo is missing", () => {
+  const intermediary = Keypair.random().publicKey();
+  const unsignedXdr = buildXdr([
+    Operation.accountMerge({ destination: intermediary }),
+    Operation.payment({
+      destination: COINBASE,
+      asset: Asset.native(),
+      amount: "100",
+      source: intermediary,
+    }),
+  ]);
+  expect(() =>
+    verifyCloseTransaction({
+      unsignedXdr,
+      network: "testnet",
+      expected: {
+        source: SRC,
+        destination: COINBASE,
+        mediatorRequired: true,
+        nativeBalance: "100.0000000",
+        memo: null,
+        claimTrustlineAssets: [],
+        accountSigners: wrapperSigners(),
+        accountThresholds: wrapperThresholds,
+      },
+    })
+  ).toThrow(/requires a deposit memo/);
+});
+
+test("verifyCloseTransaction passes a direct close to a destination the registry does not recognize", () => {
+  const unsignedXdr = buildXdr([Operation.accountMerge({ destination: DEST })]);
+  expect(() =>
+    verifyCloseTransaction({
+      unsignedXdr,
+      network: "testnet",
+      expected: {
+        source: SRC,
+        destination: DEST,
+        mediatorRequired: false,
+        nativeBalance: "100.0000000",
+        memo: null,
+        claimTrustlineAssets: [],
+        accountSigners: wrapperSigners(),
+        accountThresholds: wrapperThresholds,
+      },
+    })
+  ).not.toThrow();
 });
