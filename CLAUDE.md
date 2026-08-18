@@ -85,6 +85,7 @@ CONTRIBUTING.md has the full rules. Essentials:
 - Comments only when the _why_ is non-obvious.
 - Bug fixes require a unit test reproducing the bug. Automated tests never touch mainnet; E2E runs on testnet.
 - Security-sensitive changes - key handling, transaction construction, `verify()`, confirmation flows, the mediator flow, CSP - get closer review; flag them explicitly in PRs.
+- Security-sensitive changes (the same list above) require running `security-review` before opening the PR; note the result in the PR description.
 
 ## Hard invariants
 

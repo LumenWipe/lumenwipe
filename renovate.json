@@ -1,0 +1,37 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "timezone": "UTC",
+  "schedule": ["before 7am on monday"],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 7am on monday"]
+  },
+  "packageRules": [
+    {
+      "description": "Group same-ecosystem minor/patch bumps into one PR instead of one-per-package noise.",
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "non-major dependencies"
+    },
+    {
+      "description": "Automerge disabled everywhere - this project closes accounts irreversibly, and CONTRIBUTING.md already asks for closer review on anything security-sensitive. A dependency bump is reviewed like any other change, never merged unattended.",
+      "matchPackageNames": ["*"],
+      "automerge": false
+    },
+    {
+      "description": "@stellar/stellar-sdk is pinned to an exact version via the root `overrides` on purpose (see CLAUDE.md: mixing its CJS/ESM builds across the two package managers' resolution breaks js-xdr identity). Never opened as an automatic PR; still tracked on the dashboard so a real update (e.g. a security fix) isn't missed, but bumping it is a deliberate, manually-triggered change.",
+      "matchPackageNames": ["@stellar/stellar-sdk"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Security fixes bypass the weekly schedule and PR concurrency limit - waiting until Monday for a vulnerable dependency defeats the point of scanning for one.",
+      "matchDatasources": ["npm"],
+      "vulnerabilityAlerts": {
+        "schedule": ["at any time"],
+        "prConcurrentLimit": 0
+      }
+    }
+  ]
+}

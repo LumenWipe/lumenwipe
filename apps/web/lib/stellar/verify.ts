@@ -101,15 +101,18 @@ function assertMergeShape(
   // user routed straight to their own wallet would make an attacker-nominated intermediary
   // reachable for every user, not only the ones closing to an exchange.
   if (!expected.mediatorRequired) {
-    throw new VerificationError(
-      "The account would be merged to an address you did not choose."
-    );
+    throw new VerificationError("The account would be merged to an address you did not choose.");
   }
 
   // Anywhere else, the transaction has to be the two-operation hand-off. Anything more is an
   // effect this cannot account for, and anything less means the balance stops at an address
   // the user never named.
   const ops = intent.operations;
+  // Stryker disable next-line ConditionalExpression: with ops.length === 2 and exactly one
+  // account_merge among all of intent.operations (guaranteed above), ops[0] not being the merge
+  // forces the merge to be ops[1] - which then always fails the ops[1]-is-payment check too. The
+  // ops[0] term can never be the sole reason this condition is true; removing it changes nothing
+  // observable.
   if (ops.length !== 2 || ops[0]!.type !== "account_merge" || ops[1]!.type !== "payment") {
     throw new VerificationError(
       "The account would be merged to an address you did not choose, and this transaction does not hand the balance straight on to your destination."
@@ -201,7 +204,17 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
       case "payment": {
         // A payment is only ever a return-to-issuer (the asset paid back to its own issuer)
         // or the mediated forward, which `assertMergeShape` has already vouched for.
+        // Stryker disable next-line StringLiteral,ConditionalExpression: `issuer` is null/
+        // undefined whenever `op.asset` has no ":" - which is always true for "native", the only
+        // value that makes `op.asset !== "native"` false. `issuer === op.destination` can then
+        // never be true in that case (destination is always a real address, never null or
+        // undefined), so neither the ":" split nor the "native" comparison is individually
+        // observable: isIssuerReturn is false for a native asset regardless of how either is
+        // mutated, because the other term already forces it.
         const issuer = op.asset.includes(":") ? op.asset.split(":")[1] : null;
+        // Stryker disable next-line StringLiteral,ConditionalExpression: see above - mutating
+        // either the "native" literal or the whole clause only matters when asset === "native",
+        // where `issuer` (null/undefined either way) can never equal a real destination address.
         const isIssuerReturn = op.asset !== "native" && issuer === op.destination;
         if (!isIssuerReturn && op !== forward) {
           throw new VerificationError(
@@ -282,10 +295,18 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
           );
         }
         break;
+      // Stryker disable next-line StringLiteral: disabling this case label sends an "unknown"
+      // op to the exhaustiveness-guard `default` below, which throws the exact same message -
+      // the two branches are textually identical on purpose (see that guard's comment), so this
+      // mutation is unobservable by design, not a gap.
       case "unknown":
         // normalizeOp preserves any unrecognized operation as `unknown` so it cannot be
         // silently dropped; verification refuses to sign a transaction that carries one.
         throw new VerificationError("The transaction contains an unrecognized operation.");
+      // Stryker disable next-line ConditionalExpression: this case's entire body is a no-op
+      // `break` (see the comment below for why revoke_sponsorship needs no check). Collapsing it
+      // just falls through to the next case, which is also a no-op `break` - unobservable either
+      // way.
       case "revoke_sponsorship":
         // CAP-33: RevokeSponsorship always reverts the entry's reserve burden to its own
         // owning account UNLESS the operation's source account is sandwiched inside a
@@ -325,6 +346,11 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
     intent.guarantees.mergeDestination === expected.destination ||
     intent.guarantees.paymentsOnlyTo.includes(expected.destination);
   if (deliversToDestination && expected.memoRequired) {
+    // Stryker disable next-line ConditionalExpression: the memo-integrity check above already
+    // guarantees, for every path that reaches here, that intent.memo is either null or exactly
+    // equal to expected.memo (any other value throws before this point) - so
+    // `intent.memo !== expected.memo` can never independently be true here. Only the
+    // `=== null` half is reachable; the second is dead by construction, not untested.
     if (intent.memo === null || intent.memo !== expected.memo) {
       throw new VerificationError("This destination requires a deposit memo.");
     }

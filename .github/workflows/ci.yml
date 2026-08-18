@@ -20,8 +20,10 @@ jobs:
         include:
           - { name: "types", pkg: "@lumenwipe/types", checks: "type-check" }
           - { name: "sdk", pkg: "@lumenwipe/sdk", checks: "type-check lint test" }
-          - { name: "web", pkg: "@lumenwipe/web", checks: "type-check lint test" }
-          - { name: "api", pkg: "@lumenwipe/api", checks: "type-check lint test" }
+          # test:coverage runs the same suite as `test` with a coverage report printed to the
+          # log - same pass/fail outcome, no threshold gate, just visibility into what's covered.
+          - { name: "web", pkg: "@lumenwipe/web", checks: "type-check lint test:coverage" }
+          - { name: "api", pkg: "@lumenwipe/api", checks: "type-check lint test:coverage" }
     steps:
       - uses: actions/checkout@v4
 

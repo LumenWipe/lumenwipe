@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { Keypair, Operation } from "@stellar/stellar-sdk";
+import { Keypair, Operation, StrKey, xdr } from "@stellar/stellar-sdk";
 import { revokeSponsorshipOps } from "@/lib/stellar/tx-builder/sponsorship";
 import type { SponsoredEntry } from "@lumenwipe/types";
 
@@ -47,4 +47,34 @@ test("revokeSponsorshipOps › signer kind dispatches by StrKey prefix (ed25519)
 test("revokeSponsorshipOps › unrecognized signer key type is skipped, not thrown", () => {
   const entries: SponsoredEntry[] = [{ kind: "signer", owner: OWNER, signerKey: "not-a-real-key" }];
   expect(revokeSponsorshipOps(entries)).toEqual([]);
+});
+
+test("revokeSponsorshipOps › signer kind dispatches by StrKey prefix (ed25519 signed payload)", () => {
+  const payloadKey = StrKey.encodeSignedPayload(
+    new xdr.SignerKeyEd25519SignedPayload({
+      ed25519: SIGNER_KP.rawPublicKey(),
+      payload: Buffer.from("cafebabe", "hex"),
+    }).toXDR()
+  );
+  const entries: SponsoredEntry[] = [{ kind: "signer", owner: OWNER, signerKey: payloadKey }];
+  const decoded = Operation.fromXDRObject(revokeSponsorshipOps(entries)[0]!);
+  expect(decoded.type).toBe("revokeSignerSponsorship");
+});
+
+test("revokeSponsorshipOps › signer kind dispatches by StrKey prefix (preauth_tx)", () => {
+  const preAuthKey = StrKey.encodePreAuthTx(SIGNER_KP.rawPublicKey());
+  const entries: SponsoredEntry[] = [{ kind: "signer", owner: OWNER, signerKey: preAuthKey }];
+  const decoded = Operation.fromXDRObject(revokeSponsorshipOps(entries)[0]!);
+  expect(decoded.type).toBe("revokeSignerSponsorship");
+  // @ts-expect-error - narrow for the assertion only
+  expect(decoded.signer.preAuthTx).toBeDefined();
+});
+
+test("revokeSponsorshipOps › signer kind dispatches by StrKey prefix (hash_x)", () => {
+  const hashXKey = StrKey.encodeSha256Hash(SIGNER_KP.rawPublicKey());
+  const entries: SponsoredEntry[] = [{ kind: "signer", owner: OWNER, signerKey: hashXKey }];
+  const decoded = Operation.fromXDRObject(revokeSponsorshipOps(entries)[0]!);
+  expect(decoded.type).toBe("revokeSignerSponsorship");
+  // @ts-expect-error - narrow for the assertion only
+  expect(decoded.signer.sha256Hash).toBeDefined();
 });

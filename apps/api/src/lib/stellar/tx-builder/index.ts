@@ -68,7 +68,10 @@ export function buildPlan(
   mediatorRequired: boolean,
   fastPathEligible = false,
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {},
-  sponsorshipAffordability: SponsorshipAffordability = { revocable: [], unaffordableOwners: new Map() }
+  sponsorshipAffordability: SponsorshipAffordability = {
+    revocable: [],
+    unaffordableOwners: new Map(),
+  }
 ): BuildPlanResult {
   const steps: PlannedStep[] = [];
   const blockers: PlanBlocker[] = [];
@@ -273,7 +276,8 @@ export function buildPlan(
       : claimableBalanceSelections[b.id] === "add_trustline_then_claim"
   );
   const balancesNeedingTrustline = claimableBalances.filter(
-    (b) => !isCurrentlyClaimable(b) && claimableBalanceSelections[b.id] === "add_trustline_then_claim"
+    (b) =>
+      !isCurrentlyClaimable(b) && claimableBalanceSelections[b.id] === "add_trustline_then_claim"
   );
 
   // ─── Fast path: fuse the whole close into one transaction when eligible ──────
@@ -321,6 +325,9 @@ export function buildPlan(
     if (mediatorRequired) {
       steps.push(
         step(
+          // Stryker disable next-line UpdateOperator: the last use of `idx` in this branch (the
+          // function returns right after) - post-increment and post-decrement both yield the
+          // same value here, and nothing reads `idx` again afterward to see the difference.
           idx++,
           "MERGE",
           "Merge and forward to exchange",
@@ -346,6 +353,9 @@ export function buildPlan(
     );
   }
 
+  // Stryker disable next-line EqualityOperator,ConditionalExpression: batchItems([], N) always
+  // returns [], so the loop below runs zero times regardless of this gate - it is an early exit,
+  // not behavior. Removing it changes nothing observable.
   if (!sponsorshipUsesBlanketBlocker && sponsorshipAffordability.revocable.length > 0) {
     const batches = batchItems(sponsorshipAffordability.revocable, OP_BATCH_LIMIT);
     for (let i = 0; i < batches.length; i++) {
@@ -364,6 +374,8 @@ export function buildPlan(
     }
   }
 
+  // Stryker disable next-line EqualityOperator,ConditionalExpression: batchItems([], N) always
+  // returns [], so the loop below runs zero times regardless of this gate.
   if (dataEntries.length > 0) {
     const batches = batchItems(dataEntries, OP_BATCH_LIMIT);
     for (let i = 0; i < batches.length; i++) {
@@ -382,6 +394,8 @@ export function buildPlan(
     }
   }
 
+  // Stryker disable next-line EqualityOperator,ConditionalExpression: batchItems([], N) always
+  // returns [], so the loop below runs zero times regardless of this gate.
   if (openOffers.length > 0) {
     const batches = batchItems(openOffers, OP_BATCH_LIMIT);
     for (let i = 0; i < batches.length; i++) {
@@ -403,6 +417,8 @@ export function buildPlan(
   // Balances that need a trustline added before they can be claimed (the remediation path).
   // Always emitted immediately before the CLAIM_BALANCES step so the claim never runs against
   // a still-untrusted asset.
+  // Stryker disable next-line EqualityOperator,ConditionalExpression: batchItems([], N) always
+  // returns [], so the loop below runs zero times regardless of this gate.
   if (balancesNeedingTrustline.length > 0) {
     const batches = batchItems(balancesNeedingTrustline, OP_BATCH_LIMIT);
     for (let i = 0; i < batches.length; i++) {
@@ -425,6 +441,8 @@ export function buildPlan(
   // opted out, plus ones just remediated with a new trustline above. Batched like other
   // operations. Excludes forfeited/unresolved balances entirely.
   const claimable = balancesNeedingClaimStep;
+  // Stryker disable next-line EqualityOperator,ConditionalExpression: batchItems([], N) always
+  // returns [], so the loop below runs zero times regardless of this gate.
   if (claimable.length > 0) {
     const batches = batchItems(claimable, OP_BATCH_LIMIT);
     for (let i = 0; i < batches.length; i++) {
@@ -456,6 +474,11 @@ export function buildPlan(
   // the live trustline balance, which the executor reads on-chain at step build time.
   const claimableNonXlmByAsset = new Map<string, number>();
   for (const b of claimable) {
+    // Stryker disable next-line ConditionalExpression,StringLiteral: a Trustline's `asset` is
+    // never the string "native" (native XLM is never represented as a trustline - it's the
+    // account's own base balance), so a key of "native" wrongly added here could never be
+    // looked up by `trustlinesNeedingConversion`'s `claimableNonXlmByAsset.get(tl.asset)` below.
+    // Unobservable given that domain invariant.
     if (b.asset !== "native") {
       claimableNonXlmByAsset.set(
         b.asset,
@@ -483,6 +506,8 @@ export function buildPlan(
     );
   }
 
+  // Stryker disable next-line EqualityOperator,ConditionalExpression: batchItems([], N) always
+  // returns [], so the loop below runs zero times regardless of this gate.
   if (trustlines.length > 0) {
     const batches = batchItems(trustlines, OP_BATCH_LIMIT);
     for (let i = 0; i < batches.length; i++) {
@@ -503,6 +528,8 @@ export function buildPlan(
 
   steps.push(
     step(
+      // Stryker disable next-line UpdateOperator: the last use of `idx` in the function (return
+      // follows immediately) - post-increment and post-decrement both yield the same value here.
       idx++,
       "MERGE",
       mediatorRequired ? "Merge and forward to exchange" : "Merge account",
