@@ -124,6 +124,9 @@ async function driveFusedClose(
     await acceptRisk.click();
   }
 
+  // AccountEntryForm defaults to the "Connect wallet" tab (AccountEntryForm.tsx L22);
+  // the "Paste address" tab must be selected explicitly before its "G..." input exists.
+  await page.getByRole("button", { name: /Paste address/i }).click();
   await page.getByPlaceholder(/G\.\.\. \(the account to merge\)/).fill(opts.source.publicKey());
 
   const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
@@ -159,11 +162,17 @@ async function driveFusedClose(
   await proceedButton.click();
 
   // Execute: a single fused close carries the merge, so the panel surfaces the
-  // irreversible-merge warning and the "Sign and merge account" button.
+  // irreversible-merge warning and the "Sign & execute close" button.
   await expect(page).toHaveURL(/\/testnet\/execute/);
-  await expect(page.getByRole("heading", { name: /Close account/i })).toBeVisible({
+  // ExecutionWizard's own panel heading confirms the sign-and-execute panel itself
+  // has mounted - see ExecutionWizard.tsx L286.
+  await expect(page.getByRole("heading", { name: /Sign .* execute the close/i })).toBeVisible({
     timeout: 30_000,
   });
+
+  // ExecutionWizard defaults to the "Connect wallet" tab; the "Use secret key
+  // (advanced)" tab must be selected explicitly before its "S..." input exists.
+  await page.getByRole("button", { name: /Use secret key \(advanced\)/i }).click();
 
   // Secret key (entered once, held in memory for the session).
   await page.getByPlaceholder("S...").fill(opts.source.secret());
@@ -171,7 +180,7 @@ async function driveFusedClose(
   // Per-step confirmation checkbox.
   await page.getByRole("checkbox").check();
 
-  const signButton = page.getByRole("button", { name: /Sign and merge account/i });
+  const signButton = page.getByRole("button", { name: /Sign .* execute close/i });
   await expect(signButton).toBeEnabled();
   await signButton.click();
 

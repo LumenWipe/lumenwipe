@@ -115,6 +115,9 @@ async function enterSourceAndAnalyze(page: Page, source: string): Promise<void> 
   await page.goto("/testnet");
   await dismissRiskModal(page);
 
+  // AccountEntryForm defaults to the "Connect wallet" tab (AccountEntryForm.tsx L22);
+  // the "Paste address" tab must be selected explicitly before its "G..." input exists.
+  await page.getByRole("button", { name: /Paste address/i }).click();
   await page.getByPlaceholder(/G\.\.\. \(the account to merge\)/).fill(source);
 
   const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
@@ -155,6 +158,10 @@ async function signMultiRoundCloseOnce(page: Page, source: Keypair): Promise<voi
   await expect(page.getByRole("heading", { name: /Sign.*execute the close/i })).toBeVisible({
     timeout: 30_000,
   });
+
+  // ExecutionWizard defaults to the "Connect wallet" tab; the "Use secret key
+  // (advanced)" tab must be selected explicitly before its "S..." input exists.
+  await page.getByRole("button", { name: /Use secret key \(advanced\)/i }).click();
 
   await page.getByPlaceholder("S...").fill(source.secret());
 

@@ -99,6 +99,9 @@ async function reachReviewWithoutConfirming(
   await page.goto("/testnet");
   await dismissRiskModal(page);
 
+  // AccountEntryForm defaults to the "Connect wallet" tab (AccountEntryForm.tsx L22);
+  // the "Paste address" tab must be selected explicitly before its "G..." input exists.
+  await page.getByRole("button", { name: /Paste address/i }).click();
   await page.getByPlaceholder(/G\.\.\. \(the account to merge\)/).fill(source.publicKey());
   const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
   await expect(analyzeButton).toBeEnabled();
