@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Declarations only. tsup still emits the JS; this exists so api-extractor has real .d.ts
+    // files to roll up, which is the step tsup's own dts bundling cannot do for a workspace
+    // re-export.
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "declarationMap": false,
+    "outDir": "./dist-types",
+    // Only for this build. api-extractor analyses compiler OUTPUT, so it needs the contract
+    // package as .d.ts - the root `types` field points at src on purpose, so the web and API
+    // resolve it from source with no build-order dependency. That stays untouched; this
+    // mapping applies to the publish build alone.
+    "baseUrl": ".",
+    "paths": {
+      "@lumenwipe/types": ["../types/dist/index.d.ts"]
+    }
+  },
+  "exclude": ["node_modules", "dist", "dist-types", "tests"]
+}

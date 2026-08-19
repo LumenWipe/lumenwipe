@@ -1,0 +1,36 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/api-extractor/v7/api-extractor.schema.json",
+
+  // Rolls every declaration the public API touches into ONE self-contained .d.ts.
+  //
+  // tsup cannot do this for us: rollup-plugin-dts treats a bare specifier it cannot resolve to
+  // a file in its program as external, so `export type * from "@lumenwipe/types"` survives as a
+  // reference no matter what `dts.resolve` / `noExternal` are set to (all tried, see #85). That
+  // reference is a dangling import once published, because @lumenwipe/types stays private -
+  // TypeScript integrators get the contract through this SDK, and raw-REST ones through the
+  // OpenAPI spec.
+  "mainEntryPointFilePath": "<projectFolder>/dist-types/index.d.ts",
+  "bundledPackages": ["@lumenwipe/types"],
+
+  "compiler": {
+    "tsconfigFilePath": "<projectFolder>/tsconfig.build.json"
+  },
+
+  "dtsRollup": {
+    "enabled": true,
+    "untrimmedFilePath": "<projectFolder>/dist/index.d.ts"
+  },
+
+  "apiReport": { "enabled": false },
+  "docModel": { "enabled": false },
+  "tsdocMetadata": { "enabled": false },
+
+  "messages": {
+    // The contract types carry no TSDoc release tags and do not need them: this package has one
+    // public surface and no supported-vs-internal split to police.
+    "extractorMessageReporting": {
+      "ae-missing-release-tag": { "logLevel": "none" },
+      "ae-unresolved-link": { "logLevel": "none" }
+    }
+  }
+}

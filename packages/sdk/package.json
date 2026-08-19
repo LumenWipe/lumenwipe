@@ -8,26 +8,33 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
-      "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "build": "bun run --filter '@lumenwipe/types' build && tsup src/index.ts --format esm,cjs --clean && tsc -p tsconfig.build.json && api-extractor run --local && cp dist/index.d.ts dist/index.d.cts",
     "type-check": "tsc --noEmit && tsc -p tests/tsconfig.json --noEmit",
     "lint": "eslint src",
     "test": "bun test tests"
   },
-  "dependencies": {
-    "@lumenwipe/types": "workspace:*"
-  },
   "devDependencies": {
+    "@microsoft/api-extractor": "^7.58.12",
     "@types/bun": "^1.3.14",
-    "tsup": "^8.3.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^8.57.1",
-    "typescript": "^5.9.3"
+    "tsup": "^8.3.0",
+    "typescript": "^5.9.3",
+    "@lumenwipe/types": "workspace:*"
   }
 }
