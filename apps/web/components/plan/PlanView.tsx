@@ -18,7 +18,11 @@ import {
 import { apiStepsToPlannedSteps } from "@/lib/api/plan-adapters";
 import { goToReview } from "@/lib/plan/confirm-plan";
 import { isValidGAddress, isValidMemo } from "@/lib/utils/validation";
-import { getMemoRequirement, isCexAddress, requiresMediatorForAddress } from "@/lib/exchange-registry";
+import {
+  getMemoRequirement,
+  isCexAddress,
+  requiresMediatorForAddress,
+} from "@/lib/exchange-registry";
 import AccountSummaryCard from "./AccountSummaryCard";
 import BlockersPanel from "./BlockersPanel";
 import PlanAccordion from "./PlanAccordion";
@@ -136,8 +140,7 @@ export default function PlanView({
   // own (acknowledged, non-trapping) blocker - neither should hard-block once the local
   // resolution check says the decision is made. Every other blocker code still hard-blocks.
   const hardBlockers = blockers.filter(
-    (b) =>
-      b.code !== "claimable_balance_forfeited" && b.code !== "claimable_balance_unclaimable"
+    (b) => b.code !== "claimable_balance_forfeited" && b.code !== "claimable_balance_unclaimable"
   );
 
   const destinationStepReady = allAssetsResolved && allClaimsResolved && hardBlockers.length === 0;
@@ -208,7 +211,10 @@ export default function PlanView({
       // and the user's asset + claimable-balance decisions. Execution itself re-requests the
       // transactions.
       const decisions = [
-        ...dispositionsToDecisions(useDemolishStore.getState().assetDispositions),
+        ...dispositionsToDecisions(
+          useDemolishStore.getState().assetDispositions,
+          useDemolishStore.getState().transferDestinations
+        ),
         ...claimableSelectionsToDecisions(useDemolishStore.getState().claimableBalanceSelections),
         ...destinationAcknowledgementToDecisions(
           useDemolishStore.getState().destinationAcknowledgedFor,

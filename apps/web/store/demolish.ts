@@ -29,8 +29,15 @@ interface DemolishState {
   executionPlan: PlannedStep[];
   currentStepIndex: number;
 
-  // Per-asset disposition: swap to XLM ("convert") or return to issuer ("issuer")
+  // Per-asset disposition: swap to XLM ("convert"), return to issuer ("issuer"), or send the
+  // balance intact to an account of the user's choosing ("transfer")
   assetDispositions: Record<string, AssetDisposition>;
+
+  // Where each "transfer" disposition sends its balance, keyed by the same asset string.
+  // Kept here, in the user's own state, because verify() binds the transaction's payment
+  // destination against it before signing - reading it back from the plan or the transaction
+  // would make the check circular and prove nothing.
+  transferDestinations: Record<string, string>;
 
   // Per-claimable-balance selection, keyed by balance id: claim it, add a trustline then
   // claim it, or forfeit it.
@@ -58,6 +65,7 @@ interface DemolishState {
   setAccountState: (state: AccountState) => void;
   setPlan: (plan: PlannedStep[]) => void;
   setAssetDisposition: (asset: string, action: AssetDisposition) => void;
+  setTransferDestination: (asset: string, destination: string | null) => void;
   setClaimableBalanceSelection: (balanceId: string, selection: ClaimableBalanceSelection) => void;
   setMediatorRequired: (required: boolean) => void;
   setCurrentStepIndex: (index: number) => void;
@@ -81,6 +89,20 @@ interface DemolishState {
  * trustline for, while preserving decisions for assets that still exist. A fresh
  * scan of the same account therefore keeps the user's per-asset choices.
  */
+/** Drops entries for assets the account no longer holds, so a re-analyze cannot leave a
+ *  destination attached to a trustline that is gone. */
+function pruneToPresentAssets(
+  destinations: Record<string, string>,
+  accountState: AccountState
+): Record<string, string> {
+  const present = new Set(accountState.trustlines.map((tl) => tl.asset));
+  const next: Record<string, string> = {};
+  for (const [asset, destination] of Object.entries(destinations)) {
+    if (present.has(asset)) next[asset] = destination;
+  }
+  return next;
+}
+
 function pruneDispositions(
   dispositions: Record<string, AssetDisposition>,
   accountState: AccountState
@@ -121,6 +143,7 @@ const initialState = {
   executionPlan: [],
   currentStepIndex: 0,
   assetDispositions: {},
+  transferDestinations: {},
   claimableBalanceSelections: {},
   mediatorRequired: false,
   lastError: null,
@@ -152,6 +175,7 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       // Prune to assets still present so a genuinely-gone trustline can't carry a
       // stale decision into the build.
       assetDispositions: pruneDispositions(s.assetDispositions, accountState),
+      transferDestinations: pruneToPresentAssets(s.transferDestinations, accountState),
       claimableBalanceSelections: pruneClaimableSelections(
         s.claimableBalanceSelections,
         accountState
@@ -164,15 +188,35 @@ export const useDemolishStore = create<DemolishState>((set) => ({
   setPlan: (executionPlan) => set({ executionPlan, currentStepIndex: 0 }),
 
   setAssetDisposition: (asset, action) =>
-    set((s) => ({ assetDispositions: { ...s.assetDispositions, [asset]: action } })),
+    set((s) => {
+      // Switching away from transfer drops the destination with it: a stale one would still be
+      // handed to verify(), which would then vouch for a payment the user is no longer asking
+      // for.
+      if (action === "transfer") {
+        return { assetDispositions: { ...s.assetDispositions, [asset]: action } };
+      }
+      const { [asset]: _dropped, ...rest } = s.transferDestinations;
+      return {
+        assetDispositions: { ...s.assetDispositions, [asset]: action },
+        transferDestinations: rest,
+      };
+    }),
+
+  setTransferDestination: (asset, destination) =>
+    set((s) => {
+      if (destination === null) {
+        const { [asset]: _cleared, ...rest } = s.transferDestinations;
+        return { transferDestinations: rest };
+      }
+      return { transferDestinations: { ...s.transferDestinations, [asset]: destination } };
+    }),
 
   setClaimableBalanceSelection: (balanceId, selection) =>
     set((s) => ({
       claimableBalanceSelections: { ...s.claimableBalanceSelections, [balanceId]: selection },
     })),
 
-  setMediatorRequired: (required) =>
-    set({ mediatorRequired: required }),
+  setMediatorRequired: (required) => set({ mediatorRequired: required }),
 
   setCurrentStepIndex: (currentStepIndex) => set({ currentStepIndex }),
 

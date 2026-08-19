@@ -1,0 +1,4 @@
+
+# Stryker mutation-testing sandbox and report (regenerated per run)
+.stryker-tmp/
+reports/mutation/
