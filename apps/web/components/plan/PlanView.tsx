@@ -21,6 +21,7 @@ import { isValidGAddress, isValidMemo } from "@/lib/utils/validation";
 import {
   getMemoRequirement,
   isCexAddress,
+  isRegistryUsable,
   requiresMediatorForAddress,
 } from "@/lib/exchange-registry";
 import AccountSummaryCard from "./AccountSummaryCard";
@@ -179,10 +180,17 @@ export default function PlanView({
     isCexAddress(destination) ||
     destinationAcknowledgedFor === destination;
 
+  // Fail closed on a stale registry, but only where staleness can actually cause harm. The
+  // registry's memo and mediator rules matter for an exchange destination; for a personal
+  // wallet nothing about the close depends on them, so blocking every close on an expired file
+  // would be a self-inflicted outage rather than a safeguard.
+  const registryBlocksExchange = isCexAddress(destination) && !isRegistryUsable();
+
   const canProceed =
     destinationStepReady &&
     isValidGAddress(destination) &&
     destination !== account.address &&
+    !registryBlocksExchange &&
     memoValid &&
     destinationAcknowledged;
 

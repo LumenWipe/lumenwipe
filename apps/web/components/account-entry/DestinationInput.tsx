@@ -2,7 +2,12 @@
 
 import { AlertTriangle } from "lucide-react";
 import { isValidGAddress } from "@/lib/utils/validation";
-import { getMemoRequirement, isCexAddress } from "@/lib/exchange-registry";
+import {
+  activeRegistry,
+  getMemoRequirement,
+  isCexAddress,
+  isRegistryUsable,
+} from "@/lib/exchange-registry";
 import AddressInput from "./AddressInput";
 
 interface DestinationInputProps {
@@ -67,10 +72,27 @@ export default function DestinationInput({
           )}
         </label>
         {memoReq?.requiresMemo ? (
-          <p className="text-xs text-amber-500">
-            {memoReq.exchangeName} requires a {memoType === "id" ? "numeric" : "text"} memo for all
-            deposits.
-          </p>
+          <>
+            <p className="text-xs text-amber-500">
+              {memoReq.exchangeName} requires a {memoType === "id" ? "numeric" : "text"} memo for
+              all deposits.
+            </p>
+            {/* The age of the rule, next to the rule. A memo requirement is data about the
+                outside world that changes without telling us, and this is the last screen
+                before something irreversible - so the user can see how old the thing they are
+                relying on is, and whether it came from the API or from the bundled floor. */}
+            <p className="text-[0.7rem] text-white/40">
+              Deposit rules last verified {activeRegistry().lastVerified}
+              {activeRegistry().served ? "" : " (offline copy)"}.
+            </p>
+            {!isRegistryUsable() && (
+              <p role="alert" className="text-xs text-destructive">
+                These deposit rules expired on {activeRegistry().validUntil} and have not been
+                re-checked. Closing into an exchange on unverified rules can send the funds
+                somewhere nobody can credit them, so this is blocked until they are refreshed.
+              </p>
+            )}
+          </>
         ) : (
           <p className="text-xs text-white/40">
             Required by most exchanges to credit your deposit. Leave empty if not needed.
@@ -95,10 +117,10 @@ export default function DestinationInput({
           <p className="text-xs text-white/60">
             That doesn&apos;t mean it isn&apos;t one. Closing directly into an exchange or custodial
             account loses the funds: exchanges credit deposits from payments carrying a memo, and
-            cannot credit a closed account. LumenWipe sends to the exchanges it recognizes through
-            a shared intermediary account, but it cannot do that for an address it does not know.
-            If this one belongs to an exchange, close to a personal wallet you control and send it
-            from there, including the exchange&apos;s deposit memo.
+            cannot credit a closed account. LumenWipe sends to the exchanges it recognizes through a
+            shared intermediary account, but it cannot do that for an address it does not know. If
+            this one belongs to an exchange, close to a personal wallet you control and send it from
+            there, including the exchange&apos;s deposit memo.
           </p>
           <label className="flex cursor-pointer items-start gap-2 text-xs text-white/80">
             <input
