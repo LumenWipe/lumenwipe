@@ -18,6 +18,18 @@ test("the shipped registry is currently fresh", () => {
   expect(isRegistryFresh()).toBe(true);
 });
 
+test("the shipped registry is not about to expire", () => {
+  // Warns two weeks ahead, because "fails on the day it expires" is still an outage that
+  // starts in production. This turns a user-facing refusal into a maintenance ticket, and the
+  // fix is the quarterly re-verification CONTRIBUTING describes - not moving the date.
+  const twoWeeksOut = new Date(Date.now() + 14 * 86_400_000);
+  expect(
+    isRegistryFresh(twoWeeksOut),
+    "the exchange registry expires within two weeks - re-verify the 20 entries against each " +
+      "exchange's own deposit docs and restamp lastVerified/validUntil (CONTRIBUTING §9)"
+  ).toBe(true);
+});
+
 test("freshness is judged against validUntil, inclusive of that day", () => {
   const until = servedRegistry().validUntil;
   expect(isRegistryFresh(new Date(`${until}T12:00:00Z`))).toBe(true);

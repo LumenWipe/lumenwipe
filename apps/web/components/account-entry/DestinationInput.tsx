@@ -85,17 +85,21 @@ export default function DestinationInput({
               Deposit rules last verified {activeRegistry().lastVerified}
               {activeRegistry().served ? "" : " (offline copy)"}.
             </p>
-            {!isRegistryUsable() && (
-              <p role="alert" className="text-xs text-destructive">
-                These deposit rules expired on {activeRegistry().validUntil} and have not been
-                re-checked. Closing into an exchange on unverified rules can send the funds
-                somewhere nobody can credit them, so this is blocked until they are refreshed.
-              </p>
-            )}
           </>
         ) : (
           <p className="text-xs text-white/40">
             Required by most exchanges to credit your deposit. Leave empty if not needed.
+          </p>
+        )}
+        {/* Outside the memo branch on purpose. Keyed on "is this a listed exchange", the same
+            condition that disables the button - nesting it under requiresMemo meant a listed
+            exchange with no memo requirement produced a disabled button and no message
+            anywhere on the page. */}
+        {isCexAddress(destination) && !isRegistryUsable() && (
+          <p role="alert" className="text-xs text-destructive">
+            These deposit rules expired on {activeRegistry().validUntil} and have not been
+            re-checked. Closing into an exchange on unverified rules can send the funds somewhere
+            nobody can credit them, so this is blocked until they are refreshed.
           </p>
         )}
         <input

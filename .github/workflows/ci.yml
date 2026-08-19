@@ -22,8 +22,13 @@ jobs:
           - { name: "sdk", pkg: "@lumenwipe/sdk", checks: "type-check lint test" }
           # test:coverage runs the same suite as `test` with a coverage report printed to the
           # log - same pass/fail outcome, no threshold gate, just visibility into what's covered.
-          - { name: "web", pkg: "@lumenwipe/web", checks: "type-check lint test:coverage" }
-          - { name: "api", pkg: "@lumenwipe/api", checks: "type-check lint test:coverage" }
+          # `build` is in the list because type-check alone cannot catch a broken build:
+          # tsc with noEmit never computes an output layout, so a change that relocates the
+          # emitted entrypoint (or a file the Docker build never copies) passes every check and
+          # fails first on the production deploy. That happened in #81 and cost a full
+          # debugging cycle to find by hand.
+          - { name: "web", pkg: "@lumenwipe/web", checks: "type-check lint test:coverage build" }
+          - { name: "api", pkg: "@lumenwipe/api", checks: "type-check lint test:coverage build" }
     steps:
       - uses: actions/checkout@v4
 

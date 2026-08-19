@@ -1,5 +1,5 @@
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
-import { lookupExchange } from "@/lib/exchange-registry";
+import { isRegistryUsable, lookupExchange } from "@/lib/exchange-registry";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { xlmToStroops } from "@/lib/utils/amounts";
 import type { AccountSigner, AccountThresholds } from "@/types/account";
@@ -499,6 +499,19 @@ export function verifyCloseTransaction(opts: {
 }): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);
   const exchange = lookupExchange(opts.expected.destination);
+
+  // Asserted here, not only in the UI. The plan view disables its button on an expired
+  // registry, but that is a boolean feeding a control - it does not survive a refactor, a new
+  // retry path, or the later rounds of a multi-round close, none of which pass through it
+  // again. This is the last thing that runs before a signature, so the invariant belongs here:
+  // an exchange close on memo rules nobody has re-checked succeeds on-chain and is credited to
+  // nobody.
+  if (exchange !== null && !isRegistryUsable()) {
+    throw new VerificationError(
+      "The exchange deposit rules have expired and have not been re-verified, so this close " +
+        "cannot be checked. Refresh the page; if it persists, the registry needs updating."
+    );
+  }
   assertCloseIntent(intent, {
     ...opts.expected,
     memoRequired: exchange?.requiresMemo ?? false,

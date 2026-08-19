@@ -122,10 +122,20 @@ function tightenedOver(embeddedEntry: RegistryEntry, servedEntry: RegistryEntry)
  *  this the endpoint self-attests its freshness and the expiry gate constrains nobody. */
 const MAX_EXTENSION_DAYS = 120;
 
+/** The registry is small and served from our own API; anything slower than this is a stall,
+ *  not a slow response. */
+const REGISTRY_FETCH_TIMEOUT_MS = 8_000;
+
 function boundedValidUntil(embeddedUntil: string, servedUntil: string): string {
-  const cap = Date.parse(`${embeddedUntil}T23:59:59Z`) + MAX_EXTENSION_DAYS * 86_400_000;
+  const embedded = Date.parse(`${embeddedUntil}T23:59:59Z`);
   const served = Date.parse(`${servedUntil}T23:59:59Z`);
   if (!Number.isFinite(served)) return embeddedUntil;
+  // Never adopt an expiry EARLIER than the bundle's own. The two deploy independently, so the
+  // web can ship a freshly re-verified registry while the API still serves the previous one;
+  // taking the older date would block exchange closes using rules the page in front of the
+  // user has current. Bounded above so the endpoint cannot extend its own validity forever.
+  const cap = embedded + MAX_EXTENSION_DAYS * 86_400_000;
+  if (served < embedded) return embeddedUntil;
   return served <= cap ? servedUntil : embeddedUntil;
 }
 
@@ -140,9 +150,14 @@ function boundedValidUntil(embeddedUntil: string, servedUntil: string): string {
 export async function loadServedRegistry(
   // Narrower than `typeof fetch` on purpose: this only ever GETs one path, and the full
   // signature drags in properties (`preconnect`) a test double has no reason to implement.
-  fetchImpl: (input: string) => Promise<Response> = (input) => fetch(input)
+  fetchImpl: (input: string) => Promise<Response> = (input) =>
+    fetch(input, { signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS) })
 ): Promise<RegistrySnapshot> {
   try {
+    // Bounded. A failure degrades to the floor, but a hang does not degrade at all - the
+    // analyze page awaits this between the account read and the plan fetch, so an endpoint
+    // that accepts the connection and never answers leaves the user on the spinner with no
+    // error, no retry and no way out but a reload.
     const res = await fetchImpl("/api/config/exchange-registry");
     if (!res.ok) return current;
     const body = (await res.json()) as Partial<RegistrySnapshot>;
