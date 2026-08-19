@@ -29,10 +29,11 @@ export function configureApp(app: INestApplication): void {
       next(err);
       return;
     }
-    const body = req.path.includes("/mediator/")
-      ? { error: "Invalid JSON body" }
-      : { error: { code: "invalid_body", message: "Request body must be valid JSON." } };
-    res.status(400).json(body);
+    // One shape, whatever the path. This branched on `/mediator/` to keep two different error
+    // contracts alive in the same handler - the clearest instance of the split #59 removes.
+    res
+      .status(400)
+      .json({ error: { code: "invalid_body", message: "Request body must be valid JSON." } });
   };
   app.use(onJsonError);
 }

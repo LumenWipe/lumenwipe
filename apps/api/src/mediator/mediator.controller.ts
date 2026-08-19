@@ -1,5 +1,12 @@
 import { Body, Controller, Get, HttpCode, HttpException, Param, Post } from "@nestjs/common";
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from "@nestjs/swagger";
 import { Transaction } from "@stellar/stellar-sdk";
 import { MediatorSignRequestDto } from "./dto/mediator-sign.dto";
 import { isValidNetwork, NETWORK_PASSPHRASES, getMediatorPublicKey } from "@/config/networks";
@@ -9,6 +16,7 @@ import { getMediatorKeypair } from "@/lib/stellar/mediator-server";
 import { getAccountState } from "@/lib/stellar/account-state";
 import { AccountNotFoundError } from "@/lib/utils/errors";
 import { forwardExceedsMergedBalance } from "./mediator-validation";
+import { fail } from "@/common/fail";
 
 @ApiTags("mediator")
 @ApiBearerAuth("api-key")
@@ -26,11 +34,14 @@ export class MediatorController {
   @HttpCode(200)
   @ApiOperation({ summary: "Co-sign the mediator forwarding payment of an exchange close." })
   @ApiBody({ type: MediatorSignRequestDto })
-  @ApiResponse({ status: 200, description: "The transaction with the mediator signature added (base64 XDR)." })
+  @ApiResponse({
+    status: 200,
+    description: "The transaction with the mediator signature added (base64 XDR).",
+  })
   @ApiResponse({ status: 400, description: "Missing/invalid transaction or disallowed structure." })
   @ApiResponse({ status: 503, description: "Mediator flow not configured on this server." })
   async sign(@Param("network") network: string, @Body() body: { transaction?: string }) {
-    if (!isValidNetwork(network)) throw new HttpException({ error: "Invalid network" }, 400);
+    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
 
     const mediatorKeypair = getMediatorKeypair(network);
     if (!mediatorKeypair) {
@@ -43,16 +54,16 @@ export class MediatorController {
 
     const configuredPublic = getMediatorPublicKey(network);
     if (configuredPublic && configuredPublic !== mediator) {
-      throw new HttpException({ error: "Mediator key misconfiguration" }, 500);
+      fail("mediator_key_misconfiguration", "Mediator key misconfiguration", 500);
     }
 
-    if (!body?.transaction) throw new HttpException({ error: "Missing transaction" }, 400);
+    if (!body?.transaction) fail("missing_transaction", "Missing transaction", 400);
 
     let tx: Transaction;
     try {
       tx = new Transaction(body.transaction, NETWORK_PASSPHRASES[network]);
     } catch {
-      throw new HttpException({ error: "Invalid transaction XDR" }, 400);
+      fail("invalid_transaction_xdr", "Invalid transaction XDR", 400);
     }
 
     const [merge, transfer] = tx.operations;
@@ -62,7 +73,7 @@ export class MediatorController {
       merge?.type !== "accountMerge" ||
       transfer?.type !== "payment"
     ) {
-      throw new HttpException({ error: "Transaction structure not allowed" }, 400);
+      fail("transaction_structure_not_allowed", "Transaction structure not allowed", 400);
     }
 
     if (
@@ -73,14 +84,14 @@ export class MediatorController {
       !transfer.asset.isNative() ||
       parseFloat(transfer.amount) < 1
     ) {
-      throw new HttpException({ error: "Transaction structure not allowed" }, 400);
+      fail("transaction_structure_not_allowed", "Transaction structure not allowed", 400);
     }
 
     // The mediator must not be the transaction's fee/sequence source (that would consume
     // its sequence number and make it pay the fee) nor the account being merged.
     const mergedSource = merge.source ?? tx.source;
     if (tx.source === mediator || mergedSource === mediator || !isValidGAddress(mergedSource)) {
-      throw new HttpException({ error: "Transaction structure not allowed" }, 400);
+      fail("transaction_structure_not_allowed", "Transaction structure not allowed", 400);
     }
 
     // Bound the forward payment to what the merge delivers - defense-in-depth against a
@@ -93,12 +104,16 @@ export class MediatorController {
       mergedBalance = (await getAccountState(mergedSource, network)).nativeBalanceLumens;
     } catch (err) {
       if (err instanceof AccountNotFoundError) {
-        throw new HttpException({ error: "Merged account not found" }, 400);
+        fail("merged_account_not_found", "Merged account not found", 400);
       }
       throw err;
     }
     if (forwardExceedsMergedBalance(transfer.amount, mergedBalance, Number(tx.fee))) {
-      throw new HttpException({ error: "Forward amount exceeds the merged balance" }, 400);
+      fail(
+        "forward_amount_exceeds_the_merged_balanc",
+        "Forward amount exceeds the merged balance",
+        400
+      );
     }
 
     tx.sign(mediatorKeypair);
@@ -111,8 +126,8 @@ export class MediatorController {
   @ApiResponse({ status: 200, description: "Mediator/memo requirements for the destination." })
   @ApiResponse({ status: 400, description: "Invalid network or address." })
   async check(@Param("network") network: string, @Param("address") address: string) {
-    if (!isValidNetwork(network)) throw new HttpException({ error: "Invalid network" }, 400);
-    if (!isValidGAddress(address)) throw new HttpException({ error: "Invalid address" }, 400);
+    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
+    if (!isValidGAddress(address)) fail("invalid_address", "Invalid address", 400);
 
     // Whether this server can actually co-sign the mediator flow (secret configured).
     const available = getMediatorKeypair(network) !== null;

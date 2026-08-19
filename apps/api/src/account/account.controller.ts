@@ -13,6 +13,7 @@ import { getAccountState } from "@/lib/stellar/account-state";
 import { fetchConversionPath } from "@/lib/stellar/path-finding";
 import { AccountNotFoundError } from "@/lib/utils/errors";
 import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
+import { fail } from "@/common/fail";
 
 @ApiTags("account")
 @ApiBearerAuth("api-key")
@@ -32,9 +33,9 @@ export class AccountController {
   @ApiResponse({ status: 400, description: "Invalid network or address." })
   @ApiResponse({ status: 404, description: "Account not found." })
   async account(@Param("network") network: string, @Param("address") address: string) {
-    if (!isValidNetwork(network)) throw new HttpException({ error: "Invalid network" }, 400);
+    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
     if (!isValidGAddress(address)) {
-      throw new HttpException({ error: "Invalid Stellar address" }, 400);
+      fail("invalid_address", "Invalid Stellar address", 400);
     }
 
     try {
@@ -42,7 +43,7 @@ export class AccountController {
     } catch (err) {
       if (err instanceof HttpException) throw err;
       if (err instanceof AccountNotFoundError) {
-        throw new HttpException({ error: err.message }, 404);
+        fail("account_not_found", err.message, 404);
       }
       // A collection too large to enumerate is a property of the account, not a fault of ours,
       // and its message explains what the caller is up against. Collapsing it into a generic
@@ -50,10 +51,10 @@ export class AccountController {
       // their account cannot be read - the opposite of the "blocker with an explanation"
       // invariant.
       if (err instanceof TruncatedCollectionError) {
-        throw new HttpException({ error: err.message }, 422);
+        fail("account_unreadable", err.message, 422);
       }
       this.logger.error("account fetch failed", err instanceof Error ? err.stack : String(err));
-      throw new HttpException({ error: "Failed to fetch account data" }, 500);
+      fail("account_read_failed", "Failed to fetch account data", 500);
     }
   }
 
@@ -68,9 +69,9 @@ export class AccountController {
     @Query("fromAsset") fromAsset?: string,
     @Query("amount") amount?: string
   ) {
-    if (!isValidNetwork(network)) throw new HttpException({ error: "Invalid network" }, 400);
+    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
     if (!fromAsset || !amount) {
-      throw new HttpException({ error: "Missing fromAsset or amount" }, 400);
+      fail("missing_parameters", "Missing fromAsset or amount", 400);
     }
 
     try {
@@ -78,7 +79,7 @@ export class AccountController {
       return { path };
     } catch (err) {
       this.logger.error("path fetch failed", err instanceof Error ? err.stack : String(err));
-      throw new HttpException({ error: "Failed to fetch conversion path" }, 500);
+      fail("path_lookup_failed", "Failed to fetch conversion path", 500);
     }
   }
 }
