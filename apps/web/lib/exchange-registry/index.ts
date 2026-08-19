@@ -1,4 +1,4 @@
-import embedded from "@config/exchange-registry.json";
+import embedded from "@registry/exchange-registry.json";
 
 /**
  * The exchange registry, as the browser sees it.
@@ -75,13 +75,67 @@ export function isRegistryUsable(now: Date = new Date()): boolean {
   return Number.isFinite(until) && now.getTime() <= until;
 }
 
+/** Shape-checks one served entry. An `as` cast would let `entries: [null]` reach the render
+ *  path and throw a TypeError there instead. */
+function isUsableEntry(e: unknown): e is RegistryEntry {
+  if (typeof e !== "object" || e === null) return false;
+  const r = e as Record<string, unknown>;
+  return (
+    typeof r.address === "string" &&
+    r.address.startsWith("G") &&
+    r.address.length === 56 &&
+    typeof r.name === "string" &&
+    typeof r.requiresMediator === "boolean" &&
+    typeof r.requiresMemo === "boolean" &&
+    (r.memoType === "text" || r.memoType === "id" || r.memoType === "hash")
+  );
+}
+
 /**
- * Fetches the served registry and adopts it.
+ * Merges a served entry over its embedded counterpart, allowing only tightening.
  *
- * A failure is not fatal on its own - the bundled floor stays in place and `isRegistryUsable`
- * still governs whether it may be relied on. What must never happen is adopting a payload that
- * is missing its freshness fields: without them there is nothing to expire, and the fail-closed
- * gate silently becomes a no-op.
+ * This is the heart of the thing. Serving the registry moved `verify()`'s memo expectation -
+ * previously the one input that came from neither the user nor the API - onto the API itself,
+ * which is exactly the circularity the trust anchor exists to avoid. A hostile response could
+ * return the real Coinbase entry with `requiresMemo: false`: the UI would ask for no memo,
+ * `isCexAddress` would still be true so the unrecognized-destination confirmation would not
+ * appear either, and `verify()` would compute `memoRequired: false` and demand nothing. The
+ * user signs, the exchange receives an unattributable payment, and the source account is gone.
+ *
+ * So the served copy is an upper bound on trust, not a replacement: for an address the bundle
+ * already knows, a served entry may only make the rules STRICTER. Relaxing one is refused and
+ * the embedded entry stands. Addresses the bundle does not know are purely additive - that is
+ * the whole point of serving it, and adding an exchange can only ever add protection.
+ */
+function tightenedOver(embeddedEntry: RegistryEntry, servedEntry: RegistryEntry): RegistryEntry {
+  return {
+    ...servedEntry,
+    requiresMemo: embeddedEntry.requiresMemo || servedEntry.requiresMemo,
+    requiresMediator: embeddedEntry.requiresMediator || servedEntry.requiresMediator,
+    // A memo type may be corrected (text -> id is a real, common change) but only while the
+    // requirement itself stands; it cannot be used to smuggle in "no memo".
+    memoType: servedEntry.memoType,
+  };
+}
+
+/** How far past the embedded copy's own expiry a served payload may extend validity. Without
+ *  this the endpoint self-attests its freshness and the expiry gate constrains nobody. */
+const MAX_EXTENSION_DAYS = 120;
+
+function boundedValidUntil(embeddedUntil: string, servedUntil: string): string {
+  const cap = Date.parse(`${embeddedUntil}T23:59:59Z`) + MAX_EXTENSION_DAYS * 86_400_000;
+  const served = Date.parse(`${servedUntil}T23:59:59Z`);
+  if (!Number.isFinite(served)) return embeddedUntil;
+  return served <= cap ? servedUntil : embeddedUntil;
+}
+
+/**
+ * Fetches the served registry and merges it over the bundled floor.
+ *
+ * A failure is not fatal - the floor stays in place, and whether it may be relied on is decided
+ * by its own expiry rather than by whether this call succeeded. What must never happen is
+ * adopting a payload with no freshness fields: with nothing to expire, the fail-closed gate
+ * silently becomes a no-op.
  */
 export async function loadServedRegistry(
   // Narrower than `typeof fetch` on purpose: this only ever GETs one path, and the full
@@ -99,10 +153,27 @@ export async function loadServedRegistry(
     ) {
       return current;
     }
-    current = snapshotFrom(
-      { entries: body.entries, lastVerified: body.lastVerified, validUntil: body.validUntil },
-      true
-    );
+
+    const servedEntries = body.entries.filter(isUsableEntry);
+    const embeddedByAddress = new Map(EMBEDDED.entries.map((e) => [e.address, e]));
+    const merged = new Map(embeddedByAddress);
+    for (const servedEntry of servedEntries) {
+      const embeddedEntry = embeddedByAddress.get(servedEntry.address);
+      merged.set(
+        servedEntry.address,
+        embeddedEntry ? tightenedOver(embeddedEntry, servedEntry) : servedEntry
+      );
+    }
+
+    current = {
+      // Every embedded address survives: a served payload cannot make the client forget an
+      // exchange it already knew, which would turn a known deposit address back into an
+      // "unrecognized" one and route it through a confirmation instead of the mediator.
+      entries: [...merged.values()],
+      lastVerified: body.lastVerified,
+      validUntil: boundedValidUntil(EMBEDDED.validUntil, body.validUntil),
+      served: true,
+    };
     return current;
   } catch {
     return current;

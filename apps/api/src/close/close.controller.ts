@@ -21,7 +21,11 @@ import {
   assessSponsorshipAffordability,
   type SponsorshipAffordability,
 } from "@/lib/stellar/sponsorship-affordability";
-import { lookupExchange, requiresMediatorForAddress } from "@/lib/exchange-registry";
+import {
+  isRegistryFresh,
+  lookupExchange,
+  requiresMediatorForAddress,
+} from "@/lib/exchange-registry";
 import { validateTransferDestinations } from "@/lib/close-api/transfer-destinations";
 import { readTrustlinesOnly } from "@/lib/stellar/account-state";
 import {
@@ -297,6 +301,21 @@ export class CloseController {
     // deriveDestinationDecisionPoints). The caller must assert control of it explicitly. This
     // gate lives here rather than only in the plan because the plan is advisory: an SDK caller
     // can reach this endpoint without ever having requested one.
+    // The same expiry the served payload tells clients to honour, enforced here too. A rule the
+    // server states and does not apply protects only the first-party web app: /close/transactions
+    // is an API-key product surface with an SDK, and without this an integrator would build a
+    // mediated close on memo rules nobody has re-checked in months. Scoped to listed exchanges,
+    // because for a personal wallet nothing in the close depends on the registry.
+    if (exchange !== null && !isRegistryFresh()) {
+      fail(
+        "registry_expired",
+        "The exchange deposit-address registry has not been re-verified and is out of date. " +
+          "Closing into an exchange on unchecked memo rules can send the funds somewhere that " +
+          "cannot credit them, so this is refused until the registry is refreshed.",
+        503
+      );
+    }
+
     if (exchange === null && !isDestinationAcknowledged(decisions, destination)) {
       fail(
         "destination_not_acknowledged",

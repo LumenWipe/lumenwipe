@@ -1,7 +1,7 @@
-import registry from "@config/exchange-registry.json";
+import registry from "@/config/exchange-registry.json";
 
 /**
- * The one registry artifact in the repo, at the workspace root rather than inside either app.
+ * The one registry artifact in the repo, in apps/api, where the API build and the deploy image already reach it.
  *
  * It used to exist twice, byte-identical, in apps/api and apps/web, each with its own identical
  * lookup module - so a memo rule could be corrected in one and not the other, and nothing would

@@ -124,3 +124,94 @@ test("a payload whose entries are not an array is refused", async () => {
   );
   expect(activeRegistry().served).toBe(false);
 });
+
+// ─── The served copy is an upper bound on trust, never a replacement ─────────
+//
+// Serving the registry moved verify()'s memo expectation - previously the one input that came
+// from neither the user nor the API - onto the API itself. These pin the merge rule that keeps
+// a hostile or misconfigured endpoint from relaxing a rule the bundle already knows.
+
+const COINBASE = "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D";
+
+function serve(body: unknown) {
+  return async () => new Response(JSON.stringify(body), { status: 200 });
+}
+
+test("a served entry cannot relax a memo requirement the bundle knows about", async () => {
+  // The attack: the real deposit address, returned with requiresMemo false. The UI would ask
+  // for no memo, isCexAddress would still be true so the unrecognized-destination confirmation
+  // would not appear either, and verify() would demand nothing. The user signs and the exchange
+  // receives a payment it cannot attribute.
+  await loadServedRegistry(
+    serve({
+      lastVerified: "2026-08-19",
+      validUntil: "2026-11-17",
+      entries: [
+        {
+          address: COINBASE,
+          name: "Coinbase",
+          domain: "coinbase.com",
+          requiresMediator: false,
+          requiresMemo: false,
+          memoType: "text",
+        },
+      ],
+    })
+  );
+  const entry = lookupExchange(COINBASE);
+  expect(entry?.requiresMemo).toBe(true);
+  expect(entry?.requiresMediator).toBe(true);
+});
+
+test("a served entry may tighten a rule", async () => {
+  const NEW_ADDR = "G" + "B".repeat(55);
+  await loadServedRegistry(
+    serve({
+      lastVerified: "2026-08-19",
+      validUntil: "2026-11-17",
+      entries: [
+        {
+          address: NEW_ADDR,
+          name: "Newly listed",
+          domain: "example.com",
+          requiresMediator: true,
+          requiresMemo: true,
+          memoType: "id",
+        },
+      ],
+    })
+  );
+  // Adding an exchange can only ever add protection, so served-only addresses are adoptable.
+  expect(lookupExchange(NEW_ADDR)?.memoType).toBe("id");
+});
+
+test("an empty served payload cannot make the client forget every exchange", async () => {
+  // `entries: []` with a distant validUntil would otherwise disable the memo rule, the mediator
+  // routing AND the expiry gate in one response - the gate checks isCexAddress first, which is
+  // false once nothing is listed.
+  await loadServedRegistry(
+    serve({ lastVerified: "2026-08-19", validUntil: "2099-01-01", entries: [] })
+  );
+  expect(lookupExchange(COINBASE)).not.toBeNull();
+});
+
+test("a served payload cannot extend its own validity indefinitely", async () => {
+  await loadServedRegistry(
+    serve({ lastVerified: "2026-08-19", validUntil: "2099-01-01", entries: [] })
+  );
+  // Bounded against the bundled copy's own expiry: otherwise the endpoint self-attests its
+  // freshness and the gate constrains nobody.
+  expect(new Date(activeRegistry().validUntil).getFullYear()).toBeLessThan(2099);
+});
+
+test("a malformed entry is dropped rather than reaching the render path", async () => {
+  await loadServedRegistry(
+    serve({
+      lastVerified: "2026-08-19",
+      validUntil: "2026-11-17",
+      entries: [null, { address: "not-a-key" }, 42],
+    })
+  );
+  // The embedded entries survive; nothing unusable was adopted.
+  expect(lookupExchange(COINBASE)).not.toBeNull();
+});
