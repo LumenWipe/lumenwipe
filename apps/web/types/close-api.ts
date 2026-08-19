@@ -1,4 +1,8 @@
 import type { StepType } from "@/types/plan";
+// Re-exported, not copied. This file still duplicates most of the package's close-api types
+// (#68), but DecisionAnswer is where the transfer destination lives, so a divergent local copy
+// would silently drop the field the API refuses the build without.
+export type { DecisionAnswer } from "@lumenwipe/types";
 import type { AccountSigner } from "@/types/account";
 
 export type CloseApiStatus = "ready" | "needs_decisions" | "blocked" | "complete";
@@ -11,7 +15,7 @@ export interface QuoteInfo {
 }
 
 export interface DecisionOption {
-  id: string; // e.g. "convert_to_xlm" | "return_to_issuer" | "acknowledged"
+  id: string; // e.g. "convert_to_xlm" | "return_to_issuer" | "transfer_to_account" | "acknowledged"
   recommended?: boolean;
   quote?: QuoteInfo;
   note?: string; // English only
@@ -26,11 +30,7 @@ export interface DecisionPoint {
   required: boolean;
 }
 
-export interface DecisionAnswer {
-  id: string;
-  choice: string;
-  params?: { maxSlippageBps?: number };
-}
+
 
 export interface ExecutionTxBreakdown {
   order: number;

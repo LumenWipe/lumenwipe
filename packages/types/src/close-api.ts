@@ -11,7 +11,7 @@ export interface QuoteInfo {
 }
 
 export interface DecisionOption {
-  id: string; // e.g. "convert_to_xlm" | "return_to_issuer" | "acknowledged"
+  id: string; // e.g. "convert_to_xlm" | "return_to_issuer" | "transfer_to_account" | "acknowledged"
   recommended?: boolean;
   quote?: QuoteInfo;
   note?: string; // English only

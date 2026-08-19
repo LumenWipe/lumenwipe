@@ -54,15 +54,20 @@ function buildSummary(input: FusedCloseInput): string {
     );
   const converts = input.assetActions.filter((a) => a.action === "convert").length;
   const issuerReturns = input.assetActions.filter((a) => a.action === "issuer").length;
-  // Counted explicitly rather than folded into either of the above: this summary is what the
-  // caller is shown before an irreversible close, and a transfer moves value to a third party.
-  // Leaving it out would describe the close as doing less than it does.
-  const transfers = input.assetActions.filter((a) => a.action === "transfer").length;
+  // Named, not just counted. This summary is what the caller is shown before an irreversible
+  // close, and a transfer is the one operation that moves value to an account of their choosing
+  // - "transfer 1 asset to another account" gives them nothing to check the address against.
+  const transferred = input.assetActions.filter((a) => a.action === "transfer");
+  const transfers = transferred.length;
   if (converts > 0) parts.push(`convert ${converts} asset${converts === 1 ? "" : "s"} to XLM`);
   if (issuerReturns > 0)
     parts.push(`return ${issuerReturns} asset${issuerReturns === 1 ? "" : "s"} to the issuer`);
-  if (transfers > 0)
-    parts.push(`transfer ${transfers} asset${transfers === 1 ? "" : "s"} to another account`);
+  if (transfers > 0) {
+    const named = transferred
+      .map((a) => `${a.trustline.code} to ${a.action === "transfer" ? a.destination : ""}`)
+      .join(", ");
+    parts.push(`transfer ${named}`);
+  }
   if (input.trustlines.length > 0)
     parts.push(
       `remove ${input.trustlines.length} trustline${input.trustlines.length === 1 ? "" : "s"}`
@@ -172,6 +177,7 @@ export async function buildCloseTransactions(
         if (!destination) throw new MissingTransferDestinationError(tl.asset);
         return { trustline: effectiveTl, action: "transfer", destination };
       }
+
       const path = await fetchConversionPath(effectiveTl.asset, effectiveTl.balance, network);
       if (!path) throw new AssetRouteLostError(tl.asset, tl.code);
       return { trustline: effectiveTl, action: "convert", path };

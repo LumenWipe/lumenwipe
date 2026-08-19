@@ -292,7 +292,9 @@ test("the transfer payment precedes the ChangeTrust that removes its trustline",
   );
 
   const paymentAt = ops.findIndex((o) => o.type === "payment");
-  const changeTrustAt = ops.findIndex((o) => o.type === "changeTrust");
+  const changeTrustAt = ops.findIndex(
+    (o) => o.type === "changeTrust" && Number((o as { limit?: string }).limit ?? "0") === 0
+  );
   expect(paymentAt).toBeGreaterThanOrEqual(0);
   expect(changeTrustAt).toBeGreaterThanOrEqual(0);
   // Reversed, the ChangeTrust would fail on a non-zero balance and abort the whole atomic
@@ -301,6 +303,8 @@ test("the transfer payment precedes the ChangeTrust that removes its trustline",
 });
 
 test("a transfer goes to the chosen account, never to the issuer", () => {
+  // Asserting only `not.toBe(ISSUER)` against a random destination cannot fail: it would pass
+  // for any wrong address at all. Pinning the exact address is what makes it a real check.
   const ops = opsOf(
     buildFusedCloseTx(
       account(),
@@ -312,7 +316,8 @@ test("a transfer goes to the chosen account, never to the issuer", () => {
     )
   );
   const payment = ops.find((o) => o.type === "payment") as { destination: string };
-  // The old `convert ? ... : issuer` ternary would have burned this balance.
+  expect(payment.destination).toBe(TRANSFER_DEST);
+  // The old `convert ? ... : issuer` ternary resolved everything non-convert to this.
   expect(payment.destination).not.toBe(ISSUER);
 });
 

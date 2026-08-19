@@ -3,6 +3,7 @@ import { Keypair } from "@stellar/stellar-sdk";
 import {
   deriveClaimableBalanceDecisionPoints,
   deriveDecisionPoints,
+  collectTransferDestinations,
   MissingTransferDestinationError,
   resolveClaimableBalanceSelections,
   resolveDispositions,
@@ -186,7 +187,11 @@ test("the refusal names the asset, so the caller knows which answer to fix", () 
 test("non-transfer answers are left alone even when they carry a destination", () => {
   const destinations = resolveTransferDestinations(
     [
-      { id: `asset:USDC-${ISSUER}`, choice: "convert_to_xlm", params: { destination: DESTINATION } },
+      {
+        id: `asset:USDC-${ISSUER}`,
+        choice: "convert_to_xlm",
+        params: { destination: DESTINATION },
+      },
       { id: `asset:FOO-${ISSUER}`, choice: "return_to_issuer" },
     ],
     [
@@ -301,4 +306,54 @@ test("resolveClaimableBalanceSelections ignores unknown balance ids and choices"
     ["bal1"]
   );
   expect(selections).toEqual({});
+});
+
+// ─── collectTransferDestinations ─────────────────────────────────────────────
+//
+// The non-throwing form the plan uses. Throwing on the first bad answer meant one typo hid
+// every other destination problem in the same close, so the caller fixed one, re-planned, and
+// only then met the next.
+
+test("collect reports every asset missing a destination, not just the first", () => {
+  const { destinations, missing } = collectTransferDestinations(
+    [
+      { id: `asset:USDC-${ISSUER}`, choice: "transfer_to_account" },
+      { id: `asset:FOO-${ISSUER}`, choice: "transfer_to_account", params: { destination: "nope" } },
+    ],
+    [
+      { id: `asset:USDC-${ISSUER}`, asset: `USDC:${ISSUER}` },
+      { id: `asset:FOO-${ISSUER}`, asset: `FOO:${ISSUER}` },
+    ]
+  );
+  expect(destinations).toEqual({});
+  expect(missing.sort()).toEqual([`FOO:${ISSUER}`, `USDC:${ISSUER}`].sort());
+});
+
+test("an answer later switched away from transfer is not validated", () => {
+  // Answers are last-wins. Keying off "any answer ever said transfer" would refuse a perfectly
+  // valid convert-only close over a destination nothing is being paid to.
+  const answers = [
+    { id: `asset:USDC-${ISSUER}`, choice: "transfer_to_account" },
+    { id: `asset:USDC-${ISSUER}`, choice: "convert_to_xlm" },
+  ];
+  const assets = [{ id: `asset:USDC-${ISSUER}`, asset: `USDC:${ISSUER}` }];
+
+  expect(collectTransferDestinations(answers, assets)).toEqual({ destinations: {}, missing: [] });
+  expect(() => resolveTransferDestinations(answers, assets)).not.toThrow();
+});
+
+test("a later valid answer clears an earlier malformed one for the same asset", () => {
+  const { destinations, missing } = collectTransferDestinations(
+    [
+      { id: `asset:USDC-${ISSUER}`, choice: "transfer_to_account" },
+      {
+        id: `asset:USDC-${ISSUER}`,
+        choice: "transfer_to_account",
+        params: { destination: DESTINATION },
+      },
+    ],
+    [{ id: `asset:USDC-${ISSUER}`, asset: `USDC:${ISSUER}` }]
+  );
+  expect(destinations).toEqual({ [`USDC:${ISSUER}`]: DESTINATION });
+  expect(missing).toEqual([]);
 });

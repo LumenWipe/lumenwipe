@@ -12,7 +12,7 @@ import {
   CloseTransactionsRequestDto,
   SubmitRequestDto,
 } from "./dto/close-requests.dto";
-import { isValidNetwork } from "@/config/networks";
+import { isValidNetwork, type Network } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { readAccountState } from "@/lib/close-api/read-account";
 import { fetchConversionPath } from "@/lib/stellar/path-finding";
@@ -23,6 +23,7 @@ import {
 } from "@/lib/stellar/sponsorship-affordability";
 import { lookupExchange, requiresMediatorForAddress } from "@/lib/exchange-registry";
 import { validateTransferDestinations } from "@/lib/close-api/transfer-destinations";
+import { readTrustlinesOnly } from "@/lib/stellar/account-state";
 import {
   assetDecisionId,
   claimableBalanceDecisionId,
@@ -34,6 +35,7 @@ import {
   resolveClaimableBalanceSelections,
   resolveDispositions,
   resolveTransferDestinations,
+  collectTransferDestinations,
   MissingTransferDestinationError,
   DESTINATION_ACK_CHOICE,
 } from "@/lib/close-api/decisions";
@@ -48,7 +50,12 @@ import {
   TxSubmitError,
 } from "@/lib/utils/errors";
 import { BASE_FEE_STROOPS } from "@/config/constants";
-import type { DecisionAnswer, PlanBlocker, TransactionsResponse } from "@lumenwipe/types";
+import type {
+  DecisionAnswer,
+  DecisionPoint,
+  TransactionsResponse,
+  Trustline,
+} from "@lumenwipe/types";
 
 /** Throws an HttpException carrying the API's `{ error: { code, message, details? } }` body. */
 function fail(code: string, message: string, status: number, details?: unknown): never {
@@ -56,6 +63,20 @@ function fail(code: string, message: string, status: number, details?: unknown):
   if (details !== undefined) error.details = details;
   throw new HttpException({ error }, status);
 }
+
+/**
+ * Reads a transfer destination's trustlines, treating "does not exist" as an answer rather than
+ * an error.
+ *
+ * Only the trustlines: these addresses are named freely by the caller, one per asset, so the
+ * full `readAccountState` - which also paginates offers and claimable balances and can enumerate
+ * thousands of sponsorship operations - would turn one inbound request into an unbounded
+ * upstream fan-out, and would fail a destination merely for holding more than 1000 offers.
+ */
+const readDestinationTrustlines = async (
+  address: string,
+  net: Network
+): Promise<{ trustlines: Trustline[] } | null> => readTrustlinesOnly(address, net);
 
 @ApiTags("close")
 @ApiBearerAuth("api-key")
@@ -141,46 +162,48 @@ export class CloseController {
       // known value set, so presence is a fair proxy; here the choice IS the content, and
       // reporting "ready" for an answer that /transactions will refuse leaves a caller with
       // a 422 and no pending decision to point at.
-      const pending = decisionPoints.filter((dp) =>
+      const pending: DecisionPoint[] = decisionPoints.filter((dp) =>
         destination !== null && dp.id === destinationDecisionId(destination)
           ? !isDestinationAcknowledged(decisions, destination)
           : !answeredIds.has(dp.id)
       );
 
-      // Same reasoning as the acknowledgement above, one step further out: a transfer answer
-      // naming an account that cannot receive the asset is well-formed, so it counts as
-      // answered and the plan would report "ready" for a close /transactions then refuses.
-      // Surfaced here as a blocker instead, while the caller can still change the answer -
-      // and while nothing has been built or signed.
+      // Same reasoning as the acknowledgement above, one step further out: a transfer answer is
+      // well-formed whether or not it names a usable account, so it counts as answered and the
+      // plan would report "ready" for a close /transactions then refuses. Both halves are
+      // surfaced here instead - while the caller can still change the answer, and while nothing
+      // has been built or signed.
       const planAssetsById = accountState.trustlines.map((tl) => ({
         id: assetDecisionId(tl.asset),
         asset: tl.asset,
       }));
-      let transferBlockers: PlanBlocker[] = [];
-      try {
-        const problems = await validateTransferDestinations(
-          resolveTransferDestinations(decisions, planAssetsById),
-          accountState.trustlines,
-          source,
-          network,
-          async (address, net) => {
-            try {
-              return await readAccountState(address, net);
-            } catch (err) {
-              if (err instanceof AccountNotFoundError) return null;
-              throw err;
-            }
-          }
-        );
-        transferBlockers = problems.map((p) => ({ message: p.message, code: p.code }));
-      } catch (err) {
-        // A malformed destination is the caller's to fix on the answer itself, and the plan
-        // already lists that decision as pending. Reporting it as a blocker too would name the
-        // same problem twice.
-        if (!(err instanceof MissingTransferDestinationError)) throw err;
+      const { destinations: planDestinations, missing: missingDestinations } =
+        collectTransferDestinations(decisions, planAssetsById);
+
+      // An answer with no usable destination is unanswered in the only sense that matters, so it
+      // goes back on the pending list rather than being swallowed. The previous version relied on
+      // it already being pending, which it never was: `pending` is keyed on the answer's id, and
+      // the id is present.
+      for (const asset of missingDestinations) {
+        const id = assetDecisionId(asset);
+        const point = decisionPoints.find((dp) => dp.id === id);
+        if (point && !pending.includes(point)) pending.push(point);
       }
-      if (transferBlockers.length > 0) {
-        buildResult.blockers = [...buildResult.blockers, ...transferBlockers];
+
+      const transferProblems = await validateTransferDestinations(
+        planDestinations,
+        accountState.trustlines,
+        source,
+        network,
+        readDestinationTrustlines
+      );
+      if (transferProblems.length > 0) {
+        buildResult.blockers = [
+          ...buildResult.blockers,
+          // No `code`: on PlanBlocker that field marks an acknowledged, non-trapping warning,
+          // and these must trap. A close that cannot pay one of its assets is not a warning.
+          ...transferProblems.map((p) => ({ message: p.message })),
+        ];
       }
 
       const planHash = computePlanHash({
@@ -221,7 +244,7 @@ export class CloseController {
   @ApiResponse({
     status: 422,
     description:
-      "Unprocessable: unresolved asset dispositions, a required exchange memo is missing, or the destination is not a recognized exchange address and has not been acknowledged (destination_not_acknowledged).",
+      "Unprocessable: unresolved asset dispositions, a required exchange memo is missing, the destination is not a recognized exchange address and has not been acknowledged (destination_not_acknowledged), a transfer disposition carries no usable destination (transfer_destination_missing), or a transfer destination cannot receive its asset (transfer_destination_unusable).",
   })
   @ApiResponse({
     status: 503,
@@ -301,34 +324,6 @@ export class CloseController {
       const dispositions = resolveDispositions(decisions, assetsById);
       const transferDestinations = resolveTransferDestinations(decisions, assetsById);
 
-      // Checked against live ledger state before anything is built. A transfer to an account
-      // that cannot receive the asset fails at submission, and because the close is one atomic
-      // transaction that leaves the account exactly as it was - open, while the caller believes
-      // it was wound down. Reported together rather than one per rebuild.
-      const transferProblems = await validateTransferDestinations(
-        transferDestinations,
-        accountState.trustlines,
-        source,
-        network,
-        async (address, net) => {
-          try {
-            return await readAccountState(address, net);
-          } catch (e) {
-            if (e instanceof AccountNotFoundError) return null;
-            throw e;
-          }
-        }
-      );
-      if (transferProblems.length > 0) {
-        fail("transfer_destination_unusable", transferProblems[0]!.message, 422, {
-          problems: transferProblems,
-        });
-      }
-
-      const missing = accountState.trustlines
-        .filter((tl) => Number(tl.balance) > 0 && !(tl.asset in dispositions))
-        .map((tl) => assetDecisionId(tl.asset));
-
       const claimableBalanceSelections = resolveClaimableBalanceSelections(
         decisions,
         accountState.claimableBalances.map((b) => b.id)
@@ -336,6 +331,10 @@ export class CloseController {
       const authorizedTrustlineAssets = new Set(
         accountState.trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset)
       );
+      const missing = accountState.trustlines
+        .filter((tl) => Number(tl.balance) > 0 && !(tl.asset in dispositions))
+        .map((tl) => assetDecisionId(tl.asset));
+
       const missingClaimDecisions = accountState.claimableBalances
         .filter(
           (b) =>
@@ -353,6 +352,22 @@ export class CloseController {
           422,
           { missing }
         );
+      }
+
+      // After the decision gate, never before: this reads one third-party account per distinct
+      // destination, and a request that is going to be refused as incomplete should not pay for
+      // that first.
+      const transferProblems = await validateTransferDestinations(
+        transferDestinations,
+        accountState.trustlines,
+        source,
+        network,
+        readDestinationTrustlines
+      );
+      if (transferProblems.length > 0) {
+        fail("transfer_destination_unusable", transferProblems[0]!.message, 422, {
+          problems: transferProblems,
+        });
       }
 
       const result = await buildCloseTransactions(

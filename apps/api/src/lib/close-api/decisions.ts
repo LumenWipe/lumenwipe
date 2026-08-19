@@ -65,10 +65,7 @@ export function deriveDestinationDecisionPoints(destination: string | null): Dec
 // on a missing, malformed, or differently-addressed answer - silence is not consent, and
 // neither is consent given for some other address. Element-level optional chaining because
 // `decisions` reaches here as an unvalidated array from the request body.
-export function isDestinationAcknowledged(
-  answers: DecisionAnswer[],
-  destination: string
-): boolean {
+export function isDestinationAcknowledged(answers: DecisionAnswer[], destination: string): boolean {
   const id = destinationDecisionId(destination);
   return answers.some((a) => a?.id === id && a?.choice === DESTINATION_ACK_CHOICE);
 }
@@ -191,19 +188,49 @@ export function resolveTransferDestinations(
   answers: DecisionAnswer[],
   assetsById: { id: string; asset: string }[]
 ): TransferDestinations {
+  const { destinations, missing } = collectTransferDestinations(answers, assetsById);
+  const first = missing[0];
+  if (first !== undefined) throw new MissingTransferDestinationError(first);
+  return destinations;
+}
+
+/**
+ * The non-throwing form: every destination that resolved, and every asset whose transfer answer
+ * had no usable one.
+ *
+ * The plan needs this shape. Throwing on the first bad answer there meant one typo suppressed
+ * the live-ledger check for every other destination in the same close, so a caller fixed one
+ * problem, re-planned, and only then discovered the next.
+ *
+ * Scoped to the *resolved* disposition, not to any answer that ever said `transfer`. Answers are
+ * last-wins, so a caller who selects transfer and then switches the asset to convert leaves a
+ * stale transfer answer in the array; keying off that would refuse a perfectly valid
+ * convert-only close, or validate a destination nothing is being paid to.
+ */
+export function collectTransferDestinations(
+  answers: DecisionAnswer[],
+  assetsById: { id: string; asset: string }[]
+): { destinations: TransferDestinations; missing: string[] } {
   const assetForId = new Map(assetsById.map((a) => [a.id, a.asset]));
-  const out: TransferDestinations = {};
+  const dispositions = resolveDispositions(answers, assetsById);
+  const destinations: TransferDestinations = {};
+  const missing: string[] = [];
+
   for (const answer of answers) {
-    if (answer.choice !== TRANSFER_CHOICE) continue;
+    if (answer?.choice !== TRANSFER_CHOICE) continue;
     const asset = assetForId.get(answer.id);
-    if (!asset) continue;
+    if (asset === undefined) continue;
+    if (dispositions[asset] !== "transfer") continue;
+
     const destination = answer.params?.destination;
     if (!destination || !StrKey.isValidEd25519PublicKey(destination)) {
-      throw new MissingTransferDestinationError(asset);
+      if (!missing.includes(asset)) missing.push(asset);
+      continue;
     }
-    out[asset] = destination;
+    destinations[asset] = destination;
   }
-  return out;
+  // A later valid answer for the same asset clears an earlier malformed one.
+  return { destinations, missing: missing.filter((asset) => destinations[asset] === undefined) };
 }
 
 // Derives the per-claimable-balance decision the caller must resolve before a close can
@@ -236,10 +263,9 @@ export function deriveClaimableBalanceDecisionPoints(account: AccountState): Dec
             note: `Leaves ${b.amount} ${code} unclaimed; permanently inaccessible once the account is merged.`,
           },
         ];
-    const ownPredicate =
-      b.claimants.find((c) => c.destination === account.address)?.predicate ?? {
-        type: "unconditional" as const,
-      };
+    const ownPredicate = b.claimants.find((c) => c.destination === account.address)?.predicate ?? {
+      type: "unconditional" as const,
+    };
     return {
       id: claimableBalanceDecisionId(b.id),
       type: "claimable_balance" as const,

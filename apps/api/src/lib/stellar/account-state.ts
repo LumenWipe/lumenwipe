@@ -143,7 +143,10 @@ export async function readAccountStateFrom(
     .map((b) => ({
       asset: horizonAssetToString(b),
       balance: b.balance,
-      limit: b.limit ?? "0",
+      // Left undefined when the provider omits it, never defaulted to "0". A fabricated zero
+      // is indistinguishable from a trustline with no room at all, which would make every
+      // transfer into that line look impossible (see hasRoomFor in close-api/transfer-destinations).
+      limit: b.limit,
       authorized: b.is_authorized ?? true,
       issuer: b.asset_issuer!,
       code: b.asset_code!,
@@ -220,6 +223,48 @@ export async function readAccountStateFrom(
       poolShares,
       numSubEntries,
     }),
+  };
+}
+
+
+/**
+ * Reads only what is needed to judge whether an account can receive a payment: that it exists,
+ * and its trustlines.
+ *
+ * Deliberately not `readAccountState`. That one also paginates offers and claimable balances and
+ * can enumerate up to 2000 sponsorship operations - three to fifteen upstream requests for an
+ * account whose offers and sponsorships are irrelevant here. Since a caller names these
+ * addresses freely and there can be one per asset, using the full reader would turn a single
+ * inbound request into an unbounded fan-out against a shared Horizon budget: exactly the
+ * amplification #110 removed from the account path. It also cannot raise
+ * TruncatedCollectionError, which the full reader throws for a destination holding more than
+ * 1000 offers - a fact about the destination that has no bearing on its ability to be paid.
+ */
+export async function readTrustlinesOnly(
+  address: string,
+  network: Network = "testnet",
+  deps: HorizonDeps = horizonDepsFor(network)
+): Promise<Pick<AccountState, "address" | "trustlines"> | null> {
+  const account = await horizonGet<ApiAccount>(`/accounts/${address}`, deps);
+  if (!account) return null;
+  if (!Array.isArray(account.balances)) {
+    throw new Error(
+      `Horizon returned an account body for ${address} with no balances; refusing to treat ` +
+        `absent data as "holds no trustlines".`
+    );
+  }
+  return {
+    address,
+    trustlines: account.balances
+      .filter((b) => b.asset_type === "credit_alphanum4" || b.asset_type === "credit_alphanum12")
+      .map((b) => ({
+        asset: horizonAssetToString(b),
+        balance: b.balance,
+        limit: b.limit,
+        authorized: b.is_authorized ?? true,
+        issuer: b.asset_issuer!,
+        code: b.asset_code!,
+      })),
   };
 }
 

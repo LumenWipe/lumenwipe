@@ -1,4 +1,6 @@
-import type { AccountState, Network, TransferDestinations, Trustline } from "@lumenwipe/types";
+import type { Network, TransferDestinations, Trustline } from "@lumenwipe/types";
+import { lookupExchange } from "@/lib/exchange-registry";
+import { xlmToStroops } from "@/lib/utils/amounts";
 
 /**
  * Validates the destinations a `transfer` disposition names, before anything is built.
@@ -16,6 +18,10 @@ import type { AccountState, Network, TransferDestinations, Trustline } from "@lu
  * ACCOUNT_MERGE_IS_SPONSOR. The helpful-looking fallback would make the close impossible.
  */
 
+/** Matches the cap sponsorship.ts uses for the same reason: caller-supplied addresses must not
+ *  fan out without bound. */
+const DESTINATION_READ_CONCURRENCY = 10;
+
 /** One destination that cannot receive its asset, and why, in words the caller can act on. */
 export interface TransferDestinationProblem {
   asset: string;
@@ -23,35 +29,51 @@ export interface TransferDestinationProblem {
   code:
     | "destination_missing"
     | "destination_lacks_trustline"
+    | "destination_not_authorized"
     | "destination_limit_too_low"
-    | "destination_is_source";
+    | "destination_is_source"
+    | "destination_is_exchange";
   message: string;
 }
 
-/** Reads the destination account. Injected so the validation is testable without network. */
-export type AccountReader = (address: string, network: Network) => Promise<AccountState | null>;
+/** The destination's trustlines, or null when the account does not exist. Injected so the
+ *  validation is testable without network. */
+export type AccountReader = (
+  address: string,
+  network: Network
+) => Promise<{ trustlines: Trustline[] } | null>;
 
-function findTrustline(account: AccountState, asset: string): Trustline | undefined {
-  return account.trustlines.find((tl) => tl.asset === asset);
+function findTrustline(trustlines: Trustline[], asset: string): Trustline | undefined {
+  return trustlines.find((tl) => tl.asset === asset);
 }
 
 /**
- * Headroom under the destination's trustline limit.
+ * Headroom under the destination's trustline limit, in whole stroops.
  *
- * `limit` is optional on `Trustline` because the RPC reader never exposed it; the Horizon reader
- * always does, and it is the only reader the API uses since #110. Treated as unknown rather than
- * as zero when absent: defaulting a missing limit to "0" would block every transfer against a
- * provider that stopped reporting it, which is a silent, total outage of the feature rather than
- * a real constraint. An unknown limit lets the transfer through and leaves the ledger to reject
- * it, which is the same position every other operation here is in.
+ * BigInt, not Number. Stellar amounts are int64 stroops - up to 922337203685.4775807 - and a
+ * double carries about 15 significant digits, so `Number()` on a 7-decimal string silently
+ * rounds exactly where the answer matters. It goes wrong in both directions: a nearly-full
+ * line reads as having room (the ledger then rejects the whole atomic close), and an exact fit
+ * like 0.2 + 0.1 <= 0.3 reads as overflowing (a legitimate transfer refused, with a message
+ * quoting numbers that visibly add up). `verify()` compares in whole stroops for the same
+ * reason.
+ *
+ * An absent limit means unknown, and unknown does not block: the field is optional on
+ * `Trustline`, and refusing every transfer because a provider stopped reporting it would be a
+ * silent, total outage of the feature rather than a real constraint. The ledger still enforces
+ * the real limit.
  */
 function hasRoomFor(destinationTrustline: Trustline, amount: string): boolean {
   if (destinationTrustline.limit === undefined) return true;
-  const limit = Number(destinationTrustline.limit);
-  const held = Number(destinationTrustline.balance);
-  const incoming = Number(amount);
-  if (!Number.isFinite(limit) || !Number.isFinite(held) || !Number.isFinite(incoming)) return true;
-  return held + incoming <= limit;
+  try {
+    const limit = BigInt(xlmToStroops(destinationTrustline.limit));
+    const held = BigInt(xlmToStroops(destinationTrustline.balance));
+    const incoming = BigInt(xlmToStroops(amount));
+    return held + incoming <= limit;
+  } catch {
+    // An unparseable figure is not evidence of no room; leave it to the ledger.
+    return true;
+  }
 }
 
 /**
@@ -72,21 +94,35 @@ export async function validateTransferDestinations(
 
   const balanceFor = new Map(sourceTrustlines.map((tl) => [tl.asset, tl.balance]));
 
-  // One read per distinct address, not per asset: transferring five assets to the same account
-  // is one lookup.
-  const unique = [...new Set(entries.map(([, address]) => address))];
-  const accounts = new Map<string, AccountState | null>(
-    await Promise.all(
-      unique.map(
-        async (address) =>
-          [address, await readAccount(address, network)] as [string, AccountState | null]
-      )
-    )
-  );
+  // Only addresses whose ledger state actually decides the outcome are read. The source
+  // account, a registry exchange, and an asset's own issuer are all resolved from the address
+  // alone, so reading them would be a network call whose answer changes nothing.
+  const needsRead = [
+    ...new Set(
+      entries
+        .filter(([asset, address]) => {
+          if (address === sourceAddress) return false;
+          if (lookupExchange(address) !== null) return false;
+          return asset.split(":")[1] !== address;
+        })
+        .map(([, address]) => address)
+    ),
+  ];
+
+  // Bounded, not a bare Promise.all. The addresses come from the request body, one per asset,
+  // so an unbounded fan-out lets a single call burn the shared Horizon budget - the same reason
+  // sponsorship.ts caps its owner reads.
+  const accounts = new Map<string, { trustlines: Trustline[] } | null>();
+  for (let i = 0; i < needsRead.length; i += DESTINATION_READ_CONCURRENCY) {
+    const slice = needsRead.slice(i, i + DESTINATION_READ_CONCURRENCY);
+    const read = await Promise.all(slice.map((address) => readAccount(address, network)));
+    slice.forEach((address, j) => accounts.set(address, read[j] ?? null));
+  }
 
   const problems: TransferDestinationProblem[] = [];
   for (const [asset, destination] of entries) {
     const code = asset.split(":")[0] ?? asset;
+    const issuer = asset.split(":")[1];
 
     // Paying an asset to the account being merged away would send it into a ledger entry that
     // ceases to exist moments later in the same transaction.
@@ -100,6 +136,29 @@ export async function validateTransferDestinations(
       continue;
     }
 
+    // The same unrecoverable outcome the merge destination is guarded against, one asset over.
+    // Exchanges credit deposits from payments carrying their memo, and the close carries a
+    // single transaction-level memo for the merge - there is nowhere to put a per-asset deposit
+    // memo, so a token payment to a deposit address is credited to nobody and cannot be
+    // reversed. Absence from the registry proves nothing, but presence in it is proof enough to
+    // refuse: this is the one case we can recognize with certainty.
+    const exchange = lookupExchange(destination);
+    if (exchange !== null) {
+      problems.push({
+        asset,
+        destination,
+        code: "destination_is_exchange",
+        message: `The account chosen for ${code} is a deposit address for ${exchange.name}. A token payment cannot carry the deposit memo an exchange needs to credit it, so the ${code} would be lost. Send ${code} to a wallet you control and deposit it from there, or convert it to XLM.`,
+      });
+      continue;
+    }
+
+    // Paying an asset to its own issuer is how it is burned - the ledger accepts it, and the
+    // issuer holds no trustline to its own asset, so the trustline check below would refuse a
+    // payment that works. Allowed here, with `return_to_issuer` remaining the direct way to say
+    // it.
+    if (issuer !== undefined && destination === issuer) continue;
+
     const account = accounts.get(destination) ?? null;
     if (!account) {
       problems.push({
@@ -111,7 +170,7 @@ export async function validateTransferDestinations(
       continue;
     }
 
-    const trustline = findTrustline(account, asset);
+    const trustline = findTrustline(account.trustlines, asset);
     if (!trustline) {
       // LumenWipe cannot add it: creating a trustline needs the destination account's own
       // signature, which the tool never has.
@@ -120,6 +179,19 @@ export async function validateTransferDestinations(
         destination,
         code: "destination_lacks_trustline",
         message: `The account chosen for ${code} does not hold a ${code} trustline, so it cannot receive it. Add the trustline from that account and retry, or convert ${code} to XLM or return it to its issuer.`,
+      });
+      continue;
+    }
+
+    // A held trustline is not the same as a usable one. For an asset whose issuer requires
+    // authorization, an unauthorized line rejects the payment (PAYMENT_NOT_AUTHORIZED) and
+    // takes the whole atomic close down with it.
+    if (!trustline.authorized) {
+      problems.push({
+        asset,
+        destination,
+        code: "destination_not_authorized",
+        message: `The account chosen for ${code} holds a ${code} trustline that its issuer has not authorized, so it cannot receive it. Ask the issuer to authorize that account, choose a different account, or convert ${code} to XLM.`,
       });
       continue;
     }
