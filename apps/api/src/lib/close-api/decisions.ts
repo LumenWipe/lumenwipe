@@ -4,7 +4,9 @@ import type {
   ClaimableBalanceSelection,
   DecisionAnswer,
   DecisionPoint,
+  TransferDestinations,
 } from "@lumenwipe/types";
+import { StrKey } from "@stellar/stellar-sdk";
 import { lookupExchange } from "@/lib/exchange-registry";
 
 /**
@@ -103,6 +105,14 @@ export function deriveDecisionPoints(
     .filter((tl) => Number(tl.balance) > 0)
     .map((tl) => {
       const convertible = convertibility[tl.asset] ?? false;
+      // Transferring needs no conversion route, so it is offered whether or not the asset is
+      // convertible - for an asset with no market it is the only option that does not destroy
+      // the balance. It is never the default: it is the one choice that cannot be resolved
+      // without an address the caller has to supply.
+      const transferOption = {
+        id: TRANSFER_CHOICE,
+        note: "Sends the balance, as this asset, to an account that already holds its trustline.",
+      };
       const options = convertible
         ? [
             { id: "convert_to_xlm", recommended: true },
@@ -110,12 +120,14 @@ export function deriveDecisionPoints(
               id: "return_to_issuer",
               note: "Sends the balance back to the issuer; you receive no XLM.",
             },
+            transferOption,
           ]
         : [
             {
               id: "return_to_issuer",
               note: "No conversion route exists; the balance is returned to the issuer.",
             },
+            transferOption,
           ];
       return {
         id: assetDecisionId(tl.asset),
@@ -142,6 +154,54 @@ export function resolveDispositions(
     if (!asset) continue;
     if (answer.choice === "convert_to_xlm") out[asset] = "convert";
     else if (answer.choice === "return_to_issuer") out[asset] = "issuer";
+    else if (answer.choice === TRANSFER_CHOICE) out[asset] = "transfer";
+  }
+  return out;
+}
+
+/** The choice id that selects the transfer disposition. */
+export const TRANSFER_CHOICE = "transfer_to_account";
+
+/** Raised when a transfer answer carries no usable destination. Caught at the controller
+ *  boundary and surfaced as a 422 naming the asset, never defaulted. */
+export class MissingTransferDestinationError extends Error {
+  constructor(readonly asset: string) {
+    super(
+      `Choosing to transfer ${asset} requires the account to send it to. ` +
+        `Provide params.destination as a G... address on the answer for this asset.`
+    );
+    this.name = "MissingTransferDestinationError";
+  }
+}
+
+/**
+ * Collects the per-asset destinations that transfer answers carry.
+ *
+ * Deliberately strict rather than lenient. Everywhere else here an unusable answer falls back to
+ * a safe default, but there is no safe default for this one: converting or returning to the
+ * issuer both destroy the balance the caller explicitly asked to keep, and silently doing either
+ * is the failure mode the "never silently skipped" invariant exists to prevent. So a transfer
+ * choice with a missing or malformed destination refuses the whole request instead.
+ *
+ * Only the shape is checked here - that the address is a well-formed ed25519 public key. Whether
+ * the account exists, holds the trustline, and has limit headroom needs live state, so it is
+ * validated against the ledger just before building.
+ */
+export function resolveTransferDestinations(
+  answers: DecisionAnswer[],
+  assetsById: { id: string; asset: string }[]
+): TransferDestinations {
+  const assetForId = new Map(assetsById.map((a) => [a.id, a.asset]));
+  const out: TransferDestinations = {};
+  for (const answer of answers) {
+    if (answer.choice !== TRANSFER_CHOICE) continue;
+    const asset = assetForId.get(answer.id);
+    if (!asset) continue;
+    const destination = answer.params?.destination;
+    if (!destination || !StrKey.isValidEd25519PublicKey(destination)) {
+      throw new MissingTransferDestinationError(asset);
+    }
+    out[asset] = destination;
   }
   return out;
 }

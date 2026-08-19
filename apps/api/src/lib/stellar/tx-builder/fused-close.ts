@@ -15,20 +15,24 @@ import type {
 import { signerNormalizationOps } from "./signers";
 import { dataEntryRemovalOps } from "./data-entries";
 import { offerCancellationOps } from "./offers";
-import { assetConversionOp, issuerPaymentOp } from "./asset-conversion";
+import { assetConversionOp, issuerPaymentOp, transferPaymentOp } from "./asset-conversion";
 import { claimBalanceOps } from "./claimable-balances";
 import { trustlineAddForClaimOps, trustlineRemovalOps } from "./trustlines";
 import { mergeOp } from "./merge";
 import { revokeSponsorshipOps } from "./sponsorship";
 
 /**
- * Per-asset disposition. A held asset is either swapped to XLM via a path
- * payment (`convert`) or returned to its issuer via a direct payment
- * (`issuer`). The action is the user's decision, carried from the analyze step.
+ * Per-asset disposition. A held asset is either swapped to XLM via a path payment (`convert`),
+ * returned to its issuer via a direct payment (`issuer`), or paid intact to an account the user
+ * chose (`transfer`). The action is the user's decision, carried from the analyze step.
+ *
+ * The destination rides on the action rather than in a lookup keyed by asset, so an action can
+ * never reach the assembler without the address it is supposed to pay.
  */
 export type AssetAction =
   | { trustline: Trustline; action: "convert"; path: ConversionPath }
-  | { trustline: Trustline; action: "issuer" };
+  | { trustline: Trustline; action: "issuer" }
+  | { trustline: Trustline; action: "transfer"; destination: string };
 
 export interface FusedCloseInput {
   needsSignerNormalization: boolean;
@@ -50,6 +54,29 @@ export interface FusedCloseInput {
   memo: string | null;
   memoType: "text" | "id" | "hash" | null;
   includeMerge: boolean;
+}
+
+/**
+ * The single operation an asset's disposition produces.
+ *
+ * Exhaustive by construction: the `never` in the default arm makes an unhandled disposition fail
+ * to compile, which is the guard the old ternary lacked - it mapped everything that was not
+ * `convert` onto the issuer payment, so a balance the user asked to move would have been burned
+ * with no error anywhere.
+ */
+function assetActionOp(masterKey: string, action: AssetAction): xdr.Operation {
+  switch (action.action) {
+    case "convert":
+      return assetConversionOp(masterKey, action.trustline, action.path);
+    case "issuer":
+      return issuerPaymentOp(action.trustline);
+    case "transfer":
+      return transferPaymentOp(action.trustline, action.destination);
+    default: {
+      const unhandled: never = action;
+      throw new Error(`Unhandled asset disposition: ${JSON.stringify(unhandled)}`);
+    }
+  }
 }
 
 /** A close operation tagged with the plan step it belongs to. */
@@ -88,12 +115,11 @@ export function assembleFusedCloseOpsTagged(
   push("CANCEL_OFFERS", offerCancellationOps(input.openOffers));
   push("ADD_TRUSTLINE_FOR_CLAIM", trustlineAddForClaimOps(input.trustlinesToAddForClaim));
   push("CLAIM_BALANCES", claimBalanceOps(input.claimableBalances));
+  // A switch rather than a ternary, so adding a fourth disposition is a compile error here
+  // instead of silently taking whichever branch happened to be the fallback. The previous
+  // `convert ? ... : issuer` shape would have burned a transferred balance.
   for (const a of input.assetActions) {
-    push("CONVERT_ASSETS", [
-      a.action === "convert"
-        ? assetConversionOp(masterKey, a.trustline, a.path)
-        : issuerPaymentOp(a.trustline),
-    ]);
+    push("CONVERT_ASSETS", [assetActionOp(masterKey, a)]);
   }
   push("REMOVE_TRUSTLINES", trustlineRemovalOps(input.trustlines));
   if (input.includeMerge) push("MERGE", [mergeOp(input.destinationAddress)]);

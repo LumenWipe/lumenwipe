@@ -2,7 +2,10 @@ import { Account, Memo, TransactionBuilder } from "@stellar/stellar-sdk";
 import { NETWORK_PASSPHRASES, getMediatorPublicKey, type Network } from "@/config/networks";
 import { BASE_FEE_STROOPS, OP_BATCH_LIMIT, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import { getRpcServer } from "@/lib/stellar/rpc";
-import { fetchLiveTrustlineBalance, filterExistingClaimableBalances } from "@/lib/stellar/step-engine";
+import {
+  fetchLiveTrustlineBalance,
+  filterExistingClaimableBalances,
+} from "@/lib/stellar/step-engine";
 import { fetchConversionPath } from "@/lib/stellar/path-finding";
 import { lookupExchange, requiresMediatorForAddress } from "@/lib/exchange-registry";
 import { computeNeedsSignerNormalization } from "@/lib/stellar/tx-builder";
@@ -22,7 +25,9 @@ import type {
   ClaimableBalance,
   ClaimableBalanceSelection,
   CloseTransaction,
+  TransferDestinations,
 } from "@lumenwipe/types";
+import { MissingTransferDestinationError } from "@/lib/close-api/decisions";
 
 // Raised when a close cannot be expressed as the phase-1 single fused transaction.
 // The route handler maps `code` to an error response.
@@ -49,9 +54,15 @@ function buildSummary(input: FusedCloseInput): string {
     );
   const converts = input.assetActions.filter((a) => a.action === "convert").length;
   const issuerReturns = input.assetActions.filter((a) => a.action === "issuer").length;
+  // Counted explicitly rather than folded into either of the above: this summary is what the
+  // caller is shown before an irreversible close, and a transfer moves value to a third party.
+  // Leaving it out would describe the close as doing less than it does.
+  const transfers = input.assetActions.filter((a) => a.action === "transfer").length;
   if (converts > 0) parts.push(`convert ${converts} asset${converts === 1 ? "" : "s"} to XLM`);
   if (issuerReturns > 0)
     parts.push(`return ${issuerReturns} asset${issuerReturns === 1 ? "" : "s"} to the issuer`);
+  if (transfers > 0)
+    parts.push(`transfer ${transfers} asset${transfers === 1 ? "" : "s"} to another account`);
   if (input.trustlines.length > 0)
     parts.push(
       `remove ${input.trustlines.length} trustline${input.trustlines.length === 1 ? "" : "s"}`
@@ -84,7 +95,8 @@ export async function buildCloseTransactions(
   dispositions: Record<string, AssetDisposition>,
   network: Network,
   memo: string | null = null,
-  claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {}
+  claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {},
+  transferDestinations: TransferDestinations = {}
 ): Promise<CloseBuildResult> {
   const server = getRpcServer(network);
   const liveAccount = await server.getAccount(accountState.address);
@@ -108,8 +120,7 @@ export async function buildCloseTransactions(
     // claimed, never blocking the close.
     const toAddTrustlineThenClaim = existing.filter(
       (b) =>
-        !isCurrentlyClaimable(b) &&
-        claimableBalanceSelections[b.id] === "add_trustline_then_claim"
+        !isCurrentlyClaimable(b) && claimableBalanceSelections[b.id] === "add_trustline_then_claim"
     );
     const toClaim = existing.filter(
       (b) => isCurrentlyClaimable(b) && claimableBalanceSelections[b.id] !== "forfeit"
@@ -154,6 +165,13 @@ export async function buildCloseTransactions(
       const effectiveTl = { ...tl, balance: liveBalance };
       const disposition = dispositions[tl.asset] ?? "convert";
       if (disposition === "issuer") return { trustline: effectiveTl, action: "issuer" };
+      if (disposition === "transfer") {
+        const destination = transferDestinations[tl.asset];
+        // Refusing beats falling through to the conversion below, which would swap away the
+        // exact balance the caller asked to keep - silently, and irreversibly.
+        if (!destination) throw new MissingTransferDestinationError(tl.asset);
+        return { trustline: effectiveTl, action: "transfer", destination };
+      }
       const path = await fetchConversionPath(effectiveTl.asset, effectiveTl.balance, network);
       if (!path) throw new AssetRouteLostError(tl.asset, tl.code);
       return { trustline: effectiveTl, action: "convert", path };
@@ -174,7 +192,11 @@ export async function buildCloseTransactions(
   );
   const sponsorshipAffordability = accountState.sponsorshipEnumerationIncomplete
     ? { revocable: [], unaffordableOwners: new Map() }
-    : await assessSponsorshipAffordability(accountState.address, nonClaimableSponsoredEntries, network);
+    : await assessSponsorshipAffordability(
+        accountState.address,
+        nonClaimableSponsoredEntries,
+        network
+      );
 
   const input: FusedCloseInput = {
     needsSignerNormalization: computeNeedsSignerNormalization(accountState),
@@ -240,7 +262,8 @@ export async function buildCloseTransactions(
         covers: ["MERGE"],
         intent: {
           ...intentFromXdr(xdr, networkPassphrase),
-          summary: "Merge the account through the mediator and forward the balance to the destination.",
+          summary:
+            "Merge the account through the mediator and forward the balance to the destination.",
         },
       },
     ],

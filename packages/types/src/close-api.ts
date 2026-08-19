@@ -35,7 +35,19 @@ export type ClaimableBalanceSelection = "claim" | "add_trustline_then_claim" | "
 export interface DecisionAnswer {
   id: string;
   choice: string;
-  params?: { maxSlippageBps?: number };
+  params?: {
+    maxSlippageBps?: number;
+    /**
+     * Required by the `transfer_to_account` choice: the `G...` address the balance is paid to.
+     *
+     * It travels with the answer rather than in a separate map so a destination cannot become
+     * detached from the asset it was chosen for - the same reason the unrecognized-destination
+     * acknowledgement is keyed by address instead of being a boolean. A `transfer_to_account`
+     * answer without a valid destination is a 422; there is no default, because every available
+     * fallback would destroy the balance the user asked to keep.
+     */
+    destination?: string;
+  };
 }
 
 export interface ExecutionTxBreakdown {

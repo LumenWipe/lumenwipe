@@ -22,6 +22,7 @@ import {
   type SponsorshipAffordability,
 } from "@/lib/stellar/sponsorship-affordability";
 import { lookupExchange, requiresMediatorForAddress } from "@/lib/exchange-registry";
+import { validateTransferDestinations } from "@/lib/close-api/transfer-destinations";
 import {
   assetDecisionId,
   claimableBalanceDecisionId,
@@ -32,6 +33,8 @@ import {
   isDestinationAcknowledged,
   resolveClaimableBalanceSelections,
   resolveDispositions,
+  resolveTransferDestinations,
+  MissingTransferDestinationError,
   DESTINATION_ACK_CHOICE,
 } from "@/lib/close-api/decisions";
 import { assemblePlanResponse, computePlanHash } from "@/lib/close-api/plan-response";
@@ -45,7 +48,7 @@ import {
   TxSubmitError,
 } from "@/lib/utils/errors";
 import { BASE_FEE_STROOPS } from "@/config/constants";
-import type { DecisionAnswer, TransactionsResponse } from "@lumenwipe/types";
+import type { DecisionAnswer, PlanBlocker, TransactionsResponse } from "@lumenwipe/types";
 
 /** Throws an HttpException carrying the API's `{ error: { code, message, details? } }` body. */
 function fail(code: string, message: string, status: number, details?: unknown): never {
@@ -143,6 +146,42 @@ export class CloseController {
           ? !isDestinationAcknowledged(decisions, destination)
           : !answeredIds.has(dp.id)
       );
+
+      // Same reasoning as the acknowledgement above, one step further out: a transfer answer
+      // naming an account that cannot receive the asset is well-formed, so it counts as
+      // answered and the plan would report "ready" for a close /transactions then refuses.
+      // Surfaced here as a blocker instead, while the caller can still change the answer -
+      // and while nothing has been built or signed.
+      const planAssetsById = accountState.trustlines.map((tl) => ({
+        id: assetDecisionId(tl.asset),
+        asset: tl.asset,
+      }));
+      let transferBlockers: PlanBlocker[] = [];
+      try {
+        const problems = await validateTransferDestinations(
+          resolveTransferDestinations(decisions, planAssetsById),
+          accountState.trustlines,
+          source,
+          network,
+          async (address, net) => {
+            try {
+              return await readAccountState(address, net);
+            } catch (err) {
+              if (err instanceof AccountNotFoundError) return null;
+              throw err;
+            }
+          }
+        );
+        transferBlockers = problems.map((p) => ({ message: p.message, code: p.code }));
+      } catch (err) {
+        // A malformed destination is the caller's to fix on the answer itself, and the plan
+        // already lists that decision as pending. Reporting it as a blocker too would name the
+        // same problem twice.
+        if (!(err instanceof MissingTransferDestinationError)) throw err;
+      }
+      if (transferBlockers.length > 0) {
+        buildResult.blockers = [...buildResult.blockers, ...transferBlockers];
+      }
 
       const planHash = computePlanHash({
         source,
@@ -260,6 +299,31 @@ export class CloseController {
         asset: tl.asset,
       }));
       const dispositions = resolveDispositions(decisions, assetsById);
+      const transferDestinations = resolveTransferDestinations(decisions, assetsById);
+
+      // Checked against live ledger state before anything is built. A transfer to an account
+      // that cannot receive the asset fails at submission, and because the close is one atomic
+      // transaction that leaves the account exactly as it was - open, while the caller believes
+      // it was wound down. Reported together rather than one per rebuild.
+      const transferProblems = await validateTransferDestinations(
+        transferDestinations,
+        accountState.trustlines,
+        source,
+        network,
+        async (address, net) => {
+          try {
+            return await readAccountState(address, net);
+          } catch (e) {
+            if (e instanceof AccountNotFoundError) return null;
+            throw e;
+          }
+        }
+      );
+      if (transferProblems.length > 0) {
+        fail("transfer_destination_unusable", transferProblems[0]!.message, 422, {
+          problems: transferProblems,
+        });
+      }
 
       const missing = accountState.trustlines
         .filter((tl) => Number(tl.balance) > 0 && !(tl.asset in dispositions))
@@ -297,7 +361,8 @@ export class CloseController {
         dispositions,
         network,
         memo,
-        claimableBalanceSelections
+        claimableBalanceSelections,
+        transferDestinations
       );
 
       const planHash = computePlanHash({
@@ -322,6 +387,11 @@ export class CloseController {
       if (e instanceof AccountNotFoundError) fail("account_not_found", e.message, 404);
       if (e instanceof AssetRouteLostError) {
         fail("quote_drifted", "A conversion route is no longer available; re-plan and retry.", 409);
+      }
+      if (e instanceof MissingTransferDestinationError) {
+        fail("transfer_destination_missing", e.message, 422, {
+          decisionId: assetDecisionId(e.asset),
+        });
       }
       if (e instanceof CloseBuildError) fail(e.code, e.message, e.status);
       this.logger.error("close/transactions failed", e instanceof Error ? e.stack : String(e));

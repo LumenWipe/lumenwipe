@@ -1,4 +1,8 @@
-import type { AssetDisposition, ClaimableBalanceSelection } from "@/types/plan";
+import type {
+  AssetDisposition,
+  ClaimableBalanceSelection,
+  TransferDestinations,
+} from "@/types/plan";
 import type { DecisionAnswer } from "@lumenwipe/sdk";
 
 /** Stable decision id for a per-asset disposition. Must match the API's `assetDecisionId`. */
@@ -39,18 +43,48 @@ export function destinationAcknowledgementToDecisions(
   return [{ id: destinationDecisionId(destination), choice: DESTINATION_ACK_CHOICE }];
 }
 
+/** Must match the API's `TRANSFER_CHOICE`. */
+const TRANSFER_CHOICE = "transfer_to_account";
+
 /**
- * Maps the store's per-asset dispositions (convert to XLM / return to issuer) into the
- * `DecisionAnswer[]` the API's close endpoints expect. The decision id and choice strings
- * must match the API's `deriveDecisionPoints`/`resolveDispositions` contract exactly.
+ * Maps the store's per-asset dispositions into the `DecisionAnswer[]` the API's close endpoints
+ * expect. The decision id and choice strings must match the API's
+ * `deriveDecisionPoints`/`resolveDispositions` contract exactly.
+ *
+ * A `switch`, not a ternary. This used to read `disposition === "convert" ? ... :
+ * "return_to_issuer"`, which quietly mapped anything that was not `convert` onto burning the
+ * asset - so the moment `transfer` existed as a disposition, choosing it would have sent the
+ * balance to its issuer instead of to the user's account, with no error anywhere. The `never`
+ * makes a future disposition a compile error rather than a silent burn.
+ *
+ * The transfer destination travels on the answer it belongs to, so it cannot be detached from
+ * the asset it was chosen for. An asset marked `transfer` with no destination emits no
+ * destination, and the API refuses the build rather than defaulting - which is the intended
+ * outcome, since every default available destroys the balance.
  */
 export function dispositionsToDecisions(
-  dispositions: Record<string, AssetDisposition>
+  dispositions: Record<string, AssetDisposition>,
+  transferDestinations: TransferDestinations = {}
 ): DecisionAnswer[] {
-  return Object.entries(dispositions).map(([asset, disposition]) => ({
-    id: assetDecisionId(asset),
-    choice: disposition === "convert" ? "convert_to_xlm" : "return_to_issuer",
-  }));
+  return Object.entries(dispositions).map(([asset, disposition]): DecisionAnswer => {
+    const id = assetDecisionId(asset);
+    switch (disposition) {
+      case "convert":
+        return { id, choice: "convert_to_xlm" };
+      case "issuer":
+        return { id, choice: "return_to_issuer" };
+      case "transfer": {
+        const destination = transferDestinations[asset];
+        return destination
+          ? { id, choice: TRANSFER_CHOICE, params: { destination } }
+          : { id, choice: TRANSFER_CHOICE };
+      }
+      default: {
+        const unhandled: never = disposition;
+        throw new Error(`Unhandled asset disposition: ${String(unhandled)}`);
+      }
+    }
+  });
 }
 
 /**

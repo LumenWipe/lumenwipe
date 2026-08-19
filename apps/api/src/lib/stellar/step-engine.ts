@@ -32,8 +32,10 @@ import type {
   ClaimableBalance,
   Trustline,
   AssetDisposition,
+  TransferDestinations,
   PlannedStep,
 } from "@lumenwipe/types";
+import { MissingTransferDestinationError } from "@/lib/close-api/decisions";
 
 // Engine core shared by the wallet flow (useStepExecution) and the testnet
 // playground (usePlaygroundExecution). Pure with respect to React: all state
@@ -49,6 +51,11 @@ export interface StepBuildContext {
   mediatorRequired: boolean;
   executionPlan: PlannedStep[];
   assetDispositions: Record<string, AssetDisposition>;
+  /** Where each `transfer` disposition sends its balance, keyed by the same asset string.
+   *  Validated against the ledger before the plan reaches here; an asset marked `transfer`
+   *  with nothing here is a build error rather than a fallback, because both fallbacks
+   *  destroy the balance. */
+  transferDestinations?: TransferDestinations;
 }
 
 /** Signs an unsigned XDR and returns the signed envelope (local key or remote API). */
@@ -232,6 +239,13 @@ export async function buildStepXdrForPlan(
           const disposition = ctx.assetDispositions[tl.asset] ?? "convert";
           if (disposition === "issuer") {
             return { trustline: effectiveTl, action: "issuer" };
+          }
+          if (disposition === "transfer") {
+            const destination = ctx.transferDestinations?.[tl.asset];
+            // Refusing beats converting. Falling through to the conversion below would swap
+            // away the exact balance the user asked to keep, silently and irreversibly.
+            if (!destination) throw new MissingTransferDestinationError(tl.asset);
+            return { trustline: effectiveTl, action: "transfer", destination };
           }
           const path = await fetchConversionPath(effectiveTl.asset, effectiveTl.balance, network);
           if (!path) throw new AssetRouteLostError(tl.asset, tl.code);

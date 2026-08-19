@@ -3,13 +3,16 @@ import { Keypair } from "@stellar/stellar-sdk";
 import {
   deriveClaimableBalanceDecisionPoints,
   deriveDecisionPoints,
+  MissingTransferDestinationError,
   resolveClaimableBalanceSelections,
   resolveDispositions,
+  resolveTransferDestinations,
 } from "@/lib/close-api/decisions";
 import type { AccountState, ClaimableBalance, Trustline } from "@lumenwipe/types";
 
 const MASTER = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
+const DESTINATION = Keypair.random().publicKey();
 
 function makeAccount(overrides: Partial<AccountState> = {}): AccountState {
   return {
@@ -56,17 +59,34 @@ test("a trustline with a balance produces a convertible asset_disposition decisi
   expect(points).toHaveLength(1);
   expect(points[0].type).toBe("asset_disposition");
   expect(points[0].id).toBe(`asset:USDC-${ISSUER}`);
-  expect(points[0].options.map((o) => o.id)).toEqual(["convert_to_xlm", "return_to_issuer"]);
+  expect(points[0].options.map((o) => o.id)).toEqual([
+    "convert_to_xlm",
+    "return_to_issuer",
+    "transfer_to_account",
+  ]);
   expect(points[0].default).toBe("convert_to_xlm");
 });
 
-test("a non-convertible asset offers only return_to_issuer", () => {
+test("a non-convertible asset still offers transfer alongside return_to_issuer", () => {
   const account = makeAccount({ trustlines: [makeTrustline("FOO", "5")] });
   const points = deriveDecisionPoints(account, { [`FOO:${ISSUER}`]: false });
 
-  expect(points[0].options.map((o) => o.id)).toEqual(["return_to_issuer"]);
+  // Transferring needs no DEX route, so an asset with no market is not reduced to burning it.
+  expect(points[0].options.map((o) => o.id)).toEqual(["return_to_issuer", "transfer_to_account"]);
   expect(points[0].default).toBe("return_to_issuer");
   expect((points[0].subject as { convertible: boolean }).convertible).toBe(false);
+});
+
+test("transfer is never the default, because it cannot be resolved without an address", () => {
+  const convertible = makeAccount({ trustlines: [makeTrustline("USDC", "10")] });
+  const illiquid = makeAccount({ trustlines: [makeTrustline("FOO", "5")] });
+
+  expect(deriveDecisionPoints(convertible, { [`USDC:${ISSUER}`]: true })[0].default).not.toBe(
+    "transfer_to_account"
+  );
+  expect(deriveDecisionPoints(illiquid, { [`FOO:${ISSUER}`]: false })[0].default).not.toBe(
+    "transfer_to_account"
+  );
 });
 
 test("zero-balance trustlines produce no decision point", () => {
@@ -88,6 +108,93 @@ test("resolveDispositions maps return_to_issuer to issuer", () => {
     [{ id: `asset:FOO-${ISSUER}`, asset: `FOO:${ISSUER}` }]
   );
   expect(dispositions).toEqual({ [`FOO:${ISSUER}`]: "issuer" });
+});
+
+test("resolveDispositions maps transfer_to_account to transfer", () => {
+  const dispositions = resolveDispositions(
+    [
+      {
+        id: `asset:USDC-${ISSUER}`,
+        choice: "transfer_to_account",
+        params: { destination: DESTINATION },
+      },
+    ],
+    [{ id: `asset:USDC-${ISSUER}`, asset: `USDC:${ISSUER}` }]
+  );
+  expect(dispositions).toEqual({ [`USDC:${ISSUER}`]: "transfer" });
+});
+
+// ─── resolveTransferDestinations ─────────────────────────────────────────────
+//
+// Strictness here is the whole point. Every other unusable answer in this module falls back to a
+// safe default; a transfer has none, because both alternatives destroy the balance the caller
+// asked to keep. These assert that it refuses rather than quietly picking one.
+
+test("resolveTransferDestinations keys each destination by its own asset", () => {
+  const other = Keypair.random().publicKey();
+  const destinations = resolveTransferDestinations(
+    [
+      {
+        id: `asset:USDC-${ISSUER}`,
+        choice: "transfer_to_account",
+        params: { destination: DESTINATION },
+      },
+      { id: `asset:FOO-${ISSUER}`, choice: "transfer_to_account", params: { destination: other } },
+    ],
+    [
+      { id: `asset:USDC-${ISSUER}`, asset: `USDC:${ISSUER}` },
+      { id: `asset:FOO-${ISSUER}`, asset: `FOO:${ISSUER}` },
+    ]
+  );
+  // Per asset and independent: the contract is not "one destination for the whole close".
+  expect(destinations).toEqual({ [`USDC:${ISSUER}`]: DESTINATION, [`FOO:${ISSUER}`]: other });
+});
+
+test("a transfer answer with no destination is refused, not defaulted", () => {
+  expect(() =>
+    resolveTransferDestinations(
+      [{ id: `asset:USDC-${ISSUER}`, choice: "transfer_to_account" }],
+      [{ id: `asset:USDC-${ISSUER}`, asset: `USDC:${ISSUER}` }]
+    )
+  ).toThrow(MissingTransferDestinationError);
+});
+
+test("a transfer answer with a malformed destination is refused", () => {
+  for (const destination of ["NOTANADDRESS", "", ISSUER.toLowerCase(), ISSUER.slice(0, -1)]) {
+    expect(() =>
+      resolveTransferDestinations(
+        [{ id: `asset:USDC-${ISSUER}`, choice: "transfer_to_account", params: { destination } }],
+        [{ id: `asset:USDC-${ISSUER}`, asset: `USDC:${ISSUER}` }]
+      )
+    ).toThrow(MissingTransferDestinationError);
+  }
+});
+
+test("the refusal names the asset, so the caller knows which answer to fix", () => {
+  try {
+    resolveTransferDestinations(
+      [{ id: `asset:USDC-${ISSUER}`, choice: "transfer_to_account" }],
+      [{ id: `asset:USDC-${ISSUER}`, asset: `USDC:${ISSUER}` }]
+    );
+    throw new Error("expected a refusal");
+  } catch (err) {
+    expect(err).toBeInstanceOf(MissingTransferDestinationError);
+    expect((err as MissingTransferDestinationError).asset).toBe(`USDC:${ISSUER}`);
+  }
+});
+
+test("non-transfer answers are left alone even when they carry a destination", () => {
+  const destinations = resolveTransferDestinations(
+    [
+      { id: `asset:USDC-${ISSUER}`, choice: "convert_to_xlm", params: { destination: DESTINATION } },
+      { id: `asset:FOO-${ISSUER}`, choice: "return_to_issuer" },
+    ],
+    [
+      { id: `asset:USDC-${ISSUER}`, asset: `USDC:${ISSUER}` },
+      { id: `asset:FOO-${ISSUER}`, asset: `FOO:${ISSUER}` },
+    ]
+  );
+  expect(destinations).toEqual({});
 });
 
 // ─── deriveClaimableBalanceDecisionPoints ────────────────────────────────────
