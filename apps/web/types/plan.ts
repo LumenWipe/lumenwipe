@@ -1,67 +1,25 @@
-export type StepType =
-  | "NORMALIZE_SIGNERS"
-  | "REVOKE_SPONSORSHIP"
-  | "REMOVE_DATA_ENTRIES"
-  | "CANCEL_OFFERS"
-  | "ADD_TRUSTLINE_FOR_CLAIM"
-  | "CLAIM_BALANCES"
-  | "CONVERT_ASSETS"
-  | "REMOVE_TRUSTLINES"
-  | "CLOSE_ACCOUNT"
-  | "MERGE";
-
-export type StepStatus = "pending" | "signing" | "submitted" | "confirmed" | "failed" | "skipped";
-
-export type AssetDisposition = "convert" | "issuer";
-
-export type ClaimableBalanceSelection = "claim" | "add_trustline_then_claim" | "forfeit";
-
-export interface PlannedStep {
-  index: number;
-  type: StepType;
-  title: string;
-  description: string;
-  operationCount: number;
-  estimatedFeeLumens: string;
-  // Populated lazily at execution time
-  txXdr: string | null;
-  status: StepStatus;
-  txHash: string | null;
-  error: string | null;
-  // Metadata for display
-  affectedAsset?: string; // for CONVERT_ASSETS steps
-  // Set when no DEX path exists and the user confirms sending to issuer instead
-  fallbackToIssuer?: boolean;
-}
-
-export type DemolishPhase =
-  | "IDLE"
-  | "ANALYZING"
-  | "PREFLIGHT_COMPLETE"
-  | "SIGNER_SETUP"
-  | "STEP_EXECUTING"
-  | "STEP_CONFIRMED"
-  | "STEP_FAILED"
-  | "COMPLETE"
-  | "ABORTED";
-
-export interface PlanBlocker {
-  message: string;
-  helpUrl?: string;
-  /** Distinguishes an acknowledged, non-trapping warning (e.g. a chosen forfeit) from a hard
-   *  blocker. Absent means the generic hard-blocking case. */
-  code?: string;
-}
-
-export interface BuildPlanResult {
-  steps: PlannedStep[];
-  blockers: PlanBlocker[];
-}
-
-export interface ConversionPath {
-  fromAsset: string;
-  toAsset: string;
-  path: string[];
-  estimatedReceive: string;
-  destMin: string;
-}
+/**
+ * Plan types, re-exported from the shared contract package.
+ *
+ * This file used to be a verbatim copy of `packages/types/src/plan.ts` (#68). The copies had
+ * already drifted - the web one carried an extra type - and adding the transfer disposition would
+ * have made a shared union differ between the app and the contract it speaks. Re-exporting the
+ * shared names keeps one definition; only genuinely web-only types are declared below.
+ *
+ * Named rather than `export *`: the package's entry point re-exports account and close-api types
+ * too, which would collide with the local `@/types/account` and `@/types/close-api` modules.
+ */
+export type {
+  AssetDisposition,
+  BuildPlanResult,
+  // Already defined in the package (close-api.ts); the local copy here was a third duplicate,
+  // not a web-only type.
+  ClaimableBalanceSelection,
+  ConversionPath,
+  DemolishPhase,
+  PlanBlocker,
+  PlannedStep,
+  StepStatus,
+  StepType,
+  TransferDestinations,
+} from "@lumenwipe/types";

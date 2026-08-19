@@ -326,3 +326,130 @@ test("assembleFusedCloseOps > large input exceeds the 100-op protocol cap", () =
   expect(ops.length).toBeGreaterThan(100);
   expect(ops).toHaveLength(121);
 });
+
+// ─── transfer disposition (#111) ─────────────────────────────────────────────
+
+const TRANSFER_DEST = Keypair.random().publicKey();
+
+test("a transfer disposition emits a payment of the full balance to the chosen account", () => {
+  const ops = opsOf(
+    buildFusedCloseTx(
+      account(),
+      baseInput({
+        assetActions: [{ trustline: TL, action: "transfer", destination: TRANSFER_DEST }],
+        trustlines: [TL],
+      }),
+      "testnet"
+    )
+  );
+
+  const payment = ops.find((o) => o.type === "payment");
+  expect(payment).toBeDefined();
+  expect((payment as { destination: string }).destination).toBe(TRANSFER_DEST);
+  // The full balance, not a parameter: the ChangeTrust below fails on any remainder. Compared
+  // numerically because the SDK normalizes to 7 decimal places ("10" -> "10.0000000").
+  expect(Number((payment as { amount: string }).amount)).toBe(Number(TL.balance));
+  expect((payment as { asset: { code: string } }).asset.code).toBe("USDC");
+});
+
+test("the transfer payment precedes the ChangeTrust that removes its trustline", () => {
+  const ops = opsOf(
+    buildFusedCloseTx(
+      account(),
+      baseInput({
+        assetActions: [{ trustline: TL, action: "transfer", destination: TRANSFER_DEST }],
+        trustlines: [TL],
+      }),
+      "testnet"
+    )
+  );
+
+  const paymentAt = ops.findIndex((o) => o.type === "payment");
+  const changeTrustAt = ops.findIndex(
+    (o) => o.type === "changeTrust" && Number((o as { limit?: string }).limit ?? "0") === 0
+  );
+  expect(paymentAt).toBeGreaterThanOrEqual(0);
+  expect(changeTrustAt).toBeGreaterThanOrEqual(0);
+  // Reversed, the ChangeTrust would fail on a non-zero balance and abort the whole atomic
+  // close - the account stays open and the user is told nothing useful.
+  expect(paymentAt).toBeLessThan(changeTrustAt);
+});
+
+test("a transfer goes to the chosen account, never to the issuer", () => {
+  // Asserting only `not.toBe(ISSUER)` against a random destination cannot fail: it would pass
+  // for any wrong address at all. Pinning the exact address is what makes it a real check.
+  const ops = opsOf(
+    buildFusedCloseTx(
+      account(),
+      baseInput({
+        assetActions: [{ trustline: TL, action: "transfer", destination: TRANSFER_DEST }],
+        trustlines: [TL],
+      }),
+      "testnet"
+    )
+  );
+  const payment = ops.find((o) => o.type === "payment") as { destination: string };
+  expect(payment.destination).toBe(TRANSFER_DEST);
+  // The old `convert ? ... : issuer` ternary resolved everything non-convert to this.
+  expect(payment.destination).not.toBe(ISSUER);
+});
+
+test("transfer composes with convert and issuer in one plan, each to its own destination", () => {
+  const otherIssuer = Keypair.random().publicKey();
+  const eurc = {
+    asset: `EURC:${otherIssuer}`,
+    balance: "5",
+    authorized: true,
+    issuer: otherIssuer,
+    code: "EURC",
+  };
+  const foo = {
+    asset: `FOO:${otherIssuer}`,
+    balance: "3",
+    authorized: true,
+    issuer: otherIssuer,
+    code: "FOO",
+  };
+
+  const ops = opsOf(
+    buildFusedCloseTx(
+      account(),
+      baseInput({
+        assetActions: [
+          { trustline: TL, action: "convert", path: convertPath() },
+          { trustline: eurc, action: "transfer", destination: TRANSFER_DEST },
+          { trustline: foo, action: "issuer" },
+        ],
+        trustlines: [TL, eurc, foo],
+      }),
+      "testnet"
+    )
+  );
+
+  expect(ops.filter((o) => o.type === "pathPaymentStrictSend")).toHaveLength(1);
+  const payments = ops.filter((o) => o.type === "payment") as { destination: string }[];
+  expect(payments).toHaveLength(2);
+  // One to the user's account, one to the issuer - not two of either.
+  expect(payments.map((p) => p.destination).sort()).toEqual([TRANSFER_DEST, otherIssuer].sort());
+
+  // Every disposition still lands before its trustline is removed.
+  const lastDisposition = Math.max(
+    ...ops
+      .map((o, i) => (o.type === "payment" || o.type === "pathPaymentStrictSend" ? i : -1))
+      .filter((i) => i >= 0)
+  );
+  const firstChangeTrust = ops.findIndex((o) => o.type === "changeTrust");
+  expect(lastDisposition).toBeLessThan(firstChangeTrust);
+});
+
+test("assembleFusedCloseOps counts the transfer payment, so fees and batching see it", () => {
+  const withTransfer = assembleFusedCloseOps(
+    MASTER,
+    baseInput({
+      assetActions: [{ trustline: TL, action: "transfer", destination: TRANSFER_DEST }],
+      trustlines: [TL],
+    })
+  );
+  const without = assembleFusedCloseOps(MASTER, baseInput({ trustlines: [TL] }));
+  expect(withTransfer.length).toBe(without.length + 1);
+});

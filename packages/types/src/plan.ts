@@ -12,7 +12,28 @@ export type StepType =
 
 export type StepStatus = "pending" | "signing" | "submitted" | "confirmed" | "failed" | "skipped";
 
-export type AssetDisposition = "convert" | "issuer";
+/**
+ * What happens to a non-XLM balance before its trustline is removed.
+ *
+ * `convert` swaps it to XLM and `issuer` sends it back to be burned - both end the close with the
+ * position destroyed. `transfer` keeps the asset, as the asset, by paying it to another account
+ * that already holds the trustline.
+ */
+export type AssetDisposition = "convert" | "issuer" | "transfer";
+
+/**
+ * Where a `transfer` disposition sends its balance, keyed by the same canonical `CODE:ISSUER`
+ * string the disposition itself is keyed by.
+ *
+ * Per asset and arbitrary: the API takes any address here, independently for each asset. Offering
+ * "the same account you are merging into" is a UI convenience, not a constraint of the contract -
+ * an SDK consumer can send each asset somewhere different.
+ *
+ * There is deliberately no amount. The `ChangeTrust` that removes the trustline runs immediately
+ * after and fails on a non-zero balance, so anything short of the full balance would strand the
+ * close midway.
+ */
+export type TransferDestinations = Record<string, string>;
 
 export interface PlannedStep {
   index: number;

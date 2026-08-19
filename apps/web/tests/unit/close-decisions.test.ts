@@ -36,9 +36,7 @@ test("claimableSelectionsToDecisions › maps a selection to its decision id and
 });
 
 test("claimableSelectionsToDecisions › maps multiple selections", () => {
-  expect(
-    claimableSelectionsToDecisions({ bal1: "claim", bal2: "forfeit" })
-  ).toEqual([
+  expect(claimableSelectionsToDecisions({ bal1: "claim", bal2: "forfeit" })).toEqual([
     { id: "claim:bal1", choice: "claim" },
     { id: "claim:bal2", choice: "forfeit" },
   ]);
@@ -77,4 +75,47 @@ test("destinationAcknowledgementToDecisions › does not carry an acknowledgemen
 test("destinationAcknowledgementToDecisions › emits nothing without a destination", () => {
   expect(destinationAcknowledgementToDecisions(DEST, null)).toEqual([]);
   expect(destinationAcknowledgementToDecisions(null, null)).toEqual([]);
+});
+
+// ─── transfer disposition (#111) ─────────────────────────────────────────────
+
+const EURC = "EURC:GISSUER0000000000000000000000000000000000000000000000000000";
+const EURC_ID = `asset:${EURC.replace(":", "-")}`;
+const DEST_A = "GA".padEnd(56, "A");
+const DEST_B = "GB".padEnd(56, "B");
+
+test("a transfer disposition sends the transfer choice with its destination", () => {
+  const answers = dispositionsToDecisions({ [ASSET]: "transfer" }, { [ASSET]: DEST_A });
+  expect(answers).toEqual([
+    { id: ASSET_ID, choice: "transfer_to_account", params: { destination: DEST_A } },
+  ]);
+});
+
+test("a transfer is never mapped onto return_to_issuer", () => {
+  const answers = dispositionsToDecisions({ [ASSET]: "transfer" }, { [ASSET]: DEST_A });
+  // The previous ternary mapped everything that was not "convert" onto burning the asset, so
+  // choosing to keep a balance would have destroyed it. This is that regression.
+  expect(answers[0]!.choice).not.toBe("return_to_issuer");
+});
+
+test("each asset carries its own destination", () => {
+  const answers = dispositionsToDecisions(
+    { [ASSET]: "transfer", [EURC]: "transfer" },
+    { [ASSET]: DEST_A, [EURC]: DEST_B }
+  );
+  const byId = new Map(answers.map((x) => [x.id, x.params?.destination]));
+  expect(byId.get(ASSET_ID)).toBe(DEST_A);
+  expect(byId.get(EURC_ID)).toBe(DEST_B);
+});
+
+test("a transfer with no destination emits no destination, leaving the API to refuse", () => {
+  const answers = dispositionsToDecisions({ [ASSET]: "transfer" }, {});
+  // Emitting a wrong-but-present destination would be worse than emitting none: the API can
+  // refuse a missing one, but a plausible one would be built and signed.
+  expect(answers[0]!.params?.destination).toBeUndefined();
+});
+
+test("convert and issuer are unchanged by the transfer support", () => {
+  const answers = dispositionsToDecisions({ [ASSET]: "convert", [EURC]: "issuer" });
+  expect(answers.map((a) => a.choice)).toEqual(["convert_to_xlm", "return_to_issuer"]);
 });
