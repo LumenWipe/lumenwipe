@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRightLeft, AlertTriangle, CheckCircle2, Send } from "lucide-react";
+import { AlertCircle, ArrowRightLeft, AlertTriangle, CheckCircle2, Send } from "lucide-react";
 import type { AssetConvertibility } from "@/lib/api/plan-adapters";
 import type { AssetDisposition } from "@/types/plan";
 import { isValidGAddress } from "@/lib/utils/validation";
@@ -29,6 +29,11 @@ interface AssetDispositionCardProps {
  * The transfer option is offered for both. For an asset with no swap route it is the only
  * choice that does not destroy the balance, which is precisely when a user is most likely to
  * want it.
+ *
+ * The convertible branch also honours a stored "issuer". Dispositions outlive a re-analyze, so
+ * an asset answered "return to issuer" while it had no route can become convertible when one
+ * appears - and rendering only transfer-or-swap there would have shown a green "Swap" badge and
+ * "will be swapped to XLM" over a plan that burns the balance.
  */
 export default function AssetDispositionCard({
   item,
@@ -44,6 +49,10 @@ export default function AssetDispositionCard({
   // counts as unresolved, exactly like an unconfirmed return-to-issuer.
   const transferReady = isTransfer && !!transferDestination && isValidGAddress(transferDestination);
   const resolved = item.convertible ? !isTransfer || transferReady : isIssuer || transferReady;
+
+  const showAddressError = !!transferDestination && !isValidGAddress(transferDestination);
+  const errorId = `transfer-error-${item.asset}`;
+  const helpId = `transfer-help-${item.asset}`;
 
   const transferPanel = (
     <div className="mt-3 pl-7">
@@ -70,18 +79,38 @@ export default function AssetDispositionCard({
           <input
             type="text"
             value={transferDestination ?? ""}
-            onChange={(e) => onSetTransferDestination(item.asset, e.target.value || null)}
+            // Trimmed on the way in: an address copied out of a wallet or a terminal often
+            // carries a trailing space or newline, which is invisible on screen and would
+            // otherwise fail validation with no way for the user to see why.
+            onChange={(e) => onSetTransferDestination(item.asset, e.target.value.trim() || null)}
             placeholder={`G... (an account that already holds ${item.code})`}
             spellCheck={false}
+            autoComplete="off"
             aria-label={`Destination account for ${item.code}`}
+            aria-invalid={showAddressError}
+            aria-describedby={showAddressError ? errorId : helpId}
             className={cn(
               "w-full rounded-md border bg-black/30 px-2.5 py-1.5 font-mono text-xs text-white",
-              "placeholder:font-sans placeholder:text-white/30 focus:outline-none",
-              transferDestination && !isValidGAddress(transferDestination)
-                ? "border-destructive/50 focus:border-destructive"
-                : "border-white/10 focus:border-stellar/50"
+              "placeholder:font-sans placeholder:text-white/30",
+              "focus:outline-none focus:ring-1",
+              showAddressError
+                ? "border-destructive/50 focus:border-destructive focus:ring-destructive/40"
+                : "border-white/10 focus:border-stellar/50 focus:ring-stellar/40"
             )}
           />
+          {/* A colour change is not an error message: it says nothing to a screen reader and
+              nothing to a user who cannot distinguish the border. Without this the flow simply
+              stops - "Begin execution" never appears - with no statement of why. */}
+          {showAddressError && (
+            <p
+              id={errorId}
+              role="alert"
+              className="flex items-center gap-1 text-[0.7rem] text-destructive"
+            >
+              <AlertCircle className="h-3 w-3 shrink-0" />
+              Not a valid Stellar address (must start with G)
+            </p>
+          )}
           {/* A shortcut, not a constraint: the API takes any address per asset, and hiding that
               behind a single fixed destination would make the UI narrower than the contract. */}
           {mergeDestination && transferDestination !== mergeDestination && (
@@ -93,7 +122,7 @@ export default function AssetDispositionCard({
               Use the same account I&apos;m merging into
             </button>
           )}
-          <p className="text-[0.7rem] leading-relaxed text-white/45">
+          <p id={helpId} className="text-[0.7rem] leading-relaxed text-white/45">
             That account must already hold a {item.code} trustline — LumenWipe cannot add one for
             it, and the whole close fails if it cannot receive the balance.
           </p>
@@ -113,7 +142,7 @@ export default function AssetDispositionCard({
         )}
       >
         <div className="flex items-center gap-3">
-          {isTransfer ? (
+          {isTransfer || isIssuer ? (
             <Send className="h-4 w-4 shrink-0 text-white/50" />
           ) : (
             <ArrowRightLeft className="h-4 w-4 shrink-0 text-emerald-400" />
@@ -121,23 +150,25 @@ export default function AssetDispositionCard({
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-white">
               {item.code} <span className="text-white/40">→</span>{" "}
-              {isTransfer ? "another account" : "XLM"}
+              {isTransfer ? "another account" : isIssuer ? "its issuer" : "XLM"}
             </p>
             <p className="text-xs text-white/50">
               {isTransfer
                 ? `${item.balance} ${item.code} will be sent as ${item.code}, not swapped.`
-                : `${item.balance} ${item.code} will be swapped to XLM on the DEX.`}
+                : isIssuer
+                  ? `${item.balance} ${item.code} will be returned to its issuer. You give up these tokens.`
+                  : `${item.balance} ${item.code} will be swapped to XLM on the DEX.`}
             </p>
           </div>
           <span
             className={cn(
               "shrink-0 rounded-full border px-2 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide",
-              isTransfer
+              isTransfer || isIssuer
                 ? "border-white/20 bg-white/5 text-white/70"
                 : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
             )}
           >
-            {isTransfer ? "Send" : "Swap"}
+            {isTransfer ? "Send" : isIssuer ? "Return" : "Swap"}
           </span>
         </div>
         {transferPanel}

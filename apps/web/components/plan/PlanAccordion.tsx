@@ -12,7 +12,8 @@ import ClaimableBalanceCard from "./ClaimableBalanceCard";
 interface PlanAccordionProps {
   account: AccountState;
   conversions: AssetConvertibility[];
-  /** Confirmed "return to issuer" decisions for non-convertible assets, keyed by asset. */
+  /** Each balance-bearing asset's recorded disposition, keyed by asset. Absent means the
+   *  user has not answered yet. */
   assetDispositions: Record<string, AssetDisposition>;
   transferDestinations: Record<string, string>;
   /** The account the XLM is merging into, offered per asset as a shortcut. */

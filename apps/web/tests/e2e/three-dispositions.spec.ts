@@ -79,6 +79,29 @@ async function trustlineBalance(id: string, code: string): Promise<string> {
   return body.balances.find((b) => b.asset_code === code)?.balance ?? "0";
 }
 
+/** Payments the issuer received, newest first. Indexed with the transaction, unlike the
+ *  /assets supply index, which lags the ledger by enough to report a balance as absent
+ *  moments after it arrives. */
+async function issuerPayments(
+  issuer: string
+): Promise<Array<{ asset_code?: string; from?: string; to?: string; amount: string }>> {
+  const res = await fetch(`${HORIZON}/accounts/${issuer}/payments?order=desc&limit=200`);
+  if (!res.ok) throw new Error(`load payments ${issuer}: ${res.status}`);
+  const body = (await res.json()) as {
+    _embedded: {
+      records: Array<{ asset_code?: string; from?: string; to?: string; amount: string }>;
+    };
+  };
+  return body._embedded.records;
+}
+
+async function nativeBalance(id: string): Promise<number> {
+  const res = await fetch(`${HORIZON}/accounts/${id}`);
+  if (!res.ok) throw new Error(`load account ${id}: ${res.status}`);
+  const body = (await res.json()) as { balances: Array<{ asset_type: string; balance: string }> };
+  return parseFloat(body.balances.find((b) => b.asset_type === "native")?.balance ?? "0");
+}
+
 async function hasUsdcRouteFor(amount: string, attempts = 8, delayMs = 2_500): Promise<boolean> {
   const url =
     `${HORIZON}/paths/strict-send?source_asset_type=credit_alphanum4` +
@@ -150,6 +173,8 @@ test("one close swaps one asset, transfers another, and returns a third to its i
     Operation.payment({ destination: source.publicKey(), asset: BURN, amount: "25" }),
   ]);
 
+  const sourceNativeBefore = await nativeBalance(source.publicKey());
+  const destNativeBefore = await nativeBalance(destination.publicKey());
   const keepBefore = await trustlineBalance(source.publicKey(), "KEEP");
   const burnBefore = await trustlineBalance(source.publicKey(), "BURN");
   expect(parseFloat(keepBefore)).toBeGreaterThan(0);
@@ -172,15 +197,19 @@ test("one close swaps one asset, transfers another, and returns a third to its i
   // destination step exists: the late-destination panel and "Begin execution" only render once
   // every asset is resolved, which is exactly the gate an unresolved transfer must not pass.
   await page.getByRole("checkbox", { name: /Send my .*KEEP to another account/i }).check();
+  await page.getByRole("checkbox", { name: /Return my .*BURN to the issuer/i }).check();
+
+  // Choosing "transfer" is not the same as resolving it. With BURN answered and KEEP marked
+  // for transfer but nameless, the flow must still be blocked - otherwise the user proceeds
+  // to a build the API refuses. Asserted before filling the address, because asserting only
+  // the positive would let a regression that drops the address requirement pass unnoticed.
+  const beginButton = page.getByRole("button", { name: /Begin execution/i });
+  await expect(beginButton).toBeHidden();
+
   await page
     .getByRole("textbox", { name: /Destination account for KEEP/i })
     .fill(transferTo.publicKey());
-  await page.getByRole("checkbox", { name: /Return my .*BURN to the issuer/i }).check();
-
-  // Only now does the flow advance. If a transfer without a destination counted as resolved,
-  // this would have appeared one step earlier - and the close would reach a build the API
-  // refuses.
-  const beginButton = page.getByRole("button", { name: /Begin execution/i });
+  // Only now does the flow advance.
   await expect(beginButton).toBeVisible({ timeout: TESTNET_STEP_TIMEOUT });
 
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination.publicKey());
@@ -211,17 +240,29 @@ test("one close swaps one asset, transfers another, and returns a third to its i
   const received = await trustlineBalance(transferTo.publicKey(), "KEEP");
   expect(parseFloat(received)).toBeCloseTo(parseFloat(keepBefore), 5);
 
-  // Burned: BURN went to its issuer, NOT to the transfer destination. Asserting the negative
-  // matters - collapsing the two dispositions into one would still leave the source closed.
-  expect(parseFloat(await trustlineBalance(transferTo.publicKey(), "BURN"))).toBe(0);
+  // Burned: the issuer actually received the BURN, from the account being closed.
+  //
+  // Two tempting checks were rejected as tautologies: the transfer destination never opened a
+  // BURN trustline (and the helper reports an absent trustline as "0"), and an issuer holds no
+  // trustline to its own asset. A third, circulating supply via /assets, turned out to be
+  // worse than useless - that index lags the ledger, and it reported 0 for KEEP moments after
+  // a payment this same test had already confirmed landed. The payment record is indexed with
+  // the transaction itself, so it is the one fact available immediately and unambiguously.
+  // Filtered by direction: the endpoint lists payments both ways, and the setup had the issuer
+  // SEND both assets to the source, so matching on the asset alone would find the funding
+  // payment rather than the return.
+  const payments = await issuerPayments(localIssuer.publicKey());
+  const receivedFromSource = payments.filter(
+    (p) => p.to === localIssuer.publicKey() && p.from === source.publicKey()
+  );
 
-  // Swapped: the USDC became XLM inside the account before the merge, so the destination
-  // received more than the source's pre-swap native balance would have allowed. Asserting the
-  // destination simply grew is enough - the exact amount depends on the live book.
-  const destNative = await fetch(`${HORIZON}/accounts/${destination.publicKey()}`)
-    .then((r) => r.json() as Promise<{ balances: Array<{ asset_type: string; balance: string }> }>)
-    .then((b) => parseFloat(b.balances.find((x) => x.asset_type === "native")?.balance ?? "0"));
-  expect(destNative).toBeGreaterThan(10_000);
+  const burnReturn = receivedFromSource.find((p) => p.asset_code === "BURN");
+  expect(burnReturn, "the issuer received no BURN payment from the closed account").toBeDefined();
+  expect(parseFloat(burnReturn!.amount)).toBeCloseTo(parseFloat(burnBefore), 5);
+
+  // And KEEP was not burned along with it: the closed account sent the issuer no KEEP. This is
+  // what makes the two dispositions distinguishable rather than merely both "gone".
+  expect(receivedFromSource.some((p) => p.asset_code === "KEEP")).toBe(false);
 
   expect(await accountExists(transferTo.publicKey())).toBe(true);
 });

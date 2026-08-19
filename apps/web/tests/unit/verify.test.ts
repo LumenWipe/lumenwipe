@@ -867,16 +867,16 @@ test("a payment for an asset with no transfer chosen is rejected", () => {
 test("an altered amount is rejected", () => {
   // Binding only the destination would let this through: right account, wrong amount.
   const i = intent({ operations: [transferPayment(TRANSFER_DEST, "0.0000001"), merge(DEST)] });
-  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).toThrow(
-    /different amount/i
-  );
+  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).toThrow(/less USDC/i);
 });
 
-test("an inflated amount is rejected too, not just a short one", () => {
+test("more than approved is allowed: a claim round legitimately raises the balance", () => {
+  // The API claims a claimable balance of the same asset BEFORE disposing of the trustline,
+  // so the built amount exceeds the figure shown at analyze time. Rejecting that failed the
+  // close after the claim was already signed and submitted. Safe because the destination is
+  // pinned: the extra goes exactly where the user said.
   const i = intent({ operations: [transferPayment(TRANSFER_DEST, "1000"), merge(DEST)] });
-  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).toThrow(
-    /different amount/i
-  );
+  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).not.toThrow();
 });
 
 test("the amount is compared in whole stroops, not as decimal strings", () => {
@@ -903,7 +903,7 @@ test("the rejection names the asset code, so the user can tell which one is wron
 
   const wrongAmount = intent({ operations: [transferPayment(TRANSFER_DEST, "1"), merge(DEST)] });
   expect(() => assertCloseIntent(wrongAmount, expectation({ transfers: chose() }))).toThrow(
-    /amount of USDC/
+    /less USDC/
   );
 
   const twice = intent({ operations: [transferPayment(), transferPayment(), merge(DEST)] });

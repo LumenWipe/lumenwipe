@@ -49,9 +49,11 @@ export interface CloseExpectation {
    * the shape of a fund-diversion attack. The only thing separating a legitimate transfer from
    * a diversion is that this map came from the user.
    *
-   * The amount is here for the same reason the destination is. Binding only the destination
-   * would let a transaction pay one stroop to the right account and route the rest elsewhere,
-   * or drain a balance the user never marked for transfer at all.
+   * The amount is here for the same reason the destination is: binding only the destination
+   * would let a transaction pay one stroop to the right account and route the rest elsewhere.
+   * It is a floor rather than an exact figure - a claim round can legitimately raise the
+   * balance between this read and the build, and paying more to an already-pinned destination
+   * is not a loss.
    */
   transfers: Record<string, { destination: string; amount: string }>;
   /** Assets the user themselves chose to add a trustline for, to claim a balance the account
@@ -223,10 +225,23 @@ function assertUserChoseThisTransfer(
   }
   seen.add(op.asset);
 
-  // Whole stroops, so a decimal-string comparison cannot round where an attacker would aim.
-  if (BigInt(xlmToStroops(op.amount)) !== BigInt(xlmToStroops(chosen.amount))) {
+  // A floor, not equality - and the reason equality looked right is instructive. The amount
+  // was described as "the trustline balance the client already read and showed the user, so
+  // there is nothing to leave slack for". That is false whenever the close claims a claimable
+  // balance of the same asset first: the API's claim round deliberately raises the balance
+  // before the close disposes of it, so the second round legitimately pays MORE than the
+  // figure shown at analyze time. Equality turned that into a verification failure after the
+  // claim had already been signed and submitted, leaving the account half-processed.
+  //
+  // Paying more is not a loss here, because the destination is already pinned to the account
+  // the user named - the extra goes exactly where they said. Paying LESS is the attack: it
+  // would mean part of the balance went somewhere else, and anything else leaving the account
+  // has to pass this same check. Same one-sided shape as the mediated forward, for the same
+  // reason, and compared in whole stroops so no decimal rounding lands where an attacker
+  // would aim.
+  if (BigInt(xlmToStroops(op.amount)) < BigInt(xlmToStroops(chosen.amount))) {
     throw new VerificationError(
-      `The transaction would send a different amount of ${assetCode(op.asset)} than you approved.`
+      `The transaction would send less ${assetCode(op.asset)} than you approved.`
     );
   }
 }

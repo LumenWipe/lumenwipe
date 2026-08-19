@@ -212,7 +212,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
                     ? "swapped to XLM"
                     : disposition === "transfer"
                       ? destination
-                        ? `sent to ${destination}`
+                        ? `sent to ${shortAddr(destination)}`
                         : "sent to another account"
                       : "resolved";
               return (

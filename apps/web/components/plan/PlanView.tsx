@@ -73,10 +73,20 @@ export default function PlanView({
   const [proceeding, setProceeding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Auto-set convertible assets to "convert" so they feed the builder without user action.
+  // Auto-set convertible assets to "convert" so they feed the builder without user action -
+  // but only when the user has not answered yet.
+  //
+  // The condition used to be `!== "convert"`, which also matched "transfer": refetching the
+  // plan (the refresh button in this very panel, or a same-tab resume) rebuilt `conversions`,
+  // re-ran this effect, and reverted a convertible asset the user had marked for transfer -
+  // deleting the typed destination with it, since setAssetDisposition drops it on any move
+  // off transfer. Nothing went amber, because a convertible asset is resolved either way, so
+  // the card silently went back to reading "will be swapped to XLM" and the balance would
+  // have been sold. `=== undefined` mirrors the claimable-balance effect below, which had it
+  // right.
   useEffect(() => {
     for (const c of conversions) {
-      if (c.convertible && assetDispositions[c.asset] !== "convert") {
+      if (c.convertible && assetDispositions[c.asset] === undefined) {
         setAssetDisposition(c.asset, "convert");
       }
     }
@@ -229,6 +239,20 @@ export default function PlanView({
         { source: account.address, destination, decisions },
         network
       );
+      // Blockers on THIS plan, not the one fetched on page load. The load-time plan is
+      // requested with no decisions at all, so it structurally cannot contain a transfer
+      // problem - and the API reports those exactly here, as blockers on a 200 response
+      // (close.controller.ts). Dropping them meant every destination problem the API can
+      // name - account does not exist, no trustline, not authorized, limit too low,
+      // destination is the account being closed, destination is an exchange deposit
+      // address - stayed invisible until the user had ticked through the review gate and
+      // pasted their secret key, where it surfaced as a bare 422. The exchange one is the
+      // guard against permanent token loss.
+      if (plan.blockers.length > 0) {
+        setError(plan.blockers.map((b) => b.message).join(" "));
+        return;
+      }
+
       setPlan(apiStepsToPlannedSteps(plan));
 
       // No session is persisted here: the review page's own confirmation is the only

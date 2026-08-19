@@ -1,7 +1,8 @@
 """
 LumenWipe - 08 Asset Conversion & Routing
 After DeFi positions are unwound, non-XLM balances need a disposition.
-Each asset gets an explicit per-asset user choice: swap to XLM or return to issuer.
+Each asset gets an explicit per-asset user choice: swap to XLM, return it to the issuer,
+or transfer it intact to an account the user names.
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
@@ -60,7 +61,7 @@ g.node("disp_preview",
 
 diamond(g, "disp_choice",
         "User Disposition?",
-        "swap = default when route exists  ·  return to issuer always requires explicit confirm")
+        "swap = default when route exists  ·  issuer and transfer both require an explicit choice")
 
 # ── Slippage protection ───────────────────────────────────────────────────────
 g.node("minrecv",
@@ -102,6 +103,23 @@ with g.subgraph(name="cluster_issuer") as i:
               "Clears balance to zero · enables trustline removal"),
            fillcolor=F_DANGER, color=B_DANGER)
 
+# ── Transfer path ─────────────────────────────────────────────────────────────
+# The only disposition that keeps the asset: the other two end the close with the position
+# destroyed, swapped away or burned.
+with g.subgraph(name="cluster_transfer") as t:
+    t.attr(label=hl("Transfer Path", "Keeps the asset · destination validated before building"),
+           style="rounded,dashed", color=B_CLIENT, fontcolor=B_CLIENT,
+           fontname=FONT, fontsize="10", penwidth="1.5")
+    t.node("xfer_dest",
+           hl("User Names a Destination", "Arbitrary and per asset · never defaulted",
+              "Validated live: account exists · holds this trustline · authorized · limit has room\n"
+              "Refused: the account being closed, or a known exchange deposit address"),
+           fillcolor=F_CLIENT, color=B_CLIENT)
+    t.node("xfer_pay",
+           hl("Payment of the Full Balance", "Amount is the whole trustline balance, never chosen",
+              "A partial transfer would strand the close: ChangeTrust fails on a non-zero balance"),
+           fillcolor=F_CLIENT, color=B_CLIENT)
+
 # ── Trustline removal ─────────────────────────────────────────────────────────
 g.node("rm_tl",
        hl("Remove Trustline", "ChangeTrust  ·  limit = 0",
@@ -134,6 +152,12 @@ g.edge("swapped",     "rm_tl",
        color=E_SUCCESS, fontcolor=B_SUCCESS)
 
 g.edge("issuer_confirm", "issuer_pay")
+g.edge("disp_choice", "xfer_dest",     label="transfer\n(explicit)",
+       color=B_CLIENT, fontcolor=B_CLIENT)
+g.edge("has_route",   "xfer_dest",     label="no route",
+       color=B_CLIENT, fontcolor=B_CLIENT, style="dashed")
+g.edge("xfer_dest",   "xfer_pay")
+g.edge("xfer_pay",    "rm_tl", color=B_CLIENT)
 g.edge("issuer_pay",     "rm_tl",
        color=E_SUCCESS, fontcolor=B_SUCCESS)
 
