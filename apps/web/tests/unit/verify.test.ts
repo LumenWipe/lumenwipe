@@ -38,6 +38,7 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
     memoRequired: false,
     memoType: null,
     claimTrustlineAssets: [],
+    transfers: {},
     accountSigners: [
       { key: SRC, weight: 1, type: "ed25519_public_key" },
       { key: REMOVED_SIGNER, weight: 1, type: "ed25519_public_key" },
@@ -745,6 +746,7 @@ test("verifyCloseTransaction passes a mediated close to a memo-requiring exchang
         nativeBalance: "100.0000000",
         memo: "deposit-1",
         claimTrustlineAssets: [],
+        transfers: {},
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
       },
@@ -774,6 +776,7 @@ test("verifyCloseTransaction rejects a mediated close to a memo-requiring exchan
         nativeBalance: "100.0000000",
         memo: null,
         claimTrustlineAssets: [],
+        transfers: {},
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
       },
@@ -794,9 +797,188 @@ test("verifyCloseTransaction passes a direct close to a destination the registry
         nativeBalance: "100.0000000",
         memo: null,
         claimTrustlineAssets: [],
+        transfers: {},
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
       },
     })
+  ).not.toThrow();
+});
+
+// ─── Transfer payments (#112) ────────────────────────────────────────────────
+//
+// The riskiest widening in the epic. Return-to-issuer and the mediated forward are both
+// structurally constrained - the issuer is derivable from the asset, the forward's destination
+// is the address the user typed - so neither can be redirected. A transfer's destination is an
+// arbitrary address, which is precisely the shape of a fund-diversion attack. The only thing
+// separating a legitimate transfer from a diversion is that `expected.transfers` came from the
+// user, so every one of these asks: can a transaction the user did NOT approve get through?
+
+const TRANSFER_DEST = "GBTRANSFER000000000000000000000000000000000000000000000A";
+const USDC = `USDC:${ISSUER}`;
+
+const transferPayment = (
+  destination = TRANSFER_DEST,
+  amount = "10",
+  asset = USDC
+): IntentOperation => ({
+  source: SRC,
+  type: "payment",
+  destination,
+  asset,
+  amount,
+});
+
+const chose = (over: Partial<{ destination: string; amount: string; asset: string }> = {}) => ({
+  [over.asset ?? USDC]: {
+    destination: over.destination ?? TRANSFER_DEST,
+    amount: over.amount ?? "10",
+  },
+});
+
+test("a transfer the user chose passes", () => {
+  const i = intent({ operations: [transferPayment(), merge(DEST)] });
+  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).not.toThrow();
+});
+
+test("a transfer to an address the user never chose is rejected", () => {
+  const i = intent({ operations: [transferPayment(ATTACKER), merge(DEST)] });
+  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).toThrow(
+    /did not choose/i
+  );
+});
+
+test("a destination valid for one asset does not authorize another", () => {
+  // The user approved sending USDC to that account. A transaction that sends EURC there too
+  // reuses a legitimate address for a balance the user never marked for transfer.
+  const i = intent({
+    operations: [transferPayment(TRANSFER_DEST, "10", `EURC:${ISSUER}`), merge(DEST)],
+  });
+  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).toThrow(
+    VerificationError
+  );
+});
+
+test("a payment for an asset with no transfer chosen is rejected", () => {
+  const i = intent({ operations: [transferPayment(), merge(DEST)] });
+  expect(() => assertCloseIntent(i, expectation({ transfers: {} }))).toThrow(/unexpected address/i);
+});
+
+test("an altered amount is rejected", () => {
+  // Binding only the destination would let this through: right account, wrong amount.
+  const i = intent({ operations: [transferPayment(TRANSFER_DEST, "0.0000001"), merge(DEST)] });
+  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).toThrow(
+    /different amount/i
+  );
+});
+
+test("an inflated amount is rejected too, not just a short one", () => {
+  const i = intent({ operations: [transferPayment(TRANSFER_DEST, "1000"), merge(DEST)] });
+  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).toThrow(
+    /different amount/i
+  );
+});
+
+test("the amount is compared in whole stroops, not as decimal strings", () => {
+  // Same value, different spelling. A string comparison would reject this legitimate transfer.
+  const i = intent({ operations: [transferPayment(TRANSFER_DEST, "10.0000000"), merge(DEST)] });
+  expect(() =>
+    assertCloseIntent(i, expectation({ transfers: chose({ amount: "10" }) }))
+  ).not.toThrow();
+});
+
+test("the same approved transfer repeated is rejected", () => {
+  // Each copy matches the user's choice individually; together they pay it twice.
+  const i = intent({ operations: [transferPayment(), transferPayment(), merge(DEST)] });
+  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).toThrow(
+    /more than once/i
+  );
+});
+
+test("the rejection names the asset code, so the user can tell which one is wrong", () => {
+  // The messages are what a user acts on. Without asserting them, every mutation of the label
+  // survives - the regexes above only match the fixed part of the sentence.
+  const i = intent({ operations: [transferPayment(ATTACKER), merge(DEST)] });
+  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).toThrow(/send USDC to/);
+
+  const wrongAmount = intent({ operations: [transferPayment(TRANSFER_DEST, "1"), merge(DEST)] });
+  expect(() => assertCloseIntent(wrongAmount, expectation({ transfers: chose() }))).toThrow(
+    /amount of USDC/
+  );
+
+  const twice = intent({ operations: [transferPayment(), transferPayment(), merge(DEST)] });
+  expect(() => assertCloseIntent(twice, expectation({ transfers: chose() }))).toThrow(
+    /send USDC more than once/
+  );
+
+  // The issuer is not part of the label: "USDC:GABC..." would be noise in a user-facing message.
+  try {
+    assertCloseIntent(i, expectation({ transfers: chose() }));
+  } catch (e) {
+    expect((e as Error).message).not.toContain(ISSUER);
+  }
+});
+
+test("a transfer does not loosen the issuer-return rule", () => {
+  // Paying an asset to its own issuer stays allowed on its own terms, with no transfer chosen.
+  const i = intent({
+    operations: [transferPayment(ISSUER, "10", USDC), merge(DEST)],
+  });
+  expect(() => assertCloseIntent(i, expectation({ transfers: {} }))).not.toThrow();
+});
+
+test("a close with no transfers verifies exactly as before", () => {
+  // The allowlist widened only where intended: a convert-only close is unaffected.
+  const i = intent({ operations: [conversion(), merge(DEST)] });
+  expect(() => assertCloseIntent(i, expectation({ transfers: {} }))).not.toThrow();
+});
+
+test("a transfer debiting a different account is rejected", () => {
+  // The finding a security review caught: pinning asset, destination and amount says nothing
+  // about WHICH account pays. One Stellar signature satisfies every operation whose source
+  // lists that key with enough weight, so a key that signs for two accounts would otherwise
+  // authorize closing one and debiting the other in the same transaction.
+  const i = intent({
+    operations: [{ ...transferPayment(), source: ATTACKER }, merge(DEST)],
+  });
+  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).toThrow(
+    /from an account other than the one being closed/
+  );
+});
+
+test("an issuer-return debiting a different account is rejected too", () => {
+  // The same gap existed on the pre-existing branch; the check sits on the whole payment arm.
+  const i = intent({
+    operations: [{ ...transferPayment(ISSUER, "10", USDC), source: ATTACKER }, merge(DEST)],
+  });
+  expect(() => assertCloseIntent(i, expectation({ transfers: {} }))).toThrow(
+    /from an account other than the one being closed/
+  );
+});
+
+test("the mediated forward is exempt: it is sent by the intermediary, not the source", () => {
+  // assertMergeShape has already pinned the forward's source to the account the merge paid
+  // into, so applying the source rule to it would break every exchange close.
+  const INTERMEDIARY = "GBMEDIATOR00000000000000000000000000000000000000000000AA";
+  const i = intent({
+    operations: [
+      merge(INTERMEDIARY),
+      { source: INTERMEDIARY, type: "payment", destination: DEST, asset: "native", amount: "100" },
+    ],
+    memo: "deposit-1",
+    memoType: "text",
+  });
+  expect(() =>
+    assertCloseIntent(
+      i,
+      expectation({
+        destination: DEST,
+        mediatorRequired: true,
+        memo: "deposit-1",
+        memoRequired: true,
+        memoType: "text",
+        transfers: {},
+      })
+    )
   ).not.toThrow();
 });

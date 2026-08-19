@@ -3,6 +3,8 @@
 import { useCallback, useRef, useState } from "react";
 import { TransactionBuilder } from "@stellar/stellar-sdk";
 import type { CloseTransaction } from "@lumenwipe/sdk";
+import type { AccountState } from "@/types/account";
+import type { AssetDisposition } from "@/types/plan";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
@@ -45,6 +47,33 @@ export interface SignatureStatus {
  * account state is re-read server-side every round, so an interrupted close resumes by
  * simply running again.
  */
+/**
+ * The transfers the user chose, paired with the balance the client itself read for each asset.
+ *
+ * Both halves come from the user's own state and the account read - never from the plan or the
+ * transaction under verification. Binding the destination to a value the API supplied would
+ * make verify() circular: it would confirm the transaction matches what the transaction said.
+ *
+ * An asset marked `transfer` with no destination, or with no trustline in the account read,
+ * contributes nothing. That fails closed: verify() then rejects any payment for it, which is
+ * the safe direction - the alternative is vouching for a payment on incomplete information.
+ */
+function chosenTransfers(
+  dispositions: Record<string, AssetDisposition>,
+  destinations: Record<string, string>,
+  accountState: AccountState | null
+): Record<string, { destination: string; amount: string }> {
+  const transfers: Record<string, { destination: string; amount: string }> = {};
+  for (const [asset, disposition] of Object.entries(dispositions)) {
+    if (disposition !== "transfer") continue;
+    const destination = destinations[asset];
+    const trustline = accountState?.trustlines.find((tl) => tl.asset === asset);
+    if (!destination || !trustline) continue;
+    transfers[asset] = { destination, amount: trustline.balance };
+  }
+  return transfers;
+}
+
 export function useCloseExecution() {
   const network = useNetworkStore((s) => s.network);
   const sourceAddress = useDemolishStore((s) => s.sourceAddress);
@@ -97,7 +126,10 @@ export function useCloseExecution() {
       const claimableBalanceSelections = useDemolishStore.getState().claimableBalanceSelections;
       const accountState = useDemolishStore.getState().accountState;
       const decisions = [
-        ...dispositionsToDecisions(useDemolishStore.getState().assetDispositions),
+        ...dispositionsToDecisions(
+          useDemolishStore.getState().assetDispositions,
+          useDemolishStore.getState().transferDestinations
+        ),
         ...claimableSelectionsToDecisions(claimableBalanceSelections),
         // Carried through to every build round: the API refuses to build a close into a
         // destination it doesn't recognize until the user has confirmed they control it.
@@ -152,6 +184,11 @@ export function useCloseExecution() {
                   // than trusted.
                   accountSigners: accountState?.signers ?? [],
                   accountThresholds: accountState?.thresholds ?? { low: 0, med: 1, high: 1 },
+                  transfers: chosenTransfers(
+                    useDemolishStore.getState().assetDispositions,
+                    useDemolishStore.getState().transferDestinations,
+                    accountState
+                  ),
                 },
               }),
             requiredWeight: (tx: CloseTransaction) =>
@@ -344,6 +381,11 @@ export function useCloseExecution() {
           claimTrustlineAssets,
           accountSigners: accountState?.signers ?? [],
           accountThresholds: accountState?.thresholds ?? { low: 0, med: 1, high: 1 },
+          transfers: chosenTransfers(
+            useDemolishStore.getState().assetDispositions,
+            useDemolishStore.getState().transferDestinations,
+            accountState
+          ),
         },
       });
 

@@ -33,6 +33,27 @@ export interface CloseExpectation {
   memoRequired: boolean;
   /** The memo type the destination requires (from the registry), or null. */
   memoType: "text" | "id" | "hash" | null;
+  /**
+   * The per-asset transfers the user chose: the account each balance goes to, and the balance
+   * the user was shown for it, keyed by the same canonical `CODE:ISSUER` string.
+   *
+   * The destination is sourced from the user's own decisions, never from the plan or the
+   * transaction under verification. That is the security property that matters here. The
+   * amount is the trustline balance from the account read, which comes from the same API that
+   * builds the transaction - the same honest caveat `nativeBalance` and `accountSigners` carry
+   * above: it catches builder bugs and partial compromise, not an adversary who keeps both
+   * sides consistent. Return-to-issuer and the mediated
+   * forward are both structurally constrained - the issuer is derivable from the asset, and
+   * the forward's destination is the address the user typed - so neither can be redirected.
+   * A transfer has neither property: its destination is an arbitrary address, which is exactly
+   * the shape of a fund-diversion attack. The only thing separating a legitimate transfer from
+   * a diversion is that this map came from the user.
+   *
+   * The amount is here for the same reason the destination is. Binding only the destination
+   * would let a transaction pay one stroop to the right account and route the rest elsewhere,
+   * or drain a balance the user never marked for transfer at all.
+   */
+  transfers: Record<string, { destination: string; amount: string }>;
   /** Assets the user themselves chose to add a trustline for, to claim a balance the account
    *  otherwise cannot reach ("add trustline and claim"). Sourced from the user's own claimable-
    *  balance decisions, never from the API response - the only case a raised (non-removal)
@@ -163,6 +184,64 @@ function assertMergeShape(
  * the balance is read from the same API that built the transaction, so this catches builder
  * bugs and partial compromise rather than an adversary who keeps both consistent.
  */
+/**
+ * Accepts a payment only as a transfer the user themselves chose, matching on all three of
+ * asset, destination and amount.
+ *
+ * Every part of that is load-bearing. Matching only the destination would accept a payment of
+ * an asset the user marked `convert`, sent to an account they picked for a different one.
+ * Matching only the asset would accept the right token going to the wrong account, which is
+ * the diversion this exists to stop. And matching a destination without the amount would let
+ * the transaction send one stroop where the user expected the whole balance.
+ *
+ * Exact equality on the amount, not the floor used for the mediated forward. The forward's
+ * delivered amount genuinely cannot be known at build time - a merge delivers whatever the
+ * balance is at execution - but a transfer's amount is the trustline balance the client
+ * already read and showed the user, so there is nothing to leave slack for. A mismatch means
+ * the transaction is not the one that was approved.
+ */
+function assertUserChoseThisTransfer(
+  op: Extract<IntentOperation, { type: "payment" }>,
+  expected: CloseExpectation,
+  seen: Set<string>
+): void {
+  const chosen = expected.transfers[op.asset];
+  if (!chosen) {
+    throw new VerificationError(
+      `The transaction would pay funds to an unexpected address (${op.destination}).`
+    );
+  }
+  if (op.destination !== chosen.destination) {
+    throw new VerificationError(
+      `The transaction would send ${assetCode(op.asset)} to an address you did not choose.`
+    );
+  }
+  if (seen.has(op.asset)) {
+    throw new VerificationError(
+      `The transaction would send ${assetCode(op.asset)} more than once.`
+    );
+  }
+  seen.add(op.asset);
+
+  // Whole stroops, so a decimal-string comparison cannot round where an attacker would aim.
+  if (BigInt(xlmToStroops(op.amount)) !== BigInt(xlmToStroops(chosen.amount))) {
+    throw new VerificationError(
+      `The transaction would send a different amount of ${assetCode(op.asset)} than you approved.`
+    );
+  }
+}
+
+/**
+ * The code half of a canonical "CODE:ISSUER" asset string, for error messages.
+ *
+ * No "native" case: this is only ever reached for a payment that is neither an issuer-return
+ * nor the mediated forward, and `expected.transfers` is keyed by trustline asset, so XLM cannot
+ * appear here. A branch for it would be untestable dead code.
+ */
+function assetCode(asset: string): string {
+  return asset.split(":")[0]!;
+}
+
 function assertForwardCarriesTheBalance(forwardAmount: string, nativeBalance: string): void {
   // Compared in whole stroops - a decimal-string comparison would round exactly where an
   // attacker would aim.
@@ -199,9 +278,28 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
   // it needs no configuration - so the intermediary can be rotated without telling anyone.
   const forward = assertMergeShape(intent, expected);
 
+  // One transfer per asset. Without this, a transaction could repeat the payment the user
+  // approved and drain the balance in multiples - each copy individually matching the choice.
+  const seenTransfers = new Set<string>();
+
   for (const op of intent.operations) {
     switch (op.type) {
       case "payment": {
+        // Who pays, before what is paid. Every other fund-moving shape here is source-bound -
+        // the merge must be sent by the account being closed, the mediated forward by whoever
+        // the merge just paid - and a payment was the one that was not, because until transfers
+        // existed the only accepted shapes were structurally pinned by their destination.
+        //
+        // On Stellar one signature satisfies every operation whose source lists that key with
+        // enough weight, so a key that signs for two accounts would otherwise authorize a close
+        // of one and a debit of the other in the same transaction. The forward is exempt: it is
+        // sent by the intermediary, and `assertMergeShape` has already pinned its source to the
+        // account the merge paid into.
+        if (op !== forward && op.source !== expected.source) {
+          throw new VerificationError(
+            "The transaction would pay funds from an account other than the one being closed."
+          );
+        }
         // A payment is only ever a return-to-issuer (the asset paid back to its own issuer)
         // or the mediated forward, which `assertMergeShape` has already vouched for.
         // Stryker disable next-line StringLiteral,ConditionalExpression: `issuer` is null/
@@ -217,9 +315,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         // where `issuer` (null/undefined either way) can never equal a real destination address.
         const isIssuerReturn = op.asset !== "native" && issuer === op.destination;
         if (!isIssuerReturn && op !== forward) {
-          throw new VerificationError(
-            `The transaction would pay funds to an unexpected address (${op.destination}).`
-          );
+          assertUserChoseThisTransfer(op, expected, seenTransfers);
         }
         break;
       }
@@ -379,6 +475,11 @@ export function verifyCloseTransaction(opts: {
     claimTrustlineAssets: string[];
     accountSigners: AccountSigner[];
     accountThresholds: AccountThresholds;
+    /** The per-asset transfers the user chose. Required, not optional with a `{}` default: a
+     *  caller that forgets to pass them would have every transfer payment rejected, which is
+     *  safe, but a caller that means to allow them must say so explicitly rather than inherit
+     *  it. */
+    transfers: Record<string, { destination: string; amount: string }>;
   };
 }): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);
