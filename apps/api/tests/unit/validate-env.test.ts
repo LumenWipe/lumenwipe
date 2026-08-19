@@ -54,3 +54,24 @@ test("the failure message names the variable and where to look", () => {
   expect(msg).toContain("API_KEYS");
   expect(msg).toContain(".env.example");
 });
+
+test("an API_KEYS with an empty label or key is fatal", () => {
+  // A substring check for "=" passed all of these, and each yields zero usable keys - so the
+  // process booted green and every authenticated route 401'd, which is the exact state the
+  // check exists to prevent. Counted with the same rule ApiKeyService parses by.
+  for (const value of ["=abc123", "label=", " = ", "label=,other="]) {
+    const { problems } = checkEnv({ API_KEYS: value } as NodeJS.ProcessEnv);
+    expect(problems.map((p) => p.variable)).toContain("API_KEYS");
+  }
+});
+
+test("a key containing '=' is accepted - base64 padding is not malformed", () => {
+  // indexOf, not split: the key is everything after the FIRST "=".
+  const { problems } = checkEnv({ API_KEYS: "label=abc==" } as NodeJS.ProcessEnv);
+  expect(problems).toEqual([]);
+});
+
+test("several comma-separated pairs are accepted", () => {
+  const { problems } = checkEnv({ API_KEYS: "a=1,b=2" } as NodeJS.ProcessEnv);
+  expect(problems).toEqual([]);
+});

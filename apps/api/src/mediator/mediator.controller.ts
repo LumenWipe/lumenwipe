@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpException, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Param, Post } from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiBody,
@@ -45,8 +45,9 @@ export class MediatorController {
 
     const mediatorKeypair = getMediatorKeypair(network);
     if (!mediatorKeypair) {
-      throw new HttpException(
-        { error: "Exchange (mediator) flow is not configured on this server." },
+      fail(
+        "mediator_not_configured",
+        "Exchange (mediator) flow is not configured on this server.",
         503
       );
     }
@@ -109,11 +110,7 @@ export class MediatorController {
       throw err;
     }
     if (forwardExceedsMergedBalance(transfer.amount, mergedBalance, Number(tx.fee))) {
-      fail(
-        "forward_amount_exceeds_the_merged_balanc",
-        "Forward amount exceeds the merged balance",
-        400
-      );
+      fail("forward_amount_exceeds_balance", "Forward amount exceeds the merged balance", 400);
     }
 
     tx.sign(mediatorKeypair);

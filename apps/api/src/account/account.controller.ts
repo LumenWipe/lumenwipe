@@ -51,7 +51,7 @@ export class AccountController {
       // their account cannot be read - the opposite of the "blocker with an explanation"
       // invariant.
       if (err instanceof TruncatedCollectionError) {
-        fail("account_unreadable", err.message, 422);
+        fail("account_too_large", err.message, 422);
       }
       this.logger.error("account fetch failed", err instanceof Error ? err.stack : String(err));
       fail("account_read_failed", "Failed to fetch account data", 500);

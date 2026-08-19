@@ -16,6 +16,7 @@ import {
   type ClaimableBalanceDecision,
 } from "@/lib/api/plan-adapters";
 import PlanView from "@/components/plan/PlanView";
+import { apiErrorMessage } from "@/lib/api/error-body";
 
 export default function AnalyzePage({ params }: { params: Promise<{ network: Network }> }) {
   const { network: routeNetwork } = use(params);
@@ -51,7 +52,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
 
       if (!accountRes.ok) {
         const data = await accountRes.json();
-        setError(data.error ?? "Failed to fetch account data");
+        setError(apiErrorMessage(data, "Failed to fetch account data"));
         return;
       }
 

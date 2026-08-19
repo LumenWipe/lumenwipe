@@ -482,7 +482,11 @@ export async function enumerateSponsoredEntries(
     // endpoint depends on, so a bug or an unforeseen response shape here must degrade to
     // an honest "incomplete", never take down analyze/plan/transactions.
     if (process.env.NODE_ENV !== "production") {
-      logger.warn("enumeration failed, reporting incomplete:", err);
+      // The stack matters here: this warn is the only signal that enumeration degraded to
+      // sponsorshipEnumerationIncomplete, and "that it broke" without "where" is half a signal.
+      logger.warn(
+        `enumeration failed, reporting incomplete: ${err instanceof Error ? err.stack : String(err)}`
+      );
     }
     return { sponsoredEntries: [], sponsorshipEnumerationIncomplete: true };
   }

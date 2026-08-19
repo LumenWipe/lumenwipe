@@ -65,15 +65,17 @@ export function checkEnv(env: NodeJS.ProcessEnv = process.env): {
   }
 
   const apiKeys = env.API_KEYS?.trim();
-  if (apiKeys && !apiKeys.includes("=")) {
-    // The format is `label=key`. A bare value silently produces a key nobody can present,
-    // which looks exactly like a wrong key on the client side - a failure mode this session
-    // already paid for once.
+  if (apiKeys && countUsableKeys(apiKeys) === 0) {
+    // Counted with the same rule the service parses by, not a substring check for "=". A
+    // check that only looked for the character passed `=abc` (empty label) and `label=`
+    // (empty key), both of which yield zero usable keys - so the process booted green and
+    // every authenticated route 401'd, which is exactly the state this exists to prevent.
     problems.push({
       variable: "API_KEYS",
       message:
-        "API_KEYS must be comma-separated `label=key` pairs. A value with no `=` yields no " +
-        "usable key, and the client's 401 gives no hint that the server side is malformed.",
+        "API_KEYS yields no usable key. It must be comma-separated `label=key` pairs with " +
+        "both halves non-empty; the client's 401 gives no hint that the server side is " +
+        "malformed.",
     });
   }
 
@@ -84,6 +86,21 @@ export function checkEnv(env: NodeJS.ProcessEnv = process.env): {
   }
 
   return { problems, warnings };
+}
+
+/**
+ * How many usable keys a raw API_KEYS value yields.
+ *
+ * Mirrors `ApiKeyService`'s parse deliberately: `indexOf("=")` so a key containing `=` (base64
+ * padding) keeps its padding, `eq <= 0` so an empty label is rejected, and both halves
+ * required after trimming.
+ */
+function countUsableKeys(raw: string): number {
+  return raw.split(",").filter((pair) => {
+    const eq = pair.indexOf("=");
+    if (eq <= 0) return false;
+    return pair.slice(0, eq).trim().length > 0 && pair.slice(eq + 1).trim().length > 0;
+  }).length;
 }
 
 /** Formats the fatal problems into the message the process exits with. */

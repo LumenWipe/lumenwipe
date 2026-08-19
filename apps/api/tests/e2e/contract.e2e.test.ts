@@ -214,3 +214,20 @@ test("close/transactions does not demand an acknowledgement for a recognized exc
   expect(res.status).toBe(422);
   expect(res.body.error.code).toBe("memo_required");
 });
+
+test("an unknown route answers in the same envelope as everything else", async () => {
+  // Nest's default filter emits `{ statusCode, message, error }` with no `error.code`, so a
+  // client written against the documented contract finds nothing to branch on. Converting the
+  // controllers alone left this third shape alive.
+  const res = await authGet("/testnet/no-such-route");
+  expect(res.status).toBe(404);
+  expect(res.body.error.code).toBe("not_found");
+  expect(typeof res.body.error.message).toBe("string");
+});
+
+test("a controller's own envelope is passed through, not re-wrapped", async () => {
+  // The filter must not rewrite a code a controller deliberately chose.
+  const res = await authGet("/badnet/paths");
+  expect(res.status).toBe(400);
+  expect(res.body.error.code).toBe("invalid_network");
+});

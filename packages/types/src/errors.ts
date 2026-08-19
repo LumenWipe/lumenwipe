@@ -3,7 +3,8 @@ export interface StructuredApiError {
   error: { code: string; message: string; details?: unknown };
 }
 
-/** Plain error body used by the read + mediator endpoints. */
+/** @deprecated The API emits one envelope (`StructuredApiError`). Kept only so a consumer
+ *  pinned to an older deployment still type-checks during a rollout; remove once none remain. */
 export interface PlainApiError {
   error: string;
 }

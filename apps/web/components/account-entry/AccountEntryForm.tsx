@@ -10,6 +10,7 @@ import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
 import { cn } from "@/lib/utils/cn";
 import AddressInput from "./AddressInput";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
+import { apiErrorMessage } from "@/lib/api/error-body";
 
 type EntryMode = "wallet" | "address";
 
@@ -38,7 +39,7 @@ export default function AccountEntryForm() {
       const res = await fetch(`/api/${network}/account/${source}`);
       if (!res.ok) {
         const data = await res.json();
-        setError(data.error ?? "Account not found on this network.");
+        setError(apiErrorMessage(data, "Account not found on this network."));
         return;
       }
 

@@ -1,4 +1,5 @@
 import type { Network } from "@/config/networks";
+import { apiErrorMessage } from "@/lib/api/error-body";
 
 /**
  * Asks the backend to co-sign the shared-mediator forward payment leg of the
@@ -20,7 +21,7 @@ export async function requestMediatorCosignature(
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}) as { error?: string });
-    throw new Error(data.error ?? "Failed to obtain mediator co-signature.");
+    throw new Error(apiErrorMessage(data, "Failed to obtain mediator co-signature."));
   }
   const { transaction } = (await res.json()) as { transaction: string };
   return transaction;
