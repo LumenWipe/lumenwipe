@@ -56,6 +56,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
     mediatorRequired,
     accountState,
     assetDispositions,
+    transferDestinations,
     claimableBalanceSelections,
   } = useDemolishStore();
   const explorerBase = SE_EXPLORER_BASE[network];
@@ -199,12 +200,21 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
           <ul className="space-y-1.5">
             {assetsWithBalance.map((tl) => {
               const disposition = dispositionFor(tl);
+              // "transfer" must be named, not folded into the generic fallback. This is the
+              // permanent record of an irreversible close, and it is the only disposition that
+              // sent the balance to a third party - saying "resolved" would hide the one
+              // outcome a user is most likely to need to look up later.
+              const destination = transferDestinations[tl.asset];
               const label =
                 disposition === "issuer"
                   ? "returned to issuer"
                   : disposition === "convert"
                     ? "swapped to XLM"
-                    : "resolved";
+                    : disposition === "transfer"
+                      ? destination
+                        ? `sent to ${destination}`
+                        : "sent to another account"
+                      : "resolved";
               return (
                 <li key={tl.asset} className="flex items-center gap-2 text-xs text-white/55">
                   <span className="font-medium text-white/80">{tl.code}</span>

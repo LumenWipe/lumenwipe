@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 import type { AccountState } from "@/types/account";
-import type { ClaimableBalanceSelection, PlanBlocker } from "@/types/plan";
+import type { AssetDisposition, ClaimableBalanceSelection, PlanBlocker } from "@/types/plan";
 import type { Network } from "@/config/networks";
 import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
 import type { MediatorCheckResult } from "@/types/account";
@@ -61,6 +61,8 @@ export default function PlanView({
     memo: storedMemo,
     destinationAcknowledgedFor,
     acknowledgeDestination,
+    transferDestinations,
+    setTransferDestination,
   } = useDemolishStore();
 
   // Pre-fill destination/memo from the store when navigating here from a resume.
@@ -92,19 +94,10 @@ export default function PlanView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claimableBalanceDecisions]);
 
-  // A non-convertible asset is resolved only once its store disposition is "issuer".
-  const returnConfirmed = useMemo(() => {
-    const map: Record<string, boolean> = {};
-    for (const c of conversions) {
-      if (!c.convertible) map[c.asset] = assetDispositions[c.asset] === "issuer";
-    }
-    return map;
-  }, [conversions, assetDispositions]);
-
-  function handleToggleReturn(asset: string, confirmed: boolean) {
-    // The store has no delete; "convert" is the non-issuer sentinel for an unresolved
-    // non-convertible asset, which is never treated as resolved (see allAssetsResolved).
-    setAssetDisposition(asset, confirmed ? "issuer" : "convert");
+  function handleSetDisposition(asset: string, disposition: AssetDisposition) {
+    // "convert" doubles as the unresolved sentinel for a non-convertible asset - the store has
+    // no delete, and allAssetsResolved never treats it as resolved for one.
+    setAssetDisposition(asset, disposition);
   }
 
   // Choosing "add a trustline and claim" also pre-resolves what happens to the asset once
@@ -120,8 +113,19 @@ export default function PlanView({
     }
   }
 
-  const allAssetsResolved = conversions.every(
-    (c) => c.convertible || assetDispositions[c.asset] === "issuer"
+  // A transfer counts as resolved only once it names a usable address. Treating "transfer"
+  // alone as resolved would let the user proceed to a build the API refuses, and a plausible
+  // but wrong address is worse than none: the API can reject a missing destination, but a
+  // well-formed one would be built and signed.
+  const transferReady = (asset: string) => {
+    const destination = transferDestinations[asset];
+    return assetDispositions[asset] === "transfer" && !!destination && isValidGAddress(destination);
+  };
+
+  const allAssetsResolved = conversions.every((c) =>
+    assetDispositions[c.asset] === "transfer"
+      ? transferReady(c.asset)
+      : c.convertible || assetDispositions[c.asset] === "issuer"
   );
 
   // A not-currently-claimable balance is resolved once the user picked a remediation path;
@@ -266,8 +270,11 @@ export default function PlanView({
           <PlanAccordion
             account={account}
             conversions={conversions}
-            returnConfirmed={returnConfirmed}
-            onToggleReturn={handleToggleReturn}
+            assetDispositions={assetDispositions}
+            transferDestinations={transferDestinations}
+            mergeDestination={isValidGAddress(destination) ? destination : null}
+            onSetDisposition={handleSetDisposition}
+            onSetTransferDestination={setTransferDestination}
             claimableBalanceDecisions={claimableBalanceDecisions}
             claimableBalanceSelections={claimableBalanceSelections}
             onSelectClaimableBalance={handleSelectClaimableBalance}

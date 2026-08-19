@@ -13,8 +13,12 @@ interface PlanAccordionProps {
   account: AccountState;
   conversions: AssetConvertibility[];
   /** Confirmed "return to issuer" decisions for non-convertible assets, keyed by asset. */
-  returnConfirmed: Record<string, boolean>;
-  onToggleReturn: (asset: string, confirmed: boolean) => void;
+  assetDispositions: Record<string, AssetDisposition>;
+  transferDestinations: Record<string, string>;
+  /** The account the XLM is merging into, offered per asset as a shortcut. */
+  mergeDestination: string | null;
+  onSetDisposition: (asset: string, disposition: AssetDisposition) => void;
+  onSetTransferDestination: (asset: string, destination: string | null) => void;
   claimableBalanceDecisions: ClaimableBalanceDecision[];
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection>;
   onSelectClaimableBalance: (balanceId: string, selection: ClaimableBalanceSelection) => void;
@@ -47,8 +51,11 @@ function shortAddr(addr: string): string {
 export default function PlanAccordion({
   account,
   conversions,
-  returnConfirmed,
-  onToggleReturn,
+  assetDispositions,
+  transferDestinations,
+  mergeDestination,
+  onSetDisposition,
+  onSetTransferDestination,
   claimableBalanceDecisions,
   claimableBalanceSelections,
   onSelectClaimableBalance,
@@ -174,8 +181,11 @@ export default function PlanAccordion({
             <AssetDispositionCard
               key={c.asset}
               item={c}
-              returnConfirmed={returnConfirmed[c.asset] ?? false}
-              onToggleReturn={onToggleReturn}
+              disposition={assetDispositions[c.asset]}
+              transferDestination={transferDestinations[c.asset]}
+              mergeDestination={mergeDestination}
+              onSetDisposition={onSetDisposition}
+              onSetTransferDestination={onSetTransferDestination}
             />
           ))}
         </div>
