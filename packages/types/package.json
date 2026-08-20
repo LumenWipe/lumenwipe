@@ -10,7 +10,8 @@
     }
   },
   "scripts": {
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "build": "tsc --noEmit false --emitDeclarationOnly --declaration --outDir dist"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
