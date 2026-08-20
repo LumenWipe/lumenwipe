@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 import type { AccountState } from "@/types/account";
-import type { ClaimableBalanceSelection, PlanBlocker } from "@/types/plan";
+import type { AssetDisposition, ClaimableBalanceSelection, PlanBlocker } from "@/types/plan";
 import type { Network } from "@/config/networks";
 import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
 import type { MediatorCheckResult } from "@/types/account";
@@ -61,6 +61,8 @@ export default function PlanView({
     memo: storedMemo,
     destinationAcknowledgedFor,
     acknowledgeDestination,
+    transferDestinations,
+    setTransferDestination,
   } = useDemolishStore();
 
   // Pre-fill destination/memo from the store when navigating here from a resume.
@@ -71,10 +73,20 @@ export default function PlanView({
   const [proceeding, setProceeding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Auto-set convertible assets to "convert" so they feed the builder without user action.
+  // Auto-set convertible assets to "convert" so they feed the builder without user action -
+  // but only when the user has not answered yet.
+  //
+  // The condition used to be `!== "convert"`, which also matched "transfer": refetching the
+  // plan (the refresh button in this very panel, or a same-tab resume) rebuilt `conversions`,
+  // re-ran this effect, and reverted a convertible asset the user had marked for transfer -
+  // deleting the typed destination with it, since setAssetDisposition drops it on any move
+  // off transfer. Nothing went amber, because a convertible asset is resolved either way, so
+  // the card silently went back to reading "will be swapped to XLM" and the balance would
+  // have been sold. `=== undefined` mirrors the claimable-balance effect below, which had it
+  // right.
   useEffect(() => {
     for (const c of conversions) {
-      if (c.convertible && assetDispositions[c.asset] !== "convert") {
+      if (c.convertible && assetDispositions[c.asset] === undefined) {
         setAssetDisposition(c.asset, "convert");
       }
     }
@@ -92,19 +104,10 @@ export default function PlanView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claimableBalanceDecisions]);
 
-  // A non-convertible asset is resolved only once its store disposition is "issuer".
-  const returnConfirmed = useMemo(() => {
-    const map: Record<string, boolean> = {};
-    for (const c of conversions) {
-      if (!c.convertible) map[c.asset] = assetDispositions[c.asset] === "issuer";
-    }
-    return map;
-  }, [conversions, assetDispositions]);
-
-  function handleToggleReturn(asset: string, confirmed: boolean) {
-    // The store has no delete; "convert" is the non-issuer sentinel for an unresolved
-    // non-convertible asset, which is never treated as resolved (see allAssetsResolved).
-    setAssetDisposition(asset, confirmed ? "issuer" : "convert");
+  function handleSetDisposition(asset: string, disposition: AssetDisposition) {
+    // "convert" doubles as the unresolved sentinel for a non-convertible asset - the store has
+    // no delete, and allAssetsResolved never treats it as resolved for one.
+    setAssetDisposition(asset, disposition);
   }
 
   // Choosing "add a trustline and claim" also pre-resolves what happens to the asset once
@@ -120,8 +123,19 @@ export default function PlanView({
     }
   }
 
-  const allAssetsResolved = conversions.every(
-    (c) => c.convertible || assetDispositions[c.asset] === "issuer"
+  // A transfer counts as resolved only once it names a usable address. Treating "transfer"
+  // alone as resolved would let the user proceed to a build the API refuses, and a plausible
+  // but wrong address is worse than none: the API can reject a missing destination, but a
+  // well-formed one would be built and signed.
+  const transferReady = (asset: string) => {
+    const destination = transferDestinations[asset];
+    return assetDispositions[asset] === "transfer" && !!destination && isValidGAddress(destination);
+  };
+
+  const allAssetsResolved = conversions.every((c) =>
+    assetDispositions[c.asset] === "transfer"
+      ? transferReady(c.asset)
+      : c.convertible || assetDispositions[c.asset] === "issuer"
   );
 
   // A not-currently-claimable balance is resolved once the user picked a remediation path;
@@ -225,6 +239,20 @@ export default function PlanView({
         { source: account.address, destination, decisions },
         network
       );
+      // Blockers on THIS plan, not the one fetched on page load. The load-time plan is
+      // requested with no decisions at all, so it structurally cannot contain a transfer
+      // problem - and the API reports those exactly here, as blockers on a 200 response
+      // (close.controller.ts). Dropping them meant every destination problem the API can
+      // name - account does not exist, no trustline, not authorized, limit too low,
+      // destination is the account being closed, destination is an exchange deposit
+      // address - stayed invisible until the user had ticked through the review gate and
+      // pasted their secret key, where it surfaced as a bare 422. The exchange one is the
+      // guard against permanent token loss.
+      if (plan.blockers.length > 0) {
+        setError(plan.blockers.map((b) => b.message).join(" "));
+        return;
+      }
+
       setPlan(apiStepsToPlannedSteps(plan));
 
       // No session is persisted here: the review page's own confirmation is the only
@@ -266,8 +294,11 @@ export default function PlanView({
           <PlanAccordion
             account={account}
             conversions={conversions}
-            returnConfirmed={returnConfirmed}
-            onToggleReturn={handleToggleReturn}
+            assetDispositions={assetDispositions}
+            transferDestinations={transferDestinations}
+            mergeDestination={isValidGAddress(destination) ? destination : null}
+            onSetDisposition={handleSetDisposition}
+            onSetTransferDestination={setTransferDestination}
             claimableBalanceDecisions={claimableBalanceDecisions}
             claimableBalanceSelections={claimableBalanceSelections}
             onSelectClaimableBalance={handleSelectClaimableBalance}

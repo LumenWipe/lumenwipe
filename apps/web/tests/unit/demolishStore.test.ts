@@ -484,3 +484,72 @@ describe("memoType backward-compat (runtime undefined)", () => {
     expect(store.memoType).toBe("id");
   });
 });
+
+// ─── Transfer destinations (#113) ────────────────────────────────────────────
+//
+// These back verify()'s guarantee. The destination it checks a payment against comes from
+// this store, so anything that leaves a stale one here would make the anchor vouch for a
+// payment the user is no longer asking for.
+
+test("setTransferDestination records a destination per asset", () => {
+  const store = useDemolishStore.getState();
+  store.setTransferDestination("USDC:GISS", "GDEST1");
+  store.setTransferDestination("EURC:GISS", "GDEST2");
+
+  expect(useDemolishStore.getState().transferDestinations).toEqual({
+    "USDC:GISS": "GDEST1",
+    "EURC:GISS": "GDEST2",
+  });
+});
+
+test("switching an asset away from transfer drops its destination", () => {
+  const store = useDemolishStore.getState();
+  store.setAssetDisposition("USDC:GISS", "transfer");
+  store.setTransferDestination("USDC:GISS", "GDEST1");
+  expect(useDemolishStore.getState().transferDestinations["USDC:GISS"]).toBe("GDEST1");
+
+  // A stale destination would still be handed to verify(), which would then accept a payment
+  // for an asset the user has since decided to swap.
+  useDemolishStore.getState().setAssetDisposition("USDC:GISS", "convert");
+  expect(useDemolishStore.getState().transferDestinations["USDC:GISS"]).toBeUndefined();
+});
+
+test("switching to issuer also drops the destination", () => {
+  const store = useDemolishStore.getState();
+  store.setAssetDisposition("FOO:GISS", "transfer");
+  store.setTransferDestination("FOO:GISS", "GDEST1");
+  useDemolishStore.getState().setAssetDisposition("FOO:GISS", "issuer");
+  expect(useDemolishStore.getState().transferDestinations["FOO:GISS"]).toBeUndefined();
+});
+
+test("staying on transfer keeps the destination", () => {
+  const store = useDemolishStore.getState();
+  store.setTransferDestination("USDC:GISS", "GDEST1");
+  useDemolishStore.getState().setAssetDisposition("USDC:GISS", "transfer");
+  expect(useDemolishStore.getState().transferDestinations["USDC:GISS"]).toBe("GDEST1");
+});
+
+test("a null destination clears the entry rather than storing an empty string", () => {
+  const store = useDemolishStore.getState();
+  store.setTransferDestination("USDC:GISS", "GDEST1");
+  useDemolishStore.getState().setTransferDestination("USDC:GISS", null);
+  // An empty string would be a truthy-looking key that fails validation downstream; absence is
+  // what the rest of the flow tests for.
+  expect(useDemolishStore.getState().transferDestinations).toEqual({});
+});
+
+test("re-analyzing prunes destinations for assets the account no longer holds", () => {
+  const store = useDemolishStore.getState();
+  store.setTransferDestination("USDC:GISS", "GDEST1");
+  store.setTransferDestination("GONE:GISS", "GDEST2");
+
+  useDemolishStore.getState().setAccountState(
+    accountState({
+      trustlines: [
+        { asset: "USDC:GISS", balance: "10", authorized: true, issuer: "GISS", code: "USDC" },
+      ],
+    })
+  );
+
+  expect(useDemolishStore.getState().transferDestinations).toEqual({ "USDC:GISS": "GDEST1" });
+});
