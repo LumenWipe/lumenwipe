@@ -6,18 +6,21 @@ import type {
 } from "@lumenwipe/sdk";
 import type { Network } from "@/config/networks";
 
-/** Reads the API's error message out of the proxy response, whatever shape it took. */
+/**
+ * Reads the API's error message out of the proxy response.
+ *
+ * The API emits one envelope now - `{ error: { code, message } }` - so this no longer has to
+ * guess. The string branch is kept only for a response that predates the unification (a cached
+ * proxy response, an older deployed API during a rollout); it is a compatibility shim with an
+ * expiry, not a second supported contract.
+ */
 async function toError(res: Response): Promise<Error> {
   const data = (await res.json().catch(() => ({}))) as {
     error?: { message?: string } | string;
   };
-  const message =
-    typeof data.error === "object" && data.error?.message
-      ? data.error.message
-      : typeof data.error === "string"
-        ? data.error
-        : `Request failed (${res.status}).`;
-  return new Error(message);
+  if (typeof data.error === "object" && data.error?.message) return new Error(data.error.message);
+  if (typeof data.error === "string") return new Error(data.error);
+  return new Error(`Request failed (${res.status}).`);
 }
 
 /** Builds the deterministic close plan (decision points, estimate) via the proxy. */

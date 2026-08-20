@@ -16,10 +16,8 @@ let app: INestApplication;
 let http: ReturnType<INestApplication["getHttpServer"]>;
 
 // Authenticated request helpers - every route except /health requires the key.
-const authGet = (path: string) =>
-  request(http).get(path).set("Authorization", `Bearer ${KEY}`);
-const authPost = (path: string) =>
-  request(http).post(path).set("Authorization", `Bearer ${KEY}`);
+const authGet = (path: string) => request(http).get(path).set("Authorization", `Bearer ${KEY}`);
+const authPost = (path: string) => request(http).post(path).set("Authorization", `Bearer ${KEY}`);
 
 beforeAll(async () => {
   process.env.API_KEYS = `test=${KEY}`;
@@ -88,34 +86,39 @@ test("submit rejects a missing signedXdr", async () => {
   });
 });
 
-test("paths rejects an invalid network with the plain error shape", async () => {
+// One envelope across the whole API now: `{ error: { code, message, details? } }`. These used
+// to assert a flat `{ error: "..." }` on account/paths/mediator while auth returned the
+// structured form, which is why apps/web/lib/api/close-client.ts still carries a ternary that
+// checks whether `error` is an object or a string before it can find the message.
+test("paths rejects an invalid network with the unified error envelope", async () => {
   const res = await authGet("/badnet/paths");
   expect(res.status).toBe(400);
-  expect(res.body).toEqual({ error: "Invalid network" });
+  expect(res.body.error.code).toBe("invalid_network");
+  expect(typeof res.body.error.message).toBe("string");
 });
 
 test("paths rejects missing query params", async () => {
   const res = await authGet("/testnet/paths");
   expect(res.status).toBe(400);
-  expect(res.body).toEqual({ error: "Missing fromAsset or amount" });
+  expect(res.body.error.code).toBe("missing_parameters");
 });
 
 test("account rejects an invalid address", async () => {
   const res = await authGet("/testnet/account/NOPE");
   expect(res.status).toBe(400);
-  expect(res.body).toEqual({ error: "Invalid Stellar address" });
+  expect(res.body.error.code).toBe("invalid_address");
 });
 
 test("mediator/check rejects an invalid network before the address", async () => {
   const res = await authGet("/badnet/mediator/check/NOPE");
   expect(res.status).toBe(400);
-  expect(res.body).toEqual({ error: "Invalid network" });
+  expect(res.body.error.code).toBe("invalid_network");
 });
 
 test("mediator/check rejects an invalid address", async () => {
   const res = await authGet("/testnet/mediator/check/NOPE");
   expect(res.status).toBe(400);
-  expect(res.body).toEqual({ error: "Invalid address" });
+  expect(res.body.error.code).toBe("invalid_address");
 });
 
 test("malformed JSON on a v1 endpoint returns the invalid_body contract", async () => {
@@ -133,7 +136,8 @@ test("malformed JSON on mediator/sign returns its plain error contract", async (
     .set("Content-Type", "application/json")
     .send("{ not json");
   expect(res.status).toBe(400);
-  expect(res.body).toEqual({ error: "Invalid JSON body" });
+  // Was a second, mediator-only shape emitted by the very same handler.
+  expect(res.body.error.code).toBe("invalid_body");
 });
 
 test("responses carry Cache-Control: no-store (success and error)", async () => {
@@ -209,4 +213,21 @@ test("close/transactions does not demand an acknowledgement for a recognized exc
   });
   expect(res.status).toBe(422);
   expect(res.body.error.code).toBe("memo_required");
+});
+
+test("an unknown route answers in the same envelope as everything else", async () => {
+  // Nest's default filter emits `{ statusCode, message, error }` with no `error.code`, so a
+  // client written against the documented contract finds nothing to branch on. Converting the
+  // controllers alone left this third shape alive.
+  const res = await authGet("/testnet/no-such-route");
+  expect(res.status).toBe(404);
+  expect(res.body.error.code).toBe("not_found");
+  expect(typeof res.body.error.message).toBe("string");
+});
+
+test("a controller's own envelope is passed through, not re-wrapped", async () => {
+  // The filter must not rewrite a code a controller deliberately chose.
+  const res = await authGet("/badnet/paths");
+  expect(res.status).toBe(400);
+  expect(res.body.error.code).toBe("invalid_network");
 });

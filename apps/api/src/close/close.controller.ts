@@ -50,19 +50,13 @@ import {
   TxSubmitError,
 } from "@/lib/utils/errors";
 import { BASE_FEE_STROOPS } from "@/config/constants";
+import { fail } from "@/common/fail";
 import type {
   DecisionAnswer,
   DecisionPoint,
   TransactionsResponse,
   Trustline,
 } from "@lumenwipe/types";
-
-/** Throws an HttpException carrying the API's `{ error: { code, message, details? } }` body. */
-function fail(code: string, message: string, status: number, details?: unknown): never {
-  const error: Record<string, unknown> = { code, message };
-  if (details !== undefined) error.details = details;
-  throw new HttpException({ error }, status);
-}
 
 /**
  * Reads a transfer destination's trustlines, treating "does not exist" as an answer rather than

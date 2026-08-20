@@ -22,7 +22,10 @@ export async function POST(
   try {
     body = (await req.json()) as { transaction?: unknown };
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json(
+      { error: { code: "invalid_body", message: "Request body must be valid JSON." } },
+      { status: 400 }
+    );
   }
   const transaction = typeof body.transaction === "string" ? body.transaction : "";
 

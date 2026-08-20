@@ -5,6 +5,11 @@ import { detectSubEntryMismatch } from "./scan-fallback";
 import { horizonAssetToString } from "@/lib/utils/assets";
 import { enumerateSponsoredEntries } from "@/lib/stellar/sponsorship";
 import { horizonGet, type HorizonDeps } from "./horizon-http";
+import { Logger } from "@nestjs/common";
+
+// Nest's logger, not console: these lines are how an operator learns the reader silently
+// degraded, and console output does not carry the context prefix or respect log levels.
+const logger = new Logger("account-state");
 import type {
   AccountState,
   AccountSigner,
@@ -46,7 +51,7 @@ function parseHorizonSignerType(raw: string, address: string): AccountSigner["ty
   const mapped = HORIZON_SIGNER_TYPE_MAP[raw];
   if (!mapped) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn(`[account-state] unknown signer type "${raw}" on ${address}, skipping`);
+      logger.warn(`unknown signer type "${raw}" on ${address}, skipping`);
     }
     return null;
   }
@@ -225,7 +230,6 @@ export async function readAccountStateFrom(
     }),
   };
 }
-
 
 /**
  * Reads only what is needed to judge whether an account can receive a payment: that it exists,

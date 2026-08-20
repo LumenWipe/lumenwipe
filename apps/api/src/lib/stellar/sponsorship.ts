@@ -9,6 +9,11 @@ import {
   type OwnerLiveState,
 } from "@/lib/stellar/sponsorship-reconcile";
 import type { SponsoredEntry } from "@lumenwipe/types";
+import { Logger } from "@nestjs/common";
+
+// Nest's logger, not console: these lines are how an operator learns the reader silently
+// degraded, and console output does not carry the context prefix or respect log levels.
+const logger = new Logger("sponsorship");
 
 const OPERATIONS_PAGE_LIMIT = 200;
 const CB_PAGE_LIMIT = 200;
@@ -477,7 +482,11 @@ export async function enumerateSponsoredEntries(
     // endpoint depends on, so a bug or an unforeseen response shape here must degrade to
     // an honest "incomplete", never take down analyze/plan/transactions.
     if (process.env.NODE_ENV !== "production") {
-      console.warn("[sponsorship] enumeration failed, reporting incomplete:", err);
+      // The stack matters here: this warn is the only signal that enumeration degraded to
+      // sponsorshipEnumerationIncomplete, and "that it broke" without "where" is half a signal.
+      logger.warn(
+        `enumeration failed, reporting incomplete: ${err instanceof Error ? err.stack : String(err)}`
+      );
     }
     return { sponsoredEntries: [], sponsorshipEnumerationIncomplete: true };
   }

@@ -1,6 +1,7 @@
 import type { INestApplication } from "@nestjs/common";
 import { json } from "express";
 import type { ErrorRequestHandler, NextFunction, Request, Response } from "express";
+import { ErrorEnvelopeFilter } from "./common/error-envelope.filter";
 
 /**
  * Shared runtime configuration applied by both `main.ts` (bootstrap) and the
@@ -11,6 +12,9 @@ import type { ErrorRequestHandler, NextFunction, Request, Response } from "expre
  * routes' shape, not Nest's default `{ statusCode, message, error }`.
  */
 export function configureApp(app: INestApplication): void {
+  // Catches what the controllers do not: Nest raises 429 and 404 itself, in its own shape.
+  app.useGlobalFilters(new ErrorEnvelopeFilter());
+
   // Every response is dynamic and non-cacheable (account state, plans, unsigned
   // XDR, mediator co-signatures) - no client, proxy, or CDN should store any of
   // it, success or error.
@@ -29,10 +33,11 @@ export function configureApp(app: INestApplication): void {
       next(err);
       return;
     }
-    const body = req.path.includes("/mediator/")
-      ? { error: "Invalid JSON body" }
-      : { error: { code: "invalid_body", message: "Request body must be valid JSON." } };
-    res.status(400).json(body);
+    // One shape, whatever the path. This branched on `/mediator/` to keep two different error
+    // contracts alive in the same handler - the clearest instance of the split #59 removes.
+    res
+      .status(400)
+      .json({ error: { code: "invalid_body", message: "Request body must be valid JSON." } });
   };
   app.use(onJsonError);
 }
