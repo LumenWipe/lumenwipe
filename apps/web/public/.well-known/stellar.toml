@@ -1,0 +1,36 @@
+# SEP-1 stellar.toml for LumenWipe.
+#
+# This file is DOCUMENTATION AND ATTESTATION, not a source of truth for any client.
+#
+# The shared intermediary account below is what an exchange close merges into before the
+# balance is forwarded on to the exchange in the same atomic transaction. Publishing it lets
+# anyone check our behaviour against a publicly pinned address, and gives an exchange a way to
+# recognise where a forwarded deposit came from.
+#
+# What it deliberately does NOT do is participate in verification. `verify()` accepts a
+# mediated close on the transaction's STRUCTURE - exactly two operations, the merge sent by the
+# account being closed, and a forward sent by whoever the merge just paid into, to the address
+# the user typed, for at least the balance the client observed - never on the intermediary's
+# identity (#116). That is what lets the account rotate without any consumer updating a pinned
+# key, and it is why this file is safe to publish and useless to tamper with: a client that
+# trusted it would be weaker, not stronger, than one that ignores it.
+
+VERSION = "2.0.0"
+NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015"
+
+[DOCUMENTATION]
+ORG_NAME = "LumenWipe"
+ORG_URL = "https://lumenwipe.com"
+ORG_DESCRIPTION = "Non-custodial tool for closing Stellar accounts and recovering their reserves."
+ORG_GITHUB = "https://github.com/LumenWipe/lumenwipe"
+
+# The intermediary account is intentionally NOT listed yet: mainnet exchange closes are not
+# enabled, so there is no mainnet intermediary to attest to. Publishing a placeholder would be
+# worse than publishing nothing - a reader checking our behaviour against it would be checking
+# against a value that means nothing. Add the [[ACCOUNTS]] block in the same change that
+# configures MEDIATOR_SECRET_MAINNET, so the published attestation and the live account come
+# into existence together.
+#
+# [[ACCOUNTS]]
+# address = "G..."   # the shared intermediary for exchange closes
+# name = "Exchange close intermediary"

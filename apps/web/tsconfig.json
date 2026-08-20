@@ -13,6 +13,7 @@
       }
     ],
     "paths": {
+      "@registry/*": ["../../apps/api/src/config/*"],
       "@/*": ["./*"],
       "@lumenwipe/sdk": ["../../packages/sdk/src/index.ts"],
       "@lumenwipe/types": ["../../packages/types/src/index.ts"]

@@ -9,6 +9,7 @@ import type { AccountState } from "@/types/account";
 import type { PlanBlocker } from "@/types/plan";
 import { useDemolishStore } from "@/store/demolish";
 import { fetchClosePlan } from "@/lib/api/close-client";
+import { loadServedRegistry } from "@/lib/exchange-registry";
 import {
   decisionPointsToClaimableBalances,
   decisionPointsToConversions,
@@ -59,6 +60,12 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       const accountData: AccountState = await accountRes.json();
       setAccount(accountData);
       setAccountState(accountData);
+
+      // Load the served registry here, not at signing time: verify() is synchronous and runs
+      // immediately before the signature, so it cannot await a fetch at that moment. A failure
+      // leaves the bundled floor in place; whether that floor may be relied on is decided
+      // separately by its own expiry, not by whether this call happened to succeed.
+      await loadServedRegistry();
 
       // The API derives blockers and per-asset convertibility (via server-side path
       // finding) from a plan built with no destination yet. The final plan is requested
