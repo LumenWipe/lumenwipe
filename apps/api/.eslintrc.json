@@ -10,5 +10,18 @@
     "node": true,
     "es2021": true
   },
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@lumenwipe/playground", "@lumenwipe/playground/*", "@lumenwipe/web", "@lumenwipe/web/*"],
+            "message": "apps/api must not import apps/playground or apps/web directly."
+          }
+        ]
+      }
+    ]
+  },
   "ignorePatterns": ["dist", "node_modules"]
 }

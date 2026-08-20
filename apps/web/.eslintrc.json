@@ -28,6 +28,10 @@
           {
             "group": ["@lumenwipe/api", "@lumenwipe/api/*"],
             "message": "The web must not import apps/api directly. Use @lumenwipe/sdk."
+          },
+          {
+            "group": ["@lumenwipe/playground", "@lumenwipe/playground/*"],
+            "message": "apps/web must not import apps/playground. It is isolated on purpose - its custodial demo-account code must never reach production."
           }
         ]
       }
