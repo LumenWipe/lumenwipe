@@ -1,4 +1,4 @@
-import type { CloseTransaction, TransactionsResponse } from "@lumenwipe/sdk";
+import type { CloseTransaction, TransactionsResponse } from "@lumenwipe/types";
 
 /** Everything needed to resume signing a transaction that stopped short of its required
  *  signing weight, without re-fetching (which would discard any signature already
