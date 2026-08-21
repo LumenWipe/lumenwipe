@@ -1,3 +1,5 @@
+import PlaygroundClient from "./PlaygroundClient";
+
 export default function PlaygroundPage() {
-  return <main>Playground under construction.</main>;
+  return <PlaygroundClient />;
 }

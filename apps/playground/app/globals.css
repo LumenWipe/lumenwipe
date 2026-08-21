@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --stellar: 196 100% 47%;
+    --stellar-foreground: 0 0% 100%;
+  }
+}
+
+@layer utilities {
+  .text-stellar {
+    color: hsl(var(--stellar));
+  }
+  .bg-stellar {
+    background-color: hsl(var(--stellar));
+  }
+  .border-stellar {
+    border-color: hsl(var(--stellar));
+  }
+}
