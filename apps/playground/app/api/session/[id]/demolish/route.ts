@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Keypair } from "@stellar/stellar-sdk";
 import { decryptSecret, PlaygroundConfigError } from "@/lib/crypto";
-import { loadSession, saveSession } from "@/lib/session-store";
+import { saveSession } from "@/lib/session-store";
+import { loadSessionOrErrorResponse } from "@/lib/route-helpers";
 import { getPlaygroundMmKeypair } from "@/lib/accounts";
 import { runDemolish } from "@/lib/demolish";
 
@@ -12,10 +13,8 @@ export const maxDuration = 120;
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await loadSession(id);
-  if (!session) {
-    return NextResponse.json({ error: "session_not_found" }, { status: 404 });
-  }
+  const session = await loadSessionOrErrorResponse(id);
+  if (session instanceof NextResponse) return session;
   if (session.demolishDone) {
     return NextResponse.json({ done: true });
   }
@@ -38,8 +37,13 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       onConfirmed: (txId, hash) => {
         // Fire-and-forget append; a lost update here only means the frontend's
         // progress log is momentarily behind, not that the close itself failed.
+        // The `.catch` is not optional: an unhandled rejection terminates the Node
+        // process, which would abort the close mid-flight over the one failure this
+        // callback was explicitly designed to tolerate.
         session.demolishLog.push({ txId, hash });
-        void saveSession(session);
+        void saveSession(session).catch((err) => {
+          console.error(`[playground] demolish log update failed for session ${id}:`, err);
+        });
       },
     });
 

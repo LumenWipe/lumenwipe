@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { LumenWipeClient } from "@lumenwipe/sdk";
-import { loadSession } from "@/lib/session-store";
+import { loadSessionOrErrorResponse } from "@/lib/route-helpers";
 
 export const maxDuration = 30;
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await loadSession(id);
-  if (!session) {
-    return NextResponse.json({ error: "session_not_found" }, { status: 404 });
-  }
+  const session = await loadSessionOrErrorResponse(id);
+  if (session instanceof NextResponse) return session;
 
   const apiUrl = process.env.LUMENWIPE_API_URL;
   const apiKey = process.env.LUMENWIPE_API_KEY;

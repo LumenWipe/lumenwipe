@@ -1,0 +1,4 @@
+[test]
+# See tests/preload.ts: neutralizes the `server-only` import guard, which throws by design
+# outside Next's `react-server` resolution condition.
+preload = ["./tests/preload.ts"]

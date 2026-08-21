@@ -18,12 +18,18 @@ import {
   getNeededEphemeralCodes,
   maxOfferCount,
 } from "@/lib/mess-plan";
+import { rateLimit, SESSIONS_PER_DAY_PER_IP } from "@/lib/rate-limit";
 
 export const maxDuration = 60;
 
 const FRIENDBOT = "https://friendbot.stellar.org";
 
 export async function POST(req: NextRequest) {
+  // Each session Friendbot-funds a fresh testnet account, spawns ephemeral issuers, and writes
+  // a custodial session to KV. Anonymous and unbounded, that is an open faucet drain.
+  const limited = await rateLimit(req, "session", SESSIONS_PER_DAY_PER_IP);
+  if (limited) return limited;
+
   const issuer = getPlaygroundIssuerKeypair();
   const mm = getPlaygroundMmKeypair();
   if (!issuer || !mm) {

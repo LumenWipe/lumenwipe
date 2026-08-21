@@ -1,3 +1,4 @@
+import "server-only";
 import {
   Account,
   Asset,
@@ -6,7 +7,12 @@ import {
   TransactionBuilder,
   type xdr,
 } from "@stellar/stellar-sdk";
-import { loadHorizonAccount, submitClassicViaHorizon, TxSubmitError } from "./horizon-submit";
+import {
+  HORIZON_TESTNET_URL,
+  loadHorizonAccount,
+  submitClassicViaHorizon,
+  TxSubmitError,
+} from "./horizon-submit";
 import {
   DEMO_KEEP_XLM,
   DEMO_SWAP_PRICE,
@@ -131,7 +137,7 @@ export async function ensureMmOffer(mm: Keypair, issuerPublic: string): Promise<
   // happens against Horizon's offers endpoint - kept intentionally simple for a
   // testnet-only demo account (unlike production, correctness here is not security-critical).
   const res = await fetch(
-    `https://horizon-testnet.stellar.org/accounts/${mm.publicKey()}/offers?limit=200`
+    `${HORIZON_TESTNET_URL}/accounts/${mm.publicKey()}/offers?limit=200`
   );
   const offers = (await res.json()) as {
     _embedded: {
@@ -149,7 +155,7 @@ export async function ensureMmOffer(mm: Keypair, issuerPublic: string): Promise<
   );
   if (hasOffer) return;
 
-  const accRes = await fetch(`https://horizon-testnet.stellar.org/accounts/${mm.publicKey()}`);
+  const accRes = await fetch(`${HORIZON_TESTNET_URL}/accounts/${mm.publicKey()}`);
   const acc = (await accRes.json()) as { balances: { asset_type: string; balance: string }[] };
   const nativeBalance = parseFloat(
     acc.balances.find((b) => b.asset_type === "native")?.balance ?? "0"

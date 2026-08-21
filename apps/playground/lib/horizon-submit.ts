@@ -3,7 +3,9 @@
 // synchronously, sidestepping the load-balanced Soroban RPC's stale-read /
 // bad-seq / no-account failure modes.
 
-const HORIZON_TESTNET_URL = "https://horizon-testnet.stellar.org";
+/** The single source for the playground's Horizon base URL - imported rather than repeated,
+ *  so pointing the playground at a different Horizon is a one-line change. */
+export const HORIZON_TESTNET_URL = "https://horizon-testnet.stellar.org";
 
 export class TxSubmitError extends Error {
   constructor(

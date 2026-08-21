@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Keypair, Operation } from "@stellar/stellar-sdk";
 import { decryptSecret } from "@/lib/crypto";
-import { loadSession, deleteSession } from "@/lib/session-store";
+import { deleteSession } from "@/lib/session-store";
+import { loadSessionOrErrorResponse } from "@/lib/route-helpers";
 import { getPlaygroundMmKeypair } from "@/lib/accounts";
 import { buildSignSubmit } from "@/lib/mess-builders";
 
@@ -14,10 +15,8 @@ export const maxDuration = 60;
  */
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await loadSession(id);
-  if (!session) {
-    return NextResponse.json({ error: "session_not_found" }, { status: 404 });
-  }
+  const session = await loadSessionOrErrorResponse(id);
+  if (session instanceof NextResponse) return session;
 
   const mm = getPlaygroundMmKeypair();
   const recycled: string[] = [];

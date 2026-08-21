@@ -1,3 +1,4 @@
+import "server-only";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 // Server-only. Secrets are encrypted at rest in KV with AES-256-GCM; the key

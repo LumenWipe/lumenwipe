@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Keypair } from "@stellar/stellar-sdk";
 import { decryptSecret, PlaygroundConfigError } from "@/lib/crypto";
-import { loadSession, saveSession } from "@/lib/session-store";
+import { saveSession } from "@/lib/session-store";
+import { loadSessionOrErrorResponse } from "@/lib/route-helpers";
 import { getPlaygroundIssuerKeypair, getPlaygroundMmKeypair } from "@/lib/accounts";
 import { executeMessStep, type MessContext } from "@/lib/mess-builders";
 import { isMessStepId } from "@/lib/mess-plan";
@@ -10,10 +11,8 @@ export const maxDuration = 120;
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await loadSession(id);
-  if (!session) {
-    return NextResponse.json({ error: "session_not_found" }, { status: 404 });
-  }
+  const session = await loadSessionOrErrorResponse(id);
+  if (session instanceof NextResponse) return session;
 
   let stepId: unknown;
   try {

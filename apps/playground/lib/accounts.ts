@@ -1,3 +1,4 @@
+import "server-only";
 import { Keypair } from "@stellar/stellar-sdk";
 
 // Server-only: persistent playground accounts. PLAYGROUND_MM_SECRET_TESTNET

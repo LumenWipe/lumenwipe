@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { decryptSecret, PlaygroundConfigError } from "@/lib/crypto";
-import { loadSession } from "@/lib/session-store";
+import { loadSessionOrErrorResponse } from "@/lib/route-helpers";
+import { rateLimit, CREDENTIALS_PER_DAY_PER_IP } from "@/lib/rate-limit";
 
 export const maxDuration = 10;
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  // This route decrypts and hands back a secret key; unbounded, it is a free oracle over every
+  // session id an attacker can guess or scrape.
+  const limited = await rateLimit(req, "credentials", CREDENTIALS_PER_DAY_PER_IP);
+  if (limited) return limited;
+
   const { id } = await params;
-  const session = await loadSession(id);
-  if (!session) {
-    return NextResponse.json({ error: "session_not_found" }, { status: 404 });
-  }
+  const session = await loadSessionOrErrorResponse(id);
+  if (session instanceof NextResponse) return session;
 
   try {
     const secretKey = decryptSecret(session.encDemoSecret);
