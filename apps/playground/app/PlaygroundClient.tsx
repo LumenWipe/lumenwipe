@@ -68,6 +68,14 @@ export default function PlaygroundClient() {
         Everything here happens on the Stellar testnet with a throwaway demo account - no wallet,
         no risk, real transactions.
       </p>
+      <a
+        href="https://lumenwipe.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-2 inline-block text-sm text-stellar underline-offset-2 hover:underline"
+      >
+        Ready to close a real account? →
+      </a>
 
       {phase === "idle" && (
         <button
