@@ -1,4 +1,10 @@
 import type { Config } from "tailwindcss";
+// Imported, not require()d. This file uses `export default`, so Node loads it as ESM and
+// `require` is undefined there - the dev server started fine and then died with
+// "ReferenceError: require is not defined" the first time PostCSS asked Tailwind for its
+// config, i.e. on the first page that has styles. It survived only when Next happened to be
+// launched through Bun, which made the failure look intermittent and environment-specific.
+import typography from "@tailwindcss/typography";
 
 const config: Config = {
   darkMode: ["class"],
@@ -70,7 +76,7 @@ const config: Config = {
       },
     },
   },
-  plugins: [require("@tailwindcss/typography")],
+  plugins: [typography],
 };
 
 export default config;
