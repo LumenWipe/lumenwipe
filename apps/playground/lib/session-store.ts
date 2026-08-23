@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { IntentOperation } from "@lumenwipe/sdk";
 
 // Server-only custodial session storage for the testnet playground.
 // Secrets are stored AES-256-GCM-encrypted (see ./crypto). Sessions expire
@@ -23,10 +24,12 @@ export interface PlaygroundSession {
   encDemoSecret: string;
   ephemeralIssuers: EphemeralIssuer[];
   completedMessSteps: string[];
-  /** Confirmed demolish transaction hashes, appended as runClose's onConfirmed fires -
-   *  lets the frontend animate progress by polling session state instead of a
-   *  per-round HTTP call. */
-  demolishLog: { txId: string; hash: string }[];
+  /** Confirmed demolish transaction hashes plus each transaction's operations
+   *  (already present on every CloseTransaction the real API returns, built
+   *  for apps/web's verify() - no new data, just no longer discarded), so
+   *  the frontend can replay the close operation-by-operation instead of only
+   *  transaction-by-transaction. */
+  demolishLog: { txId: string; hash: string; operations: IntentOperation[] }[];
   demolishDone: boolean;
   createdAt: number;
   fundRareAssets: string[];

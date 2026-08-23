@@ -34,13 +34,13 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       sinkPublic: mm.publicKey(),
       apiUrl,
       apiKey,
-      onConfirmed: (txId, hash) => {
+      onConfirmed: (txId, hash, operations) => {
         // Fire-and-forget append; a lost update here only means the frontend's
         // progress log is momentarily behind, not that the close itself failed.
         // The `.catch` is not optional: an unhandled rejection terminates the Node
         // process, which would abort the close mid-flight over the one failure this
         // callback was explicitly designed to tolerate.
-        session.demolishLog.push({ txId, hash });
+        session.demolishLog.push({ txId, hash, operations });
         void saveSession(session).catch((err) => {
           console.error(`[playground] demolish log update failed for session ${id}:`, err);
         });

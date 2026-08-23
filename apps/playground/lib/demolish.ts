@@ -7,6 +7,7 @@ import {
   type CloseTransaction,
   type DecisionAnswer,
   type DecisionPoint,
+  type IntentOperation,
 } from "@lumenwipe/sdk";
 import { verifyDemolishTransaction } from "./verify";
 
@@ -15,7 +16,7 @@ export interface RunDemolishOptions {
   sinkPublic: string;
   apiUrl: string;
   apiKey: string;
-  onConfirmed?: (txId: string, hash: string) => void;
+  onConfirmed?: (txId: string, hash: string, operations: IntentOperation[]) => void;
 }
 
 /**
@@ -116,7 +117,7 @@ export async function runDemolish(opts: RunDemolishOptions): Promise<void> {
       const res = await client.submit(xdr);
       return res.hash;
     },
-    onConfirmed: (tx, hash) => opts.onConfirmed?.(tx.id, hash),
+    onConfirmed: (tx, hash) => opts.onConfirmed?.(tx.id, hash, tx.intent.operations),
   };
 
   await runClose(deps);
