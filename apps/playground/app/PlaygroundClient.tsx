@@ -61,21 +61,14 @@ export default function PlaygroundClient() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-16 text-center">
-      <h1 className="text-4xl font-bold tracking-tight text-white sm:text-5xl">
+      <p className="mkt-eyebrow mb-3 text-stellar">Testnet playground</p>
+      <h1 className="mkt-display text-4xl text-white sm:text-5xl">
         Trash an account. Then watch it vanish.
       </h1>
       <p className="mt-4 text-base leading-relaxed text-white/85">
         Everything here happens on the Stellar testnet with a throwaway demo account - no wallet,
         no risk, real transactions.
       </p>
-      <a
-        href="https://lumenwipe.com"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-2 inline-block text-sm text-stellar underline-offset-2 hover:underline"
-      >
-        Ready to close a real account? →
-      </a>
 
       {phase === "idle" && (
         <button

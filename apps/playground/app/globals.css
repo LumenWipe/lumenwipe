@@ -2,10 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Design tokens mirrored from apps/web/app/globals.css (duplicated, not
+   shared, per the app-isolation boundary) - only what the playground's
+   header, footer, and page actually use. */
 @layer base {
   :root {
+    --background: 197 30% 4.5%;
+    --foreground: 0 0% 98%;
     --stellar: 196 100% 47%;
     --stellar-foreground: 0 0% 100%;
+    --value: 41 96% 56%;
+    --value-foreground: 38 60% 8%;
+    --mkt-bg: 197 30% 4.5%;
+    --mkt-panel: 198 17% 10.5%;
+    --mkt-line: 190 30% 84%;
+  }
+
+  body {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
   }
 }
 
@@ -19,4 +37,44 @@
   .border-stellar {
     border-color: hsl(var(--stellar));
   }
+  .text-value {
+    color: hsl(var(--value));
+  }
+  .bg-value {
+    background-color: hsl(var(--value));
+  }
+  .border-value {
+    border-color: hsl(var(--value));
+  }
+}
+
+.mkt {
+  color: hsl(0 0% 96%);
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mkt-display {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.035em;
+  line-height: 0.98;
+}
+
+.mkt-mono {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+  font-feature-settings: "ss01", "cv01";
+}
+
+.mkt-eyebrow {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 0.7rem;
+}
+
+.mkt-grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  opacity: 0.05;
+  mix-blend-mode: overlay;
 }
