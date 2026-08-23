@@ -13,6 +13,8 @@
     --stellar-foreground: 0 0% 100%;
     --value: 41 96% 56%;
     --value-foreground: 38 60% 8%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
     --mkt-bg: 197 30% 4.5%;
     --mkt-panel: 198 17% 10.5%;
     --mkt-line: 190 30% 84%;
@@ -45,6 +47,15 @@
   }
   .border-value {
     border-color: hsl(var(--value));
+  }
+  .text-destructive {
+    color: hsl(var(--destructive));
+  }
+  .bg-destructive {
+    background-color: hsl(var(--destructive));
+  }
+  .border-destructive {
+    border-color: hsl(var(--destructive));
   }
 }
 
