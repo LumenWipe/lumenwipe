@@ -1,6 +1,9 @@
 import "server-only";
 import { kv } from "@vercel/kv";
 import { v4 as uuidv4 } from "uuid";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // Server-only custodial session storage for the testnet playground.
 // Secrets are stored AES-256-GCM-encrypted (see ./crypto). Sessions expire
@@ -40,8 +43,32 @@ function isKvConfigured(): boolean {
 // Dev-only fallback so the playground works locally without Vercel KV.
 // Not used in production: there we fail loudly instead of silently losing
 // sessions across serverless instances.
-const memoryStore = new Map<string, { session: PlaygroundSession; expiresAt: number }>();
+//
+// Backed by a file, not an in-process Map: Next.js dev compiles each API
+// route as its own module graph, so a module-level Map does not survive a
+// request that touches a different route than the one that created it -
+// POST /api/session and POST /api/session/[id]/mess never actually shared
+// state, so "session_not_found" fired on the very first mess step in local
+// dev, even though the unit tests (which run in one process, no per-route
+// recompilation) never exercised this. The filesystem lives outside any
+// module's memory, so it survives across routes the same way real KV would.
+type DevStoreEntry = { session: PlaygroundSession; expiresAt: number };
+type DevStore = Record<string, DevStoreEntry>;
+const DEV_STORE_FILE = join(tmpdir(), "lumenwipe-playground-dev-sessions.json");
 let warnedMemoryFallback = false;
+
+function readDevStore(): DevStore {
+  try {
+    if (!existsSync(DEV_STORE_FILE)) return {};
+    return JSON.parse(readFileSync(DEV_STORE_FILE, "utf8")) as DevStore;
+  } catch {
+    return {};
+  }
+}
+
+function writeDevStore(store: DevStore): void {
+  writeFileSync(DEV_STORE_FILE, JSON.stringify(store), "utf8");
+}
 
 export class PlaygroundStoreUnavailableError extends Error {
   constructor() {
@@ -58,8 +85,8 @@ function assertStoreAvailable(): void {
   if (!warnedMemoryFallback) {
     warnedMemoryFallback = true;
     console.warn(
-      "[playground] KV not configured - using in-memory session store (dev/test only). " +
-        "Sessions are lost on server restart."
+      `[playground] KV not configured - using a file-backed dev session store at ${DEV_STORE_FILE} ` +
+        "(dev/test only). Sessions are lost when that file is removed."
     );
   }
 }
@@ -76,10 +103,12 @@ export async function createSession(
 export async function loadSession(id: string): Promise<PlaygroundSession | null> {
   assertStoreAvailable();
   if (!isKvConfigured()) {
-    const entry = memoryStore.get(sessionKey(id));
+    const store = readDevStore();
+    const entry = store[sessionKey(id)];
     if (!entry) return null;
     if (entry.expiresAt < Date.now()) {
-      memoryStore.delete(sessionKey(id));
+      delete store[sessionKey(id)];
+      writeDevStore(store);
       return null;
     }
     return entry.session;
@@ -91,10 +120,12 @@ export async function loadSession(id: string): Promise<PlaygroundSession | null>
 export async function saveSession(session: PlaygroundSession): Promise<void> {
   assertStoreAvailable();
   if (!isKvConfigured()) {
-    memoryStore.set(sessionKey(session.id), {
+    const store = readDevStore();
+    store[sessionKey(session.id)] = {
       session,
       expiresAt: Date.now() + SESSION_TTL_SECONDS * 1000,
-    });
+    };
+    writeDevStore(store);
     return;
   }
   await kv.set(sessionKey(session.id), session, { ex: SESSION_TTL_SECONDS });
@@ -103,7 +134,9 @@ export async function saveSession(session: PlaygroundSession): Promise<void> {
 export async function deleteSession(id: string): Promise<void> {
   assertStoreAvailable();
   if (!isKvConfigured()) {
-    memoryStore.delete(sessionKey(id));
+    const store = readDevStore();
+    delete store[sessionKey(id)];
+    writeDevStore(store);
     return;
   }
   await kv.del(sessionKey(id));
