@@ -28,6 +28,8 @@ import AccountSummaryCard from "./AccountSummaryCard";
 import BlockersPanel from "./BlockersPanel";
 import PlanAccordion from "./PlanAccordion";
 import DestinationInput from "@/components/account-entry/DestinationInput";
+import { hardBlockersOf } from "@/lib/plan/resolvable-blockers";
+import { assetsResolved } from "@/lib/plan/asset-resolution";
 
 interface PlanViewProps {
   account: AccountState;
@@ -124,20 +126,16 @@ export default function PlanView({
     }
   }
 
-  // A transfer counts as resolved only once it names a usable address. Treating "transfer"
-  // alone as resolved would let the user proceed to a build the API refuses, and a plausible
-  // but wrong address is worse than none: the API can reject a missing destination, but a
-  // well-formed one would be built and signed.
-  const transferReady = (asset: string) => {
-    const destination = transferDestinations[asset];
-    return assetDispositions[asset] === "transfer" && !!destination && isValidGAddress(destination);
-  };
+  const assetsNeedingDecision = account.trustlines.filter((tl) => Number(tl.balance) > 0).length;
+  // Empty is not the same as resolved - see assetsResolved, where that distinction lives.
+  const assetCardsWithheld = assetsNeedingDecision > 0 && conversions.length === 0;
 
-  const allAssetsResolved = conversions.every((c) =>
-    assetDispositions[c.asset] === "transfer"
-      ? transferReady(c.asset)
-      : c.convertible || assetDispositions[c.asset] === "issuer"
-  );
+  const allAssetsResolved = assetsResolved({
+    conversions,
+    balanceBearingCount: assetsNeedingDecision,
+    dispositions: assetDispositions,
+    transferDestinations,
+  });
 
   // A not-currently-claimable balance is resolved once the user picked a remediation path;
   // a currently-claimable one is always resolved (it defaults to "claim" above).
@@ -154,9 +152,7 @@ export default function PlanView({
   // "unclaimable" wording for an unresolved balance, and a forfeit choice keeps producing its
   // own (acknowledged, non-trapping) blocker - neither should hard-block once the local
   // resolution check says the decision is made. Every other blocker code still hard-blocks.
-  const hardBlockers = blockers.filter(
-    (b) => b.code !== "claimable_balance_forfeited" && b.code !== "claimable_balance_unclaimable"
-  );
+  const hardBlockers = hardBlockersOf(blockers);
 
   const destinationStepReady = allAssetsResolved && allClaimsResolved && hardBlockers.length === 0;
 
@@ -320,7 +316,12 @@ export default function PlanView({
         <p className="text-center text-xs text-white/45">
           {hardBlockers.length > 0
             ? "Resolve the blockers above to continue."
-            : "Decide what happens to each asset and claimable balance above to continue."}
+            : assetCardsWithheld
+              ? // Telling the user to decide something the page is not showing them is worse
+                // than saying nothing. This state means the plan could not be read, not that
+                // they have a choice left to make.
+                `This account holds ${assetsNeedingDecision} ${assetsNeedingDecision === 1 ? "asset" : "assets"} with a balance, but the plan for them could not be loaded. Refresh to try again.`
+              : "Decide what happens to each asset and claimable balance above to continue."}
         </p>
       )}
 

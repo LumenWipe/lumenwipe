@@ -18,6 +18,7 @@ import {
 } from "@/lib/api/plan-adapters";
 import PlanView from "@/components/plan/PlanView";
 import { apiErrorMessage } from "@/lib/api/error-body";
+import { hardBlockersOf } from "@/lib/plan/resolvable-blockers";
 
 export default function AnalyzePage({ params }: { params: Promise<{ network: Network }> }) {
   const { network: routeNetwork } = use(params);
@@ -74,7 +75,15 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       setBlockers(
         plan.blockers.map((b) => ({ message: b.message, helpUrl: b.helpUrl, code: b.code }))
       );
-      setConversions(plan.blockers.length === 0 ? decisionPointsToConversions(plan) : []);
+      // Hard blockers only. A blocker the user can answer right here must not hide the cards
+      // that answer it - and it must not hide the ASSET cards either, which is what a bare
+      // `blockers.length === 0` did: one unresolved claimable balance emptied the list of every
+      // balance-bearing asset, and `conversions.every(...)` on an empty array then reported them
+      // all resolved. That combination let a real account reach "Begin execution" and be refused
+      // for decisions it had never been shown.
+      setConversions(
+        hardBlockersOf(plan.blockers).length === 0 ? decisionPointsToConversions(plan) : []
+      );
       // Unlike other blockers, an unresolved claimable balance is resolvable right here - the
       // decision itself is what clears it - so it must render regardless of blocker state, or
       // the user could never reach the card that resolves it.
