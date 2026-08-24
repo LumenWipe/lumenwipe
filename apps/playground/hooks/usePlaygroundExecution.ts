@@ -1,10 +1,23 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { usePlaygroundStore, type PlaygroundAccounts, type SceneNode, type SceneNodeKind } from "@/store/playground";
+import {
+  usePlaygroundStore,
+  type PlaygroundAccounts,
+  type SceneNode,
+  type SceneNodeKind,
+} from "@/store/playground";
 import { operationToSceneAction } from "@/lib/scene-actions";
-import type { MessStepDef } from "@/lib/mess-plan";
-import type { AccountState } from "@lumenwipe/sdk";
+import {
+  EPHEMERAL_ASSETS,
+  EURC_DEMO_AMOUNT,
+  JUNK_DATA_ENTRIES,
+  JUNK_OFFERS,
+  LWDEMO_AMOUNT,
+  USDC_DEMO_AMOUNT,
+  type MessStepDef,
+} from "@/lib/mess-plan";
+import type { AccountState, IntentOperation } from "@lumenwipe/sdk";
 
 interface SessionResponse {
   sessionId: string;
@@ -18,11 +31,34 @@ interface StateResponse {
   demoPublic: string;
   accountState: AccountState | null;
   completedMessSteps: string[];
-  demolishLog: { txId: string; hash: string; operations: import("@lumenwipe/sdk").IntentOperation[] }[];
+  demolishLog: { txId: string; hash: string; summary: string; operations: IntentOperation[] }[];
   demolishDone: boolean;
 }
 
+interface UsePlaygroundExecutionResult {
+  start: () => void;
+  demolish: () => void;
+  progressStatus: string | null;
+}
+
 class SessionExpiredError extends Error {}
+
+// Plain-language mapping for the machine error codes the playground's own
+// routes return (see app/api/session/**/route.ts) - CLAUDE.md's "user-facing
+// errors are plain language; never surface raw SDK codes or stack traces"
+// invariant applies here too, not just to apps/api/apps/web. Any code not
+// listed here (including a raw `detail` string from an underlying SDK error)
+// falls through to the generic message - it never reaches the user verbatim.
+const ERROR_MESSAGES: Record<string, string> = {
+  session_not_found: "This demo session expired. Start a new one.",
+  friendbot_failed: "Could not fund the demo account. Please try again.",
+  rate_limited: "Too many attempts. Please wait a moment and try again.",
+};
+
+function plainErrorMessage(code: string | undefined): string {
+  if (code && ERROR_MESSAGES[code]) return ERROR_MESSAGES[code];
+  return "Something went wrong. Please try again.";
+}
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -32,46 +68,92 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (res.status === 404) throw new SessionExpiredError("Session expired");
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string; detail?: string };
-    throw new Error(body.detail ?? body.error ?? `Request failed (${res.status})`);
+    throw new Error(plainErrorMessage(body.error));
   }
   return (await res.json()) as T;
 }
 
-/** Random but stable-feeling orbit parameters for a newly docked node. Same
- *  shape the deleted `lib/playground/scene-nodes.ts` used - inlined here since
- *  it was a small, single-purpose helper with no other callers. */
-function randomOrbit(seq: number): SceneNode["orbit"] {
-  const rings = [95, 135, 175, 215];
-  const radius = rings[seq % rings.length];
-  const durationSec = 18 + (seq % 5) * 4;
-  const phaseDeg = (seq * 47) % 360;
-  return { radius, durationSec, phaseDeg };
-}
+// Orbit radius/duration by node kind - matches the deleted
+// `lib/playground/scene-nodes.ts` (git show f416924^:apps/web/lib/playground/scene-nodes.ts),
+// inlined here since it was a small, single-purpose helper with no other
+// callers. One ring per kind is what OrbitalScene's four RING_FRACTIONS guide
+// rings visually group by.
+const RING: Record<SceneNodeKind, { radius: number; durationSec: number }> = {
+  signer: { radius: 95, durationSec: 26 },
+  trustline: { radius: 135, durationSec: 34 },
+  data: { radius: 175, durationSec: 44 },
+  offer: { radius: 215, durationSec: 56 },
+};
 
-function kindForNodeId(nodeId: string): SceneNodeKind {
-  if (nodeId.startsWith("tl:")) return "trustline";
-  if (nodeId.startsWith("offer:")) return "offer";
-  if (nodeId.startsWith("data:")) return "data";
-  return "signer";
-}
+const GOLDEN_ANGLE = 137.5;
 
-function labelForNodeId(nodeId: string): string {
-  if (nodeId.startsWith("tl:")) return nodeId.slice(3);
-  if (nodeId.startsWith("data:")) return nodeId.slice(5);
-  if (nodeId.startsWith("offer:")) return `Offer ${nodeId.slice(6)}`;
-  return "Extra signer";
+function offerLabel(index: number): string {
+  const o = JUNK_OFFERS[index];
+  if (!o) return `Offer #${index + 1}`;
+  const sell = o.selling === "native" ? "XLM" : o.selling;
+  const buy = o.buying === "native" ? "XLM" : o.buying;
+  return `Sell ${sell} → ${buy}`;
 }
 
 function buildSceneNode(nodeId: string, seq: number): SceneNode {
+  const [prefix, rest] = nodeId.split(":");
+
+  let kind: SceneNodeKind;
+  let label: string;
+
+  switch (prefix) {
+    case "tl":
+      kind = "trustline";
+      label = rest;
+      break;
+    case "data":
+      kind = "data";
+      label = JUNK_DATA_ENTRIES.find((d) => d.key === rest)?.key ?? rest;
+      break;
+    case "offer":
+      kind = "offer";
+      label = offerLabel(Number(rest));
+      break;
+    case "signer":
+      kind = "signer";
+      label = "Forgotten co-signer";
+      break;
+    default:
+      throw new Error(`Unknown scene node id: ${nodeId}`);
+  }
+
+  const ring = RING[kind];
   return {
     id: nodeId,
-    kind: kindForNodeId(nodeId),
-    label: labelForNodeId(nodeId),
+    kind,
+    label,
     balance: null,
     status: "incoming",
     txHash: null,
-    orbit: randomOrbit(seq),
+    orbit: {
+      radius: ring.radius,
+      durationSec: ring.durationSec + (seq % 3) * 4,
+      phaseDeg: (seq * GOLDEN_ANGLE) % 360,
+    },
   };
+}
+
+/** Updates the displayed balance on an already-docked node when a mess step
+ *  funds it rather than creating it (`MessStepDef.updatesNodeIds`) - ports the
+ *  deleted `applyBalanceUpdates` (git show f416924^:apps/web/hooks/usePlaygroundExecution.ts). */
+function applyBalanceUpdates(step: MessStepDef): void {
+  const { updateNode } = usePlaygroundStore.getState();
+  if (step.id === "FUND_RARE") {
+    for (const nodeId of step.updatesNodeIds) {
+      const code = nodeId.startsWith("tl:") ? nodeId.slice(3) : null;
+      if (!code) continue;
+      const amount = EPHEMERAL_ASSETS.find((a) => a.code === code)?.amount ?? null;
+      if (amount) updateNode(nodeId, { balance: amount });
+    }
+  }
+  if (step.id === "FUND_LWDEMO") updateNode("tl:LWDEMO", { balance: LWDEMO_AMOUNT });
+  if (step.id === "FUND_USDC") updateNode("tl:USDC", { balance: USDC_DEMO_AMOUNT });
+  if (step.id === "FUND_EURC") updateNode("tl:EURC", { balance: EURC_DEMO_AMOUNT });
 }
 
 const DEMOLISH_REPLAY_STAGGER_MS = 500;
@@ -80,7 +162,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function usePlaygroundExecution() {
+export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
   const [progressStatus, setProgressStatus] = useState<string | null>(null);
   const running = useRef(false);
   const nodeSeq = useRef(0);
@@ -147,6 +229,7 @@ export function usePlaygroundExecution() {
             txHash
           );
         }
+        applyBalanceUpdates(step);
 
         if (step.id === "SETUP") {
           await refreshState();
@@ -174,6 +257,13 @@ export function usePlaygroundExecution() {
     try {
       const { sessionId } = usePlaygroundStore.getState();
       if (!sessionId) throw new Error("No active playground session");
+
+      // Captured before any further state-refreshing: once the demolish POST
+      // below completes, the account is merged away and /state's accountState
+      // goes null (the "account no longer exists" success path), so this is
+      // the last point the DIRTY-phase balance is still live in the store.
+      const preDemolishXlm =
+        usePlaygroundStore.getState().accountState?.nativeBalanceLumens ?? null;
 
       usePlaygroundStore.getState().setPhase("DEMOLISHING");
       setProgressStatus("Closing the account...");
@@ -204,13 +294,19 @@ export function usePlaygroundExecution() {
           // "merge" is handled after the loop, once, below - not per-operation,
           // since it's the terminal state for the whole scene.
           await sleep(DEMOLISH_REPLAY_STAGGER_MS);
+
+          // A payment (issuer-return) pulse is transient: reset the node back
+          // to "docked" once its stagger window has passed so a future round
+          // that splits the payment and trustline-removal across separate
+          // transactions doesn't leave the node stuck mid-animation.
+          if (action.type === "pulse") {
+            store.updateNode(action.nodeId, { status: "docked" });
+          }
         }
-        store.addLog({ label: "Close transaction confirmed", txHash: entry.hash, kind: "demolish" });
+        store.addLog({ label: entry.summary, txHash: entry.hash, kind: "demolish" });
       }
 
-      const finalState = usePlaygroundStore.getState().accountState;
-      const recovered = finalState?.nativeBalanceLumens ?? null;
-      if (recovered) usePlaygroundStore.getState().setRecoveredXlm(recovered);
+      if (preDemolishXlm) usePlaygroundStore.getState().setRecoveredXlm(preDemolishXlm);
       usePlaygroundStore.getState().setPhase("COMPLETE");
 
       fetch(`/api/session/${sessionId}/cleanup`, { method: "POST" }).catch((err) =>

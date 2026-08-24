@@ -16,7 +16,12 @@ export interface RunDemolishOptions {
   sinkPublic: string;
   apiUrl: string;
   apiKey: string;
-  onConfirmed?: (txId: string, hash: string, operations: IntentOperation[]) => void;
+  onConfirmed?: (
+    txId: string,
+    hash: string,
+    summary: string,
+    operations: IntentOperation[]
+  ) => void;
 }
 
 /**
@@ -117,7 +122,8 @@ export async function runDemolish(opts: RunDemolishOptions): Promise<void> {
       const res = await client.submit(xdr);
       return res.hash;
     },
-    onConfirmed: (tx, hash) => opts.onConfirmed?.(tx.id, hash, tx.intent.operations),
+    onConfirmed: (tx, hash) =>
+      opts.onConfirmed?.(tx.id, hash, tx.intent.summary, tx.intent.operations),
   };
 
   await runClose(deps);

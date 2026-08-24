@@ -29,7 +29,7 @@ export interface PlaygroundSession {
    *  for apps/web's verify() - no new data, just no longer discarded), so
    *  the frontend can replay the close operation-by-operation instead of only
    *  transaction-by-transaction. */
-  demolishLog: { txId: string; hash: string; operations: IntentOperation[] }[];
+  demolishLog: { txId: string; hash: string; summary: string; operations: IntentOperation[] }[];
   demolishDone: boolean;
   createdAt: number;
   fundRareAssets: string[];

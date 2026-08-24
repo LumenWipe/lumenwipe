@@ -23,7 +23,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const apiUrl = process.env.LUMENWIPE_API_URL;
   const apiKey = process.env.LUMENWIPE_API_KEY;
   if (!mm || !apiUrl || !apiKey) {
-    return NextResponse.json({ error: "Playground is not configured on this server." }, { status: 503 });
+    return NextResponse.json(
+      { error: "Playground is not configured on this server." },
+      { status: 503 }
+    );
   }
 
   try {
@@ -34,13 +37,13 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       sinkPublic: mm.publicKey(),
       apiUrl,
       apiKey,
-      onConfirmed: (txId, hash, operations) => {
+      onConfirmed: (txId, hash, summary, operations) => {
         // Fire-and-forget append; a lost update here only means the frontend's
         // progress log is momentarily behind, not that the close itself failed.
         // The `.catch` is not optional: an unhandled rejection terminates the Node
         // process, which would abort the close mid-flight over the one failure this
         // callback was explicitly designed to tolerate.
-        session.demolishLog.push({ txId, hash, operations });
+        session.demolishLog.push({ txId, hash, summary, operations });
         void saveSession(session).catch((err) => {
           console.error(`[playground] demolish log update failed for session ${id}:`, err);
         });
@@ -52,7 +55,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ done: true });
   } catch (err) {
     if (err instanceof PlaygroundConfigError) {
-      return NextResponse.json({ error: "Playground is not configured on this server." }, { status: 503 });
+      return NextResponse.json(
+        { error: "Playground is not configured on this server." },
+        { status: 503 }
+      );
     }
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[playground] demolish failed for session ${id}:`, err);

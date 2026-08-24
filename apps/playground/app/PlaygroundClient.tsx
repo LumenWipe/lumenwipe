@@ -18,9 +18,9 @@ export default function PlaygroundClient() {
           Trash an account. Then watch it vanish.
         </h1>
         <p className="mt-4 text-base leading-relaxed text-white/85">
-          Everything here happens on the Stellar testnet with a throwaway demo account - no
-          wallet, no risk, real transactions. Every animation is backed by an on-chain
-          transaction you can verify in the explorer.
+          Everything here happens on the Stellar testnet with a throwaway demo account - no wallet,
+          no risk, real transactions. Every animation is backed by an on-chain transaction you can
+          verify in the explorer.
         </p>
       </div>
 
@@ -37,8 +37,8 @@ export default function PlaygroundClient() {
 
       {phase === "IDLE" && (
         <p className="mt-8 text-center text-sm text-white/50">
-          Nothing on this page is stored beyond your session - the demo account is deleted after
-          it closes, or after an hour of inactivity.
+          Nothing on this page is stored beyond your session - the demo account is deleted after it
+          closes, or after an hour of inactivity.
         </p>
       )}
     </section>

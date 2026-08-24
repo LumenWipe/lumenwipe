@@ -39,24 +39,6 @@
   .border-stellar {
     border-color: hsl(var(--stellar));
   }
-  .text-value {
-    color: hsl(var(--value));
-  }
-  .bg-value {
-    background-color: hsl(var(--value));
-  }
-  .border-value {
-    border-color: hsl(var(--value));
-  }
-  .text-destructive {
-    color: hsl(var(--destructive));
-  }
-  .bg-destructive {
-    background-color: hsl(var(--destructive));
-  }
-  .border-destructive {
-    border-color: hsl(var(--destructive));
-  }
 }
 
 .mkt {
@@ -88,4 +70,33 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
   opacity: 0.05;
   mix-blend-mode: overlay;
+}
+
+/* Card surface with subtle top sheen (ink-tinted to match the redesign) */
+.mkt-panel {
+  background:
+    linear-gradient(180deg, hsl(0 0% 100% / 0.025), transparent 40%), hsl(200 16% 8% / 0.7);
+  border: 1px solid hsl(0 0% 100% / 0.08);
+  backdrop-filter: blur(8px);
+}
+
+/* Animated corner ticks for the instrument panel */
+.mkt-ticks::before,
+.mkt-ticks::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: hsl(196 100% 47% / 0.6);
+  border-style: solid;
+}
+.mkt-ticks::before {
+  top: -1px;
+  left: -1px;
+  border-width: 1px 0 0 1px;
+}
+.mkt-ticks::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 1px 1px 0;
 }
