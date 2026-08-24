@@ -1,111 +1,46 @@
 "use client";
 
-import { useCallback, useState } from "react";
-
-type Phase = "idle" | "messing" | "messed" | "demolishing" | "done" | "error";
-
-interface SessionInfo {
-  sessionId: string;
-  demoPublic: string;
-  messPlan: { id: string; label: string }[];
-}
+import { usePlaygroundStore } from "@/store/playground";
+import { usePlaygroundExecution } from "@/hooks/usePlaygroundExecution";
+import OrbitalScene from "@/components/scene/OrbitalScene";
+import PlaygroundControls from "@/components/scene/PlaygroundControls";
+import TxLogPanel from "@/components/scene/TxLogPanel";
 
 export default function PlaygroundClient() {
-  const [phase, setPhase] = useState<Phase>("idle");
-  const [session, setSession] = useState<SessionInfo | null>(null);
-  const [completedSteps, setCompletedSteps] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const start = useCallback(async () => {
-    setError(null);
-    setPhase("messing");
-    try {
-      const res = await fetch("/api/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "standard" }),
-      });
-      if (!res.ok) throw new Error("Could not start a session.");
-      const data = (await res.json()) as SessionInfo;
-      setSession(data);
-
-      for (const step of data.messPlan) {
-        const stepRes = await fetch(`/api/session/${data.sessionId}/mess`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ stepId: step.id }),
-        });
-        if (!stepRes.ok) throw new Error(`Mess step ${step.id} failed.`);
-        setCompletedSteps((prev) => [...prev, step.id]);
-      }
-      setPhase("messed");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-      setPhase("error");
-    }
-  }, []);
-
-  const demolish = useCallback(async () => {
-    if (!session) return;
-    setPhase("demolishing");
-    setError(null);
-    try {
-      const res = await fetch(`/api/session/${session.sessionId}/demolish`, { method: "POST" });
-      if (!res.ok) throw new Error("The close did not complete.");
-      setPhase("done");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-      setPhase("error");
-    }
-  }, [session]);
+  const { start, demolish, progressStatus } = usePlaygroundExecution();
+  const phase = usePlaygroundStore((s) => s.phase);
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-16 text-center">
-      <p className="mkt-eyebrow mb-3 text-stellar">Testnet playground</p>
-      <h1 className="mkt-display text-4xl text-white sm:text-5xl">
-        Trash an account. Then watch it vanish.
-      </h1>
-      <p className="mt-4 text-base leading-relaxed text-white/85">
-        Everything here happens on the Stellar testnet with a throwaway demo account - no wallet,
-        no risk, real transactions.
-      </p>
+    <section className="mx-auto w-full max-w-6xl px-4 pb-24 pt-16 sm:px-6">
+      <div className="mb-10 max-w-2xl">
+        <p className="mkt-eyebrow mb-3 text-stellar">Testnet playground</p>
+        <h1 className="mkt-display text-4xl text-white sm:text-5xl">
+          Trash an account. Then watch it vanish.
+        </h1>
+        <p className="mt-4 text-base leading-relaxed text-white/85">
+          Everything here happens on the Stellar testnet with a throwaway demo account - no
+          wallet, no risk, real transactions. Every animation is backed by an on-chain
+          transaction you can verify in the explorer.
+        </p>
+      </div>
 
-      {phase === "idle" && (
-        <button
-          onClick={start}
-          className="mt-8 rounded-md bg-stellar px-6 py-3 text-sm font-medium text-black"
-        >
-          Start
-        </button>
-      )}
-
-      {session && (
-        <div className="mt-8 text-left">
-          <p className="text-sm text-white/60">Demo account: {session.demoPublic}</p>
-          <ul className="mt-4 space-y-1">
-            {session.messPlan.map((step) => (
-              <li key={step.id} className="text-sm text-white/80">
-                {completedSteps.includes(step.id) ? "✓" : "…"} {step.label}
-              </li>
-            ))}
-          </ul>
+      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+        <div className="mkt-panel relative overflow-hidden rounded-lg p-4 sm:p-8">
+          <OrbitalScene />
         </div>
-      )}
 
-      {phase === "messed" && (
-        <button
-          onClick={demolish}
-          className="mt-8 rounded-md bg-stellar px-6 py-3 text-sm font-medium text-black"
-        >
-          Demolish it
-        </button>
-      )}
+        <div className="flex flex-col gap-4">
+          <PlaygroundControls start={start} demolish={demolish} progressStatus={progressStatus} />
+          <TxLogPanel />
+        </div>
+      </div>
 
-      {phase === "demolishing" && <p className="mt-8 text-white/70">Closing the account…</p>}
-      {phase === "done" && (
-        <p className="mt-8 text-white/85">Done - the account no longer exists on testnet.</p>
+      {phase === "IDLE" && (
+        <p className="mt-8 text-center text-sm text-white/50">
+          Nothing on this page is stored beyond your session - the demo account is deleted after
+          it closes, or after an hour of inactivity.
+        </p>
       )}
-      {error && <p className="mt-4 text-red-400">{error}</p>}
-    </div>
+    </section>
   );
 }
