@@ -29,7 +29,7 @@ export default function PlaygroundClient() {
           <OrbitalScene />
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <PlaygroundControls start={start} demolish={demolish} progressStatus={progressStatus} />
           <TxLogPanel />
         </div>
