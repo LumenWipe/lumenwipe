@@ -3,6 +3,14 @@
   "compilerOptions": {
     "noEmit": false,
     "outDir": "./dist",
+    // Pinned, not inferred. Without it tsc derives the root from the common ancestor of every
+    // included file, so one import reaching outside src moves the whole output down a level and
+    // the entrypoint stops being dist/main.js - which the Dockerfile's CMD and start:prod both
+    // hardcode. That shipped once (#81): the build exits 0, the image builds green, and only the
+    // Cloud Run revision fails. Pinning the root keeps the layout stable wherever an import
+    // points. It does not reject the stray import - tsc leaves the file unemitted and the require
+    // path dangling - so CI boots the image to catch that half.
+    "rootDir": "./src",
     "declaration": false
   },
   "exclude": ["node_modules", "dist", "test", "**/*.spec.ts"]
