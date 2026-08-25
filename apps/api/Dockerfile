@@ -16,6 +16,7 @@ WORKDIR /app
 COPY package.json bun.lock ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
+COPY apps/playground/package.json apps/playground/
 COPY packages/sdk/package.json packages/sdk/
 COPY packages/types/package.json packages/types/
 # Install the api's full dependency graph (incl. devDeps: nest CLI, typescript).
@@ -32,6 +33,7 @@ WORKDIR /app
 COPY package.json bun.lock ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
+COPY apps/playground/package.json apps/playground/
 COPY packages/sdk/package.json packages/sdk/
 COPY packages/types/package.json packages/types/
 # Deps hoist to /app/node_modules (Bun has no isolated per-workspace prune yet);
