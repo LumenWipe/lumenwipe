@@ -26,8 +26,7 @@ export const EURC_DEMO_AMOUNT = "10";
 export const DEMO_SWAP_PRICE = "0.2";
 
 // XLM the demo keeps after returning the friendbot excess to the market maker.
-// Keeping it small makes the locked-reserve counter visually meaningful.
-export const DEMO_KEEP_XLM = "30";
+export const DEMO_KEEP_XLM = "100";
 export const EPHEMERAL_ISSUER_FUNDING_XLM = "3";
 
 // Up to 5 data entries; standard/full modes use the first 3.
