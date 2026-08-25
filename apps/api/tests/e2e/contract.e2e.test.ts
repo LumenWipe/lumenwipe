@@ -5,6 +5,7 @@ import request from "supertest";
 import { Keypair } from "@stellar/stellar-sdk";
 import { AppModule } from "@/app.module";
 import { configureApp } from "@/configure-app";
+import { API_VERSION } from "@/openapi";
 
 // Deterministic error/auth contracts that need no network access, asserting the
 // exact status + body the API returns. Success paths hit Stellar RPC and are
@@ -41,6 +42,18 @@ test("health is public (no key required)", async () => {
   // Surfaced so an operator can see the upstream provider refusing requests before it becomes
   // an outage; a lifetime count for this process, so only its trend is meaningful.
   expect(typeof res.body.upstreamRateLimitHits).toBe("number");
+});
+
+test("the service index at / is public and points at the docs", async () => {
+  const res = await request(http).get("/");
+  expect(res.status).toBe(200);
+  expect(res.body).toEqual({
+    name: "LumenWipe API",
+    version: API_VERSION,
+    docs: "/docs",
+    openapi: "/docs-json",
+    health: "/health",
+  });
 });
 
 test("an authenticated route without a key is rejected 401", async () => {
