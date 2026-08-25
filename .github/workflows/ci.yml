@@ -22,11 +22,11 @@ jobs:
           - { name: "sdk", pkg: "@lumenwipe/sdk", checks: "type-check lint test" }
           # test:coverage runs the same suite as `test` with a coverage report printed to the
           # log - same pass/fail outcome, no threshold gate, just visibility into what's covered.
-          # `build` is in the list because type-check alone cannot catch a broken build:
-          # tsc with noEmit never computes an output layout, so a change that relocates the
-          # emitted entrypoint (or a file the Docker build never copies) passes every check and
-          # fails first on the production deploy. That happened in #81 and cost a full
-          # debugging cycle to find by hand.
+          # `build` is in the list because type-check alone cannot catch a broken build: tsc
+          # with noEmit never computes an output layout at all. It does not close the gap on
+          # its own, though - a change that relocates the emitted entrypoint (#81) still exits
+          # 0 here, because tsc emits happily to the wrong path. Only booting the image catches
+          # that, which is what the `docker` job below is for.
           - { name: "web", pkg: "@lumenwipe/web", checks: "type-check lint test:coverage build" }
           - { name: "api", pkg: "@lumenwipe/api", checks: "type-check lint test:coverage build" }
           - { name: "playground", pkg: "@lumenwipe/playground", checks: "type-check lint test build" }
@@ -49,12 +49,14 @@ jobs:
             echo "::endgroup::"
           done
 
-  # The package checks above all run from source, so nothing in them exercises the
-  # production image: a workspace added to bun.lock but never copied into the build
-  # context passes every check and fails first on the Cloud Run deploy (that is how
-  # #135's apps/playground broke it, and #81 before that). Build the image here so
-  # Dockerfile drift is caught on the PR. Image is built, not pushed - deploy-api.yml
-  # still builds and pushes the real one on main.
+  # Everything above runs from source, so nothing exercises the production image, and two
+  # different failures have already shipped through that gap. One breaks the build: a workspace
+  # present in bun.lock but never copied into the build context (#135's apps/playground). The
+  # other does not: a file that shifts tsc's rootDir relocates the compiled entrypoint (#81),
+  # and since stage 3 copies whatever tree the builder emitted, `docker build` exports a green
+  # image whose CMD then cannot find dist/main.js. So this job builds AND boots - the build
+  # catches the first, /health catches the second. Same flags as deploy-api.yml so this stays
+  # the same command; nothing is pushed, deploy-api.yml still builds and pushes the real image.
   docker:
     name: api image
     runs-on: ubuntu-latest
@@ -62,7 +64,25 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build the API image
-        run: docker build --provenance=false -f apps/api/Dockerfile -t lumenwipe-api:ci .
+        run: docker build --platform linux/amd64 --provenance=false -f apps/api/Dockerfile -t lumenwipe-api:ci .
+
+      # API_KEYS is the only variable the startup check treats as fatal (src/config/validate-env.ts)
+      # and boot makes no network calls, so a throwaway value is enough to reach /health. No route
+      # is exercised with it. Container logs are printed on failure - the interesting output is
+      # the crash, and it is not visible anywhere else.
+      - name: Boot the image and check /health
+        run: |
+          docker run -d --name api-smoke -e API_KEYS=ci=ci-smoke -e PORT=8080 -p 8080:8080 lumenwipe-api:ci
+          for i in $(seq 1 30); do
+            if curl -fs http://127.0.0.1:8080/health > /dev/null 2>&1; then
+              echo "healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "the image never answered /health:"
+          docker logs api-smoke
+          exit 1
 
   # Aggregate gate: keeps the existing required-status-check name so branch
   # protection needs no change. Passes only if every job above passed.
