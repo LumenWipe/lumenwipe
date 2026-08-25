@@ -13,6 +13,15 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className="dark">
+      <head>
+        {process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID && (
+          <script
+            defer
+            src="https://cloud.umami.is/script.js"
+            data-website-id={process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID}
+          />
+        )}
+      </head>
       <body className={`${siteFontVars} font-body`}>
         <div className="mkt relative min-h-screen overflow-x-clip bg-[hsl(var(--mkt-bg))]">
           <div aria-hidden className="pointer-events-none absolute inset-0 z-0">
