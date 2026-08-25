@@ -107,4 +107,4 @@ CONTRIBUTING.md has the full rules. Essentials:
 
 ## Docs
 
-`docs/architecture.md` is the authoritative system design (security model in §13). `docs/` is also the Mintlify site source (docs.lumenwipe.com). Diagrams live in `docs/diagrams/*.mmd` with rendered SVG/PNG in `output/`; re-export with `npx @mermaid-js/mermaid-cli -i <file>.mmd -o output/<name>.svg`.
+`docs/architecture.md` is the authoritative system design (security model in §13). `docs/` is also the Mintlify site source (docs.lumenwipe.com). Diagram sources live in `diagrams/` at the repo root: `diagrams/generator/*.py` (Graphviz, the source of truth) regenerate the rendered SVG/PNG via `python diagrams/generator/render-all.py`; `diagrams/mmd/*.mmd` are unwired Mermaid copies kept only for quick reference. Rendered output stays at `docs/diagrams/output/` because `docs/architecture.md`, the root `README.md`, and the Mintlify site all reference that path.

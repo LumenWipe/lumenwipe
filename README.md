@@ -226,7 +226,7 @@ Full technical documentation is at [**docs.lumenwipe.com**](https://docs.lumenwi
 | [Executive Summary](docs/executive-summary.md)                     | One-page overview: problem, solution, technical pillars, and delivery plan                                                      |
 | [Technical Architecture](docs/architecture.md)                     | Complete system design: data sources, execution plan, Soroban & DeFi integration, mediator flow, security, testing, and roadmap |
 | [Community & Communications](docs/community-and-communications.md) | Building in the open, update cadence, decentralized social channels, and post-launch maintenance                                |
-| [Diagram sources](docs/diagrams/)                                  | All 9 Mermaid diagram sources with rendered PNG/SVG exports                                                                     |
+| [Diagram sources](diagrams/)                                       | All 9 diagrams: Python/Graphviz generator, Mermaid context copies, rendered PNG/SVG exports                                     |
 
 ---
 
