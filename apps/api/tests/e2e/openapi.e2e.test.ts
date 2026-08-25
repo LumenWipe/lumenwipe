@@ -34,6 +34,7 @@ test("spec documents all v1 + read + mediator endpoints", () => {
   const paths = Object.keys(spec.paths);
   expect(paths).toEqual(
     expect.arrayContaining([
+      "/",
       "/health",
       "/v1/{network}/close/plan",
       "/v1/{network}/close/transactions",
@@ -58,10 +59,12 @@ test("request DTOs are present as schemas", () => {
   );
 });
 
-test("health is public but the product endpoints require the api-key", () => {
+test("health and the service index are public but the product endpoints require the api-key", () => {
   const health = spec.paths["/health"].get;
+  const index = spec.paths["/"].get;
   const plan = spec.paths["/v1/{network}/close/plan"].post;
-  // health carries no security requirement; close/plan requires api-key
+  // neither public route carries a security requirement; close/plan requires api-key
   expect(health?.security ?? []).toEqual([]);
+  expect(index?.security ?? []).toEqual([]);
   expect(plan?.security).toEqual(expect.arrayContaining([{ "api-key": [] }]));
 });

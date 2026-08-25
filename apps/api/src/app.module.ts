@@ -3,6 +3,7 @@ import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
 import { ThrottlerModule } from "@nestjs/throttler";
 import { HealthController } from "./health/health.controller";
+import { RootController } from "./root.controller";
 import { RegistryController } from "./config-api/registry.controller";
 import { CloseModule } from "./close/close.module";
 import { AccountModule } from "./account/account.module";
@@ -32,7 +33,7 @@ function positiveIntEnv(name: string, fallback: number): number {
     AccountModule,
     MediatorModule,
   ],
-  controllers: [HealthController, RegistryController],
+  controllers: [RootController, HealthController, RegistryController],
   providers: [
     ApiKeyService,
     MeteringService,
