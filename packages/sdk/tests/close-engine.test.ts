@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
-import { runClose, InsufficientSignatureWeightError } from "@/lib/api/close-engine";
-import type { CloseTransaction, TransactionsResponse } from "@lumenwipe/sdk";
+import { runClose, InsufficientSignatureWeightError } from "../src/close-engine";
+import type { CloseTransaction, TransactionsResponse } from "@lumenwipe/types";
 
 function tx(order: number, id = `tx${order}`): CloseTransaction {
   return { id, order, xdr: `xdr-${id}` } as unknown as CloseTransaction;

@@ -35,7 +35,7 @@ The project maintains a presence across both standard ecosystem channels and dec
 | Channel           | Type                       | Use                                                                                                                 |
 | ----------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | GitHub            | Open source                | Code, issues, roadmap, releases, changelog. The primary source of truth.                                            |
-| LumenWipe Discord | Community                  | Community chat, user support, and project discussion. Invite: https://discord.gg/b37CPB7g                           |
+| LumenWipe Discord | Community                  | Community chat, user support, and project discussion. Invite: https://discord.gg/hDCNaW6xn                          |
 | Matrix            | Decentralized, open source | A public room for project discussion, bridged where useful. Open-protocol, self-hostable, no single platform owner. |
 | Telegram          | Community                  | Real-time community chat, user support, and announcements.                                                          |
 

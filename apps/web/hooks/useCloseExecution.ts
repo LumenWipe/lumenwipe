@@ -12,7 +12,7 @@ import {
   runClose,
   InsufficientSignatureWeightError,
   type PendingRound,
-} from "@/lib/api/close-engine";
+} from "@lumenwipe/sdk";
 import { fetchCloseTransactions } from "@/lib/api/close-client";
 import {
   claimableSelectionsToDecisions,

@@ -10,6 +10,7 @@ type NavLink = { href: string; label: string; external?: boolean; section?: stri
 
 const LINKS: NavLink[] = [
   { href: "/how-it-works", label: "How it works" },
+  { href: "https://playground.lumenwipe.com", label: "Playground", external: true },
   { href: "/security", label: "Security" },
   { href: "/faq", label: "FAQ" },
   { href: "/stats", label: "Stats" },

@@ -29,6 +29,7 @@ jobs:
           # debugging cycle to find by hand.
           - { name: "web", pkg: "@lumenwipe/web", checks: "type-check lint test:coverage build" }
           - { name: "api", pkg: "@lumenwipe/api", checks: "type-check lint test:coverage build" }
+          - { name: "playground", pkg: "@lumenwipe/playground", checks: "type-check lint test build" }
     steps:
       - uses: actions/checkout@v4
 

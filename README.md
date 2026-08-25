@@ -251,7 +251,7 @@ LumenWipe is open source from day one. The full API, web client, SDK, contract r
 | Channel                                                                     | Use                                                  |
 | --------------------------------------------------------------------------- | ---------------------------------------------------- |
 | [GitHub Issues](https://github.com/LumenWipe/lumenwipe/issues)              | Bug reports, feature requests, roadmap               |
-| [LumenWipe Discord](https://discord.gg/b37CPB7g)                            | Community chat, support, and project discussion      |
+| [LumenWipe Discord](https://discord.gg/hDCNaW6xn)                           | Community chat, support, and project discussion      |
 | [Matrix - #lumenwipe:matrix.org](https://matrix.to/#/#lumenwipe:matrix.org) | Project discussion (open, decentralized)             |
 | [Telegram - t.me/lumenwipe](https://t.me/lumenwipe)                         | Real-time community chat, support, and announcements |
 
