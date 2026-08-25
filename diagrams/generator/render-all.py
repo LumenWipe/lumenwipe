@@ -1,6 +1,6 @@
 """
 Render all LumenWipe diagrams to docs/diagrams/output/ (SVG + PNG).
-Usage: python scripts/diagrams/render-all.py   (from repo root)
+Usage: python diagrams/generator/render-all.py   (from repo root)
 """
 import subprocess
 import sys
