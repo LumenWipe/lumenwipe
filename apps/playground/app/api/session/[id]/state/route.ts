@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { LumenWipeClient } from "@lumenwipe/sdk";
+import { LumenWipeApiError, LumenWipeClient } from "@lumenwipe/sdk";
 import { loadSessionOrErrorResponse } from "@/lib/route-helpers";
 
 export const maxDuration = 30;
@@ -26,14 +26,19 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       demolishLog: session.demolishLog,
       demolishDone: session.demolishDone,
     });
-  } catch {
-    // The demo account no longer exists once the merge lands - that's success, not an error.
-    return NextResponse.json({
-      demoPublic: session.demoPublic,
-      accountState: null,
-      completedMessSteps: session.completedMessSteps,
-      demolishLog: session.demolishLog,
-      demolishDone: session.demolishDone,
-    });
+  } catch (err) {
+    if (err instanceof LumenWipeApiError && err.status === 404) {
+      // The demo account no longer exists once the merge lands - that's success, not an error.
+      return NextResponse.json({
+        demoPublic: session.demoPublic,
+        accountState: null,
+        completedMessSteps: session.completedMessSteps,
+        demolishLog: session.demolishLog,
+        demolishDone: session.demolishDone,
+      });
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[playground] account state read failed for session ${id}:`, err);
+    return NextResponse.json({ error: "state_read_failed", detail: message }, { status: 502 });
   }
 }
