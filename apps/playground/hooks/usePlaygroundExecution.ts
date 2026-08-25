@@ -73,16 +73,22 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-// Orbit radius/duration by node kind - matches the deleted
+// Orbit radius/duration by node kind - adapted from the deleted
 // `lib/playground/scene-nodes.ts` (git show f416924^:apps/web/lib/playground/scene-nodes.ts),
 // inlined here since it was a small, single-purpose helper with no other
 // callers. One ring per kind is what OrbitalScene's four RING_FRACTIONS guide
-// rings visually group by.
+// rings visually group by - keep these two in sync.
+//
+// Radii pushed out from the original's 95/135/175/215: CoreAccount grows up
+// to 144px (h-36) plus a 60px glow at the lg breakpoint, and a labeled node
+// pill reaches into its own orbit radius, so the original inner rings left
+// the innermost nodes (especially signer, the smallest ring) overlapping the
+// core account's glow at wider viewports.
 const RING: Record<SceneNodeKind, { radius: number; durationSec: number }> = {
-  signer: { radius: 95, durationSec: 26 },
-  trustline: { radius: 135, durationSec: 34 },
-  data: { radius: 175, durationSec: 44 },
-  offer: { radius: 215, durationSec: 56 },
+  signer: { radius: 150, durationSec: 26 },
+  trustline: { radius: 180, durationSec: 34 },
+  data: { radius: 210, durationSec: 44 },
+  offer: { radius: 240, durationSec: 56 },
 };
 
 const GOLDEN_ANGLE = 137.5;
