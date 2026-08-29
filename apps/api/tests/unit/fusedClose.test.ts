@@ -273,7 +273,7 @@ test("assembleFusedCloseOpsTagged > each op group is tagged with its own step, n
   const stepsByType = new Map(tagged.map((t) => [Operation.fromXDRObject(t.op).type, t.step]));
   expect(stepsByType.get("setOptions")).toBe("NORMALIZE_SIGNERS");
   expect(stepsByType.get("manageSellOffer")).toBe("CANCEL_OFFERS");
-  expect(stepsByType.get("pathPaymentStrictSend")).toBe("CONVERT_ASSETS");
+  expect(stepsByType.get("pathPaymentStrictSend")).toBe("HANDLE_ASSETS");
   expect(stepsByType.get("changeTrust")).toBe("REMOVE_TRUSTLINES");
 });
 

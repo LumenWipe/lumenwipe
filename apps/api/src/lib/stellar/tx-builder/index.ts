@@ -518,7 +518,7 @@ export function buildPlan(
     }
   }
 
-  // CONVERT_ASSETS: include trustlines with a current balance OR whose asset appears
+  // HANDLE_ASSETS: include trustlines with a current balance OR whose asset appears
   // in a claimable balance that will be claimed above - claiming runs first and increases
   // the live trustline balance, which the executor reads on-chain at step build time.
   const claimableNonXlmByAsset = new Map<string, number>();
@@ -526,7 +526,7 @@ export function buildPlan(
     // Stryker disable next-line ConditionalExpression,StringLiteral: a Trustline's `asset` is
     // never the string "native" (native XLM is never represented as a trustline - it's the
     // account's own base balance), so a key of "native" wrongly added here could never be
-    // looked up by `trustlinesNeedingConversion`'s `claimableNonXlmByAsset.get(tl.asset)` below.
+    // looked up by `trustlinesNeedingAction`'s `claimableNonXlmByAsset.get(tl.asset)` below.
     // Unobservable given that domain invariant.
     if (b.asset !== "native") {
       claimableNonXlmByAsset.set(
@@ -536,19 +536,19 @@ export function buildPlan(
     }
   }
 
-  const trustlinesNeedingConversion = trustlines.filter(
+  const trustlinesNeedingAction = trustlines.filter(
     (tl) =>
       tl.authorized &&
       (parseFloat(tl.balance) > 0 || (claimableNonXlmByAsset.get(tl.asset) ?? 0) > 0)
   );
 
-  for (const tl of trustlinesNeedingConversion) {
+  for (const tl of trustlinesNeedingAction) {
     const { title, description } = assetStepLabels(
       tl,
       dispositions[tl.asset],
       transferDestinations[tl.asset]
     );
-    steps.push(step(idx++, "CONVERT_ASSETS", title, description, 1, { affectedAsset: tl.asset }));
+    steps.push(step(idx++, "HANDLE_ASSETS", title, description, 1, { affectedAsset: tl.asset }));
   }
 
   // Stryker disable next-line EqualityOperator,ConditionalExpression: batchItems([], N) always

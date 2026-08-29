@@ -53,14 +53,14 @@ test("collapses batched same-type steps into a single group", () => {
 test("keeps interleaved same-type steps together at their first-occurrence position", () => {
   const steps = [
     fakeStep(0, "CLAIM_BALANCES"),
-    fakeStep(1, "CONVERT_ASSETS"),
+    fakeStep(1, "HANDLE_ASSETS"),
     fakeStep(2, "CLAIM_BALANCES"),
     fakeStep(3, "MERGE"),
   ];
 
   const groups = groupStepsByType(steps);
 
-  expect(groups.map((g) => g.type)).toEqual(["CLAIM_BALANCES", "CONVERT_ASSETS", "MERGE"]);
+  expect(groups.map((g) => g.type)).toEqual(["CLAIM_BALANCES", "HANDLE_ASSETS", "MERGE"]);
   expect(groups[0].steps).toHaveLength(2);
 });
 
@@ -75,7 +75,7 @@ const ALL_STEP_TYPES: StepType[] = [
   "CANCEL_OFFERS",
   "ADD_TRUSTLINE_FOR_CLAIM",
   "CLAIM_BALANCES",
-  "CONVERT_ASSETS",
+  "HANDLE_ASSETS",
   "REMOVE_TRUSTLINES",
   "CLOSE_ACCOUNT",
   "MERGE",

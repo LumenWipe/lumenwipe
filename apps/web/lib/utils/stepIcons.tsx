@@ -17,7 +17,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   CANCEL_OFFERS: BarChart2,
   ADD_TRUSTLINE_FOR_CLAIM: Link2,
   CLAIM_BALANCES: Target,
-  CONVERT_ASSETS: ArrowLeftRight,
+  HANDLE_ASSETS: ArrowLeftRight,
   REMOVE_TRUSTLINES: Unlink,
   MERGE: GitMerge,
   CLOSE_ACCOUNT: GitMerge,

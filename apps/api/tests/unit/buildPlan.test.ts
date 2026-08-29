@@ -148,27 +148,27 @@ test("buildPlan › open offers → CANCEL_OFFERS step", () => {
   expect(step!.operationCount).toBe(2);
 });
 
-test("buildPlan › trustline with balance → CONVERT_ASSETS before REMOVE_TRUSTLINES", () => {
+test("buildPlan › trustline with balance → HANDLE_ASSETS before REMOVE_TRUSTLINES", () => {
   const account = makeAccount({ trustlines: [makeTrustline("USDC", "100.0")] });
   const { steps: plan } = buildPlan(account, false);
-  const convertIdx = plan.findIndex((s) => s.type === "CONVERT_ASSETS");
+  const convertIdx = plan.findIndex((s) => s.type === "HANDLE_ASSETS");
   const removeIdx = plan.findIndex((s) => s.type === "REMOVE_TRUSTLINES");
   expect(convertIdx).toBeGreaterThanOrEqual(0);
   expect(removeIdx).toBeGreaterThanOrEqual(0);
   expect(convertIdx).toBeLessThan(removeIdx);
 });
 
-test("buildPlan › CONVERT_ASSETS step includes affectedAsset", () => {
+test("buildPlan › HANDLE_ASSETS step includes affectedAsset", () => {
   const account = makeAccount({ trustlines: [makeTrustline("USDC", "50.0")] });
   const { steps: plan } = buildPlan(account, false);
-  const step = plan.find((s) => s.type === "CONVERT_ASSETS");
+  const step = plan.find((s) => s.type === "HANDLE_ASSETS");
   expect(step!.affectedAsset).toBe(`USDC:${ISSUER}`);
 });
 
-test("buildPlan › trustline with zero balance → no CONVERT_ASSETS", () => {
+test("buildPlan › trustline with zero balance → no HANDLE_ASSETS", () => {
   const account = makeAccount({ trustlines: [makeTrustline("USDC", "0")] });
   const { steps: plan } = buildPlan(account, false);
-  expect(plan.find((s) => s.type === "CONVERT_ASSETS")).toBeUndefined();
+  expect(plan.find((s) => s.type === "HANDLE_ASSETS")).toBeUndefined();
 });
 
 test("buildPlan › trustline with zero balance → still has REMOVE_TRUSTLINES", () => {
@@ -223,17 +223,17 @@ test("buildPlan › complex account has all expected step types", () => {
   expect(types).toContain("NORMALIZE_SIGNERS");
   expect(types).toContain("REMOVE_DATA_ENTRIES");
   expect(types).toContain("CANCEL_OFFERS");
-  expect(types).toContain("CONVERT_ASSETS");
+  expect(types).toContain("HANDLE_ASSETS");
   expect(types).toContain("REMOVE_TRUSTLINES");
   expect(types).toContain("MERGE");
 });
 
-test("buildPlan › 5 trustlines with balance → 5 CONVERT_ASSETS steps + 1 REMOVE_TRUSTLINES", () => {
+test("buildPlan › 5 trustlines with balance → 5 HANDLE_ASSETS steps + 1 REMOVE_TRUSTLINES", () => {
   const account = makeAccount({
     trustlines: Array.from({ length: 5 }, (_, i) => makeTrustline(`TK${i}`, "10.0")),
   });
   const { steps: plan } = buildPlan(account, false);
-  expect(plan.filter((s) => s.type === "CONVERT_ASSETS")).toHaveLength(5);
+  expect(plan.filter((s) => s.type === "HANDLE_ASSETS")).toHaveLength(5);
   expect(plan.filter((s) => s.type === "REMOVE_TRUSTLINES")).toHaveLength(1);
 });
 
@@ -453,11 +453,11 @@ test("buildPlan › deauthorized trustline with ZERO balance → no blocker", ()
   expect(blockers.every((b) => !b.message.includes("deauthorized"))).toBe(true);
 });
 
-test("buildPlan › deauthorized trustline with balance → no CONVERT_ASSETS for that asset", () => {
+test("buildPlan › deauthorized trustline with balance → no HANDLE_ASSETS for that asset", () => {
   const account = makeAccount({ trustlines: [makeTrustline("USDC", "50.0", false)] });
   const { steps } = buildPlan(account, false);
-  // A deauthorized trustline cannot be converted - no CONVERT_ASSETS should be emitted for it.
-  expect(steps.find((s) => s.type === "CONVERT_ASSETS")).toBeUndefined();
+  // A deauthorized trustline cannot be converted - no HANDLE_ASSETS should be emitted for it.
+  expect(steps.find((s) => s.type === "HANDLE_ASSETS")).toBeUndefined();
 });
 
 test("buildPlan › deauthorized trustline with balance → REMOVE_TRUSTLINES still present", () => {
@@ -468,7 +468,7 @@ test("buildPlan › deauthorized trustline with balance → REMOVE_TRUSTLINES st
   expect(steps.find((s) => s.type === "REMOVE_TRUSTLINES")).toBeDefined();
 });
 
-test("buildPlan › authorized and deauthorized trustlines mixed → only authorized gets CONVERT_ASSETS", () => {
+test("buildPlan › authorized and deauthorized trustlines mixed → only authorized gets HANDLE_ASSETS", () => {
   const account = makeAccount({
     trustlines: [
       makeTrustline("USDC", "100.0", true), // authorized with balance
@@ -476,7 +476,7 @@ test("buildPlan › authorized and deauthorized trustlines mixed → only author
     ],
   });
   const { steps, blockers } = buildPlan(account, false);
-  const convertSteps = steps.filter((s) => s.type === "CONVERT_ASSETS");
+  const convertSteps = steps.filter((s) => s.type === "HANDLE_ASSETS");
   expect(convertSteps).toHaveLength(1);
   expect(convertSteps[0].affectedAsset).toBe(`USDC:${ISSUER}`);
   expect(
@@ -583,7 +583,7 @@ test("buildPlan › unresolved unclaimable balance (no selection) → unchanged 
   expect(blockers[0].message).toContain("Establish");
 });
 
-test("buildPlan › CLAIM_BALANCES comes after CANCEL_OFFERS and before CONVERT_ASSETS", () => {
+test("buildPlan › CLAIM_BALANCES comes after CANCEL_OFFERS and before HANDLE_ASSETS", () => {
   const account = makeAccount({
     openOffers: [{ id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" }],
     claimableBalances: [makeClaimableBalance("native")],
@@ -618,8 +618,8 @@ test("buildPlan › no claimable balances → no CLAIM_BALANCES step", () => {
 
 // ─── Claimable balance + trustline interaction ───────────────────────────────
 
-test("buildPlan › zero-balance trustline with claimable balance for same asset → CONVERT_ASSETS included", () => {
-  // After claiming, the trustline will have balance. CONVERT_ASSETS must be in the plan
+test("buildPlan › zero-balance trustline with claimable balance for same asset → HANDLE_ASSETS included", () => {
+  // After claiming, the trustline will have balance. HANDLE_ASSETS must be in the plan
   // so REMOVE_TRUSTLINES doesn't fail with change_trust_cannot_delete.
   const asset = `USDC:${ISSUER}`;
   const account = makeAccount({
@@ -628,10 +628,10 @@ test("buildPlan › zero-balance trustline with claimable balance for same asset
   });
   const { steps } = buildPlan(account, false);
   expect(steps.some((s) => s.type === "CLAIM_BALANCES")).toBe(true);
-  expect(steps.some((s) => s.type === "CONVERT_ASSETS" && s.affectedAsset === asset)).toBe(true);
+  expect(steps.some((s) => s.type === "HANDLE_ASSETS" && s.affectedAsset === asset)).toBe(true);
 });
 
-test("buildPlan › CLAIM_BALANCES comes before CONVERT_ASSETS for same asset", () => {
+test("buildPlan › CLAIM_BALANCES comes before HANDLE_ASSETS for same asset", () => {
   const asset = `USDC:${ISSUER}`;
   const account = makeAccount({
     trustlines: [makeTrustline("USDC", "0", true)],
@@ -639,7 +639,7 @@ test("buildPlan › CLAIM_BALANCES comes before CONVERT_ASSETS for same asset", 
   });
   const { steps } = buildPlan(account, false);
   const claimIdx = steps.findIndex((s) => s.type === "CLAIM_BALANCES");
-  const convertIdx = steps.findIndex((s) => s.type === "CONVERT_ASSETS");
+  const convertIdx = steps.findIndex((s) => s.type === "HANDLE_ASSETS");
   expect(claimIdx).toBeGreaterThanOrEqual(0);
   expect(convertIdx).toBeGreaterThanOrEqual(0);
   expect(claimIdx).toBeLessThan(convertIdx);
@@ -1348,17 +1348,17 @@ test("buildPlan › an unauthorized trustline with a balance is not converted (f
   expect(close).toBeUndefined();
 });
 
-test("buildPlan › a zero-balance trustline needs no CONVERT_ASSETS step even when authorized", () => {
+test("buildPlan › a zero-balance trustline needs no HANDLE_ASSETS step even when authorized", () => {
   const account = makeAccount({ trustlines: [makeTrustline("USDC", "0", true)] });
   const { steps } = buildPlan(account, false);
-  expect(steps.some((s) => s.type === "CONVERT_ASSETS")).toBe(false);
+  expect(steps.some((s) => s.type === "HANDLE_ASSETS")).toBe(false);
   expect(steps.some((s) => s.type === "REMOVE_TRUSTLINES")).toBe(true);
 });
 
-test("buildPlan › CONVERT_ASSETS title, description and affectedAsset are exact", () => {
+test("buildPlan › HANDLE_ASSETS title, description and affectedAsset are exact", () => {
   const account = makeAccount({ trustlines: [makeTrustline("USDC", "50.0")] });
   const { steps } = buildPlan(account, false);
-  const s = steps.find((x) => x.type === "CONVERT_ASSETS")!;
+  const s = steps.find((x) => x.type === "HANDLE_ASSETS")!;
   expect(s.title).toBe("Convert USDC to XLM");
   expect(s.description).toBe("Exchange 50.0 USDC for XLM via the Stellar DEX.");
   expect(s.operationCount).toBe(1);
@@ -1724,7 +1724,7 @@ test("buildPlan › issuer disposition → step says return to issuer, not conve
   const asset = `BURN:${ISSUER}`;
   const account = makeAccount({ trustlines: [makeTrustline("BURN", "25.0000000")] });
   const { steps } = buildPlan(account, false, false, {}, undefined, { [asset]: "issuer" });
-  const s = steps.find((x) => x.type === "CONVERT_ASSETS")!;
+  const s = steps.find((x) => x.type === "HANDLE_ASSETS")!;
   expect(s.title).toBe("Return BURN to issuer");
   expect(s.description).toBe("Send 25.0000000 BURN back to its issuer. You give up these tokens.");
 });
@@ -1744,7 +1744,7 @@ test("buildPlan › transfer disposition → step names the destination it pays"
       [asset]: dest,
     }
   );
-  const s = steps.find((x) => x.type === "CONVERT_ASSETS")!;
+  const s = steps.find((x) => x.type === "HANDLE_ASSETS")!;
   expect(s.title).toBe(`Send KEEP to ${dest.slice(0, 4)}…${dest.slice(-4)}`);
   expect(s.description).toBe(
     `Send 40.0000000 KEEP to ${dest.slice(0, 4)}…${dest.slice(-4)}, which already holds the trustline.`
@@ -1757,7 +1757,7 @@ test("buildPlan › transfer chosen but no destination resolved yet → no inven
   const asset = `KEEP:${ISSUER}`;
   const account = makeAccount({ trustlines: [makeTrustline("KEEP", "40.0000000")] });
   const { steps } = buildPlan(account, false, false, {}, undefined, { [asset]: "transfer" });
-  const s = steps.find((x) => x.type === "CONVERT_ASSETS")!;
+  const s = steps.find((x) => x.type === "HANDLE_ASSETS")!;
   expect(s.title).toBe("Send KEEP to another account");
   expect(s.description).toBe(
     "Send 40.0000000 KEEP to another account that already holds the trustline."
@@ -1768,7 +1768,7 @@ test("buildPlan › explicit convert disposition keeps the conversion wording", 
   const asset = `USDC:${ISSUER}`;
   const account = makeAccount({ trustlines: [makeTrustline("USDC", "5.0000000")] });
   const { steps } = buildPlan(account, false, false, {}, undefined, { [asset]: "convert" });
-  const s = steps.find((x) => x.type === "CONVERT_ASSETS")!;
+  const s = steps.find((x) => x.type === "HANDLE_ASSETS")!;
   expect(s.title).toBe("Convert USDC to XLM");
   expect(s.description).toBe("Exchange 5.0000000 USDC for XLM via the Stellar DEX.");
 });
@@ -1778,7 +1778,7 @@ test("buildPlan › no disposition given → unchanged convert wording", () => {
   // decided on yet, keeps the conversion default the app already offers.
   const account = makeAccount({ trustlines: [makeTrustline("USDC", "5.0000000")] });
   const { steps } = buildPlan(account, false);
-  const s = steps.find((x) => x.type === "CONVERT_ASSETS")!;
+  const s = steps.find((x) => x.type === "HANDLE_ASSETS")!;
   expect(s.title).toBe("Convert USDC to XLM");
 });
 
@@ -1806,7 +1806,7 @@ test("buildPlan › three assets, three dispositions → three distinct labels",
     },
     { [`KEEP:${ISSUER}`]: dest }
   );
-  const titles = steps.filter((s) => s.type === "CONVERT_ASSETS").map((s) => s.title);
+  const titles = steps.filter((s) => s.type === "HANDLE_ASSETS").map((s) => s.title);
   expect(titles).toEqual([
     "Convert USDC to XLM",
     `Send KEEP to ${dest.slice(0, 4)}…${dest.slice(-4)}`,

@@ -23,7 +23,7 @@ type GroupType =
   | "REMOVE_DATA_ENTRIES"
   | "CANCEL_OFFERS"
   | "CLAIM_BALANCES"
-  | "CONVERT_ASSETS"
+  | "HANDLE_ASSETS"
   | "REMOVE_TRUSTLINES"
   | "MERGE";
 
@@ -176,24 +176,24 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
     }
 
     // Assets group: per-asset disposition (swapped to XLM vs returned to issuer). Prefer the
-    // store's recorded dispositions; fall back to the CONVERT_ASSETS steps' fallbackToIssuer
+    // store's recorded dispositions; fall back to the HANDLE_ASSETS steps' fallbackToIssuer
     // flag when dispositions are empty (e.g. a recovered stepwise run).
     const assetsWithBalance: Trustline[] = account.trustlines.filter(
       (tl) => parseFloat(tl.balance) > 0
     );
-    const convertSteps = confirmedSteps.filter((s) => s.type === "CONVERT_ASSETS");
+    const assetSteps = confirmedSteps.filter((s) => s.type === "HANDLE_ASSETS");
 
     function dispositionFor(tl: Trustline): AssetDisposition | null {
       const recorded = assetDispositions[tl.asset];
       if (recorded) return recorded;
-      const step = convertSteps.find((s) => s.affectedAsset === tl.asset);
+      const step = assetSteps.find((s) => s.affectedAsset === tl.asset);
       if (step) return step.fallbackToIssuer ? "issuer" : "convert";
       return null;
     }
 
     if (assetsWithBalance.length > 0) {
       groups.push({
-        type: "CONVERT_ASSETS",
+        type: "HANDLE_ASSETS",
         title: "Assets handled",
         summary: `${assetsWithBalance.length} asset${assetsWithBalance.length === 1 ? "" : "s"} with a balance`,
         body: (
