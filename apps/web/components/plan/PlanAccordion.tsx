@@ -34,7 +34,7 @@ type GroupType =
   | "REMOVE_DATA_ENTRIES"
   | "CANCEL_OFFERS"
   | "CLAIM_BALANCES"
-  | "CONVERT_ASSETS"
+  | "HANDLE_ASSETS"
   | "REMOVE_TRUSTLINES"
   | "MERGE";
 
@@ -63,7 +63,7 @@ export default function PlanAccordion({
   destinationAddress,
   mediatorRequired,
 }: PlanAccordionProps) {
-  const [open, setOpen] = useState<GroupType | null>("CONVERT_ASSETS");
+  const [open, setOpen] = useState<GroupType | null>("HANDLE_ASSETS");
 
   const groups: Group[] = [];
 
@@ -173,7 +173,7 @@ export default function PlanAccordion({
 
   if (conversions.length > 0) {
     groups.push({
-      type: "CONVERT_ASSETS",
+      type: "HANDLE_ASSETS",
       title: "Handle assets",
       summary: `${conversions.length} asset${conversions.length === 1 ? "" : "s"} with a balance`,
       body: (

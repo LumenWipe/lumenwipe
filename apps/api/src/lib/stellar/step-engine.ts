@@ -170,7 +170,7 @@ export async function buildStepXdrForPlan(
       return buildClaimBalancesTx(sdkAccount, existing, network);
     }
 
-    case "CONVERT_ASSETS": {
+    case "HANDLE_ASSETS": {
       const tl = trustlines.find((t) => t.asset === step.affectedAsset);
       if (!tl) throw new Error(`Trustline not found: ${step.affectedAsset}`);
       const liveBalance = await fetchLiveTrustlineBalance(tl, sourceAddress, server);

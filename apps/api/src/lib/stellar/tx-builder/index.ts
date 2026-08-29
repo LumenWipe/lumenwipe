@@ -1,11 +1,14 @@
 import type {
   AccountState,
+  AssetDisposition,
   ClaimableBalanceSelection,
   PlannedStep,
   StepType,
   BuildPlanResult,
   PlanBlocker,
   SponsoredEntry,
+  TransferDestinations,
+  Trustline,
 } from "@lumenwipe/types";
 import type { SponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
 import { estimateFeeLumens } from "@/lib/utils/amounts";
@@ -13,7 +16,7 @@ import { batchItems } from "./batching";
 import { OP_BATCH_LIMIT } from "@/config/constants";
 
 function shortAddr(addr: string): string {
-  return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
+  return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
 }
 
 function describeSponsoredEntry(entry: SponsoredEntry): string {
@@ -31,6 +34,47 @@ function describeSponsoredEntry(entry: SponsoredEntry): string {
     case "claimable_balance":
       return "a claimable balance";
   }
+}
+
+/**
+ * What the plan tells the user this asset's step will do.
+ *
+ * The plan is the informed-consent surface: it is the last thing the user reads before signing
+ * an irreversible close, so a step must describe the disposition actually chosen rather than the
+ * one that happens to be the default. An asset with no disposition yet - a caller that predates
+ * them, or a decision the user has not made - keeps the conversion wording the app offers by
+ * default.
+ */
+function assetStepLabels(
+  tl: Trustline,
+  disposition: AssetDisposition | undefined,
+  destination: string | undefined
+): { title: string; description: string } {
+  if (disposition === "issuer") {
+    return {
+      title: `Return ${tl.code} to issuer`,
+      description: `Send ${tl.balance} ${tl.code} back to its issuer. You give up these tokens.`,
+    };
+  }
+  if (disposition === "transfer") {
+    // A transfer answer that carries no usable destination is bounced back to the caller as a
+    // pending decision, so this only renders mid-decision - but naming no account is still the
+    // only honest thing to say here, and it beats interpolating `undefined` into the copy.
+    if (destination === undefined) {
+      return {
+        title: `Send ${tl.code} to another account`,
+        description: `Send ${tl.balance} ${tl.code} to another account that already holds the trustline.`,
+      };
+    }
+    return {
+      title: `Send ${tl.code} to ${shortAddr(destination)}`,
+      description: `Send ${tl.balance} ${tl.code} to ${shortAddr(destination)}, which already holds the trustline.`,
+    };
+  }
+  return {
+    title: `Convert ${tl.code} to XLM`,
+    description: `Exchange ${tl.balance} ${tl.code} for XLM via the Stellar DEX.`,
+  };
 }
 
 function step(
@@ -71,7 +115,12 @@ export function buildPlan(
   sponsorshipAffordability: SponsorshipAffordability = {
     revocable: [],
     unaffordableOwners: new Map(),
-  }
+  },
+  /** The user's per-asset choice, keyed by the canonical `CODE:ISSUER` asset string. Only the
+   *  step's wording depends on it - which assets need a step at all does not. */
+  dispositions: Record<string, AssetDisposition> = {},
+  /** Where each `transfer` disposition pays, keyed the same way. */
+  transferDestinations: TransferDestinations = {}
 ): BuildPlanResult {
   const steps: PlannedStep[] = [];
   const blockers: PlanBlocker[] = [];
@@ -469,7 +518,7 @@ export function buildPlan(
     }
   }
 
-  // CONVERT_ASSETS: include trustlines with a current balance OR whose asset appears
+  // HANDLE_ASSETS: include trustlines with a current balance OR whose asset appears
   // in a claimable balance that will be claimed above - claiming runs first and increases
   // the live trustline balance, which the executor reads on-chain at step build time.
   const claimableNonXlmByAsset = new Map<string, number>();
@@ -477,7 +526,7 @@ export function buildPlan(
     // Stryker disable next-line ConditionalExpression,StringLiteral: a Trustline's `asset` is
     // never the string "native" (native XLM is never represented as a trustline - it's the
     // account's own base balance), so a key of "native" wrongly added here could never be
-    // looked up by `trustlinesNeedingConversion`'s `claimableNonXlmByAsset.get(tl.asset)` below.
+    // looked up by `trustlinesNeedingAction`'s `claimableNonXlmByAsset.get(tl.asset)` below.
     // Unobservable given that domain invariant.
     if (b.asset !== "native") {
       claimableNonXlmByAsset.set(
@@ -487,23 +536,19 @@ export function buildPlan(
     }
   }
 
-  const trustlinesNeedingConversion = trustlines.filter(
+  const trustlinesNeedingAction = trustlines.filter(
     (tl) =>
       tl.authorized &&
       (parseFloat(tl.balance) > 0 || (claimableNonXlmByAsset.get(tl.asset) ?? 0) > 0)
   );
 
-  for (const tl of trustlinesNeedingConversion) {
-    steps.push(
-      step(
-        idx++,
-        "CONVERT_ASSETS",
-        `Convert ${tl.code} to XLM`,
-        `Exchange ${tl.balance} ${tl.code} for XLM via the Stellar DEX.`,
-        1,
-        { affectedAsset: tl.asset }
-      )
+  for (const tl of trustlinesNeedingAction) {
+    const { title, description } = assetStepLabels(
+      tl,
+      dispositions[tl.asset],
+      transferDestinations[tl.asset]
     );
+    steps.push(step(idx++, "HANDLE_ASSETS", title, description, 1, { affectedAsset: tl.asset }));
   }
 
   // Stryker disable next-line EqualityOperator,ConditionalExpression: batchItems([], N) always

@@ -119,7 +119,7 @@ export function assembleFusedCloseOpsTagged(
   // instead of silently taking whichever branch happened to be the fallback. The previous
   // `convert ? ... : issuer` shape would have burned a transferred balance.
   for (const a of input.assetActions) {
-    push("CONVERT_ASSETS", [assetActionOp(masterKey, a)]);
+    push("HANDLE_ASSETS", [assetActionOp(masterKey, a)]);
   }
   push("REMOVE_TRUSTLINES", trustlineRemovalOps(input.trustlines));
   if (input.includeMerge) push("MERGE", [mergeOp(input.destinationAddress)]);

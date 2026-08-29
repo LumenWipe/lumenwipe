@@ -5,7 +5,7 @@ export type StepType =
   | "CANCEL_OFFERS"
   | "ADD_TRUSTLINE_FOR_CLAIM"
   | "CLAIM_BALANCES"
-  | "CONVERT_ASSETS"
+  | "HANDLE_ASSETS"
   | "REMOVE_TRUSTLINES"
   | "CLOSE_ACCOUNT"
   | "MERGE";
@@ -48,7 +48,7 @@ export interface PlannedStep {
   txHash: string | null;
   error: string | null;
   // Metadata for display
-  affectedAsset?: string; // for CONVERT_ASSETS steps
+  affectedAsset?: string; // for HANDLE_ASSETS steps
   // Set when no DEX path exists and the user confirms sending to issuer instead
   fallbackToIssuer?: boolean;
 }

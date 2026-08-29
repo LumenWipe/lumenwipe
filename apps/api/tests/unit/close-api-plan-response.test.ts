@@ -62,15 +62,11 @@ test("computePlanHash ignores decision ordering", () => {
 });
 
 test("toExecutionBreakdown collapses a fused-eligible plan into one transaction", () => {
-  const steps = [step(0, "CONVERT_ASSETS"), step(1, "REMOVE_TRUSTLINES"), step(2, "MERGE")];
+  const steps = [step(0, "HANDLE_ASSETS"), step(1, "REMOVE_TRUSTLINES"), step(2, "MERGE")];
   const breakdown = toExecutionBreakdown(steps);
   expect(breakdown.estimatedTransactionCount).toBe(1);
   expect(breakdown.transactions).toHaveLength(1);
-  expect(breakdown.transactions[0].covers).toEqual([
-    "CONVERT_ASSETS",
-    "REMOVE_TRUSTLINES",
-    "MERGE",
-  ]);
+  expect(breakdown.transactions[0].covers).toEqual(["HANDLE_ASSETS", "REMOVE_TRUSTLINES", "MERGE"]);
 });
 
 test("toExecutionBreakdown reports zero transactions for an empty plan", () => {

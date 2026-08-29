@@ -42,7 +42,7 @@ const RESULT_CODE_MESSAGES: Record<string, string> = {
     "The destination account already exists (AccountMerge cannot merge into itself).",
   op_not_authorized: "This account does not have authorization to perform this merge.",
 
-  // ── PathPaymentStrictSend (CONVERT_ASSETS) ──────────────────────────────────
+  // ── PathPaymentStrictSend (HANDLE_ASSETS) ───────────────────────────────────
   path_payment_strict_send_too_few_offers:
     "No conversion path found between these assets. The market may have no liquidity - try sending the balance back to the issuer instead.",
   path_payment_strict_send_under_dest_min:

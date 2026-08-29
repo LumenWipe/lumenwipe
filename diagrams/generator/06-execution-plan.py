@@ -63,11 +63,11 @@ step(g, "s6", "Step 6", "Exit DeFi Protocols",
      "Health factor checked ≥ 1.0 before any collateral withdrawal",
      fillcolor=F_EXTERNAL, color=B_EXTERNAL)
 
-step(g, "s7", "Step 7", "Convert Assets to XLM",
-     "PathPaymentStrictSend (classic)  or  InvokeHostFunction swap (Soroban)",
-     "Soroswap API: primary - routes across Soroban + classic, builds XDR, client verifies before signing\n"
-     "SDEX strict-send path: fallback for pure-classic assets  ·  min_received = quote × (1 − slippage)\n"
-     "No route -> user confirms explicit return-to-issuer  ·  never a silent default",
+step(g, "s7", "Step 7", "Handle Assets",
+     "Per asset: PathPaymentStrictSend / swap  ·  Payment to a trustline holder  ·  Payment to the issuer",
+     "Three peer dispositions, chosen per asset: convert to XLM, transfer intact, or return to the issuer\n"
+     "Soroswap API primary (Soroban + classic, client verifies XDR)  ·  SDEX strict-send fallback\n"
+     "min_received = quote × (1 − slippage)  ·  no route -> the user resolves it, never a silent default",
      fillcolor=F_DECISION, color=B_DECISION)
 
 step(g, "s8", "Step 8", "Remove Trustlines",

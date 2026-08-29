@@ -352,7 +352,7 @@ export function estimateCustomDuration(config: PlaygroundCustomConfig): number {
   if (config.addSigner) demolishSteps += 1;
   if (config.dataEntryCount > 0) demolishSteps += 1;
   if (config.offerCount > 0) demolishSteps += 1;
-  demolishSteps += config.trustlineCount; // CONVERT_ASSETS per trustline
+  demolishSteps += config.trustlineCount; // HANDLE_ASSETS per trustline
   demolishSteps += 1; // REMOVE_TRUSTLINES
 
   return messSteps * MESS_S + demolishSteps * DEMOLISH_S;
