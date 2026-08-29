@@ -142,12 +142,25 @@ export class CloseController {
         decisions,
         accountState.claimableBalances.map((b) => b.id)
       );
+      const planAssetsById = accountState.trustlines.map((tl) => ({
+        id: assetDecisionId(tl.asset),
+        asset: tl.asset,
+      }));
+      // A transfer answer is well-formed whether or not it names a usable account, so both halves
+      // are taken here. The destinations that resolved describe the plan's asset steps and feed
+      // the live-ledger check below; the ones that did not go back on the pending list.
+      const { destinations: planDestinations, missing: missingDestinations } =
+        collectTransferDestinations(decisions, planAssetsById);
+      const planDispositions = resolveDispositions(decisions, planAssetsById);
+
       const buildResult = buildPlan(
         accountState,
         mediatorRequired,
         false,
         claimableBalanceSelections,
-        sponsorshipAffordability
+        sponsorshipAffordability,
+        planDispositions,
+        planDestinations
       );
       const decisionPoints = [
         ...deriveDestinationDecisionPoints(destination),
@@ -168,16 +181,10 @@ export class CloseController {
 
       // Same reasoning as the acknowledgement above, one step further out: a transfer answer is
       // well-formed whether or not it names a usable account, so it counts as answered and the
-      // plan would report "ready" for a close /transactions then refuses. Both halves are
-      // surfaced here instead - while the caller can still change the answer, and while nothing
-      // has been built or signed.
-      const planAssetsById = accountState.trustlines.map((tl) => ({
-        id: assetDecisionId(tl.asset),
-        asset: tl.asset,
-      }));
-      const { destinations: planDestinations, missing: missingDestinations } =
-        collectTransferDestinations(decisions, planAssetsById);
-
+      // plan would report "ready" for a close /transactions then refuses. `missingDestinations`
+      // (collected above, before the plan was built) is surfaced here instead - while the caller
+      // can still change the answer, and while nothing has been built or signed.
+      //
       // An answer with no usable destination is unanswered in the only sense that matters, so it
       // goes back on the pending list rather than being swallowed. The previous version relied on
       // it already being pending, which it never was: `pending` is keyed on the answer's id, and

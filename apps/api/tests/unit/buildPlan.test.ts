@@ -1710,3 +1710,106 @@ test("buildPlan › 101 claimable balances → 2 CLAIM_BALANCES batches, titled 
     "Claim 1 claimable balance and add the proceeds to this account."
   );
 });
+
+// ─── Per-asset dispositions drive the step labels ────────────────────────────
+//
+// Regression for the review page announcing "Convert X to XLM" for every asset with a balance,
+// whatever the user actually chose. The plan is the app's informed-consent surface - the last
+// screen before an irreversible close is signed - so a step that says "convert" while the
+// transaction returns the balance to its issuer, or pays it to a third account, is telling the
+// user something untrue at the moment they approve it. buildPlan never received the
+// dispositions at all, so it could not have labelled them correctly.
+
+test("buildPlan › issuer disposition → step says return to issuer, not convert", () => {
+  const asset = `BURN:${ISSUER}`;
+  const account = makeAccount({ trustlines: [makeTrustline("BURN", "25.0000000")] });
+  const { steps } = buildPlan(account, false, false, {}, undefined, { [asset]: "issuer" });
+  const s = steps.find((x) => x.type === "CONVERT_ASSETS")!;
+  expect(s.title).toBe("Return BURN to issuer");
+  expect(s.description).toBe("Send 25.0000000 BURN back to its issuer. You give up these tokens.");
+});
+
+test("buildPlan › transfer disposition → step names the destination it pays", () => {
+  const asset = `KEEP:${ISSUER}`;
+  const dest = Keypair.random().publicKey();
+  const account = makeAccount({ trustlines: [makeTrustline("KEEP", "40.0000000")] });
+  const { steps } = buildPlan(
+    account,
+    false,
+    false,
+    {},
+    undefined,
+    { [asset]: "transfer" },
+    {
+      [asset]: dest,
+    }
+  );
+  const s = steps.find((x) => x.type === "CONVERT_ASSETS")!;
+  expect(s.title).toBe(`Send KEEP to ${dest.slice(0, 4)}…${dest.slice(-4)}`);
+  expect(s.description).toBe(
+    `Send 40.0000000 KEEP to ${dest.slice(0, 4)}…${dest.slice(-4)}, which already holds the trustline.`
+  );
+});
+
+test("buildPlan › transfer chosen but no destination resolved yet → no invented address", () => {
+  // The controller pushes such an asset back onto the pending list, so this state is only ever
+  // seen mid-decision. It must still not claim a conversion, and must not render "undefined".
+  const asset = `KEEP:${ISSUER}`;
+  const account = makeAccount({ trustlines: [makeTrustline("KEEP", "40.0000000")] });
+  const { steps } = buildPlan(account, false, false, {}, undefined, { [asset]: "transfer" });
+  const s = steps.find((x) => x.type === "CONVERT_ASSETS")!;
+  expect(s.title).toBe("Send KEEP to another account");
+  expect(s.description).toBe(
+    "Send 40.0000000 KEEP to another account that already holds the trustline."
+  );
+});
+
+test("buildPlan › explicit convert disposition keeps the conversion wording", () => {
+  const asset = `USDC:${ISSUER}`;
+  const account = makeAccount({ trustlines: [makeTrustline("USDC", "5.0000000")] });
+  const { steps } = buildPlan(account, false, false, {}, undefined, { [asset]: "convert" });
+  const s = steps.find((x) => x.type === "CONVERT_ASSETS")!;
+  expect(s.title).toBe("Convert USDC to XLM");
+  expect(s.description).toBe("Exchange 5.0000000 USDC for XLM via the Stellar DEX.");
+});
+
+test("buildPlan › no disposition given → unchanged convert wording", () => {
+  // Back-compat: every caller that predates dispositions, and every asset the user has not
+  // decided on yet, keeps the conversion default the app already offers.
+  const account = makeAccount({ trustlines: [makeTrustline("USDC", "5.0000000")] });
+  const { steps } = buildPlan(account, false);
+  const s = steps.find((x) => x.type === "CONVERT_ASSETS")!;
+  expect(s.title).toBe("Convert USDC to XLM");
+});
+
+test("buildPlan › three assets, three dispositions → three distinct labels", () => {
+  // The whole point of the per-asset deliverable: one close, three different outcomes. A single
+  // asset test cannot catch a label derived from the wrong asset's disposition.
+  const dest = Keypair.random().publicKey();
+  const account = makeAccount({
+    trustlines: [
+      makeTrustline("USDC", "5.0000000"),
+      makeTrustline("KEEP", "40.0000000"),
+      makeTrustline("BURN", "25.0000000"),
+    ],
+  });
+  const { steps } = buildPlan(
+    account,
+    false,
+    false,
+    {},
+    undefined,
+    {
+      [`USDC:${ISSUER}`]: "convert",
+      [`KEEP:${ISSUER}`]: "transfer",
+      [`BURN:${ISSUER}`]: "issuer",
+    },
+    { [`KEEP:${ISSUER}`]: dest }
+  );
+  const titles = steps.filter((s) => s.type === "CONVERT_ASSETS").map((s) => s.title);
+  expect(titles).toEqual([
+    "Convert USDC to XLM",
+    `Send KEEP to ${dest.slice(0, 4)}…${dest.slice(-4)}`,
+    "Return BURN to issuer",
+  ]);
+});
