@@ -1,4 +1,5 @@
 import type { PlannedStep, StepType } from "@/types/plan";
+import { STEP_GROUP_LABELS } from "@/lib/plan/group-steps";
 
 /** One real on-chain transaction and the plan steps it carried out. */
 export interface TxEntry {
@@ -32,4 +33,26 @@ export function buildTxLedger(confirmedSteps: PlannedStep[]): TxEntry[] {
   }
 
   return order.map((hash) => byHash.get(hash)!);
+}
+
+/**
+ * One line naming what a transaction did, for the ledger row.
+ *
+ * The phases it carried out, not its steps' titles. Joining the titles put a recap of the
+ * "what was done" groups - which sit directly above this row - into a single truncating line,
+ * and the per-asset dispositions made it unreadable ("Return BURN to issuer + Send KEEP to
+ * GAWIWBZJ…TSY2VKTZ + Convert US…"). The row exists to identify a transaction and link it, so
+ * it borrows the group vocabulary the reader has already seen rather than restating the detail.
+ *
+ * Deduped by type in first-occurrence order: a phase split across batches is still one phase.
+ */
+export function labelForTx(entry: TxEntry): string {
+  const seen = new Set<StepType>();
+  const phases: string[] = [];
+  for (const type of entry.stepTypes) {
+    if (seen.has(type)) continue;
+    seen.add(type);
+    phases.push(STEP_GROUP_LABELS[type]);
+  }
+  return phases.join(" · ");
 }
