@@ -12,7 +12,7 @@ import { cleanupSession } from "@/lib/session/recovery";
 import { saveHistory } from "@/lib/session/history";
 import { formatXlm } from "@/lib/utils/amounts";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
-import { buildTxLedger } from "@/lib/utils/txLedger";
+import { buildTxLedger, labelForTx } from "@/lib/utils/txLedger";
 
 interface CompletionReceiptProps {
   network: Network;
@@ -321,8 +321,11 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
                 <span className="flex min-w-0 items-center gap-2.5">
                   <Link2 className="h-4 w-4 shrink-0 text-stellar/70" />
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium text-white/85">
-                      {tx.stepTitles.join(" + ")}
+                    <span
+                      className="block truncate text-sm font-medium text-white/85"
+                      title={tx.stepTitles.join(" · ")}
+                    >
+                      {labelForTx(tx)}
                     </span>
                     <span className="block font-mono-address text-xs text-white/40">
                       {shortHash(tx.txHash)}
