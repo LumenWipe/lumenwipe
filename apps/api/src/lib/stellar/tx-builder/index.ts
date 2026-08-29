@@ -16,7 +16,7 @@ import { batchItems } from "./batching";
 import { OP_BATCH_LIMIT } from "@/config/constants";
 
 function shortAddr(addr: string): string {
-  return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
+  return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
 }
 
 function describeSponsoredEntry(entry: SponsoredEntry): string {

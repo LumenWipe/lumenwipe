@@ -922,7 +922,7 @@ test("buildPlan › unaffordable-owner blocker names the entry kind and shortens
   );
   const b = blockers.find((x) => x.code === "sponsorship_unaffordable")!;
   expect(b.message).toBe(
-    `Revoking sponsorship of an account creation on ${owner.slice(0, 4)}…${owner.slice(-4)} would ` +
+    `Revoking sponsorship of an account creation on ${owner.slice(0, 8)}…${owner.slice(-8)} would ` +
       `leave that account below its minimum balance - it needs 1.5000000 more XLM first.`
   );
 });
@@ -1745,9 +1745,9 @@ test("buildPlan › transfer disposition → step names the destination it pays"
     }
   );
   const s = steps.find((x) => x.type === "HANDLE_ASSETS")!;
-  expect(s.title).toBe(`Send KEEP to ${dest.slice(0, 4)}…${dest.slice(-4)}`);
+  expect(s.title).toBe(`Send KEEP to ${dest.slice(0, 8)}…${dest.slice(-8)}`);
   expect(s.description).toBe(
-    `Send 40.0000000 KEEP to ${dest.slice(0, 4)}…${dest.slice(-4)}, which already holds the trustline.`
+    `Send 40.0000000 KEEP to ${dest.slice(0, 8)}…${dest.slice(-8)}, which already holds the trustline.`
   );
 });
 
@@ -1809,7 +1809,7 @@ test("buildPlan › three assets, three dispositions → three distinct labels",
   const titles = steps.filter((s) => s.type === "HANDLE_ASSETS").map((s) => s.title);
   expect(titles).toEqual([
     "Convert USDC to XLM",
-    `Send KEEP to ${dest.slice(0, 4)}…${dest.slice(-4)}`,
+    `Send KEEP to ${dest.slice(0, 8)}…${dest.slice(-8)}`,
     "Return BURN to issuer",
   ]);
 });
