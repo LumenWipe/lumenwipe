@@ -44,7 +44,6 @@ jobs:
           # exchange/mediator flow requires a server-side mediator key and is exercised
           # manually, so nothing here signs on behalf of an operator-held account.
           NEXT_PUBLIC_STELLAR_RPC_TESTNET: https://soroban-testnet.stellar.org
-          NEXT_PUBLIC_HORIZON_TESTNET: https://horizon-testnet.stellar.org
           NEXT_PUBLIC_PATH_ROUTING_API_TESTNET: https://horizon-testnet.stellar.org
           # API_KEYS is a label=key map, so the key the API accepts is everything after the
           # first `=`. Both sides must therefore carry the same string, not the same shape.
