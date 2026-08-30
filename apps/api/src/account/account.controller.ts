@@ -11,7 +11,7 @@ import { isValidNetwork } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { getAccountState } from "@/lib/stellar/account-state";
 import { fetchConversionPath } from "@/lib/stellar/path-finding";
-import { AccountNotFoundError } from "@/lib/utils/errors";
+import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils/errors";
 import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 import { fail } from "@/common/fail";
 
@@ -52,6 +52,14 @@ export class AccountController {
       // invariant.
       if (err instanceof TruncatedCollectionError) {
         fail("account_too_large", err.message, 422);
+      }
+      // Same reasoning, pointed at the operator rather than the account holder: the configured
+      // provider answered with a body no plan can be built from, and the message names the
+      // fields it omitted. 502 because the fault is upstream of us, not in the request - and
+      // whoever wired that provider in can act on it, which "Failed to fetch account data"
+      // gives them no way to do.
+      if (err instanceof UnusableProviderResponseError) {
+        fail("provider_response_unusable", err.message, 502);
       }
       this.logger.error("account fetch failed", err instanceof Error ? err.stack : String(err));
       fail("account_read_failed", "Failed to fetch account data", 500);

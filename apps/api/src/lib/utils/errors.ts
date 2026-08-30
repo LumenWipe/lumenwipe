@@ -252,6 +252,26 @@ export class AccountNotFoundError extends Error {
   }
 }
 
+/**
+ * The configured account-state provider answered, but with a body no plan can be built from.
+ *
+ * Typed rather than anonymous so the API boundary can tell it apart from an unexpected fault:
+ * it is an actionable misconfiguration, and its message already says which fields are missing
+ * and why they matter. Collapsed into a generic 500 it reaches the operator as "Failed to
+ * fetch account data", which is the outcome the account controller's own comment argues
+ * against for the truncation case.
+ */
+export class UnusableProviderResponseError extends Error {
+  constructor(address: string, missing: string[]) {
+    super(
+      `The configured account-state provider returned an unusable response for ${address}: ` +
+        `missing or malformed ${missing.join(", ")}. Closing an account requires proving the ` +
+        `enumeration is complete, which these fields carry.`
+    );
+    this.name = "UnusableProviderResponseError";
+  }
+}
+
 export class TxTimeoutError extends Error {
   constructor() {
     super("Transaction confirmation timed out. It is safe to retry.");

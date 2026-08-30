@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { readAccountStateFrom } from "@/lib/stellar/account-state";
+import { UnusableProviderResponseError } from "@/lib/utils/errors";
 
 // Every fixture below reports `num_sponsoring: 0`, which `enumerateSponsoredEntries` treats as
 // a complete answer and returns without any I/O of its own. That keeps these tests measuring
@@ -175,3 +176,24 @@ for (const [label, override] of LOAD_BEARING) {
     await expect(readAccountStateFrom(ADDRESS, "testnet", deps)).rejects.toThrow(/unusable/i);
   });
 }
+
+// The rejection has to be identifiable, not just descriptive. The account controller maps
+// AccountNotFoundError and TruncatedCollectionError to their own statuses and collapses
+// everything else into a generic 500 - so an anonymous Error here reaches the user as "Failed
+// to fetch account data", which is precisely the outcome the controller's own comment argues
+// against for the truncation case. A named type lets the boundary tell an actionable
+// misconfiguration apart from an unexpected fault.
+test("refuses with a typed error the API boundary can recognise", async () => {
+  const { deps } = stubProvider(accountBody({ subentry_count: undefined }));
+  await expect(readAccountStateFrom(ADDRESS, "testnet", deps)).rejects.toBeInstanceOf(
+    UnusableProviderResponseError
+  );
+});
+
+test("the rejection names every field that was missing, not just the first", async () => {
+  const { deps } = stubProvider(accountBody({ subentry_count: undefined, flags: undefined }));
+  const err = await readAccountStateFrom(ADDRESS, "testnet", deps).catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(UnusableProviderResponseError);
+  expect((err as Error).message).toContain("subentry_count");
+  expect((err as Error).message).toContain("flags.auth_immutable");
+});
