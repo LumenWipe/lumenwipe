@@ -15,15 +15,6 @@ export const PATH_ROUTING_API_URLS: Record<Network, string> = {
   testnet: process.env.NEXT_PUBLIC_PATH_ROUTING_API_TESTNET || "",
 };
 
-// Full Horizon endpoints. Horizon serves a single consistent view with no
-// indexing lag and submits classic transactions synchronously (it holds the
-// request until the tx is included), unlike the load-balanced Soroban RPC whose
-// nodes lag each other. The playground uses these for its classic txs.
-export const HORIZON_URLS: Record<Network, string> = {
-  mainnet: process.env.NEXT_PUBLIC_HORIZON_MAINNET || "https://horizon.stellar.org",
-  testnet: process.env.NEXT_PUBLIC_HORIZON_TESTNET || "https://horizon-testnet.stellar.org",
-};
-
 
 export const SE_EXPLORER_BASE: Record<Network, string> = {
   mainnet: "https://stellar.expert/explorer/public",
