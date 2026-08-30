@@ -52,6 +52,7 @@ import {
   AssetRouteLostError,
   TxTimeoutError,
   TxSubmitError,
+  UnusableProviderResponseError,
 } from "@/lib/utils/errors";
 import { BASE_FEE_STROOPS } from "@/config/constants";
 import { fail } from "@/common/fail";
@@ -230,6 +231,11 @@ export class CloseController {
       if (e instanceof AccountNotFoundError) fail("account_not_found", e.message, 404);
       // A property of the account, with a message that explains it - not a server fault.
       if (e instanceof TruncatedCollectionError) fail("account_too_large", e.message, 422);
+      // A misconfigured provider, with a message naming the fields it omitted - upstream of us
+      // rather than a fault in the request, and actionable by whoever wired it in.
+      if (e instanceof UnusableProviderResponseError) {
+        fail("provider_response_unusable", e.message, 502);
+      }
       this.logger.error("close/plan failed", e instanceof Error ? e.stack : String(e));
       fail("plan_failed", "Failed to build the close plan.", 500);
     }

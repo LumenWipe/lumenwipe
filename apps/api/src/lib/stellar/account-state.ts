@@ -1,5 +1,5 @@
 import { type Network, PATH_ROUTING_API_URLS } from "@/config/networks";
-import { AccountNotFoundError } from "@/lib/utils/errors";
+import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils/errors";
 import { fetchOffersFromAdapter, fetchClaimableBalancesForClaimant } from "./horizon-adapter";
 import { detectSubEntryMismatch } from "./scan-fallback";
 import { horizonAssetToString } from "@/lib/utils/assets";
@@ -115,11 +115,7 @@ function assertUsableAccountBody(account: ApiAccount, address: string): void {
   if (typeof account.sequence !== "string") missing.push("sequence");
 
   if (missing.length > 0) {
-    throw new Error(
-      `The configured account-state provider returned an unusable response for ${address}: ` +
-        `missing or malformed ${missing.join(", ")}. Closing an account requires proving the ` +
-        `enumeration is complete, which these fields carry.`
-    );
+    throw new UnusableProviderResponseError(address, missing);
   }
 }
 
