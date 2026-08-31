@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import {
+  claimAnswersKey,
   claimableSelectionsToDecisions,
   destinationAcknowledgementToDecisions,
   dispositionsToDecisions,
@@ -118,4 +119,39 @@ test("a transfer with no destination emits no destination, leaving the API to re
 test("convert and issuer are unchanged by the transfer support", () => {
   const answers = dispositionsToDecisions({ [ASSET]: "convert", [EURC]: "issuer" });
   expect(answers.map((a) => a.choice)).toEqual(["convert_to_xlm", "return_to_issuer"]);
+});
+
+// ─── The key that stopped the analyze page retriggering itself ──────────────
+
+test("claimAnswersKey › a rebuilt object with the same answers keys the same", () => {
+  // The exact shape that caused the loop: the store hands back a fresh object on every account
+  // read. Same answers must mean the same key, or the fetch that produced it runs again.
+  const a = { cb1: "claim" as const, cb2: "forfeit" as const };
+  const rebuilt = { ...a };
+
+  expect(rebuilt).not.toBe(a);
+  expect(claimAnswersKey(rebuilt)).toBe(claimAnswersKey(a));
+});
+
+test("claimAnswersKey › insertion order does not change the key", () => {
+  expect(claimAnswersKey({ cb2: "forfeit", cb1: "claim" })).toBe(
+    claimAnswersKey({ cb1: "claim", cb2: "forfeit" })
+  );
+});
+
+test("claimAnswersKey › a changed answer changes the key", () => {
+  const before = claimAnswersKey({ cb1: "forfeit" });
+  const after = claimAnswersKey({ cb1: "add_trustline_then_claim" });
+
+  expect(after).not.toBe(before);
+});
+
+test("claimAnswersKey › a new answer changes the key", () => {
+  expect(claimAnswersKey({ cb1: "claim", cb2: "forfeit" })).not.toBe(
+    claimAnswersKey({ cb1: "claim" })
+  );
+});
+
+test("claimAnswersKey › no answers is a stable empty key", () => {
+  expect(claimAnswersKey({})).toBe("");
 });
