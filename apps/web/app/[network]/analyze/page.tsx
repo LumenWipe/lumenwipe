@@ -9,7 +9,7 @@ import type { AccountState } from "@/types/account";
 import type { PlanBlocker } from "@/types/plan";
 import { useDemolishStore } from "@/store/demolish";
 import { fetchClosePlan } from "@/lib/api/close-client";
-import { claimableSelectionsToDecisions } from "@/lib/api/close-decisions";
+import { claimAnswersKey, claimableSelectionsToDecisions } from "@/lib/api/close-decisions";
 import { loadServedRegistry } from "@/lib/exchange-registry";
 import {
   decisionPointsToClaimableBalances,
@@ -45,6 +45,10 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
 
   const effectiveSource = source ?? sourceAddress;
   const hasLoadedOnce = useRef(false);
+
+  // Keyed on the answers' CONTENT, never their object identity - see claimAnswersKey for why a
+  // dependency on the object itself made this fetch retrigger in a loop.
+  const answersKey = claimAnswersKey(claimableBalanceSelections);
 
   const fetchData = useCallback(async () => {
     if (!effectiveSource) {
@@ -88,7 +92,9 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       const plan = await fetchClosePlan(
         {
           source: effectiveSource,
-          decisions: claimableSelectionsToDecisions(claimableBalanceSelections),
+          decisions: claimableSelectionsToDecisions(
+            useDemolishStore.getState().claimableBalanceSelections
+          ),
         },
         routeNetwork
       );
@@ -115,7 +121,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       setReplanning(false);
       hasLoadedOnce.current = true;
     }
-  }, [effectiveSource, routeNetwork, router, setAccountState, claimableBalanceSelections]);
+  }, [effectiveSource, routeNetwork, router, setAccountState, answersKey]);
 
   useEffect(() => {
     fetchData();

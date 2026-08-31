@@ -100,3 +100,19 @@ export function claimableSelectionsToDecisions(
     choice: selection,
   }));
 }
+
+/**
+ * A stable key for a set of claim answers, for use as a React dependency.
+ *
+ * Identity is not usable here: `setAccountState` rebuilds `claimableBalanceSelections` through
+ * `pruneClaimableSelections` on every account read, so the object is new even when no answer
+ * changed. A dependency on it made the analyze page's fetch retrigger itself - fetch ->
+ * setAccountState -> new reference -> new callback -> effect -> fetch - until the rate limiter
+ * stopped it. Sorted so key order cannot make two equal answer sets look different.
+ */
+export function claimAnswersKey(selections: Record<string, ClaimableBalanceSelection>): string {
+  return Object.entries(selections)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([id, choice]) => `${id}:${choice}`)
+    .join("|");
+}
