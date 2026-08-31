@@ -122,13 +122,35 @@ export class CloseController {
       const nonClaimableSponsoredEntries = accountState.sponsoredEntries.filter(
         (e) => e.kind !== "claimable_balance"
       );
-      const convertibilityPromise = Promise.all(
-        accountState.trustlines
+      // Priced together: what the account holds now, and what a claim the caller already chose
+      // will put in it. The second group has no trustline yet, so without this its decision
+      // would be derived as "no route exists" and default to returning the balance to its
+      // issuer - destroying, on a guess, funds the caller just asked to recover.
+      const claimableBalanceSelections = resolveClaimableBalanceSelections(
+        decisions,
+        accountState.claimableBalances.map((b) => b.id)
+      );
+      const trustedAssets = new Set(accountState.trustlines.map((tl) => tl.asset));
+      // Assets that exist only once a claim the caller already chose has run.
+      const assetsArrivingByClaim = accountState.claimableBalances
+        .filter(
+          (b) =>
+            claimableBalanceSelections[b.id] === "add_trustline_then_claim" &&
+            b.asset !== "native" &&
+            !trustedAssets.has(b.asset)
+        )
+        .map((b) => ({ asset: b.asset, amount: b.amount }));
+      const pricedAssets: Array<{ asset: string; amount: string }> = [
+        ...accountState.trustlines
           .filter((tl) => Number(tl.balance) > 0)
-          .map(async (tl) => {
-            const path = await fetchConversionPath(tl.asset, tl.balance, network).catch(() => null);
-            convertibility[tl.asset] = path !== null;
-          })
+          .map((tl) => ({ asset: tl.asset, amount: tl.balance })),
+        ...assetsArrivingByClaim,
+      ];
+      const convertibilityPromise = Promise.all(
+        pricedAssets.map(async ({ asset, amount }) => {
+          const path = await fetchConversionPath(asset, amount, network).catch(() => null);
+          convertibility[asset] = path !== null;
+        })
       );
       const sponsorshipAffordabilityPromise: Promise<SponsorshipAffordability> =
         accountState.sponsorshipEnumerationIncomplete
@@ -139,14 +161,13 @@ export class CloseController {
         sponsorshipAffordabilityPromise,
       ]);
 
-      const claimableBalanceSelections = resolveClaimableBalanceSelections(
-        decisions,
-        accountState.claimableBalances.map((b) => b.id)
-      );
-      const planAssetsById = accountState.trustlines.map((tl) => ({
-        id: assetDecisionId(tl.asset),
-        asset: tl.asset,
-      }));
+      // Arriving assets are addressed here too: without them their disposition never resolves,
+      // and the plan would label a balance the caller chose to return to its issuer as a
+      // conversion - the same untruth on the consent surface that #139 removed.
+      const planAssetsById = [
+        ...accountState.trustlines.map((tl) => tl.asset),
+        ...assetsArrivingByClaim.map((a) => a.asset),
+      ].map((asset) => ({ id: assetDecisionId(asset), asset }));
       // A transfer answer is well-formed whether or not it names a usable account, so both halves
       // are taken here. The destinations that resolved describe the plan's asset steps and feed
       // the live-ledger check below; the ones that did not go back on the pending list.
@@ -165,7 +186,7 @@ export class CloseController {
       );
       const decisionPoints = [
         ...deriveDestinationDecisionPoints(destination),
-        ...deriveDecisionPoints(accountState, convertibility),
+        ...deriveDecisionPoints(accountState, convertibility, claimableBalanceSelections),
         ...deriveClaimableBalanceDecisionPoints(accountState),
       ];
       const answeredIds = new Set(decisions.map((d) => d?.id));

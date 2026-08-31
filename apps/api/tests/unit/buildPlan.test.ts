@@ -1188,10 +1188,20 @@ test("buildPlan › a single ADD_TRUSTLINE_FOR_CLAIM batch has no batch suffix, 
 });
 
 test("buildPlan › ADD_TRUSTLINE_FOR_CLAIM step index is sequential with the steps around it", () => {
+  // This used to expect ADD_TRUSTLINE -> CLAIM -> MERGE, and so encoded the defect rather than
+  // catching it: that plan merges an account still holding the trustline it just opened and the
+  // balance it just claimed, which the network rejects. Handling the arriving asset and removing
+  // the line the plan itself added belong to the same close.
   const cb = makeClaimableBalance(`USDC:${ISSUER}`);
   const account = makeAccount({ claimableBalances: [cb] });
   const { steps } = buildPlan(account, false, false, { [cb.id]: "add_trustline_then_claim" });
-  expect(steps.map((s) => s.type)).toEqual(["ADD_TRUSTLINE_FOR_CLAIM", "CLAIM_BALANCES", "MERGE"]);
+  expect(steps.map((s) => s.type)).toEqual([
+    "ADD_TRUSTLINE_FOR_CLAIM",
+    "CLAIM_BALANCES",
+    "HANDLE_ASSETS",
+    "REMOVE_TRUSTLINES",
+    "MERGE",
+  ]);
   steps.forEach((s, i) => expect(s.index).toBe(i));
 });
 
@@ -1812,4 +1822,91 @@ test("buildPlan › three assets, three dispositions → three distinct labels",
     `Send KEEP to ${dest.slice(0, 8)}…${dest.slice(-8)}`,
     "Return BURN to issuer",
   ]);
+});
+
+// ─── A balance claimed through a new trustline is part of the plan ──────────
+//
+// The plan used to read "add trustline -> claim -> merge" for this shape: no handling of what
+// the claim brings in, and no removal of the trustline the plan itself just added. That is not
+// a close that could succeed - a merge fails while a trustline exists - so the review page was
+// describing something the network would reject, and the execution dead-ended a round later.
+
+function claimableWithId(id: string, asset: string, amount = "5.0000000"): ClaimableBalance {
+  return {
+    id,
+    asset,
+    amount,
+    claimants: [{ destination: MASTER, predicate: { type: "unconditional" } }],
+    sponsor: null,
+  };
+}
+
+test("buildPlan › a balance claimed via a new trustline gets a HANDLE_ASSETS step", () => {
+  const asset = `USDC:${ISSUER}`;
+  const account = makeAccount({ claimableBalances: [claimableWithId("cb1", asset)] });
+
+  const { steps } = buildPlan(account, false, false, { cb1: "add_trustline_then_claim" });
+
+  const handled = steps.filter((s) => s.type === "HANDLE_ASSETS");
+  expect(handled).toHaveLength(1);
+  expect(handled[0]!.affectedAsset).toBe(asset);
+});
+
+test("buildPlan › the trustline the plan adds is also removed by the plan", () => {
+  const asset = `USDC:${ISSUER}`;
+  const account = makeAccount({ claimableBalances: [claimableWithId("cb1", asset)] });
+
+  const { steps } = buildPlan(account, false, false, { cb1: "add_trustline_then_claim" });
+
+  const removal = steps.find((s) => s.type === "REMOVE_TRUSTLINES");
+  expect(removal).toBeDefined();
+  expect(removal!.operationCount).toBe(1);
+});
+
+test("buildPlan › claim runs before the asset it delivers is handled", () => {
+  const asset = `USDC:${ISSUER}`;
+  const account = makeAccount({ claimableBalances: [claimableWithId("cb1", asset)] });
+
+  const { steps } = buildPlan(account, false, false, { cb1: "add_trustline_then_claim" });
+  const order = (t: string) => steps.findIndex((s) => s.type === t);
+
+  expect(order("ADD_TRUSTLINE_FOR_CLAIM")).toBeLessThan(order("CLAIM_BALANCES"));
+  expect(order("CLAIM_BALANCES")).toBeLessThan(order("HANDLE_ASSETS"));
+  expect(order("HANDLE_ASSETS")).toBeLessThan(order("REMOVE_TRUSTLINES"));
+});
+
+test("buildPlan › a forfeited balance brings nothing in, so nothing is handled", () => {
+  const account = makeAccount({
+    claimableBalances: [claimableWithId("cb1", `USDC:${ISSUER}`)],
+  });
+
+  const { steps } = buildPlan(account, false, false, { cb1: "forfeit" });
+
+  expect(steps.some((s) => s.type === "HANDLE_ASSETS")).toBe(false);
+});
+
+test("buildPlan › three balances, three outcomes, in one plan", () => {
+  // The shape the recording exercises: one asset already trusted, one arriving through a new
+  // trustline, one given up. Only the first two produce work.
+  const trusted = `EURC:${ISSUER}`;
+  const arriving = `USDC:${ISSUER}`;
+  const account = makeAccount({
+    trustlines: [makeTrustline("EURC", "0")],
+    claimableBalances: [
+      claimableWithId("cb-trusted", trusted, "4.0000000"),
+      claimableWithId("cb-arriving", arriving, "5.0000000"),
+      claimableWithId("cb-given-up", `JUNK:${ISSUER}`, "9.0000000"),
+    ],
+  });
+
+  const { steps } = buildPlan(account, false, false, {
+    "cb-trusted": "claim",
+    "cb-arriving": "add_trustline_then_claim",
+    "cb-given-up": "forfeit",
+  });
+
+  const handled = steps.filter((s) => s.type === "HANDLE_ASSETS").map((s) => s.affectedAsset);
+  expect(handled).toContain(trusted);
+  expect(handled).toContain(arriving);
+  expect(handled).not.toContain(`JUNK:${ISSUER}`);
 });

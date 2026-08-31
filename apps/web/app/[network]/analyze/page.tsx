@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState, useCallback } from "react";
+import { use, useEffect, useRef, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, AlertTriangle, ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -9,6 +9,7 @@ import type { AccountState } from "@/types/account";
 import type { PlanBlocker } from "@/types/plan";
 import { useDemolishStore } from "@/store/demolish";
 import { fetchClosePlan } from "@/lib/api/close-client";
+import { claimableSelectionsToDecisions } from "@/lib/api/close-decisions";
 import { loadServedRegistry } from "@/lib/exchange-registry";
 import {
   decisionPointsToClaimableBalances,
@@ -27,7 +28,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
 
   const source = searchParams.get("source");
 
-  const { setAccountState, sourceAddress } = useDemolishStore();
+  const { setAccountState, sourceAddress, claimableBalanceSelections } = useDemolishStore();
 
   const [account, setAccount] = useState<AccountState | null>(null);
   const [conversions, setConversions] = useState<AssetConvertibility[]>([]);
@@ -36,9 +37,14 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   >([]);
   const [blockers, setBlockers] = useState<PlanBlocker[]>([]);
   const [loading, setLoading] = useState(true);
+  // Kept apart from `loading`, which swaps the whole page for a spinner. Answering a claim
+  // re-plans, and blanking the page under someone who just clicked a radio button loses their
+  // scroll position and reads as a crash. The panel's own refresh indicator is enough.
+  const [replanning, setReplanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const effectiveSource = source ?? sourceAddress;
+  const hasLoadedOnce = useRef(false);
 
   const fetchData = useCallback(async () => {
     if (!effectiveSource) {
@@ -46,7 +52,9 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       return;
     }
 
-    setLoading(true);
+    const firstLoad = !hasLoadedOnce.current;
+    if (firstLoad) setLoading(true);
+    else setReplanning(true);
     setError(null);
 
     try {
@@ -71,7 +79,19 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       // The API derives blockers and per-asset convertibility (via server-side path
       // finding) from a plan built with no destination yet. The final plan is requested
       // with the destination + decisions at the "Begin execution" step.
-      const plan = await fetchClosePlan({ source: effectiveSource }, routeNetwork);
+      //
+      // The claim answers go with it, and re-planning on a change is what makes the second
+      // decision reachable: choosing to add a trustline and claim puts an asset in the account
+      // that no trustline represents yet, and only the API knows whether it has a conversion
+      // route. Without this the caller was never asked what to do with it, and the close
+      // dead-ended a round after the claim had already run.
+      const plan = await fetchClosePlan(
+        {
+          source: effectiveSource,
+          decisions: claimableSelectionsToDecisions(claimableBalanceSelections),
+        },
+        routeNetwork
+      );
       setBlockers(
         plan.blockers.map((b) => ({ message: b.message, helpUrl: b.helpUrl, code: b.code }))
       );
@@ -92,8 +112,10 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       setError("Failed to analyze account. Please check your connection and try again.");
     } finally {
       setLoading(false);
+      setReplanning(false);
+      hasLoadedOnce.current = true;
     }
-  }, [effectiveSource, routeNetwork, router, setAccountState]);
+  }, [effectiveSource, routeNetwork, router, setAccountState, claimableBalanceSelections]);
 
   useEffect(() => {
     fetchData();
@@ -150,7 +172,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         blockers={blockers}
         network={routeNetwork}
         onRefresh={fetchData}
-        loading={loading}
+        loading={replanning}
       />
     </div>
   );
