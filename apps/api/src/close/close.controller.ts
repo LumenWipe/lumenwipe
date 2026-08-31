@@ -246,7 +246,15 @@ export class CloseController {
         freedReserveXlm: ((2 + accountState.numSubEntries) * 0.5).toFixed(7),
       };
 
-      return assemblePlanResponse({ buildResult, decisionPoints: pending, planHash, estimate });
+      // Every decision point goes back, answered or not - the caller renders its cards from
+      // this list and knows its own answers. Only the status cares about what remains.
+      return assemblePlanResponse({
+        buildResult,
+        decisionPoints,
+        pendingDecisionPoints: pending,
+        planHash,
+        estimate,
+      });
     } catch (e) {
       if (e instanceof HttpException) throw e;
       if (e instanceof AccountNotFoundError) fail("account_not_found", e.message, 404);
