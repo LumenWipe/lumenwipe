@@ -28,7 +28,7 @@ import AccountSummaryCard from "./AccountSummaryCard";
 import BlockersPanel from "./BlockersPanel";
 import PlanAccordion from "./PlanAccordion";
 import DestinationInput from "@/components/account-entry/DestinationInput";
-import { hardBlockersOf } from "@/lib/plan/resolvable-blockers";
+import { hardBlockersOf, proceedError } from "@/lib/plan/resolvable-blockers";
 import { assetsResolved } from "@/lib/plan/asset-resolution";
 
 interface PlanViewProps {
@@ -252,8 +252,13 @@ export default function PlanView({
       // address - stayed invisible until the user had ticked through the review gate and
       // pasted their secret key, where it surfaced as a bare 422. The exchange one is the
       // guard against permanent token loss.
-      if (plan.blockers.length > 0) {
-        setError(plan.blockers.map((b) => b.message).join(" "));
+      // Hard blockers only. An acknowledged forfeit arrives here as a blocker too
+      // (claimable_balance_forfeited, the audit trail of the user's own answer, already
+      // shown as a warning beside its card) - counting it stopped the close the moment
+      // anyone gave a balance up.
+      const proceedBlockersError = proceedError(plan.blockers);
+      if (proceedBlockersError !== null) {
+        setError(proceedBlockersError);
         return;
       }
 
