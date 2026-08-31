@@ -357,3 +357,83 @@ test("a later valid answer clears an earlier malformed one for the same asset", 
   expect(destinations).toEqual({ [`USDC:${ISSUER}`]: DESTINATION });
   expect(missing).toEqual([]);
 });
+
+// ─── Assets that arrive through a claim need a disposition too ──────────────
+//
+// Regression for a close that dead-ended mid-flight. Choosing "add a trustline and claim it"
+// for a balance the account holds no trustline for meant the asset existed nowhere in
+// `account.trustlines` at plan time, so no disposition decision was derived and the caller
+// never answered one. The claim round then created the trustline and filled it, and the very
+// next round refused with `needs_decisions` for an asset the caller was never asked about -
+// after the trustline had already been added and the balance claimed.
+//
+// The plan lied about it too: it showed "add trustline -> claim -> merge" with no conversion
+// and no trustline removal, which is not a close that could ever have succeeded.
+
+test("a balance being claimed via a new trustline gets its own asset_disposition decision", () => {
+  const asset = `USDC:${ISSUER}`;
+  const account = makeAccount({
+    claimableBalances: [makeClaimableBalance("cb1", asset, "5.0000000")],
+  });
+
+  const points = deriveDecisionPoints(
+    account,
+    { [asset]: true },
+    { cb1: "add_trustline_then_claim" }
+  );
+
+  const disposition = points.find((p) => p.type === "asset_disposition");
+  expect(disposition).toBeDefined();
+  expect(disposition!.subject).toMatchObject({ asset, balance: "5.0000000" });
+  expect(disposition!.default).toBe("convert_to_xlm");
+});
+
+test("an unresolved or forfeited balance produces no disposition decision", () => {
+  // Nothing arrives, so there is nothing to decide about. Only the remediation choice itself
+  // is pending, and that decision is derived elsewhere.
+  const asset = `USDC:${ISSUER}`;
+  const account = makeAccount({
+    claimableBalances: [makeClaimableBalance("cb1", asset, "5.0000000")],
+  });
+
+  expect(deriveDecisionPoints(account, { [asset]: true }, {})).toHaveLength(0);
+  expect(deriveDecisionPoints(account, { [asset]: true }, { cb1: "forfeit" })).toHaveLength(0);
+});
+
+test("a claimed asset with no route defaults to the issuer, like any other illiquid asset", () => {
+  const asset = `JUNK:${ISSUER}`;
+  const account = makeAccount({
+    claimableBalances: [makeClaimableBalance("cb1", asset, "3.0000000")],
+  });
+
+  const points = deriveDecisionPoints(
+    account,
+    { [asset]: false },
+    { cb1: "add_trustline_then_claim" }
+  );
+
+  expect(points[0]!.default).toBe("return_to_issuer");
+});
+
+test("an asset already trusted is not decided twice", () => {
+  // The trustline branch already covers it: claiming tops up a line that exists, and the
+  // caller has been answering for that asset all along.
+  const asset = `USDC:${ISSUER}`;
+  const account = makeAccount({
+    trustlines: [makeTrustline("USDC", "2.0000000")],
+    claimableBalances: [makeClaimableBalance("cb1", asset, "5.0000000")],
+  });
+
+  const points = deriveDecisionPoints(account, { [asset]: true }, { cb1: "claim" });
+
+  expect(points.filter((p) => p.type === "asset_disposition")).toHaveLength(1);
+});
+
+test("a native balance being claimed needs no disposition", () => {
+  // XLM is the thing everything converts *to*; there is no trustline and nothing to decide.
+  const account = makeAccount({
+    claimableBalances: [makeClaimableBalance("cb1", "native", "5.0000000")],
+  });
+
+  expect(deriveDecisionPoints(account, {}, { cb1: "add_trustline_then_claim" })).toHaveLength(0);
+});
