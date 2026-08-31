@@ -1910,3 +1910,33 @@ test("buildPlan › three balances, three outcomes, in one plan", () => {
   expect(handled).toContain(arriving);
   expect(handled).not.toContain(`JUNK:${ISSUER}`);
 });
+
+// ─── Review finding: several balances of one asset must not double the plan ──
+
+test("buildPlan › two remediated balances of one asset: one step, one removal, summed label", () => {
+  const asset = `USDC:${ISSUER}`;
+  const account = makeAccount({
+    claimableBalances: [
+      claimableWithId("cb1", asset, "5.0000000"),
+      claimableWithId("cb2", asset, "2.5000000"),
+    ],
+  });
+
+  const { steps } = buildPlan(account, false, false, {
+    cb1: "add_trustline_then_claim",
+    cb2: "add_trustline_then_claim",
+  });
+
+  const handled = steps.filter((s) => s.type === "HANDLE_ASSETS");
+  expect(handled).toHaveLength(1);
+  expect(handled[0]!.description).toContain("7.5000000");
+
+  // One line on the ledger, one removal - a second delete op fails on-chain and takes the
+  // whole close round with it.
+  const removal = steps.find((s) => s.type === "REMOVE_TRUSTLINES");
+  expect(removal!.operationCount).toBe(1);
+
+  // And the plan adds the trustline once, not once per balance.
+  const adds = steps.find((s) => s.type === "ADD_TRUSTLINE_FOR_CLAIM");
+  expect(adds!.operationCount).toBe(1);
+});

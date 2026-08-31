@@ -61,7 +61,11 @@ test("close API: plan -> transactions -> sign -> submit merges a fresh account",
   const plan = await planRes.json();
   expect(plan.status).toBe("ready");
   expect(plan.execution.estimatedTransactionCount).toBe(1);
-  expect(plan.decisionPoints).toHaveLength(0);
+  // The response carries every decision point, answered or not - callers render their cards
+  // from this list and know their own answers. "Ready" (above) is what says nothing is
+  // pending; the acknowledgement stays visible in the list it was answered from.
+  expect(plan.decisionPoints).toHaveLength(1);
+  expect(plan.decisionPoints[0].id).toBe(acknowledgement.id);
 
   // 2. Transactions: the build refuses an unacknowledged destination, and accepts it once
   //    answered - one unsigned fused close, with an intent that merges to the requested

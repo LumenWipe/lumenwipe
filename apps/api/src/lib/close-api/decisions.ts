@@ -90,6 +90,36 @@ export function isCurrentlyClaimable(
   return asset === "native" || authorizedTrustlineAssets.has(asset);
 }
 
+/**
+ * The non-native amounts the close will claim, summed per asset.
+ *
+ * The will-it-be-claimed rule is buildPlan's, restated: a currently-claimable balance is
+ * claimed unless explicitly forfeited, and one the account cannot claim yet is claimed only on
+ * an explicit `add_trustline_then_claim`. Everything downstream that reasons about "the balance
+ * this asset will hold after the claims run" - decision derivation, convertibility pricing, the
+ * transactions-endpoint gate - shares this so the layers cannot disagree about which assets
+ * exist.
+ */
+export function claimedAmountsPerAsset(
+  account: Pick<AccountState, "trustlines" | "claimableBalances">,
+  claimableBalanceSelections: Record<string, ClaimableBalanceSelection>
+): Map<string, number> {
+  const authorized = new Set(
+    account.trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset)
+  );
+  const perAsset = new Map<string, number>();
+  for (const b of account.claimableBalances) {
+    if (b.asset === "native") continue;
+    const selection = claimableBalanceSelections[b.id];
+    const willClaim = isCurrentlyClaimable(b.asset, authorized)
+      ? selection !== "forfeit"
+      : selection === "add_trustline_then_claim";
+    if (!willClaim) continue;
+    perAsset.set(b.asset, (perAsset.get(b.asset) ?? 0) + parseFloat(b.amount));
+  }
+  return perAsset;
+}
+
 // Derives the per-asset disposition decisions the caller must resolve before a close
 // can be built. `convertibility[asset]` is the best-effort result of path finding:
 // true when a DEX route to XLM exists, false otherwise. Only trustlines holding a
@@ -103,26 +133,33 @@ export function deriveDecisionPoints(
    *  the trustline already added and the balance already claimed. */
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {}
 ): DecisionPoint[] {
-  const trustedAssets = new Set(account.trustlines.map((tl) => tl.asset));
+  // What each claim will add, summed per asset - the same will-it-be-claimed rule buildPlan
+  // uses: a currently-claimable balance is claimed unless explicitly forfeited (claiming is the
+  // opt-out default), and one the account cannot claim yet is claimed only when the caller
+  // chose to remediate. Keyed by asset so several balances of one asset decide it once, with
+  // the total - two decision points sharing an id rendered doubled cards and let one answer
+  // satisfy both.
+  const claimedPerAsset = claimedAmountsPerAsset(account, claimableBalanceSelections);
 
-  // Assets that will exist only once the claim runs: the caller chose to remediate, the asset
-  // is not native (XLM is what everything converts *to*), and no trustline covers it already -
-  // an existing line is decided by the branch below, whatever the claim tops it up with.
-  const arrivingByClaim = account.claimableBalances
-    .filter(
-      (b) =>
-        claimableBalanceSelections[b.id] === "add_trustline_then_claim" &&
-        b.asset !== "native" &&
-        !trustedAssets.has(b.asset)
-    )
-    .map((b) => ({ asset: b.asset, balance: b.amount }));
-
-  const pending = [
-    ...account.trustlines
-      .filter((tl) => Number(tl.balance) > 0)
-      .map((tl) => ({ asset: tl.asset, balance: tl.balance })),
-    ...arrivingByClaim,
-  ];
+  // One entry per asset that will hold a positive balance once the claims run. A trustline
+  // with a balance today is decided regardless; a zero-balance line filled by a claim, and a
+  // line the plan itself will add, are decided by what arrives - each was previously decided
+  // NOWHERE (the arriving branch excluded trusted assets, the trustline branch excluded zero
+  // balances), so the close 422'd at round 2 for an answer the caller was never asked for.
+  const pendingByAsset = new Map<string, { asset: string; balance: string }>();
+  for (const tl of account.trustlines) {
+    const arriving = claimedPerAsset.get(tl.asset) ?? 0;
+    const total = Number(tl.balance) + arriving;
+    if (total > 0) {
+      pendingByAsset.set(tl.asset, { asset: tl.asset, balance: total.toFixed(7) });
+    }
+  }
+  for (const [asset, amount] of claimedPerAsset) {
+    if (!pendingByAsset.has(asset)) {
+      pendingByAsset.set(asset, { asset, balance: amount.toFixed(7) });
+    }
+  }
+  const pending = [...pendingByAsset.values()];
 
   return pending.map((tl) => {
     const convertible = convertibility[tl.asset] ?? false;
