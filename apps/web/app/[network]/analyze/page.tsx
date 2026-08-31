@@ -44,7 +44,15 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   const [error, setError] = useState<string | null>(null);
 
   const effectiveSource = source ?? sourceAddress;
-  const hasLoadedOnce = useRef(false);
+  // Both refs are per SOURCE, not per mount: navigating to a different account must show the
+  // full-page load state again instead of the previous account's plan, briefly gated by the
+  // new account's data.
+  const loadedSource = useRef<string | null>(null);
+  // Monotonic guard for overlapping re-plans. Answering two claim cards quickly starts two
+  // fetches; without this, whichever response lands LAST wins the screen - which can be the
+  // plan for the abandoned answers, on the consent surface of an irreversible close. Only the
+  // newest request may write state.
+  const fetchSeq = useRef(0);
 
   // Keyed on the answers' CONTENT, never their object identity - see claimAnswersKey for why a
   // dependency on the object itself made this fetch retrigger in a loop.
@@ -56,10 +64,12 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       return;
     }
 
-    const firstLoad = !hasLoadedOnce.current;
+    const firstLoad = loadedSource.current !== effectiveSource;
     if (firstLoad) setLoading(true);
     else setReplanning(true);
     setError(null);
+    const seq = ++fetchSeq.current;
+    const isStale = () => fetchSeq.current !== seq;
 
     try {
       const accountRes = await fetch(`/api/${routeNetwork}/account/${effectiveSource}`);
@@ -71,6 +81,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       }
 
       const accountData: AccountState = await accountRes.json();
+      if (isStale()) return;
       setAccount(accountData);
       setAccountState(accountData);
 
@@ -98,6 +109,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         },
         routeNetwork
       );
+      if (isStale()) return;
       setBlockers(
         plan.blockers.map((b) => ({ message: b.message, helpUrl: b.helpUrl, code: b.code }))
       );
@@ -115,11 +127,15 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       // the user could never reach the card that resolves it.
       setClaimableBalanceDecisions(decisionPointsToClaimableBalances(plan));
     } catch {
-      setError("Failed to analyze account. Please check your connection and try again.");
+      if (!isStale()) {
+        setError("Failed to analyze account. Please check your connection and try again.");
+      }
     } finally {
-      setLoading(false);
-      setReplanning(false);
-      hasLoadedOnce.current = true;
+      if (!isStale()) {
+        setLoading(false);
+        setReplanning(false);
+        loadedSource.current = effectiveSource;
+      }
     }
   }, [effectiveSource, routeNetwork, router, setAccountState, answersKey]);
 
@@ -139,7 +155,10 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     );
   }
 
-  if (error) {
+  // A transient failure while re-planning must not discard the rendered plan under the user -
+  // the full-page error view is for the first load only. Afterwards the inline banner below
+  // reports the failure while the last good plan stays on screen.
+  if (error && !account) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12">
         <div className="mkt-panel border-destructive/30 rounded-2xl p-6 text-center space-y-4">
@@ -171,6 +190,12 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         <h1 className="mkt-display text-xl font-bold text-white">Review &amp; decide</h1>
       </div>
 
+      {error && (
+        <div className="mkt-panel border-destructive/30 rounded-xl px-4 py-3 mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+          <span>{error}</span>
+        </div>
+      )}
       <PlanView
         account={account}
         conversions={conversions}

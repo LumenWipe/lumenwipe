@@ -122,7 +122,12 @@ export default function PlanView({
     setClaimableBalanceSelection(balanceId, selection);
     if (selection === "add_trustline_then_claim") {
       const decision = claimableBalanceDecisions.find((b) => b.balanceId === balanceId);
-      if (decision) setAssetDisposition(decision.asset, "convert");
+      // Seed the default only where no answer exists yet - the same `=== undefined` guard the
+      // auto-select effects use. Unconditional seeding meant a forfeit -> add round trip
+      // clobbered an explicit transfer or issuer-return the user had already chosen.
+      if (decision && useDemolishStore.getState().assetDispositions[decision.asset] === undefined) {
+        setAssetDisposition(decision.asset, "convert");
+      }
     }
   }
 
@@ -259,6 +264,20 @@ export default function PlanView({
       const proceedBlockersError = proceedError(plan.blockers);
       if (proceedBlockersError !== null) {
         setError(proceedBlockersError);
+        return;
+      }
+
+      // The status is the API's own word on whether anything still needs an answer, computed
+      // against THIS plan - the one built with the decisions just sent. The local gates above
+      // are computed from load-time state, so a claimable balance (or a topped-up asset) that
+      // appeared between page load and this click is invisible to them; proceeding would walk
+      // the user through review and a secret key to a bare 422. Refresh instead, so the new
+      // decision renders its card.
+      if (plan.status === "needs_decisions") {
+        setError(
+          "This account changed while you were deciding: something new needs an answer. The plan has been refreshed - review the cards above."
+        );
+        onRefresh();
         return;
       }
 

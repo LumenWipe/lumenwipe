@@ -468,8 +468,11 @@ export function buildPlan(
   // a still-untrusted asset.
   // Stryker disable next-line EqualityOperator,ConditionalExpression: batchItems([], N) always
   // returns [], so the loop below runs zero times regardless of this gate.
-  if (balancesNeedingTrustline.length > 0) {
-    const batches = batchItems(balancesNeedingTrustline, OP_BATCH_LIMIT);
+  // Batched by unique asset: the transaction adds one trustline per asset (see
+  // trustlineAddForClaimOps), so the step count and fee estimate must match.
+  const assetsNeedingTrustline = [...new Set(balancesNeedingTrustline.map((b) => b.asset))];
+  if (assetsNeedingTrustline.length > 0) {
+    const batches = batchItems(assetsNeedingTrustline, OP_BATCH_LIMIT);
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
       steps.push(
@@ -544,12 +547,19 @@ export function buildPlan(
   // Balance "0" on purpose: on-chain the line really does start empty and the claim fills it,
   // which is exactly what the effective-amount calculation below already models for a line the
   // account holds today. One path, no special case, no double count.
-  const arrivingByClaim: Trustline[] = balancesNeedingTrustline.map((b) => ({
-    asset: b.asset,
+  //
+  // One synthetic line per ASSET: several claimable balances can share one, and mapping them
+  // one-to-one produced two HANDLE_ASSETS steps each labeled with the doubled total and a
+  // REMOVE_TRUSTLINES batch deleting the same line twice - which fails on-chain at the second
+  // op and takes the whole close round with it.
+  const arrivingByClaim: Trustline[] = [
+    ...new Set(balancesNeedingTrustline.map((b) => b.asset)),
+  ].map((asset) => ({
+    asset,
     balance: "0",
     authorized: true,
-    issuer: b.asset.split(":")[1] ?? "",
-    code: b.asset.split(":")[0],
+    issuer: asset.split(":")[1] ?? "",
+    code: asset.split(":")[0],
   }));
 
   const trustlinesNeedingAction = [

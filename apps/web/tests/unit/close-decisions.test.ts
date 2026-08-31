@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import {
+  chosenTransfers,
   claimAnswersKey,
   claimableSelectionsToDecisions,
   destinationAcknowledgementToDecisions,
@@ -154,4 +155,111 @@ test("claimAnswersKey › a new answer changes the key", () => {
 
 test("claimAnswersKey › no answers is a stable empty key", () => {
   expect(claimAnswersKey({})).toBe("");
+});
+
+// ─── Review finding: a transfer of an arriving asset must reach verify() ─────
+//
+// chosenTransfers built the expected transfers from accountState.trustlines alone, so an asset
+// arriving through add_trustline_then_claim - which has no trustline in the state captured at
+// run start - never produced an entry. verify() then rejected round 2's payment as "an
+// unexpected address": trustline added, balance claimed, close dead mid-flight.
+
+const ACCOUNT_BASE = {
+  address: "GSOURCE",
+  network: "testnet" as const,
+  sequence: "1",
+  nativeBalanceLumens: "10.0000000",
+  dataEntries: [],
+  signers: [],
+  thresholds: { low: 0, med: 0, high: 0 },
+  numSubEntries: 0,
+  numSponsoring: 0,
+  sponsoredEntries: [],
+  sponsorshipEnumerationIncomplete: false,
+  sponsoredBy: null,
+  authImmutable: false,
+  trustlines: [],
+  openOffers: [],
+  poolShares: [],
+  claimableBalances: [],
+  subEntryMismatch: false,
+};
+
+test("chosenTransfers › an asset arriving via a remediated claim gets its floor from the claim", () => {
+  const asset = "USDC:GISSUER";
+  const transfers = chosenTransfers(
+    { [asset]: "transfer" },
+    { [asset]: "GDEST" },
+    {
+      ...ACCOUNT_BASE,
+      claimableBalances: [
+        {
+          id: "cb1",
+          asset,
+          amount: "5.0000000",
+          claimants: [{ destination: "GSOURCE", predicate: { type: "unconditional" } }],
+          sponsor: null,
+        },
+      ],
+    },
+    { cb1: "add_trustline_then_claim" }
+  );
+
+  expect(transfers[asset]).toEqual({ destination: "GDEST", amount: "5.0000000" });
+});
+
+test("chosenTransfers › a held balance topped up by a claim floors at the sum", () => {
+  const asset = "USDC:GISSUER";
+  const transfers = chosenTransfers(
+    { [asset]: "transfer" },
+    { [asset]: "GDEST" },
+    {
+      ...ACCOUNT_BASE,
+      trustlines: [
+        {
+          asset,
+          balance: "2.0000000",
+          limit: "100",
+          authorized: true,
+          issuer: "GISSUER",
+          code: "USDC",
+        },
+      ],
+      claimableBalances: [
+        {
+          id: "cb1",
+          asset,
+          amount: "5.0000000",
+          claimants: [{ destination: "GSOURCE", predicate: { type: "unconditional" } }],
+          sponsor: null,
+        },
+      ],
+    },
+    { cb1: "claim" }
+  );
+
+  expect(transfers[asset]!.amount).toBe("7.0000000");
+});
+
+test("chosenTransfers › a forfeited balance contributes nothing", () => {
+  const asset = "USDC:GISSUER";
+  const transfers = chosenTransfers(
+    { [asset]: "transfer" },
+    { [asset]: "GDEST" },
+    {
+      ...ACCOUNT_BASE,
+      claimableBalances: [
+        {
+          id: "cb1",
+          asset,
+          amount: "5.0000000",
+          claimants: [{ destination: "GSOURCE", predicate: { type: "unconditional" } }],
+          sponsor: null,
+        },
+      ],
+    },
+    { cb1: "forfeit" }
+  );
+
+  expect(transfers[asset]).toBeUndefined();
 });

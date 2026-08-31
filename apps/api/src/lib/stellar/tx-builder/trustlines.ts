@@ -18,7 +18,11 @@ export function trustlineRemovalOps(trustlines: Trustline[]): xdr.Operation[] {
  * defaults to its maximum - simpler and safer than computing a limit from the claimed amount.
  */
 export function trustlineAddForClaimOps(balances: ClaimableBalance[]): xdr.Operation[] {
-  return balances.map((b) => Operation.changeTrust({ asset: assetToSdkAsset(b.asset) }));
+  // One op per ASSET, not per balance: several claimable balances can share an asset, and a
+  // trustline is added once. The duplicate op was a harmless no-op on-chain but doubled the
+  // operation count, the fee, and what the consent surface said the transaction does.
+  const assets = [...new Set(balances.map((b) => b.asset))];
+  return assets.map((asset) => Operation.changeTrust({ asset: assetToSdkAsset(asset) }));
 }
 
 export function buildRemoveTrustlinesTx(

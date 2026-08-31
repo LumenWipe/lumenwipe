@@ -4,6 +4,7 @@ import type {
   TransferDestinations,
 } from "@/types/plan";
 import type { DecisionAnswer } from "@lumenwipe/sdk";
+import type { AccountState } from "@/types/account";
 
 /** Stable decision id for a per-asset disposition. Must match the API's `assetDecisionId`. */
 function assetDecisionId(asset: string): string {
@@ -115,4 +116,51 @@ export function claimAnswersKey(selections: Record<string, ClaimableBalanceSelec
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([id, choice]) => `${id}:${choice}`)
     .join("|");
+}
+
+/**
+ * The per-asset transfers the user chose, with the amount floor verify() holds each payment to.
+ *
+ * The floor is what the account will hold when the payment runs: today's trustline balance plus
+ * every claimable balance of the asset that this close will claim (currently claimable and not
+ * forfeited, or explicitly remediated with a new trustline). Building it from trustlines alone
+ * meant an asset arriving through a claim never produced an entry, and verify() rejected the
+ * payment it had told the user about - after the trustline was added and the balance claimed.
+ */
+export function chosenTransfers(
+  dispositions: Record<string, AssetDisposition>,
+  destinations: Record<string, string>,
+  accountState: AccountState | null,
+  claimableBalanceSelections: Record<string, ClaimableBalanceSelection>
+): Record<string, { destination: string; amount: string }> {
+  const transfers: Record<string, { destination: string; amount: string }> = {};
+  if (!accountState) return transfers;
+  // Nullish fallbacks, not assumptions: this runs inside the close loop's error boundary, and
+  // an account shape missing either array must degrade to "nothing claimed / nothing held"
+  // rather than throw past the transfers the user did choose.
+  const trustlines = accountState.trustlines ?? [];
+  const claimableBalances = accountState.claimableBalances ?? [];
+
+  const authorized = new Set(trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset));
+  const claimedPerAsset = new Map<string, number>();
+  for (const b of claimableBalances) {
+    if (b.asset === "native") continue;
+    const selection = claimableBalanceSelections[b.id];
+    const willClaim = authorized.has(b.asset)
+      ? selection !== "forfeit"
+      : selection === "add_trustline_then_claim";
+    if (!willClaim) continue;
+    claimedPerAsset.set(b.asset, (claimedPerAsset.get(b.asset) ?? 0) + parseFloat(b.amount));
+  }
+
+  for (const [asset, disposition] of Object.entries(dispositions)) {
+    if (disposition !== "transfer") continue;
+    const destination = destinations[asset];
+    if (!destination) continue;
+    const trustline = trustlines.find((tl) => tl.asset === asset);
+    const floor = parseFloat(trustline?.balance ?? "0") + (claimedPerAsset.get(asset) ?? 0);
+    if (floor <= 0) continue;
+    transfers[asset] = { destination, amount: floor.toFixed(7) };
+  }
+  return transfers;
 }

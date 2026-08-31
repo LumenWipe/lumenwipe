@@ -437,3 +437,82 @@ test("a native balance being claimed needs no disposition", () => {
 
   expect(deriveDecisionPoints(account, {}, { cb1: "add_trustline_then_claim" })).toHaveLength(0);
 });
+
+// ─── Review findings: every claimed asset needs a decision, exactly once ────
+//
+// Two reviewers independently caught the branch gap: a trustline that exists with balance 0
+// and is filled by a plain "claim" matched neither derivation branch - not arriving (the asset
+// is trusted), not pending (zero balance) - so the close 422'd at round 2 for a decision the
+// caller was never offered. And two claimable balances of one asset derived two decision
+// points with the same id.
+
+test("a zero-balance trustline topped up by a claim gets a disposition decision", () => {
+  const asset = `EURC:${ISSUER}`;
+  const account = makeAccount({
+    trustlines: [makeTrustline("EURC", "0")],
+    claimableBalances: [makeClaimableBalance("cb1", asset, "4.0000000")],
+  });
+
+  const points = deriveDecisionPoints(account, { [asset]: true }, { cb1: "claim" });
+
+  const disposition = points.find((p) => p.type === "asset_disposition");
+  expect(disposition).toBeDefined();
+  expect(disposition!.subject).toMatchObject({ asset, balance: "4.0000000" });
+});
+
+test("a currently-claimable balance left unanswered still yields the decision", () => {
+  // Claiming is the opt-out default: buildPlan claims every currently-claimable balance not
+  // explicitly forfeited, so the disposition must be derived on the same rule - an unanswered
+  // claim is a claim.
+  const asset = `EURC:${ISSUER}`;
+  const account = makeAccount({
+    trustlines: [makeTrustline("EURC", "0")],
+    claimableBalances: [makeClaimableBalance("cb1", asset, "4.0000000")],
+  });
+
+  expect(deriveDecisionPoints(account, { [asset]: true }, {})).toHaveLength(1);
+});
+
+test("a forfeited top-up of a zero-balance trustline yields no decision", () => {
+  const asset = `EURC:${ISSUER}`;
+  const account = makeAccount({
+    trustlines: [makeTrustline("EURC", "0")],
+    claimableBalances: [makeClaimableBalance("cb1", asset, "4.0000000")],
+  });
+
+  expect(deriveDecisionPoints(account, { [asset]: true }, { cb1: "forfeit" })).toHaveLength(0);
+});
+
+test("two claimable balances of one asset derive one decision, with the summed amount", () => {
+  const asset = `USDC:${ISSUER}`;
+  const account = makeAccount({
+    claimableBalances: [
+      makeClaimableBalance("cb1", asset, "5.0000000"),
+      makeClaimableBalance("cb2", asset, "2.5000000"),
+    ],
+  });
+
+  const points = deriveDecisionPoints(
+    account,
+    { [asset]: true },
+    {
+      cb1: "add_trustline_then_claim",
+      cb2: "add_trustline_then_claim",
+    }
+  );
+
+  expect(points).toHaveLength(1);
+  expect(points[0]!.subject).toMatchObject({ asset, balance: "7.5000000" });
+});
+
+test("a claim topping a positive-balance trustline does not decide the asset twice", () => {
+  const asset = `USDC:${ISSUER}`;
+  const account = makeAccount({
+    trustlines: [makeTrustline("USDC", "2.0000000")],
+    claimableBalances: [makeClaimableBalance("cb1", asset, "5.0000000")],
+  });
+
+  const points = deriveDecisionPoints(account, { [asset]: true }, { cb1: "claim" });
+
+  expect(points.filter((p) => p.type === "asset_disposition")).toHaveLength(1);
+});
