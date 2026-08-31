@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { hardBlockersOf, isResolvableHere } from "@/lib/plan/resolvable-blockers";
+import { hardBlockersOf, isResolvableHere, proceedError } from "@/lib/plan/resolvable-blockers";
 
 // Regression coverage for a real mainnet account that could not be closed from the UI.
 //
@@ -33,4 +33,31 @@ test("23 claimable-balance blockers do not hard-block, but one real blocker does
   }));
   expect(hardBlockersOf(claimables)).toHaveLength(0);
   expect(hardBlockersOf([...claimables, { code: "auth_immutable", message: "…" }])).toHaveLength(1);
+});
+
+// ─── The proceed gate ────────────────────────────────────────────────────────
+//
+// Regression: "Begin execution" refused any plan carrying a blocker, including
+// claimable_balance_forfeited - the informational record of a choice the user just made. The
+// close was unreachable the moment anyone forfeited a balance, with the card's own warning
+// re-rendered as the error.
+
+test("proceedError › an acknowledged forfeit alone does not stop the flow", () => {
+  expect(
+    proceedError([
+      { code: "claimable_balance_forfeited", message: "You chose to forfeit 9.0000000 JUNK…" },
+    ])
+  ).toBeNull();
+});
+
+test("proceedError › a hard blocker still stops it, and only its message surfaces", () => {
+  const err = proceedError([
+    { code: "claimable_balance_forfeited", message: "You chose to forfeit 9.0000000 JUNK…" },
+    { message: "The destination account does not exist." },
+  ]);
+  expect(err).toBe("The destination account does not exist.");
+});
+
+test("proceedError › no blockers, no error", () => {
+  expect(proceedError([])).toBeNull();
 });
