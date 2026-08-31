@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, Gift } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Target } from "lucide-react";
 import type { ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
 import type { ClaimableBalanceSelection } from "@/types/plan";
 import { describeClaimPredicate } from "@/lib/stellar/claim-predicates";
@@ -31,7 +31,7 @@ export default function ClaimableBalanceCard({ item, selection, onSelect }: Clai
           forfeited ? "border-white/15 bg-white/[0.03]" : "border-emerald-500/20 bg-emerald-500/5"
         )}
       >
-        <Gift className={cn("h-4 w-4 shrink-0", forfeited ? "text-white/40" : "text-emerald-400")} />
+        <Target className={cn("h-4 w-4 shrink-0", forfeited ? "text-white/40" : "text-emerald-400")} />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-white">
             {item.amount} {item.code}
