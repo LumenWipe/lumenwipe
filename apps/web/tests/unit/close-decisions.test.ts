@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import {
   chosenTransfers,
+  receiptAssetSummary,
   claimAnswersKey,
   claimableSelectionsToDecisions,
   destinationAcknowledgementToDecisions,
@@ -262,4 +263,86 @@ test("chosenTransfers › a forfeited balance contributes nothing", () => {
   );
 
   expect(transfers[asset]).toBeUndefined();
+});
+
+// ─── The receipt must list what the close actually disposed of ───────────────
+//
+// Built from load-time trustlines alone, the permanent record of an irreversible close omitted
+// every asset that arrived through a claim: EURC returned to its issuer and USDC swapped away
+// did not appear at all, and "trustlines removed" was short by the lines the plan itself added.
+
+test("receiptAssetSummary › a zero-balance line topped by a claim is listed, handled and removed", () => {
+  const eurc = "EURC:GISSUER";
+  const summary = receiptAssetSummary(
+    {
+      ...ACCOUNT_BASE,
+      trustlines: [
+        {
+          asset: eurc,
+          balance: "0",
+          limit: "100",
+          authorized: true,
+          issuer: "GISSUER",
+          code: "EURC",
+        },
+      ],
+      claimableBalances: [
+        {
+          id: "cb1",
+          asset: eurc,
+          amount: "4.0000000",
+          claimants: [{ destination: "GSOURCE", predicate: { type: "unconditional" } }],
+          sponsor: null,
+        },
+      ],
+    },
+    { cb1: "claim" }
+  );
+
+  expect(summary.handledAssets.map((a) => a.code)).toContain("EURC");
+  expect(summary.removedTrustlines.map((a) => a.code)).toContain("EURC");
+});
+
+test("receiptAssetSummary › an arriving asset is listed, and its added line counted as removed", () => {
+  const usdc = "USDC:GISSUER";
+  const summary = receiptAssetSummary(
+    {
+      ...ACCOUNT_BASE,
+      claimableBalances: [
+        {
+          id: "cb1",
+          asset: usdc,
+          amount: "5.0000000",
+          claimants: [{ destination: "GSOURCE", predicate: { type: "unconditional" } }],
+          sponsor: null,
+        },
+      ],
+    },
+    { cb1: "add_trustline_then_claim" }
+  );
+
+  expect(summary.handledAssets.map((a) => a.code)).toEqual(["USDC"]);
+  expect(summary.removedTrustlines.map((a) => a.code)).toEqual(["USDC"]);
+});
+
+test("receiptAssetSummary › a forfeited balance appears nowhere", () => {
+  const junk = "JUNK:GISSUER";
+  const summary = receiptAssetSummary(
+    {
+      ...ACCOUNT_BASE,
+      claimableBalances: [
+        {
+          id: "cb1",
+          asset: junk,
+          amount: "9.0000000",
+          claimants: [{ destination: "GSOURCE", predicate: { type: "unconditional" } }],
+          sponsor: null,
+        },
+      ],
+    },
+    { cb1: "forfeit" }
+  );
+
+  expect(summary.handledAssets).toHaveLength(0);
+  expect(summary.removedTrustlines).toHaveLength(0);
 });
