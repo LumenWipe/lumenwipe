@@ -39,7 +39,9 @@ export function describeClaimPredicate(predicate: ClaimPredicate): string | null
       return `Claimable until ${new Date(Number(predicate.deadlineEpoch) * 1000).toLocaleDateString()}.`;
     case "and":
     case "or": {
-      const parts = predicate.predicates.map(describeClaimPredicate).filter((p): p is string => p !== null);
+      const parts = predicate.predicates
+        .map(describeClaimPredicate)
+        .filter((p): p is string => p !== null);
       if (parts.length === 0) return null;
       return parts.join(predicate.type === "and" ? " and " : " or ");
     }

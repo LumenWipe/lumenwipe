@@ -4,10 +4,7 @@ import { getApiClient } from "@/lib/api/server-client";
 import { proxy } from "@/lib/api/proxy";
 import { rateLimitProxy } from "@/lib/api/rate-limit";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ network: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ network: string }> }) {
   const limited = await rateLimitProxy(req, "paths");
   if (limited) return limited;
   const { network } = await params;

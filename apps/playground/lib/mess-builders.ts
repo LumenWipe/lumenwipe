@@ -136,9 +136,7 @@ export async function ensureMmOffer(mm: Keypair, issuerPublic: string): Promise<
   void state; // presence check only; the actual "does the offer already exist" read
   // happens against Horizon's offers endpoint - kept intentionally simple for a
   // testnet-only demo account (unlike production, correctness here is not security-critical).
-  const res = await fetch(
-    `${HORIZON_TESTNET_URL}/accounts/${mm.publicKey()}/offers?limit=200`
-  );
+  const res = await fetch(`${HORIZON_TESTNET_URL}/accounts/${mm.publicKey()}/offers?limit=200`);
   const offers = (await res.json()) as {
     _embedded: {
       records: {
@@ -194,7 +192,11 @@ export async function executeMessStep(stepId: MessStepId, ctx: MessContext): Pro
             startingBalance: EPHEMERAL_ISSUER_FUNDING_XLM,
           })
         ),
-        Operation.payment({ destination: ctx.mmPublic, asset: Asset.native(), amount: returnAmount }),
+        Operation.payment({
+          destination: ctx.mmPublic,
+          asset: Asset.native(),
+          amount: returnAmount,
+        }),
       ];
       return buildSignSubmit(ctx.demo, ops);
     }

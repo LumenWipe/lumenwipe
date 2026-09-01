@@ -156,9 +156,10 @@ function mapPosition(raw: RawPosition): DefiPosition | null {
  * additive (one is an asset, the other a liability), and no gating logic here needs a net
  * figure; that's for a later issue to define if it needs one.
  */
-function mergeFxdaoPositions(
-  raw: RawPosition[]
-): { positions: DefiPosition[]; unrecognized: UnrecognizedDefiPosition[] } {
+function mergeFxdaoPositions(raw: RawPosition[]): {
+  positions: DefiPosition[];
+  unrecognized: UnrecognizedDefiPosition[];
+} {
   const byVault = new Map<string, { collateral?: RawPosition; borrow?: RawPosition }>();
   const unrecognized: UnrecognizedDefiPosition[] = [];
 
@@ -239,13 +240,11 @@ function buildQueryKeys(rawQueryKeys: unknown): DefiQueryKeys {
   if (!isRecord(rawQueryKeys)) return empty;
 
   const rpcEndpoints = Array.isArray(rawQueryKeys.rpcEndpoints)
-    ? rawQueryKeys.rpcEndpoints
-        .filter(isRecord)
-        .map((e) => ({
-          url: typeof e.url === "string" ? e.url : "",
-          health: typeof e.health === "string" ? e.health : "unknown",
-          avgLatencyMs: typeof e.avgLatencyMs === "number" ? e.avgLatencyMs : 0,
-        }))
+    ? rawQueryKeys.rpcEndpoints.filter(isRecord).map((e) => ({
+        url: typeof e.url === "string" ? e.url : "",
+        health: typeof e.health === "string" ? e.health : "unknown",
+        avgLatencyMs: typeof e.avgLatencyMs === "number" ? e.avgLatencyMs : 0,
+      }))
     : [];
 
   const rpcPolicy = isRecord(rawQueryKeys.rpcPolicy)
@@ -262,7 +261,9 @@ function buildQueryKeys(rawQueryKeys: unknown): DefiQueryKeys {
           ? (rawQueryKeys.rpcPolicy.backoffOn429Ms as number[])
           : [],
         timeoutMs:
-          typeof rawQueryKeys.rpcPolicy.timeoutMs === "number" ? rawQueryKeys.rpcPolicy.timeoutMs : 0,
+          typeof rawQueryKeys.rpcPolicy.timeoutMs === "number"
+            ? rawQueryKeys.rpcPolicy.timeoutMs
+            : 0,
       }
     : empty.rpcPolicy;
 

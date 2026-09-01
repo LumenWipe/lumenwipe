@@ -59,7 +59,8 @@ function transactionResultCodes(
   const data = (response as { data?: unknown }).data;
   if (typeof data !== "object" || data === null || !("extras" in data)) return undefined;
   const extras = (data as { extras?: unknown }).extras;
-  if (typeof extras !== "object" || extras === null || !("result_codes" in extras)) return undefined;
+  if (typeof extras !== "object" || extras === null || !("result_codes" in extras))
+    return undefined;
   const resultCodes = (extras as { result_codes?: unknown }).result_codes;
   if (
     typeof resultCodes !== "object" ||

@@ -31,7 +31,6 @@ export const PATH_ROUTING_API_URLS: Record<Network, string> = {
  */
 export const OCTOPOS_API_URL_MAINNET: string = process.env.OCTOPOS_API_URL_MAINNET || "";
 
-
 export const SE_EXPLORER_BASE: Record<Network, string> = {
   mainnet: "https://stellar.expert/explorer/public",
   testnet: "https://stellar.expert/explorer/testnet",

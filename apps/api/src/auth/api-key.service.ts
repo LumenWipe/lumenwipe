@@ -16,7 +16,10 @@ export class ApiKeyService {
 
   constructor(config: ConfigService) {
     const raw = config.get<string>("API_KEYS") ?? "";
-    for (const pair of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
+    for (const pair of raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)) {
       const eq = pair.indexOf("=");
       if (eq <= 0) continue;
       const label = pair.slice(0, eq).trim();

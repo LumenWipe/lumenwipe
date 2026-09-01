@@ -11,7 +11,9 @@ const SRC = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 const op = (o: IntentOperationBody): IntentOperation => ({ ...o, source: SRC });
 
 test("operationThresholdCategory › manage_data is medium", () => {
-  expect(operationThresholdCategory(op({ type: "manage_data", name: "k", value: null }))).toBe("med");
+  expect(operationThresholdCategory(op({ type: "manage_data", name: "k", value: null }))).toBe(
+    "med"
+  );
 });
 
 test("operationThresholdCategory › claim_claimable_balance is low", () => {
@@ -21,78 +23,90 @@ test("operationThresholdCategory › claim_claimable_balance is low", () => {
 });
 
 test("operationThresholdCategory › account_merge is high", () => {
-  expect(operationThresholdCategory(op({ type: "account_merge", destination: "G..." }))).toBe("high");
+  expect(operationThresholdCategory(op({ type: "account_merge", destination: "G..." }))).toBe(
+    "high"
+  );
 });
 
 test("operationThresholdCategory › payment/change_trust/revoke_sponsorship are medium", () => {
   expect(
-    operationThresholdCategory(op({
-      type: "payment",
-      destination: "G...",
-      asset: "native",
-      amount: "1",
-    }))
+    operationThresholdCategory(
+      op({
+        type: "payment",
+        destination: "G...",
+        asset: "native",
+        amount: "1",
+      })
+    )
   ).toBe("med");
-  expect(operationThresholdCategory(op({ type: "change_trust", asset: "USD:G...", limit: "0" }))).toBe(
-    "med"
-  );
   expect(
-    operationThresholdCategory(op({
-      type: "revoke_sponsorship",
-      entryKind: "trustline",
-      owner: "G...",
-    }))
+    operationThresholdCategory(op({ type: "change_trust", asset: "USD:G...", limit: "0" }))
+  ).toBe("med");
+  expect(
+    operationThresholdCategory(
+      op({
+        type: "revoke_sponsorship",
+        entryKind: "trustline",
+        owner: "G...",
+      })
+    )
   ).toBe("med");
 });
 
 test("operationThresholdCategory › set_options touching a signer is high", () => {
   expect(
-    operationThresholdCategory(op({
-      type: "set_options",
-      signer: { type: "ed25519_public_key", key: "G...", weight: 0 },
-      masterWeight: null,
-      lowThreshold: null,
-      medThreshold: null,
-      highThreshold: null,
-      homeDomain: null,
-      setFlags: null,
-      clearFlags: null,
-      inflationDest: null,
-    }))
+    operationThresholdCategory(
+      op({
+        type: "set_options",
+        signer: { type: "ed25519_public_key", key: "G...", weight: 0 },
+        masterWeight: null,
+        lowThreshold: null,
+        medThreshold: null,
+        highThreshold: null,
+        homeDomain: null,
+        setFlags: null,
+        clearFlags: null,
+        inflationDest: null,
+      })
+    )
   ).toBe("high");
 });
 
 test("operationThresholdCategory › set_options touching only thresholds is high", () => {
   expect(
-    operationThresholdCategory(op({
-      type: "set_options",
-      signer: null,
-      masterWeight: null,
-      lowThreshold: 1,
-      medThreshold: null,
-      highThreshold: null,
-      homeDomain: null,
-      setFlags: null,
-      clearFlags: null,
-      inflationDest: null,
-    }))
+    operationThresholdCategory(
+      op({
+        type: "set_options",
+        signer: null,
+        masterWeight: null,
+        lowThreshold: 1,
+        medThreshold: null,
+        highThreshold: null,
+        homeDomain: null,
+        setFlags: null,
+        clearFlags: null,
+        inflationDest: null,
+      })
+    )
   ).toBe("high");
 });
 
 test("operationThresholdCategory › set_options touching neither signer nor thresholds is medium", () => {
   expect(
-    operationThresholdCategory(op({
-      type: "set_options",
-      signer: null,
-      masterWeight: null,
-      lowThreshold: null,
-      medThreshold: null,
-      highThreshold: null,
-      homeDomain: null,
-      setFlags: null,
-      clearFlags: null,
-      inflationDest: null,
-    }))
+    operationThresholdCategory(
+      op({
+        type: "set_options",
+        signer: null,
+        masterWeight: null,
+        lowThreshold: null,
+        medThreshold: null,
+        highThreshold: null,
+        homeDomain: null,
+        setFlags: null,
+        clearFlags: null,
+        inflationDest: null,
+      })
+    )
   ).toBe("med");
 });
 
