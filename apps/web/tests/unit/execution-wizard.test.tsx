@@ -308,3 +308,54 @@ test("execution-wizard › a rejected pre-auth-tx submission shows an inline err
   expect(await screen.findByText(/does not match the pre-auth-tx signer's key/i)).toBeDefined();
   expect(screen.queryByText(/pre-authorized transaction submitted/i)).toBeNull();
 });
+
+// ─── The multisig nature must be visible BEFORE the first signature ──────────
+//
+// The signing-progress panel appears only after a signature falls short, so a user who did
+// not know their account was multisig discovered it by failing: sign once, then learn that
+// more weight is needed. The notice states the requirement - how much weight, which signers
+// can contribute - up front, on the same screen that asks for the first signature.
+
+test("execution-wizard › announces the signer set and required weight before any signature", () => {
+  currentSignatureStatus = null; // nothing signed yet
+  runImpl = async () => {};
+
+  render(<ExecutionWizard network="testnet" />);
+
+  const notice = screen.getByTestId("multisig-notice");
+  expect(notice.textContent).toContain("2"); // the required weight
+  // Both eligible signers are listed by their shortened keys.
+  expect(notice.textContent).toContain(source.slice(0, 8));
+  expect(notice.textContent).toContain(cosigner.slice(0, 8));
+});
+
+test("execution-wizard › a single-signer account gets no multisig notice", () => {
+  currentSignatureStatus = null;
+  runImpl = async () => {};
+  useDemolishStore.setState({
+    accountState: {
+      signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 0, med: 1, high: 1 },
+    } as never,
+  } as never);
+
+  render(<ExecutionWizard network="testnet" />);
+
+  expect(screen.queryByTestId("multisig-notice")).toBeNull();
+});
+
+test("execution-wizard › the notice does not repeat once signing progress is on screen", () => {
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    remainingSigners: [{ key: cosigner, weight: 1, type: "ed25519_public_key" }],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+  runImpl = async () => {};
+
+  render(<ExecutionWizard network="testnet" />);
+
+  // The progress panel already says what remains; a second banner restating the
+  // requirement would be noise.
+  expect(screen.queryByTestId("multisig-notice")).toBeNull();
+});
