@@ -11,6 +11,10 @@ export const HORIZON_TIMEOUT_MS = 10000; // 10 seconds
 // OctoPos is an optional enhancement - fail fast into degraded mode rather than stall the
 // analyze call waiting on a third-party DeFi position provider.
 export const OCTOPOS_TIMEOUT_MS = 5000; // 5 seconds
+// architecture.md §7.2 caches DeFi positions for "tens of seconds," and OctoPos's own Position
+// Tracker refreshes every 60s (per its architecture docs) - double that, tight enough to catch a
+// genuinely stalled feed, generous enough not to block a plan on ordinary refresh latency.
+export const DEFI_POSITIONS_STALENESS_THRESHOLD_SECONDS = 120;
 
 // Sponsorship enumeration: how many of the sponsor's own operations we'll page through
 // (oldest-first, from account creation) looking for sponsorship-bracket candidates

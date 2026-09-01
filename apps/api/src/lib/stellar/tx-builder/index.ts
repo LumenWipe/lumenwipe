@@ -2,6 +2,7 @@ import type {
   AccountState,
   AssetDisposition,
   ClaimableBalanceSelection,
+  DefiPositionsResult,
   PlannedStep,
   StepType,
   BuildPlanResult,
@@ -11,6 +12,7 @@ import type {
   Trustline,
 } from "@lumenwipe/types";
 import type { SponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
+import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
 import { estimateFeeLumens } from "@/lib/utils/amounts";
 import { batchItems } from "./batching";
 import { OP_BATCH_LIMIT } from "@/config/constants";
@@ -120,7 +122,11 @@ export function buildPlan(
    *  step's wording depends on it - which assets need a step at all does not. */
   dispositions: Record<string, AssetDisposition> = {},
   /** Where each `transfer` disposition pays, keyed the same way. */
-  transferDestinations: TransferDestinations = {}
+  transferDestinations: TransferDestinations = {},
+  /** The account's normalized DeFi position read (issue #146), when the caller has one. Null
+   *  until whatever wires OctoPos into the request pipeline supplies it - see
+   *  assessDefiPositionsGate for what a non-null result is gated on. */
+  defiPositions: DefiPositionsResult | null = null
 ): BuildPlanResult {
   const steps: PlannedStep[] = [];
   const blockers: PlanBlocker[] = [];
@@ -213,6 +219,13 @@ export function buildPlan(
         "This account has entries that could not be enumerated. " +
         "The analysis may be incomplete - do not proceed until the discrepancy is resolved.",
     });
+  }
+
+  // DeFi position freshness/confidence gate (issue #147): same "don't guess" treatment as the
+  // sub-entry mismatch above, applied to OctoPos's own signals. A no-op until a caller actually
+  // supplies a DefiPositionsResult - see assessDefiPositionsGate for what triggers a blocker.
+  if (defiPositions) {
+    blockers.push(...assessDefiPositionsGate(defiPositions));
   }
 
   // Threshold gating: SetOptions is a HIGH-threshold operation. If no combination of
