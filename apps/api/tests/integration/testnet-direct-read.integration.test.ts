@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
-import { detectTestnetDefiPositions } from "@/lib/defi-positions/testnet-direct-read";
+import { detectDefiPositionsViaDirectRead } from "@/lib/defi-positions/testnet-direct-read";
 import { servedContractRegistry } from "@/lib/contract-registry";
 
 // This test calls the real, live Stellar testnet RPC - no mock. The package's `test` script
@@ -31,7 +31,7 @@ test.skipIf(!RUN_INTEGRATION)(
   "a fresh address with no positions returns a clean empty result, not an error",
   async () => {
     const address = Keypair.random().publicKey();
-    const result = await detectTestnetDefiPositions(address);
+    const result = await detectDefiPositionsViaDirectRead(address);
     expect(result.address).toBe(address);
     expect(result.network).toBe("testnet");
     expect(Array.isArray(result.positions)).toBe(true);

@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { Keypair, xdr } from "@stellar/stellar-sdk";
 import {
-  detectTestnetDefiPositions,
+  detectDefiPositionsViaDirectRead,
   addressVal,
   contractDataKey,
   symbolVal,
@@ -44,7 +44,10 @@ function registryEntry(overrides: Partial<ContractRegistryEntry> = {}): Contract
 }
 
 test("no registry entries -> a clean empty result, not an error", async () => {
-  const result = await detectTestnetDefiPositions(USER, { rpc: mockRpc([]), registryEntries: [] });
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([]),
+    registryEntries: [],
+  });
   expect(result.address).toBe(USER);
   expect(result.network).toBe("testnet");
   expect(result.source).toBe("testnet-direct-read");
@@ -59,7 +62,7 @@ test("factory/router/backstop entries are never probed, even when unresolvable",
     registryEntry({ kind: "backstop" }),
   ];
   // Empty RPC mock: if these were probed, verifyEntry would flag them as unresolvable.
-  const result = await detectTestnetDefiPositions(USER, {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
     rpc: mockRpc([]),
     registryEntries: entries,
   });
@@ -69,7 +72,7 @@ test("factory/router/backstop entries are never probed, even when unresolvable",
 
 test("a contract the registry expects but the network no longer has is flagged, not silently empty", async () => {
   const entries = [registryEntry({ address: FXDAO_VAULTS, protocol: "fxdao", kind: "vault" })];
-  const result = await detectTestnetDefiPositions(USER, {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
     rpc: mockRpc([]),
     registryEntries: entries,
   });
@@ -86,7 +89,10 @@ test("a contract the registry expects but the network no longer has is flagged, 
 test("a live wasmHash that doesn't match the registry halts decoding rather than guessing", async () => {
   const entries = [registryEntry()];
   const rpc = mockRpc([contractInstanceEntry(BLEND_POOL, "0".repeat(64))]);
-  const result = await detectTestnetDefiPositions(USER, { rpc, registryEntries: entries });
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc,
+    registryEntries: entries,
+  });
   expect(result.positions).toEqual([]);
   expect(result.unrecognizedPositions).toHaveLength(1);
   expect(result.unrecognizedPositions[0]!.rawType).toBe("wasmhash-mismatch");
@@ -110,7 +116,10 @@ test("decodes Blend supply and borrow positions, resolving reserve index through
     contractDataEntry(BLEND_POOL, positionsKey, positionsValue),
   ]);
 
-  const result = await detectTestnetDefiPositions(USER, { rpc, registryEntries: entries });
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc,
+    registryEntries: entries,
+  });
   expect(result.unrecognizedPositions).toEqual([]);
 
   const supply = result.positions.find((p) => p.positionType === "supply");
@@ -146,7 +155,10 @@ test("a zero-balance reserve index produces no position, not a zero-amount entry
     contractDataEntry(BLEND_POOL, positionsKey, positionsValue),
   ]);
 
-  const result = await detectTestnetDefiPositions(USER, { rpc, registryEntries: entries });
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc,
+    registryEntries: entries,
+  });
   expect(result.positions).toEqual([]);
   expect(result.unrecognizedPositions).toEqual([]);
 });
@@ -173,7 +185,10 @@ test("decodes an FxDAO vault only for the denomination the account actually hold
     // EURx/GBPx keys are queried too but have no matching entry - mockRpc simply omits them.
   ]);
 
-  const result = await detectTestnetDefiPositions(USER, { rpc, registryEntries: entries });
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc,
+    registryEntries: entries,
+  });
   expect(result.unrecognizedPositions).toEqual([]);
   expect(result.positions).toEqual([
     {
@@ -205,7 +220,10 @@ test("decodes a registered pool's LP share balance from the standard token layou
     contractDataEntry(AQUARIUS_POOL, balanceKey, i128Val(42_0000000n)),
   ]);
 
-  const result = await detectTestnetDefiPositions(USER, { rpc, registryEntries: entries });
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc,
+    registryEntries: entries,
+  });
   expect(result.unrecognizedPositions).toEqual([]);
   expect(result.positions).toEqual([
     {
@@ -235,6 +253,9 @@ test("a zero LP share balance produces no position", async () => {
     contractDataEntry(AQUARIUS_POOL, balanceKey, i128Val(0n)),
   ]);
 
-  const result = await detectTestnetDefiPositions(USER, { rpc, registryEntries: entries });
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc,
+    registryEntries: entries,
+  });
   expect(result.positions).toEqual([]);
 });

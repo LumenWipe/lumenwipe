@@ -41,6 +41,17 @@ test("a malformed timestamp is treated the same as no timestamp, not a crash", (
   expect(blockers[0].code).toBe("defi_positions_unavailable");
 });
 
+// A degraded-mode result (issue #149's resolveDefiPositions falling back from an OctoPos outage)
+// deliberately carries a null timestamp even though the direct-read fallback ran successfully -
+// this is the mechanism it relies on to surface the same "verify manually" warning without a
+// second, dedicated blocker type.
+test("a degraded-mode fallback result (null timestamp, non-not-tracked source) is flagged too", () => {
+  const result = makeResult({ source: "octopos-degraded-fallback", timestamp: null });
+  const blockers = assessDefiPositionsGate(result);
+  expect(blockers).toHaveLength(1);
+  expect(blockers[0].code).toBe("defi_positions_unavailable");
+});
+
 // ─── staleness ───────────────────────────────────────────────────────────────
 
 test("a fresh timestamp within the threshold produces no blockers", () => {
