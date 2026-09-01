@@ -7,10 +7,15 @@
  *
  *   bun run apps/web/scripts/seed-multisig.ts <freighter-address> <xbull-address>
  *
- * The account ends up with three signers of weight 1 (its own master key plus the two wallets)
- * and thresholds low 1 / med 2 / high 2. The close is a single high-threshold transaction -
- * signer removal plus the merge - so the two wallets together satisfy it and the master key
- * never signs. That is what makes the demo two wallets rather than one wallet and a secret.
+ * The account ends up with three signers of weight 1 (its own master key plus the two wallets),
+ * thresholds low 1 / med 2 / high 2 - and a real mess to unwind: a USDC balance bought on the
+ * live SDEX, data entries, and an open offer. The whole close fuses into a single
+ * high-threshold transaction (cancel the offer, remove the data, convert the USDC, drop the
+ * trustline, remove the signers, merge), so the envelope the two wallets accumulate signatures
+ * on carries real work - not just signer removal. The master key never signs.
+ *
+ * The mess is built BEFORE the signers, while the master key alone still satisfies every
+ * threshold - afterwards nothing can be staged without both wallets.
  *
  * Master weight stays at 1 on purpose: at 0 the plan refuses outright, because removing the
  * other signers would leave the account with nothing able to authorise anything ever again.
@@ -18,6 +23,7 @@
 
 import {
   Account,
+  Asset,
   Keypair,
   Networks,
   Operation,
@@ -29,6 +35,10 @@ const HORIZON = "https://horizon-testnet.stellar.org";
 const FRIENDBOT = "https://friendbot.stellar.org";
 const PASSPHRASE = Networks.TESTNET;
 const BASE_FEE = "1000";
+
+// The canonical liquid testnet USDC, so the convert disposition has a real route.
+const USDC_ISSUER = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+const USDC = new Asset("USDC", USDC_ISSUER);
 
 const SIGNERS_POLL_MAX_ATTEMPTS = 8;
 const SIGNERS_POLL_DELAY_MS = 2_500;
@@ -60,6 +70,32 @@ async function waitForThreeSigners(id: string): Promise<void> {
     await new Promise((r) => setTimeout(r, SIGNERS_POLL_DELAY_MS));
   }
   throw new Error(`timed out waiting for ${id} to show 3 signers`);
+}
+
+async function submitOps(kp: Keypair, ops: ReturnType<typeof Operation.payment>[]): Promise<void> {
+  const tx0 = new TransactionBuilder(
+    new Account(kp.publicKey(), await loadSequence(kp.publicKey())),
+    { fee: BASE_FEE, networkPassphrase: PASSPHRASE }
+  ).setTimeout(120);
+  ops.forEach((op) => tx0.addOperation(op));
+  const tx = tx0.build();
+  tx.sign(kp);
+  const res = await fetch(`${HORIZON}/transactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ tx: tx.toEnvelope().toXDR("base64") }),
+  });
+  const body = (await res.json()) as { successful?: boolean; extras?: { result_codes?: unknown } };
+  if (!res.ok || !body.successful) {
+    throw new Error(`tx failed: ${JSON.stringify(body.extras?.result_codes ?? body)}`);
+  }
+}
+
+async function trustlineBalance(id: string, code: string): Promise<string> {
+  const res = await fetch(`${HORIZON}/accounts/${id}`);
+  if (!res.ok) throw new Error(`load account ${id}: ${res.status}`);
+  const body = (await res.json()) as { balances: Array<{ asset_code?: string; balance: string }> };
+  return body.balances.find((b) => b.asset_code === code)?.balance ?? "0";
 }
 
 async function configureTwoOfThree(master: Keypair, walletB: string, walletC: string) {
@@ -117,6 +153,42 @@ async function main(): Promise<void> {
   await Promise.all([fund(master.publicKey()), fund(destination.publicKey())]);
   log("  funded");
 
+  // The mess first, while the master key alone still clears every threshold.
+  log("Buying USDC on the live SDEX…");
+  await submitOps(master, [Operation.changeTrust({ asset: USDC })]);
+  await submitOps(master, [
+    Operation.manageBuyOffer({
+      selling: Asset.native(),
+      buying: USDC,
+      buyAmount: "5",
+      price: "100",
+    }),
+  ]);
+  const usdc = await trustlineBalance(master.publicKey(), "USDC");
+  if (!(parseFloat(usdc) > 0)) {
+    throw new Error("Could not acquire USDC from the testnet SDEX right now - retry shortly.");
+  }
+  log("  acquired", `${usdc} USDC`);
+
+  log("Attaching data entries…");
+  await submitOps(master, [
+    Operation.manageData({ name: "app.legacy_config", value: "v1" }),
+    Operation.manageData({ name: "old_session_token", value: "expired" }),
+  ]);
+  log("  data", "2 entries");
+
+  log("Posting a stale DEX offer…");
+  // Selling XLM for USDC at an absurd ask keeps the offer open forever.
+  await submitOps(master, [
+    Operation.manageSellOffer({
+      selling: Asset.native(),
+      buying: USDC,
+      amount: "10",
+      price: "1000",
+    }),
+  ]);
+  log("  offer", "10 XLM at a price nobody will fill");
+
   log("Adding both wallets as signers…");
   await configureTwoOfThree(master, walletB, walletC);
   log("  signers", "3 × weight 1  ·  thresholds 1 / 2 / 2");
@@ -129,6 +201,8 @@ async function main(): Promise<void> {
   console.log(`    master (unused)  ${master.publicKey()}  weight 1`);
   console.log(`    wallet 1         ${walletB}  weight 1`);
   console.log(`    wallet 2         ${walletC}  weight 1`);
+  console.log(`\n  On the account, to be unwound in ONE two-signature transaction:`);
+  console.log(`    USDC balance (converts) · 2 data entries · 1 open DEX offer · 2 extra signers`);
   console.log(`\n  The close needs weight 2, so the two wallets satisfy it together and the`);
   console.log(`  master key is never used. Sign with one wallet, switch, sign with the other.`);
   console.log(`\n  Verify afterwards on stellar.expert (testnet)\n`);
