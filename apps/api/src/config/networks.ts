@@ -15,6 +15,22 @@ export const PATH_ROUTING_API_URLS: Record<Network, string> = {
   testnet: process.env.NEXT_PUBLIC_PATH_ROUTING_API_TESTNET || "",
 };
 
+/**
+ * OctoPos, the DeFi position provider (architecture.md §7.1). Empty by default - unlike
+ * RPC_URLS this is a specific commercial third party whose absence is a fully supported
+ * product state (degraded mode: classic-only close, DeFi detection unavailable), not a missing
+ * essential dependency, so it is never given a compiled-in public default.
+ *
+ * Deliberately not network-keyed like PATH_ROUTING_API_URLS or MEDIATOR_PUBLIC_KEYS: those have
+ * a real provider on both networks, OctoPos does not. Its own OpenAPI spec declares a testnet
+ * server entry, but that hostname does not resolve (confirmed against three DNS resolvers while
+ * building #146) - it is undeployed, not merely unconfigured. Add a testnet constant back if
+ * OctoPos ever actually ships one; a config slot for a host that does not exist is exactly the
+ * kind of speculative surface CLAUDE.md's "don't design for hypothetical future requirements"
+ * warns against.
+ */
+export const OCTOPOS_API_URL_MAINNET: string = process.env.OCTOPOS_API_URL_MAINNET || "";
+
 
 export const SE_EXPLORER_BASE: Record<Network, string> = {
   mainnet: "https://stellar.expert/explorer/public",

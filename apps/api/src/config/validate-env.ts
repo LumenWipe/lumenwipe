@@ -41,6 +41,12 @@ const OPTIONAL: Array<{ name: string; consequence: string }> = [
     name: "MEDIATOR_SECRET_TESTNET",
     consequence: "testnet exchange closes are unavailable",
   },
+  {
+    name: "OCTOPOS_API_KEY",
+    consequence:
+      "DeFi position detection runs at OctoPos's free/IP rate-limit tier instead of the " +
+      "authenticated tier",
+  },
 ];
 
 /**
