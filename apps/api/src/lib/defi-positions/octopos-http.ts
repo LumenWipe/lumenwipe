@@ -2,7 +2,8 @@
  * The HTTP seam to OctoPos, the DeFi position provider (architecture.md §7.1).
  *
  * Unlike horizon-http.ts, this never throws: DeFi detection is an optional enhancement with a
- * designed degraded mode ("an OctoPos outage never blocks a classic-only close"), so every
+ * designed degraded mode - an OctoPos outage never blocks a classic-only close (issue #145),
+ * and architecture.md §7.1 has the same "classic entries process normally" fallback - so every
  * failure - unconfigured, timeout, a bad status, a malformed body - becomes a typed { ok: false }
  * the caller logs and falls back from, rather than a rejection that would have to be caught at
  * every call site.
