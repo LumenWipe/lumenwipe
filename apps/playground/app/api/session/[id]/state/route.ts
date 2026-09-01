@@ -12,7 +12,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const apiUrl = process.env.LUMENWIPE_API_URL;
   const apiKey = process.env.LUMENWIPE_API_KEY;
   if (!apiUrl || !apiKey) {
-    return NextResponse.json({ error: "Playground is not configured on this server." }, { status: 503 });
+    return NextResponse.json(
+      { error: "Playground is not configured on this server." },
+      { status: 503 }
+    );
   }
 
   const client = new LumenWipeClient({ baseUrl: apiUrl, apiKey, network: "testnet" });

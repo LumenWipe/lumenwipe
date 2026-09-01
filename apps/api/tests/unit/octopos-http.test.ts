@@ -13,7 +13,9 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 }
 
 /** Records every request (URL + headers), so tests can assert both call shape and count. */
-function recordingFetch(handler: (url: string, init?: RequestInit) => Response | Promise<Response>) {
+function recordingFetch(
+  handler: (url: string, init?: RequestInit) => Response | Promise<Response>
+) {
   const calls: { url: string; init?: RequestInit }[] = [];
   const fn = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();

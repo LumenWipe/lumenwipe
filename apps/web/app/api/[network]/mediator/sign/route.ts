@@ -9,10 +9,7 @@ import { rateLimitProxy } from "@/lib/api/rate-limit";
  * [accountMerge → mediator, payment mediator → destination] shape and holds the
  * mediator secret; this route only relays the user-signed XDR and the key.
  */
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ network: string }> }
-) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ network: string }> }) {
   const { network } = await params;
 
   const limited = await rateLimitProxy(req, "mediator-sign");

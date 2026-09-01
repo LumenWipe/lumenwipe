@@ -82,7 +82,9 @@ test("GET requests carry no Content-Type and no body", async () => {
 });
 
 test("a non-2xx response throws LumenWipeApiError with status and parsed body", async () => {
-  const { fetch } = mockFetch(401, { error: { code: "unauthorized", message: "A valid API key is required." } });
+  const { fetch } = mockFetch(401, {
+    error: { code: "unauthorized", message: "A valid API key is required." },
+  });
   const client = new LumenWipeClient({ baseUrl: "https://x", apiKey: "bad", fetch });
 
   let error: unknown;

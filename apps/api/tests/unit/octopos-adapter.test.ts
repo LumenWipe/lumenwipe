@@ -33,7 +33,11 @@ test("carries the supported-protocol query key slices through, typed", () => {
 // ─── the populated case ──────────────────────────────────────────────────────
 
 test("maps each supported protocol's position type", () => {
-  const result = normalizeOctoPosPortfolio(populatedPortfolio, populatedPortfolio.address, "mainnet");
+  const result = normalizeOctoPosPortfolio(
+    populatedPortfolio,
+    populatedPortfolio.address,
+    "mainnet"
+  );
   const byKey = new Map(result.positions.map((p) => [`${p.protocol}:${p.positionType}`, p]));
 
   expect(byKey.get("blend:supply")).toMatchObject({
@@ -74,7 +78,11 @@ test("maps each supported protocol's position type", () => {
 });
 
 test("merges fxdao's separate COLLATERAL and BORROW legs into one cdp position", () => {
-  const result = normalizeOctoPosPortfolio(populatedPortfolio, populatedPortfolio.address, "mainnet");
+  const result = normalizeOctoPosPortfolio(
+    populatedPortfolio,
+    populatedPortfolio.address,
+    "mainnet"
+  );
   const cdp = result.positions.find((p) => p.protocol === "fxdao");
   expect(cdp).toMatchObject({
     protocol: "fxdao",
@@ -86,7 +94,11 @@ test("merges fxdao's separate COLLATERAL and BORROW legs into one cdp position",
 });
 
 test("drops a position from a protocol outside LumenWipe's supported list", () => {
-  const result = normalizeOctoPosPortfolio(populatedPortfolio, populatedPortfolio.address, "mainnet");
+  const result = normalizeOctoPosPortfolio(
+    populatedPortfolio,
+    populatedPortfolio.address,
+    "mainnet"
+  );
   const protocols = result.positions.map((p) => p.protocol);
   expect(protocols).not.toContain("untangled-vault");
   const unrecognizedProtocols = result.unrecognizedPositions.map((p) => p.protocol);
@@ -94,7 +106,11 @@ test("drops a position from a protocol outside LumenWipe's supported list", () =
 });
 
 test("flags a malformed supported-protocol position instead of dropping or crashing", () => {
-  const result = normalizeOctoPosPortfolio(populatedPortfolio, populatedPortfolio.address, "mainnet");
+  const result = normalizeOctoPosPortfolio(
+    populatedPortfolio,
+    populatedPortfolio.address,
+    "mainnet"
+  );
   // The fixture's last blend SUPPLY entry is missing assetAddress/bTokenAmount/usdValue.
   const flagged = result.unrecognizedPositions.find(
     (p) => p.protocol === "blend" && p.rawType === "SUPPLY"
@@ -104,7 +120,11 @@ test("flags a malformed supported-protocol position instead of dropping or crash
 });
 
 test("does not double-count the malformed position as a recognized supply position", () => {
-  const result = normalizeOctoPosPortfolio(populatedPortfolio, populatedPortfolio.address, "mainnet");
+  const result = normalizeOctoPosPortfolio(
+    populatedPortfolio,
+    populatedPortfolio.address,
+    "mainnet"
+  );
   const supplyPositions = result.positions.filter(
     (p) => p.protocol === "blend" && p.positionType === "supply"
   );

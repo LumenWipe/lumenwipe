@@ -1,10 +1,5 @@
 import { test, expect, beforeEach } from "bun:test";
-import {
-  createSession,
-  loadSession,
-  saveSession,
-  deleteSession,
-} from "@/lib/session-store";
+import { createSession, loadSession, saveSession, deleteSession } from "@/lib/session-store";
 
 beforeEach(() => {
   delete process.env.KV_REST_API_URL;
