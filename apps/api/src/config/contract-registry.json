@@ -1,0 +1,78 @@
+{
+  "version": "2026-09-01",
+  "lastVerified": "2026-09-01",
+  "validUntil": "2026-12-01",
+  "source": "manually verified per-entry against each protocol's official docs/GitHub and live testnet RPC (stellar contract fetch + sha256) on lastVerified; see apps/api/src/lib/contract-registry/index.ts for the per-protocol notes",
+  "entries": [
+    {
+      "network": "testnet",
+      "protocol": "blend",
+      "kind": "factory",
+      "address": "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+      "wasmHash": "31328050548831f63d2b72e37bcfd0bb7371b7907135755dbe09ed434d755ca9",
+      "version": "v2",
+      "label": "Blend V2 pool factory (testnet) - reference only, not probed for balances",
+      "verifiedLive": true
+    },
+    {
+      "network": "testnet",
+      "protocol": "blend",
+      "kind": "backstop",
+      "address": "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+      "wasmHash": "c1f4502a757e25c611f5a159bc1ab0eef64085adac6c68123dca66e87faffbc2",
+      "version": "v2",
+      "label": "Blend V2 backstop (testnet) - reference only; backstop share detection is a documented gap, see notes",
+      "verifiedLive": true
+    },
+    {
+      "network": "testnet",
+      "protocol": "blend",
+      "kind": "pool",
+      "address": "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+      "wasmHash": "a41fc53d6753b6c04eb15b021c55052366a4c8e0e21bc72700f461264ec1350e",
+      "version": "v2",
+      "label": "Blend V2 official testnet test pool",
+      "verifiedLive": true
+    },
+    {
+      "network": "testnet",
+      "protocol": "aquarius",
+      "kind": "router",
+      "address": "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+      "wasmHash": "c99539b023df4a28d7857d33ca4c915c2e20fec04f12b125132b84fbdf94dad3",
+      "version": "v1",
+      "label": "Aquarius testnet router - reference only; no specific pool instance is publicly documented yet",
+      "verifiedLive": true
+    },
+    {
+      "network": "testnet",
+      "protocol": "soroswap",
+      "kind": "factory",
+      "address": "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+      "wasmHash": "86285a9234d3f0d687eaf88efe8d5d72172b38c9a86624c9934c0cbf2aff2993",
+      "version": "v1",
+      "label": "Soroswap testnet factory - reference only, not probed for balances",
+      "verifiedLive": true
+    },
+    {
+      "network": "testnet",
+      "protocol": "soroswap",
+      "kind": "router",
+      "address": "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+      "wasmHash": "4b95bbf9caec2c6e00c786f53c5f392c2fcdb8435ac0a862ab5e0645eb65824c",
+      "version": "v1",
+      "label": "Soroswap testnet router - reference only; no specific pair instance is publicly documented yet",
+      "verifiedLive": true
+    },
+    {
+      "network": "testnet",
+      "protocol": "fxdao",
+      "kind": "vault",
+      "address": "CBUZ5NJKA5PRS4TBPHWMN4JGGRVIOQOKI4JUYLA2IXS3BEJKQKEWFW7D",
+      "wasmHash": null,
+      "version": "v1",
+      "label": "FxDAO Vaults (testnet, per fxdao.io/docs/addresses) - documented but currently unresolvable on live testnet, a real testnet-reset staleness case rather than a hypothetical one",
+      "verifiedLive": false
+    }
+  ]
+}
