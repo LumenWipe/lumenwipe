@@ -1,0 +1,589 @@
+{
+    "address": "GDQNY3PBOJOKYZSRMK2S7LHHGWZIUISD4QORETLMXEWXBI7KFZZMKTL3",
+    "positions": [],
+    "totalValueUsd": "0",
+    "valueByProtocol": {},
+    "timestamp": null,
+    "source": "not-tracked",
+    "queryKeys": {
+        "rpcEndpoints": [
+            {
+                "url": "https://mainnet.sorobanrpc.com",
+                "health": "unknown",
+                "avgLatencyMs": 0
+            },
+            {
+                "url": "https://soroban-rpc.mainnet.stellar.gateway.fm",
+                "health": "unknown",
+                "avgLatencyMs": 0
+            }
+        ],
+        "rpcPolicy": {
+            "maxKeysPerCall": 150,
+            "recommendedConcurrency": 3,
+            "backoffOn429Ms": [
+                500,
+                1500,
+                4000,
+                10000
+            ],
+            "timeoutMs": 5000,
+            "raceWinner": true,
+            "streamingHint": true
+        },
+        "blend": {
+            "protocol": "blend",
+            "ledgerKeys": [
+                "AAAABgAAAAESnMjMYzbx/bvcwPOYNDTDzbhf2eqFaXo3gtMY2HSlgAAAABAAAAABAAAAAgAAAA8AAAAJUG9zaXRpb25zAAAAAAAAEgAAAAAAAAAA4Nxt4XJcrGZRYrUvrOc1sooiQ+QdEk1suS1wo+oucsUAAAAB"
+            ],
+            "poolAddresses": [
+                "CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD"
+            ],
+            "poolMeta": [
+                {
+                    "poolAddress": "CBYOBT7ZCCLQCBUYYIABZLSEGDPEUWXCUXQTZYOG3YBDR7U357D5ZIRF",
+                    "reserveList": [
+                        "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
+                        "CDIKURWHYS4FFTR5KOQK6MBFZA2K3E26WGBQI6PXBYWZ4XIOPJHDFJKP",
+                        "CBN3NCJSMOQTC6SPEYK3A44NU4VS3IPKTARJLI3Y77OH27EWBY36TP7U",
+                        "CBCO65UOWXY2GR66GOCMCN6IU3Y45TXCPBY3FLUNL4AOUMOCKVIVV6JC"
+                    ],
+                    "updatedAt": "2026-09-01T03:50:09.507Z",
+                    "reserves": [
+                        {
+                            "assetAddress": "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
+                            "decimals": 7,
+                            "reserveIndex": 0,
+                            "bRate": "1000155431537",
+                            "dRate": "1001273987628",
+                            "rateDecimals": 12,
+                            "bSupply": "27246006347",
+                            "dSupply": "0"
+                        },
+                        {
+                            "assetAddress": "CDIKURWHYS4FFTR5KOQK6MBFZA2K3E26WGBQI6PXBYWZ4XIOPJHDFJKP",
+                            "decimals": 7,
+                            "reserveIndex": 1,
+                            "bRate": "1717591922747",
+                            "dRate": "2566714518372",
+                            "rateDecimals": 12,
+                            "bSupply": "52362783699",
+                            "dSupply": "47841211574"
+                        },
+                        {
+                            "assetAddress": "CBN3NCJSMOQTC6SPEYK3A44NU4VS3IPKTARJLI3Y77OH27EWBY36TP7U",
+                            "decimals": 7,
+                            "reserveIndex": 2,
+                            "bRate": "1023393510859",
+                            "dRate": "1052821433233",
+                            "rateDecimals": 12,
+                            "bSupply": "313810229",
+                            "dSupply": "63699923"
+                        },
+                        {
+                            "assetAddress": "CBCO65UOWXY2GR66GOCMCN6IU3Y45TXCPBY3FLUNL4AOUMOCKVIVV6JC",
+                            "decimals": 7,
+                            "reserveIndex": 3,
+                            "bRate": "1050108006848",
+                            "dRate": "1107476534842",
+                            "rateDecimals": 12,
+                            "bSupply": "416729128",
+                            "dSupply": "17403739"
+                        }
+                    ]
+                }
+            ],
+            "instructions": "Call rpc.getLedgerEntries(...ledgerKeys) to fetch user positions from each Blend pool. Empty entries mean no position in that pool. Use poolMeta[poolAddress].reserveList to map decoded reserve indices to asset contract addresses."
+        },
+        "aquarius": {
+            "protocol": "aquarius",
+            "ledgerKeys": [
+                "AAAABgAAAAHzyEW49vCk4+VYZppV9953Tvk46o7TwJhHS9ZhbBdw2AAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE="
+            ],
+            "poolAddresses": [
+                "CCNXGPE4AQCSNEBZO3XJDKKDI3CRLYMVS6UWBBTVDLALLWMJEXBORQ2A"
+            ],
+            "totalPoolsAvailable": 233,
+            "aquariusPoolMeta": [
+                {
+                    "poolAddress": "CCNXGPE4AQCSNEBZO3XJDKKDI3CRLYMVS6UWBBTVDLALLWMJEXBORQ2A",
+                    "tokenShareAddress": "CDZ4QRNY63YKJY7FLBTJUVPX3Z3U56JY5KHNHQEYI5F5MYLMC5YNRIXE",
+                    "totalShares": "16961335065",
+                    "reserves": [
+                        "7512388017",
+                        "9469343782"
+                    ],
+                    "tokens": [
+                        "CAUP7NFABXE5TJRL3FKTPMWRLC7IAXYDCTHQRFSCLR5TMGKHOOQO772J",
+                        "CBIJBDNZNF4X35BJ4FFZWCDBSCKOP5NB4PLG4SNENRMLAPYG4P5FM6VN"
+                    ],
+                    "balanceKeyIndex": 0
+                }
+            ],
+            "instructions": "Call rpc.getLedgerEntries(...ledgerKeys) in chunks of <=150. For each non-null entry, decode the i128 balance, then look up the matching aquariusPoolMeta[] entry via balanceKeyIndex. Underlying amounts = reserves[i] \u00d7 balance / totalShares."
+        },
+        "stellarWallet": {
+            "protocol": "stellar-wallet",
+            "ledgerKeys": [
+                "AAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQ==",
+                "AAAAAQAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAFVU0RDAAAAADuZETgO/piLoKiQDrHP5E82b32+lGvtB3JA9/Yk3xXF",
+                "AAAAAQAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAFFVVJDAAAAAM9PWibiCQuzrc8Cx6nXPb/mZZzGkEYUdbhkN/pJxxE2",
+                "AAAAAQAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAFCTE5EAAAAANJDzCT2T0vKxUe5oYjLo4glneXapXO+85TT8m0l8yHS",
+                "AAAAAQAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAFBUVVBAAAAAFuULlOsM8j9CoDMfBsahdfYOKnEGXeq0Ys68Ff44z3w",
+                "AAAAAQAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAF5WExNAAAAACI213D+DT4BUhl11c96xIQrcJXWsanXaNPppjLpmQa+",
+                "AAAAAQAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAFzVVNEAAAAANp4WzHI85CCLXH9Upbsb5YaNzPJ3KDSfzRI6wZ5Rwpp",
+                "AAAAAQAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAJ5VVNEQwAAAAAAAAAAAAAA2nhbMcjzkIItcf1Sluxvlho3M8ncoNJ/NEjrBnlHCmk=",
+                "AAAAAQAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAJVU1RSWQAAAAAAAAAAAAAAo4oYfW1BE1599cmUdEgooEng4HwhM7tO2iGZnGfiwTY=",
+                "AAAAAQAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAFYUlAAAAAAAG8Xr51rziqwpQYzWlSlqqSM79rNyv+jRJthuCssKt8R",
+                "AAAAAQAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAJBUVVBbWIAAAAAAAAAAAAA7l9LFkQcp2fhAK5wlCuGSIPrqnTmu0Fb6Z20qi1BTnM=",
+                "AAAAAQAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAFVU0RZAAAAABLH360LjenAr4GiAKSEDrBPxLFdFJHkGTAH0xb8T+YB",
+                "AAAAAQAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAJVU1RCTAAAAAAAAAAAAAAANQIMpkofj60sxohtUbBc0poE1+SdmBkOK7sbgJaDjLU=",
+                "AAAAAQAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAJFVVRCTAAAAAAAAAAAAAAAYtrS3wzR0NL8n0WGkMO7lUAg2yVQzewOS8s4TGl4ZRY=",
+                "AAAABgAAAAH11jazyNfMbuETxJua4J17ahzuszBS8wEhqdKJ5mYnUwAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAEohS9owZhIjjRvsSEu1QKQU3Ycwk9FM5LjU5ggGwgl5wAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAHmp9nrdSMAakaap0g60RByR0Q8DYLmJ2PeZwhIxOl8kAAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAFzWTah70DS65CqV6V2AluAH10TNM18EAXzXzvhRE0xBwAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAHcW3ztUumYrLmU+Et+uwV4lHUHZPwX3vLGkELnjSdnagAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAF1dhQ+CNByukUPUXON2K7kjaLsajK3jycXyNGK8gkDkAAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAHwRzqr9avExxzorwU4KSlA9zOqbAQhtZve1+izS+RdtQAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAEd8Y0tMx2IPjgeOprnuCK5SAZMMsBLRFR04sHILDWkAAAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAFPxnOzgFY33cry/1wphE2KiYXL9wLd2GBCBz4ttJ2nNwAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAHLmlZdw1d6fqRqnUGRxxJMqDa0DYf1Mb4n8xcp+HlXGgAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAF3gHu+dhB6d/7v0dUaQYnJ1G3ZpypRa0/AHAaXJyWbgwAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAEF/m24iFkv+XoYngvmbiF8RL1PqQXXX1K+PndZt0SkugAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAHQqkbHxLhSzj1ToK8wJcg0rZNesYMEefcOLZ5dDnpOMgAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAFXXgJyRanviLKFNNrFSGwQqmdOHLIaJmnm6prGQZ5w5wAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAGFGx/Q2Vr9o0jvwjWzoCgn93nF8ZUHC9KSWjBWOe/k8wAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAHfXZ/i2yOo8xwwCJbwF744sKJxjUn+VkyopBsiSKbhyAAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAEX4kdTR4U4gx4Jb2bYH7Txel5wEegRIDTrvKZs6Sm9nwAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAFy8l4LSI1MTBCMOFMK9K9dyeSR7aTmCM0bUIdwieFp0wAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAF1r2XExeYXj3AhgBmnElZqF+ngkRElm3ILJt6InIZpXAAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAFbtokyY6Exek8mFbBzjacrLaHqmCKVo3j/3H18lg436QAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAFE73aOtfGjR94zhME3yKbxzs7ieHGyro1fAOoxwlVRWgAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAGUJQnnxW8B8aQQSpmWQqaAySTCabjvK4msSaCt8f2aMAAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAEBXYCbqoen8nj67TgxiToTyzhZ6BokJeLbYyJFVbtOGgAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAFQkI25aXl99CnhS5sIYZCU5/Wh49ZuSaRsWLA/BuP6VgAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAEo/7SgDcnZpivZVTey0Vi+gF8DFM8IlkJcezYZR3Og7wAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAEJJbDW6vE0ESj5UnV6RZWiRa21v2HLR5TJALZONoDCoQAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAGxjAp1FOwnSJr2qkYD1OLzs9gUXrnb1jtCo/7OT8SgBwAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAH8zkdb1oOBY0ttmf48gYAh7cgbHRK0bXzWu05molskIAAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAEt5Qj0StEnp96NFqMdT9LYp+yG7vTnnxEvbC9PlcN3vQAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAEjSl9Fy15/DMlxKFkikLYO1fQVHX72Vkey/uDhASi/4gAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAFNXUCwCExIRoqjBPduWXHGPDvSE/oj+nb5ALVU4rzZYQAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAHntVPThlrjqa47QFKOGR0jUW2SmvjF/nSeTNc8ORLAFwAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAHNIXgg5MQHVkWAqEONjkIPjFW4DP2CAjLjL7RMB6IbUwAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAENiMVPLKymeklxOQACuGOkdg5ds6HJ9BonrtFT685VRgAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAESPSAyf+rtVwmFMJk4z0obOmK/ZBE0NvV80H2ISxUI1gAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAFc4RsyrGWSxJymm2joPI3xVNoiDMzqD0l6NTGl9mTTfwAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAGKjFy71BHOqu7m0/vjY2H9bw1T/coyHB7tDcc1r7BtHgAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAGes1kIzfxqIr5NLJCI1tvDrmZnU6poQbOYMoTGKyp49AAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAHlowgQm2CGyEmiUVCm6FqDZ/X0+twTHY/d+fgKASqeyQAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE=",
+                "AAAABgAAAAHs4Pp/lWTGQb2u36c+YQXc/4wZOattvxPKFHqVTfTDKwAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE="
+            ],
+            "addressKind": "G",
+            "accountKeyIndex": 0,
+            "trustlines": [
+                {
+                    "code": "USDC",
+                    "issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+                    "ledgerKeyIndex": 1
+                },
+                {
+                    "code": "EURC",
+                    "issuer": "GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2",
+                    "ledgerKeyIndex": 2
+                },
+                {
+                    "code": "BLND",
+                    "issuer": "GDJEHTBE6ZHUXSWFI642DCGLUOECLHPF3KSXHPXTSTJ7E3JF6MQ5EZYY",
+                    "ledgerKeyIndex": 3
+                },
+                {
+                    "code": "AQUA",
+                    "issuer": "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
+                    "ledgerKeyIndex": 4
+                },
+                {
+                    "code": "yXLM",
+                    "issuer": "GARDNV3Q7YGT4AKSDF25LT32YSCCW4EV22Y2TV3I2PU2MMXJTEDL5T55",
+                    "ledgerKeyIndex": 5
+                },
+                {
+                    "code": "sUSD",
+                    "issuer": "GDNHQWZRZDZZBARNOH6VFFXMN6LBUNZTZHOKBUT7GREOWBTZI4FGS7IQ",
+                    "ledgerKeyIndex": 6
+                },
+                {
+                    "code": "yUSDC",
+                    "issuer": "GDNHQWZRZDZZBARNOH6VFFXMN6LBUNZTZHOKBUT7GREOWBTZI4FGS7IQ",
+                    "ledgerKeyIndex": 7
+                },
+                {
+                    "code": "USTRY",
+                    "issuer": "GCRYUGD5NVARGXT56XEZI5CIFCQETYHAPQQTHO2O3IQZTHDH4LATMYWC",
+                    "ledgerKeyIndex": 8
+                },
+                {
+                    "code": "XRP",
+                    "issuer": "GBXRPL45NPHCVMFFAYZVUVFFVKSIZ362ZXFP7I2ETNQ3QKZMFLPRDTD5",
+                    "ledgerKeyIndex": 9
+                },
+                {
+                    "code": "AQUAmb",
+                    "issuer": "GDXF6SYWIQOKOZ7BACXHBFBLQZEIH25KOTTLWQK35GO3JKRNIFHHGBPC",
+                    "ledgerKeyIndex": 10
+                },
+                {
+                    "code": "USDY",
+                    "issuer": "GAJMPX5NBOG6TQFPQGRABJEEB2YE7RFRLUKJDZAZGAD5GFX4J7TADAZ6",
+                    "ledgerKeyIndex": 11
+                },
+                {
+                    "code": "USTBL",
+                    "issuer": "GA2QEDFGJIPY7LJMY2EG2UNQLTJJUBGX4SOZQGIOFO5RXAEWQOGLKHWU",
+                    "ledgerKeyIndex": 12
+                },
+                {
+                    "code": "EUTBL",
+                    "issuer": "GBRNVUW7BTI5BUX4T5CYNEGDXOKUAIG3EVIM33AOJPFTQTDJPBSRNM54",
+                    "ledgerKeyIndex": 13
+                }
+            ],
+            "tokens": [
+                {
+                    "symbol": "BLND",
+                    "contract": "CD25MNVTZDL4Y3XBCPCJXGXATV5WUHHOWMYFF4YBEGU5FCPGMYTVG5JY",
+                    "ledgerKeyIndex": 14
+                },
+                {
+                    "symbol": "AQUA",
+                    "contract": "CAUIKL3IYGMERDRUN6YSCLWVAKIFG5Q4YJHUKM4S4NJZQIA3BAS6OJPK",
+                    "ledgerKeyIndex": 15
+                },
+                {
+                    "symbol": "EURC",
+                    "contract": "CDTKPWPLOURQA2SGTKTUQOWRCBZEORB4BWBOMJ3D3ZTQQSGE5F6JBQLV",
+                    "ledgerKeyIndex": 16
+                },
+                {
+                    "symbol": "yXLM",
+                    "contract": "CBZVSNVB55ANF24QVJL2K5QCLOAB6XITGTGXYEAF6NPTXYKEJUYQOHFC",
+                    "ledgerKeyIndex": 17
+                },
+                {
+                    "symbol": "yUSDC",
+                    "contract": "CDOFW7HNKLUZRLFZST4EW7V3AV4JI5IHMT6BPXXSY2IEFZ4NE5TWU2P4",
+                    "ledgerKeyIndex": 18
+                },
+                {
+                    "symbol": "yBTC",
+                    "contract": "CB2XMFB6BDIHFOSFB5IXHDOYV3SI3IXMNIZLPDZHC7ENDCXSBEBZAO2Y",
+                    "ledgerKeyIndex": 19
+                },
+                {
+                    "symbol": "yETH",
+                    "contract": "CDYEOOVL6WV4JRY45CXQKOBJFFAPOM5KNQCCDNM333L6RM2L4RO3LKYG",
+                    "ledgerKeyIndex": 20
+                },
+                {
+                    "symbol": "BTC",
+                    "contract": "CAO7DDJNGMOYQPRYDY5JVZ5YEK4UQBSMGLAEWRCUOTRMDSBMGWSAATDZ",
+                    "ledgerKeyIndex": 21
+                },
+                {
+                    "symbol": "ETH",
+                    "contract": "CBH4M45TQBLDPXOK6L7VYKMEJWFITBOL64BN3WDAIIDT4LNUTWTTOCKF",
+                    "ledgerKeyIndex": 22
+                },
+                {
+                    "symbol": "sUSD",
+                    "contract": "CDFZUVS5YNLXU7VENKOUDEOHCJGKQNVUBWD7KMN6E7ZROKPYPFLRUJFG",
+                    "ledgerKeyIndex": 23
+                },
+                {
+                    "symbol": "USDY",
+                    "contract": "CB3YA656OYIHU57657I5KGSBRHE5I3OZU4VFC22PYAOANFZHEWNYGAGP",
+                    "ledgerKeyIndex": 24
+                },
+                {
+                    "symbol": "USDM1",
+                    "contract": "CAC743NYRBMS76L2DCPAXZTOEF6EJPKPVEC5OX2SXY7HOWNXISSLUE2C",
+                    "ledgerKeyIndex": 25
+                },
+                {
+                    "symbol": "USDx",
+                    "contract": "CDIKURWHYS4FFTR5KOQK6MBFZA2K3E26WGBQI6PXBYWZ4XIOPJHDFJKP",
+                    "ledgerKeyIndex": 26
+                },
+                {
+                    "symbol": "USTRY",
+                    "contract": "CBLV4ATSIWU67CFSQU2NVRKINQIKUZ2ODSZBUJTJ43VJVRSBTZYOPNUR",
+                    "ledgerKeyIndex": 27
+                },
+                {
+                    "symbol": "PYUSD",
+                    "contract": "CCCRWH6Q3FNP3I2I57BDLM5AFAT7O6OF6GKQOC6SSJNDAVRZ57SPHGU2",
+                    "ledgerKeyIndex": 28
+                },
+                {
+                    "symbol": "USDC_SOROBAN",
+                    "contract": "CDPV3H7C3MR2R4Y4GAEJN4AXXY4LBITRRVE74VSMVCSBWISIU3Q4QTMW",
+                    "ledgerKeyIndex": 29
+                },
+                {
+                    "symbol": "CETES",
+                    "contract": "CAL6ER2TI6CTRAY6BFXWNWA7WTYXUXTQCHUBCIBU5O6KM3HJFG6Z6VXV",
+                    "ledgerKeyIndex": 30
+                },
+                {
+                    "symbol": "oUSD",
+                    "contract": "CBZPEXQLJCGUYTAQRQ4FGCXUV5O4TZER5WSOMCGNDNIIO4EJ4FU5GQNZ",
+                    "ledgerKeyIndex": 31
+                },
+                {
+                    "symbol": "USDGLO",
+                    "contract": "CB226ZOEYXTBPD3QEGABTJYSKZVBP2PASEISLG3SBMTN5CE4QZUVZ3CE",
+                    "ledgerKeyIndex": 32
+                },
+                {
+                    "symbol": "EURx",
+                    "contract": "CBN3NCJSMOQTC6SPEYK3A44NU4VS3IPKTARJLI3Y77OH27EWBY36TP7U",
+                    "ledgerKeyIndex": 33
+                },
+                {
+                    "symbol": "GBPx",
+                    "contract": "CBCO65UOWXY2GR66GOCMCN6IU3Y45TXCPBY3FLUNL4AOUMOCKVIVV6JC",
+                    "ledgerKeyIndex": 34
+                },
+                {
+                    "symbol": "SHX",
+                    "contract": "CCKCKCPHYVXQD4NECBFJTFSCU2AMSJGCNG4O6K4JVRE2BLPR7WNDBQIQ",
+                    "ledgerKeyIndex": 35
+                },
+                {
+                    "symbol": "XRP",
+                    "contract": "CAAV3AE3VKD2P4TY7LWTQMMJHIJ4WOCZ5ANCIJPC3NRSERKVXNHBU2W7",
+                    "ledgerKeyIndex": 36
+                },
+                {
+                    "symbol": "SolvBTC",
+                    "contract": "CBIJBDNZNF4X35BJ4FFZWCDBSCKOP5NB4PLG4SNENRMLAPYG4P5FM6VN",
+                    "ledgerKeyIndex": 37
+                },
+                {
+                    "symbol": "xSolvBTC",
+                    "contract": "CAUP7NFABXE5TJRL3FKTPMWRLC7IAXYDCTHQRFSCLR5TMGKHOOQO772J",
+                    "ledgerKeyIndex": 38
+                },
+                {
+                    "symbol": "VELO",
+                    "contract": "CAESLMGW5LYTIEJI7FJHK6SFSWRELLNVX5Q4WR4UZEALMTRWQDBKDPAG",
+                    "ledgerKeyIndex": 39
+                },
+                {
+                    "symbol": "AQUAmb",
+                    "contract": "CCYYYCTVCTWCOSE262VEMA6U4LZ3HWAUL245XVR3IKR75TSPYSQAOMNX",
+                    "ledgerKeyIndex": 40
+                },
+                {
+                    "symbol": "TESOURO",
+                    "contract": "CD6M4R2322BYCY2LNWM74PEBQAQ63SA3DUJLI3L4225U4ZVCLMSCBCIS",
+                    "ledgerKeyIndex": 41
+                },
+                {
+                    "symbol": "USDyc",
+                    "contract": "CAW6KCHUJLISPJ66RULKGHKP2LMKP3EG532OPHYRF5WC6T4VYN3336LB",
+                    "ledgerKeyIndex": 42
+                },
+                {
+                    "symbol": "USTBL",
+                    "contract": "CARUUX2FZNPH6DGJOEUFSIUQWYHNL5AVDV7PMVSHWL7OBYIBFC76F4TO",
+                    "ledgerKeyIndex": 43
+                },
+                {
+                    "symbol": "EUTBL",
+                    "contract": "CBGV2QFQBBGEQRUKUMCPO3SZOHDDYO6SCP5CH6TW7EALKVHCXTMWDDOF",
+                    "ledgerKeyIndex": 44
+                },
+                {
+                    "symbol": "UKTBL",
+                    "contract": "CDT3KU6TQZNOHKNOHNAFFDQZDURVC3MSTL4ML7TUTZGNOPBZCLABP4FR",
+                    "ledgerKeyIndex": 45
+                },
+                {
+                    "symbol": "SAFO",
+                    "contract": "CDGSC6BA4TCAOVSFQCUEHDMOIIHYYVNYBT6YEARS4MX3ITAHUINVGQHX",
+                    "ledgerKeyIndex": 46
+                },
+                {
+                    "symbol": "gbpSAFO",
+                    "contract": "CAGYRRKPFSWKM6SJOE4QAAVYMOSHMDS5WOQ4T5A2E6XNCU7LZZKUNQKP",
+                    "ledgerKeyIndex": 47
+                },
+                {
+                    "symbol": "chfSAFO",
+                    "contract": "CAJD2IBSP7VO2VYJQUYJSOGPJINTUYV7MQITINXVPTIH3CCLCUENNMW4",
+                    "ledgerKeyIndex": 48
+                },
+                {
+                    "symbol": "eurSAFO",
+                    "contract": "CBOOCGZSVRSZFRE4U2NWR2B4RXYVJWRCBTGOUD2JPI2TDJPWMTJX7FZP",
+                    "ledgerKeyIndex": 49
+                },
+                {
+                    "symbol": "eurUSTBL",
+                    "contract": "CCFIYXF32QI45KXO43J7XY3DMH6W6DKT7XFDEHA65UG4ONNPWBWR4YMA",
+                    "ledgerKeyIndex": 50
+                },
+                {
+                    "symbol": "eurUKTBL",
+                    "contract": "CCPLGWIIZX6GUIV6JUWJBCGW3PB24ZTHKOVGQQNTTAZIJRRLFJ4PIUMZ",
+                    "ledgerKeyIndex": 51
+                },
+                {
+                    "symbol": "SPKCC",
+                    "contract": "CDS2GCAQTNQINSCJUJIVBJXILKBWP5PU7LOBGHMP3X47QCQBFKPMTCNT",
+                    "ledgerKeyIndex": 52
+                },
+                {
+                    "symbol": "eurSPKCC",
+                    "contract": "CDWOB6T7SVSMMQN5V3P2OPTBAXOP7DAZHGVW3PYTZIKHVFKN6TBSXR6A",
+                    "ledgerKeyIndex": 53
+                }
+            ],
+            "instructions": "For G-addresses: ledgerKeys[0] = Account entry (XLM balance via .balance()). Trustline entries decode via .trustLine().balance() and match `trustlines[i].ledgerKeyIndex`. SEP-41 Balance entries decode via scValToNative and match `tokens[i].ledgerKeyIndex`."
+        },
+        "untangledVault": {
+            "protocol": "untangled-vault",
+            "ledgerKeys": [
+                "AAAABgAAAAHGNcoAj4lUBLTymHB6y0ZT1433UkRADH7CdnTuX/9uegAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE="
+            ],
+            "poolAddresses": [
+                "CDDDLSQAR6EVIBFU6KMHA6WLIZJ5PDPXKJCEADD6YJ3HJ3S775XHVEE4"
+            ],
+            "vaults": [
+                {
+                    "vaultAddress": "CDDDLSQAR6EVIBFU6KMHA6WLIZJ5PDPXKJCEADD6YJ3HJ3S775XHVEE4",
+                    "symbol": "USDyc2",
+                    "name": "USDyc2",
+                    "decimals": 7,
+                    "balanceKeyIndex": 0
+                }
+            ],
+            "instructions": "Each ledgerKey is a SEP-41 Balance(holder) entry on a vault contract. Decode i128 share amount via scValToNative; humanise with `vaults[i].decimals`."
+        },
+        "fxdao": {
+            "protocol": "fxdao",
+            "ledgerKeys": [
+                "AAAABgAAAAGo3kb07VozyLyXIqrzKcMvrFlOP5fAKIqrajh8+OwQBwAAABAAAAABAAAAAgAAAA8AAAAFVmF1bHQAAAAAAAAQAAAAAQAAAAIAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAA8AAAADVVNEAAAAAAE=",
+                "AAAABgAAAAGo3kb07VozyLyXIqrzKcMvrFlOP5fAKIqrajh8+OwQBwAAABAAAAABAAAAAgAAAA8AAAAFVmF1bHQAAAAAAAAQAAAAAQAAAAIAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAA8AAAADRVVSAAAAAAE=",
+                "AAAABgAAAAGo3kb07VozyLyXIqrzKcMvrFlOP5fAKIqrajh8+OwQBwAAABAAAAABAAAAAgAAAA8AAAAFVmF1bHQAAAAAAAAQAAAAAQAAAAIAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAA8AAAADR0JQAAAAAAE="
+            ],
+            "vaultAddress": "CCUN4RXU5VNDHSF4S4RKV4ZJYMX2YWKOH6L4AKEKVNVDQ7HY5QIAO4UB",
+            "denoms": [
+                {
+                    "denomination": "USD",
+                    "vaultAddress": "CCUN4RXU5VNDHSF4S4RKV4ZJYMX2YWKOH6L4AKEKVNVDQ7HY5QIAO4UB",
+                    "vaultKeyIndex": 0
+                },
+                {
+                    "denomination": "EUR",
+                    "vaultAddress": "CCUN4RXU5VNDHSF4S4RKV4ZJYMX2YWKOH6L4AKEKVNVDQ7HY5QIAO4UB",
+                    "vaultKeyIndex": 1
+                },
+                {
+                    "denomination": "GBP",
+                    "vaultAddress": "CCUN4RXU5VNDHSF4S4RKV4ZJYMX2YWKOH6L4AKEKVNVDQ7HY5QIAO4UB",
+                    "vaultKeyIndex": 2
+                }
+            ],
+            "instructions": "Each ledgerKey is a Vault(user, denom) entry on the FxDAO vault. Decode via scValToNative \u2192 {account, index, total_collateral, total_debt}. Drop entries with no `account` field (user has no vault for that denom)."
+        },
+        "soroswap": {
+            "protocol": "soroswap",
+            "ledgerKeys": [
+                "AAAABgAAAAF55bDJF+WJH4L8gtXX2+uv0MmwGaMd6bG4K/boFW5ZCgAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE="
+            ],
+            "poolAddresses": [
+                "CB46LMGJC7SYSH4C7SBNLV635OX5BSNQDGRR32NRXAV7N2AVNZMQUJ3A"
+            ],
+            "totalPoolsAvailable": 211,
+            "pairMeta": [
+                {
+                    "pairAddress": "CB46LMGJC7SYSH4C7SBNLV635OX5BSNQDGRR32NRXAV7N2AVNZMQUJ3A",
+                    "token0": "CBCU5VMZ3GNHHKJUWZ2GI7K36MEAXOJW2RJCIJHFPVFGBME3WADLXA6W",
+                    "token1": "CCBJNX4B23ZDXEE3KRS2IAQJSLNQY4ZJ24K44BI7FYYIF5ZAZMRYPRRD",
+                    "reserve0": "2000000000000",
+                    "reserve1": "1250000000000",
+                    "totalSupply": "1581138830084",
+                    "balanceKeyIndex": 0
+                }
+            ],
+            "instructions": "Each ledgerKey is a Balance(user) entry on a Soroswap pair (the pair contract IS the LP token). Decode i128 balance, then decompose: underlying_i = reserve_i \u00d7 balance / totalSupply."
+        },
+        "phoenix": {
+            "protocol": "phoenix",
+            "ledgerKeys": [
+                "AAAABgAAAAFmKVchSUzLfJpaiqiigI0VlWhzDQX79g+CV3YA/NDDsAAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE="
+            ],
+            "poolAddresses": [
+                "CBHCRSVX3ZZ7EGTSYMKPEFGZNWRVCSESQR3UABET4MIW52N4EVU6BIZX"
+            ],
+            "totalPoolsAvailable": 13,
+            "poolMeta": [
+                {
+                    "poolAddress": "CBHCRSVX3ZZ7EGTSYMKPEFGZNWRVCSESQR3UABET4MIW52N4EVU6BIZX",
+                    "tokenA": "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
+                    "tokenB": "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",
+                    "shareToken": "CBTCSVZBJFGMW7E2LKFKRIUARUKZK2DTBUC7X5QPQJLXMAH42DB3ALE5",
+                    "stakeContract": "CAF3UJ45ZQJP6USFUIMVMGOUETUTXEC35R2247VJYIVQBGKTKBZKNBJ3",
+                    "reserveA": "145536689115",
+                    "reserveB": "25933083988",
+                    "totalShares": "61424364875",
+                    "balanceKeyIndex": 0,
+                    "stakeKeyIndex": 1
+                }
+            ],
+            "instructions": "Per pool: ledgerKeys[poolMeta[i].balanceKeyIndex] is a Balance(user) on the shareToken; when stakeKeyIndex >= 0, ledgerKeys[stakeKeyIndex] is a stake(user) entry on the stake contract. Decode the LP balance, then decompose underlying via reserves \u00d7 balance / totalShares. Decode stake via scValToNative(...).total_stake (i128)."
+        },
+        "upshift": {
+            "protocol": "upshift",
+            "ledgerKeys": [
+                "AAAABgAAAAGXuyJ2KW6D10juiCr0b0EcWU6beF8e7Qt6y6Q/qjkFeAAAABAAAAABAAAAAgAAAA8AAAAHQmFsYW5jZQAAAAASAAAAAAAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAE="
+            ],
+            "poolAddresses": [
+                "CCL3WITWFFXIHV2I52ECV5DPIEOFSTU3PBPR53ILPLF2IP5KHECXRUTY"
+            ],
+            "vaults": [
+                {
+                    "vaultAddress": "CCL3WITWFFXIHV2I52ECV5DPIEOFSTU3PBPR53ILPLF2IP5KHECXRUTY",
+                    "symbol": "earnUSDC",
+                    "name": "Gami earnUSDC",
+                    "decimals": 7,
+                    "shareDecimals": 13,
+                    "underlyingSymbol": "USDC",
+                    "underlyingContract": "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",
+                    "balanceKeyIndex": 0
+                }
+            ],
+            "instructions": "Each ledgerKey is a SEP-41 Balance(holder) entry on an Upshift vault. Decode the i128 share amount, humanise with `vaults[i].shareDecimals`. NAV pricing lives in apps/portfolio-api (DeployedAssets / TotalSupply from the vault's instance storage), multiplied by the underlying spot price."
+        },
+        "tokenInfos": {
+            "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA": {
+                "decimals": 7,
+                "symbol": "XLM",
+                "coingeckoId": "stellar"
+            },
+            "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75": {
+                "decimals": 7,
+                "symbol": "USDC",
+                "coingeckoId": "usd-coin"
+            },
+            "CAUP7NFABXE5TJRL3FKTPMWRLC7IAXYDCTHQRFSCLR5TMGKHOOQO772J": {
+                "decimals": 8,
+                "symbol": "xSolvBTC",
+                "coingeckoId": "solv-btc"
+            }
+        }
+    }
+}

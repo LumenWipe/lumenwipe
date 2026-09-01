@@ -8,6 +8,9 @@ export const POLL_INTERVAL_MS = 3000; // 3 seconds between polls
 export const POLL_MAX_ATTEMPTS = 30; // 90 seconds total
 export const SLIPPAGE_BPS = 50; // 0.5% default slippage for path payments
 export const HORIZON_TIMEOUT_MS = 10000; // 10 seconds
+// OctoPos is an optional enhancement - fail fast into degraded mode rather than stall the
+// analyze call waiting on a third-party DeFi position provider.
+export const OCTOPOS_TIMEOUT_MS = 5000; // 5 seconds
 
 // Sponsorship enumeration: how many of the sponsor's own operations we'll page through
 // (oldest-first, from account creation) looking for sponsorship-bracket candidates
