@@ -1,7 +1,14 @@
 import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { buildPlan } from "@/lib/stellar/tx-builder";
-import type { AccountState, ClaimableBalance, SponsoredEntry, Trustline } from "@lumenwipe/types";
+import type {
+  AccountState,
+  ClaimableBalance,
+  DefiPositionsResult,
+  DefiQueryKeys,
+  SponsoredEntry,
+  Trustline,
+} from "@lumenwipe/types";
 
 const MASTER_KP = Keypair.random();
 const EXTRA_KP = Keypair.random();
@@ -1939,4 +1946,47 @@ test("buildPlan › two remediated balances of one asset: one step, one removal,
   // And the plan adds the trustline once, not once per balance.
   const adds = steps.find((s) => s.type === "ADD_TRUSTLINE_FOR_CLAIM");
   expect(adds!.operationCount).toBe(1);
+});
+
+// ─── issue #147: gating on DeFi position freshness/confidence signals ───────
+
+const EMPTY_DEFI_QUERY_KEYS: DefiQueryKeys = {
+  rpcEndpoints: [],
+  rpcPolicy: { maxKeysPerCall: 0, recommendedConcurrency: 0, backoffOn429Ms: [], timeoutMs: 0 },
+  slices: {},
+};
+
+function makeDefiResult(overrides: Partial<DefiPositionsResult> = {}): DefiPositionsResult {
+  return {
+    address: MASTER,
+    network: "testnet",
+    positions: [],
+    unrecognizedPositions: [],
+    enrichment: {},
+    source: "snapshot",
+    timestamp: new Date().toISOString(),
+    queryKeys: EMPTY_DEFI_QUERY_KEYS,
+    ...overrides,
+  };
+}
+
+test("buildPlan › omitting defiPositions is a true no-op, identical to the existing call shape", () => {
+  const account = makeAccount();
+  const withoutParam = buildPlan(account, false, false, {});
+  const withExplicitNull = buildPlan(account, false, false, {}, undefined, {}, {}, null);
+  expect(withoutParam).toEqual(withExplicitNull);
+});
+
+test("buildPlan › a stale defiPositions result surfaces as a blocker", () => {
+  const account = makeAccount();
+  const stale = makeDefiResult({ timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString() });
+  const { blockers } = buildPlan(account, false, false, {}, undefined, {}, {}, stale);
+  expect(blockers.some((b) => b.code === "defi_positions_stale")).toBe(true);
+});
+
+test("buildPlan › a fresh, clean defiPositions result adds no blockers", () => {
+  const account = makeAccount();
+  const fresh = makeDefiResult();
+  const { blockers } = buildPlan(account, false, false, {}, undefined, {}, {}, fresh);
+  expect(blockers.some((b) => b.code?.startsWith("defi_"))).toBe(false);
 });
