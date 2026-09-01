@@ -15,6 +15,17 @@ export const PATH_ROUTING_API_URLS: Record<Network, string> = {
   testnet: process.env.NEXT_PUBLIC_PATH_ROUTING_API_TESTNET || "",
 };
 
+/**
+ * OctoPos, the DeFi position provider (architecture.md §7.1). Empty by default - unlike
+ * RPC_URLS this is a specific commercial third party whose absence is a fully supported
+ * product state (degraded mode: classic-only close, DeFi detection unavailable), not a missing
+ * essential dependency, so it is never given a compiled-in public default.
+ */
+export const OCTOPOS_API_URLS: Record<Network, string> = {
+  mainnet: process.env.OCTOPOS_API_URL_MAINNET || "",
+  testnet: process.env.OCTOPOS_API_URL_TESTNET || "",
+};
+
 
 export const SE_EXPLORER_BASE: Record<Network, string> = {
   mainnet: "https://stellar.expert/explorer/public",
