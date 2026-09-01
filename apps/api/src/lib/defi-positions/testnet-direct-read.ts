@@ -1,11 +1,17 @@
 /**
- * The testnet DeFi-detection fallback (architecture.md §7.1, issue #148). OctoPos is mainnet
- * only - its own OpenAPI spec claims a testnet host, but that host doesn't resolve (see the note
- * on `OCTOPOS_API_URL_MAINNET` in config/networks.ts) - so testnet positions are read directly
- * over RPC `getLedgerEntries` against the contracts in the versioned contract registry
+ * The direct-contract-read DeFi-detection path (architecture.md §7.1, issue #148). OctoPos is
+ * mainnet only - its own OpenAPI spec claims a testnet host, but that host doesn't resolve (see
+ * the note on `OCTOPOS_API_URL_MAINNET` in config/networks.ts) - so testnet positions are read
+ * directly over RPC `getLedgerEntries` against the contracts in the versioned contract registry
  * (lib/contract-registry), with the same "halt on unknown wasmHash, never decode against a shape
  * you haven't confirmed" discipline the exit adapters hold to (architecture.md §9.9), even though
  * this path builds nothing signable - it only reads.
+ *
+ * Network-parameterized rather than testnet-only: issue #149's degraded mode reuses this exact
+ * function for a mainnet OctoPos outage, so the same code every testnet CI run already exercises
+ * is what actually runs during a real outage, instead of a separate, rarely-exercised stub. On
+ * testnet this is the designed primary path (not a fallback); on mainnet it is a best-effort
+ * fallback the resolver (`resolve-defi-positions.ts`) only reaches for when OctoPos fails.
  *
  * Deliberately narrower than OctoPos's coverage: every gap below is a stated, sourced limit, not
  * a silently missing feature.
@@ -38,14 +44,15 @@ import type {
   DefiPosition,
   DefiPositionsResult,
   FxdaoCdpPosition,
+  Network,
   UnrecognizedDefiPosition,
 } from "@lumenwipe/types";
 
 type RpcServer = ReturnType<typeof getRpcServer>;
 
-export interface TestnetDirectReadDeps {
+export interface DirectReadDeps {
   rpc?: RpcServer;
-  /** Overridable for tests; defaults to the real registry's testnet entries. */
+  /** Overridable for tests; defaults to the real registry's entries for the target network. */
   registryEntries?: ContractRegistryEntry[];
 }
 
@@ -289,12 +296,13 @@ async function readFxdaoVaults(
 
 // ─── entry point ────────────────────────────────────────────────────────────
 
-export async function detectTestnetDefiPositions(
+export async function detectDefiPositionsViaDirectRead(
   address: string,
-  deps: TestnetDirectReadDeps = {}
+  network: Network = "testnet",
+  deps: DirectReadDeps = {}
 ): Promise<DefiPositionsResult> {
-  const rpc = deps.rpc ?? getRpcServer("testnet");
-  const entries = deps.registryEntries ?? entriesForNetwork("testnet");
+  const rpc = deps.rpc ?? getRpcServer(network);
+  const entries = deps.registryEntries ?? entriesForNetwork(network);
 
   const positions: DefiPosition[] = [];
   const unrecognized: UnrecognizedDefiPosition[] = [];
@@ -317,11 +325,11 @@ export async function detectTestnetDefiPositions(
 
   return {
     address,
-    network: "testnet",
+    network,
     positions,
     unrecognizedPositions: unrecognized,
     enrichment: {},
-    source: "testnet-direct-read",
+    source: `${network}-direct-read`,
     timestamp: new Date().toISOString(),
     queryKeys: {
       rpcEndpoints: [],

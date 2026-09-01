@@ -22,17 +22,20 @@ function explorerUrl(result: DefiPositionsResult): string {
 }
 
 /**
- * OctoPos's real "not-tracked" response always pairs with a null timestamp (confirmed via a live
- * capture during #146) - there is no snapshot to judge freshness against, so this is not "no
- * positions," it is "unknown." Treated the same as any other missing or unparseable timestamp.
+ * A null timestamp means "no confirmed snapshot," regardless of why: OctoPos's real "not-tracked"
+ * response always pairs with a null timestamp (confirmed via a live capture during #146), and
+ * issue #149's degraded mode (an OctoPos outage, falling back to a best-effort direct read)
+ * deliberately produces the same null timestamp rather than a fresh one - a best-effort read is
+ * not a confirmed snapshot either. Both are "unknown," never "no positions," and both get the
+ * same treatment as any other missing or unparseable timestamp.
  */
 function unavailableBlocker(result: DefiPositionsResult): PlanBlocker {
   return {
     code: "defi_positions_unavailable",
     message:
-      "DeFi position data for this account could not be confirmed (OctoPos has no snapshot for " +
-      "it yet). This account may hold open DeFi positions that have not been detected - verify " +
-      "manually on an explorer before proceeding.",
+      "DeFi position data for this account could not be confirmed. This account may hold open " +
+      "DeFi positions that have not been detected - verify manually on an explorer before " +
+      "proceeding.",
     helpUrl: explorerUrl(result),
   };
 }
