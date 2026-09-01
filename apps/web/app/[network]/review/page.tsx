@@ -34,7 +34,7 @@ export default function ReviewPage({ params }: { params: Promise<{ network: Netw
         </button>
         <h1 className="mkt-display text-xl font-bold text-white">Review the full plan</h1>
         <span className="text-xs text-white/45 ml-auto mkt-mono">
-          {sourceAddress.slice(0, 8)}...
+          {sourceAddress.slice(0, 8)}...{sourceAddress.slice(-8)}
         </span>
       </div>
 

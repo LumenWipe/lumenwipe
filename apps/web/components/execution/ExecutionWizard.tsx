@@ -373,7 +373,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                   <p className="text-sm text-white/70">
                     This is a multisig account: completing the close needs a total signing weight of{" "}
                     {multisigNotice.requiredWeight}. Signatures can come from any of its signers,
-                    one at a time - sign with one, then connect the next.
+                    one at a time - sign with the first, then sign with the next.
                   </p>
                   <ul className="space-y-1">
                     {multisigNotice.signers.map((s) => (
