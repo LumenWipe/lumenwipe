@@ -47,7 +47,7 @@ cd apps/web && bun test tests/unit/verify.test.ts
 cd apps/api && bun test tests/close-transactions.test.ts
 ```
 
-`bun type-check && bun lint && bun test` must pass before pushing. CI (`.github/workflows/ci.yml`) runs every package's checks on each change as a matrix - a shared `packages/types` change is validated against every consumer, not skipped by a path filter. `deploy-api.yml` deploys the API to Cloud Run on push to `main` (keyless WIF).
+`bun type-check && bun lint && bun test` must pass before pushing. Run `bun run format` before opening a PR - CI's `format` job runs `bun run format:check` (`prettier --check .`) and fails the build on any drift, so an unformatted file blocks the PR the same way a failing test does. CI (`.github/workflows/ci.yml`) runs every package's checks on each change as a matrix - a shared `packages/types` change is validated against every consumer, not skipped by a path filter. `deploy-api.yml` deploys the API to Cloud Run on push to `main` (keyless WIF).
 
 ### Local full-flow dev
 
