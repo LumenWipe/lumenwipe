@@ -2,6 +2,7 @@ import { test, expect, beforeEach, describe } from "bun:test";
 import { useDemolishStore } from "@/store/demolish";
 import type { PlannedStep, StepType } from "@/types/plan";
 import type { AccountState, Trustline } from "@/types/account";
+import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 function accountState(over: Partial<AccountState> = {}): AccountState {
   return {
@@ -23,6 +24,8 @@ function accountState(over: Partial<AccountState> = {}): AccountState {
     poolShares: [],
     claimableBalances: [],
     subEntryMismatch: false,
+    defiPositions: emptyDefiPositionsResult("GSOURCE"),
+    defiPositionsWarnings: [],
     ...over,
   };
 }

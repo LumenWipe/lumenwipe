@@ -1,4 +1,4 @@
-import { Coins, Database, ArrowUpDown, Link2, Users, TrendingUp } from "lucide-react";
+import { Coins, Database, ArrowUpDown, Link2, Users, TrendingUp, Layers } from "lucide-react";
 import type { AccountState } from "@/types/account";
 import { formatXlm, calcRecoverableReserve } from "@/lib/utils/amounts";
 
@@ -50,6 +50,11 @@ export default function AccountSummaryCard({
       icon: TrendingUp,
       label: "Recoverable reserve",
       value: formatXlm(recoverableXlm),
+    },
+    {
+      icon: Layers,
+      label: "DeFi positions",
+      value: account.defiPositions.positions.length,
     },
   ];
 
