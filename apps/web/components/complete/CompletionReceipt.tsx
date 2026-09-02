@@ -125,10 +125,12 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
             {positions.map((p, i) => (
               <li key={`${p.contractAddress}-${i}`} className="text-xs text-white/55">
                 {describeDefiPosition(p, account.defiPositions.enrichment)}
-                <span className="font-mono-address text-white/35">
-                  {" "}
-                  · {shortAddr(p.contractAddress)}
-                </span>
+                {!p.display?.pool && (
+                  <span className="font-mono-address text-white/35">
+                    {" "}
+                    · {shortAddr(p.contractAddress)}
+                  </span>
+                )}
               </li>
             ))}
           </ul>

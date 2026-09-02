@@ -9,6 +9,7 @@ import {
   resolveDefiPositions,
   type ResolveDefiPositionsDeps,
 } from "@/lib/defi-positions/resolve-defi-positions";
+import { enrichDefiPositions, knownTokensFor } from "@/lib/defi-positions/enrich";
 import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
 import { Logger } from "@nestjs/common";
 
@@ -185,11 +186,18 @@ export async function readAccountStateFrom(
     })
     .filter((s): s is AccountSigner => s !== null);
 
-  const [openOffers, claimableBalances, defiPositions] = await Promise.all([
+  const [openOffers, claimableBalances, detectedPositions] = await Promise.all([
     fetchOffersFromAdapter(address, deps),
     fetchClaimableBalancesForClaimant(address, deps),
     resolveDefiPositions(address, network, defiDeps),
   ]);
+  // Presentation for what detection found (pool name, symbol, underlying amount, yield). Never
+  // changes positions or blockers; the gate below judges the detection result as returned.
+  const defiPositions = await enrichDefiPositions(detectedPositions, {
+    network,
+    account: address,
+    knownTokens: knownTokensFor(trustlines, network),
+  });
   const defiPositionsWarnings = assessDefiPositionsGate(defiPositions);
   const numSubEntries = account.subentry_count;
 

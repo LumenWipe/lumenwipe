@@ -17,10 +17,33 @@ export type DefiProtocol = "blend" | "aquarius" | "soroswap" | "phoenix" | "fxda
  */
 export type DefiPositionType = "supply" | "borrow" | "lp" | "cdp" | "stake";
 
+/**
+ * What a person should read about a position, in the protocol's own terms, resolved by the API
+ * from a live read at analysis time (issue #197). Presentation only: every field is nullable, a
+ * failed read leaves the whole object absent, and nothing here feeds the plan, the gate, or an
+ * exit - those re-read the ledger themselves.
+ */
+export interface DefiPositionDisplay {
+  /** The pool, pair, or vault by name (the protocol's own metadata or the registry label). */
+  pool: string | null;
+  /** Symbol of the position's asset; for an LP position the pair, e.g. "XLM/USDC". */
+  asset: string | null;
+  /** Underlying amount in the asset's own units as a decimal string - not shares or bTokens. */
+  amount: string | null;
+  /** The part of `amount` posted as collateral (lending protocols), decimal string; null when
+   *  the protocol has no such distinction. */
+  collateralAmount: string | null;
+  /** Current yield as a percentage with two decimals ("3.99"): earned on a supply, paid on debt. */
+  yieldPct: string | null;
+  yieldKind: "earned" | "paid" | null;
+}
+
 interface DefiPositionBase {
   protocol: DefiProtocol;
   /** Pool, market, or vault contract this position lives in. */
   contractAddress: string;
+  /** Human-readable view of the position, when the analysis could resolve one. */
+  display?: DefiPositionDisplay;
   /** Left as an optional hook: the wasmHash -> protocol-version contract registry
    *  architecture.md describes does not exist in code yet (a later contribution). */
   wasmHash?: string;

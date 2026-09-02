@@ -93,14 +93,27 @@ export interface BlendDeps {
   estimate(pool: BlendPoolView, oracle: PoolOracle, positions: Positions): BlendEstimate;
 }
 
+/** The Blend SDK's view of one of our networks, RPC auth headers included. */
+export function blendSdkNetwork(network: Network): BlendNetwork {
+  const headers = RPC_HEADERS[network];
+  return {
+    rpc: RPC_URLS[network],
+    passphrase: NETWORK_PASSPHRASES[network],
+    ...(Object.keys(headers).length > 0 && { opts: { headers } }),
+  };
+}
+
+/** Maps the registry's version string to the SDK's; null for a version the SDK has no client for. */
+export function blendSdkVersion(registryVersion: string): Version | null {
+  const normalized = registryVersion.trim().toLowerCase();
+  if (normalized === "v1") return Version.V1;
+  if (normalized === "v2") return Version.V2;
+  return null;
+}
+
 export const defaultBlendDeps: BlendDeps = {
   loadPool(network, poolId, version) {
-    const headers = RPC_HEADERS[network];
-    const sdkNetwork: BlendNetwork = {
-      rpc: RPC_URLS[network],
-      passphrase: NETWORK_PASSPHRASES[network],
-      ...(Object.keys(headers).length > 0 && { opts: { headers } }),
-    };
+    const sdkNetwork = blendSdkNetwork(network);
     return version === Version.V1
       ? PoolV1.load(sdkNetwork, poolId)
       : PoolV2.load(sdkNetwork, poolId);
@@ -140,12 +153,7 @@ const REQUEST_TYPE: Record<"repay" | "withdraw" | "withdraw_collateral", Request
   withdraw_collateral: RequestType.WithdrawCollateral,
 };
 
-function sdkVersion(registryVersion: string): Version | null {
-  const normalized = registryVersion.trim().toLowerCase();
-  if (normalized === "v1") return Version.V1;
-  if (normalized === "v2") return Version.V2;
-  return null;
-}
+const sdkVersion = blendSdkVersion;
 
 /** The accrual margin, rounded up so it is never rounded away on small positions. */
 export function withAccrualMargin(amount: bigint): bigint {
