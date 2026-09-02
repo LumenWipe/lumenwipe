@@ -8,7 +8,11 @@ import {
 } from "@/lib/stellar/step-engine";
 import { fetchConversionPath } from "@/lib/stellar/path-finding";
 import { lookupExchange, requiresMediatorForAddress } from "@/lib/exchange-registry";
-import { computeNeedsSignerNormalization } from "@/lib/stellar/tx-builder";
+import {
+  computeNeedsSignerNormalization,
+  assessSignerNormalizationSafety,
+  assessDeauthorizedTrustlineBlockers,
+} from "@/lib/stellar/tx-builder";
 import { assessSponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
 import { batchItems } from "@/lib/stellar/tx-builder/batching";
 import {
@@ -103,6 +107,32 @@ export async function buildCloseTransactions(
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {},
   transferDestinations: TransferDestinations = {}
 ): Promise<CloseBuildResult> {
+  // Reject the same two hostile states buildPlan() blocks (issue #167), before any read or
+  // build work: /close/transactions is an API-key product surface with an SDK, and
+  // @lumenwipe/sdk's own runClose calls this endpoint directly without ever requesting a plan -
+  // so buildPlan()'s blockers cannot be assumed to have already run. A weight-0 master key or an
+  // unsatisfiable signer threshold, left unchecked here, would let this endpoint build a
+  // normalization transaction that strips the account's only usable signers - a permanent fund
+  // lock, not just a failed submission - and a deauthorized trustline with a balance would build
+  // a ChangeTrust doomed to fail at the ledger (CHANGE_TRUST_INVALID_LIMIT). Checked first, ahead
+  // of every other read in this function (including the claimable-balance round), both because
+  // neither depends on any I/O and because a hostile account state should never even reach a
+  // conversion-route lookup for a trustline it's about to be refused over.
+  if (computeNeedsSignerNormalization(accountState)) {
+    const signerBlockers = assessSignerNormalizationSafety(accountState);
+    if (signerBlockers.length > 0) {
+      throw new CloseBuildError("signer_normalization_unsafe", signerBlockers[0]!.message, 422);
+    }
+  }
+  const trustlineBlockers = assessDeauthorizedTrustlineBlockers(accountState.trustlines);
+  if (trustlineBlockers.length > 0) {
+    throw new CloseBuildError(
+      "trustline_deauthorized_with_balance",
+      trustlineBlockers[0]!.message,
+      422
+    );
+  }
+
   const server = getRpcServer(network);
   const liveAccount = await server.getAccount(accountState.address);
   const sdkAccount = new Account(accountState.address, liveAccount.sequenceNumber());

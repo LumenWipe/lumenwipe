@@ -109,6 +109,83 @@ export function computeNeedsSignerNormalization(accountState: AccountState): boo
   );
 }
 
+/**
+ * Blocks a signer normalization that would leave the account permanently unauthorizable. Shared by
+ * `buildPlan()` (the `/close/plan` preview) and `buildCloseTransactions()` (the real
+ * `/close/transactions` builder, issue #167) - both must refuse this before ever emitting a
+ * `SetOptions` normalization, not just the preview. Only meaningful when
+ * `computeNeedsSignerNormalization()` is true; callers should skip calling this otherwise.
+ */
+export function assessSignerNormalizationSafety(accountState: AccountState): PlanBlocker[] {
+  const { signers, thresholds } = accountState;
+  const masterKey = accountState.address;
+  const blockers: PlanBlocker[] = [];
+
+  // signerNormalizationOps() (signers.ts) always removes every non-master signer and resets
+  // thresholds to 0/1/1 - it never raises masterWeight. If the master key's own weight is 0,
+  // normalization would strip away every other signer and leave an account with a weight-0
+  // master key and threshold 1: nothing left able to authorize anything, ever. This is
+  // independent of the combined-weight check below - block it up front regardless of how
+  // much weight the co-signers carry.
+  const masterWeight = signers.find((s) => s.key === masterKey)?.weight ?? 0;
+  if (masterWeight < 1) {
+    blockers.push({
+      message:
+        "The master key on this account has weight 0. Removing the account's other signers " +
+        "would leave no key able to authorize any further changes to this account, so this " +
+        "flow cannot safely proceed.",
+    });
+  }
+
+  // Combined weight, not the master key's alone: the signature-accumulation engine
+  // (multisig epic #97) can gather a normalization/merge signature from any signer whose
+  // type this app can actually satisfy - ed25519 (connected wallet or secret key), hash(x)
+  // (manual preimage), or pre-auth-tx (manual pre-authorized transaction) - matching
+  // apps/web/components/execution/SigningProgress.tsx's own satisfiable-weight reasoning,
+  // applied here before the guided UI ever reaches the signing step. An ed25519
+  // signed-payload signer's weight never counts: this flow has no path to satisfy one.
+  const satisfiableWeight = signers
+    .filter(
+      (s) => s.type === "ed25519_public_key" || s.type === "hash_x" || s.type === "preauth_tx"
+    )
+    .reduce((sum, s) => sum + s.weight, 0);
+  if (satisfiableWeight < thresholds.high) {
+    const totalWeight = signers.reduce((sum, s) => sum + s.weight, 0);
+    const message =
+      satisfiableWeight === totalWeight
+        ? `This account's signers can contribute at most weight ${satisfiableWeight} toward removing ` +
+          `signers or changing thresholds, but that requires weight ${thresholds.high} (the current ` +
+          `high threshold).`
+        : `This account's signers can contribute at most weight ${satisfiableWeight} toward removing ` +
+          `signers or changing thresholds, but that requires weight ${thresholds.high} (the current ` +
+          `high threshold). At least one of its signers cannot be authorized through this flow, so this ` +
+          `change can never be fully authorized.`;
+    blockers.push({ message });
+  }
+
+  return blockers;
+}
+
+/**
+ * Blocks a trustline the issuer has deauthorized while it still holds a balance. Shared by
+ * `buildPlan()` and `buildCloseTransactions()` (issue #167) - `ChangeTrust` to limit 0 fails at the
+ * ledger while balance > 0, so this must be refused before either the preview or the real build.
+ */
+export function assessDeauthorizedTrustlineBlockers(trustlines: Trustline[]): PlanBlocker[] {
+  // The issuer has revoked authorization on these trustlines. PathPaymentStrictSend fails with
+  // src_not_authorized, and ChangeTrust limit=0 fails while balance > 0. The issuer must
+  // re-authorize before the account can convert or remove these trustlines.
+  const deauthorizedWithBalance = trustlines.filter(
+    (tl) => !tl.authorized && parseFloat(tl.balance) > 0
+  );
+  return deauthorizedWithBalance.map((tl) => ({
+    message:
+      `Trustline for ${tl.code} has a non-zero balance (${tl.balance}) but is deauthorized ` +
+      `by the issuer. The issuer must re-authorize this trustline before it can be ` +
+      `converted or removed.`,
+  }));
+}
+
 export function buildPlan(
   accountState: AccountState,
   mediatorRequired: boolean,
@@ -132,15 +209,8 @@ export function buildPlan(
   const blockers: PlanBlocker[] = [];
   let idx = 0;
 
-  const {
-    signers,
-    thresholds,
-    dataEntries,
-    openOffers,
-    trustlines,
-    claimableBalances,
-    authImmutable,
-  } = accountState;
+  const { signers, dataEntries, openOffers, trustlines, claimableBalances, authImmutable } =
+    accountState;
   const masterKey = accountState.address;
   const extraSigners = signers.filter((s) => s.key !== masterKey);
 
@@ -235,64 +305,10 @@ export function buildPlan(
   const needsSignerNormalization = computeNeedsSignerNormalization(accountState);
 
   if (needsSignerNormalization) {
-    // signerNormalizationOps() (signers.ts) always removes every non-master signer and resets
-    // thresholds to 0/1/1 - it never raises masterWeight. If the master key's own weight is 0,
-    // normalization would strip away every other signer and leave an account with a weight-0
-    // master key and threshold 1: nothing left able to authorize anything, ever. This is
-    // independent of the combined-weight check below - block it up front regardless of how
-    // much weight the co-signers carry.
-    const masterWeight = signers.find((s) => s.key === masterKey)?.weight ?? 0;
-    if (masterWeight < 1) {
-      blockers.push({
-        message:
-          "The master key on this account has weight 0. Removing the account's other signers " +
-          "would leave no key able to authorize any further changes to this account, so this " +
-          "flow cannot safely proceed.",
-      });
-    }
-
-    // Combined weight, not the master key's alone: the signature-accumulation engine
-    // (multisig epic #97) can gather a normalization/merge signature from any signer whose
-    // type this app can actually satisfy - ed25519 (connected wallet or secret key), hash(x)
-    // (manual preimage), or pre-auth-tx (manual pre-authorized transaction) - matching
-    // apps/web/components/execution/SigningProgress.tsx's own satisfiable-weight reasoning,
-    // applied here before the guided UI ever reaches the signing step. An ed25519
-    // signed-payload signer's weight never counts: this flow has no path to satisfy one.
-    const satisfiableWeight = signers
-      .filter(
-        (s) => s.type === "ed25519_public_key" || s.type === "hash_x" || s.type === "preauth_tx"
-      )
-      .reduce((sum, s) => sum + s.weight, 0);
-    if (satisfiableWeight < thresholds.high) {
-      const totalWeight = signers.reduce((sum, s) => sum + s.weight, 0);
-      const message =
-        satisfiableWeight === totalWeight
-          ? `This account's signers can contribute at most weight ${satisfiableWeight} toward removing ` +
-            `signers or changing thresholds, but that requires weight ${thresholds.high} (the current ` +
-            `high threshold).`
-          : `This account's signers can contribute at most weight ${satisfiableWeight} toward removing ` +
-            `signers or changing thresholds, but that requires weight ${thresholds.high} (the current ` +
-            `high threshold). At least one of its signers cannot be authorized through this flow, so this ` +
-            `change can never be fully authorized.`;
-      blockers.push({ message });
-    }
+    blockers.push(...assessSignerNormalizationSafety(accountState));
   }
 
-  // Deauthorized trustlines with balance: the issuer has revoked authorization on these
-  // trustlines. PathPaymentStrictSend fails with src_not_authorized, and ChangeTrust
-  // limit=0 fails while balance > 0. The issuer must re-authorize before the account
-  // can convert or remove these trustlines.
-  const deauthorizedWithBalance = trustlines.filter(
-    (tl) => !tl.authorized && parseFloat(tl.balance) > 0
-  );
-  for (const tl of deauthorizedWithBalance) {
-    blockers.push({
-      message:
-        `Trustline for ${tl.code} has a non-zero balance (${tl.balance}) but is deauthorized ` +
-        `by the issuer. The issuer must re-authorize this trustline before it can be ` +
-        `converted or removed.`,
-    });
-  }
+  blockers.push(...assessDeauthorizedTrustlineBlockers(trustlines));
 
   // Claimable balances: each resolves to a per-balance selection - "claim" (the opt-out
   // default once the account can already claim it), "add_trustline_then_claim" (adds a
