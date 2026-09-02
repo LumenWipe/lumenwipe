@@ -40,6 +40,7 @@ icon: "sitemap"
 Companion documents sit alongside this one:
 
 - [Executive summary](/executive-summary): a one-page overview for a first read.
+- [Threat model](/threat-model): the security model in Section 13, formalized as a structured, per-surface STRIDE analysis.
 - [Community and communications](/community-and-communications): building in the open, update cadence, and decentralized social presence.
 
 ---
