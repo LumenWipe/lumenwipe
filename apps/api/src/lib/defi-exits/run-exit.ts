@@ -213,9 +213,10 @@ export async function runExitAdapter<P extends DefiPosition, L>(
   const resolution = primary.resolution;
 
   // 3. Live re-read, then the adapter's pure plan.
+  const code = { version: resolution.version, kind: resolution.kind };
   let live: L;
   try {
-    live = await adapter.readLive(position, ctx, deps.rpc);
+    live = await adapter.readLive(position, code, ctx, deps.rpc);
   } catch {
     return blocked(
       contract,
@@ -247,12 +248,7 @@ export async function runExitAdapter<P extends DefiPosition, L>(
 
   let steps: ExitStep[];
   try {
-    const plan = adapter.plan(
-      position,
-      live,
-      { version: resolution.version, kind: resolution.kind },
-      ctx
-    );
+    const plan = adapter.plan(position, live, code, ctx);
     if (plan.blockers.length > 0) return blocked(contract, resolution, plan.steps, plan.blockers);
     steps = plan.steps;
   } catch {

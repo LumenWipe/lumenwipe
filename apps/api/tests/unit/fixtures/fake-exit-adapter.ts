@@ -111,7 +111,7 @@ export function fakeExitAdapter(
       return position.protocol === "blend" && position.positionType === "supply";
     },
 
-    async readLive(position, _ctx, rpc: ExitRpc): Promise<FakeLiveState> {
+    async readLive(position, _code, _ctx, rpc: ExitRpc): Promise<FakeLiveState> {
       const res = await rpc.getLedgerEntries(balanceKey(position.contractAddress));
       const entry = res.entries?.[0];
       if (!entry) throw new Error("fake adapter: no live balance entry");
@@ -141,6 +141,7 @@ export function fakeExitAdapter(
         kind,
         contract: position.contractAddress,
         function: kind,
+        asset: position.assetAddress,
         amount: knobs.malformedAmount ? "1.5" : requested,
         ceiling: live.balance,
         minReceived: floors,

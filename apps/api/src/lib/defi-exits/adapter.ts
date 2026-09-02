@@ -7,7 +7,8 @@ import type { HealthInputs } from "./invariants";
  * The contract every protocol exit adapter implements (architecture.md §9.9), split so the parts
  * that touch the network are injectable and the parts that decide and build are pure:
  *
- *   readLive  -> fresh amounts, debt, health from RPC, immediately before anything is built.
+ *   readLive  -> fresh amounts, debt, health from RPC, immediately before anything is built,
+ *                for the code version the registry resolved (it decides which client reads).
  *                The detection result (OctoPos or the testnet fallback) says a position exists;
  *                it never supplies the amount an exit moves.
  *   plan      -> pure: the ordered steps that close the position, or the blockers that stop it,
@@ -74,9 +75,13 @@ export interface ExitStep {
   /** The contract this step invokes. Every distinct contract in a plan is registry-checked. */
   contract: string;
   function: string;
+  /** The token this step moves, by contract address. */
+  asset: string;
   /** What this step moves, in base units. */
   amount: string;
-  /** The live balance `amount` must not exceed, in base units - from readLive, never detection. */
+  /** The most this step may move, in base units, from readLive and never detection: the live
+   *  balance, or - for a protocol that clamps withdrawals to the position itself - the over-ask
+   *  that guarantees a dust-free full exit. */
   ceiling: string;
   /** One floor per asset received. Empty for kinds with no price exposure. */
   minReceived: MinReceived[];
@@ -131,6 +136,9 @@ export interface ExitContext {
   account: string;
   /** Its current sequence number, for the simulation envelope. */
   sequence: string;
+  /** What the account holds of each token, keyed by contract address, in base units - what a
+   *  repay can spend. Native XLM and classic assets appear under their Stellar Asset Contract. */
+  tokenBalances: Record<string, string>;
   now: Date;
   slippageBps: number;
 }
@@ -141,7 +149,7 @@ export type ExitRpc = Pick<rpc.Server, "getLedgerEntries" | "simulateTransaction
 export interface ExitAdapter<P extends DefiPosition, L> {
   protocol: DefiProtocol;
   supports(position: DefiPosition): position is P;
-  readLive(position: P, ctx: ExitContext, rpc: ExitRpc): Promise<L>;
+  readLive(position: P, code: ContractVersion, ctx: ExitContext, rpc: ExitRpc): Promise<L>;
   plan(position: P, live: L, code: ContractVersion, ctx: ExitContext): ExitPlan;
   health(position: P, live: L, steps: ExitStep[]): HealthInputs | null;
   buildStep(step: ExitStep, live: L, ctx: ExitContext): BuiltExitStep;

@@ -30,11 +30,21 @@ import {
   type ContractRegistryLookup,
 } from "@/lib/contract-registry";
 
+/** The live ceiling for every withdrawal, or one per asset (keyed by contract address) when a
+ *  plan takes several assets out of one position. */
+export type LiveCeiling = string | Record<string, string>;
+
+export function ceilingFor(liveCeiling: LiveCeiling, asset: string): string | undefined {
+  return typeof liveCeiling === "string" ? liveCeiling : liveCeiling[asset];
+}
+
 export interface HarnessScenario<P extends DefiPosition> {
   position: P;
   rpc: ExitRpc;
   /** A registry that knows (or deliberately does not know) the live code of `position`'s contract. */
   registry: ContractRegistryLookup;
+  /** Per-scenario context overrides (e.g. an account that holds nothing to repay with). */
+  ctx?: Partial<ExitContext>;
 }
 
 export interface ExitAdapterHarnessInput<P extends DefiPosition, L> {
@@ -44,7 +54,7 @@ export interface ExitAdapterHarnessInput<P extends DefiPosition, L> {
    * and `liveCeiling` what the rpc reports live; the fixture must overstate detection, otherwise
    * the "amounts come from the live read" test proves nothing.
    */
-  healthy: HarnessScenario<P> & { detectedAmount: string; liveCeiling: string };
+  healthy: HarnessScenario<P> & { detectedAmount: string; liveCeiling: LiveCeiling };
   /** The healthy position, against an rpc whose simulation fails. */
   simulationFails: HarnessScenario<P>;
   /** The healthy position, against an rpc whose simulation needs archived entries restored. */
@@ -61,6 +71,7 @@ export function harnessContext(overrides: Partial<ExitContext> = {}): ExitContex
     network: "testnet",
     account: Keypair.random().publicKey(),
     sequence: "1",
+    tokenBalances: {},
     now: new Date("2026-09-02T12:00:00Z"),
     slippageBps: 50,
     ...overrides,
@@ -73,7 +84,8 @@ export function registryKnowing(
   wasmHash: string,
   protocol: DefiProtocol,
   kind: ContractKind = "pool",
-  network: Network = "testnet"
+  network: Network = "testnet",
+  version = "v-test"
 ): ContractRegistryLookup {
   return createContractRegistryLookup(
     validateContractRegistry({
@@ -88,7 +100,7 @@ export function registryKnowing(
           kind,
           address: contract,
           wasmHash,
-          version: "v-test",
+          version,
           label: "harness fixture",
           verifiedLive: true,
         },
@@ -120,9 +132,9 @@ function observe<P extends DefiPosition, L>(
   return {
     protocol: adapter.protocol,
     supports: (position): position is P => adapter.supports(position),
-    readLive: (position, ctx, rpc) => {
+    readLive: (position, code, ctx, rpc) => {
       calls.push("readLive");
-      return adapter.readLive(position, ctx, rpc);
+      return adapter.readLive(position, code, ctx, rpc);
     },
     plan: (position, live, code, ctx) => {
       calls.push("plan");
@@ -142,11 +154,21 @@ function run<P extends DefiPosition, L>(
   ctx: ExitContext,
   fresh: () => boolean = () => true
 ): Promise<ExitRunResult> {
-  return runExitAdapter(adapter, scenario.position, ctx, {
-    rpc: scenario.rpc,
-    resolveWasmHash: scenario.registry.resolveWasmHash,
-    isRegistryFresh: fresh,
-  });
+  return runExitAdapter(
+    adapter,
+    scenario.position,
+    { ...ctx, ...scenario.ctx },
+    {
+      rpc: scenario.rpc,
+      resolveWasmHash: scenario.registry.resolveWasmHash,
+      isRegistryFresh: fresh,
+    }
+  );
+}
+
+/** The asset a detected position is denominated in; LP positions have none and use their contract. */
+function ownAsset(position: DefiPosition): string {
+  return "assetAddress" in position ? position.assetAddress : position.contractAddress;
 }
 
 function codes(result: ExitRunResult): string[] {
@@ -154,11 +176,12 @@ function codes(result: ExitRunResult): string[] {
 }
 
 /** What must hold for every declared step of a plan, regardless of protocol. */
-export function expectPlanInvariants(plan: ExitStep[], liveCeiling?: string): void {
+export function expectPlanInvariants(plan: ExitStep[], liveCeiling?: LiveCeiling): void {
   for (const step of plan) {
     expect(compareBaseUnits(step.amount, step.ceiling)).not.toBe(1);
-    if (liveCeiling !== undefined && WITHDRAWAL_KINDS.includes(step.kind)) {
-      expect(compareBaseUnits(step.amount, liveCeiling)).not.toBe(1);
+    const ceiling = liveCeiling === undefined ? undefined : ceilingFor(liveCeiling, step.asset);
+    if (ceiling !== undefined && WITHDRAWAL_KINDS.includes(step.kind)) {
+      expect(compareBaseUnits(step.amount, ceiling)).not.toBe(1);
     }
     if (MIN_RECEIVED_REQUIRED.includes(step.kind))
       expect(step.minReceived.length).toBeGreaterThan(0);
@@ -188,7 +211,9 @@ export function describeExitAdapterInvariants<P extends DefiPosition, L>(
 
   describe(`${name}: exit adapter invariants`, () => {
     test("the healthy fixture overstates detection, so the live-read test can mean something", () => {
-      expect(compareBaseUnits(healthy.detectedAmount, healthy.liveCeiling)).toBe(1);
+      const own = ceilingFor(healthy.liveCeiling, ownAsset(healthy.position));
+      if (own === undefined) throw new Error("liveCeiling must cover the position's own asset");
+      expect(compareBaseUnits(healthy.detectedAmount, own)).toBe(1);
     });
 
     test("halts on an unknown wasmHash before reading anything", async () => {
@@ -209,7 +234,14 @@ export function describeExitAdapterInvariants<P extends DefiPosition, L>(
       );
       if (!own?.wasmHash) throw new Error("healthy registry must know the position's contract");
       const otherProtocol: DefiProtocol = adapter.protocol === "blend" ? "soroswap" : "blend";
-      const registry = registryKnowing(own.address, own.wasmHash, otherProtocol, own.kind);
+      const registry = registryKnowing(
+        own.address,
+        own.wasmHash,
+        otherProtocol,
+        own.kind,
+        own.network,
+        own.version
+      );
       const result = await run(adapter, { ...healthy, registry }, ctx);
       expect(result.next).toBeNull();
       expect(codes(result)).toEqual(["exit_contract_protocol_mismatch"]);
