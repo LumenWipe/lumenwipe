@@ -13,12 +13,14 @@ import { formatXlm } from "@/lib/utils/amounts";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
 import { buildTxLedger, labelForTx } from "@/lib/utils/txLedger";
 import { receiptAssetSummary } from "@/lib/api/close-decisions";
+import { describeDefiPosition, positionContracts } from "@/lib/plan/describe-position";
 
 interface CompletionReceiptProps {
   network: Network;
 }
 
 type GroupType =
+  | "EXIT_POSITIONS"
   | "NORMALIZE_SIGNERS"
   | "REMOVE_DATA_ENTRIES"
   | "CANCEL_OFFERS"
@@ -100,6 +102,40 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
   const groups: SummaryGroup[] = [];
 
   if (account) {
+    // Only positions a confirmed exit step actually left. Detection is a snapshot from the
+    // analysis; a position the user exited by hand in between is skipped by the API as already
+    // gone, never built or signed, and must not be reported here as LumenWipe's doing.
+    const exitedContracts = new Set(
+      confirmedSteps
+        .filter((s) => s.type === "EXIT_POSITIONS")
+        .map((s) => s.affectedContract)
+        .filter((c): c is string => typeof c === "string")
+    );
+    const positions = account.defiPositions.positions.filter((p) =>
+      exitedContracts.has(p.contractAddress)
+    );
+    if (positions.length > 0) {
+      const contracts = positionContracts(positions);
+      groups.push({
+        type: "EXIT_POSITIONS",
+        title: "DeFi positions exited",
+        summary: `${positions.length} position${positions.length === 1 ? "" : "s"} in ${contracts.length} pool${contracts.length === 1 ? "" : "s"}, settled and withdrawn before the close`,
+        body: (
+          <ul className="space-y-1">
+            {positions.map((p, i) => (
+              <li key={`${p.contractAddress}-${i}`} className="text-xs text-white/55">
+                {describeDefiPosition(p, account.defiPositions.enrichment)}
+                <span className="font-mono-address text-white/35">
+                  {" "}
+                  · {shortAddr(p.contractAddress)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ),
+      });
+    }
+
     const extraSigners = account.signers.filter((s) => s.key !== account.address);
     if (extraSigners.length > 0) {
       groups.push({
