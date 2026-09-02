@@ -12,7 +12,8 @@
  * beyond this issue's "verify, don't invent" mandate, but the gap needs to be visible and
  * pinned down by a test that goes red the moment someone assumes otherwise.
  */
-import { test, expect, mock, afterEach } from "bun:test";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import * as rpcModule from "@/lib/stellar/rpc";
 import { Keypair } from "@stellar/stellar-sdk";
 import { readAccountStateFrom } from "@/lib/stellar/account-state";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
@@ -55,24 +56,21 @@ function stubFetch(balance: Record<string, unknown>) {
   }) as unknown as typeof globalThis.fetch;
 }
 
-const realRpc = await import("@/lib/stellar/rpc");
 afterEach(() => {
-  mock.module("@/lib/stellar/rpc", () => realRpc);
+  mock.restore();
 });
 
 // ─── (a) build-transactions.ts regression: the fix from this PR ─────────────────────────────
 
 test("close/transactions refuses to build for a deauthorized trustline holding a balance", async () => {
-  mock.module("@/lib/stellar/rpc", () => ({
-    getRpcServer: () => ({
-      getAccount: () => {
-        throw new Error("should be refused before any live read");
-      },
-      getLatestLedger: () => {
-        throw new Error("should be refused before any live read");
-      },
-    }),
-  }));
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
+    getAccount: () => {
+      throw new Error("should be refused before any live read");
+    },
+    getLatestLedger: () => {
+      throw new Error("should be refused before any live read");
+    },
+  })) as unknown as typeof rpcModule.getRpcServer);
 
   const accountState: AccountState = {
     address: SOURCE,
@@ -117,6 +115,8 @@ test("close/transactions refuses to build for a deauthorized trustline holding a
 // ─── (b) a missing is_authorized field silently defaults to "authorized" ────────────────────
 
 test("a trustline balance record omitting is_authorized reads as authorized, not unknown", async () => {
+  // The destructure exists only to drop is_authorized from the record under test.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { is_authorized: _omit, ...balanceWithoutAuthField } = {
     asset_type: "credit_alphanum4",
     asset_code: "USDC",

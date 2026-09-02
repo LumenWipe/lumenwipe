@@ -1,4 +1,6 @@
-import { test, expect, mock, afterEach } from "bun:test";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import * as pathFinding from "@/lib/stellar/path-finding";
+import * as rpcModule from "@/lib/stellar/rpc";
 import { Account, Keypair, Operation, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import { AssetRouteLostError } from "@/lib/utils/errors";
 import type { AccountState, Trustline, AssetDisposition, PlannedStep } from "@lumenwipe/types";
@@ -99,11 +101,8 @@ function rpcServerStub() {
   };
 }
 
-const realPaths = await import("@/lib/stellar/path-finding");
-const realRpc = await import("@/lib/stellar/rpc");
 afterEach(() => {
-  mock.module("@/lib/stellar/path-finding", () => realPaths);
-  mock.module("@/lib/stellar/rpc", () => realRpc);
+  mock.restore();
 });
 
 function opsOf(xdr: string) {
@@ -114,8 +113,11 @@ test("CLOSE_ACCOUNT › issuer disposition returns the balance to the issuer wit
   // No route exists for this asset. With a "convert" decision this would raise
   // AssetRouteLostError; with the user's "issuer" decision it must not even ask.
   const fetcher = mock(() => Promise.resolve(null));
-  mock.module("@/lib/stellar/path-finding", () => ({ fetchConversionPath: fetcher }));
-  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  spyOn(pathFinding, "fetchConversionPath").mockImplementation(
+    fetcher as unknown as typeof pathFinding.fetchConversionPath
+  );
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
 
   const { buildStepXdrForPlan } = await import("@/lib/stellar/step-engine");
   const xdr = await buildStepXdrForPlan(closeStep(), ctx({ [NOSWAP]: "issuer" }));
@@ -139,8 +141,11 @@ test("CLOSE_ACCOUNT › a genuinely lost route for a convert asset still surface
   // Safety invariant: the issuer fix must not mask a lost route for an asset the
   // user actually wants converted. Default disposition is "convert".
   const fetcher = mock(() => Promise.resolve(null));
-  mock.module("@/lib/stellar/path-finding", () => ({ fetchConversionPath: fetcher }));
-  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  spyOn(pathFinding, "fetchConversionPath").mockImplementation(
+    fetcher as unknown as typeof pathFinding.fetchConversionPath
+  );
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
 
   const { buildStepXdrForPlan } = await import("@/lib/stellar/step-engine");
 
