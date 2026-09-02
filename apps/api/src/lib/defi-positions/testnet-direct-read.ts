@@ -35,8 +35,9 @@
  * part this module has to construct by hand.
  */
 
-import { Address, Contract, scValToNative, xdr } from "@stellar/stellar-sdk";
+import { Address, scValToNative, xdr } from "@stellar/stellar-sdk";
 import { getRpcServer } from "@/lib/stellar/rpc";
+import { readLiveWasmHash } from "@/lib/stellar/contract-instance";
 import { entriesForNetwork, type ContractRegistryEntry } from "@/lib/contract-registry";
 import type {
   BlendBorrowPosition,
@@ -118,21 +119,6 @@ function asBigInt(value: unknown): bigint | null {
 
 // ─── wasmHash verification ────────────────────────────────────────────────────
 
-async function resolveLiveWasmHash(
-  rpc: RpcServer,
-  contractAddress: string
-): Promise<string | null> {
-  const contract = new Contract(contractAddress);
-  const res = await rpc.getLedgerEntries(contract.getFootprint());
-  const entry = res.entries?.[0];
-  if (!entry) return null;
-  const instance = entry.val.contractData().val().instance();
-  if (instance.executable().switch() !== xdr.ContractExecutableType.contractExecutableWasm()) {
-    return null;
-  }
-  return instance.executable().wasmHash().toString("hex");
-}
-
 /**
  * Confirms a registry entry's contract still exists on-chain with the recorded wasmHash before
  * anything is decoded against it. Returns null (and pushes an `unrecognizedPositions` entry) on
@@ -145,7 +131,7 @@ async function verifyEntry(
   entry: ContractRegistryEntry,
   unrecognized: UnrecognizedDefiPosition[]
 ): Promise<boolean> {
-  const liveWasmHash = await resolveLiveWasmHash(rpc, entry.address);
+  const liveWasmHash = await readLiveWasmHash(rpc, entry.address);
   if (liveWasmHash === null) {
     unrecognized.push({
       protocol: entry.protocol,
