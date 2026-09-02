@@ -34,6 +34,26 @@ function stubSubmitViaApi(impl: () => Promise<unknown>): void {
 // depending on the order Bun runs them (it did, in CI), and mock.restore() undoes a spy
 // reliably. Without a per-test override, fetching transactions rejects with a benign error, so a
 // test that only exercises the signer guard never reaches a real fetch().
+/** TEMPORARY CI diagnostics for the intermittent failures of this file. */
+function diagnose(label: string, extra: Record<string, unknown> = {}): void {
+  const store = useDemolishStore.getState();
+  const fetchFn = closeClient.fetchCloseTransactions as unknown as { mock?: { calls: unknown[] } };
+  console.log(
+    `[flake-diag] ${label}`,
+    JSON.stringify({
+      lastError: store.lastError,
+      phase: store.phase,
+      network: useNetworkStore.getState().network,
+      fetchIsSpy: typeof fetchFn.mock === "object",
+      fetchCalls: fetchFn.mock?.calls.length ?? null,
+      env: Object.keys(process.env).filter((k) =>
+        /LUMENWIPE|NEXT_PUBLIC|^CI$|GITHUB_ACTIONS/.test(k)
+      ),
+      ...extra,
+    })
+  );
+}
+
 beforeEach(() => {
   stubFetchCloseTransactions(async () => {
     throw new Error("not mocked in this test");
@@ -108,6 +128,7 @@ test("useCloseExecution › accepts a co-signer whose key differs from sourceAdd
   await act(async () => {
     await result.current.run(coSigner(cosignerKey));
   });
+  diagnose("co-signer test after run", { signatureStatus: result.current.signatureStatus });
 
   // Today this fails closed with "doesn't match the account being closed" before ever
   // reaching the fetch/verify/sign pipeline - assert that specific rejection is gone.
@@ -162,6 +183,10 @@ test("useCloseExecution › a second signer completes the close by resuming, not
   // First signer: weight 1 of 2 required - pauses, does not restart or lose the attempt.
   await act(async () => {
     await result.current.run(realSigner(sourceKeypair));
+  });
+  diagnose("resume test after first signer", {
+    signatureStatus: result.current.signatureStatus,
+    signers: useDemolishStore.getState().accountState?.signers,
   });
   expect(result.current.signatureStatus?.accumulatedWeight).toBe(1);
   expect(result.current.signatureStatus?.requiredWeight).toBe(2);
