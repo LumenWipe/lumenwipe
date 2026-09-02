@@ -28,6 +28,7 @@ export {
   type HealthInputs,
 } from "./invariants";
 export {
+  MAX_CLAMPED_OVER_ASK_BPS,
   runExitAdapter,
   type ExitRunDeps,
   type ExitRunResult,

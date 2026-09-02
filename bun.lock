@@ -12,6 +12,7 @@
       "name": "@lumenwipe/api",
       "version": "0.1.0",
       "dependencies": {
+        "@blend-capital/blend-sdk": "3.3.0",
         "@nestjs/common": "^10.4.0",
         "@nestjs/config": "^3.2.0",
         "@nestjs/core": "^10.4.0",
@@ -238,6 +239,8 @@
     "@babel/types": ["@babel/types@8.0.4", "", { "dependencies": { "@babel/helper-string-parser": "^8.0.0", "@babel/helper-validator-identifier": "^8.0.4" } }, "sha512-eY+Yn3dCqTGmyiq2QRU66lA5FL8lqqqvecHt0fF3uHONIa7ToYsaCiWV8lOKqAs0Rb2SjixiKFROngnulPtt2g=="],
 
     "@base-org/account": ["@base-org/account@2.4.0", "", { "dependencies": { "@coinbase/cdp-sdk": "^1.0.0", "@noble/hashes": "1.4.0", "clsx": "1.2.1", "eventemitter3": "5.0.1", "idb-keyval": "6.2.1", "ox": "0.6.9", "preact": "10.24.2", "viem": "^2.31.7", "zustand": "5.0.3" } }, "sha512-A4Umpi8B9/pqR78D1Yoze4xHyQaujioVRqqO3d6xuDFw9VRtjg6tK3bPlwE0aW+nVH/ntllCpPa2PbI8Rnjcug=="],
+
+    "@blend-capital/blend-sdk": ["@blend-capital/blend-sdk@3.3.0", "", { "dependencies": { "@stellar/stellar-sdk": "16.0.0", "buffer": "6.0.3", "follow-redirects": ">=1.15.6" } }, "sha512-D1AdEnqhLzkSOsauysSIw+IbD0yJ1tj8JrtZwmkJU6MrGX8hu+WkDqlVXVOXrYIUZPZJinjODOqH7v9jVCcqXg=="],
 
     "@borewit/text-codec": ["@borewit/text-codec@0.2.2", "", {}, "sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ=="],
 

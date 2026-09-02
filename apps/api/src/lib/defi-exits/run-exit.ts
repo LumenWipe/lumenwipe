@@ -104,6 +104,15 @@ function operationSource(op: xdr.Operation): string | null {
   return Address.account(source.ed25519()).toString();
 }
 
+/** How far a step that the contract clamps may over-ask, so "a small margin" stays small. */
+export const MAX_CLAMPED_OVER_ASK_BPS = 100;
+
+/** The most a step may ask for: its live ceiling, plus the bounded margin when the contract clamps. */
+function allowedMaximum(step: ExitStep): string {
+  if (!step.clampsToPosition) return step.ceiling;
+  return ((BigInt(step.ceiling) * BigInt(10_000 + MAX_CLAMPED_OVER_ASK_BPS)) / 10_000n).toString();
+}
+
 function sameFloors(
   a: BuiltExitStep["intent"]["minReceived"],
   b: ExitStep["minReceived"]
@@ -213,9 +222,10 @@ export async function runExitAdapter<P extends DefiPosition, L>(
   const resolution = primary.resolution;
 
   // 3. Live re-read, then the adapter's pure plan.
+  const code = { version: resolution.version, kind: resolution.kind };
   let live: L;
   try {
-    live = await adapter.readLive(position, ctx, deps.rpc);
+    live = await adapter.readLive(position, code, ctx, deps.rpc);
   } catch {
     return blocked(
       contract,
@@ -247,12 +257,7 @@ export async function runExitAdapter<P extends DefiPosition, L>(
 
   let steps: ExitStep[];
   try {
-    const plan = adapter.plan(
-      position,
-      live,
-      { version: resolution.version, kind: resolution.kind },
-      ctx
-    );
+    const plan = adapter.plan(position, live, code, ctx);
     if (plan.blockers.length > 0) return blocked(contract, resolution, plan.steps, plan.blockers);
     steps = plan.steps;
   } catch {
@@ -291,7 +296,7 @@ export async function runExitAdapter<P extends DefiPosition, L>(
       );
       continue;
     }
-    if (compareBaseUnits(step.amount, step.ceiling) > 0) {
+    if (compareBaseUnits(step.amount, allowedMaximum(step)) > 0) {
       blockers.push(
         blocker(
           "exit_amount_exceeds_balance",
