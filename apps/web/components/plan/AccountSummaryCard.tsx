@@ -67,9 +67,11 @@ export default function AccountSummaryCard({
         </span>
       </div>
 
-      <div className="grid grid-cols-3 divide-x divide-y divide-white/8">
+      {/* Each cell draws its own bottom border: `divide-y` only draws between rows, so with a
+          count of cells that is not a multiple of three the last full row was left open. */}
+      <div className="grid grid-cols-3 divide-x divide-white/8">
         {stats.map(({ icon: Icon, label, value }) => (
-          <div key={label} className="p-3">
+          <div key={label} className="p-3 border-b border-white/8">
             <div className="flex items-center gap-1.5 text-white/45 mb-1">
               <Icon className="h-3.5 w-3.5 text-stellar/70" />
               <span className="text-xs">{label}</span>
@@ -79,7 +81,7 @@ export default function AccountSummaryCard({
         ))}
       </div>
 
-      <div className="border-t border-white/10 px-4 py-3 flex items-center justify-between text-sm">
+      <div className="px-4 py-3 flex items-center justify-between text-sm">
         <span className="text-white/55">Estimated received at destination</span>
         <span className="mkt-display font-bold text-value">{formatXlm(estimatedFinal)}</span>
       </div>

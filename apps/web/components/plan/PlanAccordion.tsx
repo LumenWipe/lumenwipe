@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Plus } from "lucide-react";
-import type { AccountState, DefiPosition, UnrecognizedDefiPosition } from "@/types/account";
+import type { AccountState, UnrecognizedDefiPosition } from "@/types/account";
+import { PROTOCOL_LABELS, describeDefiPosition } from "@/lib/plan/describe-position";
 import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
 import type { AssetDisposition, ClaimableBalanceSelection } from "@/types/plan";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
@@ -49,46 +50,6 @@ interface Group {
 
 function shortAddr(addr: string): string {
   return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
-}
-
-const PROTOCOL_LABELS: Record<DefiPosition["protocol"], string> = {
-  blend: "Blend",
-  aquarius: "Aquarius",
-  soroswap: "Soroswap",
-  phoenix: "Phoenix",
-  fxdao: "FxDAO",
-};
-
-function symbolFor(
-  address: string,
-  enrichment: AccountState["defiPositions"]["enrichment"]
-): string {
-  return enrichment[address]?.symbol ?? shortAddr(address);
-}
-
-/** Describes what's held, not a computed user-facing balance - Blend's bToken/dToken amounts
- *  are interest-bearing share counts, not the underlying asset amount, so this reports what the
- *  provider returned rather than implying a conversion this section doesn't perform (that's the
- *  exit adapters epic's job, per the issue's "no exit action here" note). */
-function describeDefiPosition(
-  position: DefiPosition,
-  enrichment: AccountState["defiPositions"]["enrichment"]
-): string {
-  const protocol = PROTOCOL_LABELS[position.protocol];
-  switch (position.positionType) {
-    case "supply":
-      return `${protocol} supply · ${symbolFor(position.assetAddress, enrichment)}${
-        position.isBackstop ? " (backstop)" : ""
-      }`;
-    case "borrow":
-      return `${protocol} borrow · ${symbolFor(position.assetAddress, enrichment)}`;
-    case "lp":
-      return `${protocol} LP position · ${position.shareAmount} shares`;
-    case "stake":
-      return `${protocol} stake · ${position.stakedAmount}`;
-    case "cdp":
-      return `${protocol} vault · ${position.denomination} · collateral ${position.collateralAmount}, debt ${position.debtAmount}`;
-  }
 }
 
 export default function PlanAccordion({
