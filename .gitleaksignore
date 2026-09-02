@@ -1,11 +1,14 @@
 # Reviewed 2026-09-02 as part of issue #171's security tooling run - see
-# docs/security-remediation-plan.md for the full incident writeup. A real, funded Stellar
+# docs/security-remediation-plan.md (Section 4) for the full writeup. A real, funded Stellar
 # secret key was committed as test fixture data in apps/playground/tests/unit/crypto.test.ts
-# (and its earlier path). It has been replaced with a synthetic, non-strkey placeholder going
-# forward (see the current file), but it remains visible in the commits below, since removing
-# it fully requires a coordinated git history rewrite - a separate, deliberate operation, not
-# done as part of that fix. These entries are tracked here, not hidden: any new secret finding
-# still surfaces normally in future scans.
+# (and its earlier path). Traced to its source: it is the "AstroDollar" issuer keypair
+# hardcoded into Stellar's own official "How to Issue an Asset" tutorial, republished across
+# 140+ public files - not a private leak, but still the wrong thing to use as test data (a
+# scanner can't tell "famous public example" from "leaked secret" from the string alone). It
+# has been replaced with a synthetic, non-strkey placeholder going forward (see the current
+# file), but it remains visible in the commits below, since a git history rewrite isn't
+# warranted for publicly-known documentation material. These entries are tracked here, not
+# hidden: any new secret finding still surfaces normally in future scans.
 74e0ce54406d9c9433ff7b65c7db6060b8170ff7:apps/playground/tests/unit/crypto.test.ts:generic-api-key:10
 74e0ce54406d9c9433ff7b65c7db6060b8170ff7:apps/playground/tests/unit/crypto.test.ts:generic-api-key:15
 154344ec55b5f452af7c1dc815d19cc4551eafcf:apps/playground/tests/unit/crypto.test.ts:generic-api-key:10

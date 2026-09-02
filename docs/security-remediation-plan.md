@@ -112,27 +112,40 @@ overlap with CI's existing `lint` job - worth re-running on a similar cadence go
 `gitleaks` against the full 352-commit history found **32 raw hits, collapsing to a handful of
 distinct values** after triage:
 
-**Real finding, fixed.** A syntactically valid Stellar secret key
+**Finding, fixed - traced to its source.** A syntactically valid Stellar secret key
 (`SCZANGBA5YHTNYVVV4C3U252E2B6P6F5T3U6MM63WBSBZATAQI3EBTQ4`) was committed as test-fixture
 plaintext in `apps/playground/tests/unit/crypto.test.ts` (and an earlier path,
 `tests/unit/playground-crypto.test.ts`). It derives to
 `GC2BKLYOOYPDEFJKLKY6FNNRQMGFLVHJKQRGNSSRRGSMPGF32LHCQVGF`, which - verified via a read-only
-Horizon query, no on-chain action taken - **holds real balances on both mainnet (~16.13 XLM plus a
-second asset) and testnet (~10,088 XLM plus two assets)**, with a pattern of recurring inbound
-payments through mid-2026. This is a real exposure, not a synthetic placeholder that happened to
-be strkey-shaped.
+Horizon query, no on-chain action taken - holds real balances on both mainnet (~16.13 XLM plus a
+second asset) and testnet (~10,088 XLM plus two assets), with a pattern of recurring inbound
+payments through mid-2026.
 
-Resolution: the test never needed a valid Stellar key at all - `encryptSecret`/`decryptSecret`
+Traced the source before treating this as an incident: this is not a private key of unknown
+origin. GitHub code search puts the exact same secret key in **142 files across at least 11 public
+repositories**, including `stellar/stellar-docs` itself - it is the "AstroDollar" issuer account
+hardcoded into the official ["How to Issue an
+Asset"](https://developers.stellar.org/docs/tokens/how-to-issue-an-asset) tutorial's full code
+sample (JS, Python, and Java versions alike), copied from there into SDK examples and demo projects
+across the ecosystem (Soneso's multi-language SDKs, a Kuknos fork, a Kinesis SDK fork, and several
+independent tutorial-following projects). It was never a secret - it is deliberately public,
+widely-republished documentation material, which is almost certainly why it accumulated real
+balances on both networks over time (people running the tutorial, not a personal wallet being
+compromised).
+
+That provenance changes the framing but not the fix: using a real, checksum-valid keypair - even a
+publicly-known one - as test fixture data was still the wrong move, for the same reason
+CLAUDE.md's new convention (below) states plainly - a secret scanner can't tell "famous public
+example key" from "leaked production secret" from the string alone, and neither should a reviewer
+have to. The test never needed a valid Stellar key at all - `encryptSecret`/`decryptSecret`
 round-trip arbitrary strings - so the fixture is now a plaintext string that is deliberately **not**
 a valid strkey (`playground-crypto-test-fixture-not-a-real-secret-000000`), removing any future
 ambiguity. This fixes the fixture going forward; the key remains visible in the specific historical
-commits that introduced and later moved it, since fully scrubbing it requires a coordinated git
-history rewrite - a separate, deliberate operation on shared history, not folded into this PR.
-Those specific historical fingerprints are recorded, not hidden, in `.gitleaksignore` (with a
-comment explaining exactly why), so a future scan stays actionable for genuinely new findings
-instead of re-surfacing this one every time. **This account and its funds are not LumenWipe's to
-act on** - it is not a project credential (no `MEDIATOR_SECRET_*`, no `PLAYGROUND_ENCRYPTION_KEY`,
-no CI secret); it is unrelated third-party test data that should never have been used as a fixture.
+commits that introduced and later moved it in this repository's own history. Given it's a
+publicly-known documentation example rather than a private exposure, a git history rewrite to strip
+it isn't warranted on security grounds - those historical fingerprints are recorded, not hidden, in
+`.gitleaksignore` (with a comment explaining exactly why), so a future scan stays actionable for
+genuinely new findings instead of re-surfacing this one every time.
 
 **False positives, reviewed and allowlisted** (`.gitleaks.toml`):
 
@@ -146,11 +159,12 @@ no CI secret); it is unrelated third-party test data that should never have been
 
 Final state: `gitleaks detect --config .gitleaks.toml` reports **no leaks found**.
 
-**Separately, and independent of any code fix in this PR**: this public repository currently has
-GitHub's native secret scanning, secret scanning push protection, and Dependabot security updates
-all **disabled** (confirmed via `gh api repos/LumenWipe/lumenwipe` -
-`security_and_analysis.secret_scanning.status: "disabled"`, etc.). This is the natural continuous
-complement to a point-in-time scan like this one - see Section 6.
+**Separately, and independent of any code fix in this PR**: this public repository had GitHub's
+native secret scanning, secret scanning push protection, and Dependabot security updates all
+disabled when this run started. All three are now **enabled** (confirmed via
+`gh api repos/LumenWipe/lumenwipe` - `security_and_analysis.secret_scanning.status: "enabled"`,
+`secret_scanning_push_protection.status: "enabled"`, `dependabot_security_updates.status:
+"enabled"`), giving this point-in-time scan a continuous counterpart going forward.
 
 ## 5. Cross-reference against the STRIDE threat model
 
@@ -170,23 +184,19 @@ client-side session layer, API transaction construction, and the two backend sig
 
 No update to `docs/threat-model.md` §7's residual-risk table was needed as a result of this run.
 
-## 6. Recommended follow-up
+## 6. Follow-up
 
-Not fixed in this PR - each is either out of scope for a dependency/tooling pass, needs your
-explicit go-ahead, or is a scheduling change rather than a code change:
+What this run changed beyond code, and what's still open:
 
-1. **Enable GitHub-native secret scanning, push protection, and Dependabot security updates** on
-   this repository. They're off today (Section 4) and are the natural continuous counterpart to
-   this point-in-time run - flipping them is a live repository-settings change, so it's a separate
-   confirmation from this PR, not bundled into it.
+1. **GitHub-native secret scanning, push protection, and Dependabot security updates are now
+   enabled** on this repository (Section 4) - confirmed and applied as part of this run, giving this
+   point-in-time scan a continuous counterpart going forward.
 2. **`@nestjs/core` moderate injection advisory** (Section 2) has no fix within the installed 10.x
    line; resolving it means a deliberate Nest 11/12 migration, tracked as its own issue rather than
    folded into a dependency-audit PR.
 3. **Re-run `semgrep` on a recurring cadence** (e.g., wired into CI or run manually each release) -
    this pass found real signal (Section 3) that CI's existing lint job doesn't cover, and cadence is
    part of the epic's stated target state for security tooling.
-4. **The leaked test key's underlying account** (Section 4) is not LumenWipe's to act on, but if you
-   have any way to reach whoever controls `GC2BKLYOOYPDEFJKLKY6FNNRQMGFLVHJKQRGNSSRRGSMPGF32LHCQVGF`,
-   they should know a key controlling real mainnet funds is public. A coordinated git history
-   rewrite to remove the key from old commits entirely is a separate, deliberate decision - not
-   performed here.
+4. **Test fixtures never use a real, checksum-valid secret key** - even a publicly-known one, per
+   the finding in Section 4 - is now a standing convention in `CLAUDE.md`, so this class of finding
+   doesn't recur.
