@@ -17,13 +17,25 @@ import * as closeClient from "@/lib/api/close-client";
 import * as submitViaApiModule from "@/lib/stellar/submit-via-api";
 import type { TransactionSigner } from "@/lib/stellar/signer";
 
+/** The stand-ins return only what the hook reads, so they are typed loosely on purpose. */
+function stubFetchCloseTransactions(impl: () => Promise<unknown>): void {
+  spyOn(closeClient, "fetchCloseTransactions").mockImplementation(
+    impl as unknown as typeof closeClient.fetchCloseTransactions
+  );
+}
+function stubSubmitViaApi(impl: () => Promise<unknown>): void {
+  spyOn(submitViaApiModule, "submitViaApi").mockImplementation(
+    impl as unknown as typeof submitViaApiModule.submitViaApi
+  );
+}
+
 // The two modules that make real network calls are patched with spyOn on the real module
 // objects, never with mock.module: a process-wide module replacement leaks across test files
 // depending on the order Bun runs them (it did, in CI), and mock.restore() undoes a spy
 // reliably. Without a per-test override, fetching transactions rejects with a benign error, so a
 // test that only exercises the signer guard never reaches a real fetch().
 beforeEach(() => {
-  spyOn(closeClient, "fetchCloseTransactions").mockImplementation(async () => {
+  stubFetchCloseTransactions(async () => {
     throw new Error("not mocked in this test");
   });
 });
@@ -127,7 +139,7 @@ test("useCloseExecution › a second signer completes the close by resuming, not
   } as never);
 
   let getTransactionsCalls = 0;
-  spyOn(closeClient, "fetchCloseTransactions").mockImplementation(async () => {
+  stubFetchCloseTransactions(async () => {
     getTransactionsCalls++;
     return {
       planHash: "h",
@@ -141,7 +153,7 @@ test("useCloseExecution › a second signer completes the close by resuming, not
   // the real verifyCloseTransaction/intentFromXdr is a better test (it proves the real
   // threshold-category logic classifies account_merge as "high" and requires weight 2, not a
   // hardcoded stand-in). Only the two modules that make real network calls are patched.
-  spyOn(submitViaApiModule, "submitViaApi").mockImplementation(async () => ({
+  stubSubmitViaApi(async () => ({
     txHash: "final-hash",
   }));
 
@@ -229,7 +241,7 @@ test("useCloseExecution › a signer that returns a body-tampered envelope on re
   } as never);
 
   let getTransactionsCalls = 0;
-  spyOn(closeClient, "fetchCloseTransactions").mockImplementation(async () => {
+  stubFetchCloseTransactions(async () => {
     getTransactionsCalls++;
     return {
       planHash: "h",
@@ -239,7 +251,7 @@ test("useCloseExecution › a signer that returns a body-tampered envelope on re
     };
   });
   let submitCalls = 0;
-  spyOn(submitViaApiModule, "submitViaApi").mockImplementation(async () => {
+  stubSubmitViaApi(async () => {
     submitCalls++;
     return { txHash: "final-hash" };
   });
@@ -292,7 +304,7 @@ test("useCloseExecution › a hash(x) signer's preimage completes the close by r
   } as never);
 
   let getTransactionsCalls = 0;
-  spyOn(closeClient, "fetchCloseTransactions").mockImplementation(async () => {
+  stubFetchCloseTransactions(async () => {
     getTransactionsCalls++;
     return {
       planHash: "h",
@@ -301,7 +313,7 @@ test("useCloseExecution › a hash(x) signer's preimage completes the close by r
       remaining: { steps: 0, requiresAnotherCall: false },
     };
   });
-  spyOn(submitViaApiModule, "submitViaApi").mockImplementation(async () => ({
+  stubSubmitViaApi(async () => ({
     txHash: "final-hash",
   }));
 
@@ -359,7 +371,7 @@ test("useCloseExecution › a guard failure while paused clears signatureStatus 
     } as never,
   } as never);
 
-  spyOn(closeClient, "fetchCloseTransactions").mockImplementation(async () => ({
+  stubFetchCloseTransactions(async () => ({
     planHash: "h",
     status: "ready",
     transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
@@ -420,7 +432,7 @@ test("useCloseExecution › resigning with an already-contributed key on resume 
   } as never);
 
   let getTransactionsCalls = 0;
-  spyOn(closeClient, "fetchCloseTransactions").mockImplementation(async () => {
+  stubFetchCloseTransactions(async () => {
     getTransactionsCalls++;
     return {
       planHash: "h",
@@ -483,7 +495,7 @@ test("useCloseExecution › submitPreAuthTransaction submits a hash-matched, int
   } as never);
 
   let submitCalls = 0;
-  spyOn(submitViaApiModule, "submitViaApi").mockImplementation(async () => {
+  stubSubmitViaApi(async () => {
     submitCalls++;
     return { txHash: "preauth-hash" };
   });
@@ -522,7 +534,7 @@ test("useCloseExecution › submitPreAuthTransaction rejects a hash mismatch wit
   } as never);
 
   let submitCalls = 0;
-  spyOn(submitViaApiModule, "submitViaApi").mockImplementation(async () => {
+  stubSubmitViaApi(async () => {
     submitCalls++;
     return { txHash: "preauth-hash" };
   });
@@ -565,7 +577,7 @@ test("useCloseExecution › submitPreAuthTransaction rejects a transaction with 
   } as never);
 
   let submitCalls = 0;
-  spyOn(submitViaApiModule, "submitViaApi").mockImplementation(async () => {
+  stubSubmitViaApi(async () => {
     submitCalls++;
     return { txHash: "preauth-hash" };
   });
