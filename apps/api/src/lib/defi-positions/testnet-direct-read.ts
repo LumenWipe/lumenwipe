@@ -35,10 +35,14 @@
  * part this module has to construct by hand.
  */
 
-import { Address, scValToNative, xdr } from "@stellar/stellar-sdk";
+import { Address, Contract, scValToNative, xdr } from "@stellar/stellar-sdk";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { readLiveWasmHash } from "@/lib/stellar/contract-instance";
-import { entriesForNetwork, type ContractRegistryEntry } from "@/lib/contract-registry";
+import {
+  entriesForNetwork,
+  resolveWasmHash,
+  type ContractRegistryEntry,
+} from "@/lib/contract-registry";
 import type {
   BlendBorrowPosition,
   BlendSupplyPosition,
@@ -46,6 +50,7 @@ import type {
   DefiPositionsResult,
   FxdaoCdpPosition,
   Network,
+  SoroswapLpPosition,
   UnrecognizedDefiPosition,
 } from "@lumenwipe/types";
 
@@ -231,6 +236,154 @@ async function readBlendPoolPositions(
   return positions;
 }
 
+// ─── Soroswap: every pair the factory deployed ───────────────────────────────
+
+/** Stellar RPC caps getLedgerEntries at 200 keys per call; stay well under it. */
+const LEDGER_KEYS_PER_CALL = 100;
+
+/** A factory past this size is not enumerated: a testnet reset would leave far fewer, and mainnet
+ *  detection does not run through this path at all (OctoPos reports pairs by address). */
+const MAX_FACTORY_PAIRS = 2_000;
+
+async function batchReadChunked(
+  rpc: RpcServer,
+  keys: xdr.LedgerKey[]
+): Promise<Map<string, xdr.LedgerEntryData>> {
+  const out = new Map<string, xdr.LedgerEntryData>();
+  for (let i = 0; i < keys.length; i += LEDGER_KEYS_PER_CALL) {
+    const part = await batchRead(rpc, keys.slice(i, i + LEDGER_KEYS_PER_CALL));
+    for (const [k, v] of part) out.set(k, v);
+  }
+  return out;
+}
+
+/** The instance storage of a contract as (native key -> ScVal) pairs, with its code hash. */
+async function readInstance(
+  rpc: RpcServer,
+  contractAddress: string
+): Promise<{ wasmHash: string | null; storage: Map<string, xdr.ScVal> } | null> {
+  const key = new Contract(contractAddress).getFootprint();
+  const results = await batchRead(rpc, [key]);
+  const val = results.get(key.toXDR("base64"));
+  if (!val) return null;
+  const instance = val.contractData().val().instance();
+  const executable = instance.executable();
+  const wasmHash =
+    executable.switch() === xdr.ContractExecutableType.contractExecutableWasm()
+      ? executable.wasmHash().toString("hex")
+      : null;
+  const storage = new Map<string, xdr.ScVal>();
+  for (const entry of instance.storage() ?? []) {
+    let name: string;
+    try {
+      name = JSON.stringify(scValToNative(entry.key()));
+    } catch {
+      continue;
+    }
+    storage.set(name, entry.val());
+  }
+  return { wasmHash, storage };
+}
+
+const asAddress = (val: xdr.ScVal | undefined): string | null => {
+  if (!val || val.switch() !== xdr.ScValType.scvAddress()) return null;
+  return Address.fromScAddress(val.address()).toString();
+};
+
+/**
+ * Soroswap pairs are deployed by the factory and share one code hash, so the registry lists the
+ * factory and one representative pair, and the pairs themselves are enumerated here: the factory
+ * keeps `TotalPairs` in its instance and `PairAddressesNIndexed(i)` per pair (soroswap/core,
+ * contracts/factory). Every pair's SEP-41 `Balance(user)` is read in one chunked sweep; a pair the
+ * account holds shares of is then verified against the registry's pair code (halt-on-unknown,
+ * same as any other contract) and its two tokens read from instance keys 0 and 1 (Token0,
+ * Token1). On today's testnet that is one instance read, three chunked reads for ~225 pairs, and
+ * one read per pair held.
+ */
+async function readSoroswapFactoryPairs(
+  rpc: RpcServer,
+  factory: ContractRegistryEntry,
+  address: string,
+  unrecognized: UnrecognizedDefiPosition[]
+): Promise<DefiPosition[]> {
+  const instance = await readInstance(rpc, factory.address);
+  const total = instance
+    ? scValToNative(instance.storage.get('["TotalPairs"]') ?? xdr.ScVal.scvVoid())
+    : null;
+  const count = typeof total === "number" ? total : null;
+  if (count === null) {
+    unrecognized.push({
+      protocol: "soroswap",
+      rawType: "factory-unreadable",
+      reason: `Soroswap factory ${factory.address} did not expose its pair count`,
+    });
+    return [];
+  }
+  if (count > MAX_FACTORY_PAIRS) {
+    unrecognized.push({
+      protocol: "soroswap",
+      rawType: "factory-too-large",
+      reason: `Soroswap factory ${factory.address} lists ${count} pairs, above the ${MAX_FACTORY_PAIRS} this read enumerates`,
+    });
+    return [];
+  }
+
+  const indexKeys = Array.from({ length: count }, (_, i) =>
+    contractDataKey(factory.address, variantVal("PairAddressesNIndexed", xdr.ScVal.scvU32(i)))
+  );
+  const indexed = await batchReadChunked(rpc, indexKeys);
+  const pairs: string[] = [];
+  for (const key of indexKeys) {
+    const pair = asAddress(indexed.get(key.toXDR("base64"))?.contractData().val());
+    if (pair) pairs.push(pair);
+  }
+
+  const balanceKeys = pairs.map((pair) =>
+    contractDataKey(pair, variantVal("Balance", addressVal(address)))
+  );
+  const balances = await batchReadChunked(rpc, balanceKeys);
+
+  const positions: DefiPosition[] = [];
+  for (let i = 0; i < pairs.length; i++) {
+    const pair = pairs[i]!;
+    const shares = asBigInt(contractDataScVal(balances.get(balanceKeys[i]!.toXDR("base64"))));
+    if (shares === null || shares === 0n) continue;
+
+    const pairInstance = await readInstance(rpc, pair);
+    const resolution =
+      pairInstance?.wasmHash !== null && pairInstance?.wasmHash !== undefined
+        ? resolveWasmHash(factory.network, pairInstance.wasmHash)
+        : null;
+    if (
+      !pairInstance ||
+      resolution === null ||
+      resolution.status !== "known" ||
+      resolution.protocol !== "soroswap" ||
+      resolution.kind !== "pair"
+    ) {
+      unrecognized.push({
+        protocol: "soroswap",
+        rawType: "pair-code-unknown",
+        reason: `Soroswap pair ${pair} holds ${shares} shares for this account but runs code the registry has not verified as a Soroswap pair`,
+      });
+      continue;
+    }
+    const token0 = asAddress(pairInstance.storage.get("0"));
+    const token1 = asAddress(pairInstance.storage.get("1"));
+    const position: SoroswapLpPosition = {
+      protocol: "soroswap",
+      positionType: "lp",
+      contractAddress: pair,
+      wasmHash: pairInstance.wasmHash ?? undefined,
+      shareAmount: shares.toString(),
+      usdValue: null,
+      ...(token0 && token1 ? { tokens: [token0, token1] as [string, string] } : {}),
+    };
+    positions.push(position);
+  }
+  return positions;
+}
+
 // ─── standard SEP-41 LP share balance (Aquarius / Soroswap / Phoenix pools) ──
 
 async function readLpShareBalance(
@@ -308,10 +461,18 @@ export async function detectDefiPositionsViaDirectRead(
   const unrecognized: UnrecognizedDefiPosition[] = [];
 
   for (const entry of entries) {
-    if (entry.kind === "factory" || entry.kind === "router" || entry.kind === "backstop") continue;
+    // A Soroswap factory is the one reference contract that IS probed: it enumerates the pairs.
+    const soroswapFactory = entry.protocol === "soroswap" && entry.kind === "factory";
+    if (!soroswapFactory && (entry.kind === "factory" || entry.kind === "router")) continue;
+    if (entry.kind === "backstop" || entry.kind === "pair") continue;
 
     const verified = await verifyEntry(rpc, entry, unrecognized);
     if (!verified) continue;
+
+    if (soroswapFactory) {
+      positions.push(...(await readSoroswapFactoryPairs(rpc, entry, address, unrecognized)));
+      continue;
+    }
 
     if (entry.protocol === "blend" && entry.kind === "pool") {
       positions.push(...(await readBlendPoolPositions(rpc, entry, address)));

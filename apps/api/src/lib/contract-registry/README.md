@@ -25,7 +25,10 @@ plus an adapter change, never a rewrite (§18).
 2. Add one object to `entries`:
    - `network`: `mainnet` or `testnet` - the one network you verified this instance on
    - `protocol`: one of `blend`, `aquarius`, `soroswap`, `phoenix`, `fxdao`
-   - `kind`: `pool`, `pair`, `backstop`, `vault`, `factory`, or `router`
+   - `kind`: `pool`, `pair`, `backstop`, `vault`, `factory`, or `router`. A `pair` entry is one
+     representative factory-deployed pair: every pair the factory deploys shares its code hash, so
+     one entry lets `resolveWasmHash` recognize all of them, and detection enumerates the pairs
+     themselves from the factory rather than from this file
    - `address`: the deployed contract (`C...`, checksum-validated)
    - `wasmHash`: 64 lowercase hex characters. `null` is allowed only with `verifiedLive: false`,
      for a contract the protocol documents but that does not currently resolve on-chain

@@ -14,11 +14,17 @@ import type { getRpcServer } from "@/lib/stellar/rpc";
 type RpcServer = ReturnType<typeof getRpcServer>;
 type LedgerEntry = { key: xdr.LedgerKey; val: xdr.LedgerEntryData };
 
-export function contractInstanceEntry(contractAddress: string, wasmHashHex: string): LedgerEntry {
+export function contractInstanceEntry(
+  contractAddress: string,
+  wasmHashHex: string,
+  /** Instance storage, as (key, value) ScVal pairs - what `#[contracttype]` instance keys hold. */
+  storage: Array<[xdr.ScVal, xdr.ScVal]> = []
+): LedgerEntry {
   const contract = new Contract(contractAddress);
   const instance = new xdr.ScContractInstance({
     executable: xdr.ContractExecutable.contractExecutableWasm(Buffer.from(wasmHashHex, "hex")),
-    storage: null,
+    storage:
+      storage.length === 0 ? null : storage.map(([key, val]) => new xdr.ScMapEntry({ key, val })),
   });
   const val = xdr.LedgerEntryData.contractData(
     new xdr.ContractDataEntry({

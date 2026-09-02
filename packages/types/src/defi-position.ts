@@ -79,6 +79,9 @@ export interface SoroswapLpPosition extends DefiPositionBase {
   protocol: "soroswap";
   positionType: "lp";
   shareAmount: string;
+  /** The pair's two token contracts (token_0, token_1), read from the pair when detection can;
+   *  what a withdrawal receives and the exit's arguments name. */
+  tokens?: [string, string];
 }
 
 export interface PhoenixLpPosition extends DefiPositionBase {
