@@ -1,6 +1,7 @@
 import { test, expect, mock, afterEach } from "bun:test";
 import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import type { AccountState, Trustline } from "@lumenwipe/types";
+import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 // Wiring coverage for the transfer disposition (#111).
 //
@@ -41,6 +42,8 @@ function accountState(over: Partial<AccountState> = {}): AccountState {
     subEntryMismatch: false,
     sponsoredEntries: [],
     sponsorshipEnumerationIncomplete: false,
+    defiPositions: emptyDefiPositionsResult(SOURCE),
+    defiPositionsWarnings: [],
     ...over,
   };
 }

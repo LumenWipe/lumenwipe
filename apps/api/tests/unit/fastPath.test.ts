@@ -1,6 +1,7 @@
 import { test, expect, mock, afterEach } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import type { AccountState, Trustline, ConversionPath } from "@lumenwipe/types";
+import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 const MASTER = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -25,6 +26,8 @@ function makeAccount(over: Partial<AccountState> = {}): AccountState {
     subEntryMismatch: false,
     sponsoredEntries: [],
     sponsorshipEnumerationIncomplete: false,
+    defiPositions: emptyDefiPositionsResult(MASTER),
+    defiPositionsWarnings: [],
     ...over,
   };
 }

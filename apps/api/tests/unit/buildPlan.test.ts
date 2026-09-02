@@ -36,6 +36,8 @@ function makeAccount(overrides: Partial<AccountState> = {}): AccountState {
     subEntryMismatch: false,
     sponsoredEntries: [],
     sponsorshipEnumerationIncomplete: false,
+    defiPositions: makeDefiResult(),
+    defiPositionsWarnings: [],
     ...overrides,
   };
 }
