@@ -66,6 +66,16 @@
     },
     {
       "network": "testnet",
+      "protocol": "soroswap",
+      "kind": "pair",
+      "address": "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+      "wasmHash": "8447525edd62f72ffaf52136358034657ea0511a8fec1cd0ebde649f86cca464",
+      "version": "v1",
+      "label": "Soroswap testnet pair ARST/XTAR (factory index 1) - stands for the pair code every factory-deployed pair shares; pairs are enumerated from the factory, not listed here",
+      "verifiedLive": true
+    },
+    {
+      "network": "testnet",
       "protocol": "fxdao",
       "kind": "vault",
       "address": "CBUZ5NJKA5PRS4TBPHWMN4JGGRVIOQOKI4JUYLA2IXS3BEJKQKEWFW7D",

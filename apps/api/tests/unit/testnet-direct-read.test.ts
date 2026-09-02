@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { Keypair, xdr } from "@stellar/stellar-sdk";
+import { Address, Keypair, StrKey, xdr } from "@stellar/stellar-sdk";
 import {
   detectDefiPositionsViaDirectRead,
   addressVal,
@@ -306,4 +306,235 @@ test("an entry the registry marks as not live that has since appeared is flagged
       reason: expect.stringContaining(FXDAO_VAULTS),
     },
   ]);
+});
+
+// ─── Soroswap: pairs enumerated from the factory ─────────────────────────────
+
+const SOROSWAP_FACTORY = "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY";
+const SOROSWAP_FACTORY_HASH = "86285a9234d3f0d687eaf88efe8d5d72172b38c9a86624c9934c0cbf2aff2993";
+/** The pair code every factory-deployed pair shares; injected below, never read from the shipped file. */
+const SOROSWAP_PAIR_HASH = "8447525edd62f72ffaf52136358034657ea0511a8fec1cd0ebde649f86cca464";
+const PAIR_A = "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4";
+const PAIR_B = "CAPCU57OPEL6LFYCHPZZPHFR42XQHA74YSOFIC7DGSEDLCGKJOCFOJI7";
+const TOKEN_0 = "CBRQHWJDLPYVR4BSVUUWJCZGG4N4FF3CUZKDGRVTE36FAWNEJZEMQRME";
+const TOKEN_1 = "CCZGLAUBDKJSQK72QOZHVU7CUWKW45OZWYWCLL27AEK74U2OIBK6LXF2";
+
+function soroswapFactoryEntry(): ContractRegistryEntry {
+  return registryEntry({
+    protocol: "soroswap",
+    kind: "factory",
+    address: SOROSWAP_FACTORY,
+    wasmHash: SOROSWAP_FACTORY_HASH,
+    version: "v1",
+  });
+}
+
+/** The representative pair entry: the code hash every held pair is checked against. */
+function soroswapPairEntry(): ContractRegistryEntry {
+  return registryEntry({
+    protocol: "soroswap",
+    kind: "pair",
+    address: PAIR_A,
+    wasmHash: SOROSWAP_PAIR_HASH,
+    version: "v1",
+  });
+}
+
+const SOROSWAP_REGISTRY = (): ContractRegistryEntry[] => [
+  soroswapFactoryEntry(),
+  soroswapPairEntry(),
+];
+
+/** The factory's instance (`TotalPairs`) and one `PairAddressesNIndexed(i)` entry per pair. */
+function factoryEntries(pairs: string[]) {
+  return [
+    contractInstanceEntry(SOROSWAP_FACTORY, SOROSWAP_FACTORY_HASH, [
+      [xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("TotalPairs")]), xdr.ScVal.scvU32(pairs.length)],
+    ]),
+    ...pairs.map((pair, i) =>
+      contractDataEntry(
+        SOROSWAP_FACTORY,
+        variantVal("PairAddressesNIndexed", xdr.ScVal.scvU32(i)),
+        new Address(pair).toScVal()
+      )
+    ),
+  ];
+}
+
+/** A pair's instance with its tokens in keys 0 and 1, plus the user's share balance. */
+function pairEntries(pair: string, shares: bigint, wasmHash = SOROSWAP_PAIR_HASH) {
+  return [
+    contractInstanceEntry(pair, wasmHash, [
+      [xdr.ScVal.scvU32(0), new Address(TOKEN_0).toScVal()],
+      [xdr.ScVal.scvU32(1), new Address(TOKEN_1).toScVal()],
+    ]),
+    contractDataEntry(pair, variantVal("Balance", addressVal(USER)), i128Val(shares)),
+  ];
+}
+
+test("Soroswap: pairs are enumerated from the factory and a held pair becomes an LP position with its tokens", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      ...factoryEntries([PAIR_A, PAIR_B]),
+      ...pairEntries(PAIR_A, 0n),
+      ...pairEntries(PAIR_B, 4_200n),
+    ]),
+    registryEntries: SOROSWAP_REGISTRY(),
+  });
+  expect(result.unrecognizedPositions).toEqual([]);
+  expect(result.positions).toEqual([
+    {
+      protocol: "soroswap",
+      positionType: "lp",
+      contractAddress: PAIR_B,
+      wasmHash: SOROSWAP_PAIR_HASH,
+      shareAmount: "4200",
+      usdValue: null,
+      tokens: [TOKEN_0, TOKEN_1],
+    },
+  ]);
+});
+
+test("Soroswap: a held pair running code the registry has not verified is flagged, not decoded", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([...factoryEntries([PAIR_A]), ...pairEntries(PAIR_A, 7n, "9".repeat(64))]),
+    registryEntries: SOROSWAP_REGISTRY(),
+  });
+  expect(result.positions).toEqual([]);
+  expect(result.unrecognizedPositions).toEqual([
+    { protocol: "soroswap", rawType: "pair-code-unknown", reason: expect.stringContaining(PAIR_A) },
+  ]);
+});
+
+test("Soroswap: a factory that does not expose its pair count is flagged", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([contractInstanceEntry(SOROSWAP_FACTORY, SOROSWAP_FACTORY_HASH)]),
+    registryEntries: SOROSWAP_REGISTRY(),
+  });
+  expect(result.positions).toEqual([]);
+  expect(result.unrecognizedPositions.map((u) => u.rawType)).toEqual(["factory-unreadable"]);
+});
+
+test("Soroswap: an oversized factory is flagged rather than swept", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      contractInstanceEntry(SOROSWAP_FACTORY, SOROSWAP_FACTORY_HASH, [
+        [xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("TotalPairs")]), xdr.ScVal.scvU32(50_000)],
+      ]),
+    ]),
+    registryEntries: SOROSWAP_REGISTRY(),
+  });
+  expect(result.unrecognizedPositions.map((u) => u.rawType)).toEqual(["factory-too-large"]);
+});
+
+test("Soroswap: a large factory is read in chunks that stay under the RPC's key limit", async () => {
+  const pairs = Array.from({ length: 230 }, () =>
+    // Any valid C-address works as a pair id for the sweep.
+    StrKey.encodeContract(StrKey.decodeEd25519PublicKey(Keypair.random().publicKey()))
+  );
+  const inner = mockRpc([...factoryEntries(pairs), ...pairEntries(pairs[229]!, 1n)]);
+  const sizes: number[] = [];
+  const rpc = {
+    getLedgerEntries: async (...keys: xdr.LedgerKey[]) => {
+      sizes.push(keys.length);
+      return inner.getLedgerEntries(...keys);
+    },
+  } as unknown as typeof inner;
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc,
+    registryEntries: SOROSWAP_REGISTRY(),
+  });
+  expect(result.positions.map((p) => p.contractAddress)).toEqual([pairs[229]]);
+  expect(Math.max(...sizes)).toBeLessThanOrEqual(100);
+  // 1 factory hash + 1 factory instance + 3 index chunks + 3 balance chunks + 1 held-pair chunk.
+  expect(sizes.length).toBe(9);
+});
+
+test("the representative pair entry itself is never probed for balances - pairs come from the factory", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([]),
+    registryEntries: [
+      registryEntry({
+        protocol: "soroswap",
+        kind: "pair",
+        address: PAIR_A,
+        wasmHash: SOROSWAP_PAIR_HASH,
+        version: "v1",
+      }),
+    ],
+  });
+  expect(result.positions).toEqual([]);
+  expect(result.unrecognizedPositions).toEqual([]);
+});
+
+test("Soroswap: an index the ledger does not return is reported as a gap, and the rest still resolve", async () => {
+  const [factoryInstance, indexA] = factoryEntries([PAIR_A, PAIR_B]);
+  // TotalPairs says 2, but only index 0 is on the ledger.
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([factoryInstance!, indexA!, ...pairEntries(PAIR_A, 5n)]),
+    registryEntries: SOROSWAP_REGISTRY(),
+  });
+  expect(result.positions.map((p) => p.contractAddress)).toEqual([PAIR_A]);
+  expect(result.unrecognizedPositions.map((u) => u.rawType)).toEqual(["factory-index-gap"]);
+});
+
+test("Soroswap: the same pair listed twice in the index yields one position", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([...factoryEntries([PAIR_A, PAIR_A]), ...pairEntries(PAIR_A, 5n)]),
+    registryEntries: SOROSWAP_REGISTRY(),
+  });
+  expect(result.positions).toHaveLength(1);
+  // Two indices, one distinct address: the sweep says so rather than pretending it saw two.
+  expect(result.unrecognizedPositions.map((u) => u.rawType)).toEqual(["factory-index-gap"]);
+});
+
+test("Soroswap: a held pair with no instance on the ledger is flagged with that reason", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      ...factoryEntries([PAIR_A]),
+      contractDataEntry(PAIR_A, variantVal("Balance", addressVal(USER)), i128Val(3n)),
+    ]),
+    registryEntries: SOROSWAP_REGISTRY(),
+  });
+  expect(result.positions).toEqual([]);
+  expect(result.unrecognizedPositions[0]!.reason).toContain("no contract instance");
+});
+
+test("Soroswap: a balance that is not an amount is treated as no position, like any other LP read", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      ...factoryEntries([PAIR_A]),
+      contractDataEntry(PAIR_A, variantVal("Balance", addressVal(USER)), xdr.ScVal.scvSymbol("x")),
+    ]),
+    registryEntries: SOROSWAP_REGISTRY(),
+  });
+  expect(result.positions).toEqual([]);
+  expect(result.unrecognizedPositions).toEqual([]);
+});
+
+test("Soroswap: tokens are omitted when the pair instance lacks them, and odd storage keys are skipped", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      ...factoryEntries([PAIR_A]),
+      contractInstanceEntry(PAIR_A, SOROSWAP_PAIR_HASH, [
+        // A u64 key: scValToNative yields a bigint, which JSON.stringify cannot encode.
+        [xdr.ScVal.scvU64(xdr.Uint64.fromString("7")), xdr.ScVal.scvU32(1)],
+        [xdr.ScVal.scvSymbol("METADATA"), xdr.ScVal.scvSymbol("ignored")],
+      ]),
+      contractDataEntry(PAIR_A, variantVal("Balance", addressVal(USER)), i128Val(9n)),
+    ]),
+    registryEntries: SOROSWAP_REGISTRY(),
+  });
+  expect(result.positions).toHaveLength(1);
+  expect("tokens" in result.positions[0]!).toBe(false);
+  expect(result.unrecognizedPositions).toEqual([]);
+});
+
+test("Soroswap: without a pair entry in the registry, every held pair is unknown code", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([...factoryEntries([PAIR_A]), ...pairEntries(PAIR_A, 5n)]),
+    registryEntries: [soroswapFactoryEntry()],
+  });
+  expect(result.positions).toEqual([]);
+  expect(result.unrecognizedPositions.map((u) => u.rawType)).toEqual(["pair-code-unknown"]);
 });
