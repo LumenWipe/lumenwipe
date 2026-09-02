@@ -102,13 +102,24 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
   const groups: SummaryGroup[] = [];
 
   if (account) {
-    const positions = account.defiPositions.positions;
+    // Only positions a confirmed exit step actually left. Detection is a snapshot from the
+    // analysis; a position the user exited by hand in between is skipped by the API as already
+    // gone, never built or signed, and must not be reported here as LumenWipe's doing.
+    const exitedContracts = new Set(
+      confirmedSteps
+        .filter((s) => s.type === "EXIT_POSITIONS")
+        .map((s) => s.affectedContract)
+        .filter((c): c is string => typeof c === "string")
+    );
+    const positions = account.defiPositions.positions.filter((p) =>
+      exitedContracts.has(p.contractAddress)
+    );
     if (positions.length > 0) {
       const contracts = positionContracts(positions);
       groups.push({
         type: "EXIT_POSITIONS",
         title: "DeFi positions exited",
-        summary: `${positions.length} position${positions.length === 1 ? "" : "s"} in ${contracts.length} pool${contracts.length === 1 ? "" : "s"}, withdrawn to this account before the close`,
+        summary: `${positions.length} position${positions.length === 1 ? "" : "s"} in ${contracts.length} pool${contracts.length === 1 ? "" : "s"}, settled and withdrawn before the close`,
         body: (
           <ul className="space-y-1">
             {positions.map((p, i) => (

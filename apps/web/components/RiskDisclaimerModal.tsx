@@ -84,8 +84,9 @@ export default function RiskDisclaimerModal() {
 
           <p className="text-xs text-white/40">
             Soroban DeFi positions: Blend positions (supply, collateral, debt) are exited as part of
-            the close and are new - tested on testnet. Aquarius, Soroswap, Phoenix, and FxDAO
-            positions are not yet supported and block the close until you exit them yourself.
+            the close and are new - tested on testnet. Blend backstop deposits and Aquarius,
+            Soroswap, Phoenix, and FxDAO positions are not yet supported and block the close until
+            you exit them yourself.
           </p>
         </div>
 

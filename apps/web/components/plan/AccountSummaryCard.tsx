@@ -58,6 +58,8 @@ export default function AccountSummaryCard({
     },
   ];
 
+  const lastRowStart = stats.length - (stats.length % 3 || 3);
+
   return (
     <div className="mkt-panel rounded-2xl overflow-hidden">
       <div className="border-b border-white/10 px-4 py-3 flex items-center justify-between">
@@ -67,11 +69,15 @@ export default function AccountSummaryCard({
         </span>
       </div>
 
-      {/* Each cell draws its own bottom border: `divide-y` only draws between rows, so with a
-          count of cells that is not a multiple of three the last full row was left open. */}
-      <div className="grid grid-cols-3 divide-x divide-white/8">
-        {stats.map(({ icon: Icon, label, value }) => (
-          <div key={label} className="p-3 border-b border-white/8">
+      {/* Every cell above the last row draws its own bottom border: `divide-y` only draws between
+          rows, so when the cell count is not a multiple of three the last full row was left open
+          beside the short final row. The footer's top border closes the grid. */}
+      <div className="grid grid-cols-3 divide-x divide-white/[0.08]">
+        {stats.map(({ icon: Icon, label, value }, i) => (
+          <div
+            key={label}
+            className={`p-3 ${i < lastRowStart ? "border-b border-white/[0.08]" : ""}`}
+          >
             <div className="flex items-center gap-1.5 text-white/45 mb-1">
               <Icon className="h-3.5 w-3.5 text-stellar/70" />
               <span className="text-xs">{label}</span>
@@ -81,7 +87,7 @@ export default function AccountSummaryCard({
         ))}
       </div>
 
-      <div className="px-4 py-3 flex items-center justify-between text-sm">
+      <div className="border-t border-white/10 px-4 py-3 flex items-center justify-between text-sm">
         <span className="text-white/55">Estimated received at destination</span>
         <span className="mkt-display font-bold text-value">{formatXlm(estimatedFinal)}</span>
       </div>

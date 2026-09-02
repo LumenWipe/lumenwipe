@@ -24,12 +24,45 @@ test("names the asset from the enrichment map, and falls back to a short contrac
 
 test("a backstop deposit says so, and a borrow is a borrow", () => {
   expect(describeDefiPosition({ ...supply, isBackstop: true }, {})).toContain("(backstop)");
-  expect(
-    describeDefiPosition(
-      { ...supply, positionType: "borrow", dTokenAmount: "1" } as unknown as DefiPosition,
-      { [XLM_SAC]: XLM }
-    )
-  ).toBe("Blend borrow · XLM");
+  const borrow: DefiPosition = {
+    protocol: "blend",
+    positionType: "borrow",
+    contractAddress: POOL,
+    assetAddress: XLM_SAC,
+    dTokenAmount: "1",
+    usdValue: null,
+  };
+  expect(describeDefiPosition(borrow, { [XLM_SAC]: XLM })).toBe("Blend borrow · XLM");
+});
+
+test("LP, stake, and vault positions each read as what they are", () => {
+  const lp: DefiPosition = {
+    protocol: "soroswap",
+    positionType: "lp",
+    contractAddress: POOL,
+    shareAmount: "42",
+    usdValue: null,
+  };
+  const stake: DefiPosition = {
+    protocol: "phoenix",
+    positionType: "stake",
+    contractAddress: POOL,
+    stakedAmount: "7",
+    stakedAtEpoch: "1700000000",
+    usdValue: null,
+  };
+  const cdp: DefiPosition = {
+    protocol: "fxdao",
+    positionType: "cdp",
+    contractAddress: POOL,
+    denomination: "USD",
+    collateralAmount: "100",
+    debtAmount: "40",
+    usdValue: null,
+  };
+  expect(describeDefiPosition(lp, {})).toBe("Soroswap LP position · 42 shares");
+  expect(describeDefiPosition(stake, {})).toBe("Phoenix stake · 7");
+  expect(describeDefiPosition(cdp, {})).toBe("FxDAO vault · USD · collateral 100, debt 40");
 });
 
 test("positionContracts lists each pool once, in first-seen order", () => {
