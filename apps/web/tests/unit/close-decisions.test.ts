@@ -7,6 +7,7 @@ import {
   destinationAcknowledgementToDecisions,
   dispositionsToDecisions,
 } from "@/lib/api/close-decisions";
+import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 const ASSET = "USDC:GISSUER0000000000000000000000000000000000000000000000000000";
 // Must match the API's assetDecisionId contract: "asset:" + first ":" replaced with "-".
@@ -184,6 +185,8 @@ const ACCOUNT_BASE = {
   poolShares: [],
   claimableBalances: [],
   subEntryMismatch: false,
+  defiPositions: emptyDefiPositionsResult("GSOURCE"),
+  defiPositionsWarnings: [],
 };
 
 test("chosenTransfers › an asset arriving via a remediated claim gets its floor from the claim", () => {

@@ -72,9 +72,9 @@ export function assessDefiPositionsGate(
     blockers.push({
       code: "defi_position_unrecognized",
       message:
-        `OctoPos reported a ${unrecognized.protocol} position for this account that could not ` +
-        `be safely read (${unrecognized.reason}). This position is not reflected in the plan - ` +
-        `verify it manually on an explorer before proceeding.`,
+        `A ${unrecognized.protocol} position for this account could not be safely read ` +
+        `(${unrecognized.reason}). This position is not reflected in the plan - verify it ` +
+        `manually on an explorer before proceeding.`,
       helpUrl: explorerUrl(result),
     });
   }

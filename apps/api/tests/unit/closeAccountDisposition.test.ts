@@ -3,6 +3,7 @@ import { Account, Keypair, Operation, TransactionBuilder, Networks } from "@stel
 import { AssetRouteLostError } from "@/lib/utils/errors";
 import type { AccountState, Trustline, AssetDisposition, PlannedStep } from "@lumenwipe/types";
 import type { StepBuildContext } from "@/lib/stellar/step-engine";
+import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 // Regression coverage for the fused CLOSE_ACCOUNT build honoring the per-asset
 // disposition decided on the analyze page. The bug: a non-convertible asset the
@@ -50,6 +51,8 @@ function accountState(): AccountState {
     subEntryMismatch: false,
     sponsoredEntries: [],
     sponsorshipEnumerationIncomplete: false,
+    defiPositions: emptyDefiPositionsResult(SOURCE),
+    defiPositionsWarnings: [],
   };
 }
 
