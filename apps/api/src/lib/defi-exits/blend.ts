@@ -18,7 +18,7 @@ import type {
   Network,
 } from "@lumenwipe/types";
 import { xdr } from "@stellar/stellar-sdk";
-import { NETWORK_PASSPHRASES, RPC_HEADERS, RPC_URLS } from "@/config/networks";
+import { blendSdkNetwork, blendSdkVersion } from "@/lib/blend-sdk";
 import {
   EXIT_POSITION_GONE,
   type BuiltExitStep,
@@ -93,24 +93,6 @@ export interface BlendDeps {
   estimate(pool: BlendPoolView, oracle: PoolOracle, positions: Positions): BlendEstimate;
 }
 
-/** The Blend SDK's view of one of our networks, RPC auth headers included. */
-export function blendSdkNetwork(network: Network): BlendNetwork {
-  const headers = RPC_HEADERS[network];
-  return {
-    rpc: RPC_URLS[network],
-    passphrase: NETWORK_PASSPHRASES[network],
-    ...(Object.keys(headers).length > 0 && { opts: { headers } }),
-  };
-}
-
-/** Maps the registry's version string to the SDK's; null for a version the SDK has no client for. */
-export function blendSdkVersion(registryVersion: string): Version | null {
-  const normalized = registryVersion.trim().toLowerCase();
-  if (normalized === "v1") return Version.V1;
-  if (normalized === "v2") return Version.V2;
-  return null;
-}
-
 export const defaultBlendDeps: BlendDeps = {
   loadPool(network, poolId, version) {
     const sdkNetwork = blendSdkNetwork(network);
@@ -153,8 +135,6 @@ const REQUEST_TYPE: Record<"repay" | "withdraw" | "withdraw_collateral", Request
   withdraw_collateral: RequestType.WithdrawCollateral,
 };
 
-const sdkVersion = blendSdkVersion;
-
 /** The accrual margin, rounded up so it is never rounded away on small positions. */
 export function withAccrualMargin(amount: bigint): bigint {
   const scaled = amount * BigInt(10_000 + BLEND_ACCRUAL_BUFFER_BPS);
@@ -191,7 +171,7 @@ export function blendExitAdapter(
 
     async readLive(position, code, ctx): Promise<BlendLive> {
       if (code.kind !== "pool") return { status: "not_pool", kind: code.kind };
-      const version = sdkVersion(code.version);
+      const version = blendSdkVersion(code.version);
       if (version === null) return { status: "unsupported_version", version: code.version };
 
       try {

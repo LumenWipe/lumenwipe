@@ -133,5 +133,7 @@ test("formatPositionAmount keeps up to seven decimals, at least two, with thousa
   expect(formatPositionAmount("10")).toBe("10.00");
   expect(formatPositionAmount("10.0100015")).toBe("10.0100015");
   expect(formatPositionAmount("1234567.5")).toBe("1,234,567.50");
-  expect(formatPositionAmount("0.00000001")).toBe("0.00");
+  // Dust is never rounded away to a misleading zero.
+  expect(formatPositionAmount("0.00000001")).toBe("0.00000001");
+  expect(formatPositionAmount("0")).toBe("0.00");
 });

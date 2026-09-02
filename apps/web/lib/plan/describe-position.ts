@@ -27,11 +27,14 @@ const KIND_LABELS: Record<DefiPosition["positionType"], string> = {
   cdp: "Vault",
 };
 
-/** A decimal string trimmed for reading: up to 7 decimals, at least 2, no trailing noise. */
+/** A decimal string trimmed for reading: up to 7 decimals, at least 2, no trailing noise - but a
+ *  nonzero amount is never rounded down to zero; a dust balance keeps every digit it has. */
 export function formatPositionAmount(amount: string): string {
-  const [whole, frac = ""] = amount.split(".");
-  const kept = frac.slice(0, 7).replace(/0+$/, "");
-  return `${Number(whole).toLocaleString("en-US")}.${kept.padEnd(2, "0")}`;
+  const [whole = "0", frac = ""] = amount.split(".");
+  let kept = frac.slice(0, 7).replace(/0+$/, "");
+  if (kept === "" && /[1-9]/.test(frac)) kept = frac.replace(/0+$/, "");
+  const grouped = /^\d+$/.test(whole) ? BigInt(whole).toLocaleString("en-US") : whole;
+  return `${grouped}.${kept.padEnd(2, "0")}`;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { PoolV1, PoolV2, TokenMetadata, Version, type Positions } from "@blend-capital/blend-sdk";
 import type { DefiPosition, DefiPositionDisplay, Network } from "@lumenwipe/types";
-import { entriesForNetwork } from "@/lib/contract-registry";
-import { blendSdkNetwork, blendSdkVersion } from "@/lib/defi-exits/blend";
+import { entriesForNetwork, type ContractRegistryEntry } from "@/lib/contract-registry";
+import { blendSdkNetwork, blendSdkVersion } from "@/lib/blend-sdk";
 import type { EnrichContext, KnownToken, PositionEnricher } from "./shared";
 import { formatUnits, positionKey } from "./shared";
 
@@ -21,7 +21,7 @@ export interface BlendEnrichReserveView {
   config: { index: number; decimals: number };
   toAssetFromBToken(bTokens: bigint | undefined): bigint;
   toAssetFromDToken(dTokens: bigint | undefined): bigint;
-  /** Percentages, as the SDK estimates them (3.99 means 3.99%). */
+  /** Fractions, as the SDK estimates them (0.0399 means 3.99%). */
   estSupplyApy: number;
   estBorrowApy: number;
 }
@@ -36,6 +36,8 @@ export interface BlendEnrichDeps {
   /** `version` null means "unknown to the registry": try V2, then V1. */
   loadPool(network: Network, poolId: string, version: Version | null): Promise<BlendEnrichPoolView>;
   tokenMetadata(network: Network, assetId: string): Promise<KnownToken>;
+  /** The registry rows for a network; injectable so tests do not depend on the shipped file. */
+  registryEntries(network: Network): ContractRegistryEntry[];
 }
 
 function view(pool: PoolV1 | PoolV2): BlendEnrichPoolView {
@@ -44,7 +46,7 @@ function view(pool: PoolV1 | PoolV2): BlendEnrichPoolView {
       typeof pool.metadata.name === "string" && pool.metadata.name.trim()
         ? pool.metadata.name
         : null,
-    reserves: pool.reserves.values(),
+    reserves: [...pool.reserves.values()],
     loadUser: (userId) => pool.loadUser(userId),
   };
 }
@@ -64,10 +66,12 @@ export const defaultBlendEnrichDeps: BlendEnrichDeps = {
     const metadata = await TokenMetadata.load(blendSdkNetwork(network), assetId);
     return { symbol: metadata.symbol, decimals: metadata.decimals };
   },
+  registryEntries: entriesForNetwork,
 };
 
-function pct(value: number): string | null {
-  return Number.isFinite(value) ? value.toFixed(2) : null;
+/** The SDK's rate fractions as a percentage with two decimals. */
+function pct(fraction: number): string | null {
+  return Number.isFinite(fraction) ? (fraction * 100).toFixed(2) : null;
 }
 
 export function blendPositionEnricher(
@@ -75,7 +79,7 @@ export function blendPositionEnricher(
 ): PositionEnricher {
   return async (positions: DefiPosition[], ctx: EnrichContext) => {
     const displays = new Map<string, DefiPositionDisplay>();
-    const registry = entriesForNetwork(ctx.network);
+    const registry = deps.registryEntries(ctx.network);
     const symbols = new Map<string, Promise<KnownToken | null>>();
     const symbolFor = (assetId: string): Promise<KnownToken | null> => {
       const known = ctx.knownTokens[assetId];
@@ -115,38 +119,60 @@ export function blendPositionEnricher(
 
         for (const position of held) {
           if (position.positionType !== "supply" && position.positionType !== "borrow") continue;
+          // A backstop deposit is not a pool reserve position: its amount and yield live in the
+          // backstop contract (#155), and the reserve's numbers would describe the wrong thing.
+          if (position.positionType === "supply" && position.isBackstop) continue;
           const reserve = reserves.get(position.assetAddress);
           if (!reserve) continue;
-          const token = await symbolFor(position.assetAddress);
-          const decimals = reserve.config.decimals;
-          const index = reserve.config.index;
-          let display: DefiPositionDisplay;
-          if (position.positionType === "supply") {
-            const supply = reserve.toAssetFromBToken(user.positions.supply.get(index));
-            const collateral = reserve.toAssetFromBToken(user.positions.collateral.get(index));
-            display = {
-              pool: poolName,
-              asset: token?.symbol ?? null,
-              amount: formatUnits(supply + collateral, decimals),
-              collateralAmount: formatUnits(collateral, decimals),
-              yieldPct: pct(reserve.estSupplyApy),
-              yieldKind: "earned",
-            };
-          } else {
-            const debt = reserve.toAssetFromDToken(user.positions.liabilities.get(index));
-            display = {
-              pool: poolName,
-              asset: token?.symbol ?? null,
-              amount: formatUnits(debt, decimals),
-              collateralAmount: null,
-              yieldPct: pct(reserve.estBorrowApy),
-              yieldKind: "paid",
-            };
+          try {
+            displays.set(
+              positionKey(position),
+              await describe(
+                position,
+                reserve,
+                poolName,
+                await symbolFor(position.assetAddress),
+                user.positions
+              )
+            );
+          } catch {
+            // One position the SDK cannot describe leaves the others intact.
           }
-          displays.set(positionKey(position), display);
         }
       })
     );
     return displays;
+  };
+}
+
+function describe(
+  position: DefiPosition & { positionType: "supply" | "borrow" },
+  reserve: BlendEnrichReserveView,
+  poolName: string | null,
+  token: KnownToken | null,
+  positions: Positions
+): DefiPositionDisplay {
+  const decimals = reserve.config.decimals;
+  const index = reserve.config.index;
+  if (position.positionType === "supply") {
+    const supply = reserve.toAssetFromBToken(positions.supply.get(index));
+    const collateral = reserve.toAssetFromBToken(positions.collateral.get(index));
+    return {
+      pool: poolName,
+      asset: token?.symbol ?? null,
+      amount: formatUnits(supply + collateral, decimals),
+      collateralAmount: formatUnits(collateral, decimals),
+      yieldPct: pct(reserve.estSupplyApy),
+      yieldKind: "earned",
+    };
+  }
+  const debt = reserve.toAssetFromDToken(positions.liabilities.get(index));
+  return {
+    pool: poolName,
+    asset: token?.symbol ?? null,
+    amount: formatUnits(debt, decimals),
+    collateralAmount: null,
+    yieldPct: pct(reserve.estBorrowApy),
+    yieldKind: "paid",
   };
 }

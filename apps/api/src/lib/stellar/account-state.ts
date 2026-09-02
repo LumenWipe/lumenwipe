@@ -191,14 +191,16 @@ export async function readAccountStateFrom(
     fetchClaimableBalancesForClaimant(address, deps),
     resolveDefiPositions(address, network, defiDeps),
   ]);
+  // The gate judges the detection result as returned, before the enrichment below spends time
+  // on pool reads - otherwise a snapshot near the staleness threshold could age past it here.
+  const defiPositionsWarnings = assessDefiPositionsGate(detectedPositions);
   // Presentation for what detection found (pool name, symbol, underlying amount, yield). Never
-  // changes positions or blockers; the gate below judges the detection result as returned.
+  // changes positions or blockers.
   const defiPositions = await enrichDefiPositions(detectedPositions, {
     network,
     account: address,
     knownTokens: knownTokensFor(trustlines, network),
   });
-  const defiPositionsWarnings = assessDefiPositionsGate(defiPositions);
   const numSubEntries = account.subentry_count;
 
   // `?? 0` would turn a missing field into a confident "sponsors nothing". The endpoint is

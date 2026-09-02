@@ -12,6 +12,7 @@ import {
   type BlendEnrichPoolView,
   type BlendEnrichReserveView,
 } from "@/lib/defi-positions/enrich/blend";
+import type { ContractRegistryEntry } from "@/lib/contract-registry";
 import {
   enrichDefiPositions,
   formatUnits,
@@ -37,8 +38,9 @@ function reserve(
     // bTokens convert at 1.05, dTokens at 1.02 - hand-computable expectations below.
     toAssetFromBToken: (b) => ((b ?? 0n) * 105n) / 100n,
     toAssetFromDToken: (d) => ((d ?? 0n) * 102n) / 100n,
-    estSupplyApy: 3.98644,
-    estBorrowApy: 5.5,
+    // Fractions, as the SDK reports them.
+    estSupplyApy: 0.0398644,
+    estBorrowApy: 0.055,
     ...over,
   };
 }
@@ -64,12 +66,26 @@ function pool(state: {
   };
 }
 
+const REGISTRY: ContractRegistryEntry[] = [
+  {
+    network: "testnet",
+    protocol: "blend",
+    kind: "pool",
+    address: POOL,
+    wasmHash: "a".repeat(64),
+    version: "v2",
+    label: "Registry test pool",
+    verifiedLive: true,
+  },
+];
+
 function depsWith(view: BlendEnrichPoolView, over: Partial<BlendEnrichDeps> = {}): BlendEnrichDeps {
   return {
     loadPool: async () => view,
     tokenMetadata: async () => {
       throw new Error("no metadata");
     },
+    registryEntries: () => REGISTRY,
     ...over,
   };
 }
@@ -206,7 +222,6 @@ describe("blend enricher", () => {
       },
     });
     await blendPositionEnricher(deps)([supply], ctx());
-    // The shipped registry knows this testnet pool as v2.
     expect(seen).toEqual([Version.V2]);
     seen.length = 0;
     await blendPositionEnricher(deps)([{ ...supply, contractAddress: OTHER_TOKEN }], ctx());
@@ -216,10 +231,39 @@ describe("blend enricher", () => {
   test("a pool without a name falls back to the registry label, then to nothing", async () => {
     const view = pool({ supply: { 0: 1n }, name: null });
     const displays = await blendPositionEnricher(depsWith(view))([supply], ctx());
-    expect(displays.get(positionKey(supply))?.pool).toBe("Blend V2 official testnet test pool");
+    expect(displays.get(positionKey(supply))?.pool).toBe("Registry test pool");
     const unregistered = { ...supply, contractAddress: OTHER_TOKEN };
     const none = await blendPositionEnricher(depsWith(view))([unregistered], ctx());
     expect(none.get(positionKey(unregistered))?.pool).toBeNull();
+  });
+
+  test("a backstop deposit is left undescribed and never shares a key with the plain supply", async () => {
+    const view = pool({ supply: { 0: 100_000_000n } });
+    const backstop: BlendSupplyPosition = { ...supply, isBackstop: true };
+    const displays = await blendPositionEnricher(depsWith(view))([supply, backstop], ctx());
+    expect(positionKey(backstop)).not.toBe(positionKey(supply));
+    expect(displays.has(positionKey(supply))).toBe(true);
+    expect(displays.has(positionKey(backstop))).toBe(false);
+  });
+
+  test("one position the SDK cannot describe leaves the others intact", async () => {
+    const view = pool({ supply: { 0: 100_000_000n }, liabilities: { 1: 1_000_000n } });
+    const broken = [...view.reserves].map((r) =>
+      r.assetId === OTHER_TOKEN
+        ? {
+            ...r,
+            toAssetFromDToken: () => {
+              throw new Error("bad reserve");
+            },
+          }
+        : r
+    );
+    const displays = await blendPositionEnricher(depsWith({ ...view, reserves: broken }))(
+      [supply, borrow],
+      ctx()
+    );
+    expect(displays.has(positionKey(supply))).toBe(true);
+    expect(displays.has(positionKey(borrow))).toBe(false);
   });
 });
 

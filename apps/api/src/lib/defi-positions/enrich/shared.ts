@@ -42,7 +42,8 @@ export interface EnrichDeps {
 /** Identifies a detected position for the enricher's answer: contract, kind, and asset when it has one. */
 export function positionKey(position: DefiPosition): string {
   const asset = "assetAddress" in position ? position.assetAddress : "";
-  return `${position.contractAddress}:${position.positionType}:${asset}`;
+  const backstop = position.positionType === "supply" && position.isBackstop ? ":backstop" : "";
+  return `${position.contractAddress}:${position.positionType}:${asset}${backstop}`;
 }
 
 /** XLM and every trustline, by the SAC id a contract would name them with. */
@@ -55,7 +56,16 @@ export function knownTokensFor(
     [Asset.native().contractId(passphrase)]: { symbol: "XLM", decimals: 7 },
   };
   for (const tl of trustlines) {
-    known[new Asset(tl.code, tl.issuer).contractId(passphrase)] = { symbol: tl.code, decimals: 7 };
+    // The account read comes from a Horizon-compatible provider, not Horizon: a malformed
+    // balance row must not turn a presentation helper into an analysis failure.
+    try {
+      known[new Asset(tl.code, tl.issuer).contractId(passphrase)] = {
+        symbol: tl.code,
+        decimals: 7,
+      };
+    } catch {
+      continue;
+    }
   }
   return known;
 }
