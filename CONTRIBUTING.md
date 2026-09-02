@@ -270,15 +270,15 @@ A mechanism without the process is theatre: the file sat at its original stamp f
 
 ### Contract registry
 
-Maps Soroban contract `wasmHash` values to a known protocol version so the tool can pick the correct exit interface.
+Records the DeFi contracts the tool knows - address, protocol, version, and the `wasmHash` each was verified as running - so detection knows what to probe and exit adapters pick the correct interface. An unknown hash flags the position for manual review and builds nothing, so an entry here is what lets an exit happen at all.
 
-To update after a protocol upgrade:
+The file is `apps/api/src/config/contract-registry.json`; the field reference and contribution flow live next to its loader in `apps/api/src/lib/contract-registry/README.md`. In short:
 
-1. Get the new `wasmHash` from the deployed contract on mainnet.
-2. Open a PR that adds the mapping to the registry.
-3. Include in the PR description: the contract address, the `wasmHash`, the source (deploy transaction or protocol team announcement), and which adapter version handles it.
+1. Fetch the contract's code hash from the ledger yourself (`stellar contract fetch --id C... --network <network> | sha256sum`, or the contract instance over RPC `getLedgerEntries`). Never copy a hash from a forum post or another registry.
+2. Add one entry with the network you verified it on, `protocol`, `kind`, `address`, `wasmHash` (64 lowercase hex), `version`, `label`, `verifiedLive`, and ideally `verifiedBy` - the exact command or explorer link from step 1, so a reviewer can re-run it. Resolution is scoped to the entry's network, so only record the one you actually checked.
+3. Run `bun test tests/unit/contract-registry.test.ts` from `apps/api`; the suite validates the shipped file, so a malformed edit fails CI.
 
-Registry updates go through the same PR review as code changes.
+One entry per PR, with the verification evidence in the description. Like the exchange registry, the file carries `lastVerified` / `validUntil` and is fail-closed past expiry; refreshing it means re-resolving every entry and saying in the PR what you checked. Registry updates go through the same PR review as code changes.
 
 ---
 
