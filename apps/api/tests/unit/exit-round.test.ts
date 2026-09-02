@@ -239,7 +239,7 @@ describe("buildExitRound", () => {
     const promise = buildExitRound(
       account([
         {
-          protocol: "soroswap",
+          protocol: "phoenix",
           positionType: "lp",
           contractAddress: POOL,
           shareAmount: "1",

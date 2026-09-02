@@ -28,6 +28,8 @@ function baseExpected(): CloseExpectation {
     transfers: {},
     exitContracts: [],
     heldTokenContracts: [],
+    positionTokenContracts: [],
+    exitFunctions: {},
     accountSigners: [],
     accountThresholds: { low: 0, med: 1, high: 1 },
   };

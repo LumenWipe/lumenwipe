@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { BlendSupplyPosition, DefiPosition, SoroswapLpPosition } from "@lumenwipe/types";
+import type { BlendSupplyPosition, DefiPosition, PhoenixLpPosition } from "@lumenwipe/types";
 import { groupExitTargets, planExitSteps } from "@/lib/defi-exits/plan-exits";
 
 const POOL_A = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
@@ -20,9 +20,9 @@ function blendSupply(
   };
 }
 
-function soroswapLp(contract: string): SoroswapLpPosition {
+function phoenixLp(contract: string): PhoenixLpPosition {
   return {
-    protocol: "soroswap",
+    protocol: "phoenix",
     positionType: "lp",
     contractAddress: contract,
     shareAmount: "1",
@@ -48,12 +48,12 @@ describe("groupExitTargets", () => {
   });
 
   test("is deterministic regardless of detection order", () => {
-    const a = groupExitTargets([blendSupply(POOL_B), soroswapLp(POOL_A), blendSupply(POOL_A)]);
-    const b = groupExitTargets([blendSupply(POOL_A), blendSupply(POOL_B), soroswapLp(POOL_A)]);
+    const a = groupExitTargets([blendSupply(POOL_B), phoenixLp(POOL_A), blendSupply(POOL_A)]);
+    const b = groupExitTargets([blendSupply(POOL_A), blendSupply(POOL_B), phoenixLp(POOL_A)]);
     expect(a.map((t) => `${t.protocol}:${t.contract}`)).toEqual(
       b.map((t) => `${t.protocol}:${t.contract}`)
     );
-    expect(a.map((t) => t.protocol)).toEqual(["blend", "blend", "soroswap"]);
+    expect(a.map((t) => t.protocol)).toEqual(["blend", "blend", "phoenix"]);
   });
 });
 
@@ -73,10 +73,10 @@ describe("planExitSteps", () => {
   });
 
   test("a protocol without an adapter blocks by name instead of being left out", () => {
-    const { steps, blockers } = planExitSteps([soroswapLp(POOL_A)], 0);
+    const { steps, blockers } = planExitSteps([phoenixLp(POOL_A)], 0);
     expect(steps).toEqual([]);
     expect(blockers.map((b) => b.code)).toEqual(["defi_exit_unsupported"]);
-    expect(blockers[0]!.message).toContain("Soroswap");
+    expect(blockers[0]!.message).toContain("Phoenix");
   });
 
   test("a target whose positions the adapter refuses (backstop only) blocks too", () => {

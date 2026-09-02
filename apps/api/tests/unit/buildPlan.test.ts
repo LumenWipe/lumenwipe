@@ -2106,7 +2106,7 @@ test("buildPlan › a position no adapter can exit blocks by name instead of van
     defiPositions: makeDefiResult({
       positions: [
         {
-          protocol: "soroswap",
+          protocol: "phoenix",
           positionType: "lp",
           contractAddress: BLEND_POOL,
           shareAmount: "1",

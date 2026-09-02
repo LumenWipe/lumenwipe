@@ -1,6 +1,7 @@
 import type { DefiPosition, DefiProtocol } from "@lumenwipe/types";
 import type { ExitAdapter } from "./adapter";
 import { blendExitAdapter } from "./blend";
+import { soroswapExitAdapter } from "./soroswap";
 
 /**
  * The adapters LumenWipe can exit with, by protocol. Adding a protocol is one line here plus its
@@ -22,6 +23,7 @@ const ADAPTERS: Partial<Record<DefiProtocol, AnyExitAdapter>> = {
   // The interface is generic over the position and live-state types each adapter narrows; the
   // catalog erases them because a caller only ever has a DefiPosition in hand.
   blend: blendExitAdapter() as AnyExitAdapter,
+  soroswap: soroswapExitAdapter() as AnyExitAdapter,
 };
 
 export function exitAdapterFor(protocol: DefiProtocol): AnyExitAdapter | null {

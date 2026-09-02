@@ -36,6 +36,9 @@ export interface DefiPositionDisplay {
   /** Current yield as a percentage with two decimals ("3.99"): earned on a supply, paid on debt. */
   yieldPct: string | null;
   yieldKind: "earned" | "paid" | null;
+  /** One protocol-specific clause the line ends with, e.g. what an LP share is worth in its two
+   *  tokens ("9.95 XLM + 19.90 USDC"). Null when there is nothing to add. */
+  detail?: string | null;
 }
 
 interface DefiPositionBase {
