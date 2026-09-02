@@ -162,10 +162,9 @@ export function intentFromXdr(xdr: string, networkPassphrase: string): TxIntent 
       (o): o is Extract<IntentOperation, { type: "path_payment_strict_send" }> =>
         o.type === "path_payment_strict_send"
     )
-    .reduce<string | null>(
-      (acc, o) => (acc === null ? o.destMin : sumAmounts(acc, o.destMin)),
-      null
-    );
+    .reduce<
+      string | null
+    >((acc, o) => (acc === null ? o.destMin : sumAmounts(acc, o.destMin)), null);
 
   const memoValue = tx.memo?.value;
   const memoTypeRaw = tx.memo?.type;

@@ -41,6 +41,7 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
     transfers: {},
     exitContracts: [POOL],
     heldTokenContracts: [XLM_SAC],
+    positionTokenContracts: [],
     accountSigners: [
       { key: SRC, weight: 1, type: "ed25519_public_key" },
       { key: REMOVED_SIGNER, weight: 1, type: "ed25519_public_key" },
@@ -751,6 +752,7 @@ test("verifyCloseTransaction passes a mediated close to a memo-requiring exchang
         transfers: {},
         exitContracts: [],
         heldTokenContracts: [],
+        positionTokenContracts: [],
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
       },
@@ -783,6 +785,7 @@ test("verifyCloseTransaction rejects a mediated close to a memo-requiring exchan
         transfers: {},
         exitContracts: [],
         heldTokenContracts: [],
+        positionTokenContracts: [],
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
       },
@@ -806,6 +809,7 @@ test("verifyCloseTransaction passes a direct close to a destination the registry
         transfers: {},
         exitContracts: [],
         heldTokenContracts: [],
+        positionTokenContracts: [],
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
       },
@@ -1034,7 +1038,7 @@ test("rejects an exit whose arguments name any other account - proceeds could go
 
 test("rejects an exit that names a contract the account has no position or balance in - a contract-typed recipient", () => {
   const op = exit({ contractsReferenced: [POOL, OTHER_POOL] });
-  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(/no position or balance in/);
+  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(/no position, balance, or pool token in/);
 });
 
 test("rejects an exit that invokes a contract the analysis never showed a position in", () => {
@@ -1073,4 +1077,27 @@ test("rejects an exit whose fee is far above what any exit costs", () => {
 test("rejects an exit that shares its transaction with anything else", () => {
   const i = intent({ operations: [exit(), merge(DEST)] });
   expect(() => assertCloseIntent(i, expectation())).toThrow(/only operation/);
+});
+
+test("an AMM withdrawal may invoke the protocol's router and name the pair's tokens", () => {
+  const ROUTER = "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD";
+  const TOKEN = "CBRQHWJDLPYVR4BSVUUWJCZGG4N4FF3CUZKDGRVTE36FAWNEJZEMQRME";
+  const op = exit({
+    contract: ROUTER,
+    function: "remove_liquidity",
+    contractsReferenced: [POOL, ROUTER, TOKEN, XLM_SAC],
+  });
+  const expected = expectation({
+    exitContracts: [POOL, ROUTER],
+    positionTokenContracts: [TOKEN, XLM_SAC],
+  });
+  expect(() => assertCloseIntent(exitOnly(op), expected)).not.toThrow();
+  // The same call without the router in the pinned set - an expired or unknown registry - fails.
+  expect(() =>
+    assertCloseIntent(exitOnly(op), expectation({ positionTokenContracts: [TOKEN, XLM_SAC] }))
+  ).toThrow(/not one of this account/);
+  // And a pool token the position does not have is not a place funds may go.
+  expect(() =>
+    assertCloseIntent(exitOnly(op), expectation({ exitContracts: [POOL, ROUTER] }))
+  ).toThrow(/no position, balance, or pool token/);
 });

@@ -72,6 +72,7 @@ export function describeDefiPosition(
     if (display.yieldPct !== null) {
       parts.push(`${display.yieldPct}% APY${display.yieldKind === "paid" ? " paid" : ""}`);
     }
+    if (display.detail) parts.push(display.detail);
     return parts.join(" · ");
   }
   switch (position.positionType) {

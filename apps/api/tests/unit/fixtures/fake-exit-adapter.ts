@@ -259,7 +259,7 @@ function balanceEntry(contract: string, balance: string): xdr.LedgerEntryData {
 const BALANCE_KEY_XDR = symbolVal("Balance").toXDR("base64");
 
 /** Raw (unparsed) simulation responses, the shape the SDK's own parser and assembler accept. */
-function rawSimulation(
+export function rawSimulation(
   mode: "ok" | "error" | "restore",
   auth: string[],
   minResourceFee: string

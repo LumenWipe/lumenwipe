@@ -36,3 +36,10 @@ export {
   type ExitSimulation,
   type SimulatedExitStep,
 } from "./run-exit";
+export {
+  soroswapExitAdapter,
+  defaultSoroswapDeps,
+  type SoroswapDeps,
+  type SoroswapLive,
+  type SoroswapPairState,
+} from "./soroswap";

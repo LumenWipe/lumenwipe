@@ -37,9 +37,12 @@ export interface CloseExpectation {
   /** Contracts the account's analysis showed it holds DeFi positions in - the only contracts a
    *  DeFi exit may invoke. From the account read the user reviewed; empty fails closed. */
   exitContracts: string[];
-  /** The Stellar Asset Contract of every asset the account holds (native and each trustline) -
-   *  the only other contracts a DeFi exit may name. Derived client-side from the account read. */
+  /** The Stellar Asset Contract of every asset the account holds (native and each trustline).
+   *  Derived client-side from the account read. */
   heldTokenContracts: string[];
+  /** The tokens of each detected position (an LP pair's two tokens) - what a withdrawal pays out.
+   *  With the two lists above, the only contracts a DeFi exit may name. */
+  positionTokenContracts: string[];
   /** Whether the destination requires a memo (from the client-bundled exchange registry). */
   memoRequired: boolean;
   /** The memo type the destination requires (from the registry), or null. */
@@ -423,10 +426,11 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         // account read the user reviewed: the call must be the transaction's only operation (a
         // Soroban call cannot share one with classic ops, so anything alongside it is foreign);
         // it must act as the account being closed; it may invoke only a contract the analysis
-        // showed this account holds a position in; every account it names - in its arguments and
-        // in the whole authorization tree the signature will satisfy, nested calls included -
-        // must be that same account; every contract it names must be one of those positions or
-        // the token contract of an asset the account holds; and the signature may authorize
+        // showed this account holds a position in, or the bundled registry's router for that
+        // protocol; every account it names - in its arguments and in the whole authorization tree
+        // the signature will satisfy, nested calls included - must be that same account; every
+        // contract it names must be one of those positions, the token contract of an asset the
+        // account holds, or a token of one of those positions; and the signature may authorize
         // nothing beyond the account's own plain calls. What this does NOT check is the amount
         // or the protocol-level meaning of the call - that is the runner's job on the API and is
         // the residual trust documented in architecture.md §13.
@@ -466,10 +470,11 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         for (const contract of op.contractsReferenced) {
           if (
             !expected.exitContracts.includes(contract) &&
-            !expected.heldTokenContracts.includes(contract)
+            !expected.heldTokenContracts.includes(contract) &&
+            !expected.positionTokenContracts.includes(contract)
           ) {
             throw new VerificationError(
-              "A DeFi exit would send funds to, or call, a contract this account has no position or balance in."
+              "A DeFi exit would send funds to, or call, a contract this account has no position, balance, or pool token in."
             );
           }
         }
@@ -566,6 +571,7 @@ export function verifyCloseTransaction(opts: {
     transfers: Record<string, { destination: string; amount: string }>;
     exitContracts: string[];
     heldTokenContracts: string[];
+    positionTokenContracts: string[];
   };
 }): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);
