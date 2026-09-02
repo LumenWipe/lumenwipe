@@ -28,5 +28,19 @@
       }
     ]
   },
-  "ignorePatterns": ["dist", "node_modules"]
+  "ignorePatterns": ["dist", "node_modules"],
+  "overrides": [
+    {
+      "files": ["tests/**/*.ts"],
+      "rules": {
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "CallExpression[callee.object.name='mock'][callee.property.name='module']",
+            "message": "mock.module replaces a module for the whole `bun test` process and leaks into other test files depending on file order (it turned CI red on 2026-09-02). Patch the real module object with spyOn(...).mockImplementation(...) and undo it with mock.restore() in afterEach, or inject the dependency."
+          }
+        ]
+      }
+    }
+  ]
 }

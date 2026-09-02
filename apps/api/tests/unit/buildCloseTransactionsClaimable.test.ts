@@ -1,4 +1,5 @@
-import { test, expect, mock, spyOn, afterEach } from "bun:test";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import * as rpcModule from "@/lib/stellar/rpc";
 import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import type { AccountState, SponsoredEntry } from "@lumenwipe/types";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
@@ -66,14 +67,12 @@ function rpcServerStub() {
   };
 }
 
-const realRpc = await import("@/lib/stellar/rpc");
 // The affordability check is patched with spyOn on the real module object, never with
 // mock.module: a process-wide module replacement was observed leaking into
 // tests/unit/sponsorship-affordability.test.ts in CI (its own stubbed results showing up there
 // depending on file order), and mock.restore() undoes a spy reliably.
 const sponsorshipAffordability = await import("@/lib/stellar/sponsorship-affordability");
 afterEach(() => {
-  mock.module("@/lib/stellar/rpc", () => realRpc);
   mock.restore();
 });
 
@@ -82,7 +81,8 @@ function opsOf(xdr: string) {
 }
 
 test("buildCloseTransactions › add_trustline_then_claim balance → changeTrust immediately precedes claimClaimableBalance", async () => {
-  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const balance = claimableBalance("a", USDC);
@@ -104,7 +104,8 @@ test("buildCloseTransactions › add_trustline_then_claim balance → changeTrus
 });
 
 test("buildCloseTransactions › forfeited unclaimable balance → excluded from the claim round entirely", async () => {
-  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const balance = claimableBalance("b", USDC);
@@ -123,7 +124,8 @@ test("buildCloseTransactions › forfeited unclaimable balance → excluded from
 });
 
 test("buildCloseTransactions › unresolved unclaimable balance → excluded from the claim round entirely", async () => {
-  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const balance = claimableBalance("c", USDC);
@@ -137,7 +139,8 @@ test("buildCloseTransactions › unresolved unclaimable balance → excluded fro
 });
 
 test("buildCloseTransactions › currently-claimable balance defaults to claim when unresolved (opt-out)", async () => {
-  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const balance = claimableBalance("d", "native");
@@ -151,7 +154,8 @@ test("buildCloseTransactions › currently-claimable balance defaults to claim w
 });
 
 test("buildCloseTransactions › currently-claimable balance explicitly forfeited is excluded", async () => {
-  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const balance = claimableBalance("e", "native");
@@ -177,7 +181,8 @@ const SPONSORED_ENTRY: SponsoredEntry = {
 };
 
 test("buildCloseTransactions › sponsored entry the live re-read marks revocable → REVOKE_SPONSORSHIP is included", async () => {
-  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   spyOn(sponsorshipAffordability, "assessSponsorshipAffordability").mockResolvedValue({
     revocable: [SPONSORED_ENTRY],
     unaffordableOwners: new Map(),
@@ -194,7 +199,8 @@ test("buildCloseTransactions › sponsored entry the live re-read marks revocabl
 });
 
 test("buildCloseTransactions › sponsored entry the live re-read marks unaffordable → REVOKE_SPONSORSHIP is omitted, no error", async () => {
-  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   spyOn(sponsorshipAffordability, "assessSponsorshipAffordability").mockResolvedValue({
     revocable: [],
     unaffordableOwners: new Map([

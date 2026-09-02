@@ -8,7 +8,7 @@
     "build": "nest build && tsc-alias -p tsconfig.build.json",
     "start:prod": "node dist/main.js",
     "type-check": "tsc --noEmit && tsc -p tests/tsconfig.json --noEmit",
-    "lint": "eslint src",
+    "lint": "eslint src tests",
     "test": "bun test tests/unit tests/e2e",
     "test:coverage": "bun test tests/unit tests/e2e --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage",
     "test:integration": "LUMENWIPE_RUN_INTEGRATION=1 bun test tests/integration",

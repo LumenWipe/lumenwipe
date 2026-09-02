@@ -3,7 +3,6 @@ import { Address, Keypair, StrKey, xdr } from "@stellar/stellar-sdk";
 import {
   detectDefiPositionsViaDirectRead,
   addressVal,
-  contractDataKey,
   symbolVal,
   variantVal,
 } from "@/lib/defi-positions/testnet-direct-read";
