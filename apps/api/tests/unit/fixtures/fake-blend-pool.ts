@@ -95,8 +95,3 @@ export function fakeBlendDeps(state: FakePoolState = {}): BlendDeps & { loadCall
     estimate: fakeEstimate,
   };
 }
-
-/** What a withdraw of `underlying` base units asks for, with the adapter's accrual buffer. */
-export function withBuffer(underlying: bigint): string {
-  return ((underlying * 10_010n + 9_999n) / 10_000n).toString();
-}

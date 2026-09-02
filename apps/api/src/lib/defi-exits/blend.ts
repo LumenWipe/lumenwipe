@@ -7,6 +7,7 @@ import {
   PositionsEstimate,
   RequestType,
   Version,
+  type Network as BlendNetwork,
   type Pool,
   type PoolOracle,
 } from "@blend-capital/blend-sdk";
@@ -17,10 +18,10 @@ import type {
   Network,
 } from "@lumenwipe/types";
 import { xdr } from "@stellar/stellar-sdk";
-import { NETWORK_PASSPHRASES, RPC_URLS } from "@/config/networks";
+import { NETWORK_PASSPHRASES, RPC_HEADERS, RPC_URLS } from "@/config/networks";
 import type { BuiltExitStep, ExitAdapter, ExitPlan, ExitStep } from "./adapter";
 import type { HealthInputs } from "./invariants";
-import { compareBaseUnits } from "./invariants";
+import { compareBaseUnits, isBaseUnits } from "./invariants";
 
 /**
  * The Blend exit (architecture.md §9.3), through the official SDK's `Pool.submit` entry point.
@@ -31,17 +32,24 @@ import { compareBaseUnits } from "./invariants";
  * undercollateralized. So whichever Blend position this adapter is handed, it reads the user's
  * entire position in that pool and plans the whole exit - every repay first, then every
  * withdrawal - one `submit` request per step so each is simulated and verified on its own.
+ * A caller iterating detected positions must therefore run this adapter once per pool, not once
+ * per position; the wiring that owns that de-duplication is the plan builder's (#158).
  *
  * Amounts follow the protocol's two different rules. A withdrawal larger than the position clamps
- * down to what is held, so withdrawals over-ask by a small margin and leave no dust from the
- * interest that accrues between the read and the ledger. A repay is the opposite: the pool pulls
- * the full stated amount and refunds any excess in the same transaction, so a repay is capped at
- * what the account actually holds of the debt asset - and when that is short, the exit blocks
- * and says what to acquire rather than repaying partially and leaving the position mid-air.
+ * down to what is held, so withdrawals over-ask by a small margin (`clampsToPosition`, bounded by
+ * the runner) and leave no dust from the interest that accrues between the read and the ledger.
+ * A repay is the opposite: the pool pulls the full stated amount and refunds any excess in the
+ * same transaction, so a repay asks for the debt plus the same accrual margin and must be covered
+ * in full by what the account holds of the debt asset. Anything less would be a partial repay
+ * that strands the collateral behind leftover debt, so it blocks and says exactly what to acquire.
+ * Acquiring it for the user (routing through a conversion, §10) is not done here; it waits on the
+ * Soroban conversion work (#161), and until then the blocker is the honest answer.
  *
  * Reads go through the SDK for the version the registry resolved (V1 and V2 ship separate
- * clients), against the API's own RPC endpoint; the runner's injected `rpc` is not consulted here
- * because the SDK builds its own server. Tests inject a stand-in pool through `BlendDeps`.
+ * clients), against the API's own RPC endpoint and headers; the runner's injected `rpc` is not
+ * consulted here because the SDK builds its own server. Tests inject a stand-in pool through
+ * `BlendDeps`. Anything the SDK cannot read or price surfaces as a named blocker for manual
+ * review, not as a retry hint, because a pool the SDK cannot parse does not fix itself.
  */
 
 export type BlendPosition = BlendSupplyPosition | BlendBorrowPosition;
@@ -81,7 +89,12 @@ export interface BlendDeps {
 
 export const defaultBlendDeps: BlendDeps = {
   loadPool(network, poolId, version) {
-    const sdkNetwork = { rpc: RPC_URLS[network], passphrase: NETWORK_PASSPHRASES[network] };
+    const headers = RPC_HEADERS[network];
+    const sdkNetwork: BlendNetwork = {
+      rpc: RPC_URLS[network],
+      passphrase: NETWORK_PASSPHRASES[network],
+      ...(Object.keys(headers).length > 0 && { opts: { headers } }),
+    };
     return version === Version.V1
       ? PoolV1.load(sdkNetwork, poolId)
       : PoolV2.load(sdkNetwork, poolId);
@@ -106,12 +119,14 @@ export type BlendLive =
       status: "loaded";
       version: Version;
       positions: BlendReservePosition[];
-      /** Health of the position as it stands. */
-      current: BlendEstimate;
-      /** Health once every liability is repaid - the state a plan leaves before withdrawing. */
-      afterRepay: BlendEstimate;
+      /** Kept so `health` can estimate the state a plan leaves, not just the state read. */
+      pool: BlendPoolView;
+      oracle: PoolOracle;
+      raw: Positions;
     }
-  | { status: "unsupported_version"; version: string };
+  | { status: "unsupported_version"; version: string }
+  | { status: "not_pool"; kind: string }
+  | { status: "unreadable" };
 
 const REQUEST_TYPE: Record<"repay" | "withdraw" | "withdraw_collateral", RequestType> = {
   repay: RequestType.Repay,
@@ -126,18 +141,24 @@ function sdkVersion(registryVersion: string): Version | null {
   return null;
 }
 
-function overAsk(amount: bigint): bigint {
-  // Ceiling division, so the buffer is never rounded away on small positions.
+/** The accrual margin, rounded up so it is never rounded away on small positions. */
+export function withAccrualMargin(amount: bigint): bigint {
   const scaled = amount * BigInt(10_000 + BLEND_ACCRUAL_BUFFER_BPS);
   return (scaled + 9_999n) / 10_000n;
 }
 
-function usd(value: number): string {
-  return Math.max(0, value).toFixed(7);
+function usd(value: number, label: string): string {
+  if (!Number.isFinite(value) || value < 0)
+    throw new Error(`Blend estimate has no usable ${label}`);
+  return value.toFixed(7);
 }
 
-function shortAsset(assetId: string): string {
-  return `${assetId.slice(0, 4)}…${assetId.slice(-4)}`;
+function shortAddress(address: string): string {
+  return `${address.slice(0, 4)}…${address.slice(-4)}`;
+}
+
+function manualReview(code: string, message: string): ExitPlan {
+  return { steps: [], blockers: [{ code, message }] };
 }
 
 export function blendExitAdapter(
@@ -147,92 +168,85 @@ export function blendExitAdapter(
     protocol: "blend",
 
     supports(position: DefiPosition): position is BlendPosition {
-      return (
-        position.protocol === "blend" &&
-        (position.positionType === "supply" || position.positionType === "borrow")
-      );
+      if (position.protocol !== "blend") return false;
+      // Backstop deposits live in the backstop contract with their own queue rules (#155); this
+      // adapter only knows pool supply, collateral, and debt.
+      if (position.positionType === "supply") return !position.isBackstop;
+      return position.positionType === "borrow";
     },
 
     async readLive(position, code, ctx): Promise<BlendLive> {
+      if (code.kind !== "pool") return { status: "not_pool", kind: code.kind };
       const version = sdkVersion(code.version);
       if (version === null) return { status: "unsupported_version", version: code.version };
 
-      const pool = await deps.loadPool(ctx.network, position.contractAddress, version);
-      const [oracle, user] = await Promise.all([pool.loadOracle(), pool.loadUser(ctx.account)]);
-      const { positions } = user;
+      try {
+        const pool = await deps.loadPool(ctx.network, position.contractAddress, version);
+        const [oracle, user] = await Promise.all([pool.loadOracle(), pool.loadUser(ctx.account)]);
+        const { positions } = user;
 
-      const byIndex = new Map<number, BlendReserveView>();
-      for (const reserve of pool.reserves.values()) byIndex.set(reserve.config.index, reserve);
+        const byIndex = new Map<number, BlendReserveView>();
+        for (const reserve of pool.reserves.values()) byIndex.set(reserve.config.index, reserve);
 
-      const indices = new Set<number>([
-        ...positions.supply.keys(),
-        ...positions.collateral.keys(),
-        ...positions.liabilities.keys(),
-      ]);
-      const held: BlendReservePosition[] = [];
-      for (const index of [...indices].sort((a, b) => a - b)) {
-        const reserve = byIndex.get(index);
-        if (!reserve) throw new Error(`Blend pool reports a position in unknown reserve ${index}`);
-        held.push({
-          assetId: reserve.assetId,
-          index,
-          supply: reserve.toAssetFromBToken(positions.supply.get(index)),
-          collateral: reserve.toAssetFromBToken(positions.collateral.get(index)),
-          liabilities: reserve.toAssetFromDToken(positions.liabilities.get(index)),
-        });
+        const indices = new Set<number>([
+          ...positions.supply.keys(),
+          ...positions.collateral.keys(),
+          ...positions.liabilities.keys(),
+        ]);
+        const held: BlendReservePosition[] = [];
+        for (const index of [...indices].sort((a, b) => a - b)) {
+          const reserve = byIndex.get(index);
+          if (!reserve) throw new Error(`position in a reserve the pool does not list: ${index}`);
+          held.push({
+            assetId: reserve.assetId,
+            index,
+            supply: reserve.toAssetFromBToken(positions.supply.get(index)),
+            collateral: reserve.toAssetFromBToken(positions.collateral.get(index)),
+            liabilities: reserve.toAssetFromDToken(positions.liabilities.get(index)),
+          });
+        }
+
+        // Price every reserve now: an oracle gap is a reason to stop, not something to find out
+        // about in health() after a plan has been drawn up.
+        const current = deps.estimate(pool, oracle, positions);
+        usd(current.totalEffectiveCollateral, "collateral value");
+        usd(current.totalEffectiveLiabilities, "debt value");
+
+        return {
+          status: "loaded",
+          version: pool.version,
+          positions: held,
+          pool,
+          oracle,
+          raw: positions,
+        };
+      } catch {
+        return { status: "unreadable" };
       }
-
-      const repaid = new Positions(new Map(), positions.collateral, positions.supply);
-      return {
-        status: "loaded",
-        version: pool.version,
-        positions: held,
-        current: deps.estimate(pool, oracle, positions),
-        afterRepay: deps.estimate(pool, oracle, repaid),
-      };
     },
 
     plan(position, live, code, ctx): ExitPlan {
-      const pool = position.contractAddress;
+      const pool = shortAddress(position.contractAddress);
+      if (live.status === "not_pool") {
+        return manualReview(
+          "blend_contract_not_pool",
+          `The Blend contract ${pool} holding this position is registered as a ${live.kind}, not a ` +
+            "lending pool. No exit was built; this position needs manual review."
+        );
+      }
       if (live.status === "unsupported_version") {
-        return {
-          steps: [],
-          blockers: [
-            {
-              code: "blend_pool_version_unsupported",
-              message:
-                `This Blend pool is registered as version "${live.version}", which LumenWipe has no ` +
-                "client for. No exit was built; this position needs manual review.",
-            },
-          ],
-        };
+        return manualReview(
+          "blend_pool_version_unsupported",
+          `This Blend pool is registered as version "${live.version}", which LumenWipe has no client ` +
+            "for. No exit was built; this position needs manual review."
+        );
       }
-      if (code.kind !== "pool") {
-        return {
-          steps: [],
-          blockers: [
-            {
-              code: "blend_contract_not_pool",
-              message:
-                `The Blend contract ${shortAsset(pool)} holding this position is registered as a ` +
-                `${code.kind}, not a lending pool. No exit was built; this position needs manual review.`,
-            },
-          ],
-        };
-      }
-      const expected = sdkVersion(code.version);
-      if (live.version !== expected) {
-        return {
-          steps: [],
-          blockers: [
-            {
-              code: "blend_pool_version_mismatch",
-              message:
-                `The Blend pool ${shortAsset(pool)} reports itself as ${live.version} but the ` +
-                `registry lists it as ${code.version}. No exit was built; this position needs manual review.`,
-            },
-          ],
-        };
+      if (live.status === "unreadable") {
+        return manualReview(
+          "blend_pool_unreadable",
+          `The Blend pool ${pool} could not be read as a ${code.version} pool - its data, prices, ` +
+            "or registry entry may be wrong. No exit was built; this position needs manual review."
+        );
       }
 
       const steps: ExitStep[] = [];
@@ -240,87 +254,99 @@ export function blendExitAdapter(
 
       for (const held of live.positions) {
         if (held.liabilities === 0n) continue;
-        const holding = ctx.tokenBalances[held.assetId] ?? "0";
-        const debt = held.liabilities.toString();
-        if (compareBaseUnits(holding, debt) < 0) {
-          const shortfall = held.liabilities - BigInt(holding);
+        const asset = shortAddress(held.assetId);
+        const holding = ctx.tokenBalances[held.assetId];
+        if (!isBaseUnits(holding)) {
           blockers.push({
-            code: "blend_repay_asset_missing",
+            code: "blend_repay_asset_balance_unknown",
             message:
-              `Repaying this Blend debt needs ${debt} base units of ${shortAsset(held.assetId)} and ` +
-              `the account holds ${holding} - ${shortfall} short. Acquire the asset first; the pool ` +
-              "refunds any excess, so nothing is lost by holding a little more.",
+              `Repaying this Blend debt spends ${asset}, and LumenWipe could not determine how much ` +
+              "of it the account holds. No exit was built; this position needs manual review.",
           });
           continue;
         }
-        const ask = overAsk(held.liabilities);
-        const amount = compareBaseUnits(ask.toString(), holding) > 0 ? holding : ask.toString();
+        const ask = withAccrualMargin(held.liabilities).toString();
+        if (compareBaseUnits(holding, ask) < 0) {
+          const shortfall = BigInt(ask) - BigInt(holding);
+          blockers.push({
+            code: "blend_repay_asset_missing",
+            message:
+              `Repaying this Blend debt in full needs ${ask} base units of ${asset} (the debt plus a ` +
+              `small margin for interest accrued before it lands) and the account holds ${holding} - ` +
+              `${shortfall} short. Acquire the asset first; the pool refunds any excess.`,
+          });
+          continue;
+        }
         steps.push({
           kind: "repay",
-          contract: pool,
+          contract: position.contractAddress,
           function: "submit",
           asset: held.assetId,
-          amount,
+          amount: ask,
           ceiling: holding,
           minReceived: [],
-          description: `Repay the ${shortAsset(held.assetId)} debt in Blend pool ${shortAsset(pool)}`,
+          description: `Repay the ${asset} debt in Blend pool ${pool}`,
         });
       }
       if (blockers.length > 0) return { steps: [], blockers };
 
       // Collateral comes out before plain supply: once the debt is gone it is the riskier
       // balance to leave behind, and a fixed order keeps the plan deterministic.
+      const withdrawal = (
+        kind: "withdraw_collateral" | "withdraw",
+        held: BlendReservePosition,
+        underlying: bigint,
+        what: string
+      ): ExitStep => ({
+        kind,
+        contract: position.contractAddress,
+        function: "submit",
+        asset: held.assetId,
+        amount: withAccrualMargin(underlying).toString(),
+        ceiling: underlying.toString(),
+        clampsToPosition: true,
+        minReceived: [],
+        description: `Withdraw the ${shortAddress(held.assetId)} ${what} from Blend pool ${pool}`,
+      });
       for (const held of live.positions) {
-        if (held.collateral === 0n) continue;
-        const ask = overAsk(held.collateral).toString();
-        steps.push({
-          kind: "withdraw_collateral",
-          contract: pool,
-          function: "submit",
-          asset: held.assetId,
-          amount: ask,
-          ceiling: ask,
-          minReceived: [],
-          description: `Withdraw the ${shortAsset(held.assetId)} collateral from Blend pool ${shortAsset(pool)}`,
-        });
+        if (held.collateral > 0n) {
+          steps.push(withdrawal("withdraw_collateral", held, held.collateral, "collateral"));
+        }
       }
       for (const held of live.positions) {
-        if (held.supply === 0n) continue;
-        const ask = overAsk(held.supply).toString();
-        steps.push({
-          kind: "withdraw",
-          contract: pool,
-          function: "submit",
-          asset: held.assetId,
-          amount: ask,
-          ceiling: ask,
-          minReceived: [],
-          description: `Withdraw the ${shortAsset(held.assetId)} supply from Blend pool ${shortAsset(pool)}`,
-        });
+        if (held.supply > 0n) steps.push(withdrawal("withdraw", held, held.supply, "supply"));
       }
 
       if (steps.length === 0) {
-        return {
-          steps: [],
-          blockers: [
-            {
-              code: "blend_position_gone",
-              message:
-                `The Blend position detected in pool ${shortAsset(pool)} no longer shows any balance ` +
-                "on the network. Re-run the analysis; if it persists, this position needs manual review.",
-            },
-          ],
-        };
+        return manualReview(
+          "blend_position_gone",
+          `The Blend position detected in pool ${pool} no longer shows any balance on the network. ` +
+            "Re-run the analysis; if it persists, this position needs manual review."
+        );
       }
       return { steps, blockers: [] };
     },
 
-    health(_position, live): HealthInputs | null {
+    health(_position, live, steps): HealthInputs | null {
       if (live.status !== "loaded") return null;
       if (live.positions.every((p) => p.liabilities === 0n)) return null;
+
+      // The state the plan leaves before any withdrawal: liabilities the plan repays are gone,
+      // anything it does not repay stays - so a plan missing a repay is visible as remaining debt.
+      const repaid = new Set(steps.filter((s) => s.kind === "repay").map((s) => s.asset));
+      const remaining = new Map<number, bigint>();
+      for (const held of live.positions) {
+        const dTokens = live.raw.liabilities.get(held.index);
+        if (dTokens !== undefined && !repaid.has(held.assetId)) remaining.set(held.index, dTokens);
+      }
+      const after = deps.estimate(
+        live.pool,
+        live.oracle,
+        new Positions(remaining, live.raw.collateral, live.raw.supply)
+      );
       return {
-        collateralValue: usd(live.afterRepay.totalEffectiveCollateral),
-        debtValue: usd(live.afterRepay.totalEffectiveLiabilities),
+        collateralValue: usd(after.totalEffectiveCollateral, "collateral value"),
+        debtValue: usd(after.totalEffectiveLiabilities, "debt value"),
         minHealthFactorBps: BLEND_MIN_HEALTH_FACTOR_BPS,
       };
     },

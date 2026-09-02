@@ -79,10 +79,13 @@ export interface ExitStep {
   asset: string;
   /** What this step moves, in base units. */
   amount: string;
-  /** The most this step may move, in base units, from readLive and never detection: the live
-   *  balance, or - for a protocol that clamps withdrawals to the position itself - the over-ask
-   *  that guarantees a dust-free full exit. */
+  /** The live balance this step draws on, in base units - from readLive, never detection. */
   ceiling: string;
+  /** True when the contract itself clamps the request to the position (a Blend withdraw), so the
+   *  step may over-ask by a small, bounded margin to cover interest accrued between the read and
+   *  the ledger and leave no dust. The runner bounds that margin; without this flag an amount
+   *  above the ceiling is refused outright. */
+  clampsToPosition?: boolean;
   /** One floor per asset received. Empty for kinds with no price exposure. */
   minReceived: MinReceived[];
   /** Plain-language line for the plan review screen. */

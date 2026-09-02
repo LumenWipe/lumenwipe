@@ -11,6 +11,7 @@ import { describe, expect, test } from "bun:test";
 import { Keypair, xdr } from "@stellar/stellar-sdk";
 import type { DefiPosition, DefiProtocol, Network } from "@lumenwipe/types";
 import {
+  MAX_CLAMPED_OVER_ASK_BPS,
   MIN_RECEIVED_REQUIRED,
   WITHDRAWAL_KINDS,
   assessRepayBeforeWithdraw,
@@ -176,12 +177,21 @@ function codes(result: ExitRunResult): string[] {
 }
 
 /** What must hold for every declared step of a plan, regardless of protocol. */
+/** The most a step may ask for: its ceiling, or the runner's bounded margin above it when the
+ *  contract clamps the request to the position. */
+function allowedMaximum(step: ExitStep, ceiling: string): string {
+  if (!step.clampsToPosition) return ceiling;
+  return ((BigInt(ceiling) * BigInt(10_000 + MAX_CLAMPED_OVER_ASK_BPS)) / 10_000n).toString();
+}
+
 export function expectPlanInvariants(plan: ExitStep[], liveCeiling?: LiveCeiling): void {
   for (const step of plan) {
-    expect(compareBaseUnits(step.amount, step.ceiling)).not.toBe(1);
+    expect(compareBaseUnits(step.amount, allowedMaximum(step, step.ceiling))).not.toBe(1);
     const ceiling = liveCeiling === undefined ? undefined : ceilingFor(liveCeiling, step.asset);
     if (ceiling !== undefined && WITHDRAWAL_KINDS.includes(step.kind)) {
-      expect(compareBaseUnits(step.amount, ceiling)).not.toBe(1);
+      // The declared ceiling must be the live balance the fixture serves, never an inflated one.
+      expect(compareBaseUnits(step.ceiling, ceiling)).not.toBe(1);
+      expect(compareBaseUnits(step.amount, allowedMaximum(step, ceiling))).not.toBe(1);
     }
     if (MIN_RECEIVED_REQUIRED.includes(step.kind))
       expect(step.minReceived.length).toBeGreaterThan(0);

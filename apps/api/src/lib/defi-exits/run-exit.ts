@@ -104,6 +104,15 @@ function operationSource(op: xdr.Operation): string | null {
   return Address.account(source.ed25519()).toString();
 }
 
+/** How far a step that the contract clamps may over-ask, so "a small margin" stays small. */
+export const MAX_CLAMPED_OVER_ASK_BPS = 100;
+
+/** The most a step may ask for: its live ceiling, plus the bounded margin when the contract clamps. */
+function allowedMaximum(step: ExitStep): string {
+  if (!step.clampsToPosition) return step.ceiling;
+  return ((BigInt(step.ceiling) * BigInt(10_000 + MAX_CLAMPED_OVER_ASK_BPS)) / 10_000n).toString();
+}
+
 function sameFloors(
   a: BuiltExitStep["intent"]["minReceived"],
   b: ExitStep["minReceived"]
@@ -287,7 +296,7 @@ export async function runExitAdapter<P extends DefiPosition, L>(
       );
       continue;
     }
-    if (compareBaseUnits(step.amount, step.ceiling) > 0) {
+    if (compareBaseUnits(step.amount, allowedMaximum(step)) > 0) {
       blockers.push(
         blocker(
           "exit_amount_exceeds_balance",
