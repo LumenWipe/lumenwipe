@@ -39,34 +39,89 @@ export interface SoroswapPairState {
   shares: bigint;
   /** Tokens that are Stellar Asset Contracts: receiving one needs a trustline for its asset. */
   stellarAssetTokens: Set<string>;
+  /** The pair's `KLast` and the factory's fee switch: when both are set, `withdraw` first mints
+   *  protocol-fee shares to the factory, diluting every holder - the floors must expect that. */
+  kLast: bigint;
+  feesEnabled: boolean;
 }
 
 export type SoroswapLive =
   | ({ status: "loaded" } & SoroswapPairState)
   | { status: "not_pair"; kind: string }
   | { status: "no_router" }
+  /** The pair names a factory other than the registry's; the router would look elsewhere. */
+  | { status: "foreign_factory"; factory: string }
+  /** The pair reads fine but the account's share entry is not on the ledger at all. */
+  | { status: "shares_unreadable" }
   | { status: "unreadable" };
 
 export interface SoroswapDeps {
   /** The registry's router for a network, or null when none is verified there. */
   routerFor(network: keyof typeof NETWORK_PASSPHRASES): string | null;
+  /** The registry's factory for a network, or null when none is verified there. */
+  factoryFor(network: keyof typeof NETWORK_PASSPHRASES): string | null;
+}
+
+function registered(
+  network: keyof typeof NETWORK_PASSPHRASES,
+  kind: "router" | "factory"
+): string | null {
+  const entry = entriesForNetwork(network).find(
+    (e) => e.protocol === "soroswap" && e.kind === kind && e.verifiedLive
+  );
+  return entry?.address ?? null;
 }
 
 export const defaultSoroswapDeps: SoroswapDeps = {
-  routerFor(network) {
-    const router = entriesForNetwork(network).find(
-      (e) => e.protocol === "soroswap" && e.kind === "router" && e.verifiedLive
-    );
-    return router?.address ?? null;
-  },
+  routerFor: (network) => registered(network, "router"),
+  factoryFor: (network) => registered(network, "factory"),
 };
+
+/** Floor of the square root, for the pair's fee arithmetic. */
+export function isqrt(n: bigint): bigint {
+  if (n < 0n) throw new Error("isqrt of a negative");
+  if (n < 2n) return n;
+  let x = BigInt(Math.floor(Math.sqrt(Number(n))));
+  // Newton's method from the float estimate, exact for bigints.
+  for (;;) {
+    const y = (x + n / x) >> 1n;
+    if (y >= x) {
+      while (x * x > n) x -= 1n;
+      while ((x + 1n) * (x + 1n) <= n) x += 1n;
+      return x;
+    }
+    x = y;
+  }
+}
+
+/**
+ * The LP shares the pair mints to the protocol before a withdrawal (soroswap/core pair
+ * `mint_fee`): when fees are on and k grew since the last liquidity event,
+ * `totalSupply × (√k − √kLast) / (5√k + √kLast)`. Zero otherwise.
+ */
+export function protocolFeeShares(state: {
+  reserve0: bigint;
+  reserve1: bigint;
+  totalSupply: bigint;
+  kLast: bigint;
+  feesEnabled: boolean;
+}): bigint {
+  if (!state.feesEnabled || state.kLast === 0n) return 0n;
+  const rootK = isqrt(state.reserve0 * state.reserve1);
+  const rootKLast = isqrt(state.kLast);
+  if (rootK <= rootKLast) return 0n;
+  return (state.totalSupply * (rootK - rootKLast)) / (5n * rootK + rootKLast);
+}
 
 /** Pair instance storage keys, as the pair contract declares them (soroswap/core contracts/pair). */
 const KEY_TOKEN_0 = "0";
 const KEY_TOKEN_1 = "1";
 const KEY_RESERVE_0 = "2";
 const KEY_RESERVE_1 = "3";
+const KEY_FACTORY = "4";
+const KEY_K_LAST = "5";
 const KEY_TOTAL_SUPPLY = '["TotalSupply"]';
+const KEY_FEES_ENABLED = '["FeesEnabled"]';
 
 interface InstanceView {
   isStellarAsset: boolean;
@@ -160,17 +215,32 @@ export function soroswapExitAdapter(
         if (!token0 || !token1 || reserve0 === null || reserve1 === null || totalSupply === null) {
           return { status: "unreadable" };
         }
+        const pairFactory = asAddress(storage.get(KEY_FACTORY));
+        const factory = deps.factoryFor(ctx.network);
+        if (pairFactory !== null && factory !== null && pairFactory !== factory) {
+          return { status: "foreign_factory", factory: pairFactory };
+        }
+        const kLast = asI128(storage.get(KEY_K_LAST)) ?? 0n;
+
+        // The pair writes a zero balance on a full withdrawal and never deletes the entry, so an
+        // entry that is present with 0 means "already withdrawn" and an ABSENT entry means the
+        // ledger is not telling us the balance - archived, most likely, for a dormant position.
+        // Absent must not read as zero: the round would take "gone" as done and merge the
+        // account with its shares still in the pair.
         const balanceVal = first.get(balanceKey.toXDR("base64"));
-        const shares = balanceVal ? asI128(balanceVal.contractData().val()) : 0n;
+        if (!balanceVal) return { status: "shares_unreadable" };
+        const shares = asI128(balanceVal.contractData().val());
         if (shares === null) return { status: "unreadable" };
 
         // Which of the two tokens are Stellar Asset Contracts decides whether the account needs
-        // a trustline to receive them; a Soroban-native token needs nothing.
+        // a trustline to receive them; a Soroban-native token needs nothing. The factory's fee
+        // switch is read alongside for the withdrawal's fee arithmetic.
         const tokenKeys = [
           new Contract(token0).getFootprint(),
           new Contract(token1).getFootprint(),
         ];
-        const tokens = await readEntries(rpc, tokenKeys);
+        const factoryKey = factory ? new Contract(factory).getFootprint() : null;
+        const tokens = await readEntries(rpc, factoryKey ? [...tokenKeys, factoryKey] : tokenKeys);
         const stellarAssetTokens = new Set<string>();
         for (const [token, key] of [
           [token0, tokenKeys[0]!],
@@ -179,6 +249,13 @@ export function soroswapExitAdapter(
           const val = tokens.get(key.toXDR("base64"));
           if (!val) return { status: "unreadable" };
           if (instanceView(val).isStellarAsset) stellarAssetTokens.add(token);
+        }
+        let feesEnabled = false;
+        if (factoryKey) {
+          const factoryVal = tokens.get(factoryKey.toXDR("base64"));
+          if (!factoryVal) return { status: "unreadable" };
+          const flag = instanceView(factoryVal).storage.get(KEY_FEES_ENABLED);
+          feesEnabled = flag !== undefined && scValToNative(flag) === true;
         }
 
         return {
@@ -192,6 +269,8 @@ export function soroswapExitAdapter(
           totalSupply,
           shares,
           stellarAssetTokens,
+          kLast,
+          feesEnabled,
         };
       } catch {
         return { status: "unreadable" };
@@ -212,6 +291,22 @@ export function soroswapExitAdapter(
           "soroswap_router_unknown",
           `LumenWipe has no verified Soroswap router on ${ctx.network}, so this position cannot be ` +
             "exited here yet. Withdraw the liquidity through Soroswap before continuing."
+        );
+      }
+      if (live.status === "foreign_factory") {
+        return manualReview(
+          "soroswap_pair_foreign_factory",
+          `The Soroswap pair ${pair} was deployed by factory ${shortAddress(live.factory)}, not the ` +
+            "one LumenWipe's router works with, so the router could not find it. No exit was built; " +
+            "withdraw the liquidity through Soroswap before continuing."
+        );
+      }
+      if (live.status === "shares_unreadable") {
+        return manualReview(
+          "soroswap_shares_unreadable",
+          `This account's share balance in Soroswap pair ${pair} is not on the ledger right now - ` +
+            "most likely archived after a long idle period. No exit was built so the shares are not " +
+            "left behind; restore the entry or withdraw through Soroswap before continuing."
         );
       }
       if (live.status === "unreadable") {
@@ -236,9 +331,11 @@ export function soroswapExitAdapter(
         );
       }
 
-      // The account's share of each reserve, exactly as the pair will compute it (floor).
-      const owed0 = (live.shares * live.reserve0) / live.totalSupply;
-      const owed1 = (live.shares * live.reserve1) / live.totalSupply;
+      // The account's share of each reserve, exactly as the pair will compute it (floor) - after
+      // the protocol-fee shares `withdraw` mints first, when the factory has fees on.
+      const supply = live.totalSupply + protocolFeeShares(live);
+      const owed0 = (live.shares * live.reserve0) / supply;
+      const owed1 = (live.shares * live.reserve1) / supply;
       const min0 = minReceivedFromQuote(owed0.toString(), ctx.slippageBps);
       const min1 = minReceivedFromQuote(owed1.toString(), ctx.slippageBps);
       if (min0 === "0" || min1 === "0") {
@@ -261,8 +358,9 @@ export function soroswapExitAdapter(
             code: "soroswap_trustline_missing",
             message:
               `Withdrawing from Soroswap pair ${pair} pays out an asset (token contract ` +
-              `${shortAddress(token)}) this account has no trustline for, so the withdrawal would ` +
-              "fail. Add the trustline first, or withdraw through Soroswap before continuing.",
+              `${shortAddress(token)}) this account has no authorized trustline for, so the ` +
+              "withdrawal would fail at the ledger. Add or re-authorize the trustline first, or " +
+              "withdraw through Soroswap before continuing.",
           });
         }
       }

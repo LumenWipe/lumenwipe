@@ -6,7 +6,13 @@
 import { describe, expect, test } from "bun:test";
 import { Address, scValToNative, xdr } from "@stellar/stellar-sdk";
 import type { SoroswapLpPosition } from "@lumenwipe/types";
-import { EXIT_POSITION_GONE, runExitAdapter, soroswapExitAdapter } from "@/lib/defi-exits";
+import {
+  EXIT_POSITION_GONE,
+  defaultSoroswapDeps,
+  runExitAdapter,
+  soroswapExitAdapter,
+} from "@/lib/defi-exits";
+import { isqrt, protocolFeeShares } from "@/lib/defi-exits/soroswap";
 import {
   createContractRegistryLookup,
   validateContractRegistry,
@@ -15,6 +21,7 @@ import {
 } from "@/lib/contract-registry";
 import { describeExitAdapterInvariants, harnessContext } from "./fixtures/exit-adapter-harness";
 import {
+  FACTORY,
   PAIR,
   ROUTER,
   SOROBAN_TOKEN,
@@ -74,7 +81,7 @@ const position: SoroswapLpPosition = {
   tokens: [XLM_SAC, USDC_SAC],
 };
 
-const adapter = soroswapExitAdapter({ routerFor: () => ROUTER });
+const adapter = soroswapExitAdapter({ routerFor: () => ROUTER, factoryFor: () => FACTORY });
 
 function rpc(over: Partial<FakePairOptions> = {}) {
   return fakeSoroswapRpc({
@@ -220,7 +227,7 @@ describe("soroswap exit adapter", () => {
     const missing = await runHealthy({ pairMissing: true });
     expect(missing.blockers.map((b) => b.code)).toEqual(["exit_contract_unresolvable"]);
 
-    const noRouter = soroswapExitAdapter({ routerFor: () => null });
+    const noRouter = soroswapExitAdapter({ routerFor: () => null, factoryFor: () => FACTORY });
     const result = await runExitAdapter(noRouter, position, ctx, {
       rpc: rpc(),
       resolveWasmHash: KNOWN.resolveWasmHash,
@@ -242,10 +249,54 @@ describe("soroswap exit adapter", () => {
     expect(result.blockers.map((b) => b.code)).toEqual(["soroswap_contract_not_pair"]);
   });
 
-  test("the shipped registry knows the testnet router", () => {
-    const { defaultSoroswapDeps } =
-      require("@/lib/defi-exits") as typeof import("@/lib/defi-exits");
+  test("the shipped registry knows the testnet router and factory, and nothing on mainnet", () => {
     expect(defaultSoroswapDeps.routerFor("testnet")).toBe(ROUTER);
+    expect(defaultSoroswapDeps.factoryFor("testnet")).toBe(FACTORY);
     expect(defaultSoroswapDeps.routerFor("mainnet")).toBeNull();
+    expect(defaultSoroswapDeps.factoryFor("mainnet")).toBeNull();
+  });
+
+  test("a share entry that is absent from the ledger blocks - it is not a zero", async () => {
+    // The pair writes 0 on a full withdrawal and never deletes the entry, so absence means the
+    // ledger is not telling us the balance (archived, most likely). Treating it as gone would let
+    // the close merge the account with its shares still in the pair.
+    const result = await runHealthy({ balanceMissing: true });
+    expect(result.next).toBeNull();
+    expect(result.blockers.map((b) => b.code)).toEqual(["soroswap_shares_unreadable"]);
+  });
+
+  test("a pair deployed by another factory blocks by name - the router would not find it", async () => {
+    const result = await runHealthy({ pairFactory: SOROBAN_TOKEN });
+    expect(result.blockers.map((b) => b.code)).toEqual(["soroswap_pair_foreign_factory"]);
+  });
+
+  test("with protocol fees on, the floors expect the fee shares the pair mints before paying out", async () => {
+    // k grew from kLast: sqrt(k) = 1_414_213_562 (r0*r1 = 2e18), sqrt(kLast) = 1_000_000_000. The
+    // pair mints TS*(sqrtK - sqrtKLast)/(5*sqrtK + sqrtKLast) shares to the protocol first.
+    const kLast = 1_000_000_000_000_000_000n;
+    const state = { reserve0: RESERVE_0, reserve1: RESERVE_1, totalSupply: TOTAL_SUPPLY };
+    const minted = protocolFeeShares({ ...state, kLast, feesEnabled: true });
+    expect(minted).toBeGreaterThan(0n);
+    const result = await runHealthy({ kLast, feesEnabled: true });
+    expect(result.blockers).toEqual([]);
+    const [floor0, floor1] = result.plan[0]!.minReceived;
+    const floorOf = (reserve: bigint): string =>
+      ((((SHARES * reserve) / (TOTAL_SUPPLY + minted)) * 9_950n) / 10_000n).toString();
+    expect(floor0!.amount).toBe(floorOf(RESERVE_0));
+    expect(floor1!.amount).toBe(floorOf(RESERVE_1));
+    expect(BigInt(floor0!.amount)).toBeLessThan(99_500_000n);
+    // Fees off, or k unchanged since the last liquidity event: nothing is minted.
+    expect(protocolFeeShares({ ...state, kLast, feesEnabled: false })).toBe(0n);
+    expect(protocolFeeShares({ ...state, kLast: RESERVE_0 * RESERVE_1, feesEnabled: true })).toBe(
+      0n
+    );
+  });
+
+  test("isqrt is the exact floor square root", () => {
+    expect(isqrt(0n)).toBe(0n);
+    expect(isqrt(1n)).toBe(1n);
+    expect(isqrt(2_000_000_000_000_000_000n)).toBe(1_414_213_562n);
+    expect(isqrt(10n ** 40n)).toBe(10n ** 20n);
+    expect(isqrt(10n ** 40n - 1n)).toBe(10n ** 20n - 1n);
   });
 });

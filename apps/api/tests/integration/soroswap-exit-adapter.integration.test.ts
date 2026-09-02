@@ -1,19 +1,21 @@
 import { expect, test } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import type { SoroswapLpPosition } from "@lumenwipe/types";
-import { EXIT_POSITION_GONE, runExitAdapter, soroswapExitAdapter } from "@/lib/defi-exits";
+import { runExitAdapter, soroswapExitAdapter } from "@/lib/defi-exits";
 import { readSoroswapPair } from "@/lib/defi-positions/enrich/soroswap";
 import { servedContractRegistry } from "@/lib/contract-registry";
 import { getRpcServer } from "@/lib/stellar/rpc";
 
 // Live testnet, opt-in like the other integration tests (`bun run test:integration`). Runs the
-// real runner over the registry's representative pair with an account that holds no shares: the
-// pair's and the router's live code must resolve in the shipped registry, the pair must read as a
-// pair, and the outcome must be "already gone" rather than any refusal. No transaction is sent.
+// real runner over the registry's representative pair with an account that never held shares:
+// the pair's and the router's live code must resolve in the shipped registry, the pair must read
+// as a pair, and - since the account has no share entry at all - the adapter must refuse rather
+// than call the position gone. No transaction is sent. The full withdraw path runs live in
+// apps/web/tests/e2e/soroswap-exit.spec.ts.
 const RUN_INTEGRATION = !!process.env.LUMENWIPE_RUN_INTEGRATION;
 
 test.skipIf(!RUN_INTEGRATION)(
-  "the registry's Soroswap testnet pair and router resolve, and an account without shares is 'gone'",
+  "the registry's Soroswap testnet pair and router resolve, and an account with no share entry is refused",
   async () => {
     const pair = servedContractRegistry().entries.find(
       (e) => e.network === "testnet" && e.protocol === "soroswap" && e.kind === "pair"
@@ -41,7 +43,7 @@ test.skipIf(!RUN_INTEGRATION)(
       { rpc: getRpcServer("testnet") }
     );
     expect(result.resolution?.status).toBe("known");
-    expect(result.blockers.map((b) => b.code)).toEqual([EXIT_POSITION_GONE]);
+    expect(result.blockers.map((b) => b.code)).toEqual(["soroswap_shares_unreadable"]);
 
     const view = await readSoroswapPair(getRpcServer("testnet"), pair!.address, account);
     expect(view).not.toBeNull();

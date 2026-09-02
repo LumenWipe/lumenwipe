@@ -21,6 +21,9 @@ export const SOROSWAP_ROUTER_HASH =
   "4b95bbf9caec2c6e00c786f53c5f392c2fcdb8435ac0a862ab5e0645eb65824c";
 export const PAIR = "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4";
 export const ROUTER = "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD";
+export const FACTORY = "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY";
+export const SOROSWAP_FACTORY_HASH =
+  "86285a9234d3f0d687eaf88efe8d5d72172b38c9a86624c9934c0cbf2aff2993";
 /** XLM's Stellar Asset Contract on testnet. */
 export const XLM_SAC = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
 /** A classic asset's Stellar Asset Contract (needs a trustline to receive). */
@@ -35,8 +38,15 @@ export interface FakePairOptions {
   reserve0?: bigint;
   reserve1?: bigint;
   totalSupply?: bigint;
-  /** The account's LP tokens. */
+  /** The account's LP tokens. The entry is present even at 0, as the pair leaves it after a
+   *  full withdrawal; `balanceMissing` leaves it out entirely (archived, or a bad key). */
   shares?: bigint;
+  balanceMissing?: boolean;
+  /** The factory the pair names in its instance (key 4). */
+  pairFactory?: string;
+  /** The pair's KLast (key 5) and the factory's fee switch. */
+  kLast?: bigint;
+  feesEnabled?: boolean;
   /** Which tokens are Stellar Asset Contracts; the rest are wasm tokens. */
   stellarAssets?: string[];
   /** Override the pair's or router's code hash (to make the registry disagree). */
@@ -94,6 +104,8 @@ export function fakeSoroswapRpc(
         [xdr.ScVal.scvU32(1), new Address(token1).toScVal()],
         [xdr.ScVal.scvU32(2), i128(options.reserve0 ?? 1_000_000_000n)],
         [xdr.ScVal.scvU32(3), i128(options.reserve1 ?? 2_000_000_000n)],
+        [xdr.ScVal.scvU32(4), new Address(options.pairFactory ?? FACTORY).toScVal()],
+        [xdr.ScVal.scvU32(5), i128(options.kLast ?? 0n)],
         [
           xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("TotalSupply")]),
           i128(options.totalSupply ?? 1_000_000_000n),
@@ -101,8 +113,16 @@ export function fakeSoroswapRpc(
       ])
     );
   }
+  entries.push(
+    instanceEntry(FACTORY, wasm(SOROSWAP_FACTORY_HASH), [
+      [
+        xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("FeesEnabled")]),
+        xdr.ScVal.scvBool(options.feesEnabled ?? false),
+      ],
+    ])
+  );
   const shares = options.shares ?? 100_000_000n;
-  if (shares > 0n) {
+  if (!options.balanceMissing) {
     const key = xdr.LedgerKey.contractData(
       new xdr.LedgerKeyContractData({
         contract: new Address(PAIR).toScAddress(),

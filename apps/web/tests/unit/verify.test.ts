@@ -42,6 +42,7 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
     exitContracts: [POOL],
     heldTokenContracts: [XLM_SAC],
     positionTokenContracts: [],
+    exitFunctions: { [POOL]: ["submit"] },
     accountSigners: [
       { key: SRC, weight: 1, type: "ed25519_public_key" },
       { key: REMOVED_SIGNER, weight: 1, type: "ed25519_public_key" },
@@ -753,6 +754,7 @@ test("verifyCloseTransaction passes a mediated close to a memo-requiring exchang
         exitContracts: [],
         heldTokenContracts: [],
         positionTokenContracts: [],
+        exitFunctions: {},
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
       },
@@ -786,6 +788,7 @@ test("verifyCloseTransaction rejects a mediated close to a memo-requiring exchan
         exitContracts: [],
         heldTokenContracts: [],
         positionTokenContracts: [],
+        exitFunctions: {},
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
       },
@@ -810,6 +813,7 @@ test("verifyCloseTransaction passes a direct close to a destination the registry
         exitContracts: [],
         heldTokenContracts: [],
         positionTokenContracts: [],
+        exitFunctions: {},
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
       },
@@ -1038,7 +1042,9 @@ test("rejects an exit whose arguments name any other account - proceeds could go
 
 test("rejects an exit that names a contract the account has no position or balance in - a contract-typed recipient", () => {
   const op = exit({ contractsReferenced: [POOL, OTHER_POOL] });
-  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(/no position, balance, or pool token in/);
+  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(
+    /no position, balance, or pool token in/
+  );
 });
 
 test("rejects an exit that invokes a contract the analysis never showed a position in", () => {
@@ -1087,17 +1093,53 @@ test("an AMM withdrawal may invoke the protocol's router and name the pair's tok
     function: "remove_liquidity",
     contractsReferenced: [POOL, ROUTER, TOKEN, XLM_SAC],
   });
+  const functions = { [POOL]: [], [ROUTER]: ["remove_liquidity"] };
   const expected = expectation({
     exitContracts: [POOL, ROUTER],
     positionTokenContracts: [TOKEN, XLM_SAC],
+    exitFunctions: functions,
   });
   expect(() => assertCloseIntent(exitOnly(op), expected)).not.toThrow();
   // The same call without the router in the pinned set - an expired or unknown registry - fails.
   expect(() =>
-    assertCloseIntent(exitOnly(op), expectation({ positionTokenContracts: [TOKEN, XLM_SAC] }))
+    assertCloseIntent(
+      exitOnly(op),
+      expectation({ positionTokenContracts: [TOKEN, XLM_SAC], exitFunctions: functions })
+    )
   ).toThrow(/not one of this account/);
-  // And a pool token the position does not have is not a place funds may go.
+  // A pool token the position does not have is not a place funds may go.
   expect(() =>
-    assertCloseIntent(exitOnly(op), expectation({ exitContracts: [POOL, ROUTER] }))
+    assertCloseIntent(
+      exitOnly(op),
+      expectation({ exitContracts: [POOL, ROUTER], exitFunctions: functions })
+    )
   ).toThrow(/no position, balance, or pool token/);
+  // The router may only be asked to remove liquidity - never to swap, whatever the API says.
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(
+        exit({
+          contract: ROUTER,
+          function: "swap_exact_tokens_for_tokens",
+          contractsReferenced: [POOL, ROUTER, TOKEN, XLM_SAC],
+        })
+      ),
+      expected
+    )
+  ).toThrow(/function LumenWipe does not use/);
+  // And the pair itself is never a call target, even though it is a detected position.
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(
+        exit({ contract: POOL, function: "withdraw", contractsReferenced: [POOL, TOKEN, XLM_SAC] })
+      ),
+      expected
+    )
+  ).toThrow(/function LumenWipe does not use/);
+});
+
+test("a Blend exit may only call submit on its pool", () => {
+  expect(() =>
+    assertCloseIntent(exitOnly(exit({ function: "flash_loan" })), expectation())
+  ).toThrow(/function LumenWipe does not use/);
 });

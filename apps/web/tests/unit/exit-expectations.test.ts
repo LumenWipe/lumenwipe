@@ -28,6 +28,7 @@ test("no account read vouches for nothing", () => {
     exitContracts: [],
     heldTokenContracts: [],
     positionTokenContracts: [],
+    exitFunctions: {},
   });
 });
 
@@ -51,6 +52,7 @@ test("a Blend position pins its pool; XLM and every trustline are held tokens", 
     new Asset("USDC", ISSUER).contractId(Networks.TESTNET),
   ]);
   expect(e.positionTokenContracts).toEqual([]);
+  expect(e.exitFunctions).toEqual({ [BLEND_POOL]: ["submit"] });
 });
 
 test("a Soroswap LP position pins the pair AND the bundled router, and allows the pair's tokens", () => {
@@ -69,10 +71,14 @@ test("a Soroswap LP position pins the pair AND the bundled router, and allows th
   );
   expect(e.exitContracts).toEqual([PAIR, SOROSWAP_ROUTER]);
   expect(e.positionTokenContracts).toEqual([TOKEN_0, TOKEN_1]);
+  // The pair is a position but never a call target; only the router\'s remove_liquidity is.
+  expect(e.exitFunctions).toEqual({ [PAIR]: [], [SOROSWAP_ROUTER]: ["remove_liquidity"] });
 });
 
 test("routers come only from the bundled registry, for the network and protocols asked, and only while it is valid", () => {
-  expect(exitRoutersFor("testnet", ["soroswap"])).toEqual([SOROSWAP_ROUTER]);
+  expect(exitRoutersFor("testnet", ["soroswap"])).toEqual([
+    { address: SOROSWAP_ROUTER, protocol: "soroswap" },
+  ]);
   expect(exitRoutersFor("testnet", ["blend"])).toEqual([]);
   expect(exitRoutersFor("mainnet", ["soroswap"])).toEqual([]);
   const later = new Date("2100-01-01T00:00:00Z");

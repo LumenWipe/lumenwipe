@@ -43,6 +43,8 @@ export interface CloseExpectation {
   /** The tokens of each detected position (an LP pair's two tokens) - what a withdrawal pays out.
    *  With the two lists above, the only contracts a DeFi exit may name. */
   positionTokenContracts: string[];
+  /** Per contract an exit may invoke, the one function that leaves that protocol. */
+  exitFunctions: Record<string, string[]>;
   /** Whether the destination requires a memo (from the client-bundled exchange registry). */
   memoRequired: boolean;
   /** The memo type the destination requires (from the registry), or null. */
@@ -452,6 +454,11 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
             "A DeFi exit would call a contract that is not one of this account's detected positions."
           );
         }
+        if (!(expected.exitFunctions[op.contract] ?? []).includes(op.function)) {
+          throw new VerificationError(
+            "A DeFi exit would call a function LumenWipe does not use to leave this protocol."
+          );
+        }
         if (op.authorizesBeyondSelf) {
           throw new VerificationError(
             "A DeFi exit would authorize actions beyond this account's own contract call."
@@ -572,6 +579,7 @@ export function verifyCloseTransaction(opts: {
     exitContracts: string[];
     heldTokenContracts: string[];
     positionTokenContracts: string[];
+    exitFunctions: Record<string, string[]>;
   };
 }): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);
