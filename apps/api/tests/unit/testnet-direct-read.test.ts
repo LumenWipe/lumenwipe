@@ -259,3 +259,51 @@ test("a zero LP share balance produces no position", async () => {
   });
   expect(result.positions).toEqual([]);
 });
+
+test("an entry the registry marks as not live, and that is still absent, is not reported against the account", async () => {
+  // Registry-level knowledge (verifiedLive: false) is not a fact about this account. If the
+  // still-absent contract were flagged, every account on the network would carry the same
+  // "unrecognized position" and the plan gate would block them all on a registry gap.
+  const entries = [
+    registryEntry({
+      address: FXDAO_VAULTS,
+      protocol: "fxdao",
+      kind: "vault",
+      wasmHash: null,
+      verifiedLive: false,
+    }),
+  ];
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([]),
+    registryEntries: entries,
+  });
+  expect(result.positions).toEqual([]);
+  expect(result.unrecognizedPositions).toEqual([]);
+});
+
+test("an entry the registry marks as not live that has since appeared is flagged - the registry has no hash to read it by", async () => {
+  // The skip above is conditional on the network agreeing with the registry. Once the contract
+  // resolves, staying silent would be a real fail-open: a position there could exist and the
+  // registry records no wasmHash to decode it against.
+  const entries = [
+    registryEntry({
+      address: FXDAO_VAULTS,
+      protocol: "fxdao",
+      kind: "vault",
+      wasmHash: null,
+      verifiedLive: false,
+    }),
+  ];
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([contractInstanceEntry(FXDAO_VAULTS, FXDAO_WASM_HASH)]),
+    registryEntries: entries,
+  });
+  expect(result.positions).toEqual([]);
+  expect(result.unrecognizedPositions).toEqual([
+    {
+      protocol: "fxdao",
+      rawType: "registry-entry-unpinned",
+      reason: expect.stringContaining(FXDAO_VAULTS),
+    },
+  ]);
+});

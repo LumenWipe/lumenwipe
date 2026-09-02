@@ -2,6 +2,8 @@ import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { detectDefiPositionsViaDirectRead } from "@/lib/defi-positions/testnet-direct-read";
 import { servedContractRegistry } from "@/lib/contract-registry";
+import { readLiveWasmHash } from "@/lib/stellar/contract-instance";
+import { getRpcServer } from "@/lib/stellar/rpc";
 
 // This test calls the real, live Stellar testnet RPC - no mock. The package's `test` script
 // scopes itself to tests/unit + tests/e2e, so a bare `bun test` never picks this up; only
@@ -36,13 +38,19 @@ test.skipIf(!RUN_INTEGRATION)(
     expect(result.network).toBe("testnet");
     expect(Array.isArray(result.positions)).toBe(true);
     expect(result.positions).toEqual([]);
-    // The FxDAO entry is documented-but-currently-unresolvable (see contract-registry.json) -
-    // this is the real, live confirmation of that gap, not a simulated one.
-    expect(
-      result.unrecognizedPositions.some(
-        (u) => u.protocol === "fxdao" && u.rawType === "registry-entry-unresolvable"
-      )
-    ).toBe(true);
+    // The FxDAO entry is documented-but-currently-unresolvable (see contract-registry.json). The
+    // registry records that (verifiedLive: false); the read still probes it and stays silent only
+    // while the network agrees it is absent, so a fresh account is clean rather than blocked on a
+    // registry gap it has nothing to do with. The probe is asserted here so the silence is never
+    // mistaken for a skip: the day the contract appears, this and the unit suite both say so.
+    const documentedGaps = servedContractRegistry().entries.filter(
+      (e) => e.protocol === "fxdao" && !e.verifiedLive
+    );
+    expect(documentedGaps.length).toBeGreaterThan(0);
+    for (const gap of documentedGaps) {
+      expect(await readLiveWasmHash(getRpcServer("testnet"), gap.address)).toBeNull();
+    }
+    expect(result.unrecognizedPositions).toEqual([]);
   },
   30_000
 );

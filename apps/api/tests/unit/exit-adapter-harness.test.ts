@@ -4,6 +4,7 @@
  * outside - which is the whole point of enforcing them there rather than trusting each adapter.
  */
 import { describe, expect, test } from "bun:test";
+import { Address, Keypair, xdr } from "@stellar/stellar-sdk";
 import { runExitAdapter } from "@/lib/defi-exits";
 import {
   describeExitAdapterInvariants,
@@ -78,6 +79,51 @@ async function runWith(knobs: FakeAdapterKnobs, rpc = liveRpc()) {
     isRegistryFresh: () => true,
   });
 }
+
+function authEntryFor(credentials: xdr.SorobanCredentials): string {
+  return new xdr.SorobanAuthorizationEntry({
+    credentials,
+    rootInvocation: new xdr.SorobanAuthorizedInvocation({
+      function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
+        new xdr.InvokeContractArgs({
+          contractAddress: new Address(position.contractAddress).toScAddress(),
+          functionName: "withdraw",
+          args: [],
+        })
+      ),
+      subInvocations: [],
+    }),
+  }).toXDR("base64");
+}
+
+describe("runExitAdapter checks what the simulation added before offering the bytes", () => {
+  test("an authorization entry for another address refuses the build - a close signs for one account", async () => {
+    const foreign = xdr.SorobanCredentials.sorobanCredentialsAddress(
+      new xdr.SorobanAddressCredentials({
+        address: new Address(Keypair.random().publicKey()).toScAddress(),
+        nonce: xdr.Int64.fromString("1"),
+        signatureExpirationLedger: 1000,
+        signature: xdr.ScVal.scvVoid(),
+      })
+    );
+    const result = await runWith({}, liveRpc({ simulatedAuth: [authEntryFor(foreign)] }));
+    expect(result.next).toBeNull();
+    expect(result.blockers.map((b) => b.code)).toEqual(["exit_requires_other_signer"]);
+  });
+
+  test("the source account's own authorization is what every exit carries, and passes", async () => {
+    const own = xdr.SorobanCredentials.sorobanCredentialsSourceAccount();
+    const result = await runWith({}, liveRpc({ simulatedAuth: [authEntryFor(own)] }));
+    expect(result.blockers).toEqual([]);
+    expect(result.next).not.toBeNull();
+  });
+
+  test("a resource fee priced far above any real exit refuses the build", async () => {
+    const result = await runWith({}, liveRpc({ simulatedResourceFee: "50000000" }));
+    expect(result.next).toBeNull();
+    expect(result.blockers.map((b) => b.code)).toEqual(["exit_fee_excessive"]);
+  });
+});
 
 describe("runExitAdapter catches each invariant violation from outside the adapter", () => {
   test("the healthy run clamps the detected amount to the live balance and simulates once", async () => {

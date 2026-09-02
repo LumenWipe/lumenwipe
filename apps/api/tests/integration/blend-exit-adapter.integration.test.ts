@@ -53,7 +53,7 @@ test.skipIf(!RUN_INTEGRATION)(
     expect(live.status).toBe("loaded");
     if (live.status !== "loaded") return;
     expect(live.positions).toEqual([]);
-    expect(adapter.plan(position, live, code, ctx).blockers[0]!.code).toBe("blend_position_gone");
+    expect(adapter.plan(position, live, code, ctx).blockers[0]!.code).toBe("exit_position_gone");
   },
   60_000
 );

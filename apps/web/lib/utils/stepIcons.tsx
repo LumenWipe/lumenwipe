@@ -19,6 +19,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   ADD_TRUSTLINE_FOR_CLAIM: Link2,
   CLAIM_BALANCES: Target,
   DEFI_POSITIONS: Layers,
+  EXIT_POSITIONS: Layers,
   HANDLE_ASSETS: ArrowLeftRight,
   REMOVE_TRUSTLINES: Unlink,
   MERGE: GitMerge,

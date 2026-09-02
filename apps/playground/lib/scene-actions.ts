@@ -53,6 +53,7 @@ export function operationToSceneAction(
     case "path_payment_strict_send":
     case "claim_claimable_balance":
     case "revoke_sponsorship":
+    case "invoke_host_function":
     case "unknown":
       return null;
   }

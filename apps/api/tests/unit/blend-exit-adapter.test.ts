@@ -261,7 +261,7 @@ describe("blend exit adapter", () => {
   test("a position that vanished since detection blocks rather than planning nothing", async () => {
     const { result } = await run({});
     expect(result.next).toBeNull();
-    expect(result.blockers.map((b) => b.code)).toEqual(["blend_position_gone"]);
+    expect(result.blockers.map((b) => b.code)).toEqual(["exit_position_gone"]);
   });
 
   test("backstop deposits are not this adapter's to exit", () => {

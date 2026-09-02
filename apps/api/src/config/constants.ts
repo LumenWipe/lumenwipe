@@ -38,3 +38,11 @@ export const SUBMIT_RETRY_DELAY_MS = 2500; // ~10s of total patience across retr
 
 // XLM stroops per lumen
 export const STROOPS_PER_XLM = 10_000_000;
+/** Plan-time fee estimate for one Soroban exit transaction. Resource fees dwarf the classic base
+ *  fee (a Blend withdraw on testnet charged ~25,000 stroops); this is a deliberate over-estimate
+ *  so the review page never understates what a close with positions will cost. */
+export const SOROBAN_EXIT_FEE_ESTIMATE_STROOPS = 100_000;
+/** Ceiling on the total fee of one exit transaction as assembled from simulation. A real exit
+ *  costs a few thousand stroops; a fee anywhere near this is a simulation gone wrong or an
+ *  attempt to grief the account through the fee pool, and is refused rather than offered. */
+export const MAX_SOROBAN_EXIT_FEE_STROOPS = 10_000_000; // 1 XLM

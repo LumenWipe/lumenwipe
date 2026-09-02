@@ -13,6 +13,7 @@ import type {
 } from "@lumenwipe/types";
 import type { SponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
 import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
+import { planExitSteps } from "@/lib/defi-exits/plan-exits";
 import { estimateFeeLumens } from "@/lib/utils/amounts";
 import { batchItems } from "./batching";
 import { OP_BATCH_LIMIT } from "@/config/constants";
@@ -297,6 +298,11 @@ export function buildPlan(
   if (defiPositions) {
     blockers.push(...assessDefiPositionsGate(defiPositions));
   }
+  // DeFi positions the catalog cannot exit block here; the ones it can become EXIT_POSITIONS
+  // steps below. Either way no detected position is left out of the plan in silence.
+  const detectedPositions = defiPositions?.positions ?? [];
+  const exitBlockers = planExitSteps(detectedPositions, 0);
+  blockers.push(...exitBlockers.blockers);
 
   // Threshold gating: SetOptions is a HIGH-threshold operation. If no combination of
   // this app's satisfiable signers can reach the current high threshold, the normalization
@@ -385,6 +391,7 @@ export function buildPlan(
     hasCleanup &&
     !hasHardBlocker &&
     balancesNeedingClaimStep.length === 0 &&
+    exitBlockers.steps.length === 0 &&
     accountState.sponsoredEntries.length === 0 &&
     fusedOpCount <= OP_BATCH_LIMIT
   ) {
@@ -418,6 +425,14 @@ export function buildPlan(
   }
 
   // ─── Step generation ────────────────────────────────────────────────────────
+
+  // DeFi exits come first, exactly where the round builder runs them: each is its own Soroban
+  // transaction ahead of every classic step, and what it withdraws lands in a trustline the steps
+  // below then dispose of and remove. Shown first so the plan reads in execution order.
+  for (const exitStep of planExitSteps(detectedPositions, idx).steps) {
+    steps.push(exitStep);
+    idx++;
+  }
 
   if (needsSignerNormalization) {
     steps.push(
