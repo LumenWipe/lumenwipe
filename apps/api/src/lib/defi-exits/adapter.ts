@@ -1,5 +1,7 @@
 import type { DefiPosition, DefiProtocol, Network, PlanBlocker } from "@lumenwipe/types";
 import type { rpc, xdr } from "@stellar/stellar-sdk";
+import type { ContractKind } from "@/lib/contract-registry";
+import type { HealthInputs } from "./invariants";
 
 /**
  * The contract every protocol exit adapter implements (architecture.md §9.9), split so the parts
@@ -8,39 +10,56 @@ import type { rpc, xdr } from "@stellar/stellar-sdk";
  *   readLive  -> fresh amounts, debt, health from RPC, immediately before anything is built.
  *                The detection result (OctoPos or the testnet fallback) says a position exists;
  *                it never supplies the amount an exit moves.
- *   plan      -> pure: the ordered steps that close the position, or the blockers that stop it.
- *   buildStep -> pure: one step to one contract invocation, plus a description of what that
- *                invocation does, in the vocabulary a client-side verifier can check against.
+ *   plan      -> pure: the ordered steps that close the position, or the blockers that stop it,
+ *                given the code version the registry resolved for the position's contract.
+ *   health    -> pure: the collateral/debt state the plan leaves the position in before any
+ *                withdrawal (after its repays), or null for a position with no debt concept.
+ *   buildStep -> pure: one step to one contract invocation - built locally as an operation, or
+ *                obtained from an external builder as a whole envelope - plus a description of
+ *                what it does, in the vocabulary a client-side verifier can check against.
  *
- * `runExitAdapter` (run-exit.ts) drives the three in a fixed order and enforces, from outside the
- * adapter, the invariants no adapter is trusted to remember on its own: the live wasmHash must
- * resolve in the registry before readLive is even called, every built amount stays within the
- * live balance, every price-dependent step carries a minimum-received floor, repay precedes
- * withdraw, every step is simulated before it is offered for signing, and a position that yields
- * neither steps nor blockers is itself a blocker.
+ * `runExitAdapter` (run-exit.ts) drives these in a fixed order and enforces, from outside the
+ * adapter, the invariants no adapter is trusted to remember on its own: the registry must be
+ * fresh and must know the live wasmHash of every contract the plan touches before anything is
+ * read or built; every amount stays within the live balance; every price-dependent step carries
+ * a positive minimum-received floor; a position with debt repays before it withdraws and stays
+ * above its liquidation threshold; the intent must describe the bytes it travels with; the step
+ * is simulated (and, when built locally, assembled from that simulation) before it is offered;
+ * and a position that yields neither steps nor blockers is itself a blocker.
  *
- * Each step becomes its own transaction: a Soroban InvokeHostFunction cannot share a transaction
- * with classic operations, and simulation is per transaction (fused-close.ts).
+ * Only the first step of a plan is built per run: a Soroban invocation cannot share a
+ * transaction with classic operations, and simulation runs against the current ledger, so a
+ * later step (a withdraw after a repay) can only be simulated once the earlier one has confirmed.
+ * The close loop is already multi-round and re-reads live state each round, so the rest of the
+ * plan is re-planned fresh rather than pre-built stale.
  */
 
 export type ExitStepKind =
+  /** Pay down debt. */
   | "repay"
+  /** Take a lending supply back out; no price involved. */
   | "withdraw"
+  /** Take collateral out of a lending or CDP position; no price involved. */
   | "withdraw_collateral"
-  | "remove_liquidity"
+  /** Burn LP shares for the underlying assets; price-dependent, needs floors. */
+  | "lp_withdraw"
+  /** Trade one asset for another; price-dependent, needs a floor. */
   | "swap"
+  /** Collect rewards or emissions. */
   | "claim"
+  /** Unbond staked tokens. */
   | "unstake"
+  /** Queue a withdrawal that a cooldown will later allow. */
   | "queue_withdrawal";
 
-/** Kinds whose proceeds depend on a price or a route, so they must carry a fresh-quote floor. */
-export const MIN_RECEIVED_REQUIRED: readonly ExitStepKind[] = ["remove_liquidity", "swap"];
+/** Kinds whose proceeds depend on a price or a route, so they must carry fresh-quote floors. */
+export const MIN_RECEIVED_REQUIRED: readonly ExitStepKind[] = ["lp_withdraw", "swap"];
 
 /** Kinds that take value out of the position; each must follow every `repay` in the plan. */
 export const WITHDRAWAL_KINDS: readonly ExitStepKind[] = [
   "withdraw",
   "withdraw_collateral",
-  "remove_liquidity",
+  "lp_withdraw",
   "unstake",
 ];
 
@@ -52,14 +71,15 @@ export interface MinReceived {
 
 export interface ExitStep {
   kind: ExitStepKind;
-  /** The contract this step invokes - normally the position's own pool, pair, or vault. */
+  /** The contract this step invokes. Every distinct contract in a plan is registry-checked. */
   contract: string;
   function: string;
   /** What this step moves, in base units. */
   amount: string;
   /** The live balance `amount` must not exceed, in base units - from readLive, never detection. */
   ceiling: string;
-  minReceived: MinReceived | null;
+  /** One floor per asset received. Empty for kinds with no price exposure. */
+  minReceived: MinReceived[];
   /** Plain-language line for the plan review screen. */
   description: string;
 }
@@ -69,23 +89,39 @@ export interface ExitPlan {
   blockers: PlanBlocker[];
 }
 
+/** The registry's verdict on the position's contract, so the adapter encodes for the right ABI. */
+export interface ContractVersion {
+  version: string;
+  kind: ContractKind;
+}
+
 /**
- * What the adapter claims its operation does. The runner decodes the built operation and checks
- * the claim against it (contract and function), so an intent can describe but never misdescribe
- * the bytes it travels with. `args` are the decoded arguments rendered for a human.
+ * What the adapter claims its invocation does. The runner decodes the built bytes and checks the
+ * claim against them (contract, function, source) and against the step (floors, recipient), so
+ * an intent can describe but never misdescribe what the user is asked to sign. `args` are the
+ * decoded arguments rendered for a human.
  */
 export interface ExitIntent {
   contract: string;
   function: string;
   args: string[];
-  minReceived: MinReceived | null;
+  minReceived: MinReceived[];
   /** Who receives the exit's proceeds - always the account being closed. */
   recipient: string;
 }
 
+/**
+ * How the step's bytes were produced. `local` is an operation this adapter assembled; `external`
+ * is a whole envelope an outside builder returned (the Soroswap API), kept byte-for-byte and
+ * verified rather than trusted (§9.9 "verify server-built XDR").
+ */
+export type ExitBuild =
+  | { source: "local"; op: xdr.Operation }
+  | { source: "external"; provider: string; envelopeXdr: string };
+
 export interface BuiltExitStep {
   step: ExitStep;
-  op: xdr.Operation;
+  build: ExitBuild;
   intent: ExitIntent;
 }
 
@@ -106,6 +142,7 @@ export interface ExitAdapter<P extends DefiPosition, L> {
   protocol: DefiProtocol;
   supports(position: DefiPosition): position is P;
   readLive(position: P, ctx: ExitContext, rpc: ExitRpc): Promise<L>;
-  plan(position: P, live: L, ctx: ExitContext): ExitPlan;
+  plan(position: P, live: L, code: ContractVersion, ctx: ExitContext): ExitPlan;
+  health(position: P, live: L, steps: ExitStep[]): HealthInputs | null;
   buildStep(step: ExitStep, live: L, ctx: ExitContext): BuiltExitStep;
 }
