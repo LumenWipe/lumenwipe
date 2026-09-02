@@ -36,7 +36,13 @@
     "groups": [
       {
         "group": "Documentation",
-        "pages": ["index", "executive-summary", "architecture", "community-and-communications"]
+        "pages": [
+          "index",
+          "executive-summary",
+          "architecture",
+          "threat-model",
+          "community-and-communications"
+        ]
       },
       {
         "group": "Use cases",
