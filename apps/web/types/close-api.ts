@@ -104,8 +104,20 @@ export type IntentOperationBody =
       type: "invoke_host_function";
       contract: string;
       function: string;
+      /** The decoded arguments rendered for a human, in order. */
       args: string[];
+      /** Every Stellar account (G...) named anywhere in the arguments or in the authorization
+       *  tree the signature would satisfy. A verifier insists these are all the closing account. */
       accountsReferenced: string[];
+      /** Every contract (C...) named the same way, including nested calls the signature would
+       *  authorize. A verifier insists these are contracts the account is known to deal with. */
+      contractsReferenced: string[];
+      /** Address forms that cannot be pinned to anything (muxed accounts, claimable balances,
+       *  liquidity pools). A verifier refuses any. */
+      unsupportedAddressCount: number;
+      /** True when the signature would authorize more than the account's own plain contract
+       *  calls: another party's credentials, or a contract creation, in the auth entries. */
+      authorizesBeyondSelf: boolean;
     }
   | { type: "unknown" };
 

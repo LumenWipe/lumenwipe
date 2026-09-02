@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { test, expect } from "@playwright/test";
 import {
   Address,
@@ -30,6 +32,15 @@ const BLEND_POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
 /** Blend's `RequestType.Supply`. */
 const REQUEST_SUPPLY = 0;
 const SUPPLY_XLM_STROOPS = BigInt(100_000_000); // 10 XLM
+
+// The runner refuses every exit once the registry's validUntil passes, so past that date this
+// spec would fail for a reason that has nothing to do with the code under test. Skip with the
+// real reason instead: the registry needs re-verifying.
+const registry = JSON.parse(
+  readFileSync(resolve(__dirname, "../../../api/src/config/contract-registry.json"), "utf8")
+) as { validUntil: string; entries: { address: string; verifiedLive: boolean }[] };
+const registryExpired = new Date() > new Date(`${registry.validUntil}T23:59:59Z`);
+const poolRegistered = registry.entries.some((e) => e.address === BLEND_POOL && e.verifiedLive);
 
 async function fund(pub: string): Promise<void> {
   const res = await fetch(`${FRIENDBOT}/?addr=${encodeURIComponent(pub)}`);
@@ -104,6 +115,13 @@ async function poolPositionExists(owner: string): Promise<boolean> {
     v instanceof Map ? v.size : v && typeof v === "object" ? Object.keys(v).length : 0;
   return ["supply", "collateral", "liabilities"].some((k) => held(native[k]) > 0);
 }
+
+test.skip(
+  registryExpired || !poolRegistered,
+  registryExpired
+    ? `contract registry expired on ${registry.validUntil}; re-verify it before running this spec`
+    : "the Blend V2 testnet pool is no longer a verifiedLive registry entry"
+);
 
 test("close API: a Blend supply position is exited, then the account is merged", async ({
   request,

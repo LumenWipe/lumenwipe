@@ -85,6 +85,18 @@ describe("planExitSteps", () => {
     expect(blockers.map((b) => b.code)).toEqual(["defi_exit_unsupported"]);
   });
 
+  test("a target the adapter can only half exit blocks, naming the positions it cannot take", () => {
+    // A plain supply and a backstop deposit in the same pool: exiting the supply alone would
+    // leave the deposit behind unmentioned, so the whole target blocks until both are handled.
+    const { steps, blockers } = planExitSteps(
+      [blendSupply(POOL_A), blendSupply(POOL_A, { isBackstop: true })],
+      0
+    );
+    expect(steps).toEqual([]);
+    expect(blockers.map((b) => b.code)).toEqual(["defi_exit_unsupported"]);
+    expect(blockers[0]!.message).toContain("1 Blend position ");
+  });
+
   test("no positions, no steps, no blockers", () => {
     expect(planExitSteps([], 3)).toEqual({ steps: [], blockers: [] });
   });

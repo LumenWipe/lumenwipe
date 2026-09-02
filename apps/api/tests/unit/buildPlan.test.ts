@@ -2051,6 +2051,56 @@ test("buildPlan › a detected Blend position becomes an EXIT_POSITIONS step ahe
   expect(steps.map((s) => s.index)).toEqual(steps.map((_, i) => i));
 });
 
+test("buildPlan › exits are listed first even when signers, data, and offers are also in the plan - the order the rounds run", () => {
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      { key: Keypair.random().publicKey(), weight: 1, type: "ed25519_public_key" },
+    ],
+    dataEntries: [{ key: "note", value: "aGk=" }],
+    openOffers: [{ id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" }],
+    trustlines: [
+      {
+        asset: `USDC:${ISSUER}`,
+        code: "USDC",
+        issuer: ISSUER,
+        balance: "0.0000000",
+        authorized: true,
+      },
+    ],
+    defiPositions: makeDefiResult({
+      positions: [
+        {
+          protocol: "blend",
+          positionType: "supply",
+          contractAddress: BLEND_POOL,
+          assetAddress: SAC,
+          bTokenAmount: "10",
+          usdValue: null,
+        },
+      ],
+    }),
+  });
+  const { steps, blockers } = buildPlan(
+    account,
+    false,
+    true,
+    {},
+    undefined,
+    {},
+    {},
+    account.defiPositions
+  );
+  expect(blockers).toEqual([]);
+  const types = steps.map((s) => s.type);
+  expect(types[0]).toBe("EXIT_POSITIONS");
+  for (const classic of ["NORMALIZE_SIGNERS", "REMOVE_DATA_ENTRIES", "CANCEL_OFFERS"] as const) {
+    expect(types.indexOf(classic)).toBeGreaterThan(0);
+  }
+  // Soroban resource fees, not the classic per-operation rate.
+  expect(Number(steps[0]!.estimatedFeeLumens)).toBeGreaterThanOrEqual(0.01);
+});
+
 test("buildPlan › a position no adapter can exit blocks by name instead of vanishing from the plan", () => {
   const account = makeAccount({
     defiPositions: makeDefiResult({

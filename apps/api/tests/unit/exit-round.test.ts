@@ -184,7 +184,8 @@ describe("buildExitRound", () => {
       }
     );
     expect(seen!.sequence).toBe("4242");
-    expect(Object.values(seen!.balances)).toContain("70000000");
+    // Spendable, not nominal: 7 XLM less the 1 XLM base reserve and the exit fee margin.
+    expect(Object.values(seen!.balances)).toContain("59900000");
   });
 
   test("a target already gone (exited on a previous round) is skipped, the next one builds", async () => {
@@ -245,6 +246,25 @@ describe("buildExitRound", () => {
           usdValue: null,
         },
       ]),
+      "testnet",
+      "100",
+      1000,
+      {
+        rpc,
+        runExitAdapter: async () => {
+          ran = true;
+          return blocked(POOL, "x");
+        },
+      }
+    );
+    await expect(promise).rejects.toMatchObject({ code: "defi_exit_unsupported" });
+    expect(ran).toBe(false);
+  });
+
+  test("a pool holding a position the adapter cannot take refuses whole, before running anything", async () => {
+    let ran = false;
+    const promise = buildExitRound(
+      account([supply(POOL), { ...supply(POOL), isBackstop: true }]),
       "testnet",
       "100",
       1000,

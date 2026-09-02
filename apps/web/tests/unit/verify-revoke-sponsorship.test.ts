@@ -26,6 +26,8 @@ function baseExpected(): CloseExpectation {
     memoType: null,
     claimTrustlineAssets: [],
     transfers: {},
+    exitContracts: [],
+    heldTokenContracts: [],
     accountSigners: [],
     accountThresholds: { low: 0, med: 1, high: 1 },
   };

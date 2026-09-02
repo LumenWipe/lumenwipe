@@ -426,6 +426,14 @@ export function buildPlan(
 
   // ─── Step generation ────────────────────────────────────────────────────────
 
+  // DeFi exits come first, exactly where the round builder runs them: each is its own Soroban
+  // transaction ahead of every classic step, and what it withdraws lands in a trustline the steps
+  // below then dispose of and remove. Shown first so the plan reads in execution order.
+  for (const exitStep of planExitSteps(detectedPositions, idx).steps) {
+    steps.push(exitStep);
+    idx++;
+  }
+
   if (needsSignerNormalization) {
     steps.push(
       step(
@@ -497,13 +505,6 @@ export function buildPlan(
         )
       );
     }
-  }
-
-  // DeFi exits run before any classic cleanup: each is its own Soroban transaction, and what it
-  // withdraws lands in a trustline the steps below then dispose of and remove.
-  for (const exitStep of planExitSteps(detectedPositions, idx).steps) {
-    steps.push(exitStep);
-    idx++;
   }
 
   // Balances that need a trustline added before they can be claimed (the remediation path).

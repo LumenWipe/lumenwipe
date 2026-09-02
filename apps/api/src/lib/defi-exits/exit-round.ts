@@ -2,7 +2,7 @@ import type { AccountState, CloseTransaction, Network } from "@lumenwipe/types";
 import { SLIPPAGE_BPS } from "@/config/constants";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
-import type { ExitRpc } from "./adapter";
+import { EXIT_POSITION_GONE, type ExitRpc } from "./adapter";
 import { exitAdapterFor } from "./catalog";
 import { exitablePositions, groupExitTargets } from "./plan-exits";
 import { runExitAdapter, type ExitRunResult } from "./run-exit";
@@ -70,7 +70,7 @@ export async function buildExitRound(
     const target = targets[i]!;
     const adapter = exitAdapterFor(target.protocol);
     const exitable = exitablePositions(target);
-    if (!adapter || !exitable || exitable.length === 0) {
+    if (!adapter || !exitable || exitable.length < target.positions.length) {
       throw new ExitRoundBlockedError(
         "defi_exit_unsupported",
         `This account holds a ${target.protocol} position LumenWipe cannot exit yet. Close it ` +
@@ -85,7 +85,7 @@ export async function buildExitRound(
       // Detection can lag the ledger by a snapshot: a position already exited on a previous
       // round may still be reported. "Gone" means nothing is left there - move on.
       const gone =
-        result.blockers.length > 0 && result.blockers.every((b) => b.code === "exit_position_gone");
+        result.blockers.length > 0 && result.blockers.every((b) => b.code === EXIT_POSITION_GONE);
       if (gone) continue;
       const first = result.blockers[0];
       throw new ExitRoundBlockedError(

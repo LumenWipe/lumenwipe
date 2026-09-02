@@ -8,7 +8,11 @@ import {
   rpc as stellarRpc,
   xdr,
 } from "@stellar/stellar-sdk";
-import { BASE_FEE_STROOPS, TX_TIMEOUT_SECONDS } from "@/config/constants";
+import {
+  BASE_FEE_STROOPS,
+  MAX_SOROBAN_EXIT_FEE_STROOPS,
+  TX_TIMEOUT_SECONDS,
+} from "@/config/constants";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { isRegistryFresh, resolveWasmHash, type ContractResolution } from "@/lib/contract-registry";
 import { readLiveWasmHash, type LedgerEntriesReader } from "@/lib/stellar/contract-instance";
@@ -458,6 +462,37 @@ export async function runExitAdapter<P extends DefiPosition, L>(
       built.build.source === "local" ? stellarRpc.assembleTransaction(tx, simulation).build() : tx;
   } catch {
     return adapterError("assemble");
+  }
+
+  // 7. What the simulation added must still be something a single-account close can sign: the
+  // authorization tree may carry only the source account's own credentials - an entry for any
+  // other address would need that party's signature, and would mean the call acts for someone
+  // else - and the resource fee it priced must be in the range a real exit costs.
+  const assembled = signable.operations[0];
+  if (assembled?.type === "invokeHostFunction") {
+    for (const entry of assembled.auth ?? []) {
+      if (
+        entry.credentials().switch() !==
+        xdr.SorobanCredentialsType.sorobanCredentialsSourceAccount()
+      ) {
+        return blocked(contract, resolution, steps, [
+          blocker(
+            "exit_requires_other_signer",
+            `Exiting this ${protocol} position would need authorization from another account, ` +
+              "which a close cannot provide. Nothing was built; this position needs manual review."
+          ),
+        ]);
+      }
+    }
+  }
+  if (BigInt(signable.fee) > BigInt(MAX_SOROBAN_EXIT_FEE_STROOPS)) {
+    return blocked(contract, resolution, steps, [
+      blocker(
+        "exit_fee_excessive",
+        `The network priced this ${protocol} exit far above what an exit normally costs, so ` +
+          "nothing was built. Retry the analysis; if it keeps happening the position needs manual review."
+      ),
+    ]);
   }
 
   return {

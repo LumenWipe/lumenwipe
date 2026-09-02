@@ -133,6 +133,12 @@ async function verifyEntry(
 ): Promise<boolean> {
   const liveWasmHash = await readLiveWasmHash(rpc, entry.address);
   if (liveWasmHash === null) {
+    // The registry already records this entry as absent from the network (verifiedLive: false,
+    // FxDAO's documented-but-undeployed vault today). Still absent is the registry's fact, not
+    // this account's, and flagging it would block every account on the network - so it is
+    // skipped only while the network agrees with the registry. The moment it resolves, the
+    // branch below reports it, because a contract the registry has no hash for cannot be read.
+    if (!entry.verifiedLive) return false;
     unrecognized.push({
       protocol: entry.protocol,
       rawType: "registry-entry-unresolvable",
@@ -140,7 +146,15 @@ async function verifyEntry(
     });
     return false;
   }
-  if (entry.wasmHash !== null && liveWasmHash !== entry.wasmHash) {
+  if (entry.wasmHash === null) {
+    unrecognized.push({
+      protocol: entry.protocol,
+      rawType: "registry-entry-unpinned",
+      reason: `registered ${entry.kind} contract ${entry.address} resolves on testnet (wasmHash ${liveWasmHash}) but the registry records no wasmHash to verify it against`,
+    });
+    return false;
+  }
+  if (liveWasmHash !== entry.wasmHash) {
     unrecognized.push({
       protocol: entry.protocol,
       rawType: "wasmhash-mismatch",
@@ -295,12 +309,6 @@ export async function detectDefiPositionsViaDirectRead(
 
   for (const entry of entries) {
     if (entry.kind === "factory" || entry.kind === "router" || entry.kind === "backstop") continue;
-    // An entry the registry itself records as not resolvable on this network (documented by the
-    // protocol, absent from the ledger) is a registry fact, not something about this account.
-    // Probing it would report an "unrecognized position" for every account on the network - and
-    // the plan gate turns that into a blocker - so it is skipped here and stays visible where it
-    // belongs, in the registry's own verifiedLive flag.
-    if (!entry.verifiedLive) continue;
 
     const verified = await verifyEntry(rpc, entry, unrecognized);
     if (!verified) continue;

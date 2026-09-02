@@ -1,4 +1,5 @@
 export {
+  EXIT_POSITION_GONE,
   MIN_RECEIVED_REQUIRED,
   WITHDRAWAL_KINDS,
   type BuiltExitStep,

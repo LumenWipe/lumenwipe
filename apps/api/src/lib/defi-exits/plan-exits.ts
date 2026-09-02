@@ -1,5 +1,6 @@
 import type { DefiPosition, DefiProtocol, PlanBlocker, PlannedStep } from "@lumenwipe/types";
-import { estimateFeeLumens } from "@/lib/utils/amounts";
+import { SOROBAN_EXIT_FEE_ESTIMATE_STROOPS } from "@/config/constants";
+import { stroopsToXlm } from "@/lib/utils/amounts";
 import { exitAdapterFor } from "./catalog";
 
 /**
@@ -71,13 +72,17 @@ export function planExitSteps(positions: DefiPosition[], startIndex: number): Pl
     const label = PROTOCOL_LABEL[target.protocol];
     const where = `${label} ${shortContract(target.contract)}`;
     const exitable = exitablePositions(target);
-    if (exitable === null || exitable.length === 0) {
+    // Every position in the target must be one the adapter takes; a pool holding both a plain
+    // supply and, say, a backstop deposit is not exitable until the adapter handles both, and the
+    // half it cannot take must never fall out of the plan unmentioned.
+    if (exitable === null || exitable.length < target.positions.length) {
+      const stuck = target.positions.length - (exitable?.length ?? 0);
       blockers.push({
         code: "defi_exit_unsupported",
         message:
-          `This account holds ${target.positions.length} ${label} position${target.positions.length === 1 ? "" : "s"} ` +
+          `This account holds ${stuck} ${label} position${stuck === 1 ? "" : "s"} ` +
           `in ${shortContract(target.contract)} that LumenWipe cannot exit yet. Close ` +
-          `${target.positions.length === 1 ? "it" : "them"} through ${label} before continuing.`,
+          `${stuck === 1 ? "it" : "them"} through ${label} before continuing.`,
       });
       continue;
     }
@@ -87,10 +92,10 @@ export function planExitSteps(positions: DefiPosition[], startIndex: number): Pl
       type: "EXIT_POSITIONS",
       title: `Exit ${where}`,
       description:
-        `Repay any debt and withdraw ${count} position${count === 1 ? "" : "s"} from ${where}. ` +
-        "Each exit is its own transaction, simulated against live state before you sign it.",
+        `Leave ${where}: settle any debt first, then withdraw ${count} position${count === 1 ? "" : "s"}. ` +
+        "Each step is its own transaction, simulated against live state before you sign it.",
       operationCount: count,
-      estimatedFeeLumens: estimateFeeLumens(count),
+      estimatedFeeLumens: stroopsToXlm(SOROBAN_EXIT_FEE_ESTIMATE_STROOPS * count),
       txXdr: null,
       status: "pending",
       txHash: null,

@@ -39,6 +39,8 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
     memoType: null,
     claimTrustlineAssets: [],
     transfers: {},
+    exitContracts: [POOL],
+    heldTokenContracts: [XLM_SAC],
     accountSigners: [
       { key: SRC, weight: 1, type: "ed25519_public_key" },
       { key: REMOVED_SIGNER, weight: 1, type: "ed25519_public_key" },
@@ -747,6 +749,8 @@ test("verifyCloseTransaction passes a mediated close to a memo-requiring exchang
         memo: "deposit-1",
         claimTrustlineAssets: [],
         transfers: {},
+        exitContracts: [],
+        heldTokenContracts: [],
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
       },
@@ -777,6 +781,8 @@ test("verifyCloseTransaction rejects a mediated close to a memo-requiring exchan
         memo: null,
         claimTrustlineAssets: [],
         transfers: {},
+        exitContracts: [],
+        heldTokenContracts: [],
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
       },
@@ -798,6 +804,8 @@ test("verifyCloseTransaction passes a direct close to a destination the registry
         memo: null,
         claimTrustlineAssets: [],
         transfers: {},
+        exitContracts: [],
+        heldTokenContracts: [],
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
       },
@@ -986,37 +994,80 @@ test("the mediated forward is exempt: it is sent by the intermediary, not the so
 // ─── DeFi exits: a contract invocation is checked structurally ───────────────
 
 const POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
-const exit = (accounts: string[] = [SRC], source = SRC): IntentOperation => ({
-  source,
+const XLM_SAC = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
+const OTHER_POOL = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
+type ExitOp = Extract<IntentOperation, { type: "invoke_host_function" }>;
+const exit = (over: Partial<ExitOp> = {}): IntentOperation => ({
+  source: SRC,
   type: "invoke_host_function",
   contract: POOL,
   function: "submit",
   args: [],
-  accountsReferenced: accounts,
+  accountsReferenced: [SRC],
+  contractsReferenced: [POOL],
+  unsupportedAddressCount: 0,
+  authorizesBeyondSelf: false,
+  ...over,
 });
-
-test("an exit that acts for, and only names, the account being closed passes", () => {
-  const i = intent({
-    operations: [exit()],
+const exitOnly = (op: IntentOperation, fee = "100") =>
+  intent({
+    fee,
+    operations: [op],
     guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
   });
-  expect(() => assertCloseIntent(i, expectation())).not.toThrow();
+
+test("an exit that acts for, and only names, the account being closed, against a contract it holds a position in, passes", () => {
+  expect(() => assertCloseIntent(exitOnly(exit()), expectation())).not.toThrow();
+});
+
+test("an exit may name the token contracts of assets the account holds - a repay spends one", () => {
+  const op = exit({ contractsReferenced: [POOL, XLM_SAC] });
+  expect(() => assertCloseIntent(exitOnly(op), expectation())).not.toThrow();
 });
 
 test("rejects an exit whose arguments name any other account - proceeds could go there", () => {
-  const i = intent({
-    operations: [exit([SRC, ATTACKER])],
-    guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
-  });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/other than the one being closed/);
+  const op = exit({ accountsReferenced: [SRC, ATTACKER] });
+  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(
+    /other than the one being closed/
+  );
+});
+
+test("rejects an exit that names a contract the account has no position or balance in - a contract-typed recipient", () => {
+  const op = exit({ contractsReferenced: [POOL, OTHER_POOL] });
+  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(/no position or balance in/);
+});
+
+test("rejects an exit that invokes a contract the analysis never showed a position in", () => {
+  const op = exit({ contract: OTHER_POOL, contractsReferenced: [OTHER_POOL] });
+  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(/not one of this account/);
+});
+
+test("rejects an exit when the client has no positions to pin it to - fails closed", () => {
+  expect(() => assertCloseIntent(exitOnly(exit()), expectation({ exitContracts: [] }))).toThrow(
+    VerificationError
+  );
+});
+
+test("rejects an exit that names an address form the check cannot pin - a muxed recipient", () => {
+  const op = exit({ unsupportedAddressCount: 1 });
+  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(/cannot be verified/);
+});
+
+test("rejects an exit whose signature would authorize more than the account's own call - a hidden sub-invocation or another party's credentials", () => {
+  const op = exit({ authorizesBeyondSelf: true });
+  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(/beyond this account/);
 });
 
 test("rejects an exit sourced from another account", () => {
-  const i = intent({
-    operations: [exit([SRC], ATTACKER)],
-    guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
-  });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/act for an account other/);
+  const op = exit({ source: ATTACKER });
+  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(/act for an account other/);
+});
+
+test("rejects an exit whose fee is far above what any exit costs", () => {
+  expect(() => assertCloseIntent(exitOnly(exit(), "10000001"), expectation())).toThrow(
+    /network fee far above/
+  );
+  expect(() => assertCloseIntent(exitOnly(exit(), "10000000"), expectation())).not.toThrow();
 });
 
 test("rejects an exit that shares its transaction with anything else", () => {

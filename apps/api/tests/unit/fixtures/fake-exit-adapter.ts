@@ -221,6 +221,10 @@ export interface FakeRpcOptions {
   /** Live balance the fake adapter reads, base units. */
   liveBalance: string;
   simulation?: "ok" | "error" | "restore";
+  /** Authorization entries the simulation "discovers" (base64 SorobanAuthorizationEntry). */
+  simulatedAuth?: string[];
+  /** The resource fee the simulation prices, stroops. */
+  simulatedResourceFee?: string;
 }
 
 function instanceEntry(contract: string, wasmHash: string): xdr.LedgerEntryData {
@@ -255,17 +259,24 @@ function balanceEntry(contract: string, balance: string): xdr.LedgerEntryData {
 const BALANCE_KEY_XDR = symbolVal("Balance").toXDR("base64");
 
 /** Raw (unparsed) simulation responses, the shape the SDK's own parser and assembler accept. */
-function rawSimulation(mode: "ok" | "error" | "restore"): rpc.Api.SimulateTransactionResponse {
-  const transactionData = new SorobanDataBuilder().build().toXDR("base64");
+function rawSimulation(
+  mode: "ok" | "error" | "restore",
+  auth: string[],
+  minResourceFee: string
+): rpc.Api.SimulateTransactionResponse {
+  const transactionData = new SorobanDataBuilder()
+    .setResourceFee(BigInt(minResourceFee))
+    .build()
+    .toXDR("base64");
   const base = { id: "1", latestLedger: 1, events: [] as string[] };
   const body =
     mode === "error"
       ? { ...base, error: "HostError: Error(Contract, #3)" }
       : {
           ...base,
-          minResourceFee: "12345",
+          minResourceFee,
           transactionData,
-          results: [{ auth: [], xdr: xdr.ScVal.scvVoid().toXDR("base64") }],
+          results: [{ auth, xdr: xdr.ScVal.scvVoid().toXDR("base64") }],
           ...(mode === "restore"
             ? { restorePreamble: { minResourceFee: "500", transactionData } }
             : {}),
@@ -301,7 +312,11 @@ export function fakeExitRpc(options: FakeRpcOptions): ExitRpc & { simulateCalls:
     },
     async simulateTransaction(tx: Transaction): Promise<rpc.Api.SimulateTransactionResponse> {
       simulateCalls.push(tx);
-      return rawSimulation(options.simulation ?? "ok");
+      return rawSimulation(
+        options.simulation ?? "ok",
+        options.simulatedAuth ?? [],
+        options.simulatedResourceFee ?? "12345"
+      );
     },
   };
 }

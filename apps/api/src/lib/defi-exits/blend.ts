@@ -19,7 +19,13 @@ import type {
 } from "@lumenwipe/types";
 import { xdr } from "@stellar/stellar-sdk";
 import { NETWORK_PASSPHRASES, RPC_HEADERS, RPC_URLS } from "@/config/networks";
-import type { BuiltExitStep, ExitAdapter, ExitPlan, ExitStep } from "./adapter";
+import {
+  EXIT_POSITION_GONE,
+  type BuiltExitStep,
+  type ExitAdapter,
+  type ExitPlan,
+  type ExitStep,
+} from "./adapter";
 import type { HealthInputs } from "./invariants";
 import { compareBaseUnits, isBaseUnits } from "./invariants";
 
@@ -319,7 +325,7 @@ export function blendExitAdapter(
 
       if (steps.length === 0) {
         return manualReview(
-          "exit_position_gone",
+          EXIT_POSITION_GONE,
           `The Blend position detected in pool ${pool} no longer shows any balance on the network. ` +
             "Re-run the analysis; if it persists, this position needs manual review."
         );

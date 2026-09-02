@@ -7,6 +7,7 @@ import {
 import { NETWORK_PASSPHRASES, getMediatorPublicKey, type Network } from "@/config/networks";
 import { BASE_FEE_STROOPS, OP_BATCH_LIMIT, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import { getRpcServer } from "@/lib/stellar/rpc";
+import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
 import {
   fetchLiveTrustlineBalance,
   filterExistingClaimableBalances,
@@ -137,6 +138,15 @@ export async function buildCloseTransactions(
       trustlineBlockers[0]!.message,
       422
     );
+  }
+  // The plan's DeFi gate, re-applied for the same reason: an SDK caller never asked for a plan,
+  // and a web session's plan may be minutes old. Positions that could not be confirmed (an
+  // indexer outage, a stale snapshot, a contract that could not be read) must not reach a merge
+  // that would strand them - the exit round below can only leave what detection actually saw.
+  const defiBlockers = assessDefiPositionsGate(accountState.defiPositions);
+  if (defiBlockers.length > 0) {
+    const first = defiBlockers[0]!;
+    throw new CloseBuildError(first.code ?? "defi_positions_blocked", first.message, 422);
   }
 
   const server = getRpcServer(network);

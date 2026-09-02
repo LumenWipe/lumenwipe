@@ -97,6 +97,14 @@ export interface ExitPlan {
   blockers: PlanBlocker[];
 }
 
+/**
+ * The one blocker code with a meaning the round builder acts on: the position detection reported
+ * no longer exists on the ledger (typically exited on an earlier round, with detection lagging a
+ * snapshot). A round treats it as "nothing left here" and moves on; every other blocker refuses
+ * the build. Adapters must use exactly this code for that case.
+ */
+export const EXIT_POSITION_GONE = "exit_position_gone";
+
 /** The registry's verdict on the position's contract, so the adapter encodes for the right ABI. */
 export interface ContractVersion {
   version: string;
