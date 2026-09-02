@@ -295,6 +295,12 @@ export async function detectDefiPositionsViaDirectRead(
 
   for (const entry of entries) {
     if (entry.kind === "factory" || entry.kind === "router" || entry.kind === "backstop") continue;
+    // An entry the registry itself records as not resolvable on this network (documented by the
+    // protocol, absent from the ledger) is a registry fact, not something about this account.
+    // Probing it would report an "unrecognized position" for every account on the network - and
+    // the plan gate turns that into a blocker - so it is skipped here and stays visible where it
+    // belongs, in the registry's own verifiedLive flag.
+    if (!entry.verifiedLive) continue;
 
     const verified = await verifyEntry(rpc, entry, unrecognized);
     if (!verified) continue;

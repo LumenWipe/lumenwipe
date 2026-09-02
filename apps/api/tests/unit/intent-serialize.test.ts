@@ -272,3 +272,46 @@ test("intentFromXdr decodes a set_options op's flags, home domain, and inflation
     inflationDest: inflationTarget,
   });
 });
+
+// ─── Soroban contract invocations (DeFi exits) ───────────────────────────────
+
+test("intentFromXdr describes a contract invocation: contract, function, rendered args, and every account named", () => {
+  const { Address, nativeToScVal } =
+    require("@stellar/stellar-sdk") as typeof import("@stellar/stellar-sdk");
+  const POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
+  const OTHER = Keypair.random().publicKey();
+  const op = Operation.invokeContractFunction({
+    contract: POOL,
+    function: "submit",
+    args: [
+      new Address(SRC).toScVal(),
+      new Address(SRC).toScVal(),
+      // A recipient buried inside a vector of structs is still found.
+      xdr.ScVal.scvVec([
+        xdr.ScVal.scvMap([
+          new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("to"), val: new Address(OTHER).toScVal() }),
+          new xdr.ScMapEntry({
+            key: xdr.ScVal.scvSymbol("amount"),
+            val: nativeToScVal(5n, { type: "i128" }),
+          }),
+        ]),
+      ]),
+    ],
+  });
+  const intent = intentFromXdr(txWith(op as never), Networks.TESTNET);
+  const [described] = intent.operations;
+  expect(described).toMatchObject({
+    source: SRC,
+    type: "invoke_host_function",
+    contract: POOL,
+    function: "submit",
+    accountsReferenced: [SRC, OTHER].sort(),
+  });
+  if (described!.type !== "invoke_host_function") throw new Error("expected an invocation");
+  expect(described.args).toHaveLength(3);
+  expect(described.args[0]).toBe(SRC);
+  expect(described.args[2]).toContain('"amount":"5"');
+  // An invocation moves no classic funds, so the classic guarantees stay empty.
+  expect(intent.guarantees.paymentsOnlyTo).toEqual([]);
+  expect(intent.guarantees.mergeDestination).toBeNull();
+});

@@ -117,6 +117,17 @@ export type IntentOperationBody =
       entryKind: "account" | "trustline" | "offer" | "data_entry" | "signer";
       owner: string;
     }
+  // A Soroban contract invocation - a DeFi exit. `accountsReferenced` lists every Stellar
+  // account address anywhere in the arguments, so a verifier can insist that an exit only ever
+  // acts for, and pays, the account being closed - without knowing the protocol's ABI.
+  | {
+      type: "invoke_host_function";
+      contract: string;
+      function: string;
+      /** The decoded arguments rendered for a human, in order. */
+      args: string[];
+      accountsReferenced: string[];
+    }
   // Any operation the close vocabulary does not recognize, preserved rather than dropped so
   // verification can reject an effect it cannot describe.
   | { type: "unknown" };

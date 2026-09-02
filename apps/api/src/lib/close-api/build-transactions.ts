@@ -1,4 +1,9 @@
 import { Account, Memo, TransactionBuilder } from "@stellar/stellar-sdk";
+import {
+  buildExitRound,
+  ExitRoundBlockedError,
+  type ExitRoundDeps,
+} from "@/lib/defi-exits/exit-round";
 import { NETWORK_PASSPHRASES, getMediatorPublicKey, type Network } from "@/config/networks";
 import { BASE_FEE_STROOPS, OP_BATCH_LIMIT, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import { getRpcServer } from "@/lib/stellar/rpc";
@@ -105,7 +110,8 @@ export async function buildCloseTransactions(
   network: Network,
   memo: string | null = null,
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {},
-  transferDestinations: TransferDestinations = {}
+  transferDestinations: TransferDestinations = {},
+  exitDeps: Partial<ExitRoundDeps> = {}
 ): Promise<CloseBuildResult> {
   // Reject the same two hostile states buildPlan() blocks (issue #167), before any read or
   // build work: /close/transactions is an API-key product surface with an SDK, and
@@ -139,6 +145,30 @@ export async function buildCloseTransactions(
   const latest = await server.getLatestLedger();
   // Ledgers close roughly every 5s; surface an approximate ledger bound for the tx time bound.
   const validUntilLedger = latest.sequence + Math.ceil(TX_TIMEOUT_SECONDS / 5);
+
+  // Round 0 for accounts with DeFi positions: leave every protocol first, one Soroban transaction
+  // per step (a repay, then a withdraw...), each simulated against the current ledger. Proceeds
+  // land in trustlines the later rounds dispose of and remove. The client submits, waits, and
+  // calls again; positions are re-detected from live state each time.
+  try {
+    const exit = await buildExitRound(
+      accountState,
+      network,
+      sdkAccount.sequenceNumber(),
+      validUntilLedger,
+      { rpc: server, ...exitDeps }
+    );
+    if (exit) {
+      return {
+        transactions: [exit.transaction],
+        requiresAnotherCall: true,
+        remainingSteps: exit.remainingSteps + 1,
+      };
+    }
+  } catch (e) {
+    if (e instanceof ExitRoundBlockedError) throw new CloseBuildError(e.code, e.message, 422);
+    throw e;
+  }
 
   // Round 1 for claimable-balance accounts: claim first (re-reading which are still
   // on-chain), then the client calls again to build the now claimable-free close. The

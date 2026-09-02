@@ -406,6 +406,29 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
           );
         }
         break;
+      case "invoke_host_function":
+        // A DeFi exit. The client cannot know a protocol's ABI, so the check is structural and
+        // protocol-blind: the invocation must be the transaction's only operation (a Soroban
+        // call cannot share one with classic ops, so anything alongside it is foreign), it must
+        // act as the account being closed, and every account its arguments name - the position
+        // owner, the spender, the recipient - must be that same account. Proceeds therefore
+        // cannot be routed anywhere else, whatever the contract is.
+        if (intent.operations.length !== 1) {
+          throw new VerificationError("A DeFi exit must be the only operation in its transaction.");
+        }
+        if (op.source !== expected.source) {
+          throw new VerificationError(
+            "A DeFi exit would act for an account other than the one being closed."
+          );
+        }
+        for (const account of op.accountsReferenced) {
+          if (account !== expected.source) {
+            throw new VerificationError(
+              "A DeFi exit would send funds to, or act for, an account other than the one being closed."
+            );
+          }
+        }
+        break;
       // Stryker disable next-line StringLiteral: disabling this case label sends an "unknown"
       // op to the exhaustiveness-guard `default` below, which throws the exact same message -
       // the two branches are textually identical on purpose (see that guard's comment), so this

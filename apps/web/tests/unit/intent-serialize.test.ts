@@ -213,3 +213,28 @@ test("intentFromXdr decodes a set_options op's flags, home domain, and inflation
     inflationDest: inflationTarget,
   });
 });
+
+// ─── Soroban contract invocations (DeFi exits) ───────────────────────────────
+
+test("intentFromXdr describes a contract invocation and every account its arguments name", () => {
+  const { Address, nativeToScVal } =
+    require("@stellar/stellar-sdk") as typeof import("@stellar/stellar-sdk");
+  const POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
+  const OTHER = Keypair.random().publicKey();
+  const op = Operation.invokeContractFunction({
+    contract: POOL,
+    function: "submit",
+    args: [
+      new Address(SRC).toScVal(),
+      xdr.ScVal.scvVec([new Address(OTHER).toScVal(), nativeToScVal(BigInt(5), { type: "i128" })]),
+    ],
+  });
+  const intent = intentFromXdr(txWith(op as never), Networks.TESTNET);
+  expect(intent.operations[0]).toMatchObject({
+    source: SRC,
+    type: "invoke_host_function",
+    contract: POOL,
+    function: "submit",
+    accountsReferenced: [SRC, OTHER].sort(),
+  });
+});

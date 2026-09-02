@@ -36,13 +36,13 @@ test.skipIf(!RUN_INTEGRATION)(
     expect(result.network).toBe("testnet");
     expect(Array.isArray(result.positions)).toBe(true);
     expect(result.positions).toEqual([]);
-    // The FxDAO entry is documented-but-currently-unresolvable (see contract-registry.json) -
-    // this is the real, live confirmation of that gap, not a simulated one.
+    // The FxDAO entry is documented-but-currently-unresolvable (see contract-registry.json). The
+    // registry records that (verifiedLive: false) and the read skips it, so a fresh account is
+    // clean rather than blocked on a registry gap it has nothing to do with.
     expect(
-      result.unrecognizedPositions.some(
-        (u) => u.protocol === "fxdao" && u.rawType === "registry-entry-unresolvable"
-      )
+      servedContractRegistry().entries.some((e) => e.protocol === "fxdao" && !e.verifiedLive)
     ).toBe(true);
+    expect(result.unrecognizedPositions).toEqual([]);
   },
   30_000
 );

@@ -259,3 +259,24 @@ test("a zero LP share balance produces no position", async () => {
   });
   expect(result.positions).toEqual([]);
 });
+
+test("an entry the registry itself marks as not live is skipped, not reported against the account", async () => {
+  // Registry-level knowledge (verifiedLive: false) is not a fact about this account. If it were
+  // probed and flagged, every account on the network would carry the same "unrecognized
+  // position" and the plan gate would block them all on a registry gap.
+  const entries = [
+    registryEntry({
+      address: FXDAO_VAULTS,
+      protocol: "fxdao",
+      kind: "vault",
+      wasmHash: null,
+      verifiedLive: false,
+    }),
+  ];
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([]),
+    registryEntries: entries,
+  });
+  expect(result.positions).toEqual([]);
+  expect(result.unrecognizedPositions).toEqual([]);
+});

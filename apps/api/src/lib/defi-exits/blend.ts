@@ -319,7 +319,7 @@ export function blendExitAdapter(
 
       if (steps.length === 0) {
         return manualReview(
-          "blend_position_gone",
+          "exit_position_gone",
           `The Blend position detected in pool ${pool} no longer shows any balance on the network. ` +
             "Re-run the analysis; if it persists, this position needs manual review."
         );

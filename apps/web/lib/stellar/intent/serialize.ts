@@ -1,4 +1,5 @@
 import { TransactionBuilder, StrKey, type Asset, type Transaction } from "@stellar/stellar-sdk";
+import { describeInvocation } from "./invocation";
 import type { AccountSigner } from "@/types/account";
 import type { IntentOperation, IntentOperationBody, TxIntent } from "@/types/close-api";
 
@@ -117,6 +118,8 @@ function normalizeOp(op: Transaction["operations"][number]): IntentOperationBody
       return { type: "revoke_sponsorship", entryKind: "data_entry", owner: op.account };
     case "revokeSignerSponsorship":
       return { type: "revoke_sponsorship", entryKind: "signer", owner: op.account };
+    case "invokeHostFunction":
+      return describeInvocation(op);
     default:
       // Any operation the close vocabulary does not recognize is preserved as `unknown`
       // (not dropped) so verify() can reject a smuggled effect it cannot describe.

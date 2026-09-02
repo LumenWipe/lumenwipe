@@ -982,3 +982,44 @@ test("the mediated forward is exempt: it is sent by the intermediary, not the so
     )
   ).not.toThrow();
 });
+
+// ─── DeFi exits: a contract invocation is checked structurally ───────────────
+
+const POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
+const exit = (accounts: string[] = [SRC], source = SRC): IntentOperation => ({
+  source,
+  type: "invoke_host_function",
+  contract: POOL,
+  function: "submit",
+  args: [],
+  accountsReferenced: accounts,
+});
+
+test("an exit that acts for, and only names, the account being closed passes", () => {
+  const i = intent({
+    operations: [exit()],
+    guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
+  });
+  expect(() => assertCloseIntent(i, expectation())).not.toThrow();
+});
+
+test("rejects an exit whose arguments name any other account - proceeds could go there", () => {
+  const i = intent({
+    operations: [exit([SRC, ATTACKER])],
+    guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
+  });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/other than the one being closed/);
+});
+
+test("rejects an exit sourced from another account", () => {
+  const i = intent({
+    operations: [exit([SRC], ATTACKER)],
+    guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
+  });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/act for an account other/);
+});
+
+test("rejects an exit that shares its transaction with anything else", () => {
+  const i = intent({ operations: [exit(), merge(DEST)] });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/only operation/);
+});
