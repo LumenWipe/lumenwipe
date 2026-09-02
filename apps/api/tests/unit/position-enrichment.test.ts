@@ -19,6 +19,7 @@ import {
   positionKey,
   type EnrichContext,
 } from "@/lib/defi-positions/enrich";
+import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 const USER = "GBUYBKHUCCAKG4LM76DONHABFRZSZEHK7ARNEEXBZ3CMVIYKZXPLPVRG";
 const POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
@@ -107,15 +108,7 @@ function ctx(over: Partial<EnrichContext> = {}): EnrichContext {
 }
 
 function result(positions: DefiPositionsResult["positions"]): DefiPositionsResult {
-  return {
-    address: USER,
-    network: "testnet",
-    positions,
-    unrecognizedPositions: [],
-    enrichment: {},
-    source: "testnet-direct-read",
-    timestamp: new Date().toISOString(),
-  };
+  return { ...emptyDefiPositionsResult(USER), positions, source: "testnet-direct-read" };
 }
 
 describe("formatUnits", () => {

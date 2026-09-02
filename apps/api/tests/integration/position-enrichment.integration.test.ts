@@ -4,6 +4,7 @@ import type { BlendSupplyPosition } from "@lumenwipe/types";
 import { servedContractRegistry } from "@/lib/contract-registry";
 import { enrichDefiPositions, knownTokensFor, positionKey } from "@/lib/defi-positions/enrich";
 import { blendPositionEnricher } from "@/lib/defi-positions/enrich/blend";
+import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
 
 // Live testnet, opt-in like the other integration tests (`bun run test:integration`). Proves the
 // real Blend SDK path end to end: pool name from the pool's own metadata, the reserve's current
@@ -46,13 +47,9 @@ test.skipIf(!RUN_INTEGRATION)(
     // XLM symbol in the enrichment map even though the direct read never fills it.
     const enriched = await enrichDefiPositions(
       {
-        address: account,
-        network: "testnet",
+        ...emptyDefiPositionsResult(account),
         positions: [position],
-        unrecognizedPositions: [],
-        enrichment: {},
         source: "testnet-direct-read",
-        timestamp: new Date().toISOString(),
       },
       { network: "testnet", account, knownTokens: knownTokensFor([], "testnet") }
     );
