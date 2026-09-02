@@ -7,7 +7,6 @@ import {
   PositionsEstimate,
   RequestType,
   Version,
-  type Network as BlendNetwork,
   type Pool,
   type PoolOracle,
 } from "@blend-capital/blend-sdk";
