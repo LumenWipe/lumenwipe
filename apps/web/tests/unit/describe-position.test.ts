@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import type { DefiPosition } from "@/types/account";
-import { describeDefiPosition, positionContracts } from "@/lib/plan/describe-position";
+import {
+  describeDefiPosition,
+  formatPositionAmount,
+  positionContracts,
+} from "@/lib/plan/describe-position";
 
 const POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
 const XLM_SAC = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
@@ -71,4 +75,65 @@ test("positionContracts lists each pool once, in first-seen order", () => {
     contractAddress: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
   };
   expect(positionContracts([supply, other, supply])).toEqual([POOL, other.contractAddress]);
+});
+
+test("with display data it reads the way the protocol's own UI would", () => {
+  const shown: DefiPosition = {
+    ...supply,
+    display: {
+      pool: "Comet",
+      asset: "XLM",
+      amount: "10.0100015",
+      collateralAmount: "2",
+      yieldPct: "3.99",
+      yieldKind: "earned",
+    },
+  };
+  expect(describeDefiPosition(shown, {})).toBe(
+    "Blend · Comet · Supply · 10.0100015 XLM (2.00 as collateral) · 3.99% APY"
+  );
+  const debt: DefiPosition = {
+    protocol: "blend",
+    positionType: "borrow",
+    contractAddress: POOL,
+    assetAddress: XLM_SAC,
+    dTokenAmount: "1",
+    usdValue: null,
+    display: {
+      pool: null,
+      asset: "USDC",
+      amount: "1000",
+      collateralAmount: null,
+      yieldPct: "5.50",
+      yieldKind: "paid",
+    },
+  };
+  expect(describeDefiPosition(debt, {})).toBe(
+    `Blend · ${POOL.slice(0, 8)}…${POOL.slice(-8)} · Borrow · 1,000.00 USDC · 5.50% APY paid`
+  );
+});
+
+test("display gaps degrade one field at a time, never to a wrong number", () => {
+  const partial: DefiPosition = {
+    ...supply,
+    isBackstop: true,
+    display: {
+      pool: "Comet",
+      asset: null,
+      amount: null,
+      collateralAmount: null,
+      yieldPct: null,
+      yieldKind: null,
+    },
+  };
+  expect(describeDefiPosition(partial, {})).toBe("Blend · Comet · Backstop deposit");
+});
+
+test("formatPositionAmount keeps up to seven decimals, at least two, with thousands separators", () => {
+  expect(formatPositionAmount("10")).toBe("10.00");
+  expect(formatPositionAmount("10.0100015")).toBe("10.0100015");
+  expect(formatPositionAmount("1234567.5")).toBe("1,234,567.50");
+  // Dust is never rounded away to a misleading zero.
+  expect(formatPositionAmount("0.00000001")).toBe("0.00000001");
+  expect(formatPositionAmount("0")).toBe("0.00");
 });

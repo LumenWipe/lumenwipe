@@ -1,4 +1,4 @@
-import { test, expect, mock, afterEach } from "bun:test";
+import { test, expect, mock, spyOn, afterEach } from "bun:test";
 import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import type { AccountState, SponsoredEntry } from "@lumenwipe/types";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
@@ -67,10 +67,14 @@ function rpcServerStub() {
 }
 
 const realRpc = await import("@/lib/stellar/rpc");
-const realSponsorshipAffordability = await import("@/lib/stellar/sponsorship-affordability");
+// The affordability check is patched with spyOn on the real module object, never with
+// mock.module: a process-wide module replacement was observed leaking into
+// tests/unit/sponsorship-affordability.test.ts in CI (its own stubbed results showing up there
+// depending on file order), and mock.restore() undoes a spy reliably.
+const sponsorshipAffordability = await import("@/lib/stellar/sponsorship-affordability");
 afterEach(() => {
   mock.module("@/lib/stellar/rpc", () => realRpc);
-  mock.module("@/lib/stellar/sponsorship-affordability", () => realSponsorshipAffordability);
+  mock.restore();
 });
 
 function opsOf(xdr: string) {
@@ -174,10 +178,10 @@ const SPONSORED_ENTRY: SponsoredEntry = {
 
 test("buildCloseTransactions › sponsored entry the live re-read marks revocable → REVOKE_SPONSORSHIP is included", async () => {
   mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
-  mock.module("@/lib/stellar/sponsorship-affordability", () => ({
-    assessSponsorshipAffordability: () =>
-      Promise.resolve({ revocable: [SPONSORED_ENTRY], unaffordableOwners: new Map() }),
-  }));
+  spyOn(sponsorshipAffordability, "assessSponsorshipAffordability").mockResolvedValue({
+    revocable: [SPONSORED_ENTRY],
+    unaffordableOwners: new Map(),
+  });
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const state = accountState({ sponsoredEntries: [SPONSORED_ENTRY], numSponsoring: 1 });
@@ -191,15 +195,12 @@ test("buildCloseTransactions › sponsored entry the live re-read marks revocabl
 
 test("buildCloseTransactions › sponsored entry the live re-read marks unaffordable → REVOKE_SPONSORSHIP is omitted, no error", async () => {
   mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
-  mock.module("@/lib/stellar/sponsorship-affordability", () => ({
-    assessSponsorshipAffordability: () =>
-      Promise.resolve({
-        revocable: [],
-        unaffordableOwners: new Map([
-          [ISSUER, { entries: [SPONSORED_ENTRY], shortfallXlm: "0.5000000" }],
-        ]),
-      }),
-  }));
+  spyOn(sponsorshipAffordability, "assessSponsorshipAffordability").mockResolvedValue({
+    revocable: [],
+    unaffordableOwners: new Map([
+      [ISSUER, { entries: [SPONSORED_ENTRY], shortfallXlm: "0.5000000" }],
+    ]),
+  });
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const state = accountState({ sponsoredEntries: [SPONSORED_ENTRY], numSponsoring: 1 });
