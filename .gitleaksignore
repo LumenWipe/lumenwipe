@@ -1,0 +1,14 @@
+# Reviewed 2026-09-02 as part of issue #171's security tooling run - see
+# docs/security-remediation-plan.md for the full incident writeup. A real, funded Stellar
+# secret key was committed as test fixture data in apps/playground/tests/unit/crypto.test.ts
+# (and its earlier path). It has been replaced with a synthetic, non-strkey placeholder going
+# forward (see the current file), but it remains visible in the commits below, since removing
+# it fully requires a coordinated git history rewrite - a separate, deliberate operation, not
+# done as part of that fix. These entries are tracked here, not hidden: any new secret finding
+# still surfaces normally in future scans.
+74e0ce54406d9c9433ff7b65c7db6060b8170ff7:apps/playground/tests/unit/crypto.test.ts:generic-api-key:10
+74e0ce54406d9c9433ff7b65c7db6060b8170ff7:apps/playground/tests/unit/crypto.test.ts:generic-api-key:15
+154344ec55b5f452af7c1dc815d19cc4551eafcf:apps/playground/tests/unit/crypto.test.ts:generic-api-key:10
+154344ec55b5f452af7c1dc815d19cc4551eafcf:apps/playground/tests/unit/crypto.test.ts:generic-api-key:15
+1e38a09be559c38338fd9a9a7fa0eacb33484909:tests/unit/playground-crypto.test.ts:generic-api-key:10
+1e38a09be559c38338fd9a9a7fa0eacb33484909:tests/unit/playground-crypto.test.ts:generic-api-key:15
