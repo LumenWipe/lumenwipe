@@ -31,7 +31,9 @@ plus an adapter change, never a rewrite (§18).
      themselves from the factory rather than from this file. Aquarius pools work the same way, one
      `pool` entry per pool code (`version`: `constant_product`, `stable`, `concentrated`), with the
      pools enumerated from the router; the entries stand for their code and are never read for
-     balances themselves
+     balances themselves. Such code-representative entries are trusted at read time - the
+     live integration test (`bun run test:integration`) is what re-checks that each still runs the
+     recorded hash
    - `address`: the deployed contract (`C...`, checksum-validated)
    - `wasmHash`: 64 lowercase hex characters. `null` is allowed only with `verifiedLive: false`,
      for a contract the protocol documents but that does not currently resolve on-chain
