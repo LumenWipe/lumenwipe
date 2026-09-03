@@ -62,3 +62,21 @@ re-resolve every entry's address on its network, confirm the hash still matches,
   collision needs a human decision, not a merge.
 - Removing an entry is a breaking act: positions on that version stop resolving and start
   flagging for manual review. That can be correct (a compromised version) but never silent.
+
+## Mainnet entries
+
+Mainnet detection comes from OctoPos; the registry is consulted at build time (the exit runner's
+gate) and by the web anchor (routers and backstops an exit may call). Every mainnet entry was
+verified the same way as testnet - the protocol's own published addresses (Blend:
+`docs.blend.capital/mainnet-deployments` and `blend-capital/blend-utils` `mainnet.contracts.json`;
+Soroswap: `soroswap/core` `public/mainnet.contracts.json`; Aquarius: `docs.aqua.network`
+addresses-and-networks plus the router's own `ConstantPoolHash`/`StableSwapPoolHash`/
+`ConcentratedPoolHash`) against the live instance's executable hash - and, as a third opinion, the
+[stellar.expert directory](https://stellar.expert/explorer/public/directory): where it names a
+contract, the label agrees (Blend Pool Factory, Blend Backstop, Blend Pool, SoroSwap, SoroSwap
+Router, Aquarius Router, Aquarius Pool), and entries it does not list say so. Pools and pairs are
+code-representative: one per code hash, never a list of every deployment.
+
+`bun run test:integration` includes a read-only mainnet canary
+(`tests/integration/mainnet-registry.integration.test.ts`) that re-reads every `verifiedLive`
+mainnet entry's hash; it needs no account and moves no funds.

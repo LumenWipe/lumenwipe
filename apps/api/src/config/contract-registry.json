@@ -1,8 +1,8 @@
 {
-  "version": "2026-09-01",
-  "lastVerified": "2026-09-01",
+  "version": "2026-09-02",
+  "lastVerified": "2026-09-02",
   "validUntil": "2026-12-01",
-  "source": "manually verified per-entry against each protocol's official docs/GitHub and live testnet RPC (stellar contract fetch + sha256) on lastVerified; see apps/api/src/lib/contract-registry/index.ts for the per-protocol notes",
+  "source": "manually verified per-entry against each protocol's official docs/GitHub (Blend: docs.blend.capital/mainnet-deployments + blend-capital/blend-utils mainnet.contracts.json; Soroswap: soroswap/core public/mainnet.contracts.json; Aquarius: docs.aqua.network addresses-and-networks + the router's own instance) and the live instance's executable hash over RPC on lastVerified; mainnet labels cross-checked against the stellar.expert directory where it names the contract",
   "entries": [
     {
       "network": "testnet",
@@ -113,6 +113,136 @@
       "version": "v1",
       "label": "FxDAO Vaults (testnet, per fxdao.io/docs/addresses) - documented but currently unresolvable on live testnet, a real testnet-reset staleness case rather than a hypothetical one",
       "verifiedLive": false
+    },
+    {
+      "network": "mainnet",
+      "protocol": "blend",
+      "kind": "factory",
+      "address": "CCZD6ESMOGMPWH2KRO4O7RGTAPGTUPFWFQBELQSS7ZUK63V3TZWETGAG",
+      "wasmHash": "0287f4ad7350935b83d94e046c0bcabc960b233dbce1531008c021b71d406a1d",
+      "version": "v1",
+      "label": "Blend V1 pool factory (mainnet, blend-utils poolFactory) - reference only, not probed for balances; not in the stellar.expert directory",
+      "verifiedLive": true
+    },
+    {
+      "network": "mainnet",
+      "protocol": "blend",
+      "kind": "backstop",
+      "address": "CAO3AGAMZVRMHITL36EJ2VZQWKYRPWMQAPDQD5YEOF3GIF7T44U4JAL3",
+      "wasmHash": "62f61b32fff99f7eec052a8e573c367759f161c481a5caf0e76a10ae4617c3b4",
+      "version": "v1",
+      "label": "Blend V1 backstop (mainnet, blend-utils backstop) - read for the account's deposit per V1 pool; 21-day withdrawal queue; not in the stellar.expert directory",
+      "verifiedLive": true
+    },
+    {
+      "network": "mainnet",
+      "protocol": "blend",
+      "kind": "pool",
+      "address": "CDVQVKOY2YSXS2IC7KN6MNASSHPAO7UN2UR2ON4OI2SKMFJNVAMDX6DP",
+      "wasmHash": "baf978f10efdbcd85747868bef8832845ea6809f7643b67a4ac0cd669327fc2c",
+      "version": "v1",
+      "label": "Blend V1 'Fixed' pool (mainnet; stellar.expert: 'Blend Pool') - stands for the V1 lendingPool code every V1 pool shares (YieldBlox CBP7NO6F… runs the same hash); positions come from OctoPos, not from this list",
+      "verifiedLive": true
+    },
+    {
+      "network": "mainnet",
+      "protocol": "blend",
+      "kind": "factory",
+      "address": "CDSYOAVXFY7SM5S64IZPPPYB4GVGGLMQVFREPSQQEZVIWXX5R23G4QSU",
+      "wasmHash": "31328050548831f63d2b72e37bcfd0bb7371b7907135755dbe09ed434d755ca9",
+      "version": "v2",
+      "label": "Blend V2 pool factory (mainnet; stellar.expert: 'Blend Pool Factory', verified build of blend-contracts-v2) - reference only, not probed for balances; same code hash as the testnet factory",
+      "verifiedLive": true
+    },
+    {
+      "network": "mainnet",
+      "protocol": "blend",
+      "kind": "backstop",
+      "address": "CAQQR5SWBXKIGZKPBZDH3KM5GQ5GUTPKB7JAFCINLZBC5WXPJKRG3IM7",
+      "wasmHash": "c1f4502a757e25c611f5a159bc1ab0eef64085adac6c68123dca66e87faffbc2",
+      "version": "v2",
+      "label": "Blend V2 backstop (mainnet; stellar.expert: 'Blend Backstop') - read for the account's deposit per V2 pool; the exit withdraws unlocked queued shares from it; same code hash as the testnet backstop",
+      "verifiedLive": true
+    },
+    {
+      "network": "mainnet",
+      "protocol": "blend",
+      "kind": "pool",
+      "address": "CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD",
+      "wasmHash": "a41fc53d6753b6c04eb15b021c55052366a4c8e0e21bc72700f461264ec1350e",
+      "version": "v2",
+      "label": "Blend V2 'Fixed' pool (mainnet; stellar.expert: 'Blend Pool') - stands for the V2 pool code the factory's PoolMeta.pool_hash deploys (YieldBlox V2 CCCCIQSD… runs the same hash, as does the testnet pool); positions come from OctoPos, not from this list",
+      "verifiedLive": true
+    },
+    {
+      "network": "mainnet",
+      "protocol": "aquarius",
+      "kind": "router",
+      "address": "CBQDHNBFBZYE4MKPWBSJOPIYLW4SFSXAXUTSXJN76GNKYVYPCKWC6QUK",
+      "wasmHash": "06f4207b0c9ef78cc595e075ded8fa40e73fdb8346e5f9281068a2d4ba1e5037",
+      "version": "v1",
+      "label": "Aquarius AMM router (mainnet, docs.aqua.network; stellar.expert: 'Aquarius Router') - enumerates the pools; never a call target of an exit",
+      "verifiedLive": true
+    },
+    {
+      "network": "mainnet",
+      "protocol": "aquarius",
+      "kind": "pool",
+      "address": "CCSY43EHJAHT3NQDYKAMJXRFBEEH7OXDL3J3VNGO33UUSEXWNN27GBIZ",
+      "wasmHash": "ae0da5a84b15805c5c7931ac567a8d1b34be3f26b483993d9ff80cb2c3de9852",
+      "version": "constant_product",
+      "label": "Aquarius mainnet constant-product pool XLM/AQUA (router ConstantPoolHash; stellar.expert: 'Aquarius Pool') - stands for the code 273 of the router's 346 pools shared on lastVerified",
+      "verifiedLive": true
+    },
+    {
+      "network": "mainnet",
+      "protocol": "aquarius",
+      "kind": "pool",
+      "address": "CDKVJYMN34ZIEXSLNFYHVAFF6M6FM5E2U6OHXOTBKH2WLBULXOE53YDP",
+      "wasmHash": "f1077e0b77da5e62d596e13aeae4160104cad99e7ef7f3183a6c9b6ec9e747cd",
+      "version": "stable",
+      "label": "Aquarius mainnet stableswap pool (router StableSwapPoolHash; stellar.expert: 'Aquarius Pool') - stands for the code 42 of the router's pools shared on lastVerified",
+      "verifiedLive": true
+    },
+    {
+      "network": "mainnet",
+      "protocol": "aquarius",
+      "kind": "pool",
+      "address": "CA4HTZNY2RBZWEQE5GBMNREZMFRPAZSVJ6OGPC7T3VM7NHRJYFAVID2S",
+      "wasmHash": "12fca5a7a96577273b6d4184cf9c984036cda0e8f0594747e7b2933dced37ee6",
+      "version": "concentrated",
+      "label": "Aquarius mainnet concentrated-liquidity pool (router ConcentratedPoolHash) - positions are tick ranges, not shares; recognized so they are never mistaken for a share pool, not exited; 31 pools on lastVerified; not in the stellar.expert directory",
+      "verifiedLive": true
+    },
+    {
+      "network": "mainnet",
+      "protocol": "soroswap",
+      "kind": "factory",
+      "address": "CA4HEQTL2WPEUYKYKCDOHCDNIV4QHNJ7EL4J4NQ6VADP7SYHVRYZ7AW2",
+      "wasmHash": "5db738b05d9148128a240b0e2c1cb935c2805192bf98a579421aacda364c8dae",
+      "version": "v1",
+      "label": "Soroswap factory (mainnet, soroswap/core mainnet.contracts.json; stellar.expert: 'SoroSwap') - 214 pairs on lastVerified; reference only, not probed for balances",
+      "verifiedLive": true
+    },
+    {
+      "network": "mainnet",
+      "protocol": "soroswap",
+      "kind": "router",
+      "address": "CAG5LRYQ5JVEUI5TEID72EYOVX44TTUJT5BQR2J6J77FH65PCCFAJDDH",
+      "wasmHash": "4c3db3ebd2d6a2ab23de1f622eaabb39501539b4611b68622ec4e47f76c4ba07",
+      "version": "v1",
+      "label": "Soroswap router (mainnet, soroswap/core mainnet.contracts.json; stellar.expert: 'SoroSwap Router') - the exit's remove_liquidity call target",
+      "verifiedLive": true
+    },
+    {
+      "network": "mainnet",
+      "protocol": "soroswap",
+      "kind": "pair",
+      "address": "CB46LMGJC7SYSH4C7SBNLV635OX5BSNQDGRR32NRXAV7N2AVNZMQUJ3A",
+      "wasmHash": "18051456816b66f12e773a56f77c5794fac1b1fb7ab6e22d4fad5a412770f73e",
+      "version": "v1",
+      "label": "Soroswap mainnet pair BLAH/YAWN (factory index 0) - stands for the pair code soroswap/core publishes as 'pair' and every factory-deployed pair shares; pairs are enumerated from the factory, not listed here; not in the stellar.expert directory",
+      "verifiedLive": true
     }
   ]
 }

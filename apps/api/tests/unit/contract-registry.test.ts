@@ -64,10 +64,33 @@ test("serves the registry with its freshness metadata, frozen", () => {
   expect(Object.isFrozen(registry.entries[0])).toBe(true);
 });
 
-test("only testnet entries exist today - mainnet detection stays on OctoPos", () => {
-  expect(servedContractRegistry().entries.every((e) => e.network === "testnet")).toBe(true);
+test("every protocol with an exit adapter has verified mainnet entries: the runner halts on any hash the registry does not know for the network", () => {
   expect(entriesForNetwork("testnet").length).toBeGreaterThan(0);
-  expect(entriesForNetwork("mainnet")).toEqual([]);
+  const mainnet = entriesForNetwork("mainnet");
+  expect(mainnet.length).toBeGreaterThan(0);
+  expect(mainnet.every((e) => e.verifiedLive && e.wasmHash !== null)).toBe(true);
+  for (const protocol of ["blend", "aquarius", "soroswap"] as const) {
+    const kinds = new Set(entriesForProtocol("mainnet", protocol).map((e) => e.kind));
+    expect(kinds.size).toBeGreaterThan(0);
+    // The kinds an exit calls or reads must be there, not just a reference contract.
+    if (protocol === "blend") expect([...kinds].sort()).toEqual(["backstop", "factory", "pool"]);
+    if (protocol === "aquarius") expect([...kinds].sort()).toEqual(["pool", "router"]);
+    if (protocol === "soroswap") expect([...kinds].sort()).toEqual(["factory", "pair", "router"]);
+  }
+  // Blend V2 ships the same code on both networks; the labels say so, so the file must agree.
+  for (const kind of ["factory", "backstop", "pool"] as const) {
+    const on = (network: "testnet" | "mainnet") =>
+      entriesForProtocol(network, "blend").find((e) => e.kind === kind && e.version === "v2")!
+        .wasmHash;
+    expect(on("mainnet")).toBe(on("testnet"));
+  }
+  // Aquarius pools come in three codes; each has one representative per network.
+  expect(
+    entriesForProtocol("mainnet", "aquarius")
+      .filter((e) => e.kind === "pool")
+      .map((e) => e.version)
+      .sort()
+  ).toEqual(["concentrated", "constant_product", "stable"]);
 });
 
 test("filters entries by network and protocol", () => {

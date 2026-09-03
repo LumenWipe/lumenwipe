@@ -148,7 +148,7 @@ async function verifyEntry(
     unrecognized.push({
       protocol: entry.protocol,
       rawType: "registry-entry-unresolvable",
-      reason: `registered ${entry.kind} contract ${entry.address} could not be resolved on testnet`,
+      reason: `registered ${entry.kind} contract ${entry.address} could not be resolved on ${entry.network}`,
     });
     return false;
   }
@@ -156,7 +156,7 @@ async function verifyEntry(
     unrecognized.push({
       protocol: entry.protocol,
       rawType: "registry-entry-unpinned",
-      reason: `registered ${entry.kind} contract ${entry.address} resolves on testnet (wasmHash ${liveWasmHash}) but the registry records no wasmHash to verify it against`,
+      reason: `registered ${entry.kind} contract ${entry.address} resolves on ${entry.network} (wasmHash ${liveWasmHash}) but the registry records no wasmHash to verify it against`,
     });
     return false;
   }

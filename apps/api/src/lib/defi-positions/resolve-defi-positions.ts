@@ -25,6 +25,7 @@
 
 import { Logger } from "@nestjs/common";
 import type { DefiPositionsResult, Network } from "@lumenwipe/types";
+import { completePositionsFromLedger, type CompletePositionsDeps } from "./complete-positions";
 import { fetchOctoPosPortfolio, type OctoPosDeps } from "./octopos-http";
 import { normalizeOctoPosPortfolio } from "./octopos-adapter";
 import { detectDefiPositionsViaDirectRead, type DirectReadDeps } from "./testnet-direct-read";
@@ -32,11 +33,17 @@ import { detectDefiPositionsViaDirectRead, type DirectReadDeps } from "./testnet
 export interface ResolveDefiPositionsDeps {
   octopos: OctoPosDeps;
   directRead?: DirectReadDeps;
+  /** The ledger reads that complete an indexer's LP positions; defaults to the network's RPC. */
+  complete?: CompletePositionsDeps;
 }
 
 /** Distinguishes a degraded-mode result from a real OctoPos source ("snapshot" | "empty" |
  *  "cache" | "not-tracked") or the designed testnet source ("testnet-direct-read"). */
 export const DEGRADED_SOURCE = "octopos-degraded-fallback";
+
+/** The direct-read fallback sweeps every registered protocol of the network (hundreds of pools
+ *  on mainnet); past this it reports "detected nothing" rather than holding the analysis. */
+export const DIRECT_READ_FALLBACK_TIMEOUT_MS = 20_000;
 
 const logger = new Logger("resolve-defi-positions");
 
@@ -67,7 +74,15 @@ async function degradedFallback(
     `OctoPos unavailable for ${network} (${reason}); falling back to a best-effort direct read`
   );
   try {
-    const direct = await detectDefiPositionsViaDirectRead(address, network, deps.directRead);
+    const direct = await Promise.race([
+      detectDefiPositionsViaDirectRead(address, network, deps.directRead),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`direct read exceeded ${DIRECT_READ_FALLBACK_TIMEOUT_MS} ms`)),
+          DIRECT_READ_FALLBACK_TIMEOUT_MS
+        ).unref?.()
+      ),
+    ]);
     return { ...direct, source: DEGRADED_SOURCE, timestamp: null };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -92,10 +107,14 @@ export async function resolveDefiPositions(
     return degradedFallback(address, network, deps, `${fetched.reason}: ${fetched.detail}`);
   }
 
+  let normalized: DefiPositionsResult;
   try {
-    return normalizeOctoPosPortfolio(fetched.raw, address, network);
+    normalized = normalizeOctoPosPortfolio(fetched.raw, address, network);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return degradedFallback(address, network, deps, `unrecognizable response: ${message}`);
   }
+  // The indexer names an LP position by pool and shares only; the exit's verifier needs the
+  // pool's tokens (and share token) too, read from the pool itself. Never throws.
+  return completePositionsFromLedger(normalized, network, deps.complete);
 }

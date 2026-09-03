@@ -213,7 +213,12 @@ export function fakeExitAdapter(
           networkPassphrase: NETWORK_PASSPHRASES[ctx.network],
         }).addOperation(op);
         if (knobs.externalTwoOps) builder.addOperation(op);
-        const envelopeXdr = builder.setTimeout(300).build().toXDR();
+        // Bounds from the context's clock, not the wall clock: the harness builds the same state
+        // twice and expects the same bytes, and a second boundary between the two must not differ.
+        const envelopeXdr = builder
+          .setTimebounds(0, Math.floor(ctx.now.getTime() / 1000) + 300)
+          .build()
+          .toXDR();
         return { step, build: { source: "external", provider: "fake-api", envelopeXdr }, intent };
       }
       return { step, build: { source: "local", op }, intent };

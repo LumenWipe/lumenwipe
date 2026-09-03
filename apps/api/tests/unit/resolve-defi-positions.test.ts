@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { Keypair } from "@stellar/stellar-sdk";
+import { Keypair, xdr } from "@stellar/stellar-sdk";
 import { resolveDefiPositions, DEGRADED_SOURCE } from "@/lib/defi-positions/resolve-defi-positions";
 import {
   addressVal,
@@ -67,12 +67,67 @@ test("mainnet returns the normalized OctoPos result untouched on success", async
 
   const result = await resolveDefiPositions(ADDRESS, "mainnet", {
     octopos: { baseUrl: OCTOPOS_BASE, fetch: octoposFetch },
+    complete: { rpc: mockRpc([]), resolveWasmHash: () => ({ status: "unknown", wasmHash: "" }) },
   });
 
   expect(result.network).toBe("mainnet");
   expect(result.source).toBe("empty");
   expect(result.timestamp).toBe("2026-01-01T00:00:00.000Z");
   expect(result.positions).toEqual([]);
+});
+
+test("mainnet completes an indexer's LP position from the pool's instance when the registry knows its code", async () => {
+  const POOL = "CCSY43EHJAHT3NQDYKAMJXRFBEEH7OXDL3J3VNGO33UUSEXWNN27GBIZ";
+  const SHARE = "CC4BPROIXISEFC7UKTB2HYBLNSNP27WNCR7YNZOHXLTPTGDKFMKYQ2YN";
+  const XLM = "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA";
+  const AQUA = "CAUIKL3IYGMERDRUN6YSCLWVAKIFG5Q4YJHUKM4S4NJZQIA3BAS6OJPK";
+  const HASH = "ae0da5a84b15805c5c7931ac567a8d1b34be3f26b483993d9ff80cb2c3de9852";
+  const raw = {
+    positions: [
+      {
+        protocol: "aquarius",
+        type: "LP",
+        poolAddress: POOL,
+        shareAmount: "1000000",
+        usdValue: null,
+      },
+    ],
+    source: "snapshot",
+    timestamp: "2026-01-01T00:00:00.000Z",
+    queryKeys: {},
+  };
+  const octoposFetch = fakeFetch(() => jsonResponse(raw));
+  const vec = (s: string) => xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(s)]);
+  const result = await resolveDefiPositions(ADDRESS, "mainnet", {
+    octopos: { baseUrl: OCTOPOS_BASE, fetch: octoposFetch },
+    complete: {
+      rpc: mockRpc([
+        contractInstanceEntry(POOL, HASH, [
+          [vec("TokenA"), addressVal(XLM)],
+          [vec("TokenB"), addressVal(AQUA)],
+          [vec("TokenShare"), addressVal(SHARE)],
+        ]),
+      ]),
+      resolveWasmHash: (_network, hash) =>
+        hash === HASH
+          ? {
+              status: "known",
+              protocol: "aquarius",
+              kind: "pool",
+              version: "constant_product",
+              wasmHash: hash,
+            }
+          : { status: "unknown", wasmHash: hash },
+    },
+  });
+  expect(result.source).toBe("snapshot");
+  expect(result.positions[0]).toMatchObject({
+    protocol: "aquarius",
+    contractAddress: POOL,
+    tokens: [XLM, AQUA],
+    shareToken: SHARE,
+    poolType: "constant_product",
+  });
 });
 
 // ─── mainnet: degraded mode ──────────────────────────────────────────────────
