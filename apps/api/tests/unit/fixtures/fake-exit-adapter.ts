@@ -273,6 +273,8 @@ export interface FakeRpcOptions {
   liveWasmHash: string | null;
   /** Per-contract overrides of `liveWasmHash`. */
   hashesByContract?: Record<string, string | null>;
+  /** Contracts served as Stellar Asset Contracts (no code hash; receiving one needs a trustline). */
+  stellarAssets?: string[];
   /** Live balance the fake adapter reads, base units. */
   liveBalance: string;
   simulation?: "ok" | "error" | "restore";
@@ -282,7 +284,7 @@ export interface FakeRpcOptions {
   simulatedResourceFee?: string;
 }
 
-function instanceEntry(contract: string, wasmHash: string): xdr.LedgerEntryData {
+function instanceEntry(contract: string, wasmHash: string | "sac"): xdr.LedgerEntryData {
   return xdr.LedgerEntryData.contractData(
     new xdr.ContractDataEntry({
       ext: new xdr.ExtensionPoint(0),
@@ -291,7 +293,10 @@ function instanceEntry(contract: string, wasmHash: string): xdr.LedgerEntryData 
       durability: xdr.ContractDataDurability.persistent(),
       val: xdr.ScVal.scvContractInstance(
         new xdr.ScContractInstance({
-          executable: xdr.ContractExecutable.contractExecutableWasm(Buffer.from(wasmHash, "hex")),
+          executable:
+            wasmHash === "sac"
+              ? xdr.ContractExecutable.contractExecutableStellarAsset()
+              : xdr.ContractExecutable.contractExecutableWasm(Buffer.from(wasmHash, "hex")),
           storage: null,
         })
       ),
@@ -343,9 +348,11 @@ export function rawSimulation(
 export function fakeExitRpc(options: FakeRpcOptions): ExitRpc & { simulateCalls: Transaction[] } {
   const simulateCalls: Transaction[] = [];
   const hashFor = (contract: string): string | null =>
-    options.hashesByContract && contract in options.hashesByContract
-      ? options.hashesByContract[contract]!
-      : options.liveWasmHash;
+    options.stellarAssets?.includes(contract)
+      ? "sac"
+      : options.hashesByContract && contract in options.hashesByContract
+        ? options.hashesByContract[contract]!
+        : options.liveWasmHash;
 
   return {
     simulateCalls,

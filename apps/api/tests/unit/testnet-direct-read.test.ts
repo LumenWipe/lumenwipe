@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
-import { Address, Keypair, StrKey, xdr } from "@stellar/stellar-sdk";
+import { UserBalance } from "@blend-capital/blend-sdk";
+import { Address, Keypair, StrKey, nativeToScVal, xdr } from "@stellar/stellar-sdk";
 import {
   aquariusTokensHash,
   detectDefiPositionsViaDirectRead,
@@ -55,11 +56,10 @@ test("no registry entries -> a clean empty result, not an error", async () => {
   expect(result.unrecognizedPositions).toEqual([]);
 });
 
-test("factory/router/backstop entries are never probed, even when unresolvable", async () => {
+test("factory/router entries are never probed, even when unresolvable", async () => {
   const entries: ContractRegistryEntry[] = [
     registryEntry({ kind: "factory" }),
     registryEntry({ kind: "router" }),
-    registryEntry({ kind: "backstop" }),
   ];
   // Empty RPC mock: if these were probed, verifyEntry would flag them as unresolvable.
   const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
@@ -137,6 +137,120 @@ test("decodes Blend supply and borrow positions, resolving reserve index through
     assetAddress: ASSET_B,
     dTokenAmount: "2500000000",
   });
+});
+
+const BACKSTOP = "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA";
+const BACKSTOP_WASM_HASH = "c1f4502a757e25c611f5a159bc1ab0eef64085adac6c68123dca66e87faffbc2";
+const BACKSTOP_TOKEN = "CA5UTUUPHYL5K22UBRUVC37EARZUGYOSGK3IKIXG2JLCC5ZZLI4BDWDM";
+
+/** The backstop's `UserBalance(pool, user)` entry: shares not queued plus queued withdrawals. */
+function backstopBalanceEntry(shares: bigint, q4w: Array<[bigint, number]>) {
+  const key = UserBalance.ledgerKey(BACKSTOP, BLEND_POOL, USER).contractData().key();
+  return contractDataEntry(
+    BACKSTOP,
+    key,
+    structVal({
+      shares: i128Val(shares),
+      q4w: xdr.ScVal.scvVec(
+        q4w.map(([amount, exp]) =>
+          structVal({ amount: i128Val(amount), exp: nativeToScVal(exp, { type: "u64" }) })
+        )
+      ),
+    })
+  );
+}
+const backstopInstance = () =>
+  contractInstanceEntry(BACKSTOP, BACKSTOP_WASM_HASH, [
+    [symbolVal("BToken"), addressVal(BACKSTOP_TOKEN)],
+  ]);
+const blendEntries = () => [
+  registryEntry(),
+  registryEntry({ kind: "backstop", address: BACKSTOP, wasmHash: BACKSTOP_WASM_HASH }),
+];
+
+test("a backstop deposit is read from the backstop for every registered pool: shares plus every queued withdrawal, on the pool it backs", async () => {
+  const rpc = mockRpc([
+    contractInstanceEntry(BLEND_POOL, BLEND_WASM_HASH),
+    backstopInstance(),
+    backstopBalanceEntry(5_0000000n, [
+      [1_0000000n, 1_700_000_000],
+      [2_0000000n, 4_000_000_000],
+    ]),
+  ]);
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc,
+    registryEntries: blendEntries(),
+  });
+  expect(result.unrecognizedPositions).toEqual([]);
+  expect(result.positions).toEqual([
+    {
+      protocol: "blend",
+      positionType: "supply",
+      contractAddress: BLEND_POOL,
+      wasmHash: BLEND_WASM_HASH,
+      assetAddress: BACKSTOP_TOKEN,
+      bTokenAmount: "80000000",
+      usdValue: null,
+      isBackstop: true,
+    },
+  ]);
+});
+
+test("no backstop entry, or an empty one, is no position; an unreadable one or a backstop without its token is flagged", async () => {
+  const none = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([contractInstanceEntry(BLEND_POOL, BLEND_WASM_HASH), backstopInstance()]),
+    registryEntries: blendEntries(),
+  });
+  expect(none.positions).toEqual([]);
+  expect(none.unrecognizedPositions).toEqual([]);
+
+  const empty = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      contractInstanceEntry(BLEND_POOL, BLEND_WASM_HASH),
+      backstopInstance(),
+      backstopBalanceEntry(0n, []),
+    ]),
+    registryEntries: blendEntries(),
+  });
+  expect(empty.positions).toEqual([]);
+
+  const malformed = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      contractInstanceEntry(BLEND_POOL, BLEND_WASM_HASH),
+      backstopInstance(),
+      contractDataEntry(
+        BACKSTOP,
+        UserBalance.ledgerKey(BACKSTOP, BLEND_POOL, USER).contractData().key(),
+        i128Val(7n)
+      ),
+    ]),
+    registryEntries: blendEntries(),
+  });
+  expect(malformed.positions).toEqual([]);
+  expect(malformed.unrecognizedPositions.map((u) => u.rawType)).toEqual([
+    "backstop-balance-unreadable",
+  ]);
+
+  const tokenless = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      contractInstanceEntry(BLEND_POOL, BLEND_WASM_HASH),
+      contractInstanceEntry(BACKSTOP, BACKSTOP_WASM_HASH),
+      backstopBalanceEntry(5n, []),
+    ]),
+    registryEntries: blendEntries(),
+  });
+  expect(tokenless.positions).toEqual([]);
+  expect(tokenless.unrecognizedPositions.map((u) => u.rawType)).toEqual(["backstop-token-unknown"]);
+});
+
+test("a backstop the network no longer has is flagged like any other registered contract", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([contractInstanceEntry(BLEND_POOL, BLEND_WASM_HASH)]),
+    registryEntries: blendEntries(),
+  });
+  expect(result.unrecognizedPositions.map((u) => u.rawType)).toEqual([
+    "registry-entry-unresolvable",
+  ]);
 });
 
 test("a zero-balance reserve index produces no position, not a zero-amount entry", async () => {

@@ -15,11 +15,10 @@
  *
  * Deliberately narrower than OctoPos's coverage: every gap below is a stated, sourced limit, not
  * a silently missing feature.
- *  - Blend: pool supply/borrow only. Backstop shares are registered in the contract registry (for
- *    provenance) but not decoded here - `BackstopDataKey::UserBalance(PoolUserKey)`'s exact
- *    field-encoding order (a named-struct key, not a plain address or tuple) wasn't independently
- *    confirmed against primary source, and a wrong key here would silently read back as "no
- *    backstop position" rather than surface as unresolved - worse than not attempting it.
+ *  - Blend: pool supply/borrow from the pool's `Positions(user)`, and the account's deposit in
+ *    the pool's backstop from `UserBalance(pool, user)` on the registry's backstop contract (shares
+ *    plus every queued withdrawal), reported as a supply position with `isBackstop` on the pool it
+ *    backs, the way OctoPos reports it on mainnet.
  *  - Soroswap: pairs are enumerated from the factory and their SEP-41 share balances read; see
  *    readSoroswapFactoryPairs.
  *  - Aquarius: pools are enumerated from the router and each pool's separate share token read;
@@ -38,6 +37,7 @@
  * part this module has to construct by hand.
  */
 
+import { UserBalance } from "@blend-capital/blend-sdk";
 import { Address, Contract, hash, nativeToScVal, scValToNative, xdr } from "@stellar/stellar-sdk";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { readLiveWasmHash } from "@/lib/stellar/contract-instance";
@@ -234,6 +234,79 @@ async function readBlendPoolPositions(
     positions.push(position);
   }
 
+  return positions;
+}
+
+// ─── Blend backstop: the account's deposit per pool ──────────────────────────
+
+/**
+ * Backstop deposits live in the backstop contract, keyed by (pool, user), not in the pool: one
+ * read per registered pool of the same version. The deposit token is the backstop's own (the
+ * BLND:USDC LP share), read from its instance. A deposit is reported whole - shares not queued
+ * plus every queued withdrawal - because all of it is the account's to take out or wait for; the
+ * exit adapter reads the queue itself to decide which.
+ */
+async function readBlendBackstopPositions(
+  rpc: RpcServer,
+  backstop: ContractRegistryEntry,
+  entries: ContractRegistryEntry[],
+  address: string,
+  unrecognized: UnrecognizedDefiPosition[]
+): Promise<DefiPosition[]> {
+  const pools = entries.filter(
+    (e) =>
+      e.network === backstop.network &&
+      e.protocol === "blend" &&
+      e.kind === "pool" &&
+      e.version === backstop.version &&
+      e.verifiedLive
+  );
+  if (pools.length === 0) return [];
+  const keys = pools.map((pool) => UserBalance.ledgerKey(backstop.address, pool.address, address));
+  const results = await batchRead(rpc, [instanceKey(backstop.address), ...keys]);
+  const instance = results.get(instanceKey(backstop.address).toXDR("base64"));
+  // The backstop keeps its config under bare symbols (`BToken` is the deposit token).
+  const backstopToken = instance
+    ? asAddress(parseInstance(instance).storage.get('"BToken"'))
+    : null;
+
+  const positions: DefiPosition[] = [];
+  for (let i = 0; i < pools.length; i++) {
+    const val = results.get(keys[i]!.toXDR("base64"));
+    if (!val) continue;
+    let balance: UserBalance;
+    try {
+      balance = UserBalance.fromLedgerEntryData(val, Math.floor(Date.now() / 1000));
+    } catch {
+      unrecognized.push({
+        protocol: "blend",
+        rawType: "backstop-balance-unreadable",
+        reason: `backstop ${backstop.address} holds an entry for this account and pool ${pools[i]!.address} that could not be decoded`,
+      });
+      continue;
+    }
+    const total = balance.shares + balance.totalQ4W;
+    if (total <= 0n) continue;
+    if (!backstopToken) {
+      unrecognized.push({
+        protocol: "blend",
+        rawType: "backstop-token-unknown",
+        reason: `backstop ${backstop.address} holds ${total} shares for this account in pool ${pools[i]!.address} but its deposit token could not be read`,
+      });
+      continue;
+    }
+    const position: BlendSupplyPosition = {
+      protocol: "blend",
+      positionType: "supply",
+      contractAddress: pools[i]!.address,
+      wasmHash: pools[i]!.wasmHash ?? undefined,
+      assetAddress: backstopToken,
+      bTokenAmount: total.toString(),
+      usdValue: null,
+      isBackstop: true,
+    };
+    positions.push(position);
+  }
   return positions;
 }
 
@@ -779,10 +852,18 @@ export async function detectDefiPositionsViaDirectRead(
       (entry.kind === "factory" || entry.kind === "router")
     )
       continue;
-    if (entry.kind === "backstop" || entry.kind === "pair" || aquariusPool) continue;
+    if (entry.kind === "pair" || aquariusPool) continue;
 
     const verified = await verifyEntry(rpc, entry, unrecognized);
     if (!verified) continue;
+
+    if (entry.protocol === "blend" && entry.kind === "backstop") {
+      positions.push(
+        ...(await readBlendBackstopPositions(rpc, entry, entries, address, unrecognized))
+      );
+      continue;
+    }
+    if (entry.kind === "backstop") continue;
 
     if (soroswapFactory) {
       positions.push(

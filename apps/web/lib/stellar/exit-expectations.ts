@@ -1,6 +1,6 @@
 import { Asset } from "@stellar/stellar-sdk";
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
-import { EXIT_FUNCTIONS, exitRoutersFor } from "@/lib/contract-registry";
+import { EXIT_FUNCTIONS, exitContractsFor } from "@/lib/contract-registry";
 import type { AccountState } from "@/types/account";
 
 /**
@@ -46,20 +46,25 @@ export function exitExpectations(
   // A read with no positions section (an older session, a partial state) vouches for nothing.
   const positions = accountState.defiPositions?.positions ?? [];
   const trustlines = accountState.trustlines ?? [];
-  // Only protocols whose exit actually goes through a router pin one: Aquarius positions are
-  // called directly, so its router is never a call target even though the registry lists it.
-  const routers = exitRoutersFor(
-    network,
-    positions.map((p) => p.protocol)
-  ).filter((r) => EXIT_FUNCTIONS[r.protocol].router.length > 0);
+  // Besides the positions' own contracts, an exit may call the bundled registry's routers (an
+  // AMM withdrawal goes through the router) and backstops (Blend's queued withdrawal), each
+  // pinned to its own functions; a protocol that never calls one gets none.
+  const protocols = positions.map((p) => p.protocol);
+  const routers = exitContractsFor(network, protocols, "router");
+  const backstops = exitContractsFor(network, protocols, "backstop");
   const exitContracts = [
-    ...new Set([...positions.map((p) => p.contractAddress), ...routers.map((r) => r.address)]),
+    ...new Set([
+      ...positions.map((p) => p.contractAddress),
+      ...routers.map((r) => r.address),
+      ...backstops.map((b) => b.address),
+    ]),
   ];
   const exitFunctions: Record<string, string[]> = {};
   for (const p of positions) {
     exitFunctions[p.contractAddress] = [...EXIT_FUNCTIONS[p.protocol].position];
   }
   for (const r of routers) exitFunctions[r.address] = [...EXIT_FUNCTIONS[r.protocol].router];
+  for (const b of backstops) exitFunctions[b.address] = [...EXIT_FUNCTIONS[b.protocol].backstop];
   // A position's tokens (what a withdrawal pays out) and, where the protocol keeps shares in a
   // separate contract, its share token (what a withdrawal burns, under the account's authority).
   const positionTokenContracts = [

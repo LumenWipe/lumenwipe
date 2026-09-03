@@ -10,7 +10,21 @@ import {
   registryKnowing,
 } from "./fixtures/exit-adapter-harness";
 import { fakeExitRpc } from "./fixtures/fake-exit-adapter";
-import { USDC, XLM, fakeBlendDeps } from "./fixtures/fake-blend-pool";
+import {
+  BACKSTOP,
+  BACKSTOP_TOKEN,
+  BLND,
+  USDC,
+  XLM,
+  fakeBlendDeps,
+  type FakePoolState,
+} from "./fixtures/fake-blend-pool";
+import { REWARD_DUST_WINDOW_SECONDS } from "@/lib/defi-exits/reward-dust";
+import {
+  createContractRegistryLookup,
+  validateContractRegistry,
+  type ContractRegistryLookup,
+} from "@/lib/contract-registry";
 
 // Sebas's registry entry for the official Blend V2 testnet pool, reused as the fixture address.
 const POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
@@ -18,9 +32,47 @@ const WASM_HASH = "a41fc53d6753b6c04eb15b021c55052366a4c8e0e21bc72700f461264ec13
 const CODE = { version: "v2", kind: "pool" as const };
 
 const registry = registryKnowing(POOL, WASM_HASH, "blend", "pool", "testnet", "v2");
+// The registry's Blend V2 testnet backstop, which a queued withdrawal is called on.
+const BACKSTOP_HASH = "c1f4502a757e25c611f5a159bc1ab0eef64085adac6c68123dca66e87faffbc2";
+const registryWithBackstop: ContractRegistryLookup = createContractRegistryLookup(
+  validateContractRegistry({
+    version: "test",
+    lastVerified: "2026-09-01",
+    validUntil: "2026-12-01",
+    source: "blend adapter test",
+    entries: [
+      {
+        network: "testnet",
+        protocol: "blend",
+        kind: "pool",
+        address: POOL,
+        wasmHash: WASM_HASH,
+        version: "v2",
+        label: "pool",
+        verifiedLive: true,
+      },
+      {
+        network: "testnet",
+        protocol: "blend",
+        kind: "backstop",
+        address: BACKSTOP,
+        wasmHash: BACKSTOP_HASH,
+        version: "v2",
+        label: "backstop",
+        verifiedLive: true,
+      },
+    ],
+  })
+);
 const ctx = harnessContext({ tokenBalances: { [USDC]: "500000000" } }); // holds 50 USDC
-const rpc = (simulation: "ok" | "error" = "ok") =>
-  fakeExitRpc({ liveWasmHash: WASM_HASH, liveBalance: "0", simulation });
+const rpc = (simulation: "ok" | "error" = "ok", stellarAssets: string[] = []) =>
+  fakeExitRpc({
+    liveWasmHash: WASM_HASH,
+    hashesByContract: { [BACKSTOP]: BACKSTOP_HASH },
+    liveBalance: "0",
+    simulation,
+    stellarAssets,
+  });
 
 function supplyPosition(overrides: Partial<BlendSupplyPosition> = {}): BlendSupplyPosition {
   return {
@@ -108,14 +160,15 @@ describeExitAdapterInvariants("blend, with debt", {
 });
 
 async function run(
-  state: Parameters<typeof fakeBlendDeps>[0],
+  state: FakePoolState,
   position: BlendPosition = supplyPosition(),
   context = ctx,
-  registryLookup = registry
+  registryLookup = registry,
+  liveRpc = rpc()
 ) {
   const deps = fakeBlendDeps(state);
   const result = await runExitAdapter(blendExitAdapter(deps), position, context, {
-    rpc: rpc(),
+    rpc: liveRpc,
     resolveWasmHash: registryLookup.resolveWasmHash,
     isRegistryFresh: () => true,
   });
@@ -264,11 +317,232 @@ describe("blend exit adapter", () => {
     expect(result.blockers.map((b) => b.code)).toEqual(["exit_position_gone"]);
   });
 
-  test("backstop deposits are not this adapter's to exit", () => {
+  test("every Blend pool position is this adapter's, the backstop deposit included", () => {
     const adapter = blendExitAdapter(fakeBlendDeps(SUPPLY_ONLY));
-    expect(adapter.supports(supplyPosition({ isBackstop: true }))).toBe(false);
+    expect(adapter.supports(supplyPosition({ isBackstop: true }))).toBe(true);
     expect(adapter.supports(supplyPosition())).toBe(true);
     expect(adapter.supports(borrowPosition())).toBe(true);
+  });
+
+  describe("BLND emissions", () => {
+    // Reserve token ids: USDC bToken = 0 × 2 + 1, XLM dToken = 1 × 2.
+    const EMISSIONS = { claimable: { 1: 30_000_000n, 2: 12_000_000n } };
+
+    test("are claimed first, as their own call on the pool, naming every reserve token that owes some", async () => {
+      const { result } = await run({ ...INDEBTED, emissions: EMISSIONS }, borrowPosition());
+      expect(result.blockers).toEqual([]);
+      expect(result.plan.map((s) => s.kind)).toEqual([
+        "claim",
+        "repay",
+        "withdraw_collateral",
+        "withdraw",
+      ]);
+      expect(result.plan[0]).toMatchObject({
+        contract: POOL,
+        function: "claim",
+        asset: BLND,
+        amount: "42000000",
+        ceiling: "42000000",
+        minReceived: [],
+      });
+      if (!result.next || result.next.build.source !== "local") throw new Error("local build");
+      const call = result.next.build.op
+        .body()
+        .invokeHostFunctionOp()
+        .hostFunction()
+        .invokeContract();
+      expect(call.functionName().toString()).toBe("claim");
+      const [from, ids, to] = call.args();
+      expect(Address.fromScVal(from!).toString()).toBe(ctx.account);
+      expect(scValToNative(ids!)).toEqual([1, 2]);
+      expect(Address.fromScVal(to!).toString()).toBe(ctx.account);
+      expect(result.next.intent).toMatchObject({
+        contract: POOL,
+        function: "claim",
+        args: [ctx.account, "1", "2", ctx.account],
+        recipient: ctx.account,
+      });
+    });
+
+    test("what accrued during the close itself is left with the pool; older emissions are claimed", async () => {
+      // 100 base units per second: the window's worth is dust, one more is not.
+      const rateScaled = 100n * 1_000_000n;
+      const dust = await run({
+        ...SUPPLY_ONLY,
+        emissions: { claimable: { 1: 100n * REWARD_DUST_WINDOW_SECONDS }, rateScaled },
+      });
+      expect(dust.result.plan.map((s) => s.kind)).toEqual(["withdraw"]);
+      const real = await run({
+        ...SUPPLY_ONLY,
+        emissions: { claimable: { 1: 100n * REWARD_DUST_WINDOW_SECONDS + 1n }, rateScaled },
+      });
+      expect(real.result.plan.map((s) => s.kind)).toEqual(["claim", "withdraw"]);
+    });
+
+    test("BLND paid through a Stellar Asset Contract needs a trustline; without one the exit blocks by name", async () => {
+      const blocked = await run(
+        { ...SUPPLY_ONLY, emissions: EMISSIONS },
+        supplyPosition(),
+        ctx,
+        registry,
+        rpc("ok", [BLND])
+      );
+      expect(blocked.result.next).toBeNull();
+      expect(blocked.result.blockers.map((b) => b.code)).toEqual([
+        "blend_emissions_trustline_missing",
+      ]);
+      // With the trustline (BLND's contract among the balances) the claim goes ahead.
+      const held = await run(
+        { ...SUPPLY_ONLY, emissions: EMISSIONS },
+        supplyPosition(),
+        { ...ctx, tokenBalances: { ...ctx.tokenBalances, [BLND]: "0" } },
+        registry,
+        rpc("ok", [BLND])
+      );
+      expect(held.result.plan.map((s) => s.kind)).toEqual(["claim", "withdraw"]);
+      // A BLND contract that cannot be read is not one to assume anything about.
+      const unreadable = await run(
+        { ...SUPPLY_ONLY, emissions: EMISSIONS },
+        supplyPosition(),
+        ctx,
+        registry,
+        fakeExitRpc({
+          liveWasmHash: WASM_HASH,
+          hashesByContract: { [BLND]: null },
+          liveBalance: "0",
+        })
+      );
+      expect(unreadable.result.blockers.map((b) => b.code)).toEqual(["blend_pool_unreadable"]);
+    });
+
+    test("nothing accrued, nothing claimed", async () => {
+      const { result } = await run({ ...SUPPLY_ONLY, emissions: { claimable: {} } });
+      expect(result.plan.map((s) => s.kind)).toEqual(["withdraw"]);
+    });
+  });
+
+  describe("the backstop deposit", () => {
+    const NOW = Math.floor(Date.now() / 1000);
+    const DAY = 86_400;
+
+    test("is read from the pool's backstop for the account, whatever position led here", async () => {
+      const { deps } = await run(SUPPLY_ONLY);
+      expect(deps.backstopCalls).toEqual([`${BACKSTOP}/${POOL}/${ctx.account}`]);
+    });
+
+    test("shares whose queue has run out are withdrawn from the backstop contract, after any repay", async () => {
+      const { result } = await run(
+        { ...INDEBTED, backstop: { unlocked: 5_000_000n } },
+        supplyPosition({ isBackstop: true }),
+        ctx,
+        registryWithBackstop
+      );
+      expect(result.blockers).toEqual([]);
+      expect(result.plan.map((s) => [s.kind, s.contract])).toEqual([
+        ["repay", POOL],
+        ["withdraw", BACKSTOP],
+        ["withdraw_collateral", POOL],
+        ["withdraw", POOL],
+      ]);
+      expect(result.plan[1]).toMatchObject({
+        function: "withdraw",
+        asset: BACKSTOP_TOKEN,
+        amount: "5000000",
+        ceiling: "5000000",
+      });
+    });
+
+    test("the backstop withdrawal names the account, the pool, and the unlocked amount", async () => {
+      const { result } = await run(
+        { backstop: { unlocked: 5_000_000n } },
+        supplyPosition({ isBackstop: true }),
+        ctx,
+        registryWithBackstop
+      );
+      expect(result.plan.map((s) => s.kind)).toEqual(["withdraw"]);
+      if (!result.next || result.next.build.source !== "local") throw new Error("local build");
+      const call = result.next.build.op
+        .body()
+        .invokeHostFunctionOp()
+        .hostFunction()
+        .invokeContract();
+      expect(Address.fromScAddress(call.contractAddress()).toString()).toBe(BACKSTOP);
+      expect(call.functionName().toString()).toBe("withdraw");
+      const [from, pool, amount] = call.args();
+      expect(Address.fromScVal(from!).toString()).toBe(ctx.account);
+      expect(Address.fromScVal(pool!).toString()).toBe(POOL);
+      expect(scValToNative(amount!)).toBe(5_000_000n);
+      expect(result.next.intent.args).toEqual([ctx.account, POOL, "5000000"]);
+    });
+
+    test("a backstop step against a contract the registry does not know halts", async () => {
+      const { result } = await run(
+        { backstop: { unlocked: 5_000_000n } },
+        supplyPosition({ isBackstop: true }),
+        ctx,
+        registry
+      );
+      expect(result.next).toBeNull();
+      expect(result.blockers.map((b) => b.code)).toEqual(["exit_unknown_contract_version"]);
+    });
+
+    test("shares still cooling down block with the time left; nothing else is withdrawn meanwhile", async () => {
+      const { result } = await run(
+        {
+          ...SUPPLY_ONLY,
+          backstop: {
+            queued: [
+              { amount: 1_000_000n, unlocksAt: NOW + 2 * DAY + 1 },
+              { amount: 2_000_000n, unlocksAt: NOW + 10 * DAY + 1 },
+            ],
+          },
+        },
+        supplyPosition({ isBackstop: true }),
+        ctx,
+        registryWithBackstop
+      );
+      expect(result.next).toBeNull();
+      expect(result.blockers).toHaveLength(1);
+      expect(result.blockers[0]!.code).toBe("backstop_withdrawal_cooling_down");
+      expect(result.blockers[0]!.message).toContain("3000000 backstop shares");
+      expect(result.blockers[0]!.message).toContain("unlocks in 11 days");
+    });
+
+    test("shares never queued block, naming the cooldown for the pool's version", async () => {
+      const v2 = await run(
+        { backstop: { shares: 7n } },
+        supplyPosition({ isBackstop: true }),
+        ctx,
+        registryWithBackstop
+      );
+      expect(v2.result.blockers.map((b) => b.code)).toEqual(["backstop_withdrawal_not_queued"]);
+      expect(v2.result.blockers[0]!.message).toContain("17 days");
+      const v1 = await run(
+        { version: Version.V1, backstop: { shares: 7n } },
+        supplyPosition({ isBackstop: true }),
+        ctx,
+        registryKnowing(POOL, WASM_HASH, "blend", "pool", "testnet", "v1")
+      );
+      expect(v1.result.blockers[0]!.message).toContain("21 days");
+    });
+
+    test("a queued withdrawal that is only partly unlocked still waits for the rest", async () => {
+      const { result } = await run(
+        {
+          backstop: { unlocked: 1_000_000n, queued: [{ amount: 500n, unlocksAt: NOW + DAY }] },
+        },
+        supplyPosition({ isBackstop: true }),
+        ctx,
+        registryWithBackstop
+      );
+      expect(result.next).toBeNull();
+      expect(result.blockers.map((b) => b.code)).toEqual(["backstop_withdrawal_cooling_down"]);
+    });
+
+    test("a backstop deposit that is gone, with nothing else in the pool, is 'gone'", async () => {
+      const { result } = await run({}, supplyPosition({ isBackstop: true }));
+      expect(result.blockers.map((b) => b.code)).toEqual(["exit_position_gone"]);
+    });
   });
 
   test("buildStep encodes a single submit request the way the contract expects it", async () => {

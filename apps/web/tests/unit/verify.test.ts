@@ -1144,6 +1144,36 @@ test("a Blend exit may only call submit on its pool", () => {
   ).toThrow(/function LumenWipe does not use/);
 });
 
+test("a Blend exit may claim emissions on its pool and withdraw a queued deposit from the registry's backstop, nothing else", () => {
+  const BACKSTOP = "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA";
+  const expected = expectation({
+    exitContracts: [POOL, BACKSTOP],
+    exitFunctions: { [POOL]: ["submit", "claim"], [BACKSTOP]: ["withdraw"] },
+  });
+  const claim = exit({ function: "claim", contractsReferenced: [POOL] });
+  expect(() => assertCloseIntent(exitOnly(claim), expected)).not.toThrow();
+  // The backstop call names the pool it backs among its arguments.
+  const withdraw = exit({
+    contract: BACKSTOP,
+    function: "withdraw",
+    contractsReferenced: [BACKSTOP, POOL],
+  });
+  expect(() => assertCloseIntent(exitOnly(withdraw), expected)).not.toThrow();
+  // The pool's functions do not carry over to the backstop, nor the other way round.
+  expect(() =>
+    assertCloseIntent(exitOnly(exit({ contract: BACKSTOP, function: "submit" })), expected)
+  ).toThrow(/function LumenWipe does not use/);
+  expect(() => assertCloseIntent(exitOnly(exit({ function: "withdraw" })), expected)).toThrow(
+    /function LumenWipe does not use/
+  );
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(exit({ contract: BACKSTOP, function: "queue_withdrawal" })),
+      expected
+    )
+  ).toThrow(/function LumenWipe does not use/);
+});
+
 test("an Aquarius exit may call withdraw or claim on its pool, and the share token it burns is a permitted contract", () => {
   const SHARE_TOKEN = "CAN7DMIQH7FGKNYCUQMWECJJ74EKN5JATVVUOVTXOWLQGZCWAFWANG5P";
   const expected = expectation({
