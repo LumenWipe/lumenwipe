@@ -24,6 +24,9 @@ const PAIR = "CB46LMGJC7SYSH4C7SBNLV635OX5BSNQDGRR32NRXAV7N2AVNZMQUJ3A";
 const TOKEN_0 = "CBCU5VMZ3GNHHKJUWZ2GI7K36MEAXOJW2RJCIJHFPVFGBME3WADLXA6W";
 const TOKEN_1 = "CCBJNX4B23ZDXEE3KRS2IAQJSLNQY4ZJ24K44BI7FYYIF5ZAZMRYPRRD";
 const CONSTANT_HASH = "ae0da5a84b15805c5c7931ac567a8d1b34be3f26b483993d9ff80cb2c3de9852";
+const STABLE_HASH = "f1077e0b77da5e62d596e13aeae4160104cad99e7ef7f3183a6c9b6ec9e747cd";
+const PAIR_HASH = "18051456816b66f12e773a56f77c5794fac1b1fb7ab6e22d4fad5a412770f73e";
+const UNKNOWN_HASH = "9".repeat(64);
 
 const sym = (s: string): xdr.ScVal => xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(s)]);
 const addr = (a: string): xdr.ScVal => new Address(a).toScVal();
@@ -47,19 +50,18 @@ function result(positions: DefiPositionsResult["positions"]): DefiPositionsResul
   return { ...emptyDefiPositionsResult(ACCOUNT, "mainnet"), positions };
 }
 
-const knowsConstant = (_n: string, hash: string): ContractResolution =>
-  hash === CONSTANT_HASH
-    ? {
-        status: "known",
-        protocol: "aquarius",
-        kind: "pool",
-        version: "constant_product",
-        wasmHash: hash,
-      }
-    : { status: "unknown", wasmHash: hash };
+/** A registry knowing one Aquarius pool code per type and the Soroswap pair code. */
+const registry = (_n: string, hash: string): ContractResolution => {
+  const known = (protocol: "aquarius" | "soroswap", kind: "pool" | "pair", version: string) =>
+    ({ status: "known", protocol, kind, version, wasmHash: hash }) as const;
+  if (hash === CONSTANT_HASH) return known("aquarius", "pool", "constant_product");
+  if (hash === STABLE_HASH) return known("aquarius", "pool", "stable");
+  if (hash === PAIR_HASH) return known("soroswap", "pair", "v1");
+  return { status: "unknown", wasmHash: hash };
+};
 
 function deps(entries: ReturnType<typeof contractInstanceEntry>[]): CompletePositionsDeps {
-  return { rpc: mockRpc(entries), resolveWasmHash: knowsConstant };
+  return { rpc: mockRpc(entries), resolveWasmHash: registry };
 }
 
 describe("completing LP positions from the ledger", () => {
@@ -78,8 +80,8 @@ describe("completing LP positions from the ledger", () => {
     });
   });
 
-  test("a stableswap pool lists its tokens as one vector; an unknown code leaves the type unset", async () => {
-    const pool = contractInstanceEntry(AQ_POOL, "9".repeat(64), [
+  test("a stableswap pool lists its tokens as one vector", async () => {
+    const pool = contractInstanceEntry(AQ_POOL, STABLE_HASH, [
       [sym("Tokens"), xdr.ScVal.scvVec([addr(XLM_SAC), addr(AQUA_SAC)])],
       [sym("TokenShare"), addr(AQ_SHARE)],
     ]);
@@ -88,11 +90,64 @@ describe("completing LP positions from the ledger", () => {
       ...aquarius,
       tokens: [XLM_SAC, AQUA_SAC],
       shareToken: AQ_SHARE,
+      poolType: "stable",
     });
   });
 
+  test("a contract whose code the registry does not know nominates nothing: what a position names, the anchor admits", async () => {
+    const stranger = contractInstanceEntry(AQ_POOL, UNKNOWN_HASH, [
+      [sym("TokenA"), addr(XLM_SAC)],
+      [sym("TokenB"), addr(AQUA_SAC)],
+      [sym("TokenShare"), addr(AQ_SHARE)],
+    ]);
+    expect(
+      (await completePositionsFromLedger(result([aquarius]), "mainnet", deps([stranger]))).positions
+    ).toEqual([aquarius]);
+    // Known code, but of the other protocol or kind: still nothing.
+    const asPair = contractInstanceEntry(AQ_POOL, PAIR_HASH, [
+      [sym("TokenA"), addr(XLM_SAC)],
+      [sym("TokenB"), addr(AQUA_SAC)],
+    ]);
+    expect(
+      (await completePositionsFromLedger(result([aquarius]), "mainnet", deps([asPair]))).positions
+    ).toEqual([aquarius]);
+    const pairAsPool = contractInstanceEntry(PAIR, CONSTANT_HASH, [
+      [xdr.ScVal.scvU32(0), addr(TOKEN_0)],
+      [xdr.ScVal.scvU32(1), addr(TOKEN_1)],
+    ]);
+    expect(
+      (await completePositionsFromLedger(result([soroswap]), "mainnet", deps([pairAsPool])))
+        .positions
+    ).toEqual([soroswap]);
+  });
+
+  test("tokens must be two or more distinct contracts; an account or a lone token is not a token list", async () => {
+    const lone = contractInstanceEntry(AQ_POOL, STABLE_HASH, [
+      [sym("Tokens"), xdr.ScVal.scvVec([addr(XLM_SAC)])],
+      [sym("TokenShare"), addr(AQ_SHARE)],
+    ]);
+    expect(
+      (await completePositionsFromLedger(result([aquarius]), "mainnet", deps([lone]))).positions[0]
+    ).toEqual({ ...aquarius, shareToken: AQ_SHARE, poolType: "stable" });
+    const twice = contractInstanceEntry(AQ_POOL, STABLE_HASH, [
+      [sym("Tokens"), xdr.ScVal.scvVec([addr(XLM_SAC), addr(XLM_SAC)])],
+    ]);
+    expect(
+      (await completePositionsFromLedger(result([aquarius]), "mainnet", deps([twice]))).positions[0]
+    ).toEqual({ ...aquarius, poolType: "stable" });
+    const account = contractInstanceEntry(AQ_POOL, CONSTANT_HASH, [
+      [sym("TokenA"), addr(XLM_SAC)],
+      [sym("TokenB"), addr(ACCOUNT)],
+      [sym("TokenShare"), addr(ACCOUNT)],
+    ]);
+    expect(
+      (await completePositionsFromLedger(result([aquarius]), "mainnet", deps([account])))
+        .positions[0]
+    ).toEqual({ ...aquarius, poolType: "constant_product" });
+  });
+
   test("a Soroswap position gains the pair's two tokens", async () => {
-    const pair = contractInstanceEntry(PAIR, "8".repeat(64), [
+    const pair = contractInstanceEntry(PAIR, PAIR_HASH, [
       [xdr.ScVal.scvU32(0), addr(TOKEN_0)],
       [xdr.ScVal.scvU32(1), addr(TOKEN_1)],
     ]);
@@ -110,7 +165,7 @@ describe("completing LP positions from the ledger", () => {
           return { latestLedger: 1, entries: [] };
         },
       },
-      resolveWasmHash: knowsConstant,
+      resolveWasmHash: registry,
     };
     const untouched = await completePositionsFromLedger(result([complete]), "mainnet", counting);
     expect(untouched.positions).toEqual([complete]);
@@ -127,7 +182,7 @@ describe("completing LP positions from the ledger", () => {
           throw new Error("rpc down");
         },
       },
-      resolveWasmHash: knowsConstant,
+      resolveWasmHash: registry,
     };
     const out = await completePositionsFromLedger(result([aquarius, soroswap]), "mainnet", failing);
     expect(out.positions).toEqual([aquarius, soroswap]);
@@ -158,7 +213,7 @@ describe("completing LP positions from the ledger", () => {
           return { latestLedger: 1, entries: [] };
         },
       },
-      resolveWasmHash: knowsConstant,
+      resolveWasmHash: registry,
     };
     await completePositionsFromLedger(result(many), "mainnet", counting);
     expect(requested).toBe(MAX_COMPLETION_READS);

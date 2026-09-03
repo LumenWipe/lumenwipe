@@ -77,6 +77,13 @@ test("every protocol with an exit adapter has verified mainnet entries: the runn
     if (protocol === "aquarius") expect([...kinds].sort()).toEqual(["pool", "router"]);
     if (protocol === "soroswap") expect([...kinds].sort()).toEqual(["factory", "pair", "router"]);
   }
+  // Blend V2 ships the same code on both networks; the labels say so, so the file must agree.
+  for (const kind of ["factory", "backstop", "pool"] as const) {
+    const on = (network: "testnet" | "mainnet") =>
+      entriesForProtocol(network, "blend").find((e) => e.kind === kind && e.version === "v2")!
+        .wasmHash;
+    expect(on("mainnet")).toBe(on("testnet"));
+  }
   // Aquarius pools come in three codes; each has one representative per network.
   expect(
     entriesForProtocol("mainnet", "aquarius")

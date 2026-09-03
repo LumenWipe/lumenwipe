@@ -41,6 +41,10 @@ export interface ResolveDefiPositionsDeps {
  *  "cache" | "not-tracked") or the designed testnet source ("testnet-direct-read"). */
 export const DEGRADED_SOURCE = "octopos-degraded-fallback";
 
+/** The direct-read fallback sweeps every registered protocol of the network (hundreds of pools
+ *  on mainnet); past this it reports "detected nothing" rather than holding the analysis. */
+export const DIRECT_READ_FALLBACK_TIMEOUT_MS = 20_000;
+
 const logger = new Logger("resolve-defi-positions");
 
 function emptyDegradedResult(address: string, network: Network): DefiPositionsResult {
@@ -70,7 +74,15 @@ async function degradedFallback(
     `OctoPos unavailable for ${network} (${reason}); falling back to a best-effort direct read`
   );
   try {
-    const direct = await detectDefiPositionsViaDirectRead(address, network, deps.directRead);
+    const direct = await Promise.race([
+      detectDefiPositionsViaDirectRead(address, network, deps.directRead),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`direct read exceeded ${DIRECT_READ_FALLBACK_TIMEOUT_MS} ms`)),
+          DIRECT_READ_FALLBACK_TIMEOUT_MS
+        ).unref?.()
+      ),
+    ]);
     return { ...direct, source: DEGRADED_SOURCE, timestamp: null };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
