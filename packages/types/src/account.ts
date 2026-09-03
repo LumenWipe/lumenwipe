@@ -1,4 +1,6 @@
 import type { Network } from "./network";
+import type { DefiPositionsResult } from "./defi-position";
+import type { PlanBlocker } from "./plan";
 
 export type ClaimPredicate =
   | { type: "unconditional" }
@@ -110,6 +112,16 @@ export interface AccountState {
   // True when the enumerated subentry count is lower than numSubEntries from the ledger -
   // indicates entries we could not enumerate (e.g. offers when adapter URL not configured).
   subEntryMismatch: boolean;
+  /** Detected DeFi positions (Blend, Aquarius, Soroswap, Phoenix, FxDAO), resolved via OctoPos on
+   *  mainnet or a direct contract read on testnet / mainnet degraded mode - architecture.md §7.1.
+   *  Never absent: an unconfigured deployment or provider outage still returns a result, stamped
+   *  with a null `timestamp` and reflected in `defiPositionsWarnings` rather than being omitted. */
+  defiPositions: DefiPositionsResult;
+  /** Plain-language notices from `assessDefiPositionsGate` (issue #147) - stale/unconfirmed data
+   *  or an unrecognized position - reusing the exact same typed-blocker signal close/plan already
+   *  gates on, so the analysis view and the plan never disagree about what's trustworthy. Empty
+   *  when nothing needs flagging. */
+  defiPositionsWarnings: PlanBlocker[];
 }
 
 export interface MediatorCheckResult {

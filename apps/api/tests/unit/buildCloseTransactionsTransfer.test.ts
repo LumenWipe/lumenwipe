@@ -1,6 +1,8 @@
-import { test, expect, mock, afterEach } from "bun:test";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import * as rpcModule from "@/lib/stellar/rpc";
 import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import type { AccountState, Trustline } from "@lumenwipe/types";
+import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 // Wiring coverage for the transfer disposition (#111).
 //
@@ -41,6 +43,8 @@ function accountState(over: Partial<AccountState> = {}): AccountState {
     subEntryMismatch: false,
     sponsoredEntries: [],
     sponsorshipEnumerationIncomplete: false,
+    defiPositions: emptyDefiPositionsResult(SOURCE),
+    defiPositionsWarnings: [],
     ...over,
   };
 }
@@ -55,9 +59,8 @@ function rpcServerStub() {
   };
 }
 
-const realRpc = await import("@/lib/stellar/rpc");
 afterEach(() => {
-  mock.module("@/lib/stellar/rpc", () => realRpc);
+  mock.restore();
 });
 
 function opsOf(xdr: string) {
@@ -65,7 +68,8 @@ function opsOf(xdr: string) {
 }
 
 test("a transfer disposition reaches the builder as a payment to the chosen account", async () => {
-  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const state = accountState({ trustlines: [trustline(USDC, "100")] });
@@ -92,7 +96,8 @@ test("a transfer disposition reaches the builder as a payment to the chosen acco
 });
 
 test("the payment precedes the changeTrust that removes the same trustline", async () => {
-  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const state = accountState({ trustlines: [trustline(USDC, "100")] });
@@ -119,7 +124,8 @@ test("the payment precedes the changeTrust that removes the same trustline", asy
 });
 
 test("a transfer disposition with no destination refuses instead of converting", async () => {
-  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   const { MissingTransferDestinationError } = await import("@/lib/close-api/decisions");
 
@@ -133,7 +139,8 @@ test("a transfer disposition with no destination refuses instead of converting",
 });
 
 test("transfer composes with issuer on another asset in the same close", async () => {
-  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const otherIssuer = Keypair.random().publicKey();
@@ -161,7 +168,8 @@ test("transfer composes with issuer on another asset in the same close", async (
 });
 
 test("the summary names the destination, not just a count", async () => {
-  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const state = accountState({ trustlines: [trustline(USDC, "100")] });

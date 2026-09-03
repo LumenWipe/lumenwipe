@@ -132,15 +132,15 @@ All non-XLM balances are converted using the best available route: the Soroswap 
 
 LumenWipe builds transactions that drain accounts irreversibly. The security design starts from that fact.
 
-| What                    | How it's protected                                                                                                                            |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Private key**         | Never transmitted. Wallet path keeps it in the wallet; advanced secret-key mode keeps it in memory only, cleared after each signing operation |
-| **API-built transaction** | Verified client-side against the user's own choices before signing (`verify()`); the browser never signs bytes it did not verify               |
-| **Destination address** | Full-address display, ledger existence check, and explicit confirmation before merge                                                          |
-| **Exchange memo**       | Required and validated for known exchange destinations - missing memos block submission                                                       |
-| **API compromise**      | Cannot move funds: `verify()` checks every transaction against the user's own inputs, never the API's response, so a diverting transaction is never signed |
-| **XSS**                 | Strict Content Security Policy - no inline scripts, no `unsafe-eval`                                                                          |
-| **Supply chain**        | Lockfile-pinned dependencies, audited in CI                                                                                                   |
+| What                      | How it's protected                                                                                                                                         |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Private key**           | Never transmitted. Wallet path keeps it in the wallet; advanced secret-key mode keeps it in memory only, cleared after each signing operation              |
+| **API-built transaction** | Verified client-side against the user's own choices before signing (`verify()`); the browser never signs bytes it did not verify                           |
+| **Destination address**   | Full-address display, ledger existence check, and explicit confirmation before merge                                                                       |
+| **Exchange memo**         | Required and validated for known exchange destinations - missing memos block submission                                                                    |
+| **API compromise**        | Cannot move funds: `verify()` checks every transaction against the user's own inputs, never the API's response, so a diverting transaction is never signed |
+| **XSS**                   | Strict Content Security Policy - no inline scripts, no `unsafe-eval`                                                                                       |
+| **Supply chain**          | Lockfile-pinned dependencies, audited in CI                                                                                                                |
 
 The codebase undergoes internal security reviews as part of the development process. External security audits will be conducted when possible.
 
@@ -148,19 +148,19 @@ The codebase undergoes internal security reviews as part of the development proc
 
 ## Technology Stack
 
-| Layer          | Choice                                              | Why                                                                                  |
-| -------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Web client     | Next.js 15, TypeScript                              | Thin open-source client: verifies (`verify()`) and signs, no transaction-building    |
-| API            | NestJS, TypeScript, cache                           | Builds transactions; stateless; own deployable, reached via a key-injecting proxy    |
+| Layer          | Choice                                              | Why                                                                                    |
+| -------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Web client     | Next.js 15, TypeScript                              | Thin open-source client: verifies (`verify()`) and signs, no transaction-building      |
+| API            | NestJS, TypeScript, cache                           | Builds transactions; stateless; own deployable, reached via a key-injecting proxy      |
 | Packaging      | Bun workspaces monorepo                             | `apps/{web,api}` + `packages/{sdk,types}`; `@lumenwipe/sdk` is a thin API fetch client |
-| Stellar SDK    | `@stellar/stellar-sdk`                              | Official SDK for classic and Soroban                                                 |
-| Wallets        | `stellar-wallets-kit` (SEP-43)                      | One interface across Freighter, xBull, Albedo, LOBSTR, Hana, WalletConnect, and more |
-| Network access | Stellar RPC                                         | Live reads, simulation, submission, events                                           |
-| Enumeration    | One Horizon-compatible endpoint                     | Existing production indexers; the provider is set by configuration                   |
-| Routing        | Soroswap API + SDEX paths                           | Best routes across Soroban and classic venues                                        |
-| DeFi detection | OctoPos                                             | Funded DeFi Position API, behind a pluggable adapter                                 |
-| State          | Zustand + IndexedDB                                 | Resumable sessions, never persists keys                                              |
-| Testing        | Bun test runner (unit), Playwright (E2E on testnet) | Automated tests never touch mainnet; per-package CI across the monorepo              |
+| Stellar SDK    | `@stellar/stellar-sdk`                              | Official SDK for classic and Soroban                                                   |
+| Wallets        | `stellar-wallets-kit` (SEP-43)                      | One interface across Freighter, xBull, Albedo, LOBSTR, Hana, WalletConnect, and more   |
+| Network access | Stellar RPC                                         | Live reads, simulation, submission, events                                             |
+| Enumeration    | One Horizon-compatible endpoint                     | Existing production indexers; the provider is set by configuration                     |
+| Routing        | Soroswap API + SDEX paths                           | Best routes across Soroban and classic venues                                          |
+| DeFi detection | OctoPos                                             | Funded DeFi Position API, behind a pluggable adapter                                   |
+| State          | Zustand + IndexedDB                                 | Resumable sessions, never persists keys                                                |
+| Testing        | Bun test runner (unit), Playwright (E2E on testnet) | Automated tests never touch mainnet; per-package CI across the monorepo                |
 
 ---
 
@@ -187,20 +187,20 @@ The web and the API each read their own `.env.local` (copy from each app's `.env
 
 **`apps/api/.env.local`** - the API:
 
-| Variable                                            | Description                                                                    |
-| --------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `API_KEYS`                                          | Accepted API keys as `label=key` (the web's key must be listed here)           |
-| `NEXT_PUBLIC_STELLAR_RPC_TESTNET` / `_MAINNET`      | Stellar RPC endpoints                                                          |
-| `NEXT_PUBLIC_PATH_ROUTING_API_TESTNET` / `_MAINNET` | Horizon-compatible endpoints for offers, full account state, and path finding  |
-| `MEDIATOR_SECRET_TESTNET` / `_MAINNET`              | Shared mediator secret (operator-only; enables exchange closes)                |
+| Variable                                            | Description                                                                   |
+| --------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `API_KEYS`                                          | Accepted API keys as `label=key` (the web's key must be listed here)          |
+| `NEXT_PUBLIC_STELLAR_RPC_TESTNET` / `_MAINNET`      | Stellar RPC endpoints                                                         |
+| `NEXT_PUBLIC_PATH_ROUTING_API_TESTNET` / `_MAINNET` | Horizon-compatible endpoints for offers, full account state, and path finding |
+| `MEDIATOR_SECRET_TESTNET` / `_MAINNET`              | Shared mediator secret (operator-only; enables exchange closes)               |
 
 **`apps/web/.env.local`** - the web:
 
-| Variable                                            | Description                                                                    |
-| --------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `LUMENWIPE_API_URL` / `LUMENWIPE_API_KEY`           | API base URL and key, injected server-side by the proxy (never sent to the browser) |
-| `NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET` / `_MAINNET`  | Public key of the shared mediator, so `verify()` can recognize the merge target |
-| `KV_REST_API_URL` / `KV_REST_API_TOKEN`             | Vercel KV - for the merge-stats counter and the proxy rate limit               |
+| Variable                                           | Description                                                                         |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `LUMENWIPE_API_URL` / `LUMENWIPE_API_KEY`          | API base URL and key, injected server-side by the proxy (never sent to the browser) |
+| `NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET` / `_MAINNET` | Public key of the shared mediator, so `verify()` can recognize the merge target     |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN`            | Vercel KV - for the merge-stats counter and the proxy rate limit                    |
 
 ### Running tests
 

@@ -182,7 +182,8 @@ export class CloseController {
         claimableBalanceSelections,
         sponsorshipAffordability,
         planDispositions,
-        planDestinations
+        planDestinations,
+        accountState.defiPositions
       );
       const decisionPoints = [
         ...deriveDestinationDecisionPoints(destination),

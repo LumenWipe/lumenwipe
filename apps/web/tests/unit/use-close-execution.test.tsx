@@ -1,4 +1,4 @@
-import { test, expect, mock } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { renderHook, act } from "@testing-library/react";
 import {
   Account,
@@ -13,19 +13,35 @@ import {
 import { useCloseExecution } from "@/hooks/useCloseExecution";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
+import * as closeClient from "@/lib/api/close-client";
+import * as submitViaApiModule from "@/lib/stellar/submit-via-api";
 import type { TransactionSigner } from "@/lib/stellar/signer";
 
-// Deviation from the plan (recorded in the SDD ledger's preflight ruling): the plan's test
-// text calls run() with no mock of fetchCloseTransactions. Once the signer-identity guard
-// below is fixed, run() falls through into this call - without a mock that's a real,
-// unmocked network fetch(), which is flaky/slow/CI-hostile in a unit test. Mock it to reject
-// immediately with a benign error so the test stays deterministic; this doesn't change what
-// the test asserts (still only the "doesn't match the account" rejection string is gone).
-mock.module("@/lib/api/close-client", () => ({
-  fetchCloseTransactions: async () => {
+/** The stand-ins return only what the hook reads, so they are typed loosely on purpose. */
+function stubFetchCloseTransactions(impl: () => Promise<unknown>): void {
+  spyOn(closeClient, "fetchCloseTransactions").mockImplementation(
+    impl as unknown as typeof closeClient.fetchCloseTransactions
+  );
+}
+function stubSubmitViaApi(impl: () => Promise<unknown>): void {
+  spyOn(submitViaApiModule, "submitViaApi").mockImplementation(
+    impl as unknown as typeof submitViaApiModule.submitViaApi
+  );
+}
+
+// The two modules that make real network calls are patched with spyOn on the real module
+// objects, never with mock.module: a process-wide module replacement leaks across test files
+// depending on the order Bun runs them (it did, in CI), and mock.restore() undoes a spy
+// reliably. Without a per-test override, fetching transactions rejects with a benign error, so a
+// test that only exercises the signer guard never reaches a real fetch().
+beforeEach(() => {
+  stubFetchCloseTransactions(async () => {
     throw new Error("not mocked in this test");
-  },
-}));
+  });
+});
+afterEach(() => {
+  mock.restore();
+});
 
 function coSigner(publicKey: string): TransactionSigner {
   return { publicKey, sign: async (xdr) => xdr };
@@ -123,29 +139,22 @@ test("useCloseExecution › a second signer completes the close by resuming, not
   } as never);
 
   let getTransactionsCalls = 0;
-  mock.module("@/lib/api/close-client", () => ({
-    fetchCloseTransactions: async () => {
-      getTransactionsCalls++;
-      return {
-        planHash: "h",
-        status: "ready",
-        transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
-        remaining: { steps: 0, requiresAnotherCall: false },
-      };
-    },
-  }));
-  // Deliberately NOT mocked: @/lib/stellar/verify and @/lib/stellar/intent/serialize. Bun's
-  // mock.module() replaces a module in the process-wide registry for the rest of the whole
-  // `bun test` run, not just this file - mocking these two leaked a fake "always
-  // account_merge" intentFromXdr into other unit test files (verify.test.ts,
-  // verify-revoke-sponsorship.test.ts) that import the real implementation and depend on its
-  // real decoding. The mergeXdr built above is a genuinely valid, verifiable account_merge, so
-  // driving it through the real verifyCloseTransaction/intentFromXdr is both safe (no cross-
-  // file pollution) and a better test (it proves the real threshold-category logic classifies
-  // account_merge as "high" and requires weight 2, not a hardcoded stand-in). Only the two
-  // modules that make real network calls stay mocked.
-  mock.module("@/lib/stellar/submit-via-api", () => ({
-    submitViaApi: async () => ({ txHash: "final-hash" }),
+  stubFetchCloseTransactions(async () => {
+    getTransactionsCalls++;
+    return {
+      planHash: "h",
+      status: "ready",
+      transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+      remaining: { steps: 0, requiresAnotherCall: false },
+    };
+  });
+  // Deliberately NOT patched: @/lib/stellar/verify and @/lib/stellar/intent/serialize. The
+  // mergeXdr built above is a genuinely valid, verifiable account_merge, so driving it through
+  // the real verifyCloseTransaction/intentFromXdr is a better test (it proves the real
+  // threshold-category logic classifies account_merge as "high" and requires weight 2, not a
+  // hardcoded stand-in). Only the two modules that make real network calls are patched.
+  stubSubmitViaApi(async () => ({
+    txHash: "final-hash",
   }));
 
   const { result } = renderHook(() => useCloseExecution());
@@ -232,24 +241,20 @@ test("useCloseExecution › a signer that returns a body-tampered envelope on re
   } as never);
 
   let getTransactionsCalls = 0;
-  mock.module("@/lib/api/close-client", () => ({
-    fetchCloseTransactions: async () => {
-      getTransactionsCalls++;
-      return {
-        planHash: "h",
-        status: "ready",
-        transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
-        remaining: { steps: 0, requiresAnotherCall: false },
-      };
-    },
-  }));
+  stubFetchCloseTransactions(async () => {
+    getTransactionsCalls++;
+    return {
+      planHash: "h",
+      status: "ready",
+      transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+      remaining: { steps: 0, requiresAnotherCall: false },
+    };
+  });
   let submitCalls = 0;
-  mock.module("@/lib/stellar/submit-via-api", () => ({
-    submitViaApi: async () => {
-      submitCalls++;
-      return { txHash: "final-hash" };
-    },
-  }));
+  stubSubmitViaApi(async () => {
+    submitCalls++;
+    return { txHash: "final-hash" };
+  });
 
   const { result } = renderHook(() => useCloseExecution());
 
@@ -299,19 +304,17 @@ test("useCloseExecution › a hash(x) signer's preimage completes the close by r
   } as never);
 
   let getTransactionsCalls = 0;
-  mock.module("@/lib/api/close-client", () => ({
-    fetchCloseTransactions: async () => {
-      getTransactionsCalls++;
-      return {
-        planHash: "h",
-        status: "ready",
-        transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
-        remaining: { steps: 0, requiresAnotherCall: false },
-      };
-    },
-  }));
-  mock.module("@/lib/stellar/submit-via-api", () => ({
-    submitViaApi: async () => ({ txHash: "final-hash" }),
+  stubFetchCloseTransactions(async () => {
+    getTransactionsCalls++;
+    return {
+      planHash: "h",
+      status: "ready",
+      transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+      remaining: { steps: 0, requiresAnotherCall: false },
+    };
+  });
+  stubSubmitViaApi(async () => ({
+    txHash: "final-hash",
   }));
 
   const { result } = renderHook(() => useCloseExecution());
@@ -368,13 +371,11 @@ test("useCloseExecution › a guard failure while paused clears signatureStatus 
     } as never,
   } as never);
 
-  mock.module("@/lib/api/close-client", () => ({
-    fetchCloseTransactions: async () => ({
-      planHash: "h",
-      status: "ready",
-      transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
-      remaining: { steps: 0, requiresAnotherCall: false },
-    }),
+  stubFetchCloseTransactions(async () => ({
+    planHash: "h",
+    status: "ready",
+    transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+    remaining: { steps: 0, requiresAnotherCall: false },
   }));
 
   const { result } = renderHook(() => useCloseExecution());
@@ -431,17 +432,15 @@ test("useCloseExecution › resigning with an already-contributed key on resume 
   } as never);
 
   let getTransactionsCalls = 0;
-  mock.module("@/lib/api/close-client", () => ({
-    fetchCloseTransactions: async () => {
-      getTransactionsCalls++;
-      return {
-        planHash: "h",
-        status: "ready",
-        transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
-        remaining: { steps: 0, requiresAnotherCall: false },
-      };
-    },
-  }));
+  stubFetchCloseTransactions(async () => {
+    getTransactionsCalls++;
+    return {
+      planHash: "h",
+      status: "ready",
+      transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+      remaining: { steps: 0, requiresAnotherCall: false },
+    };
+  });
 
   const { result } = renderHook(() => useCloseExecution());
 
@@ -496,12 +495,10 @@ test("useCloseExecution › submitPreAuthTransaction submits a hash-matched, int
   } as never);
 
   let submitCalls = 0;
-  mock.module("@/lib/stellar/submit-via-api", () => ({
-    submitViaApi: async () => {
-      submitCalls++;
-      return { txHash: "preauth-hash" };
-    },
-  }));
+  stubSubmitViaApi(async () => {
+    submitCalls++;
+    return { txHash: "preauth-hash" };
+  });
 
   const { result } = renderHook(() => useCloseExecution());
 
@@ -537,12 +534,10 @@ test("useCloseExecution › submitPreAuthTransaction rejects a hash mismatch wit
   } as never);
 
   let submitCalls = 0;
-  mock.module("@/lib/stellar/submit-via-api", () => ({
-    submitViaApi: async () => {
-      submitCalls++;
-      return { txHash: "preauth-hash" };
-    },
-  }));
+  stubSubmitViaApi(async () => {
+    submitCalls++;
+    return { txHash: "preauth-hash" };
+  });
 
   const { result } = renderHook(() => useCloseExecution());
 
@@ -582,12 +577,10 @@ test("useCloseExecution › submitPreAuthTransaction rejects a transaction with 
   } as never);
 
   let submitCalls = 0;
-  mock.module("@/lib/stellar/submit-via-api", () => ({
-    submitViaApi: async () => {
-      submitCalls++;
-      return { txHash: "preauth-hash" };
-    },
-  }));
+  stubSubmitViaApi(async () => {
+    submitCalls++;
+    return { txHash: "preauth-hash" };
+  });
 
   const { result } = renderHook(() => useCloseExecution());
 

@@ -47,7 +47,7 @@ cd apps/web && bun test tests/unit/verify.test.ts
 cd apps/api && bun test tests/close-transactions.test.ts
 ```
 
-`bun type-check && bun lint && bun test` must pass before pushing. CI (`.github/workflows/ci.yml`) runs every package's checks on each change as a matrix - a shared `packages/types` change is validated against every consumer, not skipped by a path filter. `deploy-api.yml` deploys the API to Cloud Run on push to `main` (keyless WIF).
+`bun type-check && bun lint && bun test` must pass before pushing. Run `bun run format` before opening a PR - CI's `format` job runs `bun run format:check` (`prettier --check .`) and fails the build on any drift, so an unformatted file blocks the PR the same way a failing test does. CI (`.github/workflows/ci.yml`) runs every package's checks on each change as a matrix - a shared `packages/types` change is validated against every consumer, not skipped by a path filter. `deploy-api.yml` deploys the API to Cloud Run on push to `main` (keyless WIF).
 
 ### Local full-flow dev
 
@@ -87,6 +87,7 @@ CONTRIBUTING.md has the full rules. Essentials:
 - Strict TypeScript, no `any` (use `unknown` + a guard); explicit return types on exported functions. Prettier: double quotes, semicolons, printWidth 100.
 - Comments only when the _why_ is non-obvious.
 - Bug fixes require a unit test reproducing the bug. Automated tests never touch mainnet; E2E runs on testnet.
+- Test fixtures never use a real, checksum-valid secret key (Stellar or otherwise) - a synthetic, non-strkey placeholder only, even when a test's plaintext coincidentally looks like key material. A leaked test fixture is exactly as dangerous as a leaked production secret regardless of which network it was ever funded on.
 - Security-sensitive changes - key handling, transaction construction, `verify()`, confirmation flows, the mediator flow, CSP - get closer review; flag them explicitly in PRs.
 - Security-sensitive changes (the same list above) require running `security-review` before opening the PR; note the result in the PR description.
 

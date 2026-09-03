@@ -25,7 +25,11 @@ function baseExpected(): CloseExpectation {
     memoRequired: false,
     memoType: null,
     claimTrustlineAssets: [],
-  transfers: {},
+    transfers: {},
+    exitContracts: [],
+    heldTokenContracts: [],
+    positionTokenContracts: [],
+    exitFunctions: {},
     accountSigners: [],
     accountThresholds: { low: 0, med: 1, high: 1 },
   };
@@ -189,11 +193,36 @@ test("verify › every revoke-sponsorship op kind is recognized and accepted", (
     "revoke_sponsorship",
   ]);
   expect(intent.operations.slice(0, 5)).toEqual([
-    { source: SOURCE_KP.publicKey(), type: "revoke_sponsorship", entryKind: "account", owner: OWNER_KP.publicKey() },
-    { source: SOURCE_KP.publicKey(), type: "revoke_sponsorship", entryKind: "trustline", owner: OWNER_KP.publicKey() },
-    { source: SOURCE_KP.publicKey(), type: "revoke_sponsorship", entryKind: "offer", owner: OWNER_KP.publicKey() },
-    { source: SOURCE_KP.publicKey(), type: "revoke_sponsorship", entryKind: "data_entry", owner: OWNER_KP.publicKey() },
-    { source: SOURCE_KP.publicKey(), type: "revoke_sponsorship", entryKind: "signer", owner: OWNER_KP.publicKey() },
+    {
+      source: SOURCE_KP.publicKey(),
+      type: "revoke_sponsorship",
+      entryKind: "account",
+      owner: OWNER_KP.publicKey(),
+    },
+    {
+      source: SOURCE_KP.publicKey(),
+      type: "revoke_sponsorship",
+      entryKind: "trustline",
+      owner: OWNER_KP.publicKey(),
+    },
+    {
+      source: SOURCE_KP.publicKey(),
+      type: "revoke_sponsorship",
+      entryKind: "offer",
+      owner: OWNER_KP.publicKey(),
+    },
+    {
+      source: SOURCE_KP.publicKey(),
+      type: "revoke_sponsorship",
+      entryKind: "data_entry",
+      owner: OWNER_KP.publicKey(),
+    },
+    {
+      source: SOURCE_KP.publicKey(),
+      type: "revoke_sponsorship",
+      entryKind: "signer",
+      owner: OWNER_KP.publicKey(),
+    },
   ]);
   expect(() => assertCloseIntent(intent, baseExpected())).not.toThrow();
 });

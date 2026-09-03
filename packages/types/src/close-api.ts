@@ -117,6 +117,28 @@ export type IntentOperationBody =
       entryKind: "account" | "trustline" | "offer" | "data_entry" | "signer";
       owner: string;
     }
+  // A Soroban contract invocation - a DeFi exit. `accountsReferenced` lists every Stellar
+  // account address anywhere in the arguments, so a verifier can insist that an exit only ever
+  // acts for, and pays, the account being closed - without knowing the protocol's ABI.
+  | {
+      type: "invoke_host_function";
+      contract: string;
+      function: string;
+      /** The decoded arguments rendered for a human, in order. */
+      args: string[];
+      /** Every Stellar account (G...) named anywhere in the arguments or in the authorization
+       *  tree the signature would satisfy. A verifier insists these are all the closing account. */
+      accountsReferenced: string[];
+      /** Every contract (C...) named the same way, including nested calls the signature would
+       *  authorize. A verifier insists these are contracts the account is known to deal with. */
+      contractsReferenced: string[];
+      /** Address forms that cannot be pinned to anything (muxed accounts, claimable balances,
+       *  liquidity pools). A verifier refuses any. */
+      unsupportedAddressCount: number;
+      /** True when the signature would authorize more than the account's own plain contract
+       *  calls: another party's credentials, or a contract creation, in the auth entries. */
+      authorizesBeyondSelf: boolean;
+    }
   // Any operation the close vocabulary does not recognize, preserved rather than dropped so
   // verification can reject an effect it cannot describe.
   | { type: "unknown" };

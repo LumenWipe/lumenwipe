@@ -1,8 +1,11 @@
-import { test, expect, mock, afterEach } from "bun:test";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import * as pathFinding from "@/lib/stellar/path-finding";
+import * as rpcModule from "@/lib/stellar/rpc";
 import { Account, Keypair, Operation, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import { AssetRouteLostError } from "@/lib/utils/errors";
 import type { AccountState, Trustline, AssetDisposition, PlannedStep } from "@lumenwipe/types";
 import type { StepBuildContext } from "@/lib/stellar/step-engine";
+import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 // Regression coverage for the fused CLOSE_ACCOUNT build honoring the per-asset
 // disposition decided on the analyze page. The bug: a non-convertible asset the
@@ -50,6 +53,8 @@ function accountState(): AccountState {
     subEntryMismatch: false,
     sponsoredEntries: [],
     sponsorshipEnumerationIncomplete: false,
+    defiPositions: emptyDefiPositionsResult(SOURCE),
+    defiPositionsWarnings: [],
   };
 }
 
@@ -96,11 +101,8 @@ function rpcServerStub() {
   };
 }
 
-const realPaths = await import("@/lib/stellar/path-finding");
-const realRpc = await import("@/lib/stellar/rpc");
 afterEach(() => {
-  mock.module("@/lib/stellar/path-finding", () => realPaths);
-  mock.module("@/lib/stellar/rpc", () => realRpc);
+  mock.restore();
 });
 
 function opsOf(xdr: string) {
@@ -111,8 +113,11 @@ test("CLOSE_ACCOUNT › issuer disposition returns the balance to the issuer wit
   // No route exists for this asset. With a "convert" decision this would raise
   // AssetRouteLostError; with the user's "issuer" decision it must not even ask.
   const fetcher = mock(() => Promise.resolve(null));
-  mock.module("@/lib/stellar/path-finding", () => ({ fetchConversionPath: fetcher }));
-  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  spyOn(pathFinding, "fetchConversionPath").mockImplementation(
+    fetcher as unknown as typeof pathFinding.fetchConversionPath
+  );
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
 
   const { buildStepXdrForPlan } = await import("@/lib/stellar/step-engine");
   const xdr = await buildStepXdrForPlan(closeStep(), ctx({ [NOSWAP]: "issuer" }));
@@ -136,8 +141,11 @@ test("CLOSE_ACCOUNT › a genuinely lost route for a convert asset still surface
   // Safety invariant: the issuer fix must not mask a lost route for an asset the
   // user actually wants converted. Default disposition is "convert".
   const fetcher = mock(() => Promise.resolve(null));
-  mock.module("@/lib/stellar/path-finding", () => ({ fetchConversionPath: fetcher }));
-  mock.module("@/lib/stellar/rpc", () => ({ getRpcServer: () => rpcServerStub() }));
+  spyOn(pathFinding, "fetchConversionPath").mockImplementation(
+    fetcher as unknown as typeof pathFinding.fetchConversionPath
+  );
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
 
   const { buildStepXdrForPlan } = await import("@/lib/stellar/step-engine");
 

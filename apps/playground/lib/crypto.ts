@@ -22,9 +22,17 @@ function getKey(): Buffer {
   return Buffer.from(hex, "hex");
 }
 
+// GCM's default tag length (16 bytes) is already what Node enforces when this option is
+// omitted, so this doesn't change behavior - it makes the expected tag length an explicit,
+// auditable part of the encrypt/decrypt contract instead of an implicit runtime default,
+// closing a semgrep finding (gcm-no-tag-length) that flags the implicit form on principle.
+const GCM_AUTH_TAG_LENGTH = 16;
+
 export function encryptSecret(plaintext: string): string {
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", getKey(), iv);
+  const cipher = createCipheriv("aes-256-gcm", getKey(), iv, {
+    authTagLength: GCM_AUTH_TAG_LENGTH,
+  });
   const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return `${iv.toString("hex")}:${tag.toString("hex")}:${ciphertext.toString("hex")}`;
@@ -35,7 +43,9 @@ export function decryptSecret(payload: string): string {
   if (!ivHex || !tagHex || !dataHex) {
     throw new Error("Malformed encrypted payload");
   }
-  const decipher = createDecipheriv("aes-256-gcm", getKey(), Buffer.from(ivHex, "hex"));
+  const decipher = createDecipheriv("aes-256-gcm", getKey(), Buffer.from(ivHex, "hex"), {
+    authTagLength: GCM_AUTH_TAG_LENGTH,
+  });
   decipher.setAuthTag(Buffer.from(tagHex, "hex"));
   return Buffer.concat([decipher.update(Buffer.from(dataHex, "hex")), decipher.final()]).toString(
     "utf8"

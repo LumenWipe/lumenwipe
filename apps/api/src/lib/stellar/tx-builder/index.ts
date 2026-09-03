@@ -2,6 +2,7 @@ import type {
   AccountState,
   AssetDisposition,
   ClaimableBalanceSelection,
+  DefiPositionsResult,
   PlannedStep,
   StepType,
   BuildPlanResult,
@@ -11,6 +12,8 @@ import type {
   Trustline,
 } from "@lumenwipe/types";
 import type { SponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
+import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
+import { planExitSteps } from "@/lib/defi-exits/plan-exits";
 import { estimateFeeLumens } from "@/lib/utils/amounts";
 import { batchItems } from "./batching";
 import { OP_BATCH_LIMIT } from "@/config/constants";
@@ -107,6 +110,83 @@ export function computeNeedsSignerNormalization(accountState: AccountState): boo
   );
 }
 
+/**
+ * Blocks a signer normalization that would leave the account permanently unauthorizable. Shared by
+ * `buildPlan()` (the `/close/plan` preview) and `buildCloseTransactions()` (the real
+ * `/close/transactions` builder, issue #167) - both must refuse this before ever emitting a
+ * `SetOptions` normalization, not just the preview. Only meaningful when
+ * `computeNeedsSignerNormalization()` is true; callers should skip calling this otherwise.
+ */
+export function assessSignerNormalizationSafety(accountState: AccountState): PlanBlocker[] {
+  const { signers, thresholds } = accountState;
+  const masterKey = accountState.address;
+  const blockers: PlanBlocker[] = [];
+
+  // signerNormalizationOps() (signers.ts) always removes every non-master signer and resets
+  // thresholds to 0/1/1 - it never raises masterWeight. If the master key's own weight is 0,
+  // normalization would strip away every other signer and leave an account with a weight-0
+  // master key and threshold 1: nothing left able to authorize anything, ever. This is
+  // independent of the combined-weight check below - block it up front regardless of how
+  // much weight the co-signers carry.
+  const masterWeight = signers.find((s) => s.key === masterKey)?.weight ?? 0;
+  if (masterWeight < 1) {
+    blockers.push({
+      message:
+        "The master key on this account has weight 0. Removing the account's other signers " +
+        "would leave no key able to authorize any further changes to this account, so this " +
+        "flow cannot safely proceed.",
+    });
+  }
+
+  // Combined weight, not the master key's alone: the signature-accumulation engine
+  // (multisig epic #97) can gather a normalization/merge signature from any signer whose
+  // type this app can actually satisfy - ed25519 (connected wallet or secret key), hash(x)
+  // (manual preimage), or pre-auth-tx (manual pre-authorized transaction) - matching
+  // apps/web/components/execution/SigningProgress.tsx's own satisfiable-weight reasoning,
+  // applied here before the guided UI ever reaches the signing step. An ed25519
+  // signed-payload signer's weight never counts: this flow has no path to satisfy one.
+  const satisfiableWeight = signers
+    .filter(
+      (s) => s.type === "ed25519_public_key" || s.type === "hash_x" || s.type === "preauth_tx"
+    )
+    .reduce((sum, s) => sum + s.weight, 0);
+  if (satisfiableWeight < thresholds.high) {
+    const totalWeight = signers.reduce((sum, s) => sum + s.weight, 0);
+    const message =
+      satisfiableWeight === totalWeight
+        ? `This account's signers can contribute at most weight ${satisfiableWeight} toward removing ` +
+          `signers or changing thresholds, but that requires weight ${thresholds.high} (the current ` +
+          `high threshold).`
+        : `This account's signers can contribute at most weight ${satisfiableWeight} toward removing ` +
+          `signers or changing thresholds, but that requires weight ${thresholds.high} (the current ` +
+          `high threshold). At least one of its signers cannot be authorized through this flow, so this ` +
+          `change can never be fully authorized.`;
+    blockers.push({ message });
+  }
+
+  return blockers;
+}
+
+/**
+ * Blocks a trustline the issuer has deauthorized while it still holds a balance. Shared by
+ * `buildPlan()` and `buildCloseTransactions()` (issue #167) - `ChangeTrust` to limit 0 fails at the
+ * ledger while balance > 0, so this must be refused before either the preview or the real build.
+ */
+export function assessDeauthorizedTrustlineBlockers(trustlines: Trustline[]): PlanBlocker[] {
+  // The issuer has revoked authorization on these trustlines. PathPaymentStrictSend fails with
+  // src_not_authorized, and ChangeTrust limit=0 fails while balance > 0. The issuer must
+  // re-authorize before the account can convert or remove these trustlines.
+  const deauthorizedWithBalance = trustlines.filter(
+    (tl) => !tl.authorized && parseFloat(tl.balance) > 0
+  );
+  return deauthorizedWithBalance.map((tl) => ({
+    message:
+      `Trustline for ${tl.code} has a non-zero balance (${tl.balance}) but is deauthorized ` +
+      `by the issuer. The issuer must re-authorize this trustline before it can be ` +
+      `converted or removed.`,
+  }));
+}
+
 export function buildPlan(
   accountState: AccountState,
   mediatorRequired: boolean,
@@ -120,21 +200,18 @@ export function buildPlan(
    *  step's wording depends on it - which assets need a step at all does not. */
   dispositions: Record<string, AssetDisposition> = {},
   /** Where each `transfer` disposition pays, keyed the same way. */
-  transferDestinations: TransferDestinations = {}
+  transferDestinations: TransferDestinations = {},
+  /** The account's normalized DeFi position read (issue #146), when the caller has one. Null
+   *  until whatever wires OctoPos into the request pipeline supplies it - see
+   *  assessDefiPositionsGate for what a non-null result is gated on. */
+  defiPositions: DefiPositionsResult | null = null
 ): BuildPlanResult {
   const steps: PlannedStep[] = [];
   const blockers: PlanBlocker[] = [];
   let idx = 0;
 
-  const {
-    signers,
-    thresholds,
-    dataEntries,
-    openOffers,
-    trustlines,
-    claimableBalances,
-    authImmutable,
-  } = accountState;
+  const { signers, dataEntries, openOffers, trustlines, claimableBalances, authImmutable } =
+    accountState;
   const masterKey = accountState.address;
   const extraSigners = signers.filter((s) => s.key !== masterKey);
 
@@ -215,6 +292,18 @@ export function buildPlan(
     });
   }
 
+  // DeFi position freshness/confidence gate (issue #147): same "don't guess" treatment as the
+  // sub-entry mismatch above, applied to OctoPos's own signals. A no-op until a caller actually
+  // supplies a DefiPositionsResult - see assessDefiPositionsGate for what triggers a blocker.
+  if (defiPositions) {
+    blockers.push(...assessDefiPositionsGate(defiPositions));
+  }
+  // DeFi positions the catalog cannot exit block here; the ones it can become EXIT_POSITIONS
+  // steps below. Either way no detected position is left out of the plan in silence.
+  const detectedPositions = defiPositions?.positions ?? [];
+  const exitBlockers = planExitSteps(detectedPositions, 0);
+  blockers.push(...exitBlockers.blockers);
+
   // Threshold gating: SetOptions is a HIGH-threshold operation. If no combination of
   // this app's satisfiable signers can reach the current high threshold, the normalization
   // tx can never be authorized - surface this as a blocker before building a plan that
@@ -222,64 +311,10 @@ export function buildPlan(
   const needsSignerNormalization = computeNeedsSignerNormalization(accountState);
 
   if (needsSignerNormalization) {
-    // signerNormalizationOps() (signers.ts) always removes every non-master signer and resets
-    // thresholds to 0/1/1 - it never raises masterWeight. If the master key's own weight is 0,
-    // normalization would strip away every other signer and leave an account with a weight-0
-    // master key and threshold 1: nothing left able to authorize anything, ever. This is
-    // independent of the combined-weight check below - block it up front regardless of how
-    // much weight the co-signers carry.
-    const masterWeight = signers.find((s) => s.key === masterKey)?.weight ?? 0;
-    if (masterWeight < 1) {
-      blockers.push({
-        message:
-          "The master key on this account has weight 0. Removing the account's other signers " +
-          "would leave no key able to authorize any further changes to this account, so this " +
-          "flow cannot safely proceed.",
-      });
-    }
-
-    // Combined weight, not the master key's alone: the signature-accumulation engine
-    // (multisig epic #97) can gather a normalization/merge signature from any signer whose
-    // type this app can actually satisfy - ed25519 (connected wallet or secret key), hash(x)
-    // (manual preimage), or pre-auth-tx (manual pre-authorized transaction) - matching
-    // apps/web/components/execution/SigningProgress.tsx's own satisfiable-weight reasoning,
-    // applied here before the guided UI ever reaches the signing step. An ed25519
-    // signed-payload signer's weight never counts: this flow has no path to satisfy one.
-    const satisfiableWeight = signers
-      .filter(
-        (s) => s.type === "ed25519_public_key" || s.type === "hash_x" || s.type === "preauth_tx"
-      )
-      .reduce((sum, s) => sum + s.weight, 0);
-    if (satisfiableWeight < thresholds.high) {
-      const totalWeight = signers.reduce((sum, s) => sum + s.weight, 0);
-      const message =
-        satisfiableWeight === totalWeight
-          ? `This account's signers can contribute at most weight ${satisfiableWeight} toward removing ` +
-            `signers or changing thresholds, but that requires weight ${thresholds.high} (the current ` +
-            `high threshold).`
-          : `This account's signers can contribute at most weight ${satisfiableWeight} toward removing ` +
-            `signers or changing thresholds, but that requires weight ${thresholds.high} (the current ` +
-            `high threshold). At least one of its signers cannot be authorized through this flow, so this ` +
-            `change can never be fully authorized.`;
-      blockers.push({ message });
-    }
+    blockers.push(...assessSignerNormalizationSafety(accountState));
   }
 
-  // Deauthorized trustlines with balance: the issuer has revoked authorization on these
-  // trustlines. PathPaymentStrictSend fails with src_not_authorized, and ChangeTrust
-  // limit=0 fails while balance > 0. The issuer must re-authorize before the account
-  // can convert or remove these trustlines.
-  const deauthorizedWithBalance = trustlines.filter(
-    (tl) => !tl.authorized && parseFloat(tl.balance) > 0
-  );
-  for (const tl of deauthorizedWithBalance) {
-    blockers.push({
-      message:
-        `Trustline for ${tl.code} has a non-zero balance (${tl.balance}) but is deauthorized ` +
-        `by the issuer. The issuer must re-authorize this trustline before it can be ` +
-        `converted or removed.`,
-    });
-  }
+  blockers.push(...assessDeauthorizedTrustlineBlockers(trustlines));
 
   // Claimable balances: each resolves to a per-balance selection - "claim" (the opt-out
   // default once the account can already claim it), "add_trustline_then_claim" (adds a
@@ -356,6 +391,7 @@ export function buildPlan(
     hasCleanup &&
     !hasHardBlocker &&
     balancesNeedingClaimStep.length === 0 &&
+    exitBlockers.steps.length === 0 &&
     accountState.sponsoredEntries.length === 0 &&
     fusedOpCount <= OP_BATCH_LIMIT
   ) {
@@ -389,6 +425,14 @@ export function buildPlan(
   }
 
   // ─── Step generation ────────────────────────────────────────────────────────
+
+  // DeFi exits come first, exactly where the round builder runs them: each is its own Soroban
+  // transaction ahead of every classic step, and what it withdraws lands in a trustline the steps
+  // below then dispose of and remove. Shown first so the plan reads in execution order.
+  for (const exitStep of planExitSteps(detectedPositions, idx).steps) {
+    steps.push(exitStep);
+    idx++;
+  }
 
   if (needsSignerNormalization) {
     steps.push(

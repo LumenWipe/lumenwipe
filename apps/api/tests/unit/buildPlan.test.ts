@@ -1,7 +1,14 @@
 import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { buildPlan } from "@/lib/stellar/tx-builder";
-import type { AccountState, ClaimableBalance, SponsoredEntry, Trustline } from "@lumenwipe/types";
+import type {
+  AccountState,
+  ClaimableBalance,
+  DefiPositionsResult,
+  DefiQueryKeys,
+  SponsoredEntry,
+  Trustline,
+} from "@lumenwipe/types";
 
 const MASTER_KP = Keypair.random();
 const EXTRA_KP = Keypair.random();
@@ -29,6 +36,8 @@ function makeAccount(overrides: Partial<AccountState> = {}): AccountState {
     subEntryMismatch: false,
     sponsoredEntries: [],
     sponsorshipEnumerationIncomplete: false,
+    defiPositions: makeDefiResult(),
+    defiPositionsWarnings: [],
     ...overrides,
   };
 }
@@ -1939,4 +1948,183 @@ test("buildPlan › two remediated balances of one asset: one step, one removal,
   // And the plan adds the trustline once, not once per balance.
   const adds = steps.find((s) => s.type === "ADD_TRUSTLINE_FOR_CLAIM");
   expect(adds!.operationCount).toBe(1);
+});
+
+// ─── issue #147: gating on DeFi position freshness/confidence signals ───────
+
+const EMPTY_DEFI_QUERY_KEYS: DefiQueryKeys = {
+  rpcEndpoints: [],
+  rpcPolicy: { maxKeysPerCall: 0, recommendedConcurrency: 0, backoffOn429Ms: [], timeoutMs: 0 },
+  slices: {},
+};
+
+function makeDefiResult(overrides: Partial<DefiPositionsResult> = {}): DefiPositionsResult {
+  return {
+    address: MASTER,
+    network: "testnet",
+    positions: [],
+    unrecognizedPositions: [],
+    enrichment: {},
+    source: "snapshot",
+    timestamp: new Date().toISOString(),
+    queryKeys: EMPTY_DEFI_QUERY_KEYS,
+    ...overrides,
+  };
+}
+
+test("buildPlan › omitting defiPositions is a true no-op, identical to the existing call shape", () => {
+  const account = makeAccount();
+  const withoutParam = buildPlan(account, false, false, {});
+  const withExplicitNull = buildPlan(account, false, false, {}, undefined, {}, {}, null);
+  expect(withoutParam).toEqual(withExplicitNull);
+});
+
+test("buildPlan › a stale defiPositions result surfaces as a blocker", () => {
+  const account = makeAccount();
+  const stale = makeDefiResult({ timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString() });
+  const { blockers } = buildPlan(account, false, false, {}, undefined, {}, {}, stale);
+  expect(blockers.some((b) => b.code === "defi_positions_stale")).toBe(true);
+});
+
+test("buildPlan › a fresh, clean defiPositions result adds no blockers", () => {
+  const account = makeAccount();
+  const fresh = makeDefiResult();
+  const { blockers } = buildPlan(account, false, false, {}, undefined, {}, {}, fresh);
+  expect(blockers.some((b) => b.code?.startsWith("defi_"))).toBe(false);
+});
+
+// ─── DeFi exits in the plan ─────────────────────────────────────────────────
+
+const BLEND_POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
+const SAC = "CAIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRDB3V";
+
+test("buildPlan › a detected Blend position becomes an EXIT_POSITIONS step ahead of every classic step", () => {
+  const account = makeAccount({
+    trustlines: [
+      {
+        asset: `USDC:${ISSUER}`,
+        code: "USDC",
+        issuer: ISSUER,
+        balance: "5.0000000",
+        authorized: true,
+      },
+    ],
+    defiPositions: makeDefiResult({
+      positions: [
+        {
+          protocol: "blend",
+          positionType: "supply",
+          contractAddress: BLEND_POOL,
+          assetAddress: SAC,
+          bTokenAmount: "10",
+          usdValue: null,
+        },
+        {
+          protocol: "blend",
+          positionType: "borrow",
+          contractAddress: BLEND_POOL,
+          assetAddress: SAC,
+          dTokenAmount: "1",
+          usdValue: null,
+        },
+      ],
+    }),
+  });
+  const { steps, blockers } = buildPlan(
+    account,
+    false,
+    true,
+    {},
+    undefined,
+    {},
+    {},
+    account.defiPositions
+  );
+  expect(blockers).toEqual([]);
+  const types = steps.map((s) => s.type);
+  expect(types[0]).toBe("EXIT_POSITIONS");
+  expect(types.indexOf("EXIT_POSITIONS")).toBeLessThan(types.indexOf("HANDLE_ASSETS"));
+  expect(steps[0]!.affectedContract).toBe(BLEND_POOL);
+  expect(steps[0]!.operationCount).toBe(2);
+  // Not fused: an exit needs its own rounds, so the fast path stays off even when eligible.
+  expect(types).not.toContain("CLOSE_ACCOUNT");
+  expect(steps.map((s) => s.index)).toEqual(steps.map((_, i) => i));
+});
+
+test("buildPlan › exits are listed first even when signers, data, and offers are also in the plan - the order the rounds run", () => {
+  const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 1, type: "ed25519_public_key" },
+      { key: Keypair.random().publicKey(), weight: 1, type: "ed25519_public_key" },
+    ],
+    dataEntries: [{ key: "note", value: "aGk=" }],
+    openOffers: [{ id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" }],
+    trustlines: [
+      {
+        asset: `USDC:${ISSUER}`,
+        code: "USDC",
+        issuer: ISSUER,
+        balance: "0.0000000",
+        authorized: true,
+      },
+    ],
+    defiPositions: makeDefiResult({
+      positions: [
+        {
+          protocol: "blend",
+          positionType: "supply",
+          contractAddress: BLEND_POOL,
+          assetAddress: SAC,
+          bTokenAmount: "10",
+          usdValue: null,
+        },
+      ],
+    }),
+  });
+  const { steps, blockers } = buildPlan(
+    account,
+    false,
+    true,
+    {},
+    undefined,
+    {},
+    {},
+    account.defiPositions
+  );
+  expect(blockers).toEqual([]);
+  const types = steps.map((s) => s.type);
+  expect(types[0]).toBe("EXIT_POSITIONS");
+  for (const classic of ["NORMALIZE_SIGNERS", "REMOVE_DATA_ENTRIES", "CANCEL_OFFERS"] as const) {
+    expect(types.indexOf(classic)).toBeGreaterThan(0);
+  }
+  // Soroban resource fees, not the classic per-operation rate.
+  expect(Number(steps[0]!.estimatedFeeLumens)).toBeGreaterThanOrEqual(0.01);
+});
+
+test("buildPlan › a position no adapter can exit blocks by name instead of vanishing from the plan", () => {
+  const account = makeAccount({
+    defiPositions: makeDefiResult({
+      positions: [
+        {
+          protocol: "phoenix",
+          positionType: "lp",
+          contractAddress: BLEND_POOL,
+          shareAmount: "1",
+          usdValue: null,
+        },
+      ],
+    }),
+  });
+  const { steps, blockers } = buildPlan(
+    account,
+    false,
+    false,
+    {},
+    undefined,
+    {},
+    {},
+    account.defiPositions
+  );
+  expect(blockers.map((b) => b.code)).toContain("defi_exit_unsupported");
+  expect(steps.find((s) => s.type === "EXIT_POSITIONS")).toBeUndefined();
 });

@@ -13,6 +13,7 @@ export const STEP_GROUP_LABELS: Record<StepType, string> = {
   CANCEL_OFFERS: "Cancel offers",
   ADD_TRUSTLINE_FOR_CLAIM: "Add trustlines to claim",
   CLAIM_BALANCES: "Claim balances",
+  EXIT_POSITIONS: "Exit DeFi positions",
   HANDLE_ASSETS: "Handle assets",
   REMOVE_TRUSTLINES: "Remove trustlines",
   CLOSE_ACCOUNT: "Close account",

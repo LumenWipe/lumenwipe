@@ -6,9 +6,7 @@ import type { IntentOperation } from "@lumenwipe/sdk";
  *  destroyed one at a time since each operation already names its own asset
  *  or key). */
 export type SceneAction =
-  | { type: "destroy"; nodeIds: string[] }
-  | { type: "pulse"; nodeId: string }
-  | { type: "merge" };
+  { type: "destroy"; nodeIds: string[] } | { type: "pulse"; nodeId: string } | { type: "merge" };
 
 const trustlineNodeId = (asset: string): string => {
   const code = asset.includes(":") ? asset.split(":")[0] : asset;
@@ -53,6 +51,7 @@ export function operationToSceneAction(
     case "path_payment_strict_send":
     case "claim_claimable_balance":
     case "revoke_sponsorship":
+    case "invoke_host_function":
     case "unknown":
       return null;
   }

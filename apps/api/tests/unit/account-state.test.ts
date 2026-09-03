@@ -2,6 +2,15 @@ import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { readAccountStateFrom } from "@/lib/stellar/account-state";
 import { UnusableProviderResponseError } from "@/lib/utils/errors";
+import type { ResolveDefiPositionsDeps } from "@/lib/defi-positions/resolve-defi-positions";
+import type { ContractRegistryEntry } from "@/lib/contract-registry";
+import { addressVal, variantVal } from "@/lib/defi-positions/testnet-direct-read";
+import {
+  contractDataEntry,
+  contractInstanceEntry,
+  i128Val,
+  mockRpc,
+} from "./fixtures/testnet-direct-read-helpers";
 
 // Every fixture below reports `num_sponsoring: 0`, which `enumerateSponsoredEntries` treats as
 // a complete answer and returns without any I/O of its own. That keeps these tests measuring
@@ -11,6 +20,15 @@ import { UnusableProviderResponseError } from "@/lib/utils/errors";
 const BASE = "https://horizon.example";
 const ADDRESS = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
+
+// Testnet always takes the direct-read path regardless of OctoPos config, and an empty
+// registry means the read loop iterates nothing - deterministic, zero network I/O, so these
+// account-state tests (which are about the Horizon-compatible read, not DeFi detection) stay
+// unit tests rather than accidentally becoming integration tests against live RPC.
+const NO_DEFI: ResolveDefiPositionsDeps = {
+  octopos: { baseUrl: "" },
+  directRead: { registryEntries: [] },
+};
 
 function trustlineBalance(code: string) {
   return {
@@ -58,7 +76,7 @@ function stubProvider(account: Record<string, unknown>) {
 // how much the account holds.
 test("one account read makes a constant number of upstream calls, whatever the account holds", async () => {
   const empty = stubProvider(accountBody());
-  await readAccountStateFrom(ADDRESS, "testnet", empty.deps);
+  await readAccountStateFrom(ADDRESS, "testnet", empty.deps, NO_DEFI);
   expect(empty.calls).toHaveLength(3); // account, offers, claimable balances
 
   const codes = Array.from({ length: 40 }, (_, i) => `AST${i}`);
@@ -68,7 +86,7 @@ test("one account read makes a constant number of upstream calls, whatever the a
       balances: [{ asset_type: "native", balance: "100.0000000" }, ...codes.map(trustlineBalance)],
     })
   );
-  const state = await readAccountStateFrom(ADDRESS, "testnet", heavy.deps);
+  const state = await readAccountStateFrom(ADDRESS, "testnet", heavy.deps, NO_DEFI);
 
   expect(state.trustlines).toHaveLength(40);
   expect(heavy.calls).toHaveLength(3);
@@ -83,7 +101,7 @@ test("balances, data entries, signers and thresholds all come from the single ac
       thresholds: { low_threshold: 1, med_threshold: 2, high_threshold: 3 },
     })
   );
-  const state = await readAccountStateFrom(ADDRESS, "testnet", deps);
+  const state = await readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI);
 
   expect(state.nativeBalanceLumens).toBe("5.0000000");
   expect(state.trustlines.map((t) => t.code)).toEqual(["USDC"]);
@@ -103,7 +121,7 @@ test("enumerating fewer entries than the ledger reports surfaces a sub-entry mis
       balances: [{ asset_type: "native", balance: "5.0000000" }, trustlineBalance("USDC")],
     })
   );
-  const state = await readAccountStateFrom(ADDRESS, "testnet", deps);
+  const state = await readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI);
   expect(state.subEntryMismatch).toBe(true);
 });
 
@@ -114,16 +132,16 @@ test("a fully enumerated account reports no mismatch", async () => {
       balances: [{ asset_type: "native", balance: "5.0000000" }, trustlineBalance("USDC")],
     })
   );
-  const state = await readAccountStateFrom(ADDRESS, "testnet", deps);
+  const state = await readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI);
   expect(state.subEntryMismatch).toBe(false);
 });
 
 test("a missing account is not found rather than an empty state", async () => {
   const fetch = (async () =>
     new Response("", { status: 404 })) as unknown as typeof globalThis.fetch;
-  await expect(readAccountStateFrom(ADDRESS, "testnet", { baseUrl: BASE, fetch })).rejects.toThrow(
-    /does not exist on this network/i
-  );
+  await expect(
+    readAccountStateFrom(ADDRESS, "testnet", { baseUrl: BASE, fetch }, NO_DEFI)
+  ).rejects.toThrow(/does not exist on this network/i);
 });
 
 // Pointing at a different Horizon-compatible host is configuration, not code. This is the
@@ -148,7 +166,7 @@ test("every account-state request goes to the configured provider", async () => 
     return new Response(JSON.stringify(body), { status: 200 });
   }) as unknown as typeof globalThis.fetch;
 
-  await readAccountStateFrom(ADDRESS, "testnet", { baseUrl: other, fetch });
+  await readAccountStateFrom(ADDRESS, "testnet", { baseUrl: other, fetch }, NO_DEFI);
   expect(calls).toHaveLength(3);
   expect(calls.every((c) => c.startsWith(other))).toBe(true);
 });
@@ -173,7 +191,9 @@ const LOAD_BEARING: Array<[string, Record<string, unknown>]> = [
 for (const [label, override] of LOAD_BEARING) {
   test(`refuses a provider response missing ${label}`, async () => {
     const { deps } = stubProvider(accountBody(override));
-    await expect(readAccountStateFrom(ADDRESS, "testnet", deps)).rejects.toThrow(/unusable/i);
+    await expect(readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI)).rejects.toThrow(
+      /unusable/i
+    );
   });
 }
 
@@ -185,15 +205,88 @@ for (const [label, override] of LOAD_BEARING) {
 // misconfiguration apart from an unexpected fault.
 test("refuses with a typed error the API boundary can recognise", async () => {
   const { deps } = stubProvider(accountBody({ subentry_count: undefined }));
-  await expect(readAccountStateFrom(ADDRESS, "testnet", deps)).rejects.toBeInstanceOf(
+  await expect(readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI)).rejects.toBeInstanceOf(
     UnusableProviderResponseError
   );
 });
 
 test("the rejection names every field that was missing, not just the first", async () => {
   const { deps } = stubProvider(accountBody({ subentry_count: undefined, flags: undefined }));
-  const err = await readAccountStateFrom(ADDRESS, "testnet", deps).catch((e: unknown) => e);
+  const err = await readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI).catch(
+    (e: unknown) => e
+  );
   expect(err).toBeInstanceOf(UnusableProviderResponseError);
   expect((err as Error).message).toContain("subentry_count");
   expect((err as Error).message).toContain("flags.auth_immutable");
+});
+
+// ─── issue #150: resolveDefiPositions is actually wired into the account read ───────────────
+
+const PHOENIX_POOL = "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD";
+const PHOENIX_WASM_HASH = "2".repeat(64);
+
+function phoenixRegistryEntry(): ContractRegistryEntry {
+  return {
+    network: "testnet",
+    protocol: "phoenix",
+    kind: "pool",
+    address: PHOENIX_POOL,
+    wasmHash: PHOENIX_WASM_HASH,
+    version: "v1",
+    label: "test fixture",
+    verifiedLive: true,
+  };
+}
+
+// Proves the wiring is real, not just plumbed through as an always-empty stub: a position the
+// direct-read path actually decodes has to reach the returned AccountState, the same way it
+// would reach a real `GET /account/:address` response.
+test("a detected DeFi position flows into the returned account state", async () => {
+  const { deps } = stubProvider(accountBody());
+  const balanceKey = variantVal("Balance", addressVal(ADDRESS));
+  const defiDeps: ResolveDefiPositionsDeps = {
+    octopos: { baseUrl: "" },
+    directRead: {
+      rpc: mockRpc([
+        contractInstanceEntry(PHOENIX_POOL, PHOENIX_WASM_HASH),
+        contractDataEntry(PHOENIX_POOL, balanceKey, i128Val(42_0000000n)),
+      ]),
+      registryEntries: [phoenixRegistryEntry()],
+    },
+  };
+
+  const state = await readAccountStateFrom(ADDRESS, "testnet", deps, defiDeps);
+
+  expect(state.defiPositions.positions).toEqual([
+    {
+      protocol: "phoenix",
+      positionType: "lp",
+      contractAddress: PHOENIX_POOL,
+      wasmHash: PHOENIX_WASM_HASH,
+      shareAmount: "420000000",
+      usdValue: null,
+    },
+  ]);
+  expect(state.defiPositionsWarnings).toEqual([]);
+});
+
+// A mainnet OctoPos outage degrades rather than fails the whole read (issue #149) - and that
+// degraded, unconfirmed state has to surface as a plain-language warning on AccountState, not
+// silently look like "no positions" (the epic's "no silent skips" principle, enforced here for
+// the first time in the account-read path rather than only in unit tests of the gate itself).
+test("a degraded DeFi read surfaces as a warning, not a silent empty result", async () => {
+  const { deps } = stubProvider(accountBody());
+  const octoposFetch = (async () =>
+    new Response("", { status: 401 })) as unknown as typeof globalThis.fetch;
+  const defiDeps: ResolveDefiPositionsDeps = {
+    octopos: { baseUrl: "https://octopos.example", fetch: octoposFetch },
+    directRead: { registryEntries: [] },
+  };
+
+  const state = await readAccountStateFrom(ADDRESS, "mainnet", deps, defiDeps);
+
+  expect(state.defiPositions.timestamp).toBeNull();
+  expect(state.defiPositionsWarnings).toEqual(
+    expect.arrayContaining([expect.objectContaining({ code: "defi_positions_unavailable" })])
+  );
 });

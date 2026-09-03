@@ -5,6 +5,7 @@ export type StepType =
   | "CANCEL_OFFERS"
   | "ADD_TRUSTLINE_FOR_CLAIM"
   | "CLAIM_BALANCES"
+  | "EXIT_POSITIONS"
   | "HANDLE_ASSETS"
   | "REMOVE_TRUSTLINES"
   | "CLOSE_ACCOUNT"
@@ -49,6 +50,8 @@ export interface PlannedStep {
   error: string | null;
   // Metadata for display
   affectedAsset?: string; // for HANDLE_ASSETS steps
+  /** The pool, pair, or vault an EXIT_POSITIONS step leaves. */
+  affectedContract?: string;
   // Set when no DEX path exists and the user confirms sending to issuer instead
   fallbackToIssuer?: boolean;
 }

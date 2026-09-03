@@ -30,7 +30,11 @@ export async function rateLimitProxy(
 ): Promise<NextResponse | null> {
   let allowed = true;
   try {
-    allowed = await checkNamespacedRateLimit(`proxy:${namespace}`, clientIp(req), PROXY_LIMIT_PER_DAY);
+    allowed = await checkNamespacedRateLimit(
+      `proxy:${namespace}`,
+      clientIp(req),
+      PROXY_LIMIT_PER_DAY
+    );
   } catch {
     // Fail open - limiter trouble must never block a legitimate, irreversible close.
     return null;

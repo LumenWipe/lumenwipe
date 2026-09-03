@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { exitExpectations } from "@/lib/stellar/exit-expectations";
 import { TransactionBuilder } from "@stellar/stellar-sdk";
 import type { CloseTransaction } from "@lumenwipe/sdk";
 import type { AccountState } from "@/types/account";
@@ -161,6 +162,7 @@ export function useCloseExecution() {
                     accountState,
                     claimableBalanceSelections
                   ),
+                  ...exitExpectations(accountState, network),
                 },
               }),
             requiredWeight: (tx: CloseTransaction) =>
@@ -359,6 +361,7 @@ export function useCloseExecution() {
             accountState,
             claimableBalanceSelections
           ),
+          ...exitExpectations(accountState, network),
         },
       });
 

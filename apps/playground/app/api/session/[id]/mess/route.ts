@@ -34,14 +34,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const issuer = getPlaygroundIssuerKeypair();
   const mm = getPlaygroundMmKeypair();
   if (!issuer || !mm) {
-    return NextResponse.json({ error: "Playground is not configured on this server." }, { status: 503 });
+    return NextResponse.json(
+      { error: "Playground is not configured on this server." },
+      { status: 503 }
+    );
   }
 
   try {
     const ctx: MessContext = {
       demo: Keypair.fromSecret(decryptSecret(session.encDemoSecret)),
       ephemeralIssuers: new Map(
-        session.ephemeralIssuers.map((e) => [e.assetCode, Keypair.fromSecret(decryptSecret(e.encSecret))])
+        session.ephemeralIssuers.map((e) => [
+          e.assetCode,
+          Keypair.fromSecret(decryptSecret(e.encSecret)),
+        ])
       ),
       persistentIssuer: issuer,
       mmPublic: mm.publicKey(),
@@ -59,7 +65,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ stepId, txHash });
   } catch (err) {
     if (err instanceof PlaygroundConfigError) {
-      return NextResponse.json({ error: "Playground is not configured on this server." }, { status: 503 });
+      return NextResponse.json(
+        { error: "Playground is not configured on this server." },
+        { status: 503 }
+      );
     }
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[playground] mess step ${stepId} failed for session ${id}:`, err);

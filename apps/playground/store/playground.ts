@@ -4,13 +4,7 @@ import type { MessStepDef, PlaygroundCustomConfig, PlaygroundMode } from "@/lib/
 import { DEFAULT_CUSTOM_CONFIG } from "@/lib/mess-plan";
 
 export type PlaygroundPhase =
-  | "IDLE"
-  | "MESSING"
-  | "DIRTY"
-  | "DEMOLISHING"
-  | "COMPLETE"
-  | "EXPIRED"
-  | "ERROR";
+  "IDLE" | "MESSING" | "DIRTY" | "DEMOLISHING" | "COMPLETE" | "EXPIRED" | "ERROR";
 
 export type SceneNodeKind = "trustline" | "offer" | "data" | "signer";
 export type SceneNodeStatus = "incoming" | "docked" | "converting" | "destroyed";

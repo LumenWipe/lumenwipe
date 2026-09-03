@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Plus } from "lucide-react";
-import type { AccountState } from "@/types/account";
+import type { AccountState, UnrecognizedDefiPosition } from "@/types/account";
+import { PROTOCOL_LABELS, describeDefiPosition } from "@/lib/plan/describe-position";
 import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
 import type { AssetDisposition, ClaimableBalanceSelection } from "@/types/plan";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
@@ -35,6 +36,7 @@ type GroupType =
   | "REMOVE_DATA_ENTRIES"
   | "CANCEL_OFFERS"
   | "CLAIM_BALANCES"
+  | "DEFI_POSITIONS"
   | "HANDLE_ASSETS"
   | "REMOVE_TRUSTLINES"
   | "MERGE";
@@ -167,6 +169,59 @@ export default function PlanAccordion({
               onSelect={onSelectClaimableBalance}
             />
           ))}
+        </div>
+      ),
+    });
+  }
+
+  const { positions, unrecognizedPositions } = account.defiPositions;
+  // Every "defi_position_unrecognized" warning maps 1:1 to an entry already listed in
+  // unrecognizedPositions below (both derive from the same assessDefiPositionsGate call) - drop
+  // it here rather than repeat the same fact twice with two different phrasings. Staleness and
+  // unavailability warnings have no such counterpart and still need to render.
+  const defiWarnings = account.defiPositionsWarnings.filter(
+    (w) => w.code !== "defi_position_unrecognized"
+  );
+  if (positions.length > 0 || unrecognizedPositions.length > 0 || defiWarnings.length > 0) {
+    const summary =
+      positions.length > 0
+        ? `${positions.length} position${positions.length === 1 ? "" : "s"} detected`
+        : "Could not be confirmed - verify manually";
+    groups.push({
+      type: "DEFI_POSITIONS",
+      title: "DeFi positions",
+      summary,
+      body: (
+        <div className="space-y-2">
+          {positions.length > 0 && (
+            <ul className="space-y-1">
+              {positions.map((p, i) => (
+                <li key={i} className="text-xs text-white/55">
+                  {describeDefiPosition(p, account.defiPositions.enrichment)}
+                  {p.usdValue && <span className="text-white/35"> · ≈ ${p.usdValue}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+          {unrecognizedPositions.length > 0 && (
+            <ul className="space-y-1">
+              {unrecognizedPositions.map((u: UnrecognizedDefiPosition, i) => (
+                <li key={i} className="text-xs text-amber-400/80">
+                  {PROTOCOL_LABELS[u.protocol]} position could not be read ({u.reason}) - verify
+                  manually.
+                </li>
+              ))}
+            </ul>
+          )}
+          {defiWarnings.length > 0 && (
+            <ul className="space-y-1">
+              {defiWarnings.map((w, i) => (
+                <li key={i} className="text-xs text-amber-400/80">
+                  {w.message}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       ),
     });

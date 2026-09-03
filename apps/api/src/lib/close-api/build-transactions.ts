@@ -1,14 +1,24 @@
 import { Account, Memo, TransactionBuilder } from "@stellar/stellar-sdk";
+import {
+  buildExitRound,
+  ExitRoundBlockedError,
+  type ExitRoundDeps,
+} from "@/lib/defi-exits/exit-round";
 import { NETWORK_PASSPHRASES, getMediatorPublicKey, type Network } from "@/config/networks";
 import { BASE_FEE_STROOPS, OP_BATCH_LIMIT, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import { getRpcServer } from "@/lib/stellar/rpc";
+import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
 import {
   fetchLiveTrustlineBalance,
   filterExistingClaimableBalances,
 } from "@/lib/stellar/step-engine";
 import { fetchConversionPath } from "@/lib/stellar/path-finding";
 import { lookupExchange, requiresMediatorForAddress } from "@/lib/exchange-registry";
-import { computeNeedsSignerNormalization } from "@/lib/stellar/tx-builder";
+import {
+  computeNeedsSignerNormalization,
+  assessSignerNormalizationSafety,
+  assessDeauthorizedTrustlineBlockers,
+} from "@/lib/stellar/tx-builder";
 import { assessSponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
 import { batchItems } from "@/lib/stellar/tx-builder/batching";
 import {
@@ -101,14 +111,74 @@ export async function buildCloseTransactions(
   network: Network,
   memo: string | null = null,
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {},
-  transferDestinations: TransferDestinations = {}
+  transferDestinations: TransferDestinations = {},
+  exitDeps: Partial<ExitRoundDeps> = {}
 ): Promise<CloseBuildResult> {
+  // Reject the same two hostile states buildPlan() blocks (issue #167), before any read or
+  // build work: /close/transactions is an API-key product surface with an SDK, and
+  // @lumenwipe/sdk's own runClose calls this endpoint directly without ever requesting a plan -
+  // so buildPlan()'s blockers cannot be assumed to have already run. A weight-0 master key or an
+  // unsatisfiable signer threshold, left unchecked here, would let this endpoint build a
+  // normalization transaction that strips the account's only usable signers - a permanent fund
+  // lock, not just a failed submission - and a deauthorized trustline with a balance would build
+  // a ChangeTrust doomed to fail at the ledger (CHANGE_TRUST_INVALID_LIMIT). Checked first, ahead
+  // of every other read in this function (including the claimable-balance round), both because
+  // neither depends on any I/O and because a hostile account state should never even reach a
+  // conversion-route lookup for a trustline it's about to be refused over.
+  if (computeNeedsSignerNormalization(accountState)) {
+    const signerBlockers = assessSignerNormalizationSafety(accountState);
+    if (signerBlockers.length > 0) {
+      throw new CloseBuildError("signer_normalization_unsafe", signerBlockers[0]!.message, 422);
+    }
+  }
+  const trustlineBlockers = assessDeauthorizedTrustlineBlockers(accountState.trustlines);
+  if (trustlineBlockers.length > 0) {
+    throw new CloseBuildError(
+      "trustline_deauthorized_with_balance",
+      trustlineBlockers[0]!.message,
+      422
+    );
+  }
+  // The plan's DeFi gate, re-applied for the same reason: an SDK caller never asked for a plan,
+  // and a web session's plan may be minutes old. Positions that could not be confirmed (an
+  // indexer outage, a stale snapshot, a contract that could not be read) must not reach a merge
+  // that would strand them - the exit round below can only leave what detection actually saw.
+  const defiBlockers = assessDefiPositionsGate(accountState.defiPositions);
+  if (defiBlockers.length > 0) {
+    const first = defiBlockers[0]!;
+    throw new CloseBuildError(first.code ?? "defi_positions_blocked", first.message, 422);
+  }
+
   const server = getRpcServer(network);
   const liveAccount = await server.getAccount(accountState.address);
   const sdkAccount = new Account(accountState.address, liveAccount.sequenceNumber());
   const latest = await server.getLatestLedger();
   // Ledgers close roughly every 5s; surface an approximate ledger bound for the tx time bound.
   const validUntilLedger = latest.sequence + Math.ceil(TX_TIMEOUT_SECONDS / 5);
+
+  // Round 0 for accounts with DeFi positions: leave every protocol first, one Soroban transaction
+  // per step (a repay, then a withdraw...), each simulated against the current ledger. Proceeds
+  // land in trustlines the later rounds dispose of and remove. The client submits, waits, and
+  // calls again; positions are re-detected from live state each time.
+  try {
+    const exit = await buildExitRound(
+      accountState,
+      network,
+      sdkAccount.sequenceNumber(),
+      validUntilLedger,
+      { rpc: server, ...exitDeps }
+    );
+    if (exit) {
+      return {
+        transactions: [exit.transaction],
+        requiresAnotherCall: true,
+        remainingSteps: exit.remainingSteps + 1,
+      };
+    }
+  } catch (e) {
+    if (e instanceof ExitRoundBlockedError) throw new CloseBuildError(e.code, e.message, 422);
+    throw e;
+  }
 
   // Round 1 for claimable-balance accounts: claim first (re-reading which are still
   // on-chain), then the client calls again to build the now claimable-free close. The

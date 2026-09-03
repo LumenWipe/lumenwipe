@@ -1,4 +1,4 @@
-import { Coins, Database, ArrowUpDown, Link2, Users, TrendingUp } from "lucide-react";
+import { Coins, Database, ArrowUpDown, Link2, Users, TrendingUp, Layers } from "lucide-react";
 import type { AccountState } from "@/types/account";
 import { formatXlm, calcRecoverableReserve } from "@/lib/utils/amounts";
 
@@ -51,7 +51,14 @@ export default function AccountSummaryCard({
       label: "Recoverable reserve",
       value: formatXlm(recoverableXlm),
     },
+    {
+      icon: Layers,
+      label: "DeFi positions",
+      value: account.defiPositions.positions.length,
+    },
   ];
+
+  const lastRowStart = stats.length - (stats.length % 3 || 3);
 
   return (
     <div className="mkt-panel rounded-2xl overflow-hidden">
@@ -62,9 +69,15 @@ export default function AccountSummaryCard({
         </span>
       </div>
 
-      <div className="grid grid-cols-3 divide-x divide-y divide-white/8">
-        {stats.map(({ icon: Icon, label, value }) => (
-          <div key={label} className="p-3">
+      {/* Every cell above the last row draws its own bottom border: `divide-y` only draws between
+          rows, so when the cell count is not a multiple of three the last full row was left open
+          beside the short final row. The footer's top border closes the grid. */}
+      <div className="grid grid-cols-3 divide-x divide-white/[0.08]">
+        {stats.map(({ icon: Icon, label, value }, i) => (
+          <div
+            key={label}
+            className={`p-3 ${i < lastRowStart ? "border-b border-white/[0.08]" : ""}`}
+          >
             <div className="flex items-center gap-1.5 text-white/45 mb-1">
               <Icon className="h-3.5 w-3.5 text-stellar/70" />
               <span className="text-xs">{label}</span>

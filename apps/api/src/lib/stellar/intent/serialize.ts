@@ -1,4 +1,5 @@
 import { TransactionBuilder, StrKey, type Asset, type Transaction } from "@stellar/stellar-sdk";
+import { describeInvocation } from "./invocation";
 import type {
   AccountSigner,
   IntentOperation,
@@ -116,6 +117,8 @@ function normalizeOp(op: Transaction["operations"][number]): IntentOperationBody
       return { type: "revoke_sponsorship", entryKind: "data_entry", owner: op.account };
     case "revokeSignerSponsorship":
       return { type: "revoke_sponsorship", entryKind: "signer", owner: op.account };
+    case "invokeHostFunction":
+      return describeInvocation(op);
     default:
       // Preserved as `unknown` rather than dropped. Filtering it out made the published intent
       // under-report the transaction: an integrator reading `response.intent` instead of
@@ -163,9 +166,10 @@ export function intentFromXdr(xdr: string, networkPassphrase: string): TxIntent 
       (o): o is Extract<IntentOperation, { type: "path_payment_strict_send" }> =>
         o.type === "path_payment_strict_send"
     )
-    .reduce<
-      string | null
-    >((acc, o) => (acc === null ? o.destMin : sumAmounts(acc, o.destMin)), null);
+    .reduce<string | null>(
+      (acc, o) => (acc === null ? o.destMin : sumAmounts(acc, o.destMin)),
+      null
+    );
 
   const memoValue = tx.memo?.value;
 

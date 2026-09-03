@@ -1,10 +1,16 @@
-import { type Network, PATH_ROUTING_API_URLS } from "@/config/networks";
+import { type Network, PATH_ROUTING_API_URLS, OCTOPOS_API_URL_MAINNET } from "@/config/networks";
 import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils/errors";
 import { fetchOffersFromAdapter, fetchClaimableBalancesForClaimant } from "./horizon-adapter";
 import { detectSubEntryMismatch } from "./scan-fallback";
 import { horizonAssetToString } from "@/lib/utils/assets";
 import { enumerateSponsoredEntries } from "@/lib/stellar/sponsorship";
 import { horizonGet, type HorizonDeps } from "./horizon-http";
+import {
+  resolveDefiPositions,
+  type ResolveDefiPositionsDeps,
+} from "@/lib/defi-positions/resolve-defi-positions";
+import { enrichDefiPositions, knownTokensFor } from "@/lib/defi-positions/enrich";
+import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
 import { Logger } from "@nestjs/common";
 
 // Nest's logger, not console: these lines are how an operator learns the reader silently
@@ -128,10 +134,20 @@ export function horizonDepsFor(network: Network, fetchImpl?: typeof globalThis.f
   return { baseUrl, fetch: fetchImpl };
 }
 
+/** Resolves the configured OctoPos provider. Unlike `horizonDepsFor`, never throws when
+ *  unconfigured - `resolveDefiPositions` treats an empty `baseUrl` as a fully supported
+ *  degraded state (architecture.md §7.1), not a missing essential dependency. Not
+ *  network-keyed: OctoPos itself is mainnet-only, and `resolveDefiPositions` already routes
+ *  testnet to the direct-read path regardless of this config. */
+export function defiPositionsDepsFor(): ResolveDefiPositionsDeps {
+  return { octopos: { baseUrl: OCTOPOS_API_URL_MAINNET, apiKey: process.env.OCTOPOS_API_KEY } };
+}
+
 export async function readAccountStateFrom(
   address: string,
   network: Network,
-  deps: HorizonDeps
+  deps: HorizonDeps,
+  defiDeps: ResolveDefiPositionsDeps
 ): Promise<AccountState> {
   const account = await horizonGet<ApiAccount>(`/accounts/${address}`, deps);
   if (!account) throw new AccountNotFoundError(address);
@@ -170,10 +186,21 @@ export async function readAccountStateFrom(
     })
     .filter((s): s is AccountSigner => s !== null);
 
-  const [openOffers, claimableBalances] = await Promise.all([
+  const [openOffers, claimableBalances, detectedPositions] = await Promise.all([
     fetchOffersFromAdapter(address, deps),
     fetchClaimableBalancesForClaimant(address, deps),
+    resolveDefiPositions(address, network, defiDeps),
   ]);
+  // The gate judges the detection result as returned, before the enrichment below spends time
+  // on pool reads - otherwise a snapshot near the staleness threshold could age past it here.
+  const defiPositionsWarnings = assessDefiPositionsGate(detectedPositions);
+  // Presentation for what detection found (pool name, symbol, underlying amount, yield). Never
+  // changes positions or blockers.
+  const defiPositions = await enrichDefiPositions(detectedPositions, {
+    network,
+    account: address,
+    knownTokens: knownTokensFor(trustlines, network),
+  });
   const numSubEntries = account.subentry_count;
 
   // `?? 0` would turn a missing field into a confident "sponsors nothing". The endpoint is
@@ -224,6 +251,8 @@ export async function readAccountStateFrom(
       poolShares,
       numSubEntries,
     }),
+    defiPositions,
+    defiPositionsWarnings,
   };
 }
 
@@ -273,5 +302,5 @@ export async function getAccountState(
   address: string,
   network: Network = "testnet"
 ): Promise<AccountState> {
-  return readAccountStateFrom(address, network, horizonDepsFor(network));
+  return readAccountStateFrom(address, network, horizonDepsFor(network), defiPositionsDepsFor());
 }

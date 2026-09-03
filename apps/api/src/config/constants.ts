@@ -8,6 +8,13 @@ export const POLL_INTERVAL_MS = 3000; // 3 seconds between polls
 export const POLL_MAX_ATTEMPTS = 30; // 90 seconds total
 export const SLIPPAGE_BPS = 50; // 0.5% default slippage for path payments
 export const HORIZON_TIMEOUT_MS = 10000; // 10 seconds
+// OctoPos is an optional enhancement - fail fast into degraded mode rather than stall the
+// analyze call waiting on a third-party DeFi position provider.
+export const OCTOPOS_TIMEOUT_MS = 5000; // 5 seconds
+// architecture.md §7.2 caches DeFi positions for "tens of seconds," and OctoPos's own Position
+// Tracker refreshes every 60s (per its architecture docs) - double that, tight enough to catch a
+// genuinely stalled feed, generous enough not to block a plan on ordinary refresh latency.
+export const DEFI_POSITIONS_STALENESS_THRESHOLD_SECONDS = 120;
 
 // Sponsorship enumeration: how many of the sponsor's own operations we'll page through
 // (oldest-first, from account creation) looking for sponsorship-bracket candidates
@@ -31,3 +38,11 @@ export const SUBMIT_RETRY_DELAY_MS = 2500; // ~10s of total patience across retr
 
 // XLM stroops per lumen
 export const STROOPS_PER_XLM = 10_000_000;
+/** Plan-time fee estimate for one Soroban exit transaction. Resource fees dwarf the classic base
+ *  fee (a Blend withdraw on testnet charged ~25,000 stroops); this is a deliberate over-estimate
+ *  so the review page never understates what a close with positions will cost. */
+export const SOROBAN_EXIT_FEE_ESTIMATE_STROOPS = 100_000;
+/** Ceiling on the total fee of one exit transaction as assembled from simulation. A real exit
+ *  costs a few thousand stroops; a fee anywhere near this is a simulation gone wrong or an
+ *  attempt to grief the account through the fee pool, and is refused rather than offered. */
+export const MAX_SOROBAN_EXIT_FEE_STROOPS = 10_000_000; // 1 XLM

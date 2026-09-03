@@ -1,0 +1,21 @@
+title = "lumenwipe gitleaks config"
+
+[extend]
+useDefault = true
+
+# Reviewed 2026-09-02 as part of issue #171's security tooling run (see
+# docs/security-remediation-plan.md for the full triage). Every entry below was manually
+# verified to be a public identifier or a documentation example, never a usable credential.
+[allowlist]
+description = "reviewed false positives: synthetic fixture data and a documented example"
+paths = [
+  # Entirely synthetic OctoPos DeFi position fixture: every "C..." value is a fabricated
+  # Soroban contract/asset address (a public identifier, not a secret) used to exercise the
+  # position-parsing code path, never a real credential.
+  '''apps/api/tests/unit/fixtures/octopos/empty-portfolio\.json''',
+]
+regexes = [
+  # The API_KEYS env var format shown as a worked example in a doc comment and its test,
+  # not a real key.
+  '''polar=key_xyz''',
+]

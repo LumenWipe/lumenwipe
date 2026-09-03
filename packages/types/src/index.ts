@@ -3,6 +3,7 @@
 export * from "./network";
 export * from "./account";
 export * from "./plan";
+export * from "./defi-position";
 export * from "./close-api";
 export * from "./requests";
 export * from "./responses";
