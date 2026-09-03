@@ -51,6 +51,8 @@ export interface FakePoolState {
     shares?: bigint;
     queued?: Array<{ amount: bigint; unlocksAt: number }>;
     unlocked?: bigint;
+    /** BLND accrued to the deposit, base units. */
+    emissions?: bigint;
   };
 }
 
@@ -123,7 +125,13 @@ export function fakeBlendDeps(
         rateScaled: state.emissions?.rateScaled ?? 0n,
       };
     },
-    async loadBackstop(_network, backstopId, poolId, account): Promise<BlendBackstopView> {
+    async loadBackstop(
+      _network,
+      _version,
+      backstopId,
+      poolId,
+      account
+    ): Promise<BlendBackstopView> {
       backstopCalls.push(`${backstopId}/${poolId}/${account}`);
       return {
         contract: backstopId,
@@ -132,6 +140,7 @@ export function fakeBlendDeps(
         shares: state.backstop?.shares ?? 0n,
         queued: state.backstop?.queued ?? [],
         unlocked: state.backstop?.unlocked ?? 0n,
+        emissions: state.backstop?.emissions ?? 0n,
       };
     },
   };

@@ -36,6 +36,7 @@ test.skipIf(!RUN_INTEGRATION)(
     const loaded = await defaultBlendDeps.loadPool("testnet", pool.address, Version.V2);
     const backstop = await defaultBlendDeps.loadBackstop(
       "testnet",
+      Version.V2,
       loaded.metadata.backstop,
       pool.address,
       Keypair.random().publicKey(),
@@ -44,7 +45,7 @@ test.skipIf(!RUN_INTEGRATION)(
     expect(backstop.contract).toBe(loaded.metadata.backstop);
     expect(backstop.backstopToken).toMatch(/^C[A-Z2-7]{55}$/);
     expect(backstop.blndToken).toMatch(/^C[A-Z2-7]{55}$/);
-    expect(backstop).toMatchObject({ shares: 0n, queued: [], unlocked: 0n });
+    expect(backstop).toMatchObject({ shares: 0n, queued: [], unlocked: 0n, emissions: 0n });
     const emissions = defaultBlendDeps.emissions(
       loaded,
       await loaded.loadUser(Keypair.random().publicKey()),

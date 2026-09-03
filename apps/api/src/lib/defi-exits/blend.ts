@@ -3,9 +3,10 @@ import {
   BackstopContractV1,
   BackstopContractV2,
   BackstopPoolUser,
+  BackstopPoolV1,
+  BackstopPoolV2,
   PoolContractV1,
   PoolContractV2,
-  PoolUserEmissionData,
   PoolV1,
   PoolV2,
   Positions,
@@ -22,14 +23,13 @@ import type {
   DefiPosition,
   Network,
 } from "@lumenwipe/types";
-import { Contract, xdr } from "@stellar/stellar-sdk";
+import { xdr } from "@stellar/stellar-sdk";
 import { blendSdkNetwork, blendSdkVersion } from "@/lib/blend-sdk";
 import {
   EXIT_POSITION_GONE,
   type BuiltExitStep,
   type ExitAdapter,
   type ExitPlan,
-  type ExitRpc,
   type ExitStep,
 } from "./adapter";
 import type { HealthInputs } from "./invariants";
@@ -65,14 +65,15 @@ import { REWARD_RATE_SCALE, rewardIsWorthClaiming } from "./reward-dust";
  * them. And the pool's backstop holds deposits the account may have made (the BLND:USDC LP share,
  * detected as `isBackstop`), which cannot be exited on demand: Blend requires queuing a withdrawal
  * and waiting out a cooldown (21 days on V1, 17 on V2). Shares whose queue has run out are
- * withdrawn as a step against the backstop contract; shares still cooling down, or never queued,
- * block by name with the time left, because a merge would forfeit them - a cooldown the tool
- * cannot skip is a reason to wait, not to lose the deposit.
+ * withdrawn as a step against the backstop contract - once the close can carry the LP token they
+ * pay out in; until then they block, as do shares still cooling down or never queued, each by
+ * name with the time left, because a merge would forfeit them. A cooldown the tool cannot skip is
+ * a reason to wait, not to lose the deposit. BLND emissions accrued to the deposit itself block
+ * too: the backstop's own claim re-deposits them on V2 rather than paying them out.
  *
  * Reads go through the SDK for the version the registry resolved (V1 and V2 ship separate
- * clients), against the API's own RPC endpoint and headers; the runner's injected `rpc` is used
- * only for the one plain ledger read the SDK does not offer (whether BLND is a Stellar asset,
- * which decides if a trustline is needed to receive it). Tests inject a stand-in pool through
+ * clients), against the API's own RPC endpoint and headers; the runner's injected `rpc` is not
+ * consulted here because the SDK builds its own server. Tests inject a stand-in pool through
  * `BlendDeps`. Anything the SDK cannot read or price surfaces as a named blocker for manual
  * review, not as a retry hint, because a pool the SDK cannot parse does not fix itself.
  */
@@ -93,7 +94,8 @@ export const BACKSTOP_COOLDOWN_SECONDS: Record<Version, number> = {
 };
 
 /** BLND is tracked in 7 decimals on every network Blend runs on. */
-const BLND_SCALE = 10_000_000n;
+const BLND_DECIMALS = 7;
+const BLND_SCALE = 10n ** BigInt(BLND_DECIMALS);
 
 /** The slice of the SDK's reserve the adapter reads, so a test can supply a stand-in. */
 export interface BlendReserveView {
@@ -139,10 +141,12 @@ export interface BlendBackstopView {
   blndToken: string;
   /** Shares deposited and not queued for withdrawal. */
   shares: bigint;
-  /** Every queued withdrawal, with the time it unlocks (seconds since the epoch). */
+  /** Queued withdrawals still cooling down, with the time each unlocks (seconds since the epoch). */
   queued: Array<{ amount: bigint; unlocksAt: number }>;
   /** Queued shares whose cooldown has run out: withdrawable now. */
   unlocked: bigint;
+  /** BLND emissions accrued to the deposit and not claimed, base units. */
+  emissions: bigint;
 }
 
 export interface BlendDeps {
@@ -151,11 +155,109 @@ export interface BlendDeps {
   emissions(pool: BlendPoolView, user: BlendUserView, now: number): BlendEmissionsView;
   loadBackstop(
     network: Network,
+    version: Version,
     backstopId: string,
     poolId: string,
     account: string,
     now: number
   ): Promise<BlendBackstopView>;
+}
+
+/**
+ * One emitting token of a reserve - its dToken or its bToken - as Blend accounts for it: an
+ * emission index the token's supply accrues against, the account's last index and accrued amount,
+ * and the account's balance against the token's supply.
+ */
+export interface EmissionSide {
+  /** Reserve token id: `index × 2` for the dToken, `+ 1` for the bToken. */
+  id: number;
+  /** Emission rate, BLND per second scaled by `10^epsDecimals` (7 on V1, 14 on V2). */
+  eps: bigint;
+  epsDecimals: number;
+  /** When the schedule ends, seconds since the epoch. */
+  expiration: number;
+  /** The token's current emission index, and the account's last checkpointed one (null: none yet). */
+  index: bigint;
+  userIndex: bigint | null;
+  /** BLND accrued to the account at its last checkpoint, in the reserve token's decimals. */
+  accrued: bigint;
+  /** The account's balance of the token and the token's total supply, in its own decimals. */
+  balance: bigint;
+  supply: bigint;
+  decimals: number;
+}
+
+function assertCount(value: number, label: string): void {
+  if (!Number.isInteger(value) || value < 0) throw new Error(`Blend emissions: bad ${label}`);
+}
+
+/**
+ * Claimable BLND per reserve token and the position's accrual rate, from the sides that emit.
+ * The accrual is the SDK's own arithmetic (`UserEmissions.estimateAccrual`) kept in integers:
+ * `balance × (index − userIndex) / 10^epsDecimals + accrued`, in the reserve token's decimals as
+ * the SDK reads it, rescaled to BLND's. An account with a balance but no emission data yet
+ * accrues from index 0, as the pool itself does when emissions began after the position.
+ */
+export function emissionsFromSides(sides: EmissionSide[], now: number): BlendEmissionsView {
+  const claimable = new Map<number, bigint>();
+  let rateScaled = 0n;
+  for (const side of sides) {
+    assertCount(side.epsDecimals, "epsDecimals");
+    assertCount(side.decimals, "decimals");
+    if (side.balance < 0n || side.supply < 0n || side.accrued < 0n || side.eps < 0n) {
+      throw new Error("Blend emissions: negative amount");
+    }
+    if (side.userIndex === null && side.balance === 0n) continue;
+    const userIndex = side.userIndex ?? 0n;
+    if (side.index < userIndex) throw new Error("Blend emissions: index moved backwards");
+    const epsScale = 10n ** BigInt(side.epsDecimals);
+    const accrual = (side.balance * (side.index - userIndex)) / epsScale + side.accrued;
+    const amount = (accrual * BLND_SCALE) / 10n ** BigInt(side.decimals);
+    if (amount > 0n) claimable.set(side.id, amount);
+    if (side.expiration > now && side.supply > 0n && side.balance > 0n) {
+      rateScaled +=
+        (side.eps * side.balance * BLND_SCALE * REWARD_RATE_SCALE) / (epsScale * side.supply);
+    }
+  }
+  return { claimable, rateScaled };
+}
+
+/** The backstop's per-(pool, user) state as the SDK reads it, reduced to what the plan needs. */
+export interface BackstopReadout {
+  backstopId: string;
+  config: { backstopTkn: string; blndTkn: string };
+  balance: {
+    shares: bigint;
+    /** Withdrawals still locked: the SDK already moved the unlocked ones into `unlockedQ4W`. */
+    q4w: Array<{ amount: bigint; exp: bigint | number }>;
+    unlockedQ4W: bigint;
+  };
+  /** The account's emission checkpoint for this pool's backstop, if it ever had one. */
+  userEmissions: { index: bigint; accrued: bigint } | undefined;
+  /** The backstop pool's emission index, if the pool is in the reward zone. */
+  poolEmissions: { index: bigint; epsDecimals: number } | undefined;
+}
+
+export function backstopViewFrom(readout: BackstopReadout): BlendBackstopView {
+  const { balance } = readout;
+  let emissions = 0n;
+  if (readout.poolEmissions && (readout.userEmissions || balance.shares > 0n)) {
+    // Backstop emissions accrue to unqueued shares only, as the SDK estimates them.
+    const { index, epsDecimals } = readout.poolEmissions;
+    assertCount(epsDecimals, "epsDecimals");
+    const user = readout.userEmissions ?? { index: 0n, accrued: 0n };
+    if (index < user.index) throw new Error("Blend emissions: index moved backwards");
+    emissions = (balance.shares * (index - user.index)) / 10n ** BigInt(epsDecimals) + user.accrued;
+  }
+  return {
+    contract: readout.backstopId,
+    backstopToken: readout.config.backstopTkn,
+    blndToken: readout.config.blndTkn,
+    shares: balance.shares,
+    queued: balance.q4w.map((q) => ({ amount: q.amount, unlocksAt: Number(q.exp) })),
+    unlocked: balance.unlockedQ4W,
+    emissions,
+  };
 }
 
 export const defaultBlendDeps: BlendDeps = {
@@ -170,14 +272,11 @@ export const defaultBlendDeps: BlendDeps = {
     return PositionsEstimate.build(pool as Pool, oracle, positions);
   },
   emissions(pool, user, now) {
-    // The SDK's own per-token accrual (PoolUser.estimateEmissions does the same sum, but only as
-    // one float), kept per token so the claim can name exactly the ids that owe something.
     const real = pool as Pool;
     const poolUser = user as PoolUser;
-    const claimable = new Map<number, bigint>();
-    let rateScaled = 0n;
+    const sides: EmissionSide[] = [];
     for (const reserve of real.reserves.values()) {
-      const sides = [
+      const tokens = [
         {
           id: reserve.getDTokenEmissionIndex(),
           emissions: reserve.borrowEmissions,
@@ -191,42 +290,41 @@ export const defaultBlendDeps: BlendDeps = {
           supply: reserve.data.bSupply,
         },
       ];
-      for (const side of sides) {
-        if (!side.emissions) continue;
-        const data = poolUser.emissions.get(side.id);
-        if (!data && side.balance <= 0n) continue;
-        // Emissions that began after the position did accrue from index 0, as the pool does it.
-        const accrual = (data ?? new PoolUserEmissionData(0n, 0n)).estimateAccrual(
-          side.emissions,
-          reserve.config.decimals,
-          side.balance
-        );
-        const amount = BigInt(Math.floor(accrual * Number(BLND_SCALE)));
-        if (amount > 0n) claimable.set(side.id, amount);
-        if (side.emissions.expiration > now && side.supply > 0n && side.balance > 0n) {
-          // eps is BLND per second for the whole token supply, scaled by 10^epsDecimals.
-          rateScaled +=
-            (side.emissions.eps * side.balance * BLND_SCALE * REWARD_RATE_SCALE) /
-            (10n ** BigInt(side.emissions.epsDecimals) * side.supply);
-        }
+      for (const token of tokens) {
+        if (!token.emissions) continue;
+        const data = poolUser.emissions.get(token.id);
+        sides.push({
+          id: token.id,
+          eps: token.emissions.eps,
+          epsDecimals: token.emissions.epsDecimals,
+          expiration: token.emissions.expiration,
+          index: token.emissions.index,
+          userIndex: data?.index ?? null,
+          accrued: data?.accrued ?? 0n,
+          balance: token.balance,
+          supply: token.supply,
+          decimals: reserve.config.decimals,
+        });
       }
     }
-    return { claimable, rateScaled };
+    return emissionsFromSides(sides, now);
   },
-  async loadBackstop(network, backstopId, poolId, account, now) {
+  async loadBackstop(network, version, backstopId, poolId, account, now) {
     const sdkNetwork = blendSdkNetwork(network);
-    const [config, user] = await Promise.all([
+    const [config, user, backstopPool] = await Promise.all([
       BackstopConfig.load(sdkNetwork, backstopId),
       BackstopPoolUser.load(sdkNetwork, backstopId, poolId, account, now),
+      version === Version.V1
+        ? BackstopPoolV1.load(sdkNetwork, backstopId, poolId, now)
+        : BackstopPoolV2.load(sdkNetwork, backstopId, poolId, now),
     ]);
-    return {
-      contract: backstopId,
-      backstopToken: config.backstopTkn,
-      blndToken: config.blndTkn,
-      shares: user.balance.shares,
-      queued: user.balance.q4w.map((q) => ({ amount: q.amount, unlocksAt: Number(q.exp) })),
-      unlocked: user.balance.unlockedQ4W,
-    };
+    return backstopViewFrom({
+      backstopId,
+      config,
+      balance: user.balance,
+      userEmissions: user.emissions,
+      poolEmissions: backstopPool.emissions,
+    });
   },
 };
 
@@ -245,14 +343,8 @@ export type BlendLive =
       version: Version;
       pool: string;
       positions: BlendReservePosition[];
-      emissions: BlendEmissionsView & {
-        total: bigint;
-        /** BLND is a Stellar asset the account has no trustline for. */
-        needsTrustline: boolean;
-      };
+      emissions: BlendEmissionsView & { total: bigint };
       backstop: BlendBackstopView;
-      /** Seconds since the epoch at the read, which the backstop queue is judged against. */
-      now: number;
       /** Kept so `health` can estimate the state a plan leaves, not just the state read. */
       poolView: BlendPoolView;
       oracle: PoolOracle;
@@ -294,17 +386,6 @@ function daysLeft(seconds: number): string {
   return `${days} day${days === 1 ? "" : "s"}`;
 }
 
-/** Whether a token contract is a Stellar Asset Contract (receiving it needs a trustline). Throws
- *  when the instance is not on the ledger: a token that cannot be read is not one to assume. */
-async function isStellarAssetContract(rpc: ExitRpc, token: string): Promise<boolean> {
-  const key = new Contract(token).getFootprint();
-  const response = await rpc.getLedgerEntries(key);
-  const entry = response.entries?.find((e) => e.key.toXDR("base64") === key.toXDR("base64"));
-  if (!entry) throw new Error(`token instance not on the ledger: ${token}`);
-  const executable = entry.val.contractData().val().instance().executable();
-  return executable.switch() === xdr.ContractExecutableType.contractExecutableStellarAsset();
-}
-
 export function blendExitAdapter(
   deps: BlendDeps = defaultBlendDeps
 ): ExitAdapter<BlendPosition, BlendLive> {
@@ -317,19 +398,20 @@ export function blendExitAdapter(
       return position.positionType === "supply" || position.positionType === "borrow";
     },
 
-    async readLive(position, code, ctx, rpc): Promise<BlendLive> {
+    async readLive(position, code, ctx): Promise<BlendLive> {
       if (code.kind !== "pool") return { status: "not_pool", kind: code.kind };
       const version = blendSdkVersion(code.version);
       if (version === null) return { status: "unsupported_version", version: code.version };
 
       try {
-        const now = Math.floor(Date.now() / 1000);
+        const now = Math.floor(ctx.now.getTime() / 1000);
         const pool = await deps.loadPool(ctx.network, position.contractAddress, version);
         const [oracle, user, backstop] = await Promise.all([
           pool.loadOracle(),
           pool.loadUser(ctx.account),
           deps.loadBackstop(
             ctx.network,
+            version,
             pool.metadata.backstop,
             position.contractAddress,
             ctx.account,
@@ -368,20 +450,14 @@ export function blendExitAdapter(
         const emissions = deps.emissions(pool, user, now);
         let total = 0n;
         for (const amount of emissions.claimable.values()) total += amount;
-        // Whether the account can receive BLND at all is only asked when there is BLND to claim.
-        const needsTrustline =
-          total > 0n &&
-          !(backstop.blndToken in ctx.tokenBalances) &&
-          (await isStellarAssetContract(rpc, backstop.blndToken));
 
         return {
           status: "loaded",
           version: pool.version,
           pool: position.contractAddress,
           positions: held,
-          emissions: { ...emissions, total, needsTrustline },
+          emissions: { ...emissions, total },
           backstop,
-          now,
           poolView: pool,
           oracle,
           raw: positions,
@@ -418,12 +494,17 @@ export function blendExitAdapter(
 
       const steps: ExitStep[] = [];
       const blockers: ExitPlan["blockers"] = [];
+      // What the account can receive and carry on through the close: XLM and the classic assets
+      // it holds an authorized trustline for, under their Stellar Asset Contracts. BLND is one on
+      // every network Blend runs on; the backstop's LP share is a Soroban token the close cannot
+      // convert yet (#161), so paying it out to the account would only move the loss to the merge.
+      const canCarry = (token: string): boolean => token in ctx.tokenBalances;
 
       // Emissions first: once the account is merged nobody can come back for them. What accrued
       // during the close itself is left with the pool rather than chased round after round.
       if (rewardIsWorthClaiming(live.emissions.total, live.emissions.rateScaled)) {
         const blnd = live.emissions.total;
-        if (live.emissions.needsTrustline) {
+        if (!canCarry(live.backstop.blndToken)) {
           blockers.push({
             code: "blend_emissions_trustline_missing",
             message:
@@ -486,6 +567,7 @@ export function blendExitAdapter(
       // one thing this close can do is take out what has already unlocked; everything else is a
       // wait the tool cannot shorten, and a merge in the meantime would forfeit the deposit.
       const { backstop } = live;
+      const now = Math.floor(ctx.now.getTime() / 1000);
       const cooldown = BACKSTOP_COOLDOWN_SECONDS[live.version];
       if (backstop.shares > 0n) {
         blockers.push({
@@ -497,10 +579,10 @@ export function blendExitAdapter(
             "it unlocks. Closing now would forfeit the deposit.",
         });
       }
-      const cooling = backstop.queued.filter((q) => q.unlocksAt > live.now);
-      if (cooling.length > 0) {
-        const amount = cooling.reduce((sum, q) => sum + q.amount, 0n);
-        const remaining = Math.max(...cooling.map((q) => q.unlocksAt)) - live.now;
+      // Every queued entry still listed is locked: the read already moved the unlocked ones out.
+      if (backstop.queued.length > 0) {
+        const amount = backstop.queued.reduce((sum, q) => sum + q.amount, 0n);
+        const remaining = Math.max(...backstop.queued.map((q) => q.unlocksAt)) - now;
         blockers.push({
           code: "backstop_withdrawal_cooling_down",
           message:
@@ -510,15 +592,36 @@ export function blendExitAdapter(
         });
       }
       if (backstop.unlocked > 0n) {
-        steps.push({
-          kind: "withdraw",
-          contract: backstop.contract,
-          function: "withdraw",
-          asset: backstop.backstopToken,
-          amount: backstop.unlocked.toString(),
-          ceiling: backstop.unlocked.toString(),
-          minReceived: [],
-          description: `Withdraw ${backstop.unlocked} unlocked backstop shares queued for Blend pool ${pool}`,
+        if (canCarry(backstop.backstopToken)) {
+          steps.push({
+            kind: "withdraw",
+            contract: backstop.contract,
+            function: "withdraw",
+            asset: backstop.backstopToken,
+            amount: backstop.unlocked.toString(),
+            ceiling: backstop.unlocked.toString(),
+            minReceived: [],
+            description: `Withdraw ${backstop.unlocked} unlocked backstop shares queued for Blend pool ${pool}`,
+          });
+        } else {
+          blockers.push({
+            code: "backstop_token_unconvertible",
+            message:
+              `This account has ${backstop.unlocked} backstop shares for Blend pool ${pool} ready to ` +
+              "withdraw, but they pay out in the backstop's LP token, which LumenWipe cannot yet " +
+              "convert or carry to the destination. Withdraw them through Blend and redeem the LP " +
+              "token before continuing; closing now would forfeit them.",
+          });
+        }
+      }
+      if (backstop.emissions > 0n) {
+        blockers.push({
+          code: "backstop_emissions_unclaimed",
+          message:
+            `This account has ${backstop.emissions} base units of BLND emissions accrued to its ` +
+            `backstop deposit for Blend pool ${pool}. LumenWipe does not claim backstop emissions ` +
+            "(Blend re-deposits them as backstop shares); claim them through Blend before " +
+            "continuing, or closing now would forfeit them.",
         });
       }
       if (blockers.length > 0) return { steps: [], blockers };
@@ -607,9 +710,10 @@ export function blendExitAdapter(
         };
       }
 
-      if (step.contract === live.backstop.contract) {
-        if (step.kind !== "withdraw")
+      if (step.contract === live.backstop.contract && step.contract !== live.pool) {
+        if (step.kind !== "withdraw") {
           throw new Error(`Blend: no backstop call for a ${step.kind} step`);
+        }
         const client =
           live.version === Version.V1
             ? new BackstopContractV1(step.contract)

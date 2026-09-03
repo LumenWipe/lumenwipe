@@ -119,9 +119,21 @@ export function blendPositionEnricher(
 
         for (const position of held) {
           if (position.positionType !== "supply" && position.positionType !== "borrow") continue;
-          // A backstop deposit is not a pool reserve position: its amount and yield live in the
-          // backstop contract (#155), and the reserve's numbers would describe the wrong thing.
-          if (position.positionType === "supply" && position.isBackstop) continue;
+          // A backstop deposit is not a pool reserve position: its amount is the deposit's own
+          // shares (the BLND:USDC LP token, 7 decimals), and the reserve's numbers would describe
+          // the wrong thing. What its queue allows is the exit's to say.
+          if (position.positionType === "supply" && position.isBackstop) {
+            displays.set(positionKey(position), {
+              pool: poolName,
+              asset: "backstop shares",
+              amount: formatUnits(BigInt(position.bTokenAmount), 7),
+              collateralAmount: null,
+              yieldPct: null,
+              yieldKind: null,
+              detail: "deposited in the pool's backstop; withdrawals wait out a queue",
+            });
+            continue;
+          }
           const reserve = reserves.get(position.assetAddress);
           if (!reserve) continue;
           try {

@@ -3,7 +3,13 @@ import { RequestType, Version } from "@blend-capital/blend-sdk";
 import { Address, scValToNative, xdr } from "@stellar/stellar-sdk";
 import type { BlendBorrowPosition, BlendSupplyPosition } from "@lumenwipe/types";
 import { assessRepayPlanned, runExitAdapter } from "@/lib/defi-exits";
-import { blendExitAdapter, type BlendPosition } from "@/lib/defi-exits/blend";
+import {
+  backstopViewFrom,
+  blendExitAdapter,
+  emissionsFromSides,
+  type BlendPosition,
+  type EmissionSide,
+} from "@/lib/defi-exits/blend";
 import {
   describeExitAdapterInvariants,
   harnessContext,
@@ -64,14 +70,17 @@ const registryWithBackstop: ContractRegistryLookup = createContractRegistryLooku
     ],
   })
 );
-const ctx = harnessContext({ tokenBalances: { [USDC]: "500000000" } }); // holds 50 USDC
-const rpc = (simulation: "ok" | "error" = "ok", stellarAssets: string[] = []) =>
+// Holds 50 USDC and a BLND trustline (what a claim pays into); the backstop's LP token is a
+// Soroban token the close cannot carry, so it is deliberately absent.
+const ctx = harnessContext({ tokenBalances: { [USDC]: "500000000", [BLND]: "0" } });
+const NOW = Math.floor(ctx.now.getTime() / 1000);
+const DAY = 86_400;
+const rpc = (simulation: "ok" | "error" = "ok") =>
   fakeExitRpc({
     liveWasmHash: WASM_HASH,
     hashesByContract: { [BACKSTOP]: BACKSTOP_HASH },
     liveBalance: "0",
     simulation,
-    stellarAssets,
   });
 
 function supplyPosition(overrides: Partial<BlendSupplyPosition> = {}): BlendSupplyPosition {
@@ -163,12 +172,11 @@ async function run(
   state: FakePoolState,
   position: BlendPosition = supplyPosition(),
   context = ctx,
-  registryLookup = registry,
-  liveRpc = rpc()
+  registryLookup = registry
 ) {
   const deps = fakeBlendDeps(state);
   const result = await runExitAdapter(blendExitAdapter(deps), position, context, {
-    rpc: liveRpc,
+    rpc: rpc(),
     resolveWasmHash: registryLookup.resolveWasmHash,
     isRegistryFresh: () => true,
   });
@@ -379,40 +387,22 @@ describe("blend exit adapter", () => {
       expect(real.result.plan.map((s) => s.kind)).toEqual(["claim", "withdraw"]);
     });
 
-    test("BLND paid through a Stellar Asset Contract needs a trustline; without one the exit blocks by name", async () => {
-      const blocked = await run(
-        { ...SUPPLY_ONLY, emissions: EMISSIONS },
-        supplyPosition(),
-        ctx,
-        registry,
-        rpc("ok", [BLND])
-      );
+    test("BLND is paid through its Stellar Asset Contract: without an authorized BLND trustline the exit blocks by name", async () => {
+      const blocked = await run({ ...SUPPLY_ONLY, emissions: EMISSIONS }, supplyPosition(), {
+        ...ctx,
+        tokenBalances: { [USDC]: "500000000" },
+      });
       expect(blocked.result.next).toBeNull();
       expect(blocked.result.blockers.map((b) => b.code)).toEqual([
         "blend_emissions_trustline_missing",
       ]);
-      // With the trustline (BLND's contract among the balances) the claim goes ahead.
-      const held = await run(
-        { ...SUPPLY_ONLY, emissions: EMISSIONS },
+      // Dust-sized emissions never ask for a trustline: they are left with the pool.
+      const dust = await run(
+        { ...SUPPLY_ONLY, emissions: { claimable: { 1: 1n }, rateScaled: 100n * 1_000_000n } },
         supplyPosition(),
-        { ...ctx, tokenBalances: { ...ctx.tokenBalances, [BLND]: "0" } },
-        registry,
-        rpc("ok", [BLND])
+        { ...ctx, tokenBalances: { [USDC]: "500000000" } }
       );
-      expect(held.result.plan.map((s) => s.kind)).toEqual(["claim", "withdraw"]);
-      // A BLND contract that cannot be read is not one to assume anything about.
-      const unreadable = await run(
-        { ...SUPPLY_ONLY, emissions: EMISSIONS },
-        supplyPosition(),
-        ctx,
-        registry,
-        fakeExitRpc({
-          liveWasmHash: WASM_HASH,
-          hashesByContract: { [BLND]: null },
-          liveBalance: "0",
-        })
-      );
-      expect(unreadable.result.blockers.map((b) => b.code)).toEqual(["blend_pool_unreadable"]);
+      expect(dust.result.plan.map((s) => s.kind)).toEqual(["withdraw"]);
     });
 
     test("nothing accrued, nothing claimed", async () => {
@@ -422,8 +412,8 @@ describe("blend exit adapter", () => {
   });
 
   describe("the backstop deposit", () => {
-    const NOW = Math.floor(Date.now() / 1000);
-    const DAY = 86_400;
+    // Once the close can carry the backstop's LP token, an unlocked withdrawal is a step.
+    const carriesLp = { ...ctx, tokenBalances: { ...ctx.tokenBalances, [BACKSTOP_TOKEN]: "0" } };
 
     test("is read from the pool's backstop for the account, whatever position led here", async () => {
       const { deps } = await run(SUPPLY_ONLY);
@@ -434,7 +424,7 @@ describe("blend exit adapter", () => {
       const { result } = await run(
         { ...INDEBTED, backstop: { unlocked: 5_000_000n } },
         supplyPosition({ isBackstop: true }),
-        ctx,
+        carriesLp,
         registryWithBackstop
       );
       expect(result.blockers).toEqual([]);
@@ -452,11 +442,35 @@ describe("blend exit adapter", () => {
       });
     });
 
+    test("unlocked shares pay out in the backstop's LP token; while the close cannot carry it, they block by name", async () => {
+      const { result } = await run(
+        { ...SUPPLY_ONLY, backstop: { unlocked: 5_000_000n } },
+        supplyPosition({ isBackstop: true }),
+        ctx,
+        registryWithBackstop
+      );
+      expect(result.next).toBeNull();
+      expect(result.blockers.map((b) => b.code)).toEqual(["backstop_token_unconvertible"]);
+      expect(result.blockers[0]!.message).toContain("5000000 backstop shares");
+    });
+
+    test("BLND emissions accrued to the deposit block: the backstop's own claim would re-deposit them", async () => {
+      const { result } = await run(
+        { ...SUPPLY_ONLY, backstop: { emissions: 12_345n } },
+        supplyPosition({ isBackstop: true }),
+        ctx,
+        registryWithBackstop
+      );
+      expect(result.next).toBeNull();
+      expect(result.blockers.map((b) => b.code)).toEqual(["backstop_emissions_unclaimed"]);
+      expect(result.blockers[0]!.message).toContain("12345 base units of BLND");
+    });
+
     test("the backstop withdrawal names the account, the pool, and the unlocked amount", async () => {
       const { result } = await run(
         { backstop: { unlocked: 5_000_000n } },
         supplyPosition({ isBackstop: true }),
-        ctx,
+        carriesLp,
         registryWithBackstop
       );
       expect(result.plan.map((s) => s.kind)).toEqual(["withdraw"]);
@@ -479,7 +493,7 @@ describe("blend exit adapter", () => {
       const { result } = await run(
         { backstop: { unlocked: 5_000_000n } },
         supplyPosition({ isBackstop: true }),
-        ctx,
+        carriesLp,
         registry
       );
       expect(result.next).toBeNull();
@@ -492,8 +506,8 @@ describe("blend exit adapter", () => {
           ...SUPPLY_ONLY,
           backstop: {
             queued: [
-              { amount: 1_000_000n, unlocksAt: NOW + 2 * DAY + 1 },
-              { amount: 2_000_000n, unlocksAt: NOW + 10 * DAY + 1 },
+              { amount: 1_000_000n, unlocksAt: NOW + 2 * DAY + DAY / 2 },
+              { amount: 2_000_000n, unlocksAt: NOW + 10 * DAY + DAY / 2 },
             ],
           },
         },
@@ -526,13 +540,13 @@ describe("blend exit adapter", () => {
       expect(v1.result.blockers[0]!.message).toContain("21 days");
     });
 
-    test("a queued withdrawal that is only partly unlocked still waits for the rest", async () => {
+    test("a queued withdrawal that is only partly unlocked still waits for the rest, even at the very second it unlocks", async () => {
       const { result } = await run(
         {
-          backstop: { unlocked: 1_000_000n, queued: [{ amount: 500n, unlocksAt: NOW + DAY }] },
+          backstop: { unlocked: 1_000_000n, queued: [{ amount: 500n, unlocksAt: NOW }] },
         },
         supplyPosition({ isBackstop: true }),
-        ctx,
+        carriesLp,
         registryWithBackstop
       );
       expect(result.next).toBeNull();
@@ -599,5 +613,104 @@ describe("blend exit adapter", () => {
     expect(result.next.build.op.sourceAccount()).toBeUndefined();
     const envelope = xdr.TransactionEnvelope.fromXDR(result.next.simulation.txXdr, "base64");
     expect(envelope.v1().tx().operations()).toHaveLength(1);
+  });
+
+  describe("the SDK's numbers, reduced", () => {
+    const side = (over: Partial<EmissionSide> = {}): EmissionSide => ({
+      id: 1,
+      eps: 1_000_000n, // 0.1 BLND/s at 7 decimals
+      epsDecimals: 7,
+      expiration: 2_000_000_000,
+      index: 5_000_000n,
+      userIndex: 2_000_000n,
+      accrued: 300n,
+      balance: 10_000_000n, // 1 bToken at 7 decimals
+      supply: 100_000_000n, // 10% of the token
+      decimals: 7,
+      ...over,
+    });
+
+    test("claimable emissions follow the SDK's arithmetic per side, rescaled to BLND base units", () => {
+      // 1 × (5_000_000 − 2_000_000) / 10^7 = 0.3 → 3_000_000 base units... in 7-decimal integer
+      // math: 10_000_000 × 3_000_000 / 10_000_000 = 3_000_000, plus 300 accrued.
+      const { claimable, rateScaled } = emissionsFromSides([side()], 1_000_000_000);
+      expect(claimable.get(1)).toBe(3_000_300n);
+      // 0.1 BLND/s × 10% share = 0.01 BLND/s = 100_000 base units/s, scaled by 10^6.
+      expect(rateScaled).toBe(100_000n * 1_000_000n);
+    });
+
+    test("a 14-decimal rate (V2) and a 6-decimal reserve rescale correctly; expired emissions have no rate", () => {
+      const v2 = emissionsFromSides(
+        [
+          side({
+            eps: 10n ** 13n,
+            epsDecimals: 14,
+            index: 3n * 10n ** 13n,
+            userIndex: 0n,
+            accrued: 0n,
+          }),
+        ],
+        1_000_000_000
+      );
+      // 10_000_000 × 3×10^13 / 10^14 = 3_000_000 base units.
+      expect(v2.claimable.get(1)).toBe(3_000_000n);
+      expect(v2.rateScaled).toBe(100_000n * 1_000_000n);
+      const sixDecimals = emissionsFromSides(
+        [side({ decimals: 6, balance: 1_000_000n, supply: 10_000_000n, accrued: 0n })],
+        1_000_000_000
+      );
+      // 1 token × 0.3 = 0.3 BLND → 3_000_000 base units once rescaled from 6 to 7 decimals.
+      expect(sixDecimals.claimable.get(1)).toBe(3_000_000n);
+      const expired = emissionsFromSides([side({ expiration: 999 })], 1_000_000_000);
+      expect(expired.claimable.get(1)).toBe(3_000_300n);
+      expect(expired.rateScaled).toBe(0n);
+    });
+
+    test("no emission data and no balance is nothing; a balance without data accrues from index zero", () => {
+      expect(emissionsFromSides([side({ userIndex: null, balance: 0n })], 0).claimable.size).toBe(
+        0
+      );
+      const fresh = emissionsFromSides([side({ userIndex: null, accrued: 0n })], 0);
+      expect(fresh.claimable.get(1)).toBe(5_000_000n);
+    });
+
+    test("malformed inputs throw rather than mis-count: bad decimals, negative amounts, a receding index", () => {
+      expect(() => emissionsFromSides([side({ epsDecimals: -1 })], 0)).toThrow();
+      expect(() => emissionsFromSides([side({ decimals: 1.5 })], 0)).toThrow();
+      expect(() => emissionsFromSides([side({ balance: -1n })], 0)).toThrow();
+      expect(() => emissionsFromSides([side({ index: 1n, userIndex: 2n })], 0)).toThrow();
+    });
+
+    test("the backstop readout keeps the SDK's split of locked and unlocked queue entries, and estimates the deposit's emissions", () => {
+      const view = backstopViewFrom({
+        backstopId: BACKSTOP,
+        config: { backstopTkn: BACKSTOP_TOKEN, blndTkn: BLND },
+        balance: {
+          shares: 20_000_000n,
+          q4w: [{ amount: 5n, exp: 1_800_000_000n }],
+          unlockedQ4W: 7n,
+        },
+        userEmissions: { index: 1_000_000n, accrued: 10n },
+        poolEmissions: { index: 1_500_000n, epsDecimals: 7 },
+      });
+      expect(view).toMatchObject({
+        contract: BACKSTOP,
+        backstopToken: BACKSTOP_TOKEN,
+        blndToken: BLND,
+        shares: 20_000_000n,
+        queued: [{ amount: 5n, unlocksAt: 1_800_000_000 }],
+        unlocked: 7n,
+        // 2 shares × 0.05 index delta = 0.1 BLND, plus 10 accrued.
+        emissions: 1_000_010n,
+      });
+      const none = backstopViewFrom({
+        backstopId: BACKSTOP,
+        config: { backstopTkn: BACKSTOP_TOKEN, blndTkn: BLND },
+        balance: { shares: 0n, q4w: [], unlockedQ4W: 0n },
+        userEmissions: undefined,
+        poolEmissions: { index: 9n, epsDecimals: 7 },
+      });
+      expect(none.emissions).toBe(0n);
+    });
   });
 });
