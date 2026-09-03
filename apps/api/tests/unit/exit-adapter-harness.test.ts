@@ -189,6 +189,37 @@ describe("runExitAdapter catches each invariant violation from outside the adapt
     expect(rpc.simulateCalls).toHaveLength(0);
   });
 
+  describe("the post-assembly hook", () => {
+    test("may raise the resource fee, and the offered bytes carry it", async () => {
+      const plain = await runWith({});
+      const hardened = await runWith({ hardenAddsFee: 70_000n });
+      expect(hardened.blockers).toEqual([]);
+      const feeOf = (txXdr: string) =>
+        xdr.TransactionEnvelope.fromXDR(txXdr, "base64").v1().tx().fee();
+      expect(feeOf(hardened.next!.simulation.txXdr) - feeOf(plain.next!.simulation.txXdr)).toBe(
+        70_000
+      );
+    });
+
+    test("cannot change the call: a swapped invocation is an intent mismatch, nothing offered", async () => {
+      const result = await runWith({ hardenChangesCall: true });
+      expect(result.next).toBeNull();
+      expect(result.blockers.map((b) => b.code)).toEqual(["exit_intent_mismatch"]);
+    });
+
+    test("a hook that throws is an adapter error, nothing offered", async () => {
+      const result = await runWith({ hardenThrows: true });
+      expect(result.next).toBeNull();
+      expect(result.blockers.map((b) => b.code)).toEqual(["exit_adapter_error"]);
+    });
+
+    test("cannot push the fee past the cap", async () => {
+      const result = await runWith({ hardenAddsFee: 10_000_000n });
+      expect(result.next).toBeNull();
+      expect(result.blockers.map((b) => b.code)).toEqual(["exit_fee_excessive"]);
+    });
+  });
+
   test("a position below its liquidation threshold is refused before anything is built", async () => {
     const rpc = liveRpc({ liveBalance: "520000000" });
     const result = await runWith({ debt: true }, rpc);

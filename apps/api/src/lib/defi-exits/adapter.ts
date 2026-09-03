@@ -1,5 +1,5 @@
 import type { DefiPosition, DefiProtocol, Network, PlanBlocker } from "@lumenwipe/types";
-import type { rpc, xdr } from "@stellar/stellar-sdk";
+import type { Transaction, rpc, xdr } from "@stellar/stellar-sdk";
 import type { ContractKind } from "@/lib/contract-registry";
 import type { HealthInputs } from "./invariants";
 
@@ -164,4 +164,11 @@ export interface ExitAdapter<P extends DefiPosition, L> {
   plan(position: P, live: L, code: ContractVersion, ctx: ExitContext): ExitPlan;
   health(position: P, live: L, steps: ExitStep[]): HealthInputs | null;
   buildStep(step: ExitStep, live: L, ctx: ExitContext): BuiltExitStep;
+  /**
+   * Optional: adjust the assembled, simulated transaction before it is offered - for a protocol
+   * whose execution is known to diverge from its simulation (a footprint the contract will write
+   * to at execution but only read in simulation). Must not change the operation itself: the runner
+   * re-checks the invocation, the authorization tree, and the fee cap after this hook.
+   */
+  hardenBuilt?(tx: Transaction, step: ExitStep, live: L, ctx: ExitContext): Transaction;
 }

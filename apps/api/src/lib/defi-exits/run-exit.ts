@@ -463,6 +463,24 @@ export async function runExitAdapter<P extends DefiPosition, L>(
   } catch {
     return adapterError("assemble");
   }
+  if (adapter.hardenBuilt) {
+    // A protocol whose execution is known to diverge from its simulation may widen the footprint
+    // here; the invocation itself is re-checked below, so the hook cannot change what is signed.
+    try {
+      signable = adapter.hardenBuilt(signable, step, live, ctx);
+    } catch {
+      return adapterError("harden");
+    }
+    const hardened = decodeInvocation(signable.toEnvelope().v1().tx().operations()[0]!);
+    if (
+      !hardened ||
+      hardened.contract !== step.contract ||
+      hardened.function !== step.function ||
+      signable.operations.length !== 1
+    ) {
+      return intentMismatch;
+    }
+  }
 
   // 7. What the simulation added must still be something a single-account close can sign: the
   // authorization tree may carry only the source account's own credentials - an entry for any

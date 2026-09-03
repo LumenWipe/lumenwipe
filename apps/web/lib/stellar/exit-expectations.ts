@@ -46,10 +46,12 @@ export function exitExpectations(
   // A read with no positions section (an older session, a partial state) vouches for nothing.
   const positions = accountState.defiPositions?.positions ?? [];
   const trustlines = accountState.trustlines ?? [];
+  // Only protocols whose exit actually goes through a router pin one: Aquarius positions are
+  // called directly, so its router is never a call target even though the registry lists it.
   const routers = exitRoutersFor(
     network,
     positions.map((p) => p.protocol)
-  );
+  ).filter((r) => EXIT_FUNCTIONS[r.protocol].router.length > 0);
   const exitContracts = [
     ...new Set([...positions.map((p) => p.contractAddress), ...routers.map((r) => r.address)]),
   ];
@@ -58,8 +60,15 @@ export function exitExpectations(
     exitFunctions[p.contractAddress] = [...EXIT_FUNCTIONS[p.protocol].position];
   }
   for (const r of routers) exitFunctions[r.address] = [...EXIT_FUNCTIONS[r.protocol].router];
+  // A position's tokens (what a withdrawal pays out) and, where the protocol keeps shares in a
+  // separate contract, its share token (what a withdrawal burns, under the account's authority).
   const positionTokenContracts = [
-    ...new Set(positions.flatMap((p) => ("tokens" in p && p.tokens ? p.tokens : []))),
+    ...new Set(
+      positions.flatMap((p) => [
+        ...("tokens" in p && p.tokens ? p.tokens : []),
+        ...("shareToken" in p && p.shareToken ? [p.shareToken] : []),
+      ])
+    ),
   ];
   const heldTokenContracts = [
     Asset.native().contractId(passphrase),

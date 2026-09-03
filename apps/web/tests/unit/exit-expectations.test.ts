@@ -85,3 +85,26 @@ test("routers come only from the bundled registry, for the network and protocols
   expect(isContractRegistryUsable(later)).toBe(false);
   expect(exitRoutersFor("testnet", ["soroswap"], later)).toEqual([]);
 });
+
+test("an Aquarius LP position pins its pool, allows withdraw and claim on it, and treats its share token and pool tokens as places a withdrawal may touch", () => {
+  const SHARE_TOKEN = "CAN7DMIQH7FGKNYCUQMWECJJ74EKN5JATVVUOVTXOWLQGZCWAFWANG5P";
+  const e = exitExpectations(
+    state([
+      {
+        protocol: "aquarius",
+        positionType: "lp",
+        contractAddress: PAIR,
+        shareAmount: "1",
+        usdValue: null,
+        tokens: [TOKEN_0, TOKEN_1],
+        shareToken: SHARE_TOKEN,
+        poolType: "constant_product",
+      },
+    ]),
+    "testnet"
+  );
+  // The pool is called directly; the Aquarius router is never a call target.
+  expect(e.exitContracts).toEqual([PAIR]);
+  expect(e.exitFunctions).toEqual({ [PAIR]: ["withdraw", "claim"] });
+  expect(e.positionTokenContracts).toEqual([TOKEN_0, TOKEN_1, SHARE_TOKEN]);
+});

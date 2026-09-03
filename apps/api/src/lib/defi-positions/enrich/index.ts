@@ -6,6 +6,7 @@ import type {
   DefiPositionsResult,
   DefiProtocol,
 } from "@lumenwipe/types";
+import { aquariusPositionEnricher } from "./aquarius";
 import { blendPositionEnricher } from "./blend";
 import { soroswapPositionEnricher } from "./soroswap";
 import type { EnrichContext, EnrichDeps, PositionEnricher } from "./shared";
@@ -35,6 +36,7 @@ export {
 const DEFAULT_ENRICHERS: Partial<Record<DefiProtocol, PositionEnricher>> = {
   blend: blendPositionEnricher(),
   soroswap: soroswapPositionEnricher(),
+  aquarius: aquariusPositionEnricher(),
 };
 
 export const DEFAULT_ENRICH_TIMEOUT_MS = 8_000;

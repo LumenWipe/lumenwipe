@@ -80,6 +80,12 @@ export interface FakeAdapterKnobs {
   external?: boolean;
   /** The external envelope carries two operations. */
   externalTwoOps?: boolean;
+  /** Throw from the post-assembly hook. */
+  hardenThrows?: boolean;
+  /** Have the post-assembly hook swap the invocation for a call to another function. */
+  hardenChangesCall?: boolean;
+  /** Have the post-assembly hook bump the resource fee by this many stroops. */
+  hardenAddsFee?: bigint;
 }
 
 export function balanceKey(contract: string): xdr.LedgerKey {
@@ -208,6 +214,28 @@ export function fakeExitAdapter(
       }
       return { step, build: { source: "local", op }, intent };
     },
+
+    ...(knobs.hardenThrows || knobs.hardenChangesCall || knobs.hardenAddsFee !== undefined
+      ? {
+          hardenBuilt(tx: Transaction, step: ExitStep, _live: FakeLiveState, ctx: ExitContext) {
+            if (knobs.hardenThrows) throw new Error("fake adapter: harden exploded");
+            const data = tx.toEnvelope().v1().tx().ext().sorobanData();
+            const resourceFee = data.resourceFee().toBigInt();
+            const sorobanData = new SorobanDataBuilder(data)
+              .setResourceFee(resourceFee + (knobs.hardenAddsFee ?? 0n))
+              .build();
+            const builder = TransactionBuilder.cloneFrom(tx, {
+              fee: (BigInt(tx.fee) - resourceFee).toString(),
+              sorobanData,
+            });
+            if (knobs.hardenChangesCall) {
+              builder.clearOperations();
+              builder.addOperation(invocation({ ...step, function: "claim" }, ctx));
+            }
+            return builder.build();
+          },
+        }
+      : {}),
   };
 }
 

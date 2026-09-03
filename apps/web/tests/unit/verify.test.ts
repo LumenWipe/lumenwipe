@@ -1143,3 +1143,21 @@ test("a Blend exit may only call submit on its pool", () => {
     assertCloseIntent(exitOnly(exit({ function: "flash_loan" })), expectation())
   ).toThrow(/function LumenWipe does not use/);
 });
+
+test("an Aquarius exit may call withdraw or claim on its pool, and the share token it burns is a permitted contract", () => {
+  const SHARE_TOKEN = "CAN7DMIQH7FGKNYCUQMWECJJ74EKN5JATVVUOVTXOWLQGZCWAFWANG5P";
+  const expected = expectation({
+    exitFunctions: { [POOL]: ["withdraw", "claim"] },
+    positionTokenContracts: [SHARE_TOKEN],
+  });
+  const withdraw = exit({
+    function: "withdraw",
+    contractsReferenced: [POOL, SHARE_TOKEN, XLM_SAC],
+  });
+  expect(() => assertCloseIntent(exitOnly(withdraw), expected)).not.toThrow();
+  const claim = exit({ function: "claim", contractsReferenced: [POOL] });
+  expect(() => assertCloseIntent(exitOnly(claim), expected)).not.toThrow();
+  expect(() => assertCloseIntent(exitOnly(exit({ function: "deposit" })), expected)).toThrow(
+    /function LumenWipe does not use/
+  );
+});
