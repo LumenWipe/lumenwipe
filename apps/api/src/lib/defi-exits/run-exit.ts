@@ -90,6 +90,18 @@ function blocker(code: string, message: string): PlanBlocker {
 }
 
 /** The contract and function an operation actually invokes, or null if it is not an invocation. */
+/**
+ * The transaction as the signer sees it, minus the two fields a post-assembly hook may change: the
+ * fee and the Soroban resource data (footprint, resources, resource fee). Two transactions with the
+ * same shape do the same thing.
+ */
+function signedShape(tx: Transaction): string {
+  const inner = xdr.Transaction.fromXDR(tx.toEnvelope().v1().tx().toXDR());
+  inner.fee(0);
+  inner.ext(new xdr.TransactionExt(0));
+  return inner.toXDR("base64");
+}
+
 function decodeInvocation(op: xdr.Operation): { contract: string; function: string } | null {
   if (op.body().switch() !== xdr.OperationType.invokeHostFunction()) return null;
   const host = op.body().invokeHostFunctionOp().hostFunction();
@@ -462,6 +474,33 @@ export async function runExitAdapter<P extends DefiPosition, L>(
       built.build.source === "local" ? stellarRpc.assembleTransaction(tx, simulation).build() : tx;
   } catch {
     return adapterError("assemble");
+  }
+  if (adapter.hardenBuilt) {
+    // A protocol whose execution is known to diverge from its simulation may widen the footprint
+    // and raise the fee here - and nothing else. Everything that decides what the transaction does
+    // (source, sequence, bounds, memo, the operation with its arguments and authorization tree, the
+    // network) must come back byte-for-byte; the fee itself is capped below.
+    const before = signedShape(signable);
+    let hardened: Transaction;
+    try {
+      hardened = adapter.hardenBuilt(signable, step, live, ctx);
+    } catch {
+      return adapterError("harden");
+    }
+    let after: string | null;
+    try {
+      after = signedShape(hardened);
+    } catch {
+      after = null;
+    }
+    if (
+      after === null ||
+      after !== before ||
+      hardened.networkPassphrase !== signable.networkPassphrase
+    ) {
+      return intentMismatch;
+    }
+    signable = hardened;
   }
 
   // 7. What the simulation added must still be something a single-account close can sign: the

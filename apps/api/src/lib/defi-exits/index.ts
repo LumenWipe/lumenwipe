@@ -43,3 +43,4 @@ export {
   type SoroswapLive,
   type SoroswapPairState,
 } from "./soroswap";
+export { aquariusExitAdapter, type AquariusLive, type AquariusPoolState } from "./aquarius";

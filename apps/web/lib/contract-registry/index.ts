@@ -36,7 +36,7 @@ export const EXIT_FUNCTIONS: Record<
 > = {
   blend: { position: ["submit"], router: [] },
   soroswap: { position: [], router: ["remove_liquidity"] },
-  aquarius: { position: [], router: [] },
+  aquarius: { position: ["withdraw", "claim"], router: [] },
   phoenix: { position: [], router: [] },
   fxdao: { position: [], router: [] },
 };
