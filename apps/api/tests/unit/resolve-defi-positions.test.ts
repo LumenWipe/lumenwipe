@@ -116,7 +116,7 @@ test("mainnet degrades when OctoPos returns a payload the adapter cannot recogni
 test("a degraded mainnet fallback still surfaces positions the direct read actually finds", async () => {
   const entry: ContractRegistryEntry = {
     network: "mainnet",
-    protocol: "aquarius",
+    protocol: "phoenix",
     kind: "pool",
     address: AQUARIUS_POOL,
     wasmHash: AQUARIUS_WASM_HASH,
@@ -141,7 +141,7 @@ test("a degraded mainnet fallback still surfaces positions the direct read actua
   expect(result.timestamp).toBeNull();
   expect(result.positions).toEqual([
     {
-      protocol: "aquarius",
+      protocol: "phoenix",
       positionType: "lp",
       contractAddress: AQUARIUS_POOL,
       wasmHash: AQUARIUS_WASM_HASH,
@@ -167,7 +167,7 @@ test("never throws even when both OctoPos and the direct-read RPC dependency fai
 
   const entry: ContractRegistryEntry = {
     network: "mainnet",
-    protocol: "aquarius",
+    protocol: "phoenix",
     kind: "pool",
     address: AQUARIUS_POOL,
     wasmHash: AQUARIUS_WASM_HASH,
