@@ -4,14 +4,17 @@ import { test, expect } from "@playwright/test";
 import { Asset, Keypair, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
 import {
   AQUARIUS_POOL,
+  AQUARIUS_ROUTER,
   AQUA,
   AQUA_SAC,
   BLEND_POOL,
+  SOROSWAP_FACTORY,
   SOROSWAP_ROUTER,
   XLM_SAC,
   accountExists,
   blendPositionExists,
   fund,
+  ingested,
   seedAquariusLiquidity,
   seedBlendSupply,
   seedSoroswapLiquidity,
@@ -33,8 +36,13 @@ const registryExpired = new Date() > new Date(`${registry.validUntil}T23:59:59Z`
 const registered = (address: string) =>
   registry.entries.some((e) => e.address === address && e.verifiedLive);
 
+// Every registered contract the seeds and the sweep depend on: the Blend pool, the Soroswap
+// factory (pairs are enumerated from it) and router, and the Aquarius router (pools are enumerated
+// from it; the pool this spec deposits into is one of them, not a registry entry of its own).
+const DEPENDS_ON = [BLEND_POOL, SOROSWAP_FACTORY, SOROSWAP_ROUTER, AQUARIUS_ROUTER];
+
 test.skip(
-  registryExpired || ![BLEND_POOL, SOROSWAP_ROUTER].every(registered),
+  registryExpired || !DEPENDS_ON.every(registered),
   registryExpired
     ? `contract registry expired on ${registry.validUntil}; re-verify it before running this spec`
     : "a protocol contract this spec seeds against is no longer a verifiedLive registry entry"
@@ -43,7 +51,7 @@ test.skip(
 test("close API: Blend, Soroswap, and Aquarius positions on one account are all exited, then the account is merged", async ({
   request,
 }) => {
-  test.setTimeout(900_000);
+  test.setTimeout(600_000);
 
   const issuer = Keypair.random();
   const source = Keypair.random();
@@ -53,6 +61,7 @@ test("close API: Blend, Soroswap, and Aquarius positions on one account are all 
     fund(source.publicKey()),
     fund(destination.publicKey()),
   ]);
+  await Promise.all([issuer, source].map((k) => ingested(k.publicKey())));
   const asset = new Asset("LWTEST", issuer.publicKey());
 
   // Seeds run one after another: every step spends the account's own sequence number.
@@ -89,9 +98,10 @@ test("close API: Blend, Soroswap, and Aquarius positions on one account are all 
         const res = await request.post("/api/v1/testnet/close/plan", { data: body });
         if (!res.ok()) return `http ${res.status()}`;
         const plan = await res.json();
-        const exits = (plan.steps as Array<{ type: string; title: string }>).filter(
-          (s) => s.type === "EXIT_POSITIONS"
-        );
+        const steps = Array.isArray(plan.steps)
+          ? (plan.steps as Array<{ type: string; title: string }>)
+          : [];
+        const exits = steps.filter((s) => s.type === "EXIT_POSITIONS");
         return `${plan.status}:${exits.length}:${exits
           .map((s) => s.title)
           .sort()
@@ -111,7 +121,8 @@ test("close API: Blend, Soroswap, and Aquarius positions on one account are all 
   };
   const exitContracts: string[] = [];
   const covered: string[][] = [];
-  for (let round = 0; round < 12; round++) {
+  let finished = false;
+  for (let round = 0; round < 12 && !finished; round++) {
     const txRes = await request.post("/api/v1/testnet/close/transactions", { data: body });
     expect(txRes.ok(), await txRes.text()).toBeTruthy();
     const { transactions, remaining } = await txRes.json();
@@ -130,6 +141,8 @@ test("close API: Blend, Soroswap, and Aquarius positions on one account are all 
         });
         const allowed = allowedContracts[op.contract as string];
         expect(allowed, `exit against an unexpected contract ${op.contract}`).toBeDefined();
+        // The tree always names at least the contract being called; an empty list is a bug.
+        expect(op.contractsReferenced).toContain(op.contract);
         for (const contract of op.contractsReferenced as string[])
           expect(allowed).toContain(contract);
         exitContracts.push(op.contract);
@@ -146,22 +159,30 @@ test("close API: Blend, Soroswap, and Aquarius positions on one account are all 
       expect(submitRes.ok(), `${label}\n${await submitRes.text()}`).toBeTruthy();
       expect((await submitRes.json()).status).toBe("success");
     }
-    if (!remaining.requiresAnotherCall) break;
+    finished = !remaining.requiresAnotherCall;
   }
+  expect(finished, "the close did not finish within 12 rounds").toBe(true);
 
-  // Every protocol was left exactly once (Aquarius may add a reward claim), and the exits all
-  // came before the classic steps.
-  expect(new Set(exitContracts)).toEqual(new Set([BLEND_POOL, SOROSWAP_ROUTER, AQUARIUS_POOL]));
+  // Blend and Soroswap were each left in exactly one transaction; Aquarius in one, or two when a
+  // reward claim preceded the withdrawal. Every exit came before the first classic step.
+  const count = (contract: string) => exitContracts.filter((c) => c === contract).length;
+  expect(count(BLEND_POOL)).toBe(1);
+  expect(count(SOROSWAP_ROUTER)).toBe(1);
+  expect([1, 2]).toContain(count(AQUARIUS_POOL));
+  expect(exitContracts).toHaveLength(
+    count(BLEND_POOL) + count(SOROSWAP_ROUTER) + count(AQUARIUS_POOL)
+  );
   const firstClassic = covered.findIndex((c) => !c.includes("EXIT_POSITIONS"));
   const lastExit = covered.map((c) => c.includes("EXIT_POSITIONS")).lastIndexOf(true);
-  expect(lastExit).toBeLessThan(firstClassic);
+  expect(lastExit).toBeGreaterThanOrEqual(0);
+  expect(firstClassic).toBeGreaterThan(lastExit);
   expect(covered.flat()).toContain("MERGE");
 
-  // 3. On-chain: nothing left in any protocol, and the account is gone.
-  expect(await blendPositionExists(source.publicKey())).toBe(false);
-  expect(await tokenBalanceOf(pair, source.publicKey())).toBe(BigInt(0));
-  expect(await tokenBalanceOf(shareToken, source.publicKey())).toBe(BigInt(0));
-  await expect
-    .poll(() => accountExists(source.publicKey()), { timeout: 30_000, intervals: [2_000] })
-    .toBe(false);
+  // 3. On-chain: nothing left in any protocol, and the account is gone. Reads may lag the last
+  //    ledger by a moment, so each is polled rather than read once.
+  const settled = { timeout: 30_000, intervals: [2_000] };
+  await expect.poll(() => blendPositionExists(source.publicKey()), settled).toBe(false);
+  await expect.poll(() => tokenBalanceOf(pair, source.publicKey()), settled).toBe(BigInt(0));
+  await expect.poll(() => tokenBalanceOf(shareToken, source.publicKey()), settled).toBe(BigInt(0));
+  await expect.poll(() => accountExists(source.publicKey()), settled).toBe(false);
 });

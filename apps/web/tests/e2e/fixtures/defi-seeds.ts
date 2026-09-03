@@ -44,17 +44,41 @@ export async function fund(pub: string): Promise<void> {
   if (!res.ok) throw new Error(`friendbot ${res.status}: ${await res.text()}`);
 }
 
+/** Whether Horizon knows the account. Only a 404 means gone; any other trouble is an error. */
 export async function accountExists(id: string): Promise<boolean> {
   const res = await fetch(`${HORIZON}/accounts/${id}`);
-  return res.status === 200;
+  if (res.status === 200) return true;
+  if (res.status === 404) return false;
+  throw new Error(`horizon ${res.status} for ${id}`);
 }
 
+/** Waits until the RPC serves the account (friendbot answers before every node has ingested it). */
+export async function ingested(id: string): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        server.getAccount(id).then(
+          () => true,
+          () => false
+        ),
+      { timeout: 30_000, intervals: [1_000] }
+    )
+    .toBe(true);
+}
+
+/** Waits for the transaction to succeed; a failure is reported at once with its result. */
 export async function confirmed(hash: string): Promise<void> {
   await expect
-    .poll(async () => (await server.getTransaction(hash)).status, {
-      timeout: 60_000,
-      intervals: [2_000],
-    })
+    .poll(
+      async () => {
+        const result = await server.getTransaction(hash);
+        if (result.status === rpc.Api.GetTransactionStatus.FAILED) {
+          throw new Error(`transaction ${hash} failed: ${result.resultXdr.toXDR("base64")}`);
+        }
+        return result.status;
+      },
+      { timeout: 60_000, intervals: [2_000] }
+    )
     .toBe(rpc.Api.GetTransactionStatus.SUCCESS);
 }
 
@@ -83,6 +107,9 @@ export async function soroban(signer: Keypair, op: xdr.Operation): Promise<unkno
   const simulation = await server.simulateTransaction(raw);
   if (!rpc.Api.isSimulationSuccess(simulation)) {
     throw new Error(`simulation failed: ${JSON.stringify(simulation)}`);
+  }
+  if (rpc.Api.isSimulationRestore(simulation)) {
+    throw new Error("simulation needs a ledger-entry restore first; the seed cannot proceed");
   }
   const tx = rpc.assembleTransaction(raw, simulation).build();
   tx.sign(signer);
