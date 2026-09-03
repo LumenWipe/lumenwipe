@@ -112,7 +112,11 @@ export async function readAquariusPool(
   const balanceVal = second.entries?.find(
     (e) => e.key.toXDR("base64") === balanceKey.toXDR("base64")
   )?.val;
-  const shares = balanceVal ? (asUnsigned(balanceVal.contractData().val()) ?? 0n) : 0n;
+  // An absent or malformed balance is not a zero: showing "0 shares" for a position detection
+  // found would contradict the exit, which refuses to treat an absent entry as empty.
+  if (!balanceVal) return null;
+  const shares = asUnsigned(balanceVal.contractData().val());
+  if (shares === null) return null;
   return { tokens, reserves, totalShares, shares, poolType };
 }
 

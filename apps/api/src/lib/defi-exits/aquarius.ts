@@ -39,7 +39,7 @@ import { minReceivedFromQuote } from "./invariants";
  * Everything the plan needs is read from the ledger: the pool's instance holds its tokens,
  * reserves, total shares, share token, reward token, and the admin's claim switch; the account's
  * shares are the share token's SEP-41 `Balance(account)`. The one value the ledger does not hold
- * ready-made is the accrued reward, so it is read through a simulated `get_user_reward(user)` -
+ * ready-made is the accrued reward, so it is read through a simulated `get_rewards_info(user)` -
  * a read-only call, never signed.
  *
  * Constant-product and stableswap pools are share-based and exit here. Concentrated-liquidity
@@ -59,6 +59,11 @@ export interface AquariusPoolState {
   rewardToken: string;
   /** Accrued, unclaimed AQUA in base units. */
   reward: bigint;
+  /**
+   * What the position accrues in one second at the current emission rate, scaled by
+   * `REWARD_RATE_SCALE` (base units × scale per second); 0 once the pool's emissions have expired.
+   */
+  rewardRateScaled: bigint;
   /** The pool admin has paused claiming (`kill_claim`). */
   claimKilled: boolean;
   /** Tokens that are Stellar Asset Contracts: receiving one needs a trustline for its asset. */
@@ -74,6 +79,16 @@ export type AquariusLive =
   /** The pool reads fine but the accrued reward could not be read. */
   | { status: "reward_unreadable" }
   | { status: "unreadable" };
+
+/**
+ * Rewards accrue for every second the account holds shares, so a claim leaves a fresh (tiny) reward
+ * behind by the time the next round reads the position. Claiming that again would never end. A
+ * reward worth less than this many seconds of the position's own emissions is what accrued during
+ * the close itself: it is not claimed, and the withdrawal - which checkpoints it - leaves it with
+ * the pool. Anything that has been accruing longer is claimed first.
+ */
+export const REWARD_DUST_WINDOW_SECONDS = 900n;
+const REWARD_RATE_SCALE = 1_000_000n;
 
 const K = {
   tokens: '["Tokens"]',
@@ -176,7 +191,7 @@ async function simulateUnsigned(
   contract: string,
   fn: string,
   ...args: xdr.ScVal[]
-): Promise<bigint | null> {
+): Promise<xdr.ScVal | null> {
   const tx = new TransactionBuilder(new Account(account, sequence), {
     fee: String(BASE_FEE_STROOPS),
     networkPassphrase: NETWORK_PASSPHRASES[network],
@@ -189,7 +204,50 @@ async function simulateUnsigned(
     ? stellarRpc.parseRawSimulation(response)
     : response;
   if (!stellarRpc.Api.isSimulationSuccess(simulation)) return null;
-  return asUnsigned(simulation.result?.retval);
+  return simulation.result?.retval ?? null;
+}
+
+/**
+ * The pool's own account of the position's rewards, from `get_rewards_info(user)`: the amount to
+ * claim (after the same checkpoint `claim` would run), and the emission rate, expiry, and the
+ * account's working balance against the pool's, from which the per-second accrual follows. Null
+ * when any of these is missing or malformed.
+ */
+export function rewardsInfoOf(
+  val: xdr.ScVal | null,
+  now: bigint
+): { reward: bigint; rewardRateScaled: bigint } | null {
+  if (!val || val.switch() !== xdr.ScValType.scvMap()) return null;
+  const fields = new Map<string, bigint>();
+  for (const entry of val.map() ?? []) {
+    const key = entry.key();
+    if (key.switch() !== xdr.ScValType.scvSymbol()) continue;
+    const value = asUnsigned(entry.val());
+    if (value !== null) fields.set(key.sym().toString(), value);
+  }
+  const reward = fields.get("to_claim");
+  const tps = fields.get("tps");
+  const expiresAt = fields.get("exp_at");
+  const workingBalance = fields.get("working_balance");
+  const workingSupply = fields.get("working_supply");
+  if (
+    reward === undefined ||
+    tps === undefined ||
+    expiresAt === undefined ||
+    workingBalance === undefined ||
+    workingSupply === undefined
+  ) {
+    return null;
+  }
+  const active = now < expiresAt && workingSupply > 0n;
+  const rewardRateScaled = active ? (tps * workingBalance * REWARD_RATE_SCALE) / workingSupply : 0n;
+  return { reward, rewardRateScaled };
+}
+
+/** Whether a reward has been accruing for longer than the close itself takes. */
+export function rewardIsWorthClaiming(reward: bigint, rewardRateScaled: bigint): boolean {
+  if (reward <= 0n) return false;
+  return reward * REWARD_RATE_SCALE > rewardRateScaled * REWARD_DUST_WINDOW_SECONDS;
 }
 
 function shortAddress(address: string): string {
@@ -215,9 +273,14 @@ const ACCOUNT_REWARD_KEYS = new Set([
   "UserRewardState",
   "WorkingBalance",
 ]);
-/** Declared write capacity and fee added per promoted key; generous, and refunded where unused. */
+/**
+ * Declared write capacity and fee added per promoted key. The write may also CREATE the entry (an
+ * account whose gauge entry does not exist yet), which is charged rent for the entry's minimum
+ * lifetime, so the allowance is generous: the rent part of a Soroban fee is refundable, and what
+ * the execution does not use comes back to the account.
+ */
 const PROMOTED_KEY_WRITE_BYTES = 512;
-const PROMOTED_KEY_FEE_STROOPS = 50_000n;
+const PROMOTED_KEY_FEE_STROOPS = 300_000n;
 
 function isAccountRewardKey(key: xdr.LedgerKey, account: string): boolean {
   if (key.switch() !== xdr.LedgerEntryType.contractData()) return false;
@@ -239,13 +302,22 @@ export function promoteRewardKeys(tx: Transaction, account: string): Transaction
   if (ext.switch() !== 1) return tx;
   const data = ext.sorobanData();
   const footprint = data.resources().footprint();
-  const promoted = footprint.readOnly().filter((k) => isAccountRewardKey(k, account));
+  const b64 = (k: xdr.LedgerKey): string => k.toXDR("base64");
+  const alreadyWritable = new Set(footprint.readWrite().map(b64));
+  // A key may appear in one half of the footprint only.
+  const promoted = footprint
+    .readOnly()
+    .filter((k) => isAccountRewardKey(k, account) && !alreadyWritable.has(b64(k)));
   if (promoted.length === 0) return tx;
-  const promotedXdr = new Set(promoted.map((k) => k.toXDR("base64")));
-  const readOnly = footprint.readOnly().filter((k) => !promotedXdr.has(k.toXDR("base64")));
+  const promotedXdr = new Set(promoted.map(b64));
+  const readOnly = footprint.readOnly().filter((k) => !promotedXdr.has(b64(k)));
   const readWrite = [...footprint.readWrite(), ...promoted];
   const resources = data.resources();
   const resourceFee = data.resourceFee().toBigInt();
+  const inclusionFee = BigInt(tx.fee) - resourceFee;
+  if (inclusionFee < BigInt(BASE_FEE_STROOPS)) {
+    throw new Error("Aquarius: assembled transaction carries no inclusion fee");
+  }
   const extraFee = PROMOTED_KEY_FEE_STROOPS * BigInt(promoted.length);
   const sorobanData = new SorobanDataBuilder(data)
     .setFootprint(readOnly, readWrite)
@@ -257,7 +329,6 @@ export function promoteRewardKeys(tx: Transaction, account: string): Transaction
     .setResourceFee(resourceFee + extraFee)
     .build();
   // The builder adds the resource fee back on build, so hand it the inclusion fee alone.
-  const inclusionFee = BigInt(tx.fee) - resourceFee;
   return TransactionBuilder.cloneFrom(tx, { fee: inclusionFee.toString(), sorobanData }).build();
 }
 
@@ -341,16 +412,19 @@ export function aquariusExitAdapter(): ExitAdapter<AquariusLpPosition, AquariusL
           if (instanceView(val).isStellarAsset) stellarAssetTokens.add(distinctTokens[i]!);
         }
 
-        const reward = await simulateUnsigned(
-          rpc,
-          ctx.network,
-          ctx.account,
-          ctx.sequence,
-          pool,
-          "get_user_reward",
-          new Address(ctx.account).toScVal()
+        const rewards = rewardsInfoOf(
+          await simulateUnsigned(
+            rpc,
+            ctx.network,
+            ctx.account,
+            ctx.sequence,
+            pool,
+            "get_rewards_info",
+            new Address(ctx.account).toScVal()
+          ),
+          BigInt(Math.floor(Date.now() / 1000))
         );
-        if (reward === null) return { status: "reward_unreadable" };
+        if (rewards === null) return { status: "reward_unreadable" };
 
         return {
           status: "loaded",
@@ -362,7 +436,8 @@ export function aquariusExitAdapter(): ExitAdapter<AquariusLpPosition, AquariusL
           shareToken,
           shares,
           rewardToken,
-          reward,
+          reward: rewards.reward,
+          rewardRateScaled: rewards.rewardRateScaled,
           claimKilled,
           stellarAssetTokens,
         };
@@ -418,6 +493,13 @@ export function aquariusExitAdapter(): ExitAdapter<AquariusLpPosition, AquariusL
             "claim; the position was already withdrawn."
         );
       }
+      if (live.shares > live.totalShares) {
+        return manualReview(
+          "aquarius_pool_unreadable",
+          `The Aquarius pool ${pool} reports fewer shares in total than this account holds, so the ` +
+            "position cannot be valued. No exit was built; this position needs manual review."
+        );
+      }
 
       const native = Asset.native().contractId(NETWORK_PASSPHRASES[ctx.network]);
       const needsTrustline = (token: string): boolean =>
@@ -425,8 +507,10 @@ export function aquariusExitAdapter(): ExitAdapter<AquariusLpPosition, AquariusL
       const blockers: PlanBlocker[] = [];
       const steps: ExitStep[] = [];
 
-      // Rewards first: once the account is merged nobody can come back for them.
-      if (live.reward > 0n) {
+      // Rewards first: once the account is merged nobody can come back for them. What accrued
+      // during the close itself (see REWARD_DUST_WINDOW_SECONDS) is not worth a transaction of its
+      // own, and claiming it would only leave the next few seconds' worth behind again.
+      if (rewardIsWorthClaiming(live.reward, live.rewardRateScaled)) {
         if (live.claimKilled) {
           return manualReview(
             "aquarius_rewards_claim_paused",

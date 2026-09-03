@@ -201,11 +201,18 @@ describe("runExitAdapter catches each invariant violation from outside the adapt
       );
     });
 
-    test("cannot change the call: a swapped invocation is an intent mismatch, nothing offered", async () => {
-      const result = await runWith({ hardenChangesCall: true });
-      expect(result.next).toBeNull();
-      expect(result.blockers.map((b) => b.code)).toEqual(["exit_intent_mismatch"]);
-    });
+    test.each([
+      ["swaps the function", { hardenChangesCall: true }],
+      ["keeps the call but changes an argument", { hardenChangesArgs: true }],
+      ["moves the time bounds", { hardenChangesTimeBounds: true }],
+    ] as Array<[string, FakeAdapterKnobs]>)(
+      "cannot change what is signed: a hook that %s is an intent mismatch, nothing offered",
+      async (_label, knobs) => {
+        const result = await runWith(knobs);
+        expect(result.next).toBeNull();
+        expect(result.blockers.map((b) => b.code)).toEqual(["exit_intent_mismatch"]);
+      }
+    );
 
     test("a hook that throws is an adapter error, nothing offered", async () => {
       const result = await runWith({ hardenThrows: true });

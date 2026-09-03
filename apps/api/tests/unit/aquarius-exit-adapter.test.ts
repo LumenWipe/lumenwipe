@@ -13,7 +13,7 @@ import {
 } from "@stellar/stellar-sdk";
 import type { AquariusLpPosition } from "@lumenwipe/types";
 import { EXIT_POSITION_GONE, aquariusExitAdapter, runExitAdapter } from "@/lib/defi-exits";
-import { promoteRewardKeys } from "@/lib/defi-exits/aquarius";
+import { REWARD_DUST_WINDOW_SECONDS, promoteRewardKeys } from "@/lib/defi-exits/aquarius";
 import {
   createContractRegistryLookup,
   validateContractRegistry,
@@ -256,6 +256,55 @@ describe("aquarius exit adapter", () => {
   test("rewards that cannot be read block rather than risk losing them in the merge", async () => {
     const result = await run({ rewardReadFails: true });
     expect(result.blockers.map((b) => b.code)).toEqual(["aquarius_rewards_unreadable"]);
+    const incomplete = await run({ rewardsInfoIncomplete: true, reward: 5n });
+    expect(incomplete.blockers.map((b) => b.code)).toEqual(["aquarius_rewards_unreadable"]);
+  });
+
+  describe("with active emissions, a claim is planned only for rewards older than the close itself", () => {
+    // 10% of the pool at 1_000 base units per second pool-wide: the position accrues 100/s.
+    const EMISSIONS = 1_000n;
+    const perSecond = 100n;
+
+    test("what accrued within the window is left to the withdrawal - the next round would only find it again", async () => {
+      const result = await run({
+        emissionsPerSecond: EMISSIONS,
+        reward: perSecond * REWARD_DUST_WINDOW_SECONDS,
+      });
+      expect(result.blockers).toEqual([]);
+      expect(result.plan.map((s) => s.kind)).toEqual(["lp_withdraw"]);
+    });
+
+    test("anything older is claimed first", async () => {
+      const result = await run({
+        emissionsPerSecond: EMISSIONS,
+        reward: perSecond * REWARD_DUST_WINDOW_SECONDS + 1n,
+      });
+      expect(result.plan.map((s) => s.kind)).toEqual(["claim", "lp_withdraw"]);
+    });
+
+    test("once emissions have expired nothing accrues any more, so any reward is claimed", async () => {
+      const result = await run({
+        emissionsPerSecond: EMISSIONS,
+        emissionsExpired: true,
+        reward: 1n,
+      });
+      expect(result.plan.map((s) => s.kind)).toEqual(["claim", "lp_withdraw"]);
+    });
+
+    test("a paused claim or a missing AQUA trustline blocks only for rewards worth claiming", async () => {
+      const dust = { emissionsPerSecond: EMISSIONS, reward: 1n, claimKilled: true };
+      expect((await run(dust)).plan.map((s) => s.kind)).toEqual(["lp_withdraw"]);
+      const real = { emissionsPerSecond: EMISSIONS, reward: 10n ** 9n, claimKilled: true };
+      expect((await run(real)).blockers.map((b) => b.code)).toEqual([
+        "aquarius_rewards_claim_paused",
+      ]);
+    });
+  });
+
+  test("a pool reporting fewer shares in total than the account holds cannot be valued", async () => {
+    const result = await run({ shares: 2_000_000_000n, totalShares: 1_000_000_000n });
+    expect(result.next).toBeNull();
+    expect(result.blockers.map((b) => b.code)).toEqual(["aquarius_pool_unreadable"]);
   });
 
   test("a pool whose token is also the reward token (XLM/AQUA) reads and plans normally", async () => {
@@ -356,13 +405,26 @@ describe("aquarius exit adapter", () => {
       const result = await run({ rewardGauges: GAUGES });
       const offered = footprintOf(result.next!.simulation.txXdr);
       expect(offered.writeBytes).toBe(300 + 2 * 512);
-      expect(offered.resourceFee).toBe(12_345n + 2n * 50_000n);
+      expect(offered.resourceFee).toBe(12_345n + 2n * 300_000n);
       // The inclusion fee is untouched: total = inclusion + resource fee, before and after.
       const untouched = footprintOf((await run()).next!.simulation.txXdr);
       expect(BigInt(offered.fee) - offered.resourceFee).toBe(
         BigInt(untouched.fee) - untouched.resourceFee
       );
       expect(untouched.writeBytes).toBe(300);
+    });
+
+    test("a reward key the simulation already has read-write is not listed twice", async () => {
+      const result = await run({ rewardGauges: GAUGES });
+      const offered = footprintOf(result.next!.simulation.txXdr);
+      const key = rewardKey(GAUGES[0]!, ACCOUNT).toXDR("base64");
+      expect(offered.readWrite.filter((k) => k === key)).toHaveLength(1);
+      // Promoting again finds nothing left to move.
+      const tx = TransactionBuilder.fromXDR(
+        result.next!.simulation.txXdr,
+        "Test SDF Network ; September 2015"
+      ) as Transaction;
+      expect(promoteRewardKeys(tx, ACCOUNT)).toBe(tx);
     });
 
     test("with no reward key of the account's in the read-only set, the transaction is returned as is", async () => {
@@ -381,6 +443,17 @@ describe("aquarius exit adapter", () => {
       expect(result.blockers).toEqual([]);
       expect(result.next?.step.kind).toBe("claim");
       expect(result.next?.intent.args).toEqual([ACCOUNT]);
+      // The simulation's authorization tree (the account's own credentials, through to the share
+      // token's burn on a withdrawal) travels with the offered bytes.
+      const withdraw = await run({ rewardGauges: GAUGES });
+      const op = xdr.TransactionEnvelope.fromXDR(withdraw.next!.simulation.txXdr, "base64")
+        .v1()
+        .tx()
+        .operations()[0]!
+        .body()
+        .invokeHostFunctionOp();
+      expect(op.auth()).toHaveLength(1);
+      expect(op.auth()[0]!.rootInvocation().subInvocations()).toHaveLength(1);
     });
   });
 });

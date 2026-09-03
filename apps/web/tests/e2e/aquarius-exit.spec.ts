@@ -239,6 +239,29 @@ test("close API: an Aquarius LP position is withdrawn from its pool, then the ac
   // 2. Rounds: every exit transaction is a call on the pool itself - a reward claim if any
   //    accrued, then the withdrawal - acting only for the account being closed and naming only
   //    the pool's tokens and share token; later rounds close classically.
+  // Rewards accrue to the position from the moment it exists, when the pool has emissions on.
+  // Both pool calls checkpoint them, and the checkpoint writes the account's reward entries at
+  // execution, so every exit transaction must declare them writable whether or not the simulation
+  // that priced it saw the write coming.
+  const reward = (await readOnly(
+    source.publicKey(),
+    POOL,
+    "get_user_reward",
+    addr(source.publicKey())
+  )) as bigint;
+  const rewardKeyOf = (key: xdr.LedgerKey): boolean => {
+    if (key.switch().name !== "contractData") return false;
+    const val = key.contractData().key();
+    if (val.switch().name !== "scvVec") return false;
+    const [name, who] = val.vec() ?? [];
+    return (
+      name?.switch().name === "scvSymbol" &&
+      name.sym().toString() === "UserRewardData" &&
+      who?.switch().name === "scvAddress" &&
+      Address.fromScAddress(who.address()).toString() === source.publicKey()
+    );
+  };
+
   const covered: string[][] = [];
   const exitFunctions: string[] = [];
   for (let round = 0; round < 10; round++) {
@@ -263,6 +286,17 @@ test("close API: an Aquarius LP position is withdrawn from its pool, then the ac
         exitFunctions.push(op.function);
         for (const contract of op.contractsReferenced as string[]) {
           expect([POOL, shareToken, XLM_SAC, AQUA_SAC]).toContain(contract);
+        }
+        if (reward > BigInt(0)) {
+          const footprint = xdr.TransactionEnvelope.fromXDR(closeTx.xdr, "base64")
+            .v1()
+            .tx()
+            .ext()
+            .sorobanData()
+            .resources()
+            .footprint();
+          expect(footprint.readOnly().some(rewardKeyOf)).toBe(false);
+          expect(footprint.readWrite().some(rewardKeyOf)).toBe(true);
         }
       }
       const tx = TransactionBuilder.fromXDR(

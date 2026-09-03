@@ -44,6 +44,12 @@ export interface FakeAquariusOptions {
   /** Accrued AQUA; `rewardReadFails` makes the simulated read fail instead. */
   reward?: bigint;
   rewardReadFails?: boolean;
+  /** The rewards info map comes back without its emission rate. */
+  rewardsInfoIncomplete?: boolean;
+  /** Pool-wide AQUA emissions per second, base units (0: no active emissions). */
+  emissionsPerSecond?: bigint;
+  /** The emission schedule has already expired. */
+  emissionsExpired?: boolean;
   claimKilled?: boolean;
   /** Which tokens are Stellar Asset Contracts; the rest are wasm tokens. */
   stellarAssets?: string[];
@@ -146,10 +152,62 @@ export function sameperiodFootprint(account: string, gauges: string[]) {
   return { readOnly, readWrite };
 }
 
+/** What a real simulation of `withdraw`/`claim` discovers: the account authorizing the pool's
+ *  call, and through it the share token's burn - the source account's own credentials only. */
+function sourceAuth(fn: string, account: string): string {
+  return new xdr.SorobanAuthorizationEntry({
+    credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
+    rootInvocation: new xdr.SorobanAuthorizedInvocation({
+      function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
+        new xdr.InvokeContractArgs({
+          contractAddress: new Address(POOL).toScAddress(),
+          functionName: fn,
+          args: [addr(account)],
+        })
+      ),
+      subInvocations:
+        fn === "withdraw"
+          ? [
+              new xdr.SorobanAuthorizedInvocation({
+                function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
+                  new xdr.InvokeContractArgs({
+                    contractAddress: new Address(SHARE_TOKEN).toScAddress(),
+                    functionName: "burn",
+                    args: [addr(account)],
+                  })
+                ),
+                subInvocations: [],
+              }),
+            ]
+          : [],
+    }),
+  }).toXDR("base64");
+}
+
+/** The `get_rewards_info(user)` map the pool answers with. */
+function rewardsInfo(options: FakeAquariusOptions): xdr.ScVal {
+  const now = BigInt(Math.floor(Date.now() / 1000));
+  const fields: Array<[string, bigint]> = [
+    ["to_claim", options.reward ?? 0n],
+    ["exp_at", options.emissionsExpired ? now - 3_600n : now + 86_400n],
+    ["working_balance", options.balanceMissing ? 0n : (options.shares ?? 100_000_000n)],
+    ["working_supply", options.totalShares ?? 1_000_000_000n],
+    ["acc", 0n],
+    ["block", 7n],
+  ];
+  if (!options.rewardsInfoIncomplete) fields.push(["tps", options.emissionsPerSecond ?? 0n]);
+  return xdr.ScVal.scvMap(
+    fields
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([k, v]) => new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol(k), val: i128(v) }))
+  );
+}
+
 function simulation(
   mode: "ok" | "error" | "restore",
   retval: xdr.ScVal,
-  footprint?: { readOnly: xdr.LedgerKey[]; readWrite: xdr.LedgerKey[] }
+  footprint?: { readOnly: xdr.LedgerKey[]; readWrite: xdr.LedgerKey[] },
+  auth: string[] = []
 ): rpc.Api.SimulateTransactionResponse {
   const builder = new SorobanDataBuilder().setResourceFee(12_345n).setResources(1_000, 2_000, 300);
   if (footprint) builder.setFootprint(footprint.readOnly, footprint.readWrite);
@@ -162,7 +220,7 @@ function simulation(
           ...base,
           minResourceFee: "12345",
           transactionData,
-          results: [{ auth: [], xdr: retval.toXDR("base64") }],
+          results: [{ auth, xdr: retval.toXDR("base64") }],
           ...(mode === "restore"
             ? { restorePreamble: { minResourceFee: "500", transactionData } }
             : {}),
@@ -244,10 +302,11 @@ export function fakeAquariusRpc(
       };
     },
     async simulateTransaction(tx: Transaction) {
-      if (calledFunction(tx) === "get_user_reward") {
+      const fn = calledFunction(tx);
+      if (fn === "get_rewards_info") {
         return options.rewardReadFails
           ? simulation("error", xdr.ScVal.scvVoid())
-          : simulation("ok", u128(options.reward ?? 0n));
+          : simulation("ok", rewardsInfo(options));
       }
       simulateCalls.push(tx);
       return simulation(
@@ -255,7 +314,8 @@ export function fakeAquariusRpc(
         xdr.ScVal.scvVoid(),
         options.rewardGauges
           ? sameperiodFootprint(options.account, options.rewardGauges)
-          : undefined
+          : undefined,
+        fn === "withdraw" || fn === "claim" ? [sourceAuth(fn, options.account)] : []
       );
     },
   };

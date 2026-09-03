@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { AquariusLpPosition } from "@lumenwipe/types";
+import { Address, Contract, nativeToScVal, xdr } from "@stellar/stellar-sdk";
 import {
   aquariusPositionEnricher,
+  readAquariusPool,
   type AquariusEnrichDeps,
   type AquariusPoolView,
 } from "@/lib/defi-positions/enrich/aquarius";
@@ -47,6 +49,38 @@ function deps(
   };
 }
 
+/** A constant-product pool instance naming XLM/OTHER, reserves, total shares, and a share token. */
+function poolInstance(): xdr.LedgerEntryData {
+  const sym = (s: string) => xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(s)]);
+  const addr = (a: string) => new Address(a).toScVal();
+  const u128 = (v: bigint) => nativeToScVal(v, { type: "u128" });
+  const entry = (k: xdr.ScVal, v: xdr.ScVal) => new xdr.ScMapEntry({ key: k, val: v });
+  return xdr.LedgerEntryData.contractData(
+    new xdr.ContractDataEntry({
+      ext: new xdr.ExtensionPoint(0),
+      contract: new Address(POOL).toScAddress(),
+      key: xdr.ScVal.scvLedgerKeyContractInstance(),
+      durability: xdr.ContractDataDurability.persistent(),
+      val: xdr.ScVal.scvContractInstance(
+        new xdr.ScContractInstance({
+          executable: xdr.ContractExecutable.contractExecutableWasm(Buffer.alloc(32, 1)),
+          storage: [
+            entry(sym("TokenA"), addr(XLM_SAC)),
+            entry(sym("TokenB"), addr(OTHER)),
+            entry(sym("ReserveA"), u128(1_000_000_000n)),
+            entry(sym("ReserveB"), u128(2_000_000n)),
+            entry(sym("TotalShares"), u128(1_000_000_000n)),
+            entry(
+              sym("TokenShare"),
+              addr("CAN7DMIQH7FGKNYCUQMWECJJ74EKN5JATVVUOVTXOWLQGZCWAFWANG5P")
+            ),
+          ],
+        })
+      ),
+    })
+  );
+}
+
 const ctx: EnrichContext = {
   network: "testnet",
   account: ACCOUNT,
@@ -77,6 +111,18 @@ describe("aquarius enricher", () => {
     const display = (await aquariusPositionEnricher(d)([stable], ctx)).get(positionKey(stable));
     expect(display?.pool).toBeNull();
     expect(display?.detail).toBe("worth 10 XLM + 200000 base units of CAZR…6LF5");
+  });
+
+  test("a share balance absent from the ledger leaves the position undescribed rather than at zero", async () => {
+    const rpc = {
+      getLedgerEntries: async (...keys: xdr.LedgerKey[]) => ({
+        latestLedger: 1,
+        entries: keys
+          .filter((k) => k.toXDR("base64") === new Contract(POOL).getFootprint().toXDR("base64"))
+          .map((key) => ({ key, val: poolInstance(), lastModifiedLedgerSeq: 1 })),
+      }),
+    };
+    expect(await readAquariusPool(rpc as never, POOL, ACCOUNT, null)).toBeNull();
   });
 
   test("an empty pool has no worth to state; an unreadable or throwing read leaves the position undescribed", async () => {

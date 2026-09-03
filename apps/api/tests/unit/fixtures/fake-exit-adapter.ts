@@ -18,7 +18,7 @@ import {
   scValToNative,
   xdr,
   type rpc,
-  type Transaction,
+  Transaction,
 } from "@stellar/stellar-sdk";
 import type { BlendSupplyPosition, DefiPosition } from "@lumenwipe/types";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
@@ -84,6 +84,10 @@ export interface FakeAdapterKnobs {
   hardenThrows?: boolean;
   /** Have the post-assembly hook swap the invocation for a call to another function. */
   hardenChangesCall?: boolean;
+  /** Have the post-assembly hook keep the call but change its amount argument. */
+  hardenChangesArgs?: boolean;
+  /** Have the post-assembly hook move the time bounds. */
+  hardenChangesTimeBounds?: boolean;
   /** Have the post-assembly hook bump the resource fee by this many stroops. */
   hardenAddsFee?: bigint;
 }
@@ -215,7 +219,11 @@ export function fakeExitAdapter(
       return { step, build: { source: "local", op }, intent };
     },
 
-    ...(knobs.hardenThrows || knobs.hardenChangesCall || knobs.hardenAddsFee !== undefined
+    ...(knobs.hardenThrows ||
+    knobs.hardenChangesCall ||
+    knobs.hardenChangesArgs ||
+    knobs.hardenChangesTimeBounds ||
+    knobs.hardenAddsFee !== undefined
       ? {
           hardenBuilt(tx: Transaction, step: ExitStep, _live: FakeLiveState, ctx: ExitContext) {
             if (knobs.hardenThrows) throw new Error("fake adapter: harden exploded");
@@ -232,7 +240,26 @@ export function fakeExitAdapter(
               builder.clearOperations();
               builder.addOperation(invocation({ ...step, function: "claim" }, ctx));
             }
-            return builder.build();
+            if (knobs.hardenChangesArgs) {
+              builder.clearOperations();
+              builder.addOperation(invocation({ ...step, amount: "1" }, ctx));
+            }
+            const built = builder.build();
+            if (!knobs.hardenChangesTimeBounds) return built;
+            // The builder refuses to overwrite bounds; a hook bent on it can still edit the XDR.
+            const envelope = built.toEnvelope();
+            envelope
+              .v1()
+              .tx()
+              .cond(
+                xdr.Preconditions.precondTime(
+                  new xdr.TimeBounds({
+                    minTime: xdr.Uint64.fromString("0"),
+                    maxTime: xdr.Uint64.fromString(String(Math.floor(Date.now() / 1000) + 3_600)),
+                  })
+                )
+              );
+            return new Transaction(envelope, built.networkPassphrase);
           },
         }
       : {}),
