@@ -67,6 +67,7 @@ test("mainnet returns the normalized OctoPos result untouched on success", async
 
   const result = await resolveDefiPositions(ADDRESS, "mainnet", {
     octopos: { baseUrl: OCTOPOS_BASE, fetch: octoposFetch },
+    complete: { rpc: mockRpc([]), resolveWasmHash: () => ({ status: "unknown", wasmHash: "" }) },
   });
 
   expect(result.network).toBe("mainnet");

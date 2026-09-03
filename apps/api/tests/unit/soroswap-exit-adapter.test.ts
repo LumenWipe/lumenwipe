@@ -249,11 +249,15 @@ describe("soroswap exit adapter", () => {
     expect(result.blockers.map((b) => b.code)).toEqual(["soroswap_contract_not_pair"]);
   });
 
-  test("the shipped registry knows the testnet router and factory, and nothing on mainnet", () => {
+  test("the shipped registry knows each network's own router and factory, never the other's", () => {
     expect(defaultSoroswapDeps.routerFor("testnet")).toBe(ROUTER);
     expect(defaultSoroswapDeps.factoryFor("testnet")).toBe(FACTORY);
-    expect(defaultSoroswapDeps.routerFor("mainnet")).toBeNull();
-    expect(defaultSoroswapDeps.factoryFor("mainnet")).toBeNull();
+    expect(defaultSoroswapDeps.routerFor("mainnet")).toBe(
+      "CAG5LRYQ5JVEUI5TEID72EYOVX44TTUJT5BQR2J6J77FH65PCCFAJDDH"
+    );
+    expect(defaultSoroswapDeps.factoryFor("mainnet")).toBe(
+      "CA4HEQTL2WPEUYKYKCDOHCDNIV4QHNJ7EL4J4NQ6VADP7SYHVRYZ7AW2"
+    );
   });
 
   test("a share entry that is absent from the ledger blocks - it is not a zero", async () => {

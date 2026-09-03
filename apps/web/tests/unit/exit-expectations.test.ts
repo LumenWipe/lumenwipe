@@ -91,7 +91,13 @@ test("routers and backstops come only from the bundled registry, for the network
     { address: BLEND_BACKSTOP, protocol: "blend" },
   ]);
   expect(exitContractsFor("testnet", ["soroswap"], "backstop")).toEqual([]);
-  expect(exitContractsFor("mainnet", ["soroswap"], "router")).toEqual([]);
+  expect(exitContractsFor("mainnet", ["soroswap"], "router")).toEqual([
+    { address: "CAG5LRYQ5JVEUI5TEID72EYOVX44TTUJT5BQR2J6J77FH65PCCFAJDDH", protocol: "soroswap" },
+  ]);
+  expect(exitContractsFor("mainnet", ["blend"], "backstop").map((b) => b.address)).toEqual([
+    "CAO3AGAMZVRMHITL36EJ2VZQWKYRPWMQAPDQD5YEOF3GIF7T44U4JAL3",
+    "CAQQR5SWBXKIGZKPBZDH3KM5GQ5GUTPKB7JAFCINLZBC5WXPJKRG3IM7",
+  ]);
   const later = new Date("2100-01-01T00:00:00Z");
   expect(isContractRegistryUsable(later)).toBe(false);
   expect(exitContractsFor("testnet", ["soroswap"], "router", later)).toEqual([]);

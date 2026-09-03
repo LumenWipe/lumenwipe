@@ -25,6 +25,7 @@
 
 import { Logger } from "@nestjs/common";
 import type { DefiPositionsResult, Network } from "@lumenwipe/types";
+import { completePositionsFromLedger, type CompletePositionsDeps } from "./complete-positions";
 import { fetchOctoPosPortfolio, type OctoPosDeps } from "./octopos-http";
 import { normalizeOctoPosPortfolio } from "./octopos-adapter";
 import { detectDefiPositionsViaDirectRead, type DirectReadDeps } from "./testnet-direct-read";
@@ -32,6 +33,8 @@ import { detectDefiPositionsViaDirectRead, type DirectReadDeps } from "./testnet
 export interface ResolveDefiPositionsDeps {
   octopos: OctoPosDeps;
   directRead?: DirectReadDeps;
+  /** The ledger reads that complete an indexer's LP positions; defaults to the network's RPC. */
+  complete?: CompletePositionsDeps;
 }
 
 /** Distinguishes a degraded-mode result from a real OctoPos source ("snapshot" | "empty" |
@@ -92,10 +95,14 @@ export async function resolveDefiPositions(
     return degradedFallback(address, network, deps, `${fetched.reason}: ${fetched.detail}`);
   }
 
+  let normalized: DefiPositionsResult;
   try {
-    return normalizeOctoPosPortfolio(fetched.raw, address, network);
+    normalized = normalizeOctoPosPortfolio(fetched.raw, address, network);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return degradedFallback(address, network, deps, `unrecognizable response: ${message}`);
   }
+  // The indexer names an LP position by pool and shares only; the exit's verifier needs the
+  // pool's tokens (and share token) too, read from the pool itself. Never throws.
+  return completePositionsFromLedger(normalized, network, deps.complete);
 }
