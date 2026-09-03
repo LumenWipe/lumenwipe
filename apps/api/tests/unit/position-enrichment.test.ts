@@ -237,13 +237,21 @@ describe("blend enricher", () => {
     expect(none.get(positionKey(unregistered))?.pool).toBeNull();
   });
 
-  test("a backstop deposit is left undescribed and never shares a key with the plain supply", async () => {
+  test("a backstop deposit shows its own shares, not the reserve's numbers, under its own key", async () => {
     const view = pool({ supply: { 0: 100_000_000n } });
-    const backstop: BlendSupplyPosition = { ...supply, isBackstop: true };
+    const backstop: BlendSupplyPosition = { ...supply, isBackstop: true, bTokenAmount: "25000000" };
     const displays = await blendPositionEnricher(depsWith(view))([supply, backstop], ctx());
     expect(positionKey(backstop)).not.toBe(positionKey(supply));
     expect(displays.has(positionKey(supply))).toBe(true);
-    expect(displays.has(positionKey(backstop))).toBe(false);
+    expect(displays.get(positionKey(backstop))).toEqual({
+      pool: "Comet",
+      asset: "backstop shares",
+      amount: "2.5",
+      collateralAmount: null,
+      yieldPct: null,
+      yieldKind: null,
+      detail: "deposited in the pool's backstop; withdrawals wait out a queue",
+    });
   });
 
   test("one position the SDK cannot describe leaves the others intact", async () => {

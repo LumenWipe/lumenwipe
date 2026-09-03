@@ -28,6 +28,7 @@ import {
   type ExitStep,
 } from "./adapter";
 import { minReceivedFromQuote } from "./invariants";
+import { REWARD_RATE_SCALE, rewardIsWorthClaiming } from "./reward-dust";
 
 /**
  * Aquarius exit (architecture.md §9.4): an LP position leaves through the pool's own
@@ -79,16 +80,6 @@ export type AquariusLive =
   /** The pool reads fine but the accrued reward could not be read. */
   | { status: "reward_unreadable" }
   | { status: "unreadable" };
-
-/**
- * Rewards accrue for every second the account holds shares, so a claim leaves a fresh (tiny) reward
- * behind by the time the next round reads the position. Claiming that again would never end. A
- * reward worth less than this many seconds of the position's own emissions is what accrued during
- * the close itself: it is not claimed, and the withdrawal - which checkpoints it - leaves it with
- * the pool. Anything that has been accruing longer is claimed first.
- */
-export const REWARD_DUST_WINDOW_SECONDS = 900n;
-const REWARD_RATE_SCALE = 1_000_000n;
 
 const K = {
   tokens: '["Tokens"]',
@@ -242,12 +233,6 @@ export function rewardsInfoOf(
   const active = now < expiresAt && workingSupply > 0n;
   const rewardRateScaled = active ? (tps * workingBalance * REWARD_RATE_SCALE) / workingSupply : 0n;
   return { reward, rewardRateScaled };
-}
-
-/** Whether a reward has been accruing for longer than the close itself takes. */
-export function rewardIsWorthClaiming(reward: bigint, rewardRateScaled: bigint): boolean {
-  if (reward <= 0n) return false;
-  return reward * REWARD_RATE_SCALE > rewardRateScaled * REWARD_DUST_WINDOW_SECONDS;
 }
 
 function shortAddress(address: string): string {
@@ -508,7 +493,7 @@ export function aquariusExitAdapter(): ExitAdapter<AquariusLpPosition, AquariusL
       const steps: ExitStep[] = [];
 
       // Rewards first: once the account is merged nobody can come back for them. What accrued
-      // during the close itself (see REWARD_DUST_WINDOW_SECONDS) is not worth a transaction of its
+      // during the close itself (see reward-dust.ts) is not worth a transaction of its
       // own, and claiming it would only leave the next few seconds' worth behind again.
       if (rewardIsWorthClaiming(live.reward, live.rewardRateScaled)) {
         if (live.claimKilled) {

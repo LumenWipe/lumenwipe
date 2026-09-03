@@ -30,6 +30,34 @@ test.skipIf(!RUN_INTEGRATION)(
 );
 
 test.skipIf(!RUN_INTEGRATION)(
+  "the pool's backstop reads through the SDK: an account with no deposit holds nothing, queues nothing",
+  async () => {
+    if (!pool) throw new Error("registry has no Blend testnet pool");
+    const loaded = await defaultBlendDeps.loadPool("testnet", pool.address, Version.V2);
+    const backstop = await defaultBlendDeps.loadBackstop(
+      "testnet",
+      Version.V2,
+      loaded.metadata.backstop,
+      pool.address,
+      Keypair.random().publicKey(),
+      Math.floor(Date.now() / 1000)
+    );
+    expect(backstop.contract).toBe(loaded.metadata.backstop);
+    expect(backstop.backstopToken).toMatch(/^C[A-Z2-7]{55}$/);
+    expect(backstop.blndToken).toMatch(/^C[A-Z2-7]{55}$/);
+    expect(backstop).toMatchObject({ shares: 0n, queued: [], unlocked: 0n, emissions: 0n });
+    const emissions = defaultBlendDeps.emissions(
+      loaded,
+      await loaded.loadUser(Keypair.random().publicKey()),
+      Math.floor(Date.now() / 1000)
+    );
+    expect(emissions.claimable.size).toBe(0);
+    expect(emissions.rateScaled).toBe(0n);
+  },
+  60_000
+);
+
+test.skipIf(!RUN_INTEGRATION)(
   "an account with nothing in the pool reads clean and plans a 'position gone' blocker",
   async () => {
     if (!pool) throw new Error("registry has no Blend testnet pool");

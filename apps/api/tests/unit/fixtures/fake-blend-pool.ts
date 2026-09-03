@@ -1,14 +1,18 @@
 /**
- * A stand-in for the Blend SDK's pool, oracle, and estimate, shaped to what the adapter reads.
+ * A stand-in for the Blend SDK's pool, oracle, estimate, emissions, and backstop, shaped to what
+ * the adapter reads.
  *
  * Two reserves with fixed rates and prices, so every expected amount in the suite is a hand
  * computation: USDC (index 0, price 1) and XLM (index 1, price 0.1); bTokens convert at 1.05 and
  * dTokens at 1.02. Effective collateral applies a 0.9 collateral factor, effective liabilities a
- * 1.1 liability factor - the shape of Blend's math, not its real parameters.
+ * 1.1 liability factor - the shape of Blend's math, not its real parameters. Emissions and the
+ * backstop deposit are given directly as what the SDK would have computed.
  */
 import { Positions, Version, type PoolOracle } from "@blend-capital/blend-sdk";
 import type {
+  BlendBackstopView,
   BlendDeps,
+  BlendEmissionsView,
   BlendEstimate,
   BlendPoolView,
   BlendReserveView,
@@ -16,6 +20,10 @@ import type {
 
 export const USDC = "CAIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRDB3V";
 export const XLM = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
+/** The registry's Blend V2 testnet backstop, and stand-ins for its two tokens. */
+export const BACKSTOP = "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA";
+export const BACKSTOP_TOKEN = "CA5UTUUPHYL5K22UBRUVC37EARZUGYOSGK3IKIXG2JLCC5ZZLI4BDWDM";
+export const BLND = "CB22KRA3YZVCNCQI64JQ5WE7UY2VAV7WFLK6A2JN3HEX56T2EDAFO7QF";
 
 const PRICE: Record<string, number> = { [USDC]: 1, [XLM]: 0.1 };
 const DECIMALS = 7;
@@ -36,6 +44,16 @@ export interface FakePoolState {
   collateral?: Record<string, bigint>;
   /** dTokens per asset. */
   liabilities?: Record<string, bigint>;
+  /** Claimable BLND per reserve token id, and the position's accrual rate (scaled). */
+  emissions?: { claimable: Record<number, bigint>; rateScaled?: bigint };
+  /** The account's backstop deposit for this pool; absent means none. */
+  backstop?: {
+    shares?: bigint;
+    queued?: Array<{ amount: bigint; unlocksAt: number }>;
+    unlocked?: bigint;
+    /** BLND accrued to the deposit, base units. */
+    emissions?: bigint;
+  };
 }
 
 const INDEX: Record<string, number> = { [USDC]: 0, [XLM]: 1 };
@@ -51,6 +69,7 @@ export function fakePool(state: FakePoolState = {}): BlendPoolView {
   ]);
   return {
     version: state.version ?? Version.V2,
+    metadata: { backstop: BACKSTOP },
     reserves,
     loadOracle: async () => ({}) as PoolOracle,
     loadUser: async () => ({
@@ -59,6 +78,7 @@ export function fakePool(state: FakePoolState = {}): BlendPoolView {
         toMap(state.collateral),
         toMap(state.supply)
       ),
+      emissions: new Map(),
     }),
   };
 }
@@ -84,14 +104,44 @@ export function fakeEstimate(
   return { totalEffectiveCollateral: collateral, totalEffectiveLiabilities: liabilities };
 }
 
-export function fakeBlendDeps(state: FakePoolState = {}): BlendDeps & { loadCalls: string[] } {
+export function fakeBlendDeps(
+  state: FakePoolState = {}
+): BlendDeps & { loadCalls: string[]; backstopCalls: string[] } {
   const loadCalls: string[] = [];
+  const backstopCalls: string[] = [];
   return {
     loadCalls,
+    backstopCalls,
     async loadPool(_network, poolId, version) {
       loadCalls.push(`${poolId}@${version}`);
       return fakePool(state);
     },
     estimate: fakeEstimate,
+    emissions(): BlendEmissionsView {
+      return {
+        claimable: new Map(
+          Object.entries(state.emissions?.claimable ?? {}).map(([id, v]) => [Number(id), v])
+        ),
+        rateScaled: state.emissions?.rateScaled ?? 0n,
+      };
+    },
+    async loadBackstop(
+      _network,
+      _version,
+      backstopId,
+      poolId,
+      account
+    ): Promise<BlendBackstopView> {
+      backstopCalls.push(`${backstopId}/${poolId}/${account}`);
+      return {
+        contract: backstopId,
+        backstopToken: BACKSTOP_TOKEN,
+        blndToken: BLND,
+        shares: state.backstop?.shares ?? 0n,
+        queued: state.backstop?.queued ?? [],
+        unlocked: state.backstop?.unlocked ?? 0n,
+        emissions: state.backstop?.emissions ?? 0n,
+      };
+    },
   };
 }

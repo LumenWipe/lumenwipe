@@ -24,21 +24,26 @@ interface RegistryEntry {
 
 const REGISTRY = embedded as { validUntil: string; entries: RegistryEntry[] };
 
+/** The registry kinds an exit may call besides the position's own contract. */
+export type ExitContractKind = "router" | "backstop";
+
 /**
- * The one function an exit may call on each kind of contract, per protocol. A position's contract
- * and the list of tokens come from the API's account read; pinning the function is what keeps a
+ * The functions an exit may call on each kind of contract, per protocol. A position's contract
+ * and the list of tokens come from the API's account read; pinning the functions is what keeps a
  * hostile read from turning a whitelisted contract into an arbitrary call - a router that could
  * be asked to `remove_liquidity` must not be askable to swap, and a pair is never called directly.
+ * Blend's `claim` collects BLND emissions from the pool; its backstop's `withdraw` takes out a
+ * deposit whose withdrawal queue has run out.
  */
 export const EXIT_FUNCTIONS: Record<
   DefiPosition["protocol"],
-  { position: readonly string[]; router: readonly string[] }
+  { position: readonly string[] } & Record<ExitContractKind, readonly string[]>
 > = {
-  blend: { position: ["submit"], router: [] },
-  soroswap: { position: [], router: ["remove_liquidity"] },
-  aquarius: { position: ["withdraw", "claim"], router: [] },
-  phoenix: { position: [], router: [] },
-  fxdao: { position: [], router: [] },
+  blend: { position: ["submit", "claim"], router: [], backstop: ["withdraw"] },
+  soroswap: { position: [], router: ["remove_liquidity"], backstop: [] },
+  aquarius: { position: ["withdraw", "claim"], router: [], backstop: [] },
+  phoenix: { position: [], router: [], backstop: [] },
+  fxdao: { position: [], router: [], backstop: [] },
 };
 
 export function isContractRegistryUsable(now: Date = new Date()): boolean {
@@ -47,12 +52,15 @@ export function isContractRegistryUsable(now: Date = new Date()): boolean {
 }
 
 /**
- * The routers an exit of one of `protocols` may invoke on `network`. Empty when the registry has
- * expired: an exit through an unverified router must fail verification, not slip through.
+ * The protocol contracts of one `kind` an exit of one of `protocols` may invoke on `network` -
+ * only for protocols whose exit actually calls that kind (an Aquarius position is called directly,
+ * so its router is never a target even though the registry lists it). Empty when the registry has
+ * expired: an exit through an unverified contract must fail verification, not slip through.
  */
-export function exitRoutersFor(
+export function exitContractsFor(
   network: Network,
   protocols: Iterable<DefiPosition["protocol"]>,
+  kind: ExitContractKind,
   now: Date = new Date()
 ): Array<{ address: string; protocol: DefiPosition["protocol"] }> {
   if (!isContractRegistryUsable(now)) return [];
@@ -60,7 +68,11 @@ export function exitRoutersFor(
   return REGISTRY.entries
     .filter(
       (e) =>
-        e.network === network && e.kind === "router" && e.verifiedLive && wanted.has(e.protocol)
+        e.network === network &&
+        e.kind === kind &&
+        e.verifiedLive &&
+        wanted.has(e.protocol) &&
+        EXIT_FUNCTIONS[e.protocol as DefiPosition["protocol"]][kind].length > 0
     )
     .map((e) => ({ address: e.address, protocol: e.protocol as DefiPosition["protocol"] }));
 }

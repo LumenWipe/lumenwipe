@@ -261,21 +261,22 @@ describe("buildExitRound", () => {
     expect(ran).toBe(false);
   });
 
-  test("a pool holding a position the adapter cannot take refuses whole, before running anything", async () => {
+  test("a pool holding a position no adapter can take refuses whole, before running anything", async () => {
     let ran = false;
-    const promise = buildExitRound(
-      account([supply(POOL), { ...supply(POOL), isBackstop: true }]),
-      "testnet",
-      "100",
-      1000,
-      {
-        rpc,
-        runExitAdapter: async () => {
-          ran = true;
-          return blocked(POOL, "x");
-        },
-      }
-    );
+    const phoenix = {
+      protocol: "phoenix" as const,
+      positionType: "lp" as const,
+      contractAddress: POOL,
+      shareAmount: "1",
+      usdValue: null,
+    };
+    const promise = buildExitRound(account([phoenix]), "testnet", "100", 1000, {
+      rpc,
+      runExitAdapter: async () => {
+        ran = true;
+        return blocked(POOL, "x");
+      },
+    });
     await expect(promise).rejects.toMatchObject({ code: "defi_exit_unsupported" });
     expect(ran).toBe(false);
   });

@@ -21,7 +21,7 @@
       "address": "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
       "wasmHash": "c1f4502a757e25c611f5a159bc1ab0eef64085adac6c68123dca66e87faffbc2",
       "version": "v2",
-      "label": "Blend V2 backstop (testnet) - reference only; backstop share detection is a documented gap, see notes",
+      "label": "Blend V2 backstop (testnet) - read for the account's deposit per pool; the exit withdraws unlocked queued shares from it",
       "verifiedLive": true
     },
     {

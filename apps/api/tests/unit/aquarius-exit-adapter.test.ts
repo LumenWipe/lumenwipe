@@ -13,7 +13,8 @@ import {
 } from "@stellar/stellar-sdk";
 import type { AquariusLpPosition } from "@lumenwipe/types";
 import { EXIT_POSITION_GONE, aquariusExitAdapter, runExitAdapter } from "@/lib/defi-exits";
-import { REWARD_DUST_WINDOW_SECONDS, promoteRewardKeys } from "@/lib/defi-exits/aquarius";
+import { promoteRewardKeys } from "@/lib/defi-exits/aquarius";
+import { REWARD_DUST_WINDOW_SECONDS } from "@/lib/defi-exits/reward-dust";
 import {
   createContractRegistryLookup,
   validateContractRegistry,
