@@ -70,12 +70,22 @@ export interface BlendBorrowPosition extends DefiPositionBase {
   healthFactor?: string;
 }
 
+/** Aquarius deploys three pool codes; only the share-based ones can be exited by shares. */
+export type AquariusPoolType = "constant_product" | "stable" | "concentrated";
+
 export interface AquariusLpPosition extends DefiPositionBase {
   protocol: "aquarius";
   positionType: "lp";
   shareAmount: string;
   /** Reported by OctoPos alongside the LP position rather than as its own position. */
   claimableAquaAmount?: string;
+  /** The pool's tokens in the pool's own order - the order `withdraw` pays them out and
+   *  `min_amounts` is given in. Read from the pool when detection can. */
+  tokens?: string[];
+  /** The pool's LP share token: a separate contract in Aquarius, where the account's shares live. */
+  shareToken?: string;
+  /** Which pool code the pool runs, from the registry. */
+  poolType?: AquariusPoolType;
 }
 
 export interface SoroswapLpPosition extends DefiPositionBase {

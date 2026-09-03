@@ -35,7 +35,7 @@
  * part this module has to construct by hand.
  */
 
-import { Address, Contract, scValToNative, xdr } from "@stellar/stellar-sdk";
+import { Address, Contract, hash, nativeToScVal, scValToNative, xdr } from "@stellar/stellar-sdk";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { readLiveWasmHash } from "@/lib/stellar/contract-instance";
 import { entriesForNetwork, type ContractRegistryEntry } from "@/lib/contract-registry";
@@ -44,6 +44,8 @@ import type {
   BlendSupplyPosition,
   DefiPosition,
   DefiPositionsResult,
+  AquariusLpPosition,
+  AquariusPoolType,
   FxdaoCdpPosition,
   Network,
   SoroswapLpPosition,
@@ -406,6 +408,181 @@ async function readSoroswapFactoryPairs(
   return positions;
 }
 
+// ─── Aquarius: every pool the router knows ───────────────────────────────────
+
+const AQUARIUS_POOL_TYPES: readonly AquariusPoolType[] = [
+  "constant_product",
+  "stable",
+  "concentrated",
+];
+
+function aquariusPoolType(version: string): AquariusPoolType | null {
+  return (AQUARIUS_POOL_TYPES as readonly string[]).includes(version)
+    ? (version as AquariusPoolType)
+    : null;
+}
+
+/** The router keys a token set's pools by sha256 over the tokens' ScVal XDR, concatenated. */
+export function aquariusTokensHash(tokens: string[]): Buffer {
+  return hash(Buffer.concat(tokens.map((t) => new Address(t).toScVal().toXDR())));
+}
+
+const asU128 = (val: xdr.ScVal | undefined): bigint | null => {
+  if (!val) return null;
+  const native: unknown = scValToNative(val);
+  if (typeof native === "bigint") return native;
+  if (typeof native === "number" && Number.isInteger(native)) return BigInt(native);
+  return null;
+};
+
+/**
+ * Aquarius pools are deployed by the router and come in three codes (constant-product, stableswap,
+ * concentrated); each pool's LP shares live in a separate share-token contract. The registry lists
+ * the router and one representative pool per code, and the pools are enumerated here: the router
+ * keeps `TokensSetCounter` in its instance, `TokensSet(i)` per token set, and `TokensSetPools(hash)`
+ * mapping pool index to pool address (aquarius liquidity_pool_router). Every pool's instance names
+ * its share token, and the account's shares are that token's SEP-41 `Balance(account)`. Held pools
+ * are then matched against the registry's pool codes; a code the registry has not verified is
+ * flagged, never decoded. Concentrated pools hold positions as tick ranges without shares and are
+ * skipped by this read; OctoPos reports them on mainnet. Every sweep is chunked and bounded.
+ */
+async function readAquariusRouterPools(
+  rpc: RpcServer,
+  router: ContractRegistryEntry,
+  entries: ContractRegistryEntry[],
+  address: string,
+  unrecognized: UnrecognizedDefiPosition[]
+): Promise<DefiPosition[]> {
+  const flag = (rawType: string, reason: string): void => {
+    unrecognized.push({ protocol: "aquarius", rawType, reason });
+  };
+  const routerKey = instanceKey(router.address);
+  const routerVal = (await batchRead(rpc, [routerKey])).get(routerKey.toXDR("base64"));
+  const count = routerVal
+    ? asU128(parseInstance(routerVal).storage.get('["TokensSetCounter"]'))
+    : null;
+  if (count === null) {
+    flag(
+      "router-unreadable",
+      `Aquarius router ${router.address} did not expose its token-set count`
+    );
+    return [];
+  }
+  if (count > BigInt(MAX_FACTORY_PAIRS)) {
+    flag(
+      "router-too-large",
+      `Aquarius router ${router.address} lists ${count} token sets, above the ${MAX_FACTORY_PAIRS} this read enumerates`
+    );
+    return [];
+  }
+
+  // 1. Token sets, then each set's pools.
+  const setKeys = Array.from({ length: Number(count) }, (_, i) =>
+    contractDataKey(
+      router.address,
+      variantVal("TokensSet", nativeToScVal(BigInt(i), { type: "u128" }))
+    )
+  );
+  const sets = await batchReadChunked(rpc, setKeys);
+  const tokenSets: string[][] = [];
+  for (const key of setKeys) {
+    const native: unknown = contractDataScVal(sets.get(key.toXDR("base64")));
+    if (Array.isArray(native) && native.every((t) => typeof t === "string")) {
+      tokenSets.push(native as string[]);
+    }
+  }
+  if (tokenSets.length !== Number(count)) {
+    flag(
+      "router-index-gap",
+      `Aquarius router ${router.address} lists ${count} token sets but only ${tokenSets.length} resolved`
+    );
+  }
+  const poolKeys = tokenSets.map((tokens) =>
+    contractDataKey(
+      router.address,
+      variantVal("TokensSetPools", xdr.ScVal.scvBytes(aquariusTokensHash(tokens)))
+    )
+  );
+  const poolMaps = await batchReadChunked(rpc, poolKeys);
+  const pools = new Set<string>();
+  for (const key of poolKeys) {
+    for (const [, pool] of mapEntries(contractDataScVal(poolMaps.get(key.toXDR("base64"))))) {
+      if (typeof pool === "string") pools.add(pool);
+    }
+  }
+  const poolList = [...pools];
+
+  // 2. Every pool's instance: code, tokens, share token.
+  const poolInstanceKeys = poolList.map((pool) => instanceKey(pool));
+  const poolInstances = await batchReadChunked(rpc, poolInstanceKeys);
+  const knownCodes = new Map<string, AquariusPoolType>();
+  for (const e of entries) {
+    if (e.network !== router.network || e.protocol !== "aquarius" || e.kind !== "pool") continue;
+    const type = aquariusPoolType(e.version);
+    if (e.wasmHash && type) knownCodes.set(e.wasmHash, type);
+  }
+  interface PoolView {
+    pool: string;
+    wasmHash: string | null;
+    tokens: string[];
+    shareToken: string;
+  }
+  const views: PoolView[] = [];
+  for (let i = 0; i < poolList.length; i++) {
+    const val = poolInstances.get(poolInstanceKeys[i]!.toXDR("base64"));
+    if (!val) continue;
+    const instance = parseInstance(val);
+    const type = instance.wasmHash ? knownCodes.get(instance.wasmHash) : undefined;
+    // Concentrated pools keep positions as tick ranges and have no share token to read.
+    if (type === "concentrated") continue;
+    const shareToken = asAddress(instance.storage.get('["TokenShare"]'));
+    if (!shareToken) continue;
+    const listed: unknown = instance.storage.has('["Tokens"]')
+      ? scValToNative(instance.storage.get('["Tokens"]')!)
+      : [
+          asAddress(instance.storage.get('["TokenA"]')),
+          asAddress(instance.storage.get('["TokenB"]')),
+        ];
+    const tokens = Array.isArray(listed)
+      ? listed.filter((t): t is string => typeof t === "string")
+      : [];
+    views.push({ pool: poolList[i]!, wasmHash: instance.wasmHash, tokens, shareToken });
+  }
+
+  // 3. The account's shares in every share token, one chunked sweep.
+  const balanceKeys = views.map((v) =>
+    contractDataKey(v.shareToken, variantVal("Balance", addressVal(address)))
+  );
+  const balances = await batchReadChunked(rpc, balanceKeys);
+  const positions: DefiPosition[] = [];
+  for (let i = 0; i < views.length; i++) {
+    const view = views[i]!;
+    const shares = asBigInt(contractDataScVal(balances.get(balanceKeys[i]!.toXDR("base64"))));
+    if (shares === null || shares === 0n) continue;
+    const type = view.wasmHash ? knownCodes.get(view.wasmHash) : undefined;
+    if (!type) {
+      flag(
+        "pool-code-unknown",
+        `Aquarius pool ${view.pool} holds ${shares} shares for this account but runs code the registry has not verified as an Aquarius pool`
+      );
+      continue;
+    }
+    const position: AquariusLpPosition = {
+      protocol: "aquarius",
+      positionType: "lp",
+      contractAddress: view.pool,
+      wasmHash: view.wasmHash ?? undefined,
+      shareAmount: shares.toString(),
+      usdValue: null,
+      tokens: view.tokens,
+      shareToken: view.shareToken,
+      poolType: type,
+    };
+    positions.push(position);
+  }
+  return positions;
+}
+
 // ─── standard SEP-41 LP share balance (Aquarius / Soroswap / Phoenix pools) ──
 
 async function readLpShareBalance(
@@ -483,10 +660,19 @@ export async function detectDefiPositionsViaDirectRead(
   const unrecognized: UnrecognizedDefiPosition[] = [];
 
   for (const entry of entries) {
-    // A Soroswap factory is the one reference contract that IS probed: it enumerates the pairs.
+    // Two reference contracts ARE probed, because they enumerate the positions' contracts: the
+    // Soroswap factory (pairs) and the Aquarius router (pools). Aquarius pool entries stand for
+    // their code and are never read for balances themselves.
     const soroswapFactory = entry.protocol === "soroswap" && entry.kind === "factory";
-    if (!soroswapFactory && (entry.kind === "factory" || entry.kind === "router")) continue;
-    if (entry.kind === "backstop" || entry.kind === "pair") continue;
+    const aquariusRouter = entry.protocol === "aquarius" && entry.kind === "router";
+    const aquariusPool = entry.protocol === "aquarius" && entry.kind === "pool";
+    if (
+      !soroswapFactory &&
+      !aquariusRouter &&
+      (entry.kind === "factory" || entry.kind === "router")
+    )
+      continue;
+    if (entry.kind === "backstop" || entry.kind === "pair" || aquariusPool) continue;
 
     const verified = await verifyEntry(rpc, entry, unrecognized);
     if (!verified) continue;
@@ -494,6 +680,12 @@ export async function detectDefiPositionsViaDirectRead(
     if (soroswapFactory) {
       positions.push(
         ...(await readSoroswapFactoryPairs(rpc, entry, entries, address, unrecognized))
+      );
+      continue;
+    }
+    if (aquariusRouter) {
+      positions.push(
+        ...(await readAquariusRouterPools(rpc, entry, entries, address, unrecognized))
       );
       continue;
     }
