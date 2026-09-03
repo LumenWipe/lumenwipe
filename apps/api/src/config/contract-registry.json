@@ -46,6 +46,36 @@
     },
     {
       "network": "testnet",
+      "protocol": "aquarius",
+      "kind": "pool",
+      "address": "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+      "wasmHash": "d691135aade93ff0f7c229e009cde042130a05124cf7202b03d11246b4f9b473",
+      "version": "constant_product",
+      "label": "Aquarius testnet constant-product pool (router ConstantPoolHash) - stands for the code every standard pool shares; pools are enumerated from the router",
+      "verifiedLive": true
+    },
+    {
+      "network": "testnet",
+      "protocol": "aquarius",
+      "kind": "pool",
+      "address": "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+      "wasmHash": "22dff7242d2bc0ea4a4727b4b2cac33b188304d5945740ad24d8a33a5d22741e",
+      "version": "stable",
+      "label": "Aquarius testnet stableswap pool (router StableSwapPoolHash) - stands for the code every stableswap pool shares",
+      "verifiedLive": true
+    },
+    {
+      "network": "testnet",
+      "protocol": "aquarius",
+      "kind": "pool",
+      "address": "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+      "wasmHash": "155a17b9929ffb1f9e84bd6ef5c00a4d613c1ab5f4ad4c502d84515250cc2907",
+      "version": "concentrated",
+      "label": "Aquarius testnet concentrated-liquidity pool (router ConcentratedPoolHash) - positions are tick ranges, not shares; recognized so they are never mistaken for a share pool, not exited",
+      "verifiedLive": true
+    },
+    {
+      "network": "testnet",
       "protocol": "soroswap",
       "kind": "factory",
       "address": "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",

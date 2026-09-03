@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import { Address, Keypair, StrKey, xdr } from "@stellar/stellar-sdk";
 import {
+  aquariusTokensHash,
   detectDefiPositionsViaDirectRead,
   addressVal,
   symbolVal,
@@ -25,8 +26,8 @@ const BLEND_POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
 const BLEND_WASM_HASH = "a41fc53d6753b6c04eb15b021c55052366a4c8e0e21bc72700f461264ec1350e";
 const FXDAO_VAULTS = "CBUZ5NJKA5PRS4TBPHWMN4JGGRVIOQOKI4JUYLA2IXS3BEJKQKEWFW7D";
 const FXDAO_WASM_HASH = "1".repeat(64);
-const AQUARIUS_POOL = "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD";
-const AQUARIUS_WASM_HASH = "2".repeat(64);
+const PHOENIX_POOL = "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD";
+const PHOENIX_WASM_HASH = "2".repeat(64);
 
 function registryEntry(overrides: Partial<ContractRegistryEntry> = {}): ContractRegistryEntry {
   return {
@@ -206,17 +207,17 @@ test("decodes an FxDAO vault only for the denomination the account actually hold
 test("decodes a registered pool's LP share balance from the standard token layout", async () => {
   const entries = [
     registryEntry({
-      address: AQUARIUS_POOL,
-      protocol: "aquarius",
+      address: PHOENIX_POOL,
+      protocol: "phoenix",
       kind: "pool",
-      wasmHash: AQUARIUS_WASM_HASH,
+      wasmHash: PHOENIX_WASM_HASH,
     }),
   ];
   const balanceKey = variantVal("Balance", addressVal(USER));
 
   const rpc = mockRpc([
-    contractInstanceEntry(AQUARIUS_POOL, AQUARIUS_WASM_HASH),
-    contractDataEntry(AQUARIUS_POOL, balanceKey, i128Val(42_0000000n)),
+    contractInstanceEntry(PHOENIX_POOL, PHOENIX_WASM_HASH),
+    contractDataEntry(PHOENIX_POOL, balanceKey, i128Val(42_0000000n)),
   ]);
 
   const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
@@ -226,10 +227,10 @@ test("decodes a registered pool's LP share balance from the standard token layou
   expect(result.unrecognizedPositions).toEqual([]);
   expect(result.positions).toEqual([
     {
-      protocol: "aquarius",
+      protocol: "phoenix",
       positionType: "lp",
-      contractAddress: AQUARIUS_POOL,
-      wasmHash: AQUARIUS_WASM_HASH,
+      contractAddress: PHOENIX_POOL,
+      wasmHash: PHOENIX_WASM_HASH,
       shareAmount: "420000000",
       usdValue: null,
     },
@@ -239,17 +240,17 @@ test("decodes a registered pool's LP share balance from the standard token layou
 test("a zero LP share balance produces no position", async () => {
   const entries = [
     registryEntry({
-      address: AQUARIUS_POOL,
-      protocol: "aquarius",
+      address: PHOENIX_POOL,
+      protocol: "phoenix",
       kind: "pool",
-      wasmHash: AQUARIUS_WASM_HASH,
+      wasmHash: PHOENIX_WASM_HASH,
     }),
   ];
   const balanceKey = variantVal("Balance", addressVal(USER));
 
   const rpc = mockRpc([
-    contractInstanceEntry(AQUARIUS_POOL, AQUARIUS_WASM_HASH),
-    contractDataEntry(AQUARIUS_POOL, balanceKey, i128Val(0n)),
+    contractInstanceEntry(PHOENIX_POOL, PHOENIX_WASM_HASH),
+    contractDataEntry(PHOENIX_POOL, balanceKey, i128Val(0n)),
   ]);
 
   const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
@@ -536,4 +537,302 @@ test("Soroswap: without a pair entry in the registry, every held pair is unknown
   });
   expect(result.positions).toEqual([]);
   expect(result.unrecognizedPositions.map((u) => u.rawType)).toEqual(["pair-code-unknown"]);
+});
+
+// ─── Aquarius: pools enumerated from the router ──────────────────────────────
+
+const AQ_ROUTER = "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD";
+const AQ_ROUTER_HASH = "c99539b023df4a28d7857d33ca4c915c2e20fec04f12b125132b84fbdf94dad3";
+const AQ_CONSTANT_HASH = "d691135aade93ff0f7c229e009cde042130a05124cf7202b03d11246b4f9b473";
+const AQ_STABLE_HASH = "22dff7242d2bc0ea4a4727b4b2cac33b188304d5945740ad24d8a33a5d22741e";
+const AQ_CONCENTRATED_HASH = "155a17b9929ffb1f9e84bd6ef5c00a4d613c1ab5f4ad4c502d84515250cc2907";
+const AQ_POOL_CONSTANT = "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI";
+const AQ_POOL_STABLE = "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC";
+const AQ_POOL_CONCENTRATED = "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO";
+const AQ_SHARE_CONSTANT = "CAN7DMIQH7FGKNYCUQMWECJJ74EKN5JATVVUOVTXOWLQGZCWAFWANG5P";
+const AQ_SHARE_STABLE = "CATORI2GO3MB5S6JJCXCTDHMTNXRYR2YV7GU5EWQQ4KS5ANWVACUKLBE";
+const AQ_TOKEN_A = "CAZRY5GSFBFXD7H6GAFBA5YGYQTDXU4QKWKMYFWBAZFUCURN3WKX6LF5";
+const AQ_TOKEN_B = "CBL6KD2LFMLAUKFFWNNXWOXFN73GAXLEA4WMJRLQ5L76DMYTM3KWQVJN";
+
+function aquariusRegistry(): ContractRegistryEntry[] {
+  const pool = (address: string, wasmHash: string, version: string): ContractRegistryEntry =>
+    registryEntry({ protocol: "aquarius", kind: "pool", address, wasmHash, version });
+  return [
+    registryEntry({
+      protocol: "aquarius",
+      kind: "router",
+      address: AQ_ROUTER,
+      wasmHash: AQ_ROUTER_HASH,
+      version: "v1",
+    }),
+    pool(AQ_POOL_CONSTANT, AQ_CONSTANT_HASH, "constant_product"),
+    pool(AQ_POOL_STABLE, AQ_STABLE_HASH, "stable"),
+    pool(AQ_POOL_CONCENTRATED, AQ_CONCENTRATED_HASH, "concentrated"),
+  ];
+}
+
+const u128 = (n: number): xdr.ScVal =>
+  xdr.ScVal.scvU128(
+    new xdr.UInt128Parts({ hi: xdr.Uint64.fromString("0"), lo: xdr.Uint64.fromString(String(n)) })
+  );
+const sym = (s: string): xdr.ScVal => xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(s)]);
+const addrVal = (a: string): xdr.ScVal => new Address(a).toScVal();
+
+/** The router's instance (`TokensSetCounter`), each `TokensSet(i)`, and each set's pool map. */
+function aquariusRouterEntries(sets: Array<{ tokens: string[]; pools: string[] }>) {
+  const entries = [
+    contractInstanceEntry(AQ_ROUTER, AQ_ROUTER_HASH, [
+      [sym("TokensSetCounter"), u128(sets.length)],
+    ]),
+  ];
+  sets.forEach(({ tokens, pools }, i) => {
+    entries.push(
+      contractDataEntry(
+        AQ_ROUTER,
+        variantVal("TokensSet", u128(i)),
+        xdr.ScVal.scvVec(tokens.map(addrVal))
+      ),
+      contractDataEntry(
+        AQ_ROUTER,
+        variantVal("TokensSetPools", xdr.ScVal.scvBytes(aquariusTokensHash(tokens))),
+        xdr.ScVal.scvMap(
+          pools.map(
+            (pool, j) =>
+              new xdr.ScMapEntry({
+                key: xdr.ScVal.scvBytes(Buffer.alloc(32, j + 1)),
+                // The router stores `{ address, pool_type }` per pool; its getter unwraps it.
+                val: structVal({ address: addrVal(pool), pool_type: xdr.ScVal.scvU32(j + 1) }),
+              })
+          )
+        )
+      )
+    );
+  });
+  return entries;
+}
+
+function constantPool(
+  pool: string,
+  share: string,
+  shares: bigint | null,
+  wasmHash = AQ_CONSTANT_HASH
+) {
+  const out = [
+    contractInstanceEntry(pool, wasmHash, [
+      [sym("TokenA"), addrVal(AQ_TOKEN_A)],
+      [sym("TokenB"), addrVal(AQ_TOKEN_B)],
+      [sym("TokenShare"), addrVal(share)],
+    ]),
+  ];
+  if (shares !== null)
+    out.push(contractDataEntry(share, variantVal("Balance", addressVal(USER)), i128Val(shares)));
+  return out;
+}
+
+function stablePool(pool: string, share: string, shares: bigint | null) {
+  const out = [
+    contractInstanceEntry(pool, AQ_STABLE_HASH, [
+      [sym("Tokens"), xdr.ScVal.scvVec([addrVal(AQ_TOKEN_A), addrVal(AQ_TOKEN_B)])],
+      [sym("TokenShare"), addrVal(share)],
+    ]),
+  ];
+  if (shares !== null)
+    out.push(contractDataEntry(share, variantVal("Balance", addressVal(USER)), i128Val(shares)));
+  return out;
+}
+
+test("Aquarius: pools are enumerated from the router; held constant-product and stableswap pools become LP positions with tokens, share token, and pool type", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      ...aquariusRouterEntries([
+        { tokens: [AQ_TOKEN_A, AQ_TOKEN_B], pools: [AQ_POOL_CONSTANT, AQ_POOL_STABLE] },
+      ]),
+      ...constantPool(AQ_POOL_CONSTANT, AQ_SHARE_CONSTANT, 700n),
+      ...stablePool(AQ_POOL_STABLE, AQ_SHARE_STABLE, 0n),
+    ]),
+    registryEntries: aquariusRegistry(),
+  });
+  expect(result.unrecognizedPositions).toEqual([]);
+  expect(result.positions).toEqual([
+    {
+      protocol: "aquarius",
+      positionType: "lp",
+      contractAddress: AQ_POOL_CONSTANT,
+      wasmHash: AQ_CONSTANT_HASH,
+      shareAmount: "700",
+      usdValue: null,
+      tokens: [AQ_TOKEN_A, AQ_TOKEN_B],
+      shareToken: AQ_SHARE_CONSTANT,
+      poolType: "constant_product",
+    },
+  ]);
+});
+
+test("Aquarius: a stableswap pool reads its token list; a concentrated pool is skipped (no share token to read)", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      ...aquariusRouterEntries([
+        { tokens: [AQ_TOKEN_A, AQ_TOKEN_B], pools: [AQ_POOL_STABLE, AQ_POOL_CONCENTRATED] },
+      ]),
+      ...stablePool(AQ_POOL_STABLE, AQ_SHARE_STABLE, 5n),
+      // Given a share token and a balance on purpose: only the registry's pool code may skip it.
+      contractInstanceEntry(AQ_POOL_CONCENTRATED, AQ_CONCENTRATED_HASH, [
+        [sym("TokenShare"), addrVal(AQ_SHARE_STABLE)],
+      ]),
+      contractDataEntry(AQ_SHARE_STABLE, variantVal("Balance", addressVal(USER)), i128Val(5n)),
+    ]),
+    registryEntries: aquariusRegistry(),
+  });
+  expect(result.unrecognizedPositions).toEqual([]);
+  expect(
+    result.positions.map((p) => [p.contractAddress, "poolType" in p ? p.poolType : null])
+  ).toEqual([[AQ_POOL_STABLE, "stable"]]);
+});
+
+test("Aquarius: shares in a pool whose code the registry has not verified are flagged, not decoded", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      ...aquariusRouterEntries([{ tokens: [AQ_TOKEN_A, AQ_TOKEN_B], pools: [AQ_POOL_CONSTANT] }]),
+      ...constantPool(AQ_POOL_CONSTANT, AQ_SHARE_CONSTANT, 9n, "7".repeat(64)),
+    ]),
+    registryEntries: aquariusRegistry(),
+  });
+  expect(result.positions).toEqual([]);
+  expect(result.unrecognizedPositions.map((u) => u.rawType)).toEqual(["pool-code-unknown"]);
+});
+
+test("Aquarius: a router that does not expose its count, or a token set the ledger does not return, is reported", async () => {
+  const unreadable = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([contractInstanceEntry(AQ_ROUTER, AQ_ROUTER_HASH)]),
+    registryEntries: aquariusRegistry(),
+  });
+  expect(unreadable.unrecognizedPositions.map((u) => u.rawType)).toEqual(["router-unreadable"]);
+
+  const [routerInstance] = aquariusRouterEntries([{ tokens: [AQ_TOKEN_A, AQ_TOKEN_B], pools: [] }]);
+  const gap = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([routerInstance!]),
+    registryEntries: aquariusRegistry(),
+  });
+  expect(gap.unrecognizedPositions.map((u) => u.rawType)).toEqual(["router-index-gap"]);
+});
+
+test("Aquarius: the pool entries in the registry are never read for balances themselves", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([]),
+    registryEntries: aquariusRegistry().filter((e) => e.kind === "pool"),
+  });
+  expect(result.positions).toEqual([]);
+  expect(result.unrecognizedPositions).toEqual([]);
+});
+
+test("aquariusTokensHash matches the router's key for a live token set", () => {
+  // Observed in the footprint of router.get_pools([token_a, token_b]) on testnet.
+  expect(aquariusTokensHash([AQ_TOKEN_A, AQ_TOKEN_B]).toString("hex")).toBe(
+    "f5c621268ea00802f00c31f0914abe205a0db21c4e5fe4869f960b781a0d32f8"
+  );
+});
+
+test("Aquarius: a pool listed by the router whose instance the ledger does not return is reported", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      ...aquariusRouterEntries([{ tokens: [AQ_TOKEN_A, AQ_TOKEN_B], pools: [AQ_POOL_CONSTANT] }]),
+    ]),
+    registryEntries: aquariusRegistry(),
+  });
+  expect(result.unrecognizedPositions.map((u) => u.rawType)).toEqual(["pool-unreadable"]);
+});
+
+test("Aquarius: a token set whose pool map is missing, or a pool entry that does not decode, counts as a gap", async () => {
+  const [routerInstance, setEntry] = aquariusRouterEntries([
+    { tokens: [AQ_TOKEN_A, AQ_TOKEN_B], pools: [AQ_POOL_CONSTANT] },
+  ]);
+  const missingMap = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([routerInstance!, setEntry!]),
+    registryEntries: aquariusRegistry(),
+  });
+  expect(missingMap.unrecognizedPositions.map((u) => u.rawType)).toEqual(["router-index-gap"]);
+
+  const oddEntry = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      routerInstance!,
+      setEntry!,
+      contractDataEntry(
+        AQ_ROUTER,
+        variantVal(
+          "TokensSetPools",
+          xdr.ScVal.scvBytes(aquariusTokensHash([AQ_TOKEN_A, AQ_TOKEN_B]))
+        ),
+        xdr.ScVal.scvMap([
+          new xdr.ScMapEntry({
+            key: xdr.ScVal.scvBytes(Buffer.alloc(32, 1)),
+            val: xdr.ScVal.scvU32(7),
+          }),
+        ])
+      ),
+    ]),
+    registryEntries: aquariusRegistry(),
+  });
+  expect(oddEntry.unrecognizedPositions.map((u) => u.rawType)).toEqual(["router-index-gap"]);
+});
+
+test("Aquarius: a pool of unverified code with no share token is flagged - its position, if any, cannot be read", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      ...aquariusRouterEntries([{ tokens: [AQ_TOKEN_A, AQ_TOKEN_B], pools: [AQ_POOL_CONSTANT] }]),
+      contractInstanceEntry(AQ_POOL_CONSTANT, "8".repeat(64), [[sym("Liquidity"), i128Val(1n)]]),
+    ]),
+    registryEntries: aquariusRegistry(),
+  });
+  expect(result.unrecognizedPositions.map((u) => u.rawType)).toEqual(["pool-code-unknown"]);
+});
+
+test("Aquarius: a registry pool entry with a version this read does not know is reported against the registry", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([...aquariusRouterEntries([])]),
+    registryEntries: [
+      ...aquariusRegistry(),
+      registryEntry({
+        protocol: "aquarius",
+        kind: "pool",
+        address: PHOENIX_POOL,
+        wasmHash: "9".repeat(64),
+        version: "stableswap",
+      }),
+    ],
+  });
+  expect(result.unrecognizedPositions.map((u) => u.rawType)).toEqual(["registry-version-unknown"]);
+});
+
+test("Aquarius: tokens are omitted when the pool instance does not list every one, and a bare-address pool entry still decodes", async () => {
+  const [routerInstance, setEntry] = aquariusRouterEntries([
+    { tokens: [AQ_TOKEN_A, AQ_TOKEN_B], pools: [] },
+  ]);
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      routerInstance!,
+      setEntry!,
+      contractDataEntry(
+        AQ_ROUTER,
+        variantVal(
+          "TokensSetPools",
+          xdr.ScVal.scvBytes(aquariusTokensHash([AQ_TOKEN_A, AQ_TOKEN_B]))
+        ),
+        xdr.ScVal.scvMap([
+          new xdr.ScMapEntry({
+            key: xdr.ScVal.scvBytes(Buffer.alloc(32, 1)),
+            val: addrVal(AQ_POOL_CONSTANT),
+          }),
+        ])
+      ),
+      contractInstanceEntry(AQ_POOL_CONSTANT, AQ_CONSTANT_HASH, [
+        [sym("TokenA"), addrVal(AQ_TOKEN_A)],
+        [sym("TokenShare"), addrVal(AQ_SHARE_CONSTANT)],
+      ]),
+      contractDataEntry(AQ_SHARE_CONSTANT, variantVal("Balance", addressVal(USER)), i128Val(3n)),
+    ]),
+    registryEntries: aquariusRegistry(),
+  });
+  expect(result.unrecognizedPositions).toEqual([]);
+  expect(result.positions).toHaveLength(1);
+  expect("tokens" in result.positions[0]!).toBe(false);
 });

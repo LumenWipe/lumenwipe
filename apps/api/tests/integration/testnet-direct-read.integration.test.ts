@@ -1,6 +1,9 @@
 import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
-import { detectDefiPositionsViaDirectRead } from "@/lib/defi-positions/testnet-direct-read";
+import {
+  detectDefiPositionsViaDirectRead,
+  enumerateAquariusPools,
+} from "@/lib/defi-positions/testnet-direct-read";
 import { servedContractRegistry } from "@/lib/contract-registry";
 import { readLiveWasmHash } from "@/lib/stellar/contract-instance";
 import { getRpcServer } from "@/lib/stellar/rpc";
@@ -53,4 +56,33 @@ test.skipIf(!RUN_INTEGRATION)(
     expect(result.unrecognizedPositions).toEqual([]);
   },
   30_000
+);
+
+test.skipIf(!RUN_INTEGRATION)(
+  "the Aquarius sweep enumerates the live router's pools, including the registry's representative pools",
+  async () => {
+    // A change in the router's storage shape must fail here loudly - the fresh-account sweep above
+    // cannot tell "no pools decoded" from "this account holds nothing".
+    const router = servedContractRegistry().entries.find(
+      (e) => e.network === "testnet" && e.protocol === "aquarius" && e.kind === "router"
+    );
+    expect(router).toBeDefined();
+    const flags: string[] = [];
+    const pools = await enumerateAquariusPools(getRpcServer("testnet"), router!, (rawType) =>
+      flags.push(rawType)
+    );
+    expect(flags).toEqual([]);
+    expect(pools).not.toBeNull();
+    expect(pools!.length).toBeGreaterThan(100);
+    const addresses = new Set(pools!.map((p) => p.pool));
+    for (const entry of servedContractRegistry().entries.filter(
+      (e) => e.network === "testnet" && e.protocol === "aquarius" && e.kind === "pool"
+    )) {
+      expect(addresses.has(entry.address)).toBe(true);
+    }
+    const shareBased = pools!.filter((p) => p.shareToken !== null);
+    expect(shareBased.length).toBeGreaterThan(0);
+    expect(shareBased.every((p) => p.tokens !== null && p.tokens.length >= 2)).toBe(true);
+  },
+  60_000
 );

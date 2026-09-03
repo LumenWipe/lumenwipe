@@ -19,8 +19,8 @@ type RpcServer = ReturnType<typeof getRpcServer>;
 
 const ADDRESS = Keypair.random().publicKey();
 const OCTOPOS_BASE = "https://octopos.example";
-const AQUARIUS_POOL = "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD";
-const AQUARIUS_WASM_HASH = "3".repeat(64);
+const PHOENIX_POOL = "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD";
+const PHOENIX_WASM_HASH = "3".repeat(64);
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -116,18 +116,18 @@ test("mainnet degrades when OctoPos returns a payload the adapter cannot recogni
 test("a degraded mainnet fallback still surfaces positions the direct read actually finds", async () => {
   const entry: ContractRegistryEntry = {
     network: "mainnet",
-    protocol: "aquarius",
+    protocol: "phoenix",
     kind: "pool",
-    address: AQUARIUS_POOL,
-    wasmHash: AQUARIUS_WASM_HASH,
+    address: PHOENIX_POOL,
+    wasmHash: PHOENIX_WASM_HASH,
     version: "v1",
     label: "test fixture",
     verifiedLive: true,
   };
   const balanceKey = variantVal("Balance", addressVal(ADDRESS));
   const rpc = mockRpc([
-    contractInstanceEntry(AQUARIUS_POOL, AQUARIUS_WASM_HASH),
-    contractDataEntry(AQUARIUS_POOL, balanceKey, i128Val(42_0000000n)),
+    contractInstanceEntry(PHOENIX_POOL, PHOENIX_WASM_HASH),
+    contractDataEntry(PHOENIX_POOL, balanceKey, i128Val(42_0000000n)),
   ]);
 
   const result = await resolveDefiPositions(ADDRESS, "mainnet", {
@@ -141,10 +141,10 @@ test("a degraded mainnet fallback still surfaces positions the direct read actua
   expect(result.timestamp).toBeNull();
   expect(result.positions).toEqual([
     {
-      protocol: "aquarius",
+      protocol: "phoenix",
       positionType: "lp",
-      contractAddress: AQUARIUS_POOL,
-      wasmHash: AQUARIUS_WASM_HASH,
+      contractAddress: PHOENIX_POOL,
+      wasmHash: PHOENIX_WASM_HASH,
       shareAmount: "420000000",
       usdValue: null,
     },
@@ -167,10 +167,10 @@ test("never throws even when both OctoPos and the direct-read RPC dependency fai
 
   const entry: ContractRegistryEntry = {
     network: "mainnet",
-    protocol: "aquarius",
+    protocol: "phoenix",
     kind: "pool",
-    address: AQUARIUS_POOL,
-    wasmHash: AQUARIUS_WASM_HASH,
+    address: PHOENIX_POOL,
+    wasmHash: PHOENIX_WASM_HASH,
     version: "v1",
     label: "test fixture",
     verifiedLive: true,

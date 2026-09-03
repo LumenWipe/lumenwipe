@@ -222,16 +222,16 @@ test("the rejection names every field that was missing, not just the first", asy
 
 // ─── issue #150: resolveDefiPositions is actually wired into the account read ───────────────
 
-const AQUARIUS_POOL = "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD";
-const AQUARIUS_WASM_HASH = "2".repeat(64);
+const PHOENIX_POOL = "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD";
+const PHOENIX_WASM_HASH = "2".repeat(64);
 
-function aquariusRegistryEntry(): ContractRegistryEntry {
+function phoenixRegistryEntry(): ContractRegistryEntry {
   return {
     network: "testnet",
-    protocol: "aquarius",
+    protocol: "phoenix",
     kind: "pool",
-    address: AQUARIUS_POOL,
-    wasmHash: AQUARIUS_WASM_HASH,
+    address: PHOENIX_POOL,
+    wasmHash: PHOENIX_WASM_HASH,
     version: "v1",
     label: "test fixture",
     verifiedLive: true,
@@ -248,10 +248,10 @@ test("a detected DeFi position flows into the returned account state", async () 
     octopos: { baseUrl: "" },
     directRead: {
       rpc: mockRpc([
-        contractInstanceEntry(AQUARIUS_POOL, AQUARIUS_WASM_HASH),
-        contractDataEntry(AQUARIUS_POOL, balanceKey, i128Val(42_0000000n)),
+        contractInstanceEntry(PHOENIX_POOL, PHOENIX_WASM_HASH),
+        contractDataEntry(PHOENIX_POOL, balanceKey, i128Val(42_0000000n)),
       ]),
-      registryEntries: [aquariusRegistryEntry()],
+      registryEntries: [phoenixRegistryEntry()],
     },
   };
 
@@ -259,10 +259,10 @@ test("a detected DeFi position flows into the returned account state", async () 
 
   expect(state.defiPositions.positions).toEqual([
     {
-      protocol: "aquarius",
+      protocol: "phoenix",
       positionType: "lp",
-      contractAddress: AQUARIUS_POOL,
-      wasmHash: AQUARIUS_WASM_HASH,
+      contractAddress: PHOENIX_POOL,
+      wasmHash: PHOENIX_WASM_HASH,
       shareAmount: "420000000",
       usdValue: null,
     },
