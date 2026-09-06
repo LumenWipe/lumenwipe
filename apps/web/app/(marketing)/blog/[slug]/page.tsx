@@ -8,6 +8,7 @@ import remarkGfm from "remark-gfm";
 import { getAllSlugs, getPost, extractToc, slugify } from "@/lib/blog";
 import CategoryBadge from "@/components/blog/CategoryBadge";
 import BlogToc from "@/components/blog/BlogToc";
+import YouTubeEmbed from "@/components/blog/YouTubeEmbed";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
@@ -75,6 +76,7 @@ function makeHeadingComponent(Tag: "h2" | "h3") {
 const mdxComponents = {
   h2: makeHeadingComponent("h2"),
   h3: makeHeadingComponent("h3"),
+  YouTubeEmbed,
   a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
     const isExternal = href?.startsWith("http");
     return (
