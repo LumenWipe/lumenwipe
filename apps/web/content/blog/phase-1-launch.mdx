@@ -4,12 +4,23 @@ description: "LumenWipe Phase 1 is live: full claimable-balance handling, a thir
 publishedAt: "pending" # not a real date; unused while draft is true, replace when publishing
 draft: true # excluded from the blog index, sitemap, and static generation until Tranche 1 is approved
 category: "Updates"
-tags: ["lumenwipe", "stellar", "claimable-balances", "multisig", "trustlines", "launch", "non-custodial"]
+tags:
+  [
+    "lumenwipe",
+    "stellar",
+    "claimable-balances",
+    "multisig",
+    "trustlines",
+    "launch",
+    "non-custodial",
+  ]
 ---
 
 Phase 0 closed the common case: a standard account with trustlines and open offers. Real accounts turned out to be messier than that in three specific ways, all unrelated to Soroban - which is what we said would come next. We reordered around what was actually stopping people.
 
 Phase 1 is those three gaps closed, plus one more: a hardened account-state read path underneath all of it.
+
+<YouTubeEmbed id="mCXRiFISnI8" title="LumenWipe Phase 1: Tranche 1 walkthrough" />
 
 ## What's new in Phase 1
 
@@ -23,10 +34,10 @@ Phase 1 is those three gaps closed, plus one more: a hardened account-state read
 
 ## What Phase 1 includes
 
-| Feature                                          | Status      |
-| ------------------------------------------------- | ----------- |
+| Feature                                             | Status      |
+| --------------------------------------------------- | ----------- |
 | Claimable balance enumeration and selected claiming | ✓ Available |
-| Trustline remediation for unclaimable balances     | ✓ Available |
+| Trustline remediation for unclaimable balances      | ✓ Available |
 | Sponsorship-of-claimable-balance detection          | ✓ Available |
 | Transfer disposition (keep the asset, move it)      | ✓ Available |
 | Convert and return-to-issuer dispositions           | ✓ Available |
