@@ -15,7 +15,6 @@ export const PATH_ROUTING_API_URLS: Record<Network, string> = {
   testnet: process.env.NEXT_PUBLIC_PATH_ROUTING_API_TESTNET || "",
 };
 
-
 export const SE_EXPLORER_BASE: Record<Network, string> = {
   mainnet: "https://stellar.expert/explorer/public",
   testnet: "https://stellar.expert/explorer/testnet",

@@ -39,7 +39,10 @@ const COLS: { title: string; links: { label: string; href: string }[] }[] = [
         label: "Contributing",
         href: "https://github.com/LumenWipe/lumenwipe/blob/main/CONTRIBUTING.md",
       },
-      { label: "Apache 2.0 license", href: "https://github.com/LumenWipe/lumenwipe/blob/main/LICENSE" },
+      {
+        label: "Apache 2.0 license",
+        href: "https://github.com/LumenWipe/lumenwipe/blob/main/LICENSE",
+      },
     ],
   },
 ];
