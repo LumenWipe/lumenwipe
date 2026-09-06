@@ -15,7 +15,9 @@ export default function PlaygroundPage() {
   return (
     <section className="mx-auto w-full max-w-2xl px-4 pb-24 pt-24 text-center sm:px-6">
       <p className="mkt-eyebrow mb-3 text-stellar">Testnet playground</p>
-      <h1 className="mkt-display text-4xl text-white sm:text-5xl">Try the exact same close, risk-free</h1>
+      <h1 className="mkt-display text-4xl text-white sm:text-5xl">
+        Try the exact same close, risk-free
+      </h1>
       <p className="mt-4 text-base leading-relaxed text-white/70">
         The playground runs on the LumenWipe API and walks the identical close flow as the app -
         trustlines, offers, data entries, signers, the merge - against a disposable testnet account

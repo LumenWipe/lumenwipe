@@ -30,8 +30,6 @@ export interface DecisionPoint {
   required: boolean;
 }
 
-
-
 export interface ExecutionTxBreakdown {
   order: number;
   covers: StepType[];

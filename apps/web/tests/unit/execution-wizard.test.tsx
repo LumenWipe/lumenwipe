@@ -1,15 +1,27 @@
-import { test, expect, mock, beforeEach } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { hash, Keypair, StrKey } from "@stellar/stellar-sdk";
 import ExecutionWizard from "@/components/execution/ExecutionWizard";
 import { useDemolishStore } from "@/store/demolish";
+import * as navigation from "next/navigation";
+import * as closeExecution from "@/hooks/useCloseExecution";
+import * as walletKit from "@/hooks/useWalletKitConnection";
+import * as sessionStore from "@/lib/session/store";
 
 // ExecutionWizard calls useRouter() (to navigate to /complete on success) - outside of a
 // real Next.js app router tree that throws "invariant expected app router to be mounted".
 // This test never reaches the COMPLETE-phase navigation itself, so a no-op stub is enough.
-mock.module("next/navigation", () => ({
-  useRouter: () => ({ push: () => {} }),
-}));
+//
+// Every stand-in below is a spyOn on the real module object, installed per test and undone by
+// mock.restore(): mock.module replaces a module for the whole `bun test` process, and the
+// replacement of useCloseExecution here was reaching use-close-execution.test.tsx whenever this
+// file ran first - Bun's file order differs between machines - so that file was testing this
+// stub instead of the hook.
+function stubRouter(): void {
+  spyOn(navigation, "useRouter").mockImplementation(
+    () => ({ push: () => {} }) as unknown as ReturnType<typeof navigation.useRouter>
+  );
+}
 
 // Mocks kept minimal and behavior-focused: this test exercises ExecutionWizard's own
 // state machine (signature-progress rendering, signer switching, no persisted writes),
@@ -19,17 +31,20 @@ let submitPreAuthTxImpl: (
   signer: { key: string; weight: number; type: string },
   xdr: string
 ) => Promise<void>;
-mock.module("@/hooks/useCloseExecution", () => ({
-  useCloseExecution: () => ({
-    run: (signer: { publicKey: string }) => runImpl(signer),
-    progressStatus: null,
-    signatureStatus: currentSignatureStatus,
-    submitPreAuthTransaction: (
-      signer: { key: string; weight: number; type: string },
-      xdr: string
-    ) => submitPreAuthTxImpl(signer, xdr),
-  }),
-}));
+function stubCloseExecution(): void {
+  spyOn(closeExecution, "useCloseExecution").mockImplementation(
+    () =>
+      ({
+        run: (signer: { publicKey: string }) => runImpl(signer),
+        progressStatus: null,
+        signatureStatus: currentSignatureStatus,
+        submitPreAuthTransaction: (
+          signer: { key: string; weight: number; type: string },
+          xdr: string
+        ) => submitPreAuthTxImpl(signer, xdr),
+      }) as unknown as ReturnType<typeof closeExecution.useCloseExecution>
+  );
+}
 
 let currentSignatureStatus: {
   requiredWeight: number;
@@ -38,16 +53,19 @@ let currentSignatureStatus: {
 } | null = null;
 
 let currentWalletAddress: string | null = null;
-mock.module("@/hooks/useWalletKitConnection", () => ({
-  useWalletKitConnection: () => ({
-    address: currentWalletAddress,
-    connecting: false,
-    error: null,
-    networkMismatch: false,
-    connect: async () => {},
-    disconnect: async () => {},
-  }),
-}));
+function stubWalletKit(): void {
+  spyOn(walletKit, "useWalletKitConnection").mockImplementation(
+    () =>
+      ({
+        address: currentWalletAddress,
+        connecting: false,
+        error: null,
+        networkMismatch: false,
+        connect: async () => {},
+        disconnect: async () => {},
+      }) as unknown as ReturnType<typeof walletKit.useWalletKitConnection>
+  );
+}
 
 // The app's real resumable session mechanism is IndexedDB via saveSession
 // (apps/web/lib/session/store.ts), not sessionStorage - the only real sessionStorage.setItem
@@ -56,17 +74,27 @@ mock.module("@/hooks/useWalletKitConnection", () => ({
 // signers" assertion below catch a real regression, since it intercepts every import of the
 // module across ExecutionWizard's render tree, not just a direct call from this component.
 const mockSaveSession = mock(async (..._args: unknown[]) => {});
-mock.module("@/lib/session/store", () => ({
-  saveSession: mockSaveSession,
-  loadSession: async () => null,
-  listSessions: async () => [],
-  deleteSession: async () => {},
-}));
+function stubSessionStore(): void {
+  spyOn(sessionStore, "saveSession").mockImplementation(
+    mockSaveSession as unknown as typeof sessionStore.saveSession
+  );
+  spyOn(sessionStore, "loadSession").mockImplementation(async () => null);
+  spyOn(sessionStore, "listSessions").mockImplementation(async () => []);
+  spyOn(sessionStore, "deleteSession").mockImplementation(async () => {});
+}
 
 const source = Keypair.random().publicKey();
 const cosigner = Keypair.random().publicKey();
 
+afterEach(() => {
+  mock.restore();
+});
+
 beforeEach(() => {
+  stubRouter();
+  stubCloseExecution();
+  stubWalletKit();
+  stubSessionStore();
   currentSignatureStatus = null;
   currentWalletAddress = null;
   submitPreAuthTxImpl = async () => {};

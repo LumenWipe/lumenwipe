@@ -136,7 +136,6 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
           </div>
         </div>
       </div>
-
     </div>
   );
 }
