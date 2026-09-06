@@ -553,3 +553,43 @@ test("re-analyzing prunes destinations for assets the account no longer holds", 
 
   expect(useDemolishStore.getState().transferDestinations).toEqual({ "USDC:GISS": "GDEST1" });
 });
+
+// ─── Review finding: pruning must not eat an arriving asset's decision ───────
+//
+// An asset arriving through a claim has no trustline yet, so pruning "to assets still
+// present" dropped its disposition (and its typed transfer destination) on every account
+// re-read - which the analyze page now performs on every claim-answer change. The
+// auto-convert default then silently refilled the hole: the user chose "transfer", answered
+// an unrelated card, and the close executed a swap they had explicitly declined.
+
+function claimable(id: string, asset: string, amount = "5.0000000") {
+  return {
+    id,
+    asset,
+    amount,
+    claimants: [{ destination: "GSOURCE", predicate: { type: "unconditional" as const } }],
+    sponsor: null,
+  };
+}
+
+test("setAccountState keeps the disposition of an asset arriving through a claim", () => {
+  const arriving = "USDC:GISSUER";
+  useDemolishStore.getState().setAssetDisposition(arriving, "transfer");
+  useDemolishStore.getState().setTransferDestination(arriving, "GDEST");
+
+  useDemolishStore
+    .getState()
+    .setAccountState(accountState({ claimableBalances: [claimable("cb1", arriving)] }));
+
+  expect(useDemolishStore.getState().assetDispositions[arriving]).toBe("transfer");
+  expect(useDemolishStore.getState().transferDestinations[arriving]).toBe("GDEST");
+});
+
+test("setAccountState still prunes an asset in neither trustlines nor claimable balances", () => {
+  const gone = "OLD:GISSUER";
+  useDemolishStore.getState().setAssetDisposition(gone, "issuer");
+
+  useDemolishStore.getState().setAccountState(accountState());
+
+  expect(useDemolishStore.getState().assetDispositions[gone]).toBeUndefined();
+});

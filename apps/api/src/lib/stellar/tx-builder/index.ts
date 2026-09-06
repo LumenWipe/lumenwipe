@@ -468,8 +468,11 @@ export function buildPlan(
   // a still-untrusted asset.
   // Stryker disable next-line EqualityOperator,ConditionalExpression: batchItems([], N) always
   // returns [], so the loop below runs zero times regardless of this gate.
-  if (balancesNeedingTrustline.length > 0) {
-    const batches = batchItems(balancesNeedingTrustline, OP_BATCH_LIMIT);
+  // Batched by unique asset: the transaction adds one trustline per asset (see
+  // trustlineAddForClaimOps), so the step count and fee estimate must match.
+  const assetsNeedingTrustline = [...new Set(balancesNeedingTrustline.map((b) => b.asset))];
+  if (assetsNeedingTrustline.length > 0) {
+    const batches = batchItems(assetsNeedingTrustline, OP_BATCH_LIMIT);
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
       steps.push(
@@ -536,25 +539,62 @@ export function buildPlan(
     }
   }
 
-  const trustlinesNeedingAction = trustlines.filter(
-    (tl) =>
-      tl.authorized &&
-      (parseFloat(tl.balance) > 0 || (claimableNonXlmByAsset.get(tl.asset) ?? 0) > 0)
-  );
+  // Balances arriving through a trustline this plan itself adds. They exist in no trustline
+  // yet, so the filter above cannot see them - but after the claim round they are a balance
+  // like any other, and the merge fails while they sit there. Leaving them out is what made
+  // the plan read "add trustline -> claim -> merge": a close the network would reject, and one
+  // that dead-ended a round later asking for a disposition the caller was never offered.
+  // Balance "0" on purpose: on-chain the line really does start empty and the claim fills it,
+  // which is exactly what the effective-amount calculation below already models for a line the
+  // account holds today. One path, no special case, no double count.
+  //
+  // One synthetic line per ASSET: several claimable balances can share one, and mapping them
+  // one-to-one produced two HANDLE_ASSETS steps each labeled with the doubled total and a
+  // REMOVE_TRUSTLINES batch deleting the same line twice - which fails on-chain at the second
+  // op and takes the whole close round with it.
+  const arrivingByClaim: Trustline[] = [
+    ...new Set(balancesNeedingTrustline.map((b) => b.asset)),
+  ].map((asset) => ({
+    asset,
+    balance: "0",
+    authorized: true,
+    issuer: asset.split(":")[1] ?? "",
+    code: asset.split(":")[0],
+  }));
+
+  const trustlinesNeedingAction = [
+    ...trustlines.filter(
+      (tl) =>
+        tl.authorized &&
+        (parseFloat(tl.balance) > 0 || (claimableNonXlmByAsset.get(tl.asset) ?? 0) > 0)
+    ),
+    ...arrivingByClaim,
+  ];
 
   for (const tl of trustlinesNeedingAction) {
+    // The amount the step will actually move, not the one sitting there while the plan is read.
+    // A line the claim tops up shows 0 today, and "Exchange 0.0000000 EURC for XLM" describes
+    // neither what the user chose nor what will happen.
+    const arriving = claimableNonXlmByAsset.get(tl.asset) ?? 0;
+    const effective =
+      arriving > 0 ? { ...tl, balance: (parseFloat(tl.balance) + arriving).toFixed(7) } : tl;
     const { title, description } = assetStepLabels(
-      tl,
+      effective,
       dispositions[tl.asset],
       transferDestinations[tl.asset]
     );
     steps.push(step(idx++, "HANDLE_ASSETS", title, description, 1, { affectedAsset: tl.asset }));
   }
 
+  // Every trustline the account will hold when the merge runs, including the ones this plan
+  // adds to reach a claimable balance. A trustline the plan created is still a trustline the
+  // merge trips over, so it has to come off in the same close.
+  const trustlinesToRemove = [...trustlines, ...arrivingByClaim];
+
   // Stryker disable next-line EqualityOperator,ConditionalExpression: batchItems([], N) always
   // returns [], so the loop below runs zero times regardless of this gate.
-  if (trustlines.length > 0) {
-    const batches = batchItems(trustlines, OP_BATCH_LIMIT);
+  if (trustlinesToRemove.length > 0) {
+    const batches = batchItems(trustlinesToRemove, OP_BATCH_LIMIT);
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
       steps.push(

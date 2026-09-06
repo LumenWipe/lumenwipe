@@ -6,6 +6,7 @@ import type { AccountState } from "@/types/account";
 import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
 import type { AssetDisposition, ClaimableBalanceSelection } from "@/types/plan";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
+import { formatAsset } from "@/lib/utils/assets";
 import AssetDispositionCard from "./AssetDispositionCard";
 import ClaimableBalanceCard from "./ClaimableBalanceCard";
 
@@ -141,8 +142,8 @@ export default function PlanAccordion({
         <ul className="space-y-1">
           {account.openOffers.map((o) => (
             <li key={o.id} className="text-xs text-white/55">
-              <span className="text-white/70">{o.amount}</span> {o.selling.split(":")[0]}{" "}
-              <span className="text-white/35">→</span> {o.buying.split(":")[0]}{" "}
+              <span className="text-white/70">{o.amount}</span> {formatAsset(o.selling)}{" "}
+              <span className="text-white/35">→</span> {formatAsset(o.buying)}{" "}
               <span className="text-white/35">@ {o.price}</span>
             </li>
           ))}

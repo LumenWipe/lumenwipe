@@ -196,6 +196,18 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     );
   }
 
+  // Announced BEFORE the first signature, not discovered by failing after it. The
+  // signing-progress panel only exists once a signature has fallen short, so a user who did
+  // not know their account was multisig used to learn it the hard way: sign, then be told
+  // more weight is needed. A close always carries a high-threshold operation (the merge, and
+  // the signer cleanup when extra signers exist), so the account's high threshold is the
+  // weight this close must gather.
+  const signers = accountState?.signers ?? [];
+  const multisigNotice =
+    signers.length > 1 && signatureStatus === null
+      ? { requiredWeight: accountState?.thresholds.high ?? 1, signers }
+      : null;
+
   const busy = running || progressStatus !== null;
   const pendingMoreSignatures = phase === "STEP_FAILED" && !running && signatureStatus !== null;
   const failed = phase === "STEP_FAILED" && !running && !changingSigner && !pendingMoreSignatures;
@@ -353,6 +365,26 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
             </div>
           ) : (
             <>
+              {multisigNotice && (
+                <div
+                  data-testid="multisig-notice"
+                  className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-4"
+                >
+                  <p className="text-sm text-white/70">
+                    This is a multisig account: completing the close needs a total signing weight of{" "}
+                    {multisigNotice.requiredWeight}. Signatures can come from any of its signers,
+                    one at a time - sign with the first, then sign with the next.
+                  </p>
+                  <ul className="space-y-1">
+                    {multisigNotice.signers.map((s) => (
+                      <li key={s.key} className="font-mono-address text-xs text-white/55">
+                        {s.key.slice(0, 8)}…{s.key.slice(-8)}{" "}
+                        <span className="text-white/35">· weight {s.weight}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {renderSignerPicker()}
 
               <label className="flex items-start gap-3 cursor-pointer select-none">

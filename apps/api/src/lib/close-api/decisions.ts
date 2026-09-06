@@ -90,51 +90,112 @@ export function isCurrentlyClaimable(
   return asset === "native" || authorizedTrustlineAssets.has(asset);
 }
 
+/**
+ * The non-native amounts the close will claim, summed per asset.
+ *
+ * The will-it-be-claimed rule is buildPlan's, restated: a currently-claimable balance is
+ * claimed unless explicitly forfeited, and one the account cannot claim yet is claimed only on
+ * an explicit `add_trustline_then_claim`. Everything downstream that reasons about "the balance
+ * this asset will hold after the claims run" - decision derivation, convertibility pricing, the
+ * transactions-endpoint gate - shares this so the layers cannot disagree about which assets
+ * exist.
+ */
+export function claimedAmountsPerAsset(
+  account: Pick<AccountState, "trustlines" | "claimableBalances">,
+  claimableBalanceSelections: Record<string, ClaimableBalanceSelection>
+): Map<string, number> {
+  const authorized = new Set(
+    account.trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset)
+  );
+  const perAsset = new Map<string, number>();
+  for (const b of account.claimableBalances) {
+    if (b.asset === "native") continue;
+    const selection = claimableBalanceSelections[b.id];
+    const willClaim = isCurrentlyClaimable(b.asset, authorized)
+      ? selection !== "forfeit"
+      : selection === "add_trustline_then_claim";
+    if (!willClaim) continue;
+    perAsset.set(b.asset, (perAsset.get(b.asset) ?? 0) + parseFloat(b.amount));
+  }
+  return perAsset;
+}
+
 // Derives the per-asset disposition decisions the caller must resolve before a close
 // can be built. `convertibility[asset]` is the best-effort result of path finding:
 // true when a DEX route to XLM exists, false otherwise. Only trustlines holding a
 // balance need a decision; empty trustlines are simply removed.
 export function deriveDecisionPoints(
   account: AccountState,
-  convertibility: Record<string, boolean>
+  convertibility: Record<string, boolean>,
+  /** The caller's claimable-balance answers. A balance being claimed through a *new* trustline
+   *  puts an asset in the account that no trustline represents yet, and that asset needs a
+   *  disposition like any other - without one the close dead-ends after the claim round, with
+   *  the trustline already added and the balance already claimed. */
+  claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {}
 ): DecisionPoint[] {
-  return account.trustlines
-    .filter((tl) => Number(tl.balance) > 0)
-    .map((tl) => {
-      const convertible = convertibility[tl.asset] ?? false;
-      // Transferring needs no conversion route, so it is offered whether or not the asset is
-      // convertible - for an asset with no market it is the only option that does not destroy
-      // the balance. It is never the default: it is the one choice that cannot be resolved
-      // without an address the caller has to supply.
-      const transferOption = {
-        id: TRANSFER_CHOICE,
-        note: "Sends the balance, as this asset, to an account that already holds its trustline.",
-      };
-      const options = convertible
-        ? [
-            { id: "convert_to_xlm", recommended: true },
-            {
-              id: "return_to_issuer",
-              note: "Sends the balance back to the issuer; you receive no XLM.",
-            },
-            transferOption,
-          ]
-        : [
-            {
-              id: "return_to_issuer",
-              note: "No conversion route exists; the balance is returned to the issuer.",
-            },
-            transferOption,
-          ];
-      return {
-        id: assetDecisionId(tl.asset),
-        type: "asset_disposition" as const,
-        subject: { kind: "trustline", asset: tl.asset, balance: tl.balance, convertible },
-        options,
-        default: convertible ? "convert_to_xlm" : "return_to_issuer",
-        required: true,
-      };
-    });
+  // What each claim will add, summed per asset - the same will-it-be-claimed rule buildPlan
+  // uses: a currently-claimable balance is claimed unless explicitly forfeited (claiming is the
+  // opt-out default), and one the account cannot claim yet is claimed only when the caller
+  // chose to remediate. Keyed by asset so several balances of one asset decide it once, with
+  // the total - two decision points sharing an id rendered doubled cards and let one answer
+  // satisfy both.
+  const claimedPerAsset = claimedAmountsPerAsset(account, claimableBalanceSelections);
+
+  // One entry per asset that will hold a positive balance once the claims run. A trustline
+  // with a balance today is decided regardless; a zero-balance line filled by a claim, and a
+  // line the plan itself will add, are decided by what arrives - each was previously decided
+  // NOWHERE (the arriving branch excluded trusted assets, the trustline branch excluded zero
+  // balances), so the close 422'd at round 2 for an answer the caller was never asked for.
+  const pendingByAsset = new Map<string, { asset: string; balance: string }>();
+  for (const tl of account.trustlines) {
+    const arriving = claimedPerAsset.get(tl.asset) ?? 0;
+    const total = Number(tl.balance) + arriving;
+    if (total > 0) {
+      pendingByAsset.set(tl.asset, { asset: tl.asset, balance: total.toFixed(7) });
+    }
+  }
+  for (const [asset, amount] of claimedPerAsset) {
+    if (!pendingByAsset.has(asset)) {
+      pendingByAsset.set(asset, { asset, balance: amount.toFixed(7) });
+    }
+  }
+  const pending = [...pendingByAsset.values()];
+
+  return pending.map((tl) => {
+    const convertible = convertibility[tl.asset] ?? false;
+    // Transferring needs no conversion route, so it is offered whether or not the asset is
+    // convertible - for an asset with no market it is the only option that does not destroy
+    // the balance. It is never the default: it is the one choice that cannot be resolved
+    // without an address the caller has to supply.
+    const transferOption = {
+      id: TRANSFER_CHOICE,
+      note: "Sends the balance, as this asset, to an account that already holds its trustline.",
+    };
+    const options = convertible
+      ? [
+          { id: "convert_to_xlm", recommended: true },
+          {
+            id: "return_to_issuer",
+            note: "Sends the balance back to the issuer; you receive no XLM.",
+          },
+          transferOption,
+        ]
+      : [
+          {
+            id: "return_to_issuer",
+            note: "No conversion route exists; the balance is returned to the issuer.",
+          },
+          transferOption,
+        ];
+    return {
+      id: assetDecisionId(tl.asset),
+      type: "asset_disposition" as const,
+      subject: { kind: "trustline", asset: tl.asset, balance: tl.balance, convertible },
+      options,
+      default: convertible ? "convert_to_xlm" : "return_to_issuer",
+      required: true,
+    };
+  });
 }
 
 // Resolves the caller's answers into the `assetDispositions` record that the

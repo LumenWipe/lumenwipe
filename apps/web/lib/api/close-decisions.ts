@@ -4,6 +4,7 @@ import type {
   TransferDestinations,
 } from "@/types/plan";
 import type { DecisionAnswer } from "@lumenwipe/sdk";
+import type { AccountState } from "@/types/account";
 
 /** Stable decision id for a per-asset disposition. Must match the API's `assetDecisionId`. */
 function assetDecisionId(asset: string): string {
@@ -99,4 +100,123 @@ export function claimableSelectionsToDecisions(
     id: claimableBalanceDecisionId(balanceId),
     choice: selection,
   }));
+}
+
+/**
+ * A stable key for a set of claim answers, for use as a React dependency.
+ *
+ * Identity is not usable here: `setAccountState` rebuilds `claimableBalanceSelections` through
+ * `pruneClaimableSelections` on every account read, so the object is new even when no answer
+ * changed. A dependency on it made the analyze page's fetch retrigger itself - fetch ->
+ * setAccountState -> new reference -> new callback -> effect -> fetch - until the rate limiter
+ * stopped it. Sorted so key order cannot make two equal answer sets look different.
+ */
+export function claimAnswersKey(selections: Record<string, ClaimableBalanceSelection>): string {
+  return Object.entries(selections)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([id, choice]) => `${id}:${choice}`)
+    .join("|");
+}
+
+/**
+ * The per-asset transfers the user chose, with the amount floor verify() holds each payment to.
+ *
+ * The floor is what the account will hold when the payment runs: today's trustline balance plus
+ * every claimable balance of the asset that this close will claim (currently claimable and not
+ * forfeited, or explicitly remediated with a new trustline). Building it from trustlines alone
+ * meant an asset arriving through a claim never produced an entry, and verify() rejected the
+ * payment it had told the user about - after the trustline was added and the balance claimed.
+ */
+export function chosenTransfers(
+  dispositions: Record<string, AssetDisposition>,
+  destinations: Record<string, string>,
+  accountState: AccountState | null,
+  claimableBalanceSelections: Record<string, ClaimableBalanceSelection>
+): Record<string, { destination: string; amount: string }> {
+  const transfers: Record<string, { destination: string; amount: string }> = {};
+  if (!accountState) return transfers;
+  // Nullish fallbacks, not assumptions: this runs inside the close loop's error boundary, and
+  // an account shape missing either array must degrade to "nothing claimed / nothing held"
+  // rather than throw past the transfers the user did choose.
+  const trustlines = accountState.trustlines ?? [];
+  const claimableBalances = accountState.claimableBalances ?? [];
+
+  const claimedPerAsset = claimedAmounts(accountState, claimableBalanceSelections);
+
+  for (const [asset, disposition] of Object.entries(dispositions)) {
+    if (disposition !== "transfer") continue;
+    const destination = destinations[asset];
+    if (!destination) continue;
+    const trustline = trustlines.find((tl) => tl.asset === asset);
+    const floor = parseFloat(trustline?.balance ?? "0") + (claimedPerAsset.get(asset) ?? 0);
+    if (floor <= 0) continue;
+    transfers[asset] = { destination, amount: floor.toFixed(7) };
+  }
+  return transfers;
+}
+
+/**
+ * The non-native amounts this close will claim, summed per asset - the client-side twin of the
+ * API's `claimedAmountsPerAsset`, on the same will-it-be-claimed rule: a currently-claimable
+ * balance is claimed unless explicitly forfeited, one the account cannot claim yet only on an
+ * explicit remediation.
+ */
+export function claimedAmounts(
+  accountState: AccountState | null,
+  claimableBalanceSelections: Record<string, ClaimableBalanceSelection>
+): Map<string, number> {
+  const perAsset = new Map<string, number>();
+  if (!accountState) return perAsset;
+  const trustlines = accountState.trustlines ?? [];
+  const authorized = new Set(trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset));
+  for (const b of accountState.claimableBalances ?? []) {
+    if (b.asset === "native") continue;
+    const selection = claimableBalanceSelections[b.id];
+    const willClaim = authorized.has(b.asset)
+      ? selection !== "forfeit"
+      : selection === "add_trustline_then_claim";
+    if (!willClaim) continue;
+    perAsset.set(b.asset, (perAsset.get(b.asset) ?? 0) + parseFloat(b.amount));
+  }
+  return perAsset;
+}
+
+/**
+ * What the completion receipt lists: the assets whose balances this close disposed of, and the
+ * trustlines it removed - including the ones the close itself added to claim with.
+ *
+ * Built from load-time trustlines alone, the receipt omitted every asset that arrived through a
+ * claim: an EURC returned to its issuer and a USDC swapped away simply did not appear in the
+ * permanent record of an irreversible close, and the removed-trustlines count was short by the
+ * lines the plan itself had opened.
+ */
+export function receiptAssetSummary(
+  accountState: AccountState | null,
+  claimableBalanceSelections: Record<string, ClaimableBalanceSelection>
+): {
+  handledAssets: Array<{ asset: string; code: string }>;
+  removedTrustlines: Array<{ asset: string; code: string }>;
+} {
+  if (!accountState) return { handledAssets: [], removedTrustlines: [] };
+  const trustlines = accountState.trustlines ?? [];
+  const claimed = claimedAmounts(accountState, claimableBalanceSelections);
+
+  const code = (asset: string) => asset.split(":")[0] ?? asset;
+  const handled = new Map<string, { asset: string; code: string }>();
+  for (const tl of trustlines) {
+    if (parseFloat(tl.balance) > 0 || (claimed.get(tl.asset) ?? 0) > 0) {
+      handled.set(tl.asset, { asset: tl.asset, code: tl.code });
+    }
+  }
+  for (const asset of claimed.keys()) {
+    if (!handled.has(asset)) handled.set(asset, { asset, code: code(asset) });
+  }
+
+  const removed = new Map<string, { asset: string; code: string }>();
+  for (const tl of trustlines) removed.set(tl.asset, { asset: tl.asset, code: tl.code });
+  for (const asset of claimed.keys()) {
+    if (!removed.has(asset)) removed.set(asset, { asset, code: code(asset) });
+  }
+
+  return { handledAssets: [...handled.values()], removedTrustlines: [...removed.values()] };
 }

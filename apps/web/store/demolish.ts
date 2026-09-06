@@ -91,11 +91,22 @@ interface DemolishState {
  */
 /** Drops entries for assets the account no longer holds, so a re-analyze cannot leave a
  *  destination attached to a trustline that is gone. */
+/** Assets a decision can legitimately be about: held in a trustline, or sitting in a claimable
+ *  balance the user may choose to claim. Pruning to trustlines alone dropped the disposition of
+ *  an asset arriving through a claim on every account re-read, and the auto-convert default
+ *  silently refilled it - executing a swap the user had explicitly declined. */
+function decidableAssets(accountState: AccountState): Set<string> {
+  return new Set([
+    ...accountState.trustlines.map((tl) => tl.asset),
+    ...accountState.claimableBalances.filter((b) => b.asset !== "native").map((b) => b.asset),
+  ]);
+}
+
 function pruneToPresentAssets(
   destinations: Record<string, string>,
   accountState: AccountState
 ): Record<string, string> {
-  const present = new Set(accountState.trustlines.map((tl) => tl.asset));
+  const present = decidableAssets(accountState);
   const next: Record<string, string> = {};
   for (const [asset, destination] of Object.entries(destinations)) {
     if (present.has(asset)) next[asset] = destination;
@@ -107,7 +118,7 @@ function pruneDispositions(
   dispositions: Record<string, AssetDisposition>,
   accountState: AccountState
 ): Record<string, AssetDisposition> {
-  const present = new Set(accountState.trustlines.map((tl) => tl.asset));
+  const present = decidableAssets(accountState);
   const next: Record<string, AssetDisposition> = {};
   for (const [asset, action] of Object.entries(dispositions)) {
     if (present.has(asset)) next[asset] = action;

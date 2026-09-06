@@ -25,3 +25,19 @@ export function isResolvableHere(blocker: Pick<PlanBlocker, "code">): boolean {
 export function hardBlockersOf<T extends Pick<PlanBlocker, "code">>(blockers: T[]): T[] {
   return blockers.filter((b) => !isResolvableHere(b));
 }
+
+/**
+ * The error that stops "Begin execution", or null when nothing genuinely blocks.
+ *
+ * The proceed gate re-fetches the plan with the user's decisions, and that plan can carry two
+ * very different kinds of blocker. A hard one (destination has no trustline, exchange deposit
+ * address, sponsorship) must stop the flow with its message. An acknowledged forfeit is the
+ * opposite: `claimable_balance_forfeited` exists BECAUSE the user answered - it is the audit
+ * trail of a choice, already rendered as a warning beside the card - and treating it as
+ * trapping walled off the close the moment anyone gave a balance up. Only the hard ones stop
+ * the flow, and only their messages surface as the error.
+ */
+export function proceedError(blockers: PlanBlocker[]): string | null {
+  const hard = hardBlockersOf(blockers);
+  return hard.length > 0 ? hard.map((b) => b.message).join(" ") : null;
+}

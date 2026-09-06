@@ -55,13 +55,19 @@ function deriveStatus(
 export function assemblePlanResponse(args: {
   buildResult: BuildPlanResult;
   decisionPoints: DecisionPoint[];
+  /** The subset still unanswered. Drives the status alone: the response carries every decision
+   *  point, answered or not, because the caller renders from this list and knows its own
+   *  answers. Returning only the pending ones made each card vanish the moment it was answered
+   *  - and a re-analyze that remembered its answers rendered no cards at all. */
+  pendingDecisionPoints?: DecisionPoint[];
   planHash: string;
   estimate: { feeStroops: string; freedReserveXlm: string };
 }): PlanResponse {
   const { buildResult, decisionPoints, planHash, estimate } = args;
+  const pending = args.pendingDecisionPoints ?? decisionPoints;
   return {
     planHash,
-    status: deriveStatus(buildResult, decisionPoints),
+    status: deriveStatus(buildResult, pending),
     steps: buildResult.steps,
     decisionPoints,
     // Most blockers still carry no stable code; fall back to a generic one for those

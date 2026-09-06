@@ -136,3 +136,49 @@ test("assemblePlanResponse status: complete when there is nothing to do", () => 
   });
   expect(res.status).toBe("complete");
 });
+
+// ─── Answered decisions stay in the response ─────────────────────────────────
+//
+// Regression for cards vanishing as they were answered. The controller filters answered
+// decisions out of `pending` for the status, and the response used to carry only that subset -
+// so the moment the analyze page began sending its answers with the plan request, every
+// answered card disappeared from the UI, and a re-analyze with remembered answers showed no
+// cards at all. The caller needs the full set to render (it knows its own answers); only the
+// status is about what remains.
+
+function pointWithId(id: string): DecisionPoint {
+  return {
+    id,
+    type: "asset_disposition",
+    subject: { kind: "trustline", asset: "X:G", balance: "1", convertible: true },
+    options: [{ id: "convert_to_xlm" }],
+    default: "convert_to_xlm",
+    required: true,
+  };
+}
+
+test("assemblePlanResponse returns every decision point, answered or not", () => {
+  const all = [pointWithId("a"), pointWithId("b")];
+  const res = assemblePlanResponse({
+    buildResult: { steps: [step(0, "MERGE")], blockers: [] },
+    decisionPoints: all,
+    pendingDecisionPoints: [all[1]!],
+    planHash: "h",
+    estimate: { feeStroops: "100", freedReserveXlm: "0.5" },
+  });
+  expect(res.decisionPoints.map((d) => d.id)).toEqual(["a", "b"]);
+  expect(res.status).toBe("needs_decisions");
+});
+
+test("assemblePlanResponse status: ready once every decision is answered, cards intact", () => {
+  const all = [pointWithId("a"), pointWithId("b")];
+  const res = assemblePlanResponse({
+    buildResult: { steps: [step(0, "MERGE")], blockers: [] },
+    decisionPoints: all,
+    pendingDecisionPoints: [],
+    planHash: "h",
+    estimate: { feeStroops: "100", freedReserveXlm: "0.5" },
+  });
+  expect(res.status).toBe("ready");
+  expect(res.decisionPoints).toHaveLength(2);
+});

@@ -1,5 +1,8 @@
 import { test, expect } from "bun:test";
 import {
+  chosenTransfers,
+  receiptAssetSummary,
+  claimAnswersKey,
   claimableSelectionsToDecisions,
   destinationAcknowledgementToDecisions,
   dispositionsToDecisions,
@@ -118,4 +121,228 @@ test("a transfer with no destination emits no destination, leaving the API to re
 test("convert and issuer are unchanged by the transfer support", () => {
   const answers = dispositionsToDecisions({ [ASSET]: "convert", [EURC]: "issuer" });
   expect(answers.map((a) => a.choice)).toEqual(["convert_to_xlm", "return_to_issuer"]);
+});
+
+// ─── The key that stopped the analyze page retriggering itself ──────────────
+
+test("claimAnswersKey › a rebuilt object with the same answers keys the same", () => {
+  // The exact shape that caused the loop: the store hands back a fresh object on every account
+  // read. Same answers must mean the same key, or the fetch that produced it runs again.
+  const a = { cb1: "claim" as const, cb2: "forfeit" as const };
+  const rebuilt = { ...a };
+
+  expect(rebuilt).not.toBe(a);
+  expect(claimAnswersKey(rebuilt)).toBe(claimAnswersKey(a));
+});
+
+test("claimAnswersKey › insertion order does not change the key", () => {
+  expect(claimAnswersKey({ cb2: "forfeit", cb1: "claim" })).toBe(
+    claimAnswersKey({ cb1: "claim", cb2: "forfeit" })
+  );
+});
+
+test("claimAnswersKey › a changed answer changes the key", () => {
+  const before = claimAnswersKey({ cb1: "forfeit" });
+  const after = claimAnswersKey({ cb1: "add_trustline_then_claim" });
+
+  expect(after).not.toBe(before);
+});
+
+test("claimAnswersKey › a new answer changes the key", () => {
+  expect(claimAnswersKey({ cb1: "claim", cb2: "forfeit" })).not.toBe(
+    claimAnswersKey({ cb1: "claim" })
+  );
+});
+
+test("claimAnswersKey › no answers is a stable empty key", () => {
+  expect(claimAnswersKey({})).toBe("");
+});
+
+// ─── Review finding: a transfer of an arriving asset must reach verify() ─────
+//
+// chosenTransfers built the expected transfers from accountState.trustlines alone, so an asset
+// arriving through add_trustline_then_claim - which has no trustline in the state captured at
+// run start - never produced an entry. verify() then rejected round 2's payment as "an
+// unexpected address": trustline added, balance claimed, close dead mid-flight.
+
+const ACCOUNT_BASE = {
+  address: "GSOURCE",
+  network: "testnet" as const,
+  sequence: "1",
+  nativeBalanceLumens: "10.0000000",
+  dataEntries: [],
+  signers: [],
+  thresholds: { low: 0, med: 0, high: 0 },
+  numSubEntries: 0,
+  numSponsoring: 0,
+  sponsoredEntries: [],
+  sponsorshipEnumerationIncomplete: false,
+  sponsoredBy: null,
+  authImmutable: false,
+  trustlines: [],
+  openOffers: [],
+  poolShares: [],
+  claimableBalances: [],
+  subEntryMismatch: false,
+};
+
+test("chosenTransfers › an asset arriving via a remediated claim gets its floor from the claim", () => {
+  const asset = "USDC:GISSUER";
+  const transfers = chosenTransfers(
+    { [asset]: "transfer" },
+    { [asset]: "GDEST" },
+    {
+      ...ACCOUNT_BASE,
+      claimableBalances: [
+        {
+          id: "cb1",
+          asset,
+          amount: "5.0000000",
+          claimants: [{ destination: "GSOURCE", predicate: { type: "unconditional" } }],
+          sponsor: null,
+        },
+      ],
+    },
+    { cb1: "add_trustline_then_claim" }
+  );
+
+  expect(transfers[asset]).toEqual({ destination: "GDEST", amount: "5.0000000" });
+});
+
+test("chosenTransfers › a held balance topped up by a claim floors at the sum", () => {
+  const asset = "USDC:GISSUER";
+  const transfers = chosenTransfers(
+    { [asset]: "transfer" },
+    { [asset]: "GDEST" },
+    {
+      ...ACCOUNT_BASE,
+      trustlines: [
+        {
+          asset,
+          balance: "2.0000000",
+          limit: "100",
+          authorized: true,
+          issuer: "GISSUER",
+          code: "USDC",
+        },
+      ],
+      claimableBalances: [
+        {
+          id: "cb1",
+          asset,
+          amount: "5.0000000",
+          claimants: [{ destination: "GSOURCE", predicate: { type: "unconditional" } }],
+          sponsor: null,
+        },
+      ],
+    },
+    { cb1: "claim" }
+  );
+
+  expect(transfers[asset]!.amount).toBe("7.0000000");
+});
+
+test("chosenTransfers › a forfeited balance contributes nothing", () => {
+  const asset = "USDC:GISSUER";
+  const transfers = chosenTransfers(
+    { [asset]: "transfer" },
+    { [asset]: "GDEST" },
+    {
+      ...ACCOUNT_BASE,
+      claimableBalances: [
+        {
+          id: "cb1",
+          asset,
+          amount: "5.0000000",
+          claimants: [{ destination: "GSOURCE", predicate: { type: "unconditional" } }],
+          sponsor: null,
+        },
+      ],
+    },
+    { cb1: "forfeit" }
+  );
+
+  expect(transfers[asset]).toBeUndefined();
+});
+
+// ─── The receipt must list what the close actually disposed of ───────────────
+//
+// Built from load-time trustlines alone, the permanent record of an irreversible close omitted
+// every asset that arrived through a claim: EURC returned to its issuer and USDC swapped away
+// did not appear at all, and "trustlines removed" was short by the lines the plan itself added.
+
+test("receiptAssetSummary › a zero-balance line topped by a claim is listed, handled and removed", () => {
+  const eurc = "EURC:GISSUER";
+  const summary = receiptAssetSummary(
+    {
+      ...ACCOUNT_BASE,
+      trustlines: [
+        {
+          asset: eurc,
+          balance: "0",
+          limit: "100",
+          authorized: true,
+          issuer: "GISSUER",
+          code: "EURC",
+        },
+      ],
+      claimableBalances: [
+        {
+          id: "cb1",
+          asset: eurc,
+          amount: "4.0000000",
+          claimants: [{ destination: "GSOURCE", predicate: { type: "unconditional" } }],
+          sponsor: null,
+        },
+      ],
+    },
+    { cb1: "claim" }
+  );
+
+  expect(summary.handledAssets.map((a) => a.code)).toContain("EURC");
+  expect(summary.removedTrustlines.map((a) => a.code)).toContain("EURC");
+});
+
+test("receiptAssetSummary › an arriving asset is listed, and its added line counted as removed", () => {
+  const usdc = "USDC:GISSUER";
+  const summary = receiptAssetSummary(
+    {
+      ...ACCOUNT_BASE,
+      claimableBalances: [
+        {
+          id: "cb1",
+          asset: usdc,
+          amount: "5.0000000",
+          claimants: [{ destination: "GSOURCE", predicate: { type: "unconditional" } }],
+          sponsor: null,
+        },
+      ],
+    },
+    { cb1: "add_trustline_then_claim" }
+  );
+
+  expect(summary.handledAssets.map((a) => a.code)).toEqual(["USDC"]);
+  expect(summary.removedTrustlines.map((a) => a.code)).toEqual(["USDC"]);
+});
+
+test("receiptAssetSummary › a forfeited balance appears nowhere", () => {
+  const junk = "JUNK:GISSUER";
+  const summary = receiptAssetSummary(
+    {
+      ...ACCOUNT_BASE,
+      claimableBalances: [
+        {
+          id: "cb1",
+          asset: junk,
+          amount: "9.0000000",
+          claimants: [{ destination: "GSOURCE", predicate: { type: "unconditional" } }],
+          sponsor: null,
+        },
+      ],
+    },
+    { cb1: "forfeit" }
+  );
+
+  expect(summary.handledAssets).toHaveLength(0);
+  expect(summary.removedTrustlines).toHaveLength(0);
 });

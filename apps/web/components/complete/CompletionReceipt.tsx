@@ -6,13 +6,13 @@ import Link from "next/link";
 import type { Network } from "@/config/networks";
 import { SE_EXPLORER_BASE, SV_EXPLORER_BASE } from "@/config/networks";
 import type { AssetDisposition } from "@/types/plan";
-import type { Trustline } from "@/types/account";
 import { useDemolishStore } from "@/store/demolish";
 import { cleanupSession } from "@/lib/session/recovery";
 import { saveHistory } from "@/lib/session/history";
 import { formatXlm } from "@/lib/utils/amounts";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
 import { buildTxLedger, labelForTx } from "@/lib/utils/txLedger";
+import { receiptAssetSummary } from "@/lib/api/close-decisions";
 
 interface CompletionReceiptProps {
   network: Network;
@@ -178,27 +178,34 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
     // Assets group: per-asset disposition (swapped to XLM vs returned to issuer). Prefer the
     // store's recorded dispositions; fall back to the HANDLE_ASSETS steps' fallbackToIssuer
     // flag when dispositions are empty (e.g. a recovered stepwise run).
-    const assetsWithBalance: Trustline[] = account.trustlines.filter(
-      (tl) => parseFloat(tl.balance) > 0
+    //
+    // The list comes from receiptAssetSummary, not from load-time trustlines: an asset the
+    // close claimed into existence (or into a zero-balance line) held nothing when the page
+    // was analyzed, and building from that state left it out of the permanent record of an
+    // irreversible close entirely - including a balance returned to its issuer, the outcome
+    // someone is most likely to need to look up later.
+    const { handledAssets, removedTrustlines } = receiptAssetSummary(
+      account,
+      claimableBalanceSelections
     );
     const assetSteps = confirmedSteps.filter((s) => s.type === "HANDLE_ASSETS");
 
-    function dispositionFor(tl: Trustline): AssetDisposition | null {
-      const recorded = assetDispositions[tl.asset];
+    function dispositionFor(entry: { asset: string }): AssetDisposition | null {
+      const recorded = assetDispositions[entry.asset];
       if (recorded) return recorded;
-      const step = assetSteps.find((s) => s.affectedAsset === tl.asset);
+      const step = assetSteps.find((s) => s.affectedAsset === entry.asset);
       if (step) return step.fallbackToIssuer ? "issuer" : "convert";
       return null;
     }
 
-    if (assetsWithBalance.length > 0) {
+    if (handledAssets.length > 0) {
       groups.push({
         type: "HANDLE_ASSETS",
         title: "Assets handled",
-        summary: `${assetsWithBalance.length} asset${assetsWithBalance.length === 1 ? "" : "s"} with a balance`,
+        summary: `${handledAssets.length} asset${handledAssets.length === 1 ? "" : "s"} with a balance`,
         body: (
           <ul className="space-y-1.5">
-            {assetsWithBalance.map((tl) => {
+            {handledAssets.map((tl) => {
               const disposition = dispositionFor(tl);
               // "transfer" must be named, not folded into the generic fallback. This is the
               // permanent record of an irreversible close, and it is the only disposition that
@@ -228,14 +235,14 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       });
     }
 
-    if (account.trustlines.length > 0) {
+    if (removedTrustlines.length > 0) {
       groups.push({
         type: "REMOVE_TRUSTLINES",
         title: "Trustlines removed",
-        summary: `${account.trustlines.length} trustline${account.trustlines.length === 1 ? "" : "s"}`,
+        summary: `${removedTrustlines.length} trustline${removedTrustlines.length === 1 ? "" : "s"}`,
         body: (
           <ul className="space-y-1">
-            {account.trustlines.map((tl) => (
+            {removedTrustlines.map((tl) => (
               <li key={tl.asset} className="text-xs text-white/55">
                 {tl.code}
               </li>

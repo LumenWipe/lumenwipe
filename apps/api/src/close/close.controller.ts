@@ -31,6 +31,7 @@ import { readTrustlinesOnly } from "@/lib/stellar/account-state";
 import {
   assetDecisionId,
   claimableBalanceDecisionId,
+  claimedAmountsPerAsset,
   deriveClaimableBalanceDecisionPoints,
   deriveDecisionPoints,
   deriveDestinationDecisionPoints,
@@ -122,13 +123,34 @@ export class CloseController {
       const nonClaimableSponsoredEntries = accountState.sponsoredEntries.filter(
         (e) => e.kind !== "claimable_balance"
       );
+      // Priced together, at the amount that will actually need a route: what the account holds
+      // now PLUS what the claims it chose will add, summed per asset by the same
+      // will-it-be-claimed rule buildPlan uses (claimedAmountsPerAsset). Pricing per balance
+      // asked path finding about a smaller amount than the step will move, and two balances of
+      // one asset raced their answers into convertibility[asset] - last write won, so the
+      // offered options could flap between re-plans.
+      const claimableBalanceSelections = resolveClaimableBalanceSelections(
+        decisions,
+        accountState.claimableBalances.map((b) => b.id)
+      );
+      const claimedPerAsset = claimedAmountsPerAsset(accountState, claimableBalanceSelections);
+      const pricedByAsset = new Map<string, number>();
+      for (const tl of accountState.trustlines) {
+        const total = Number(tl.balance) + (claimedPerAsset.get(tl.asset) ?? 0);
+        if (total > 0) pricedByAsset.set(tl.asset, total);
+      }
+      for (const [asset, amount] of claimedPerAsset) {
+        if (!pricedByAsset.has(asset)) pricedByAsset.set(asset, amount);
+      }
+      const pricedAssets = [...pricedByAsset.entries()].map(([asset, amount]) => ({
+        asset,
+        amount: amount.toFixed(7),
+      }));
       const convertibilityPromise = Promise.all(
-        accountState.trustlines
-          .filter((tl) => Number(tl.balance) > 0)
-          .map(async (tl) => {
-            const path = await fetchConversionPath(tl.asset, tl.balance, network).catch(() => null);
-            convertibility[tl.asset] = path !== null;
-          })
+        pricedAssets.map(async ({ asset, amount }) => {
+          const path = await fetchConversionPath(asset, amount, network).catch(() => null);
+          convertibility[asset] = path !== null;
+        })
       );
       const sponsorshipAffordabilityPromise: Promise<SponsorshipAffordability> =
         accountState.sponsorshipEnumerationIncomplete
@@ -139,14 +161,13 @@ export class CloseController {
         sponsorshipAffordabilityPromise,
       ]);
 
-      const claimableBalanceSelections = resolveClaimableBalanceSelections(
-        decisions,
-        accountState.claimableBalances.map((b) => b.id)
-      );
-      const planAssetsById = accountState.trustlines.map((tl) => ({
-        id: assetDecisionId(tl.asset),
-        asset: tl.asset,
-      }));
+      // Every asset the close will touch answers here - held or arriving. Without the arriving
+      // ones their disposition never resolves, and the plan would label a balance the caller
+      // chose to return to its issuer as a conversion - the same untruth on the consent surface
+      // that #139 removed. The Set dedupes an asset that is both held and being topped up.
+      const planAssetsById = [
+        ...new Set([...accountState.trustlines.map((tl) => tl.asset), ...claimedPerAsset.keys()]),
+      ].map((asset) => ({ id: assetDecisionId(asset), asset }));
       // A transfer answer is well-formed whether or not it names a usable account, so both halves
       // are taken here. The destinations that resolved describe the plan's asset steps and feed
       // the live-ledger check below; the ones that did not go back on the pending list.
@@ -165,7 +186,7 @@ export class CloseController {
       );
       const decisionPoints = [
         ...deriveDestinationDecisionPoints(destination),
-        ...deriveDecisionPoints(accountState, convertibility),
+        ...deriveDecisionPoints(accountState, convertibility, claimableBalanceSelections),
         ...deriveClaimableBalanceDecisionPoints(accountState),
       ];
       const answeredIds = new Set(decisions.map((d) => d?.id));
@@ -225,7 +246,15 @@ export class CloseController {
         freedReserveXlm: ((2 + accountState.numSubEntries) * 0.5).toFixed(7),
       };
 
-      return assemblePlanResponse({ buildResult, decisionPoints: pending, planHash, estimate });
+      // Every decision point goes back, answered or not - the caller renders its cards from
+      // this list and knows its own answers. Only the status cares about what remains.
+      return assemblePlanResponse({
+        buildResult,
+        decisionPoints,
+        pendingDecisionPoints: pending,
+        planHash,
+        estimate,
+      });
     } catch (e) {
       if (e instanceof HttpException) throw e;
       if (e instanceof AccountNotFoundError) fail("account_not_found", e.message, 404);
@@ -343,23 +372,37 @@ export class CloseController {
     try {
       const accountState = await readAccountState(source, network);
 
-      const assetsById = accountState.trustlines.map((tl) => ({
-        id: assetDecisionId(tl.asset),
-        asset: tl.asset,
-      }));
-      const dispositions = resolveDispositions(decisions, assetsById);
-      const transferDestinations = resolveTransferDestinations(decisions, assetsById);
-
+      // Selections resolve first: which assets can carry a disposition answer depends on which
+      // claims will run, so the claim answers shape the asset universe below.
       const claimableBalanceSelections = resolveClaimableBalanceSelections(
         decisions,
         accountState.claimableBalances.map((b) => b.id)
       );
+      const txClaimedPerAsset = claimedAmountsPerAsset(accountState, claimableBalanceSelections);
+
+      // Held or arriving - an answer for an asset only the claims will fill must resolve, or
+      // the gate below would demand an answer the resolution had just discarded.
+      const assetsById = [
+        ...new Set([...accountState.trustlines.map((tl) => tl.asset), ...txClaimedPerAsset.keys()]),
+      ].map((asset) => ({ id: assetDecisionId(asset), asset }));
+      const dispositions = resolveDispositions(decisions, assetsById);
+      const transferDestinations = resolveTransferDestinations(decisions, assetsById);
+
       const authorizedTrustlineAssets = new Set(
         accountState.trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset)
       );
-      const missing = accountState.trustlines
-        .filter((tl) => Number(tl.balance) > 0 && !(tl.asset in dispositions))
-        .map((tl) => assetDecisionId(tl.asset));
+      // Every asset the close will leave holding a balance needs its disposition answered
+      // BEFORE the first round - the held ones and the ones the claims will fill. Gating only
+      // on today's trustlines let a caller through round 1 (trustline added, balance claimed)
+      // and refused them at round 2 for an answer this endpoint never asked for: the exact
+      // dead-end the plan endpoint advertises against, replayed for direct API and SDK callers.
+      const assetsNeedingDisposition = new Set([
+        ...accountState.trustlines.filter((tl) => Number(tl.balance) > 0).map((tl) => tl.asset),
+        ...txClaimedPerAsset.keys(),
+      ]);
+      const missing = [...assetsNeedingDisposition]
+        .filter((asset) => !(asset in dispositions))
+        .map((asset) => assetDecisionId(asset));
 
       const missingClaimDecisions = accountState.claimableBalances
         .filter(

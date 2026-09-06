@@ -6,7 +6,7 @@ import {
   ArrowLeftRight,
   BookX,
   Database,
-  Gift,
+  Target,
   GitMerge,
   KeyRound,
   Unlink,
@@ -21,7 +21,7 @@ const CONFIRMED_FEATURES = [
   { icon: BookX, label: "DEX offer cancellation" },
   { icon: Database, label: "Data entry removal" },
   { icon: KeyRound, label: "Signer normalization and multisig cleanup" },
-  { icon: Gift, label: "Claimable balance claiming" },
+  { icon: Target, label: "Claimable balance claiming" },
 ];
 
 export default function RiskDisclaimerModal() {
