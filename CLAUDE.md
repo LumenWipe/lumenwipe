@@ -54,7 +54,7 @@ cd apps/api && bun test tests/close-transactions.test.ts
 The full close needs **both** services. The web reaches the API only through its own proxy, so:
 
 - `apps/api/.env.local` needs `API_KEYS` (label=key) and the read endpoints (RPC / Horizon-compatible `PATH_ROUTING` / mediator secret for exchange closes). All gitignored.
-- `apps/web/.env.local` needs `LUMENWIPE_API_URL` + `LUMENWIPE_API_KEY` (server-side, injected by the proxy), plus `NEXT_PUBLIC_MEDIATOR_PUBLIC_*` so `verify()` can recognize the mediator (see below).
+- `apps/web/.env.local` needs `LUMENWIPE_API_URL` (`http://localhost:3001` locally; production is `https://api.lumenwipe.com`) + `LUMENWIPE_API_KEY` (server-side, injected by the proxy), plus `NEXT_PUBLIC_MEDIATOR_PUBLIC_*` so `verify()` can recognize the mediator (see below).
 - `apps/playground/.env.local` (only when working on the playground - a third service, `bun run dev:playground`) needs its own `LUMENWIPE_API_URL` + `LUMENWIPE_API_KEY` under a distinct `API_KEYS` label, `PLAYGROUND_ENCRYPTION_KEY`, the testnet issuer/market-maker secrets, and its own KV credentials - never `apps/web`'s. See `apps/playground/.env.example`.
 
 ## Architecture
