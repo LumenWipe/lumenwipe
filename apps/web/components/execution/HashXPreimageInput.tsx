@@ -35,7 +35,9 @@ export default function HashXPreimageInput({ signer, disabled, onApply }: Props)
       setApplied(true);
       onApply(new HashXPreimageSigner(signer.key, preimage));
     } catch (err) {
-      setError(err instanceof InvalidPreimageError ? err.message : "Could not apply this preimage.");
+      setError(
+        err instanceof InvalidPreimageError ? err.message : "Could not apply this preimage."
+      );
     }
   };
 
@@ -47,8 +49,8 @@ export default function HashXPreimageInput({ signer, disabled, onApply }: Props)
       <p className="flex items-start gap-1.5 text-xs text-white/50">
         <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-white/40" />
         This is a hash(x) signer - its key is the hash of a secret value (a &quot;preimage&quot;),
-        not a wallet address, so no connected wallet or secret key can sign for it. If you know
-        the preimage, enter it below to contribute this signer&apos;s weight.
+        not a wallet address, so no connected wallet or secret key can sign for it. If you know the
+        preimage, enter it below to contribute this signer&apos;s weight.
       </p>
       <div className="flex items-center gap-2">
         <input

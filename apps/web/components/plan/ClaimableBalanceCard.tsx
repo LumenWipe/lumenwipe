@@ -19,7 +19,11 @@ interface ClaimableBalanceCardProps {
  * balance. A balance with no authorized trustline stays unresolved (amber) until the user
  * picks between adding a trustline to claim it or forfeiting it.
  */
-export default function ClaimableBalanceCard({ item, selection, onSelect }: ClaimableBalanceCardProps) {
+export default function ClaimableBalanceCard({
+  item,
+  selection,
+  onSelect,
+}: ClaimableBalanceCardProps) {
   const predicateNote = describeClaimPredicate(item.predicate);
 
   if (item.currentlyClaimable) {
@@ -31,7 +35,9 @@ export default function ClaimableBalanceCard({ item, selection, onSelect }: Clai
           forfeited ? "border-white/15 bg-white/[0.03]" : "border-emerald-500/20 bg-emerald-500/5"
         )}
       >
-        <Target className={cn("h-4 w-4 shrink-0", forfeited ? "text-white/40" : "text-emerald-400")} />
+        <Target
+          className={cn("h-4 w-4 shrink-0", forfeited ? "text-white/40" : "text-emerald-400")}
+        />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-white">
             {item.amount} {item.code}
@@ -95,7 +101,9 @@ export default function ClaimableBalanceCard({ item, selection, onSelect }: Clai
           />
           <span>
             Add a {item.code} trustline and claim it.{" "}
-            <span className="text-white/40">Recovers the {item.amount} {item.code}.</span>
+            <span className="text-white/40">
+              Recovers the {item.amount} {item.code}.
+            </span>
           </span>
         </label>
         <label className="flex cursor-pointer items-start gap-2 text-xs text-white/70">
@@ -107,7 +115,8 @@ export default function ClaimableBalanceCard({ item, selection, onSelect }: Clai
             className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-stellar"
           />
           <span>
-            Forfeit it. <span className="text-white/40">Inaccessible after the account is merged.</span>
+            Forfeit it.{" "}
+            <span className="text-white/40">Inaccessible after the account is merged.</span>
           </span>
         </label>
       </div>
