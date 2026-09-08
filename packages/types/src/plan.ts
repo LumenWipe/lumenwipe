@@ -51,10 +51,12 @@ export interface PlannedStep {
   status: StepStatus;
   txHash: string | null;
   error: string | null;
-  /** What the user's own account actually paid, once confirmed - "0" when a dedicated sponsor
-   *  account covered the fee-bump instead. Null until confirmed, since `estimatedFeeLumens` is
-   *  fixed at plan time and cannot know a later per-round sponsorship decision. */
-  actualFeeLumens?: string | null;
+  /** What the user's own account paid for this step, once confirmed - exactly "0" when a
+   *  dedicated sponsor account covered the fee-bump instead. Otherwise the plan-time estimate
+   *  copied forward: the close-engine's confirmation callback carries only a tx hash, not the
+   *  fee Horizon actually charged, so this cannot correct for surge pricing. Absent until the
+   *  step is confirmed. */
+  actualFeeLumens?: string;
   // Metadata for display
   affectedAsset?: string; // for HANDLE_ASSETS steps
   /** The pool, pair, or vault an EXIT_POSITIONS step leaves. */
