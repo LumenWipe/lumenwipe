@@ -76,6 +76,114 @@ export function assetDecisionId(asset: string): string {
   return `asset:${asset.replace(":", "-")}`;
 }
 
+/** A Soroban token is identified by its contract; a classic asset never starts with `C`. */
+export function isTokenContract(assetOrContract: string): boolean {
+  return /^C[A-Z2-7]{55}$/.test(assetOrContract) && StrKey.isValidContract(assetOrContract);
+}
+
+// Stable id for a Soroban token decision: "token:C...". Distinct prefix from classic assets so
+// the two can never collide or be confused in an answer.
+export function tokenDecisionId(contract: string): string {
+  return `token:${contract}`;
+}
+
+/** The decision id for either kind of balance, keyed the way dispositions are keyed. */
+export function decisionIdFor(assetOrContract: string): string {
+  return isTokenContract(assetOrContract)
+    ? tokenDecisionId(assetOrContract)
+    : assetDecisionId(assetOrContract);
+}
+
+/** The choice id that leaves a Soroban token balance with the closed address, on record. */
+export const LEAVE_CHOICE = "acknowledge_residue";
+
+/**
+ * The Soroban token contracts the answers name. A close round re-reads state without the slow
+ * event scan, so every token the caller already decided about is handed to discovery by hand -
+ * otherwise a token found by the analysis's scan could go missing from the round that moves it.
+ */
+export function tokenContractsFromAnswers(answers: DecisionAnswer[]): string[] {
+  const out = new Set<string>();
+  for (const answer of answers) {
+    if (out.size >= MAX_TOKEN_ANSWERS) break;
+    if (typeof answer?.id !== "string" || !answer.id.startsWith("token:")) continue;
+    const contract = answer.id.slice("token:".length);
+    if (isTokenContract(contract)) out.add(contract);
+  }
+  return [...out];
+}
+
+/** Discovery reads at most this many candidates per analysis; answers beyond it name nothing. */
+export const MAX_TOKEN_ANSWERS = 50;
+
+/** Every held Soroban token with a balance, keyed for the decision machinery like an asset. */
+export function tokenAssetsById(
+  account: Pick<AccountState, "sorobanTokens">
+): { id: string; asset: string }[] {
+  return (account.sorobanTokens?.tokens ?? [])
+    .filter((t) => /^\d+$/.test(t.balance) && BigInt(t.balance) > 0n)
+    .map((t) => ({ id: tokenDecisionId(t.contract), asset: t.contract }));
+}
+
+/**
+ * Derives the per-token disposition decisions for the Soroban token balances the analysis
+ * confirmed. Every held token needs an answer: unlike a classic trustline a Soroban balance does
+ * not stop the merge, so without a decision it would simply be left behind - and leaving value
+ * behind in silence is the one thing a close must never do. There is no recommended default:
+ * converting spends it, transferring moves it, leaving it is a loss the user must own.
+ *
+ * `convertibility[contract]` says whether a conversion route to XLM exists; without one the
+ * convert option is not offered. A token whose symbol or decimals could not be read is not
+ * offered conversion either - a swap amount nobody can read is not a decision anyone can make.
+ */
+export function deriveTokenDecisionPoints(
+  account: Pick<AccountState, "sorobanTokens">,
+  convertibility: Record<string, boolean>
+): DecisionPoint[] {
+  const tokens = account.sorobanTokens?.tokens ?? [];
+  return (
+    tokens
+      .filter((t) => /^\d+$/.test(t.balance))
+      // A token with no balance yet is asked about only when a position's exit will pay it out:
+      // deciding now keeps the close from stalling on an answer nobody was shown mid-way.
+      .filter((t) => BigInt(t.balance) > 0n || t.sources.includes("positions"))
+      .map((t) => {
+        const readable = t.symbol !== null && t.decimals !== null;
+        const convertible = readable && (convertibility[t.contract] ?? false);
+        const options = [
+          ...(convertible ? [{ id: "convert_to_xlm" as const, recommended: true }] : []),
+          {
+            id: TRANSFER_CHOICE,
+            note: "Sends the balance, as this token, to an account you name. No trustline is needed.",
+          },
+          {
+            id: LEAVE_CHOICE,
+            note:
+              "Leaves the balance with this address. The account closes; the tokens stay bound to " +
+              "the same key and can only be reached by funding this address again.",
+          },
+        ];
+        return {
+          id: tokenDecisionId(t.contract),
+          type: "asset_disposition" as const,
+          subject: {
+            kind: "soroban_token",
+            contract: t.contract,
+            symbol: t.symbol,
+            decimals: t.decimals,
+            balance: t.balance,
+            convertible,
+            /** True when the balance is what a position's exit will pay out, not what is held now. */
+            arrivesFromExit: BigInt(t.balance) === 0n,
+          },
+          options,
+          default: convertible ? "convert_to_xlm" : TRANSFER_CHOICE,
+          required: true,
+        };
+      })
+  );
+}
+
 // Stable id for a claimable-balance decision: "claim:<balanceId>".
 export function claimableBalanceDecisionId(balanceId: string): string {
   return `claim:${balanceId}`;
@@ -211,8 +319,11 @@ export function resolveDispositions(
     const asset = assetForId.get(answer.id);
     if (!asset) continue;
     if (answer.choice === "convert_to_xlm") out[asset] = "convert";
-    else if (answer.choice === "return_to_issuer") out[asset] = "issuer";
+    // Only a Soroban token can be left; a trustline with a balance stops the merge, so the
+    // classic builder refuses it (an answer, not a default, so it is refused loudly).
+    else if (answer.choice === "return_to_issuer" && !isTokenContract(asset)) out[asset] = "issuer";
     else if (answer.choice === TRANSFER_CHOICE) out[asset] = "transfer";
+    else if (answer.choice === LEAVE_CHOICE && isTokenContract(asset)) out[asset] = "leave";
   }
   return out;
 }

@@ -1,3 +1,4 @@
+import { formatTokenAmount } from "@/lib/utils/token-amounts";
 import type {
   AccountState,
   AssetDisposition,
@@ -77,6 +78,43 @@ function assetStepLabels(
   return {
     title: `Convert ${tl.code} to XLM`,
     description: `Exchange ${tl.balance} ${tl.code} for XLM via the Stellar DEX.`,
+  };
+}
+
+function tokenStepLabels(
+  token: { contract: string; symbol: string | null; decimals: number | null; balance: string },
+  disposition: AssetDisposition | undefined,
+  destination: string | undefined
+): { title: string; description: string; operationCount: number } {
+  const name = token.symbol ?? `token ${shortAddr(token.contract)}`;
+  const amount = formatTokenAmount(token.balance, token.decimals);
+  if (disposition === "leave") {
+    return {
+      title: `Leave ${name} with this address`,
+      description:
+        `${amount} ${name} stays bound to this account's key after the close. It can only be ` +
+        "reached by funding this address again; LumenWipe will not move it.",
+      operationCount: 0,
+    };
+  }
+  if (disposition === "convert") {
+    return {
+      title: `Convert ${name} to XLM`,
+      description: `Exchange ${amount} ${name} for XLM through the Soroswap aggregator.`,
+      operationCount: 1,
+    };
+  }
+  if (destination === undefined) {
+    return {
+      title: `Send ${name} to another account`,
+      description: `Send ${amount} ${name}, as the token, to an account you name.`,
+      operationCount: 1,
+    };
+  }
+  return {
+    title: `Send ${name} to ${shortAddr(destination)}`,
+    description: `Send ${amount} ${name}, as the token, to ${shortAddr(destination)}.`,
+    operationCount: 1,
   };
 }
 
@@ -386,16 +424,44 @@ export function buildPlan(
   // chose to give up those funds) - every other blocker code still excludes the fast path.
   const hasHardBlocker = blockers.some((b) => b.code !== "claimable_balance_forfeited");
 
+  // A Soroban token the close moves (or has yet to decide about) is its own transaction ahead of
+  // the classic close; only a balance explicitly left on record lets the close stay fused.
+  const heldTokens = (accountState.sorobanTokens?.tokens ?? []).filter(
+    (t) => /^\d+$/.test(t.balance) && BigInt(t.balance) > 0n
+  );
+  const tokenTransactions = heldTokens.some((t) => dispositions[t.contract] !== "leave");
+
+  // Soroban token balances held directly, one step each. A transfer or conversion is its own
+  // Soroban transaction ahead of the classic close; a balance left on record is a step with
+  // nothing to sign - shown so the review and the receipt carry what the user chose to leave.
+  const pushTokenSteps = (): void => {
+    for (const token of heldTokens) {
+      const labels = tokenStepLabels(
+        token,
+        dispositions[token.contract],
+        transferDestinations[token.contract]
+      );
+      steps.push(
+        step(idx++, "HANDLE_ASSETS", labels.title, labels.description, labels.operationCount, {
+          affectedAsset: token.contract,
+        })
+      );
+    }
+  };
+
   if (
     fastPathEligible &&
     hasCleanup &&
     !hasHardBlocker &&
     balancesNeedingClaimStep.length === 0 &&
+    !tokenTransactions &&
     exitBlockers.steps.length === 0 &&
     accountState.sponsoredEntries.length === 0 &&
     fusedOpCount <= OP_BATCH_LIMIT
   ) {
     const cleanupOps = fusedOpCount - 1; // ops without the merge
+    // Only balances left on record reach here (anything else is its own transaction, above).
+    pushTokenSteps();
     steps.push(
       step(
         idx++,
@@ -433,6 +499,10 @@ export function buildPlan(
     steps.push(exitStep);
     idx++;
   }
+
+  // Token steps follow the exits, exactly where the round builder runs them: an exit can pay a
+  // token out, and the token round then moves it before anything classic.
+  pushTokenSteps();
 
   if (needsSignerNormalization) {
     steps.push(

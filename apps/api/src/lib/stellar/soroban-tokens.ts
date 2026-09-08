@@ -386,7 +386,7 @@ async function mapConcurrent<T, R>(
 
 type Probe =
   | { status: "held"; balance: bigint; symbol: string | null; decimals: number | null }
-  | { status: "empty" }
+  | { status: "empty"; symbol: string | null; decimals: number | null }
   | { status: "unreadable"; detail: string };
 
 /** A symbol is presentation: only plain printable text is shown, anything else reads as none. */
@@ -404,7 +404,9 @@ async function probe(
   network: Network,
   rpc: SorobanTokenRpc,
   now: () => number,
-  deadline: number
+  deadline: number,
+  /** Read symbol/decimals even for an empty balance (a payout token the close must ask about). */
+  describeEmpty = false
 ): Promise<Probe> {
   const who = new Address(account).toScVal();
   // Each read gets its own timeout, never past the overall budget: a token that is never probed
@@ -421,10 +423,14 @@ async function probe(
     );
     if (balance === null) return { status: "unreadable", detail: "balance() did not answer" };
     if (balance < 0n) return { status: "unreadable", detail: "balance() is negative" };
-    if (balance === 0n) return { status: "empty" };
+    if (balance === 0n && !describeEmpty) return { status: "empty", symbol: null, decimals: null };
     // Metadata is presentation: a token that hides or garbles its symbol is still held, and a
     // value the decoder cannot make sense of reads as none rather than failing the balance.
-    if (readTimeout() <= 0) return { status: "held", balance, symbol: null, decimals: null };
+    if (readTimeout() <= 0) {
+      return balance === 0n
+        ? { status: "empty", symbol: null, decimals: null }
+        : { status: "held", balance, symbol: null, decimals: null };
+    }
     const decodeOr = (val: xdr.ScVal | null): unknown => {
       try {
         return val ? scValToNative(val) : null;
@@ -455,7 +461,9 @@ async function probe(
         : typeof decimalsNative === "bigint" && decimalsNative >= 0n && decimalsNative <= 38n
           ? Number(decimalsNative)
           : null;
-    return { status: "held", balance, symbol, decimals };
+    return balance === 0n
+      ? { status: "empty", symbol, decimals }
+      : { status: "held", balance, symbol, decimals };
   } catch (err) {
     return { status: "unreadable", detail: reason(err) };
   }
@@ -602,8 +610,8 @@ export async function discoverSorobanTokens(
         message: `Not checked as a Soroban token: ${manualIgnored.join("; ")}.`,
       });
     }
-    const probes = await mapConcurrent(readable, BALANCE_CONCURRENCY, ([contract]) =>
-      probe(contract, address, network, deps.rpc, deps.now, deadline)
+    const probes = await mapConcurrent(readable, BALANCE_CONCURRENCY, ([contract, sources]) =>
+      probe(contract, address, network, deps.rpc, deps.now, deadline, sources.includes("positions"))
     );
     readable.forEach(([contract, sources], i) => {
       const result = probes[i]!;
@@ -611,6 +619,16 @@ export async function discoverSorobanTokens(
         tokens.push({
           contract,
           balance: result.balance.toString(),
+          symbol: result.symbol,
+          decimals: result.decimals,
+          sources,
+        });
+      } else if (result.status === "empty" && sources.includes("positions")) {
+        // Not held yet, but a detected position's exit pays it out: listed with a zero balance so
+        // the close can ask what to do with it before the exit runs, not stall afterwards.
+        tokens.push({
+          contract,
+          balance: "0",
           symbol: result.symbol,
           decimals: result.decimals,
           sources,

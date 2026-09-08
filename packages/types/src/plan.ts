@@ -14,13 +14,16 @@ export type StepType =
 export type StepStatus = "pending" | "signing" | "submitted" | "confirmed" | "failed" | "skipped";
 
 /**
- * What happens to a non-XLM balance before its trustline is removed.
+ * What happens to a non-XLM balance before the account is merged.
  *
  * `convert` swaps it to XLM and `issuer` sends it back to be burned - both end the close with the
  * position destroyed. `transfer` keeps the asset, as the asset, by paying it to another account
- * that already holds the trustline.
+ * (one that already holds the trustline, for a classic asset). `leave` applies only to a Soroban
+ * token balance, which sits in the token contract's storage and does not stop a merge: the user
+ * acknowledges that it stays with this address, recoverable only by funding the same key again.
+ * A classic trustline can never be left - the merge fails while it holds a balance.
  */
-export type AssetDisposition = "convert" | "issuer" | "transfer";
+export type AssetDisposition = "convert" | "issuer" | "transfer" | "leave";
 
 /**
  * Where a `transfer` disposition sends its balance, keyed by the same canonical `CODE:ISSUER`

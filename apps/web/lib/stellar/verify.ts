@@ -72,6 +72,13 @@ export interface CloseExpectation {
    * is not a loss.
    */
   transfers: Record<string, { destination: string; amount: string }>;
+  /**
+   * The Soroban token transfers the user chose, keyed by token contract: the account each balance
+   * goes to and the balance the client read, in the token's base units. The invoke rule for a
+   * contract in this map is the transfer rule, not the DeFi-exit rule: the call must be that
+   * token's `transfer(account, destination, amount)` with nothing else authorized.
+   */
+  tokenTransfers: Record<string, { destination: string; amount: string }>;
   /** Assets the user themselves chose to add a trustline for, to claim a balance the account
    *  otherwise cannot reach ("add trustline and claim"). Sourced from the user's own claimable-
    *  balance decisions, never from the API response - the only case a raised (non-removal)
@@ -423,6 +430,80 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         }
         break;
       case "invoke_host_function": {
+        // A transfer of a Soroban token the user chose to send as-is. Everything the user decided
+        // is checked by value: the token, the account, the destination they typed, and at least
+        // the balance they were shown; and the signature may authorize nothing but that one plain
+        // call - a token whose transfer nests another invocation is refused. Anything named in the
+        // call beyond the account, the destination, and the token itself is a diversion.
+        const tokenTransfer = expected.tokenTransfers[op.contract];
+        if (tokenTransfer) {
+          if (intent.operations.length !== 1) {
+            throw new VerificationError(
+              "A token transfer must be the only operation in its transaction."
+            );
+          }
+          if (BigInt(intent.fee) > MAX_EXIT_FEE_STROOPS) {
+            throw new VerificationError(
+              "A token transfer would pay a network fee far above what any transfer needs."
+            );
+          }
+          if (op.source !== expected.source) {
+            throw new VerificationError(
+              "A token transfer would act for an account other than the one being closed."
+            );
+          }
+          if (op.function !== "transfer" || op.args.length !== 3) {
+            throw new VerificationError(
+              "A token transaction would call something other than a plain transfer."
+            );
+          }
+          if (op.args[0] !== expected.source) {
+            throw new VerificationError(
+              "A token transfer would move a balance other than this account's own."
+            );
+          }
+          if (op.args[1] !== tokenTransfer.destination) {
+            throw new VerificationError(
+              "A token transfer would send the balance to an address you did not choose."
+            );
+          }
+          const amount = op.args[2] ?? "";
+          if (
+            !/^\d+$/.test(amount) ||
+            !/^\d+$/.test(tokenTransfer.amount) ||
+            BigInt(amount) < BigInt(tokenTransfer.amount)
+          ) {
+            throw new VerificationError(
+              "A token transfer would send less than the balance you were shown. If you moved " +
+                "some of this token since, run the analysis again."
+            );
+          }
+          if (op.authorizesBeyondSelf || op.authDepth !== 0) {
+            throw new VerificationError(
+              "A token transfer would authorize actions beyond the transfer itself."
+            );
+          }
+          if (op.unsupportedAddressCount > 0) {
+            throw new VerificationError(
+              "A token transfer names an address form that cannot be verified."
+            );
+          }
+          for (const account of op.accountsReferenced) {
+            if (account !== expected.source && account !== tokenTransfer.destination) {
+              throw new VerificationError(
+                "A token transfer names an account other than this one and your chosen destination."
+              );
+            }
+          }
+          for (const contract of op.contractsReferenced) {
+            if (contract !== op.contract) {
+              throw new VerificationError(
+                "A token transfer would reach a contract other than the token itself."
+              );
+            }
+          }
+          break;
+        }
         // A DeFi exit: a Soroban contract call the API built. The client cannot know a protocol's
         // ABI, so the check pins the call to what the client can vouch for on its own, from the
         // account read the user reviewed: the call must be the transaction's only operation (a
@@ -576,6 +657,7 @@ export function verifyCloseTransaction(opts: {
      *  safe, but a caller that means to allow them must say so explicitly rather than inherit
      *  it. */
     transfers: Record<string, { destination: string; amount: string }>;
+    tokenTransfers: Record<string, { destination: string; amount: string }>;
     exitContracts: string[];
     heldTokenContracts: string[];
     positionTokenContracts: string[];

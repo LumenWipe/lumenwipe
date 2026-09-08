@@ -7,10 +7,34 @@ import type { ClaimPredicate } from "@/types/account";
  * client-side builder (fast-path) now that the plan comes from the API.
  */
 export interface AssetConvertibility {
+  /** The classic asset (`CODE:ISSUER`) or, for a Soroban token, its contract id. */
   asset: string;
   code: string;
+  /** Human-readable balance: decimal for a classic asset or a token with known decimals. */
   balance: string;
   convertible: boolean;
+  /** Present for a Soroban token: its contract and the raw balance verify() holds a transfer to.
+   *  `arrivesFromExit`: the balance is what a position's exit will pay out, not what is held now. */
+  token?: {
+    contract: string;
+    symbol: string | null;
+    decimals: number | null;
+    rawBalance: string;
+    arrivesFromExit: boolean;
+  };
+}
+
+/** Base units rendered with the token's decimals; raw units, labelled, when it has none. */
+export function formatTokenBalance(rawBalance: string, decimals: number | null): string {
+  if (!/^\d+$/.test(rawBalance)) return rawBalance;
+  if (decimals === null || !Number.isInteger(decimals) || decimals < 0 || decimals > 38) {
+    return `${rawBalance} base units`;
+  }
+  if (decimals === 0) return rawBalance;
+  const padded = rawBalance.padStart(decimals + 1, "0");
+  const whole = padded.slice(0, -decimals);
+  const frac = padded.slice(-decimals).replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole;
 }
 
 /**
@@ -22,12 +46,32 @@ export function decisionPointsToConversions(plan: PlanResponse): AssetConvertibi
   return plan.decisionPoints
     .filter((dp) => dp.type === "asset_disposition")
     .map((dp) => {
+      const convertible = dp.options.some((o) => o.id === "convert_to_xlm");
+      if (dp.subject.kind === "soroban_token") {
+        const contract = String(dp.subject.contract ?? "");
+        const symbol = typeof dp.subject.symbol === "string" ? dp.subject.symbol : null;
+        const decimals = typeof dp.subject.decimals === "number" ? dp.subject.decimals : null;
+        const rawBalance = String(dp.subject.balance ?? "0");
+        return {
+          asset: contract,
+          code: symbol ?? `${contract.slice(0, 4)}…${contract.slice(-4)}`,
+          balance: formatTokenBalance(rawBalance, decimals),
+          convertible,
+          token: {
+            contract,
+            symbol,
+            decimals,
+            rawBalance,
+            arrivesFromExit: dp.subject.arrivesFromExit === true,
+          },
+        };
+      }
       const asset = String(dp.subject.asset ?? "");
       return {
         asset,
         code: asset.includes(":") ? asset.split(":")[0] : asset,
         balance: String(dp.subject.balance ?? "0"),
-        convertible: dp.options.some((o) => o.id === "convert_to_xlm"),
+        convertible,
       };
     });
 }

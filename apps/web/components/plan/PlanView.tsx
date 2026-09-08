@@ -89,7 +89,9 @@ export default function PlanView({
   // right.
   useEffect(() => {
     for (const c of conversions) {
-      if (c.convertible && assetDispositions[c.asset] === undefined) {
+      // Never for a Soroban token: its conversion is not built yet, so an auto-selected "convert"
+      // would pass the resolved gate and leave the balance behind.
+      if (c.convertible && !c.token && assetDispositions[c.asset] === undefined) {
         setAssetDisposition(c.asset, "convert");
       }
     }
@@ -131,7 +133,9 @@ export default function PlanView({
     }
   }
 
-  const assetsNeedingDecision = account.trustlines.filter((tl) => Number(tl.balance) > 0).length;
+  const assetsNeedingDecision =
+    account.trustlines.filter((tl) => Number(tl.balance) > 0).length +
+    (account.sorobanTokens?.tokens ?? []).filter((t) => /^[1-9]\d*$/.test(t.balance)).length;
   // Empty is not the same as resolved - see assetsResolved, where that distinction lives.
   const assetCardsWithheld = assetsNeedingDecision > 0 && conversions.length === 0;
 

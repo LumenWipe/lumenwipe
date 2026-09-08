@@ -12,7 +12,7 @@ import { saveHistory } from "@/lib/session/history";
 import { formatXlm } from "@/lib/utils/amounts";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
 import { buildTxLedger, labelForTx } from "@/lib/utils/txLedger";
-import { receiptAssetSummary } from "@/lib/api/close-decisions";
+import { receiptAssetSummary, receiptTokenSummary } from "@/lib/api/close-decisions";
 import { describeDefiPosition, positionContracts } from "@/lib/plan/describe-position";
 
 interface CompletionReceiptProps {
@@ -226,6 +226,8 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       account,
       claimableBalanceSelections
     );
+    // Soroban tokens sit in the same list: the receipt is the one record of a balance left behind.
+    const handledBalances = [...handledAssets, ...receiptTokenSummary(account)];
     const assetSteps = confirmedSteps.filter((s) => s.type === "HANDLE_ASSETS");
 
     function dispositionFor(entry: { asset: string }): AssetDisposition | null {
@@ -236,14 +238,14 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       return null;
     }
 
-    if (handledAssets.length > 0) {
+    if (handledBalances.length > 0) {
       groups.push({
         type: "HANDLE_ASSETS",
         title: "Assets handled",
-        summary: `${handledAssets.length} asset${handledAssets.length === 1 ? "" : "s"} with a balance`,
+        summary: `${handledBalances.length} asset${handledBalances.length === 1 ? "" : "s"} with a balance`,
         body: (
           <ul className="space-y-1.5">
-            {handledAssets.map((tl) => {
+            {handledBalances.map((tl) => {
               const disposition = dispositionFor(tl);
               // "transfer" must be named, not folded into the generic fallback. This is the
               // permanent record of an irreversible close, and it is the only disposition that
@@ -259,7 +261,9 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
                       ? destination
                         ? `sent to ${shortAddr(destination)}`
                         : "sent to another account"
-                      : "resolved";
+                      : disposition === "leave"
+                        ? "left with this address"
+                        : "resolved";
               return (
                 <li key={tl.asset} className="flex items-center gap-2 text-xs text-white/55">
                   <span className="font-medium text-white/80">{tl.code}</span>

@@ -39,6 +39,7 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
     memoType: null,
     claimTrustlineAssets: [],
     transfers: {},
+    tokenTransfers: {},
     exitContracts: [POOL],
     heldTokenContracts: [XLM_SAC],
     positionTokenContracts: [],
@@ -751,6 +752,7 @@ test("verifyCloseTransaction passes a mediated close to a memo-requiring exchang
         memo: "deposit-1",
         claimTrustlineAssets: [],
         transfers: {},
+        tokenTransfers: {},
         exitContracts: [],
         heldTokenContracts: [],
         positionTokenContracts: [],
@@ -785,6 +787,7 @@ test("verifyCloseTransaction rejects a mediated close to a memo-requiring exchan
         memo: null,
         claimTrustlineAssets: [],
         transfers: {},
+        tokenTransfers: {},
         exitContracts: [],
         heldTokenContracts: [],
         positionTokenContracts: [],
@@ -810,6 +813,7 @@ test("verifyCloseTransaction passes a direct close to a destination the registry
         memo: null,
         claimTrustlineAssets: [],
         transfers: {},
+        tokenTransfers: {},
         exitContracts: [],
         heldTokenContracts: [],
         positionTokenContracts: [],
@@ -994,6 +998,7 @@ test("the mediated forward is exempt: it is sent by the intermediary, not the so
         memoRequired: true,
         memoType: "text",
         transfers: {},
+        tokenTransfers: {},
       })
     )
   ).not.toThrow();
@@ -1015,6 +1020,7 @@ const exit = (over: Partial<ExitOp> = {}): IntentOperation => ({
   contractsReferenced: [POOL],
   unsupportedAddressCount: 0,
   authorizesBeyondSelf: false,
+  authDepth: 0,
   ...over,
 });
 const exitOnly = (op: IntentOperation, fee = "100") =>
@@ -1189,5 +1195,126 @@ test("an Aquarius exit may call withdraw or claim on its pool, and the share tok
   expect(() => assertCloseIntent(exitOnly(claim), expected)).not.toThrow();
   expect(() => assertCloseIntent(exitOnly(exit({ function: "deposit" })), expected)).toThrow(
     /function LumenWipe does not use/
+  );
+});
+
+// ─── Soroban token transfers (#161) ──────────────────────────────────────────
+
+const TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
+const tokenTransfer = (over: Partial<ExitOp> = {}): IntentOperation => ({
+  source: SRC,
+  type: "invoke_host_function",
+  contract: TOKEN,
+  function: "transfer",
+  args: [SRC, DEST, "2500000000"],
+  accountsReferenced: [SRC, DEST],
+  contractsReferenced: [TOKEN],
+  unsupportedAddressCount: 0,
+  authorizesBeyondSelf: false,
+  authDepth: 0,
+  ...over,
+});
+const chosenToken = (amount = "2500000000") =>
+  expectation({ tokenTransfers: { [TOKEN]: { destination: DEST, amount } } });
+
+test("a token transfer of at least the balance shown, to the account the user chose, under the account's own plain call, passes", () => {
+  expect(() => assertCloseIntent(exitOnly(tokenTransfer()), chosenToken())).not.toThrow();
+  // The live balance grew since the read: more to an already-pinned destination is not a loss.
+  expect(() =>
+    assertCloseIntent(exitOnly(tokenTransfer({ args: [SRC, DEST, "2500000001"] })), chosenToken())
+  ).not.toThrow();
+});
+
+test("rejects a token transfer to an address the user did not choose - the diversion this rule exists for", () => {
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(
+        tokenTransfer({ args: [SRC, ATTACKER, "2500000000"], accountsReferenced: [SRC, ATTACKER] })
+      ),
+      chosenToken()
+    )
+  ).toThrow(/address you did not choose/);
+});
+
+test("rejects a token transfer of less than the balance the user was shown, or of an unreadable amount", () => {
+  expect(() =>
+    assertCloseIntent(exitOnly(tokenTransfer({ args: [SRC, DEST, "2499999999"] })), chosenToken())
+  ).toThrow(/less than the balance/);
+  expect(() =>
+    assertCloseIntent(exitOnly(tokenTransfer({ args: [SRC, DEST, '"2500000000"'] })), chosenToken())
+  ).toThrow(/less than the balance/);
+});
+
+test("rejects a token transfer that moves another account's balance", () => {
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(
+        tokenTransfer({
+          args: [ATTACKER, DEST, "2500000000"],
+          accountsReferenced: [ATTACKER, DEST],
+        })
+      ),
+      chosenToken()
+    )
+  ).toThrow(/other than this account's own/);
+});
+
+test("rejects a token call that is not a plain three-argument transfer", () => {
+  expect(() =>
+    assertCloseIntent(exitOnly(tokenTransfer({ function: "approve" })), chosenToken())
+  ).toThrow(/something other than a plain transfer/);
+  expect(() =>
+    assertCloseIntent(exitOnly(tokenTransfer({ args: [SRC, DEST] })), chosenToken())
+  ).toThrow(/something other than a plain transfer/);
+});
+
+test("rejects a token whose transfer makes the account authorize anything else - a nested call or foreign credentials", () => {
+  expect(() => assertCloseIntent(exitOnly(tokenTransfer({ authDepth: 1 })), chosenToken())).toThrow(
+    /beyond the transfer itself/
+  );
+  expect(() =>
+    assertCloseIntent(exitOnly(tokenTransfer({ authorizesBeyondSelf: true })), chosenToken())
+  ).toThrow(/beyond the transfer itself/);
+});
+
+test("rejects a token transfer that names any other account or contract, or an address form it cannot pin", () => {
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(tokenTransfer({ accountsReferenced: [SRC, DEST, ATTACKER] })),
+      chosenToken()
+    )
+  ).toThrow(/other than this one and your chosen destination/);
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(tokenTransfer({ contractsReferenced: [TOKEN, OTHER_POOL] })),
+      chosenToken()
+    )
+  ).toThrow(/other than the token itself/);
+  expect(() =>
+    assertCloseIntent(exitOnly(tokenTransfer({ unsupportedAddressCount: 1 })), chosenToken())
+  ).toThrow(/cannot be verified/);
+});
+
+test("rejects a token transfer that is not alone, acts for another account, or pays an outsized fee", () => {
+  expect(() =>
+    assertCloseIntent(
+      intent({
+        operations: [tokenTransfer(), tokenTransfer()],
+        guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
+      }),
+      chosenToken()
+    )
+  ).toThrow(/only operation/);
+  expect(() =>
+    assertCloseIntent(exitOnly(tokenTransfer({ source: ATTACKER })), chosenToken())
+  ).toThrow(/other than the one being closed/);
+  expect(() => assertCloseIntent(exitOnly(tokenTransfer(), "20000000"), chosenToken())).toThrow(
+    /network fee/
+  );
+});
+
+test("a token the user never chose to transfer is judged as a DeFi exit, and fails there: no position, no balance", () => {
+  expect(() => assertCloseIntent(exitOnly(tokenTransfer()), expectation())).toThrow(
+    /not one of this account's detected positions/
   );
 });

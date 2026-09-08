@@ -118,6 +118,9 @@ export type IntentOperationBody =
       /** True when the signature would authorize more than the account's own plain contract
        *  calls: another party's credentials, or a contract creation, in the auth entries. */
       authorizesBeyondSelf: boolean;
+      /** How deep the authorization tree nests: 0 when every entry is a single plain call with
+       *  no sub-invocations. A token transfer must be 0. */
+      authDepth: number;
     }
   | { type: "unknown" };
 

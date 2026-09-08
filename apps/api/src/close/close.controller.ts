@@ -33,7 +33,11 @@ import {
   claimableBalanceDecisionId,
   claimedAmountsPerAsset,
   deriveClaimableBalanceDecisionPoints,
+  decisionIdFor,
   deriveDecisionPoints,
+  deriveTokenDecisionPoints,
+  tokenAssetsById,
+  tokenContractsFromAnswers,
   deriveDestinationDecisionPoints,
   destinationDecisionId,
   isDestinationAcknowledged,
@@ -116,7 +120,11 @@ export class CloseController {
       : [];
 
     try {
-      const accountState = await readAccountState(source, network);
+      const accountState = await readAccountState(
+        source,
+        network,
+        tokenContractsFromAnswers(decisions)
+      );
       const mediatorRequired = destination ? requiresMediatorForAddress(destination) : false;
 
       const convertibility: Record<string, boolean> = {};
@@ -166,8 +174,14 @@ export class CloseController {
       // chose to return to its issuer as a conversion - the same untruth on the consent surface
       // that #139 removed. The Set dedupes an asset that is both held and being topped up.
       const planAssetsById = [
-        ...new Set([...accountState.trustlines.map((tl) => tl.asset), ...claimedPerAsset.keys()]),
-      ].map((asset) => ({ id: assetDecisionId(asset), asset }));
+        ...[
+          ...new Set([...accountState.trustlines.map((tl) => tl.asset), ...claimedPerAsset.keys()]),
+        ].map((asset) => ({ id: assetDecisionId(asset), asset })),
+        // Soroban token balances decide alongside: convert, transfer as the token, or leave on
+        // record. No route pricing yet - conversion is offered once a quote source exists.
+        ...tokenAssetsById(accountState),
+      ];
+      const tokenConvertibility: Record<string, boolean> = {};
       // A transfer answer is well-formed whether or not it names a usable account, so both halves
       // are taken here. The destinations that resolved describe the plan's asset steps and feed
       // the live-ledger check below; the ones that did not go back on the pending list.
@@ -188,6 +202,7 @@ export class CloseController {
       const decisionPoints = [
         ...deriveDestinationDecisionPoints(destination),
         ...deriveDecisionPoints(accountState, convertibility, claimableBalanceSelections),
+        ...deriveTokenDecisionPoints(accountState, tokenConvertibility),
         ...deriveClaimableBalanceDecisionPoints(accountState),
       ];
       const answeredIds = new Set(decisions.map((d) => d?.id));
@@ -213,7 +228,7 @@ export class CloseController {
       // it already being pending, which it never was: `pending` is keyed on the answer's id, and
       // the id is present.
       for (const asset of missingDestinations) {
-        const id = assetDecisionId(asset);
+        const id = decisionIdFor(asset);
         const point = decisionPoints.find((dp) => dp.id === id);
         if (point && !pending.includes(point)) pending.push(point);
       }
@@ -371,7 +386,11 @@ export class CloseController {
     }
 
     try {
-      const accountState = await readAccountState(source, network);
+      const accountState = await readAccountState(
+        source,
+        network,
+        tokenContractsFromAnswers(decisions)
+      );
 
       // Selections resolve first: which assets can carry a disposition answer depends on which
       // claims will run, so the claim answers shape the asset universe below.
@@ -384,8 +403,14 @@ export class CloseController {
       // Held or arriving - an answer for an asset only the claims will fill must resolve, or
       // the gate below would demand an answer the resolution had just discarded.
       const assetsById = [
-        ...new Set([...accountState.trustlines.map((tl) => tl.asset), ...txClaimedPerAsset.keys()]),
-      ].map((asset) => ({ id: assetDecisionId(asset), asset }));
+        ...[
+          ...new Set([
+            ...accountState.trustlines.map((tl) => tl.asset),
+            ...txClaimedPerAsset.keys(),
+          ]),
+        ].map((asset) => ({ id: assetDecisionId(asset), asset })),
+        ...tokenAssetsById(accountState),
+      ];
       const dispositions = resolveDispositions(decisions, assetsById);
       const transferDestinations = resolveTransferDestinations(decisions, assetsById);
 
@@ -401,9 +426,12 @@ export class CloseController {
         ...accountState.trustlines.filter((tl) => Number(tl.balance) > 0).map((tl) => tl.asset),
         ...txClaimedPerAsset.keys(),
       ]);
+      // A Soroban token balance does not stop the merge, which is exactly why it must be
+      // answered: without a decision it would be left behind in silence.
+      for (const { asset } of tokenAssetsById(accountState)) assetsNeedingDisposition.add(asset);
       const missing = [...assetsNeedingDisposition]
         .filter((asset) => !(asset in dispositions))
-        .map((asset) => assetDecisionId(asset));
+        .map((asset) => decisionIdFor(asset));
 
       const missingClaimDecisions = accountState.claimableBalances
         .filter(
@@ -475,7 +503,7 @@ export class CloseController {
       }
       if (e instanceof MissingTransferDestinationError) {
         fail("transfer_destination_missing", e.message, 422, {
-          decisionId: assetDecisionId(e.asset),
+          decisionId: decisionIdFor(e.asset),
         });
       }
       if (e instanceof CloseBuildError) fail(e.code, e.message, e.status);
