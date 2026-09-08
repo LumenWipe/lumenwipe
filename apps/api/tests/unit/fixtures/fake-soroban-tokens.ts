@@ -32,8 +32,11 @@ export interface FakeToken {
 }
 
 export interface FakeEventWindow {
-  /** Contracts that emitted a credit to the account inside this ledger window. */
+  /** Contracts that emitted a credit to the account inside this ledger window, one event each. */
   contracts: string[];
+  /** Contracts whose events sit just past the window's end ledger: what a cursor page, which
+   *  carries no end ledger, runs into on the real RPC. */
+  spill?: string[];
 }
 
 export interface FakeSorobanWorld {
@@ -89,12 +92,18 @@ function simulationWith(retval: xdr.ScVal): rpc.Api.SimulateTransactionResponse 
   } as unknown as rpc.Api.SimulateTransactionResponse;
 }
 
+export interface FakeEventRequest {
+  startLedger?: number;
+  endLedger?: number;
+  cursor?: string;
+  topics?: string[][];
+}
+
 export function fakeSorobanRpc(world: FakeSorobanWorld): SorobanTokenRpc & {
-  eventRequests: Array<{ startLedger?: number; endLedger?: number; topics?: string[][] }>;
+  eventRequests: FakeEventRequest[];
 } {
   const tokens = new Map(world.tokens.map((t) => [t.contract, t]));
-  const eventRequests: Array<{ startLedger?: number; endLedger?: number; topics?: string[][] }> =
-    [];
+  const eventRequests: FakeEventRequest[] = [];
   const never = new Promise<never>(() => {});
   return {
     eventRequests,
@@ -115,26 +124,46 @@ export function fakeSorobanRpc(world: FakeSorobanWorld): SorobanTokenRpc & {
       }
       return { latestLedger: 1, entries };
     },
+    // Pages like the real RPC: `limit` events per page, a cursor that is never empty, and a
+    // cursor request that knows no end ledger - so a window's `spill` shows up on the page after
+    // its own events, exactly where a scan that forgot the chunk edge would pick it up.
     async getEvents(request) {
       const r = request as {
         startLedger?: number;
         endLedger?: number;
+        cursor?: string;
+        limit?: number;
         filters?: rpc.Api.EventFilter[];
       };
       eventRequests.push({
         startLedger: r.startLedger,
         endLedger: r.endLedger,
+        cursor: r.cursor,
         topics: r.filters?.[0]?.topics,
       });
-      const window = world.events?.[`${r.startLedger}-${r.endLedger}`];
+      let start = r.startLedger ?? 0;
+      let end = r.endLedger ?? 0;
+      let offset = 0;
+      if (r.cursor !== undefined) {
+        const [s, e, o] = r.cursor.split("/").map(Number);
+        start = s ?? 0;
+        end = e ?? 0;
+        offset = o ?? 0;
+      }
+      const window = world.events?.[`${start}-${end}`];
       if (window && "error" in window) throw new Error(window.error);
-      const events = (window?.contracts ?? []).map((contract, i) => ({
+      const inWindow = (window?.contracts ?? []).map((contract) => ({ contract, ledger: end }));
+      const spilled = (window?.spill ?? []).map((contract) => ({ contract, ledger: end + 1 }));
+      const all = [...inWindow, ...spilled];
+      const limit = r.limit ?? 1_000;
+      const page = all.slice(offset, offset + limit);
+      const events = page.map(({ contract, ledger }, i) => ({
         type: "contract",
-        ledger: r.endLedger ?? 0,
+        ledger,
         ledgerClosedAt: "2026-01-01T00:00:00Z",
         contractId: new Contract(contract),
-        id: `${r.startLedger}-${i}`,
-        pagingToken: `${r.startLedger}-${i}`,
+        id: `${start}-${offset + i}`,
+        pagingToken: `${start}-${offset + i}`,
         inSuccessfulContractCall: true,
         txHash: "00".repeat(32),
         topic: [],
@@ -145,7 +174,7 @@ export function fakeSorobanRpc(world: FakeSorobanWorld): SorobanTokenRpc & {
       return {
         latestLedger: world.latestLedger ?? 1_000_000,
         events,
-        cursor: "",
+        cursor: `${start}/${end}/${offset + page.length}`,
       } as unknown as rpc.Api.GetEventsResponse;
     },
     async simulateTransaction(tx) {

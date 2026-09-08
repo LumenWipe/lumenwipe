@@ -34,7 +34,7 @@ export const OCTOPOS_API_URL_MAINNET: string = process.env.OCTOPOS_API_URL_MAINN
 /** stellar.expert's public API (no key), the one free per-account enumeration of Soroban token
  *  balances; a candidate source only - every balance is re-read from the ledger. */
 export const STELLAR_EXPERT_API_URL =
-  process.env.STELLAR_EXPERT_API_URL || "https://api.stellar.expert";
+  process.env.STELLAR_EXPERT_API_URL ?? "https://api.stellar.expert";
 
 export const SE_EXPLORER_BASE: Record<Network, string> = {
   mainnet: "https://stellar.expert/explorer/public",

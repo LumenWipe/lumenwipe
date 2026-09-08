@@ -67,6 +67,9 @@ export interface SorobanTokensDeps {
   now: () => number;
   /** Total time the discovery may take; what does not fit is reported as skipped. */
   budgetMs: number;
+  /** Whether to scan recent events at all. A close round re-reads state several times and only
+   *  needs the balances the analysis already named; the scan is for finding new ones. */
+  scanEvents?: boolean;
 }
 
 /** Discovery never holds an analysis longer than this; sources that do not fit are skipped. */
@@ -78,10 +81,19 @@ export const EVENTS_CHUNK_LEDGERS = 4_000;
 /** At most this many chunks per analysis (about 33 hours on mainnet). */
 export const EVENTS_MAX_CHUNKS = 6;
 export const EVENTS_PAGE_LIMIT = 1_000;
+/** Pages read per chunk before the chunk is called covered enough; a busier account than this
+ *  is a candidate flood the cap below would truncate anyway. */
+export const EVENTS_MAX_PAGES = 5;
+/** Candidates a single third-party or on-chain source may contribute; the rest are dropped there
+ *  rather than crowding out the user's own and the positions' tokens under the overall cap. */
+export const MAX_CANDIDATES_PER_SOURCE = 50;
 /** No more candidates than this are read per analysis; the rest are reported as skipped. */
 export const MAX_CANDIDATES = 50;
 export const BALANCE_CONCURRENCY = 8;
 export const BALANCE_TIMEOUT_MS = 5_000;
+/** Reserved for the ledger reads after the sources: the event scan may use the budget up to here. */
+const LEDGER_READS_RESERVE_MS = 6_000;
+const RPC_CALL_TIMEOUT_MS = 12_000;
 /** Ledger entries are read in chunks below the RPC's per-call key cap. */
 const LEDGER_KEYS_PER_CALL = 100;
 
@@ -96,7 +108,8 @@ export function bundledListCandidates(network: Network): string[] {
 export function defaultSorobanTokensDeps(
   network: Network,
   positions: DefiPosition[],
-  manualCandidates: string[] = []
+  manualCandidates: string[] = [],
+  options: { budgetMs?: number; scanEvents?: boolean } = {}
 ): SorobanTokensDeps {
   return {
     rpc: getRpcServer(network),
@@ -106,7 +119,8 @@ export function defaultSorobanTokensDeps(
     manualCandidates,
     positions,
     now: () => Date.now(),
-    budgetMs: SOROBAN_TOKENS_BUDGET_MS,
+    budgetMs: options.budgetMs ?? SOROBAN_TOKENS_BUDGET_MS,
+    scanEvents: options.scanEvents ?? true,
   };
 }
 
@@ -188,6 +202,7 @@ async function explorerCandidates(
       if (typeof asset !== "string" || !CONTRACT_ID.test(asset)) continue;
       if (typeof balance === "string" && /^0+$/.test(balance)) continue;
       out.push(asset);
+      if (out.length >= MAX_CANDIDATES_PER_SOURCE) break;
     }
     return out;
   } finally {
@@ -195,9 +210,11 @@ async function explorerCandidates(
   }
 }
 
-/** The four topic shapes a credit to the account can take: SEP-41 `transfer` (3 topics), the
- *  Stellar Asset Contract's `transfer` (4, with the asset), and `mint` in both shapes. */
-function creditTopicFilters(address: string): string[][] {
+/** The topic shapes a credit to the account can take: SEP-41 `transfer` (3 topics), the Stellar
+ *  Asset Contract's `transfer` (4, with the asset), SEP-41 `mint` (`[mint, to]`), the SAC's
+ *  (`[mint, to, asset]`), and the older example-token `mint` that names the admin first
+ *  (`[mint, admin, to]`). Five is the RPC's limit per filter. */
+export function creditTopicFilters(address: string): string[][] {
   const who = new Address(address).toScVal().toXDR("base64");
   const transfer = xdr.ScVal.scvSymbol("transfer").toXDR("base64");
   const mint = xdr.ScVal.scvSymbol("mint").toXDR("base64");
@@ -206,6 +223,7 @@ function creditTopicFilters(address: string): string[][] {
     [transfer, "*", who, "*"],
     [mint, who],
     [mint, who, "*"],
+    [mint, "*", who],
   ];
 }
 
@@ -222,7 +240,13 @@ async function eventCandidates(
   deps: SorobanTokensDeps,
   deadline: number
 ): Promise<EventScan> {
-  const latest = (await deps.rpc.getLatestLedger()).sequence;
+  const latest = (
+    await withTimeout(
+      deps.rpc.getLatestLedger(),
+      Math.max(1, Math.min(deadline - deps.now(), RPC_CALL_TIMEOUT_MS)),
+      "getLatestLedger"
+    )
+  ).sequence;
   const filters: stellarRpc.Api.EventFilter[] = [
     { type: "contract", topics: creditTopicFilters(address) },
   ];
@@ -241,20 +265,31 @@ async function eventCandidates(
     let cursor: string | undefined;
     try {
       // Newest chunk first: a token received an hour ago matters more than one received yesterday.
-      for (;;) {
+      for (let pages = 0; pages < EVENTS_MAX_PAGES; pages++) {
+        const left = deadline - deps.now();
+        if (left <= 0) throw new Error("time budget");
         const page = await withTimeout(
           deps.rpc.getEvents(
             cursor === undefined
               ? { startLedger, endLedger, filters, limit: EVENTS_PAGE_LIMIT }
               : { cursor, filters, limit: EVENTS_PAGE_LIMIT }
           ),
-          Math.min(remaining, 12_000),
+          Math.min(left, RPC_CALL_TIMEOUT_MS),
           "getEvents"
         );
+        // A cursor request carries no endLedger, so a page may run past this chunk into ledgers
+        // a later (newer) chunk already covered or a newer one will; stop at the chunk's edge.
+        let pastChunk = false;
         for (const event of page.events) {
+          if (event.ledger > endLedger) {
+            pastChunk = true;
+            break;
+          }
           if (event.contractId) contracts.add(event.contractId.contractId());
+          if (contracts.size >= MAX_CANDIDATES_PER_SOURCE) break;
         }
-        if (page.events.length < EVENTS_PAGE_LIMIT || !page.cursor) break;
+        if (pastChunk || contracts.size >= MAX_CANDIDATES_PER_SOURCE) break;
+        if (page.events.length < EVENTS_PAGE_LIMIT || !page.cursor || page.cursor === cursor) break;
         cursor = page.cursor;
       }
     } catch (err) {
@@ -354,45 +389,63 @@ type Probe =
   | { status: "empty" }
   | { status: "unreadable"; detail: string };
 
+/** A symbol is presentation: only plain printable text is shown, anything else reads as none. */
+function printableSymbol(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 && trimmed.length <= 32 && /^[\x20-\x7e]+$/.test(trimmed)
+    ? trimmed
+    : null;
+}
+
 async function probe(
   token: string,
   account: string,
   network: Network,
-  rpc: SorobanTokenRpc
+  rpc: SorobanTokenRpc,
+  now: () => number,
+  deadline: number
 ): Promise<Probe> {
   const who = new Address(account).toScVal();
+  // Each read gets its own timeout, never past the overall budget: a token that is never probed
+  // because time ran out is unreadable for that reason, not silently absent.
+  const readTimeout = (): number => Math.min(BALANCE_TIMEOUT_MS, deadline - now());
+  if (readTimeout() <= 0) return { status: "unreadable", detail: "time budget" };
   try {
     const balance = asBigInt(
       await withTimeout(
         simulateRead(rpc, network, account, token, "balance", who),
-        BALANCE_TIMEOUT_MS,
+        readTimeout(),
         `balance(${token.slice(0, 4)}…)`
       )
     );
     if (balance === null) return { status: "unreadable", detail: "balance() did not answer" };
     if (balance < 0n) return { status: "unreadable", detail: "balance() is negative" };
     if (balance === 0n) return { status: "empty" };
-    // Metadata is presentation: a token that hides its symbol is still held.
+    // Metadata is presentation: a token that hides or garbles its symbol is still held, and a
+    // value the decoder cannot make sense of reads as none rather than failing the balance.
+    if (readTimeout() <= 0) return { status: "held", balance, symbol: null, decimals: null };
+    const decodeOr = (val: xdr.ScVal | null): unknown => {
+      try {
+        return val ? scValToNative(val) : null;
+      } catch {
+        return null;
+      }
+    };
     const [symbolVal, decimalsVal] = await Promise.all([
       withTimeout(
         simulateRead(rpc, network, account, token, "symbol"),
-        BALANCE_TIMEOUT_MS,
+        readTimeout(),
         "symbol"
       ).catch(() => null),
       withTimeout(
         simulateRead(rpc, network, account, token, "decimals"),
-        BALANCE_TIMEOUT_MS,
+        readTimeout(),
         "decimals"
       ).catch(() => null),
     ]);
-    const symbolNative: unknown = symbolVal ? scValToNative(symbolVal) : null;
-    const decimalsNative: unknown = decimalsVal ? scValToNative(decimalsVal) : null;
-    const symbol =
-      typeof symbolNative === "string" &&
-      symbolNative.trim().length > 0 &&
-      symbolNative.length <= 32
-        ? symbolNative.trim()
-        : null;
+    const symbol = printableSymbol(decodeOr(symbolVal));
+    const decimalsNative = decodeOr(decimalsVal);
     const decimals =
       typeof decimalsNative === "number" &&
       Number.isInteger(decimalsNative) &&
@@ -434,6 +487,9 @@ export async function discoverSorobanTokens(
   const excluded = new Set<string>();
   const positionTokens = new Set<string>();
   for (const position of deps.positions) {
+    // The position's own contract is a pool, market, or vault - in Soroswap and Phoenix the pair
+    // contract is also its share token, and the explorer lists it as a balance.
+    excluded.add(position.contractAddress);
     if ("shareToken" in position && position.shareToken) excluded.add(position.shareToken);
     if ("tokens" in position && position.tokens)
       for (const t of position.tokens) positionTokens.add(t);
@@ -462,21 +518,26 @@ export async function discoverSorobanTokens(
         coverage.push({ source: "explorer", status: "skipped", detail: "not configured" })
       );
   // Leave room for the ledger reads: the scan may use most of the budget, not all of it.
-  const events = eventCandidates(address, deps, deadline - 6_000).then(
-    (scan) => {
-      for (const c of scan.contracts) candidates.add(c, "events");
-      coverage.push({
-        source: "events",
-        status: scan.scanned ? "ok" : "failed",
-        ...(scan.stoppedEarly ? { detail: scan.stoppedEarly } : {}),
-      });
-      return scan.scanned;
-    },
-    (err: unknown) => {
-      coverage.push({ source: "events", status: "failed", detail: reason(err) });
-      return null;
-    }
-  );
+  const events: Promise<EventScan["scanned"]> =
+    deps.scanEvents === false
+      ? Promise.resolve(
+          coverage.push({ source: "events", status: "skipped", detail: "not requested" })
+        ).then(() => null)
+      : eventCandidates(address, deps, deadline - LEDGER_READS_RESERVE_MS).then(
+          (scan) => {
+            for (const c of scan.contracts) candidates.add(c, "events");
+            coverage.push({
+              source: "events",
+              status: scan.scanned ? "ok" : "failed",
+              ...(scan.stoppedEarly ? { detail: scan.stoppedEarly } : {}),
+            });
+            return scan.scanned;
+          },
+          (err: unknown) => {
+            coverage.push({ source: "events", status: "failed", detail: reason(err) });
+            return null;
+          }
+        );
   const [, eventsScanned] = await Promise.all([explorer, events]);
 
   const ordered = candidates.ordered();
@@ -525,8 +586,24 @@ export async function discoverSorobanTokens(
       const instance = instances.get(c);
       return instance !== undefined && !instance.isStellarAsset;
     });
+    // A contract the user typed in that is not a Soroban token here is told back, not dropped:
+    // a typo, the wrong network, or a classic asset's contract (that balance is the trustline).
+    const manualIgnored = kept
+      .filter(([c, sources]) => sources.includes("manual") && !readable.some(([r]) => r === c))
+      .map(([c]) => {
+        const instance = instances.get(c);
+        return instance === undefined
+          ? `${shortContract(c)} is not a contract on ${network}`
+          : `${shortContract(c)} is a Stellar asset's contract; that balance is its trustline`;
+      });
+    if (manualIgnored.length > 0) {
+      warnings.push({
+        code: "soroban_tokens_manual_ignored",
+        message: `Not checked as a Soroban token: ${manualIgnored.join("; ")}.`,
+      });
+    }
     const probes = await mapConcurrent(readable, BALANCE_CONCURRENCY, ([contract]) =>
-      probe(contract, address, network, deps.rpc)
+      probe(contract, address, network, deps.rpc, deps.now, deadline)
     );
     readable.forEach(([contract, sources], i) => {
       const result = probes[i]!;

@@ -81,7 +81,9 @@ export function exitExpectations(
     ...new Set([
       Asset.native().contractId(passphrase),
       ...trustlines.map((tl) => new Asset(tl.code, tl.issuer).contractId(passphrase)),
-      ...(accountState.sorobanTokens?.tokens ?? []).map((t) => t.contract),
+      ...(accountState.sorobanTokens?.tokens ?? [])
+        .filter((t) => /^C[A-Z2-7]{55}$/.test(t.contract) && /^[1-9]\d*$/.test(t.balance))
+        .map((t) => t.contract),
     ]),
   ];
   return { exitContracts, heldTokenContracts, positionTokenContracts, exitFunctions };

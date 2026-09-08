@@ -153,6 +153,10 @@ export function defiPositionsDepsFor(): ResolveDefiPositionsDeps {
 export interface AccountReadOptions {
   /** Soroban token contracts the user asked to be checked besides what discovery finds. */
   manualTokenCandidates?: string[];
+  /** Time the token discovery may take; the module's default when absent. */
+  sorobanTokensBudgetMs?: number;
+  /** Whether discovery scans recent events (the slow, find-new-tokens source). Default true. */
+  scanTokenEvents?: boolean;
   /** Injectable for tests; defaults to the live sources for the network. */
   sorobanTokensDeps?: (positions: DefiPosition[]) => SorobanTokensDeps;
 }
@@ -218,7 +222,8 @@ export async function readAccountStateFrom(
       : defaultSorobanTokensDeps(
           network,
           detectedPositions.positions,
-          options.manualTokenCandidates ?? []
+          options.manualTokenCandidates ?? [],
+          { budgetMs: options.sorobanTokensBudgetMs, scanEvents: options.scanTokenEvents }
         );
   const [defiPositions, sorobanTokens] = await Promise.all([
     enrichDefiPositions(detectedPositions, {
@@ -345,7 +350,14 @@ export async function readTrustlinesOnly(
 /** Reads account state from the provider configured for `network`. */
 export async function getAccountState(
   address: string,
-  network: Network = "testnet"
+  network: Network = "testnet",
+  options: AccountReadOptions = {}
 ): Promise<AccountState> {
-  return readAccountStateFrom(address, network, horizonDepsFor(network), defiPositionsDepsFor());
+  return readAccountStateFrom(
+    address,
+    network,
+    horizonDepsFor(network),
+    defiPositionsDepsFor(),
+    options
+  );
 }

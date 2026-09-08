@@ -9,7 +9,9 @@ import type { AquariusLpPosition, BlendSupplyPosition } from "@lumenwipe/types";
 import {
   EVENTS_CHUNK_LEDGERS,
   EVENTS_MAX_CHUNKS,
+  EVENTS_PAGE_LIMIT,
   MAX_CANDIDATES,
+  MAX_CANDIDATES_PER_SOURCE,
   discoverSorobanTokens,
 } from "@/lib/stellar/soroban-tokens";
 import {
@@ -142,9 +144,60 @@ describe("Soroban token discovery", () => {
       [transfer, "*", who, "*"],
       [mint, who],
       [mint, who, "*"],
+      [mint, "*", who],
     ]);
     expect(deps.rpc.eventRequests).toHaveLength(EVENTS_MAX_CHUNKS);
     expect(deps.rpc.eventRequests[1]!.endLedger).toBe(LATEST - EVENTS_CHUNK_LEDGERS);
+  });
+
+  test("a busy window is read page by page, and the pages stop at the chunk's edge: a cursor page carries no end ledger", async () => {
+    const newest = `${LATEST - EVENTS_CHUNK_LEDGERS + 1}-${LATEST}`;
+    const deps = fakeSorobanDeps({
+      world: {
+        latestLedger: LATEST,
+        tokens: [held(NATIVE_A, 1n), held(NATIVE_B, 2n), held(GHOST, 3n)],
+        events: {
+          [newest]: {
+            // One full page of the same token, then a second page holding another token and,
+            // past the edge, a third the scan must not take from here.
+            contracts: [...Array<string>(EVENTS_PAGE_LIMIT).fill(NATIVE_A), NATIVE_B],
+            spill: [GHOST],
+          },
+        },
+      },
+      explorerBaseUrl: "",
+    });
+    const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
+    const forNewest = deps.rpc.eventRequests.filter(
+      (r) => r.endLedger === LATEST || r.cursor?.startsWith(`${LATEST - EVENTS_CHUNK_LEDGERS + 1}/`)
+    );
+    expect(forNewest).toHaveLength(2);
+    expect(forNewest[1]!.cursor).toBe(`${LATEST - EVENTS_CHUNK_LEDGERS + 1}/${LATEST}/1000`);
+    expect(result.tokens.map((t) => t.contract).sort()).toEqual([NATIVE_A, NATIVE_B].sort());
+    // Every other chunk was still scanned: the pagination did not eat the rest of the scan.
+    expect(result.eventsScanned).toEqual({
+      fromLedger: LATEST - EVENTS_MAX_CHUNKS * EVENTS_CHUNK_LEDGERS + 1,
+      toLedger: LATEST,
+    });
+  });
+
+  test("the event scan skipped on request: a close round re-confirms known balances, it does not go looking", async () => {
+    const deps = fakeSorobanDeps({
+      world: { latestLedger: LATEST, tokens: [held(NATIVE_A, 5n)] },
+      explorerBaseUrl: "",
+      listCandidates: [NATIVE_A],
+    });
+    deps.scanEvents = false;
+    const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
+    expect(deps.rpc.eventRequests).toEqual([]);
+    expect(result.coverage.find((c) => c.source === "events")).toEqual({
+      source: "events",
+      status: "skipped",
+      detail: "not requested",
+    });
+    expect(result.eventsScanned).toBeNull();
+    expect(result.tokens.map((t) => t.contract)).toEqual([NATIVE_A]);
+    expect(result.warnings).toEqual([]);
   });
 
   test("a window the RPC refuses ends the scan: what was covered counts, the gap is reported, nothing else is lost", async () => {
@@ -276,6 +329,112 @@ describe("Soroban token discovery", () => {
     expect(result.unreadable).toEqual([NATIVE_A]);
     expect(result.warnings.map((w) => w.code)).toEqual(["soroban_tokens_unreadable"]);
     expect(result.warnings[0]!.message).toContain("rpc down");
+  });
+
+  test("a contract the user typed in that is not a Soroban token here is told back by name, never dropped in silence", async () => {
+    const deps = fakeSorobanDeps({
+      world: {
+        latestLedger: LATEST,
+        tokens: [held(NATIVE_A, 1n), { contract: SAC, isStellarAsset: true, balance: 9n }],
+      },
+      explorerBaseUrl: "",
+      manualCandidates: [NATIVE_A, GHOST, SAC],
+    });
+    const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
+    expect(result.tokens.map((t) => t.contract)).toEqual([NATIVE_A]);
+    const warning = result.warnings.find((w) => w.code === "soroban_tokens_manual_ignored");
+    expect(warning?.message).toContain(`${GHOST.slice(0, 4)}…${GHOST.slice(-4)} is not a contract`);
+    expect(warning?.message).toContain(`${SAC.slice(0, 4)}…${SAC.slice(-4)} is a Stellar asset's`);
+    expect(result.unreadable).toEqual([]);
+  });
+
+  test("a symbol is shown only when it is plain printable text; anything else, and a decoder failure, read as none", async () => {
+    const deps = fakeSorobanDeps({
+      world: {
+        latestLedger: LATEST,
+        tokens: [
+          held(NATIVE_A, 1n, { symbol: "  OK  " }),
+          held(NATIVE_B, 1n, { symbol: "bad\u0000\u0001name" }),
+          held(GHOST, 1n, { symbol: "ünïcødé" }),
+        ],
+      },
+      explorerBaseUrl: "",
+      listCandidates: [NATIVE_A, NATIVE_B, GHOST],
+    });
+    const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
+    const symbolOf = (c: string): string | null | undefined =>
+      result.tokens.find((t) => t.contract === c)?.symbol;
+    expect(symbolOf(NATIVE_A)).toBe("OK");
+    expect(symbolOf(NATIVE_B)).toBeNull();
+    expect(symbolOf(GHOST)).toBeNull();
+    expect(result.tokens).toHaveLength(3);
+  });
+
+  test("a position's own contract is never a held token, even when the explorer lists it as a balance", async () => {
+    const pair = token(9);
+    const position = {
+      protocol: "soroswap",
+      type: "lp",
+      contractAddress: pair,
+      tokens: [NATIVE_A, NATIVE_B],
+    } as unknown as AquariusLpPosition;
+    const deps = fakeSorobanDeps({
+      world: {
+        latestLedger: LATEST,
+        tokens: [held(pair, 1n), held(NATIVE_A, 1n)],
+        explorer: {
+          status: 200,
+          body: explorerValueBody([
+            { contract: pair, balance: "1" },
+            { contract: NATIVE_A, balance: "1" },
+          ]),
+        },
+      },
+      positions: [position],
+    });
+    const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
+    expect(result.tokens.map((t) => t.contract)).toEqual([NATIVE_A]);
+  });
+
+  test("one source cannot flood the candidates: the explorer contributes at most its per-source share", async () => {
+    const many = Array.from({ length: MAX_CANDIDATES_PER_SOURCE + 10 }, (_, i) => token(100 + i));
+    const deps = fakeSorobanDeps({
+      world: {
+        latestLedger: LATEST,
+        tokens: many.map((c) => held(c, 1n)),
+        explorer: {
+          status: 200,
+          body: explorerValueBody(many.map((c) => ({ contract: c, balance: "1" }))),
+        },
+      },
+    });
+    const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
+    expect(result.tokens).toHaveLength(MAX_CANDIDATES_PER_SOURCE);
+    expect(result.warnings.find((w) => w.code === "soroban_tokens_capped")).toBeUndefined();
+  });
+
+  test("when the sources spend the whole budget, the unprobed tokens are unreadable for that reason, not missing", async () => {
+    const clock = { now: 1_700_000_000_000 };
+    const deps = fakeSorobanDeps({
+      world: {
+        latestLedger: LATEST,
+        tokens: [held(NATIVE_A, 1n)],
+        explorer: { status: 200, body: explorerValueBody([{ contract: NATIVE_A, balance: "1" }]) },
+      },
+      budgetMs: 1_000,
+      clock,
+    });
+    const slowFetch = deps.fetch;
+    deps.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      clock.now += 2_000; // the explorer alone overran the budget
+      return slowFetch(input, init);
+    }) as typeof fetch;
+    const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
+    expect(result.tokens).toEqual([]);
+    expect(result.unreadable).toEqual([NATIVE_A]);
+    expect(result.warnings.find((w) => w.code === "soroban_tokens_unreadable")?.message).toContain(
+      `${NATIVE_A.slice(0, 4)}…${NATIVE_A.slice(-4)}`
+    );
   });
 
   test("the event scan yields to the time budget and reports the window it did cover", async () => {

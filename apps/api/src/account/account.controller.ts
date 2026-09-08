@@ -9,6 +9,7 @@ import {
 } from "@nestjs/swagger";
 import { isValidNetwork } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
+import { parseTokenContracts } from "@/lib/utils/token-contracts";
 import { getAccountState } from "@/lib/stellar/account-state";
 import { fetchConversionPath } from "@/lib/stellar/path-finding";
 import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils/errors";
@@ -31,15 +32,34 @@ export class AccountController {
   @ApiParam({ name: "address", description: "Stellar account (G...)." })
   @ApiResponse({ status: 200, description: "Aggregated account state." })
   @ApiResponse({ status: 400, description: "Invalid network or address." })
+  @ApiQuery({
+    name: "tokens",
+    required: false,
+    description:
+      "Soroban token contracts (C..., comma-separated, at most 20) to check for a balance besides " +
+      "what discovery finds.",
+  })
   @ApiResponse({ status: 404, description: "Account not found." })
-  async account(@Param("network") network: string, @Param("address") address: string) {
+  async account(
+    @Param("network") network: string,
+    @Param("address") address: string,
+    @Query("tokens") tokens?: string
+  ) {
     if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
     if (!isValidGAddress(address)) {
       fail("invalid_address", "Invalid Stellar address", 400);
     }
+    const manualTokenCandidates = parseTokenContracts(tokens);
+    if (manualTokenCandidates === null) {
+      fail(
+        "invalid_tokens",
+        "tokens must be up to 20 comma-separated Soroban contract addresses (C...).",
+        400
+      );
+    }
 
     try {
-      return await getAccountState(address, network);
+      return await getAccountState(address, network, { manualTokenCandidates });
     } catch (err) {
       if (err instanceof HttpException) throw err;
       if (err instanceof AccountNotFoundError) {

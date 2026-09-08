@@ -106,7 +106,7 @@ test("a balance entirely held back reports zero, never a negative amount", () =>
   expect(balances[Asset.native().contractId(Networks.TESTNET)]).toBe("0");
 });
 
-test("a Soroban token balance the analysis confirmed spends whole: no offers, no reserve against it", () => {
+test("a Soroban token balance the analysis found is not a carry target: an exit must not pay more onto a balance the merge leaves behind", () => {
   const TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
   const balances = tokenBalancesFor(
     account({
@@ -121,7 +121,5 @@ test("a Soroban token balance the analysis confirmed spends whole: no offers, no
       },
     })
   );
-  expect(balances[TOKEN]).toBe("123456");
-  // An older read without the field adds nothing and breaks nothing.
-  expect(Object.keys(tokenBalancesFor(account({ sorobanTokens: undefined })))).not.toContain(TOKEN);
+  expect(Object.keys(balances)).not.toContain(TOKEN);
 });

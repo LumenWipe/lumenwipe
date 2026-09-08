@@ -60,9 +60,10 @@ export function tokenBalancesFor(accountState: AccountState): Record<string, str
       sellingLiabilities(accountState.openOffers, trustline.asset)
     );
   }
-  // A Soroban token balance has no offers against it and no reserve to keep: all of it spends.
-  for (const token of accountState.sorobanTokens?.tokens ?? []) {
-    balances[token.contract] = token.balance;
-  }
+  // Deliberately classic only. The adapters read presence here as "the account can receive and
+  // carry this token through the close" - a trustline for a Stellar asset, or XLM. A Soroban
+  // token balance the analysis found (`sorobanTokens`) is neither: paying more of it out to the
+  // account would only move value onto a balance the merge leaves behind, so such tokens are
+  // decided about separately (transfer, convert, or leave) and never make an exit look safer.
   return balances;
 }
