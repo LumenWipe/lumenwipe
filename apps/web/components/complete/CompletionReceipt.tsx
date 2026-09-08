@@ -66,8 +66,11 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
 
   const confirmedSteps = executionPlan.filter((s) => s.status === "confirmed" && s.txHash);
 
+  // A sponsored round's `actualFeeLumens` is "0" - the dedicated sponsor account paid the
+  // network fee, not this one. `estimatedFeeLumens` is the plan-time fallback for a step
+  // confirmed before this field existed (a resumed, previously-saved session).
   const totalFee = executionPlan
-    .reduce((sum, s) => sum + parseFloat(s.estimatedFeeLumens), 0)
+    .reduce((sum, s) => sum + parseFloat(s.actualFeeLumens ?? s.estimatedFeeLumens), 0)
     .toFixed(7);
 
   useEffect(() => {

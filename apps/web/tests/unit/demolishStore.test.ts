@@ -104,6 +104,20 @@ test("markCoveredConfirmed confirms every step whose type a transaction covers",
   expect(plan.find((p) => p.type === "MERGE")!.txHash).toBe("hashB");
 });
 
+test("markCoveredConfirmed records what the user's own account actually paid", () => {
+  const mk = (index: number, type: StepType): PlannedStep => ({ ...step(index), type });
+  useDemolishStore.getState().setPlan([mk(0, "MERGE"), mk(1, "CLOSE_ACCOUNT")]);
+
+  // An unsponsored round: the user's account paid the plan-time estimate.
+  useDemolishStore.getState().markCoveredConfirmed(["MERGE"], "hashA");
+  expect(useDemolishStore.getState().executionPlan[0].actualFeeLumens).toBe("0.0000100");
+
+  // A fee-bump-sponsored round: a dedicated sponsor account paid, not the user's - "0" is what
+  // the user's own account paid, distinct from the network fee CAP-15 actually charged.
+  useDemolishStore.getState().markCoveredConfirmed(["CLOSE_ACCOUNT"], "hashB", true);
+  expect(useDemolishStore.getState().executionPlan[1].actualFeeLumens).toBe("0");
+});
+
 test("assetDispositions defaults to empty", () => {
   expect(useDemolishStore.getState().assetDispositions).toEqual({});
 });

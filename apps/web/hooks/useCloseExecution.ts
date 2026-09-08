@@ -296,7 +296,7 @@ export function useCloseExecution() {
               return txHash;
             },
             onConfirmed: (tx, hash) => {
-              markCoveredConfirmed(tx.covers, hash);
+              markCoveredConfirmed(tx.covers, hash, tx.needsSponsoredFee);
               if (tx.covers.includes("MERGE") || tx.covers.includes("CLOSE_ACCOUNT")) {
                 recordMergeStats(hash, network);
               }
