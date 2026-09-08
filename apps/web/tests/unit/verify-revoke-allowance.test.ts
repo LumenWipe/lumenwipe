@@ -87,13 +87,14 @@ function buildRevokeXdr(
     txSource?: string;
     memo?: Memo;
     extraOp?: boolean;
+    fee?: string;
   } = {}
 ): string {
   const args = options.args ?? approveArgs();
   const contract = options.contract ?? TOKEN;
   const op = new Contract(contract).call("approve", ...args);
   const raw = new TransactionBuilder(new Account(options.txSource ?? OWNER, "100"), {
-    fee: "100",
+    fee: options.fee ?? "100",
     networkPassphrase: Networks.TESTNET,
   });
   if (options.memo) raw.addMemo(options.memo);
@@ -182,4 +183,25 @@ test("verifyRevokeAllowanceTransaction › rejects more than one operation", () 
   expect(() =>
     verifyRevokeAllowanceTransaction(xdrBase64, Networks.TESTNET, expectation())
   ).toThrow(/exactly one/);
+});
+
+test("verifyRevokeAllowanceTransaction › accepts a plain account as the spender, not just a contract", () => {
+  // SEP-41's approve(from, spender, ...) types spender as Address - a G... account is legitimate,
+  // if unusual (packages/types/src/allowance.ts's own doc comment on Allowance.spender).
+  const accountSpender = Keypair.random().publicKey();
+  const xdrBase64 = buildRevokeXdr({ args: approveArgs({ spender: accountSpender }) });
+  expect(() =>
+    verifyRevokeAllowanceTransaction(
+      xdrBase64,
+      Networks.TESTNET,
+      expectation({ spender: accountSpender })
+    )
+  ).not.toThrow();
+});
+
+test("verifyRevokeAllowanceTransaction › rejects a fee higher than a revocation should ever need", () => {
+  const xdrBase64 = buildRevokeXdr({ fee: "20000000" });
+  expect(() =>
+    verifyRevokeAllowanceTransaction(xdrBase64, Networks.TESTNET, expectation())
+  ).toThrow(/fee is higher/);
 });

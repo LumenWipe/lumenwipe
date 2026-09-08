@@ -5,7 +5,9 @@ export const MAX_TOKEN_DECIMALS = 38;
 
 /**
  * Base units rendered with the token's decimals: "250" for 2500000000 at 7 decimals. A token that
- * does not report decimals, or claims an absurd figure, is shown in raw units and says so.
+ * does not report decimals, or claims an absurd figure, is shown in raw units and says so - the
+ * fallback string stands alone (no trailing "of a token name"), unlike the API's own copy of this
+ * function, since this module's callers never append a token name directly after the amount.
  */
 export function formatTokenAmount(balance: string, decimals: number | null): string {
   if (!/^\d+$/.test(balance)) return balance;
@@ -15,7 +17,7 @@ export function formatTokenAmount(balance: string, decimals: number | null): str
     decimals < 0 ||
     decimals > MAX_TOKEN_DECIMALS
   ) {
-    return `${balance} base units of`;
+    return `${balance} base units`;
   }
   if (decimals === 0) return balance;
   const padded = balance.padStart(decimals + 1, "0");
