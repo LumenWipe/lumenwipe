@@ -12,6 +12,7 @@ import { isValidGAddress } from "@/lib/utils/validation";
 import { parseTokenContracts } from "@/lib/utils/token-contracts";
 import { getAccountState } from "@/lib/stellar/account-state";
 import { fetchConversionPath } from "@/lib/stellar/path-finding";
+import { discoverAllowances, defaultAllowancesDeps } from "@/lib/stellar/allowances";
 import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils/errors";
 import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 import { fail } from "@/common/fail";
@@ -83,6 +84,31 @@ export class AccountController {
       }
       this.logger.error("account fetch failed", err instanceof Error ? err.stack : String(err));
       fail("account_read_failed", "Failed to fetch account data", 500);
+    }
+  }
+
+  @Get("allowances/:address")
+  @ApiOperation({
+    summary:
+      "Read every live SEP-41 allowance the account has granted (architecture.md §12). Read-only.",
+  })
+  @ApiParam({ name: "address", description: "Stellar account (G...)." })
+  @ApiResponse({ status: 200, description: "Live, non-zero allowances, best effort." })
+  @ApiResponse({ status: 400, description: "Invalid network or address." })
+  async allowances(@Param("network") network: string, @Param("address") address: string) {
+    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
+    if (!isValidGAddress(address)) {
+      fail("invalid_address", "Invalid Stellar address", 400);
+    }
+
+    try {
+      return await discoverAllowances(address, network, defaultAllowancesDeps(network));
+    } catch (err) {
+      this.logger.error(
+        "allowance discovery failed",
+        err instanceof Error ? err.stack : String(err)
+      );
+      fail("allowances_read_failed", "Failed to read allowances", 500);
     }
   }
 
