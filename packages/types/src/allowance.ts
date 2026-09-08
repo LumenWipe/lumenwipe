@@ -16,7 +16,9 @@ export interface Allowance {
   token: string;
   /** From the token's own `symbol()`, null when it does not answer. */
   tokenSymbol: string | null;
-  /** The approved spender contract, `C...`. */
+  /** The approved spender. Almost always a contract (`C...`) - a DeFi protocol - but SEP-41's
+   *  `approve(from, spender, ...)` types `spender` as `Address`, so a plain account (`G...`) is a
+   *  legitimate, if unusual, spender too. */
   spender: string;
   /** The spender's protocol, when its address resolves to a known DeFi contract registry entry
    *  on this network. Null does not mean unsafe - most legitimate spenders (a specific vault, an

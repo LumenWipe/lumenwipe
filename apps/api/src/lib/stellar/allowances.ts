@@ -41,6 +41,16 @@ import { getRpcServer } from "./rpc";
  * The amount is always the live read, never the event's: `approve` sets an explicit value rather
  * than decrementing on spend, so an old event's amount can be stale in either direction. A zero
  * live allowance is not reported - only what is actually outstanding right now.
+ *
+ * Residual limitation, shared with soroban-tokens.ts's own event-based discovery: an `approve`
+ * event only proves that SOME contract emitted it, naming this account as `from` - Soroban does
+ * not constrain a contract's own events to reflect a real interface or a real approval. A hostile
+ * contract can emit a fabricated `approve` event naming any account as `from`, then answer its own
+ * `allowance()`/`symbol()` however it likes, producing a fully attacker-controlled, "live-verified"
+ * entry here. This is informational corruption, not a fund-theft vector (nothing here signs or
+ * spends anything, and a spender only resolves a `spenderProtocol` when its address matches the
+ * registry) - but a consumer of this result must not treat an unrecognized `spenderProtocol` as
+ * neutral: it is exactly the case a hostile entry would produce.
  */
 
 export interface AllowanceRpc {
@@ -153,7 +163,19 @@ interface ApprovePair {
   token: string;
   spender: string;
   ledger: number;
+  /** Tie-breaks two events landing in the same ledger: transaction order, then operation order
+   *  within that transaction - the RPC does not guarantee `getEvents` returns them in that order. */
+  txIndex: number;
+  opIndex: number;
   expirationLedger: number | null;
+}
+
+/** True when `candidate` happened strictly after `current` - ledger first, then transaction and
+ *  operation order within it, since two `approve` calls to the same pair can land in one ledger. */
+function isMoreRecent(candidate: ApprovePair, current: ApprovePair): boolean {
+  if (candidate.ledger !== current.ledger) return candidate.ledger > current.ledger;
+  if (candidate.txIndex !== current.txIndex) return candidate.txIndex > current.txIndex;
+  return candidate.opIndex > current.opIndex;
 }
 
 interface ApproveEventScan {
@@ -186,6 +208,7 @@ async function approveEventCandidates(
   let scanned: { fromLedger: number; toLedger: number } | null = null;
   let stoppedEarly: string | null = null;
   for (let chunk = 0; chunk < EVENTS_MAX_CHUNKS; chunk++) {
+    if (pairs.size >= MAX_CANDIDATES_PER_SOURCE) break;
     const remaining = deadline - deps.now();
     if (remaining <= 0) {
       stoppedEarly = "time budget";
@@ -214,19 +237,29 @@ async function approveEventCandidates(
             pastChunk = true;
             break;
           }
-          const token = event.contractId?.contractId();
-          const spender = decodeAddress(event.topic[2]);
-          if (token && spender) {
-            const key = `${token}:${spender}`;
-            const existing = pairs.get(key);
-            if (!existing || event.ledger > existing.ledger) {
-              pairs.set(key, {
+          // Each event decoded and recorded in its own try/catch: a pathological single event
+          // (an unexpected topic/contractId shape) must drop only that one candidate, never
+          // abort the rest of the scan the way an uncaught throw here would.
+          try {
+            const token = event.contractId?.contractId();
+            const spender = decodeAddress(event.topic[2]);
+            if (token && spender) {
+              const key = `${token}:${spender}`;
+              const candidate: ApprovePair = {
                 token,
                 spender,
                 ledger: event.ledger,
+                txIndex: event.transactionIndex,
+                opIndex: event.operationIndex,
                 expirationLedger: decodeExpirationLedger(event.value),
-              });
+              };
+              const existing = pairs.get(key);
+              if (!existing || isMoreRecent(candidate, existing)) {
+                pairs.set(key, candidate);
+              }
             }
+          } catch {
+            // Skip this one event; the rest of the page is still worth reading.
           }
           if (pairs.size >= MAX_CANDIDATES_PER_SOURCE) break;
         }
@@ -263,7 +296,13 @@ class PairCandidates {
     source: AllowanceSource,
     expirationLedger: number | null = null
   ): void {
-    if (!StrKey.isValidContract(token) || !StrKey.isValidContract(spender)) return;
+    // The token side of `allowance(from, spender)` is always a contract - there is no other kind
+    // of SEP-41 token. The spender side is typed `Address` in the interface itself, so a plain
+    // account is a legitimate spender too (unusual, but real): only the registry-widening source
+    // ever proposes one anyway (registry entries are always contracts), so this only actually
+    // admits a G-address spender discovered from a real `approve` event.
+    if (!StrKey.isValidContract(token)) return;
+    if (!StrKey.isValidContract(spender) && !StrKey.isValidEd25519PublicKey(spender)) return;
     const key = `${token}:${spender}`;
     let entry = this.pairs.get(key);
     if (!entry) {
@@ -412,17 +451,27 @@ export async function discoverAllowances(
     eventsScanned = eventScan.scanned;
   }
 
-  if (registryEntries.length > 0) {
-    const knownTokens = deps.knownTokens;
-    for (const entry of registryEntries) {
-      for (const token of knownTokens) candidates.add(token, entry.address, "registry");
+  const knownTokens = deps.knownTokens;
+  if (registryEntries.length > 0 && knownTokens.length > 0) {
+    let registryCandidateCount = 0;
+    outer: for (const entry of registryEntries) {
+      for (const token of knownTokens) {
+        candidates.add(token, entry.address, "registry");
+        // Matches the events source's own per-source cap: without this, an N-entry registry
+        // crossed with an M-token list keeps growing this loop's own candidate count long after
+        // there is any chance of the pair surviving the overall MAX_CANDIDATES cut below.
+        if (++registryCandidateCount >= MAX_CANDIDATES_PER_SOURCE) break outer;
+      }
     }
     coverage.push({ source: "registry", status: "ok" });
   } else {
     coverage.push({
       source: "registry",
       status: "skipped",
-      detail: "no registry entries for this network",
+      detail:
+        registryEntries.length === 0
+          ? "no registry entries for this network"
+          : "no known tokens for this network",
     });
   }
 

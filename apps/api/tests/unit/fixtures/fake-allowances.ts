@@ -28,6 +28,9 @@ export interface FakeApproveEvent {
   ledger: number;
   amount: bigint;
   expirationLedger: number;
+  /** Defaults to 0 - set explicitly to test same-ledger tie-breaking. */
+  transactionIndex?: number;
+  operationIndex?: number;
 }
 
 export interface FakeAllowancesWorld {
@@ -131,8 +134,8 @@ export function fakeAllowanceRpc(world: FakeAllowancesWorld): AllowanceRpc & {
           nativeToScVal(e.amount, { type: "i128" }),
           nativeToScVal(e.expirationLedger, { type: "u32" }),
         ]),
-        operationIndex: 0,
-        transactionIndex: 0,
+        operationIndex: e.operationIndex ?? 0,
+        transactionIndex: e.transactionIndex ?? 0,
       }));
       return {
         latestLedger: world.latestLedger ?? 1_000_000,

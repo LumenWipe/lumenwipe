@@ -90,25 +90,28 @@ test("discoverAllowances › a revoked allowance (live read zero) is not reporte
   expect(result.allowances).toHaveLength(0);
 });
 
-test("discoverAllowances › the most recent approve event's expiration wins over an earlier one for the same pair", async () => {
+test("discoverAllowances › the most recent approve event's expiration wins over an earlier one for the same pair, by ledger not by processing order", async () => {
   const deps = fakeAllowancesDeps({
     world: {
       allowances: [{ token: TOKEN, spender: SPENDER, amount: 1_000n, symbol: "XTAR" }],
       events: {
+        // The higher-ledger (later) event is listed FIRST here, out of chronological order -
+        // this only passes if the implementation tracks the max ledger seen, not "whichever
+        // event this pair's entry was set from last while iterating the array".
         "996001-1000000": [
-          {
-            token: TOKEN,
-            spender: SPENDER,
-            ledger: 997_000,
-            amount: 9_000_000n,
-            expirationLedger: 999_999,
-          },
           {
             token: TOKEN,
             spender: SPENDER,
             ledger: 998_500,
             amount: 1_000n,
             expirationLedger: 1_200_000,
+          },
+          {
+            token: TOKEN,
+            spender: SPENDER,
+            ledger: 997_000,
+            amount: 9_000_000n,
+            expirationLedger: 999_999,
           },
         ],
       },
@@ -119,7 +122,7 @@ test("discoverAllowances › the most recent approve event's expiration wins ove
 
   expect(result.allowances).toHaveLength(1);
   expect(result.allowances[0]!.amount).toBe("1000"); // the live read, not either event's amount
-  expect(result.allowances[0]!.expirationLedger).toBe(1_200_000); // the later event's, not the earlier's
+  expect(result.allowances[0]!.expirationLedger).toBe(1_200_000); // the higher-ledger event's
 });
 
 test("discoverAllowances › a pair only found via the registry (no approve event) is reported with a null expiration and its resolved protocol", async () => {
@@ -254,4 +257,65 @@ test("discoverAllowances › no candidates at all (empty registry, no events) re
 
   expect(result.allowances).toEqual([]);
   expect(result.coverage.find((c) => c.source === "registry")).toMatchObject({ status: "skipped" });
+});
+
+test("discoverAllowances › two approve events landing in the same ledger break the tie by transaction/operation order, not array order", async () => {
+  const deps = fakeAllowancesDeps({
+    world: {
+      allowances: [{ token: TOKEN, spender: SPENDER, amount: 3n, symbol: "XTAR" }],
+      events: {
+        "996001-1000000": [
+          // Listed first in the array (and with the lower transactionIndex), but the SECOND one
+          // below has the higher transactionIndex within the same ledger and must win.
+          {
+            token: TOKEN,
+            spender: SPENDER,
+            ledger: 999_000,
+            amount: 3n,
+            expirationLedger: 1_300_000,
+            transactionIndex: 5,
+          },
+          {
+            token: TOKEN,
+            spender: SPENDER,
+            ledger: 999_000,
+            amount: 3n,
+            expirationLedger: 900_000,
+            transactionIndex: 2,
+          },
+        ],
+      },
+    },
+  });
+
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+
+  expect(result.allowances).toHaveLength(1);
+  expect(result.allowances[0]!.expirationLedger).toBe(1_300_000);
+});
+
+test("discoverAllowances › a plain account approved as a spender (SEP-41 allows it) is still discovered via an approve event", async () => {
+  const accountSpender = "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ";
+  const deps = fakeAllowancesDeps({
+    world: {
+      allowances: [{ token: TOKEN, spender: accountSpender, amount: 9n, symbol: "XTAR" }],
+      events: {
+        "996001-1000000": [
+          {
+            token: TOKEN,
+            spender: accountSpender,
+            ledger: 999_000,
+            amount: 9n,
+            expirationLedger: 1_100_000,
+          },
+        ],
+      },
+    },
+  });
+
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+
+  expect(result.allowances).toHaveLength(1);
+  expect(result.allowances[0]!.spender).toBe(accountSpender);
+  expect(result.allowances[0]!.spenderProtocol).toBeNull();
 });

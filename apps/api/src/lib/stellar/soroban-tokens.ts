@@ -255,6 +255,7 @@ async function eventCandidates(
   let scanned: { fromLedger: number; toLedger: number } | null = null;
   let stoppedEarly: string | null = null;
   for (let chunk = 0; chunk < EVENTS_MAX_CHUNKS; chunk++) {
+    if (contracts.size >= MAX_CANDIDATES_PER_SOURCE) break;
     const remaining = deadline - deps.now();
     if (remaining <= 0) {
       stoppedEarly = "time budget";
