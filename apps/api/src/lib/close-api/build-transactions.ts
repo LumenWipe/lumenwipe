@@ -37,7 +37,7 @@ import type {
   CloseTransaction,
   TransferDestinations,
 } from "@lumenwipe/types";
-import { MissingTransferDestinationError } from "@/lib/close-api/decisions";
+import { MissingTransferDestinationError, isTokenContract } from "@/lib/close-api/decisions";
 import {
   TokenTransferBlockedError,
   buildTokenTransferRound,
@@ -190,6 +190,28 @@ export async function buildCloseTransactions(
   // and simulated here, after the exits (which can pay a token out) and before anything classic.
   // Tokens the user chose to leave need nothing: a contract balance does not stop the merge.
   try {
+    // Answers the close can never honour are refused here, before the first token moves: a
+    // transfer signed in this round is irreversible, and finding the refusal two rounds later
+    // would leave the account half closed.
+    for (const tl of accountState.trustlines) {
+      if (dispositions[tl.asset] === "leave") {
+        throw new TokenTransferBlockedError(
+          "trustline_cannot_be_left",
+          `${tl.code} is a classic asset held in a trustline; a trustline with a balance cannot be ` +
+            "left behind, or the account cannot be merged. Convert it, send it to another account, " +
+            "or return it to its issuer."
+        );
+      }
+    }
+    for (const [asset, disposition] of Object.entries(dispositions)) {
+      if (disposition === "convert" && isTokenContract(asset)) {
+        throw new TokenTransferBlockedError(
+          "soroban_token_conversion_unavailable",
+          `Converting the ${asset.slice(0, 4)}…${asset.slice(-4)} token to XLM is not available ` +
+            "yet. Send it to another account, or leave it on record."
+        );
+      }
+    }
     const tokenRound = await buildTokenTransferRound(
       accountState,
       dispositions,

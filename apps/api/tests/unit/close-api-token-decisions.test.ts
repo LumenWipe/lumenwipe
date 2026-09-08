@@ -97,3 +97,28 @@ test("tokenAssetsById lists only balances the decision machinery can act on", ()
     tokenAssetsById(withTokens([held(TOKEN_A, "3"), held(TOKEN_B, "0"), held(TOKEN_B, "x")]))
   ).toEqual([{ id: tokenDecisionId(TOKEN_A), asset: TOKEN_A }]);
 });
+
+test("a position's payout token the account does not hold yet is asked about ahead of the exit, flagged as arriving", () => {
+  const points = deriveTokenDecisionPoints(
+    withTokens([
+      held(TOKEN_A, "0", { sources: ["positions"] }),
+      held(TOKEN_B, "0", { sources: ["list"] }),
+    ]),
+    {}
+  );
+  expect(points.map((p) => p.id)).toEqual([tokenDecisionId(TOKEN_A)]);
+  expect(points[0]!.subject).toMatchObject({ arrivesFromExit: true, balance: "0" });
+  expect(points[0]!.options.map((o) => o.id)).toEqual([TRANSFER_CHOICE, LEAVE_CHOICE]);
+});
+
+test("a balance that is not a decimal string is ignored rather than thrown on", () => {
+  expect(deriveTokenDecisionPoints(withTokens([held(TOKEN_A, "1e5")]), {})).toEqual([]);
+});
+
+test("tokenContractsFromAnswers stops at the discovery cap", () => {
+  const many = Array.from({ length: 60 }, (_, i) => ({
+    id: tokenDecisionId(Address.contract(Buffer.alloc(32, 100 + i)).toString()),
+    choice: LEAVE_CHOICE,
+  }));
+  expect(tokenContractsFromAnswers(many)).toHaveLength(50);
+});

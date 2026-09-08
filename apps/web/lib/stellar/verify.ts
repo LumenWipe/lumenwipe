@@ -474,7 +474,8 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
             BigInt(amount) < BigInt(tokenTransfer.amount)
           ) {
             throw new VerificationError(
-              "A token transfer would send less than the balance you were shown."
+              "A token transfer would send less than the balance you were shown. If you moved " +
+                "some of this token since, run the analysis again."
             );
           }
           if (op.authorizesBeyondSelf || op.authDepth !== 0) {

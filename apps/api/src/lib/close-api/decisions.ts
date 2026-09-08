@@ -105,12 +105,16 @@ export const LEAVE_CHOICE = "acknowledge_residue";
 export function tokenContractsFromAnswers(answers: DecisionAnswer[]): string[] {
   const out = new Set<string>();
   for (const answer of answers) {
+    if (out.size >= MAX_TOKEN_ANSWERS) break;
     if (typeof answer?.id !== "string" || !answer.id.startsWith("token:")) continue;
     const contract = answer.id.slice("token:".length);
     if (isTokenContract(contract)) out.add(contract);
   }
   return [...out];
 }
+
+/** Discovery reads at most this many candidates per analysis; answers beyond it name nothing. */
+export const MAX_TOKEN_ANSWERS = 50;
 
 /** Every held Soroban token with a balance, keyed for the decision machinery like an asset. */
 export function tokenAssetsById(
@@ -137,40 +141,47 @@ export function deriveTokenDecisionPoints(
   convertibility: Record<string, boolean>
 ): DecisionPoint[] {
   const tokens = account.sorobanTokens?.tokens ?? [];
-  return tokens
-    .filter((t) => BigInt(t.balance) > 0n)
-    .map((t) => {
-      const readable = t.symbol !== null && t.decimals !== null;
-      const convertible = readable && (convertibility[t.contract] ?? false);
-      const options = [
-        ...(convertible ? [{ id: "convert_to_xlm" as const, recommended: true }] : []),
-        {
-          id: TRANSFER_CHOICE,
-          note: "Sends the balance, as this token, to an account you name. No trustline is needed.",
-        },
-        {
-          id: LEAVE_CHOICE,
-          note:
-            "Leaves the balance with this address. The account closes; the tokens stay bound to " +
-            "the same key and can only be reached by funding this address again.",
-        },
-      ];
-      return {
-        id: tokenDecisionId(t.contract),
-        type: "asset_disposition" as const,
-        subject: {
-          kind: "soroban_token",
-          contract: t.contract,
-          symbol: t.symbol,
-          decimals: t.decimals,
-          balance: t.balance,
-          convertible,
-        },
-        options,
-        default: convertible ? "convert_to_xlm" : TRANSFER_CHOICE,
-        required: true,
-      };
-    });
+  return (
+    tokens
+      .filter((t) => /^\d+$/.test(t.balance))
+      // A token with no balance yet is asked about only when a position's exit will pay it out:
+      // deciding now keeps the close from stalling on an answer nobody was shown mid-way.
+      .filter((t) => BigInt(t.balance) > 0n || t.sources.includes("positions"))
+      .map((t) => {
+        const readable = t.symbol !== null && t.decimals !== null;
+        const convertible = readable && (convertibility[t.contract] ?? false);
+        const options = [
+          ...(convertible ? [{ id: "convert_to_xlm" as const, recommended: true }] : []),
+          {
+            id: TRANSFER_CHOICE,
+            note: "Sends the balance, as this token, to an account you name. No trustline is needed.",
+          },
+          {
+            id: LEAVE_CHOICE,
+            note:
+              "Leaves the balance with this address. The account closes; the tokens stay bound to " +
+              "the same key and can only be reached by funding this address again.",
+          },
+        ];
+        return {
+          id: tokenDecisionId(t.contract),
+          type: "asset_disposition" as const,
+          subject: {
+            kind: "soroban_token",
+            contract: t.contract,
+            symbol: t.symbol,
+            decimals: t.decimals,
+            balance: t.balance,
+            convertible,
+            /** True when the balance is what a position's exit will pay out, not what is held now. */
+            arrivesFromExit: BigInt(t.balance) === 0n,
+          },
+          options,
+          default: convertible ? "convert_to_xlm" : TRANSFER_CHOICE,
+          required: true,
+        };
+      })
+  );
 }
 
 // Stable id for a claimable-balance decision: "claim:<balanceId>".

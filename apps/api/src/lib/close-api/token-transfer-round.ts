@@ -23,6 +23,7 @@ import {
 } from "@/config/constants";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
+import { formatTokenAmount } from "@/lib/utils/token-amounts";
 
 /**
  * The Soroban token round (architecture.md §10, #161): one transaction per token the user chose
@@ -65,6 +66,7 @@ export interface TokenTransferRound {
 }
 
 const CONTRACT_ID = /^C[A-Z2-7]{55}$/;
+const I128_MAX = 2n ** 127n - 1n;
 
 function shortContract(contract: string): string {
   return `${contract.slice(0, 4)}…${contract.slice(-4)}`;
@@ -73,6 +75,10 @@ function shortContract(contract: string): string {
 function describeToken(accountState: AccountState, contract: string): string {
   const token = accountState.sorobanTokens?.tokens.find((t) => t.contract === contract);
   return token?.symbol ?? shortContract(contract);
+}
+
+function tokenDecimals(accountState: AccountState, contract: string): number | null {
+  return accountState.sorobanTokens?.tokens.find((t) => t.contract === contract)?.decimals ?? null;
 }
 
 async function simulate(
@@ -143,6 +149,9 @@ export function assertPlainTransfer(
   if (typeof amountNative !== "bigint" || amountNative !== expected.amount) {
     throw new Error("the amount is not the live balance");
   }
+  if (host.auth().length === 0) {
+    throw new Error("the simulation produced no authorization for the transfer");
+  }
   for (const entry of host.auth()) {
     if (
       entry.credentials().switch() !== xdr.SorobanCredentialsType.sorobanCredentialsSourceAccount()
@@ -167,6 +176,15 @@ export function assertPlainTransfer(
     ) {
       throw new Error("an authorization entry authorizes a call other than this transfer");
     }
+    const authorizedArgs = authorized.args();
+    if (
+      authorizedArgs.length !== 3 ||
+      Address.fromScVal(authorizedArgs[0]!).toString() !== expected.from ||
+      Address.fromScVal(authorizedArgs[1]!).toString() !== expected.to ||
+      scValToNative(authorizedArgs[2]!) !== expected.amount
+    ) {
+      throw new Error("an authorization entry authorizes a transfer with different arguments");
+    }
   }
   if (BigInt(tx.fee) > BigInt(MAX_SOROBAN_EXIT_FEE_STROOPS)) {
     throw new Error("the fee exceeds what a token transfer can need");
@@ -187,9 +205,34 @@ export async function buildTokenTransferRound(
   validUntilLedger: number,
   deps: TokenTransferRoundDeps
 ): Promise<TokenTransferRound | null> {
-  const due = (accountState.sorobanTokens?.tokens ?? [])
+  const answered = Object.keys(dispositions).filter(
+    (c) => CONTRACT_ID.test(c) && dispositions[c] === "transfer"
+  );
+  if (answered.length === 0) return null;
+  // A token the user chose to move must be accounted for this round. Absent from the read because
+  // its balance is now zero, it has moved and is done; absent because the ledger would not answer,
+  // or because the read itself fell short, nothing here may assume it is gone.
+  const read = accountState.sorobanTokens;
+  const readFellShort =
+    !read ||
+    read.warnings.some(
+      (w) => w.code === "soroban_tokens_partial" || w.code === "soroban_tokens_unreadable"
+    );
+  const unaccounted = answered.filter(
+    (c) =>
+      !read?.tokens.some((t) => t.contract === c) && (readFellShort || read.unreadable.includes(c))
+  );
+  if (unaccounted.length > 0) {
+    throw new TokenTransferBlockedError(
+      "soroban_token_unreadable",
+      `The ${unaccounted.map((c) => describeToken(accountState, c)).join(", ")} token balance ` +
+        "could not be re-read, so the transfer you chose cannot be built. Retry the analysis; if " +
+        "it persists, move the balance through the token's own interface before continuing."
+    );
+  }
+  const due = (read?.tokens ?? [])
     .map((t) => t.contract)
-    .filter((c) => CONTRACT_ID.test(c) && dispositions[c] === "transfer")
+    .filter((c) => answered.includes(c))
     .sort();
   if (due.length === 0) return null;
   const passphrase = NETWORK_PASSPHRASES[network];
@@ -216,6 +259,14 @@ export async function buildTokenTransferRound(
     }
     // Already moved (a previous round confirmed): nothing left here, look at the next token.
     if (balance <= 0n) continue;
+    // `transfer` takes an i128; a token reporting more than that cannot be moved by this call.
+    if (balance > I128_MAX) {
+      throw new TokenTransferBlockedError(
+        "soroban_token_unreadable",
+        `The ${name} token reports a balance larger than a transfer can carry; move it through the ` +
+          "token's own interface, or leave it on record."
+      );
+    }
 
     const raw = new TransactionBuilder(new Account(account, sequence), {
       fee: String(BASE_FEE_STROOPS),
@@ -272,7 +323,7 @@ export async function buildTokenTransferRound(
         covers: ["HANDLE_ASSETS"],
         intent: {
           ...intentFromXdr(xdrBase64, passphrase),
-          summary: `Send ${balance} base units of ${name} to ${destination.slice(0, 4)}…${destination.slice(-4)}`,
+          summary: `Send ${formatTokenAmount(balance.toString(), tokenDecimals(accountState, token))} ${name} to ${destination.slice(0, 4)}…${destination.slice(-4)}`,
         },
       },
       remainingSteps: due.length - i - 1,

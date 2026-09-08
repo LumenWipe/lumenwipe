@@ -1,3 +1,4 @@
+import { formatTokenAmount } from "@/lib/utils/token-amounts";
 import type {
   AccountState,
   AssetDisposition,
@@ -80,23 +81,13 @@ function assetStepLabels(
   };
 }
 
-/** Base units rendered with the token's decimals, or as raw units when it does not say. */
-function tokenAmount(balance: string, decimals: number | null): string {
-  if (decimals === null) return `${balance} base units of`;
-  if (decimals === 0) return balance;
-  const padded = balance.padStart(decimals + 1, "0");
-  const whole = padded.slice(0, -decimals);
-  const frac = padded.slice(-decimals).replace(/0+$/, "");
-  return frac ? `${whole}.${frac}` : whole;
-}
-
 function tokenStepLabels(
   token: { contract: string; symbol: string | null; decimals: number | null; balance: string },
   disposition: AssetDisposition | undefined,
   destination: string | undefined
 ): { title: string; description: string; operationCount: number } {
   const name = token.symbol ?? `token ${shortAddr(token.contract)}`;
-  const amount = tokenAmount(token.balance, token.decimals);
+  const amount = formatTokenAmount(token.balance, token.decimals);
   if (disposition === "leave") {
     return {
       title: `Leave ${name} with this address`,

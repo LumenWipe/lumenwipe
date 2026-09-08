@@ -242,7 +242,7 @@ export default function PlanAccordion({
                 item={c}
                 disposition={assetDispositions[c.asset]}
                 transferDestination={transferDestinations[c.asset]}
-                mergeDestination={mergeDestination}
+                mergeDestination={mediatorRequired ? null : mergeDestination}
                 onSetDisposition={onSetDisposition}
                 onSetTransferDestination={onSetTransferDestination}
               />

@@ -416,13 +416,17 @@ test("chosenTokenTransfers › the destination typed and the raw balance read, f
       account
     )
   ).toEqual({ [TOKEN]: { destination: TOKEN_DEST, amount: "2500000000" } });
-  // No destination, another disposition, or a token the read no longer shows: nothing to vouch for.
+  // No destination, or another disposition: nothing to vouch for.
   expect(chosenTokenTransfers({ [TOKEN]: "transfer" }, {}, account)).toEqual({});
   expect(chosenTokenTransfers({ [TOKEN]: "leave" }, { [TOKEN]: TOKEN_DEST }, account)).toEqual({});
+  // A token the read does not show yet (paid out by an exit, or confirmed only by the plan's own
+  // read) is still pinned to its destination, with a zero floor on the amount.
   expect(
     chosenTokenTransfers({ [TOKEN]: "transfer" }, { [TOKEN]: TOKEN_DEST }, withTokens([]))
-  ).toEqual({});
-  expect(chosenTokenTransfers({ [TOKEN]: "transfer" }, { [TOKEN]: TOKEN_DEST }, null)).toEqual({});
+  ).toEqual({ [TOKEN]: { destination: TOKEN_DEST, amount: "0" } });
+  expect(chosenTokenTransfers({ [TOKEN]: "transfer" }, { [TOKEN]: TOKEN_DEST }, null)).toEqual({
+    [TOKEN]: { destination: TOKEN_DEST, amount: "0" },
+  });
 });
 
 test("chosenTransfers › never lists a Soroban token: those are held to a different rule", () => {

@@ -27,6 +27,7 @@ const DEST = Keypair.random().publicKey();
 const TOKEN_A = Address.contract(Buffer.alloc(32, 1)).toString();
 const TOKEN_B = Address.contract(Buffer.alloc(32, 2)).toString();
 const OTHER = Address.contract(Buffer.alloc(32, 9)).toString();
+const OTHER_DEST = Keypair.random().publicKey();
 
 function account(
   tokens: Array<{ contract: string; balance: string; symbol?: string }>
@@ -143,7 +144,15 @@ function fakeRpc(options: FakeOptions): {
         const base = rawSimulation("ok", [], "100") as unknown as Record<string, unknown>;
         return {
           ...base,
-          results: [{ auth: [], xdr: nativeToScVal(balance, { type: "i128" }).toXDR("base64") }],
+          results: [
+            {
+              auth: [],
+              // A hostile or exotic token may answer with a u128 past what a transfer can carry.
+              xdr: nativeToScVal(balance, {
+                type: balance > 2n ** 127n - 1n ? "u128" : "i128",
+              }).toXDR("base64"),
+            },
+          ],
         } as unknown as rpc.Api.SimulateTransactionResponse;
       }
       if (call.fn === "transfer") {
@@ -196,7 +205,8 @@ describe("the Soroban token transfer round", () => {
       expect(op.accountsReferenced.sort()).toEqual([SOURCE, DEST].sort());
       expect(op.contractsReferenced).toEqual([TOKEN_A]);
     }
-    expect(round!.transaction.intent.summary).toContain("700 base units of XTAR");
+    // 700 base units at 7 decimals, rendered the way the plan step renders it.
+    expect(round!.transaction.intent.summary).toContain("Send 0.00007 XTAR to");
   });
 
   test("one token per round, in a stable order, and a balance already moved is skipped for the next", async () => {
@@ -321,5 +331,84 @@ describe("the Soroban token transfer round", () => {
     );
     await expect(promise).rejects.toMatchObject({ code: "soroban_token_transfer_unsafe" });
     await expect(promise).rejects.toThrow(/fee exceeds/);
+  });
+
+  test("an answered token missing from a read that fell short stops the close; missing from a clean read, it has moved", async () => {
+    const withWarning = account([]);
+    withWarning.sorobanTokens!.warnings = [{ code: "soroban_tokens_partial", message: "x" }];
+    await expect(
+      build(withWarning, { [TOKEN_A]: "transfer" }, { [TOKEN_A]: DEST }, { balances: {} })
+    ).rejects.toMatchObject({ code: "soroban_token_unreadable" });
+
+    const unreadable = account([]);
+    unreadable.sorobanTokens!.unreadable = [TOKEN_A];
+    await expect(
+      build(unreadable, { [TOKEN_A]: "transfer" }, { [TOKEN_A]: DEST }, { balances: {} })
+    ).rejects.toMatchObject({ code: "soroban_token_unreadable" });
+
+    const noRead = account([]);
+    delete (noRead as { sorobanTokens?: unknown }).sorobanTokens;
+    await expect(
+      build(noRead, { [TOKEN_A]: "transfer" }, { [TOKEN_A]: DEST }, { balances: {} })
+    ).rejects.toMatchObject({ code: "soroban_token_unreadable" });
+
+    // A clean read that simply no longer lists the token: its balance is zero, it was moved.
+    await expect(
+      build(account([]), { [TOKEN_A]: "transfer" }, { [TOKEN_A]: DEST }, { balances: {} })
+    ).resolves.toBeNull();
+  });
+
+  test("a balance beyond what an i128 transfer can carry is refused by name, not a crash", async () => {
+    await expect(
+      build(
+        account([{ contract: TOKEN_A, balance: "5" }]),
+        { [TOKEN_A]: "transfer" },
+        { [TOKEN_A]: DEST },
+        { balances: { [TOKEN_A]: 2n ** 127n } }
+      )
+    ).rejects.toMatchObject({ code: "soroban_token_unreadable" });
+  });
+
+  test("an authorization entry whose arguments differ from the call, or no entry at all, is refused", async () => {
+    const rpcNoAuth = fakeRpc({ balances: { [TOKEN_A]: 5n } });
+    const original = rpcNoAuth.simulateTransaction.bind(rpcNoAuth);
+    rpcNoAuth.simulateTransaction = (async (tx) => {
+      const call = calledFunction(tx as Transaction);
+      if (call.fn === "transfer") return rawSimulation("ok", [], "1000");
+      return original(tx);
+    }) as typeof rpcNoAuth.simulateTransaction;
+    await expect(
+      buildTokenTransferRound(
+        account([{ contract: TOKEN_A, balance: "5" }]),
+        { [TOKEN_A]: "transfer" },
+        { [TOKEN_A]: DEST },
+        "testnet",
+        "100",
+        5_000,
+        { rpc: rpcNoAuth }
+      )
+    ).rejects.toThrow(/no authorization/);
+
+    const rpcOtherArgs = fakeRpc({ balances: { [TOKEN_A]: 5n } });
+    const orig2 = rpcOtherArgs.simulateTransaction.bind(rpcOtherArgs);
+    rpcOtherArgs.simulateTransaction = (async (tx) => {
+      const call = calledFunction(tx as Transaction);
+      if (call.fn === "transfer") {
+        const swapped = [call.args[0]!, new Address(OTHER_DEST).toScVal(), call.args[2]!];
+        return rawSimulation("ok", [authEntry(TOKEN_A, swapped)], "1000");
+      }
+      return orig2(tx);
+    }) as typeof rpcOtherArgs.simulateTransaction;
+    await expect(
+      buildTokenTransferRound(
+        account([{ contract: TOKEN_A, balance: "5" }]),
+        { [TOKEN_A]: "transfer" },
+        { [TOKEN_A]: DEST },
+        "testnet",
+        "100",
+        5_000,
+        { rpc: rpcOtherArgs }
+      )
+    ).rejects.toThrow(/different arguments/);
   });
 });

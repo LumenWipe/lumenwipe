@@ -255,3 +255,41 @@ test("a token without a decision yet still keeps the close out of the fused shap
     "Send XTAR to another account"
   );
 });
+
+test("a trustline answered leave is refused before any token moves: the token round never runs", async () => {
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
+  let simulated = 0;
+  const promise = buildCloseTransactions(
+    withToken("250", { trustlines: [trustline(USDC, "100")] }),
+    DEST,
+    { [TOKEN]: "transfer", [USDC]: "leave" as never },
+    "testnet",
+    null,
+    {},
+    { [TOKEN]: TRANSFER_TO },
+    {},
+    {
+      rpc: {
+        simulateTransaction: () => {
+          simulated++;
+          return Promise.reject(new Error("must not run"));
+        },
+      },
+    }
+  );
+  await expect(promise).rejects.toMatchObject({ code: "trustline_cannot_be_left", status: 422 });
+  expect(simulated).toBe(0);
+});
+
+test("convert for a Soroban token is refused by name until conversion is built, never left to the merge", async () => {
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
+  const promise = buildCloseTransactions(withToken("250"), DEST, { [TOKEN]: "convert" }, "testnet");
+  await expect(promise).rejects.toMatchObject({
+    code: "soroban_token_conversion_unavailable",
+    status: 422,
+  });
+});

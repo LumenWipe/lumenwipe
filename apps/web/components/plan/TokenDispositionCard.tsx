@@ -83,7 +83,9 @@ export default function TokenDispositionCard({
             {item.code} <span className="text-white/40">→</span> {headline}
           </p>
           <p className="text-xs text-white/50">
-            {item.balance} {item.code}
+            {token.arrivesFromExit
+              ? "Paid out when a position is exited"
+              : `${item.balance} ${item.code}`}
             <span className="text-white/35"> · Soroban token {shortContract(token.contract)}</span>
           </p>
           {!item.convertible && !isTransfer && !isLeave && (

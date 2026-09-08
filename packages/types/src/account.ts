@@ -83,7 +83,8 @@ export type SorobanTokenSource = "explorer" | "positions" | "list" | "events" | 
 export interface SorobanTokenBalance {
   /** The token contract, `C...`. */
   contract: string;
-  /** Base units, integer string, as `balance(account)` reports it on the ledger. */
+  /** Base units, integer string, as `balance(account)` reports it on the ledger. "0" only for a
+   *  token the account does not hold yet but a detected position's exit will pay out. */
   balance: string;
   /** From the contract's own `symbol()` / `decimals()`, null when it does not answer them. */
   symbol: string | null;

@@ -13,14 +13,23 @@ export interface AssetConvertibility {
   /** Human-readable balance: decimal for a classic asset or a token with known decimals. */
   balance: string;
   convertible: boolean;
-  /** Present for a Soroban token: its contract and the raw balance verify() holds a transfer to. */
-  token?: { contract: string; symbol: string | null; decimals: number | null; rawBalance: string };
+  /** Present for a Soroban token: its contract and the raw balance verify() holds a transfer to.
+   *  `arrivesFromExit`: the balance is what a position's exit will pay out, not what is held now. */
+  token?: {
+    contract: string;
+    symbol: string | null;
+    decimals: number | null;
+    rawBalance: string;
+    arrivesFromExit: boolean;
+  };
 }
 
 /** Base units rendered with the token's decimals; raw units, labelled, when it has none. */
 export function formatTokenBalance(rawBalance: string, decimals: number | null): string {
   if (!/^\d+$/.test(rawBalance)) return rawBalance;
-  if (decimals === null) return `${rawBalance} base units`;
+  if (decimals === null || !Number.isInteger(decimals) || decimals < 0 || decimals > 38) {
+    return `${rawBalance} base units`;
+  }
   if (decimals === 0) return rawBalance;
   const padded = rawBalance.padStart(decimals + 1, "0");
   const whole = padded.slice(0, -decimals);
@@ -48,7 +57,13 @@ export function decisionPointsToConversions(plan: PlanResponse): AssetConvertibi
           code: symbol ?? `${contract.slice(0, 4)}…${contract.slice(-4)}`,
           balance: formatTokenBalance(rawBalance, decimals),
           convertible,
-          token: { contract, symbol, decimals, rawBalance },
+          token: {
+            contract,
+            symbol,
+            decimals,
+            rawBalance,
+            arrivesFromExit: dp.subject.arrivesFromExit === true,
+          },
         };
       }
       const asset = String(dp.subject.asset ?? "");

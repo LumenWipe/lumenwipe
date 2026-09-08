@@ -503,7 +503,7 @@ export class CloseController {
       }
       if (e instanceof MissingTransferDestinationError) {
         fail("transfer_destination_missing", e.message, 422, {
-          decisionId: assetDecisionId(e.asset),
+          decisionId: decisionIdFor(e.asset),
         });
       }
       if (e instanceof CloseBuildError) fail(e.code, e.message, e.status);

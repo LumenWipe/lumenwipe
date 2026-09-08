@@ -188,9 +188,12 @@ export function chosenTokenTransfers(
     if (disposition !== "transfer" || !isTokenContract(contract)) continue;
     const destination = destinations[contract];
     if (!destination) continue;
+    // The floor is the balance the analysis read. Zero when the read shows none (a token an exit
+    // pays out during the close, or one the plan confirmed after this read): the destination and
+    // the shape still pin the transfer; only the amount is unknown until the payout lands.
     const token = tokens.find((t) => t.contract === contract);
-    if (!token || !/^[1-9]\d*$/.test(token.balance)) continue;
-    transfers[contract] = { destination, amount: token.balance };
+    const amount = token && /^\d+$/.test(token.balance) ? token.balance : "0";
+    transfers[contract] = { destination, amount };
   }
   return transfers;
 }

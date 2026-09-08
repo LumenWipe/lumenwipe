@@ -458,4 +458,37 @@ describe("Soroban token discovery", () => {
     });
     expect(result.coverage.find((c) => c.source === "events")?.detail).toBe("time budget");
   });
+
+  test("a position's payout token the account does not hold yet is listed with a zero balance and its metadata", async () => {
+    const position = {
+      protocol: "aquarius",
+      type: "lp",
+      contractAddress: token(20),
+      tokens: [NATIVE_A, NATIVE_B],
+    } as unknown as AquariusLpPosition;
+    const deps = fakeSorobanDeps({
+      world: {
+        latestLedger: LATEST,
+        tokens: [held(NATIVE_A, 0n, { symbol: "AAA", decimals: 7 }), held(NATIVE_B, 3n)],
+      },
+      explorerBaseUrl: "",
+      listCandidates: [GHOST],
+      positions: [position],
+    });
+    const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
+    expect(result.tokens).toEqual([
+      { contract: NATIVE_A, balance: "0", symbol: "AAA", decimals: 7, sources: ["positions"] },
+      { contract: NATIVE_B, balance: "3", symbol: "TKN", decimals: 7, sources: ["positions"] },
+    ]);
+  });
+
+  test("an empty balance from any other source is not listed at all", async () => {
+    const deps = fakeSorobanDeps({
+      world: { latestLedger: LATEST, tokens: [held(NATIVE_A, 0n)] },
+      explorerBaseUrl: "",
+      listCandidates: [NATIVE_A],
+    });
+    const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
+    expect(result.tokens).toEqual([]);
+  });
 });

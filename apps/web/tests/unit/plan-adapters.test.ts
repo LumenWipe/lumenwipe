@@ -160,7 +160,13 @@ test("decisionPointsToConversions › a Soroban token point becomes a token item
       code: "XTAR",
       balance: "250",
       convertible: false,
-      token: { contract: TOKEN, symbol: "XTAR", decimals: 7, rawBalance: "2500000000" },
+      token: {
+        contract: TOKEN,
+        symbol: "XTAR",
+        decimals: 7,
+        rawBalance: "2500000000",
+        arrivesFromExit: false,
+      },
     },
     { asset: "USDC:GISSUER", code: "USDC", balance: "12.5000000", convertible: true },
   ]);
@@ -196,4 +202,32 @@ test("formatTokenBalance › decimals place the point, trailing zeros drop, tiny
   expect(formatTokenBalance("7", 0)).toBe("7");
   expect(formatTokenBalance("7", null)).toBe("7 base units");
   expect(formatTokenBalance("abc", 7)).toBe("abc");
+});
+
+test("formatTokenBalance › an absurd decimals figure falls back to raw units instead of throwing", () => {
+  expect(formatTokenBalance("7", 4294967295)).toBe("7 base units");
+  expect(formatTokenBalance("7", -1)).toBe("7 base units");
+});
+
+test("decisionPointsToConversions › a token an exit pays out later carries arrivesFromExit", () => {
+  const [item] = decisionPointsToConversions(
+    plan([
+      {
+        id: `token:${TOKEN}`,
+        type: "asset_disposition",
+        subject: {
+          kind: "soroban_token",
+          contract: TOKEN,
+          symbol: "XTAR",
+          decimals: 7,
+          balance: "0",
+          arrivesFromExit: true,
+        },
+        options: [{ id: "transfer_to_account" }, { id: "acknowledge_residue" }],
+        default: "transfer_to_account",
+        required: true,
+      },
+    ])
+  );
+  expect(item!.token).toMatchObject({ arrivesFromExit: true, rawBalance: "0" });
 });

@@ -98,7 +98,13 @@ const tokenItem = (convertible: boolean): AssetConvertibility => ({
   code: "XTAR",
   balance: "250",
   convertible,
-  token: { contract: TOKEN_CONTRACT, symbol: "XTAR", decimals: 7, rawBalance: "2500000000" },
+  token: {
+    contract: TOKEN_CONTRACT,
+    symbol: "XTAR",
+    decimals: 7,
+    rawBalance: "2500000000",
+    arrivesFromExit: false,
+  },
 });
 
 test("a Soroban token is resolved by an explicit leave, by a transfer with a usable address, or by a convert when a route exists", () => {
