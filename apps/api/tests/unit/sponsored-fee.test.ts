@@ -13,7 +13,18 @@ import type { FusedCloseInput } from "@/lib/stellar/tx-builder/fused-close";
 
 const MASTER = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
+const ISSUER = Keypair.random().publicKey();
 const START_SEQ = "100";
+
+function manyTrustlines(n: number) {
+  return Array.from({ length: n }, (_, i) => ({
+    asset: `AST${i}:${ISSUER}`,
+    balance: "0",
+    authorized: true,
+    issuer: ISSUER,
+    code: `AST${i}`,
+  }));
+}
 
 function input(over: Partial<FusedCloseInput> = {}): FusedCloseInput {
   return {
@@ -101,4 +112,35 @@ test("packFusedCloseTransactions › exactly enough for this transaction's fee i
     exact
   );
   expect(txs[0]!.needsSponsoredFee).toBeUndefined();
+});
+
+test("packFusedCloseTransactions › a later chunk is judged against what's left after an earlier chunk's own fee, not the round's original balance", () => {
+  // 150 trustline removals + the merge = 151 ops, split into a 100-op chunk and a 51-op chunk
+  // (OP_BATCH_LIMIT). Chunk fees: 100 * 100 = 10,000 stroops, then 100 * 51 = 5,100 stroops.
+  // Balance is set to exactly cover the reserve plus chunk 1's fee plus a little more - enough
+  // that judging chunk 2 against the ORIGINAL balance would (wrongly) call it affordable, but
+  // judging it against what's left after chunk 1's fee is spent correctly flags it.
+  const reserveStroops = 10_000_000n; // 1 XLM base reserve, 0 subentries counted toward it
+  const chunk1FeeStroops = 10_000n;
+  const chunk2FeeStroops = 5_100n;
+  const remainderAfterChunk1 = 2_000n; // deliberately less than chunk 2's fee, asserted below
+  expect(remainderAfterChunk1).toBeLessThan(chunk2FeeStroops);
+  const balanceStroops = reserveStroops + chunk1FeeStroops + remainderAfterChunk1;
+  const balanceLumens = (Number(balanceStroops) / 10_000_000).toFixed(7);
+
+  const txs = packFusedCloseTransactions(
+    new Account(MASTER, START_SEQ),
+    input({ trustlines: manyTrustlines(150) }),
+    "testnet",
+    999,
+    { nativeBalanceLumens: balanceLumens, numSubEntries: 0, numSponsoring: 0 }
+  );
+
+  expect(txs).toHaveLength(2);
+  expect(txs[0]!.needsSponsoredFee).toBeUndefined(); // chunk 1: affordable from the original balance
+  expect(TransactionBuilder.fromXDR(txs[0]!.xdr, Networks.TESTNET).fee).toBe(
+    chunk1FeeStroops.toString()
+  );
+  expect(txs[1]!.needsSponsoredFee).toBe(true); // chunk 2: no longer affordable once chunk 1's fee is spent
+  expect(TransactionBuilder.fromXDR(txs[1]!.xdr, Networks.TESTNET).fee).toBe("0");
 });

@@ -484,8 +484,12 @@ function reserveStroops(numSubEntries: number, numSponsoring: number): bigint {
 
 /**
  * Whether the account can pay a fee of `feeStroops` for a transaction of its own, without going
- * below its reserve. Exported for direct unit coverage of the reserve arithmetic; the only
- * caller in production code is `packFusedCloseTransactions` below.
+ * below its reserve, judged from `accountState.nativeBalanceLumens` as given (no running
+ * decrement). Exported for direct unit coverage of the reserve arithmetic and for a single
+ * transaction's affordability; `packFusedCloseTransactions` below inlines this same comparison
+ * against a running per-chunk balance instead of calling this, since a multi-chunk round needs
+ * each later chunk judged against what's left after earlier chunks' fees, not the round's
+ * original balance.
  */
 export function accountCanAffordFee(
   accountState: Pick<AccountState, "nativeBalanceLumens" | "numSubEntries" | "numSponsoring">,
@@ -510,11 +514,15 @@ export function accountCanAffordFee(
  * whose fee the account cannot pay without dropping below its reserve is built with its own fee
  * at zero and flagged `needsSponsoredFee: true`, so the client routes it through the fee-bump
  * sponsor (`/fee-bump/sponsor`) before submitting instead of paying the network directly. The
- * judgment is deliberately made once, up front, from the round's starting balance, not
- * re-evaluated chunk to chunk as earlier chunks would free reserves on-chain: this round's
- * transactions are all built from one static snapshot with no network access in between, and a
- * later round - which does re-read state - is where a chunk that turns out to no longer need
- * sponsoring gets built without it.
+ * account's *reserve* is not re-evaluated chunk to chunk, even though an earlier chunk would free
+ * reserve on-chain by removing subentries: this round's transactions are all built from one
+ * static snapshot with no network access in between, and a later round - which does re-read
+ * state - is where a chunk that turns out to no longer need sponsoring gets built without it. Its
+ * *balance*, however, IS tracked chunk to chunk within this one call: an earlier chunk built
+ * unsponsored spends its own fee out of that same balance once it lands on-chain, so a later
+ * chunk in the same round must be judged against what's left after that spend, not the round's
+ * original balance - otherwise a run of several unsponsored chunks near the reserve line could
+ * each look affordable in isolation while collectively overdrawing it.
  */
 export function packFusedCloseTransactions(
   sdkAccount: Account,
@@ -527,6 +535,8 @@ export function packFusedCloseTransactions(
   const chunks = batchItems(tagged, OP_BATCH_LIMIT);
   const networkPassphrase = NETWORK_PASSPHRASES[network];
   const fullSummary = buildSummary(input);
+  const reserve = reserveStroops(feeAffordability.numSubEntries, feeAffordability.numSponsoring);
+  let remainingBalanceStroops = BigInt(xlmToStroops(feeAffordability.nativeBalanceLumens));
 
   return chunks.map((chunk, i): CloseTransaction => {
     const isLast = i === chunks.length - 1;
@@ -535,7 +545,13 @@ export function packFusedCloseTransactions(
     // The SDK multiplies `fee` by the operation count, so the per-operation base
     // fee yields BASE_FEE_STROOPS * opCount on-chain.
     const chunkFeeStroops = BigInt(BASE_FEE_STROOPS) * BigInt(chunk.length);
-    const needsSponsoredFee = !accountCanAffordFee(feeAffordability, chunkFeeStroops);
+    const needsSponsoredFee = remainingBalanceStroops - reserve < chunkFeeStroops;
+    // Only an unsponsored chunk spends the account's own balance on its fee - a sponsored
+    // chunk's fee is "0" and paid by the fee account instead, so it doesn't reduce what later
+    // chunks in this round have left to draw on.
+    if (!needsSponsoredFee) {
+      remainingBalanceStroops -= chunkFeeStroops;
+    }
     const builder = new TransactionBuilder(sdkAccount, {
       fee: needsSponsoredFee ? "0" : String(BASE_FEE_STROOPS),
       networkPassphrase,
