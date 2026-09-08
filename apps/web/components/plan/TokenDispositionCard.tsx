@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle, AlertTriangle, ArrowRightLeft, CheckCircle2, Send } from "lucide-react";
-import type { AssetConvertibility } from "@/lib/api/plan-adapters";
+import { formatStroops, type AssetConvertibility } from "@/lib/api/plan-adapters";
 import type { AssetDisposition } from "@/types/plan";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { cn } from "@/lib/utils/cn";
@@ -125,7 +125,15 @@ export default function TokenDispositionCard({
             />
             <span>
               Exchange my {item.balance} {item.code} for XLM.{" "}
-              <span className="text-white/40">Through the Soroswap aggregator.</span>
+              {token.quote ? (
+                <span className="text-white/40">
+                  About {formatStroops(token.quote.amountOut)} XLM, at least{" "}
+                  {formatStroops(token.quote.minAmountOut)} XLM, through Soroswap
+                  {token.quote.route.length > 0 ? ` (${token.quote.route.join(", ")})` : ""}.
+                </span>
+              ) : (
+                <span className="text-white/40">Through the Soroswap aggregator.</span>
+              )}
             </span>
           </label>
         )}

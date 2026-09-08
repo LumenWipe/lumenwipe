@@ -27,6 +27,10 @@ import {
   requiresMediatorForAddress,
 } from "@/lib/exchange-registry";
 import { validateTransferDestinations } from "@/lib/close-api/transfer-destinations";
+import { quoteTokenToXlm } from "@/lib/soroswap/conversion-quotes";
+
+/** Quotes per plan are bounded like discovery candidates; a token past this is offered no swap. */
+const MAX_TOKEN_QUOTES = 20;
 import { readTrustlinesOnly } from "@/lib/stellar/account-state";
 import {
   assetDecisionId,
@@ -35,6 +39,10 @@ import {
   deriveClaimableBalanceDecisionPoints,
   decisionIdFor,
   deriveDecisionPoints,
+  MissingConversionFloorError,
+  tokenConversionFloors,
+  tokenDecisionId,
+  type TokenQuoteSummary,
   deriveTokenDecisionPoints,
   tokenAssetsById,
   tokenContractsFromAnswers,
@@ -164,9 +172,29 @@ export class CloseController {
         accountState.sponsorshipEnumerationIncomplete
           ? Promise.resolve({ revocable: [], unaffordableOwners: new Map() })
           : assessSponsorshipAffordability(source, nonClaimableSponsoredEntries, network);
+      // Priced through the Soroswap API, one quote per held token with readable metadata, only
+      // when conversion is enabled; anything else is offered transfer or leave.
+      const tokenQuotes: Record<string, TokenQuoteSummary | null> = {};
+      const tokenQuotePromise = Promise.all(
+        (accountState.sorobanTokens?.tokens ?? [])
+          .filter((t) => t.symbol !== null && t.decimals !== null && /^[1-9]\d*$/.test(t.balance))
+          .slice(0, MAX_TOKEN_QUOTES)
+          .map(async (t) => {
+            const quote = await quoteTokenToXlm(t.contract, BigInt(t.balance), network);
+            tokenQuotes[t.contract] = quote
+              ? {
+                  amountOut: quote.amountOut,
+                  minAmountOut: quote.minAmountOut,
+                  platform: quote.platform,
+                  route: quote.route,
+                }
+              : null;
+          })
+      );
       const [, sponsorshipAffordability] = await Promise.all([
         convertibilityPromise,
         sponsorshipAffordabilityPromise,
+        tokenQuotePromise,
       ]);
 
       // Every asset the close will touch answers here - held or arriving. Without the arriving
@@ -181,7 +209,6 @@ export class CloseController {
         // record. No route pricing yet - conversion is offered once a quote source exists.
         ...tokenAssetsById(accountState),
       ];
-      const tokenConvertibility: Record<string, boolean> = {};
       // A transfer answer is well-formed whether or not it names a usable account, so both halves
       // are taken here. The destinations that resolved describe the plan's asset steps and feed
       // the live-ledger check below; the ones that did not go back on the pending list.
@@ -202,7 +229,7 @@ export class CloseController {
       const decisionPoints = [
         ...deriveDestinationDecisionPoints(destination),
         ...deriveDecisionPoints(accountState, convertibility, claimableBalanceSelections),
-        ...deriveTokenDecisionPoints(accountState, tokenConvertibility),
+        ...deriveTokenDecisionPoints(accountState, tokenQuotes),
         ...deriveClaimableBalanceDecisionPoints(accountState),
       ];
       const answeredIds = new Set(decisions.map((d) => d?.id));
@@ -413,6 +440,7 @@ export class CloseController {
       ];
       const dispositions = resolveDispositions(decisions, assetsById);
       const transferDestinations = resolveTransferDestinations(decisions, assetsById);
+      const conversionFloors = tokenConversionFloors(decisions, assetsById);
 
       const authorizedTrustlineAssets = new Set(
         accountState.trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset)
@@ -475,7 +503,10 @@ export class CloseController {
         network,
         memo,
         claimableBalanceSelections,
-        transferDestinations
+        transferDestinations,
+        {},
+        {},
+        { floors: conversionFloors }
       );
 
       const planHash = computePlanHash({
@@ -504,6 +535,11 @@ export class CloseController {
       if (e instanceof MissingTransferDestinationError) {
         fail("transfer_destination_missing", e.message, 422, {
           decisionId: decisionIdFor(e.asset),
+        });
+      }
+      if (e instanceof MissingConversionFloorError) {
+        fail("conversion_floor_missing", e.message, 422, {
+          decisionId: tokenDecisionId(e.contract),
         });
       }
       if (e instanceof CloseBuildError) fail(e.code, e.message, e.status);

@@ -116,6 +116,44 @@ export function tokenContractsFromAnswers(answers: DecisionAnswer[]): string[] {
 /** Discovery reads at most this many candidates per analysis; answers beyond it name nothing. */
 export const MAX_TOKEN_ANSWERS = 50;
 
+/** Raised when a token's convert answer carries no floor. Caught at the controller boundary. */
+export class MissingConversionFloorError extends Error {
+  constructor(readonly contract: string) {
+    super(
+      `Converting the ${contract.slice(0, 4)}…${contract.slice(-4)} token requires the least XLM ` +
+        "you were shown it would deliver: provide params.minAmountOut (stroops) on the answer."
+    );
+    this.name = "MissingConversionFloorError";
+  }
+}
+
+/**
+ * The floors the convert answers carry, per token contract: the least XLM (stroops) the user saw
+ * the swap deliver. Strict like transfer destinations: without a floor there is no drift to
+ * refuse and nothing the browser can hold the built swap to, so the answer is refused rather than
+ * defaulted to whatever the market gives at build time.
+ */
+export function tokenConversionFloors(
+  answers: DecisionAnswer[],
+  assetsById: { id: string; asset: string }[]
+): Record<string, string> {
+  const assetForId = new Map(assetsById.map((a) => [a.id, a.asset]));
+  const dispositions = resolveDispositions(answers, assetsById);
+  const floors: Record<string, string> = {};
+  for (const answer of answers) {
+    if (answer?.choice !== "convert_to_xlm") continue;
+    const asset = assetForId.get(answer.id);
+    if (asset === undefined || !isTokenContract(asset)) continue;
+    if (dispositions[asset] !== "convert") continue;
+    const floor = answer.params?.minAmountOut;
+    if (typeof floor !== "string" || !/^[1-9]\d*$/.test(floor)) {
+      throw new MissingConversionFloorError(asset);
+    }
+    floors[asset] = floor;
+  }
+  return floors;
+}
+
 /** Every held Soroban token with a balance, keyed for the decision machinery like an asset. */
 export function tokenAssetsById(
   account: Pick<AccountState, "sorobanTokens">
@@ -136,9 +174,17 @@ export function tokenAssetsById(
  * convert option is not offered. A token whose symbol or decimals could not be read is not
  * offered conversion either - a swap amount nobody can read is not a decision anyone can make.
  */
+/** What the plan shows for a convertible token: the quoted XLM and the floor the swap must clear. */
+export interface TokenQuoteSummary {
+  amountOut: string;
+  minAmountOut: string;
+  platform: "aggregator" | "router";
+  route: string[];
+}
+
 export function deriveTokenDecisionPoints(
   account: Pick<AccountState, "sorobanTokens">,
-  convertibility: Record<string, boolean>
+  quotes: Record<string, TokenQuoteSummary | null | undefined>
 ): DecisionPoint[] {
   const tokens = account.sorobanTokens?.tokens ?? [];
   return (
@@ -149,7 +195,8 @@ export function deriveTokenDecisionPoints(
       .filter((t) => BigInt(t.balance) > 0n || t.sources.includes("positions"))
       .map((t) => {
         const readable = t.symbol !== null && t.decimals !== null;
-        const convertible = readable && (convertibility[t.contract] ?? false);
+        const quote = readable ? (quotes[t.contract] ?? null) : null;
+        const convertible = quote !== null;
         const options = [
           ...(convertible ? [{ id: "convert_to_xlm" as const, recommended: true }] : []),
           {
@@ -175,6 +222,7 @@ export function deriveTokenDecisionPoints(
             convertible,
             /** True when the balance is what a position's exit will pay out, not what is held now. */
             arrivesFromExit: BigInt(t.balance) === 0n,
+            ...(quote ? { quote } : {}),
           },
           options,
           default: convertible ? "convert_to_xlm" : TRANSFER_CHOICE,

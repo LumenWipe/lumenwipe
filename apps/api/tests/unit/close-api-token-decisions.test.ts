@@ -13,12 +13,21 @@ import {
   tokenAssetsById,
   tokenContractsFromAnswers,
   tokenDecisionId,
+  tokenConversionFloors,
+  MissingConversionFloorError,
+  type TokenQuoteSummary,
 } from "@/lib/close-api/decisions";
 
 const TOKEN_A = Address.contract(Buffer.alloc(32, 1)).toString();
 const TOKEN_B = Address.contract(Buffer.alloc(32, 2)).toString();
 const ISSUER = Keypair.random().publicKey();
 const USDC = `USDC:${ISSUER}`;
+const QUOTE: TokenQuoteSummary = {
+  amountOut: "5249630",
+  minAmountOut: "5223381",
+  platform: "aggregator",
+  route: ["soroswap"],
+};
 
 function held(
   contract: string,
@@ -37,14 +46,19 @@ function withTokens(tokens: SorobanTokenBalance[]): Pick<AccountState, "sorobanT
 test("every token with a balance gets a required decision: transfer and leave always, convert only with a route and readable metadata", () => {
   const points = deriveTokenDecisionPoints(
     withTokens([held(TOKEN_A, "100"), held(TOKEN_B, "7", { symbol: null, decimals: null })]),
-    { [TOKEN_A]: true, [TOKEN_B]: true }
+    { [TOKEN_A]: QUOTE, [TOKEN_B]: QUOTE }
   );
   expect(points.map((p) => p.id)).toEqual([tokenDecisionId(TOKEN_A), tokenDecisionId(TOKEN_B)]);
   const [a, b] = points;
   expect(a!.required).toBe(true);
   expect(a!.options.map((o) => o.id)).toEqual(["convert_to_xlm", TRANSFER_CHOICE, LEAVE_CHOICE]);
   expect(a!.default).toBe("convert_to_xlm");
-  expect(a!.subject).toMatchObject({ kind: "soroban_token", contract: TOKEN_A, convertible: true });
+  expect(a!.subject).toMatchObject({
+    kind: "soroban_token",
+    contract: TOKEN_A,
+    convertible: true,
+    quote: QUOTE,
+  });
   // No symbol or decimals: a swap amount nobody can read is not a decision anyone can make.
   expect(b!.options.map((o) => o.id)).toEqual([TRANSFER_CHOICE, LEAVE_CHOICE]);
   expect(b!.default).toBe(TRANSFER_CHOICE);
@@ -121,4 +135,48 @@ test("tokenContractsFromAnswers stops at the discovery cap", () => {
     choice: LEAVE_CHOICE,
   }));
   expect(tokenContractsFromAnswers(many)).toHaveLength(50);
+});
+
+test("a token without a usable quote is offered no conversion, and a null quote reads like none", () => {
+  const points = deriveTokenDecisionPoints(withTokens([held(TOKEN_A, "100")]), { [TOKEN_A]: null });
+  expect(points[0]!.options.map((o) => o.id)).toEqual([TRANSFER_CHOICE, LEAVE_CHOICE]);
+  expect(points[0]!.subject).not.toHaveProperty("quote");
+});
+
+test("a token's convert answer must carry the floor it was quoted; a classic asset's never does", () => {
+  const byId = [
+    { id: tokenDecisionId(TOKEN_A), asset: TOKEN_A },
+    { id: `asset:${USDC.replace(":", "-")}`, asset: USDC },
+  ];
+  expect(
+    tokenConversionFloors(
+      [
+        {
+          id: tokenDecisionId(TOKEN_A),
+          choice: "convert_to_xlm",
+          params: { minAmountOut: "5223381" },
+        },
+        { id: `asset:${USDC.replace(":", "-")}`, choice: "convert_to_xlm" },
+      ],
+      byId
+    )
+  ).toEqual({ [TOKEN_A]: "5223381" });
+  for (const params of [undefined, {}, { minAmountOut: "0" }, { minAmountOut: "12.5" }]) {
+    expect(() =>
+      tokenConversionFloors(
+        [{ id: tokenDecisionId(TOKEN_A), choice: "convert_to_xlm", params }],
+        byId
+      )
+    ).toThrow(MissingConversionFloorError);
+  }
+  // A later answer that moved the token off convert leaves no floor to demand.
+  expect(
+    tokenConversionFloors(
+      [
+        { id: tokenDecisionId(TOKEN_A), choice: "convert_to_xlm" },
+        { id: tokenDecisionId(TOKEN_A), choice: LEAVE_CHOICE },
+      ],
+      byId
+    )
+  ).toEqual({});
 });

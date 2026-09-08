@@ -40,7 +40,8 @@ const PROTOCOLS: Record<DefiProtocol, true> = {
 };
 const NETWORKS: Record<Network, true> = { mainnet: true, testnet: true };
 
-export type ContractKind = "pool" | "pair" | "backstop" | "vault" | "factory" | "router";
+export type ContractKind =
+  "pool" | "pair" | "backstop" | "vault" | "factory" | "router" | "aggregator" | "adapter";
 const KINDS: Record<ContractKind, true> = {
   pool: true,
   pair: true,
@@ -48,6 +49,8 @@ const KINDS: Record<ContractKind, true> = {
   vault: true,
   factory: true,
   router: true,
+  aggregator: true,
+  adapter: true,
 };
 
 const ALL_PROTOCOLS = Object.keys(PROTOCOLS) as DefiProtocol[];
@@ -337,4 +340,23 @@ export function entriesForProtocol(
 
 export function resolveWasmHash(network: Network, wasmHash: string): ContractResolution {
   return shipped.resolveWasmHash(network, wasmHash);
+}
+
+/**
+ * The Soroswap contracts a token conversion may invoke on a network: the aggregator, the adapters
+ * it dispatches to, and the router (the API builds a single-protocol route as a direct router
+ * call). Only entries verified live count; a conversion whose transaction reaches any other
+ * contract is refused. Empty when the registry is stale, so conversion fails closed.
+ */
+export function soroswapConversionContracts(
+  network: Network,
+  now: Date = new Date()
+): { aggregator: string[]; adapters: string[]; routers: string[] } {
+  if (!shipped.isRegistryFresh(now)) return { aggregator: [], adapters: [], routers: [] };
+  const live = shipped
+    .entriesForProtocol(network, "soroswap")
+    .filter((e) => e.verifiedLive && e.wasmHash !== null);
+  const of = (kind: ContractKind): string[] =>
+    live.filter((e) => e.kind === kind).map((e) => e.address);
+  return { aggregator: of("aggregator"), adapters: of("adapter"), routers: of("router") };
 }

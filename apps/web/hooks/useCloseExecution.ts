@@ -12,6 +12,7 @@ import { useNetworkStore } from "@/store/network";
 import { runClose, InsufficientSignatureWeightError, type PendingRound } from "@lumenwipe/sdk";
 import { fetchCloseTransactions } from "@/lib/api/close-client";
 import {
+  chosenTokenConversions,
   chosenTokenTransfers,
   chosenTransfers,
   claimableSelectionsToDecisions,
@@ -101,7 +102,8 @@ export function useCloseExecution() {
       const decisions = [
         ...dispositionsToDecisions(
           useDemolishStore.getState().assetDispositions,
-          useDemolishStore.getState().transferDestinations
+          useDemolishStore.getState().transferDestinations,
+          useDemolishStore.getState().tokenConversionFloors
         ),
         ...claimableSelectionsToDecisions(claimableBalanceSelections),
         // Carried through to every build round: the API refuses to build a close into a
@@ -167,6 +169,10 @@ export function useCloseExecution() {
                     useDemolishStore.getState().assetDispositions,
                     useDemolishStore.getState().transferDestinations,
                     accountState
+                  ),
+                  tokenConversions: chosenTokenConversions(
+                    useDemolishStore.getState().assetDispositions,
+                    useDemolishStore.getState().tokenConversionFloors
                   ),
                   ...exitExpectations(accountState, network),
                 },
@@ -371,6 +377,10 @@ export function useCloseExecution() {
             useDemolishStore.getState().assetDispositions,
             useDemolishStore.getState().transferDestinations,
             accountState
+          ),
+          tokenConversions: chosenTokenConversions(
+            useDemolishStore.getState().assetDispositions,
+            useDemolishStore.getState().tokenConversionFloors
           ),
           ...exitExpectations(accountState, network),
         },

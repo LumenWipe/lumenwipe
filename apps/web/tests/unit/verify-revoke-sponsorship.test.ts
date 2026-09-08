@@ -27,6 +27,8 @@ function baseExpected(): CloseExpectation {
     claimTrustlineAssets: [],
     transfers: {},
     tokenTransfers: {},
+    tokenConversions: {},
+    conversionContracts: [],
     exitContracts: [],
     heldTokenContracts: [],
     positionTokenContracts: [],

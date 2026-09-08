@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import {
+  chosenTokenConversions,
   chosenTokenTransfers,
   chosenTransfers,
   receiptAssetSummary,
@@ -454,4 +455,27 @@ test("receiptTokenSummary › every token with a balance, named by symbol or sho
     { asset: "CC64WBDGS6QQP22QTTIACYIXT3WF7BBQEYOQPLTP7GTKYY7PZ74QYGSL", code: "CC64…YGSL" },
   ]);
   expect(receiptTokenSummary(null)).toEqual([]);
+});
+
+test("dispositionsToDecisions › a token's convert answer carries the floor the plan quoted; without one it carries none and the API refuses it", () => {
+  expect(
+    dispositionsToDecisions({ [TOKEN]: "convert", [ASSET]: "convert" }, {}, { [TOKEN]: "5223381" })
+  ).toEqual([
+    { id: `token:${TOKEN}`, choice: "convert_to_xlm", params: { minAmountOut: "5223381" } },
+    { id: ASSET_ID, choice: "convert_to_xlm" },
+  ]);
+  expect(dispositionsToDecisions({ [TOKEN]: "convert" }, {}, {})).toEqual([
+    { id: `token:${TOKEN}`, choice: "convert_to_xlm" },
+  ]);
+});
+
+test("chosenTokenConversions › only tokens marked convert with a usable floor are vouched for", () => {
+  expect(
+    chosenTokenConversions({ [TOKEN]: "convert", [ASSET]: "convert" }, { [TOKEN]: "5223381" })
+  ).toEqual({ [TOKEN]: { minAmountOut: "5223381" } });
+  // No floor, a zero floor, a non-integer, or another disposition: nothing to hold the swap to.
+  expect(chosenTokenConversions({ [TOKEN]: "convert" }, {})).toEqual({});
+  expect(chosenTokenConversions({ [TOKEN]: "convert" }, { [TOKEN]: "0" })).toEqual({});
+  expect(chosenTokenConversions({ [TOKEN]: "convert" }, { [TOKEN]: "1.5" })).toEqual({});
+  expect(chosenTokenConversions({ [TOKEN]: "leave" }, { [TOKEN]: "5223381" })).toEqual({});
 });

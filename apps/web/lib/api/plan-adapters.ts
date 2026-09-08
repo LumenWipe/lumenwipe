@@ -21,7 +21,29 @@ export interface AssetConvertibility {
     decimals: number | null;
     rawBalance: string;
     arrivesFromExit: boolean;
+    /** The plan's conversion quote when a route exists: XLM out and the floor, in stroops. */
+    quote?: { amountOut: string; minAmountOut: string; platform: string; route: string[] };
   };
+}
+
+function tokenQuoteOf(
+  raw: unknown
+): { amountOut: string; minAmountOut: string; platform: string; route: string[] } | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const q = raw as Record<string, unknown>;
+  if (typeof q.amountOut !== "string" || typeof q.minAmountOut !== "string") return undefined;
+  if (!/^\d+$/.test(q.amountOut) || !/^[1-9]\d*$/.test(q.minAmountOut)) return undefined;
+  return {
+    amountOut: q.amountOut,
+    minAmountOut: q.minAmountOut,
+    platform: typeof q.platform === "string" ? q.platform : "",
+    route: Array.isArray(q.route) ? q.route.filter((r): r is string => typeof r === "string") : [],
+  };
+}
+
+/** Stroops rendered as XLM with the trailing zeros dropped. */
+export function formatStroops(stroops: string): string {
+  return formatTokenBalance(stroops, 7);
 }
 
 /** Base units rendered with the token's decimals; raw units, labelled, when it has none. */
@@ -63,6 +85,7 @@ export function decisionPointsToConversions(plan: PlanResponse): AssetConvertibi
             decimals,
             rawBalance,
             arrivesFromExit: dp.subject.arrivesFromExit === true,
+            ...(convertible ? { quote: tokenQuoteOf(dp.subject.quote) } : {}),
           },
         };
       }

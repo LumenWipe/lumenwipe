@@ -43,6 +43,12 @@ import {
   buildTokenTransferRound,
   type TokenTransferRoundDeps,
 } from "@/lib/close-api/token-transfer-round";
+import {
+  buildTokenConversionRound,
+  defaultTokenConversionRoundDeps,
+  type TokenConversionRoundDeps,
+} from "@/lib/close-api/token-conversion-round";
+import { isConversionEnabled } from "@/lib/soroswap/conversion-quotes";
 
 // Raised when a close cannot be expressed as the phase-1 single fused transaction.
 // The route handler maps `code` to an error response.
@@ -118,7 +124,14 @@ export async function buildCloseTransactions(
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {},
   transferDestinations: TransferDestinations = {},
   exitDeps: Partial<ExitRoundDeps> = {},
-  tokenDeps: Partial<TokenTransferRoundDeps> = {}
+  tokenDeps: Partial<TokenTransferRoundDeps> = {},
+  conversion: {
+    /** Per token contract, the least XLM (stroops) the caller agreed to; from the answers. */
+    floors?: Record<string, string>;
+    deps?: Partial<TokenConversionRoundDeps>;
+    /** Overrides the environment flag; tests only. */
+    enabled?: boolean;
+  } = {}
 ): Promise<CloseBuildResult> {
   // Reject the same two hostile states buildPlan() blocks (issue #167), before any read or
   // build work: /close/transactions is an API-key product surface with an SDK, and
@@ -203,12 +216,13 @@ export async function buildCloseTransactions(
         );
       }
     }
+    const conversionOn = conversion.enabled ?? isConversionEnabled();
     for (const [asset, disposition] of Object.entries(dispositions)) {
-      if (disposition === "convert" && isTokenContract(asset)) {
+      if (disposition === "convert" && isTokenContract(asset) && !conversionOn) {
         throw new TokenTransferBlockedError(
           "soroban_token_conversion_unavailable",
           `Converting the ${asset.slice(0, 4)}…${asset.slice(-4)} token to XLM is not available ` +
-            "yet. Send it to another account, or leave it on record."
+            "here. Send it to another account, or leave it on record."
         );
       }
     }
@@ -228,8 +242,31 @@ export async function buildCloseTransactions(
         remainingSteps: tokenRound.remainingSteps + 1,
       };
     }
+    // Conversions after transfers: each is quoted against the live balance, built through the
+    // Soroswap API, and refused unless its shape is exactly a swap of this token into this account.
+    if (conversionOn) {
+      const conversionRound = await buildTokenConversionRound(
+        accountState,
+        dispositions,
+        conversion.floors ?? {},
+        network,
+        sdkAccount.sequenceNumber(),
+        validUntilLedger,
+        { ...defaultTokenConversionRoundDeps(server), ...conversion.deps }
+      );
+      if (conversionRound) {
+        return {
+          transactions: [conversionRound.transaction],
+          requiresAnotherCall: true,
+          remainingSteps: conversionRound.remainingSteps + 1,
+        };
+      }
+    }
   } catch (e) {
-    if (e instanceof TokenTransferBlockedError) throw new CloseBuildError(e.code, e.message, 422);
+    // 409 for a drifted quote, like the classic route: the plan is stale, not the request wrong.
+    if (e instanceof TokenTransferBlockedError) {
+      throw new CloseBuildError(e.code, e.message, e.code === "quote_drifted" ? 409 : 422);
+    }
     throw e;
   }
 

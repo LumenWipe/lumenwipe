@@ -57,6 +57,25 @@ export function isContractRegistryUsable(now: Date = new Date()): boolean {
  * so its router is never a target even though the registry lists it). Empty when the registry has
  * expired: an exit through an unverified contract must fail verification, not slip through.
  */
+/**
+ * The Soroswap contracts a Soroban token conversion may be entered through on `network`: the
+ * aggregator and the router. Bundled, never served, for the same reason the exit contracts are -
+ * an API that could add an address here could name its own. Empty when the registry has expired,
+ * so a conversion through an unverified contract fails verification rather than slipping through.
+ */
+export function conversionContractsFor(network: Network, now: Date = new Date()): string[] {
+  if (!isContractRegistryUsable(now)) return [];
+  return REGISTRY.entries
+    .filter(
+      (e) =>
+        e.network === network &&
+        e.protocol === "soroswap" &&
+        e.verifiedLive &&
+        (e.kind === "aggregator" || e.kind === "router")
+    )
+    .map((e) => e.address);
+}
+
 export function exitContractsFor(
   network: Network,
   protocols: Iterable<DefiPosition["protocol"]>,

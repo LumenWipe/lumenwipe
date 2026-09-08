@@ -141,7 +141,7 @@
       "address": "CDVQVKOY2YSXS2IC7KN6MNASSHPAO7UN2UR2ON4OI2SKMFJNVAMDX6DP",
       "wasmHash": "baf978f10efdbcd85747868bef8832845ea6809f7643b67a4ac0cd669327fc2c",
       "version": "v1",
-      "label": "Blend V1 'Fixed' pool (mainnet; stellar.expert: 'Blend Pool') - stands for the V1 lendingPool code every V1 pool shares (YieldBlox CBP7NO6F… runs the same hash); positions come from OctoPos, not from this list",
+      "label": "Blend V1 'Fixed' pool (mainnet; stellar.expert: 'Blend Pool') - stands for the V1 lendingPool code every V1 pool shares (YieldBlox CBP7NO6F\u2026 runs the same hash); positions come from OctoPos, not from this list",
       "verifiedLive": true
     },
     {
@@ -171,7 +171,7 @@
       "address": "CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD",
       "wasmHash": "a41fc53d6753b6c04eb15b021c55052366a4c8e0e21bc72700f461264ec1350e",
       "version": "v2",
-      "label": "Blend V2 'Fixed' pool (mainnet; stellar.expert: 'Blend Pool') - stands for the V2 pool code the factory's PoolMeta.pool_hash deploys (YieldBlox V2 CCCCIQSD… runs the same hash, as does the testnet pool); positions come from OctoPos, not from this list",
+      "label": "Blend V2 'Fixed' pool (mainnet; stellar.expert: 'Blend Pool') - stands for the V2 pool code the factory's PoolMeta.pool_hash deploys (YieldBlox V2 CCCCIQSD\u2026 runs the same hash, as does the testnet pool); positions come from OctoPos, not from this list",
       "verifiedLive": true
     },
     {
@@ -243,6 +243,50 @@
       "version": "v1",
       "label": "Soroswap mainnet pair BLAH/YAWN (factory index 0) - stands for the pair code soroswap/core publishes as 'pair' and every factory-deployed pair shares; pairs are enumerated from the factory, not listed here; not in the stellar.expert directory",
       "verifiedLive": true
+    },
+    {
+      "network": "mainnet",
+      "protocol": "soroswap",
+      "kind": "aggregator",
+      "address": "CAYP3UWLJM7ZPTUKL6R6BFGTRWLZ46LRKOXTERI2K6BIJAWGYY62TXTO",
+      "wasmHash": "5e0bff5a29e2473b5289fe96aeb59b48ac335e5e87c46632b53be1f662447d2c",
+      "version": "v1",
+      "label": "Soroswap aggregator (mainnet, soroswap/aggregator public/mainnet.contracts.json) - the contract a multi-protocol token conversion invokes; swap_exact_tokens_for_tokens only",
+      "verifiedLive": true,
+      "verifiedBy": "2026-09-08: readLiveWasmHash over RPC (mainnet.sorobanrpc.com) matched the hash published in soroswap/aggregator public/mainnet.contracts.json"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "soroswap",
+      "kind": "adapter",
+      "address": "CC6KQUATUBCIFZRDJL5X5PHCYGOHLPHKZQPUOTZTQTASGU5AUQ6DS7SC",
+      "wasmHash": "e2c5b7018a4d7d5c5b4194c5b421b10986831c98fbc0e8d37f2e0ab9804e1094",
+      "version": "v1",
+      "label": "Soroswap aggregator adapter for Soroswap pools (mainnet) - reached only through the aggregator",
+      "verifiedLive": true,
+      "verifiedBy": "2026-09-08: readLiveWasmHash over RPC (mainnet.sorobanrpc.com) matched the hash published in soroswap/aggregator public/mainnet.contracts.json"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "soroswap",
+      "kind": "adapter",
+      "address": "CCEBUGFV3D73OMV7MUXXA43AREY53MUHVD5SMUM7YZODNGY4NZBA2TSC",
+      "wasmHash": "ab68de681b2bfb8da36bd8a1a9796094b26f64b8cdb1bb1a2374ee3a0a01c82b",
+      "version": "v1",
+      "label": "Soroswap aggregator adapter for Phoenix pools (mainnet) - reached only through the aggregator",
+      "verifiedLive": true,
+      "verifiedBy": "2026-09-08: readLiveWasmHash over RPC (mainnet.sorobanrpc.com) matched the hash published in soroswap/aggregator public/mainnet.contracts.json"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "soroswap",
+      "kind": "adapter",
+      "address": "CDHDUKHFZB6FORHEBZCNYI3GGVNVOLEITSGI7OKU4UIQND5QG75KGSRR",
+      "wasmHash": "e26face3a94b11b73c61e25ceca1bb7c2d489e586f3ccbc7d99424a7157c8d29",
+      "version": "v1",
+      "label": "Soroswap aggregator adapter for Aquarius pools (mainnet) - reached only through the aggregator",
+      "verifiedLive": true,
+      "verifiedBy": "2026-09-08: readLiveWasmHash over RPC (mainnet.sorobanrpc.com) matched the hash published in soroswap/aggregator public/mainnet.contracts.json"
     }
   ]
 }

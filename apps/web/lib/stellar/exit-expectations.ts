@@ -1,6 +1,6 @@
 import { Asset } from "@stellar/stellar-sdk";
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
-import { EXIT_FUNCTIONS, exitContractsFor } from "@/lib/contract-registry";
+import { conversionContractsFor, EXIT_FUNCTIONS, exitContractsFor } from "@/lib/contract-registry";
 import type { AccountState } from "@/types/account";
 
 /**
@@ -21,6 +21,9 @@ import type { AccountState } from "@/types/account";
  *   themselves come from the API's read, so this is what stops a hostile read from turning a
  *   whitelisted contract into an arbitrary call.
  *
+ * - `conversionContracts`: the bundled registry's Soroswap aggregator and router - the only
+ *   contracts a token conversion may be entered through. From the registry alone, never the API.
+ *
  * Empty inputs fail closed: with no account read, every exit is refused rather than trusted.
  */
 export interface ExitExpectations {
@@ -28,6 +31,7 @@ export interface ExitExpectations {
   heldTokenContracts: string[];
   positionTokenContracts: string[];
   exitFunctions: Record<string, string[]>;
+  conversionContracts: string[];
 }
 
 export function exitExpectations(
@@ -37,6 +41,7 @@ export function exitExpectations(
   if (!accountState) {
     return {
       exitContracts: [],
+      conversionContracts: [],
       heldTokenContracts: [],
       positionTokenContracts: [],
       exitFunctions: {},
@@ -86,5 +91,11 @@ export function exitExpectations(
         .map((t) => t.contract),
     ]),
   ];
-  return { exitContracts, heldTokenContracts, positionTokenContracts, exitFunctions };
+  return {
+    exitContracts,
+    heldTokenContracts,
+    positionTokenContracts,
+    exitFunctions,
+    conversionContracts: conversionContractsFor(network),
+  };
 }

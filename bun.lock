@@ -19,6 +19,7 @@
         "@nestjs/platform-express": "^10.4.22",
         "@nestjs/swagger": "^7.4.2",
         "@nestjs/throttler": "^6.5.0",
+        "@soroswap/sdk": "0.5.0",
         "@stellar/stellar-sdk": "16.0.1",
         "dotenv": "^16.6.1",
         "express": "^4.22.2",
@@ -765,6 +766,8 @@
     "@solana/wallet-standard-features": ["@solana/wallet-standard-features@1.4.0", "", { "dependencies": { "@wallet-standard/base": "^1.1.0", "@wallet-standard/features": "^1.1.0" } }, "sha512-f0tAdqwM2aL6CiFbIgt9h5zKFp+mgY/iNGwoxPMTj9VSTeQj7d1GGSmWhZw0XWoZ4N/1tnKTKmYFq+Dyq08jRw=="],
 
     "@solana/web3.js": ["@solana/web3.js@1.98.4", "", { "dependencies": { "@babel/runtime": "^7.25.0", "@noble/curves": "^1.4.2", "@noble/hashes": "^1.4.0", "@solana/buffer-layout": "^4.0.1", "@solana/codecs-numbers": "^2.1.0", "agentkeepalive": "^4.5.0", "bn.js": "^5.2.1", "borsh": "^0.7.0", "bs58": "^4.0.1", "buffer": "6.0.3", "fast-stable-stringify": "^1.0.0", "jayson": "^4.1.1", "node-fetch": "^2.7.0", "rpc-websockets": "^9.0.2", "superstruct": "^2.0.2" } }, "sha512-vv9lfnvjUsRiq//+j5pBdXig0IQdtzA0BRZ3bXEP4KaIyF1CcaydWqgyzQgfZMNIsWNWmG+AUHwPy4AHOD6gpw=="],
+
+    "@soroswap/sdk": ["@soroswap/sdk@0.5.0", "", { "dependencies": { "axios": "^1.10.0" } }, "sha512-BgWqs3TgVFq/25Go533A2IUR7g5NnWPHHJUM8f/iT1j0d0VwA464wH9JReUGxXNZmsAOP4Zggdeof2AUOHsuOw=="],
 
     "@stellar/freighter-api": ["@stellar/freighter-api@6.0.0", "", { "dependencies": { "buffer": "6.0.3", "semver": "7.7.1" } }, "sha512-8CTQcKQmTq/wL715ZUzn1x1POpR0eYhYPKEiaeA7AT0WYBOauOGTxfWPFtSidX3ohAlJZP5HFXy1kG29cVjqxw=="],
 
