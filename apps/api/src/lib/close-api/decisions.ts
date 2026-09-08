@@ -140,8 +140,14 @@ export function tokenConversionFloors(
   const assetForId = new Map(assetsById.map((a) => [a.id, a.asset]));
   const dispositions = resolveDispositions(answers, assetsById);
   const floors: Record<string, string> = {};
+  // Answers are last-wins everywhere else, so a first attempt without a floor must not refuse a
+  // request whose later answer carries one.
+  const latest = new Map<string, DecisionAnswer>();
   for (const answer of answers) {
-    if (answer?.choice !== "convert_to_xlm") continue;
+    if (typeof answer?.id === "string") latest.set(answer.id, answer);
+  }
+  for (const answer of latest.values()) {
+    if (answer.choice !== "convert_to_xlm") continue;
     const asset = assetForId.get(answer.id);
     if (asset === undefined || !isTokenContract(asset)) continue;
     if (dispositions[asset] !== "convert") continue;

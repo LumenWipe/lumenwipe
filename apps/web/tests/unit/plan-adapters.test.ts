@@ -236,7 +236,7 @@ test("decisionPointsToConversions › a token an exit pays out later carries arr
   expect(item!.token).toMatchObject({ arrivesFromExit: true, rawBalance: "0" });
 });
 
-test("decisionPointsToConversions › a convertible token carries its quote; a malformed quote is dropped and the token stays convertible by option", () => {
+test("decisionPointsToConversions › a convertible token carries its quote; a malformed quote leaves it not convertible - there is no floor to submit", () => {
   const point = (quote: unknown) => ({
     id: `token:${TOKEN}`,
     type: "asset_disposition" as const,
@@ -273,8 +273,10 @@ test("decisionPointsToConversions › a convertible token carries its quote; a m
     platform: "aggregator",
     route: ["soroswap"],
   });
+  // The API's own `convertible` flag says a route exists, but without a floor the browser could
+  // never submit a valid convert answer - so a malformed quote must not leave the option offered.
   const [bad] = decisionPointsToConversions(plan([point({ amountOut: "x", minAmountOut: "0" })]));
-  expect(bad!.convertible).toBe(true);
+  expect(bad!.convertible).toBe(false);
   expect(bad!.token?.quote).toBeUndefined();
   expect(formatStroops("5223381")).toBe("0.5223381");
   expect(formatStroops("520000000")).toBe("52");

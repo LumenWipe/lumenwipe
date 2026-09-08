@@ -93,7 +93,11 @@ export interface CloseExpectation {
    * shown is what makes that impossible, and the figure comes from their own decision, never from
    * the plan under verification.
    */
-  tokenConversions: Record<string, { minAmountOut: string }>;
+  tokenConversions: Record<string, { minAmountOut: string; amountIn: string }>;
+  /** XLM's own contract on this network, derived client-side from the network passphrase. The one
+   *  asset a conversion may buy: without pinning it, the minimum above would be compared against a
+   *  figure denominated in whatever the transaction claims to be buying. */
+  xlmContract: string;
   /** Assets the user themselves chose to add a trustline for, to claim a balance the account
    *  otherwise cannot reach ("add trustline and claim"). Sourced from the user's own claimable-
    *  balance decisions, never from the API response - the only case a raised (non-removal)
@@ -244,16 +248,29 @@ function assertMergeShape(
 const SWAP_FUNCTION = "swap_exact_tokens_for_tokens";
 const CONTRACT_ID = /^C[A-Z2-7]{55}$/;
 
+interface SwapArgs {
+  /** The token being spent. */
+  token: string;
+  /** The token being bought. Must be XLM's contract, or the minimum below is in unknown units. */
+  assetOut: string;
+  /** The amount of `token` the swap spends. */
+  amountIn: bigint;
+  destination: string;
+  minAmountOut: bigint;
+}
+
 /**
- * The token, the destination, and the minimum a swap's arguments name, in either shape the
- * Soroswap API builds: a router call `(amount_in, amount_out_min, path, to, deadline)`, where the
- * token is the path's first hop, or an aggregator call
+ * What a swap's arguments name, in either shape the Soroswap API builds: a router call
+ * `(amount_in, amount_out_min, path, to, deadline)`, where the tokens are the path's first and
+ * last hops, or an aggregator call
  * `(token_in, token_out, amount_in, amount_out_min, distribution, to, deadline)`. Null when the
  * arguments are not one of those two shapes, which fails the swap closed.
+ *
+ * The output token is read, not assumed. Without it the minimum below would be compared against a
+ * figure denominated in whatever the transaction says it is buying - a swap into a worthless token
+ * would satisfy an "at least N XLM" promise in name only.
  */
-function readSwapArgs(
-  args: string[]
-): { token: string; destination: string; minAmountOut: bigint } | null {
+function readSwapArgs(args: string[]): SwapArgs | null {
   const integer = (value: string | undefined): bigint | null =>
     typeof value === "string" && /^\d+$/.test(value) ? BigInt(value) : null;
   if (args.length === 5) {
@@ -263,16 +280,27 @@ function readSwapArgs(
     } catch {
       return null;
     }
-    const first = Array.isArray(path) ? path[0] : null;
+    if (!Array.isArray(path) || path.length < 2) return null;
+    if (!path.every((hop) => typeof hop === "string" && CONTRACT_ID.test(hop))) return null;
+    const amountIn = integer(args[0]);
     const min = integer(args[1]);
-    if (typeof first !== "string" || !CONTRACT_ID.test(first) || min === null) return null;
-    return { token: first, destination: args[3] ?? "", minAmountOut: min };
+    if (amountIn === null || min === null) return null;
+    return {
+      token: path[0] as string,
+      assetOut: path[path.length - 1] as string,
+      amountIn,
+      destination: args[3] ?? "",
+      minAmountOut: min,
+    };
   }
   if (args.length === 7) {
     const token = args[0] ?? "";
+    const assetOut = args[1] ?? "";
+    const amountIn = integer(args[2]);
     const min = integer(args[3]);
-    if (!CONTRACT_ID.test(token) || min === null) return null;
-    return { token, destination: args[5] ?? "", minAmountOut: min };
+    if (!CONTRACT_ID.test(token) || !CONTRACT_ID.test(assetOut)) return null;
+    if (amountIn === null || min === null) return null;
+    return { token, assetOut, amountIn, destination: args[5] ?? "", minAmountOut: min };
   }
   return null;
 }
@@ -521,6 +549,15 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
           if (!chosen) {
             throw new VerificationError(
               "A swap would exchange a token you did not choose to convert."
+            );
+          }
+          if (swap.assetOut !== expected.xlmContract) {
+            throw new VerificationError("A swap would buy something other than XLM.");
+          }
+          if (swap.amountIn < BigInt(chosen.amountIn)) {
+            throw new VerificationError(
+              "A swap would exchange less of the token than the balance you were shown. If you " +
+                "moved some of it since, run the analysis again."
             );
           }
           if (swap.destination !== expected.source) {
@@ -778,12 +815,13 @@ export function verifyCloseTransaction(opts: {
      *  it. */
     transfers: Record<string, { destination: string; amount: string }>;
     tokenTransfers: Record<string, { destination: string; amount: string }>;
-    tokenConversions: Record<string, { minAmountOut: string }>;
+    tokenConversions: Record<string, { minAmountOut: string; amountIn: string }>;
     exitContracts: string[];
     heldTokenContracts: string[];
     positionTokenContracts: string[];
     exitFunctions: Record<string, string[]>;
     conversionContracts: string[];
+    xlmContract: string;
   };
 }): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);

@@ -32,6 +32,7 @@ test("no account read vouches for nothing", () => {
     heldTokenContracts: [],
     positionTokenContracts: [],
     exitFunctions: {},
+    xlmContract: Asset.native().contractId(Networks.TESTNET),
   });
 });
 

@@ -177,6 +177,14 @@ function walkAuth(
     );
   }
   let moved = 0n;
+  if (contract !== expected.token && !name.startsWith("swap")) {
+    // A prefix rather than an exact name: the aggregator, its adapters, and the router each have
+    // their own swap entry points, and a route may legitimately use any of them. What this rules
+    // out is everything that is not a swap at all - an admin call, an upgrade, an approval.
+    throw new Error(
+      `the signature would authorize ${name} on ${short(contract)}, which is not a swap`
+    );
+  }
   if (contract === expected.token) {
     if (name !== "transfer") throw new Error(`the signature would authorize ${name} on the token`);
     const args = call.args();
@@ -240,8 +248,11 @@ export function assertConversionShape(tx: Transaction, expected: ExpectedConvers
   if (BigInt(tx.fee) > BigInt(MAX_SOROBAN_EXIT_FEE_STROOPS)) {
     throw new Error("the fee exceeds what a swap can need");
   }
+  // A swap must expire, and not before it can be signed. Without an upper time bound a signed
+  // swap stays submittable indefinitely, at whatever rate the market reaches later.
   const maxTime = tx.timeBounds ? BigInt(tx.timeBounds.maxTime) : 0n;
-  if (maxTime !== 0n && maxTime < BigInt(expected.nowSeconds) + 60n) {
+  if (maxTime === 0n) throw new Error("the swap never expires");
+  if (maxTime < BigInt(expected.nowSeconds) + 60n) {
     throw new Error("the transaction expires before it can be signed");
   }
   const ops = tx.toEnvelope().v1().tx().operations();
@@ -351,6 +362,16 @@ export async function buildTokenConversionRound(
     const token = due[i]!;
     const meta = read!.tokens.find((t) => t.contract === token)!;
     const name = meta.symbol ?? short(token);
+    if (meta.symbol === null || meta.decimals === null) {
+      // Without decimals no amount shown about this swap means anything, so it is not a decision
+      // anyone could have made. The plan never offers convert for such a token; an API caller
+      // that answers it anyway is refused rather than shown a figure nobody can read.
+      throw new TokenTransferBlockedError(
+        "soroban_token_conversion_unavailable",
+        `The ${name} token does not report its symbol and decimals, so it cannot be exchanged. ` +
+          "Send it to another account, or leave it on record."
+      );
+    }
     const floorRaw = floors[token];
     if (floorRaw === undefined) {
       throw new TokenTransferBlockedError(
@@ -377,7 +398,8 @@ export async function buildTokenConversionRound(
           "leave it on record."
       );
     }
-    if (BigInt(quote.minAmountOut) < floor) {
+    const freshFloor = BigInt(quote.minAmountOut);
+    if (freshFloor < floor) {
       throw new TokenTransferBlockedError(
         "quote_drifted",
         `The market moved: exchanging ${formatTokenAmount(balance.toString(), meta.decimals)} ${name} ` +
@@ -409,7 +431,11 @@ export async function buildTokenConversionRound(
         account,
         xlm,
         amountIn: balance,
-        minOut: floor,
+        // The fresh quote's floor, not the user's: it is quoted for the balance actually being
+        // spent, so a balance that grew since the plan cannot clear a floor computed for a
+        // smaller one. It is never below what the user accepted - the drift check above refuses
+        // that outright - so this is the same promise or a stricter one.
+        minOut: freshFloor,
         allowed,
         sequence,
         nowSeconds: Math.floor(deps.conversion.now() / 1000),

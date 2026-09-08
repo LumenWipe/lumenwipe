@@ -469,13 +469,22 @@ test("dispositionsToDecisions › a token's convert answer carries the floor the
   ]);
 });
 
-test("chosenTokenConversions › only tokens marked convert with a usable floor are vouched for", () => {
+test("chosenTokenConversions › only tokens marked convert with a usable floor are vouched for, carrying the balance the analysis read", () => {
+  const account = withTokens([{ contract: TOKEN, balance: "2500000000" }]);
   expect(
-    chosenTokenConversions({ [TOKEN]: "convert", [ASSET]: "convert" }, { [TOKEN]: "5223381" })
-  ).toEqual({ [TOKEN]: { minAmountOut: "5223381" } });
+    chosenTokenConversions(
+      { [TOKEN]: "convert", [ASSET]: "convert" },
+      { [TOKEN]: "5223381" },
+      account
+    )
+  ).toEqual({ [TOKEN]: { minAmountOut: "5223381", amountIn: "2500000000" } });
   // No floor, a zero floor, a non-integer, or another disposition: nothing to hold the swap to.
-  expect(chosenTokenConversions({ [TOKEN]: "convert" }, {})).toEqual({});
-  expect(chosenTokenConversions({ [TOKEN]: "convert" }, { [TOKEN]: "0" })).toEqual({});
-  expect(chosenTokenConversions({ [TOKEN]: "convert" }, { [TOKEN]: "1.5" })).toEqual({});
-  expect(chosenTokenConversions({ [TOKEN]: "leave" }, { [TOKEN]: "5223381" })).toEqual({});
+  expect(chosenTokenConversions({ [TOKEN]: "convert" }, {}, account)).toEqual({});
+  expect(chosenTokenConversions({ [TOKEN]: "convert" }, { [TOKEN]: "0" }, account)).toEqual({});
+  expect(chosenTokenConversions({ [TOKEN]: "convert" }, { [TOKEN]: "1.5" }, account)).toEqual({});
+  expect(chosenTokenConversions({ [TOKEN]: "leave" }, { [TOKEN]: "5223381" }, account)).toEqual({});
+  // No account read: nothing to vouch the balance with, so the amount floors to zero.
+  expect(chosenTokenConversions({ [TOKEN]: "convert" }, { [TOKEN]: "5223381" }, null)).toEqual({
+    [TOKEN]: { minAmountOut: "5223381", amountIn: "0" },
+  });
 });

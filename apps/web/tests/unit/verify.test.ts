@@ -42,6 +42,7 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
     tokenTransfers: {},
     tokenConversions: {},
     conversionContracts: [SOROSWAP_ROUTER],
+    xlmContract: XLM_SAC,
     exitContracts: [POOL],
     heldTokenContracts: [XLM_SAC],
     positionTokenContracts: [],
@@ -757,6 +758,7 @@ test("verifyCloseTransaction passes a mediated close to a memo-requiring exchang
         tokenTransfers: {},
         tokenConversions: {},
         conversionContracts: [],
+        xlmContract: XLM_SAC,
         exitContracts: [],
         heldTokenContracts: [],
         positionTokenContracts: [],
@@ -794,6 +796,7 @@ test("verifyCloseTransaction rejects a mediated close to a memo-requiring exchan
         tokenTransfers: {},
         tokenConversions: {},
         conversionContracts: [],
+        xlmContract: XLM_SAC,
         exitContracts: [],
         heldTokenContracts: [],
         positionTokenContracts: [],
@@ -822,6 +825,7 @@ test("verifyCloseTransaction passes a direct close to a destination the registry
         tokenTransfers: {},
         tokenConversions: {},
         conversionContracts: [],
+        xlmContract: XLM_SAC,
         exitContracts: [],
         heldTokenContracts: [],
         positionTokenContracts: [],
@@ -1359,8 +1363,11 @@ const aggregatorSwap = (over: Partial<ExitOp> = {}): IntentOperation =>
     ...over,
   });
 
-const chosenConversion = (floor = FLOOR) =>
-  expectation({ tokenConversions: { [CONVERT_TOKEN]: { minAmountOut: floor } } });
+const chosenConversion = (floor = FLOOR, amountIn = "100000000") =>
+  expectation({
+    tokenConversions: { [CONVERT_TOKEN]: { minAmountOut: floor, amountIn } },
+    xlmContract: XLM_CONTRACT,
+  });
 
 test("a swap of the token the user chose, paying this account at or above the minimum they saw, passes in both shapes", () => {
   expect(() => assertCloseIntent(exitOnly(routerSwap()), chosenConversion())).not.toThrow();
@@ -1385,6 +1392,36 @@ test("rejects a swap that would accept less XLM than the minimum the user was sh
   expect(() => assertCloseIntent(exitOnly(worseAggregator), chosenConversion())).toThrow(
     /less XLM than the minimum/
   );
+});
+
+test("rejects a swap that would buy something other than XLM - the floor is meaningless in any other unit", () => {
+  const other = "CC64WBDGS6QQP22QTTIACYIXT3WF7BBQEYOQPLTP7GTKYY7PZ74QYGSL";
+  const wrongOutputRouter = routerSwap({
+    args: ["100000000", FLOOR, JSON.stringify([CONVERT_TOKEN, other]), SRC, "1"],
+  });
+  expect(() => assertCloseIntent(exitOnly(wrongOutputRouter), chosenConversion())).toThrow(
+    /something other than XLM/
+  );
+  const wrongOutputAggregator = aggregatorSwap({
+    args: [CONVERT_TOKEN, other, "100000000", FLOOR, "[]", SRC, "1"],
+  });
+  expect(() => assertCloseIntent(exitOnly(wrongOutputAggregator), chosenConversion())).toThrow(
+    /something other than XLM/
+  );
+});
+
+test("rejects a swap that spends less of the token than the balance the user was shown", () => {
+  const shortfall = routerSwap({
+    args: ["99999999", FLOOR, JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), SRC, "1"],
+  });
+  expect(() =>
+    assertCloseIntent(exitOnly(shortfall), chosenConversion(FLOOR, "100000000"))
+  ).toThrow(/less of the token/);
+  // Spending more than the balance shown is not a loss - the account simply held more.
+  const more = routerSwap({
+    args: ["100000001", FLOOR, JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), SRC, "1"],
+  });
+  expect(() => assertCloseIntent(exitOnly(more), chosenConversion())).not.toThrow();
 });
 
 test("rejects a swap that pays the proceeds anywhere but the account being closed", () => {
@@ -1431,6 +1468,15 @@ test("rejects a swap that is not alone, acts for another account, calls another 
   ).toThrow(/other than the one being closed/);
   expect(() =>
     assertCloseIntent(exitOnly(routerSwap({ function: "remove_liquidity" })), chosenConversion())
+  ).toThrow(/something other than a swap/);
+  // swap_tokens_for_exact_tokens carries the same seven arguments with the amounts swapped, so
+  // reading it as an exact-in swap would hold the wrong figures to the balance and the floor.
+  // The function name is what stops it.
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(aggregatorSwap({ function: "swap_tokens_for_exact_tokens" })),
+      chosenConversion()
+    )
   ).toThrow(/something other than a swap/);
   expect(() => assertCloseIntent(exitOnly(routerSwap(), "20000000"), chosenConversion())).toThrow(
     /network fee/

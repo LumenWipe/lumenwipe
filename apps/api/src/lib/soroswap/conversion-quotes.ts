@@ -86,11 +86,14 @@ export function isConversionEnabled(env = readEnv()): boolean {
 }
 
 let cachedSdk: SoroswapSDK | null | undefined;
+/** The environment the cached client was built from; a change rebuilds it rather than going stale. */
+let cachedFrom = "";
 
 /** The live SDK when conversion is enabled, else null (and every quote is "no route"). */
 export function defaultConversionDeps(): ConversionDeps {
-  if (cachedSdk === undefined) {
-    const env = readEnv();
+  const env = readEnv();
+  const signature = `${env.enabled}|${env.apiKey ?? ""}|${env.baseUrl ?? ""}`;
+  if (cachedSdk === undefined || cachedFrom !== signature) {
     cachedSdk =
       isConversionEnabled(env) && env.apiKey
         ? new SoroswapSDK({
@@ -99,6 +102,7 @@ export function defaultConversionDeps(): ConversionDeps {
             timeout: QUOTE_TIMEOUT_MS,
           })
         : null;
+    cachedFrom = signature;
   }
   return { sdk: cachedSdk, now: () => Date.now() };
 }
@@ -106,6 +110,7 @@ export function defaultConversionDeps(): ConversionDeps {
 /** For tests and restarts: forget the SDK built from the environment. */
 export function resetConversionSdk(): void {
   cachedSdk = undefined;
+  cachedFrom = "";
 }
 
 const toSdkNetwork = (network: Network): SupportedNetworks =>

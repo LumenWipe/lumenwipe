@@ -32,6 +32,8 @@ export interface ExitExpectations {
   positionTokenContracts: string[];
   exitFunctions: Record<string, string[]>;
   conversionContracts: string[];
+  /** XLM's contract on this network: the one asset a token conversion may buy. */
+  xlmContract: string;
 }
 
 export function exitExpectations(
@@ -42,6 +44,7 @@ export function exitExpectations(
     return {
       exitContracts: [],
       conversionContracts: [],
+      xlmContract: Asset.native().contractId(NETWORK_PASSPHRASES[network]),
       heldTokenContracts: [],
       positionTokenContracts: [],
       exitFunctions: {},
@@ -97,5 +100,6 @@ export function exitExpectations(
     positionTokenContracts,
     exitFunctions,
     conversionContracts: conversionContractsFor(network),
+    xlmContract: Asset.native().contractId(passphrase),
   };
 }

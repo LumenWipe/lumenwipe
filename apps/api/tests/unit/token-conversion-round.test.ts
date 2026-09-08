@@ -532,7 +532,15 @@ describe("the token conversion round", () => {
       {
         balance: BALANCE,
         quotedOut: 524_963_090n,
-        built: (q) => swapTx({ form: "router", amountIn: BigInt(q.amountIn), to: OTHER_ACCOUNT }),
+        // minOut set to clear the round's own fresh-quote floor (the same 9950/10000 the default
+        // build applies), so the deviation under test - the destination - is what trips the check.
+        built: (q) =>
+          swapTx({
+            form: "router",
+            amountIn: BigInt(q.amountIn),
+            minOut: (BigInt(q.amountOut) * 9950n) / 10_000n,
+            to: OTHER_ACCOUNT,
+          }),
       }
     );
     await expect(diverted).rejects.toMatchObject({ code: "soroban_token_conversion_unsafe" });

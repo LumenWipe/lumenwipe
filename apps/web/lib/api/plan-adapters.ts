@@ -74,18 +74,22 @@ export function decisionPointsToConversions(plan: PlanResponse): AssetConvertibi
         const symbol = typeof dp.subject.symbol === "string" ? dp.subject.symbol : null;
         const decimals = typeof dp.subject.decimals === "number" ? dp.subject.decimals : null;
         const rawBalance = String(dp.subject.balance ?? "0");
+        // Convertible only with a quote the client can read: the convert answer must carry that
+        // quote's floor, and offering the choice without one would produce a build the API
+        // refuses for a decision the user had no way to complete.
+        const quote = tokenQuoteOf(dp.subject.quote);
         return {
           asset: contract,
           code: symbol ?? `${contract.slice(0, 4)}…${contract.slice(-4)}`,
           balance: formatTokenBalance(rawBalance, decimals),
-          convertible,
+          convertible: convertible && quote !== undefined,
           token: {
             contract,
             symbol,
             decimals,
             rawBalance,
             arrivesFromExit: dp.subject.arrivesFromExit === true,
-            ...(convertible ? { quote: tokenQuoteOf(dp.subject.quote) } : {}),
+            ...(quote ? { quote } : {}),
           },
         };
       }

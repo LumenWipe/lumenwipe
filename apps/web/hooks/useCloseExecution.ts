@@ -172,7 +172,8 @@ export function useCloseExecution() {
                   ),
                   tokenConversions: chosenTokenConversions(
                     useDemolishStore.getState().assetDispositions,
-                    useDemolishStore.getState().tokenConversionFloors
+                    useDemolishStore.getState().tokenConversionFloors,
+                    accountState
                   ),
                   ...exitExpectations(accountState, network),
                 },
@@ -380,7 +381,8 @@ export function useCloseExecution() {
           ),
           tokenConversions: chosenTokenConversions(
             useDemolishStore.getState().assetDispositions,
-            useDemolishStore.getState().tokenConversionFloors
+            useDemolishStore.getState().tokenConversionFloors,
+            accountState
           ),
           ...exitExpectations(accountState, network),
         },

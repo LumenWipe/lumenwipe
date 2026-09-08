@@ -213,14 +213,18 @@ export function chosenTokenTransfers(
  */
 export function chosenTokenConversions(
   dispositions: Record<string, AssetDisposition>,
-  floors: Record<string, string>
-): Record<string, { minAmountOut: string }> {
-  const conversions: Record<string, { minAmountOut: string }> = {};
+  floors: Record<string, string>,
+  accountState: AccountState | null
+): Record<string, { minAmountOut: string; amountIn: string }> {
+  const conversions: Record<string, { minAmountOut: string; amountIn: string }> = {};
+  const tokens = accountState?.sorobanTokens?.tokens ?? [];
   for (const [contract, disposition] of Object.entries(dispositions)) {
     if (disposition !== "convert" || !isTokenContract(contract)) continue;
     const floor = floors[contract];
     if (typeof floor !== "string" || !/^[1-9]\d*$/.test(floor)) continue;
-    conversions[contract] = { minAmountOut: floor };
+    const token = tokens.find((t) => t.contract === contract);
+    const amountIn = token && /^\d+$/.test(token.balance) ? token.balance : "0";
+    conversions[contract] = { minAmountOut: floor, amountIn };
   }
   return conversions;
 }

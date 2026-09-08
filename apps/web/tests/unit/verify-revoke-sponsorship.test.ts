@@ -29,6 +29,7 @@ function baseExpected(): CloseExpectation {
     tokenTransfers: {},
     tokenConversions: {},
     conversionContracts: [],
+    xlmContract: Asset.native().contractId(Networks.TESTNET),
     exitContracts: [],
     heldTokenContracts: [],
     positionTokenContracts: [],

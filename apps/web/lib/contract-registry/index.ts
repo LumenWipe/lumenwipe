@@ -19,6 +19,7 @@ interface RegistryEntry {
   protocol: string;
   kind: string;
   address: string;
+  wasmHash: string | null;
   verifiedLive: boolean;
 }
 
@@ -71,6 +72,8 @@ export function conversionContractsFor(network: Network, now: Date = new Date())
         e.network === network &&
         e.protocol === "soroswap" &&
         e.verifiedLive &&
+        // A hash-less entry is one nobody resolved on-chain; the API refuses those too.
+        e.wasmHash !== null &&
         (e.kind === "aggregator" || e.kind === "router")
     )
     .map((e) => e.address);
