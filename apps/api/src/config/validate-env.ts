@@ -42,6 +42,14 @@ const OPTIONAL: Array<{ name: string; consequence: string }> = [
     consequence: "testnet exchange closes are unavailable",
   },
   {
+    name: "FEE_ACCOUNT_SECRET_MAINNET",
+    consequence: "mainnet sponsored-fee closes are unavailable (testnet is unaffected)",
+  },
+  {
+    name: "FEE_ACCOUNT_SECRET_TESTNET",
+    consequence: "testnet sponsored-fee closes are unavailable",
+  },
+  {
     name: "SOROSWAP_API_KEY",
     consequence:
       "Soroban token conversion to XLM is unavailable: held tokens can be sent or left, not swapped",

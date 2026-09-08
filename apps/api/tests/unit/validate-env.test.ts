@@ -8,8 +8,10 @@ import { checkEnv, formatEnvFailure } from "@/config/validate-env";
 const OK = {
   API_KEYS: "ci=abc123",
   MEDIATOR_SECRET_TESTNET: "S...",
-  SOROSWAP_API_KEY: "sk_test",
   MEDIATOR_SECRET_MAINNET: "S...",
+  FEE_ACCOUNT_SECRET_TESTNET: "S...",
+  FEE_ACCOUNT_SECRET_MAINNET: "S...",
+  SOROSWAP_API_KEY: "sk_test",
   OCTOPOS_API_KEY: "oct_abc123",
 };
 
@@ -44,6 +46,8 @@ test("a missing mediator secret warns rather than blocking the boot", () => {
   // testnet down with it - and mainnet exchange closes are deliberately not enabled yet.
   const { problems, warnings } = checkEnv({
     API_KEYS: "ci=abc",
+    FEE_ACCOUNT_SECRET_TESTNET: "S...",
+    FEE_ACCOUNT_SECRET_MAINNET: "S...",
     OCTOPOS_API_KEY: "oct_abc123",
     SOROSWAP_API_KEY: "sk_test",
   } as NodeJS.ProcessEnv);
@@ -54,14 +58,33 @@ test("a missing mediator secret warns rather than blocking the boot", () => {
   ]);
 });
 
+test("a missing fee-account secret warns rather than blocking the boot", () => {
+  // Same reasoning as the mediator secret: it disables sponsored-fee closes on that network,
+  // not the service, and mainnet is deliberately not enabled yet.
+  const { problems, warnings } = checkEnv({
+    API_KEYS: "ci=abc",
+    MEDIATOR_SECRET_TESTNET: "S...",
+    MEDIATOR_SECRET_MAINNET: "S...",
+    OCTOPOS_API_KEY: "oct_abc123",
+    SOROSWAP_API_KEY: "sk_test",
+  } as NodeJS.ProcessEnv);
+  expect(problems).toEqual([]);
+  expect(warnings.map((w) => w.variable).sort()).toEqual([
+    "FEE_ACCOUNT_SECRET_MAINNET",
+    "FEE_ACCOUNT_SECRET_TESTNET",
+  ]);
+});
+
 test("a missing OCTOPOS_API_KEY warns rather than blocking the boot", () => {
   // Disables the authenticated rate-limit tier, not DeFi detection outright: OctoPos's
   // positions endpoints are reachable unauthenticated at the free tier (architecture.md §7.1).
   const { problems, warnings } = checkEnv({
     API_KEYS: "ci=abc",
     MEDIATOR_SECRET_TESTNET: "S...",
-    SOROSWAP_API_KEY: "sk_test",
     MEDIATOR_SECRET_MAINNET: "S...",
+    FEE_ACCOUNT_SECRET_TESTNET: "S...",
+    FEE_ACCOUNT_SECRET_MAINNET: "S...",
+    SOROSWAP_API_KEY: "sk_test",
   } as NodeJS.ProcessEnv);
   expect(problems).toEqual([]);
   expect(warnings.map((w) => w.variable)).toEqual(["OCTOPOS_API_KEY"]);
