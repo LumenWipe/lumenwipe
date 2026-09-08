@@ -19,6 +19,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { NETWORK_PASSPHRASES, STELLAR_EXPERT_API_URL } from "@/config/networks";
 import bundledLists from "@/config/soroban-token-lists.json";
+import { mapConcurrent } from "@/lib/utils/concurrency";
 import { getRpcServer } from "./rpc";
 
 /**
@@ -365,24 +366,6 @@ const asBigInt = (val: xdr.ScVal | null): bigint | null => {
   if (typeof native === "number" && Number.isInteger(native)) return BigInt(native);
   return null;
 };
-
-async function mapConcurrent<T, R>(
-  items: T[],
-  concurrency: number,
-  fn: (item: T) => Promise<R>
-): Promise<R[]> {
-  const results: R[] = new Array<R>(items.length);
-  let next = 0;
-  const worker = async (): Promise<void> => {
-    for (;;) {
-      const i = next++;
-      if (i >= items.length) return;
-      results[i] = await fn(items[i]!);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
-  return results;
-}
 
 type Probe =
   | { status: "held"; balance: bigint; symbol: string | null; decimals: number | null }
