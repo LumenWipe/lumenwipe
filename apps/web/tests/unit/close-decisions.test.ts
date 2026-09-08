@@ -1,7 +1,9 @@
 import { test, expect } from "bun:test";
 import {
+  chosenTokenTransfers,
   chosenTransfers,
   receiptAssetSummary,
+  receiptTokenSummary,
   claimAnswersKey,
   claimableSelectionsToDecisions,
   destinationAcknowledgementToDecisions,
@@ -348,4 +350,104 @@ test("receiptAssetSummary › a forfeited balance appears nowhere", () => {
 
   expect(summary.handledAssets).toHaveLength(0);
   expect(summary.removedTrustlines).toHaveLength(0);
+});
+
+// ─── Soroban tokens (#161) ────────────────────────────────────────────────────
+
+const TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
+const TOKEN_DEST = "GBWLBY2XERGCNM5UWRIF5ZG6LM7Q7B44MHUR54BT3XVHAD5IB4HLN3XG";
+
+function withTokens(tokens: Array<{ contract: string; balance: string; symbol?: string | null }>) {
+  return {
+    address: "GBGBPPN2ACLYY4W2FGHMDTAD6CVFXX3STWYFQV6ZX7TFZYQYHAIUZMAT",
+    network: "testnet" as const,
+    sequence: "1",
+    nativeBalanceLumens: "5.0000000",
+    dataEntries: [],
+    signers: [],
+    thresholds: { low: 0, med: 1, high: 1 },
+    numSubEntries: 0,
+    numSponsoring: 0,
+    sponsoredBy: null,
+    authImmutable: false,
+    trustlines: [],
+    openOffers: [],
+    poolShares: [],
+    claimableBalances: [],
+    subEntryMismatch: false,
+    sponsoredEntries: [],
+    sponsorshipEnumerationIncomplete: false,
+    defiPositions: emptyDefiPositionsResult(
+      "GBGBPPN2ACLYY4W2FGHMDTAD6CVFXX3STWYFQV6ZX7TFZYQYHAIUZMAT"
+    ),
+    defiPositionsWarnings: [],
+    sorobanTokens: {
+      tokens: tokens.map((t) => ({
+        contract: t.contract,
+        balance: t.balance,
+        symbol: t.symbol === undefined ? "XTAR" : t.symbol,
+        decimals: 7,
+        sources: ["explorer" as const],
+      })),
+      unreadable: [],
+      coverage: [],
+      eventsScanned: null,
+      warnings: [],
+    },
+  };
+}
+
+test("dispositionsToDecisions › a Soroban token is keyed token:<contract>, and leave is the explicit acknowledgement", () => {
+  expect(dispositionsToDecisions({ [TOKEN]: "leave", [ASSET]: "convert" }, {})).toEqual([
+    { id: `token:${TOKEN}`, choice: "acknowledge_residue" },
+    { id: ASSET_ID, choice: "convert_to_xlm" },
+  ]);
+  expect(dispositionsToDecisions({ [TOKEN]: "transfer" }, { [TOKEN]: TOKEN_DEST })).toEqual([
+    { id: `token:${TOKEN}`, choice: "transfer_to_account", params: { destination: TOKEN_DEST } },
+  ]);
+});
+
+test("chosenTokenTransfers › the destination typed and the raw balance read, for tokens marked transfer only", () => {
+  const account = withTokens([{ contract: TOKEN, balance: "2500000000" }]);
+  expect(
+    chosenTokenTransfers(
+      { [TOKEN]: "transfer", [ASSET]: "transfer" },
+      { [TOKEN]: TOKEN_DEST, [ASSET]: TOKEN_DEST },
+      account
+    )
+  ).toEqual({ [TOKEN]: { destination: TOKEN_DEST, amount: "2500000000" } });
+  // No destination, another disposition, or a token the read no longer shows: nothing to vouch for.
+  expect(chosenTokenTransfers({ [TOKEN]: "transfer" }, {}, account)).toEqual({});
+  expect(chosenTokenTransfers({ [TOKEN]: "leave" }, { [TOKEN]: TOKEN_DEST }, account)).toEqual({});
+  expect(
+    chosenTokenTransfers({ [TOKEN]: "transfer" }, { [TOKEN]: TOKEN_DEST }, withTokens([]))
+  ).toEqual({});
+  expect(chosenTokenTransfers({ [TOKEN]: "transfer" }, { [TOKEN]: TOKEN_DEST }, null)).toEqual({});
+});
+
+test("chosenTransfers › never lists a Soroban token: those are held to a different rule", () => {
+  const account = withTokens([{ contract: TOKEN, balance: "5" }]);
+  expect(chosenTransfers({ [TOKEN]: "transfer" }, { [TOKEN]: TOKEN_DEST }, account, {})).toEqual(
+    {}
+  );
+});
+
+test("receiptTokenSummary › every token with a balance, named by symbol or short contract", () => {
+  expect(
+    receiptTokenSummary(
+      withTokens([
+        { contract: TOKEN, balance: "5" },
+        {
+          contract: "CC64WBDGS6QQP22QTTIACYIXT3WF7BBQEYOQPLTP7GTKYY7PZ74QYGSL",
+          balance: "1",
+          symbol: null,
+        },
+        { contract: "CCZGLAUBDKJSQK72QOZHVU7CUWKW45OZWYWCLL27AEK74U2OIBK6LXF2", balance: "0" },
+      ])
+    )
+  ).toEqual([
+    { asset: TOKEN, code: "XTAR" },
+    { asset: "CC64WBDGS6QQP22QTTIACYIXT3WF7BBQEYOQPLTP7GTKYY7PZ74QYGSL", code: "CC64…YGSL" },
+  ]);
+  expect(receiptTokenSummary(null)).toEqual([]);
 });

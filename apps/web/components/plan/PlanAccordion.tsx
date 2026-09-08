@@ -9,6 +9,7 @@ import type { AssetDisposition, ClaimableBalanceSelection } from "@/types/plan";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
 import { formatAsset } from "@/lib/utils/assets";
 import AssetDispositionCard from "./AssetDispositionCard";
+import TokenDispositionCard from "./TokenDispositionCard";
 import ClaimableBalanceCard from "./ClaimableBalanceCard";
 
 interface PlanAccordionProps {
@@ -234,17 +235,29 @@ export default function PlanAccordion({
       summary: `${conversions.length} asset${conversions.length === 1 ? "" : "s"} with a balance`,
       body: (
         <div className="space-y-2">
-          {conversions.map((c) => (
-            <AssetDispositionCard
-              key={c.asset}
-              item={c}
-              disposition={assetDispositions[c.asset]}
-              transferDestination={transferDestinations[c.asset]}
-              mergeDestination={mergeDestination}
-              onSetDisposition={onSetDisposition}
-              onSetTransferDestination={onSetTransferDestination}
-            />
-          ))}
+          {conversions.map((c) =>
+            c.token ? (
+              <TokenDispositionCard
+                key={c.asset}
+                item={c}
+                disposition={assetDispositions[c.asset]}
+                transferDestination={transferDestinations[c.asset]}
+                mergeDestination={mergeDestination}
+                onSetDisposition={onSetDisposition}
+                onSetTransferDestination={onSetTransferDestination}
+              />
+            ) : (
+              <AssetDispositionCard
+                key={c.asset}
+                item={c}
+                disposition={assetDispositions[c.asset]}
+                transferDestination={transferDestinations[c.asset]}
+                mergeDestination={mergeDestination}
+                onSetDisposition={onSetDisposition}
+                onSetTransferDestination={onSetTransferDestination}
+              />
+            )
+          )}
         </div>
       ),
     });

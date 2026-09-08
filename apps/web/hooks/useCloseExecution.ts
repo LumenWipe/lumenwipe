@@ -12,6 +12,7 @@ import { useNetworkStore } from "@/store/network";
 import { runClose, InsufficientSignatureWeightError, type PendingRound } from "@lumenwipe/sdk";
 import { fetchCloseTransactions } from "@/lib/api/close-client";
 import {
+  chosenTokenTransfers,
   chosenTransfers,
   claimableSelectionsToDecisions,
   destinationAcknowledgementToDecisions,
@@ -161,6 +162,11 @@ export function useCloseExecution() {
                     useDemolishStore.getState().transferDestinations,
                     accountState,
                     claimableBalanceSelections
+                  ),
+                  tokenTransfers: chosenTokenTransfers(
+                    useDemolishStore.getState().assetDispositions,
+                    useDemolishStore.getState().transferDestinations,
+                    accountState
                   ),
                   ...exitExpectations(accountState, network),
                 },
@@ -360,6 +366,11 @@ export function useCloseExecution() {
             useDemolishStore.getState().transferDestinations,
             accountState,
             claimableBalanceSelections
+          ),
+          tokenTransfers: chosenTokenTransfers(
+            useDemolishStore.getState().assetDispositions,
+            useDemolishStore.getState().transferDestinations,
+            accountState
           ),
           ...exitExpectations(accountState, network),
         },

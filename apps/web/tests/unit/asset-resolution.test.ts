@@ -89,3 +89,50 @@ test("one unresolved asset among many blocks the whole set", () => {
     })
   ).toBe(false);
 });
+
+// ─── Soroban tokens (#161) ────────────────────────────────────────────────────
+
+const TOKEN_CONTRACT = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
+const tokenItem = (convertible: boolean): AssetConvertibility => ({
+  asset: TOKEN_CONTRACT,
+  code: "XTAR",
+  balance: "250",
+  convertible,
+  token: { contract: TOKEN_CONTRACT, symbol: "XTAR", decimals: 7, rawBalance: "2500000000" },
+});
+
+test("a Soroban token is resolved by an explicit leave, by a transfer with a usable address, or by a convert when a route exists", () => {
+  const base = {
+    conversions: [tokenItem(false)],
+    balanceBearingCount: 1,
+    transferDestinations: {},
+  };
+  expect(assetsResolved({ ...base, dispositions: {} })).toBe(false);
+  expect(assetsResolved({ ...base, dispositions: { [TOKEN_CONTRACT]: "leave" } })).toBe(true);
+  expect(assetsResolved({ ...base, dispositions: { [TOKEN_CONTRACT]: "transfer" } })).toBe(false);
+  expect(
+    assetsResolved({
+      ...base,
+      dispositions: { [TOKEN_CONTRACT]: "transfer" },
+      transferDestinations: { [TOKEN_CONTRACT]: DEST },
+    })
+  ).toBe(true);
+  expect(
+    assetsResolved({
+      ...base,
+      conversions: [tokenItem(true)],
+      dispositions: { [TOKEN_CONTRACT]: "convert" },
+    })
+  ).toBe(true);
+});
+
+test("a trustline is never resolved by leave: a balance in a trustline stops the merge", () => {
+  expect(
+    assetsResolved({
+      conversions: [asset("USDC", false)],
+      balanceBearingCount: 1,
+      dispositions: { [`USDC:${ISSUER}`]: "leave" },
+      transferDestinations: {},
+    })
+  ).toBe(false);
+});

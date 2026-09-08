@@ -239,6 +239,7 @@ test("intentFromXdr describes a contract invocation and every account its argume
     contractsReferenced: [],
     unsupportedAddressCount: 0,
     authorizesBeyondSelf: false,
+    authDepth: 0,
   });
 });
 
@@ -295,6 +296,7 @@ test("intentFromXdr walks the authorization tree - a recipient hidden in a neste
     contractsReferenced: [POOL, SAC].sort(),
     unsupportedAddressCount: 0,
     authorizesBeyondSelf: false,
+    authDepth: 1,
   });
 });
 

@@ -61,12 +61,20 @@ function collectFromInvocation(node: xdr.SorobanAuthorizedInvocation, into: Refe
   return plain;
 }
 
+/** How many levels of nested calls an authorized invocation carries: 0 for a lone call. */
+function invocationDepth(node: xdr.SorobanAuthorizedInvocation): number {
+  let deepest = 0;
+  for (const sub of node.subInvocations()) deepest = Math.max(deepest, 1 + invocationDepth(sub));
+  return deepest;
+}
+
 function render(value: xdr.ScVal): string {
   try {
     const native: unknown = scValToNative(value);
-    return typeof native === "string"
-      ? native
-      : JSON.stringify(native, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v));
+    // Plain text for the two shapes a verifier compares on: an address, and an integer amount.
+    if (typeof native === "string") return native;
+    if (typeof native === "bigint" || typeof native === "number") return native.toString();
+    return JSON.stringify(native, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v));
   } catch {
     return value.toXDR("base64");
   }
@@ -95,7 +103,9 @@ export function describeInvocation(op: Operation.InvokeHostFunction): IntentOper
   for (const arg of args) collectFromValue(arg, referenced);
 
   let authorizesBeyondSelf = false;
+  let authDepth = 0;
   for (const entry of op.auth ?? []) {
+    authDepth = Math.max(authDepth, invocationDepth(entry.rootInvocation()));
     if (
       entry.credentials().switch() !== xdr.SorobanCredentialsType.sorobanCredentialsSourceAccount()
     ) {
@@ -115,6 +125,7 @@ export function describeInvocation(op: Operation.InvokeHostFunction): IntentOper
     contractsReferenced: [...referenced.contracts].sort(),
     unsupportedAddressCount: referenced.unsupported,
     authorizesBeyondSelf,
+    authDepth,
   };
   return described;
 }

@@ -99,6 +99,8 @@ function decidableAssets(accountState: AccountState): Set<string> {
   return new Set([
     ...accountState.trustlines.map((tl) => tl.asset),
     ...accountState.claimableBalances.filter((b) => b.asset !== "native").map((b) => b.asset),
+    // Soroban token balances, keyed by contract like their decision ids.
+    ...(accountState.sorobanTokens?.tokens ?? []).map((t) => t.contract),
   ]);
 }
 

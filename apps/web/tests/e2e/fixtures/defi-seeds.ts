@@ -28,6 +28,9 @@ export const BLEND_POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44
 /** The registry's Soroswap testnet router and factory. */
 export const SOROSWAP_ROUTER = "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD";
 export const SOROSWAP_FACTORY = "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY";
+/** Soroswap's testnet XTAR: a Soroban-native (wasm) token with an XLM pool on the testnet AMM - the
+ *  one balance a close cannot see through a trustline (apps/api/src/config/soroban-token-lists.json). */
+export const XTAR = "CCZGLAUBDKJSQK72QOZHVU7CUWKW45OZWYWCLL27AEK74U2OIBK6LXF2";
 /** The registry's Aquarius testnet router, its test-asset issuer, and a deep XLM/AQUA pool. */
 export const AQUARIUS_ROUTER = "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD";
 export const AQUA = new Asset("AQUA", "GAHPYWLK6YRN7CVYZOO4H3VDRZ7PVF5UJGLZCSPAEIKJE2XSWF5LAGER");
@@ -246,6 +249,26 @@ export async function seedSoroswapLiquidity(
     )
   );
   return assetSac;
+}
+
+/**
+ * Gives the account a Soroban-native token balance the way a real user gets one: by swapping XLM
+ * for XTAR on the Soroswap testnet AMM. Returns the XTAR received, in the token's base units.
+ */
+export async function seedSorobanToken(source: Keypair, xlmStroops: bigint): Promise<bigint> {
+  const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
+  await soroban(
+    source,
+    new Contract(SOROSWAP_ROUTER).call(
+      "swap_exact_tokens_for_tokens",
+      i128(xlmStroops),
+      i128(BigInt(1)),
+      xdr.ScVal.scvVec([addr(XLM_SAC), addr(XTAR)]),
+      addr(source.publicKey()),
+      nativeToScVal(deadline, { type: "u64" })
+    )
+  );
+  return tokenBalanceOf(XTAR, source.publicKey());
 }
 
 /** The pair the factory created for (XLM, asset), read through get_pair. */

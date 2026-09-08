@@ -38,6 +38,11 @@ import type {
   TransferDestinations,
 } from "@lumenwipe/types";
 import { MissingTransferDestinationError } from "@/lib/close-api/decisions";
+import {
+  TokenTransferBlockedError,
+  buildTokenTransferRound,
+  type TokenTransferRoundDeps,
+} from "@/lib/close-api/token-transfer-round";
 
 // Raised when a close cannot be expressed as the phase-1 single fused transaction.
 // The route handler maps `code` to an error response.
@@ -112,7 +117,8 @@ export async function buildCloseTransactions(
   memo: string | null = null,
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {},
   transferDestinations: TransferDestinations = {},
-  exitDeps: Partial<ExitRoundDeps> = {}
+  exitDeps: Partial<ExitRoundDeps> = {},
+  tokenDeps: Partial<TokenTransferRoundDeps> = {}
 ): Promise<CloseBuildResult> {
   // Reject the same two hostile states buildPlan() blocks (issue #167), before any read or
   // build work: /close/transactions is an API-key product surface with an SDK, and
@@ -180,6 +186,31 @@ export async function buildCloseTransactions(
     throw e;
   }
 
+  // Soroban token balances the user chose to transfer as-is: one transaction per token, built
+  // and simulated here, after the exits (which can pay a token out) and before anything classic.
+  // Tokens the user chose to leave need nothing: a contract balance does not stop the merge.
+  try {
+    const tokenRound = await buildTokenTransferRound(
+      accountState,
+      dispositions,
+      transferDestinations,
+      network,
+      sdkAccount.sequenceNumber(),
+      validUntilLedger,
+      { rpc: server, ...tokenDeps }
+    );
+    if (tokenRound) {
+      return {
+        transactions: [tokenRound.transaction],
+        requiresAnotherCall: true,
+        remainingSteps: tokenRound.remainingSteps + 1,
+      };
+    }
+  } catch (e) {
+    if (e instanceof TokenTransferBlockedError) throw new CloseBuildError(e.code, e.message, 422);
+    throw e;
+  }
+
   // Round 1 for claimable-balance accounts: claim first (re-reading which are still
   // on-chain), then the client calls again to build the now claimable-free close. The
   // claim must precede the close because a claim raises the balance the close disposes of.
@@ -239,6 +270,17 @@ export async function buildCloseTransactions(
       if (parseFloat(liveBalance) <= 0) return null;
       const effectiveTl = { ...tl, balance: liveBalance };
       const disposition = dispositions[tl.asset] ?? "convert";
+      // Only a Soroban token can be left behind; a trustline holding a balance stops the merge.
+      // An answer that says otherwise is refused by name rather than quietly converted.
+      if (disposition === "leave") {
+        throw new CloseBuildError(
+          "trustline_cannot_be_left",
+          `${tl.code} is a classic asset held in a trustline; a trustline with a balance cannot be ` +
+            "left behind, or the account cannot be merged. Convert it, send it to another account, " +
+            "or return it to its issuer.",
+          422
+        );
+      }
       if (disposition === "issuer") return { trustline: effectiveTl, action: "issuer" };
       if (disposition === "transfer") {
         const destination = transferDestinations[tl.asset];

@@ -32,6 +32,8 @@ export function assetsResolved(input: {
       const destination = transferDestinations[c.asset];
       return !!destination && isValidGAddress(destination);
     }
+    // A Soroban token is resolved by an explicit "leave" as well; a trustline never is.
+    if (c.token && dispositions[c.asset] === "leave") return true;
     return c.convertible || dispositions[c.asset] === "issuer";
   });
 }

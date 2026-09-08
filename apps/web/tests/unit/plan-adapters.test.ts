@@ -119,3 +119,81 @@ test("decisionPointsToClaimableBalances › ignores non-claimable_balance decisi
 test("decisionPointsToClaimableBalances › no decision points → empty list", () => {
   expect(decisionPointsToClaimableBalances(plan([]))).toEqual([]);
 });
+
+// ─── Soroban tokens (#161) ────────────────────────────────────────────────────
+
+import { decisionPointsToConversions, formatTokenBalance } from "@/lib/api/plan-adapters";
+
+const TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
+
+test("decisionPointsToConversions › a Soroban token point becomes a token item with its raw balance kept", () => {
+  const items = decisionPointsToConversions(
+    plan([
+      {
+        id: `token:${TOKEN}`,
+        type: "asset_disposition",
+        subject: {
+          kind: "soroban_token",
+          contract: TOKEN,
+          symbol: "XTAR",
+          decimals: 7,
+          balance: "2500000000",
+          convertible: false,
+        },
+        options: [{ id: "transfer_to_account" }, { id: "acknowledge_residue" }],
+        default: "transfer_to_account",
+        required: true,
+      },
+      {
+        id: "asset:USDC-GISSUER",
+        type: "asset_disposition",
+        subject: { asset: "USDC:GISSUER", balance: "12.5000000" },
+        options: [{ id: "convert_to_xlm" }],
+        default: "convert_to_xlm",
+        required: true,
+      },
+    ])
+  );
+  expect(items).toEqual([
+    {
+      asset: TOKEN,
+      code: "XTAR",
+      balance: "250",
+      convertible: false,
+      token: { contract: TOKEN, symbol: "XTAR", decimals: 7, rawBalance: "2500000000" },
+    },
+    { asset: "USDC:GISSUER", code: "USDC", balance: "12.5000000", convertible: true },
+  ]);
+});
+
+test("decisionPointsToConversions › a token without metadata is named by its contract and shown in raw units", () => {
+  const [item] = decisionPointsToConversions(
+    plan([
+      {
+        id: `token:${TOKEN}`,
+        type: "asset_disposition",
+        subject: {
+          kind: "soroban_token",
+          contract: TOKEN,
+          symbol: null,
+          decimals: null,
+          balance: "42",
+        },
+        options: [{ id: "transfer_to_account" }, { id: "acknowledge_residue" }],
+        default: "transfer_to_account",
+        required: true,
+      },
+    ])
+  );
+  expect(item).toMatchObject({ code: "CBI7…IHRV", balance: "42 base units", convertible: false });
+});
+
+test("formatTokenBalance › decimals place the point, trailing zeros drop, tiny amounts keep their leading zero", () => {
+  expect(formatTokenBalance("2500000000", 7)).toBe("250");
+  expect(formatTokenBalance("1", 7)).toBe("0.0000001");
+  expect(formatTokenBalance("1000000000000000000", 18)).toBe("1");
+  expect(formatTokenBalance("123456789012345678", 18)).toBe("0.123456789012345678");
+  expect(formatTokenBalance("7", 0)).toBe("7");
+  expect(formatTokenBalance("7", null)).toBe("7 base units");
+  expect(formatTokenBalance("abc", 7)).toBe("abc");
+});

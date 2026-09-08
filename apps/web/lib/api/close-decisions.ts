@@ -11,6 +11,19 @@ function assetDecisionId(asset: string): string {
   return `asset:${asset.replace(":", "-")}`;
 }
 
+/** A Soroban token is keyed by its contract (C...); a classic asset never starts that way. */
+export function isTokenContract(assetOrContract: string): boolean {
+  return /^C[A-Z2-7]{55}$/.test(assetOrContract);
+}
+
+/** Stable decision id for a Soroban token disposition. Must match the API's `tokenDecisionId`. */
+function tokenDecisionId(contract: string): string {
+  return `token:${contract}`;
+}
+
+/** Must match the API's `LEAVE_CHOICE`: the explicit acknowledgement that a token stays behind. */
+const LEAVE_CHOICE = "acknowledge_residue";
+
 /** Stable decision id for a claimable-balance selection. Must match the API's
  *  `claimableBalanceDecisionId`. */
 function claimableBalanceDecisionId(balanceId: string): string {
@@ -68,7 +81,7 @@ export function dispositionsToDecisions(
   transferDestinations: TransferDestinations = {}
 ): DecisionAnswer[] {
   return Object.entries(dispositions).map(([asset, disposition]): DecisionAnswer => {
-    const id = assetDecisionId(asset);
+    const id = isTokenContract(asset) ? tokenDecisionId(asset) : assetDecisionId(asset);
     switch (disposition) {
       case "convert":
         return { id, choice: "convert_to_xlm" };
@@ -80,6 +93,9 @@ export function dispositionsToDecisions(
           ? { id, choice: TRANSFER_CHOICE, params: { destination } }
           : { id, choice: TRANSFER_CHOICE };
       }
+      // Only meaningful for a Soroban token; the API refuses it for a trustline, loudly.
+      case "leave":
+        return { id, choice: LEAVE_CHOICE };
       default: {
         const unhandled: never = disposition;
         throw new Error(`Unhandled asset disposition: ${String(unhandled)}`);
@@ -144,7 +160,7 @@ export function chosenTransfers(
   const claimedPerAsset = claimedAmounts(accountState, claimableBalanceSelections);
 
   for (const [asset, disposition] of Object.entries(dispositions)) {
-    if (disposition !== "transfer") continue;
+    if (disposition !== "transfer" || isTokenContract(asset)) continue;
     const destination = destinations[asset];
     if (!destination) continue;
     const trustline = trustlines.find((tl) => tl.asset === asset);
@@ -153,6 +169,45 @@ export function chosenTransfers(
     transfers[asset] = { destination, amount: floor.toFixed(7) };
   }
   return transfers;
+}
+
+/**
+ * The Soroban token transfers the user chose, keyed by token contract, with the balance the
+ * analysis read in base units. verify() holds the transfer to at least that amount, to the
+ * destination typed here, and to nothing else. A token the account no longer shows is skipped:
+ * there is nothing to vouch for.
+ */
+export function chosenTokenTransfers(
+  dispositions: Record<string, AssetDisposition>,
+  destinations: Record<string, string>,
+  accountState: AccountState | null
+): Record<string, { destination: string; amount: string }> {
+  const transfers: Record<string, { destination: string; amount: string }> = {};
+  const tokens = accountState?.sorobanTokens?.tokens ?? [];
+  for (const [contract, disposition] of Object.entries(dispositions)) {
+    if (disposition !== "transfer" || !isTokenContract(contract)) continue;
+    const destination = destinations[contract];
+    if (!destination) continue;
+    const token = tokens.find((t) => t.contract === contract);
+    if (!token || !/^[1-9]\d*$/.test(token.balance)) continue;
+    transfers[contract] = { destination, amount: token.balance };
+  }
+  return transfers;
+}
+
+/**
+ * The Soroban tokens the close disposed of, for the receipt: what was sent, converted, or - the
+ * one outcome someone will most need to look up later - deliberately left with the address.
+ */
+export function receiptTokenSummary(
+  accountState: AccountState | null
+): Array<{ asset: string; code: string }> {
+  return (accountState?.sorobanTokens?.tokens ?? [])
+    .filter((t) => /^[1-9]\d*$/.test(t.balance))
+    .map((t) => ({
+      asset: t.contract,
+      code: t.symbol ?? `${t.contract.slice(0, 4)}…${t.contract.slice(-4)}`,
+    }));
 }
 
 /**
