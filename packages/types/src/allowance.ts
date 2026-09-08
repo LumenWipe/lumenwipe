@@ -16,6 +16,8 @@ export interface Allowance {
   token: string;
   /** From the token's own `symbol()`, null when it does not answer. */
   tokenSymbol: string | null;
+  /** From the token's own `decimals()`, null when it does not answer. */
+  tokenDecimals: number | null;
   /** The approved spender. Almost always a contract (`C...`) - a DeFi protocol - but SEP-41's
    *  `approve(from, spender, ...)` types `spender` as `Address`, so a plain account (`G...`) is a
    *  legitimate, if unusual, spender too. */

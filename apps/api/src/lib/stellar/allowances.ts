@@ -359,8 +359,24 @@ function printableSymbol(value: unknown): string | null {
     : null;
 }
 
+/** Same bound as soroban-tokens.ts's probe(): the widest `decimals` a token may legitimately
+ *  claim, so a hostile or broken answer is shown in raw units rather than trusted. */
+const MAX_TOKEN_DECIMALS = 38;
+
+function validDecimals(value: unknown): number | null {
+  if (typeof value === "bigint" && value >= 0n && value <= BigInt(MAX_TOKEN_DECIMALS)) {
+    return Number(value);
+  }
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= MAX_TOKEN_DECIMALS
+    ? value
+    : null;
+}
+
 type Read =
-  | { status: "allowed"; amount: bigint; symbol: string | null }
+  | { status: "allowed"; amount: bigint; symbol: string | null; decimals: number | null }
   | { status: "none" }
   | { status: "unreadable"; detail: string };
 
@@ -392,22 +408,29 @@ async function readAllowance(
     );
     if (amount === null) return { status: "unreadable", detail: "allowance() did not answer" };
     if (amount <= 0n) return { status: "none" };
-    if (readTimeout() <= 0) return { status: "allowed", amount, symbol: null };
-    const symbolVal = await withTimeout(
-      simulateRead(rpc, network, owner, candidate.token, "symbol"),
-      readTimeout(),
-      "symbol"
-    ).catch(() => null);
-    const symbol = printableSymbol(
-      (() => {
-        try {
-          return symbolVal ? scValToNative(symbolVal) : null;
-        } catch {
-          return null;
-        }
-      })()
-    );
-    return { status: "allowed", amount, symbol };
+    if (readTimeout() <= 0) return { status: "allowed", amount, symbol: null, decimals: null };
+    const [symbolVal, decimalsVal] = await Promise.all([
+      withTimeout(
+        simulateRead(rpc, network, owner, candidate.token, "symbol"),
+        readTimeout(),
+        "symbol"
+      ).catch(() => null),
+      withTimeout(
+        simulateRead(rpc, network, owner, candidate.token, "decimals"),
+        readTimeout(),
+        "decimals"
+      ).catch(() => null),
+    ]);
+    const decodeOr = (val: xdr.ScVal | null): unknown => {
+      try {
+        return val ? scValToNative(val) : null;
+      } catch {
+        return null;
+      }
+    };
+    const symbol = printableSymbol(decodeOr(symbolVal));
+    const decimals = validDecimals(decodeOr(decimalsVal));
+    return { status: "allowed", amount, symbol, decimals };
   } catch (err) {
     return { status: "unreadable", detail: reason(err) };
   }
@@ -498,6 +521,7 @@ export async function discoverAllowances(
       allowances.push({
         token: candidate.token,
         tokenSymbol: result.symbol,
+        tokenDecimals: result.decimals,
         spender: candidate.spender,
         spenderProtocol:
           registryEntries.find((e) => e.address === candidate.spender)?.protocol ?? null,

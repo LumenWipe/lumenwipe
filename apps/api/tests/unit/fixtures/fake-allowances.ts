@@ -18,6 +18,7 @@ export interface FakeAllowance {
   symbol?: string | null;
   /** `symbol()` never answers. */
   symbolHangs?: boolean;
+  decimals?: number | null;
   /** `allowance()` never answers. */
   hangs?: boolean;
 }
@@ -158,6 +159,13 @@ export function fakeAllowanceRpc(world: FakeAllowancesWorld): AllowanceRpc & {
         if (entry?.symbolHangs) return never as never;
         if (entry?.symbol === null) return rawSimulation("error", [], "0");
         return simulationWith(nativeToScVal(entry?.symbol ?? "TKN", { type: "string" }));
+      }
+      if (call.fn === "decimals") {
+        const entry = [...allowances.values()].find((a) => a.token === call.contract);
+        if (entry?.decimals === null || entry?.decimals === undefined) {
+          return rawSimulation("error", [], "0");
+        }
+        return simulationWith(nativeToScVal(entry.decimals, { type: "u32" }));
       }
       return rawSimulation("error", [], "0");
     },

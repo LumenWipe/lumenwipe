@@ -22,6 +22,11 @@ export interface FeeBumpSponsorResponse {
   transaction: string;
 }
 
+/** Response from `POST /:network/allowances/revoke`. */
+export interface RevokeAllowanceResponse {
+  transaction: string;
+}
+
 /** Response from `GET /health`. */
 export interface HealthResponse {
   status: string;
