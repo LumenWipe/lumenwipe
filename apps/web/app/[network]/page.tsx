@@ -2,7 +2,8 @@
 
 import { use } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, Zap, GitMerge, AlertOctagon, RotateCcw, X } from "lucide-react";
+import Link from "next/link";
+import { ShieldCheck, Zap, GitMerge, AlertOctagon, RotateCcw, ShieldOff, X } from "lucide-react";
 import type { Network } from "@/config/networks";
 import AccountEntryForm from "@/components/account-entry/AccountEntryForm";
 import { useSessionRecovery } from "@/hooks/useSessionRecovery";
@@ -136,6 +137,23 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
           </div>
         </div>
       </div>
+
+      {/* Standalone security utility, independent of closing an account. */}
+      <Link
+        href={`/${network}/allowances`}
+        className="mt-3 flex items-center justify-between gap-3 mkt-panel rounded-xl px-4 py-3 text-sm transition-colors hover:bg-white/[0.04]"
+      >
+        <span className="flex items-center gap-2.5 min-w-0">
+          <ShieldOff className="h-4 w-4 text-stellar shrink-0" />
+          <span className="min-w-0">
+            <span className="block font-medium text-white">Allowance inspector</span>
+            <span className="block text-xs text-white/45">
+              Audit and revoke token approvals - no close required
+            </span>
+          </span>
+        </span>
+        <span className="shrink-0 text-white/30">→</span>
+      </Link>
     </div>
   );
 }

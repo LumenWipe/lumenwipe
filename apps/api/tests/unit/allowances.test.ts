@@ -38,7 +38,9 @@ function registryEntry(over: Partial<ContractRegistryEntry> = {}): ContractRegis
 test("discoverAllowances › a live, non-zero allowance found via an approve event is reported with the event's expiration", async () => {
   const deps = fakeAllowancesDeps({
     world: {
-      allowances: [{ token: TOKEN, spender: SPENDER, amount: 5_000_000n, symbol: "XTAR" }],
+      allowances: [
+        { token: TOKEN, spender: SPENDER, amount: 5_000_000n, symbol: "XTAR", decimals: 7 },
+      ],
       events: {
         "996001-1000000": [
           {
@@ -59,6 +61,7 @@ test("discoverAllowances › a live, non-zero allowance found via an approve eve
   expect(result.allowances[0]).toMatchObject({
     token: TOKEN,
     tokenSymbol: "XTAR",
+    tokenDecimals: 7,
     spender: SPENDER,
     spenderProtocol: null,
     amount: "5000000",

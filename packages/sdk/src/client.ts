@@ -1,5 +1,6 @@
 import type {
   AccountState,
+  AllowancesResult,
   ClosePlanRequest,
   CloseTransactionsRequest,
   FeeBumpSponsorResponse,
@@ -9,6 +10,7 @@ import type {
   Network,
   PathResponse,
   PlanResponse,
+  RevokeAllowanceResponse,
   SubmitResponse,
   TransactionsResponse,
 } from "@lumenwipe/types";
@@ -112,5 +114,30 @@ export class LumenWipeClient {
     return this.http.request<FeeBumpSponsorResponse>("POST", `/${network}/fee-bump/sponsor`, {
       transaction,
     });
+  }
+
+  /** Every live SEP-41 allowance the account has granted (architecture.md §12). Independent of
+   *  closing an account - a standalone security utility. */
+  getAllowances(
+    address: string,
+    network: Network = this.defaultNetwork
+  ): Promise<AllowancesResult> {
+    return this.http.request<AllowancesResult>(
+      "GET",
+      `/${network}/allowances/${encodeURIComponent(address)}`
+    );
+  }
+
+  /** Builds the unsigned `approve(owner, spender, 0, 0)` transaction that revokes one allowance.
+   *  The caller signs and submits it through `submit()`, like any other transaction here. */
+  revokeAllowance(
+    params: { owner: string; token: string; spender: string },
+    network: Network = this.defaultNetwork
+  ): Promise<RevokeAllowanceResponse> {
+    return this.http.request<RevokeAllowanceResponse>(
+      "POST",
+      `/${network}/allowances/revoke`,
+      params
+    );
   }
 }

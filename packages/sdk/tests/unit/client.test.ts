@@ -70,6 +70,31 @@ test("getPaths builds the query string and respects the network override", async
   expect(calls[0].init?.method).toBe("GET");
 });
 
+test("getAllowances GETs the network-scoped path", async () => {
+  const { fetch, calls } = mockFetch(200, { allowances: [] });
+  const client = new LumenWipeClient({ baseUrl: "https://x", apiKey: "k", fetch });
+
+  await client.getAllowances("GABC", "mainnet");
+
+  expect(calls[0].url).toBe("https://x/mainnet/allowances/GABC");
+  expect(calls[0].init?.method).toBe("GET");
+});
+
+test("revokeAllowance posts owner/token/spender to the revoke path", async () => {
+  const { fetch, calls } = mockFetch(200, { transaction: "AAAA" });
+  const client = new LumenWipeClient({ baseUrl: "https://x", apiKey: "k", fetch });
+
+  await client.revokeAllowance({ owner: "GABC", token: "CABC", spender: "CDEF" }, "testnet");
+
+  expect(calls[0].url).toBe("https://x/testnet/allowances/revoke");
+  expect(calls[0].init?.method).toBe("POST");
+  expect(JSON.parse(calls[0].init?.body as string)).toEqual({
+    owner: "GABC",
+    token: "CABC",
+    spender: "CDEF",
+  });
+});
+
 test("GET requests carry no Content-Type and no body", async () => {
   const { fetch, calls } = mockFetch(200, {});
   const client = new LumenWipeClient({ baseUrl: "https://x", apiKey: "k", fetch });
