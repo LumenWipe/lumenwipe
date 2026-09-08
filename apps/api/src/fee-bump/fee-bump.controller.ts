@@ -9,7 +9,7 @@ import {
 } from "@nestjs/swagger";
 import { FeeBumpTransaction, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
 import { FeeBumpRequestDto } from "./dto/fee-bump.dto";
-import { isAllowedWindDownOperation } from "./fee-bump-validation";
+import { actsForOneAccount, isAllowedWindDownOperation } from "./fee-bump-validation";
 import { isValidNetwork, NETWORK_PASSPHRASES } from "@/config/networks";
 import { BASE_FEE_STROOPS, MAX_FEE_BUMP_STROOPS } from "@/config/constants";
 import { getFeeAccountKeypair } from "@/lib/stellar/fee-account";
@@ -92,6 +92,17 @@ export class FeeBumpController {
       fail(
         "operation_not_sponsorable",
         "This transaction contains an operation the sponsored-fee flow does not cover.",
+        400
+      );
+    }
+
+    // Every operation must act for the transaction's own source: Stellar lets each operation
+    // name its own, so without this a caller could bundle wind-down-shaped operations for
+    // several unrelated accounts into one envelope, each passing the check above in isolation.
+    if (!actsForOneAccount(tx)) {
+      fail(
+        "operation_not_sponsorable",
+        "Every operation in a sponsored transaction must act for the same account.",
         400
       );
     }

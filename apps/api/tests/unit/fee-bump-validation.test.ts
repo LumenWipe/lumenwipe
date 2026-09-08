@@ -8,7 +8,7 @@ import {
   Transaction,
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
-import { isAllowedWindDownOperation } from "@/fee-bump/fee-bump-validation";
+import { actsForOneAccount, isAllowedWindDownOperation } from "@/fee-bump/fee-bump-validation";
 
 const SOURCE = Keypair.random().publicKey();
 const OTHER = Keypair.random().publicKey();
@@ -173,5 +173,41 @@ describe("isAllowedWindDownOperation", () => {
         expect(isAllowedWindDownOperation(operationOf(Operation.setOptions(touched)))).toBe(false);
       }
     });
+  });
+});
+
+describe("actsForOneAccount", () => {
+  function txWith(...ops: ReturnType<typeof Operation.payment>[]): Transaction {
+    const builder = new TransactionBuilder(new Account(SOURCE, "1"), {
+      fee: "0",
+      networkPassphrase: Networks.TESTNET,
+    });
+    for (const op of ops) builder.addOperation(op);
+    return builder.setTimeout(30).build();
+  }
+
+  test("allows operations that leave their source unstated, or that restate the transaction's own", () => {
+    expect(
+      actsForOneAccount(
+        txWith(
+          Operation.accountMerge({ destination: OTHER }),
+          Operation.accountMerge({ destination: OTHER, source: SOURCE })
+        )
+      )
+    ).toBe(true);
+  });
+
+  test("refuses a transaction bundling an operation for a different account, even a wind-down-shaped one", () => {
+    // Each operation alone is an allowed wind-down shape; only their sources differ. Without this
+    // check, a caller could get the fee account to sponsor several unrelated accounts' operations
+    // in one envelope, each passing isAllowedWindDownOperation in isolation.
+    expect(
+      actsForOneAccount(
+        txWith(
+          Operation.accountMerge({ destination: OTHER }),
+          Operation.accountMerge({ destination: SOURCE, source: OTHER })
+        )
+      )
+    ).toBe(false);
   });
 });

@@ -6,16 +6,33 @@ import type { Transaction } from "@stellar/stellar-sdk";
 type ParsedOperation = Transaction["operations"][number];
 
 /**
+ * Whether every operation in the transaction acts for the same account: the transaction's own
+ * source, whether an operation states it explicitly or - Stellar's default - leaves it unstated.
+ * Stellar allows each operation to name its own source, so without this a caller could bundle
+ * wind-down-shaped operations for several unrelated accounts into one envelope and have all of
+ * them pass `isAllowedWindDownOperation` independently, even though nothing about the request
+ * describes one account's close. This is what makes "one account's wind-down" actually true of
+ * the transaction as a whole, not just of each operation in isolation.
+ */
+export function actsForOneAccount(tx: Transaction): boolean {
+  return tx.operations.every((op) => op.source === undefined || op.source === tx.source);
+}
+
+/**
  * The wind-down operation shapes the fee-bump sponsor will pay for (architecture.md §8.1,
  * threat-model.md §6). Every operation in a sponsored transaction must match one of these, or
  * the request is refused before the fee account ever signs anything.
  *
- * This is a spoofing defense, not a correctness check: the inner transaction was already built
- * by this API's own close builder and carries the user's own signature over its exact contents,
- * so amounts and destinations are already committed to by the time a transaction reaches here.
- * What this function stops is an unrelated transaction - anything outside a close wind-down -
- * from getting the fee account's sponsorship, which is the one thing a raw operation-type check
- * can decide without re-deriving the whole close's intent.
+ * This is a spoofing defense, not a full re-derivation of close intent: the destination of an
+ * `AccountMerge` or `PathPaymentStrictSend` is not pinned here, because doing so would need this
+ * stateless endpoint to know what a specific close session chose - state this endpoint does not
+ * have and is not meant to hold. What bounds the risk instead is structural: the fee account's
+ * signature only ever authorizes the fee account's own payment of the outer envelope's fee; it
+ * cannot substitute for or forge the inner transaction's required signature over its own
+ * operations, so nothing sponsored here can move funds the caller does not already control by
+ * holding that signature (docs/threat-model.md §6-7). What this function stops is an operation
+ * type with no place in a close at all - a Soroban invocation, a data write, an offer placed
+ * rather than cancelled - from riding along on the fee account's signature.
  */
 export function isAllowedWindDownOperation(op: ParsedOperation): boolean {
   switch (op.type) {

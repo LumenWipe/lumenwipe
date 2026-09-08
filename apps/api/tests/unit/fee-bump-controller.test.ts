@@ -182,4 +182,34 @@ describe("FeeBumpController.sponsor", () => {
       "invalid_network"
     );
   });
+
+  test("refuses a transaction bundling wind-down operations for more than one account", async () => {
+    const other = Keypair.random().publicKey();
+    const tx = new TransactionBuilder(new Account(SOURCE, "1"), {
+      fee: "0",
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(Operation.accountMerge({ destination: DEST }))
+      .addOperation(Operation.accountMerge({ destination: DEST, source: other }))
+      .setTimeout(30)
+      .build();
+    // Each operation alone is an allowed wind-down shape; only bundling them across two accounts
+    // makes the whole transaction something other than one account's close.
+    await expectFail(
+      controller.sponsor("testnet", { transaction: tx.toXDR() }),
+      400,
+      "operation_not_sponsorable"
+    );
+  });
+
+  test("returns the clean not-configured response for a malformed secret, not a raw stack trace", async () => {
+    process.env.FEE_ACCOUNT_SECRET_TESTNET = "not a valid secret seed";
+    await expectFail(
+      controller.sponsor("testnet", {
+        transaction: windDownTx(Operation.accountMerge({ destination: DEST })),
+      }),
+      503,
+      "fee_bump_not_configured"
+    );
+  });
 });
