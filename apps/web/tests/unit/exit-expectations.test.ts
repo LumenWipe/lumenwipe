@@ -126,3 +126,21 @@ test("an Aquarius LP position pins its pool, allows withdraw and claim on it, an
   expect(e.exitFunctions).toEqual({ [PAIR]: ["withdraw", "claim"] });
   expect(e.positionTokenContracts).toEqual([TOKEN_0, TOKEN_1, SHARE_TOKEN]);
 });
+
+test("a Soroban token balance the analysis confirmed is a held token contract an exit may reference; an older read adds none", () => {
+  const TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
+  const withTokens = {
+    ...state([]),
+    sorobanTokens: {
+      tokens: [
+        { contract: TOKEN, balance: "1", symbol: "deJTRSY", decimals: 7, sources: ["explorer"] },
+      ],
+      unreadable: [],
+      coverage: [],
+      eventsScanned: null,
+      warnings: [],
+    },
+  } as unknown as AccountState;
+  expect(exitExpectations(withTokens, "testnet").heldTokenContracts).toContain(TOKEN);
+  expect(exitExpectations(state([]), "testnet").heldTokenContracts).not.toContain(TOKEN);
+});

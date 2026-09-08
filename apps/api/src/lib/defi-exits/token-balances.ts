@@ -60,5 +60,9 @@ export function tokenBalancesFor(accountState: AccountState): Record<string, str
       sellingLiabilities(accountState.openOffers, trustline.asset)
     );
   }
+  // A Soroban token balance has no offers against it and no reserve to keep: all of it spends.
+  for (const token of accountState.sorobanTokens?.tokens ?? []) {
+    balances[token.contract] = token.balance;
+  }
   return balances;
 }

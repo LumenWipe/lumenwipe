@@ -75,9 +75,14 @@ export function exitExpectations(
       ])
     ),
   ];
+  // The account's own balances: XLM and every trustline under their Stellar Asset Contracts, and
+  // the Soroban tokens the analysis confirmed on the ledger (absent on older reads: nothing added).
   const heldTokenContracts = [
-    Asset.native().contractId(passphrase),
-    ...trustlines.map((tl) => new Asset(tl.code, tl.issuer).contractId(passphrase)),
+    ...new Set([
+      Asset.native().contractId(passphrase),
+      ...trustlines.map((tl) => new Asset(tl.code, tl.issuer).contractId(passphrase)),
+      ...(accountState.sorobanTokens?.tokens ?? []).map((t) => t.contract),
+    ]),
   ];
   return { exitContracts, heldTokenContracts, positionTokenContracts, exitFunctions };
 }

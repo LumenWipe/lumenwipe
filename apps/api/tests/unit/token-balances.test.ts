@@ -105,3 +105,23 @@ test("a balance entirely held back reports zero, never a negative amount", () =>
   const balances = tokenBalancesFor(account({ nativeBalanceLumens: "1.0000000" }));
   expect(balances[Asset.native().contractId(Networks.TESTNET)]).toBe("0");
 });
+
+test("a Soroban token balance the analysis confirmed spends whole: no offers, no reserve against it", () => {
+  const TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
+  const balances = tokenBalancesFor(
+    account({
+      sorobanTokens: {
+        tokens: [
+          { contract: TOKEN, balance: "123456", symbol: null, decimals: null, sources: ["list"] },
+        ],
+        unreadable: [],
+        coverage: [],
+        eventsScanned: null,
+        warnings: [],
+      },
+    })
+  );
+  expect(balances[TOKEN]).toBe("123456");
+  // An older read without the field adds nothing and breaks nothing.
+  expect(Object.keys(tokenBalancesFor(account({ sorobanTokens: undefined })))).not.toContain(TOKEN);
+});

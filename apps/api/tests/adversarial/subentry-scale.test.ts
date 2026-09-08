@@ -17,6 +17,7 @@ import {
 } from "@/lib/stellar/tx-builder/fused-close";
 import { packFusedCloseTransactions } from "@/lib/close-api/build-transactions";
 import { readAccountStateFrom } from "@/lib/stellar/account-state";
+import { OFFLINE_SOROBAN_TOKENS } from "../unit/fixtures/fake-soroban-tokens";
 import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 import type { ResolveDefiPositionsDeps } from "@/lib/defi-positions/resolve-defi-positions";
 import type { SponsoredEntry } from "@lumenwipe/types";
@@ -154,6 +155,12 @@ test("an account whose own open-offer count exceeds the enumeration cap fails th
   }) as unknown as typeof globalThis.fetch;
 
   await expect(
-    readAccountStateFrom(MASTER, "testnet", { baseUrl: BASE, fetch }, NO_DEFI)
+    readAccountStateFrom(
+      MASTER,
+      "testnet",
+      { baseUrl: BASE, fetch },
+      NO_DEFI,
+      OFFLINE_SOROBAN_TOKENS
+    )
   ).rejects.toBeInstanceOf(TruncatedCollectionError);
 });
