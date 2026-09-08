@@ -1,0 +1,78 @@
+{
+  "source": "Soroswap token list (github.com/soroswap/token-list, mainnet) and the Soroswap testnet token list (api.soroswap.finance/api/tokens); only entries without a classic issuer - a Stellar asset's contract balance is already the trustline",
+  "lastVerified": "2026-09-07",
+  "mainnet": [
+    {
+      "code": "deJTRSY",
+      "contract": "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV",
+      "name": "deJTRSY"
+    },
+    {
+      "code": "deJAAA",
+      "contract": "CC64WBDGS6QQP22QTTIACYIXT3WF7BBQEYOQPLTP7GTKYY7PZ74QYGSL",
+      "name": "deJAAA"
+    }
+  ],
+  "testnet": [
+    {
+      "code": "XTAR",
+      "contract": "CCZGLAUBDKJSQK72QOZHVU7CUWKW45OZWYWCLL27AEK74U2OIBK6LXF2",
+      "name": "Dogstar"
+    },
+    {
+      "code": "USDC",
+      "contract": "CB3TLW74NBIOT3BUWOZ3TUM6RFDF6A4GVIRUQRQZABG5KPOUL4JJOV2F",
+      "name": "USDCoin"
+    },
+    {
+      "code": "XRP",
+      "contract": "CDDIA6HYANLPMDKBVQRIIXY3NA6S3TMHZFJUNPMBEJGZ5JSHN3E2TAUI",
+      "name": "Ripple"
+    },
+    {
+      "code": "ARST",
+      "contract": "CBRQHWJDLPYVR4BSVUUWJCZGG4N4FF3CUZKDGRVTE36FAWNEJZEMQRME",
+      "name": "ArgentinePeso"
+    },
+    {
+      "code": "AQUA",
+      "contract": "CDBCM2JWK2ERIE6EAVAZJJW3P25U5S3FLNHJDY72AVSVAVTU4E6NAQ43",
+      "name": "Aquarius"
+    },
+    {
+      "code": "EURC",
+      "contract": "CBQDUWBOHS7P4TZIJ3KUPUZQOWMKJC6CQPPFEONSV3BH4X27YVEXWNOT",
+      "name": "EURoCoin"
+    },
+    {
+      "code": "BTC",
+      "contract": "CB7ICEHVRIRMF3CF6SIP2C2R3Z4E7WRPATT552QSVLIXZ5RSN6KLUDAE",
+      "name": "Bitcoin"
+    },
+    {
+      "code": "BRL",
+      "contract": "CAFLDVK2REIV6AWNCSTW4HVAGHJNCAROPLTXQYG23VSKL3PSUXEBHYAX",
+      "name": "BrazilianReal"
+    },
+    {
+      "code": "UXIV",
+      "contract": "CADHV5C672FOGEUMCGYO2D6VQME3Y3NAP2FZRYJGA3VMDNOL5NAWQI7R",
+      "name": "uxivax"
+    },
+    {
+      "code": "CYON",
+      "contract": "CBSWSTWY2OR7322PIIRU6Q6CY3VMMBBL6GX7TO5JV2M6OS2CG5ZHN7FX",
+      "name": "cyonef"
+    },
+    {
+      "code": "JAMN",
+      "contract": "CBGFKYQJYMZC7HNW7RGQQOUR2LP5HAAQ3MPHDENMBNKBKOEDIWXJADAT",
+      "name": "jamnov"
+    },
+    {
+      "code": "VEOF",
+      "contract": "CBV3JJ7CJK2J2YEJRM2HPFXT4GKBO574XEEVX6YL725R6CRARXITLDCH",
+      "name": "veofiz"
+    }
+  ]
+}

@@ -6,6 +6,11 @@ import { horizonAssetToString } from "@/lib/utils/assets";
 import { enumerateSponsoredEntries } from "@/lib/stellar/sponsorship";
 import { horizonGet, type HorizonDeps } from "./horizon-http";
 import {
+  defaultSorobanTokensDeps,
+  discoverSorobanTokens,
+  type SorobanTokensDeps,
+} from "./soroban-tokens";
+import {
   resolveDefiPositions,
   type ResolveDefiPositionsDeps,
 } from "@/lib/defi-positions/resolve-defi-positions";
@@ -20,8 +25,10 @@ import type {
   AccountState,
   AccountSigner,
   DataEntry,
+  DefiPosition,
   Trustline,
   PoolShareEntry,
+  SorobanTokensResult,
 } from "@lumenwipe/types";
 
 /**
@@ -143,11 +150,23 @@ export function defiPositionsDepsFor(): ResolveDefiPositionsDeps {
   return { octopos: { baseUrl: OCTOPOS_API_URL_MAINNET, apiKey: process.env.OCTOPOS_API_KEY } };
 }
 
+export interface AccountReadOptions {
+  /** Soroban token contracts the user asked to be checked besides what discovery finds. */
+  manualTokenCandidates?: string[];
+  /** Time the token discovery may take; the module's default when absent. */
+  sorobanTokensBudgetMs?: number;
+  /** Whether discovery scans recent events (the slow, find-new-tokens source). Default true. */
+  scanTokenEvents?: boolean;
+  /** Injectable for tests; defaults to the live sources for the network. */
+  sorobanTokensDeps?: (positions: DefiPosition[]) => SorobanTokensDeps;
+}
+
 export async function readAccountStateFrom(
   address: string,
   network: Network,
   deps: HorizonDeps,
-  defiDeps: ResolveDefiPositionsDeps
+  defiDeps: ResolveDefiPositionsDeps,
+  options: AccountReadOptions = {}
 ): Promise<AccountState> {
   const account = await horizonGet<ApiAccount>(`/accounts/${address}`, deps);
   if (!account) throw new AccountNotFoundError(address);
@@ -195,12 +214,42 @@ export async function readAccountStateFrom(
   // on pool reads - otherwise a snapshot near the staleness threshold could age past it here.
   const defiPositionsWarnings = assessDefiPositionsGate(detectedPositions);
   // Presentation for what detection found (pool name, symbol, underlying amount, yield). Never
-  // changes positions or blockers.
-  const defiPositions = await enrichDefiPositions(detectedPositions, {
-    network,
-    account: address,
-    knownTokens: knownTokensFor(trustlines, network),
-  });
+  // changes positions or blockers. The Soroban token read runs alongside: it needs the positions
+  // (their payout tokens are candidates, their share tokens are not) and nothing else here.
+  const sorobanDeps = (): SorobanTokensDeps =>
+    options.sorobanTokensDeps
+      ? options.sorobanTokensDeps(detectedPositions.positions)
+      : defaultSorobanTokensDeps(
+          network,
+          detectedPositions.positions,
+          options.manualTokenCandidates ?? [],
+          { budgetMs: options.sorobanTokensBudgetMs, scanEvents: options.scanTokenEvents }
+        );
+  const [defiPositions, sorobanTokens] = await Promise.all([
+    enrichDefiPositions(detectedPositions, {
+      network,
+      account: address,
+      knownTokens: knownTokensFor(trustlines, network),
+    }),
+    Promise.resolve()
+      .then(() => discoverSorobanTokens(address, network, sorobanDeps()))
+      .catch((err: unknown): SorobanTokensResult => ({
+        // The discovery module never throws by design; this is the belt to its braces.
+        tokens: [],
+        unreadable: [],
+        coverage: [],
+        eventsScanned: null,
+        warnings: [
+          {
+            code: "soroban_tokens_partial",
+            message:
+              "Soroban token balances could not be read for this account " +
+              `(${err instanceof Error ? err.message : String(err)}); a token it holds may be ` +
+              "missing here. Add any you know of by contract address.",
+          },
+        ],
+      })),
+  ]);
   const numSubEntries = account.subentry_count;
 
   // `?? 0` would turn a missing field into a confident "sponsors nothing". The endpoint is
@@ -253,6 +302,7 @@ export async function readAccountStateFrom(
     }),
     defiPositions,
     defiPositionsWarnings,
+    sorobanTokens,
   };
 }
 
@@ -300,7 +350,14 @@ export async function readTrustlinesOnly(
 /** Reads account state from the provider configured for `network`. */
 export async function getAccountState(
   address: string,
-  network: Network = "testnet"
+  network: Network = "testnet",
+  options: AccountReadOptions = {}
 ): Promise<AccountState> {
-  return readAccountStateFrom(address, network, horizonDepsFor(network), defiPositionsDepsFor());
+  return readAccountStateFrom(
+    address,
+    network,
+    horizonDepsFor(network),
+    defiPositionsDepsFor(),
+    options
+  );
 }

@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { readAccountStateFrom } from "@/lib/stellar/account-state";
+import { OFFLINE_SOROBAN_TOKENS, fakeSorobanDeps } from "./fixtures/fake-soroban-tokens";
 import { UnusableProviderResponseError } from "@/lib/utils/errors";
 import type { ResolveDefiPositionsDeps } from "@/lib/defi-positions/resolve-defi-positions";
 import type { ContractRegistryEntry } from "@/lib/contract-registry";
@@ -76,7 +77,7 @@ function stubProvider(account: Record<string, unknown>) {
 // how much the account holds.
 test("one account read makes a constant number of upstream calls, whatever the account holds", async () => {
   const empty = stubProvider(accountBody());
-  await readAccountStateFrom(ADDRESS, "testnet", empty.deps, NO_DEFI);
+  await readAccountStateFrom(ADDRESS, "testnet", empty.deps, NO_DEFI, OFFLINE_SOROBAN_TOKENS);
   expect(empty.calls).toHaveLength(3); // account, offers, claimable balances
 
   const codes = Array.from({ length: 40 }, (_, i) => `AST${i}`);
@@ -86,7 +87,13 @@ test("one account read makes a constant number of upstream calls, whatever the a
       balances: [{ asset_type: "native", balance: "100.0000000" }, ...codes.map(trustlineBalance)],
     })
   );
-  const state = await readAccountStateFrom(ADDRESS, "testnet", heavy.deps, NO_DEFI);
+  const state = await readAccountStateFrom(
+    ADDRESS,
+    "testnet",
+    heavy.deps,
+    NO_DEFI,
+    OFFLINE_SOROBAN_TOKENS
+  );
 
   expect(state.trustlines).toHaveLength(40);
   expect(heavy.calls).toHaveLength(3);
@@ -101,7 +108,13 @@ test("balances, data entries, signers and thresholds all come from the single ac
       thresholds: { low_threshold: 1, med_threshold: 2, high_threshold: 3 },
     })
   );
-  const state = await readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI);
+  const state = await readAccountStateFrom(
+    ADDRESS,
+    "testnet",
+    deps,
+    NO_DEFI,
+    OFFLINE_SOROBAN_TOKENS
+  );
 
   expect(state.nativeBalanceLumens).toBe("5.0000000");
   expect(state.trustlines.map((t) => t.code)).toEqual(["USDC"]);
@@ -121,7 +134,13 @@ test("enumerating fewer entries than the ledger reports surfaces a sub-entry mis
       balances: [{ asset_type: "native", balance: "5.0000000" }, trustlineBalance("USDC")],
     })
   );
-  const state = await readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI);
+  const state = await readAccountStateFrom(
+    ADDRESS,
+    "testnet",
+    deps,
+    NO_DEFI,
+    OFFLINE_SOROBAN_TOKENS
+  );
   expect(state.subEntryMismatch).toBe(true);
 });
 
@@ -132,7 +151,13 @@ test("a fully enumerated account reports no mismatch", async () => {
       balances: [{ asset_type: "native", balance: "5.0000000" }, trustlineBalance("USDC")],
     })
   );
-  const state = await readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI);
+  const state = await readAccountStateFrom(
+    ADDRESS,
+    "testnet",
+    deps,
+    NO_DEFI,
+    OFFLINE_SOROBAN_TOKENS
+  );
   expect(state.subEntryMismatch).toBe(false);
 });
 
@@ -140,7 +165,13 @@ test("a missing account is not found rather than an empty state", async () => {
   const fetch = (async () =>
     new Response("", { status: 404 })) as unknown as typeof globalThis.fetch;
   await expect(
-    readAccountStateFrom(ADDRESS, "testnet", { baseUrl: BASE, fetch }, NO_DEFI)
+    readAccountStateFrom(
+      ADDRESS,
+      "testnet",
+      { baseUrl: BASE, fetch },
+      NO_DEFI,
+      OFFLINE_SOROBAN_TOKENS
+    )
   ).rejects.toThrow(/does not exist on this network/i);
 });
 
@@ -166,7 +197,13 @@ test("every account-state request goes to the configured provider", async () => 
     return new Response(JSON.stringify(body), { status: 200 });
   }) as unknown as typeof globalThis.fetch;
 
-  await readAccountStateFrom(ADDRESS, "testnet", { baseUrl: other, fetch }, NO_DEFI);
+  await readAccountStateFrom(
+    ADDRESS,
+    "testnet",
+    { baseUrl: other, fetch },
+    NO_DEFI,
+    OFFLINE_SOROBAN_TOKENS
+  );
   expect(calls).toHaveLength(3);
   expect(calls.every((c) => c.startsWith(other))).toBe(true);
 });
@@ -191,9 +228,9 @@ const LOAD_BEARING: Array<[string, Record<string, unknown>]> = [
 for (const [label, override] of LOAD_BEARING) {
   test(`refuses a provider response missing ${label}`, async () => {
     const { deps } = stubProvider(accountBody(override));
-    await expect(readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI)).rejects.toThrow(
-      /unusable/i
-    );
+    await expect(
+      readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI, OFFLINE_SOROBAN_TOKENS)
+    ).rejects.toThrow(/unusable/i);
   });
 }
 
@@ -205,16 +242,20 @@ for (const [label, override] of LOAD_BEARING) {
 // misconfiguration apart from an unexpected fault.
 test("refuses with a typed error the API boundary can recognise", async () => {
   const { deps } = stubProvider(accountBody({ subentry_count: undefined }));
-  await expect(readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI)).rejects.toBeInstanceOf(
-    UnusableProviderResponseError
-  );
+  await expect(
+    readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI, OFFLINE_SOROBAN_TOKENS)
+  ).rejects.toBeInstanceOf(UnusableProviderResponseError);
 });
 
 test("the rejection names every field that was missing, not just the first", async () => {
   const { deps } = stubProvider(accountBody({ subentry_count: undefined, flags: undefined }));
-  const err = await readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI).catch(
-    (e: unknown) => e
-  );
+  const err = await readAccountStateFrom(
+    ADDRESS,
+    "testnet",
+    deps,
+    NO_DEFI,
+    OFFLINE_SOROBAN_TOKENS
+  ).catch((e: unknown) => e);
   expect(err).toBeInstanceOf(UnusableProviderResponseError);
   expect((err as Error).message).toContain("subentry_count");
   expect((err as Error).message).toContain("flags.auth_immutable");
@@ -255,7 +296,13 @@ test("a detected DeFi position flows into the returned account state", async () 
     },
   };
 
-  const state = await readAccountStateFrom(ADDRESS, "testnet", deps, defiDeps);
+  const state = await readAccountStateFrom(
+    ADDRESS,
+    "testnet",
+    deps,
+    defiDeps,
+    OFFLINE_SOROBAN_TOKENS
+  );
 
   expect(state.defiPositions.positions).toEqual([
     {
@@ -283,10 +330,48 @@ test("a degraded DeFi read surfaces as a warning, not a silent empty result", as
     directRead: { registryEntries: [] },
   };
 
-  const state = await readAccountStateFrom(ADDRESS, "mainnet", deps, defiDeps);
+  const state = await readAccountStateFrom(
+    ADDRESS,
+    "mainnet",
+    deps,
+    defiDeps,
+    OFFLINE_SOROBAN_TOKENS
+  );
 
   expect(state.defiPositions.timestamp).toBeNull();
   expect(state.defiPositionsWarnings).toEqual(
     expect.arrayContaining([expect.objectContaining({ code: "defi_positions_unavailable" })])
   );
+});
+
+test("the account read carries the Soroban token balances discovery confirmed, and its warnings", async () => {
+  const { deps } = stubProvider(accountBody());
+  const TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
+  const state = await readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI, {
+    sorobanTokensDeps: (positions) => {
+      expect(positions).toEqual([]);
+      return fakeSorobanDeps({
+        world: {
+          tokens: [{ contract: TOKEN, balance: 100_000_000n, symbol: "deJTRSY", decimals: 7 }],
+          explorer: { throws: "down" },
+        },
+        listCandidates: [TOKEN],
+      });
+    },
+  });
+  expect(state.sorobanTokens?.tokens).toEqual([
+    { contract: TOKEN, balance: "100000000", symbol: "deJTRSY", decimals: 7, sources: ["list"] },
+  ]);
+  expect(state.sorobanTokens?.warnings.map((w) => w.code)).toEqual(["soroban_tokens_partial"]);
+});
+
+test("a discovery that throws leaves the read intact with a warning instead of failing the analysis", async () => {
+  const { deps } = stubProvider(accountBody());
+  const state = await readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI, {
+    sorobanTokensDeps: () => {
+      throw new Error("no deps today");
+    },
+  });
+  expect(state.sorobanTokens?.tokens).toEqual([]);
+  expect(state.sorobanTokens?.warnings[0]?.code).toBe("soroban_tokens_partial");
 });

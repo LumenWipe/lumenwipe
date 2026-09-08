@@ -16,6 +16,7 @@ import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { Keypair } from "@stellar/stellar-sdk";
 import { readAccountStateFrom } from "@/lib/stellar/account-state";
+import { OFFLINE_SOROBAN_TOKENS } from "../unit/fixtures/fake-soroban-tokens";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import type { ResolveDefiPositionsDeps } from "@/lib/defi-positions/resolve-defi-positions";
@@ -129,7 +130,8 @@ test("a trustline balance record omitting is_authorized reads as authorized, not
     SOURCE,
     "testnet",
     { baseUrl: BASE, fetch: stubFetch(balanceWithoutAuthField) },
-    NO_DEFI
+    NO_DEFI,
+    OFFLINE_SOROBAN_TOKENS
   );
   // Documents the current `?? true` default in account-state.ts - if a real provider ever
   // omits this field for a trustline that is actually deauthorized, this default would silently
@@ -157,13 +159,15 @@ test("a clawback-enabled trustline is treated identically to a non-clawback one 
     SOURCE,
     "testnet",
     { baseUrl: BASE, fetch: stubFetch(withClawback) },
-    NO_DEFI
+    NO_DEFI,
+    OFFLINE_SOROBAN_TOKENS
   );
   const withoutState = await readAccountStateFrom(
     SOURCE,
     "testnet",
     { baseUrl: BASE, fetch: stubFetch(withoutClawback) },
-    NO_DEFI
+    NO_DEFI,
+    OFFLINE_SOROBAN_TOKENS
   );
 
   // Identical parsed trustlines: the clawback flag is dropped entirely during mapping, not
