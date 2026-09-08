@@ -236,6 +236,14 @@ describe("assertConversionShape", () => {
     ["a route from another token", { form: "router", path: [STRANGER, XLM] }, /token to XLM/],
     ["paying another account", { form: "router", to: OTHER_ACCOUNT }, /does not pay this account/],
     ["a passed deadline", { form: "router", deadline: BigInt(NOW - 1) }, /deadline/],
+    // A deadline in the future but inside the signing buffer: still refused, matching the same
+    // 60-second buffer the transaction's own timeBounds are held to - a swap offered for signing
+    // that the contract would already refuse by the time it is actually signed is not usable.
+    [
+      "a deadline too close to leave time to sign",
+      { form: "router", deadline: BigInt(NOW + 30) },
+      /deadline/,
+    ],
     [
       "the aggregator swapping another token",
       { form: "aggregator", tokenIn: STRANGER },

@@ -60,6 +60,9 @@ export const SWAP_FUNCTION = "swap_exact_tokens_for_tokens";
 /** Aggregator -> adapter -> router -> token.transfer is the deepest tree a route needs. */
 const MAX_AUTH_DEPTH = 4;
 const CONTRACT_ID = /^C[A-Z2-7]{55}$/;
+/** Applied to every expiry a swap carries - the transaction's own timeBounds and the contract-level
+ *  `deadline` argument alike - so a swap offered for signing has room to actually be signed. */
+const SIGNING_BUFFER_SECONDS = 60n;
 
 export function defaultTokenConversionRoundDeps(
   rpc: TokenConversionRoundDeps["rpc"]
@@ -123,7 +126,11 @@ function assertSwapArgs(args: xdr.ScVal[], expected: ExpectedConversion): void {
     }
     if (addressOf(to!) !== expected.account) throw new Error("the swap does not pay this account");
     const dl = bigOf(deadline!);
-    if (dl === null || dl < BigInt(expected.nowSeconds)) throw new Error("the deadline has passed");
+    // The same signing buffer the transaction-level timebounds require: a deadline the
+    // contract itself will already refuse by the time the user can sign is not a usable swap.
+    if (dl === null || dl < BigInt(expected.nowSeconds) + SIGNING_BUFFER_SECONDS) {
+      throw new Error("the deadline leaves no time to sign");
+    }
     return;
   }
   if (args.length === 7) {
@@ -141,7 +148,9 @@ function assertSwapArgs(args: xdr.ScVal[], expected: ExpectedConversion): void {
     }
     if (addressOf(to!) !== expected.account) throw new Error("the swap does not pay this account");
     const dl = bigOf(deadline!);
-    if (dl === null || dl < BigInt(expected.nowSeconds)) throw new Error("the deadline has passed");
+    if (dl === null || dl < BigInt(expected.nowSeconds) + SIGNING_BUFFER_SECONDS) {
+      throw new Error("the deadline leaves no time to sign");
+    }
     return;
   }
   throw new Error(`the swap takes 5 or 7 arguments, found ${args.length}`);
@@ -252,7 +261,7 @@ export function assertConversionShape(tx: Transaction, expected: ExpectedConvers
   // swap stays submittable indefinitely, at whatever rate the market reaches later.
   const maxTime = tx.timeBounds ? BigInt(tx.timeBounds.maxTime) : 0n;
   if (maxTime === 0n) throw new Error("the swap never expires");
-  if (maxTime < BigInt(expected.nowSeconds) + 60n) {
+  if (maxTime < BigInt(expected.nowSeconds) + SIGNING_BUFFER_SECONDS) {
     throw new Error("the transaction expires before it can be signed");
   }
   const ops = tx.toEnvelope().v1().tx().operations();
