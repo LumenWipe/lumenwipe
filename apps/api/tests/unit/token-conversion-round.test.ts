@@ -218,6 +218,14 @@ describe("assertConversionShape", () => {
       { form: "router", fn: "remove_liquidity" },
       /not swap_exact_tokens_for_tokens/,
     ],
+    // The dangerous lookalike: swap_tokens_for_exact_tokens takes the same seven arguments with
+    // the two amounts swapped (amount_out, amount_in_max), so reading them as an exact-in swap
+    // would hold the wrong figures to the balance and the floor. The name is what stops it.
+    [
+      "the exact-out sibling, whose arguments would otherwise read as an exact-in swap",
+      { form: "aggregator", fn: "swap_tokens_for_exact_tokens" },
+      /not swap_exact_tokens_for_tokens/,
+    ],
     ["less than the live balance", { form: "router", amountIn: BALANCE - 1n }, /amount_in/],
     ["a minimum under the floor", { form: "router", minOut: FLOOR - 1n }, /below your floor/],
     [
