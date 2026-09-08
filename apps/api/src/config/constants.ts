@@ -46,3 +46,9 @@ export const SOROBAN_EXIT_FEE_ESTIMATE_STROOPS = 100_000;
  *  costs a few thousand stroops; a fee anywhere near this is a simulation gone wrong or an
  *  attempt to grief the account through the fee pool, and is refused rather than offered. */
 export const MAX_SOROBAN_EXIT_FEE_STROOPS = 10_000_000; // 1 XLM
+/** Ceiling on the outer fee of one fee-bump transaction (architecture.md §8.1, threat-model.md
+ *  §6's "outer fee is capped per transaction"). Well above what even a fully batched, heavily
+ *  surge-priced classic wind-down step needs (100 operations at the 100-stroop base fee floor
+ *  is 10,000 stroops), but far below anything that could meaningfully drain the fee account's
+ *  small operational float in one request. */
+export const MAX_FEE_BUMP_STROOPS = 1_000_000; // 0.1 XLM
