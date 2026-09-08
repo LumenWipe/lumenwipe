@@ -179,6 +179,14 @@ export interface CloseTransaction {
   sourceSequence: string;
   validUntilLedger: number;
   covers: StepType[];
+  /**
+   * True when the account cannot pay this transaction's own fee without dropping below its
+   * reserve (architecture.md §8.1): the API built it with its own fee at zero, and the client
+   * must route the signed envelope through `POST /:network/fee-bump/sponsor` before submitting
+   * it, instead of submitting it directly. Absent (not `false`) on every ordinary transaction -
+   * an older client reading this field sees nothing here and simply submits as it always has.
+   */
+  needsSponsoredFee?: true;
   intent: TxIntent;
 }
 

@@ -2,6 +2,7 @@ import type {
   AccountState,
   ClosePlanRequest,
   CloseTransactionsRequest,
+  FeeBumpSponsorResponse,
   HealthResponse,
   MediatorCheckResult,
   MediatorSignResponse,
@@ -97,6 +98,18 @@ export class LumenWipeClient {
     network: Network = this.defaultNetwork
   ): Promise<MediatorSignResponse> {
     return this.http.request<MediatorSignResponse>("POST", `/${network}/mediator/sign`, {
+      transaction,
+    });
+  }
+
+  /** Wraps a wind-down transaction (its own fee already zero) in a signed CAP-15 fee-bump
+   *  envelope for an account that cannot pay its own fee (architecture.md §8.1). The caller
+   *  submits the returned XDR through `submit()`, exactly like any other close transaction. */
+  feeBumpSponsor(
+    transaction: string,
+    network: Network = this.defaultNetwork
+  ): Promise<FeeBumpSponsorResponse> {
+    return this.http.request<FeeBumpSponsorResponse>("POST", `/${network}/fee-bump/sponsor`, {
       transaction,
     });
   }
