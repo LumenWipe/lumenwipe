@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { renderHook, act } from "@testing-library/react";
 import {
   Account,
+  FeeBumpTransaction,
   hash,
   Keypair,
   Networks,
@@ -15,6 +16,7 @@ import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import * as closeClient from "@/lib/api/close-client";
 import * as submitViaApiModule from "@/lib/stellar/submit-via-api";
+import * as feeBumpSponsorModule from "@/lib/stellar/fee-bump-sponsor";
 import type { TransactionSigner } from "@/lib/stellar/signer";
 
 /** The stand-ins return only what the hook reads, so they are typed loosely on purpose. */
@@ -23,9 +25,14 @@ function stubFetchCloseTransactions(impl: () => Promise<unknown>): void {
     impl as unknown as typeof closeClient.fetchCloseTransactions
   );
 }
-function stubSubmitViaApi(impl: () => Promise<unknown>): void {
+function stubSubmitViaApi(impl: (...args: unknown[]) => Promise<unknown>): void {
   spyOn(submitViaApiModule, "submitViaApi").mockImplementation(
     impl as unknown as typeof submitViaApiModule.submitViaApi
+  );
+}
+function stubFeeBumpSponsor(impl: (...args: unknown[]) => Promise<unknown>): void {
+  spyOn(feeBumpSponsorModule, "requestFeeBumpSponsorship").mockImplementation(
+    impl as unknown as typeof feeBumpSponsorModule.requestFeeBumpSponsorship
   );
 }
 
@@ -57,6 +64,31 @@ function unsignedMergeXdr(sourceKeypair: Keypair, destination: string): string {
   }).setTimeout(300);
   builder.addOperation(Operation.accountMerge({ destination }));
   return builder.build().toXDR();
+}
+
+/** Same shape as unsignedMergeXdr, but fee "0" - what the API builds when it flags a chunk
+ *  needsSponsoredFee: true (build-transactions.ts), since the account can't pay its own fee. */
+function unsignedZeroFeeMergeXdr(sourceKeypair: Keypair, destination: string): string {
+  const builder = new TransactionBuilder(new Account(sourceKeypair.publicKey(), "100"), {
+    fee: "0",
+    networkPassphrase: Networks.TESTNET,
+  }).setTimeout(300);
+  builder.addOperation(Operation.accountMerge({ destination }));
+  return builder.build().toXDR();
+}
+
+/** Wraps the given inner transaction xdr in a signed CAP-15 fee-bump envelope, mirroring what
+ *  the real /fee-bump/sponsor endpoint returns (fee-bump.controller.ts). */
+function feeBumpXdr(innerXdr: string, feeKeypair: Keypair): string {
+  const inner = TransactionBuilder.fromXDR(innerXdr, Networks.TESTNET) as Transaction;
+  const feeBump = TransactionBuilder.buildFeeBumpTransaction(
+    feeKeypair,
+    "100",
+    inner,
+    Networks.TESTNET
+  );
+  feeBump.sign(feeKeypair);
+  return feeBump.toXDR();
 }
 
 /** Mirrors SecretKeySigner.sign(): parses the given xdr, appends this keypair's signature, and
@@ -592,5 +624,175 @@ test("useCloseExecution › submitPreAuthTransaction rejects a transaction with 
     // Wording changed with #116: the merge is now refused against the address the user chose
     // rather than against a configured intermediary, so the message speaks to their choice.
   ).rejects.toThrow(/did not choose/i);
+  expect(submitCalls).toBe(0);
+});
+
+// #165: when the API flags a chunk needsSponsoredFee (the account can't pay its own fee -
+// architecture.md §8.1), the submit step must request a fee-bump wrapper and submit the
+// sponsored envelope instead of the bare, zero-fee one (which the network would reject outright).
+test("useCloseExecution › a transaction flagged needsSponsoredFee is wrapped and submitted as the sponsored envelope", async () => {
+  const sourceKeypair = Keypair.random();
+  const feeKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+
+  const mergeXdr = unsignedZeroFeeMergeXdr(sourceKeypair, destination);
+
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    accountState: {
+      signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 1, med: 1, high: 1 },
+    } as never,
+  } as never);
+
+  stubFetchCloseTransactions(async () => ({
+    planHash: "h",
+    status: "ready",
+    transactions: [
+      { id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"], needsSponsoredFee: true },
+    ],
+    remaining: { steps: 0, requiresAnotherCall: false },
+  }));
+
+  let sponsorCalls = 0;
+  let sponsorSawXdr: string | undefined;
+  stubFeeBumpSponsor(async (signedXdr: unknown) => {
+    sponsorCalls++;
+    sponsorSawXdr = signedXdr as string;
+    return feeBumpXdr(signedXdr as string, feeKeypair);
+  });
+
+  let submitCalls = 0;
+  let submittedXdr: string | undefined;
+  stubSubmitViaApi(async (xdr: unknown) => {
+    submitCalls++;
+    submittedXdr = xdr as string;
+    return { txHash: "final-hash" };
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+
+  expect(sponsorCalls).toBe(1);
+  expect(submitCalls).toBe(1);
+  // The sponsor was handed the user's fully-signed inner xdr, not the sponsored result.
+  expect(sponsorSawXdr).not.toBe(submittedXdr);
+  const submitted = TransactionBuilder.fromXDR(submittedXdr as string, Networks.TESTNET);
+  expect(submitted).toBeInstanceOf(FeeBumpTransaction);
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+});
+
+// Defense-in-depth: the sponsor is trusted to add only its own signature over the exact inner
+// transaction it was handed, never to substitute a different one (verify()'s trust-anchor
+// pattern applied to a step verify() itself doesn't gate).
+test("useCloseExecution › a fee-bump wrapping a different inner transaction is rejected, not submitted", async () => {
+  const sourceKeypair = Keypair.random();
+  const feeKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  const attacker = Keypair.random().publicKey();
+
+  const mergeXdr = unsignedZeroFeeMergeXdr(sourceKeypair, destination);
+  // A different transaction (different destination) that the sponsor swaps in instead.
+  const wrongInnerXdr = unsignedZeroFeeMergeXdr(sourceKeypair, attacker);
+  const wrongInnerSigned = TransactionBuilder.fromXDR(
+    wrongInnerXdr,
+    Networks.TESTNET
+  ) as Transaction;
+  wrongInnerSigned.sign(sourceKeypair);
+
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    accountState: {
+      signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 1, med: 1, high: 1 },
+    } as never,
+  } as never);
+
+  stubFetchCloseTransactions(async () => ({
+    planHash: "h",
+    status: "ready",
+    transactions: [
+      { id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"], needsSponsoredFee: true },
+    ],
+    remaining: { steps: 0, requiresAnotherCall: false },
+  }));
+
+  stubFeeBumpSponsor(async () => feeBumpXdr(wrongInnerSigned.toXDR(), feeKeypair));
+
+  let submitCalls = 0;
+  stubSubmitViaApi(async () => {
+    submitCalls++;
+    return { txHash: "final-hash" };
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+
+  expect(useDemolishStore.getState().lastError).toMatch(/does not match what you approved/i);
+  expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
+  expect(submitCalls).toBe(0);
+});
+
+test("useCloseExecution › a sponsor response that isn't a fee-bump transaction is rejected, not submitted", async () => {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+
+  const mergeXdr = unsignedZeroFeeMergeXdr(sourceKeypair, destination);
+
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    accountState: {
+      signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 1, med: 1, high: 1 },
+    } as never,
+  } as never);
+
+  stubFetchCloseTransactions(async () => ({
+    planHash: "h",
+    status: "ready",
+    transactions: [
+      { id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"], needsSponsoredFee: true },
+    ],
+    remaining: { steps: 0, requiresAnotherCall: false },
+  }));
+
+  // A misbehaving/compromised sponsor endpoint hands back the plain signed inner transaction
+  // unwrapped, instead of a fee-bump envelope.
+  stubFeeBumpSponsor(async (signedXdr: unknown) => signedXdr as string);
+
+  let submitCalls = 0;
+  stubSubmitViaApi(async () => {
+    submitCalls++;
+    return { txHash: "final-hash" };
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+
+  expect(useDemolishStore.getState().lastError).toMatch(/did not return a fee-bump transaction/i);
+  expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
   expect(submitCalls).toBe(0);
 });

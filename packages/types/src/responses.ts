@@ -17,6 +17,11 @@ export interface MediatorSignResponse {
   transaction: string;
 }
 
+/** Response from `POST /:network/fee-bump/sponsor`. */
+export interface FeeBumpSponsorResponse {
+  transaction: string;
+}
+
 /** Response from `GET /health`. */
 export interface HealthResponse {
   status: string;

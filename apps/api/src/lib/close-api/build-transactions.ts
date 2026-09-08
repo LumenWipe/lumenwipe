@@ -5,7 +5,14 @@ import {
   type ExitRoundDeps,
 } from "@/lib/defi-exits/exit-round";
 import { NETWORK_PASSPHRASES, getMediatorPublicKey, type Network } from "@/config/networks";
-import { BASE_FEE_STROOPS, OP_BATCH_LIMIT, TX_TIMEOUT_SECONDS } from "@/config/constants";
+import {
+  ACCOUNT_BASE_RESERVE_XLM,
+  BASE_FEE_STROOPS,
+  BASE_RESERVE_XLM,
+  OP_BATCH_LIMIT,
+  TX_TIMEOUT_SECONDS,
+} from "@/config/constants";
+import { xlmToStroops } from "@/lib/utils/amounts";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
 import {
@@ -312,7 +319,13 @@ export async function buildCloseTransactions(
         includeMerge: false,
       };
       return {
-        transactions: packFusedCloseTransactions(sdkAccount, claimInput, network, validUntilLedger),
+        transactions: packFusedCloseTransactions(
+          sdkAccount,
+          claimInput,
+          network,
+          validUntilLedger,
+          accountState
+        ),
         requiresAnotherCall: true,
         remainingSteps: 1,
       };
@@ -393,7 +406,13 @@ export async function buildCloseTransactions(
     includeMerge: !needsMediator,
   };
 
-  const closeTxs = packFusedCloseTransactions(sdkAccount, input, network, validUntilLedger);
+  const closeTxs = packFusedCloseTransactions(
+    sdkAccount,
+    input,
+    network,
+    validUntilLedger,
+    accountState
+  );
 
   if (!needsMediator) {
     return { transactions: closeTxs, requiresAnotherCall: false, remainingSteps: 0 };
@@ -450,6 +469,38 @@ export async function buildCloseTransactions(
 }
 
 /**
+ * What stays in the account no matter what: the base reserve, plus one more reserve for each
+ * subentry and each entry the account sponsors for someone else - the same figure the network
+ * itself enforces before it will let the account's balance drop any further. Everything above
+ * this line is what a classic transaction's own fee may draw on (architecture.md §8.1's
+ * `txINSUFFICIENT_BALANCE`: the fee would take the account below this).
+ */
+function reserveStroops(numSubEntries: number, numSponsoring: number): bigint {
+  return (
+    BigInt(xlmToStroops(ACCOUNT_BASE_RESERVE_XLM.toFixed(7))) +
+    BigInt(xlmToStroops(BASE_RESERVE_XLM.toFixed(7))) * BigInt(numSubEntries + numSponsoring)
+  );
+}
+
+/**
+ * Whether the account can pay a fee of `feeStroops` for a transaction of its own, without going
+ * below its reserve, judged from `accountState.nativeBalanceLumens` as given (no running
+ * decrement). Exported for direct unit coverage of the reserve arithmetic and for a single
+ * transaction's affordability; `packFusedCloseTransactions` below inlines this same comparison
+ * against a running per-chunk balance instead of calling this, since a multi-chunk round needs
+ * each later chunk judged against what's left after earlier chunks' fees, not the round's
+ * original balance.
+ */
+export function accountCanAffordFee(
+  accountState: Pick<AccountState, "nativeBalanceLumens" | "numSubEntries" | "numSponsoring">,
+  feeStroops: bigint
+): boolean {
+  const balance = BigInt(xlmToStroops(accountState.nativeBalanceLumens));
+  const reserve = reserveStroops(accountState.numSubEntries, accountState.numSponsoring);
+  return balance - reserve >= feeStroops;
+}
+
+/**
  * Packs an assembled fused close into the minimal set of unsigned transactions:
  * a single fused tx when it fits under the per-transaction operation cap, or a
  * sequence-chained series of at most OP_BATCH_LIMIT operations each when it does
@@ -457,17 +508,35 @@ export async function buildCloseTransactions(
  * is gone before it runs, and the memo (if any) rides that same last transaction.
  * Pure: reusing one Account across builds chains the sequence numbers with no
  * network access. The client submits the transactions in `order`.
+ *
+ * `feeAffordability` is the account state to judge each chunk's fee against - the round's own
+ * snapshot, read once and held fixed for every chunk built here (architecture.md §8.1). A chunk
+ * whose fee the account cannot pay without dropping below its reserve is built with its own fee
+ * at zero and flagged `needsSponsoredFee: true`, so the client routes it through the fee-bump
+ * sponsor (`/fee-bump/sponsor`) before submitting instead of paying the network directly. The
+ * account's *reserve* is not re-evaluated chunk to chunk, even though an earlier chunk would free
+ * reserve on-chain by removing subentries: this round's transactions are all built from one
+ * static snapshot with no network access in between, and a later round - which does re-read
+ * state - is where a chunk that turns out to no longer need sponsoring gets built without it. Its
+ * *balance*, however, IS tracked chunk to chunk within this one call: an earlier chunk built
+ * unsponsored spends its own fee out of that same balance once it lands on-chain, so a later
+ * chunk in the same round must be judged against what's left after that spend, not the round's
+ * original balance - otherwise a run of several unsponsored chunks near the reserve line could
+ * each look affordable in isolation while collectively overdrawing it.
  */
 export function packFusedCloseTransactions(
   sdkAccount: Account,
   input: FusedCloseInput,
   network: Network,
-  validUntilLedger: number
+  validUntilLedger: number,
+  feeAffordability: Pick<AccountState, "nativeBalanceLumens" | "numSubEntries" | "numSponsoring">
 ): CloseTransaction[] {
   const tagged = assembleFusedCloseOpsTagged(sdkAccount.accountId(), input);
   const chunks = batchItems(tagged, OP_BATCH_LIMIT);
   const networkPassphrase = NETWORK_PASSPHRASES[network];
   const fullSummary = buildSummary(input);
+  const reserve = reserveStroops(feeAffordability.numSubEntries, feeAffordability.numSponsoring);
+  let remainingBalanceStroops = BigInt(xlmToStroops(feeAffordability.nativeBalanceLumens));
 
   return chunks.map((chunk, i): CloseTransaction => {
     const isLast = i === chunks.length - 1;
@@ -475,8 +544,16 @@ export function packFusedCloseTransactions(
 
     // The SDK multiplies `fee` by the operation count, so the per-operation base
     // fee yields BASE_FEE_STROOPS * opCount on-chain.
+    const chunkFeeStroops = BigInt(BASE_FEE_STROOPS) * BigInt(chunk.length);
+    const needsSponsoredFee = remainingBalanceStroops - reserve < chunkFeeStroops;
+    // Only an unsponsored chunk spends the account's own balance on its fee - a sponsored
+    // chunk's fee is "0" and paid by the fee account instead, so it doesn't reduce what later
+    // chunks in this round have left to draw on.
+    if (!needsSponsoredFee) {
+      remainingBalanceStroops -= chunkFeeStroops;
+    }
     const builder = new TransactionBuilder(sdkAccount, {
-      fee: String(BASE_FEE_STROOPS),
+      fee: needsSponsoredFee ? "0" : String(BASE_FEE_STROOPS),
       networkPassphrase,
     }).setTimeout(TX_TIMEOUT_SECONDS);
     // The memo only belongs on the merge-carrying (last) transaction.
@@ -495,6 +572,7 @@ export function packFusedCloseTransactions(
       sourceSequence,
       validUntilLedger,
       covers: [...new Set(chunk.map((t) => t.step))],
+      ...(needsSponsoredFee ? { needsSponsoredFee: true } : {}),
       intent: {
         ...intentFromXdr(xdr, networkPassphrase),
         // A split close describes each transaction by position; the whole-close summary

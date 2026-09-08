@@ -70,13 +70,23 @@ function opCount(xdr: string): number {
   return TransactionBuilder.fromXDR(xdr, Networks.TESTNET).operations.length;
 }
 
+// Comfortably funded: these tests are about batching mechanics, not fee affordability -
+// a balance this large can never trip the new needsSponsoredFee check below.
+const WELL_FUNDED = { nativeBalanceLumens: "10000.0000000", numSubEntries: 0, numSponsoring: 0 };
+
 test("a near-1000-subentry account batches into sequence-chained transactions with no ops lost", () => {
   // 998 trustlines - close to the practical ceiling a single close can enumerate and still
   // fits comfortably under the pagination cap (1000) each individual entry-kind read uses.
   const in_ = input({ trustlines: manyTrustlines(998) });
   const total = assembleFusedCloseOpsTagged(MASTER, in_).length; // 998 removals + merge
 
-  const txs = packFusedCloseTransactions(new Account(MASTER, START_SEQ), in_, "testnet", 999);
+  const txs = packFusedCloseTransactions(
+    new Account(MASTER, START_SEQ),
+    in_,
+    "testnet",
+    999,
+    WELL_FUNDED
+  );
 
   expect(txs.length).toBe(10); // ceil(999 / 100)
   const counts = txs.map((t) => opCount(t.xdr));
@@ -101,7 +111,13 @@ test("stacked hostile state: near-max trustlines, signer normalization, and spon
   });
   const total = assembleFusedCloseOpsTagged(MASTER, in_).length;
 
-  const txs = packFusedCloseTransactions(new Account(MASTER, START_SEQ), in_, "testnet", 999);
+  const txs = packFusedCloseTransactions(
+    new Account(MASTER, START_SEQ),
+    in_,
+    "testnet",
+    999,
+    WELL_FUNDED
+  );
 
   const counts = txs.map((t) => opCount(t.xdr));
   for (const c of counts) expect(c).toBeLessThanOrEqual(100);
