@@ -78,13 +78,21 @@ const TRANSFER_CHOICE = "transfer_to_account";
  */
 export function dispositionsToDecisions(
   dispositions: Record<string, AssetDisposition>,
-  transferDestinations: TransferDestinations = {}
+  transferDestinations: TransferDestinations = {},
+  tokenConversionFloors: Record<string, string> = {}
 ): DecisionAnswer[] {
   return Object.entries(dispositions).map(([asset, disposition]): DecisionAnswer => {
     const id = isTokenContract(asset) ? tokenDecisionId(asset) : assetDecisionId(asset);
     switch (disposition) {
-      case "convert":
-        return { id, choice: "convert_to_xlm" };
+      case "convert": {
+        // A token's convert answer carries the floor the plan quoted, so the API can refuse a
+        // route that drifted under it and the browser can hold the swap to it. Without a floor the
+        // API refuses the answer, which is the intended outcome.
+        const floor = isTokenContract(asset) ? tokenConversionFloors[asset] : undefined;
+        return floor
+          ? { id, choice: "convert_to_xlm", params: { minAmountOut: floor } }
+          : { id, choice: "convert_to_xlm" };
+      }
       case "issuer":
         return { id, choice: "return_to_issuer" };
       case "transfer": {
@@ -196,6 +204,29 @@ export function chosenTokenTransfers(
     transfers[contract] = { destination, amount };
   }
   return transfers;
+}
+
+/**
+ * The Soroban token conversions the user chose, keyed by token contract, with the least XLM (in
+ * stroops) the plan quoted and they accepted. verify() holds the built swap to at least that
+ * figure, and to paying it into this account and no other.
+ */
+export function chosenTokenConversions(
+  dispositions: Record<string, AssetDisposition>,
+  floors: Record<string, string>,
+  accountState: AccountState | null
+): Record<string, { minAmountOut: string; amountIn: string }> {
+  const conversions: Record<string, { minAmountOut: string; amountIn: string }> = {};
+  const tokens = accountState?.sorobanTokens?.tokens ?? [];
+  for (const [contract, disposition] of Object.entries(dispositions)) {
+    if (disposition !== "convert" || !isTokenContract(contract)) continue;
+    const floor = floors[contract];
+    if (typeof floor !== "string" || !/^[1-9]\d*$/.test(floor)) continue;
+    const token = tokens.find((t) => t.contract === contract);
+    const amountIn = token && /^\d+$/.test(token.balance) ? token.balance : "0";
+    conversions[contract] = { minAmountOut: floor, amountIn };
+  }
+  return conversions;
 }
 
 /**

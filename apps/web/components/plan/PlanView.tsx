@@ -87,6 +87,17 @@ export default function PlanView({
   // the card silently went back to reading "will be swapped to XLM" and the balance would
   // have been sold. `=== undefined` mirrors the claimable-balance effect below, which had it
   // right.
+  // The floors the plan quoted, kept for the convert answers and for verify(): only tokens whose
+  // quote is usable get one, and a token without a quote can never be answered "convert".
+  useEffect(() => {
+    const floors: Record<string, string> = {};
+    for (const c of conversions) {
+      if (c.token?.quote) floors[c.asset] = c.token.quote.minAmountOut;
+    }
+    useDemolishStore.getState().setTokenConversionFloors(floors);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversions]);
+
   useEffect(() => {
     for (const c of conversions) {
       // Never for a Soroban token: its conversion is not built yet, so an auto-selected "convert"
@@ -240,7 +251,8 @@ export default function PlanView({
       const decisions = [
         ...dispositionsToDecisions(
           useDemolishStore.getState().assetDispositions,
-          useDemolishStore.getState().transferDestinations
+          useDemolishStore.getState().transferDestinations,
+          useDemolishStore.getState().tokenConversionFloors
         ),
         ...claimableSelectionsToDecisions(useDemolishStore.getState().claimableBalanceSelections),
         ...destinationAcknowledgementToDecisions(

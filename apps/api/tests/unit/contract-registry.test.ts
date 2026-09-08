@@ -75,7 +75,8 @@ test("every protocol with an exit adapter has verified mainnet entries: the runn
     // The kinds an exit calls or reads must be there, not just a reference contract.
     if (protocol === "blend") expect([...kinds].sort()).toEqual(["backstop", "factory", "pool"]);
     if (protocol === "aquarius") expect([...kinds].sort()).toEqual(["pool", "router"]);
-    if (protocol === "soroswap") expect([...kinds].sort()).toEqual(["factory", "pair", "router"]);
+    if (protocol === "soroswap")
+      expect([...kinds].sort()).toEqual(["adapter", "aggregator", "factory", "pair", "router"]);
   }
   // Blend V2 ships the same code on both networks; the labels say so, so the file must agree.
   for (const kind of ["factory", "backstop", "pool"] as const) {

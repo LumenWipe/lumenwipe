@@ -122,7 +122,11 @@ test("decisionPointsToClaimableBalances › no decision points → empty list", 
 
 // ─── Soroban tokens (#161) ────────────────────────────────────────────────────
 
-import { decisionPointsToConversions, formatTokenBalance } from "@/lib/api/plan-adapters";
+import {
+  decisionPointsToConversions,
+  formatStroops,
+  formatTokenBalance,
+} from "@/lib/api/plan-adapters";
 
 const TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
 
@@ -230,4 +234,50 @@ test("decisionPointsToConversions › a token an exit pays out later carries arr
     ])
   );
   expect(item!.token).toMatchObject({ arrivesFromExit: true, rawBalance: "0" });
+});
+
+test("decisionPointsToConversions › a convertible token carries its quote; a malformed quote leaves it not convertible - there is no floor to submit", () => {
+  const point = (quote: unknown) => ({
+    id: `token:${TOKEN}`,
+    type: "asset_disposition" as const,
+    subject: {
+      kind: "soroban_token",
+      contract: TOKEN,
+      symbol: "XTAR",
+      decimals: 7,
+      balance: "2500000000",
+      convertible: true,
+      quote,
+    },
+    options: [
+      { id: "convert_to_xlm" },
+      { id: "transfer_to_account" },
+      { id: "acknowledge_residue" },
+    ],
+    default: "convert_to_xlm",
+    required: true,
+  });
+  const [ok] = decisionPointsToConversions(
+    plan([
+      point({
+        amountOut: "5249630",
+        minAmountOut: "5223381",
+        platform: "aggregator",
+        route: ["soroswap"],
+      }),
+    ])
+  );
+  expect(ok!.token?.quote).toEqual({
+    amountOut: "5249630",
+    minAmountOut: "5223381",
+    platform: "aggregator",
+    route: ["soroswap"],
+  });
+  // The API's own `convertible` flag says a route exists, but without a floor the browser could
+  // never submit a valid convert answer - so a malformed quote must not leave the option offered.
+  const [bad] = decisionPointsToConversions(plan([point({ amountOut: "x", minAmountOut: "0" })]));
+  expect(bad!.convertible).toBe(false);
+  expect(bad!.token?.quote).toBeUndefined();
+  expect(formatStroops("5223381")).toBe("0.5223381");
+  expect(formatStroops("520000000")).toBe("52");
 });

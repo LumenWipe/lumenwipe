@@ -28,9 +28,11 @@ function state(positions: AccountState["defiPositions"]["positions"]): AccountSt
 test("no account read vouches for nothing", () => {
   expect(exitExpectations(null, "testnet")).toEqual({
     exitContracts: [],
+    conversionContracts: [],
     heldTokenContracts: [],
     positionTokenContracts: [],
     exitFunctions: {},
+    xlmContract: Asset.native().contractId(Networks.TESTNET),
   });
 });
 

@@ -40,6 +40,9 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
     claimTrustlineAssets: [],
     transfers: {},
     tokenTransfers: {},
+    tokenConversions: {},
+    conversionContracts: [SOROSWAP_ROUTER],
+    xlmContract: XLM_SAC,
     exitContracts: [POOL],
     heldTokenContracts: [XLM_SAC],
     positionTokenContracts: [],
@@ -753,6 +756,9 @@ test("verifyCloseTransaction passes a mediated close to a memo-requiring exchang
         claimTrustlineAssets: [],
         transfers: {},
         tokenTransfers: {},
+        tokenConversions: {},
+        conversionContracts: [],
+        xlmContract: XLM_SAC,
         exitContracts: [],
         heldTokenContracts: [],
         positionTokenContracts: [],
@@ -788,6 +794,9 @@ test("verifyCloseTransaction rejects a mediated close to a memo-requiring exchan
         claimTrustlineAssets: [],
         transfers: {},
         tokenTransfers: {},
+        tokenConversions: {},
+        conversionContracts: [],
+        xlmContract: XLM_SAC,
         exitContracts: [],
         heldTokenContracts: [],
         positionTokenContracts: [],
@@ -814,6 +823,9 @@ test("verifyCloseTransaction passes a direct close to a destination the registry
         claimTrustlineAssets: [],
         transfers: {},
         tokenTransfers: {},
+        tokenConversions: {},
+        conversionContracts: [],
+        xlmContract: XLM_SAC,
         exitContracts: [],
         heldTokenContracts: [],
         positionTokenContracts: [],
@@ -999,6 +1011,8 @@ test("the mediated forward is exempt: it is sent by the intermediary, not the so
         memoType: "text",
         transfers: {},
         tokenTransfers: {},
+        tokenConversions: {},
+        conversionContracts: [],
       })
     )
   ).not.toThrow();
@@ -1009,6 +1023,8 @@ test("the mediated forward is exempt: it is sent by the intermediary, not the so
 const POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
 const XLM_SAC = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
 const OTHER_POOL = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
+// The registry's mainnet Soroswap router: the one contract a conversion may be entered through.
+const SOROSWAP_ROUTER = "CAG5LRYQ5JVEUI5TEID72EYOVX44TTUJT5BQR2J6J77FH65PCCFAJDDH";
 type ExitOp = Extract<IntentOperation, { type: "invoke_host_function" }>;
 const exit = (over: Partial<ExitOp> = {}): IntentOperation => ({
   source: SRC,
@@ -1317,4 +1333,177 @@ test("a token the user never chose to transfer is judged as a DeFi exit, and fai
   expect(() => assertCloseIntent(exitOnly(tokenTransfer()), expectation())).toThrow(
     /not one of this account's detected positions/
   );
+});
+
+// ─── Soroban token conversions (#161) ────────────────────────────────────────
+
+const CONVERT_TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
+const XLM_CONTRACT = "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA";
+const FLOOR = "520000000";
+
+/** A router swap as the Soroswap API renders it in an intent: five arguments, path first hop. */
+const routerSwap = (over: Partial<ExitOp> = {}): IntentOperation => ({
+  source: SRC,
+  type: "invoke_host_function",
+  contract: SOROSWAP_ROUTER,
+  function: "swap_exact_tokens_for_tokens",
+  args: ["100000000", FLOOR, JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), SRC, "1788846802"],
+  accountsReferenced: [SRC],
+  contractsReferenced: [SOROSWAP_ROUTER, CONVERT_TOKEN, XLM_CONTRACT],
+  unsupportedAddressCount: 0,
+  authorizesBeyondSelf: false,
+  authDepth: 1,
+  ...over,
+});
+
+/** The aggregator shape: seven arguments, token_in first. */
+const aggregatorSwap = (over: Partial<ExitOp> = {}): IntentOperation =>
+  routerSwap({
+    args: [CONVERT_TOKEN, XLM_CONTRACT, "100000000", FLOOR, "[]", SRC, "1788846802"],
+    ...over,
+  });
+
+const chosenConversion = (floor = FLOOR, amountIn = "100000000") =>
+  expectation({
+    tokenConversions: { [CONVERT_TOKEN]: { minAmountOut: floor, amountIn } },
+    xlmContract: XLM_CONTRACT,
+  });
+
+test("a swap of the token the user chose, paying this account at or above the minimum they saw, passes in both shapes", () => {
+  expect(() => assertCloseIntent(exitOnly(routerSwap()), chosenConversion())).not.toThrow();
+  expect(() => assertCloseIntent(exitOnly(aggregatorSwap()), chosenConversion())).not.toThrow();
+  // More XLM than promised is not a loss.
+  const better = routerSwap({
+    args: ["100000000", "530000000", JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), SRC, "1"],
+  });
+  expect(() => assertCloseIntent(exitOnly(better), chosenConversion())).not.toThrow();
+});
+
+test("rejects a swap that would accept less XLM than the minimum the user was shown", () => {
+  const worse = routerSwap({
+    args: ["100000000", "519999999", JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), SRC, "1"],
+  });
+  expect(() => assertCloseIntent(exitOnly(worse), chosenConversion())).toThrow(
+    /less XLM than the minimum/
+  );
+  const worseAggregator = aggregatorSwap({
+    args: [CONVERT_TOKEN, XLM_CONTRACT, "100000000", "1", "[]", SRC, "1"],
+  });
+  expect(() => assertCloseIntent(exitOnly(worseAggregator), chosenConversion())).toThrow(
+    /less XLM than the minimum/
+  );
+});
+
+test("rejects a swap that would buy something other than XLM - the floor is meaningless in any other unit", () => {
+  const other = "CC64WBDGS6QQP22QTTIACYIXT3WF7BBQEYOQPLTP7GTKYY7PZ74QYGSL";
+  const wrongOutputRouter = routerSwap({
+    args: ["100000000", FLOOR, JSON.stringify([CONVERT_TOKEN, other]), SRC, "1"],
+  });
+  expect(() => assertCloseIntent(exitOnly(wrongOutputRouter), chosenConversion())).toThrow(
+    /something other than XLM/
+  );
+  const wrongOutputAggregator = aggregatorSwap({
+    args: [CONVERT_TOKEN, other, "100000000", FLOOR, "[]", SRC, "1"],
+  });
+  expect(() => assertCloseIntent(exitOnly(wrongOutputAggregator), chosenConversion())).toThrow(
+    /something other than XLM/
+  );
+});
+
+test("rejects a swap that spends less of the token than the balance the user was shown", () => {
+  const shortfall = routerSwap({
+    args: ["99999999", FLOOR, JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), SRC, "1"],
+  });
+  expect(() =>
+    assertCloseIntent(exitOnly(shortfall), chosenConversion(FLOOR, "100000000"))
+  ).toThrow(/less of the token/);
+  // Spending more than the balance shown is not a loss - the account simply held more.
+  const more = routerSwap({
+    args: ["100000001", FLOOR, JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), SRC, "1"],
+  });
+  expect(() => assertCloseIntent(exitOnly(more), chosenConversion())).not.toThrow();
+});
+
+test("rejects a swap that pays the proceeds anywhere but the account being closed", () => {
+  const diverted = routerSwap({
+    args: ["100000000", FLOOR, JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), ATTACKER, "1"],
+    accountsReferenced: [SRC, ATTACKER],
+  });
+  expect(() => assertCloseIntent(exitOnly(diverted), chosenConversion())).toThrow(
+    /other than the account being closed/
+  );
+});
+
+test("rejects a swap of a token the user never chose to convert", () => {
+  const other = "CC64WBDGS6QQP22QTTIACYIXT3WF7BBQEYOQPLTP7GTKYY7PZ74QYGSL";
+  const wrongToken = routerSwap({
+    args: ["100000000", FLOOR, JSON.stringify([other, XLM_CONTRACT]), SRC, "1"],
+  });
+  expect(() => assertCloseIntent(exitOnly(wrongToken), chosenConversion())).toThrow(
+    /token you did not choose to convert/
+  );
+  // With no conversion chosen at all, a call on the swap contract is refused the same way: the
+  // rule is keyed on the user's decision, not on the contract having been recognized.
+  expect(() => assertCloseIntent(exitOnly(routerSwap()), expectation())).toThrow(
+    /token you did not choose to convert/
+  );
+  // And a swap contract the bundled registry does not name is judged as an exit, and fails there.
+  expect(() =>
+    assertCloseIntent(exitOnly(routerSwap()), expectation({ conversionContracts: [] }))
+  ).toThrow(/not one of this account's detected positions/);
+});
+
+test("rejects a swap that is not alone, acts for another account, calls another function, or pays an outsized fee", () => {
+  expect(() =>
+    assertCloseIntent(
+      intent({
+        operations: [routerSwap(), routerSwap()],
+        guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
+      }),
+      chosenConversion()
+    )
+  ).toThrow(/only operation/);
+  expect(() =>
+    assertCloseIntent(exitOnly(routerSwap({ source: ATTACKER })), chosenConversion())
+  ).toThrow(/other than the one being closed/);
+  expect(() =>
+    assertCloseIntent(exitOnly(routerSwap({ function: "remove_liquidity" })), chosenConversion())
+  ).toThrow(/something other than a swap/);
+  // swap_tokens_for_exact_tokens carries the same seven arguments with the amounts swapped, so
+  // reading it as an exact-in swap would hold the wrong figures to the balance and the floor.
+  // The function name is what stops it.
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(aggregatorSwap({ function: "swap_tokens_for_exact_tokens" })),
+      chosenConversion()
+    )
+  ).toThrow(/something other than a swap/);
+  expect(() => assertCloseIntent(exitOnly(routerSwap(), "20000000"), chosenConversion())).toThrow(
+    /network fee/
+  );
+});
+
+test("rejects a swap whose arguments cannot be read, or that authorizes beyond the account's own calls", () => {
+  for (const args of [
+    [],
+    ["1", "2", "3"],
+    ["1", FLOOR, "not json", SRC, "1"],
+    ["1", "x", "[]", SRC, "1"],
+  ]) {
+    expect(() => assertCloseIntent(exitOnly(routerSwap({ args })), chosenConversion())).toThrow(
+      /arguments could not be read|other than a swap/
+    );
+  }
+  expect(() =>
+    assertCloseIntent(exitOnly(routerSwap({ authorizesBeyondSelf: true })), chosenConversion())
+  ).toThrow(/beyond this account's own contract calls/);
+  expect(() =>
+    assertCloseIntent(exitOnly(routerSwap({ unsupportedAddressCount: 1 })), chosenConversion())
+  ).toThrow(/cannot be verified/);
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(routerSwap({ accountsReferenced: [SRC, ATTACKER] })),
+      chosenConversion()
+    )
+  ).toThrow(/other than the one being closed/);
 });

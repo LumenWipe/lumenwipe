@@ -293,3 +293,65 @@ test("convert for a Soroban token is refused by name until conversion is built, 
     status: 422,
   });
 });
+
+test("with conversion switched off a token's convert answer is refused; switched on, the conversion round runs after the transfers", async () => {
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
+  const off = buildCloseTransactions(
+    withToken("250"),
+    DEST,
+    { [TOKEN]: "convert" },
+    "testnet",
+    null,
+    {},
+    {},
+    {},
+    {},
+    { enabled: false, floors: { [TOKEN]: "1" } }
+  );
+  await expect(off).rejects.toMatchObject({ code: "soroban_token_conversion_unavailable" });
+
+  // On, with a quote but no verified Soroswap contracts on this network: the round reached the
+  // registry gate, which is the last check before a build is requested.
+  const on = buildCloseTransactions(
+    withToken("250"),
+    DEST,
+    { [TOKEN]: "convert" },
+    "testnet",
+    null,
+    {},
+    {},
+    {},
+    { rpc: tokenRpc(250n) },
+    {
+      enabled: true,
+      floors: { [TOKEN]: "1" },
+      deps: {
+        rpc: tokenRpc(250n) as never,
+        conversion: {
+          sdk: {
+            quote: async (req) =>
+              ({
+                assetIn: req.assetIn,
+                assetOut: req.assetOut,
+                amountIn: req.amount,
+                amountOut: 1_000n,
+                otherAmountThreshold: 1_000n,
+                priceImpactPct: "0",
+                platform: "router",
+                routePlan: [],
+                tradeType: req.tradeType,
+                rawTrade: { amountIn: req.amount, amountOutMin: 1_000n, path: [] },
+              }) as never,
+            build: async () => ({ xdr: "", action: "", description: "" }),
+          },
+          now: () => Date.now(),
+        },
+        allowed: () => ({ aggregator: [], adapters: [], routers: [] }),
+      },
+    }
+  );
+  await expect(on).rejects.toMatchObject({ code: "soroban_token_conversion_unavailable" });
+  await expect(on).rejects.toThrow(/no verified Soroswap entries/);
+});

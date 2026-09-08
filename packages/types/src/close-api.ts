@@ -38,6 +38,13 @@ export interface DecisionAnswer {
   params?: {
     maxSlippageBps?: number;
     /**
+     * Required by `convert_to_xlm` on a Soroban token: the least XLM, in stroops, the user was
+     * shown the swap would deliver (the plan's `quote.minAmountOut`). The build refuses a route
+     * that no longer clears it (`quote_drifted`) instead of swapping at a rate nobody agreed to,
+     * and the browser holds the built swap's own minimum to at least this figure.
+     */
+    minAmountOut?: string;
+    /**
      * Required by the `transfer_to_account` choice: the `G...` address the balance is paid to.
      *
      * It travels with the answer rather than in a separate map so a destination cannot become

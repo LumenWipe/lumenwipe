@@ -42,6 +42,11 @@ const OPTIONAL: Array<{ name: string; consequence: string }> = [
     consequence: "testnet exchange closes are unavailable",
   },
   {
+    name: "SOROSWAP_API_KEY",
+    consequence:
+      "Soroban token conversion to XLM is unavailable: held tokens can be sent or left, not swapped",
+  },
+  {
     name: "OCTOPOS_API_KEY",
     consequence:
       "DeFi position detection runs at OctoPos's free/IP rate-limit tier instead of the " +

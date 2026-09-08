@@ -38,6 +38,9 @@ interface DemolishState {
   // destination against it before signing - reading it back from the plan or the transaction
   // would make the check circular and prove nothing.
   transferDestinations: Record<string, string>;
+  /** Per Soroban token contract, the least XLM (stroops) the plan quoted its conversion at: the
+   *  floor the convert answer carries and the built swap is held to. */
+  tokenConversionFloors: Record<string, string>;
 
   // Per-claimable-balance selection, keyed by balance id: claim it, add a trustline then
   // claim it, or forfeit it.
@@ -66,6 +69,7 @@ interface DemolishState {
   setPlan: (plan: PlannedStep[]) => void;
   setAssetDisposition: (asset: string, action: AssetDisposition) => void;
   setTransferDestination: (asset: string, destination: string | null) => void;
+  setTokenConversionFloors: (floors: Record<string, string>) => void;
   setClaimableBalanceSelection: (balanceId: string, selection: ClaimableBalanceSelection) => void;
   setMediatorRequired: (required: boolean) => void;
   setCurrentStepIndex: (index: number) => void;
@@ -157,6 +161,7 @@ const initialState = {
   currentStepIndex: 0,
   assetDispositions: {},
   transferDestinations: {},
+  tokenConversionFloors: {},
   claimableBalanceSelections: {},
   mediatorRequired: false,
   lastError: null,
@@ -189,6 +194,7 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       // stale decision into the build.
       assetDispositions: pruneDispositions(s.assetDispositions, accountState),
       transferDestinations: pruneToPresentAssets(s.transferDestinations, accountState),
+      tokenConversionFloors: pruneToPresentAssets(s.tokenConversionFloors, accountState),
       claimableBalanceSelections: pruneClaimableSelections(
         s.claimableBalanceSelections,
         accountState
@@ -214,6 +220,8 @@ export const useDemolishStore = create<DemolishState>((set) => ({
         transferDestinations: rest,
       };
     }),
+
+  setTokenConversionFloors: (floors) => set({ tokenConversionFloors: floors }),
 
   setTransferDestination: (asset, destination) =>
     set((s) => {

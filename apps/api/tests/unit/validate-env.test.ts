@@ -8,6 +8,7 @@ import { checkEnv, formatEnvFailure } from "@/config/validate-env";
 const OK = {
   API_KEYS: "ci=abc123",
   MEDIATOR_SECRET_TESTNET: "S...",
+  SOROSWAP_API_KEY: "sk_test",
   MEDIATOR_SECRET_MAINNET: "S...",
   OCTOPOS_API_KEY: "oct_abc123",
 };
@@ -44,6 +45,7 @@ test("a missing mediator secret warns rather than blocking the boot", () => {
   const { problems, warnings } = checkEnv({
     API_KEYS: "ci=abc",
     OCTOPOS_API_KEY: "oct_abc123",
+    SOROSWAP_API_KEY: "sk_test",
   } as NodeJS.ProcessEnv);
   expect(problems).toEqual([]);
   expect(warnings.map((w) => w.variable).sort()).toEqual([
@@ -58,6 +60,7 @@ test("a missing OCTOPOS_API_KEY warns rather than blocking the boot", () => {
   const { problems, warnings } = checkEnv({
     API_KEYS: "ci=abc",
     MEDIATOR_SECRET_TESTNET: "S...",
+    SOROSWAP_API_KEY: "sk_test",
     MEDIATOR_SECRET_MAINNET: "S...",
   } as NodeJS.ProcessEnv);
   expect(problems).toEqual([]);

@@ -25,7 +25,10 @@ plus an adapter change, never a rewrite (§18).
 2. Add one object to `entries`:
    - `network`: `mainnet` or `testnet` - the one network you verified this instance on
    - `protocol`: one of `blend`, `aquarius`, `soroswap`, `phoenix`, `fxdao`
-   - `kind`: `pool`, `pair`, `backstop`, `vault`, `factory`, or `router`. A `pair` entry is one
+   - `kind`: `pool`, `pair`, `backstop`, `vault`, `factory`, `router`, `aggregator`, or `adapter`.
+     `aggregator` and `adapter` are Soroswap's swap aggregator and the per-protocol adapters it
+     dispatches to; a token conversion may invoke only those, the router, and the token itself
+     (`soroswapConversionContracts`). A `pair` entry is one
      representative factory-deployed pair: every pair the factory deploys shares its code hash, so
      one entry lets `resolveWasmHash` recognize all of them, and detection enumerates the pairs
      themselves from the factory rather than from this file. Aquarius pools work the same way, one

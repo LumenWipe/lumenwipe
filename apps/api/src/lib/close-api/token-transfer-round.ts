@@ -92,7 +92,7 @@ async function simulate(
 }
 
 /** The account's live balance of the token, by simulating `balance(account)`; null if unreadable. */
-async function liveBalance(
+export async function liveTokenBalance(
   rpc: TokenTransferRoundDeps["rpc"],
   network: Network,
   account: string,
@@ -248,7 +248,7 @@ export async function buildTokenTransferRound(
         `Transferring the ${name} balance needs the account to send it to.`
       );
     }
-    const balance = await liveBalance(deps.rpc, network, account, token);
+    const balance = await liveTokenBalance(deps.rpc, network, account, token);
     if (balance === null) {
       throw new TokenTransferBlockedError(
         "soroban_token_unreadable",
