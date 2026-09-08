@@ -78,9 +78,10 @@ interface DemolishState {
   /**
    * Marks every not-yet-confirmed step whose type appears in `coveredTypes` as confirmed.
    * A single API-built transaction can cover several plan steps (a fused close), so one
-   * confirmation lands multiple steps at once.
+   * confirmation lands multiple steps at once. `sponsoredFee` records that a dedicated sponsor
+   * account, not the user's, paid this round's fee - the user's own account paid "0".
    */
-  markCoveredConfirmed: (coveredTypes: StepType[], txHash: string) => void;
+  markCoveredConfirmed: (coveredTypes: StepType[], txHash: string, sponsoredFee?: boolean) => void;
   markStepFailed: (index: number, error: string) => void;
   setLastError: (error: string | null) => void;
   initSession: () => void;
@@ -254,13 +255,18 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       phase: "STEP_CONFIRMED",
     })),
 
-  markCoveredConfirmed: (coveredTypes, txHash) =>
+  markCoveredConfirmed: (coveredTypes, txHash, sponsoredFee) =>
     set((state) => {
       const covered = new Set<StepType>(coveredTypes);
       return {
         executionPlan: state.executionPlan.map((s) =>
           covered.has(s.type) && s.status !== "confirmed"
-            ? { ...s, status: "confirmed", txHash }
+            ? {
+                ...s,
+                status: "confirmed",
+                txHash,
+                actualFeeLumens: sponsoredFee ? "0" : s.estimatedFeeLumens,
+              }
             : s
         ),
         phase: "STEP_CONFIRMED",

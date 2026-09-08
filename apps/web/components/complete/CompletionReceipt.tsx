@@ -66,8 +66,13 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
 
   const confirmedSteps = executionPlan.filter((s) => s.status === "confirmed" && s.txHash);
 
+  // A sponsored round's `actualFeeLumens` is exactly "0" - a dedicated sponsor account paid the
+  // network fee, not this one. Any step not yet confirmed (this page can still be reached mid-
+  // close, after a partial failure, with steps still pending) never had `actualFeeLumens` set -
+  // the `??` falls back to `estimatedFeeLumens` there so the sum doesn't go NaN, not because
+  // that estimate is known to be what was actually paid.
   const totalFee = executionPlan
-    .reduce((sum, s) => sum + parseFloat(s.estimatedFeeLumens), 0)
+    .reduce((sum, s) => sum + parseFloat(s.actualFeeLumens ?? s.estimatedFeeLumens), 0)
     .toFixed(7);
 
   useEffect(() => {
