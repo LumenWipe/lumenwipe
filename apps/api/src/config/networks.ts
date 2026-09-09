@@ -12,8 +12,13 @@ export type Network = "mainnet" | "testnet";
 export const deprecatedEnvWarnings: string[] = [];
 
 function readEnv(newName: string, oldName: string): string | undefined {
-  const value = process.env[newName];
-  if (value) return value;
+  // `newName in process.env`, not a truthy check on its value: an operator who has set the new
+  // name at all - even to "" to explicitly clear/disable it - made a deliberate choice that
+  // must win over a still-lingering legacy value, not be silently overridden by it. Falling
+  // through to the old name is only for the migration case where the new name was never
+  // touched. `RPC_URLS`/etc.'s own `|| default` already treats "" the same as unset once this
+  // returns, matching every other value here.
+  if (newName in process.env) return process.env[newName];
   const legacy = process.env[oldName];
   if (legacy) {
     deprecatedEnvWarnings.push(`${oldName} is deprecated - rename it to ${newName}.`);
