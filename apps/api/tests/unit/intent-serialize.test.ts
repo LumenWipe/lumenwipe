@@ -384,6 +384,42 @@ test("intentFromXdr walks the authorization tree - a recipient hidden in a neste
   ]);
 });
 
+test("intentFromXdr treats a second, independent authorization root as a sub-invocation, not as the operation's own top-level call", () => {
+  // A hostile build can leave the real top-level call untouched and add a SECOND source-account
+  // auth entry rooted directly at a token transfer - not nested under the legitimate call at
+  // all. Before this was fixed, every entry's root was unconditionally treated as "the same call
+  // already described by contract/function/args" and skipped from subInvocations, so this
+  // second root would never reach a verifier's sub-invocation pinning logic.
+  const POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
+  const OTHER = Keypair.random().publicKey();
+  const legitimateAuth = new xdr.SorobanAuthorizationEntry({
+    credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
+    rootInvocation: contractCall(POOL, "submit", [new Address(SRC).toScVal()]),
+  });
+  const hiddenAuth = new xdr.SorobanAuthorizationEntry({
+    credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
+    rootInvocation: contractCall(SAC, "transfer", [
+      new Address(SRC).toScVal(),
+      new Address(OTHER).toScVal(),
+      nativeToScVal(5n, { type: "i128" }),
+    ]),
+  });
+  const op = Operation.invokeContractFunction({
+    contract: POOL,
+    function: "submit",
+    args: [new Address(SRC).toScVal()],
+    auth: [legitimateAuth, hiddenAuth],
+  });
+  const intent = intentFromXdr(txWith(op as never), Networks.TESTNET);
+  if (intent.operations[0]!.type !== "invoke_host_function")
+    throw new Error("expected an invocation");
+  expect(intent.operations[0].subInvocations).toContainEqual({
+    contract: SAC,
+    function: "transfer",
+    args: [SRC, OTHER, "5"],
+  });
+});
+
 test("intentFromXdr flags credentials for another address and a non-contract authorized function", () => {
   const POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
   const other = new xdr.SorobanAuthorizationEntry({

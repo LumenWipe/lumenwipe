@@ -1318,6 +1318,18 @@ test("a burn sub-invocation on a held token needs no recipient pinning - it dest
   ).not.toThrow();
 });
 
+test("rejects a transfer-shaped sub-invocation whose argument count does not match transfer's real signature", () => {
+  // Recognized function name, wrong arity - could not be a real transfer() call, so the
+  // recipient argument this rule would otherwise trust cannot be assumed to sit at index 1.
+  const op = exit({
+    contractsReferenced: [POOL, XLM_SAC],
+    subInvocations: [{ contract: XLM_SAC, function: "transfer", args: [SRC, "100"] }],
+  });
+  expect(() =>
+    assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] }))
+  ).toThrow(/argument count/);
+});
+
 test("a sub-invocation on a contract that is not a held or position token is unaffected by this rule", () => {
   // A pool calling another already-pinned exit contract (e.g. an oracle or a router leg) is
   // covered by the existing contractsReferenced allow-list, not this token-specific rule.

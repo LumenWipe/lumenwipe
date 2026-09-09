@@ -250,18 +250,20 @@ const CONTRACT_ID = /^C[A-Z2-7]{55}$/;
 
 /**
  * SEP-41 functions a DeFi exit's own contract may legitimately call on a token it sub-invokes
- * (a held asset's Stellar Asset Contract, or a position's own token), and which argument
- * position - if any - holds the recipient or spender that must be pinned. `-1` means the
- * function moves no balance to a named third party (a burn destroys value; there is nothing to
- * pin beyond the account whose balance it burns, which `accountsReferenced` already requires to
- * be the one being closed).
+ * (a held asset's Stellar Asset Contract, or a position's own token): each function's exact
+ * argument count, and which position - if any - holds the recipient or spender that must be
+ * pinned. `recipientArg: -1` means the function moves no balance to a named third party (a burn
+ * destroys value; there is nothing to pin beyond the account whose balance it burns, which
+ * `accountsReferenced` already requires to be the one being closed). `argCount` is checked
+ * before `recipientArg` is ever indexed, the same way the existing plain-transfer branch checks
+ * `args.length !== 3` before trusting `args[1]` as a destination.
  */
-const TOKEN_SUB_INVOCATION_RECIPIENT_ARG: Record<string, number> = {
-  transfer: 1, // transfer(from, to, amount)
-  transfer_from: 2, // transfer_from(spender, from, to, amount)
-  approve: 1, // approve(from, spender, amount, expiration_ledger)
-  burn: -1, // burn(from, amount)
-  burn_from: -1, // burn_from(spender, from, amount)
+const TOKEN_SUB_INVOCATION_FUNCTIONS: Record<string, { argCount: number; recipientArg: number }> = {
+  transfer: { argCount: 3, recipientArg: 1 }, // transfer(from, to, amount)
+  transfer_from: { argCount: 4, recipientArg: 2 }, // transfer_from(spender, from, to, amount)
+  approve: { argCount: 4, recipientArg: 1 }, // approve(from, spender, amount, expiration_ledger)
+  burn: { argCount: 2, recipientArg: -1 }, // burn(from, amount)
+  burn_from: { argCount: 3, recipientArg: -1 }, // burn_from(spender, from, amount)
 };
 
 interface SwapArgs {
@@ -753,16 +755,24 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
             expected.heldTokenContracts.includes(sub.contract) ||
             expected.positionTokenContracts.includes(sub.contract);
           if (!isToken) continue;
-          const recipientArg = TOKEN_SUB_INVOCATION_RECIPIENT_ARG[sub.function];
-          if (recipientArg === undefined) {
+          const shape = TOKEN_SUB_INVOCATION_FUNCTIONS[sub.function];
+          if (shape === undefined) {
             throw new VerificationError(
               "A DeFi exit would call a function on a token that LumenWipe does not use to leave a protocol."
             );
           }
+          // A mismatched argument count cannot be this function's real SEP-41 signature - reject
+          // before trusting `args[recipientArg]` as the recipient, the same way the existing
+          // plain-transfer branch checks `args.length !== 3` before indexing into it.
+          if (sub.args.length !== shape.argCount) {
+            throw new VerificationError(
+              "A DeFi exit would call a token function with an argument count that does not match its real signature."
+            );
+          }
           if (
-            recipientArg >= 0 &&
-            sub.args[recipientArg] !== expected.source &&
-            sub.args[recipientArg] !== op.contract
+            shape.recipientArg >= 0 &&
+            sub.args[shape.recipientArg] !== expected.source &&
+            sub.args[shape.recipientArg] !== op.contract
           ) {
             throw new VerificationError(
               "A DeFi exit would move a token balance to an address other than this account or the protocol it is exiting."
