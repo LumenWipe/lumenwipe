@@ -14,6 +14,7 @@ import {
 } from "./dto/close-requests.dto";
 import { SubmitResponseDto } from "./dto/close-responses.dto";
 import { PlanResponseDto } from "./dto/plan-response.dto";
+import { TransactionsResponseDto } from "./dto/transactions-response.dto";
 import { isValidNetwork, type Network } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { readAccountState } from "@/lib/close-api/read-account";
@@ -323,6 +324,7 @@ export class CloseController {
   @ApiResponse({
     status: 200,
     description: "Unsigned transaction envelopes ready for client signing.",
+    type: TransactionsResponseDto,
   })
   @ApiResponse({ status: 400, description: "Invalid network, source, destination, or JSON body." })
   @ApiResponse({ status: 404, description: "Source account not found." })
