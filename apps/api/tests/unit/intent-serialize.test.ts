@@ -375,6 +375,13 @@ test("intentFromXdr walks the authorization tree - a recipient hidden in a neste
     authorizesBeyondSelf: false,
     authDepth: 1,
   });
+  // #208: the hidden transfer is not just detected in the flat referenced sets - it is recorded
+  // structurally, so a verifier can pin its own recipient without re-decoding the tree itself.
+  if (intent.operations[0]!.type !== "invoke_host_function")
+    throw new Error("expected an invocation");
+  expect(intent.operations[0].subInvocations).toEqual([
+    { contract: SAC, function: "transfer", args: [SRC, OTHER, "5"] },
+  ]);
 });
 
 test("intentFromXdr flags credentials for another address and a non-contract authorized function", () => {

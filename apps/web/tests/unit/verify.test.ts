@@ -1037,6 +1037,7 @@ const exit = (over: Partial<ExitOp> = {}): IntentOperation => ({
   unsupportedAddressCount: 0,
   authorizesBeyondSelf: false,
   authDepth: 0,
+  subInvocations: [],
   ...over,
 });
 const exitOnly = (op: IntentOperation, fee = "100") =>
@@ -1214,6 +1215,122 @@ test("an Aquarius exit may call withdraw or claim on its pool, and the share tok
   );
 });
 
+// ─── DeFi exit sub-invocations: a legitimate top-level call may hide a diversion (#208) ──────
+
+test("an exit's sub-invocation may transfer a held token to this account or to the exit contract itself", () => {
+  const expected = expectation({ heldTokenContracts: [XLM_SAC] });
+  const toSelf = exit({
+    contractsReferenced: [POOL, XLM_SAC],
+    subInvocations: [{ contract: XLM_SAC, function: "transfer", args: [SRC, SRC, "100"] }],
+  });
+  expect(() => assertCloseIntent(exitOnly(toSelf), expected)).not.toThrow();
+  // The pool paying itself (e.g. a repay leg the top-level `submit` call triggers) is the whole
+  // point of an exit - the recipient is the very contract this invocation is rooted at.
+  const toPool = exit({
+    contractsReferenced: [POOL, XLM_SAC],
+    subInvocations: [{ contract: XLM_SAC, function: "transfer", args: [SRC, POOL, "100"] }],
+  });
+  expect(() => assertCloseIntent(exitOnly(toPool), expected)).not.toThrow();
+});
+
+test("rejects a Blend exit whose submit call hides a transfer of the held asset to a third party", () => {
+  // The top-level call is exactly what a legitimate Blend repay-and-withdraw looks like -
+  // `submit` on the pool, nothing else referenced at the top level. Only the authorization
+  // tree the same signature satisfies carries the diversion.
+  const op = exit({
+    contractsReferenced: [POOL, XLM_SAC],
+    subInvocations: [{ contract: XLM_SAC, function: "transfer", args: [SRC, ATTACKER, "100"] }],
+  });
+  expect(() =>
+    assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] }))
+  ).toThrow(/other than this account or the protocol/);
+});
+
+test("rejects an Aquarius exit whose withdraw call hides a transfer of the share token to a third party", () => {
+  const SHARE_TOKEN = "CAN7DMIQH7FGKNYCUQMWECJJ74EKN5JATVVUOVTXOWLQGZCWAFWANG5P";
+  const op = exit({
+    function: "withdraw",
+    contractsReferenced: [POOL, SHARE_TOKEN],
+    subInvocations: [{ contract: SHARE_TOKEN, function: "transfer", args: [SRC, ATTACKER, "5"] }],
+  });
+  const expected = expectation({
+    exitFunctions: { [POOL]: ["withdraw", "claim"] },
+    positionTokenContracts: [SHARE_TOKEN],
+  });
+  expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
+    /other than this account or the protocol/
+  );
+});
+
+test("rejects a Soroswap router exit whose remove_liquidity call hides a transfer of a pair token to a third party", () => {
+  const ROUTER = "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD";
+  const TOKEN = "CBRQHWJDLPYVR4BSVUUWJCZGG4N4FF3CUZKDGRVTE36FAWNEJZEMQRME";
+  const op = exit({
+    contract: ROUTER,
+    function: "remove_liquidity",
+    contractsReferenced: [POOL, ROUTER, TOKEN, XLM_SAC],
+    subInvocations: [{ contract: TOKEN, function: "transfer", args: [SRC, ATTACKER, "100"] }],
+  });
+  const expected = expectation({
+    exitContracts: [POOL, ROUTER],
+    positionTokenContracts: [TOKEN, XLM_SAC],
+    exitFunctions: { [POOL]: [], [ROUTER]: ["remove_liquidity"] },
+  });
+  expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
+    /other than this account or the protocol/
+  );
+});
+
+test("rejects an exit sub-invocation that spends a token's allowance to a third-party spender", () => {
+  // approve(from, spender, amount, expiration_ledger) - the spender must be pinned exactly like
+  // a transfer's recipient, or a hostile build could grant an attacker contract standing
+  // approval over the account's held balance instead of moving it directly.
+  const op = exit({
+    contractsReferenced: [POOL, XLM_SAC],
+    subInvocations: [
+      { contract: XLM_SAC, function: "approve", args: [SRC, ATTACKER, "100", "999999"] },
+    ],
+  });
+  expect(() =>
+    assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] }))
+  ).toThrow(/other than this account or the protocol/);
+});
+
+test("rejects an exit sub-invocation calling a function on a token that no exit legitimately needs", () => {
+  // Not transfer/transfer_from/approve/burn/burn_from - e.g. an admin-only function some tokens
+  // expose. The recipient-pinning rule above cannot even apply; the call itself is refused.
+  const op = exit({
+    contractsReferenced: [POOL, XLM_SAC],
+    subInvocations: [{ contract: XLM_SAC, function: "set_admin", args: [ATTACKER] }],
+  });
+  expect(() =>
+    assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] }))
+  ).toThrow(/LumenWipe does not use to leave a protocol/);
+});
+
+test("a burn sub-invocation on a held token needs no recipient pinning - it destroys value, moving it nowhere", () => {
+  const op = exit({
+    contractsReferenced: [POOL, XLM_SAC],
+    subInvocations: [{ contract: XLM_SAC, function: "burn", args: [SRC, "100"] }],
+  });
+  expect(() =>
+    assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] }))
+  ).not.toThrow();
+});
+
+test("a sub-invocation on a contract that is not a held or position token is unaffected by this rule", () => {
+  // A pool calling another already-pinned exit contract (e.g. an oracle or a router leg) is
+  // covered by the existing contractsReferenced allow-list, not this token-specific rule.
+  const OTHER_EXIT_CONTRACT = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
+  const op = exit({
+    contractsReferenced: [POOL, OTHER_EXIT_CONTRACT],
+    subInvocations: [{ contract: OTHER_EXIT_CONTRACT, function: "anything_at_all", args: [] }],
+  });
+  expect(() =>
+    assertCloseIntent(exitOnly(op), expectation({ exitContracts: [POOL, OTHER_EXIT_CONTRACT] }))
+  ).not.toThrow();
+});
+
 // ─── Soroban token transfers (#161) ──────────────────────────────────────────
 
 const TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
@@ -1228,6 +1345,7 @@ const tokenTransfer = (over: Partial<ExitOp> = {}): IntentOperation => ({
   unsupportedAddressCount: 0,
   authorizesBeyondSelf: false,
   authDepth: 0,
+  subInvocations: [],
   ...over,
 });
 const chosenToken = (amount = "2500000000") =>
@@ -1353,6 +1471,7 @@ const routerSwap = (over: Partial<ExitOp> = {}): IntentOperation => ({
   unsupportedAddressCount: 0,
   authorizesBeyondSelf: false,
   authDepth: 1,
+  subInvocations: [],
   ...over,
 });
 

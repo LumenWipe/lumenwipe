@@ -56,6 +56,16 @@ export interface PlanResponse {
  * intermediary a conduit rather than a destination. Without it the only available check is
  * pinning the intermediary's address, which every consumer would then have to be told.
  */
+/** One non-root call in a Soroban authorization tree: what a DeFi exit's own contract (a pool,
+ *  router, or backstop) would itself be authorized to call on the account's behalf. */
+export interface SubInvocationCall {
+  contract: string;
+  function: string;
+  /** The decoded arguments rendered for a human, in order - same rendering as the top-level
+   *  invocation's own `args`. */
+  args: string[];
+}
+
 export type IntentOperation = IntentOperationBody & { source: string };
 
 export type IntentOperationBody =
@@ -121,6 +131,11 @@ export type IntentOperationBody =
       /** How deep the authorization tree nests: 0 when every entry is a single plain call with
        *  no sub-invocations. A token transfer must be 0. */
       authDepth: number;
+      /** Every non-root call in the authorization tree - what the root call (a pool, router, or
+       *  backstop) would itself be authorized to do on the account's behalf, one level down. A
+       *  DeFi exit's top-level contract/function pinning says nothing about these: a hostile
+       *  build could keep a legitimate top-level call while hiding an unrelated transfer here. */
+      subInvocations: SubInvocationCall[];
     }
   | { type: "unknown" };
 

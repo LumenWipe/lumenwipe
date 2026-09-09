@@ -1,5 +1,5 @@
 import { Address, scValToNative, xdr, type Operation } from "@stellar/stellar-sdk";
-import type { IntentOperationBody } from "@/types/close-api";
+import type { IntentOperationBody, SubInvocationCall } from "@/types/close-api";
 
 type Invocation = Extract<IntentOperationBody, { type: "invoke_host_function" }>;
 
@@ -47,8 +47,16 @@ function collectFromValue(value: xdr.ScVal, into: Referenced): void {
  * Walks an authorized invocation tree: what the signature will let the contract do on the
  * signer's behalf, including every nested call. Returns false when the tree contains anything
  * other than plain contract calls (creating contracts, for instance), which no close needs.
+ * Every call below the root is also recorded into `subInvocations` - the root itself is already
+ * described by the operation's own `contract`/`function`/`args`, so only the calls it would in
+ * turn be authorized to make are new information.
  */
-function collectFromInvocation(node: xdr.SorobanAuthorizedInvocation, into: Referenced): boolean {
+function collectFromInvocation(
+  node: xdr.SorobanAuthorizedInvocation,
+  into: Referenced,
+  subInvocations: SubInvocationCall[],
+  isRoot: boolean
+): boolean {
   const fn = node.function();
   if (fn.switch() !== xdr.SorobanAuthorizedFunctionType.sorobanAuthorizedFunctionTypeContractFn()) {
     return false;
@@ -56,8 +64,17 @@ function collectFromInvocation(node: xdr.SorobanAuthorizedInvocation, into: Refe
   const call = fn.contractFn();
   collectAddress(call.contractAddress(), into);
   for (const arg of call.args()) collectFromValue(arg, into);
+  if (!isRoot) {
+    subInvocations.push({
+      contract: Address.fromScAddress(call.contractAddress()).toString(),
+      function: call.functionName().toString(),
+      args: call.args().map(render),
+    });
+  }
   let plain = true;
-  for (const sub of node.subInvocations()) plain = collectFromInvocation(sub, into) && plain;
+  for (const sub of node.subInvocations()) {
+    plain = collectFromInvocation(sub, into, subInvocations, false) && plain;
+  }
   return plain;
 }
 
@@ -104,6 +121,7 @@ export function describeInvocation(op: Operation.InvokeHostFunction): IntentOper
 
   let authorizesBeyondSelf = false;
   let authDepth = 0;
+  const subInvocations: SubInvocationCall[] = [];
   for (const entry of op.auth ?? []) {
     authDepth = Math.max(authDepth, invocationDepth(entry.rootInvocation()));
     if (
@@ -113,7 +131,9 @@ export function describeInvocation(op: Operation.InvokeHostFunction): IntentOper
       // authorization, which a single-account close never needs.
       authorizesBeyondSelf = true;
     }
-    if (!collectFromInvocation(entry.rootInvocation(), referenced)) authorizesBeyondSelf = true;
+    if (!collectFromInvocation(entry.rootInvocation(), referenced, subInvocations, true)) {
+      authorizesBeyondSelf = true;
+    }
   }
 
   const described: Invocation = {
@@ -124,6 +144,7 @@ export function describeInvocation(op: Operation.InvokeHostFunction): IntentOper
     accountsReferenced: [...referenced.accounts].sort(),
     contractsReferenced: [...referenced.contracts].sort(),
     unsupportedAddressCount: referenced.unsupported,
+    subInvocations,
     authorizesBeyondSelf,
     authDepth,
   };
