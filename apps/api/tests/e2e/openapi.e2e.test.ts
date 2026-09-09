@@ -135,6 +135,65 @@ test("phase 2 response schemas (allowances, close/plan) are present and wired (#
   ).toBe("#/components/schemas/PlanResponseDto");
 });
 
+test("account response schema, including its discriminated unions, is present and wired (#59)", () => {
+  const schemas = spec.components?.schemas ?? {};
+  const schemaNames = Object.keys(schemas);
+  expect(schemaNames).toEqual(
+    expect.arrayContaining([
+      "AccountStateDto",
+      "BlendSupplyPositionDto",
+      "BlendBorrowPositionDto",
+      "AquariusLpPositionDto",
+      "SoroswapLpPositionDto",
+      "PhoenixLpPositionDto",
+      "PhoenixStakePositionDto",
+      "FxdaoCdpPositionDto",
+      "SponsoredAccountDto",
+      "SponsoredTrustlineDto",
+      "SponsoredOfferDto",
+      "SponsoredDataEntryDto",
+      "SponsoredSignerDto",
+      "SponsoredClaimableBalanceDto",
+      "ClaimPredicateDto",
+    ])
+  );
+
+  const refOf = (schema: unknown): string | undefined =>
+    (schema as { $ref?: string; allOf?: { $ref?: string }[] })?.$ref ??
+    (schema as { allOf?: { $ref?: string }[] })?.allOf?.[0]?.$ref;
+
+  const account = spec.paths["/{network}/account/{address}"].get?.responses?.["200"];
+  expect(
+    refOf(
+      (account as { content?: Record<string, { schema: unknown }> })?.content?.["application/json"]
+        ?.schema
+    )
+  ).toBe("#/components/schemas/AccountStateDto");
+
+  // The DefiPosition union has no single-field discriminator (protocol alone collides for
+  // Blend's two variants and Phoenix's two) - it's a plain oneOf, not a discriminated one.
+  const positions = (schemas["DefiPositionsResultDto"] as { properties?: Record<string, unknown> })
+    ?.properties?.["positions"] as { items?: { oneOf?: { $ref: string }[] } };
+  expect(positions?.items?.oneOf?.length).toBe(7);
+
+  // sponsoredEntries DOES have a clean single-field discriminator (`kind`) - assert the mapping
+  // actually names real values, not the "every model reads back undefined" bug this once had.
+  const sponsoredEntries = (schemas["AccountStateDto"] as { properties?: Record<string, unknown> })
+    ?.properties?.["sponsoredEntries"] as {
+    items?: { discriminator?: { mapping?: Record<string, string> } };
+  };
+  expect(Object.keys(sponsoredEntries?.items?.discriminator?.mapping ?? {})).toEqual(
+    expect.arrayContaining([
+      "account",
+      "trustline",
+      "offer",
+      "data_entry",
+      "signer",
+      "claimable_balance",
+    ])
+  );
+});
+
 test("health and the service index are public but the product endpoints require the api-key", () => {
   const health = spec.paths["/health"].get;
   const index = spec.paths["/"].get;
