@@ -50,7 +50,14 @@ export interface CloseEngineDeps {
   /** Called after a transaction confirms, with the transaction and its hash. */
   onConfirmed?: (tx: CloseTransaction, hash: string) => void;
   onProgress?: (message: string) => void;
-  /** Safety bound so a misbehaving API can never spin the loop forever. */
+  /**
+   * Safety bound so a misbehaving API can never spin the loop forever. This is what covers
+   * #59's mediator-cleanup concern: the API is stateless and re-reads live state every round,
+   * so `remaining.requiresAnotherCall` for that flow reflects "cleanup still sees something to
+   * remove," not a bounded countdown - if an asset keeps getting re-funded between rounds (or
+   * any other close path never converges for whatever reason), this stops it after `maxRounds`
+   * with a clear thrown error instead of looping indefinitely.
+   */
   maxRounds?: number;
 }
 

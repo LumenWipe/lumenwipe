@@ -415,6 +415,21 @@ export async function buildCloseTransactions(
   );
 
   if (!needsMediator) {
+    // A single chunk already carries the merge (see `packFusedCloseTransactions`'s `isLast`
+    // gate) and finishes the close outright. Multiple chunks share one `validUntilLedger`
+    // computed once above; submitting all of them in sequence can outrun that shared time
+    // bound on a large enough account (#59), expiring the later chunks - including the one
+    // carrying the merge. Returning only the first and asking for another call makes this
+    // path re-read live state and rebuild with a fresh time bound each round, exactly like
+    // every other multi-round close (exit/token/claimable) already does; the chunk count
+    // shrinks each round as prior chunks land, so this converges to the single-chunk case.
+    if (closeTxs.length > 1) {
+      return {
+        transactions: [closeTxs[0]!],
+        requiresAnotherCall: true,
+        remainingSteps: closeTxs.length - 1,
+      };
+    }
     return { transactions: closeTxs, requiresAnotherCall: false, remainingSteps: 0 };
   }
 
