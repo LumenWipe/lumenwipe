@@ -1,18 +1,49 @@
 export type Network = "mainnet" | "testnet";
 
+/**
+ * These config values were inherited from `apps/web`'s own `config/networks.ts`, where the
+ * `NEXT_PUBLIC_` prefix means something (Next.js inlines it into the browser bundle at build
+ * time). This is a standalone NestJS service with no build-time env inlining - the prefix here
+ * is meaningless and only invites the question of why a server-only API has "public" env vars
+ * (#59). Renamed to the un-prefixed name below; the old name is still read as a fallback so an
+ * already-deployed environment (Cloud Run's current secrets/env) does not break on this
+ * deploy - `deprecatedEnvWarnings` surfaces each one actually in use so it can be retired.
+ */
+export const deprecatedEnvWarnings: string[] = [];
+
+function readEnv(newName: string, oldName: string): string | undefined {
+  // `newName in process.env`, not a truthy check on its value: an operator who has set the new
+  // name at all - even to "" to explicitly clear/disable it - made a deliberate choice that
+  // must win over a still-lingering legacy value, not be silently overridden by it. Falling
+  // through to the old name is only for the migration case where the new name was never
+  // touched. `RPC_URLS`/etc.'s own `|| default` already treats "" the same as unset once this
+  // returns, matching every other value here.
+  if (newName in process.env) return process.env[newName];
+  const legacy = process.env[oldName];
+  if (legacy) {
+    deprecatedEnvWarnings.push(`${oldName} is deprecated - rename it to ${newName}.`);
+    return legacy;
+  }
+  return undefined;
+}
+
 export const NETWORK_PASSPHRASES: Record<Network, string> = {
   mainnet: "Public Global Stellar Network ; September 2015",
   testnet: "Test SDF Network ; September 2015",
 };
 
 export const RPC_URLS: Record<Network, string> = {
-  mainnet: process.env.NEXT_PUBLIC_STELLAR_RPC_MAINNET || "https://mainnet.sorobanrpc.com",
-  testnet: process.env.NEXT_PUBLIC_STELLAR_RPC_TESTNET || "https://soroban-testnet.stellar.org",
+  mainnet:
+    readEnv("STELLAR_RPC_MAINNET", "NEXT_PUBLIC_STELLAR_RPC_MAINNET") ||
+    "https://mainnet.sorobanrpc.com",
+  testnet:
+    readEnv("STELLAR_RPC_TESTNET", "NEXT_PUBLIC_STELLAR_RPC_TESTNET") ||
+    "https://soroban-testnet.stellar.org",
 };
 
 export const PATH_ROUTING_API_URLS: Record<Network, string> = {
-  mainnet: process.env.NEXT_PUBLIC_PATH_ROUTING_API_MAINNET || "",
-  testnet: process.env.NEXT_PUBLIC_PATH_ROUTING_API_TESTNET || "",
+  mainnet: readEnv("PATH_ROUTING_API_MAINNET", "NEXT_PUBLIC_PATH_ROUTING_API_MAINNET") || "",
+  testnet: readEnv("PATH_ROUTING_API_TESTNET", "NEXT_PUBLIC_PATH_ROUTING_API_TESTNET") || "",
 };
 
 /**
@@ -64,12 +95,12 @@ function buildRpcHeaders(name?: string, value?: string): Record<string, string> 
 
 export const RPC_HEADERS: Record<Network, Record<string, string>> = {
   mainnet: buildRpcHeaders(
-    process.env.NEXT_PUBLIC_STELLAR_RPC_HEADER_NAME_MAINNET,
-    process.env.NEXT_PUBLIC_STELLAR_RPC_HEADER_VALUE_MAINNET
+    readEnv("STELLAR_RPC_HEADER_NAME_MAINNET", "NEXT_PUBLIC_STELLAR_RPC_HEADER_NAME_MAINNET"),
+    readEnv("STELLAR_RPC_HEADER_VALUE_MAINNET", "NEXT_PUBLIC_STELLAR_RPC_HEADER_VALUE_MAINNET")
   ),
   testnet: buildRpcHeaders(
-    process.env.NEXT_PUBLIC_STELLAR_RPC_HEADER_NAME_TESTNET,
-    process.env.NEXT_PUBLIC_STELLAR_RPC_HEADER_VALUE_TESTNET
+    readEnv("STELLAR_RPC_HEADER_NAME_TESTNET", "NEXT_PUBLIC_STELLAR_RPC_HEADER_NAME_TESTNET"),
+    readEnv("STELLAR_RPC_HEADER_VALUE_TESTNET", "NEXT_PUBLIC_STELLAR_RPC_HEADER_VALUE_TESTNET")
   ),
 };
 
@@ -81,8 +112,8 @@ export const RPC_HEADERS: Record<Network, Record<string, string>> = {
  * the matching secret lives server-side only (see lib/stellar/mediator-server).
  */
 export const MEDIATOR_PUBLIC_KEYS: Record<Network, string> = {
-  mainnet: process.env.NEXT_PUBLIC_MEDIATOR_PUBLIC_MAINNET || "",
-  testnet: process.env.NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET || "",
+  mainnet: readEnv("MEDIATOR_PUBLIC_MAINNET", "NEXT_PUBLIC_MEDIATOR_PUBLIC_MAINNET") || "",
+  testnet: readEnv("MEDIATOR_PUBLIC_TESTNET", "NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET") || "",
 };
 
 export function getMediatorPublicKey(network: Network): string {
