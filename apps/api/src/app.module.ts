@@ -41,10 +41,16 @@ function positiveIntEnv(name: string, fallback: number): number {
   providers: [
     ApiKeyService,
     MeteringService,
-    // Order matters: authenticate first, then rate-limit (the throttler keys off
-    // the API key), then meter successful requests.
-    { provide: APP_GUARD, useClass: ApiKeyGuard },
+    // Order matters: rate-limit BEFORE authenticating, then meter successful requests.
+    // ApiKeyThrottlerGuard's tracker reads the raw Authorization header itself (falling back to
+    // the caller's IP when there is none) - it never depends on ApiKeyGuard having already run,
+    // so this order costs nothing for real traffic. It buys real protection for a request with
+    // no key, or an invalid one: previously ApiKeyGuard's 401 threw before the throttler ever
+    // saw the request, so an unauthenticated flood was entirely unthrottled at the app layer
+    // (#59) - every 401 still cost a guard evaluation with no budget capping how often that
+    // could happen. Now it shares the same per-key/per-IP budget as everything else.
     { provide: APP_GUARD, useClass: ApiKeyThrottlerGuard },
+    { provide: APP_GUARD, useClass: ApiKeyGuard },
     { provide: APP_INTERCEPTOR, useClass: MeteringInterceptor },
   ],
 })
