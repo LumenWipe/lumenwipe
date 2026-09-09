@@ -194,6 +194,67 @@ test("account response schema, including its discriminated unions, is present an
   );
 });
 
+test("close/transactions response schema, including the 11-variant operation union, is present and wired (#59)", () => {
+  const schemas = spec.components?.schemas ?? {};
+  const schemaNames = Object.keys(schemas);
+  expect(schemaNames).toEqual(
+    expect.arrayContaining([
+      "TransactionsResponseDto",
+      "CloseTransactionDto",
+      "TxIntentDto",
+      "PathPaymentStrictSendOpDto",
+      "PaymentOpDto",
+      "ChangeTrustOpDto",
+      "AccountMergeOpDto",
+      "ManageSellOfferOpDto",
+      "ManageDataOpDto",
+      "SetOptionsOpDto",
+      "ClaimClaimableBalanceOpDto",
+      "RevokeSponsorshipOpDto",
+      "InvokeHostFunctionOpDto",
+      "UnknownOpDto",
+      "SubInvocationCallDto",
+    ])
+  );
+
+  const refOf = (schema: unknown): string | undefined =>
+    (schema as { $ref?: string; allOf?: { $ref?: string }[] })?.$ref ??
+    (schema as { allOf?: { $ref?: string }[] })?.allOf?.[0]?.$ref;
+
+  const transactions = spec.paths["/v1/{network}/close/transactions"].post?.responses?.["200"];
+  expect(
+    refOf(
+      (transactions as { content?: Record<string, { schema: unknown }> })?.content?.[
+        "application/json"
+      ]?.schema
+    )
+  ).toBe("#/components/schemas/TransactionsResponseDto");
+
+  // A clean single-field discriminator (`type`) - all 11 operation shapes must be mapped, by
+  // their real literal type values, not the "undefined" bug the SponsoredEntry union
+  // (account-state-response.dto.ts) once had.
+  const operations = (schemas["TxIntentDto"] as { properties?: Record<string, unknown> })
+    ?.properties?.["operations"] as {
+    items?: { oneOf?: unknown[]; discriminator?: { mapping?: Record<string, string> } };
+  };
+  expect(operations?.items?.oneOf?.length).toBe(11);
+  expect(Object.keys(operations?.items?.discriminator?.mapping ?? {})).toEqual(
+    expect.arrayContaining([
+      "path_payment_strict_send",
+      "payment",
+      "change_trust",
+      "account_merge",
+      "manage_sell_offer",
+      "manage_data",
+      "set_options",
+      "claim_claimable_balance",
+      "revoke_sponsorship",
+      "invoke_host_function",
+      "unknown",
+    ])
+  );
+});
+
 test("health and the service index are public but the product endpoints require the api-key", () => {
   const health = spec.paths["/health"].get;
   const index = spec.paths["/"].get;
