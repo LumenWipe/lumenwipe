@@ -25,6 +25,7 @@ import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 import { fail } from "@/common/fail";
 import { PathResponseDto, RevokeAllowanceResponseDto } from "./dto/account-responses.dto";
 import { AllowancesResultDto } from "./dto/allowance-responses.dto";
+import { AccountStateDto } from "./dto/account-state-response.dto";
 
 @ApiTags("account")
 @ApiBearerAuth("api-key")
@@ -40,7 +41,11 @@ export class AccountController {
     summary: "Read full on-chain account state (balances, trustlines, offers, signers).",
   })
   @ApiParam({ name: "address", description: "Stellar account (G...)." })
-  @ApiResponse({ status: 200, description: "Aggregated account state." })
+  @ApiResponse({
+    status: 200,
+    description: "Aggregated account state.",
+    type: AccountStateDto,
+  })
   @ApiResponse({ status: 400, description: "Invalid network or address." })
   @ApiQuery({
     name: "tokens",
