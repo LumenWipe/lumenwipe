@@ -7,7 +7,7 @@ import * as rpcModule from "@/lib/stellar/rpc";
 // Wiring coverage for #59's "real health check" item: `/health/deep` (HealthController.deep())
 // actually reflects whether Stellar RPC is reachable, on both networks independently, rather
 // than always reporting a static "ok" - and does so without depending on real network access in
-// CI, by mocking getRpcServer rather than hitting testnet/mainnet RPC for real.
+// CI, by mocking buildRpcServer rather than hitting testnet/mainnet RPC for real.
 
 async function buildController(): Promise<HealthController> {
   const moduleRef = await Test.createTestingModule({
@@ -22,9 +22,9 @@ afterEach(() => {
 });
 
 test("reports up on every network when RPC responds", async () => {
-  spyOn(rpcModule, "getRpcServer").mockReturnValue({
+  spyOn(rpcModule, "buildRpcServer").mockReturnValue({
     getHealth: () => Promise.resolve({ status: "healthy" }),
-  } as unknown as ReturnType<typeof rpcModule.getRpcServer>);
+  } as unknown as ReturnType<typeof rpcModule.buildRpcServer>);
 
   const controller = await buildController();
   const result = await controller.deep();
@@ -35,12 +35,12 @@ test("reports up on every network when RPC responds", async () => {
 });
 
 test("throws (503) when one network's RPC is unreachable, naming which one", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation(((network: string) => ({
+  spyOn(rpcModule, "buildRpcServer").mockImplementation(((network: string) => ({
     getHealth: () =>
       network === "mainnet"
         ? Promise.reject(new Error("connection refused"))
         : Promise.resolve({ status: "healthy" }),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  })) as unknown as typeof rpcModule.buildRpcServer);
 
   const controller = await buildController();
   let caught: unknown;
@@ -56,22 +56,31 @@ test("throws (503) when one network's RPC is unreachable, naming which one", asy
   expect((response.details as Record<string, { status: string }>).rpc_testnet?.status).toBe("up");
 });
 
-test("reports down (not a hang or a crash) when RPC never responds", async () => {
-  spyOn(rpcModule, "getRpcServer").mockReturnValue({
-    getHealth: () => new Promise(() => {}), // never resolves
-  } as unknown as ReturnType<typeof rpcModule.getRpcServer>);
+test("uses a dedicated, short-timeout server per network - never the shared transaction-building singleton", async () => {
+  const buildSpy = spyOn(rpcModule, "buildRpcServer").mockReturnValue({
+    getHealth: () => Promise.resolve({ status: "healthy" }),
+  } as unknown as ReturnType<typeof rpcModule.buildRpcServer>);
+  const getSpy = spyOn(rpcModule, "getRpcServer");
 
   const controller = await buildController();
-  let caught: unknown;
-  try {
-    await controller.deep();
-  } catch (error) {
-    caught = error;
-  }
+  await controller.deep();
 
-  expect(caught).toBeDefined();
-  const response = (caught as { getResponse: () => Record<string, unknown> }).getResponse();
-  const details = response.details as Record<string, { status: string; message?: string }>;
-  expect(details.rpc_testnet?.status).toBe("down");
-  expect(details.rpc_testnet?.message).toContain("timed out");
-}, 10_000);
+  expect(getSpy).not.toHaveBeenCalled();
+  expect(buildSpy).toHaveBeenCalledWith("testnet", { timeout: expect.any(Number) });
+  expect(buildSpy).toHaveBeenCalledWith("mainnet", { timeout: expect.any(Number) });
+});
+
+test("coalesces requests within the cache window into one shared result, without re-hitting RPC", async () => {
+  const buildSpy = spyOn(rpcModule, "buildRpcServer").mockReturnValue({
+    getHealth: () => Promise.resolve({ status: "healthy" }),
+  } as unknown as ReturnType<typeof rpcModule.buildRpcServer>);
+
+  const controller = await buildController();
+  const [first, second] = await Promise.all([controller.deep(), controller.deep()]);
+
+  expect(first).toBe(second);
+  // One call per network (testnet + mainnet), not one per request - a public, unthrottled
+  // route that fanned out a fresh RPC call per inbound request would be free amplification
+  // against the configured providers (#59's review flagged this).
+  expect(buildSpy).toHaveBeenCalledTimes(2);
+});

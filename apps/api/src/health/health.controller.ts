@@ -9,15 +9,28 @@ import {
 } from "@nestjs/terminus";
 import { Public } from "../auth/public.decorator";
 import { rateLimitHits } from "@/lib/stellar/horizon-http";
-import { getRpcServer } from "@/lib/stellar/rpc";
+import { buildRpcServer } from "@/lib/stellar/rpc";
 import type { Network } from "@/config/networks";
 import { VALID_NETWORKS } from "@/config/networks";
 
 const RPC_HEALTH_TIMEOUT_MS = 3000;
+// This route is public and unthrottled by design (an uptime monitor needs no API key), which
+// otherwise means every request fans out into `VALID_NETWORKS.length` real outbound RPC calls
+// with no limit on how often that can happen - a free amplification vector against the
+// configured RPC providers, worse than useless during a real outage (hammering an already-
+// struggling provider). Coalescing same-in-flight-or-recent results into one shared promise
+// bounds the real call rate to at most once per this window, independent of how many requests
+// arrive.
+const DEEP_CHECK_CACHE_MS = 2000;
 
 @ApiTags("health")
 @Controller("health")
 export class HealthController {
+  private cachedDeepCheck: {
+    result: ReturnType<HealthCheckService["check"]>;
+    expiresAt: number;
+  } | null = null;
+
   constructor(
     private readonly health: HealthCheckService,
     private readonly indicators: HealthIndicatorService
@@ -58,18 +71,23 @@ export class HealthController {
   @ApiResponse({ status: 200, description: "RPC reachable on every network." })
   @ApiResponse({ status: 503, description: "RPC unreachable on at least one network." })
   deep(): ReturnType<HealthCheckService["check"]> {
-    return this.health.check(VALID_NETWORKS.map((network) => () => this.checkRpc(network)));
+    const now = Date.now();
+    if (this.cachedDeepCheck && this.cachedDeepCheck.expiresAt > now) {
+      return this.cachedDeepCheck.result;
+    }
+    const result = this.health.check(VALID_NETWORKS.map((network) => () => this.checkRpc(network)));
+    this.cachedDeepCheck = { result, expiresAt: now + DEEP_CHECK_CACHE_MS };
+    return result;
   }
 
   private async checkRpc(network: Network): Promise<HealthIndicatorResult> {
     const indicator = this.indicators.check(`rpc_${network}`);
     try {
-      await Promise.race([
-        getRpcServer(network).getHealth(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("timed out")), RPC_HEALTH_TIMEOUT_MS)
-        ),
-      ]);
+      // A dedicated, short-timeout server, never the shared getRpcServer() singleton every real
+      // close operation uses - `timeout` here aborts the actual in-flight HTTP request (the SDK
+      // wires it into a real AbortSignal), so an unreachable provider can't leave this route
+      // holding an open outbound connection for however long that provider takes to give up.
+      await buildRpcServer(network, { timeout: RPC_HEALTH_TIMEOUT_MS }).getHealth();
       return indicator.up();
     } catch (error) {
       return indicator.down(error instanceof Error ? error.message : String(error));
