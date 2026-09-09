@@ -2,9 +2,10 @@
  * Adversarial coverage: high-slippage conversions (docs/architecture.md §17 and §8, issue #167).
  *
  * The only one of the three DeFi-adjacent hostile states named in #167 with real, testable
- * production code today - classic asset-to-XLM conversion, unlike the Blend/FxDAO exit adapters
- * the other two depend on (see undercollateralized-vaults.test.ts /
- * queued-backstop-withdrawals.test.ts for that stub-harness boundary).
+ * production code today - classic asset-to-XLM conversion, unlike the other two, whose real-code
+ * coverage now lives in blend-exit-adapter.test.ts, exit-invariants.test.ts, and
+ * exit-adapter-harness.test.ts (issue #222 retired the stub harness this comment used to point
+ * to).
  *
  * Existing coverage (asset-conversion.test.ts, closeAccountDisposition.test.ts,
  * stepEngine.test.ts) exercises op-shape correctness and total route loss (a mocked
