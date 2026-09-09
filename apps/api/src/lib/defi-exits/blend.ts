@@ -663,6 +663,18 @@ export function blendExitAdapter(
       return { steps, blockers: [] };
     },
 
+    // NOTE (issue #222): `plan()` above blocks the whole position with `blend_repay_asset_missing`
+    // or `blend_repay_asset_balance_unknown` the moment ANY liability cannot be repaid in full
+    // from the account's own balance - it never emits a partial repay. So by the time `steps`
+    // reaches here, every liability still open is one the plan already fully repaid (removed from
+    // `remaining` below) or one whose absence already aborted the whole plan before this function
+    // is even called. In practice `assessHealthFactor` (run-exit.ts) can never see a real Blend
+    // position it would flag today - that invariant is live defense-in-depth for the shared
+    // harness and any future adapter (here or elsewhere) whose repay step can be partial, not
+    // something Blend's current all-or-nothing repay design can trigger. Confirmed by exhaustive
+    // review of every blocker path in `plan()` above; see blend-exit-adapter.test.ts's repay
+    // coverage and exit-adapter-harness.test.ts's reference-adapter coverage of this same
+    // invariant for the parts that ARE exercised.
     health(_position, live, steps): HealthInputs | null {
       if (live.status !== "loaded") return null;
       if (live.positions.every((p) => p.liabilities === 0n)) return null;
