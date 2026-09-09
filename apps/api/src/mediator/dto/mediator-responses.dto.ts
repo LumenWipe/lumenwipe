@@ -23,6 +23,7 @@ export class MediatorCheckResultDto implements MediatorCheckResult {
 
   @ApiProperty({
     description: "The memo type the exchange requires, or null if none/not applicable.",
+    type: "string",
     enum: ["text", "id", "hash"],
     nullable: true,
   })

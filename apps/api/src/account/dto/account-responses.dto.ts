@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiProperty } from "@nestjs/swagger";
 import type { ConversionPath, PathResponse, RevokeAllowanceResponse } from "@lumenwipe/types";
 
 // Documentation-only (see close/dto/close-requests.dto.ts's header comment for why): these
@@ -31,7 +31,10 @@ export class ConversionPathDto implements ConversionPath {
 }
 
 export class PathResponseDto implements PathResponse {
-  @ApiPropertyOptional({
+  // Always present in the response - possibly null, never omitted - so @ApiProperty with
+  // nullable:true, not @ApiPropertyOptional (which would mark it omittable in the schema and
+  // mislead a generated client into treating a missing `path` key as valid).
+  @ApiProperty({
     description: "The conversion path, or null if none was found.",
     type: ConversionPathDto,
     nullable: true,
