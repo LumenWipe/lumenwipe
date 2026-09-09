@@ -27,6 +27,12 @@ async function bootstrap(): Promise<void> {
   for (const w of deprecatedEnvWarnings) bootLogger.warn(w);
   configureApp(app);
 
+  // Deliberately reachable without an API key (#59): the schema itself carries no secret or
+  // per-account data - it is a description of shapes, not a response - and an integrator needs
+  // to see the API before they have a key to call it with. `/docs`/`/docs-json` are also outside
+  // Nest's own routing entirely (SwaggerModule mounts them directly on the underlying HTTP
+  // adapter), so `ApiKeyGuard`'s `@Public()` mechanism could not gate them even if this called
+  // for it - a deliberate choice, not the guard failing to apply.
   const document = SwaggerModule.createDocument(app, buildOpenApiConfig());
   SwaggerModule.setup("docs", app, document);
 

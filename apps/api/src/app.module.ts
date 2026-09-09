@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
 import { ThrottlerModule } from "@nestjs/throttler";
+import { TerminusModule } from "@nestjs/terminus";
 import { HealthController } from "./health/health.controller";
 import { RootController } from "./root.controller";
 import { RegistryController } from "./config-api/registry.controller";
@@ -30,6 +31,7 @@ function positiveIntEnv(name: string, fallback: number): number {
     ThrottlerModule.forRoot([
       { ttl: positiveIntEnv("THROTTLE_TTL", 60_000), limit: positiveIntEnv("THROTTLE_LIMIT", 120) },
     ]),
+    TerminusModule.forRoot(),
     CloseModule,
     AccountModule,
     MediatorModule,
