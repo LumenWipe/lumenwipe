@@ -22,6 +22,7 @@
     "@nestjs/core": "^11.2.3",
     "@nestjs/platform-express": "^11.2.3",
     "@nestjs/swagger": "^11.4.7",
+    "@nestjs/terminus": "^11.1.1",
     "@nestjs/throttler": "^6.5.0",
     "@soroswap/sdk": "0.5.0",
     "@stellar/stellar-sdk": "16.0.1",
