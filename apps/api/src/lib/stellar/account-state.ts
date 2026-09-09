@@ -136,7 +136,7 @@ function assertUsableAccountBody(account: ApiAccount, address: string): void {
 export function horizonDepsFor(network: Network, fetchImpl?: typeof globalThis.fetch): HorizonDeps {
   const baseUrl = PATH_ROUTING_API_URLS[network];
   if (!baseUrl) {
-    throw new Error(`NEXT_PUBLIC_PATH_ROUTING_API_${network.toUpperCase()} is not configured`);
+    throw new Error(`PATH_ROUTING_API_${network.toUpperCase()} is not configured`);
   }
   return { baseUrl, fetch: fetchImpl };
 }

@@ -7,6 +7,7 @@ import { AppModule } from "./app.module";
 import { configureApp } from "./configure-app";
 import { buildOpenApiConfig } from "./openapi";
 import { checkEnv, formatEnvFailure } from "./config/validate-env";
+import { deprecatedEnvWarnings } from "./config/networks";
 
 async function bootstrap(): Promise<void> {
   // Before Nest builds anything. A service that starts without its configuration and fails
@@ -23,6 +24,7 @@ async function bootstrap(): Promise<void> {
   // Logged, not fatal: each of these disables a path rather than the service, and the operator
   // should learn it here rather than from a user hitting the disabled path.
   for (const w of warnings) bootLogger.warn(w.message);
+  for (const w of deprecatedEnvWarnings) bootLogger.warn(w);
   configureApp(app);
 
   const document = SwaggerModule.createDocument(app, buildOpenApiConfig());
