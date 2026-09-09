@@ -1,7 +1,7 @@
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
-import * as rpcModule from "@/lib/stellar/rpc";
 import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import type { AccountState, SponsoredEntry } from "@lumenwipe/types";
+import * as rpcModule from "@/lib/stellar/rpc";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 // Regression coverage for the real (money-moving) close builder honoring per-balance

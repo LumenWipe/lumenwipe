@@ -57,11 +57,9 @@ jobs:
             echo "::endgroup::"
           done
 
-  # Repo-wide, not per-package - Prettier has no workspace boundary, and formatting drift was
-  # previously invisible until someone ran `bun run format` locally (#149's PR discussion). Uses
-  # the same `.prettierignore` as the local `format`/`format:check` scripts, so a passing local
-  # check always matches this job.
-  format:
+  # Formatting is its own required status check (kept separate from the `check` matrix so a
+  # style-only failure doesn't get lost inside a package's own type-check/lint/test group).
+  prettier:
     name: prettier
     runs-on: ubuntu-latest
     steps:
@@ -75,8 +73,10 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Scoped to the workspaces, not the whole repo: root-level docs (README, CONTRIBUTING,
+      # diagrams/) and non-product assets aren't held to this convention.
       - name: Check formatting
-        run: bun run format:check
+        run: bunx prettier --check "apps/**/*" "packages/**/*" --ignore-unknown
 
   # Everything above runs from source, so nothing exercises the production image, and two
   # different failures have already shipped through that gap. One breaks the build: a workspace
@@ -118,7 +118,7 @@ jobs:
   ci:
     name: type-check · lint · test
     runs-on: ubuntu-latest
-    needs: [check, docker, format]
+    needs: [check, docker, prettier]
     if: ${{ always() }}
     steps:
       - name: Verify every check passed
@@ -131,8 +131,8 @@ jobs:
             echo "The API image failed to build."
             exit 1
           fi
-          if [ "${{ needs.format.result }}" != "success" ]; then
-            echo "Prettier formatting check failed."
+          if [ "${{ needs.prettier.result }}" != "success" ]; then
+            echo "Formatting check failed."
             exit 1
           fi
           echo "All package checks passed."
