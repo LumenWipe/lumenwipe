@@ -1,0 +1,67 @@
+---
+title: "LumenWipe Phase 1: Claimable Balances, Multisig, and Keeping What You Choose to Keep"
+description: "LumenWipe Phase 1 is live: full claimable-balance handling, a third per-asset disposition that lets you transfer instead of forfeit, a hardened account-state read path, and multisig accounts closed end to end."
+publishedAt: "2026-09-06"
+category: "Updates"
+tags:
+  [
+    "lumenwipe",
+    "stellar",
+    "claimable-balances",
+    "multisig",
+    "trustlines",
+    "launch",
+    "non-custodial",
+  ]
+---
+
+Phase 0 closed the common case: a standard account with trustlines and open offers. Real accounts turned out to be messier than that in three specific ways, all unrelated to Soroban - which is what we said would come next. We reordered around what was actually stopping people.
+
+Phase 1 is those three gaps closed, plus one more: a hardened account-state read path underneath all of it.
+
+<YouTubeEmbed id="mCXRiFISnI8" title="LumenWipe Phase 1: Tranche 1 walkthrough" />
+
+## What's new in Phase 1
+
+**Claimable balances, end to end.** A claimable balance used to be invisible to the plan. Now LumenWipe enumerates every claimable balance on the account, including its claim predicate and whether the account is the one sponsoring it, and lets you choose which ones to claim before the merge. If claiming would require a trustline the account doesn't have, LumenWipe adds it, claims, and removes it in the same plan rather than dead-ending. An account that is itself sponsoring someone else's claimable balance is now surfaced as a blocker with a plain-language explanation instead of failing silently mid-close.
+
+**A third choice for every asset: keep it, don't just lose it.** Every non-XLM balance used to have exactly two exits: convert it to XLM on the DEX, or send it back to its issuer. Neither works if you actually want to keep the asset - say, consolidating a secondary account that holds USDC into your main one. Phase 1 adds **transfer**: send the full balance, as that asset, to any account that already holds the trustline for it. Convert and return-to-issuer are still there for everything else.
+
+**A hardened account-state read.** Underneath all of this, LumenWipe now reads every account through one Horizon-compatible path instead of two disagreeing ones. The plan's completeness check - reconciling the account's actual sub-entry count against what got enumerated - runs against that same live data, and a mismatch is a blocker, not a guess.
+
+**Multisig accounts, closed.** An account protected by more than one signer used to have no path through LumenWipe at all. Phase 1 gathers signatures across multiple wallets and keys on the same transaction, in one session, until the account's actual signing threshold is met - covering ordinary ed25519 co-signers, and surfacing `hash(x)` and pre-authorized-transaction signers with clear manual-path guidance where automatic signing isn't structurally possible.
+
+## What Phase 1 includes
+
+| Feature                                             | Status      |
+| --------------------------------------------------- | ----------- |
+| Claimable balance enumeration and selected claiming | ✓ Available |
+| Trustline remediation for unclaimable balances      | ✓ Available |
+| Sponsorship-of-claimable-balance detection          | ✓ Available |
+| Transfer disposition (keep the asset, move it)      | ✓ Available |
+| Convert and return-to-issuer dispositions           | ✓ Available |
+| Pluggable account-state provider                    | ✓ Available |
+| Multisig signature gathering across wallets         | ✓ Available |
+| `hash(x)` / pre-auth-tx signer guidance             | ✓ Available |
+
+Everything above still holds to Phase 0's rule: the full plan is deterministic, reviewable before anything executes, and every transaction is signed in your browser. Your secret key never reaches LumenWipe servers.
+
+## Why this came before Soroban
+
+The Phase 0 post said Soroban positions were next. Running real testnet accounts through the guided flow surfaced a different priority first: accounts holding claimable balances they had no way to act on, users forced to choose between converting or burning an asset they wanted to keep, and multisig accounts that couldn't use LumenWipe at all. None of that is Soroban-related, and all of it blocks a real close today. We built it first.
+
+Soroban and DeFi positions are still coming - that work is now Phase 2.
+
+## What comes next
+
+Phase 2 extends wind-down support to Soroban positions:
+
+- Exit liquidity pool positions
+- Withdraw from Soroban contract vaults
+- Handle sponsored ledger entries
+
+We're building in public. If you run into an issue or have feedback, open an issue on the project repository.
+
+---
+
+Ready to wind down an account? [Launch LumenWipe](/public)

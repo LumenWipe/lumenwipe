@@ -51,19 +51,22 @@ export function getAllPostMetas(): PostMeta[] {
   return fs
     .readdirSync(CONTENT_DIR)
     .filter((f) => f.endsWith(".mdx"))
-    .map((file) => {
+    .flatMap((file) => {
       const slug = file.replace(/\.mdx$/, "");
       const raw = fs.readFileSync(path.join(CONTENT_DIR, file), "utf8");
       const { data, content } = matter(raw);
-      return {
-        slug,
-        title: data.title as string,
-        description: data.description as string,
-        publishedAt: data.publishedAt as string,
-        category: data.category as Category,
-        tags: (data.tags as string[]) ?? [],
-        readingTime: readingTime(content).text,
-      };
+      if (data.draft === true) return [];
+      return [
+        {
+          slug,
+          title: data.title as string,
+          description: data.description as string,
+          publishedAt: data.publishedAt as string,
+          category: data.category as Category,
+          tags: (data.tags as string[]) ?? [],
+          readingTime: readingTime(content).text,
+        },
+      ];
     })
     .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
 }
@@ -72,6 +75,9 @@ export function getPost(slug: string): Post {
   const filePath = path.join(CONTENT_DIR, `${slug}.mdx`);
   const raw = fs.readFileSync(filePath, "utf8");
   const { data, content } = matter(raw);
+  if (data.draft === true) {
+    throw new Error(`Post "${slug}" is a draft and is not published yet`);
+  }
   return {
     slug,
     title: data.title as string,
@@ -89,5 +95,9 @@ export function getAllSlugs(): string[] {
   return fs
     .readdirSync(CONTENT_DIR)
     .filter((f) => f.endsWith(".mdx"))
+    .filter((f) => {
+      const raw = fs.readFileSync(path.join(CONTENT_DIR, f), "utf8");
+      return matter(raw).data.draft !== true;
+    })
     .map((f) => f.replace(/\.mdx$/, ""));
 }

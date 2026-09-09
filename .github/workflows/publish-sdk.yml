@@ -1,0 +1,71 @@
+name: Publish SDK (npm)
+
+# Triggered by a version tag (sdk-vX.Y.Z) so a publish is always a deliberate, versioned release -
+# not a side effect of every merge to main. workflow_dispatch is a manual escape hatch for a
+# re-run (e.g. the tag was pushed but the run failed before npm publish completed).
+on:
+  push:
+    tags:
+      - "sdk-v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing sdk-vX.Y.Z tag to publish from"
+        required: true
+
+permissions:
+  contents: read
+  id-token: write # required for npm provenance attestation
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Same gate as CI's sdk matrix entry, run again here since a tag push does not
+      # depend on the CI workflow having run against this exact ref.
+      - name: Type-check, lint, test
+        run: |
+          bun run --filter '@lumenwipe/sdk' type-check
+          bun run --filter '@lumenwipe/sdk' lint
+          bun run --filter '@lumenwipe/sdk' test
+
+      - name: Build
+        run: bun run --filter '@lumenwipe/sdk' build
+
+      # The tag is the source of truth for what's being published; package.json must agree,
+      # or a mismatched dist/version pair could reach the registry silently.
+      - name: Verify tag matches package.json version
+        working-directory: packages/sdk
+        run: |
+          TAG="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          TAG_VERSION="${TAG#sdk-v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "Tag $TAG (version $TAG_VERSION) does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+
+      - name: Set up Node for npm publish
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish to npm
+        working-directory: packages/sdk
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
