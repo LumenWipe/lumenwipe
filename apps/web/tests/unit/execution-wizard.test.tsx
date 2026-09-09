@@ -11,11 +11,12 @@ import * as sessionStore from "@/lib/session/store";
 // ExecutionWizard calls useRouter() (to navigate to /complete on success) - outside of a
 // real Next.js app router tree that throws "invariant expected app router to be mounted".
 // This test never reaches the COMPLETE-phase navigation itself, so a no-op stub is enough.
+//
 // Every stand-in below is a spyOn on the real module object, installed per test and undone by
 // mock.restore(): mock.module replaces a module for the whole `bun test` process, and the
 // replacement of useCloseExecution here was reaching use-close-execution.test.tsx whenever this
 // file ran first - Bun's file order differs between machines - so that file was testing this
-// stub instead of the hook (confirmed from CI logs on 2026-09-02).
+// stub instead of the hook.
 function stubRouter(): void {
   spyOn(navigation, "useRouter").mockImplementation(
     () => ({ push: () => {} }) as unknown as ReturnType<typeof navigation.useRouter>
