@@ -24,6 +24,7 @@ import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils
 import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 import { fail } from "@/common/fail";
 import { PathResponseDto, RevokeAllowanceResponseDto } from "./dto/account-responses.dto";
+import { AllowancesResultDto } from "./dto/allowance-responses.dto";
 
 @ApiTags("account")
 @ApiBearerAuth("api-key")
@@ -101,7 +102,11 @@ export class AccountController {
       "Read every live SEP-41 allowance the account has granted (architecture.md §12). Read-only.",
   })
   @ApiParam({ name: "address", description: "Stellar account (G...)." })
-  @ApiResponse({ status: 200, description: "Live, non-zero allowances, best effort." })
+  @ApiResponse({
+    status: 200,
+    description: "Live, non-zero allowances, best effort.",
+    type: AllowancesResultDto,
+  })
   @ApiResponse({ status: 400, description: "Invalid network or address." })
   async allowances(@Param("network") network: string, @Param("address") address: string) {
     if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);

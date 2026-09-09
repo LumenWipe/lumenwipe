@@ -13,6 +13,7 @@ import {
   SubmitRequestDto,
 } from "./dto/close-requests.dto";
 import { SubmitResponseDto } from "./dto/close-responses.dto";
+import { PlanResponseDto } from "./dto/plan-response.dto";
 import { isValidNetwork, type Network } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { readAccountState } from "@/lib/close-api/read-account";
@@ -107,6 +108,7 @@ export class CloseController {
   @ApiResponse({
     status: 200,
     description: "Plan with pending decision points, fee and freed-reserve estimate.",
+    type: PlanResponseDto,
   })
   @ApiResponse({ status: 400, description: "Invalid network, source, destination, or JSON body." })
   @ApiResponse({ status: 404, description: "Source account not found." })

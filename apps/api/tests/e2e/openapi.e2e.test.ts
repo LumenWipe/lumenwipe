@@ -97,6 +97,44 @@ test("response DTOs are present as schemas and wired to their 200 responses (#59
   ).toBe("#/components/schemas/MediatorCheckResultDto");
 });
 
+test("phase 2 response schemas (allowances, close/plan) are present and wired (#59)", () => {
+  const schemas = Object.keys(spec.components?.schemas ?? {});
+  expect(schemas).toEqual(
+    expect.arrayContaining([
+      "AllowancesResultDto",
+      "AllowanceDto",
+      "AllowanceCoverageDto",
+      "PlanResponseDto",
+      "PlannedStepDto",
+      "DecisionPointDto",
+      "DecisionOptionDto",
+      "PlanBlockerDto",
+      "PlanResponseBlockerDto",
+    ])
+  );
+
+  const refOf = (schema: unknown): string | undefined =>
+    (schema as { $ref?: string; allOf?: { $ref?: string }[] })?.$ref ??
+    (schema as { allOf?: { $ref?: string }[] })?.allOf?.[0]?.$ref;
+
+  const allowances = spec.paths["/{network}/allowances/{address}"].get?.responses?.["200"];
+  expect(
+    refOf(
+      (allowances as { content?: Record<string, { schema: unknown }> })?.content?.[
+        "application/json"
+      ]?.schema
+    )
+  ).toBe("#/components/schemas/AllowancesResultDto");
+
+  const plan = spec.paths["/v1/{network}/close/plan"].post?.responses?.["200"];
+  expect(
+    refOf(
+      (plan as { content?: Record<string, { schema: unknown }> })?.content?.["application/json"]
+        ?.schema
+    )
+  ).toBe("#/components/schemas/PlanResponseDto");
+});
+
 test("health and the service index are public but the product endpoints require the api-key", () => {
   const health = spec.paths["/health"].get;
   const index = spec.paths["/"].get;
