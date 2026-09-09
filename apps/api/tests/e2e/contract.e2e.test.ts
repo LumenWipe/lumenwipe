@@ -153,10 +153,23 @@ test("malformed JSON on mediator/sign returns its plain error contract", async (
   expect(res.body.error.code).toBe("invalid_body");
 });
 
-test("fee-bump/sponsor is unavailable in this test environment (no fee account secret) rather than 404", async () => {
-  const res = await authPost("/testnet/fee-bump/sponsor").send({ transaction: "AAAA" });
-  expect(res.status).toBe(503);
-  expect(res.body.error.code).toBe("fee_bump_not_configured");
+test("fee-bump/sponsor is unavailable with no fee account secret configured, rather than 404", async () => {
+  // Force the unconfigured state explicitly instead of assuming the ambient environment has no
+  // fee account secret - a dev's own .env.local (needed for local full-flow testing per
+  // CLAUDE.md) sets a real one, which silently made this test assert the wrong thing (a parsed
+  // secret means getFeeAccountKeypair returns non-null, so the request falls through past the
+  // 503 branch to the transaction body's own 400 on malformed XDR - still a failure, just not
+  // the one this test claims to check).
+  const original = process.env.FEE_ACCOUNT_SECRET_TESTNET;
+  delete process.env.FEE_ACCOUNT_SECRET_TESTNET;
+  try {
+    const res = await authPost("/testnet/fee-bump/sponsor").send({ transaction: "AAAA" });
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe("fee_bump_not_configured");
+  } finally {
+    if (original === undefined) delete process.env.FEE_ACCOUNT_SECRET_TESTNET;
+    else process.env.FEE_ACCOUNT_SECRET_TESTNET = original;
+  }
 });
 
 test("malformed JSON on fee-bump/sponsor returns the same error contract as every other route", async () => {
