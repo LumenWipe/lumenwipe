@@ -59,6 +59,44 @@ test("request DTOs are present as schemas", () => {
   );
 });
 
+test("response DTOs are present as schemas and wired to their 200 responses (#59)", () => {
+  const schemas = Object.keys(spec.components?.schemas ?? {});
+  expect(schemas).toEqual(
+    expect.arrayContaining([
+      "SubmitResponseDto",
+      "RevokeAllowanceResponseDto",
+      "PathResponseDto",
+      "ConversionPathDto",
+      "MediatorSignResponseDto",
+      "MediatorCheckResultDto",
+      "FeeBumpSponsorResponseDto",
+      "ServedRegistryDto",
+      "RegistryEntryDto",
+    ])
+  );
+
+  const refOf = (schema: unknown): string | undefined =>
+    (schema as { $ref?: string; allOf?: { $ref?: string }[] })?.$ref ??
+    (schema as { allOf?: { $ref?: string }[] })?.allOf?.[0]?.$ref;
+
+  const submit = spec.paths["/v1/{network}/submit"].post?.responses?.["200"];
+  expect(
+    refOf(
+      (submit as { content?: Record<string, { schema: unknown }> })?.content?.["application/json"]
+        ?.schema
+    )
+  ).toBe("#/components/schemas/SubmitResponseDto");
+
+  const mediatorCheck = spec.paths["/{network}/mediator/check/{address}"].get?.responses?.["200"];
+  expect(
+    refOf(
+      (mediatorCheck as { content?: Record<string, { schema: unknown }> })?.content?.[
+        "application/json"
+      ]?.schema
+    )
+  ).toBe("#/components/schemas/MediatorCheckResultDto");
+});
+
 test("health and the service index are public but the product endpoints require the api-key", () => {
   const health = spec.paths["/health"].get;
   const index = spec.paths["/"].get;

@@ -23,6 +23,7 @@ import {
 import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils/errors";
 import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 import { fail } from "@/common/fail";
+import { PathResponseDto, RevokeAllowanceResponseDto } from "./dto/account-responses.dto";
 
 @ApiTags("account")
 @ApiBearerAuth("api-key")
@@ -136,7 +137,11 @@ export class AccountController {
       },
     },
   })
-  @ApiResponse({ status: 200, description: "The unsigned revocation transaction." })
+  @ApiResponse({
+    status: 200,
+    description: "The unsigned revocation transaction.",
+    type: RevokeAllowanceResponseDto,
+  })
   @ApiResponse({ status: 400, description: "Invalid network, owner, token, or spender." })
   @ApiResponse({ status: 422, description: "The revocation could not be built safely." })
   async revokeAllowance(
@@ -180,7 +185,11 @@ export class AccountController {
   @ApiOperation({ summary: "Find a conversion path from an asset to XLM." })
   @ApiQuery({ name: "fromAsset", description: "Asset to convert (e.g. CODE:ISSUER or 'native')." })
   @ApiQuery({ name: "amount", description: "Amount of the source asset." })
-  @ApiResponse({ status: 200, description: "The conversion path (or null if none)." })
+  @ApiResponse({
+    status: 200,
+    description: "The conversion path (or null if none).",
+    type: PathResponseDto,
+  })
   @ApiResponse({ status: 400, description: "Invalid network or missing query params." })
   async paths(
     @Param("network") network: string,

@@ -12,6 +12,7 @@ import {
   CloseTransactionsRequestDto,
   SubmitRequestDto,
 } from "./dto/close-requests.dto";
+import { SubmitResponseDto } from "./dto/close-responses.dto";
 import { isValidNetwork, type Network } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { readAccountState } from "@/lib/close-api/read-account";
@@ -552,7 +553,11 @@ export class CloseController {
   @HttpCode(200)
   @ApiOperation({ summary: "Submit a client-signed transaction and wait for confirmation." })
   @ApiBody({ type: SubmitRequestDto })
-  @ApiResponse({ status: 200, description: "Confirmed: returns the transaction hash and ledger." })
+  @ApiResponse({
+    status: 200,
+    description: "Confirmed: returns the transaction hash and ledger.",
+    type: SubmitResponseDto,
+  })
   @ApiResponse({
     status: 400,
     description: "Invalid or unsigned/undecodable transaction envelope.",

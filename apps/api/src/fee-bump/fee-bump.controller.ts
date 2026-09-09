@@ -9,6 +9,7 @@ import {
 } from "@nestjs/swagger";
 import { FeeBumpTransaction, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
 import { FeeBumpRequestDto } from "./dto/fee-bump.dto";
+import { FeeBumpSponsorResponseDto } from "./dto/fee-bump-responses.dto";
 import { actsForOneAccount, isAllowedWindDownOperation } from "./fee-bump-validation";
 import { isValidNetwork, NETWORK_PASSPHRASES } from "@/config/networks";
 import { BASE_FEE_STROOPS, MAX_FEE_BUMP_STROOPS } from "@/config/constants";
@@ -47,6 +48,7 @@ export class FeeBumpController {
   @ApiResponse({
     status: 200,
     description: "The transaction wrapped in a fee-bump envelope and signed (base64 XDR).",
+    type: FeeBumpSponsorResponseDto,
   })
   @ApiResponse({ status: 400, description: "Missing/invalid transaction or disallowed structure." })
   @ApiResponse({ status: 503, description: "Sponsored-fee flow not configured on this server." })

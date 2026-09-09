@@ -9,7 +9,7 @@ import registry from "@/config/exchange-registry.json";
  * floor for when the endpoint is unreachable.
  */
 
-interface RegistryEntry {
+export interface RegistryEntry {
   address: string;
   name: string;
   domain: string;
