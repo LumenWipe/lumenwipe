@@ -248,6 +248,24 @@ function assertMergeShape(
 const SWAP_FUNCTION = "swap_exact_tokens_for_tokens";
 const CONTRACT_ID = /^C[A-Z2-7]{55}$/;
 
+/**
+ * SEP-41 functions a DeFi exit's own contract may legitimately call on a token it sub-invokes
+ * (a held asset's Stellar Asset Contract, or a position's own token): each function's exact
+ * argument count, and which position - if any - holds the recipient or spender that must be
+ * pinned. `recipientArg: -1` means the function moves no balance to a named third party (a burn
+ * destroys value; there is nothing to pin beyond the account whose balance it burns, which
+ * `accountsReferenced` already requires to be the one being closed). `argCount` is checked
+ * before `recipientArg` is ever indexed, the same way the existing plain-transfer branch checks
+ * `args.length !== 3` before trusting `args[1]` as a destination.
+ */
+const TOKEN_SUB_INVOCATION_FUNCTIONS: Record<string, { argCount: number; recipientArg: number }> = {
+  transfer: { argCount: 3, recipientArg: 1 }, // transfer(from, to, amount)
+  transfer_from: { argCount: 4, recipientArg: 2 }, // transfer_from(spender, from, to, amount)
+  approve: { argCount: 4, recipientArg: 1 }, // approve(from, spender, amount, expiration_ledger)
+  burn: { argCount: 2, recipientArg: -1 }, // burn(from, amount)
+  burn_from: { argCount: 3, recipientArg: -1 }, // burn_from(spender, from, amount)
+};
+
 interface SwapArgs {
   /** The token being spent. */
   token: string;
@@ -720,6 +738,44 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
           ) {
             throw new VerificationError(
               "A DeFi exit would send funds to, or call, a contract this account has no position, balance, or pool token in."
+            );
+          }
+        }
+        // The check above pins every contract named in the tree to a known position, balance,
+        // or pool token - but says nothing about what a sub-invocation on a token actually does.
+        // The top-level call (checked against exitFunctions above) could be a legitimate
+        // `withdraw`, while a sub-invocation the same signature authorizes calls `transfer` on a
+        // held token with an arbitrary recipient - `accountsReferenced` only catches that
+        // recipient when it is a plain account, not a contract. Every sub-invocation on a token
+        // this account holds or has a position in is pinned here to a function that only ever
+        // moves value to this account or to the contract at the root of this exact invocation -
+        // never a third party (issue #208).
+        for (const sub of op.subInvocations) {
+          const isToken =
+            expected.heldTokenContracts.includes(sub.contract) ||
+            expected.positionTokenContracts.includes(sub.contract);
+          if (!isToken) continue;
+          const shape = TOKEN_SUB_INVOCATION_FUNCTIONS[sub.function];
+          if (shape === undefined) {
+            throw new VerificationError(
+              "A DeFi exit would call a function on a token that LumenWipe does not use to leave a protocol."
+            );
+          }
+          // A mismatched argument count cannot be this function's real SEP-41 signature - reject
+          // before trusting `args[recipientArg]` as the recipient, the same way the existing
+          // plain-transfer branch checks `args.length !== 3` before indexing into it.
+          if (sub.args.length !== shape.argCount) {
+            throw new VerificationError(
+              "A DeFi exit would call a token function with an argument count that does not match its real signature."
+            );
+          }
+          if (
+            shape.recipientArg >= 0 &&
+            sub.args[shape.recipientArg] !== expected.source &&
+            sub.args[shape.recipientArg] !== op.contract
+          ) {
+            throw new VerificationError(
+              "A DeFi exit would move a token balance to an address other than this account or the protocol it is exiting."
             );
           }
         }
