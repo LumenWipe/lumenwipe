@@ -16,15 +16,18 @@ const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
 
-function manyTrustlines(n: number): Trustline[] {
-  return Array.from({ length: n }, (_, i) => ({
-    asset: `AST${i}:${ISSUER}`,
-    balance: "0",
-    authorized: true,
-    issuer: ISSUER,
-    code: `AST${i}`,
-    limit: "1000",
-  }));
+function manyTrustlines(n: number, start = 0): Trustline[] {
+  return Array.from({ length: n }, (_, i) => {
+    const idx = start + i;
+    return {
+      asset: `AST${idx}:${ISSUER}`,
+      balance: "0",
+      authorized: true,
+      issuer: ISSUER,
+      code: `AST${idx}`,
+      limit: "1000",
+    };
+  });
 }
 
 function accountState(over: Partial<AccountState> = {}): AccountState {
@@ -105,8 +108,10 @@ test("a follow-up call against the reduced live state converges to the merge", a
     rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
-  // Simulates the state after the first round's chunk landed: far fewer trustlines left.
-  const state = accountState({ trustlines: manyTrustlines(2), numSubEntries: 2 });
+  // Not an arbitrary smaller account: exactly what the 150-trustline case's first round (a
+  // fresh 100-op chunk, AST0..AST99 by construction order) leaves behind once it lands - the
+  // real live-re-read a second /close/transactions call would see, not just "some" reduction.
+  const state = accountState({ trustlines: manyTrustlines(50, 100), numSubEntries: 50 });
   const result = await buildCloseTransactions(state, DEST, {}, "testnet");
 
   expect(result.transactions).toHaveLength(1);
