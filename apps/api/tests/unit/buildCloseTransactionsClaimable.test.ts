@@ -68,9 +68,9 @@ function rpcServerStub() {
 }
 
 // The affordability check is patched with spyOn on the real module object, never with
-// mock.module: a process-wide module replacement was observed leaking into
-// tests/unit/sponsorship-affordability.test.ts in CI (its own stubbed results showing up there
-// depending on file order), and mock.restore() undoes a spy reliably.
+// mock.module: a process-wide module replacement leaks into
+// tests/unit/sponsorship-affordability.test.ts depending on file order, since Bun's mock.module
+// replaces the module for the whole `bun test` process rather than just this file.
 const sponsorshipAffordability = await import("@/lib/stellar/sponsorship-affordability");
 afterEach(() => {
   mock.restore();

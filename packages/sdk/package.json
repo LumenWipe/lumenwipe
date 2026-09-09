@@ -1,7 +1,8 @@
 {
   "name": "@lumenwipe/sdk",
   "version": "0.1.0",
-  "private": true,
+  "description": "Typed fetch client for the LumenWipe API - non-custodial Stellar account closing.",
+  "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -19,7 +20,25 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LumenWipe/lumenwipe.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://github.com/LumenWipe/lumenwipe/tree/main/packages/sdk#readme",
+  "bugs": "https://github.com/LumenWipe/lumenwipe/issues",
+  "keywords": [
+    "stellar",
+    "sdk",
+    "wallet",
+    "account-merge"
   ],
   "scripts": {
     "build": "bun run --filter '@lumenwipe/types' build && tsup src/index.ts --format esm,cjs --clean && tsc -p tsconfig.build.json && api-extractor run --local && cp dist/index.d.ts dist/index.d.cts",
