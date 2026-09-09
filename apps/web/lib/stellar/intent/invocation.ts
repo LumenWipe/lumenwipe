@@ -1,5 +1,5 @@
 import { Address, scValToNative, xdr, type Operation } from "@stellar/stellar-sdk";
-import type { IntentOperationBody } from "@/types/close-api";
+import type { IntentOperationBody, SubInvocationCall } from "@/types/close-api";
 
 type Invocation = Extract<IntentOperationBody, { type: "invoke_host_function" }>;
 
@@ -47,17 +47,45 @@ function collectFromValue(value: xdr.ScVal, into: Referenced): void {
  * Walks an authorized invocation tree: what the signature will let the contract do on the
  * signer's behalf, including every nested call. Returns false when the tree contains anything
  * other than plain contract calls (creating contracts, for instance), which no close needs.
+ * Every call is also recorded into `subInvocations`, except the one node that is genuinely the
+ * operation's own top-level call, already described elsewhere by `contract`/`function`/`args`.
+ *
+ * `op.auth` can carry more than one entry for the same source-account credentials, each rooted
+ * wherever that address's authorization was actually required in the real call graph - not
+ * necessarily at the operation's own invoked function. A hostile build can leave the legitimate
+ * top-level call untouched and add a second, independent entry rooted directly at, say, a held
+ * token's `transfer` - that root would never reach `subInvocations` if every entry's root were
+ * unconditionally treated as "the same call already described elsewhere." So `isEntryRoot` alone
+ * is not enough: only a root that also matches `topLevel`'s own contract and function is the
+ * genuine top-level call; any other entry's root is a sub-invocation just like a nested call,
+ * and only a node's own direct entry-root position - never a deeper descendant - is even a
+ * candidate for that exemption.
  */
-function collectFromInvocation(node: xdr.SorobanAuthorizedInvocation, into: Referenced): boolean {
+function collectFromInvocation(
+  node: xdr.SorobanAuthorizedInvocation,
+  into: Referenced,
+  subInvocations: SubInvocationCall[],
+  topLevel: { contract: string; function: string },
+  isEntryRoot: boolean
+): boolean {
   const fn = node.function();
   if (fn.switch() !== xdr.SorobanAuthorizedFunctionType.sorobanAuthorizedFunctionTypeContractFn()) {
     return false;
   }
   const call = fn.contractFn();
+  const contract = Address.fromScAddress(call.contractAddress()).toString();
+  const functionName = call.functionName().toString();
   collectAddress(call.contractAddress(), into);
   for (const arg of call.args()) collectFromValue(arg, into);
+  const isTopLevelCall =
+    isEntryRoot && contract === topLevel.contract && functionName === topLevel.function;
+  if (!isTopLevelCall) {
+    subInvocations.push({ contract, function: functionName, args: call.args().map(render) });
+  }
   let plain = true;
-  for (const sub of node.subInvocations()) plain = collectFromInvocation(sub, into) && plain;
+  for (const sub of node.subInvocations()) {
+    plain = collectFromInvocation(sub, into, subInvocations, topLevel, false) && plain;
+  }
   return plain;
 }
 
@@ -101,9 +129,14 @@ export function describeInvocation(op: Operation.InvokeHostFunction): IntentOper
   const referenced: Referenced = { accounts: new Set(), contracts: new Set(), unsupported: 0 };
   const args = invocation.args();
   for (const arg of args) collectFromValue(arg, referenced);
+  const topLevel = {
+    contract: Address.fromScAddress(invocation.contractAddress()).toString(),
+    function: invocation.functionName().toString(),
+  };
 
   let authorizesBeyondSelf = false;
   let authDepth = 0;
+  const subInvocations: SubInvocationCall[] = [];
   for (const entry of op.auth ?? []) {
     authDepth = Math.max(authDepth, invocationDepth(entry.rootInvocation()));
     if (
@@ -113,17 +146,22 @@ export function describeInvocation(op: Operation.InvokeHostFunction): IntentOper
       // authorization, which a single-account close never needs.
       authorizesBeyondSelf = true;
     }
-    if (!collectFromInvocation(entry.rootInvocation(), referenced)) authorizesBeyondSelf = true;
+    if (
+      !collectFromInvocation(entry.rootInvocation(), referenced, subInvocations, topLevel, true)
+    ) {
+      authorizesBeyondSelf = true;
+    }
   }
 
   const described: Invocation = {
     type: "invoke_host_function",
-    contract: Address.fromScAddress(invocation.contractAddress()).toString(),
-    function: invocation.functionName().toString(),
+    contract: topLevel.contract,
+    function: topLevel.function,
     args: args.map(render),
     accountsReferenced: [...referenced.accounts].sort(),
     contractsReferenced: [...referenced.contracts].sort(),
     unsupportedAddressCount: referenced.unsupported,
+    subInvocations,
     authorizesBeyondSelf,
     authDepth,
   };
