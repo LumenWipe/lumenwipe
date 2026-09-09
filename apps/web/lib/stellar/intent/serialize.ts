@@ -1,4 +1,5 @@
 import { TransactionBuilder, StrKey, type Asset, type Transaction } from "@stellar/stellar-sdk";
+import { describeInvocation } from "./invocation";
 import type { AccountSigner } from "@/types/account";
 import type { IntentOperation, IntentOperationBody, TxIntent } from "@/types/close-api";
 
@@ -117,6 +118,8 @@ function normalizeOp(op: Transaction["operations"][number]): IntentOperationBody
       return { type: "revoke_sponsorship", entryKind: "data_entry", owner: op.account };
     case "revokeSignerSponsorship":
       return { type: "revoke_sponsorship", entryKind: "signer", owner: op.account };
+    case "invokeHostFunction":
+      return describeInvocation(op);
     default:
       // Any operation the close vocabulary does not recognize is preserved as `unknown`
       // (not dropped) so verify() can reject a smuggled effect it cannot describe.
@@ -159,9 +162,10 @@ export function intentFromXdr(xdr: string, networkPassphrase: string): TxIntent 
       (o): o is Extract<IntentOperation, { type: "path_payment_strict_send" }> =>
         o.type === "path_payment_strict_send"
     )
-    .reduce<
-      string | null
-    >((acc, o) => (acc === null ? o.destMin : sumAmounts(acc, o.destMin)), null);
+    .reduce<string | null>(
+      (acc, o) => (acc === null ? o.destMin : sumAmounts(acc, o.destMin)),
+      null
+    );
 
   const memoValue = tx.memo?.value;
   const memoTypeRaw = tx.memo?.type;

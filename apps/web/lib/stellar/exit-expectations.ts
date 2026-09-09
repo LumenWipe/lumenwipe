@@ -1,0 +1,105 @@
+import { Asset } from "@stellar/stellar-sdk";
+import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
+import { conversionContractsFor, EXIT_FUNCTIONS, exitContractsFor } from "@/lib/contract-registry";
+import type { AccountState } from "@/types/account";
+
+/**
+ * What the client can vouch for about a DeFi exit before signing it, taken from the account read
+ * the user reviewed - the same honest footing `nativeBalance` and `accountSigners` stand on.
+ *
+ * - `exitContracts`: the pools, pairs, or vaults the analysis showed this account holds a
+ *   position in, plus the bundled registry's routers for those protocols (an AMM withdrawal goes
+ *   through the router, not the pair). An exit may invoke only one of these, so a transaction
+ *   cannot call an arbitrary contract just because the API said so.
+ * - `heldTokenContracts`: the Stellar Asset Contract of every asset the account holds (native
+ *   XLM and each trustline). An exit's arguments and authorization tree may name these - a
+ *   repay spends one, a withdrawal receives one.
+ * - `positionTokenContracts`: the tokens of each position detection could read (an LP pair's
+ *   two tokens). A withdrawal pays these out, so the call may name them too - and nothing else.
+ * - `exitFunctions`: for each contract an exit may invoke, the one function that leaves that
+ *   protocol (a Blend pool's `submit`, a Soroswap router's `remove_liquidity`). The contracts
+ *   themselves come from the API's read, so this is what stops a hostile read from turning a
+ *   whitelisted contract into an arbitrary call.
+ *
+ * - `conversionContracts`: the bundled registry's Soroswap aggregator and router - the only
+ *   contracts a token conversion may be entered through. From the registry alone, never the API.
+ *
+ * Empty inputs fail closed: with no account read, every exit is refused rather than trusted.
+ */
+export interface ExitExpectations {
+  exitContracts: string[];
+  heldTokenContracts: string[];
+  positionTokenContracts: string[];
+  exitFunctions: Record<string, string[]>;
+  conversionContracts: string[];
+  /** XLM's contract on this network: the one asset a token conversion may buy. */
+  xlmContract: string;
+}
+
+export function exitExpectations(
+  accountState: AccountState | null | undefined,
+  network: Network
+): ExitExpectations {
+  if (!accountState) {
+    return {
+      exitContracts: [],
+      conversionContracts: [],
+      xlmContract: Asset.native().contractId(NETWORK_PASSPHRASES[network]),
+      heldTokenContracts: [],
+      positionTokenContracts: [],
+      exitFunctions: {},
+    };
+  }
+  const passphrase = NETWORK_PASSPHRASES[network];
+  // A read with no positions section (an older session, a partial state) vouches for nothing.
+  const positions = accountState.defiPositions?.positions ?? [];
+  const trustlines = accountState.trustlines ?? [];
+  // Besides the positions' own contracts, an exit may call the bundled registry's routers (an
+  // AMM withdrawal goes through the router) and backstops (Blend's queued withdrawal), each
+  // pinned to its own functions; a protocol that never calls one gets none.
+  const protocols = positions.map((p) => p.protocol);
+  const routers = exitContractsFor(network, protocols, "router");
+  const backstops = exitContractsFor(network, protocols, "backstop");
+  const exitContracts = [
+    ...new Set([
+      ...positions.map((p) => p.contractAddress),
+      ...routers.map((r) => r.address),
+      ...backstops.map((b) => b.address),
+    ]),
+  ];
+  const exitFunctions: Record<string, string[]> = {};
+  for (const p of positions) {
+    exitFunctions[p.contractAddress] = [...EXIT_FUNCTIONS[p.protocol].position];
+  }
+  for (const r of routers) exitFunctions[r.address] = [...EXIT_FUNCTIONS[r.protocol].router];
+  for (const b of backstops) exitFunctions[b.address] = [...EXIT_FUNCTIONS[b.protocol].backstop];
+  // A position's tokens (what a withdrawal pays out) and, where the protocol keeps shares in a
+  // separate contract, its share token (what a withdrawal burns, under the account's authority).
+  const positionTokenContracts = [
+    ...new Set(
+      positions.flatMap((p) => [
+        ...("tokens" in p && p.tokens ? p.tokens : []),
+        ...("shareToken" in p && p.shareToken ? [p.shareToken] : []),
+      ])
+    ),
+  ];
+  // The account's own balances: XLM and every trustline under their Stellar Asset Contracts, and
+  // the Soroban tokens the analysis confirmed on the ledger (absent on older reads: nothing added).
+  const heldTokenContracts = [
+    ...new Set([
+      Asset.native().contractId(passphrase),
+      ...trustlines.map((tl) => new Asset(tl.code, tl.issuer).contractId(passphrase)),
+      ...(accountState.sorobanTokens?.tokens ?? [])
+        .filter((t) => /^C[A-Z2-7]{55}$/.test(t.contract) && /^[1-9]\d*$/.test(t.balance))
+        .map((t) => t.contract),
+    ]),
+  ];
+  return {
+    exitContracts,
+    heldTokenContracts,
+    positionTokenContracts,
+    exitFunctions,
+    conversionContracts: conversionContractsFor(network),
+    xlmContract: Asset.native().contractId(passphrase),
+  };
+}

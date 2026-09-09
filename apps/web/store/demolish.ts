@@ -38,6 +38,9 @@ interface DemolishState {
   // destination against it before signing - reading it back from the plan or the transaction
   // would make the check circular and prove nothing.
   transferDestinations: Record<string, string>;
+  /** Per Soroban token contract, the least XLM (stroops) the plan quoted its conversion at: the
+   *  floor the convert answer carries and the built swap is held to. */
+  tokenConversionFloors: Record<string, string>;
 
   // Per-claimable-balance selection, keyed by balance id: claim it, add a trustline then
   // claim it, or forfeit it.
@@ -66,6 +69,7 @@ interface DemolishState {
   setPlan: (plan: PlannedStep[]) => void;
   setAssetDisposition: (asset: string, action: AssetDisposition) => void;
   setTransferDestination: (asset: string, destination: string | null) => void;
+  setTokenConversionFloors: (floors: Record<string, string>) => void;
   setClaimableBalanceSelection: (balanceId: string, selection: ClaimableBalanceSelection) => void;
   setMediatorRequired: (required: boolean) => void;
   setCurrentStepIndex: (index: number) => void;
@@ -74,9 +78,10 @@ interface DemolishState {
   /**
    * Marks every not-yet-confirmed step whose type appears in `coveredTypes` as confirmed.
    * A single API-built transaction can cover several plan steps (a fused close), so one
-   * confirmation lands multiple steps at once.
+   * confirmation lands multiple steps at once. `sponsoredFee` records that a dedicated sponsor
+   * account, not the user's, paid this round's fee - the user's own account paid "0".
    */
-  markCoveredConfirmed: (coveredTypes: StepType[], txHash: string) => void;
+  markCoveredConfirmed: (coveredTypes: StepType[], txHash: string, sponsoredFee?: boolean) => void;
   markStepFailed: (index: number, error: string) => void;
   setLastError: (error: string | null) => void;
   initSession: () => void;
@@ -99,6 +104,8 @@ function decidableAssets(accountState: AccountState): Set<string> {
   return new Set([
     ...accountState.trustlines.map((tl) => tl.asset),
     ...accountState.claimableBalances.filter((b) => b.asset !== "native").map((b) => b.asset),
+    // Soroban token balances, keyed by contract like their decision ids.
+    ...(accountState.sorobanTokens?.tokens ?? []).map((t) => t.contract),
   ]);
 }
 
@@ -155,6 +162,7 @@ const initialState = {
   currentStepIndex: 0,
   assetDispositions: {},
   transferDestinations: {},
+  tokenConversionFloors: {},
   claimableBalanceSelections: {},
   mediatorRequired: false,
   lastError: null,
@@ -187,6 +195,7 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       // stale decision into the build.
       assetDispositions: pruneDispositions(s.assetDispositions, accountState),
       transferDestinations: pruneToPresentAssets(s.transferDestinations, accountState),
+      tokenConversionFloors: pruneToPresentAssets(s.tokenConversionFloors, accountState),
       claimableBalanceSelections: pruneClaimableSelections(
         s.claimableBalanceSelections,
         accountState
@@ -212,6 +221,8 @@ export const useDemolishStore = create<DemolishState>((set) => ({
         transferDestinations: rest,
       };
     }),
+
+  setTokenConversionFloors: (floors) => set({ tokenConversionFloors: floors }),
 
   setTransferDestination: (asset, destination) =>
     set((s) => {
@@ -244,13 +255,18 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       phase: "STEP_CONFIRMED",
     })),
 
-  markCoveredConfirmed: (coveredTypes, txHash) =>
+  markCoveredConfirmed: (coveredTypes, txHash, sponsoredFee) =>
     set((state) => {
       const covered = new Set<StepType>(coveredTypes);
       return {
         executionPlan: state.executionPlan.map((s) =>
           covered.has(s.type) && s.status !== "confirmed"
-            ? { ...s, status: "confirmed", txHash }
+            ? {
+                ...s,
+                status: "confirmed",
+                txHash,
+                actualFeeLumens: sponsoredFee ? "0" : s.estimatedFeeLumens,
+              }
             : s
         ),
         phase: "STEP_CONFIRMED",

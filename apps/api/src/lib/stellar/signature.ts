@@ -21,8 +21,11 @@ export class InvalidSignatureError extends Error {
  * an unrecognized co-signer (multisig cosigner) and we defer to the network,
  * which is the authority on threshold satisfaction.
  *
- * Fee-bump envelopes are not checked - they are only used in the mediator flow
- * where co-signing happens server-side and is already validated there.
+ * Fee-bump envelopes are not checked here: they come only from the fee-bump sponsor endpoint
+ * (`/fee-bump/sponsor`, architecture.md §8.1), whose outer signature is the sponsor account's
+ * own - not a wallet's - and whose inner transaction was already validated there before the
+ * sponsor ever signed it. This heuristic exists to catch wallet mistakes on a user-signed
+ * inner transaction; it has nothing to check on the outer envelope of a fee-bump.
  */
 export function checkTransactionSignatures(signedXdr: string, network: Network): void {
   const passphrase = NETWORK_PASSPHRASES[network];

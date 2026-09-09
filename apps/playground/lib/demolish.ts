@@ -64,7 +64,13 @@ export function buildDemolishDecisions(
     // The point's own id already carries the API's `asset:CODE-ISSUER` encoding, so it is echoed
     // back verbatim instead of being re-derived from the subject.
     if (dp.type === "asset_disposition") {
-      answers.push({ id: dp.id, choice: ASSET_DISPOSITION_CHOICE });
+      // A Soroban token someone dusted the demo account with has no issuer to return it to; the
+      // demo acknowledges it stays with the throwaway key and closes anyway.
+      const isToken = dp.subject.kind === "soroban_token";
+      answers.push({
+        id: dp.id,
+        choice: isToken ? "acknowledge_residue" : ASSET_DISPOSITION_CHOICE,
+      });
     }
   }
   return answers;

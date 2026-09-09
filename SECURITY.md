@@ -140,8 +140,8 @@ A fully compromised backend could return incorrect read data, but it cannot sign
 **Every destructive step requires explicit user confirmation.**
 The tool never auto-submits. Users confirm each step after reviewing what it does, see the XDR, and in the case of the final merge, confirm the full destination address on a dedicated confirmation screen.
 
-**The mediator keypair is ephemeral.**
-It is generated in the browser, used once to sign the forward payment, and then nulled from memory. Only its public key is recorded in the session for transparency and recovery.
+**The mediator's signing key never leaves the API's environment.**
+The shared mediator account exists to receive exchange-bound merges and forward them on; its secret is configured server-side only (`MEDIATOR_SECRET_*`) and is never transmitted to or generated in the browser. The API co-signs only the exact `[accountMerge → mediator, payment mediator → destination]` shape the user already built and signed, and only after validating that shape and bounding the forward amount against the merged account's own balance - it can neither sign for a user's account nor redirect the forward payment. See [docs/architecture.md - Section 11](docs/architecture.md#11-the-mediator-account-flow-for-exchanges) and the [threat model](docs/threat-model.md) (Section 5) for the full design.
 
 **Strict Content Security Policy.**
 No inline scripts, no `unsafe-eval`. Any XSS payload that cannot execute JavaScript cannot intercept the in-memory key or signing operations.

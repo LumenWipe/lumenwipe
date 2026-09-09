@@ -34,6 +34,10 @@ const ALLOWED_OP_TYPES = new Set([
   "revokeOfferSponsorship",
   "revokeDataSponsorship",
   "revokeSignerSponsorship",
+  // Deliberately absent: "invokeHostFunction". A DeFi exit is a Soroban call, and the playground's
+  // throwaway demo accounts never hold DeFi positions, so a demolish carrying one is wrong by
+  // construction and is refused as op_not_allowed. The production anchor (apps/web/lib/stellar/
+  // verify.ts) is where an exit is verified structurally.
 ]);
 
 export class PlaygroundVerificationError extends Error {

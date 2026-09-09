@@ -1,6 +1,7 @@
 import type { Network, TransferDestinations, Trustline } from "@lumenwipe/types";
 import { lookupExchange } from "@/lib/exchange-registry";
 import { xlmToStroops } from "@/lib/utils/amounts";
+import { isTokenContract } from "./decisions";
 
 /**
  * Validates the destinations a `transfer` disposition names, before anything is built.
@@ -32,7 +33,8 @@ export interface TransferDestinationProblem {
     | "destination_not_authorized"
     | "destination_limit_too_low"
     | "destination_is_source"
-    | "destination_is_exchange";
+    | "destination_is_exchange"
+    | "token_destination_missing";
   message: string;
 }
 
@@ -121,6 +123,37 @@ export async function validateTransferDestinations(
 
   const problems: TransferDestinationProblem[] = [];
   for (const [asset, destination] of entries) {
+    // A Soroban token has no trustline to check: any existing account can hold it. What still
+    // matters is that the account exists (a transfer to an unfunded key is refused by the ledger,
+    // and a token whose contract does not check would strand the balance under a key nobody
+    // funded), and that it is neither the account being closed nor an exchange deposit address.
+    if (isTokenContract(asset)) {
+      const short = `${asset.slice(0, 4)}…${asset.slice(-4)}`;
+      if (destination === sourceAddress) {
+        problems.push({
+          asset,
+          destination,
+          code: "destination_is_source",
+          message: `The ${short} token balance cannot be sent to the account being closed. Choose a different account, or leave the balance on record.`,
+        });
+      } else if (lookupExchange(destination) !== null) {
+        const exchange = lookupExchange(destination)!;
+        problems.push({
+          asset,
+          destination,
+          code: "destination_is_exchange",
+          message: `The account chosen for the ${short} token is a deposit address for ${exchange.name}. A token transfer cannot carry the deposit memo an exchange needs to credit it, so the balance would be lost. Send it to a wallet you control instead.`,
+        });
+      } else if ((accounts.get(destination) ?? null) === null) {
+        problems.push({
+          asset,
+          destination,
+          code: "token_destination_missing",
+          message: `The account chosen for the ${short} token does not exist on ${network}. Fund it first, or choose a different account.`,
+        });
+      }
+      continue;
+    }
     const code = asset.split(":")[0] ?? asset;
     const issuer = asset.split(":")[1];
 

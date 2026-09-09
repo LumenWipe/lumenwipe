@@ -6,14 +6,18 @@ beforeEach(() => {
   process.env.PLAYGROUND_ENCRYPTION_KEY = randomBytes(32).toString("hex");
 });
 
+// Deliberately not a syntactically valid Stellar strkey - this function encrypts an
+// arbitrary string, so the test fixture doesn't need to look like a real secret key, and a
+// string that decodes to a real keypair invites exactly the confusion a secret scanner
+// exists to catch.
+const TEST_PLAINTEXT = "playground-crypto-test-fixture-not-a-real-secret-000000";
+
 test("encrypt/decrypt › round-trip recovers the plaintext", () => {
-  const secret = "SCZANGBA5YHTNYVVV4C3U252E2B6P6F5T3U6MM63WBSBZATAQI3EBTQ4";
-  expect(decryptSecret(encryptSecret(secret))).toBe(secret);
+  expect(decryptSecret(encryptSecret(TEST_PLAINTEXT))).toBe(TEST_PLAINTEXT);
 });
 
 test("encrypt › same plaintext yields different ciphertexts (random IV)", () => {
-  const secret = "SCZANGBA5YHTNYVVV4C3U252E2B6P6F5T3U6MM63WBSBZATAQI3EBTQ4";
-  expect(encryptSecret(secret)).not.toBe(encryptSecret(secret));
+  expect(encryptSecret(TEST_PLAINTEXT)).not.toBe(encryptSecret(TEST_PLAINTEXT));
 });
 
 test("decrypt › tampered ciphertext fails the auth tag", () => {

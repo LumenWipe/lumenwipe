@@ -20,10 +20,10 @@ jobs:
   e2e:
     name: close flow against testnet
     runs-on: ubuntu-latest
-    # The suite's own per-test budgets sum to roughly 38 minutes, and `retries: 2` lets one
+    # The suite's own per-test budgets sum to roughly 48 minutes, and `retries: 2` lets one
     # failing test consume three times its own. A kill here is reported as a plain failure with
     # no artifact, which is indistinguishable from the close path actually breaking.
-    timeout-minutes: 75
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 

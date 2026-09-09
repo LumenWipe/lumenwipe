@@ -25,7 +25,9 @@ function recordAssetToString(asset: PathRecordAsset): string {
   return `${asset.asset_code}:${asset.asset_issuer}`;
 }
 
-function applySlippage(amount: string): string {
+/** Exported for direct unit coverage of the rounding boundary (issue #167) - the only caller in
+ *  production code remains `fetchConversionPath` below. */
+export function applySlippage(amount: string): string {
   const stroops = BigInt(xlmToStroops(amount));
   const min = (stroops * BigInt(10000 - SLIPPAGE_BPS)) / BigInt(10000);
   return min > BigInt(0) ? stroopsToXlm(min) : "0";

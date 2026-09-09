@@ -10,6 +10,7 @@ import {
   resolveTransferDestinations,
 } from "@/lib/close-api/decisions";
 import type { AccountState, ClaimableBalance, Trustline } from "@lumenwipe/types";
+import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 const MASTER = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -35,6 +36,8 @@ function makeAccount(overrides: Partial<AccountState> = {}): AccountState {
     subEntryMismatch: false,
     sponsoredEntries: [],
     sponsorshipEnumerationIncomplete: false,
+    defiPositions: emptyDefiPositionsResult(MASTER),
+    defiPositionsWarnings: [],
     ...overrides,
   };
 }

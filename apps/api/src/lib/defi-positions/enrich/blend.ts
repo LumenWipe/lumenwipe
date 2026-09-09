@@ -1,0 +1,190 @@
+import { PoolV1, PoolV2, TokenMetadata, Version, type Positions } from "@blend-capital/blend-sdk";
+import type { DefiPosition, DefiPositionDisplay, Network } from "@lumenwipe/types";
+import { entriesForNetwork, type ContractRegistryEntry } from "@/lib/contract-registry";
+import { blendSdkNetwork, blendSdkVersion } from "@/lib/blend-sdk";
+import type { EnrichContext, KnownToken, PositionEnricher } from "./shared";
+import { formatUnits, positionKey } from "./shared";
+
+/**
+ * Display data for Blend positions, from the same SDK client the exit adapter uses: underlying
+ * amounts through the reserve's live bToken/dToken rates (detection only has share counts), the
+ * reserve's current estimated APY, the pool's own name, and the asset's symbol.
+ *
+ * Detection reports one supply position per asset with plain supply and collateral summed (the
+ * pool exits them together); the display keeps that total as `amount` and names the collateral
+ * part separately, since that is the part a liquidation could touch.
+ */
+
+/** The slice of the SDK's reserve the enricher reads, so a test can supply a stand-in. */
+export interface BlendEnrichReserveView {
+  assetId: string;
+  config: { index: number; decimals: number };
+  toAssetFromBToken(bTokens: bigint | undefined): bigint;
+  toAssetFromDToken(dTokens: bigint | undefined): bigint;
+  /** Fractions, as the SDK estimates them (0.0399 means 3.99%). */
+  estSupplyApy: number;
+  estBorrowApy: number;
+}
+
+export interface BlendEnrichPoolView {
+  name: string | null;
+  reserves: Iterable<BlendEnrichReserveView>;
+  loadUser(userId: string): Promise<{ positions: Positions }>;
+}
+
+export interface BlendEnrichDeps {
+  /** `version` null means "unknown to the registry": try V2, then V1. */
+  loadPool(network: Network, poolId: string, version: Version | null): Promise<BlendEnrichPoolView>;
+  tokenMetadata(network: Network, assetId: string): Promise<KnownToken>;
+  /** The registry rows for a network; injectable so tests do not depend on the shipped file. */
+  registryEntries(network: Network): ContractRegistryEntry[];
+}
+
+function view(pool: PoolV1 | PoolV2): BlendEnrichPoolView {
+  return {
+    name:
+      typeof pool.metadata.name === "string" && pool.metadata.name.trim()
+        ? pool.metadata.name
+        : null,
+    reserves: [...pool.reserves.values()],
+    loadUser: (userId) => pool.loadUser(userId),
+  };
+}
+
+export const defaultBlendEnrichDeps: BlendEnrichDeps = {
+  async loadPool(network, poolId, version) {
+    const sdkNetwork = blendSdkNetwork(network);
+    if (version === Version.V1) return view(await PoolV1.load(sdkNetwork, poolId));
+    if (version === Version.V2) return view(await PoolV2.load(sdkNetwork, poolId));
+    try {
+      return view(await PoolV2.load(sdkNetwork, poolId));
+    } catch {
+      return view(await PoolV1.load(sdkNetwork, poolId));
+    }
+  },
+  async tokenMetadata(network, assetId) {
+    const metadata = await TokenMetadata.load(blendSdkNetwork(network), assetId);
+    return { symbol: metadata.symbol, decimals: metadata.decimals };
+  },
+  registryEntries: entriesForNetwork,
+};
+
+/** The SDK's rate fractions as a percentage with two decimals. */
+function pct(fraction: number): string | null {
+  return Number.isFinite(fraction) ? (fraction * 100).toFixed(2) : null;
+}
+
+export function blendPositionEnricher(
+  deps: BlendEnrichDeps = defaultBlendEnrichDeps
+): PositionEnricher {
+  return async (positions: DefiPosition[], ctx: EnrichContext) => {
+    const displays = new Map<string, DefiPositionDisplay>();
+    const registry = deps.registryEntries(ctx.network);
+    const symbols = new Map<string, Promise<KnownToken | null>>();
+    const symbolFor = (assetId: string): Promise<KnownToken | null> => {
+      const known = ctx.knownTokens[assetId];
+      if (known) return Promise.resolve(known);
+      let pending = symbols.get(assetId);
+      if (!pending) {
+        pending = deps.tokenMetadata(ctx.network, assetId).catch(() => null);
+        symbols.set(assetId, pending);
+      }
+      return pending;
+    };
+
+    const byPool = new Map<string, DefiPosition[]>();
+    for (const position of positions) {
+      if (position.protocol !== "blend") continue;
+      const group = byPool.get(position.contractAddress) ?? [];
+      group.push(position);
+      byPool.set(position.contractAddress, group);
+    }
+
+    await Promise.all(
+      [...byPool.entries()].map(async ([poolId, held]) => {
+        const entry = registry.find((e) => e.address === poolId && e.protocol === "blend");
+        const version = entry ? blendSdkVersion(entry.version) : null;
+        // One pool failing to load leaves its positions undescribed; the others still resolve.
+        let pool: BlendEnrichPoolView;
+        let user: { positions: Positions };
+        try {
+          pool = await deps.loadPool(ctx.network, poolId, version);
+          user = await pool.loadUser(ctx.account);
+        } catch {
+          return;
+        }
+        const poolName = pool.name ?? entry?.label ?? null;
+        const reserves = new Map<string, BlendEnrichReserveView>();
+        for (const reserve of pool.reserves) reserves.set(reserve.assetId, reserve);
+
+        for (const position of held) {
+          if (position.positionType !== "supply" && position.positionType !== "borrow") continue;
+          // A backstop deposit is not a pool reserve position: its amount is the deposit's own
+          // shares (the BLND:USDC LP token, 7 decimals), and the reserve's numbers would describe
+          // the wrong thing. What its queue allows is the exit's to say.
+          if (position.positionType === "supply" && position.isBackstop) {
+            displays.set(positionKey(position), {
+              pool: poolName,
+              asset: "backstop shares",
+              amount: formatUnits(BigInt(position.bTokenAmount), 7),
+              collateralAmount: null,
+              yieldPct: null,
+              yieldKind: null,
+              detail: "deposited in the pool's backstop; withdrawals wait out a queue",
+            });
+            continue;
+          }
+          const reserve = reserves.get(position.assetAddress);
+          if (!reserve) continue;
+          try {
+            displays.set(
+              positionKey(position),
+              await describe(
+                position,
+                reserve,
+                poolName,
+                await symbolFor(position.assetAddress),
+                user.positions
+              )
+            );
+          } catch {
+            // One position the SDK cannot describe leaves the others intact.
+          }
+        }
+      })
+    );
+    return displays;
+  };
+}
+
+function describe(
+  position: DefiPosition & { positionType: "supply" | "borrow" },
+  reserve: BlendEnrichReserveView,
+  poolName: string | null,
+  token: KnownToken | null,
+  positions: Positions
+): DefiPositionDisplay {
+  const decimals = reserve.config.decimals;
+  const index = reserve.config.index;
+  if (position.positionType === "supply") {
+    const supply = reserve.toAssetFromBToken(positions.supply.get(index));
+    const collateral = reserve.toAssetFromBToken(positions.collateral.get(index));
+    return {
+      pool: poolName,
+      asset: token?.symbol ?? null,
+      amount: formatUnits(supply + collateral, decimals),
+      collateralAmount: formatUnits(collateral, decimals),
+      yieldPct: pct(reserve.estSupplyApy),
+      yieldKind: "earned",
+    };
+  }
+  const debt = reserve.toAssetFromDToken(positions.liabilities.get(index));
+  return {
+    pool: poolName,
+    asset: token?.symbol ?? null,
+    amount: formatUnits(debt, decimals),
+    collateralAmount: null,
+    yieldPct: pct(reserve.estBorrowApy),
+    yieldKind: "paid",
+  };
+}

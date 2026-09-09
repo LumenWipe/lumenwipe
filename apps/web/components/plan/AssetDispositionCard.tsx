@@ -123,7 +123,7 @@ export default function AssetDispositionCard({
             </button>
           )}
           <p id={helpId} className="text-[0.7rem] leading-relaxed text-white/45">
-            That account must already hold a {item.code} trustline — LumenWipe cannot add one for
+            That account must already hold a {item.code} trustline - LumenWipe cannot add one for
             it, and the whole close fails if it cannot receive the balance.
           </p>
         </div>

@@ -87,9 +87,22 @@ export default function PlanView({
   // the card silently went back to reading "will be swapped to XLM" and the balance would
   // have been sold. `=== undefined` mirrors the claimable-balance effect below, which had it
   // right.
+  // The floors the plan quoted, kept for the convert answers and for verify(): only tokens whose
+  // quote is usable get one, and a token without a quote can never be answered "convert".
+  useEffect(() => {
+    const floors: Record<string, string> = {};
+    for (const c of conversions) {
+      if (c.token?.quote) floors[c.asset] = c.token.quote.minAmountOut;
+    }
+    useDemolishStore.getState().setTokenConversionFloors(floors);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversions]);
+
   useEffect(() => {
     for (const c of conversions) {
-      if (c.convertible && assetDispositions[c.asset] === undefined) {
+      // Never for a Soroban token: its conversion is not built yet, so an auto-selected "convert"
+      // would pass the resolved gate and leave the balance behind.
+      if (c.convertible && !c.token && assetDispositions[c.asset] === undefined) {
         setAssetDisposition(c.asset, "convert");
       }
     }
@@ -131,7 +144,9 @@ export default function PlanView({
     }
   }
 
-  const assetsNeedingDecision = account.trustlines.filter((tl) => Number(tl.balance) > 0).length;
+  const assetsNeedingDecision =
+    account.trustlines.filter((tl) => Number(tl.balance) > 0).length +
+    (account.sorobanTokens?.tokens ?? []).filter((t) => /^[1-9]\d*$/.test(t.balance)).length;
   // Empty is not the same as resolved - see assetsResolved, where that distinction lives.
   const assetCardsWithheld = assetsNeedingDecision > 0 && conversions.length === 0;
 
@@ -236,7 +251,8 @@ export default function PlanView({
       const decisions = [
         ...dispositionsToDecisions(
           useDemolishStore.getState().assetDispositions,
-          useDemolishStore.getState().transferDestinations
+          useDemolishStore.getState().transferDestinations,
+          useDemolishStore.getState().tokenConversionFloors
         ),
         ...claimableSelectionsToDecisions(useDemolishStore.getState().claimableBalanceSelections),
         ...destinationAcknowledgementToDecisions(

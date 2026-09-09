@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { TransactionBuilder } from "@stellar/stellar-sdk";
+import { exitExpectations } from "@/lib/stellar/exit-expectations";
+import { FeeBumpTransaction, TransactionBuilder } from "@stellar/stellar-sdk";
 import type { CloseTransaction } from "@lumenwipe/sdk";
 import type { AccountState } from "@/types/account";
 import type { AssetDisposition } from "@/types/plan";
@@ -11,6 +12,8 @@ import { useNetworkStore } from "@/store/network";
 import { runClose, InsufficientSignatureWeightError, type PendingRound } from "@lumenwipe/sdk";
 import { fetchCloseTransactions } from "@/lib/api/close-client";
 import {
+  chosenTokenConversions,
+  chosenTokenTransfers,
   chosenTransfers,
   claimableSelectionsToDecisions,
   destinationAcknowledgementToDecisions,
@@ -23,6 +26,7 @@ import { evaluateSignatureContributions, accumulatedWeight } from "@/lib/stellar
 import { verifyPreAuthTxHash } from "@/lib/stellar/pre-auth-tx";
 import { submitViaApi } from "@/lib/stellar/submit-via-api";
 import { requestMediatorCosignature } from "@/lib/stellar/mediator";
+import { requestFeeBumpSponsorship } from "@/lib/stellar/fee-bump-sponsor";
 import { notifyStatsRefresh } from "@/lib/stats-events";
 import type { TransactionSigner } from "@/lib/stellar/signer";
 import type { AccountSigner } from "@/types/account";
@@ -99,7 +103,8 @@ export function useCloseExecution() {
       const decisions = [
         ...dispositionsToDecisions(
           useDemolishStore.getState().assetDispositions,
-          useDemolishStore.getState().transferDestinations
+          useDemolishStore.getState().transferDestinations,
+          useDemolishStore.getState().tokenConversionFloors
         ),
         ...claimableSelectionsToDecisions(claimableBalanceSelections),
         // Carried through to every build round: the API refuses to build a close into a
@@ -161,6 +166,17 @@ export function useCloseExecution() {
                     accountState,
                     claimableBalanceSelections
                   ),
+                  tokenTransfers: chosenTokenTransfers(
+                    useDemolishStore.getState().assetDispositions,
+                    useDemolishStore.getState().transferDestinations,
+                    accountState
+                  ),
+                  tokenConversions: chosenTokenConversions(
+                    useDemolishStore.getState().assetDispositions,
+                    useDemolishStore.getState().tokenConversionFloors,
+                    accountState
+                  ),
+                  ...exitExpectations(accountState, network),
                 },
               }),
             requiredWeight: (tx: CloseTransaction) =>
@@ -240,12 +256,47 @@ export function useCloseExecution() {
                 finalXdr = cosignedXdr;
               }
 
+              // The account cannot pay this transaction's own fee without dropping below its
+              // reserve (architecture.md §8.1) - the API built it with fee zero and flagged it;
+              // wrap it in a sponsored fee-bump envelope before submitting, done last, after
+              // every signature the inner transaction needs (the user's own, and the mediator's
+              // co-sign above, when both apply) - wrapping never touches the inner transaction,
+              // but the inner transaction has to be complete before there is anything to wrap.
+              if (tx.needsSponsoredFee) {
+                setProgressStatus("Requesting a sponsored fee…");
+                const approved = TransactionBuilder.fromXDR(finalXdr, passphrase);
+                const approvedHash = approved.hash().toString("hex");
+                const approvedSignatureCount = approved.signatures.length;
+                const sponsoredXdr = await requestFeeBumpSponsorship(finalXdr, network);
+                const sponsored = TransactionBuilder.fromXDR(sponsoredXdr, passphrase);
+                // Defense-in-depth, matching the mediator co-sign above: the sponsor may only
+                // wrap the exact transaction it was handed and add its own signature over the
+                // envelope - never alter what the inner transaction does. The hash check alone
+                // only covers the transaction body (source, ops, sequence, memo, fee, timebounds)
+                // - it says nothing about the inner transaction's own signatures, which the hash
+                // never covers - so the signature count is checked separately to catch a sponsor
+                // that reconstructs the same body but drops the signatures already on it.
+                if (!(sponsored instanceof FeeBumpTransaction)) {
+                  throw new Error("The sponsor did not return a fee-bump transaction.");
+                }
+                if (sponsored.innerTransaction.hash().toString("hex") !== approvedHash) {
+                  throw new Error("The sponsored transaction does not match what you approved.");
+                }
+                if (sponsored.innerTransaction.signatures.length < approvedSignatureCount) {
+                  throw new Error("The sponsor dropped a signature already on this transaction.");
+                }
+                if (sponsored.signatures.length === 0) {
+                  throw new Error("The sponsor did not add its signature.");
+                }
+                finalXdr = sponsoredXdr;
+              }
+
               setProgressStatus("Submitting to Stellar network…");
               const { txHash } = await submitViaApi(finalXdr, network);
               return txHash;
             },
             onConfirmed: (tx, hash) => {
-              markCoveredConfirmed(tx.covers, hash);
+              markCoveredConfirmed(tx.covers, hash, tx.needsSponsoredFee);
               if (tx.covers.includes("MERGE") || tx.covers.includes("CLOSE_ACCOUNT")) {
                 recordMergeStats(hash, network);
               }
@@ -359,6 +410,17 @@ export function useCloseExecution() {
             accountState,
             claimableBalanceSelections
           ),
+          tokenTransfers: chosenTokenTransfers(
+            useDemolishStore.getState().assetDispositions,
+            useDemolishStore.getState().transferDestinations,
+            accountState
+          ),
+          tokenConversions: chosenTokenConversions(
+            useDemolishStore.getState().assetDispositions,
+            useDemolishStore.getState().tokenConversionFloors,
+            accountState
+          ),
+          ...exitExpectations(accountState, network),
         },
       });
 

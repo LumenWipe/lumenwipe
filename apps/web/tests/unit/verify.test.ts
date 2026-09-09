@@ -39,6 +39,14 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
     memoType: null,
     claimTrustlineAssets: [],
     transfers: {},
+    tokenTransfers: {},
+    tokenConversions: {},
+    conversionContracts: [SOROSWAP_ROUTER],
+    xlmContract: XLM_SAC,
+    exitContracts: [POOL],
+    heldTokenContracts: [XLM_SAC],
+    positionTokenContracts: [],
+    exitFunctions: { [POOL]: ["submit"] },
     accountSigners: [
       { key: SRC, weight: 1, type: "ed25519_public_key" },
       { key: REMOVED_SIGNER, weight: 1, type: "ed25519_public_key" },
@@ -747,6 +755,14 @@ test("verifyCloseTransaction passes a mediated close to a memo-requiring exchang
         memo: "deposit-1",
         claimTrustlineAssets: [],
         transfers: {},
+        tokenTransfers: {},
+        tokenConversions: {},
+        conversionContracts: [],
+        xlmContract: XLM_SAC,
+        exitContracts: [],
+        heldTokenContracts: [],
+        positionTokenContracts: [],
+        exitFunctions: {},
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
       },
@@ -777,6 +793,14 @@ test("verifyCloseTransaction rejects a mediated close to a memo-requiring exchan
         memo: null,
         claimTrustlineAssets: [],
         transfers: {},
+        tokenTransfers: {},
+        tokenConversions: {},
+        conversionContracts: [],
+        xlmContract: XLM_SAC,
+        exitContracts: [],
+        heldTokenContracts: [],
+        positionTokenContracts: [],
+        exitFunctions: {},
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
       },
@@ -798,6 +822,14 @@ test("verifyCloseTransaction passes a direct close to a destination the registry
         memo: null,
         claimTrustlineAssets: [],
         transfers: {},
+        tokenTransfers: {},
+        tokenConversions: {},
+        conversionContracts: [],
+        xlmContract: XLM_SAC,
+        exitContracts: [],
+        heldTokenContracts: [],
+        positionTokenContracts: [],
+        exitFunctions: {},
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
       },
@@ -978,7 +1010,631 @@ test("the mediated forward is exempt: it is sent by the intermediary, not the so
         memoRequired: true,
         memoType: "text",
         transfers: {},
+        tokenTransfers: {},
+        tokenConversions: {},
+        conversionContracts: [],
       })
     )
   ).not.toThrow();
+});
+
+// ─── DeFi exits: a contract invocation is checked structurally ───────────────
+
+const POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
+const XLM_SAC = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
+const OTHER_POOL = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
+// The registry's mainnet Soroswap router: the one contract a conversion may be entered through.
+const SOROSWAP_ROUTER = "CAG5LRYQ5JVEUI5TEID72EYOVX44TTUJT5BQR2J6J77FH65PCCFAJDDH";
+type ExitOp = Extract<IntentOperation, { type: "invoke_host_function" }>;
+const exit = (over: Partial<ExitOp> = {}): IntentOperation => ({
+  source: SRC,
+  type: "invoke_host_function",
+  contract: POOL,
+  function: "submit",
+  args: [],
+  accountsReferenced: [SRC],
+  contractsReferenced: [POOL],
+  unsupportedAddressCount: 0,
+  authorizesBeyondSelf: false,
+  authDepth: 0,
+  subInvocations: [],
+  ...over,
+});
+const exitOnly = (op: IntentOperation, fee = "100") =>
+  intent({
+    fee,
+    operations: [op],
+    guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
+  });
+
+test("an exit that acts for, and only names, the account being closed, against a contract it holds a position in, passes", () => {
+  expect(() => assertCloseIntent(exitOnly(exit()), expectation())).not.toThrow();
+});
+
+test("an exit may name the token contracts of assets the account holds - a repay spends one", () => {
+  const op = exit({ contractsReferenced: [POOL, XLM_SAC] });
+  expect(() => assertCloseIntent(exitOnly(op), expectation())).not.toThrow();
+});
+
+test("rejects an exit whose arguments name any other account - proceeds could go there", () => {
+  const op = exit({ accountsReferenced: [SRC, ATTACKER] });
+  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(
+    /other than the one being closed/
+  );
+});
+
+test("rejects an exit that names a contract the account has no position or balance in - a contract-typed recipient", () => {
+  const op = exit({ contractsReferenced: [POOL, OTHER_POOL] });
+  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(
+    /no position, balance, or pool token in/
+  );
+});
+
+test("rejects an exit that invokes a contract the analysis never showed a position in", () => {
+  const op = exit({ contract: OTHER_POOL, contractsReferenced: [OTHER_POOL] });
+  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(/not one of this account/);
+});
+
+test("rejects an exit when the client has no positions to pin it to - fails closed", () => {
+  expect(() => assertCloseIntent(exitOnly(exit()), expectation({ exitContracts: [] }))).toThrow(
+    VerificationError
+  );
+});
+
+test("rejects an exit that names an address form the check cannot pin - a muxed recipient", () => {
+  const op = exit({ unsupportedAddressCount: 1 });
+  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(/cannot be verified/);
+});
+
+test("rejects an exit whose signature would authorize more than the account's own call - a hidden sub-invocation or another party's credentials", () => {
+  const op = exit({ authorizesBeyondSelf: true });
+  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(/beyond this account/);
+});
+
+test("rejects an exit sourced from another account", () => {
+  const op = exit({ source: ATTACKER });
+  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(/act for an account other/);
+});
+
+test("rejects an exit whose fee is far above what any exit costs", () => {
+  expect(() => assertCloseIntent(exitOnly(exit(), "10000001"), expectation())).toThrow(
+    /network fee far above/
+  );
+  expect(() => assertCloseIntent(exitOnly(exit(), "10000000"), expectation())).not.toThrow();
+});
+
+test("rejects an exit that shares its transaction with anything else", () => {
+  const i = intent({ operations: [exit(), merge(DEST)] });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/only operation/);
+});
+
+test("an AMM withdrawal may invoke the protocol's router and name the pair's tokens", () => {
+  const ROUTER = "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD";
+  const TOKEN = "CBRQHWJDLPYVR4BSVUUWJCZGG4N4FF3CUZKDGRVTE36FAWNEJZEMQRME";
+  const op = exit({
+    contract: ROUTER,
+    function: "remove_liquidity",
+    contractsReferenced: [POOL, ROUTER, TOKEN, XLM_SAC],
+  });
+  const functions = { [POOL]: [], [ROUTER]: ["remove_liquidity"] };
+  const expected = expectation({
+    exitContracts: [POOL, ROUTER],
+    positionTokenContracts: [TOKEN, XLM_SAC],
+    exitFunctions: functions,
+  });
+  expect(() => assertCloseIntent(exitOnly(op), expected)).not.toThrow();
+  // The same call without the router in the pinned set - an expired or unknown registry - fails.
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(op),
+      expectation({ positionTokenContracts: [TOKEN, XLM_SAC], exitFunctions: functions })
+    )
+  ).toThrow(/not one of this account/);
+  // A pool token the position does not have is not a place funds may go.
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(op),
+      expectation({ exitContracts: [POOL, ROUTER], exitFunctions: functions })
+    )
+  ).toThrow(/no position, balance, or pool token/);
+  // The router may only be asked to remove liquidity - never to swap, whatever the API says.
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(
+        exit({
+          contract: ROUTER,
+          function: "swap_exact_tokens_for_tokens",
+          contractsReferenced: [POOL, ROUTER, TOKEN, XLM_SAC],
+        })
+      ),
+      expected
+    )
+  ).toThrow(/function LumenWipe does not use/);
+  // And the pair itself is never a call target, even though it is a detected position.
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(
+        exit({ contract: POOL, function: "withdraw", contractsReferenced: [POOL, TOKEN, XLM_SAC] })
+      ),
+      expected
+    )
+  ).toThrow(/function LumenWipe does not use/);
+});
+
+test("a Blend exit may only call submit on its pool", () => {
+  expect(() =>
+    assertCloseIntent(exitOnly(exit({ function: "flash_loan" })), expectation())
+  ).toThrow(/function LumenWipe does not use/);
+});
+
+test("a Blend exit may claim emissions on its pool and withdraw a queued deposit from the registry's backstop, nothing else", () => {
+  const BACKSTOP = "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA";
+  const expected = expectation({
+    exitContracts: [POOL, BACKSTOP],
+    exitFunctions: { [POOL]: ["submit", "claim"], [BACKSTOP]: ["withdraw"] },
+  });
+  const claim = exit({ function: "claim", contractsReferenced: [POOL] });
+  expect(() => assertCloseIntent(exitOnly(claim), expected)).not.toThrow();
+  // The backstop call names the pool it backs among its arguments.
+  const withdraw = exit({
+    contract: BACKSTOP,
+    function: "withdraw",
+    contractsReferenced: [BACKSTOP, POOL],
+  });
+  expect(() => assertCloseIntent(exitOnly(withdraw), expected)).not.toThrow();
+  // The pool's functions do not carry over to the backstop, nor the other way round.
+  expect(() =>
+    assertCloseIntent(exitOnly(exit({ contract: BACKSTOP, function: "submit" })), expected)
+  ).toThrow(/function LumenWipe does not use/);
+  expect(() => assertCloseIntent(exitOnly(exit({ function: "withdraw" })), expected)).toThrow(
+    /function LumenWipe does not use/
+  );
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(exit({ contract: BACKSTOP, function: "queue_withdrawal" })),
+      expected
+    )
+  ).toThrow(/function LumenWipe does not use/);
+});
+
+test("an Aquarius exit may call withdraw or claim on its pool, and the share token it burns is a permitted contract", () => {
+  const SHARE_TOKEN = "CAN7DMIQH7FGKNYCUQMWECJJ74EKN5JATVVUOVTXOWLQGZCWAFWANG5P";
+  const expected = expectation({
+    exitFunctions: { [POOL]: ["withdraw", "claim"] },
+    positionTokenContracts: [SHARE_TOKEN],
+  });
+  const withdraw = exit({
+    function: "withdraw",
+    contractsReferenced: [POOL, SHARE_TOKEN, XLM_SAC],
+  });
+  expect(() => assertCloseIntent(exitOnly(withdraw), expected)).not.toThrow();
+  const claim = exit({ function: "claim", contractsReferenced: [POOL] });
+  expect(() => assertCloseIntent(exitOnly(claim), expected)).not.toThrow();
+  expect(() => assertCloseIntent(exitOnly(exit({ function: "deposit" })), expected)).toThrow(
+    /function LumenWipe does not use/
+  );
+});
+
+// ─── DeFi exit sub-invocations: a legitimate top-level call may hide a diversion (#208) ──────
+
+test("an exit's sub-invocation may transfer a held token to this account or to the exit contract itself", () => {
+  const expected = expectation({ heldTokenContracts: [XLM_SAC] });
+  const toSelf = exit({
+    contractsReferenced: [POOL, XLM_SAC],
+    subInvocations: [{ contract: XLM_SAC, function: "transfer", args: [SRC, SRC, "100"] }],
+  });
+  expect(() => assertCloseIntent(exitOnly(toSelf), expected)).not.toThrow();
+  // The pool paying itself (e.g. a repay leg the top-level `submit` call triggers) is the whole
+  // point of an exit - the recipient is the very contract this invocation is rooted at.
+  const toPool = exit({
+    contractsReferenced: [POOL, XLM_SAC],
+    subInvocations: [{ contract: XLM_SAC, function: "transfer", args: [SRC, POOL, "100"] }],
+  });
+  expect(() => assertCloseIntent(exitOnly(toPool), expected)).not.toThrow();
+});
+
+test("rejects a Blend exit whose submit call hides a transfer of the held asset to a third party", () => {
+  // The top-level call is exactly what a legitimate Blend repay-and-withdraw looks like -
+  // `submit` on the pool, nothing else referenced at the top level. Only the authorization
+  // tree the same signature satisfies carries the diversion.
+  const op = exit({
+    contractsReferenced: [POOL, XLM_SAC],
+    subInvocations: [{ contract: XLM_SAC, function: "transfer", args: [SRC, ATTACKER, "100"] }],
+  });
+  expect(() =>
+    assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] }))
+  ).toThrow(/other than this account or the protocol/);
+});
+
+test("rejects an Aquarius exit whose withdraw call hides a transfer of the share token to a third party", () => {
+  const SHARE_TOKEN = "CAN7DMIQH7FGKNYCUQMWECJJ74EKN5JATVVUOVTXOWLQGZCWAFWANG5P";
+  const op = exit({
+    function: "withdraw",
+    contractsReferenced: [POOL, SHARE_TOKEN],
+    subInvocations: [{ contract: SHARE_TOKEN, function: "transfer", args: [SRC, ATTACKER, "5"] }],
+  });
+  const expected = expectation({
+    exitFunctions: { [POOL]: ["withdraw", "claim"] },
+    positionTokenContracts: [SHARE_TOKEN],
+  });
+  expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
+    /other than this account or the protocol/
+  );
+});
+
+test("rejects a Soroswap router exit whose remove_liquidity call hides a transfer of a pair token to a third party", () => {
+  const ROUTER = "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD";
+  const TOKEN = "CBRQHWJDLPYVR4BSVUUWJCZGG4N4FF3CUZKDGRVTE36FAWNEJZEMQRME";
+  const op = exit({
+    contract: ROUTER,
+    function: "remove_liquidity",
+    contractsReferenced: [POOL, ROUTER, TOKEN, XLM_SAC],
+    subInvocations: [{ contract: TOKEN, function: "transfer", args: [SRC, ATTACKER, "100"] }],
+  });
+  const expected = expectation({
+    exitContracts: [POOL, ROUTER],
+    positionTokenContracts: [TOKEN, XLM_SAC],
+    exitFunctions: { [POOL]: [], [ROUTER]: ["remove_liquidity"] },
+  });
+  expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
+    /other than this account or the protocol/
+  );
+});
+
+test("rejects an exit sub-invocation that spends a token's allowance to a third-party spender", () => {
+  // approve(from, spender, amount, expiration_ledger) - the spender must be pinned exactly like
+  // a transfer's recipient, or a hostile build could grant an attacker contract standing
+  // approval over the account's held balance instead of moving it directly.
+  const op = exit({
+    contractsReferenced: [POOL, XLM_SAC],
+    subInvocations: [
+      { contract: XLM_SAC, function: "approve", args: [SRC, ATTACKER, "100", "999999"] },
+    ],
+  });
+  expect(() =>
+    assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] }))
+  ).toThrow(/other than this account or the protocol/);
+});
+
+test("rejects an exit sub-invocation calling a function on a token that no exit legitimately needs", () => {
+  // Not transfer/transfer_from/approve/burn/burn_from - e.g. an admin-only function some tokens
+  // expose. The recipient-pinning rule above cannot even apply; the call itself is refused.
+  const op = exit({
+    contractsReferenced: [POOL, XLM_SAC],
+    subInvocations: [{ contract: XLM_SAC, function: "set_admin", args: [ATTACKER] }],
+  });
+  expect(() =>
+    assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] }))
+  ).toThrow(/LumenWipe does not use to leave a protocol/);
+});
+
+test("a burn sub-invocation on a held token needs no recipient pinning - it destroys value, moving it nowhere", () => {
+  const op = exit({
+    contractsReferenced: [POOL, XLM_SAC],
+    subInvocations: [{ contract: XLM_SAC, function: "burn", args: [SRC, "100"] }],
+  });
+  expect(() =>
+    assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] }))
+  ).not.toThrow();
+});
+
+test("rejects a transfer-shaped sub-invocation whose argument count does not match transfer's real signature", () => {
+  // Recognized function name, wrong arity - could not be a real transfer() call, so the
+  // recipient argument this rule would otherwise trust cannot be assumed to sit at index 1.
+  const op = exit({
+    contractsReferenced: [POOL, XLM_SAC],
+    subInvocations: [{ contract: XLM_SAC, function: "transfer", args: [SRC, "100"] }],
+  });
+  expect(() =>
+    assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] }))
+  ).toThrow(/argument count/);
+});
+
+test("a sub-invocation on a contract that is not a held or position token is unaffected by this rule", () => {
+  // A pool calling another already-pinned exit contract (e.g. an oracle or a router leg) is
+  // covered by the existing contractsReferenced allow-list, not this token-specific rule.
+  const OTHER_EXIT_CONTRACT = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
+  const op = exit({
+    contractsReferenced: [POOL, OTHER_EXIT_CONTRACT],
+    subInvocations: [{ contract: OTHER_EXIT_CONTRACT, function: "anything_at_all", args: [] }],
+  });
+  expect(() =>
+    assertCloseIntent(exitOnly(op), expectation({ exitContracts: [POOL, OTHER_EXIT_CONTRACT] }))
+  ).not.toThrow();
+});
+
+// ─── Soroban token transfers (#161) ──────────────────────────────────────────
+
+const TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
+const tokenTransfer = (over: Partial<ExitOp> = {}): IntentOperation => ({
+  source: SRC,
+  type: "invoke_host_function",
+  contract: TOKEN,
+  function: "transfer",
+  args: [SRC, DEST, "2500000000"],
+  accountsReferenced: [SRC, DEST],
+  contractsReferenced: [TOKEN],
+  unsupportedAddressCount: 0,
+  authorizesBeyondSelf: false,
+  authDepth: 0,
+  subInvocations: [],
+  ...over,
+});
+const chosenToken = (amount = "2500000000") =>
+  expectation({ tokenTransfers: { [TOKEN]: { destination: DEST, amount } } });
+
+test("a token transfer of at least the balance shown, to the account the user chose, under the account's own plain call, passes", () => {
+  expect(() => assertCloseIntent(exitOnly(tokenTransfer()), chosenToken())).not.toThrow();
+  // The live balance grew since the read: more to an already-pinned destination is not a loss.
+  expect(() =>
+    assertCloseIntent(exitOnly(tokenTransfer({ args: [SRC, DEST, "2500000001"] })), chosenToken())
+  ).not.toThrow();
+});
+
+test("rejects a token transfer to an address the user did not choose - the diversion this rule exists for", () => {
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(
+        tokenTransfer({ args: [SRC, ATTACKER, "2500000000"], accountsReferenced: [SRC, ATTACKER] })
+      ),
+      chosenToken()
+    )
+  ).toThrow(/address you did not choose/);
+});
+
+test("rejects a token transfer of less than the balance the user was shown, or of an unreadable amount", () => {
+  expect(() =>
+    assertCloseIntent(exitOnly(tokenTransfer({ args: [SRC, DEST, "2499999999"] })), chosenToken())
+  ).toThrow(/less than the balance/);
+  expect(() =>
+    assertCloseIntent(exitOnly(tokenTransfer({ args: [SRC, DEST, '"2500000000"'] })), chosenToken())
+  ).toThrow(/less than the balance/);
+});
+
+test("rejects a token transfer that moves another account's balance", () => {
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(
+        tokenTransfer({
+          args: [ATTACKER, DEST, "2500000000"],
+          accountsReferenced: [ATTACKER, DEST],
+        })
+      ),
+      chosenToken()
+    )
+  ).toThrow(/other than this account's own/);
+});
+
+test("rejects a token call that is not a plain three-argument transfer", () => {
+  expect(() =>
+    assertCloseIntent(exitOnly(tokenTransfer({ function: "approve" })), chosenToken())
+  ).toThrow(/something other than a plain transfer/);
+  expect(() =>
+    assertCloseIntent(exitOnly(tokenTransfer({ args: [SRC, DEST] })), chosenToken())
+  ).toThrow(/something other than a plain transfer/);
+});
+
+test("rejects a token whose transfer makes the account authorize anything else - a nested call or foreign credentials", () => {
+  expect(() => assertCloseIntent(exitOnly(tokenTransfer({ authDepth: 1 })), chosenToken())).toThrow(
+    /beyond the transfer itself/
+  );
+  expect(() =>
+    assertCloseIntent(exitOnly(tokenTransfer({ authorizesBeyondSelf: true })), chosenToken())
+  ).toThrow(/beyond the transfer itself/);
+});
+
+test("rejects a token transfer that names any other account or contract, or an address form it cannot pin", () => {
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(tokenTransfer({ accountsReferenced: [SRC, DEST, ATTACKER] })),
+      chosenToken()
+    )
+  ).toThrow(/other than this one and your chosen destination/);
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(tokenTransfer({ contractsReferenced: [TOKEN, OTHER_POOL] })),
+      chosenToken()
+    )
+  ).toThrow(/other than the token itself/);
+  expect(() =>
+    assertCloseIntent(exitOnly(tokenTransfer({ unsupportedAddressCount: 1 })), chosenToken())
+  ).toThrow(/cannot be verified/);
+});
+
+test("rejects a token transfer that is not alone, acts for another account, or pays an outsized fee", () => {
+  expect(() =>
+    assertCloseIntent(
+      intent({
+        operations: [tokenTransfer(), tokenTransfer()],
+        guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
+      }),
+      chosenToken()
+    )
+  ).toThrow(/only operation/);
+  expect(() =>
+    assertCloseIntent(exitOnly(tokenTransfer({ source: ATTACKER })), chosenToken())
+  ).toThrow(/other than the one being closed/);
+  expect(() => assertCloseIntent(exitOnly(tokenTransfer(), "20000000"), chosenToken())).toThrow(
+    /network fee/
+  );
+});
+
+test("a token the user never chose to transfer is judged as a DeFi exit, and fails there: no position, no balance", () => {
+  expect(() => assertCloseIntent(exitOnly(tokenTransfer()), expectation())).toThrow(
+    /not one of this account's detected positions/
+  );
+});
+
+// ─── Soroban token conversions (#161) ────────────────────────────────────────
+
+const CONVERT_TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
+const XLM_CONTRACT = "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA";
+const FLOOR = "520000000";
+
+/** A router swap as the Soroswap API renders it in an intent: five arguments, path first hop. */
+const routerSwap = (over: Partial<ExitOp> = {}): IntentOperation => ({
+  source: SRC,
+  type: "invoke_host_function",
+  contract: SOROSWAP_ROUTER,
+  function: "swap_exact_tokens_for_tokens",
+  args: ["100000000", FLOOR, JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), SRC, "1788846802"],
+  accountsReferenced: [SRC],
+  contractsReferenced: [SOROSWAP_ROUTER, CONVERT_TOKEN, XLM_CONTRACT],
+  unsupportedAddressCount: 0,
+  authorizesBeyondSelf: false,
+  authDepth: 1,
+  subInvocations: [],
+  ...over,
+});
+
+/** The aggregator shape: seven arguments, token_in first. */
+const aggregatorSwap = (over: Partial<ExitOp> = {}): IntentOperation =>
+  routerSwap({
+    args: [CONVERT_TOKEN, XLM_CONTRACT, "100000000", FLOOR, "[]", SRC, "1788846802"],
+    ...over,
+  });
+
+const chosenConversion = (floor = FLOOR, amountIn = "100000000") =>
+  expectation({
+    tokenConversions: { [CONVERT_TOKEN]: { minAmountOut: floor, amountIn } },
+    xlmContract: XLM_CONTRACT,
+  });
+
+test("a swap of the token the user chose, paying this account at or above the minimum they saw, passes in both shapes", () => {
+  expect(() => assertCloseIntent(exitOnly(routerSwap()), chosenConversion())).not.toThrow();
+  expect(() => assertCloseIntent(exitOnly(aggregatorSwap()), chosenConversion())).not.toThrow();
+  // More XLM than promised is not a loss.
+  const better = routerSwap({
+    args: ["100000000", "530000000", JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), SRC, "1"],
+  });
+  expect(() => assertCloseIntent(exitOnly(better), chosenConversion())).not.toThrow();
+});
+
+test("rejects a swap that would accept less XLM than the minimum the user was shown", () => {
+  const worse = routerSwap({
+    args: ["100000000", "519999999", JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), SRC, "1"],
+  });
+  expect(() => assertCloseIntent(exitOnly(worse), chosenConversion())).toThrow(
+    /less XLM than the minimum/
+  );
+  const worseAggregator = aggregatorSwap({
+    args: [CONVERT_TOKEN, XLM_CONTRACT, "100000000", "1", "[]", SRC, "1"],
+  });
+  expect(() => assertCloseIntent(exitOnly(worseAggregator), chosenConversion())).toThrow(
+    /less XLM than the minimum/
+  );
+});
+
+test("rejects a swap that would buy something other than XLM - the floor is meaningless in any other unit", () => {
+  const other = "CC64WBDGS6QQP22QTTIACYIXT3WF7BBQEYOQPLTP7GTKYY7PZ74QYGSL";
+  const wrongOutputRouter = routerSwap({
+    args: ["100000000", FLOOR, JSON.stringify([CONVERT_TOKEN, other]), SRC, "1"],
+  });
+  expect(() => assertCloseIntent(exitOnly(wrongOutputRouter), chosenConversion())).toThrow(
+    /something other than XLM/
+  );
+  const wrongOutputAggregator = aggregatorSwap({
+    args: [CONVERT_TOKEN, other, "100000000", FLOOR, "[]", SRC, "1"],
+  });
+  expect(() => assertCloseIntent(exitOnly(wrongOutputAggregator), chosenConversion())).toThrow(
+    /something other than XLM/
+  );
+});
+
+test("rejects a swap that spends less of the token than the balance the user was shown", () => {
+  const shortfall = routerSwap({
+    args: ["99999999", FLOOR, JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), SRC, "1"],
+  });
+  expect(() =>
+    assertCloseIntent(exitOnly(shortfall), chosenConversion(FLOOR, "100000000"))
+  ).toThrow(/less of the token/);
+  // Spending more than the balance shown is not a loss - the account simply held more.
+  const more = routerSwap({
+    args: ["100000001", FLOOR, JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), SRC, "1"],
+  });
+  expect(() => assertCloseIntent(exitOnly(more), chosenConversion())).not.toThrow();
+});
+
+test("rejects a swap that pays the proceeds anywhere but the account being closed", () => {
+  const diverted = routerSwap({
+    args: ["100000000", FLOOR, JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), ATTACKER, "1"],
+    accountsReferenced: [SRC, ATTACKER],
+  });
+  expect(() => assertCloseIntent(exitOnly(diverted), chosenConversion())).toThrow(
+    /other than the account being closed/
+  );
+});
+
+test("rejects a swap of a token the user never chose to convert", () => {
+  const other = "CC64WBDGS6QQP22QTTIACYIXT3WF7BBQEYOQPLTP7GTKYY7PZ74QYGSL";
+  const wrongToken = routerSwap({
+    args: ["100000000", FLOOR, JSON.stringify([other, XLM_CONTRACT]), SRC, "1"],
+  });
+  expect(() => assertCloseIntent(exitOnly(wrongToken), chosenConversion())).toThrow(
+    /token you did not choose to convert/
+  );
+  // With no conversion chosen at all, a call on the swap contract is refused the same way: the
+  // rule is keyed on the user's decision, not on the contract having been recognized.
+  expect(() => assertCloseIntent(exitOnly(routerSwap()), expectation())).toThrow(
+    /token you did not choose to convert/
+  );
+  // And a swap contract the bundled registry does not name is judged as an exit, and fails there.
+  expect(() =>
+    assertCloseIntent(exitOnly(routerSwap()), expectation({ conversionContracts: [] }))
+  ).toThrow(/not one of this account's detected positions/);
+});
+
+test("rejects a swap that is not alone, acts for another account, calls another function, or pays an outsized fee", () => {
+  expect(() =>
+    assertCloseIntent(
+      intent({
+        operations: [routerSwap(), routerSwap()],
+        guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
+      }),
+      chosenConversion()
+    )
+  ).toThrow(/only operation/);
+  expect(() =>
+    assertCloseIntent(exitOnly(routerSwap({ source: ATTACKER })), chosenConversion())
+  ).toThrow(/other than the one being closed/);
+  expect(() =>
+    assertCloseIntent(exitOnly(routerSwap({ function: "remove_liquidity" })), chosenConversion())
+  ).toThrow(/something other than a swap/);
+  // swap_tokens_for_exact_tokens carries the same seven arguments with the amounts swapped, so
+  // reading it as an exact-in swap would hold the wrong figures to the balance and the floor.
+  // The function name is what stops it.
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(aggregatorSwap({ function: "swap_tokens_for_exact_tokens" })),
+      chosenConversion()
+    )
+  ).toThrow(/something other than a swap/);
+  expect(() => assertCloseIntent(exitOnly(routerSwap(), "20000000"), chosenConversion())).toThrow(
+    /network fee/
+  );
+});
+
+test("rejects a swap whose arguments cannot be read, or that authorizes beyond the account's own calls", () => {
+  for (const args of [
+    [],
+    ["1", "2", "3"],
+    ["1", FLOOR, "not json", SRC, "1"],
+    ["1", "x", "[]", SRC, "1"],
+  ]) {
+    expect(() => assertCloseIntent(exitOnly(routerSwap({ args })), chosenConversion())).toThrow(
+      /arguments could not be read|other than a swap/
+    );
+  }
+  expect(() =>
+    assertCloseIntent(exitOnly(routerSwap({ authorizesBeyondSelf: true })), chosenConversion())
+  ).toThrow(/beyond this account's own contract calls/);
+  expect(() =>
+    assertCloseIntent(exitOnly(routerSwap({ unsupportedAddressCount: 1 })), chosenConversion())
+  ).toThrow(/cannot be verified/);
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(routerSwap({ accountsReferenced: [SRC, ATTACKER] })),
+      chosenConversion()
+    )
+  ).toThrow(/other than the one being closed/);
 });

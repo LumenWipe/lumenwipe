@@ -41,6 +41,25 @@ const OPTIONAL: Array<{ name: string; consequence: string }> = [
     name: "MEDIATOR_SECRET_TESTNET",
     consequence: "testnet exchange closes are unavailable",
   },
+  {
+    name: "FEE_ACCOUNT_SECRET_MAINNET",
+    consequence: "mainnet sponsored-fee closes are unavailable (testnet is unaffected)",
+  },
+  {
+    name: "FEE_ACCOUNT_SECRET_TESTNET",
+    consequence: "testnet sponsored-fee closes are unavailable",
+  },
+  {
+    name: "SOROSWAP_API_KEY",
+    consequence:
+      "Soroban token conversion to XLM is unavailable: held tokens can be sent or left, not swapped",
+  },
+  {
+    name: "OCTOPOS_API_KEY",
+    consequence:
+      "DeFi position detection runs at OctoPos's free/IP rate-limit tier instead of the " +
+      "authenticated tier",
+  },
 ];
 
 /**

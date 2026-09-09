@@ -5,6 +5,11 @@ import { xlmToStroops } from "@/lib/utils/amounts";
 import type { AccountSigner, AccountThresholds } from "@/types/account";
 import type { IntentOperation, TxIntent } from "@/types/close-api";
 
+/** A DeFi exit's fee comes from the API's simulation, not from a fixed per-operation rate, so it
+ *  is the one fee the client cannot predict. A real exit costs a few thousand stroops; this cap
+ *  (1 XLM) bounds what a wrong or hostile simulation could make the account pay to the fee pool. */
+const MAX_EXIT_FEE_STROOPS = BigInt(10_000_000);
+
 /** Thrown when a server-built close transaction fails verification. Never sign past this. */
 export class VerificationError extends Error {
   constructor(message: string) {
@@ -29,6 +34,20 @@ export interface CloseExpectation {
   nativeBalance: string;
   /** The memo the user entered, or null. */
   memo: string | null;
+  /** Contracts the account's analysis showed it holds DeFi positions in - the only contracts a
+   *  DeFi exit may invoke. From the account read the user reviewed; empty fails closed. */
+  exitContracts: string[];
+  /** The Stellar Asset Contract of every asset the account holds (native and each trustline).
+   *  Derived client-side from the account read. */
+  heldTokenContracts: string[];
+  /** The tokens of each detected position (an LP pair's two tokens) - what a withdrawal pays out.
+   *  With the two lists above, the only contracts a DeFi exit may name. */
+  positionTokenContracts: string[];
+  /** Per contract an exit may invoke, the one function that leaves that protocol. */
+  exitFunctions: Record<string, string[]>;
+  /** The bundled registry's Soroswap aggregator and router: the only contracts a token
+   *  conversion may be entered through. From the registry alone, never from the API. */
+  conversionContracts: string[];
   /** Whether the destination requires a memo (from the client-bundled exchange registry). */
   memoRequired: boolean;
   /** The memo type the destination requires (from the registry), or null. */
@@ -56,6 +75,29 @@ export interface CloseExpectation {
    * is not a loss.
    */
   transfers: Record<string, { destination: string; amount: string }>;
+  /**
+   * The Soroban token transfers the user chose, keyed by token contract: the account each balance
+   * goes to and the balance the client read, in the token's base units. The invoke rule for a
+   * contract in this map is the transfer rule, not the DeFi-exit rule: the call must be that
+   * token's `transfer(account, destination, amount)` with nothing else authorized.
+   */
+  tokenTransfers: Record<string, { destination: string; amount: string }>;
+  /**
+   * The Soroban token conversions the user chose, keyed by token contract, each with the least
+   * XLM (in stroops) the plan quoted and they accepted.
+   *
+   * The floor is the whole point. A swap's destination is structurally constrained - the proceeds
+   * must be paid to the account being closed - so the diversion a transfer risks does not apply
+   * here; what an adversary could do instead is route the balance through a pool that returns
+   * almost nothing. Holding the built swap's own `amount_out_min` to the figure the user was
+   * shown is what makes that impossible, and the figure comes from their own decision, never from
+   * the plan under verification.
+   */
+  tokenConversions: Record<string, { minAmountOut: string; amountIn: string }>;
+  /** XLM's own contract on this network, derived client-side from the network passphrase. The one
+   *  asset a conversion may buy: without pinning it, the minimum above would be compared against a
+   *  figure denominated in whatever the transaction claims to be buying. */
+  xlmContract: string;
   /** Assets the user themselves chose to add a trustline for, to claim a balance the account
    *  otherwise cannot reach ("add trustline and claim"). Sourced from the user's own claimable-
    *  balance decisions, never from the API response - the only case a raised (non-removal)
@@ -202,6 +244,85 @@ function assertMergeShape(
  * already read and showed the user, so there is nothing to leave slack for. A mismatch means
  * the transaction is not the one that was approved.
  */
+/** The function a token conversion calls; must match the API's `SWAP_FUNCTION`. */
+const SWAP_FUNCTION = "swap_exact_tokens_for_tokens";
+const CONTRACT_ID = /^C[A-Z2-7]{55}$/;
+
+/**
+ * SEP-41 functions a DeFi exit's own contract may legitimately call on a token it sub-invokes
+ * (a held asset's Stellar Asset Contract, or a position's own token): each function's exact
+ * argument count, and which position - if any - holds the recipient or spender that must be
+ * pinned. `recipientArg: -1` means the function moves no balance to a named third party (a burn
+ * destroys value; there is nothing to pin beyond the account whose balance it burns, which
+ * `accountsReferenced` already requires to be the one being closed). `argCount` is checked
+ * before `recipientArg` is ever indexed, the same way the existing plain-transfer branch checks
+ * `args.length !== 3` before trusting `args[1]` as a destination.
+ */
+const TOKEN_SUB_INVOCATION_FUNCTIONS: Record<string, { argCount: number; recipientArg: number }> = {
+  transfer: { argCount: 3, recipientArg: 1 }, // transfer(from, to, amount)
+  transfer_from: { argCount: 4, recipientArg: 2 }, // transfer_from(spender, from, to, amount)
+  approve: { argCount: 4, recipientArg: 1 }, // approve(from, spender, amount, expiration_ledger)
+  burn: { argCount: 2, recipientArg: -1 }, // burn(from, amount)
+  burn_from: { argCount: 3, recipientArg: -1 }, // burn_from(spender, from, amount)
+};
+
+interface SwapArgs {
+  /** The token being spent. */
+  token: string;
+  /** The token being bought. Must be XLM's contract, or the minimum below is in unknown units. */
+  assetOut: string;
+  /** The amount of `token` the swap spends. */
+  amountIn: bigint;
+  destination: string;
+  minAmountOut: bigint;
+}
+
+/**
+ * What a swap's arguments name, in either shape the Soroswap API builds: a router call
+ * `(amount_in, amount_out_min, path, to, deadline)`, where the tokens are the path's first and
+ * last hops, or an aggregator call
+ * `(token_in, token_out, amount_in, amount_out_min, distribution, to, deadline)`. Null when the
+ * arguments are not one of those two shapes, which fails the swap closed.
+ *
+ * The output token is read, not assumed. Without it the minimum below would be compared against a
+ * figure denominated in whatever the transaction says it is buying - a swap into a worthless token
+ * would satisfy an "at least N XLM" promise in name only.
+ */
+function readSwapArgs(args: string[]): SwapArgs | null {
+  const integer = (value: string | undefined): bigint | null =>
+    typeof value === "string" && /^\d+$/.test(value) ? BigInt(value) : null;
+  if (args.length === 5) {
+    let path: unknown;
+    try {
+      path = JSON.parse(args[2] ?? "");
+    } catch {
+      return null;
+    }
+    if (!Array.isArray(path) || path.length < 2) return null;
+    if (!path.every((hop) => typeof hop === "string" && CONTRACT_ID.test(hop))) return null;
+    const amountIn = integer(args[0]);
+    const min = integer(args[1]);
+    if (amountIn === null || min === null) return null;
+    return {
+      token: path[0] as string,
+      assetOut: path[path.length - 1] as string,
+      amountIn,
+      destination: args[3] ?? "",
+      minAmountOut: min,
+    };
+  }
+  if (args.length === 7) {
+    const token = args[0] ?? "";
+    const assetOut = args[1] ?? "";
+    const amountIn = integer(args[2]);
+    const min = integer(args[3]);
+    if (!CONTRACT_ID.test(token) || !CONTRACT_ID.test(assetOut)) return null;
+    if (amountIn === null || min === null) return null;
+    return { token, assetOut, amountIn, destination: args[5] ?? "", minAmountOut: min };
+  }
+  return null;
+}
+
 function assertUserChoseThisTransfer(
   op: Extract<IntentOperation, { type: "payment" }>,
   expected: CloseExpectation,
@@ -406,6 +527,260 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
           );
         }
         break;
+      case "invoke_host_function": {
+        // A conversion of a Soroban token the user chose to swap for XLM. The API built these
+        // bytes through the Soroswap API and asserted their shape server-side; this is the same
+        // assertion made again from the user's own inputs, which is the only version that counts:
+        // the contract comes from the bundled registry, the token and the floor from their
+        // decision. What is checked here is that the swap spends the token they chose, pays the
+        // proceeds to this account and no other, and may not deliver less XLM than they accepted.
+        //
+        // Not checked here, deliberately: which pools the route passes through. Those addresses
+        // are route-dependent and unbounded, and the browser has no way to enumerate them. The
+        // API pins them - the whole authorization tree must invoke only the aggregator, its
+        // adapters, the router, and the token itself - so this is the residual trust documented
+        // in architecture.md §10.1, bounded by the floor above.
+        if (expected.conversionContracts.includes(op.contract)) {
+          if (intent.operations.length !== 1) {
+            throw new VerificationError("A swap must be the only operation in its transaction.");
+          }
+          if (BigInt(intent.fee) > MAX_EXIT_FEE_STROOPS) {
+            throw new VerificationError(
+              "A swap would pay a network fee far above what any swap needs."
+            );
+          }
+          if (op.source !== expected.source) {
+            throw new VerificationError(
+              "A swap would act for an account other than the one being closed."
+            );
+          }
+          if (op.function !== SWAP_FUNCTION) {
+            throw new VerificationError(
+              "A swap transaction would call something other than a swap."
+            );
+          }
+          const swap = readSwapArgs(op.args);
+          if (!swap) {
+            throw new VerificationError("A swap's arguments could not be read.");
+          }
+          const chosen = expected.tokenConversions[swap.token];
+          if (!chosen) {
+            throw new VerificationError(
+              "A swap would exchange a token you did not choose to convert."
+            );
+          }
+          if (swap.assetOut !== expected.xlmContract) {
+            throw new VerificationError("A swap would buy something other than XLM.");
+          }
+          if (swap.amountIn < BigInt(chosen.amountIn)) {
+            throw new VerificationError(
+              "A swap would exchange less of the token than the balance you were shown. If you " +
+                "moved some of it since, run the analysis again."
+            );
+          }
+          if (swap.destination !== expected.source) {
+            throw new VerificationError(
+              "A swap would pay the proceeds to an address other than the account being closed."
+            );
+          }
+          if (swap.minAmountOut < BigInt(chosen.minAmountOut)) {
+            throw new VerificationError(
+              "A swap would accept less XLM than the minimum you were shown."
+            );
+          }
+          if (op.authorizesBeyondSelf) {
+            throw new VerificationError(
+              "A swap would authorize actions beyond this account's own contract calls."
+            );
+          }
+          if (op.unsupportedAddressCount > 0) {
+            throw new VerificationError("A swap names an address form that cannot be verified.");
+          }
+          for (const account of op.accountsReferenced) {
+            if (account !== expected.source) {
+              throw new VerificationError(
+                "A swap would send funds to, or act for, an account other than the one being closed."
+              );
+            }
+          }
+          break;
+        }
+        // A transfer of a Soroban token the user chose to send as-is. Everything the user decided
+        // is checked by value: the token, the account, the destination they typed, and at least
+        // the balance they were shown; and the signature may authorize nothing but that one plain
+        // call - a token whose transfer nests another invocation is refused. Anything named in the
+        // call beyond the account, the destination, and the token itself is a diversion.
+        const tokenTransfer = expected.tokenTransfers[op.contract];
+        if (tokenTransfer) {
+          if (intent.operations.length !== 1) {
+            throw new VerificationError(
+              "A token transfer must be the only operation in its transaction."
+            );
+          }
+          if (BigInt(intent.fee) > MAX_EXIT_FEE_STROOPS) {
+            throw new VerificationError(
+              "A token transfer would pay a network fee far above what any transfer needs."
+            );
+          }
+          if (op.source !== expected.source) {
+            throw new VerificationError(
+              "A token transfer would act for an account other than the one being closed."
+            );
+          }
+          if (op.function !== "transfer" || op.args.length !== 3) {
+            throw new VerificationError(
+              "A token transaction would call something other than a plain transfer."
+            );
+          }
+          if (op.args[0] !== expected.source) {
+            throw new VerificationError(
+              "A token transfer would move a balance other than this account's own."
+            );
+          }
+          if (op.args[1] !== tokenTransfer.destination) {
+            throw new VerificationError(
+              "A token transfer would send the balance to an address you did not choose."
+            );
+          }
+          const amount = op.args[2] ?? "";
+          if (
+            !/^\d+$/.test(amount) ||
+            !/^\d+$/.test(tokenTransfer.amount) ||
+            BigInt(amount) < BigInt(tokenTransfer.amount)
+          ) {
+            throw new VerificationError(
+              "A token transfer would send less than the balance you were shown. If you moved " +
+                "some of this token since, run the analysis again."
+            );
+          }
+          if (op.authorizesBeyondSelf || op.authDepth !== 0) {
+            throw new VerificationError(
+              "A token transfer would authorize actions beyond the transfer itself."
+            );
+          }
+          if (op.unsupportedAddressCount > 0) {
+            throw new VerificationError(
+              "A token transfer names an address form that cannot be verified."
+            );
+          }
+          for (const account of op.accountsReferenced) {
+            if (account !== expected.source && account !== tokenTransfer.destination) {
+              throw new VerificationError(
+                "A token transfer names an account other than this one and your chosen destination."
+              );
+            }
+          }
+          for (const contract of op.contractsReferenced) {
+            if (contract !== op.contract) {
+              throw new VerificationError(
+                "A token transfer would reach a contract other than the token itself."
+              );
+            }
+          }
+          break;
+        }
+        // A DeFi exit: a Soroban contract call the API built. The client cannot know a protocol's
+        // ABI, so the check pins the call to what the client can vouch for on its own, from the
+        // account read the user reviewed: the call must be the transaction's only operation (a
+        // Soroban call cannot share one with classic ops, so anything alongside it is foreign);
+        // it must act as the account being closed; it may invoke only a contract the analysis
+        // showed this account holds a position in, or the bundled registry's router for that
+        // protocol; every account it names - in its arguments and in the whole authorization tree
+        // the signature will satisfy, nested calls included - must be that same account; every
+        // contract it names must be one of those positions, the token contract of an asset the
+        // account holds, or a token of one of those positions; and the signature may authorize
+        // nothing beyond the account's own plain calls. What this does NOT check is the amount
+        // or the protocol-level meaning of the call - that is the runner's job on the API and is
+        // the residual trust documented in architecture.md §13.
+        if (intent.operations.length !== 1) {
+          throw new VerificationError("A DeFi exit must be the only operation in its transaction.");
+        }
+        if (BigInt(intent.fee) > MAX_EXIT_FEE_STROOPS) {
+          throw new VerificationError(
+            "A DeFi exit would pay a network fee far above what any exit needs."
+          );
+        }
+        if (op.source !== expected.source) {
+          throw new VerificationError(
+            "A DeFi exit would act for an account other than the one being closed."
+          );
+        }
+        if (!expected.exitContracts.includes(op.contract)) {
+          throw new VerificationError(
+            "A DeFi exit would call a contract that is not one of this account's detected positions."
+          );
+        }
+        if (!(expected.exitFunctions[op.contract] ?? []).includes(op.function)) {
+          throw new VerificationError(
+            "A DeFi exit would call a function LumenWipe does not use to leave this protocol."
+          );
+        }
+        if (op.authorizesBeyondSelf) {
+          throw new VerificationError(
+            "A DeFi exit would authorize actions beyond this account's own contract call."
+          );
+        }
+        if (op.unsupportedAddressCount > 0) {
+          throw new VerificationError("A DeFi exit names an address form that cannot be verified.");
+        }
+        for (const account of op.accountsReferenced) {
+          if (account !== expected.source) {
+            throw new VerificationError(
+              "A DeFi exit would send funds to, or act for, an account other than the one being closed."
+            );
+          }
+        }
+        for (const contract of op.contractsReferenced) {
+          if (
+            !expected.exitContracts.includes(contract) &&
+            !expected.heldTokenContracts.includes(contract) &&
+            !expected.positionTokenContracts.includes(contract)
+          ) {
+            throw new VerificationError(
+              "A DeFi exit would send funds to, or call, a contract this account has no position, balance, or pool token in."
+            );
+          }
+        }
+        // The check above pins every contract named in the tree to a known position, balance,
+        // or pool token - but says nothing about what a sub-invocation on a token actually does.
+        // The top-level call (checked against exitFunctions above) could be a legitimate
+        // `withdraw`, while a sub-invocation the same signature authorizes calls `transfer` on a
+        // held token with an arbitrary recipient - `accountsReferenced` only catches that
+        // recipient when it is a plain account, not a contract. Every sub-invocation on a token
+        // this account holds or has a position in is pinned here to a function that only ever
+        // moves value to this account or to the contract at the root of this exact invocation -
+        // never a third party (issue #208).
+        for (const sub of op.subInvocations) {
+          const isToken =
+            expected.heldTokenContracts.includes(sub.contract) ||
+            expected.positionTokenContracts.includes(sub.contract);
+          if (!isToken) continue;
+          const shape = TOKEN_SUB_INVOCATION_FUNCTIONS[sub.function];
+          if (shape === undefined) {
+            throw new VerificationError(
+              "A DeFi exit would call a function on a token that LumenWipe does not use to leave a protocol."
+            );
+          }
+          // A mismatched argument count cannot be this function's real SEP-41 signature - reject
+          // before trusting `args[recipientArg]` as the recipient, the same way the existing
+          // plain-transfer branch checks `args.length !== 3` before indexing into it.
+          if (sub.args.length !== shape.argCount) {
+            throw new VerificationError(
+              "A DeFi exit would call a token function with an argument count that does not match its real signature."
+            );
+          }
+          if (
+            shape.recipientArg >= 0 &&
+            sub.args[shape.recipientArg] !== expected.source &&
+            sub.args[shape.recipientArg] !== op.contract
+          ) {
+            throw new VerificationError(
+              "A DeFi exit would move a token balance to an address other than this account or the protocol it is exiting."
+            );
+          }
+        }
+        break;
+      }
       // Stryker disable next-line StringLiteral: disabling this case label sends an "unknown"
       // op to the exhaustiveness-guard `default` below, which throws the exact same message -
       // the two branches are textually identical on purpose (see that guard's comment), so this
@@ -495,6 +870,14 @@ export function verifyCloseTransaction(opts: {
      *  safe, but a caller that means to allow them must say so explicitly rather than inherit
      *  it. */
     transfers: Record<string, { destination: string; amount: string }>;
+    tokenTransfers: Record<string, { destination: string; amount: string }>;
+    tokenConversions: Record<string, { minAmountOut: string; amountIn: string }>;
+    exitContracts: string[];
+    heldTokenContracts: string[];
+    positionTokenContracts: string[];
+    exitFunctions: Record<string, string[]>;
+    conversionContracts: string[];
+    xlmContract: string;
   };
 }): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);

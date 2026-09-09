@@ -21,6 +21,21 @@ const config: Config = {
           DEFAULT: "hsl(var(--value))",
           foreground: "hsl(var(--value-foreground))",
         },
+        // stellar/warning were previously only hand-written bare utilities in globals.css
+        // (.text-stellar, .bg-warning, etc.) with no entry here - that covers the plain class,
+        // but Tailwind can only generate the `/NN` opacity-modifier variants (bg-warning/10,
+        // border-stellar/40, ...) for colors it actually knows about. Every such modified usage
+        // across the app - including a brand-new "Revoke" button that came out with invisible
+        // black-on-nothing text - silently produced no CSS at all. Registering them the same way
+        // `value` already is fixes every existing `/NN` usage app-wide, not just new ones.
+        stellar: {
+          DEFAULT: "hsl(var(--stellar))",
+          foreground: "hsl(var(--stellar-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

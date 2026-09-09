@@ -62,3 +62,20 @@ test("leaves a claimable-balance decision unanswered rather than guessing", () =
   const answers = buildDemolishDecisions([claim], SINK);
   expect(answers.map((a) => a.id)).not.toContain("claim:00000000abc");
 });
+
+test("a Soroban token someone dusted the demo account with is acknowledged, not 'returned to an issuer' it does not have", () => {
+  const tokenPoint: DecisionPoint = {
+    id: "token:CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV",
+    type: "asset_disposition",
+    subject: {
+      kind: "soroban_token",
+      contract: "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV",
+    },
+    options: [{ id: "transfer_to_account" }, { id: "acknowledge_residue" }],
+    default: "transfer_to_account",
+    required: true,
+  };
+  const answers = buildDemolishDecisions([assetPoint("LWDEMO"), tokenPoint], SINK);
+  expect(answers).toContainEqual({ id: tokenPoint.id, choice: "acknowledge_residue" });
+  expect(answers.find((a) => a.id === assetPoint("LWDEMO").id)?.choice).toBe("return_to_issuer");
+});

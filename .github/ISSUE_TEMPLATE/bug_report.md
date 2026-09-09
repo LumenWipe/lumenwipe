@@ -19,10 +19,7 @@ degrades instead of erroring.
 
 - Network: testnet / mainnet
 - Account type / state:
-- Steps:
-  1.
-  2.
-  3.
+- Steps: 1. 2. 3.
 - Expected:
 - Actual (error message and transaction hash, if applicable):
 

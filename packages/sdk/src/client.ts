@@ -1,13 +1,16 @@
 import type {
   AccountState,
+  AllowancesResult,
   ClosePlanRequest,
   CloseTransactionsRequest,
+  FeeBumpSponsorResponse,
   HealthResponse,
   MediatorCheckResult,
   MediatorSignResponse,
   Network,
   PathResponse,
   PlanResponse,
+  RevokeAllowanceResponse,
   SubmitResponse,
   TransactionsResponse,
 } from "@lumenwipe/types";
@@ -99,5 +102,42 @@ export class LumenWipeClient {
     return this.http.request<MediatorSignResponse>("POST", `/${network}/mediator/sign`, {
       transaction,
     });
+  }
+
+  /** Wraps a wind-down transaction (its own fee already zero) in a signed CAP-15 fee-bump
+   *  envelope for an account that cannot pay its own fee (architecture.md §8.1). The caller
+   *  submits the returned XDR through `submit()`, exactly like any other close transaction. */
+  feeBumpSponsor(
+    transaction: string,
+    network: Network = this.defaultNetwork
+  ): Promise<FeeBumpSponsorResponse> {
+    return this.http.request<FeeBumpSponsorResponse>("POST", `/${network}/fee-bump/sponsor`, {
+      transaction,
+    });
+  }
+
+  /** Every live SEP-41 allowance the account has granted (architecture.md §12). Independent of
+   *  closing an account - a standalone security utility. */
+  getAllowances(
+    address: string,
+    network: Network = this.defaultNetwork
+  ): Promise<AllowancesResult> {
+    return this.http.request<AllowancesResult>(
+      "GET",
+      `/${network}/allowances/${encodeURIComponent(address)}`
+    );
+  }
+
+  /** Builds the unsigned `approve(owner, spender, 0, 0)` transaction that revokes one allowance.
+   *  The caller signs and submits it through `submit()`, like any other transaction here. */
+  revokeAllowance(
+    params: { owner: string; token: string; spender: string },
+    network: Network = this.defaultNetwork
+  ): Promise<RevokeAllowanceResponse> {
+    return this.http.request<RevokeAllowanceResponse>(
+      "POST",
+      `/${network}/allowances/revoke`,
+      params
+    );
   }
 }

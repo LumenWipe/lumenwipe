@@ -366,12 +366,10 @@ export async function fetchOwnerLiveStatesBounded(
   for (let i = 0; i < owners.length; i += OWNER_FETCH_CONCURRENCY) {
     const batch = owners.slice(i, i + OWNER_FETCH_CONCURRENCY);
     const batchResults = await Promise.all(
-      batch.map(
-        async (owner): Promise<[string, OwnerLiveState]> => [
-          owner,
-          await fetchOwnerLiveState(owner, network),
-        ]
-      )
+      batch.map(async (owner): Promise<[string, OwnerLiveState]> => [
+        owner,
+        await fetchOwnerLiveState(owner, network),
+      ])
     );
     liveStateEntries.push(...batchResults);
   }

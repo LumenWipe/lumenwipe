@@ -8,6 +8,7 @@ import { RegistryController } from "./config-api/registry.controller";
 import { CloseModule } from "./close/close.module";
 import { AccountModule } from "./account/account.module";
 import { MediatorModule } from "./mediator/mediator.module";
+import { FeeBumpModule } from "./fee-bump/fee-bump.module";
 import { ApiKeyService } from "./auth/api-key.service";
 import { ApiKeyGuard } from "./auth/api-key.guard";
 import { ApiKeyThrottlerGuard } from "./auth/api-key-throttler.guard";
@@ -32,6 +33,7 @@ function positiveIntEnv(name: string, fallback: number): number {
     CloseModule,
     AccountModule,
     MediatorModule,
+    FeeBumpModule,
   ],
   controllers: [RootController, HealthController, RegistryController],
   providers: [

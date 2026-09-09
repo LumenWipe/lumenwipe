@@ -38,6 +38,13 @@ export interface DecisionAnswer {
   params?: {
     maxSlippageBps?: number;
     /**
+     * Required by `convert_to_xlm` on a Soroban token: the least XLM, in stroops, the user was
+     * shown the swap would deliver (the plan's `quote.minAmountOut`). The build refuses a route
+     * that no longer clears it (`quote_drifted`) instead of swapping at a rate nobody agreed to,
+     * and the browser holds the built swap's own minimum to at least this figure.
+     */
+    minAmountOut?: string;
+    /**
      * Required by the `transfer_to_account` choice: the `G...` address the balance is paid to.
      *
      * It travels with the answer rather than in a separate map so a destination cannot become
@@ -76,6 +83,16 @@ export interface PlanResponse {
  * intermediary a conduit rather than a destination. Without it the only available check is
  * pinning the intermediary's address, which every consumer would then have to be told.
  */
+/** One non-root call in a Soroban authorization tree: what a DeFi exit's own contract (a pool,
+ *  router, or backstop) would itself be authorized to call on the account's behalf. */
+export interface SubInvocationCall {
+  contract: string;
+  function: string;
+  /** The decoded arguments rendered for a human, in order - same rendering as the top-level
+   *  invocation's own `args`. */
+  args: string[];
+}
+
 export type IntentOperation = IntentOperationBody & { source: string };
 
 export type IntentOperationBody =
@@ -117,6 +134,37 @@ export type IntentOperationBody =
       entryKind: "account" | "trustline" | "offer" | "data_entry" | "signer";
       owner: string;
     }
+  // A Soroban contract invocation - a DeFi exit. `accountsReferenced` lists every Stellar
+  // account address anywhere in the arguments, so a verifier can insist that an exit only ever
+  // acts for, and pays, the account being closed - without knowing the protocol's ABI.
+  | {
+      type: "invoke_host_function";
+      contract: string;
+      function: string;
+      /** The decoded arguments rendered for a human, in order. */
+      args: string[];
+      /** Every Stellar account (G...) named anywhere in the arguments or in the authorization
+       *  tree the signature would satisfy. A verifier insists these are all the closing account. */
+      accountsReferenced: string[];
+      /** Every contract (C...) named the same way, including nested calls the signature would
+       *  authorize. A verifier insists these are contracts the account is known to deal with. */
+      contractsReferenced: string[];
+      /** Address forms that cannot be pinned to anything (muxed accounts, claimable balances,
+       *  liquidity pools). A verifier refuses any. */
+      unsupportedAddressCount: number;
+      /** True when the signature would authorize more than the account's own plain contract
+       *  calls: another party's credentials, or a contract creation, in the auth entries. */
+      authorizesBeyondSelf: boolean;
+      /** How deep the authorization tree nests: 0 when every entry is a single plain call with
+       *  no sub-invocations, 1 when a call authorizes one level of nested calls, and so on. A
+       *  token transfer must be 0 - the token may not make the account authorize anything else. */
+      authDepth: number;
+      /** Every non-root call in the authorization tree - what the root call (a pool, router, or
+       *  backstop) would itself be authorized to do on the account's behalf, one level down. A
+       *  DeFi exit's top-level contract/function pinning says nothing about these: a hostile
+       *  build could keep a legitimate top-level call while hiding an unrelated transfer here. */
+      subInvocations: SubInvocationCall[];
+    }
   // Any operation the close vocabulary does not recognize, preserved rather than dropped so
   // verification can reject an effect it cannot describe.
   | { type: "unknown" };
@@ -146,6 +194,14 @@ export interface CloseTransaction {
   sourceSequence: string;
   validUntilLedger: number;
   covers: StepType[];
+  /**
+   * True when the account cannot pay this transaction's own fee without dropping below its
+   * reserve (architecture.md §8.1): the API built it with its own fee at zero, and the client
+   * must route the signed envelope through `POST /:network/fee-bump/sponsor` before submitting
+   * it, instead of submitting it directly. Absent (not `false`) on every ordinary transaction -
+   * an older client reading this field sees nothing here and simply submits as it always has.
+   */
+  needsSponsoredFee?: true;
   intent: TxIntent;
 }
 

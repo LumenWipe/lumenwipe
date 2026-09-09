@@ -1,34 +1,10 @@
 import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { detectSubEntryMismatch } from "@/lib/stellar/scan-fallback";
-import type { AccountState, Trustline } from "@lumenwipe/types";
+import type { Trustline } from "@lumenwipe/types";
 
 const MASTER = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
-
-function makeAccount(overrides: Partial<AccountState> = {}): AccountState {
-  return {
-    address: MASTER,
-    network: "testnet",
-    sequence: "1234567890",
-    nativeBalanceLumens: "10.0000000",
-    dataEntries: [],
-    signers: [{ key: MASTER, weight: 1, type: "ed25519_public_key" }],
-    thresholds: { low: 0, med: 1, high: 1 },
-    numSubEntries: 0,
-    numSponsoring: 0,
-    sponsoredBy: null,
-    authImmutable: false,
-    trustlines: [],
-    openOffers: [],
-    poolShares: [],
-    claimableBalances: [],
-    subEntryMismatch: false,
-    sponsoredEntries: [],
-    sponsorshipEnumerationIncomplete: false,
-    ...overrides,
-  };
-}
 
 function makeTrustline(code: string): Trustline {
   return {

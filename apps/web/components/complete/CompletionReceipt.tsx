@@ -12,13 +12,15 @@ import { saveHistory } from "@/lib/session/history";
 import { formatXlm } from "@/lib/utils/amounts";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
 import { buildTxLedger, labelForTx } from "@/lib/utils/txLedger";
-import { receiptAssetSummary } from "@/lib/api/close-decisions";
+import { receiptAssetSummary, receiptTokenSummary } from "@/lib/api/close-decisions";
+import { describeDefiPosition, positionContracts } from "@/lib/plan/describe-position";
 
 interface CompletionReceiptProps {
   network: Network;
 }
 
 type GroupType =
+  | "EXIT_POSITIONS"
   | "NORMALIZE_SIGNERS"
   | "REMOVE_DATA_ENTRIES"
   | "CANCEL_OFFERS"
@@ -64,8 +66,13 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
 
   const confirmedSteps = executionPlan.filter((s) => s.status === "confirmed" && s.txHash);
 
+  // A sponsored round's `actualFeeLumens` is exactly "0" - a dedicated sponsor account paid the
+  // network fee, not this one. Any step not yet confirmed (this page can still be reached mid-
+  // close, after a partial failure, with steps still pending) never had `actualFeeLumens` set -
+  // the `??` falls back to `estimatedFeeLumens` there so the sum doesn't go NaN, not because
+  // that estimate is known to be what was actually paid.
   const totalFee = executionPlan
-    .reduce((sum, s) => sum + parseFloat(s.estimatedFeeLumens), 0)
+    .reduce((sum, s) => sum + parseFloat(s.actualFeeLumens ?? s.estimatedFeeLumens), 0)
     .toFixed(7);
 
   useEffect(() => {
@@ -100,6 +107,42 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
   const groups: SummaryGroup[] = [];
 
   if (account) {
+    // Only positions a confirmed exit step actually left. Detection is a snapshot from the
+    // analysis; a position the user exited by hand in between is skipped by the API as already
+    // gone, never built or signed, and must not be reported here as LumenWipe's doing.
+    const exitedContracts = new Set(
+      confirmedSteps
+        .filter((s) => s.type === "EXIT_POSITIONS")
+        .map((s) => s.affectedContract)
+        .filter((c): c is string => typeof c === "string")
+    );
+    const positions = account.defiPositions.positions.filter((p) =>
+      exitedContracts.has(p.contractAddress)
+    );
+    if (positions.length > 0) {
+      const contracts = positionContracts(positions);
+      groups.push({
+        type: "EXIT_POSITIONS",
+        title: "DeFi positions exited",
+        summary: `${positions.length} position${positions.length === 1 ? "" : "s"} in ${contracts.length} pool${contracts.length === 1 ? "" : "s"}, settled and withdrawn before the close`,
+        body: (
+          <ul className="space-y-1">
+            {positions.map((p, i) => (
+              <li key={`${p.contractAddress}-${i}`} className="text-xs text-white/55">
+                {describeDefiPosition(p, account.defiPositions.enrichment)}
+                {!p.display?.pool && (
+                  <span className="font-mono-address text-white/35">
+                    {" "}
+                    · {shortAddr(p.contractAddress)}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        ),
+      });
+    }
+
     const extraSigners = account.signers.filter((s) => s.key !== account.address);
     if (extraSigners.length > 0) {
       groups.push({
@@ -188,6 +231,8 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       account,
       claimableBalanceSelections
     );
+    // Soroban tokens sit in the same list: the receipt is the one record of a balance left behind.
+    const handledBalances = [...handledAssets, ...receiptTokenSummary(account)];
     const assetSteps = confirmedSteps.filter((s) => s.type === "HANDLE_ASSETS");
 
     function dispositionFor(entry: { asset: string }): AssetDisposition | null {
@@ -198,14 +243,14 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       return null;
     }
 
-    if (handledAssets.length > 0) {
+    if (handledBalances.length > 0) {
       groups.push({
         type: "HANDLE_ASSETS",
         title: "Assets handled",
-        summary: `${handledAssets.length} asset${handledAssets.length === 1 ? "" : "s"} with a balance`,
+        summary: `${handledBalances.length} asset${handledBalances.length === 1 ? "" : "s"} with a balance`,
         body: (
           <ul className="space-y-1.5">
-            {handledAssets.map((tl) => {
+            {handledBalances.map((tl) => {
               const disposition = dispositionFor(tl);
               // "transfer" must be named, not folded into the generic fallback. This is the
               // permanent record of an irreversible close, and it is the only disposition that
@@ -221,7 +266,9 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
                       ? destination
                         ? `sent to ${shortAddr(destination)}`
                         : "sent to another account"
-                      : "resolved";
+                      : disposition === "leave"
+                        ? "left with this address"
+                        : "resolved";
               return (
                 <li key={tl.asset} className="flex items-center gap-2 text-xs text-white/55">
                   <span className="font-medium text-white/80">{tl.code}</span>

@@ -1,16 +1,26 @@
-import { test, expect, mock, afterEach } from "bun:test";
+import { afterAll, afterEach, beforeAll, expect, mock, test } from "bun:test";
+import { PATH_ROUTING_API_URLS } from "@/config/networks";
+import {
+  enumerateSponsoredEntries,
+  fetchOwnerLiveState,
+  fetchOwnerLiveStatesBounded,
+} from "@/lib/stellar/sponsorship";
 
 // sponsorship.ts reads its Horizon-compatible base URL from PATH_ROUTING_API_URLS, which
 // defaults to "" unless NEXT_PUBLIC_PATH_ROUTING_API_TESTNET is set - this worktree has no
 // .env.local, so every function under test would otherwise short-circuit to "incomplete"
 // before ever calling fetch. Mock the config module to supply a fake base URL instead.
 const FAKE_BASE = "https://fake-horizon.test";
-mock.module("@/config/networks", () => ({
-  PATH_ROUTING_API_URLS: { testnet: FAKE_BASE, mainnet: "" },
-}));
-
-const { fetchOwnerLiveState, fetchOwnerLiveStatesBounded, enumerateSponsoredEntries } =
-  await import("@/lib/stellar/sponsorship");
+// Patched in place on the real config object (and restored after the file), never with
+// mock.module: replacing the whole module for the rest of the `bun test` process is what leaked
+// stubs into unrelated files in CI.
+const realTestnetBase = PATH_ROUTING_API_URLS.testnet;
+beforeAll(() => {
+  PATH_ROUTING_API_URLS.testnet = FAKE_BASE;
+});
+afterAll(() => {
+  PATH_ROUTING_API_URLS.testnet = realTestnetBase;
+});
 
 const OWNER = "GOWNER00000000000000000000000000000000000000000000000";
 const SPONSOR = "GSPONSOR000000000000000000000000000000000000000000000";

@@ -46,12 +46,17 @@ function opCount(xdr: string): number {
   return TransactionBuilder.fromXDR(xdr, Networks.TESTNET).operations.length;
 }
 
+// Comfortably funded: these tests are about batching mechanics, not fee affordability -
+// a balance this large can never trip the new needsSponsoredFee check below.
+const WELL_FUNDED = { nativeBalanceLumens: "10000.0000000", numSubEntries: 0, numSponsoring: 0 };
+
 test("a close that fits under the op cap yields a single fused transaction", () => {
   const txs = packFusedCloseTransactions(
     new Account(MASTER, START_SEQ),
     input({ trustlines: manyTrustlines(3) }),
     "testnet",
-    999
+    999,
+    WELL_FUNDED
   );
   expect(txs).toHaveLength(1);
   expect(txs[0].id).toBe("tx-1");
@@ -64,7 +69,13 @@ test("a close over the op cap is split into sequence-chained transactions with t
   const in_ = input({ trustlines: manyTrustlines(150) });
   const total = assembleFusedCloseOpsTagged(MASTER, in_).length; // 150 removals + merge
 
-  const txs = packFusedCloseTransactions(new Account(MASTER, START_SEQ), in_, "testnet", 999);
+  const txs = packFusedCloseTransactions(
+    new Account(MASTER, START_SEQ),
+    in_,
+    "testnet",
+    999,
+    WELL_FUNDED
+  );
 
   // More than one tx, none over the 100-op cap, and every op accounted for.
   expect(txs.length).toBeGreaterThan(1);
@@ -110,7 +121,8 @@ test("a claim-only round produces claim transactions with no merge", () => {
     new Account(MASTER, START_SEQ),
     input({ claimableBalances: claimables(3), includeMerge: false }),
     "testnet",
-    999
+    999,
+    WELL_FUNDED
   );
   expect(txs).toHaveLength(1);
   expect(opCount(txs[0].xdr)).toBe(3);
@@ -123,7 +135,8 @@ test("claims over the op cap are split into sequence-chained transactions", () =
     new Account(MASTER, START_SEQ),
     input({ claimableBalances: claimables(150), includeMerge: false }),
     "testnet",
-    999
+    999,
+    WELL_FUNDED
   );
   expect(txs.length).toBeGreaterThan(1);
   for (const t of txs) {

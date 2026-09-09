@@ -1,3 +1,15 @@
 .next
 node_modules
 bun.lock
+
+# Skill/agent tooling definitions, not application source - Prettier reformatting them is pure
+# noise with no CI or build dependency on their formatting.
+.agents/skills
+.claude/skills
+.codex/skills
+skills-lock.json
+
+# Scratch worktrees created by the git-worktree skill workflow, each its own nested checkout
+# (including its own copy of the skills above). Not application source, and some of the JSON
+# fixtures nested in it are JSONL, which trips Prettier's JSON parser with a hard error.
+.claude/worktrees

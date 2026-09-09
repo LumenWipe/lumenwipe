@@ -33,6 +33,8 @@ export function operationThresholdCategory(op: IntentOperation): ThresholdCatego
     case "change_trust":
     case "manage_sell_offer":
     case "revoke_sponsorship":
+    // InvokeHostFunction does not override getThresholdLevel() either: medium, like ManageData.
+    case "invoke_host_function":
       return "med";
     case "unknown":
       // Fail closed: an operation this app doesn't recognize must never be treated as

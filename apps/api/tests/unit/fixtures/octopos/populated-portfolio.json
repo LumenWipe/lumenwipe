@@ -1,0 +1,147 @@
+{
+  "address": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+  "positions": [
+    {
+      "protocol": "blend",
+      "type": "SUPPLY",
+      "poolAddress": "CBYOBT7ZCCLQCBUYYIABZLSEGDPEUWXCUXQTZYOG3YBDR7U357D5ZIRF",
+      "assetAddress": "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
+      "bTokenAmount": "500000000",
+      "usdValue": "50.12"
+    },
+    {
+      "protocol": "blend",
+      "type": "BORROW",
+      "poolAddress": "CBYOBT7ZCCLQCBUYYIABZLSEGDPEUWXCUXQTZYOG3YBDR7U357D5ZIRF",
+      "assetAddress": "CDIKURWHYS4FFTR5KOQK6MBFZA2K3E26WGBQI6PXBYWZ4XIOPJHDFJKP",
+      "dTokenAmount": "100000000",
+      "healthFactor": "1.85",
+      "usdValue": "10.03"
+    },
+    {
+      "protocol": "aquarius",
+      "type": "LP",
+      "poolAddress": "CCNXGPE4AQCSNEBZO3XJDKKDI3CRLYMVS6UWBBTVDLALLWMJEXBORQ2A",
+      "shareAmount": "1000000",
+      "claimableAquaAmount": "250000",
+      "usdValue": "5.40"
+    },
+    {
+      "protocol": "soroswap",
+      "type": "LP",
+      "poolAddress": "CBQW3F7QE2TG4VR4TDBB4PRQQWFTOWLPP77RQQXYWFFQK3YE7MZPEF5W",
+      "shareAmount": "2000000",
+      "usdValue": "8.75"
+    },
+    {
+      "protocol": "phoenix",
+      "type": "LP",
+      "poolAddress": "CAWC6XX3TNULIHUZLHUBSHBBXMUYVLWK4YHJCTZ4I6AKBD5GDYD5SIRZ",
+      "shareAmount": "3000000",
+      "usdValue": "12.00"
+    },
+    {
+      "protocol": "phoenix",
+      "type": "STAKE",
+      "poolAddress": "CAWC6XX3TNULIHUZLHUBSHBBXMUYVLWK4YHJCTZ4I6AKBD5GDYD5SIRZ",
+      "stakedAmount": "500000",
+      "stakedAtEpoch": "1750000000",
+      "usdValue": "2.00"
+    },
+    {
+      "protocol": "fxdao",
+      "type": "COLLATERAL",
+      "vaultAddress": "CADUFDKX5B7WQN4HJLW4DZD5C737QSRS2X4PBVX3NFBZPULQYU4LRE3P",
+      "denomination": "USD",
+      "collateralAmount": "10000000000",
+      "usdValue": "1000.00"
+    },
+    {
+      "protocol": "fxdao",
+      "type": "BORROW",
+      "vaultAddress": "CADUFDKX5B7WQN4HJLW4DZD5C737QSRS2X4PBVX3NFBZPULQYU4LRE3P",
+      "denomination": "USD",
+      "debtAmount": "700000000",
+      "usdValue": "700.00"
+    },
+    {
+      "protocol": "untangled-vault",
+      "type": "SUPPLY",
+      "poolAddress": "CFOREIGNVAULTNOTSUPPORTEDBYLUMENWIPEXXXXXXXXXXXXXXXXXXXXX",
+      "shareAmount": "42",
+      "usdValue": "42.00"
+    },
+    {
+      "protocol": "blend",
+      "type": "SUPPLY",
+      "poolAddress": "CBYOBT7ZCCLQCBUYYIABZLSEGDPEUWXCUXQTZYOG3YBDR7U357D5ZIRF"
+    }
+  ],
+  "totalValueUsd": "1830.30",
+  "valueByProtocol": {
+    "blend": "760.15",
+    "aquarius": "5.40",
+    "soroswap": "8.75",
+    "phoenix": "14.00",
+    "fxdao": "1700.00"
+  },
+  "timestamp": "2026-08-31T12:00:00.000Z",
+  "source": "snapshot",
+  "queryKeys": {
+    "rpcEndpoints": [
+      { "url": "https://mainnet.sorobanrpc.com", "health": "healthy", "avgLatencyMs": 120 }
+    ],
+    "rpcPolicy": {
+      "maxKeysPerCall": 150,
+      "recommendedConcurrency": 3,
+      "backoffOn429Ms": [500, 1500, 4000, 10000],
+      "timeoutMs": 5000,
+      "raceWinner": true,
+      "streamingHint": true
+    },
+    "blend": {
+      "protocol": "blend",
+      "ledgerKeys": ["AAAA_BLEND_LEDGER_KEY"],
+      "poolAddresses": ["CBYOBT7ZCCLQCBUYYIABZLSEGDPEUWXCUXQTZYOG3YBDR7U357D5ZIRF"],
+      "instructions": "read each key via getLedgerEntries"
+    },
+    "aquarius": {
+      "protocol": "aquarius",
+      "ledgerKeys": ["AAAA_AQUARIUS_LEDGER_KEY"],
+      "poolAddresses": ["CCNXGPE4AQCSNEBZO3XJDKKDI3CRLYMVS6UWBBTVDLALLWMJEXBORQ2A"],
+      "instructions": "read each key via getLedgerEntries"
+    },
+    "soroswap": {
+      "protocol": "soroswap",
+      "ledgerKeys": ["AAAA_SOROSWAP_LEDGER_KEY"],
+      "poolAddresses": ["CBQW3F7QE2TG4VR4TDBB4PRQQWFTOWLPP77RQQXYWFFQK3YE7MZPEF5W"],
+      "instructions": "read each key via getLedgerEntries"
+    },
+    "phoenix": {
+      "protocol": "phoenix",
+      "ledgerKeys": ["AAAA_PHOENIX_LEDGER_KEY"],
+      "poolAddresses": ["CAWC6XX3TNULIHUZLHUBSHBBXMUYVLWK4YHJCTZ4I6AKBD5GDYD5SIRZ"],
+      "instructions": "read each key via getLedgerEntries"
+    },
+    "fxdao": {
+      "protocol": "fxdao",
+      "ledgerKeys": ["AAAA_FXDAO_LEDGER_KEY"],
+      "vaultAddress": "CADUFDKX5B7WQN4HJLW4DZD5C737QSRS2X4PBVX3NFBZPULQYU4LRE3P",
+      "instructions": "read each key via getLedgerEntries"
+    },
+    "tokenInfos": {
+      "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA": {
+        "symbol": "XLM",
+        "decimals": 7,
+        "priceUsd": "0.1002",
+        "priceSource": "pool-derived"
+      },
+      "CDIKURWHYS4FFTR5KOQK6MBFZA2K3E26WGBQI6PXBYWZ4XIOPJHDFJKP": {
+        "symbol": "USDC",
+        "decimals": 7,
+        "priceUsd": "1.0001",
+        "priceSource": "pool-derived"
+      }
+    }
+  }
+}

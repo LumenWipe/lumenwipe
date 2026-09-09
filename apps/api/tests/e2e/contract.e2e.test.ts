@@ -153,6 +153,20 @@ test("malformed JSON on mediator/sign returns its plain error contract", async (
   expect(res.body.error.code).toBe("invalid_body");
 });
 
+test("fee-bump/sponsor is unavailable in this test environment (no fee account secret) rather than 404", async () => {
+  const res = await authPost("/testnet/fee-bump/sponsor").send({ transaction: "AAAA" });
+  expect(res.status).toBe(503);
+  expect(res.body.error.code).toBe("fee_bump_not_configured");
+});
+
+test("malformed JSON on fee-bump/sponsor returns the same error contract as every other route", async () => {
+  const res = await authPost("/testnet/fee-bump/sponsor")
+    .set("Content-Type", "application/json")
+    .send("{ not json");
+  expect(res.status).toBe(400);
+  expect(res.body.error.code).toBe("invalid_body");
+});
+
 test("responses carry Cache-Control: no-store (success and error)", async () => {
   const ok = await request(http).get("/health");
   expect(ok.headers["cache-control"]).toBe("no-store");

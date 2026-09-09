@@ -1,12 +1,16 @@
 import { test, expect } from "bun:test";
 import {
+  chosenTokenConversions,
+  chosenTokenTransfers,
   chosenTransfers,
   receiptAssetSummary,
+  receiptTokenSummary,
   claimAnswersKey,
   claimableSelectionsToDecisions,
   destinationAcknowledgementToDecisions,
   dispositionsToDecisions,
 } from "@/lib/api/close-decisions";
+import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 const ASSET = "USDC:GISSUER0000000000000000000000000000000000000000000000000000";
 // Must match the API's assetDecisionId contract: "asset:" + first ":" replaced with "-".
@@ -184,6 +188,8 @@ const ACCOUNT_BASE = {
   poolShares: [],
   claimableBalances: [],
   subEntryMismatch: false,
+  defiPositions: emptyDefiPositionsResult("GSOURCE"),
+  defiPositionsWarnings: [],
 };
 
 test("chosenTransfers › an asset arriving via a remediated claim gets its floor from the claim", () => {
@@ -345,4 +351,140 @@ test("receiptAssetSummary › a forfeited balance appears nowhere", () => {
 
   expect(summary.handledAssets).toHaveLength(0);
   expect(summary.removedTrustlines).toHaveLength(0);
+});
+
+// ─── Soroban tokens (#161) ────────────────────────────────────────────────────
+
+const TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
+const TOKEN_DEST = "GBWLBY2XERGCNM5UWRIF5ZG6LM7Q7B44MHUR54BT3XVHAD5IB4HLN3XG";
+
+function withTokens(tokens: Array<{ contract: string; balance: string; symbol?: string | null }>) {
+  return {
+    address: "GBGBPPN2ACLYY4W2FGHMDTAD6CVFXX3STWYFQV6ZX7TFZYQYHAIUZMAT",
+    network: "testnet" as const,
+    sequence: "1",
+    nativeBalanceLumens: "5.0000000",
+    dataEntries: [],
+    signers: [],
+    thresholds: { low: 0, med: 1, high: 1 },
+    numSubEntries: 0,
+    numSponsoring: 0,
+    sponsoredBy: null,
+    authImmutable: false,
+    trustlines: [],
+    openOffers: [],
+    poolShares: [],
+    claimableBalances: [],
+    subEntryMismatch: false,
+    sponsoredEntries: [],
+    sponsorshipEnumerationIncomplete: false,
+    defiPositions: emptyDefiPositionsResult(
+      "GBGBPPN2ACLYY4W2FGHMDTAD6CVFXX3STWYFQV6ZX7TFZYQYHAIUZMAT"
+    ),
+    defiPositionsWarnings: [],
+    sorobanTokens: {
+      tokens: tokens.map((t) => ({
+        contract: t.contract,
+        balance: t.balance,
+        symbol: t.symbol === undefined ? "XTAR" : t.symbol,
+        decimals: 7,
+        sources: ["explorer" as const],
+      })),
+      unreadable: [],
+      coverage: [],
+      eventsScanned: null,
+      warnings: [],
+    },
+  };
+}
+
+test("dispositionsToDecisions › a Soroban token is keyed token:<contract>, and leave is the explicit acknowledgement", () => {
+  expect(dispositionsToDecisions({ [TOKEN]: "leave", [ASSET]: "convert" }, {})).toEqual([
+    { id: `token:${TOKEN}`, choice: "acknowledge_residue" },
+    { id: ASSET_ID, choice: "convert_to_xlm" },
+  ]);
+  expect(dispositionsToDecisions({ [TOKEN]: "transfer" }, { [TOKEN]: TOKEN_DEST })).toEqual([
+    { id: `token:${TOKEN}`, choice: "transfer_to_account", params: { destination: TOKEN_DEST } },
+  ]);
+});
+
+test("chosenTokenTransfers › the destination typed and the raw balance read, for tokens marked transfer only", () => {
+  const account = withTokens([{ contract: TOKEN, balance: "2500000000" }]);
+  expect(
+    chosenTokenTransfers(
+      { [TOKEN]: "transfer", [ASSET]: "transfer" },
+      { [TOKEN]: TOKEN_DEST, [ASSET]: TOKEN_DEST },
+      account
+    )
+  ).toEqual({ [TOKEN]: { destination: TOKEN_DEST, amount: "2500000000" } });
+  // No destination, or another disposition: nothing to vouch for.
+  expect(chosenTokenTransfers({ [TOKEN]: "transfer" }, {}, account)).toEqual({});
+  expect(chosenTokenTransfers({ [TOKEN]: "leave" }, { [TOKEN]: TOKEN_DEST }, account)).toEqual({});
+  // A token the read does not show yet (paid out by an exit, or confirmed only by the plan's own
+  // read) is still pinned to its destination, with a zero floor on the amount.
+  expect(
+    chosenTokenTransfers({ [TOKEN]: "transfer" }, { [TOKEN]: TOKEN_DEST }, withTokens([]))
+  ).toEqual({ [TOKEN]: { destination: TOKEN_DEST, amount: "0" } });
+  expect(chosenTokenTransfers({ [TOKEN]: "transfer" }, { [TOKEN]: TOKEN_DEST }, null)).toEqual({
+    [TOKEN]: { destination: TOKEN_DEST, amount: "0" },
+  });
+});
+
+test("chosenTransfers › never lists a Soroban token: those are held to a different rule", () => {
+  const account = withTokens([{ contract: TOKEN, balance: "5" }]);
+  expect(chosenTransfers({ [TOKEN]: "transfer" }, { [TOKEN]: TOKEN_DEST }, account, {})).toEqual(
+    {}
+  );
+});
+
+test("receiptTokenSummary › every token with a balance, named by symbol or short contract", () => {
+  expect(
+    receiptTokenSummary(
+      withTokens([
+        { contract: TOKEN, balance: "5" },
+        {
+          contract: "CC64WBDGS6QQP22QTTIACYIXT3WF7BBQEYOQPLTP7GTKYY7PZ74QYGSL",
+          balance: "1",
+          symbol: null,
+        },
+        { contract: "CCZGLAUBDKJSQK72QOZHVU7CUWKW45OZWYWCLL27AEK74U2OIBK6LXF2", balance: "0" },
+      ])
+    )
+  ).toEqual([
+    { asset: TOKEN, code: "XTAR" },
+    { asset: "CC64WBDGS6QQP22QTTIACYIXT3WF7BBQEYOQPLTP7GTKYY7PZ74QYGSL", code: "CC64…YGSL" },
+  ]);
+  expect(receiptTokenSummary(null)).toEqual([]);
+});
+
+test("dispositionsToDecisions › a token's convert answer carries the floor the plan quoted; without one it carries none and the API refuses it", () => {
+  expect(
+    dispositionsToDecisions({ [TOKEN]: "convert", [ASSET]: "convert" }, {}, { [TOKEN]: "5223381" })
+  ).toEqual([
+    { id: `token:${TOKEN}`, choice: "convert_to_xlm", params: { minAmountOut: "5223381" } },
+    { id: ASSET_ID, choice: "convert_to_xlm" },
+  ]);
+  expect(dispositionsToDecisions({ [TOKEN]: "convert" }, {}, {})).toEqual([
+    { id: `token:${TOKEN}`, choice: "convert_to_xlm" },
+  ]);
+});
+
+test("chosenTokenConversions › only tokens marked convert with a usable floor are vouched for, carrying the balance the analysis read", () => {
+  const account = withTokens([{ contract: TOKEN, balance: "2500000000" }]);
+  expect(
+    chosenTokenConversions(
+      { [TOKEN]: "convert", [ASSET]: "convert" },
+      { [TOKEN]: "5223381" },
+      account
+    )
+  ).toEqual({ [TOKEN]: { minAmountOut: "5223381", amountIn: "2500000000" } });
+  // No floor, a zero floor, a non-integer, or another disposition: nothing to hold the swap to.
+  expect(chosenTokenConversions({ [TOKEN]: "convert" }, {}, account)).toEqual({});
+  expect(chosenTokenConversions({ [TOKEN]: "convert" }, { [TOKEN]: "0" }, account)).toEqual({});
+  expect(chosenTokenConversions({ [TOKEN]: "convert" }, { [TOKEN]: "1.5" }, account)).toEqual({});
+  expect(chosenTokenConversions({ [TOKEN]: "leave" }, { [TOKEN]: "5223381" }, account)).toEqual({});
+  // No account read: nothing to vouch the balance with, so the amount floors to zero.
+  expect(chosenTokenConversions({ [TOKEN]: "convert" }, { [TOKEN]: "5223381" }, null)).toEqual({
+    [TOKEN]: { minAmountOut: "5223381", amountIn: "0" },
+  });
 });
