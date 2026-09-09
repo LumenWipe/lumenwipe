@@ -12,6 +12,14 @@ import { ErrorEnvelopeFilter } from "./common/error-envelope.filter";
  * routes' shape, not Nest's default `{ statusCode, message, error }`.
  */
 export function configureApp(app: INestApplication): void {
+  // Cloud Run terminates TLS and proxies every request through its own frontend - without this,
+  // Express's req.ip reports that proxy's address for every request, not the real caller's, so
+  // ApiKeyThrottlerGuard's per-IP fallback (unauthenticated requests, which carry no API key to
+  // key off instead) collapses onto one shared bucket for all callers combined (#59). Cloud
+  // Run's proxy is trusted infrastructure the request cannot have come from any other way, so
+  // trusting it to report the real client in X-Forwarded-For is safe here.
+  app.getHttpAdapter().getInstance().set("trust proxy", true);
+
   // Catches what the controllers do not: Nest raises 429 and 404 itself, in its own shape.
   app.useGlobalFilters(new ErrorEnvelopeFilter());
 
