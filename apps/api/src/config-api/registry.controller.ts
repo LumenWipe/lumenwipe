@@ -2,6 +2,7 @@ import { Controller, Get } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { Public } from "../auth/public.decorator";
 import { servedRegistry, type ServedRegistry } from "@/lib/exchange-registry";
+import { ServedRegistryDto } from "./dto/registry-responses.dto";
 
 /**
  * Serves the exchange registry.
@@ -30,6 +31,7 @@ export class RegistryController {
       "past `validUntil` rather than proceed on unchecked data: a close into an exchange with " +
       "the wrong memo rule succeeds on-chain and is credited to nobody, with no error and no " +
       "source account left to investigate from.",
+    type: ServedRegistryDto,
   })
   registry(): ServedRegistry {
     return servedRegistry();

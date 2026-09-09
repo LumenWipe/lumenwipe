@@ -9,6 +9,7 @@ import {
 } from "@nestjs/swagger";
 import { Transaction } from "@stellar/stellar-sdk";
 import { MediatorSignRequestDto } from "./dto/mediator-sign.dto";
+import { MediatorCheckResultDto, MediatorSignResponseDto } from "./dto/mediator-responses.dto";
 import { isValidNetwork, NETWORK_PASSPHRASES, getMediatorPublicKey } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { lookupExchange } from "@/lib/exchange-registry";
@@ -37,6 +38,7 @@ export class MediatorController {
   @ApiResponse({
     status: 200,
     description: "The transaction with the mediator signature added (base64 XDR).",
+    type: MediatorSignResponseDto,
   })
   @ApiResponse({ status: 400, description: "Missing/invalid transaction or disallowed structure." })
   @ApiResponse({ status: 503, description: "Mediator flow not configured on this server." })
@@ -120,7 +122,11 @@ export class MediatorController {
   @Get("check/:address")
   @ApiOperation({ summary: "Check whether a destination needs the mediator flow and/or a memo." })
   @ApiParam({ name: "address", description: "Destination account (G...)." })
-  @ApiResponse({ status: 200, description: "Mediator/memo requirements for the destination." })
+  @ApiResponse({
+    status: 200,
+    description: "Mediator/memo requirements for the destination.",
+    type: MediatorCheckResultDto,
+  })
   @ApiResponse({ status: 400, description: "Invalid network or address." })
   async check(@Param("network") network: string, @Param("address") address: string) {
     if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
