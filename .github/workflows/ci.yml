@@ -19,7 +19,11 @@ jobs:
       matrix:
         include:
           - { name: "types", pkg: "@lumenwipe/types", checks: "type-check" }
-          - { name: "sdk", pkg: "@lumenwipe/sdk", checks: "type-check lint test" }
+          # build:types + check-api (not the plain `build` script, which runs api-extractor in
+          # --local/auto-fix mode) is what actually enforces the API report: a PR that changes
+          # the SDK's public surface without updating etc/sdk.api.md fails here instead of the
+          # check silently rewriting the file first. See RELEASING.md.
+          - { name: "sdk", pkg: "@lumenwipe/sdk", checks: "type-check lint test build:types check-api" }
           # test:coverage runs the same suite as `test` with a coverage report printed to the
           # log - same pass/fail outcome, no threshold gate, just visibility into what's covered.
           # `build` is in the list because type-check alone cannot catch a broken build: tsc

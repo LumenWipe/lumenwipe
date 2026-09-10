@@ -47,7 +47,7 @@ interface DefiPositionBase {
   contractAddress: string;
   /** Human-readable view of the position, when the analysis could resolve one. */
   display?: DefiPositionDisplay;
-  /** Left as an optional hook: the wasmHash -> protocol-version contract registry
+  /** Left as an optional hook: the wasmHash -\> protocol-version contract registry
    *  architecture.md describes does not exist in code yet (a later contribution). */
   wasmHash?: string;
   usdValue: string | null;

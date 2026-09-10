@@ -21,7 +21,12 @@
     "untrimmedFilePath": "<projectFolder>/dist/index.d.ts"
   },
 
-  "apiReport": { "enabled": false },
+  // Snapshot of the SDK's full public surface, including everything bundledPackages rolls in
+  // from @lumenwipe/types - a field added/removed/retyped on ANY type the SDK's methods return
+  // or accept (e.g. AccountState gaining a field two layers down) shows up as a diff here, not
+  // silently. `bun run build` regenerates it locally (api-extractor run --local); CI runs the
+  // strict form (no --local), which fails instead of auto-updating - see RELEASING.md.
+  "apiReport": { "enabled": true, "reportFolder": "<projectFolder>/etc" },
   "docModel": { "enabled": false },
   "tsdocMetadata": { "enabled": false },
 

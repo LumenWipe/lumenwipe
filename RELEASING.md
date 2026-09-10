@@ -108,6 +108,42 @@ the version just satisfies the check; the actual publish still needs the tag-pus
 catches "forgot entirely," not "bumped the wrong amount" - semver correctness is still a human
 judgment call.
 
+### The other direction: the live API outrunning an already-published SDK
+
+The gap above is about the SDK falling behind its own source. There's a second, sharper version
+of the same risk: `apps/api` deploys itself on every merge to `main` (see above), while
+`packages/sdk` only reaches npm on a maintainer's deliberate tag push. Between those two events,
+production can be running API behavior that no published SDK version has ever seen - and if that
+behavior is a breaking change to something the SDK already depends on, an integrator installing
+`@lumenwipe/sdk` from npm today gets a client built against a contract that no longer matches
+what it's calling.
+
+Two things make this concrete rather than theoretical:
+
+- **Most of the API has no version boundary at all.** Only `CloseController` (`close/plan`,
+  `close/transactions`, `submit`) is under `/v1`. `account`, `mediator`, `fee-bump`, `health`, and
+  `config` have no prefix, so there's no `/v2` to cut if one of them needs a breaking change -
+  today, "don't break it" is the only policy those endpoints have. Treat every field currently
+  returned or accepted by any live endpoint, versioned or not, as permanent, additive-only surface
+  until that changes.
+- **The SDK's own build now has a structural tripwire for this.** `packages/sdk/api-extractor.json`
+  enables `apiReport`, which snapshots the SDK's full flattened public type surface - including
+  every field pulled in from `@lumenwipe/types`, however deeply nested - into
+  `packages/sdk/etc/sdk.api.md`. `bun run --filter '@lumenwipe/sdk' check-api` (part of the `sdk`
+  CI matrix entry) fails if the current build's surface doesn't match that file. A field
+  added, removed, or retyped on `AccountState`, `DefiPosition`, or anything else the SDK's methods
+  touch - the exact shape a live API change would take - shows up as a required diff to
+  `sdk.api.md` in the PR, not as a silent surface change nobody reviewed. (`bun run build`'s
+  `api-extractor run --local` auto-updates the file for a legitimate change; `check-api` runs the
+  same tool without `--local`, so CI fails instead of quietly rewriting it.)
+
+Together these don't stop a breaking API change from shipping - nothing can, short of never
+deploying continuously - but they force it to leave a paper trail: an `sdk.api.md` diff for
+anything the SDK actually depends on, and, for `/v1`, a version bump instead of an in-place
+change. What they don't cover is `apps/api` behavior the SDK's own types don't model (an
+undocumented status code, a header, a timing change) - that class of drift is still a human
+judgment call at review time, the same way "does this need a release" is above.
+
 ## Why `@lumenwipe/types` stays private
 
 It's `"private": true` in `packages/types/package.json` on purpose, not an oversight. The SDK's
