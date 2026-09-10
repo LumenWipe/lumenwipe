@@ -5,14 +5,30 @@ All notable changes to `@lumenwipe/sdk` are documented here. Format follows
 [Semantic Versioning](https://semver.org/). See [`RELEASING.md`](../../RELEASING.md) for how a
 release is cut.
 
-## [0.1.0] - 2026-09-07
+## [Unreleased]
 
-Initial public release.
+Landed on `main` since the last tagged release - not on npm yet. This is exactly the drift
+[`RELEASING.md`](../../RELEASING.md) and CI's `sdk-version-bump` check exist to surface: move
+these into a new dated section (and bump `package.json`) the next time `packages/sdk` is released.
 
 ### Added
 
-- `LumenWipeClient`: typed fetch client for the full close flow - `getAccount`, `closePlan`,
-  `closeTransactions`, `submit`, and the mediator/fee-bump/allowance endpoints.
+- `LumenWipeClient.feeBumpSponsor()`: wraps a wind-down transaction in a signed CAP-15 fee-bump
+  envelope for an account that can't pay its own fee.
+- `LumenWipeClient.getAllowances()`: every live SEP-41 allowance the account has granted -
+  independent of closing an account, a standalone security utility.
+- `LumenWipeClient.revokeAllowance()`: builds the unsigned `approve(owner, spender, 0, 0)`
+  transaction that revokes one allowance.
+
+## [0.1.0] - 2026-09-07
+
+Initial public release. `LumenWipeClient` at this point covered the core close flow only - the
+fee-bump/allowance endpoints above weren't added until after this tag.
+
+### Added
+
+- `LumenWipeClient`: typed fetch client for `health`, `getAccount`, `getPaths`, `closePlan`,
+  `closeTransactions`, `submit`, `mediatorCheck`, and `mediatorSign`.
 - `runClose`: pure, dependency-injected multi-round close runner (verify -> sign -> submit,
   looping until the account is closed), with `InsufficientSignatureWeightError` for resuming a
   partially-signed transaction once more signing weight is available.
