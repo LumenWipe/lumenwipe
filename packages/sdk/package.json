@@ -41,7 +41,9 @@
     "account-merge"
   ],
   "scripts": {
-    "build": "bun run --filter '@lumenwipe/types' build && tsup src/index.ts --format esm,cjs --clean && tsc -p tsconfig.build.json && api-extractor run --local && cp dist/index.d.ts dist/index.d.cts",
+    "build": "bun run build:types && api-extractor run --local && cp dist/index.d.ts dist/index.d.cts",
+    "build:types": "bun run --filter '@lumenwipe/types' build && tsup src/index.ts --format esm,cjs --clean && tsc -p tsconfig.build.json",
+    "check-api": "api-extractor run",
     "type-check": "tsc --noEmit && tsc -p tests/tsconfig.json --noEmit",
     "lint": "eslint src",
     "test": "bun test tests"

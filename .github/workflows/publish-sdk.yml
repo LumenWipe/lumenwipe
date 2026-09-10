@@ -42,6 +42,16 @@ jobs:
           bun run --filter '@lumenwipe/sdk' lint
           bun run --filter '@lumenwipe/sdk' test
 
+      - name: Build SDK types
+        run: bun run --filter '@lumenwipe/sdk' build:types
+
+      # `build` below rolls up the API report in --local/auto-fix mode, which would silently
+      # rewrite etc/sdk.api.md instead of catching drift. Checking it strictly here, before that
+      # rollup runs, is what makes this the same guardrail as CI's sdk matrix - not just the same
+      # type-check/lint/test - for a tag that never went through that PR's CI on this exact ref.
+      - name: Verify the SDK's public API report matches
+        run: bun run --filter '@lumenwipe/sdk' check-api
+
       - name: Build
         run: bun run --filter '@lumenwipe/sdk' build
 

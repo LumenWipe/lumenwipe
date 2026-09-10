@@ -21,7 +21,12 @@
     "untrimmedFilePath": "<projectFolder>/dist/index.d.ts"
   },
 
-  "apiReport": { "enabled": false },
+  // Snapshot of the SDK's full public surface, including everything bundledPackages rolls in
+  // from @lumenwipe/types - a field added/removed/retyped on ANY type the SDK's methods return
+  // or accept (e.g. AccountState gaining a field two layers down) shows up as a diff here, not
+  // silently. `bun run build` regenerates it locally (api-extractor run --local); CI runs the
+  // strict form (no --local), which fails instead of auto-updating - see RELEASING.md.
+  "apiReport": { "enabled": true, "reportFolder": "<projectFolder>/etc" },
   "docModel": { "enabled": false },
   "tsdocMetadata": { "enabled": false },
 
@@ -32,5 +37,11 @@
       "ae-missing-release-tag": { "logLevel": "none" },
       "ae-unresolved-link": { "logLevel": "none" }
     }
+    // sdk.api.md's "(ae-forgotten-export) DefiPositionBase" comment is expected and permanent:
+    // this message isn't gated by the reporting config above (confirmed - even "error" here
+    // still exits 0), and DefiPositionBase (packages/types/src/defi-position.ts) is a
+    // deliberately unexported mixin every real position type extends. dtsRollup already inlines
+    // it as a non-exported interface in dist/index.d.ts, so consumers see its fields without
+    // ever needing to name it - not a leak, nothing to fix.
   }
 }
