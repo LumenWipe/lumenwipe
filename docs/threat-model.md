@@ -86,7 +86,7 @@ envelopes out, no network side effects (CLAUDE.md, "Hard invariants") - which is
 | Denial of service      | A position that cannot be safely closed causes the builder to fail unsafely (partial execution, silent skip)               | A position or step that cannot be closed safely surfaces as an explained blocker, never silently skipped (CLAUDE.md, "Hard invariants")                                                                                                                                                                                                                                                                                                        |
 | Elevation of privilege | A `SetOptions` operation the builder emits adds a signer or raises thresholds, silently expanding control over the account | `verify()`'s allowlist specifically asserts `SetOptions` never adds a signer or raises thresholds (§"The trust boundary moved to verify()"); the one check sourced from the API's own trust domain rather than the user - that a signer removal targets a signer that actually exists - is cross-checked against a separate account-state read, not the transaction itself, so it also catches a builder bug independent of `verify()` (§13.1) |
 
-## 5. Surface 4a: backend signing key — mediator co-sign
+## 5. Surface 4a: backend signing key (mediator co-sign)
 
 `apps/api/src/mediator/mediator.controller.ts` and `mediator-validation.ts`. The mediator is the one signing
 key the API holds today; it co-signs only the forwarding payment of the exchange-mediator flow
@@ -119,7 +119,7 @@ and raises the bar for the active case. This residual risk is carried forward in
 Section 10 as an accepted risk with an operational (not code) compensating control, which is the shape
 `#171`'s remediation plan expects findings to already be in.
 
-## 6. Surface 4b: backend signing key — fee-bump sponsor
+## 6. Surface 4b: backend signing key (fee-bump sponsor)
 
 **Status: implemented (#164, epic #159).** This surface is specified in
 [Section 8.1](/architecture#81-sponsored-fees-closing-accounts-that-cannot-pay-their-own-way) of the
