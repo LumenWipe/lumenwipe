@@ -82,6 +82,16 @@ test("retries a 429 and succeeds once the provider relents", async () => {
   expect(calls).toHaveLength(2);
 });
 
+// A third attempt (on top of the ~10s of AbortController timeouts a fully-stalled OctoPos
+// already costs) is what turns "OctoPos is having a bad day" into "the analyze call itself
+// times out" - this is the fail-fast side of that budget: give up after 2 attempts, not 3.
+test("gives up after 2 attempts on sustained 5xx failures, not 3", async () => {
+  const { fetch, calls } = recordingFetch(() => new Response("", { status: 503 }));
+  const result = await fetchOctoPosPortfolio(ADDRESS, { baseUrl: BASE, fetch });
+  expect(result).toEqual({ ok: false, reason: "unavailable", detail: expect.any(String) });
+  expect(calls).toHaveLength(2);
+});
+
 test("a network failure becomes an unavailable result rather than a rejection", async () => {
   const fn = (async () => {
     throw new Error("ECONNRESET");

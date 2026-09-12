@@ -9,8 +9,10 @@ export const POLL_MAX_ATTEMPTS = 30; // 90 seconds total
 export const SLIPPAGE_BPS = 50; // 0.5% default slippage for path payments
 export const HORIZON_TIMEOUT_MS = 10000; // 10 seconds
 // OctoPos is an optional enhancement - fail fast into degraded mode rather than stall the
-// analyze call waiting on a third-party DeFi position provider.
-export const OCTOPOS_TIMEOUT_MS = 5000; // 5 seconds
+// analyze call waiting on a third-party DeFi position provider. Combined with the 1-retry
+// budget in octopos-http.ts, worst case is 2 * 2500ms + one 300ms backoff ~= 5.3s, leaving
+// headroom under the web proxy's maxDuration for the direct-read fallback that can follow.
+export const OCTOPOS_TIMEOUT_MS = 2500; // 2.5 seconds
 // architecture.md §7.2 caches DeFi positions for "tens of seconds," and OctoPos's own Position
 // Tracker refreshes every 60s (per its architecture docs) - double that, tight enough to catch a
 // genuinely stalled feed, generous enough not to block a plan on ordinary refresh latency.
