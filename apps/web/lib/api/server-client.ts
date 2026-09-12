@@ -20,6 +20,12 @@ export function getApiClient(): LumenWipeClient {
   if (!baseUrl) throw new Error("LUMENWIPE_API_URL is not configured.");
   if (!apiKey) throw new Error("LUMENWIPE_API_KEY is not configured.");
 
-  cached = new LumenWipeClient({ baseUrl, apiKey });
+  // The default (30s) was already tight against the account/close endpoints' own worst-case
+  // DeFi-detection budget (OctoPos plus a direct on-chain fallback sweep of hundreds of mainnet
+  // pools, ~25s alone) before adding the rest of the account read on top. A client timeout
+  // shorter than the server's own realistic worst case means the SDK's clean "request timed
+  // out" error can fire before the API ever had a real chance to answer - raised so it lines up
+  // with the maxDuration set on the routes that call these endpoints (see their route.ts files).
+  cached = new LumenWipeClient({ baseUrl, apiKey, timeout: 45_000 });
   return cached;
 }

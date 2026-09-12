@@ -55,9 +55,17 @@ export const DEGRADED_SOURCE_CONFIRMED_EMPTY = "octopos-degraded-direct-read-con
 
 /** The direct-read fallback sweeps every registered protocol of the network (hundreds of pools
  *  on mainnet); past this it reports "detected nothing" rather than holding the analysis.
- *  Combined with OctoPos's own ~5.3s worst case (octopos-http.ts), this keeps the whole
- *  DeFi-detection budget well under the web proxy's maxDuration instead of eating most of it. */
-export const DIRECT_READ_FALLBACK_TIMEOUT_MS = 8_000;
+ *
+ *  This was cut to 8s for latency, without measuring the real sweep against production RPC
+ *  first - confirmed live on 2026-09-12 (a real zero-trustline mainnet account, `source`
+ *  consistently landing on DEGRADED_SOURCE rather than DEGRADED_SOURCE_CONFIRMED_EMPTY across
+ *  repeated requests) that 8s is not enough for the sweep to ever actually finish, which makes
+ *  positions-gate.ts's confirmed-empty leniency effectively unreachable - the exact case it was
+ *  built for. Restored to the value this ran on before that cut. OctoPos's own ~5.3s worst case
+ *  (octopos-http.ts) still keeps the combined DeFi-detection budget well short of this, and the
+ *  web proxy's maxDuration and SDK client timeout are sized with this number in mind - lower it
+ *  again only after measuring the real sweep duration, not by guessing. */
+export const DIRECT_READ_FALLBACK_TIMEOUT_MS = 20_000;
 
 const logger = new Logger("resolve-defi-positions");
 
