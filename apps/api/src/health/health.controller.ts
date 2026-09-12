@@ -10,6 +10,7 @@ import {
 import { Public } from "../auth/public.decorator";
 import { rateLimitHits } from "@/lib/stellar/horizon-http";
 import { degradedFallbackCount } from "@/lib/defi-positions/resolve-defi-positions";
+import { defiPositionsDepsFor } from "@/lib/stellar/account-state";
 import { buildRpcServer } from "@/lib/stellar/rpc";
 import type { Network } from "@/config/networks";
 import { VALID_NETWORKS } from "@/config/networks";
@@ -45,21 +46,33 @@ export class HealthController {
     status: 200,
     description:
       'Service is up: `{ "status": "ok", "upstreamRateLimitHits": n, "defiDegradedFallbackCount": ' +
-      "n }`. The first counter is how many upstream account-state requests the provider refused " +
-      "with 429 since this process started - a rising value is the signal to point " +
-      "PATH_ROUTING_API_* at a provider with more headroom. The second is how many DeFi-position " +
-      "reads fell back to a direct on-chain sweep because OctoPos was unavailable, unrecognizable, " +
-      "or not tracking the address - both weeks-early signals, not something discovered from a " +
+      'n, "octoposConfigured": bool }`. The first counter is how many upstream account-state ' +
+      "requests the provider refused with 429 since this process started - a rising value is " +
+      "the signal to point PATH_ROUTING_API_* at a provider with more headroom. The second is " +
+      "how many DeFi-position reads fell back to a direct on-chain sweep because OctoPos was " +
+      "unavailable, unrecognizable, or not tracking the address. `octoposConfigured` is a plain " +
+      "deploy-time fact - false means OCTOPOS_API_URL_MAINNET was never set on this revision, " +
+      "so every mainnet DeFi read is degrading by design, not because OctoPos is having an " +
+      "outage. All three are weeks-early operational signals, not something discovered from a " +
       "user's screenshot.",
   })
-  check(): { status: string; upstreamRateLimitHits: number; defiDegradedFallbackCount: number } {
-    // Exposed here because a counter nothing can read is not an early warning. Both are
-    // lifetime totals for this process, not a rate - with the service pinned at one instance
-    // that is still the whole picture, but they would need aggregating if that ever changes.
+  check(): {
+    status: string;
+    upstreamRateLimitHits: number;
+    defiDegradedFallbackCount: number;
+    octoposConfigured: boolean;
+  } {
+    // Exposed here because a counter nothing can read is not an early warning. The two counts
+    // are lifetime totals for this process, not a rate - with the service pinned at one
+    // instance that is still the whole picture, but they would need aggregating if that ever
+    // changes. octoposConfigured is not a counter at all, just the config this process actually
+    // booted with - distinguishing "OctoPos is unconfigured" from "OctoPos is unhealthy" needed
+    // its own signal, since both look identical from the degraded-fallback count alone.
     return {
       status: "ok",
       upstreamRateLimitHits: rateLimitHits(),
       defiDegradedFallbackCount: degradedFallbackCount(),
+      octoposConfigured: defiPositionsDepsFor().octopos.baseUrl !== "",
     };
   }
 
