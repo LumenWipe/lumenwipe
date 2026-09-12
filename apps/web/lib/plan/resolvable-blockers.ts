@@ -17,12 +17,38 @@ import type { PlanBlocker } from "@/types/plan";
  */
 const RESOLVABLE_HERE = new Set(["claimable_balance_forfeited", "claimable_balance_unclaimable"]);
 
+/**
+ * Non-blocking but with no dedicated UI of its own, unlike RESOLVABLE_HERE's codes. The API
+ * (positions-gate.ts) only emits this when a direct on-chain sweep already confirmed nothing,
+ * on an account with zero trustlines - not "we have no idea," just "not from the primary
+ * indexer." It must still stay visible in the generic panel (displayBlockersOf), or that signal
+ * disappears with nothing else showing it.
+ */
+const NON_BLOCKING_ELSEWHERE = new Set(["defi_positions_unconfirmed_no_trustlines"]);
+
 export function isResolvableHere(blocker: Pick<PlanBlocker, "code">): boolean {
   return blocker.code !== undefined && RESOLVABLE_HERE.has(blocker.code);
 }
 
-/** Blockers that genuinely stop the close, as opposed to ones the user can answer on this page. */
+function isNonBlocking(blocker: Pick<PlanBlocker, "code">): boolean {
+  return (
+    blocker.code !== undefined &&
+    (RESOLVABLE_HERE.has(blocker.code) || NON_BLOCKING_ELSEWHERE.has(blocker.code))
+  );
+}
+
+/** Blockers that genuinely stop the close, as opposed to ones the user can answer on this page
+ *  or ones that carry no dedicated decision but shouldn't trap the flow either. */
 export function hardBlockersOf<T extends Pick<PlanBlocker, "code">>(blockers: T[]): T[] {
+  return blockers.filter((b) => !isNonBlocking(b));
+}
+
+/** Blockers worth rendering in the generic panel: everything except codes with their own
+ *  dedicated UI elsewhere (a claimable-balance card already shows its own up-to-date state,
+ *  so repeating it here would only confuse). Unlike `hardBlockersOf`, this keeps
+ *  non-blocking-but-undedicated codes like the DeFi one above, so they are never silently
+ *  dropped just because they no longer stop the flow. */
+export function displayBlockersOf<T extends Pick<PlanBlocker, "code">>(blockers: T[]): T[] {
   return blockers.filter((b) => !isResolvableHere(b));
 }
 

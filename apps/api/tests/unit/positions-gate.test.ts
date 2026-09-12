@@ -1,5 +1,9 @@
 import { test, expect } from "bun:test";
 import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
+import {
+  DEGRADED_SOURCE,
+  DEGRADED_SOURCE_CONFIRMED_EMPTY,
+} from "@/lib/defi-positions/resolve-defi-positions";
 import type { DefiPositionsResult, DefiQueryKeys } from "@lumenwipe/types";
 
 const ADDRESS = "GDQNY3PBOJOKYZSRMK2S7LHHGWZIUISD4QORETLMXEWXBI7KFZZMKTL3";
@@ -107,4 +111,38 @@ test("helpUrl points at the testnet explorer for a testnet result", () => {
   const result = makeResult({ network: "testnet", timestamp: null });
   const blockers = assessDefiPositionsGate(result);
   expect(blockers[0].helpUrl).toBe(`https://stellar.expert/explorer/testnet/account/${ADDRESS}`);
+});
+
+// ─── confirmed-empty via direct read, on a zero-trustline account ───────────
+//
+// A classic AMM LP position always requires a trustline, so an account with zero of them plus
+// a direct on-chain sweep that found nothing is a materially different situation from "we
+// genuinely have no idea" - it gets a distinct, non-trapping code rather than the hard blocker.
+
+test("a confirmed-empty degraded result on a zero-trustline account gets the softer code", () => {
+  const result = makeResult({ source: DEGRADED_SOURCE_CONFIRMED_EMPTY, timestamp: null });
+  const blockers = assessDefiPositionsGate(result, new Date(), 0);
+  expect(blockers).toHaveLength(1);
+  expect(blockers[0].code).toBe("defi_positions_unconfirmed_no_trustlines");
+});
+
+test("the same confirmed-empty result still hard-blocks when the account has trustlines", () => {
+  const result = makeResult({ source: DEGRADED_SOURCE_CONFIRMED_EMPTY, timestamp: null });
+  const blockers = assessDefiPositionsGate(result, new Date(), 3);
+  expect(blockers).toHaveLength(1);
+  expect(blockers[0].code).toBe("defi_positions_unavailable");
+});
+
+test("an unknown trustline count (caller not updated yet) still hard-blocks - fails closed", () => {
+  const result = makeResult({ source: DEGRADED_SOURCE_CONFIRMED_EMPTY, timestamp: null });
+  const blockers = assessDefiPositionsGate(result);
+  expect(blockers).toHaveLength(1);
+  expect(blockers[0].code).toBe("defi_positions_unavailable");
+});
+
+test("a genuinely unconfirmed degraded result (direct read also failed) still hard-blocks even with zero trustlines", () => {
+  const result = makeResult({ source: DEGRADED_SOURCE, timestamp: null });
+  const blockers = assessDefiPositionsGate(result, new Date(), 0);
+  expect(blockers).toHaveLength(1);
+  expect(blockers[0].code).toBe("defi_positions_unavailable");
 });

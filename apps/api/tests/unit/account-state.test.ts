@@ -339,8 +339,13 @@ test("a degraded DeFi read surfaces as a warning, not a silent empty result", as
   );
 
   expect(state.defiPositions.timestamp).toBeNull();
+  // The fixture account has zero trustlines and the direct-read fallback (registryEntries: [])
+  // completes with nothing found, so this is the softer, non-trapping code (positions-gate.ts) -
+  // still a surfaced warning, never a silent empty result, just a more accurate one.
   expect(state.defiPositionsWarnings).toEqual(
-    expect.arrayContaining([expect.objectContaining({ code: "defi_positions_unavailable" })])
+    expect.arrayContaining([
+      expect.objectContaining({ code: "defi_positions_unconfirmed_no_trustlines" }),
+    ])
   );
 });
 

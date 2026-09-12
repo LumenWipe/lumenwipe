@@ -25,6 +25,7 @@
 
 import { Logger } from "@nestjs/common";
 import type { DefiPositionsResult, Network } from "@lumenwipe/types";
+import { isRegistryFresh } from "@/lib/contract-registry";
 import { completePositionsFromLedger, type CompletePositionsDeps } from "./complete-positions";
 import { fetchOctoPosPortfolio, type OctoPosDeps } from "./octopos-http";
 import { normalizeOctoPosPortfolio } from "./octopos-adapter";
@@ -38,14 +39,42 @@ export interface ResolveDefiPositionsDeps {
 }
 
 /** Distinguishes a degraded-mode result from a real OctoPos source ("snapshot" | "empty" |
- *  "cache" | "not-tracked") or the designed testnet source ("testnet-direct-read"). */
+ *  "cache" | "not-tracked") or the designed testnet source ("testnet-direct-read"). Used both
+ *  when the direct-read fallback itself also failed and when it succeeded but found a real
+ *  position - either way, positions-gate.ts's null-timestamp rule is what surfaces the warning,
+ *  not this string. */
 export const DEGRADED_SOURCE = "octopos-degraded-fallback";
 
+/** Like DEGRADED_SOURCE, but the direct-read fallback actually completed and swept every
+ *  registered protocol without finding anything - a materially stronger signal than "we
+ *  couldn't check at all" (RPC also down, or OctoPos's response was unparseable). Still not a
+ *  primary-vendor snapshot, so timestamp stays null and this still gates by default; it exists
+ *  so a caller that also knows the account has zero trustlines (ruling out classic AMM
+ *  positions) can tell this case apart from a genuinely unconfirmed one. */
+export const DEGRADED_SOURCE_CONFIRMED_EMPTY = "octopos-degraded-direct-read-confirmed-empty";
+
 /** The direct-read fallback sweeps every registered protocol of the network (hundreds of pools
- *  on mainnet); past this it reports "detected nothing" rather than holding the analysis. */
-export const DIRECT_READ_FALLBACK_TIMEOUT_MS = 20_000;
+ *  on mainnet); past this it reports "detected nothing" rather than holding the analysis.
+ *  Combined with OctoPos's own ~5.3s worst case (octopos-http.ts), this keeps the whole
+ *  DeFi-detection budget well under the web proxy's maxDuration instead of eating most of it. */
+export const DIRECT_READ_FALLBACK_TIMEOUT_MS = 8_000;
 
 const logger = new Logger("resolve-defi-positions");
+
+/** Calls into degraded mode since this process started (same pattern as horizon-http.ts's
+ *  rateLimitHits): surfaced at /health so a rising count - OctoPos degrading more than
+ *  expected - is an operational signal, not something discovered from a user's screenshot. */
+let degradedFallbackCallCount = 0;
+
+export function degradedFallbackCount(): number {
+  return degradedFallbackCallCount;
+}
+
+/** Test-only: clears the counter so one test's degraded calls don't leak into another's
+ *  assertion. */
+export function resetDegradedFallbackCount(): void {
+  degradedFallbackCallCount = 0;
+}
 
 function emptyDegradedResult(address: string, network: Network): DefiPositionsResult {
   return {
@@ -70,6 +99,7 @@ async function degradedFallback(
   deps: ResolveDefiPositionsDeps,
   reason: string
 ): Promise<DefiPositionsResult> {
+  degradedFallbackCallCount++;
   logger.warn(
     `OctoPos unavailable for ${network} (${reason}); falling back to a best-effort direct read`
   );
@@ -83,7 +113,18 @@ async function degradedFallback(
         ).unref?.()
       ),
     ]);
-    return { ...direct, source: DEGRADED_SOURCE, timestamp: null };
+    // A registry past its validUntil can't back a genuine "we swept everything" claim - rotated
+    // addresses or a protocol never added would sweep clean too. soroswapConversionContracts
+    // already fails closed on this same flag for conversions; detection needs the same rule.
+    const confirmedEmpty =
+      isRegistryFresh() &&
+      direct.positions.length === 0 &&
+      direct.unrecognizedPositions.length === 0;
+    return {
+      ...direct,
+      source: confirmedEmpty ? DEGRADED_SOURCE_CONFIRMED_EMPTY : DEGRADED_SOURCE,
+      timestamp: null,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.warn(
@@ -113,6 +154,24 @@ export async function resolveDefiPositions(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return degradedFallback(address, network, deps, `unrecognizable response: ${message}`);
+  }
+  // OctoPos's genuine "not-tracked" carries the same "no confirmed snapshot" status as an
+  // outage (positions-gate.ts already gates both identically), so it gets the same shot at a
+  // direct-read confirmation rather than a hard blocker with no on-chain check ever attempted.
+  if (normalized.source === "not-tracked") {
+    return degradedFallback(address, network, deps, "not-tracked by OctoPos");
+  }
+  // `source` is normalizeOctoPosPortfolio's verbatim pass-through of the vendor's raw response
+  // field - untrusted input. DEGRADED_SOURCE and DEGRADED_SOURCE_CONFIRMED_EMPTY are internal
+  // markers this module alone may assign, only after a direct read has actually run; a
+  // malicious or compromised OctoPos claiming either one here would let a forged "already
+  // confirmed empty" bypass positions-gate.ts's trustline-based leniency without any on-chain
+  // check ever happening. Treated as unrecognizable so a real direct read runs regardless.
+  if (
+    normalized.source === DEGRADED_SOURCE ||
+    normalized.source === DEGRADED_SOURCE_CONFIRMED_EMPTY
+  ) {
+    return degradedFallback(address, network, deps, "OctoPos claimed a reserved internal source");
   }
   // The indexer names an LP position by pool and shares only; the exit's verifier needs the
   // pool's tokens (and share token) too, read from the pool itself. Never throws.

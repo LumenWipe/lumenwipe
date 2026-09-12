@@ -334,7 +334,9 @@ export function buildPlan(
   // sub-entry mismatch above, applied to OctoPos's own signals. A no-op until a caller actually
   // supplies a DefiPositionsResult - see assessDefiPositionsGate for what triggers a blocker.
   if (defiPositions) {
-    blockers.push(...assessDefiPositionsGate(defiPositions));
+    blockers.push(
+      ...assessDefiPositionsGate(defiPositions, undefined, accountState.trustlines.length)
+    );
   }
   // DeFi positions the catalog cannot exit block here; the ones it can become EXIT_POSITIONS
   // steps below. Either way no detected position is left out of the plan in silence.

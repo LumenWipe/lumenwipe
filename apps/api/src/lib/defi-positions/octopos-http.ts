@@ -27,7 +27,10 @@ function normalizeBase(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
 }
 
-const MAX_RETRIES = 2;
+// One retry, not two: a fully-stalled OctoPos already costs 2 * OCTOPOS_TIMEOUT_MS in
+// AbortController timeouts alone before the degraded-mode fallback even starts, and that
+// combined budget has to stay well under the web proxy's own request deadline.
+const MAX_RETRIES = 1;
 const BACKOFF_MS = 300;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));

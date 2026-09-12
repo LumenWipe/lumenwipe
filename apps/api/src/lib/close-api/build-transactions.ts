@@ -14,7 +14,10 @@ import {
 } from "@/config/constants";
 import { xlmToStroops } from "@/lib/utils/amounts";
 import { getRpcServer } from "@/lib/stellar/rpc";
-import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
+import {
+  assessDefiPositionsGate,
+  DEFI_POSITIONS_UNCONFIRMED_NO_TRUSTLINES_CODE,
+} from "@/lib/defi-positions/positions-gate";
 import {
   fetchLiveTrustlineBalance,
   filterExistingClaimableBalances,
@@ -169,7 +172,15 @@ export async function buildCloseTransactions(
   // and a web session's plan may be minutes old. Positions that could not be confirmed (an
   // indexer outage, a stale snapshot, a contract that could not be read) must not reach a merge
   // that would strand them - the exit round below can only leave what detection actually saw.
-  const defiBlockers = assessDefiPositionsGate(accountState.defiPositions);
+  // The one non-trapping code (a direct read confirmed nothing on a zero-trustline account,
+  // per positions-gate.ts) does not refuse the build here either - it carries a `code`, and
+  // plan-response.ts's own convention is that a coded blocker is an acknowledged warning, not
+  // a hard stop.
+  const defiBlockers = assessDefiPositionsGate(
+    accountState.defiPositions,
+    undefined,
+    accountState.trustlines.length
+  ).filter((b) => b.code !== DEFI_POSITIONS_UNCONFIRMED_NO_TRUSTLINES_CODE);
   if (defiBlockers.length > 0) {
     const first = defiBlockers[0]!;
     throw new CloseBuildError(first.code ?? "defi_positions_blocked", first.message, 422);

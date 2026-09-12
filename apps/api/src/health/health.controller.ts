@@ -9,6 +9,7 @@ import {
 } from "@nestjs/terminus";
 import { Public } from "../auth/public.decorator";
 import { rateLimitHits } from "@/lib/stellar/horizon-http";
+import { degradedFallbackCount } from "@/lib/defi-positions/resolve-defi-positions";
 import { buildRpcServer } from "@/lib/stellar/rpc";
 import type { Network } from "@/config/networks";
 import { VALID_NETWORKS } from "@/config/networks";
@@ -43,16 +44,23 @@ export class HealthController {
   @ApiResponse({
     status: 200,
     description:
-      'Service is up: `{ "status": "ok", "upstreamRateLimitHits": n }`. The counter is how ' +
-      "many upstream account-state requests the provider refused with 429 since this process " +
-      "started. A rising value is the signal to point PATH_ROUTING_API_* at a provider with " +
-      "more headroom, weeks before it becomes a user-visible outage.",
+      'Service is up: `{ "status": "ok", "upstreamRateLimitHits": n, "defiDegradedFallbackCount": ' +
+      "n }`. The first counter is how many upstream account-state requests the provider refused " +
+      "with 429 since this process started - a rising value is the signal to point " +
+      "PATH_ROUTING_API_* at a provider with more headroom. The second is how many DeFi-position " +
+      "reads fell back to a direct on-chain sweep because OctoPos was unavailable, unrecognizable, " +
+      "or not tracking the address - both weeks-early signals, not something discovered from a " +
+      "user's screenshot.",
   })
-  check(): { status: string; upstreamRateLimitHits: number } {
-    // Exposed here because a counter nothing can read is not an early warning. It is a
-    // lifetime total for this process, not a rate - with the service pinned at one instance
-    // that is still the whole picture, but it would need aggregating if that ever changes.
-    return { status: "ok", upstreamRateLimitHits: rateLimitHits() };
+  check(): { status: string; upstreamRateLimitHits: number; defiDegradedFallbackCount: number } {
+    // Exposed here because a counter nothing can read is not an early warning. Both are
+    // lifetime totals for this process, not a rate - with the service pinned at one instance
+    // that is still the whole picture, but they would need aggregating if that ever changes.
+    return {
+      status: "ok",
+      upstreamRateLimitHits: rateLimitHits(),
+      defiDegradedFallbackCount: degradedFallbackCount(),
+    };
   }
 
   // Deliberately its own route, not a change to the check above (#59): `check()` is a cheap
