@@ -3,6 +3,10 @@ import { Test } from "@nestjs/testing";
 import { TerminusModule } from "@nestjs/terminus";
 import { HealthController } from "@/health/health.controller";
 import * as rpcModule from "@/lib/stellar/rpc";
+import {
+  resetDegradedFallbackCount,
+  resolveDefiPositions,
+} from "@/lib/defi-positions/resolve-defi-positions";
 
 // Wiring coverage for #59's "real health check" item: `/health/deep` (HealthController.deep())
 // actually reflects whether Stellar RPC is reachable, on both networks independently, rather
@@ -19,6 +23,28 @@ async function buildController(): Promise<HealthController> {
 
 afterEach(() => {
   mock.restore();
+});
+
+test("check() reports the DeFi degraded-fallback count alongside the Horizon rate-limit count", async () => {
+  resetDegradedFallbackCount();
+  await resolveDefiPositions(
+    "GDQNY3PBOJOKYZSRMK2S7LHHGWZIUISD4QORETLMXEWXBI7KFZZMKTL3",
+    "mainnet",
+    {
+      octopos: { baseUrl: "" },
+      directRead: {
+        rpc: { getLedgerEntries: () => Promise.resolve({ entries: [] }) } as never,
+        registryEntries: [],
+      },
+    }
+  );
+
+  const controller = await buildController();
+  const result = controller.check();
+
+  expect(result.status).toBe("ok");
+  expect(result.defiDegradedFallbackCount).toBe(1);
+  expect(typeof result.upstreamRateLimitHits).toBe("number");
 });
 
 test("reports up on every network when RPC responds", async () => {
