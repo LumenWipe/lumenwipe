@@ -212,7 +212,11 @@ export async function readAccountStateFrom(
   ]);
   // The gate judges the detection result as returned, before the enrichment below spends time
   // on pool reads - otherwise a snapshot near the staleness threshold could age past it here.
-  const defiPositionsWarnings = assessDefiPositionsGate(detectedPositions);
+  const defiPositionsWarnings = assessDefiPositionsGate(
+    detectedPositions,
+    undefined,
+    trustlines.length
+  );
   // Presentation for what detection found (pool name, symbol, underlying amount, yield). Never
   // changes positions or blockers. The Soroban token read runs alongside: it needs the positions
   // (their payout tokens are candidates, their share tokens are not) and nothing else here.

@@ -1,8 +1,10 @@
-import { expect, test } from "bun:test";
-import { Keypair } from "@stellar/stellar-sdk";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { Account, Keypair } from "@stellar/stellar-sdk";
 import type { AccountState } from "@lumenwipe/types";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
+import { DEGRADED_SOURCE_CONFIRMED_EMPTY } from "@/lib/defi-positions/resolve-defi-positions";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import * as rpcModule from "@/lib/stellar/rpc";
 
 // /close/transactions must refuse the same unconfirmed-positions states the plan blocks on: an
 // SDK caller never requests a plan, and a web session's plan may be minutes old. The gate runs
@@ -64,4 +66,25 @@ test("a stale snapshot refuses the build", async () => {
   const old = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const promise = buildCloseTransactions(state({ timestamp: old }), DEST, {}, "testnet");
   await expect(promise).rejects.toMatchObject({ code: "defi_positions_stale", status: 422 });
+});
+
+afterEach(() => {
+  mock.restore();
+});
+
+test("a confirmed-empty degraded result on a zero-trustline account does not refuse the build", async () => {
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
+    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
+    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
+    getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
+  })) as unknown as typeof rpcModule.getRpcServer);
+
+  const result = await buildCloseTransactions(
+    state({ source: DEGRADED_SOURCE_CONFIRMED_EMPTY, timestamp: null }),
+    DEST,
+    {},
+    "testnet"
+  );
+
+  expect(result.requiresAnotherCall).toBeDefined();
 });

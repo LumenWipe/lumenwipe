@@ -15,7 +15,17 @@
 
 import { DEFI_POSITIONS_STALENESS_THRESHOLD_SECONDS } from "@/config/constants";
 import { SE_EXPLORER_BASE } from "@/config/networks";
+import { DEGRADED_SOURCE_CONFIRMED_EMPTY } from "./resolve-defi-positions";
 import type { DefiPositionsResult, PlanBlocker } from "@lumenwipe/types";
+
+/** Non-trapping (has a `code`, per plan-response.ts's convention): OctoPos couldn't confirm
+ *  this account, but a direct on-chain sweep of every registered protocol actually ran and
+ *  found nothing, and the account holds zero trustlines - which rules out every classic AMM
+ *  LP position outright. Callers that can't see trustline count (or a caller not yet updated
+ *  to pass it) never produce this code; see the `trustlineCount === undefined` fail-closed
+ *  branch below. */
+export const DEFI_POSITIONS_UNCONFIRMED_NO_TRUSTLINES_CODE =
+  "defi_positions_unconfirmed_no_trustlines";
 
 function explorerUrl(result: DefiPositionsResult): string {
   return `${SE_EXPLORER_BASE[result.network]}/account/${result.address}`;
@@ -40,14 +50,37 @@ function unavailableBlocker(result: DefiPositionsResult): PlanBlocker {
   };
 }
 
+function confirmedEmptyNoTrustlinesBlocker(result: DefiPositionsResult): PlanBlocker {
+  return {
+    code: DEFI_POSITIONS_UNCONFIRMED_NO_TRUSTLINES_CODE,
+    message:
+      "DeFi position data for this account could not be confirmed by the indexer, but a " +
+      "direct on-chain check found nothing, and this account holds no trustlines - which " +
+      "rules out virtually every classic DeFi position type. Verify manually on an explorer " +
+      "if you want full certainty before proceeding.",
+    helpUrl: explorerUrl(result),
+  };
+}
+
+/**
+ * @param trustlineCount The account's trustline count, when the caller has it. `undefined`
+ *   (the default) fails closed to the hard `defi_positions_unavailable` blocker, same as
+ *   before this parameter existed - only a caller that explicitly knows the count can unlock
+ *   the softer, non-trapping code below.
+ */
 export function assessDefiPositionsGate(
   result: DefiPositionsResult,
-  now: Date = new Date()
+  now: Date = new Date(),
+  trustlineCount?: number
 ): PlanBlocker[] {
   const blockers: PlanBlocker[] = [];
 
   if (result.timestamp === null) {
-    blockers.push(unavailableBlocker(result));
+    if (result.source === DEGRADED_SOURCE_CONFIRMED_EMPTY && trustlineCount === 0) {
+      blockers.push(confirmedEmptyNoTrustlinesBlocker(result));
+    } else {
+      blockers.push(unavailableBlocker(result));
+    }
   } else {
     const timestampMs = Date.parse(result.timestamp);
     if (!Number.isFinite(timestampMs)) {
