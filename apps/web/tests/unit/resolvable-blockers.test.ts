@@ -1,5 +1,10 @@
 import { test, expect } from "bun:test";
-import { hardBlockersOf, isResolvableHere, proceedError } from "@/lib/plan/resolvable-blockers";
+import {
+  hardBlockersOf,
+  isResolvableHere,
+  proceedError,
+  displayBlockersOf,
+} from "@/lib/plan/resolvable-blockers";
 
 // Regression coverage for a real mainnet account that could not be closed from the UI.
 //
@@ -60,4 +65,29 @@ test("proceedError › a hard blocker still stops it, and only its message surfa
 
 test("proceedError › no blockers, no error", () => {
   expect(proceedError([])).toBeNull();
+});
+
+// ─── the unconfirmed-but-no-trustlines DeFi code: non-blocking, but still shown ─────
+//
+// Unlike claimable_balance_forfeited (which has its own card and would be confusing to repeat
+// here), this code has no dedicated UI elsewhere - it must still appear in the generic panel,
+// or a real signal ("we couldn't fully confirm this") would vanish with nothing else showing it.
+
+test("a confirmed-empty DeFi blocker does not stop the flow", () => {
+  expect(
+    proceedError([
+      {
+        code: "defi_positions_unconfirmed_no_trustlines",
+        message: "DeFi position data could not be confirmed…",
+      },
+    ])
+  ).toBeNull();
+});
+
+test("displayBlockersOf keeps the DeFi blocker visible even though it is non-blocking", () => {
+  const blockers = [
+    { code: "defi_positions_unconfirmed_no_trustlines", message: "…" },
+    { code: "claimable_balance_forfeited", message: "…" },
+  ];
+  expect(displayBlockersOf(blockers)).toEqual([blockers[0]]);
 });

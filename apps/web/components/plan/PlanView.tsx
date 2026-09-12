@@ -28,7 +28,7 @@ import AccountSummaryCard from "./AccountSummaryCard";
 import BlockersPanel from "./BlockersPanel";
 import PlanAccordion from "./PlanAccordion";
 import DestinationInput from "@/components/account-entry/DestinationInput";
-import { hardBlockersOf, proceedError } from "@/lib/plan/resolvable-blockers";
+import { hardBlockersOf, displayBlockersOf, proceedError } from "@/lib/plan/resolvable-blockers";
 import { assetsResolved } from "@/lib/plan/asset-resolution";
 
 interface PlanViewProps {
@@ -171,8 +171,14 @@ export default function PlanView({
   // interaction. The initial `blockers` fetch (before any decision) always reports the
   // "unclaimable" wording for an unresolved balance, and a forfeit choice keeps producing its
   // own (acknowledged, non-trapping) blocker - neither should hard-block once the local
-  // resolution check says the decision is made. Every other blocker code still hard-blocks.
+  // resolution check says the decision is made. `defi_positions_unconfirmed_no_trustlines`
+  // (a direct on-chain check already confirmed nothing on a zero-trustline account) is the same
+  // kind of non-trapping signal. Every other blocker code still hard-blocks.
   const hardBlockers = hardBlockersOf(blockers);
+  // Unlike hardBlockers, this keeps non-trapping codes with no dedicated card of their own (the
+  // DeFi one above) so the panel below still shows them - only codes already fully conveyed by
+  // their own UI (claimable balances) are dropped.
+  const displayBlockers = displayBlockersOf(blockers);
 
   const destinationStepReady = allAssetsResolved && allClaimsResolved && hardBlockers.length === 0;
 
@@ -321,7 +327,7 @@ export default function PlanView({
       {/* Claimable-balance blockers are already fully conveyed live by the cards below (an
           unresolved or forfeited balance shows its own up-to-date state there); a stale
           snapshot repeating the same thing here would only confuse once the user has acted. */}
-      <BlockersPanel blockers={hardBlockers} />
+      <BlockersPanel blockers={displayBlockers} blocking={hardBlockers.length > 0} />
 
       <div className="mkt-panel rounded-2xl">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
