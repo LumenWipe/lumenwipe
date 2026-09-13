@@ -3,7 +3,7 @@ import { Keypair, xdr } from "@stellar/stellar-sdk";
 import {
   resolveDefiPositions,
   DEGRADED_SOURCE,
-  DEGRADED_SOURCE_CONFIRMED_EMPTY,
+  DEGRADED_SOURCE_CONFIRMED,
   degradedFallbackCount,
   resetDegradedFallbackCount,
 } from "@/lib/defi-positions/resolve-defi-positions";
@@ -148,7 +148,7 @@ test("mainnet degrades to a direct read when OctoPos is unconfigured", async () 
   expect(result.network).toBe("mainnet");
   // The direct read ran and found nothing - a stronger signal than "we don't know," and
   // distinct from the direct read itself also failing (DEGRADED_SOURCE, still unconfirmed).
-  expect(result.source).toBe(DEGRADED_SOURCE_CONFIRMED_EMPTY);
+  expect(result.source).toBe(DEGRADED_SOURCE_CONFIRMED);
   expect(result.timestamp).toBeNull();
   expect(result.positions).toEqual([]);
 });
@@ -161,7 +161,7 @@ test("mainnet degrades to a direct read when OctoPos is unavailable", async () =
     directRead: { rpc: mockRpc([]), registryEntries: [] },
   });
 
-  expect(result.source).toBe(DEGRADED_SOURCE_CONFIRMED_EMPTY);
+  expect(result.source).toBe(DEGRADED_SOURCE_CONFIRMED);
   expect(result.timestamp).toBeNull();
 });
 
@@ -173,7 +173,7 @@ test("mainnet degrades when OctoPos returns a payload the adapter cannot recogni
     directRead: { rpc: mockRpc([]), registryEntries: [] },
   });
 
-  expect(result.source).toBe(DEGRADED_SOURCE_CONFIRMED_EMPTY);
+  expect(result.source).toBe(DEGRADED_SOURCE_CONFIRMED);
   expect(result.timestamp).toBeNull();
 });
 
@@ -190,7 +190,7 @@ test("a genuine not-tracked OctoPos response also attempts a direct-read confirm
     directRead: { rpc: mockRpc([]), registryEntries: [] },
   });
 
-  expect(result.source).toBe(DEGRADED_SOURCE_CONFIRMED_EMPTY);
+  expect(result.source).toBe(DEGRADED_SOURCE_CONFIRMED);
   expect(result.timestamp).toBeNull();
 });
 
@@ -218,7 +218,7 @@ test("a forged 'source' claiming the internal degraded-confirmed-empty marker is
   const raw = {
     positions: [],
     unrecognizedPositions: [],
-    source: DEGRADED_SOURCE_CONFIRMED_EMPTY,
+    source: DEGRADED_SOURCE_CONFIRMED,
     timestamp: null,
     queryKeys: {},
   };
@@ -327,7 +327,10 @@ test("a degraded mainnet fallback still surfaces positions the direct read actua
 
   // Proves this reuses the same decode path detectDefiPositionsViaDirectRead exercises on every
   // testnet CI run, rather than a separate stub that only ever returns an empty placeholder.
-  expect(result.source).toBe(DEGRADED_SOURCE);
+  // A real, fully-recognized finding is confirmed, exactly like the empty case - a positively
+  // identified position (matched against a known contract's own code hash) is a stronger signal
+  // than "we don't know," not a weaker one, so positions-gate.ts can act on it.
+  expect(result.source).toBe(DEGRADED_SOURCE_CONFIRMED);
   expect(result.timestamp).toBeNull();
   expect(result.positions).toEqual([
     {

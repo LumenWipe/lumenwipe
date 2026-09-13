@@ -14,8 +14,11 @@ test("OctoPos's own empty and cache sources are labeled octopos too", () => {
   expect(defiVerificationLabel("cache")).toBe("octopos");
 });
 
-test("a confirmed-empty direct read is labeled lumenwipe", () => {
-  expect(defiVerificationLabel("octopos-degraded-direct-read-confirmed-empty")).toBe("lumenwipe");
+// This source covers a confirmed sweep whether it found nothing or found a real, fully-
+// recognized position (apps/api's DEGRADED_SOURCE_CONFIRMED serves both) - the label only
+// depends on the source string, not on how many positions came with it.
+test("a confirmed direct read (empty or with detected positions) is labeled lumenwipe", () => {
+  expect(defiVerificationLabel("octopos-degraded-direct-read-confirmed")).toBe("lumenwipe");
 });
 
 test("testnet's own direct-read path is labeled lumenwipe", () => {

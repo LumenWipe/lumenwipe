@@ -2,13 +2,16 @@ export type DefiVerificationLabel = "octopos" | "lumenwipe" | null;
 
 /**
  * Mirrors resolve-defi-positions.ts's source vocabulary (apps/api's DEGRADED_SOURCE and
- * DEGRADED_SOURCE_CONFIRMED_EMPTY constants) as plain string literals - the web never imports
- * the API's closing/detection modules (the boundary lint in .eslintrc.json), the same reason
+ * DEGRADED_SOURCE_CONFIRMED constants) as plain string literals - the web never imports the
+ * API's closing/detection modules (the boundary lint in .eslintrc.json), the same reason
  * resolvable-blockers.ts hardcodes blocker codes rather than importing them.
+ * DEGRADED_SOURCE_CONFIRMED covers both an empty sweep and one that named a real, fully-
+ * recognized position - both get the same "lumenwipe" label regardless of positions.length,
+ * since either way our own on-chain check is what confirmed it.
  */
 const OCTOPOS_SOURCES = new Set(["snapshot", "empty", "cache"]);
 const LUMENWIPE_SOURCES = new Set([
-  "octopos-degraded-direct-read-confirmed-empty",
+  "octopos-degraded-direct-read-confirmed",
   "testnet-direct-read",
 ]);
 

@@ -18,13 +18,19 @@ import type { PlanBlocker } from "@/types/plan";
 const RESOLVABLE_HERE = new Set(["claimable_balance_forfeited", "claimable_balance_unclaimable"]);
 
 /**
- * Non-blocking but with no dedicated UI of its own, unlike RESOLVABLE_HERE's codes. The API
- * (positions-gate.ts) only emits this when a direct on-chain sweep already confirmed nothing,
- * on an account with zero trustlines - not "we have no idea," just "not from the primary
- * indexer." It must still stay visible in the generic panel (displayBlockersOf), or that signal
+ * Non-blocking but with no dedicated UI of its own, unlike RESOLVABLE_HERE's codes. Mirrors
+ * positions-gate.ts's NON_TRAPPING_CODES (apps/api) as plain strings - the web never imports the
+ * API's detection modules. Both only fire when a direct on-chain sweep actually completed: one
+ * when it found nothing on a zero-trustline account (not "we have no idea," just "not from the
+ * primary indexer"), the other when it named a real, fully-recognized position the plan already
+ * knows how to exit - a stronger confirmation than finding nothing, not a weaker one. Either way
+ * this must still stay visible in the generic panel (displayBlockersOf), or that signal
  * disappears with nothing else showing it.
  */
-const NON_BLOCKING_ELSEWHERE = new Set(["defi_positions_unconfirmed_no_trustlines"]);
+const NON_BLOCKING_ELSEWHERE = new Set([
+  "defi_positions_unconfirmed_no_trustlines",
+  "defi_positions_unconfirmed_but_detected",
+]);
 
 export function isResolvableHere(blocker: Pick<PlanBlocker, "code">): boolean {
   return blocker.code !== undefined && RESOLVABLE_HERE.has(blocker.code);

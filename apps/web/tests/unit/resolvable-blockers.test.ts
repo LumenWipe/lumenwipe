@@ -91,3 +91,27 @@ test("displayBlockersOf keeps the DeFi blocker visible even though it is non-blo
   ];
   expect(displayBlockersOf(blockers)).toEqual([blockers[0]]);
 });
+
+// ─── the unconfirmed-but-detected DeFi code: a real position, still non-blocking ────
+//
+// Regression: a real mainnet account with a genuine, fully-recognized Blend position still
+// showed "Cannot proceed" and disabled "Begin execution," even though the plan already included
+// a working exit step for that exact position. Finding something concrete via a code-hash-
+// verified on-chain read is a stronger signal than finding nothing, so it must not block harder
+// than the confirmed-empty case above.
+
+test("a detected-position DeFi blocker does not stop the flow either", () => {
+  expect(
+    proceedError([
+      {
+        code: "defi_positions_unconfirmed_but_detected",
+        message: "DeFi position data could not be confirmed by the indexer, but…",
+      },
+    ])
+  ).toBeNull();
+});
+
+test("displayBlockersOf keeps the detected-position DeFi blocker visible too", () => {
+  const blockers = [{ code: "defi_positions_unconfirmed_but_detected", message: "…" }];
+  expect(displayBlockersOf(blockers)).toEqual(blockers);
+});
