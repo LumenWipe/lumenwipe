@@ -50,12 +50,36 @@ test("a confirmed-empty direct read shows the lumenwipe verification badge", () 
     baseAccount({
       defiPositions: {
         ...emptyDefiPositionsResult(ADDRESS, "mainnet"),
-        source: "octopos-degraded-direct-read-confirmed-empty",
+        source: "octopos-degraded-direct-read-confirmed",
         timestamp: null,
       },
     })
   );
   expect(screen.getByText("Verified by LumenWipe")).toBeDefined();
+});
+
+test("a confirmed sweep with a real detected position also shows the lumenwipe badge", () => {
+  renderCard(
+    baseAccount({
+      defiPositions: {
+        ...emptyDefiPositionsResult(ADDRESS, "mainnet"),
+        source: "octopos-degraded-direct-read-confirmed",
+        timestamp: null,
+        positions: [
+          {
+            protocol: "blend",
+            positionType: "supply",
+            contractAddress: "CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD",
+            assetAddress: "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
+            bTokenAmount: "99997766",
+            usdValue: null,
+          },
+        ],
+      },
+    })
+  );
+  expect(screen.getByText("Verified by LumenWipe")).toBeDefined();
+  expect(screen.getByText("1")).toBeDefined();
 });
 
 test("a totally unconfirmed degraded result shows no verification badge", () => {
