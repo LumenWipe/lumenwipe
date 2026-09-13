@@ -45,23 +45,27 @@ export interface ResolveDefiPositionsDeps {
  *  not this string. */
 export const DEGRADED_SOURCE = "octopos-degraded-fallback";
 
-/** Like DEGRADED_SOURCE, but the direct-read fallback actually completed and swept every
- *  registered protocol without finding anything - a materially stronger signal than "we
- *  couldn't check at all" (RPC also down, or OctoPos's response was unparseable). Still not a
- *  primary-vendor snapshot, so timestamp stays null and this still gates by default; it exists
- *  so a caller that also knows the account has zero trustlines (ruling out classic AMM
- *  positions) can tell this case apart from a genuinely unconfirmed one. */
-export const DEGRADED_SOURCE_CONFIRMED_EMPTY = "octopos-degraded-direct-read-confirmed-empty";
+/** Like DEGRADED_SOURCE, but the direct-read fallback actually completed its sweep of every
+ *  registered protocol - a materially stronger signal than "we couldn't check at all" (RPC also
+ *  down, or OctoPos's response was unparseable), regardless of whether it found nothing or found
+ *  real, fully-recognized positions. A positively identified position (matched against a known
+ *  contract's own code hash, read directly off the ledger) is not a weaker confirmation than an
+ *  empty result - if anything it's stronger, so this covers both: positions-gate.ts decides what
+ *  each case unlocks (an empty result plus zero trustlines rules out classic AMM positions; a
+ *  non-empty result is actionable regardless of trustlines, since it names something concrete).
+ *  Still not a primary-vendor snapshot, so timestamp stays null and this still gates by default
+ *  for a genuinely unconfirmed result (registry stale, or the sweep itself failed). */
+export const DEGRADED_SOURCE_CONFIRMED = "octopos-degraded-direct-read-confirmed";
 
 /** The direct-read fallback sweeps every registered protocol of the network (hundreds of pools
  *  on mainnet); past this it reports "detected nothing" rather than holding the analysis.
  *
  *  This was cut to 8s for latency, without measuring the real sweep against production RPC
  *  first - confirmed live on 2026-09-12 (a real zero-trustline mainnet account, `source`
- *  consistently landing on DEGRADED_SOURCE rather than DEGRADED_SOURCE_CONFIRMED_EMPTY across
- *  repeated requests) that 8s is not enough for the sweep to ever actually finish, which makes
- *  positions-gate.ts's confirmed-empty leniency effectively unreachable - the exact case it was
- *  built for. Restored to the value this ran on before that cut. OctoPos's own ~5.3s worst case
+ *  consistently landing on DEGRADED_SOURCE rather than DEGRADED_SOURCE_CONFIRMED across repeated
+ *  requests) that 8s is not enough for the sweep to ever actually finish, which makes
+ *  positions-gate.ts's confirmed leniency effectively unreachable - the exact case it was built
+ *  for. Restored to the value this ran on before that cut. OctoPos's own ~5.3s worst case
  *  (octopos-http.ts) still keeps the combined DeFi-detection budget well short of this, and the
  *  web proxy's maxDuration and SDK client timeout are sized with this number in mind - lower it
  *  again only after measuring the real sweep duration, not by guessing. */
@@ -124,13 +128,12 @@ async function degradedFallback(
     // A registry past its validUntil can't back a genuine "we swept everything" claim - rotated
     // addresses or a protocol never added would sweep clean too. soroswapConversionContracts
     // already fails closed on this same flag for conversions; detection needs the same rule.
-    const confirmedEmpty =
-      isRegistryFresh() &&
-      direct.positions.length === 0 &&
-      direct.unrecognizedPositions.length === 0;
+    // Whether the sweep found nothing or found real positions doesn't change whether it can be
+    // trusted - only whether the registry it swept against was itself still current.
+    const confirmed = isRegistryFresh();
     return {
       ...direct,
-      source: confirmedEmpty ? DEGRADED_SOURCE_CONFIRMED_EMPTY : DEGRADED_SOURCE,
+      source: confirmed ? DEGRADED_SOURCE_CONFIRMED : DEGRADED_SOURCE,
       timestamp: null,
     };
   } catch (err) {
@@ -170,15 +173,13 @@ export async function resolveDefiPositions(
     return degradedFallback(address, network, deps, "not-tracked by OctoPos");
   }
   // `source` is normalizeOctoPosPortfolio's verbatim pass-through of the vendor's raw response
-  // field - untrusted input. DEGRADED_SOURCE and DEGRADED_SOURCE_CONFIRMED_EMPTY are internal
-  // markers this module alone may assign, only after a direct read has actually run; a
-  // malicious or compromised OctoPos claiming either one here would let a forged "already
-  // confirmed empty" bypass positions-gate.ts's trustline-based leniency without any on-chain
-  // check ever happening. Treated as unrecognizable so a real direct read runs regardless.
-  if (
-    normalized.source === DEGRADED_SOURCE ||
-    normalized.source === DEGRADED_SOURCE_CONFIRMED_EMPTY
-  ) {
+  // field - untrusted input. DEGRADED_SOURCE and DEGRADED_SOURCE_CONFIRMED are internal markers
+  // this module alone may assign, only after a direct read has actually run; a malicious or
+  // compromised OctoPos claiming either one here would let a forged "already confirmed" result
+  // (hiding a real position, or bypassing positions-gate.ts's trustline-based leniency) through
+  // without any on-chain check ever happening. Treated as unrecognizable so a real direct read
+  // runs regardless.
+  if (normalized.source === DEGRADED_SOURCE || normalized.source === DEGRADED_SOURCE_CONFIRMED) {
     return degradedFallback(address, network, deps, "OctoPos claimed a reserved internal source");
   }
   // The indexer names an LP position by pool and shares only; the exit's verifier needs the

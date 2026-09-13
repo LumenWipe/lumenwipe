@@ -15,7 +15,7 @@
 
 import { DEFI_POSITIONS_STALENESS_THRESHOLD_SECONDS } from "@/config/constants";
 import { SE_EXPLORER_BASE } from "@/config/networks";
-import { DEGRADED_SOURCE_CONFIRMED_EMPTY } from "./resolve-defi-positions";
+import { DEGRADED_SOURCE_CONFIRMED } from "./resolve-defi-positions";
 import type { DefiPositionsResult, PlanBlocker } from "@lumenwipe/types";
 
 /** Non-trapping (has a `code`, per plan-response.ts's convention): OctoPos couldn't confirm
@@ -26,6 +26,29 @@ import type { DefiPositionsResult, PlanBlocker } from "@lumenwipe/types";
  *  branch below. */
 export const DEFI_POSITIONS_UNCONFIRMED_NO_TRUSTLINES_CODE =
   "defi_positions_unconfirmed_no_trustlines";
+
+/** Non-trapping, like the code above, but for the opposite finding: the sweep completed and
+ *  named a real, fully-recognized position (matched against a known contract's own code hash,
+ *  read directly off the ledger). That is a stronger confirmation than an empty result, not a
+ *  weaker one - the account's plan already includes an exit step for exactly what was found, so
+ *  refusing to proceed here would only ever punish the position the tool can already close, not
+ *  protect against one it can't. Unlike the empty-result code, this never depends on trustline
+ *  count - a named position is actionable regardless of what else the account holds. */
+export const DEFI_POSITIONS_UNCONFIRMED_BUT_DETECTED_CODE =
+  "defi_positions_unconfirmed_but_detected";
+
+/** Blocker codes assessDefiPositionsGate can produce that must never trap `buildCloseTransactions`
+ *  or the web's "Begin execution" gate (apps/web/lib/plan/resolvable-blockers.ts mirrors this
+ *  list as plain strings, since the web never imports API modules). Both carry a `code`, which
+ *  plan-response.ts's own convention already treats as "an acknowledged, non-trapping warning." */
+const NON_TRAPPING_CODES = new Set([
+  DEFI_POSITIONS_UNCONFIRMED_NO_TRUSTLINES_CODE,
+  DEFI_POSITIONS_UNCONFIRMED_BUT_DETECTED_CODE,
+]);
+
+export function isNonTrappingDefiBlocker(blocker: Pick<PlanBlocker, "code">): boolean {
+  return blocker.code !== undefined && NON_TRAPPING_CODES.has(blocker.code);
+}
 
 function explorerUrl(result: DefiPositionsResult): string {
   return `${SE_EXPLORER_BASE[result.network]}/account/${result.address}`;
@@ -62,11 +85,26 @@ function confirmedEmptyNoTrustlinesBlocker(result: DefiPositionsResult): PlanBlo
   };
 }
 
+function confirmedButDetectedBlocker(result: DefiPositionsResult): PlanBlocker {
+  const n = result.positions.length;
+  return {
+    code: DEFI_POSITIONS_UNCONFIRMED_BUT_DETECTED_CODE,
+    message:
+      `DeFi position data for this account could not be confirmed by the indexer, but a ` +
+      `direct on-chain check identified ${n} position${n === 1 ? "" : "s"} (shown below), ` +
+      `which will be included in this close. This check only covers protocols LumenWipe ` +
+      `recognizes today - verify manually on an explorer if you want full certainty that ` +
+      `nothing else is open.`,
+    helpUrl: explorerUrl(result),
+  };
+}
+
 /**
- * @param trustlineCount The account's trustline count, when the caller has it. `undefined`
- *   (the default) fails closed to the hard `defi_positions_unavailable` blocker, same as
- *   before this parameter existed - only a caller that explicitly knows the count can unlock
- *   the softer, non-trapping code below.
+ * @param trustlineCount The account's trustline count, when the caller has it. Only consulted
+ *   for a confirmed-empty result (positions.length === 0); `undefined` (the default) fails
+ *   closed to the hard `defi_positions_unavailable` blocker there, same as before this
+ *   parameter existed. A confirmed result that actually named a position never needs it - see
+ *   DEFI_POSITIONS_UNCONFIRMED_BUT_DETECTED_CODE above.
  */
 export function assessDefiPositionsGate(
   result: DefiPositionsResult,
@@ -76,7 +114,9 @@ export function assessDefiPositionsGate(
   const blockers: PlanBlocker[] = [];
 
   if (result.timestamp === null) {
-    if (result.source === DEGRADED_SOURCE_CONFIRMED_EMPTY && trustlineCount === 0) {
+    if (result.source === DEGRADED_SOURCE_CONFIRMED && result.positions.length > 0) {
+      blockers.push(confirmedButDetectedBlocker(result));
+    } else if (result.source === DEGRADED_SOURCE_CONFIRMED && trustlineCount === 0) {
       blockers.push(confirmedEmptyNoTrustlinesBlocker(result));
     } else {
       blockers.push(unavailableBlocker(result));

@@ -2,7 +2,7 @@ import { test, expect } from "bun:test";
 import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
 import {
   DEGRADED_SOURCE,
-  DEGRADED_SOURCE_CONFIRMED_EMPTY,
+  DEGRADED_SOURCE_CONFIRMED,
 } from "@/lib/defi-positions/resolve-defi-positions";
 import type { DefiPositionsResult, DefiQueryKeys } from "@lumenwipe/types";
 
@@ -120,22 +120,78 @@ test("helpUrl points at the testnet explorer for a testnet result", () => {
 // genuinely have no idea" - it gets a distinct, non-trapping code rather than the hard blocker.
 
 test("a confirmed-empty degraded result on a zero-trustline account gets the softer code", () => {
-  const result = makeResult({ source: DEGRADED_SOURCE_CONFIRMED_EMPTY, timestamp: null });
+  const result = makeResult({ source: DEGRADED_SOURCE_CONFIRMED, timestamp: null });
   const blockers = assessDefiPositionsGate(result, new Date(), 0);
   expect(blockers).toHaveLength(1);
   expect(blockers[0].code).toBe("defi_positions_unconfirmed_no_trustlines");
 });
 
 test("the same confirmed-empty result still hard-blocks when the account has trustlines", () => {
-  const result = makeResult({ source: DEGRADED_SOURCE_CONFIRMED_EMPTY, timestamp: null });
+  const result = makeResult({ source: DEGRADED_SOURCE_CONFIRMED, timestamp: null });
   const blockers = assessDefiPositionsGate(result, new Date(), 3);
   expect(blockers).toHaveLength(1);
   expect(blockers[0].code).toBe("defi_positions_unavailable");
 });
 
 test("an unknown trustline count (caller not updated yet) still hard-blocks - fails closed", () => {
-  const result = makeResult({ source: DEGRADED_SOURCE_CONFIRMED_EMPTY, timestamp: null });
+  const result = makeResult({ source: DEGRADED_SOURCE_CONFIRMED, timestamp: null });
   const blockers = assessDefiPositionsGate(result);
+  expect(blockers).toHaveLength(1);
+  expect(blockers[0].code).toBe("defi_positions_unavailable");
+});
+
+// ─── confirmed sweep that actually found a real position ────────────────────
+//
+// A regression from a real mainnet account: OctoPos was down, the direct-read sweep completed
+// and found a genuine, fully-recognized Blend supply position, and the account was still hard-
+// blocked with "may hold open DeFi positions that have not been detected" - a message actively
+// contradicted by the account already showing that exact detected position. Finding something
+// concrete via a code-hash-verified on-chain read is a stronger confirmation than finding
+// nothing, not a weaker one, so it must not be treated worse than the confirmed-empty case.
+
+const BLEND_POSITION = {
+  protocol: "blend" as const,
+  positionType: "supply" as const,
+  contractAddress: "CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD",
+  assetAddress: "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
+  bTokenAmount: "99997766",
+  usdValue: null,
+};
+
+test("a confirmed sweep that found a real, fully-recognized position does not hard-block", () => {
+  const result = makeResult({
+    source: DEGRADED_SOURCE_CONFIRMED,
+    timestamp: null,
+    positions: [BLEND_POSITION],
+  });
+  const blockers = assessDefiPositionsGate(result, new Date(), 0);
+  expect(blockers).toHaveLength(1);
+  expect(blockers[0].code).toBe("defi_positions_unconfirmed_but_detected");
+});
+
+test("the detected-position code does not depend on trustline count, unlike the empty case", () => {
+  const result = makeResult({
+    source: DEGRADED_SOURCE_CONFIRMED,
+    timestamp: null,
+    positions: [BLEND_POSITION],
+  });
+  // 5 trustlines - the AMM-ruling-out heuristic for the empty case is irrelevant here, since
+  // the account already has a named, concrete position to act on regardless of trustline count.
+  const blockers = assessDefiPositionsGate(result, new Date(), 5);
+  expect(blockers).toHaveLength(1);
+  expect(blockers[0].code).toBe("defi_positions_unconfirmed_but_detected");
+});
+
+test("a genuinely unconfirmed result with positions (sweep itself never ran) still hard-blocks", () => {
+  // DEGRADED_SOURCE with non-empty positions cannot happen from resolveDefiPositions today (the
+  // failure branch always reports empty), but the gate must not derive "detected and actionable"
+  // from positions content alone - only a confirmed source makes that claim trustworthy.
+  const result = makeResult({
+    source: DEGRADED_SOURCE,
+    timestamp: null,
+    positions: [BLEND_POSITION],
+  });
+  const blockers = assessDefiPositionsGate(result, new Date(), 0);
   expect(blockers).toHaveLength(1);
   expect(blockers[0].code).toBe("defi_positions_unavailable");
 });
