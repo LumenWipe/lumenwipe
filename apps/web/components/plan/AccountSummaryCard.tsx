@@ -1,6 +1,7 @@
 import { Coins, Database, ArrowUpDown, Link2, Users, TrendingUp, Layers } from "lucide-react";
 import type { AccountState } from "@/types/account";
 import { formatXlm, calcRecoverableReserve } from "@/lib/utils/amounts";
+import { defiVerificationLabel } from "@/lib/plan/defi-verification-source";
 
 interface AccountSummaryCardProps {
   account: AccountState;
@@ -14,6 +15,7 @@ export default function AccountSummaryCard({
   totalFee,
 }: AccountSummaryCardProps) {
   const recoverableXlm = calcRecoverableReserve(account.numSubEntries);
+  const defiLabel = defiVerificationLabel(account.defiPositions.source);
   // Whether direct or via the shared mediator, the user recovers the full
   // balance minus network fees (the mediator's own reserve is operator-funded).
   const estimatedFinal = (parseFloat(account.nativeBalanceLumens) - parseFloat(totalFee)).toFixed(
@@ -55,6 +57,7 @@ export default function AccountSummaryCard({
       icon: Layers,
       label: "DeFi positions",
       value: account.defiPositions.positions.length,
+      badge: defiLabel,
     },
   ];
 
@@ -73,7 +76,7 @@ export default function AccountSummaryCard({
           rows, so when the cell count is not a multiple of three the last full row was left open
           beside the short final row. The footer's top border closes the grid. */}
       <div className="grid grid-cols-3 divide-x divide-white/[0.08]">
-        {stats.map(({ icon: Icon, label, value }, i) => (
+        {stats.map(({ icon: Icon, label, value, badge }, i) => (
           <div
             key={label}
             className={`p-3 ${i < lastRowStart ? "border-b border-white/[0.08]" : ""}`}
@@ -83,6 +86,15 @@ export default function AccountSummaryCard({
               <span className="text-xs">{label}</span>
             </div>
             <p className="text-sm font-semibold text-white">{value}</p>
+            {badge && (
+              <span
+                className={`mt-1 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                  badge === "octopos" ? "bg-stellar/15 text-stellar" : "bg-white/10 text-white/60"
+                }`}
+              >
+                {badge === "octopos" ? "Verified with OctoPos" : "Verified by LumenWipe"}
+              </span>
+            )}
           </div>
         ))}
       </div>
