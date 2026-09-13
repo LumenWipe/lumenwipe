@@ -7,6 +7,7 @@ import {
   resetDegradedFallbackCount,
   resolveDefiPositions,
 } from "@/lib/defi-positions/resolve-defi-positions";
+import { defiPositionsDepsFor } from "@/lib/stellar/account-state";
 
 // Wiring coverage for #59's "real health check" item: `/health/deep` (HealthController.deep())
 // actually reflects whether Stellar RPC is reachable, on both networks independently, rather
@@ -45,6 +46,17 @@ test("check() reports the DeFi degraded-fallback count alongside the Horizon rat
   expect(result.status).toBe("ok");
   expect(result.defiDegradedFallbackCount).toBe(1);
   expect(typeof result.upstreamRateLimitHits).toBe("number");
+});
+
+// Every degraded-mode occurrence looks identical from the account read alone, whether OctoPos
+// is having a real outage or was simply never given a baseUrl on this deployment - and the two
+// call for very different follow-up. This makes "was OctoPos ever wired up on this process at
+// all" a plain, static fact instead of something that requires reading Cloud Run logs to learn.
+test("check() reports whether octopos is configured on this deployment", async () => {
+  const controller = await buildController();
+  const result = controller.check();
+
+  expect(result.octoposConfigured).toBe(defiPositionsDepsFor().octopos.baseUrl !== "");
 });
 
 test("reports up on every network when RPC responds", async () => {
