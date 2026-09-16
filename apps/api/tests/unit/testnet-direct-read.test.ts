@@ -4,9 +4,12 @@ import { Address, Keypair, StrKey, nativeToScVal, xdr } from "@stellar/stellar-s
 import {
   aquariusTokensHash,
   detectDefiPositionsViaDirectRead,
+  enumerateAquariusPools,
   addressVal,
   symbolVal,
   variantVal,
+  LEDGER_KEYS_PER_CALL,
+  LEDGER_READ_CONCURRENCY,
 } from "@/lib/defi-positions/testnet-direct-read";
 import type { ContractRegistryEntry } from "@/lib/contract-registry";
 import {
@@ -559,9 +562,9 @@ test("Soroswap: a large factory is read in chunks that stay under the RPC's key 
     registryEntries: SOROSWAP_REGISTRY(),
   });
   expect(result.positions.map((p) => p.contractAddress)).toEqual([pairs[229]]);
-  expect(Math.max(...sizes)).toBeLessThanOrEqual(100);
-  // 1 factory hash + 1 factory instance + 3 index chunks + 3 balance chunks + 1 held-pair chunk.
-  expect(sizes.length).toBe(9);
+  expect(Math.max(...sizes)).toBeLessThanOrEqual(150);
+  // 1 registry verification + 1 factory instance + 2 index chunks + 2 balance chunks + 1 held-pair chunk.
+  expect(sizes.length).toBe(7);
 });
 
 test("the representative pair entry itself is never probed for balances - pairs come from the factory", async () => {
@@ -949,4 +952,187 @@ test("Aquarius: tokens are omitted when the pool instance does not list every on
   expect(result.unrecognizedPositions).toEqual([]);
   expect(result.positions).toHaveLength(1);
   expect("tokens" in result.positions[0]!).toBe(false);
+});
+
+// ─── read shape: one verification read, concurrent sweeps ────────────────────
+
+type TracedRpc = ReturnType<typeof mockRpc>;
+
+/** Wraps a mock rpc to record each call's key count and the most calls ever in flight at once,
+ *  holding every call open for `delayMs` so concurrency is observable rather than a race. */
+function tracingRpc(
+  inner: TracedRpc,
+  delayMs: (keys: xdr.LedgerKey[]) => number = () => 1
+): { rpc: TracedRpc; sizes: number[]; maxInFlight: () => number } {
+  const sizes: number[] = [];
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const rpc = {
+    getLedgerEntries: async (...keys: xdr.LedgerKey[]) => {
+      sizes.push(keys.length);
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, delayMs(keys)));
+        return await inner.getLedgerEntries(...keys);
+      } finally {
+        inFlight -= 1;
+      }
+    },
+  } as unknown as TracedRpc;
+  return { rpc, sizes, maxInFlight: () => maxInFlight };
+}
+
+const contractOf = (key: xdr.LedgerKey): string =>
+  Address.fromScAddress(key.contractData().contract()).toString();
+
+test("every registered contract is verified in one ledger read, not one round trip per entry", async () => {
+  const entries = [
+    registryEntry(),
+    registryEntry({
+      address: FXDAO_VAULTS,
+      protocol: "fxdao",
+      kind: "vault",
+      wasmHash: FXDAO_WASM_HASH,
+    }),
+    registryEntry({
+      address: PHOENIX_POOL,
+      protocol: "phoenix",
+      kind: "pool",
+      wasmHash: PHOENIX_WASM_HASH,
+    }),
+  ];
+  const { rpc, sizes } = tracingRpc(
+    mockRpc([
+      contractInstanceEntry(BLEND_POOL, BLEND_WASM_HASH),
+      contractInstanceEntry(FXDAO_VAULTS, FXDAO_WASM_HASH),
+      contractInstanceEntry(PHOENIX_POOL, PHOENIX_WASM_HASH),
+    ])
+  );
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc,
+    registryEntries: entries,
+  });
+  expect(result.unrecognizedPositions).toEqual([]);
+  // One call carrying all three instance keys, then one read per verified contract.
+  expect(sizes[0]).toBe(3);
+  expect(sizes).toHaveLength(4);
+});
+
+test("protocol reads run at the same time, and positions still come back in registry order", async () => {
+  const entries = [
+    registryEntry(),
+    registryEntry({
+      address: PHOENIX_POOL,
+      protocol: "phoenix",
+      kind: "pool",
+      wasmHash: PHOENIX_WASM_HASH,
+    }),
+  ];
+  const inner = mockRpc([
+    contractInstanceEntry(BLEND_POOL, BLEND_WASM_HASH),
+    contractDataEntry(BLEND_POOL, symbolVal("ResList"), addressListVal([ASSET_A])),
+    contractDataEntry(
+      BLEND_POOL,
+      variantVal("Positions", addressVal(USER)),
+      structVal({
+        supply: u32MapVal([[0, 5_0000000n]]),
+        collateral: u32MapVal([]),
+        liabilities: u32MapVal([]),
+      })
+    ),
+    contractInstanceEntry(PHOENIX_POOL, PHOENIX_WASM_HASH),
+    contractDataEntry(PHOENIX_POOL, variantVal("Balance", addressVal(USER)), i128Val(7_0000000n)),
+  ]);
+  // Blend's read is held open longer than Phoenix's, so completion order is the reverse of
+  // registry order; the result must not depend on which finished first.
+  const { rpc, maxInFlight } = tracingRpc(inner, (keys) =>
+    contractOf(keys[0]!) === BLEND_POOL ? 30 : 1
+  );
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc,
+    registryEntries: entries,
+  });
+  expect(result.unrecognizedPositions).toEqual([]);
+  expect(result.positions.map((p) => p.protocol)).toEqual(["blend", "phoenix"]);
+  expect(maxInFlight()).toBeGreaterThanOrEqual(2);
+});
+
+const randomContract = (): string =>
+  StrKey.encodeContract(StrKey.decodeEd25519PublicKey(Keypair.random().publicKey()));
+
+/** More chunks than the concurrency limit, so the upper bound below is exercised, not vacuous. */
+const MANY_PAIRS = LEDGER_KEYS_PER_CALL * (LEDGER_READ_CONCURRENCY + 2);
+
+test("a chunked sweep issues its chunks together, bounded by the read concurrency and the RPC's 200-key cap", async () => {
+  const pairs = Array.from({ length: MANY_PAIRS }, randomContract);
+  const held = pairs[MANY_PAIRS - 1]!;
+  const inner = mockRpc([...factoryEntries(pairs), ...pairEntries(held, 1n)]);
+  const { rpc, sizes, maxInFlight } = tracingRpc(inner, () => 5);
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc,
+    registryEntries: SOROSWAP_REGISTRY(),
+  });
+  expect(result.positions.map((p) => p.contractAddress)).toEqual([held]);
+  expect(LEDGER_KEYS_PER_CALL).toBeLessThanOrEqual(200);
+  expect(Math.max(...sizes)).toBeLessThanOrEqual(LEDGER_KEYS_PER_CALL);
+  expect(maxInFlight()).toBeGreaterThanOrEqual(2);
+  expect(maxInFlight()).toBeLessThanOrEqual(LEDGER_READ_CONCURRENCY);
+});
+
+test("two detections against the same RPC server share one concurrency budget", async () => {
+  const pairs = Array.from({ length: MANY_PAIRS }, randomContract);
+  const inner = mockRpc([...factoryEntries(pairs), ...pairEntries(pairs[0]!, 1n)]);
+  const { rpc, maxInFlight } = tracingRpc(inner, () => 5);
+  const run = () =>
+    detectDefiPositionsViaDirectRead(USER, "testnet", {
+      rpc,
+      registryEntries: SOROSWAP_REGISTRY(),
+    });
+  const [a, b] = await Promise.all([run(), run()]);
+  expect(a.positions).toHaveLength(1);
+  expect(b.positions).toHaveLength(1);
+  expect(maxInFlight()).toBeGreaterThanOrEqual(2);
+  expect(maxInFlight()).toBeLessThanOrEqual(LEDGER_READ_CONCURRENCY);
+});
+
+test("once one read fails, the detection rejects and its queued reads never reach the RPC", async () => {
+  const pairs = Array.from({ length: MANY_PAIRS }, randomContract);
+  const inner = mockRpc([...factoryEntries(pairs), ...pairEntries(pairs[0]!, 1n)]);
+  let thrown = false;
+  const failingOnce = {
+    getLedgerEntries: async (...keys: xdr.LedgerKey[]) => {
+      // The first full-size chunk (an index chunk of the factory sweep) fails, like a 429 would.
+      if (!thrown && keys.length === LEDGER_KEYS_PER_CALL) {
+        thrown = true;
+        throw new Error("boom");
+      }
+      return inner.getLedgerEntries(...keys);
+    },
+  } as unknown as TracedRpc;
+  const { rpc, sizes } = tracingRpc(failingOnce, () => 5);
+  await expect(
+    detectDefiPositionsViaDirectRead(USER, "testnet", { rpc, registryEntries: SOROSWAP_REGISTRY() })
+  ).rejects.toThrow("boom");
+  // 1 registry verification + 1 factory instance + the chunks already in flight when one failed.
+  // The chunks still queued behind the limit were dropped, not sent.
+  expect(sizes.length).toBeLessThanOrEqual(2 + LEDGER_READ_CONCURRENCY);
+});
+
+test("enumerateAquariusPools bounds its own concurrency when handed a raw reader", async () => {
+  const setCount = LEDGER_KEYS_PER_CALL * (LEDGER_READ_CONCURRENCY + 2);
+  const sets = Array.from({ length: setCount }, () => ({
+    tokens: [randomContract(), randomContract()],
+    pools: [randomContract()],
+  }));
+  const { rpc, maxInFlight } = tracingRpc(mockRpc(aquariusRouterEntries(sets)), () => 5);
+  const flags: string[] = [];
+  const views = await enumerateAquariusPools(rpc, aquariusRegistry()[0]!, (rawType) => {
+    flags.push(rawType);
+  });
+  // Every pool lacks an instance here; the sweep still completes and says so.
+  expect(views).toEqual([]);
+  expect(flags).toEqual(["pool-unreadable"]);
+  expect(maxInFlight()).toBeGreaterThanOrEqual(2);
+  expect(maxInFlight()).toBeLessThanOrEqual(LEDGER_READ_CONCURRENCY);
 });
