@@ -38,6 +38,29 @@ export function vettedDefaultModules(): ModuleInterface[] {
   ];
 }
 
+export interface WalletConnectMetadata {
+  name: string;
+  description: string;
+  url: string;
+  icons: string[];
+}
+
+/**
+ * Must match the domain the page actually loads from - WalletConnect compares `url` against
+ * the real page origin and flags a mismatch to the connecting wallet as a possible phishing
+ * signal. The site serves from the www subdomain, so the fallback (used whenever
+ * `NEXT_PUBLIC_APP_URL` is unset) has to be that, not the bare apex domain.
+ */
+export function walletConnectMetadata(): WalletConnectMetadata {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.lumenwipe.com";
+  return {
+    name: "LumenWipe",
+    description: "Close your Stellar account safely and recover your XLM.",
+    url: appUrl,
+    icons: [`${appUrl}/favicon-96x96.png`],
+  };
+}
+
 /**
  * Full module list for `StellarWalletsKit.init`. WalletConnect is included only when
  * a project ID is configured - without it, LOBSTR (reachable only via WalletConnect)
@@ -53,17 +76,7 @@ export function walletKitModules(): ModuleInterface[] {
   const modules: ModuleInterface[] = [...vettedDefaultModules()];
 
   if (projectId) {
-    modules.push(
-      new WalletConnectModule({
-        projectId,
-        metadata: {
-          name: "LumenWipe",
-          description: "Close your Stellar account safely and recover your XLM.",
-          url: process.env.NEXT_PUBLIC_APP_URL || "https://lumenwipe.com",
-          icons: ["https://lumenwipe.com/favicon-96x96.png"],
-        },
-      })
-    );
+    modules.push(new WalletConnectModule({ projectId, metadata: walletConnectMetadata() }));
   } else {
     // Dev/ops visibility only - never shown to end users, and this must not throw.
     console.warn(
