@@ -141,7 +141,11 @@ export async function buildCloseTransactions(
     deps?: Partial<TokenConversionRoundDeps>;
     /** Overrides the environment flag; tests only. */
     enabled?: boolean;
-  } = {}
+  } = {},
+  /** Whether the caller has an explicit, address-scoped acknowledgement that this account
+   *  holds no DeFi positions (close-api/decisions.ts's `isDefiPositionsAcknowledged`), passed
+   *  straight through to the re-applied plan gate below. */
+  userVerifiedNoDefiPositions = false
 ): Promise<CloseBuildResult> {
   // Reject the same two hostile states buildPlan() blocks (issue #167), before any read or
   // build work: /close/transactions is an API-key product surface with an SDK, and
@@ -179,7 +183,8 @@ export async function buildCloseTransactions(
   const defiBlockers = assessDefiPositionsGate(
     accountState.defiPositions,
     undefined,
-    accountState.trustlines.length
+    accountState.trustlines.length,
+    userVerifiedNoDefiPositions
   ).filter((b) => !isNonTrappingDefiBlocker(b));
   if (defiBlockers.length > 0) {
     const first = defiBlockers[0]!;

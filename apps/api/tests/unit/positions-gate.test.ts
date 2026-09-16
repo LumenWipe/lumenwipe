@@ -202,3 +202,56 @@ test("a genuinely unconfirmed degraded result (direct read also failed) still ha
   expect(blockers).toHaveLength(1);
   expect(blockers[0].code).toBe("defi_positions_unavailable");
 });
+
+// ─── user-verified acknowledgement ───────────────────────────────────────────
+//
+// A real mainnet account (a basic asset-issuer with one classic trustline unrelated to any
+// DeFi protocol) hit the hard blocker even though a completed direct-read sweep found zero
+// positions - the trustline-count leniency above only covers a zero-trustline account, and this
+// one had one. The acknowledgement lets a human who checked manually downgrade the same
+// blocker to a visible, non-trapping warning, but only when the sweep itself also found
+// nothing - it never overrides a position the sweep actually named.
+
+test("userVerifiedNoPositions downgrades the hard blocker when the sweep found nothing", () => {
+  const result = makeResult({ source: DEGRADED_SOURCE, timestamp: null });
+  const blockers = assessDefiPositionsGate(result, new Date(), 1, true);
+  expect(blockers).toHaveLength(1);
+  expect(blockers[0].code).toBe("defi_positions_unconfirmed_user_verified");
+});
+
+test("userVerifiedNoPositions does nothing when the sweep actually found a position", () => {
+  const result = makeResult({
+    source: DEGRADED_SOURCE,
+    timestamp: null,
+    positions: [BLEND_POSITION],
+  });
+  const blockers = assessDefiPositionsGate(result, new Date(), 1, true);
+  expect(blockers).toHaveLength(1);
+  expect(blockers[0].code).toBe("defi_positions_unavailable");
+});
+
+test("userVerifiedNoPositions defaults to false - omitting it changes nothing", () => {
+  const result = makeResult({ source: DEGRADED_SOURCE, timestamp: null });
+  const blockers = assessDefiPositionsGate(result, new Date(), 1);
+  expect(blockers[0].code).toBe("defi_positions_unavailable");
+});
+
+test("userVerifiedNoPositions never fires ahead of the existing, stronger leniencies", () => {
+  // Zero trustlines already gets the softer no-trustlines code on its own; the acknowledgement
+  // adds nothing new here, and must not replace it with a different code.
+  const emptyZeroTrustlines = makeResult({ source: DEGRADED_SOURCE_CONFIRMED, timestamp: null });
+  expect(assessDefiPositionsGate(emptyZeroTrustlines, new Date(), 0, true)[0]!.code).toBe(
+    "defi_positions_unconfirmed_no_trustlines"
+  );
+
+  // A confirmed, detected position already gets its own stronger code; the acknowledgement must
+  // not downgrade it to the user-verified one instead.
+  const detected = makeResult({
+    source: DEGRADED_SOURCE_CONFIRMED,
+    timestamp: null,
+    positions: [BLEND_POSITION],
+  });
+  expect(assessDefiPositionsGate(detected, new Date(), 1, true)[0]!.code).toBe(
+    "defi_positions_unconfirmed_but_detected"
+  );
+});

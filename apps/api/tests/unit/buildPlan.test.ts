@@ -2128,3 +2128,42 @@ test("buildPlan › a position no adapter can exit blocks by name instead of van
   expect(blockers.map((b) => b.code)).toContain("defi_exit_unsupported");
   expect(steps.find((s) => s.type === "EXIT_POSITIONS")).toBeUndefined();
 });
+
+test("buildPlan › userVerifiedNoDefiPositions downgrades the hard blocker to a visible warning", () => {
+  const account = makeAccount({
+    trustlines: [makeTrustline("USDC")],
+    defiPositions: makeDefiResult({ timestamp: null }),
+  });
+  const acknowledged = buildPlan(
+    account,
+    false,
+    false,
+    {},
+    undefined,
+    {},
+    {},
+    account.defiPositions,
+    true
+  );
+  expect(acknowledged.blockers.map((b) => b.code)).toEqual([
+    "defi_positions_unconfirmed_user_verified",
+  ]);
+});
+
+test("buildPlan › userVerifiedNoDefiPositions defaults to false, same hard blocker as before", () => {
+  const account = makeAccount({
+    trustlines: [makeTrustline("USDC")],
+    defiPositions: makeDefiResult({ timestamp: null }),
+  });
+  const unacknowledged = buildPlan(
+    account,
+    false,
+    false,
+    {},
+    undefined,
+    {},
+    {},
+    account.defiPositions
+  );
+  expect(unacknowledged.blockers.map((b) => b.code)).toEqual(["defi_positions_unavailable"]);
+});
