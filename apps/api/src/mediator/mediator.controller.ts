@@ -14,7 +14,7 @@ import { isValidNetwork, NETWORK_PASSPHRASES, getMediatorPublicKey } from "@/con
 import { isValidGAddress } from "@/lib/utils/validation";
 import { lookupExchange } from "@/lib/exchange-registry";
 import { getMediatorKeypair } from "@/lib/stellar/mediator-server";
-import { getAccountState } from "@/lib/stellar/account-state";
+import { readNativeBalance } from "@/lib/stellar/account-state";
 import { AccountNotFoundError } from "@/lib/utils/errors";
 import { forwardExceedsMergedBalance } from "./mediator-validation";
 import { fail } from "@/common/fail";
@@ -104,7 +104,7 @@ export class MediatorController {
     // surplus. Fail closed: if the balance can't be read, do not co-sign.
     let mergedBalance: string;
     try {
-      mergedBalance = (await getAccountState(mergedSource, network)).nativeBalanceLumens;
+      mergedBalance = (await readNativeBalance(mergedSource, network)).nativeBalanceLumens;
     } catch (err) {
       if (err instanceof AccountNotFoundError) {
         fail("merged_account_not_found", "Merged account not found", 400);
@@ -148,7 +148,7 @@ export class MediatorController {
     }
 
     try {
-      await getAccountState(address, network);
+      await readNativeBalance(address, network);
       return {
         requiresMediator: false,
         reason: "Destination account exists and supports account merges.",
