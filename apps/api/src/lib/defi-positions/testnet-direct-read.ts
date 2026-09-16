@@ -40,7 +40,7 @@
 import { UserBalance } from "@blend-capital/blend-sdk";
 import { Address, Contract, hash, nativeToScVal, scValToNative, xdr } from "@stellar/stellar-sdk";
 import { getRpcServer } from "@/lib/stellar/rpc";
-import { readLiveWasmHash } from "@/lib/stellar/contract-instance";
+import type { LedgerEntriesReader } from "@/lib/stellar/contract-instance";
 import { entriesForNetwork, type ContractRegistryEntry } from "@/lib/contract-registry";
 import type {
   BlendBorrowPosition,
@@ -56,6 +56,49 @@ import type {
 } from "@lumenwipe/types";
 
 type RpcServer = ReturnType<typeof getRpcServer>;
+/** Everything below needs exactly one RPC method, so the real server and a stub both fit. */
+type LedgerReader = LedgerEntriesReader;
+
+/**
+ * How many `getLedgerEntries` calls one detection keeps in flight at once. The sweep is a few
+ * thousand keys in chunks, and each round trip to a public RPC costs a few hundred milliseconds
+ * regardless of size, so issuing them one after another made this read take ~14 s on mainnet;
+ * issuing them together bounds the wall time by the deepest chain of dependent reads instead.
+ * Kept modest so a burst from one analyze does not trip the RPC's rate limit for another.
+ */
+export const LEDGER_READ_CONCURRENCY = 4;
+
+/** A reader that lets at most `limit` calls through at once, queueing the rest in order. */
+function limitReads(rpc: LedgerReader, limit: number): LedgerReader {
+  let active = 0;
+  const waiting: Array<() => void> = [];
+  const acquire = (): Promise<void> =>
+    new Promise((resolve) => {
+      if (active < limit) {
+        active += 1;
+        resolve();
+      } else {
+        waiting.push(() => {
+          active += 1;
+          resolve();
+        });
+      }
+    });
+  const release = (): void => {
+    active -= 1;
+    waiting.shift()?.();
+  };
+  return {
+    getLedgerEntries: async (...keys) => {
+      await acquire();
+      try {
+        return await rpc.getLedgerEntries(...keys);
+      } finally {
+        release();
+      }
+    },
+  };
+}
 
 export interface DirectReadDeps {
   rpc?: RpcServer;
@@ -88,7 +131,7 @@ export const variantVal = (variant: string, ...fields: xdr.ScVal[]): xdr.ScVal =
 
 /** Keyed by the ledger key's base64 XDR, since `getLedgerEntries` doesn't promise result order. */
 async function batchRead(
-  rpc: RpcServer,
+  rpc: LedgerReader,
   keys: xdr.LedgerKey[]
 ): Promise<Map<string, xdr.LedgerEntryData>> {
   if (keys.length === 0) return new Map();
@@ -127,17 +170,21 @@ function asBigInt(value: unknown): bigint | null {
 
 /**
  * Confirms a registry entry's contract still exists on-chain with the recorded wasmHash before
- * anything is decoded against it. Returns null (and pushes an `unrecognizedPositions` entry) on
+ * anything is decoded against it. Returns false (and pushes an `unrecognizedPositions` entry) on
  * either "contract not found" (a registry-integrity gap, not "this account has no position" -
  * exercised for real by the FxDAO entry today) or a wasmHash mismatch (halt-on-unknown, same
  * invariant the exit adapters hold to).
+ *
+ * `liveWasmHash` is what the ledger returned for the entry's instance - null when the contract
+ * does not exist or is not Wasm-backed, the same reading `readLiveWasmHash` gives - fetched for
+ * every entry in one batched read by the entry point, so verifying the registry costs one round
+ * trip rather than one per contract.
  */
-async function verifyEntry(
-  rpc: RpcServer,
+function verifyEntry(
   entry: ContractRegistryEntry,
+  liveWasmHash: string | null,
   unrecognized: UnrecognizedDefiPosition[]
-): Promise<boolean> {
-  const liveWasmHash = await readLiveWasmHash(rpc, entry.address);
+): boolean {
   if (liveWasmHash === null) {
     // The registry already records this entry as absent from the network (verifiedLive: false,
     // FxDAO's documented-but-undeployed vault today). Still absent is the registry's fact, not
@@ -174,7 +221,7 @@ async function verifyEntry(
 // ─── Blend pool: supply/borrow ────────────────────────────────────────────────
 
 async function readBlendPoolPositions(
-  rpc: RpcServer,
+  rpc: LedgerReader,
   entry: ContractRegistryEntry,
   address: string
 ): Promise<DefiPosition[]> {
@@ -247,7 +294,7 @@ async function readBlendPoolPositions(
  * exit adapter reads the queue itself to decide which.
  */
 async function readBlendBackstopPositions(
-  rpc: RpcServer,
+  rpc: LedgerReader,
   backstop: ContractRegistryEntry,
   entries: ContractRegistryEntry[],
   address: string,
@@ -312,22 +359,25 @@ async function readBlendBackstopPositions(
 
 // ─── Soroswap: every pair the factory deployed ───────────────────────────────
 
-/** Stellar RPC caps getLedgerEntries at 200 keys per call; stay well under it. */
-const LEDGER_KEYS_PER_CALL = 100;
+/** Stellar RPC caps getLedgerEntries at 200 keys per call; stay under it with room to spare. */
+export const LEDGER_KEYS_PER_CALL = 150;
 
 /** A factory past this size is not enumerated. No mainnet Soroswap factory is registered today;
  *  if one is added, the degraded-mode fallback sweeps it under this same cap. */
 const MAX_FACTORY_PAIRS = 2_000;
 
+/** Every chunk is issued at once; the reader's own concurrency limit paces them. */
 async function batchReadChunked(
-  rpc: RpcServer,
+  rpc: LedgerReader,
   keys: xdr.LedgerKey[]
 ): Promise<Map<string, xdr.LedgerEntryData>> {
-  const out = new Map<string, xdr.LedgerEntryData>();
+  const chunks: xdr.LedgerKey[][] = [];
   for (let i = 0; i < keys.length; i += LEDGER_KEYS_PER_CALL) {
-    const part = await batchRead(rpc, keys.slice(i, i + LEDGER_KEYS_PER_CALL));
-    for (const [k, v] of part) out.set(k, v);
+    chunks.push(keys.slice(i, i + LEDGER_KEYS_PER_CALL));
   }
+  const parts = await Promise.all(chunks.map((chunk) => batchRead(rpc, chunk)));
+  const out = new Map<string, xdr.LedgerEntryData>();
+  for (const part of parts) for (const [k, v] of part) out.set(k, v);
   return out;
 }
 
@@ -376,10 +426,10 @@ const asAddress = (val: xdr.ScVal | undefined): string | null => {
  * registry's pair code (halt-on-unknown, same as any other contract), and their two tokens taken
  * from instance keys 0 and 1 (Token0, Token1). Every sweep is chunked and bounded by the pair
  * cap, so a stranger gifting one share of every pair to an account cannot inflate its analysis
- * beyond a fixed number of reads. On today's testnet this is nine ledger reads for ~225 pairs.
+ * beyond a fixed number of reads. On today's mainnet this is six ledger reads for ~215 pairs.
  */
 async function readSoroswapFactoryPairs(
-  rpc: RpcServer,
+  rpc: LedgerReader,
   factory: ContractRegistryEntry,
   entries: ContractRegistryEntry[],
   address: string,
@@ -554,7 +604,7 @@ export interface AquariusPoolView {
  * storage shape must fail loudly there, never read as "this account holds nothing".
  */
 export async function enumerateAquariusPools(
-  rpc: RpcServer,
+  rpc: LedgerReader,
   router: ContractRegistryEntry,
   flag: (rawType: string, reason: string) => void
 ): Promise<AquariusPoolView[] | null> {
@@ -682,7 +732,7 @@ export async function enumerateAquariusPools(
  * shares and are skipped by this read (OctoPos reports them on mainnet).
  */
 async function readAquariusRouterPools(
-  rpc: RpcServer,
+  rpc: LedgerReader,
   router: ContractRegistryEntry,
   entries: ContractRegistryEntry[],
   address: string,
@@ -766,7 +816,7 @@ async function readAquariusRouterPools(
 // ─── standard SEP-41 LP share balance (Phoenix pools; Soroswap and Aquarius enumerate) ──
 
 async function readLpShareBalance(
-  rpc: RpcServer,
+  rpc: LedgerReader,
   entry: ContractRegistryEntry,
   address: string
 ): Promise<DefiPosition | null> {
@@ -792,7 +842,7 @@ async function readLpShareBalance(
 // ─── FxDAO vault ───────────────────────────────────────────────────────────────
 
 async function readFxdaoVaults(
-  rpc: RpcServer,
+  rpc: LedgerReader,
   entry: ContractRegistryEntry,
   address: string
 ): Promise<DefiPosition[]> {
@@ -828,21 +878,52 @@ async function readFxdaoVaults(
 
 // ─── entry point ────────────────────────────────────────────────────────────
 
-export async function detectDefiPositionsViaDirectRead(
-  address: string,
-  network: Network = "testnet",
-  deps: DirectReadDeps = {}
-): Promise<DefiPositionsResult> {
-  const rpc = deps.rpc ?? getRpcServer(network);
-  const entries = deps.registryEntries ?? entriesForNetwork(network);
+/** What one registry entry's sweep contributes; concatenated in registry order by the caller. */
+interface EntryOutcome {
+  positions: DefiPosition[];
+  unrecognized: UnrecognizedDefiPosition[];
+}
 
+async function readEntry(
+  rpc: LedgerReader,
+  entry: ContractRegistryEntry,
+  liveWasmHash: string | null,
+  entries: ContractRegistryEntry[],
+  address: string
+): Promise<EntryOutcome> {
   const positions: DefiPosition[] = [];
   const unrecognized: UnrecognizedDefiPosition[] = [];
+  if (!verifyEntry(entry, liveWasmHash, unrecognized)) return { positions, unrecognized };
 
-  for (const entry of entries) {
-    // Two reference contracts ARE probed, because they enumerate the positions' contracts: the
-    // Soroswap factory (pairs) and the Aquarius router (pools). Aquarius pool entries stand for
-    // their code and are never read for balances themselves.
+  if (entry.protocol === "blend" && entry.kind === "backstop") {
+    positions.push(
+      ...(await readBlendBackstopPositions(rpc, entry, entries, address, unrecognized))
+    );
+  } else if (entry.kind === "backstop") {
+    // Only Blend's backstop has a documented read.
+  } else if (entry.protocol === "soroswap" && entry.kind === "factory") {
+    positions.push(...(await readSoroswapFactoryPairs(rpc, entry, entries, address, unrecognized)));
+  } else if (entry.protocol === "aquarius" && entry.kind === "router") {
+    positions.push(...(await readAquariusRouterPools(rpc, entry, entries, address, unrecognized)));
+  } else if (entry.protocol === "blend" && entry.kind === "pool") {
+    positions.push(...(await readBlendPoolPositions(rpc, entry, address)));
+  } else if (entry.protocol === "fxdao" && entry.kind === "vault") {
+    positions.push(...(await readFxdaoVaults(rpc, entry, address)));
+  } else if (entry.kind === "pool") {
+    const lp = await readLpShareBalance(rpc, entry, address);
+    if (lp) positions.push(lp);
+  }
+  return { positions, unrecognized };
+}
+
+/**
+ * Which registry entries this read probes. Two reference contracts ARE probed, because they
+ * enumerate the positions' contracts: the Soroswap factory (pairs) and the Aquarius router
+ * (pools). Every other factory/router is skipped, and so are pair and Aquarius pool entries:
+ * those stand for their code and are never read for balances themselves.
+ */
+function probedEntries(entries: ContractRegistryEntry[]): ContractRegistryEntry[] {
+  return entries.filter((entry) => {
     const soroswapFactory = entry.protocol === "soroswap" && entry.kind === "factory";
     const aquariusRouter = entry.protocol === "aquarius" && entry.kind === "router";
     const aquariusPool = entry.protocol === "aquarius" && entry.kind === "pool";
@@ -851,42 +932,45 @@ export async function detectDefiPositionsViaDirectRead(
       !aquariusRouter &&
       (entry.kind === "factory" || entry.kind === "router")
     )
-      continue;
-    if (entry.kind === "pair" || aquariusPool) continue;
+      return false;
+    if (entry.kind === "pair" || aquariusPool) return false;
+    return true;
+  });
+}
 
-    const verified = await verifyEntry(rpc, entry, unrecognized);
-    if (!verified) continue;
+/** The live code hash in an instance entry: null when absent or not Wasm-backed (a Stellar
+ *  Asset Contract has no code of its own) - the same reading `readLiveWasmHash` gives. */
+function liveWasmHashOf(val: xdr.LedgerEntryData | undefined): string | null {
+  return val ? parseInstance(val).wasmHash : null;
+}
 
-    if (entry.protocol === "blend" && entry.kind === "backstop") {
-      positions.push(
-        ...(await readBlendBackstopPositions(rpc, entry, entries, address, unrecognized))
-      );
-      continue;
-    }
-    if (entry.kind === "backstop") continue;
+export async function detectDefiPositionsViaDirectRead(
+  address: string,
+  network: Network = "testnet",
+  deps: DirectReadDeps = {}
+): Promise<DefiPositionsResult> {
+  const rpc = limitReads(deps.rpc ?? getRpcServer(network), LEDGER_READ_CONCURRENCY);
+  const entries = deps.registryEntries ?? entriesForNetwork(network);
+  const probed = probedEntries(entries);
 
-    if (soroswapFactory) {
-      positions.push(
-        ...(await readSoroswapFactoryPairs(rpc, entry, entries, address, unrecognized))
-      );
-      continue;
-    }
-    if (aquariusRouter) {
-      positions.push(
-        ...(await readAquariusRouterPools(rpc, entry, entries, address, unrecognized))
-      );
-      continue;
-    }
-
-    if (entry.protocol === "blend" && entry.kind === "pool") {
-      positions.push(...(await readBlendPoolPositions(rpc, entry, address)));
-    } else if (entry.protocol === "fxdao" && entry.kind === "vault") {
-      positions.push(...(await readFxdaoVaults(rpc, entry, address)));
-    } else if (entry.kind === "pool") {
-      const lp = await readLpShareBalance(rpc, entry, address);
-      if (lp) positions.push(lp);
-    }
-  }
+  // One read verifies every registered contract's live code, then every entry's sweep runs at
+  // once. Outcomes are joined in registry order so the result does not depend on which RPC call
+  // happened to return first.
+  const instanceKeys = probed.map((entry) => instanceKey(entry.address));
+  const instances = await batchReadChunked(rpc, instanceKeys);
+  const outcomes = await Promise.all(
+    probed.map((entry, i) =>
+      readEntry(
+        rpc,
+        entry,
+        liveWasmHashOf(instances.get(instanceKeys[i]!.toXDR("base64"))),
+        entries,
+        address
+      )
+    )
+  );
+  const positions = outcomes.flatMap((o) => o.positions);
+  const unrecognized = outcomes.flatMap((o) => o.unrecognized);
 
   return {
     address,
