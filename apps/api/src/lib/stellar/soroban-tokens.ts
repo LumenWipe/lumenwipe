@@ -36,7 +36,10 @@ import { getRpcServer } from "./rpc";
  *  - the tokens named by the account's detected DeFi positions (what an exit pays out);
  *  - bundled lists of Soroban-native tokens with known liquidity (the only ones convertible);
  *  - recent on-chain `transfer` and `mint` events crediting the account, scanned in bounded
- *    windows as a freshness supplement, not as the source of record;
+ *    windows as a freshness supplement, not as the source of record - by far the slowest
+ *    source (up to ~14s of its own reserved budget), so every current caller disables it by
+ *    default (`scanEvents: false`) and leans on stellar.expert instead; it stays available for
+ *    a caller that explicitly asks for it;
  *  - contracts the user adds by hand.
  *
  * Every candidate is then confirmed by simulating `balance(account)` on the RPC - the
@@ -121,7 +124,9 @@ export function defaultSorobanTokensDeps(
     positions,
     now: () => Date.now(),
     budgetMs: options.budgetMs ?? SOROBAN_TOKENS_BUDGET_MS,
-    scanEvents: options.scanEvents ?? true,
+    // Opt-in, not opt-out: the events scan is the slowest source by far (see the module doc
+    // comment above), so a caller must ask for it explicitly rather than pay for it by default.
+    scanEvents: options.scanEvents ?? false,
   };
 }
 

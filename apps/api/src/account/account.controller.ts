@@ -74,7 +74,18 @@ export class AccountController {
     }
 
     try {
-      return await getAccountState(address, network, { manualTokenCandidates });
+      // Soroban token discovery's recent-events scan is its slowest source by far (up to ~14s
+      // of its own reserved budget across 6 ledger-range chunks) and exists only to catch a
+      // token that stellar.expert has not indexed yet, is not in the bundled lists, is not a
+      // detected position's payout, and the user did not type in by hand - a narrow gap next to
+      // what the faster sources already cover. Disabled here so the first analysis of an
+      // account favors stellar.expert (answers in a few hundred ms or times out at 3s) over a
+      // slow scan for that gap; a close round already made this same call (see
+      // CLOSE_ROUND_TOKENS_BUDGET_MS in close-api/read-account.ts).
+      return await getAccountState(address, network, {
+        manualTokenCandidates,
+        scanTokenEvents: false,
+      });
     } catch (err) {
       if (err instanceof HttpException) throw err;
       if (err instanceof AccountNotFoundError) {

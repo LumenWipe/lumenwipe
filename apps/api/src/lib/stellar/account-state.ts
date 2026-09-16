@@ -351,6 +351,34 @@ export async function readTrustlinesOnly(
   };
 }
 
+/**
+ * Reads only what the mediator flow needs: whether the account exists, and its native balance.
+ *
+ * Deliberately not `getAccountState`. Both mediator call sites (the merge co-sign's balance
+ * cross-check, and the destination probe that only cares whether the read throws
+ * `AccountNotFoundError`) never touch DeFi positions, Soroban tokens, offers, claimable
+ * balances, or sponsorships - so the full reader would pay for OctoPos/direct-read detection
+ * and token discovery (tens of seconds in a degraded case) to answer a question one Horizon
+ * call already settles. Same amplification `readTrustlinesOnly` (#110) removed from the
+ * payment-destination path, applied here to the mediator's own checks.
+ */
+export async function readNativeBalance(
+  address: string,
+  network: Network,
+  deps: HorizonDeps = horizonDepsFor(network)
+): Promise<{ nativeBalanceLumens: string }> {
+  const account = await horizonGet<ApiAccount>(`/accounts/${address}`, deps);
+  if (!account) throw new AccountNotFoundError(address);
+  if (!Array.isArray(account.balances)) {
+    throw new Error(
+      `Horizon returned an account body for ${address} with no balances; refusing to treat ` +
+        `absent data as "holds no balance".`
+    );
+  }
+  const nativeBalance = account.balances.find((b) => b.asset_type === "native");
+  return { nativeBalanceLumens: nativeBalance?.balance ?? "0" };
+}
+
 /** Reads account state from the provider configured for `network`. */
 export async function getAccountState(
   address: string,

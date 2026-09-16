@@ -1,8 +1,8 @@
-import { test, expect } from "bun:test";
+import { test, expect, describe } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
-import { readAccountStateFrom } from "@/lib/stellar/account-state";
+import { readAccountStateFrom, readNativeBalance } from "@/lib/stellar/account-state";
 import { OFFLINE_SOROBAN_TOKENS, fakeSorobanDeps } from "./fixtures/fake-soroban-tokens";
-import { UnusableProviderResponseError } from "@/lib/utils/errors";
+import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils/errors";
 import type { ResolveDefiPositionsDeps } from "@/lib/defi-positions/resolve-defi-positions";
 import type { ContractRegistryEntry } from "@/lib/contract-registry";
 import { addressVal, variantVal } from "@/lib/defi-positions/testnet-direct-read";
@@ -121,6 +121,33 @@ test("balances, data entries, signers and thresholds all come from the single ac
   expect(state.dataEntries).toEqual([{ key: "lw-key", value: "dmFsdWU=" }]);
   expect(state.thresholds).toEqual({ low: 1, med: 2, high: 3 });
   expect(calls.filter((c) => c.includes("/accounts/") && !c.includes("/offers"))).toHaveLength(1);
+});
+
+describe("readNativeBalance", () => {
+  test("reads the native balance with a single upstream call, none of the full reader's other work", async () => {
+    const { deps, calls } = stubProvider(
+      accountBody({
+        balances: [{ asset_type: "native", balance: "12.3400000" }, trustlineBalance("USDC")],
+      })
+    );
+    const result = await readNativeBalance(ADDRESS, "testnet", deps);
+    expect(result).toEqual({ nativeBalanceLumens: "12.3400000" });
+    expect(calls).toEqual([`${BASE}/accounts/${ADDRESS}`]);
+  });
+
+  test('defaults to "0" for an account holding no native balance entry', async () => {
+    const { deps } = stubProvider(accountBody({ balances: [trustlineBalance("USDC")] }));
+    const result = await readNativeBalance(ADDRESS, "testnet", deps);
+    expect(result).toEqual({ nativeBalanceLumens: "0" });
+  });
+
+  test("throws AccountNotFoundError for a nonexistent account, same as the full reader", async () => {
+    const fetch = (async () =>
+      new Response(null, { status: 404 })) as unknown as typeof globalThis.fetch;
+    await expect(readNativeBalance(ADDRESS, "testnet", { baseUrl: BASE, fetch })).rejects.toThrow(
+      AccountNotFoundError
+    );
+  });
 });
 
 // Ground truth for completeness. Enumerating fewer entries than the ledger reports means the

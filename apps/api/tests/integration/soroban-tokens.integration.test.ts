@@ -37,7 +37,7 @@ test.skipIf(!RUN_INTEGRATION)(
     const result = await discoverSorobanTokens(
       MAINNET_HOLDER,
       "mainnet",
-      defaultSorobanTokensDeps("mainnet", [])
+      defaultSorobanTokensDeps("mainnet", [], [], { scanEvents: true })
     );
     const found = result.tokens.find((t) => t.contract === DEJTRSY);
     expect(found, JSON.stringify(result.coverage)).toBeDefined();
@@ -64,7 +64,7 @@ test.skipIf(!RUN_INTEGRATION)(
     const result = await discoverSorobanTokens(
       TESTNET_HOLDER,
       "testnet",
-      defaultSorobanTokensDeps("testnet", [])
+      defaultSorobanTokensDeps("testnet", [], [], { scanEvents: true })
     );
     expect(result.coverage.find((c) => c.source === "events")).toMatchObject({ status: "ok" });
     expect(result.coverage.find((c) => c.source === "events")?.detail).toBeUndefined();
@@ -76,7 +76,7 @@ test.skipIf(!RUN_INTEGRATION)(
     const empty = await discoverSorobanTokens(
       Keypair.random().publicKey(),
       "testnet",
-      defaultSorobanTokensDeps("testnet", [])
+      defaultSorobanTokensDeps("testnet", [], [], { scanEvents: true })
     );
     expect(empty.tokens).toEqual([]);
     expect(empty.unreadable).toEqual([]);
