@@ -111,9 +111,8 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
           setAccount(accountData);
           setAccountState(accountData);
         },
-        abandoned: isStale,
       });
-      if (!analysis || isStale()) return;
+      if (isStale()) return;
       const { plan } = analysis;
       setBlockers(
         plan.blockers.map((b) => ({ message: b.message, helpUrl: b.helpUrl, code: b.code }))
