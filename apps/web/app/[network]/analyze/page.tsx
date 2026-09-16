@@ -10,7 +10,11 @@ import type { PlanBlocker } from "@/types/plan";
 import { useDemolishStore } from "@/store/demolish";
 import { fetchClosePlan } from "@/lib/api/close-client";
 import { loadAnalysis } from "@/lib/api/analyze-client";
-import { claimAnswersKey, claimableSelectionsToDecisions } from "@/lib/api/close-decisions";
+import {
+  claimAnswersKey,
+  claimableSelectionsToDecisions,
+  defiPositionsAcknowledgementToDecisions,
+} from "@/lib/api/close-decisions";
 import { loadServedRegistry } from "@/lib/exchange-registry";
 import {
   decisionPointsToClaimableBalances,
@@ -29,7 +33,12 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
 
   const source = searchParams.get("source");
 
-  const { setAccountState, sourceAddress, claimableBalanceSelections } = useDemolishStore();
+  const {
+    setAccountState,
+    sourceAddress,
+    claimableBalanceSelections,
+    defiPositionsAcknowledgedFor,
+  } = useDemolishStore();
 
   const [account, setAccount] = useState<AccountState | null>(null);
   const [conversions, setConversions] = useState<AssetConvertibility[]>([]);
@@ -95,9 +104,22 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         // that no trustline represents yet, and only the API knows whether it has a conversion
         // route. Without this the caller was never asked what to do with it, and the close
         // dead-ended a round after the claim had already run.
+        //
+        // The DeFi-positions acknowledgement goes with it too, for the same reason: checking
+        // PlanView's box re-plans so the API's real, downgraded blocker code comes back instead
+        // of leaving the page showing the hard-blocking one it just answered.
         fetchPlan: (answers) =>
           fetchClosePlan(
-            { source: effectiveSource, decisions: claimableSelectionsToDecisions(answers) },
+            {
+              source: effectiveSource,
+              decisions: [
+                ...claimableSelectionsToDecisions(answers),
+                ...defiPositionsAcknowledgementToDecisions(
+                  defiPositionsAcknowledgedFor,
+                  effectiveSource
+                ),
+              ],
+            },
             routeNetwork
           ),
         // Loaded here, not at signing time: verify() is synchronous and runs immediately before
@@ -143,7 +165,14 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         loadedSource.current = effectiveSource;
       }
     }
-  }, [effectiveSource, routeNetwork, router, setAccountState, answersKey]);
+  }, [
+    effectiveSource,
+    routeNetwork,
+    router,
+    setAccountState,
+    answersKey,
+    defiPositionsAcknowledgedFor,
+  ]);
 
   useEffect(() => {
     fetchData();

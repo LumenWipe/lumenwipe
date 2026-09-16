@@ -27,8 +27,15 @@ import {
 import AccountSummaryCard from "./AccountSummaryCard";
 import BlockersPanel from "./BlockersPanel";
 import PlanAccordion from "./PlanAccordion";
+import DefiPositionsAcknowledgement from "./DefiPositionsAcknowledgement";
 import DestinationInput from "@/components/account-entry/DestinationInput";
-import { hardBlockersOf, displayBlockersOf, proceedError } from "@/lib/plan/resolvable-blockers";
+import {
+  hardBlockersOf,
+  displayBlockersOf,
+  proceedError,
+  DEFI_POSITIONS_UNAVAILABLE_CODE,
+} from "@/lib/plan/resolvable-blockers";
+import { defiPositionsAcknowledgementToDecisions } from "@/lib/api/close-decisions";
 import { assetsResolved } from "@/lib/plan/asset-resolution";
 
 interface PlanViewProps {
@@ -64,6 +71,8 @@ export default function PlanView({
     memo: storedMemo,
     destinationAcknowledgedFor,
     acknowledgeDestination,
+    defiPositionsAcknowledgedFor,
+    acknowledgeDefiPositions,
     transferDestinations,
     setTransferDestination,
   } = useDemolishStore();
@@ -174,7 +183,21 @@ export default function PlanView({
   // resolution check says the decision is made. `defi_positions_unconfirmed_no_trustlines`
   // (a direct on-chain check already confirmed nothing on a zero-trustline account) is the same
   // kind of non-trapping signal. Every other blocker code still hard-blocks.
-  const hardBlockers = hardBlockersOf(blockers);
+  //
+  // `defi_positions_unavailable` gets the same locally-resolved treatment, but conditionally:
+  // unlike the codes above, its own presence is what decides whether the acknowledgement
+  // checkbox (DefiPositionsAcknowledgement) even renders, so it cannot sit in
+  // resolvable-blockers.ts's unconditional sets - see DEFI_POSITIONS_UNAVAILABLE_CODE's own
+  // comment there for why. This local carve-out only affects this page's own "ready to enter a
+  // destination" gate; `handleProceed`'s post-decision `proceedError` check below calls the
+  // plain, unmodified `hardBlockersOf` and remains the authoritative gate before anything is
+  // built or signed.
+  const defiPositionsBlocker = blockers.find((b) => b.code === DEFI_POSITIONS_UNAVAILABLE_CODE);
+  const defiPositionsAcknowledged =
+    !defiPositionsBlocker || defiPositionsAcknowledgedFor === account.address;
+  const hardBlockers = hardBlockersOf(blockers).filter(
+    (b) => !(b.code === DEFI_POSITIONS_UNAVAILABLE_CODE && defiPositionsAcknowledged)
+  );
   // Unlike hardBlockers, this keeps non-trapping codes with no dedicated card of their own (the
   // DeFi one above) so the panel below still shows them - only codes already fully conveyed by
   // their own UI (claimable balances) are dropped.
@@ -265,6 +288,10 @@ export default function PlanView({
           useDemolishStore.getState().destinationAcknowledgedFor,
           destination
         ),
+        ...defiPositionsAcknowledgementToDecisions(
+          useDemolishStore.getState().defiPositionsAcknowledgedFor,
+          account.address
+        ),
       ];
       const plan = await fetchClosePlan(
         { source: account.address, destination, decisions },
@@ -328,6 +355,13 @@ export default function PlanView({
           unresolved or forfeited balance shows its own up-to-date state there); a stale
           snapshot repeating the same thing here would only confuse once the user has acted. */}
       <BlockersPanel blockers={displayBlockers} blocking={hardBlockers.length > 0} />
+
+      {defiPositionsBlocker && (
+        <DefiPositionsAcknowledgement
+          acknowledged={defiPositionsAcknowledgedFor === account.address}
+          onAcknowledgedChange={(ack) => acknowledgeDefiPositions(ack ? account.address : null)}
+        />
+      )}
 
       <div className="mkt-panel rounded-2xl">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">

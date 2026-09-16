@@ -7,6 +7,7 @@ import {
   receiptTokenSummary,
   claimAnswersKey,
   claimableSelectionsToDecisions,
+  defiPositionsAcknowledgementToDecisions,
   destinationAcknowledgementToDecisions,
   dispositionsToDecisions,
 } from "@/lib/api/close-decisions";
@@ -82,6 +83,30 @@ test("destinationAcknowledgementToDecisions › does not carry an acknowledgemen
 test("destinationAcknowledgementToDecisions › emits nothing without a destination", () => {
   expect(destinationAcknowledgementToDecisions(DEST, null)).toEqual([]);
   expect(destinationAcknowledgementToDecisions(null, null)).toEqual([]);
+});
+
+// ─── DeFi-positions acknowledgement ──────────────────────────────────────────
+
+const SOURCE = "GAK5Q2SDKTMFMO3EUEKWAFRB2QPH4W5WU6X6RIWRN4MNNTSOUKUB6YVX";
+const OTHER_SOURCE = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H";
+// Must match the API's defiPositionsDecisionId / DEFI_POSITIONS_ACK_CHOICE.
+const defiPositionsDecisionId = (address: string) => `defi_positions:${address}`;
+const DEFI_POSITIONS_ACK_CHOICE = "no_defi_positions_confirmed_manually";
+
+test("defiPositionsAcknowledgementToDecisions › emits the API's decision id and choice", () => {
+  expect(defiPositionsAcknowledgementToDecisions(SOURCE, SOURCE)).toEqual([
+    { id: defiPositionsDecisionId(SOURCE), choice: DEFI_POSITIONS_ACK_CHOICE },
+  ]);
+});
+
+test("defiPositionsAcknowledgementToDecisions › emits nothing when nothing was acknowledged", () => {
+  expect(defiPositionsAcknowledgementToDecisions(null, SOURCE)).toEqual([]);
+});
+
+// Same reasoning as the destination acknowledgement: recorded as the address it was given for,
+// so it cannot be replayed for a different account being closed.
+test("defiPositionsAcknowledgementToDecisions › does not carry an acknowledgement to a different source", () => {
+  expect(defiPositionsAcknowledgementToDecisions(OTHER_SOURCE, SOURCE)).toEqual([]);
 });
 
 // ─── transfer disposition (#111) ─────────────────────────────────────────────

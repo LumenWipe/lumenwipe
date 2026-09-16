@@ -115,3 +115,42 @@ test("displayBlockersOf keeps the detected-position DeFi blocker visible too", (
   const blockers = [{ code: "defi_positions_unconfirmed_but_detected", message: "…" }];
   expect(displayBlockersOf(blockers)).toEqual(blockers);
 });
+
+// ─── the user-verified DeFi code: only ever produced after an explicit acknowledgement ─────
+//
+// Real mainnet regression: a basic asset-issuer account with one classic trustline unrelated to
+// any DeFi protocol hard-blocked with `defi_positions_unavailable` (the zero-trustline leniency
+// above only covers an account with none at all). A human who checked manually can acknowledge
+// it; the API then re-plans with this code instead, and it must read as resolved everywhere
+// `defi_positions_unconfirmed_no_trustlines` already does.
+
+test("the user-verified DeFi code does not stop the flow", () => {
+  expect(
+    proceedError([
+      {
+        code: "defi_positions_unconfirmed_user_verified",
+        message: "DeFi position data could not be confirmed, but you confirmed manually…",
+      },
+    ])
+  ).toBeNull();
+});
+
+test("displayBlockersOf keeps the user-verified DeFi blocker visible too", () => {
+  const blockers = [{ code: "defi_positions_unconfirmed_user_verified", message: "…" }];
+  expect(displayBlockersOf(blockers)).toEqual(blockers);
+});
+
+// ─── the raw, unacknowledged hard blocker: still trapping by default ───────────────────
+//
+// DEFI_POSITIONS_UNAVAILABLE_CODE deliberately is NOT in resolvable-blockers.ts's own
+// unconditional sets (see its doc comment) - PlanView applies a local, acknowledgement-
+// conditional exception instead. Unmodified, hardBlockersOf/proceedError must keep treating it
+// as a genuine hard blocker, since that is exactly what `handleProceed`'s post-decision check
+// relies on to catch an acknowledgement that never actually made it into the request.
+
+test("defi_positions_unavailable still hard-blocks on its own, unlike its acknowledged sibling", () => {
+  const err = proceedError([
+    { code: "defi_positions_unavailable", message: "DeFi position data could not be confirmed…" },
+  ]);
+  expect(err).not.toBeNull();
+});
