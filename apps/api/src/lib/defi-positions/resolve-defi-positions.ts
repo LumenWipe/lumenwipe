@@ -68,7 +68,12 @@ export const DEGRADED_SOURCE_CONFIRMED = "octopos-degraded-direct-read-confirmed
  *  for. Restored to the value this ran on before that cut. OctoPos's own ~5.3s worst case
  *  (octopos-http.ts) still keeps the combined DeFi-detection budget well short of this, and the
  *  web proxy's maxDuration and SDK client timeout are sized with this number in mind - lower it
- *  again only after measuring the real sweep duration, not by guessing. */
+ *  again only after measuring the real sweep duration, not by guessing.
+ *
+ *  The sweep those measurements describe was sequential (~14 s alone on mainnet); since it
+ *  issues reads concurrently (testnet-direct-read.ts, LEDGER_READ_CONCURRENCY) it completes in a
+ *  few seconds, so this is now headroom against a slow RPC rather than the sweep's normal cost.
+ *  Re-measure in production before lowering it. */
 export const DIRECT_READ_FALLBACK_TIMEOUT_MS = 20_000;
 
 const logger = new Logger("resolve-defi-positions");
