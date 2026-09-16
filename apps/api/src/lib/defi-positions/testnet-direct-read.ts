@@ -60,44 +60,81 @@ type RpcServer = ReturnType<typeof getRpcServer>;
 type LedgerReader = LedgerEntriesReader;
 
 /**
- * How many `getLedgerEntries` calls one detection keeps in flight at once. The sweep is a few
- * thousand keys in chunks, and each round trip to a public RPC costs a few hundred milliseconds
- * regardless of size, so issuing them one after another made this read take ~14 s on mainnet;
- * issuing them together bounds the wall time by the deepest chain of dependent reads instead.
- * Kept modest so a burst from one analyze does not trip the RPC's rate limit for another.
+ * How many `getLedgerEntries` calls this process keeps in flight at once against one RPC
+ * server. The sweep is a few thousand keys in chunks, and each round trip to a public RPC costs
+ * a few hundred milliseconds regardless of size, so issuing them one after another made this
+ * read take ~14 s on mainnet; issuing them together bounds the wall time by the deepest chain
+ * of dependent reads instead. The budget is shared by every detection running against the same
+ * server (account GET, close/plan and each close/transactions round all detect), not granted per
+ * call: N concurrent analyses stay at this many in flight in total, rather than N times it, so
+ * one burst cannot push the RPC's rate limit onto another user's request.
  */
 export const LEDGER_READ_CONCURRENCY = 4;
 
-/** A reader that lets at most `limit` calls through at once, queueing the rest in order. */
-function limitReads(rpc: LedgerReader, limit: number): LedgerReader {
-  let active = 0;
-  const waiting: Array<() => void> = [];
-  const acquire = (): Promise<void> =>
-    new Promise((resolve) => {
-      if (active < limit) {
-        active += 1;
+/** A counting semaphore that hands out slots in request order. */
+class ReadSlots {
+  private active = 0;
+  private readonly waiting: Array<() => void> = [];
+  constructor(private readonly limit: number) {}
+
+  acquire(): Promise<void> {
+    return new Promise((resolve) => {
+      if (this.active < this.limit) {
+        this.active += 1;
         resolve();
       } else {
-        waiting.push(() => {
-          active += 1;
+        this.waiting.push(() => {
+          this.active += 1;
           resolve();
         });
       }
     });
-  const release = (): void => {
-    active -= 1;
-    waiting.shift()?.();
-  };
-  return {
+  }
+
+  release(): void {
+    this.active -= 1;
+    this.waiting.shift()?.();
+  }
+}
+
+/** One slot pool per underlying reader (the memoized rpc.Server in production), so every
+ *  detection in the process draws from the same budget. Weak so test doubles are collectable. */
+const slotsByReader = new WeakMap<LedgerReader, ReadSlots>();
+/** Readers this module already wrapped, so a limited reader handed back in is not limited twice
+ *  (a second layer would only add a needless queue, never more parallelism). */
+const limitedReaders = new WeakSet<LedgerReader>();
+
+/**
+ * A reader that draws on the shared slot pool of `rpc` and, once any of its own reads fails,
+ * refuses the rest: a detection whose result is already lost to a rejection has no business
+ * holding slots to keep hitting the RPC - least of all when the failure was a rate limit.
+ */
+function limitReads(rpc: LedgerReader, limit: number): LedgerReader {
+  if (limitedReaders.has(rpc)) return rpc;
+  let slots = slotsByReader.get(rpc);
+  if (!slots) {
+    slots = new ReadSlots(limit);
+    slotsByReader.set(rpc, slots);
+  }
+  const pool = slots;
+  let failure: unknown = null;
+  const reader: LedgerReader = {
     getLedgerEntries: async (...keys) => {
-      await acquire();
+      if (failure !== null) throw failure;
+      await pool.acquire();
       try {
+        if (failure !== null) throw failure;
         return await rpc.getLedgerEntries(...keys);
+      } catch (err) {
+        failure ??= err;
+        throw err;
       } finally {
-        release();
+        pool.release();
       }
     },
   };
+  limitedReaders.add(reader);
+  return reader;
 }
 
 export interface DirectReadDeps {
@@ -362,8 +399,8 @@ async function readBlendBackstopPositions(
 /** Stellar RPC caps getLedgerEntries at 200 keys per call; stay under it with room to spare. */
 export const LEDGER_KEYS_PER_CALL = 150;
 
-/** A factory past this size is not enumerated. No mainnet Soroswap factory is registered today;
- *  if one is added, the degraded-mode fallback sweeps it under this same cap. */
+/** A factory or router past this size is not enumerated. The registered mainnet Soroswap
+ *  factory (~215 pairs) and Aquarius router (~640 pools) are both swept under this cap. */
 const MAX_FACTORY_PAIRS = 2_000;
 
 /** Every chunk is issued at once; the reader's own concurrency limit paces them. */
@@ -604,10 +641,13 @@ export interface AquariusPoolView {
  * storage shape must fail loudly there, never read as "this account holds nothing".
  */
 export async function enumerateAquariusPools(
-  rpc: LedgerReader,
+  reader: LedgerReader,
   router: ContractRegistryEntry,
   flag: (rawType: string, reason: string) => void
 ): Promise<AquariusPoolView[] | null> {
+  // Callers inside this module hand in a limited reader already; an outside caller (the live
+  // integration test) gets the same concurrency bound rather than an unbounded fan-out.
+  const rpc = limitReads(reader, LEDGER_READ_CONCURRENCY);
   const routerKey = instanceKey(router.address);
   const routerVal = (await batchRead(rpc, [routerKey])).get(routerKey.toXDR("base64"));
   const count = routerVal

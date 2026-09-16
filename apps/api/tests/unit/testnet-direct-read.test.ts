@@ -4,6 +4,7 @@ import { Address, Keypair, StrKey, nativeToScVal, xdr } from "@stellar/stellar-s
 import {
   aquariusTokensHash,
   detectDefiPositionsViaDirectRead,
+  enumerateAquariusPools,
   addressVal,
   symbolVal,
   variantVal,
@@ -973,7 +974,7 @@ function tracingRpc(
       maxInFlight = Math.max(maxInFlight, inFlight);
       try {
         await new Promise((resolve) => setTimeout(resolve, delayMs(keys)));
-        return inner.getLedgerEntries(...keys);
+        return await inner.getLedgerEntries(...keys);
       } finally {
         inFlight -= 1;
       }
@@ -1057,19 +1058,81 @@ test("protocol reads run at the same time, and positions still come back in regi
   expect(maxInFlight()).toBeGreaterThanOrEqual(2);
 });
 
+const randomContract = (): string =>
+  StrKey.encodeContract(StrKey.decodeEd25519PublicKey(Keypair.random().publicKey()));
+
+/** More chunks than the concurrency limit, so the upper bound below is exercised, not vacuous. */
+const MANY_PAIRS = LEDGER_KEYS_PER_CALL * (LEDGER_READ_CONCURRENCY + 2);
+
 test("a chunked sweep issues its chunks together, bounded by the read concurrency and the RPC's 200-key cap", async () => {
-  const pairs = Array.from({ length: 600 }, () =>
-    StrKey.encodeContract(StrKey.decodeEd25519PublicKey(Keypair.random().publicKey()))
-  );
-  const inner = mockRpc([...factoryEntries(pairs), ...pairEntries(pairs[599]!, 1n)]);
+  const pairs = Array.from({ length: MANY_PAIRS }, randomContract);
+  const held = pairs[MANY_PAIRS - 1]!;
+  const inner = mockRpc([...factoryEntries(pairs), ...pairEntries(held, 1n)]);
   const { rpc, sizes, maxInFlight } = tracingRpc(inner, () => 5);
   const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
     rpc,
     registryEntries: SOROSWAP_REGISTRY(),
   });
-  expect(result.positions.map((p) => p.contractAddress)).toEqual([pairs[599]]);
+  expect(result.positions.map((p) => p.contractAddress)).toEqual([held]);
   expect(LEDGER_KEYS_PER_CALL).toBeLessThanOrEqual(200);
   expect(Math.max(...sizes)).toBeLessThanOrEqual(LEDGER_KEYS_PER_CALL);
+  expect(maxInFlight()).toBeGreaterThanOrEqual(2);
+  expect(maxInFlight()).toBeLessThanOrEqual(LEDGER_READ_CONCURRENCY);
+});
+
+test("two detections against the same RPC server share one concurrency budget", async () => {
+  const pairs = Array.from({ length: MANY_PAIRS }, randomContract);
+  const inner = mockRpc([...factoryEntries(pairs), ...pairEntries(pairs[0]!, 1n)]);
+  const { rpc, maxInFlight } = tracingRpc(inner, () => 5);
+  const run = () =>
+    detectDefiPositionsViaDirectRead(USER, "testnet", {
+      rpc,
+      registryEntries: SOROSWAP_REGISTRY(),
+    });
+  const [a, b] = await Promise.all([run(), run()]);
+  expect(a.positions).toHaveLength(1);
+  expect(b.positions).toHaveLength(1);
+  expect(maxInFlight()).toBeGreaterThanOrEqual(2);
+  expect(maxInFlight()).toBeLessThanOrEqual(LEDGER_READ_CONCURRENCY);
+});
+
+test("once one read fails, the detection rejects and its queued reads never reach the RPC", async () => {
+  const pairs = Array.from({ length: MANY_PAIRS }, randomContract);
+  const inner = mockRpc([...factoryEntries(pairs), ...pairEntries(pairs[0]!, 1n)]);
+  let thrown = false;
+  const failingOnce = {
+    getLedgerEntries: async (...keys: xdr.LedgerKey[]) => {
+      // The first full-size chunk (an index chunk of the factory sweep) fails, like a 429 would.
+      if (!thrown && keys.length === LEDGER_KEYS_PER_CALL) {
+        thrown = true;
+        throw new Error("boom");
+      }
+      return inner.getLedgerEntries(...keys);
+    },
+  } as unknown as TracedRpc;
+  const { rpc, sizes } = tracingRpc(failingOnce, () => 5);
+  await expect(
+    detectDefiPositionsViaDirectRead(USER, "testnet", { rpc, registryEntries: SOROSWAP_REGISTRY() })
+  ).rejects.toThrow("boom");
+  // 1 registry verification + 1 factory instance + the chunks already in flight when one failed.
+  // The chunks still queued behind the limit were dropped, not sent.
+  expect(sizes.length).toBeLessThanOrEqual(2 + LEDGER_READ_CONCURRENCY);
+});
+
+test("enumerateAquariusPools bounds its own concurrency when handed a raw reader", async () => {
+  const setCount = LEDGER_KEYS_PER_CALL * (LEDGER_READ_CONCURRENCY + 2);
+  const sets = Array.from({ length: setCount }, () => ({
+    tokens: [randomContract(), randomContract()],
+    pools: [randomContract()],
+  }));
+  const { rpc, maxInFlight } = tracingRpc(mockRpc(aquariusRouterEntries(sets)), () => 5);
+  const flags: string[] = [];
+  const views = await enumerateAquariusPools(rpc, aquariusRegistry()[0]!, (rawType) => {
+    flags.push(rawType);
+  });
+  // Every pool lacks an instance here; the sweep still completes and says so.
+  expect(views).toEqual([]);
+  expect(flags).toEqual(["pool-unreadable"]);
   expect(maxInFlight()).toBeGreaterThanOrEqual(2);
   expect(maxInFlight()).toBeLessThanOrEqual(LEDGER_READ_CONCURRENCY);
 });

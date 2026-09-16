@@ -22,7 +22,9 @@ export function getApiClient(): LumenWipeClient {
 
   // The default (30s) was already tight against the account/close endpoints' own worst-case
   // DeFi-detection budget (OctoPos plus a direct on-chain fallback sweep of hundreds of mainnet
-  // pools, ~25s alone) before adding the rest of the account read on top. A client timeout
+  // pools - ~25s alone when that sweep ran its reads one at a time; it now runs them
+  // concurrently and normally finishes in a few seconds, but its 20s budget still stands as
+  // headroom) before adding the rest of the account read on top. A client timeout
   // shorter than the server's own realistic worst case means the SDK's clean "request timed
   // out" error can fire before the API ever had a real chance to answer - raised so it lines up
   // with the maxDuration set on the routes that call these endpoints (see their route.ts files).
