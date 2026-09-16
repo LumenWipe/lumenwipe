@@ -242,7 +242,11 @@ export function buildPlan(
   /** The account's normalized DeFi position read (issue #146), when the caller has one. Null
    *  until whatever wires OctoPos into the request pipeline supplies it - see
    *  assessDefiPositionsGate for what a non-null result is gated on. */
-  defiPositions: DefiPositionsResult | null = null
+  defiPositions: DefiPositionsResult | null = null,
+  /** Whether the caller has an explicit, address-scoped acknowledgement that this account
+   *  holds no DeFi positions (close-api/decisions.ts's `isDefiPositionsAcknowledged`), passed
+   *  straight through to assessDefiPositionsGate. */
+  userVerifiedNoDefiPositions = false
 ): BuildPlanResult {
   const steps: PlannedStep[] = [];
   const blockers: PlanBlocker[] = [];
@@ -335,7 +339,12 @@ export function buildPlan(
   // supplies a DefiPositionsResult - see assessDefiPositionsGate for what triggers a blocker.
   if (defiPositions) {
     blockers.push(
-      ...assessDefiPositionsGate(defiPositions, undefined, accountState.trustlines.length)
+      ...assessDefiPositionsGate(
+        defiPositions,
+        undefined,
+        accountState.trustlines.length,
+        userVerifiedNoDefiPositions
+      )
     );
   }
   // DeFi positions the catalog cannot exit block here; the ones it can become EXIT_POSITIONS

@@ -70,6 +70,53 @@ export function isDestinationAcknowledged(answers: DecisionAnswer[], destination
   return answers.some((a) => a?.id === id && a?.choice === DESTINATION_ACK_CHOICE);
 }
 
+/**
+ * Same pattern as the destination acknowledgement above, for the other case only a human can
+ * resolve: OctoPos could not confirm this account's DeFi positions, and the direct on-chain
+ * sweep found nothing, but the account holds trustlines the sweep's zero-trustline leniency
+ * (positions-gate.ts's `DEFI_POSITIONS_UNCONFIRMED_NO_TRUSTLINES_CODE`) does not cover, because
+ * they could in principle be anything. Scoped by the account being closed, not a bare boolean,
+ * for the same reason: an answer that did not name the address would let a caller carry the
+ * acknowledgement from one account it actually checked to another it never looked at.
+ */
+export function defiPositionsDecisionId(address: string): string {
+  return `defi_positions:${address}`;
+}
+
+export const DEFI_POSITIONS_ACK_CHOICE = "no_defi_positions_confirmed_manually";
+
+export function deriveDefiPositionsDecisionPoints(
+  address: string,
+  needsAcknowledgement: boolean
+): DecisionPoint[] {
+  if (!needsAcknowledgement) return [];
+  return [
+    {
+      id: defiPositionsDecisionId(address),
+      type: "confirmation" as const,
+      subject: { kind: "defi_positions", address },
+      options: [
+        {
+          id: DEFI_POSITIONS_ACK_CHOICE,
+          note:
+            "I checked this account's trustlines myself (e.g. on an explorer) and confirmed " +
+            "they are for other assets, not open DeFi positions in a protocol LumenWipe " +
+            "recognizes.",
+        },
+      ],
+      default: "",
+      required: true,
+    },
+  ];
+}
+
+/** Mirrors `isDestinationAcknowledged`: defaults to false on a missing, malformed, or
+ *  differently-addressed answer. */
+export function isDefiPositionsAcknowledged(answers: DecisionAnswer[], address: string): boolean {
+  const id = defiPositionsDecisionId(address);
+  return answers.some((a) => a?.id === id && a?.choice === DEFI_POSITIONS_ACK_CHOICE);
+}
+
 // Stable, URL-safe id for an asset decision: "asset:CODE-ISSUER". The colon in the
 // canonical "CODE:ISSUER" asset string is replaced so the id reads cleanly in paths.
 export function assetDecisionId(asset: string): string {
