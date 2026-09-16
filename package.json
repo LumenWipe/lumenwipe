@@ -37,6 +37,8 @@
     "@stellar/stellar-sdk": "16.0.1",
     "axios": "^1.20.0",
     "form-data": "^4.0.6",
-    "lodash": "^4.18.1"
+    "lodash": "^4.18.1",
+    "@walletconnect/core": "2.23.7",
+    "@walletconnect/sign-client": "2.23.7"
   }
 }
