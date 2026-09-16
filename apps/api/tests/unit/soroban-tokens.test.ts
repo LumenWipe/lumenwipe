@@ -12,6 +12,7 @@ import {
   EVENTS_PAGE_LIMIT,
   MAX_CANDIDATES,
   MAX_CANDIDATES_PER_SOURCE,
+  defaultSorobanTokensDeps,
   discoverSorobanTokens,
 } from "@/lib/stellar/soroban-tokens";
 import {
@@ -39,6 +40,11 @@ const held = (contract: string, balance: bigint, over: Partial<FakeToken> = {}):
 });
 
 describe("Soroban token discovery", () => {
+  test("defaultSorobanTokensDeps disables the events scan unless a caller explicitly asks for it", () => {
+    expect(defaultSorobanTokensDeps("mainnet", []).scanEvents).toBe(false);
+    expect(defaultSorobanTokensDeps("mainnet", [], [], { scanEvents: true }).scanEvents).toBe(true);
+  });
+
   test("merges the explorer, lists, positions, and recent events into candidates, and reports only what the ledger confirms", async () => {
     const position: AquariusLpPosition = {
       protocol: "aquarius",
