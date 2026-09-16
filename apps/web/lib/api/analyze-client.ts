@@ -18,6 +18,9 @@ export interface AnalysisDeps {
   readAnswers: () => ClaimAnswers;
   /** Publishes the account state. Pruning the stored claim answers is its side effect. */
   applyAccount: (account: AccountState) => void;
+  /** True once a newer analysis has superseded this one. Checked before any second request, so
+   *  a result nobody will read never costs another plan build. Defaults to never abandoned. */
+  abandoned?: () => boolean;
 }
 
 export interface Analysis {
@@ -42,8 +45,11 @@ export interface Analysis {
  * asked with are compared against the ones that survive, and on the rare occasion they differ
  * the in-flight plan is discarded and rebuilt - paying the old cost only in the case that
  * actually needed it, never on a first load or an unchanged re-scan.
+ *
+ * Null means the caller superseded this analysis while it was in flight; nothing was rebuilt
+ * for it.
  */
-export async function loadAnalysis(deps: AnalysisDeps): Promise<Analysis> {
+export async function loadAnalysis(deps: AnalysisDeps): Promise<Analysis | null> {
   const sentAnswers = deps.readAnswers();
   const accountPromise = deps.fetchAccount();
   // A plan rejection must not go unhandled while the account read is still in flight, and must
@@ -59,10 +65,17 @@ export async function loadAnalysis(deps: AnalysisDeps): Promise<Analysis> {
   // Awaited before handing back, as it was when it sat between the two fetches: verify() reads
   // the registry synchronously at signing time and cannot wait for it then.
   await registryDone;
+  // Answering a claim card starts a newer analysis while this one is still running, and the
+  // answers below are read from the same store the newer one is already working from - so a
+  // superseded request could otherwise "correct" itself into an extra plan build for answers
+  // that belong to someone else's request, and then be thrown away.
+  if (deps.abandoned?.()) return null;
 
   const answers = deps.readAnswers();
   if (claimAnswersKey(answers) !== claimAnswersKey(sentAnswers)) {
-    await planOutcome;
+    // Not awaited: the in-flight plan is already lost, and waiting for it to finish before
+    // asking the right question would hand the user back the latency this whole change removes.
+    // Its rejection is handled where the promise was built, so dropping it here is safe.
     return { account, plan: await deps.fetchPlan(answers), replanned: true };
   }
 

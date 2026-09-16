@@ -81,8 +81,9 @@ test("the plan built in parallel is kept when applying the account leaves the cl
   });
 
   expect(planCalls).toEqual([{ [BALANCE_A]: "forfeit" }]);
-  expect(result.plan.planHash).toBe(BALANCE_A);
-  expect(result.replanned).toBe(false);
+  expect(result).not.toBeNull();
+  expect(result?.plan.planHash).toBe(BALANCE_A);
+  expect(result?.replanned).toBe(false);
 });
 
 test("a plan built on answers the account state prunes away is discarded and rebuilt", async () => {
@@ -106,13 +107,19 @@ test("a plan built on answers the account state prunes away is discarded and reb
 
   expect(planCalls).toHaveLength(2);
   expect(planCalls[1]).toEqual({ [BALANCE_B]: "claim" });
-  expect(result.plan.planHash).toBe(BALANCE_B);
-  expect(result.replanned).toBe(true);
+  expect(result?.plan.planHash).toBe(BALANCE_B);
+  expect(result?.replanned).toBe(true);
 });
 
-test("the account's failure is what surfaces, even when the parallel plan failed too", async () => {
+test("the account's failure is what surfaces, even when the plan failed first", async () => {
+  // The plan rejects BEFORE the account does, on purpose: an implementation that simply raced
+  // the two (Promise.all) would surface "plan blew up" here. The account is what the page
+  // cannot render without, so its message is the one the user must get.
   const analysis = loadAnalysis({
-    fetchAccount: () => Promise.reject(new Error("account is gone")),
+    fetchAccount: async () => {
+      await tick();
+      throw new Error("account is gone");
+    },
     fetchPlan: () => Promise.reject(new Error("plan blew up")),
     loadRegistry: () => Promise.resolve(undefined),
     readAnswers: () => ({}),
@@ -120,6 +127,28 @@ test("the account's failure is what surfaces, even when the parallel plan failed
   });
 
   await expect(analysis).rejects.toThrow("account is gone");
+});
+
+test("a failed rebuild surfaces its own error rather than the discarded plan's", async () => {
+  let answers: ClaimAnswers = { [BALANCE_A]: "forfeit" };
+  let call = 0;
+
+  const analysis = loadAnalysis({
+    fetchAccount: () => Promise.resolve(accountState([BALANCE_B])),
+    fetchPlan: () => {
+      call += 1;
+      return call === 1
+        ? Promise.reject(new Error("stale plan blew up"))
+        : Promise.reject(new Error("rebuilt plan blew up"));
+    },
+    loadRegistry: () => Promise.resolve(undefined),
+    readAnswers: () => answers,
+    applyAccount: () => {
+      answers = {};
+    },
+  });
+
+  await expect(analysis).rejects.toThrow("rebuilt plan blew up");
 });
 
 test("a plan failure still surfaces when the account read succeeded", async () => {
@@ -148,5 +177,52 @@ test("the account is published, and the registry loaded, before the analysis is 
   });
 
   expect(order).toEqual(["account", "registry"]);
-  expect(result.account.claimableBalances).toEqual([]);
+  expect(result?.account.claimableBalances).toEqual([]);
+});
+
+test("a request the page has already superseded does not pay for a rebuilt plan", async () => {
+  // Answering a second claim card starts a newer fetch while this one is still in flight. Its
+  // result is discarded either way, so rebuilding the plan for it is a wasted close/plan build -
+  // the single most expensive call the page makes.
+  let answers: ClaimAnswers = { [BALANCE_A]: "forfeit" };
+  const planCalls: ClaimAnswers[] = [];
+
+  const result = await loadAnalysis({
+    fetchAccount: () => Promise.resolve(accountState([BALANCE_B])),
+    fetchPlan: (sent) => {
+      planCalls.push({ ...sent });
+      return Promise.resolve(planFor(sent));
+    },
+    loadRegistry: () => Promise.resolve(undefined),
+    readAnswers: () => answers,
+    applyAccount: () => {
+      answers = {};
+    },
+    abandoned: () => true,
+  });
+
+  expect(result).toBeNull();
+  expect(planCalls).toHaveLength(1);
+});
+
+test("a live request still rebuilds the plan when the answers were pruned", async () => {
+  let answers: ClaimAnswers = { [BALANCE_A]: "forfeit" };
+  const planCalls: ClaimAnswers[] = [];
+
+  const result = await loadAnalysis({
+    fetchAccount: () => Promise.resolve(accountState([BALANCE_B])),
+    fetchPlan: (sent) => {
+      planCalls.push({ ...sent });
+      return Promise.resolve(planFor(sent));
+    },
+    loadRegistry: () => Promise.resolve(undefined),
+    readAnswers: () => answers,
+    applyAccount: () => {
+      answers = {};
+    },
+    abandoned: () => false,
+  });
+
+  expect(planCalls).toHaveLength(2);
+  expect(result?.replanned).toBe(true);
 });

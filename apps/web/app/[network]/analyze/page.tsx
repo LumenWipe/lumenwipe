@@ -77,7 +77,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     let accountError: string | null = null;
 
     try {
-      const { plan } = await loadAnalysis({
+      const analysis = await loadAnalysis({
         fetchAccount: async () => {
           const res = await fetch(`/api/${routeNetwork}/account/${effectiveSource}`);
           if (!res.ok) {
@@ -111,8 +111,10 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
           setAccount(accountData);
           setAccountState(accountData);
         },
+        abandoned: isStale,
       });
-      if (isStale()) return;
+      if (!analysis || isStale()) return;
+      const { plan } = analysis;
       setBlockers(
         plan.blockers.map((b) => ({ message: b.message, helpUrl: b.helpUrl, code: b.code }))
       );
