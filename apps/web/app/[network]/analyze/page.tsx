@@ -9,6 +9,7 @@ import type { AccountState } from "@/types/account";
 import type { PlanBlocker } from "@/types/plan";
 import { useDemolishStore } from "@/store/demolish";
 import { fetchClosePlan } from "@/lib/api/close-client";
+import { loadAnalysis } from "@/lib/api/analyze-client";
 import { claimAnswersKey, claimableSelectionsToDecisions } from "@/lib/api/close-decisions";
 import { loadServedRegistry } from "@/lib/exchange-registry";
 import {
@@ -71,45 +72,48 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     const seq = ++fetchSeq.current;
     const isStale = () => fetchSeq.current !== seq;
 
+    // Set when the account read itself failed, so its own message survives the catch below
+    // instead of being flattened into the generic one.
+    let accountError: string | null = null;
+
     try {
-      const accountRes = await fetch(`/api/${routeNetwork}/account/${effectiveSource}`);
-
-      if (!accountRes.ok) {
-        const data = await accountRes.json();
-        setError(apiErrorMessage(data, "Failed to fetch account data"));
-        return;
-      }
-
-      const accountData: AccountState = await accountRes.json();
-      if (isStale()) return;
-      setAccount(accountData);
-      setAccountState(accountData);
-
-      // Load the served registry here, not at signing time: verify() is synchronous and runs
-      // immediately before the signature, so it cannot await a fetch at that moment. A failure
-      // leaves the bundled floor in place; whether that floor may be relied on is decided
-      // separately by its own expiry, not by whether this call happened to succeed.
-      await loadServedRegistry();
-
-      // The API derives blockers and per-asset convertibility (via server-side path
-      // finding) from a plan built with no destination yet. The final plan is requested
-      // with the destination + decisions at the "Begin execution" step.
-      //
-      // The claim answers go with it, and re-planning on a change is what makes the second
-      // decision reachable: choosing to add a trustline and claim puts an asset in the account
-      // that no trustline represents yet, and only the API knows whether it has a conversion
-      // route. Without this the caller was never asked what to do with it, and the close
-      // dead-ended a round after the claim had already run.
-      const plan = await fetchClosePlan(
-        {
-          source: effectiveSource,
-          decisions: claimableSelectionsToDecisions(
-            useDemolishStore.getState().claimableBalanceSelections
-          ),
+      const analysis = await loadAnalysis({
+        fetchAccount: async () => {
+          const res = await fetch(`/api/${routeNetwork}/account/${effectiveSource}`);
+          if (!res.ok) {
+            accountError = apiErrorMessage(await res.json(), "Failed to fetch account data");
+            throw new Error(accountError);
+          }
+          return (await res.json()) as AccountState;
         },
-        routeNetwork
-      );
+        // The API derives blockers and per-asset convertibility (via server-side path
+        // finding) from a plan built with no destination yet. The final plan is requested
+        // with the destination + decisions at the "Begin execution" step.
+        //
+        // The claim answers go with it, and re-planning on a change is what makes the second
+        // decision reachable: choosing to add a trustline and claim puts an asset in the account
+        // that no trustline represents yet, and only the API knows whether it has a conversion
+        // route. Without this the caller was never asked what to do with it, and the close
+        // dead-ended a round after the claim had already run.
+        fetchPlan: (answers) =>
+          fetchClosePlan(
+            { source: effectiveSource, decisions: claimableSelectionsToDecisions(answers) },
+            routeNetwork
+          ),
+        // Loaded here, not at signing time: verify() is synchronous and runs immediately before
+        // the signature, so it cannot await a fetch at that moment. A failure leaves the bundled
+        // floor in place; whether that floor may be relied on is decided separately by its own
+        // expiry, not by whether this call happened to succeed.
+        loadRegistry: loadServedRegistry,
+        readAnswers: () => useDemolishStore.getState().claimableBalanceSelections,
+        applyAccount: (accountData) => {
+          if (isStale()) return;
+          setAccount(accountData);
+          setAccountState(accountData);
+        },
+      });
       if (isStale()) return;
+      const { plan } = analysis;
       setBlockers(
         plan.blockers.map((b) => ({ message: b.message, helpUrl: b.helpUrl, code: b.code }))
       );
@@ -128,7 +132,9 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       setClaimableBalanceDecisions(decisionPointsToClaimableBalances(plan));
     } catch {
       if (!isStale()) {
-        setError("Failed to analyze account. Please check your connection and try again.");
+        setError(
+          accountError ?? "Failed to analyze account. Please check your connection and try again."
+        );
       }
     } finally {
       if (!isStale()) {
