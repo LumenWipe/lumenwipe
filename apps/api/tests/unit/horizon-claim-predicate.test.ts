@@ -42,6 +42,24 @@ test("parseClaimPredicate › rel_before computes deadline from the created-at a
   });
 });
 
+test("parseClaimPredicate › unconditional and abs_before need no anchor - a null created-at is fine", () => {
+  expect(parseClaimPredicate({}, null)).toEqual({ type: "unconditional" });
+  expect(parseClaimPredicate({ abs_before_epoch: "1735689600" }, null)).toEqual({
+    type: "before_absolute_time",
+    absBeforeEpoch: "1735689600",
+  });
+  expect(parseClaimPredicate({ abs_before: "2025-01-01T00:00:00Z" }, null)).toEqual({
+    type: "before_absolute_time",
+    absBeforeEpoch: "1735689600",
+  });
+});
+
+test("parseClaimPredicate › rel_before with no anchor throws - it cannot be evaluated without one", () => {
+  expect(() => parseClaimPredicate({ rel_before: "3600" }, null)).toThrow(
+    /no creation time to anchor/
+  );
+});
+
 test("parseClaimPredicate › and/or/not recurse", () => {
   const raw = {
     and: [
