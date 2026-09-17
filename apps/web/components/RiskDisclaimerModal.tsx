@@ -83,10 +83,13 @@ export default function RiskDisclaimerModal() {
           </div>
 
           <p className="text-xs text-white/40">
-            Soroban DeFi positions: Blend positions (supply, collateral, debt) are exited as part of
-            the close and are new - tested on testnet. Blend backstop deposits and Aquarius,
-            Soroswap, Phoenix, and FxDAO positions are not yet supported and block the close until
-            you exit them yourself.
+            Soroban DeFi positions, tested on testnet: Blend pool positions (supply, collateral,
+            debt) leave with the close, BLND emissions claimed first; so do Aquarius liquidity
+            pools, with their AQUA rewards, and Soroswap liquidity pools. Blend backstop deposits
+            only leave once their withdrawal cooldown has run out - Blend makes you queue and wait.
+            Aquarius concentrated-liquidity positions, Phoenix and FxDAO are detected but not
+            exited. Anything that cannot be exited blocks the close by name until you handle it
+            yourself.
           </p>
         </div>
 
