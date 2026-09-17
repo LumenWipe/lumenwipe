@@ -58,3 +58,8 @@ playwright/.cache/
 /docs/plans/
 /docs/superpowers/
 /.superpowers/
+
+# QA and review artifacts: screenshots, reports and recordings belong in the private repo, not
+# in the published source tree. Kept as a pattern rather than one path so the next one does not
+# ride in on a `git add -A` the way qa-evidence-epic-159 did.
+qa-evidence-*/
