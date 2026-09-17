@@ -50,6 +50,15 @@ export default function AssetDispositionCard({
   const transferReady = isTransfer && !!transferDestination && isValidGAddress(transferDestination);
   const resolved = item.convertible ? !isTransfer || transferReady : isIssuer || transferReady;
 
+  // Before the exit that pays it in, the balance is genuinely zero, and "0 AQUA will be swapped"
+  // reads as a no-op rather than as the decision it is.
+  const amountPhrase = (outcome: string): string =>
+    item.arrivesFromExit
+      ? `What this account's exit pays out in ${item.code} will be ${outcome}.`
+      : `${item.balance} ${item.code} will be ${outcome}.`;
+  /** "my 410.25 AQUA" once it is there, "my AQUA" while it is still inside the position. */
+  const holding = item.arrivesFromExit ? `my ${item.code}` : `my ${item.balance} ${item.code}`;
+
   const showAddressError = !!transferDestination && !isValidGAddress(transferDestination);
   const errorId = `transfer-error-${item.asset}`;
   const helpId = `transfer-help-${item.asset}`;
@@ -69,7 +78,7 @@ export default function AssetDispositionCard({
           className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-stellar"
         />
         <span>
-          Send my {item.balance} {item.code} to another account instead.{" "}
+          Send {holding} to another account instead.{" "}
           <span className="text-white/40">You keep the tokens.</span>
         </span>
       </label>
@@ -154,10 +163,10 @@ export default function AssetDispositionCard({
             </p>
             <p className="text-xs text-white/50">
               {isTransfer
-                ? `${item.balance} ${item.code} will be sent as ${item.code}, not swapped.`
+                ? amountPhrase(`sent as ${item.code}, not swapped`)
                 : isIssuer
-                  ? `${item.balance} ${item.code} will be returned to its issuer. You give up these tokens.`
-                  : `${item.balance} ${item.code} will be swapped to XLM on the DEX.`}
+                  ? amountPhrase("returned to its issuer") + " You give up these tokens."
+                  : amountPhrase("swapped to XLM on the DEX")}
             </p>
           </div>
           <span
@@ -195,10 +204,9 @@ export default function AssetDispositionCard({
             <span className="text-amber-300/90">no swap route on the DEX</span>
           </p>
           <p className="mt-1 text-xs leading-relaxed text-white/55">
-            There is no way to swap your {item.balance} {item.code} to XLM. A trustline with a
-            balance cannot be removed, so the account cannot be closed while this balance remains.
-            You can send these tokens to another account that holds them, or return them to the
-            issuer and give them up.
+            There is no way to swap {holding} to XLM. A trustline with a balance cannot be removed,
+            so the account cannot be closed while this balance remains. You can send these tokens to
+            another account that holds them, or return them to the issuer and give them up.
           </p>
         </div>
       </div>
@@ -213,7 +221,7 @@ export default function AssetDispositionCard({
             className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-stellar disabled:opacity-40"
           />
           <span className={cn(isTransfer && "text-white/30")}>
-            Return my {item.balance} {item.code} to the issuer.{" "}
+            Return {holding} to the issuer.{" "}
             <span className="text-white/40">You give up these tokens.</span>
           </span>
         </label>

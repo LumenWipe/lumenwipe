@@ -172,7 +172,13 @@ test("decisionPointsToConversions › a Soroban token point becomes a token item
         arrivesFromExit: false,
       },
     },
-    { asset: "USDC:GISSUER", code: "USDC", balance: "12.5000000", convertible: true },
+    {
+      asset: "USDC:GISSUER",
+      code: "USDC",
+      balance: "12.5000000",
+      convertible: true,
+      arrivesFromExit: false,
+    },
   ]);
 });
 
