@@ -1,4 +1,4 @@
-import { test, expect } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import {
   chosenTokenConversions,
   chosenTokenTransfers,
@@ -10,6 +10,7 @@ import {
   defiPositionsAcknowledgementToDecisions,
   destinationAcknowledgementToDecisions,
   dispositionsToDecisions,
+  discoveredTokensToDecisions,
 } from "@/lib/api/close-decisions";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
@@ -511,5 +512,24 @@ test("chosenTokenConversions › only tokens marked convert with a usable floor 
   // No account read: nothing to vouch the balance with, so the amount floors to zero.
   expect(chosenTokenConversions({ [TOKEN]: "convert" }, { [TOKEN]: "5223381" }, null)).toEqual({
     [TOKEN]: { minAmountOut: "5223381", amountIn: "0" },
+  });
+});
+
+const TOKEN_A = "CCHATUHI32FTTTMTEYHP2UII73XGUXZ5JTNN6OBQMD3PFLSNVPTOIN54";
+const TOKEN_B = "CCZGLAUBDKJSQK72QOZHVU7CUWKW45OZWYWCLL27AEK74U2OIBK6LXF2";
+
+describe("discoveredTokensToDecisions", () => {
+  test("names every discovered token so the plan can see what the analysis found", () => {
+    // The close round does not scan for tokens; a token no bundled list knows about reaches the
+    // plan only by travelling with the request. Without this the page showed a balance the plan
+    // had no step for and told the user the plan "could not be loaded".
+    expect(discoveredTokensToDecisions([TOKEN_A, TOKEN_B])).toEqual([
+      { id: `token:${TOKEN_A}`, choice: "" },
+      { id: `token:${TOKEN_B}`, choice: "" },
+    ]);
+  });
+
+  test("no tokens, nothing to say", () => {
+    expect(discoveredTokensToDecisions([])).toEqual([]);
   });
 });
