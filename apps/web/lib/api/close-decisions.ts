@@ -314,10 +314,19 @@ export function claimedAmounts(
  * claim: an EURC returned to its issuer and a USDC swapped away simply did not appear in the
  * permanent record of an irreversible close, and the removed-trustlines count was short by the
  * lines the plan itself had opened.
+ *
+ * `decidedAssets` closes the same gap for the other way a balance appears mid-close: paid in by a
+ * DeFi exit. An Aquarius XLM/AQUA position holds its AQUA inside the pool, so the trustline reads
+ * zero at analysis time and no claim fills it - and a close that withdrew 409 AQUA and swapped it
+ * to XLM said nothing about AQUA at all. Anything the user was asked to decide about was going to
+ * hold a balance, which is exactly the test the load-time reading cannot make.
  */
 export function receiptAssetSummary(
   accountState: AccountState | null,
-  claimableBalanceSelections: Record<string, ClaimableBalanceSelection>
+  claimableBalanceSelections: Record<string, ClaimableBalanceSelection>,
+  /** Assets the user gave a disposition for, by asset id. Trustlines only; a Soroban token
+   *  contract among these keys belongs to `receiptTokenSummary` and is ignored here. */
+  decidedAssets: Iterable<string> = []
 ): {
   handledAssets: Array<{ asset: string; code: string }>;
   removedTrustlines: Array<{ asset: string; code: string }>;
@@ -327,9 +336,10 @@ export function receiptAssetSummary(
   const claimed = claimedAmounts(accountState, claimableBalanceSelections);
 
   const code = (asset: string) => asset.split(":")[0] ?? asset;
+  const decided = new Set(decidedAssets);
   const handled = new Map<string, { asset: string; code: string }>();
   for (const tl of trustlines) {
-    if (parseFloat(tl.balance) > 0 || (claimed.get(tl.asset) ?? 0) > 0) {
+    if (parseFloat(tl.balance) > 0 || (claimed.get(tl.asset) ?? 0) > 0 || decided.has(tl.asset)) {
       handled.set(tl.asset, { asset: tl.asset, code: tl.code });
     }
   }

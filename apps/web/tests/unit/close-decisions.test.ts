@@ -533,3 +533,41 @@ describe("discoveredTokensToDecisions", () => {
     expect(discoveredTokensToDecisions([])).toEqual([]);
   });
 });
+
+/**
+ * The same omission, reached the other way: an Aquarius XLM/AQUA position holds its AQUA inside
+ * the pool, so the trustline reads zero at analysis time and no claim fills it. A close that
+ * withdrew 409 AQUA and swapped it to XLM said nothing about AQUA in the permanent record.
+ * Anything the user was asked to decide about was going to hold a balance.
+ */
+test("receiptAssetSummary › an asset only an exit pays in is listed once it was decided", () => {
+  const aqua = "AQUA:GISSUER";
+  const account = {
+    ...ACCOUNT_BASE,
+    trustlines: [
+      {
+        asset: aqua,
+        balance: "0",
+        limit: "100",
+        authorized: true,
+        issuer: "GISSUER",
+        code: "AQUA",
+      },
+    ],
+  };
+
+  // Without the decision there is nothing to go on, and the old reading stands.
+  expect(receiptAssetSummary(account, {}).handledAssets).toEqual([]);
+
+  const summary = receiptAssetSummary(account, {}, [aqua]);
+  expect(summary.handledAssets.map((a) => a.code)).toEqual(["AQUA"]);
+  expect(summary.removedTrustlines.map((a) => a.code)).toEqual(["AQUA"]);
+});
+
+test("receiptAssetSummary › a decided Soroban token contract is not mistaken for a trustline", () => {
+  const token = "CCZGLAUBDKJSQK72QOZHVU7CUWKW45OZWYWCLL27AEK74U2OIBK6LXF2";
+
+  const summary = receiptAssetSummary({ ...ACCOUNT_BASE, trustlines: [] }, {}, [token]);
+
+  expect(summary.handledAssets).toEqual([]);
+});

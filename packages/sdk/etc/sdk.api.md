@@ -230,6 +230,7 @@ export interface ClosePlanRequest {
 export interface CloseTransaction {
     // (undocumented)
     covers: StepType[];
+    coversTargets?: string[];
     // (undocumented)
     dependsOn: string[];
     // (undocumented)

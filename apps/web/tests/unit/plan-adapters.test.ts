@@ -123,6 +123,7 @@ test("decisionPointsToClaimableBalances › no decision points → empty list", 
 // ─── Soroban tokens (#161) ────────────────────────────────────────────────────
 
 import {
+  apiStepsToPlannedSteps,
   decisionPointsToConversions,
   formatStroops,
   formatTokenBalance,
@@ -286,4 +287,29 @@ test("decisionPointsToConversions › a convertible token carries its quote; a m
   expect(bad!.token?.quote).toBeUndefined();
   expect(formatStroops("5223381")).toBe("0.5223381");
   expect(formatStroops("520000000")).toBe("52");
+});
+
+/**
+ * The API has always sent `affectedContract` on an exit step; the adapter dropped it, so the
+ * receipt's "DeFi positions exited" group - which matches confirmed exits to detected positions
+ * by contract - could never render. A close that unwound three positions said nothing about them.
+ */
+test("apiStepsToPlannedSteps keeps the contract an exit step leaves", () => {
+  const POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
+  const steps = apiStepsToPlannedSteps({
+    ...plan([]),
+    steps: [
+      {
+        index: 0,
+        type: "EXIT_POSITIONS",
+        title: "Exit Blend CCEB…4HGF",
+        description: "Leave Blend.",
+        operationCount: 1,
+        estimatedFeeLumens: "0.0010000",
+        affectedContract: POOL,
+      },
+    ],
+  });
+
+  expect(steps[0]!.affectedContract).toBe(POOL);
 });

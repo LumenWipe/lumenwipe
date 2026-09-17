@@ -154,6 +154,10 @@ export function apiStepsToPlannedSteps(plan: PlanResponse): PlannedStep[] {
     operationCount: s.operationCount ?? 0,
     estimatedFeeLumens: s.estimatedFeeLumens ?? "0",
     affectedAsset: s.affectedAsset,
+    // Dropping this left the receipt's "DeFi positions exited" group unable to render at all:
+    // it matches confirmed exit steps to detected positions by contract, and the contract never
+    // survived the boundary. The API has always sent it (`defi-exits/plan-exits.ts`).
+    affectedContract: s.affectedContract,
     txXdr: null,
     status: "pending",
     txHash: null,

@@ -321,6 +321,7 @@ export async function buildTokenTransferRound(
         sourceSequence: sequence,
         validUntilLedger,
         covers: ["HANDLE_ASSETS"],
+        coversTargets: [token],
         intent: {
           ...intentFromXdr(xdrBase64, passphrase),
           summary: `Send ${formatTokenAmount(balance.toString(), tokenDecimals(accountState, token))} ${name} to ${destination.slice(0, 4)}…${destination.slice(-4)}`,
