@@ -294,13 +294,16 @@ test("discoverAllowances › a failed source is stated as a warning, not only in
   expect(result.warnings.some((w) => w.code === "allowances_source_failed")).toBe(true);
 });
 
-test("discoverAllowances › no candidates at all (empty registry, no events) returns cleanly with nothing to report", async () => {
+test("discoverAllowances › a source that was never run says so in warnings, not only in coverage", async () => {
   const deps = fakeAllowancesDeps({ world: { allowances: [] } });
 
   const result = await discoverAllowances(OWNER, "testnet", deps);
 
   expect(result.allowances).toEqual([]);
   expect(result.coverage.find((c) => c.source === "registry")).toMatchObject({ status: "skipped" });
+  // An empty list from a source that never ran is not "this account has approved nobody", and a
+  // consumer reading only `warnings` has to be able to tell the difference.
+  expect(result.warnings.some((w) => w.code === "allowances_source_skipped")).toBe(true);
 });
 
 test("discoverAllowances › two approve events landing in the same ledger break the tie by transaction/operation order, not array order", async () => {
@@ -421,4 +424,67 @@ test("discoverAllowances › the event scan asks for both approve topic shapes, 
     expect(pattern[1]).toBe(owner);
     expect(pattern.slice(2).every((segment) => segment === "*")).toBe(true);
   }
+});
+
+test("discoverAllowances › a registry cross-product the budget could not finish is recorded in coverage, without a warning about guesses", async () => {
+  const manyRegistryEntries: ContractRegistryEntry[] = Array.from({ length: 30 }, (_, i) =>
+    registryEntry({ address: contractAddress(i) })
+  );
+  const manyTokens = Array.from({ length: 4 }, (_, i) => contractAddress(100 + i));
+  const deps = fakeAllowancesDeps({
+    world: { allowances: [] },
+    registryEntries: manyRegistryEntries,
+    knownTokens: manyTokens,
+  });
+
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+
+  const registry = result.coverage.find((c) => c.source === "registry");
+  // 30 entries x 4 tokens is 120 combinations against a 50-pair budget: the answer is honest
+  // about how much of its own guessing it got through...
+  expect(registry).toMatchObject({ status: "ok" });
+  expect(registry!.detail).toContain("of 120");
+  // ...but it does not warn, because these are guesses, not approvals the account is known to
+  // have granted. Saying "N were not checked" reads as "we may have missed yours".
+  expect(result.warnings.some((w) => w.code === "allowances_scan_incomplete")).toBe(false);
+});
+
+test("discoverAllowances › the registry budget is spread across entries, so a later protocol still gets probed", async () => {
+  const entries: ContractRegistryEntry[] = Array.from({ length: 40 }, (_, i) =>
+    registryEntry({ address: contractAddress(i) })
+  );
+  const tokens = Array.from({ length: 3 }, (_, i) => contractAddress(100 + i));
+  const last = contractAddress(39);
+  const deps = fakeAllowancesDeps({
+    world: {
+      // The only live allowance sits on the LAST registry entry. Entry-major iteration would
+      // spend the whole budget on the first entries and never reach it.
+      allowances: [{ token: contractAddress(100), spender: last, amount: 7n, symbol: "XTAR" }],
+    },
+    registryEntries: entries,
+    knownTokens: tokens,
+  });
+
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+
+  expect(result.allowances.some((a) => a.spender === last)).toBe(true);
+});
+
+test("discoverAllowances › a scan that stopped on its time budget reads as a sentence, with the raw detail in parentheses", async () => {
+  const deps = fakeAllowancesDeps({
+    world: {
+      allowances: [],
+      events: { "996001-1000000": { error: "time budget" } },
+    },
+  });
+
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+
+  const warning = result.warnings.find((w) => w.code === "allowances_source_failed");
+  expect(warning).toBeDefined();
+  // The detail is a diagnostic string, not a clause: interpolating it mid-sentence produced
+  // "The approval event scan time budget, so ...".
+  expect(warning!.message).toBe(
+    "The approval event scan did not finish (time budget), so this list may be incomplete."
+  );
 });

@@ -332,6 +332,9 @@ class PairCandidates {
   get size(): number {
     return this.pairs.size;
   }
+  has(token: string, spender: string): boolean {
+    return this.pairs.has(`${token}:${spender}`);
+  }
   ordered(): PairCandidate[] {
     const rank = (sources: Set<AllowanceSource>): number =>
       Math.min(...[...sources].map((s) => SOURCE_PRIORITY.indexOf(s)));
@@ -497,21 +500,42 @@ export async function discoverAllowances(
   const knownTokens = deps.knownTokens;
   if (registryEntries.length > 0 && knownTokens.length > 0) {
     let registryCandidateCount = 0;
-    outer: for (const entry of registryEntries) {
-      for (const token of knownTokens) {
+    let probed = 0;
+    const total = registryEntries.length * knownTokens.length;
+    // Token-major, so every registry entry is crossed with the first token before any entry gets
+    // a second one. Entry-major spent a small budget entirely on whichever protocol happens to
+    // sit first in the registry file, and never reached the last ones - on mainnet that is
+    // Soroswap, the spender most accounts have actually approved.
+    outer: for (const token of knownTokens) {
+      for (const entry of registryEntries) {
         // Budget against what is already on the list, not just against this source's own cap.
         // Filling MAX_CANDIDATES_PER_SOURCE blindly pushed the total past MAX_CANDIDATES
         // whenever the event scan had found anything, so the cut below discarded exactly as many
         // speculative pairs as the account had real approvals - and warned about it, which reads
         // as "we may have missed some of yours" when nothing of the sort happened.
-        if (candidates.size >= MAX_CANDIDATES) break outer;
+        const known = candidates.has(token, entry.address);
+        if (!known && candidates.size >= MAX_CANDIDATES) break outer;
+        // A pair the event scan already found still records this source: dropping the second
+        // source purely because the list is full would make an entry's provenance depend on
+        // iteration order.
         candidates.add(token, entry.address, "registry");
+        probed++;
         // An N-entry registry crossed with an M-token list would otherwise keep growing this
         // loop long after there is any chance of the pair surviving the cut.
         if (++registryCandidateCount >= MAX_CANDIDATES_PER_SOURCE) break outer;
       }
     }
-    coverage.push({ source: "registry", status: "ok" });
+    coverage.push({
+      source: "registry",
+      status: "ok",
+      // Not a warning: these are guesses, not known approvals, so saying "N were not checked"
+      // reads as "we may have missed yours". It is still the difference between "nothing is
+      // outstanding" and "nothing we looked at was outstanding", which is why an empty result
+      // must not be presented as a clean account when this detail is present.
+      ...(probed < total
+        ? { detail: `${probed} of ${total} known-contract combinations were probed` }
+        : {}),
+    });
   } else {
     coverage.push({
       source: "registry",
@@ -525,26 +549,45 @@ export async function discoverAllowances(
 
   // Coverage alone is not enough: it is a machine-readable footnote, and a caller that only
   // renders `warnings` (the web app does) would otherwise present a partial answer as a complete
-  // one. Anything less than a full pass on a source is said out loud here.
+  // one. A source that failed or was never consulted is said out loud here. A `detail` is always
+  // parenthetical - it is a diagnostic string ("time budget", an RPC error), never a clause that
+  // can be dropped into the middle of a sentence.
+  const sourceName = (source: AllowanceSource): string =>
+    source === "events" ? "approval event" : "known-contract";
   for (const entry of coverage) {
     if (entry.status === "failed") {
       warnings.push({
         code: "allowances_source_failed",
         message:
-          `The ${entry.source === "events" ? "approval event" : "known-contract"} scan did not ` +
-          `complete${entry.detail ? ` (${entry.detail})` : ""}, so this list may be incomplete.`,
+          `The ${sourceName(entry.source)} scan did not finish` +
+          `${entry.detail ? ` (${entry.detail})` : ""}, so this list may be incomplete.`,
       });
-    } else if (entry.status === "ok" && entry.detail) {
+    } else if (entry.status === "skipped") {
+      warnings.push({
+        code: "allowances_source_skipped",
+        message:
+          `The ${sourceName(entry.source)} scan was not run` +
+          `${entry.detail ? ` (${entry.detail})` : ""}, so this list may be incomplete.`,
+      });
+    } else if (entry.source === "events" && entry.detail) {
+      // Only the event scan warns on a partial pass: it drops approvals it actually saw, and
+      // stops reading older ledger windows. The registry source's own truncation is recorded in
+      // coverage instead - see the comment where it is pushed.
       warnings.push({
         code: "allowances_scan_incomplete",
         message:
-          `The ${entry.source === "events" ? "approval event" : "known-contract"} scan ` +
-          `${entry.detail}, so newer approvals may be missing from this list.`,
+          `The approval event scan stopped early (${entry.detail}), so this list may be ` +
+          `incomplete - both newer approvals in the window it was reading and anything in the ` +
+          `older windows it never reached.`,
       });
     }
   }
 
   const ordered = candidates.ordered();
+  // A backstop, not a live path: both sources now cap themselves at MAX_CANDIDATES, so nothing
+  // can overflow this cut today. It stays because the relationship between the two constants is
+  // the only thing making that true - raise MAX_CANDIDATES_PER_SOURCE above MAX_CANDIDATES and
+  // the events source alone would exceed it, which is exactly when the warning below should fire.
   const kept = ordered.slice(0, MAX_CANDIDATES);
   if (ordered.length > kept.length) {
     warnings.push({
