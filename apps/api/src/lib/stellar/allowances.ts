@@ -17,6 +17,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { entriesForNetwork, type ContractRegistryEntry } from "@/lib/contract-registry";
+import { describeError } from "@/lib/utils/errors";
 import { mapConcurrent } from "@/lib/utils/concurrency";
 import { bundledListCandidates } from "./soroban-tokens";
 import { getRpcServer } from "./rpc";
@@ -114,13 +115,15 @@ function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<
       },
       (e: unknown) => {
         clearTimeout(timer);
-        reject(e instanceof Error ? e : new Error(String(e)));
+        // `String(e)` here is what produced "[object Object]" downstream: the RPC client rejects
+        // with a plain `{ code, message }`, and wrapping it this way threw its message away.
+        reject(e instanceof Error ? e : new Error(describeError(e)));
       }
     );
   });
 }
 
-const reason = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+const reason = describeError;
 
 /** A printable, checksum-valid address decoded from an ScVal, or null - a hostile or malformed
  *  event must surface as "no candidate found here", never throw the whole scan. */

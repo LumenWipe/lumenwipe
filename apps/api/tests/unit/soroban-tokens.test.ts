@@ -8,7 +8,6 @@ import { Address, xdr } from "@stellar/stellar-sdk";
 import type { AquariusLpPosition, BlendSupplyPosition } from "@lumenwipe/types";
 import {
   EVENTS_CHUNK_LEDGERS,
-  EVENTS_MAX_CHUNKS,
   EVENTS_PAGE_LIMIT,
   MAX_CANDIDATES,
   MAX_CANDIDATES_PER_SOURCE,
@@ -107,7 +106,7 @@ describe("Soroban token discovery", () => {
       ["events:ok", "explorer:ok", "list:ok", "manual:skipped", "positions:ok"].sort()
     );
     expect(result.eventsScanned).toEqual({
-      fromLedger: LATEST - EVENTS_MAX_CHUNKS * EVENTS_CHUNK_LEDGERS + 1,
+      fromLedger: LATEST - EVENTS_CHUNK_LEDGERS + 1,
       toLedger: LATEST,
     });
     expect(deps.explorerCalls[0]).toBe(
@@ -133,7 +132,7 @@ describe("Soroban token discovery", () => {
     expect(result.tokens.map((t) => [t.contract, t.sources])).toEqual([[NATIVE_A, ["positions"]]]);
   });
 
-  test("the event scan asks for every credit shape - SEP-41 and Stellar-asset transfers, and mints - newest window first", async () => {
+  test("the event scan asks for every credit shape - SEP-41 and Stellar-asset transfers, and mints - over one recent window", async () => {
     const deps = fakeSorobanDeps({
       world: { latestLedger: LATEST, tokens: [] },
       explorerBaseUrl: "",
@@ -152,8 +151,9 @@ describe("Soroban token discovery", () => {
       [mint, who, "*"],
       [mint, "*", who],
     ]);
-    expect(deps.rpc.eventRequests).toHaveLength(EVENTS_MAX_CHUNKS);
-    expect(deps.rpc.eventRequests[1]!.endLedger).toBe(LATEST - EVENTS_CHUNK_LEDGERS);
+    // One window, not six: walking the rest cost ~17s against mainnet and is paid by every
+    // account that has nothing to find. Anything older is what the manual path is for.
+    expect(deps.rpc.eventRequests).toHaveLength(1);
   });
 
   test("a busy window is read page by page, and the pages stop at the chunk's edge: a cursor page carries no end ledger", async () => {
@@ -175,14 +175,17 @@ describe("Soroban token discovery", () => {
     });
     const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
     const forNewest = deps.rpc.eventRequests.filter(
-      (r) => r.endLedger === LATEST || r.cursor?.startsWith(`${LATEST - EVENTS_CHUNK_LEDGERS + 1}/`)
+      (r) =>
+        r.startLedger === LATEST - EVENTS_CHUNK_LEDGERS + 1 ||
+        r.cursor?.startsWith(`${LATEST - EVENTS_CHUNK_LEDGERS + 1}/`)
     );
     expect(forNewest).toHaveLength(2);
     expect(forNewest[1]!.cursor).toBe(`${LATEST - EVENTS_CHUNK_LEDGERS + 1}/${LATEST}/1000`);
     expect(result.tokens.map((t) => t.contract).sort()).toEqual([NATIVE_A, NATIVE_B].sort());
-    // Every other chunk was still scanned: the pagination did not eat the rest of the scan.
+    // The window produced candidates, so the sweep stops there instead of walking five more:
+    // this is a best-effort look for what the indexed sources missed, not a history audit.
     expect(result.eventsScanned).toEqual({
-      fromLedger: LATEST - EVENTS_MAX_CHUNKS * EVENTS_CHUNK_LEDGERS + 1,
+      fromLedger: LATEST - EVENTS_CHUNK_LEDGERS + 1,
       toLedger: LATEST,
     });
   });
@@ -206,33 +209,30 @@ describe("Soroban token discovery", () => {
     expect(result.warnings).toEqual([]);
   });
 
-  test("a window the RPC refuses ends the scan: what was covered counts, the gap is reported, nothing else is lost", async () => {
-    const secondStart = LATEST - 2 * EVENTS_CHUNK_LEDGERS + 1;
+  test("a window the RPC refuses is a failed source with a readable reason, and costs nothing else", async () => {
     const deps = fakeSorobanDeps({
       world: {
         latestLedger: LATEST,
         tokens: [held(NATIVE_A, 1n)],
         events: {
-          [`${LATEST - EVENTS_CHUNK_LEDGERS + 1}-${LATEST}`]: { contracts: [NATIVE_A] },
-          [`${secondStart}-${LATEST - EVENTS_CHUNK_LEDGERS}`]: {
-            error: "request exceeded processing limit threshold",
+          [`${LATEST - EVENTS_CHUNK_LEDGERS + 1}-${LATEST}`]: {
+            error: "[-32001] request exceeded processing limit threshold",
           },
         },
       },
       explorerBaseUrl: "",
+      listCandidates: [NATIVE_A],
     });
     const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
+    // What the other sources knew is still read and reported: only the search for MORE was lost.
     expect(result.tokens.map((t) => t.contract)).toEqual([NATIVE_A]);
-    expect(result.eventsScanned).toEqual({
-      fromLedger: LATEST - EVENTS_CHUNK_LEDGERS + 1,
-      toLedger: LATEST,
-    });
-    expect(result.coverage.find((c) => c.source === "events")).toEqual({
-      source: "events",
-      status: "ok",
-      detail: "request exceeded processing limit threshold",
-    });
-    expect(deps.rpc.eventRequests).toHaveLength(2);
+    expect(result.eventsScanned).toBeNull();
+    const events = result.coverage.find((c) => c.source === "events")!;
+    expect(events.status).toBe("failed");
+    expect(events.detail).toBe("[-32001] request exceeded processing limit threshold");
+    // The RPC client rejects with a plain object; a detail that reads "[object Object]" is the
+    // bug this asserts against, and it is shown to users inside an incomplete-scan warning.
+    expect(events.detail).not.toContain("[object");
   });
 
   test("an explorer outage is a failed source and a plain warning, never a hidden balance", async () => {
@@ -443,26 +443,25 @@ describe("Soroban token discovery", () => {
     );
   });
 
-  test("the event scan yields to the time budget and reports the window it did cover", async () => {
+  test("the event scan yields to the time budget instead of eating the analysis", async () => {
     const clock = { now: 1_700_000_000_000 };
     const deps = fakeSorobanDeps({
-      world: { latestLedger: LATEST, tokens: [] },
+      world: { latestLedger: LATEST, tokens: [held(NATIVE_A, 5n)] },
       explorerBaseUrl: "",
-      budgetMs: 6_500,
+      listCandidates: [NATIVE_A],
+      // LEDGER_READS_RESERVE_MS (6s) is held back for the balance reads, so a 5s budget leaves
+      // the scan nothing at all - reading what the account holds outranks looking for more.
+      budgetMs: 5_000,
       clock,
     });
-    const original = deps.rpc.getEvents;
-    deps.rpc.getEvents = async (request) => {
-      clock.now += 400; // each chunk costs 400 ms of a 500 ms events budget
-      return original(request);
-    };
     const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
-    expect(deps.rpc.eventRequests).toHaveLength(2);
-    expect(result.eventsScanned).toEqual({
-      fromLedger: LATEST - 2 * EVENTS_CHUNK_LEDGERS + 1,
-      toLedger: LATEST,
-    });
-    expect(result.coverage.find((c) => c.source === "events")?.detail).toBe("time budget");
+    expect(deps.rpc.eventRequests).toEqual([]);
+    // The balance the other sources already knew about still comes back: a scan that ran out of
+    // time degrades the search, it does not fail the analysis.
+    expect(result.tokens.map((t) => t.contract)).toEqual([NATIVE_A]);
+    const events = result.coverage.find((c) => c.source === "events")!;
+    expect(events.status).toBe("failed");
+    expect(events.detail).toBe("time budget");
   });
 
   test("a position's payout token the account does not hold yet is listed with a zero balance and its metadata", async () => {

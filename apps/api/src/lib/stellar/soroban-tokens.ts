@@ -20,6 +20,7 @@ import {
 import { NETWORK_PASSPHRASES, STELLAR_EXPERT_API_URL } from "@/config/networks";
 import bundledLists from "@/config/soroban-token-lists.json";
 import { mapConcurrent } from "@/lib/utils/concurrency";
+import { describeError } from "@/lib/utils/errors";
 import { getRpcServer } from "./rpc";
 
 /**
@@ -136,6 +137,17 @@ const SOURCE_PRIORITY: SorobanTokenSource[] = ["manual", "positions", "explorer"
 class Candidates {
   private readonly sources = new Map<string, Set<SorobanTokenSource>>();
   constructor(private readonly excluded: Set<string>) {}
+  /** Whether any source that actually looked at THIS account has proposed something: the
+   *  explorer's per-account listing, a detected position's payout token, a contract the user
+   *  typed in, or the event scan. The bundled lists are excluded on purpose - they propose the
+   *  same handful of contracts for every address on the network, so counting them would mean the
+   *  deep sweep never runs for anyone. */
+  get hasAccountSpecific(): boolean {
+    for (const sources of this.sources.values()) {
+      for (const source of sources) if (source !== "list") return true;
+    }
+    return false;
+  }
   add(contract: string, source: SorobanTokenSource): void {
     if (!CONTRACT_ID.test(contract) || !StrKey.isValidContract(contract)) return;
     if (this.excluded.has(contract)) return;
@@ -167,13 +179,15 @@ function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<
       },
       (e: unknown) => {
         clearTimeout(timer);
-        reject(e instanceof Error ? e : new Error(String(e)));
+        // `String(e)` here is what produced "[object Object]" downstream: the RPC client rejects
+        // with a plain `{ code, message }`, and wrapping it this way threw its message away.
+        reject(e instanceof Error ? e : new Error(describeError(e)));
       }
     );
   });
 }
 
-const reason = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+const reason = describeError;
 
 // ─── candidate sources ───────────────────────────────────────────────────────
 
@@ -241,10 +255,19 @@ interface EventScan {
 }
 
 /** Recent credits to the account, newest window first, in chunks the RPC can process. */
+/** How far back a scan reaches, and in what steps. Two plans are used: a shallow pass that runs
+ *  on every analysis (cheap enough to hide inside the other reads), and a deep sweep that only
+ *  runs when nothing else proposed a single candidate. */
+interface ScanPlan {
+  chunkLedgers: number;
+  maxChunks: number;
+}
+
 async function eventCandidates(
   address: string,
   deps: SorobanTokensDeps,
-  deadline: number
+  deadline: number,
+  plan: ScanPlan = { chunkLedgers: EVENTS_CHUNK_LEDGERS, maxChunks: EVENTS_MAX_CHUNKS }
 ): Promise<EventScan> {
   const latest = (
     await withTimeout(
@@ -259,15 +282,19 @@ async function eventCandidates(
   const contracts = new Set<string>();
   let scanned: { fromLedger: number; toLedger: number } | null = null;
   let stoppedEarly: string | null = null;
-  for (let chunk = 0; chunk < EVENTS_MAX_CHUNKS; chunk++) {
+  for (let chunk = 0; chunk < plan.maxChunks; chunk++) {
     if (contracts.size >= MAX_CANDIDATES_PER_SOURCE) break;
+    // Newest windows first, so anything found in one makes the older ones unnecessary: this is a
+    // best-effort sweep for tokens the indexed sources do not know, not an audit of the account's
+    // whole history. Walking all six windows regardless is what made this cost ~17s.
+    if (chunk > 0 && contracts.size > 0) break;
     const remaining = deadline - deps.now();
     if (remaining <= 0) {
       stoppedEarly = "time budget";
       break;
     }
-    const endLedger = latest - chunk * EVENTS_CHUNK_LEDGERS;
-    const startLedger = Math.max(1, endLedger - EVENTS_CHUNK_LEDGERS + 1);
+    const endLedger = latest - chunk * plan.chunkLedgers;
+    const startLedger = Math.max(1, endLedger - plan.chunkLedgers + 1);
     if (endLedger < 1) break;
     let cursor: string | undefined;
     try {
@@ -515,12 +542,24 @@ export async function discoverSorobanTokens(
         coverage.push({ source: "explorer", status: "skipped", detail: "not configured" })
       );
   // Leave room for the ledger reads: the scan may use most of the budget, not all of it.
+  // The event scan is the only source that can find a token no list and no third-party indexer
+  // knows about - measured against mainnet on 2026-09-17, stellar.expert returns only tokens its
+  // own indexer tracks, so an account holding anything outside every curated list reads as empty.
+  //
+  // One window, not the six this used to walk. Six cost ~17s and, on an account where there is
+  // nothing to find, that is paid by every analysis for no gain; one 4,000-ledger window costs
+  // ~2.8s and covers the last ~5.5 hours, which is the case that actually happens: someone
+  // received a token and came here to close the account. A token received before that window is
+  // what the manual "add a contract address" path is for - the API already accepts it.
   const events: Promise<EventScan["scanned"]> =
     deps.scanEvents === false
       ? Promise.resolve(
           coverage.push({ source: "events", status: "skipped", detail: "not requested" })
         ).then(() => null)
-      : eventCandidates(address, deps, deadline - LEDGER_READS_RESERVE_MS).then(
+      : eventCandidates(address, deps, deadline - LEDGER_READS_RESERVE_MS, {
+          chunkLedgers: EVENTS_CHUNK_LEDGERS,
+          maxChunks: 1,
+        }).then(
           (scan) => {
             for (const c of scan.contracts) candidates.add(c, "events");
             coverage.push({

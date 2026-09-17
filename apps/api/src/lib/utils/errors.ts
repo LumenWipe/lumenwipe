@@ -1,5 +1,34 @@
 import { xdr } from "@stellar/stellar-sdk";
 
+/**
+ * A human-readable line for anything thrown. `String(e)` is not enough: the Soroban RPC client
+ * rejects with plain JSON-RPC objects (`{ code, message }`), not `Error`s, so stringifying one
+ * yields the literal text "[object Object]" - which used to reach users inside warnings like
+ * "could not be checked on the ledger ([object Object])".
+ */
+export function describeError(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  if (e && typeof e === "object") {
+    const o = e as Record<string, unknown>;
+    const text = [o.message, o.detail, o.title, o.error].find((v) => typeof v === "string") as
+      string | undefined;
+    if (text)
+      return typeof o.code === "number" && !text.includes(String(o.code))
+        ? `[${o.code}] ${text}`
+        : text;
+    try {
+      const json = JSON.stringify(e);
+      if (json && json !== "{}") return json.length > 200 ? `${json.slice(0, 200)}…` : json;
+    } catch {
+      // circular or otherwise unserialisable - nothing readable to salvage
+    }
+    // An object with nothing to say still must not be shown as "[object Object]".
+    return "an unspecified error";
+  }
+  return String(e);
+}
+
 // ─── Message map ──────────────────────────────────────────────────────────────
 // Keys are either:
 //   - RPC status strings ("ERROR", "FAILED", "TIMEOUT")
