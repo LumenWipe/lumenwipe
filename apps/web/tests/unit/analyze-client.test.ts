@@ -158,3 +158,59 @@ test("the account is published, and the registry loaded, before the analysis is 
   expect(order).toEqual(["account", "registry"]);
   expect(result.account.claimableBalances).toEqual([]);
 });
+
+test("a token the first plan could not have known about triggers exactly one re-plan, naming it", async () => {
+  // The account read and the plan run at once, so the first plan is asked for before anyone
+  // knows what the account holds - and the close round has no token scan of its own. Without the
+  // second ask, the page shows a balance with no card to decide on.
+  const TOKEN = "CCHATUHI32FTTTMTEYHP2UII73XGUXZ5JTNN6OBQMD3PFLSNVPTOIN54";
+  const asked: Array<readonly string[] | undefined> = [];
+  const result = await loadAnalysis({
+    fetchAccount: async () =>
+      ({
+        ...accountState(),
+        sorobanTokens: { tokens: [{ contract: TOKEN, balance: "1", symbol: "POL", decimals: 7 }] },
+      }) as never,
+    fetchPlan: async (_answers, tokens) => {
+      asked.push(tokens);
+      return asked.length === 1
+        ? ({ planHash: "before", decisionPoints: [] } as never)
+        : ({
+            planHash: "after",
+            decisionPoints: [{ subject: { kind: "soroban_token", contract: TOKEN } }],
+          } as never);
+    },
+    loadRegistry: async () => undefined,
+    readAnswers: () => ({}),
+    applyAccount: () => {},
+  });
+
+  expect(asked).toEqual([undefined, [TOKEN]]);
+  expect(result.plan.planHash).toBe("after");
+});
+
+test("a plan that already covers the account's tokens is not asked for twice", async () => {
+  const TOKEN = "CCZGLAUBDKJSQK72QOZHVU7CUWKW45OZWYWCLL27AEK74U2OIBK6LXF2";
+  let calls = 0;
+  await loadAnalysis({
+    fetchAccount: async () =>
+      ({
+        ...accountState(),
+        sorobanTokens: { tokens: [{ contract: TOKEN, balance: "5", symbol: "XTAR", decimals: 7 }] },
+      }) as never,
+    fetchPlan: async () => {
+      calls++;
+      return {
+        planHash: "covered",
+        decisionPoints: [{ subject: { kind: "soroban_token", contract: TOKEN } }],
+      } as never;
+    },
+    loadRegistry: async () => undefined,
+    readAnswers: () => ({}),
+    applyAccount: () => {},
+  });
+
+  // Anything on a bundled list, or paid out by a detected position, is already in the first
+  // plan: re-asking would cost a round trip for nothing.
+  expect(calls).toBe(1);
+});

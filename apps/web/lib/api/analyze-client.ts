@@ -8,8 +8,9 @@ export type ClaimAnswers = Record<string, ClaimableBalanceSelection>;
 export interface AnalysisDeps {
   /** Reads the account. Rejects with the error the caller wants the user to see. */
   fetchAccount: () => Promise<AccountState>;
-  /** Builds the destination-less plan for a set of claim answers. */
-  fetchPlan: (answers: ClaimAnswers) => Promise<PlanResponse>;
+  /** Builds the destination-less plan for a set of claim answers, naming any Soroban token
+   *  contracts the plan has to be told about. */
+  fetchPlan: (answers: ClaimAnswers, tokens?: readonly string[]) => Promise<PlanResponse>;
   /** Refreshes the served exchange registry. The real loader degrades to its bundled floor
    *  instead of rejecting (lib/exchange-registry). */
   loadRegistry: () => Promise<unknown>;
@@ -58,5 +59,22 @@ export async function loadAnalysis(deps: AnalysisDeps): Promise<Analysis> {
 
   const outcome = await planOutcome;
   if (!outcome.ok) throw outcome.error;
-  return { account, plan: outcome.plan };
+
+  // The two requests run at once, so the first plan was asked for before anyone knew what this
+  // account holds - and the close round does not scan for tokens on its own. A token no bundled
+  // list knows about (the ones the analysis scans events to find) is therefore missing from that
+  // plan, and the page would show a balance with no card to decide on. Ask once more, naming it.
+  //
+  // Only when something is actually missing: an account whose tokens the plan already covered -
+  // anything on a bundled list, or paid out by a detected position - costs nothing extra.
+  const tokens = (account.sorobanTokens?.tokens ?? []).map((t) => t.contract);
+  const planned = new Set(
+    (outcome.plan.decisionPoints ?? [])
+      .map((dp) => dp.subject as { kind?: string; contract?: string })
+      .filter((s) => s.kind === "soroban_token" && typeof s.contract === "string")
+      .map((s) => s.contract as string)
+  );
+  const missing = tokens.filter((contract) => !planned.has(contract));
+  if (missing.length === 0) return { account, plan: outcome.plan };
+  return { account, plan: await deps.fetchPlan(deps.readAnswers(), tokens) };
 }
