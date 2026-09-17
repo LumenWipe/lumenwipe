@@ -4,7 +4,7 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft, Loader2, ShieldCheck, Search } from "lucide-react";
-import { unconfirmedSources } from "@/lib/allowances/empty-result";
+import { coverageNote, unconfirmedSources } from "@/lib/allowances/empty-result";
 import type { Network } from "@/config/networks";
 import type { Allowance, AllowancesResult } from "@/types/allowance";
 import { useDemolishStore } from "@/store/demolish";
@@ -30,6 +30,9 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
   // Which sources, if any, did not cover everything they look at. Read once here so the empty
   // state and the warnings line below it cannot disagree about whether the answer is complete.
   const unconfirmed = result ? unconfirmedSources(result.coverage) : [];
+  // How far the speculative known-contract sweep got. A footnote beside a clean result, never an
+  // alarm: that sweep is bounded by design and is essentially always partial.
+  const note = result ? coverageNote(result.coverage) : null;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<Allowance | null>(null);
@@ -161,6 +164,7 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
                 <p className="mt-1 text-xs text-white/45">
                   This account has not approved any spender that is currently live.
                 </p>
+                {note && <p className="mt-2 text-[11px] text-white/30">{note}.</p>}
               </div>
             )
           ) : (
