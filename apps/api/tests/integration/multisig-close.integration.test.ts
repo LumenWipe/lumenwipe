@@ -16,7 +16,12 @@ import type { AccountState } from "@lumenwipe/types";
 
 const FRIENDBOT = "https://friendbot.stellar.org";
 const HORIZON_URL = "https://horizon-testnet.stellar.org";
-const RUN_INTEGRATION = !!process.env.LUMENWIPE_RUN_INTEGRATION;
+// Funds real testnet accounts through friendbot and waits on their transactions, so it takes
+// ~30s and depends on a faucet: too slow and too external to gate every pull request on. It runs
+// under a second flag, for the nightly job and for running it by hand, while the read-only
+// integration tests gate PRs.
+const RUN_INTEGRATION =
+  !!process.env.LUMENWIPE_RUN_INTEGRATION && !!process.env.LUMENWIPE_INTEGRATION_FUNDED;
 
 // The public Soroban RPC testnet endpoint is a different provider from the Horizon-compatible
 // one configureTx below is confirmed against, and is load-balanced across nodes that lag each

@@ -8,9 +8,10 @@ import { getRpcServer } from "@/lib/stellar/rpc";
 
 // Live testnet, opt-in like the other integration tests (`bun run test:integration`). Runs the real
 // runner over the registry's representative constant-product pool with an account that never held
-// shares: the pool's live code must resolve in the shipped registry, the pool must read as a
-// share-based pool, and - since the account has no share entry - the adapter must refuse rather
-// than call the position gone. The full withdraw path runs live in
+// shares. Three claims: the pool's live code resolves in the shipped registry (`resolution`
+// comes back `known`), the adapter refuses rather than calling the position gone
+// (`aquarius_shares_unreadable`, which it can only reach by recognising a share-based pool), and
+// the pool reader returns null for an account with no share entry instead of inventing a zero. The full withdraw path runs live in
 // apps/web/tests/e2e/aquarius-exit.spec.ts.
 const RUN_INTEGRATION = !!process.env.LUMENWIPE_RUN_INTEGRATION;
 
@@ -55,11 +56,13 @@ test.skipIf(!RUN_INTEGRATION)(
       account,
       "constant_product"
     );
-    expect(view).not.toBeNull();
-    expect(view!.tokens).toHaveLength(2);
-    expect(view!.reserves).toHaveLength(2);
-    expect(view!.totalShares).toBeGreaterThan(0n);
-    expect(view!.shares).toBe(0n);
+    // Null, not a zero-share view: `readAquariusPool` refuses to report "0 shares" for an
+    // account whose balance entry is absent, because that would contradict the exit, which
+    // treats an absent entry as unreadable rather than empty. This test used to assert the
+    // opposite - a view with `shares: 0n` - for an account that by construction has no entry,
+    // so it could never have passed. Nothing noticed for two weeks because the integration
+    // suite did not run anywhere; it does now.
+    expect(view).toBeNull();
   },
   30_000
 );
