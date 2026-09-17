@@ -220,7 +220,7 @@ test("discoverAllowances › a getEvents failure is reported in coverage but the
   expect(result.allowances[0]!.spenderProtocol).toBe("soroswap");
 });
 
-test("discoverAllowances › more candidates than the cap allows produces a capped warning and keeps events over registry guesses", async () => {
+test("discoverAllowances › registry guesses stop at the overall cap instead of overflowing it, so a real approval never triggers a capped warning", async () => {
   const manyRegistryEntries: ContractRegistryEntry[] = Array.from({ length: 10 }, (_, i) =>
     registryEntry({ address: contractAddress(i) })
   );
@@ -246,11 +246,52 @@ test("discoverAllowances › more candidates than the cap allows produces a capp
 
   const result = await discoverAllowances(OWNER, "testnet", deps);
 
-  // 10 registry entries x 10 tokens = 100 registry pairs, well past the 50-pair cap.
-  expect(result.warnings.some((w) => w.code === "allowances_capped")).toBe(true);
-  // The one real, event-discovered allowance always survives the cap regardless of how many
-  // registry guesses compete for the remaining slots.
+  // 10 registry entries x 10 tokens is 100 possible guesses, far more than the cap. The source
+  // now stops once the list is full rather than filling its own quota and pushing the total
+  // past the cut - which used to discard exactly as many guesses as the account had real
+  // approvals, and warn about it as if those approvals might have been missed.
+  expect(result.warnings.some((w) => w.code === "allowances_capped")).toBe(false);
+  // The one real, event-discovered allowance always survives regardless of how many registry
+  // guesses compete for the remaining slots.
   expect(result.allowances.some((a) => a.token === TOKEN && a.spender === SPENDER)).toBe(true);
+});
+
+test("discoverAllowances › an event scan that stops at its candidate cap says so, since the pairs it drops are the newest ones", async () => {
+  const pairs = Array.from({ length: 60 }, (_, i) => ({
+    token: TOKEN,
+    spender: contractAddress(i),
+    ledger: 999_000 + i,
+    amount: 1n,
+    expirationLedger: 1_100_000,
+  }));
+  const deps = fakeAllowancesDeps({
+    world: {
+      allowances: [{ token: TOKEN, spender: contractAddress(0), amount: 1n, symbol: "XTAR" }],
+      events: { "996001-1000000": pairs },
+    },
+  });
+
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+
+  const warning = result.warnings.find((w) => w.code === "allowances_scan_incomplete");
+  expect(warning).toBeDefined();
+  expect(warning!.message).toContain("50 candidate pairs");
+  expect(result.coverage.find((c) => c.source === "events")).toMatchObject({ status: "ok" });
+});
+
+test("discoverAllowances › a failed source is stated as a warning, not only in coverage", async () => {
+  const deps = fakeAllowancesDeps({
+    world: {
+      allowances: [],
+      events: { "996001-1000000": { error: "getEvents unavailable" } },
+    },
+  });
+
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+
+  // Coverage is a machine-readable footnote; a caller rendering only `warnings` would otherwise
+  // show an empty list as an affirmative "this account has approved nobody".
+  expect(result.warnings.some((w) => w.code === "allowances_source_failed")).toBe(true);
 });
 
 test("discoverAllowances › no candidates at all (empty registry, no events) returns cleanly with nothing to report", async () => {

@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft, Loader2, ShieldCheck, Search } from "lucide-react";
+import { isConfirmedEmpty, unconfirmedSources } from "@/lib/allowances/empty-result";
 import type { Network } from "@/config/networks";
 import type { Allowance, AllowancesResult } from "@/types/allowance";
 import { useDemolishStore } from "@/store/demolish";
@@ -138,13 +139,28 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
       {result && address && (
         <div className="space-y-3">
           {result.allowances.length === 0 ? (
-            <div className="mkt-panel rounded-2xl p-8 text-center">
-              <ShieldCheck className="h-8 w-8 text-emerald-400 mx-auto mb-2" />
-              <p className="text-sm font-medium text-white">No outstanding allowances</p>
-              <p className="mt-1 text-xs text-white/45">
-                This account has not approved any spender that is currently live.
-              </p>
-            </div>
+            // An empty list only means "none" when every source actually answered. A scan that
+            // failed or stopped short also returns nothing, and rendering that as the green
+            // shield would be this page making a safety claim it did not verify.
+            !isConfirmedEmpty(result.coverage) ? (
+              <div className="mkt-panel rounded-2xl p-8 text-center">
+                <AlertTriangle className="h-8 w-8 text-warning mx-auto mb-2" />
+                <p className="text-sm font-medium text-white">Could not confirm this account</p>
+                <p className="mt-1 text-xs text-white/45">
+                  No live approvals were found, but{" "}
+                  {unconfirmedSources(result.coverage).join(" and ")} did not complete. Try again
+                  before treating this account as clear.
+                </p>
+              </div>
+            ) : (
+              <div className="mkt-panel rounded-2xl p-8 text-center">
+                <ShieldCheck className="h-8 w-8 text-emerald-400 mx-auto mb-2" />
+                <p className="text-sm font-medium text-white">No outstanding allowances</p>
+                <p className="mt-1 text-xs text-white/45">
+                  This account has not approved any spender that is currently live.
+                </p>
+              </div>
+            )
           ) : (
             result.allowances.map((a) => (
               <AllowanceRow key={`${a.token}:${a.spender}`} allowance={a} onRevoke={setRevoking} />

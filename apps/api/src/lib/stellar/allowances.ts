@@ -272,7 +272,13 @@ async function approveEventCandidates(
           } catch {
             // Skip this one event; the rest of the page is still worth reading.
           }
-          if (pairs.size >= MAX_CANDIDATES_PER_SOURCE) break;
+          if (pairs.size >= MAX_CANDIDATES_PER_SOURCE) {
+            // Not an error, but not a complete answer either: events arrive oldest-first within
+            // a chunk, so the pairs dropped here are the most recent ones - exactly the
+            // approvals a user is most likely to be looking for.
+            stoppedEarly = `stopped at ${MAX_CANDIDATES_PER_SOURCE} candidate pairs`;
+            break;
+          }
         }
         if (pastChunk || pairs.size >= MAX_CANDIDATES_PER_SOURCE) break;
         if (page.events.length < EVENTS_PAGE_LIMIT || !page.cursor || page.cursor === cursor) break;
@@ -322,6 +328,9 @@ class PairCandidates {
     }
     entry.sources.add(source);
     if (expirationLedger !== null) entry.expirationLedger = expirationLedger;
+  }
+  get size(): number {
+    return this.pairs.size;
   }
   ordered(): PairCandidate[] {
     const rank = (sources: Set<AllowanceSource>): number =>
@@ -490,10 +499,15 @@ export async function discoverAllowances(
     let registryCandidateCount = 0;
     outer: for (const entry of registryEntries) {
       for (const token of knownTokens) {
+        // Budget against what is already on the list, not just against this source's own cap.
+        // Filling MAX_CANDIDATES_PER_SOURCE blindly pushed the total past MAX_CANDIDATES
+        // whenever the event scan had found anything, so the cut below discarded exactly as many
+        // speculative pairs as the account had real approvals - and warned about it, which reads
+        // as "we may have missed some of yours" when nothing of the sort happened.
+        if (candidates.size >= MAX_CANDIDATES) break outer;
         candidates.add(token, entry.address, "registry");
-        // Matches the events source's own per-source cap: without this, an N-entry registry
-        // crossed with an M-token list keeps growing this loop's own candidate count long after
-        // there is any chance of the pair surviving the overall MAX_CANDIDATES cut below.
+        // An N-entry registry crossed with an M-token list would otherwise keep growing this
+        // loop long after there is any chance of the pair surviving the cut.
         if (++registryCandidateCount >= MAX_CANDIDATES_PER_SOURCE) break outer;
       }
     }
@@ -507,6 +521,27 @@ export async function discoverAllowances(
           ? "no registry entries for this network"
           : "no known tokens for this network",
     });
+  }
+
+  // Coverage alone is not enough: it is a machine-readable footnote, and a caller that only
+  // renders `warnings` (the web app does) would otherwise present a partial answer as a complete
+  // one. Anything less than a full pass on a source is said out loud here.
+  for (const entry of coverage) {
+    if (entry.status === "failed") {
+      warnings.push({
+        code: "allowances_source_failed",
+        message:
+          `The ${entry.source === "events" ? "approval event" : "known-contract"} scan did not ` +
+          `complete${entry.detail ? ` (${entry.detail})` : ""}, so this list may be incomplete.`,
+      });
+    } else if (entry.status === "ok" && entry.detail) {
+      warnings.push({
+        code: "allowances_scan_incomplete",
+        message:
+          `The ${entry.source === "events" ? "approval event" : "known-contract"} scan ` +
+          `${entry.detail}, so newer approvals may be missing from this list.`,
+      });
+    }
   }
 
   const ordered = candidates.ordered();
