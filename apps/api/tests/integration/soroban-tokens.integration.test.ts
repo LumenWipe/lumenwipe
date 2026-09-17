@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import {
   EVENTS_CHUNK_LEDGERS,
-  EVENTS_MAX_CHUNKS,
   discoverSorobanTokens,
   defaultSorobanTokensDeps,
 } from "@/lib/stellar/soroban-tokens";
@@ -58,7 +57,7 @@ test.skipIf(!RUN_INTEGRATION)(
 );
 
 test.skipIf(!RUN_INTEGRATION)(
-  "testnet: the full event scan fits the budget on the public RPC, and an account with no tokens reads clean",
+  "testnet: the event scan's window is one the public RPC actually serves, and an account with no tokens reads clean",
   async () => {
     const { Keypair } = await import("@stellar/stellar-sdk");
     const result = await discoverSorobanTokens(
@@ -68,8 +67,13 @@ test.skipIf(!RUN_INTEGRATION)(
     );
     expect(result.coverage.find((c) => c.source === "events")).toMatchObject({ status: "ok" });
     expect(result.coverage.find((c) => c.source === "events")?.detail).toBeUndefined();
+    // One window, not six. Six cost ~17s against the public RPC and every account with nothing
+    // to find paid it; one covers the last ~5.5 hours, which is the case that happens - someone
+    // received a token and came here to close the account. Anything older is what the manual
+    // "add a contract address" path is for. Changed in #260; this assertion is the live proof
+    // that the window we ask for is one the RPC serves without hitting its processing cap.
     expect(result.eventsScanned!.toLedger - result.eventsScanned!.fromLedger + 1).toBe(
-      EVENTS_MAX_CHUNKS * EVENTS_CHUNK_LEDGERS
+      EVENTS_CHUNK_LEDGERS
     );
     expect(result.warnings.filter((w) => w.code === "soroban_tokens_unreadable")).toEqual([]);
 

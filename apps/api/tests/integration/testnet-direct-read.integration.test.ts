@@ -23,7 +23,15 @@ test.skipIf(!RUN_INTEGRATION)(
     const { getRpcServer } = await import("@/lib/stellar/rpc");
     const rpc = getRpcServer("testnet");
 
-    for (const entry of servedContractRegistry().entries.filter((e) => e.verifiedLive)) {
+    // Testnet entries only. The registry gained mainnet entries in #195, and a mainnet contract
+    // does not exist on testnet - so an unfiltered sweep asked the testnet RPC for addresses
+    // that were never there and failed on the first one, reporting drift that was not drift.
+    // Mainnet's own entries have their canary in mainnet-registry.integration.test.ts.
+    const testnetEntries = servedContractRegistry().entries.filter(
+      (e) => e.verifiedLive && e.network === "testnet"
+    );
+    expect(testnetEntries.length).toBeGreaterThan(0);
+    for (const entry of testnetEntries) {
       const contract = new Contract(entry.address);
       const res = await rpc.getLedgerEntries(contract.getFootprint());
       expect(res.entries.length).toBeGreaterThan(0);

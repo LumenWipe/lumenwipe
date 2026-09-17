@@ -36,7 +36,12 @@ const ACCOUNT_STATE_POLL_DELAY_MS = 2500;
 // `test` script scopes itself to tests/unit + tests/e2e, but a bare `bun test` (an easy
 // mistake in this repo - CLAUDE.md warns about it) globs **/*.test.ts and would pick
 // this up. Only `bun run test:integration` sets the opt-in flag.
-const RUN_INTEGRATION = !!process.env.LUMENWIPE_RUN_INTEGRATION;
+// Funds real testnet accounts through friendbot and waits on their transactions, so it takes
+// ~30s and depends on a faucet: too slow and too external to gate every pull request on. It runs
+// under a second flag, for the nightly job and for running it by hand, while the read-only
+// integration tests gate PRs.
+const RUN_INTEGRATION =
+  !!process.env.LUMENWIPE_RUN_INTEGRATION && !!process.env.LUMENWIPE_INTEGRATION_FUNDED;
 
 async function fund(publicKey: string): Promise<void> {
   const res = await fetch(`${FRIENDBOT}?addr=${publicKey}`);
