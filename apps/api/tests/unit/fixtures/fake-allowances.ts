@@ -32,6 +32,10 @@ export interface FakeApproveEvent {
   /** Defaults to 0 - set explicitly to test same-ledger tie-breaking. */
   transactionIndex?: number;
   operationIndex?: number;
+  /** Emit the event the way a Stellar Asset Contract does: a fourth topic naming the classic
+   *  asset it wraps. The RPC matches topics by exact segment count, so this is the shape a
+   *  three-segment filter silently misses. */
+  sacAsset?: string;
 }
 
 export interface FakeAllowancesWorld {
@@ -69,6 +73,21 @@ export interface FakeEventRequest {
   endLedger?: number;
   cursor?: string;
   topics?: string[][];
+}
+
+/** The real RPC matches an event against a topic pattern segment by segment, and a pattern only
+ *  matches a topic list of the SAME length - `*` stands for exactly one segment, never for "the
+ *  rest". Reproducing that here is the whole point of this stub: a filter built for the wrong
+ *  number of segments must come back empty, the way it does against a live network, instead of
+ *  quietly matching anyway and hiding the bug. */
+function topicsMatch(patterns: string[][] | undefined, topic: xdr.ScVal[]): boolean {
+  if (!patterns || patterns.length === 0) return true;
+  const encoded = topic.map((t) => t.toXDR("base64"));
+  return patterns.some(
+    (pattern) =>
+      pattern.length === encoded.length &&
+      pattern.every((segment, i) => segment === "*" || segment === encoded[i])
+  );
 }
 
 export function fakeAllowanceRpc(world: FakeAllowancesWorld): AllowanceRpc & {
@@ -114,7 +133,15 @@ export function fakeAllowanceRpc(world: FakeAllowancesWorld): AllowanceRpc & {
       }
       const window = world.events?.[`${start}-${end}`];
       if (window && "error" in window) throw new Error(window.error);
-      const all = window ?? [];
+      const requested = r.filters?.[0]?.topics;
+      const all = (window ?? []).filter((e) =>
+        topicsMatch(requested, [
+          xdr.ScVal.scvSymbol("approve"),
+          new Address(OWNER).toScVal(),
+          new Address(e.spender).toScVal(),
+          ...(e.sacAsset ? [xdr.ScVal.scvString(e.sacAsset)] : []),
+        ])
+      );
       const limit = r.limit ?? 1_000;
       const page = all.slice(offset, offset + limit);
       const events = page.map((e, i) => ({
@@ -130,6 +157,7 @@ export function fakeAllowanceRpc(world: FakeAllowancesWorld): AllowanceRpc & {
           xdr.ScVal.scvSymbol("approve"),
           new Address(OWNER).toScVal(),
           new Address(e.spender).toScVal(),
+          ...(e.sacAsset ? [xdr.ScVal.scvString(e.sacAsset)] : []),
         ],
         value: xdr.ScVal.scvVec([
           nativeToScVal(e.amount, { type: "i128" }),

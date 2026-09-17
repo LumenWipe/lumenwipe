@@ -322,3 +322,55 @@ test("discoverAllowances › a plain account approved as a spender (SEP-41 allow
   expect(result.allowances[0]!.spender).toBe(accountSpender);
   expect(result.allowances[0]!.spenderProtocol).toBeNull();
 });
+
+test("discoverAllowances › an approve event in a Stellar Asset Contract's own shape (a fourth topic naming the asset) is still discovered", async () => {
+  const deps = fakeAllowancesDeps({
+    world: {
+      allowances: [
+        { token: TOKEN, spender: SPENDER, amount: 8_046_156n, symbol: "BLND", decimals: 7 },
+      ],
+      events: {
+        "996001-1000000": [
+          {
+            token: TOKEN,
+            spender: SPENDER,
+            ledger: 999_000,
+            amount: 41_035_400n,
+            expirationLedger: 1_100_000,
+            sacAsset: "BLND:GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56",
+          },
+        ],
+      },
+    },
+  });
+
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+
+  expect(result.allowances).toHaveLength(1);
+  expect(result.allowances[0]).toMatchObject({
+    token: TOKEN,
+    spender: SPENDER,
+    // The live read, not the event's own amount: a pool that approves a slippage-padded maximum
+    // and then spends less leaves exactly this remainder standing.
+    amount: "8046156",
+    expirationLedger: 1_100_000,
+    sources: ["events"],
+  });
+});
+
+test("discoverAllowances › the event scan asks for both approve topic shapes, since the RPC matches topics by exact segment count", async () => {
+  const deps = fakeAllowancesDeps({
+    world: { allowances: [], events: {} },
+  });
+
+  await discoverAllowances(OWNER, "testnet", deps);
+
+  const topics = deps.rpc.eventRequests[0]?.topics;
+  expect(topics).toBeDefined();
+  // A SEP-41 token emits [approve, from, spender]; a SAC appends the asset as a fourth topic.
+  // Asking only for the three-segment shape misses every approval on a classic asset's SAC.
+  expect(topics!.map((pattern) => pattern.length).sort()).toEqual([3, 4]);
+  for (const pattern of topics!) {
+    expect(pattern[2]).toBe("*");
+  }
+});
