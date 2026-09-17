@@ -42,6 +42,7 @@
           "architecture",
           "threat-model",
           "security-remediation-plan",
+          "monitoring-plan",
           "community-and-communications"
         ]
       },
