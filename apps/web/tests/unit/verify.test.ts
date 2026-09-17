@@ -1597,9 +1597,11 @@ test("rejects a swap that is not alone, acts for another account, calls another 
   expect(() =>
     assertCloseIntent(exitOnly(routerSwap({ source: ATTACKER })), chosenConversion())
   ).toThrow(/other than the one being closed/);
+  // A non-swap call on the swap contract is judged as an exit, and fails there unless the account
+  // actually holds a position that contract leaves.
   expect(() =>
     assertCloseIntent(exitOnly(routerSwap({ function: "remove_liquidity" })), chosenConversion())
-  ).toThrow(/something other than a swap/);
+  ).toThrow(/not one of this account's detected positions/);
   // swap_tokens_for_exact_tokens carries the same seven arguments with the amounts swapped, so
   // reading it as an exact-in swap would hold the wrong figures to the balance and the floor.
   // The function name is what stops it.
@@ -1608,7 +1610,7 @@ test("rejects a swap that is not alone, acts for another account, calls another 
       exitOnly(aggregatorSwap({ function: "swap_tokens_for_exact_tokens" })),
       chosenConversion()
     )
-  ).toThrow(/something other than a swap/);
+  ).toThrow(/not one of this account's detected positions/);
   expect(() => assertCloseIntent(exitOnly(routerSwap(), "20000000"), chosenConversion())).toThrow(
     /network fee/
   );
@@ -1637,4 +1639,54 @@ test("rejects a swap whose arguments cannot be read, or that authorizes beyond t
       chosenConversion()
     )
   ).toThrow(/other than the one being closed/);
+});
+
+/**
+ * The Soroswap router is both the contract a token conversion enters through and the contract a
+ * Soroswap LP exit calls `remove_liquidity` on. Every fixture above sets one of the two lists
+ * empty, so the collision never appeared in a test - and in production, where both are filled
+ * from the bundled registry, the swap rules claimed the exit and rejected it as a malformed
+ * swap. No Soroswap position could be closed from the browser.
+ */
+test("a Soroswap exit through a router that is also a conversion contract passes", () => {
+  const bothRoles = expectation({
+    conversionContracts: [SOROSWAP_ROUTER],
+    exitContracts: [POOL, SOROSWAP_ROUTER],
+    exitFunctions: { [POOL]: ["submit"], [SOROSWAP_ROUTER]: ["remove_liquidity"] },
+    positionTokenContracts: [CONVERT_TOKEN, XLM_CONTRACT],
+  });
+  const removeLiquidity = routerSwap({
+    function: "remove_liquidity",
+    args: [CONVERT_TOKEN, XLM_CONTRACT, "396671711", "1", "1", SRC, "1788846802"],
+    authDepth: 0,
+  });
+
+  expect(() => assertCloseIntent(exitOnly(removeLiquidity), bothRoles)).not.toThrow();
+});
+
+test("the dual role does not let a swap skip the conversion rules", () => {
+  // Same contract, same expectation - but a swap still has to satisfy every swap rule, so one
+  // the user never chose is refused rather than waved through as an exit.
+  const bothRoles = expectation({
+    conversionContracts: [SOROSWAP_ROUTER],
+    exitContracts: [POOL, SOROSWAP_ROUTER],
+    exitFunctions: { [POOL]: ["submit"], [SOROSWAP_ROUTER]: ["remove_liquidity"] },
+    xlmContract: XLM_CONTRACT,
+  });
+
+  expect(() => assertCloseIntent(exitOnly(routerSwap()), bothRoles)).toThrow(
+    /token you did not choose to convert/
+  );
+});
+
+test("the dual role does not admit a function that is neither a swap nor that protocol's exit", () => {
+  const bothRoles = expectation({
+    conversionContracts: [SOROSWAP_ROUTER],
+    exitContracts: [POOL, SOROSWAP_ROUTER],
+    exitFunctions: { [POOL]: ["submit"], [SOROSWAP_ROUTER]: ["remove_liquidity"] },
+  });
+
+  expect(() =>
+    assertCloseIntent(exitOnly(routerSwap({ function: "add_liquidity" })), bothRoles)
+  ).toThrow(/function LumenWipe does not use to leave this protocol/);
 });
