@@ -72,6 +72,63 @@ afterEach(() => {
   mock.restore();
 });
 
+// A regression fixed live against a real mainnet account: a basic asset-issuer with one
+// classic trustline unrelated to any DeFi protocol hit this exact hard blocker, because the
+// zero-trustline leniency above only covers an account with none at all. A human who checked
+// manually can acknowledge it instead - passed through all the way from the request's own
+// `decisions`, not something this function can be told to skip by any other means.
+test("an explicit user acknowledgement lets the build proceed instead of refusing", async () => {
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
+    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
+    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
+    getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
+  })) as unknown as typeof rpcModule.getRpcServer);
+
+  const result = await buildCloseTransactions(
+    state({ timestamp: null }),
+    DEST,
+    {},
+    "testnet",
+    null,
+    {},
+    {},
+    {},
+    {},
+    {},
+    true
+  );
+  expect(result.requiresAnotherCall).toBeDefined();
+});
+
+test("the acknowledgement does not bypass the gate when the sweep actually found a position", async () => {
+  const promise = buildCloseTransactions(
+    state({
+      timestamp: null,
+      positions: [
+        {
+          protocol: "blend",
+          positionType: "supply",
+          contractAddress: "CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD",
+          assetAddress: "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
+          bTokenAmount: "1",
+          usdValue: null,
+        },
+      ],
+    }),
+    DEST,
+    {},
+    "testnet",
+    null,
+    {},
+    {},
+    {},
+    {},
+    {},
+    true
+  );
+  await expect(promise).rejects.toMatchObject({ code: "defi_positions_unavailable", status: 422 });
+});
+
 test("a confirmed-empty degraded result on a zero-trustline account does not refuse the build", async () => {
   spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
     getAccount: () => Promise.resolve(new Account(SOURCE, "100")),

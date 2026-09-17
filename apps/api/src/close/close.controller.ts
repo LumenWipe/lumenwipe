@@ -58,7 +58,11 @@ import {
   collectTransferDestinations,
   MissingTransferDestinationError,
   DESTINATION_ACK_CHOICE,
+  deriveDefiPositionsDecisionPoints,
+  defiPositionsDecisionId,
+  isDefiPositionsAcknowledged,
 } from "@/lib/close-api/decisions";
+import { DEFI_POSITIONS_UNAVAILABLE_CODE } from "@/lib/defi-positions/positions-gate";
 import { assemblePlanResponse, computePlanHash } from "@/lib/close-api/plan-response";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
 import { submitAndWait, InvalidSignatureError } from "@/lib/stellar/submit";
@@ -220,6 +224,15 @@ export class CloseController {
         collectTransferDestinations(decisions, planAssetsById);
       const planDispositions = resolveDispositions(decisions, planAssetsById);
 
+      // Whether the unconfirmed-positions gate would produce its hard-blocking code on THIS
+      // read, before any acknowledgement is applied - decides whether the decision point below
+      // even needs to exist. accountState.defiPositionsWarnings is already this exact,
+      // unacknowledged computation (account-state.ts), so it is reused rather than re-derived.
+      const needsDefiPositionsAck = accountState.defiPositionsWarnings.some(
+        (w) => w.code === DEFI_POSITIONS_UNAVAILABLE_CODE
+      );
+      const defiPositionsAcknowledged = isDefiPositionsAcknowledged(decisions, source);
+
       const buildResult = buildPlan(
         accountState,
         mediatorRequired,
@@ -228,25 +241,29 @@ export class CloseController {
         sponsorshipAffordability,
         planDispositions,
         planDestinations,
-        accountState.defiPositions
+        accountState.defiPositions,
+        defiPositionsAcknowledged
       );
       const decisionPoints = [
         ...deriveDestinationDecisionPoints(destination),
+        ...deriveDefiPositionsDecisionPoints(source, needsDefiPositionsAck),
         ...deriveDecisionPoints(accountState, convertibility, claimableBalanceSelections),
         ...deriveTokenDecisionPoints(accountState, tokenQuotes),
         ...deriveClaimableBalanceDecisionPoints(accountState),
       ];
       const answeredIds = new Set(decisions.map((d) => d?.id));
-      // The destination acknowledgement is judged on its choice, not merely on having been
-      // answered. For every other decision the choice is re-validated downstream against a
-      // known value set, so presence is a fair proxy; here the choice IS the content, and
-      // reporting "ready" for an answer that /transactions will refuse leaves a caller with
-      // a 422 and no pending decision to point at.
-      const pending: DecisionPoint[] = decisionPoints.filter((dp) =>
-        destination !== null && dp.id === destinationDecisionId(destination)
-          ? !isDestinationAcknowledged(decisions, destination)
-          : !answeredIds.has(dp.id)
-      );
+      // The destination and DeFi-positions acknowledgements are judged on their choice, not
+      // merely on having been answered. For every other decision the choice is re-validated
+      // downstream against a known value set, so presence is a fair proxy; here the choice IS
+      // the content, and reporting "ready" for an answer that /transactions will refuse leaves
+      // a caller with a 422 and no pending decision to point at.
+      const pending: DecisionPoint[] = decisionPoints.filter((dp) => {
+        if (destination !== null && dp.id === destinationDecisionId(destination)) {
+          return !isDestinationAcknowledged(decisions, destination);
+        }
+        if (dp.id === defiPositionsDecisionId(source)) return !defiPositionsAcknowledged;
+        return !answeredIds.has(dp.id);
+      });
 
       // Same reasoning as the acknowledgement above, one step further out: a transfer answer is
       // well-formed whether or not it names a usable account, so it counts as answered and the
@@ -511,7 +528,8 @@ export class CloseController {
         transferDestinations,
         {},
         {},
-        { floors: conversionFloors }
+        { floors: conversionFloors },
+        isDefiPositionsAcknowledged(decisions, source)
       );
 
       const planHash = computePlanHash({

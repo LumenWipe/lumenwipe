@@ -9,6 +9,10 @@ const WALLET_CONNECT_AUX_HOSTS =
   "https://pulse.walletconnect.org https://api.web3modal.org https://explorer-api.walletconnect.com";
 const WALLET_CONNECT_VERIFY_HOSTS =
   "https://verify.walletconnect.com https://verify.walletconnect.org";
+// Umami Cloud's collection endpoint - the script (layout.tsx) loads from cloud.umami.is, but
+// sends every pageview/event beacon to this separate gateway host. Without it here, the script
+// loads fine and every beacon it sends is silently blocked by connect-src.
+const UMAMI_HOSTS = "https://gateway.umami.is";
 
 export function middleware(request: NextRequest): NextResponse {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
@@ -26,7 +30,7 @@ export function middleware(request: NextRequest): NextResponse {
     `style-src 'self' 'unsafe-inline'`,
     `img-src 'self' data: https:`,
     `font-src 'self'`,
-    `connect-src 'self' ${WALLET_CONNECT_RELAY_HOSTS} ${WALLET_CONNECT_AUX_HOSTS}`,
+    `connect-src 'self' ${WALLET_CONNECT_RELAY_HOSTS} ${WALLET_CONNECT_AUX_HOSTS} ${UMAMI_HOSTS}`,
     `frame-src ${WALLET_CONNECT_VERIFY_HOSTS} https://www.youtube-nocookie.com`,
     `frame-ancestors 'none'`,
     `base-uri 'self'`,

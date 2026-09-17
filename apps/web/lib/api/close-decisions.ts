@@ -57,6 +57,28 @@ export function destinationAcknowledgementToDecisions(
   return [{ id: destinationDecisionId(destination), choice: DESTINATION_ACK_CHOICE }];
 }
 
+/** Stable decision id for the unconfirmed-DeFi-positions acknowledgement. Must match the API's
+ *  `defiPositionsDecisionId`. Scoped to the account being closed, for the same reason as the
+ *  destination acknowledgement above. */
+function defiPositionsDecisionId(address: string): string {
+  return `defi_positions:${address}`;
+}
+
+/** Must match the API's `DEFI_POSITIONS_ACK_CHOICE`. */
+const DEFI_POSITIONS_ACK_CHOICE = "no_defi_positions_confirmed_manually";
+
+/**
+ * Same pattern as `destinationAcknowledgementToDecisions`: the acknowledgement is stored as the
+ * address it was given for, so it cannot be replayed for a different account being closed.
+ */
+export function defiPositionsAcknowledgementToDecisions(
+  acknowledgedFor: string | null,
+  source: string
+): DecisionAnswer[] {
+  if (acknowledgedFor !== source) return [];
+  return [{ id: defiPositionsDecisionId(source), choice: DEFI_POSITIONS_ACK_CHOICE }];
+}
+
 /** Must match the API's `TRANSFER_CHOICE`. */
 const TRANSFER_CHOICE = "transfer_to_account";
 

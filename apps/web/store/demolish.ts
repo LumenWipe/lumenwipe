@@ -22,6 +22,13 @@ interface DemolishState {
    * leaves this pointing at the old one, which no longer matches.
    */
   destinationAcknowledgedFor: string | null;
+  /**
+   * The account address the user explicitly confirmed has no DeFi positions, after checking
+   * manually (e.g. on an explorer), for an account whose detection could not be confirmed.
+   * Stored as the address for the same reason as `destinationAcknowledgedFor`: the confirmation
+   * cannot outlive the account it was given for.
+   */
+  defiPositionsAcknowledgedFor: string | null;
 
   // Preflight
   phase: DemolishPhase;
@@ -64,6 +71,8 @@ interface DemolishState {
   ) => void;
   /** Records (or clears, with null) the destination the user confirmed they control. */
   acknowledgeDestination: (address: string | null) => void;
+  /** Records (or clears, with null) the account the user confirmed has no DeFi positions. */
+  acknowledgeDefiPositions: (address: string | null) => void;
   setPhase: (phase: DemolishPhase) => void;
   setAccountState: (state: AccountState) => void;
   setPlan: (plan: PlannedStep[]) => void;
@@ -156,6 +165,7 @@ const initialState = {
   memo: null,
   memoType: null,
   destinationAcknowledgedFor: null,
+  defiPositionsAcknowledgedFor: null,
   phase: "IDLE" as DemolishPhase,
   accountState: null,
   executionPlan: [],
@@ -181,6 +191,8 @@ export const useDemolishStore = create<DemolishState>((set) => ({
     }),
 
   acknowledgeDestination: (address) => set({ destinationAcknowledgedFor: address }),
+
+  acknowledgeDefiPositions: (address) => set({ defiPositionsAcknowledgedFor: address }),
 
   setPhase: (phase) => set({ phase }),
 

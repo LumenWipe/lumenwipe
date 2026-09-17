@@ -40,9 +40,17 @@ const MAX_TOTAL = 1000;
 // Horizon has no separate "created" timestamp for a claimable balance; last_modified_time
 // is the creation time for the (overwhelmingly common) case of a balance nothing has
 // touched since it was created, so it's used as the anchor for rel_before predicates.
+//
+// `createdAtEpochSeconds` is null when Horizon itself has none to give: mainnet SDF Horizon
+// reports `last_modified_time: null` for a balance created before its retention window (its
+// own ledger for that height already answers 410 Gone). unconditional and abs_before/
+// abs_before_epoch predicates never need this anchor, so a null one only becomes a problem
+// right here, for the one predicate shape that actually depends on it - not for every old
+// balance on sight (confirmed live: four real mainnet accounts' spam-airdrop claimable
+// balances, all unconditional/abs_before, tripped this before the anchor check moved here).
 export function parseClaimPredicate(
   raw: HorizonClaimPredicate,
-  createdAtEpochSeconds: number
+  createdAtEpochSeconds: number | null
 ): ClaimPredicate {
   if (raw.and) {
     return {
@@ -76,6 +84,15 @@ export function parseClaimPredicate(
     const relSeconds = Number(raw.rel_before);
     if (!Number.isFinite(relSeconds)) {
       throw new Error(`Unparseable rel_before in a claim predicate: ${String(raw.rel_before)}`);
+    }
+    if (createdAtEpochSeconds === null) {
+      // The one case that genuinely cannot be evaluated: a NaN anchor would resolve this
+      // deadline to NaN, so a balance that is claimable right now could read as unclaimable
+      // and be left behind, unreachable once the account is merged. Refuse rather than guess.
+      throw new Error(
+        "A rel_before claim predicate has no creation time to anchor it against - Horizon " +
+          "reported no usable last_modified_time for this balance."
+      );
     }
     return {
       type: "before_relative_time",
@@ -132,17 +149,12 @@ export async function fetchClaimableBalancesForClaimant(
     MAX_TOTAL
   );
   return records.map((b) => {
+    // Null (not just unparseable) when Horizon's own retention window has dropped the ledger
+    // this balance was created in - a real, observed mainnet state for old balances, not a
+    // malformed response. Most predicates (unconditional, abs_before) never need this anchor,
+    // so the failure is deferred to parseClaimPredicate, the one place that actually needs it.
     const parsed = Date.parse(b.last_modified_time);
-    if (!Number.isFinite(parsed)) {
-      // This anchors every `rel_before` predicate. A NaN would resolve relative deadlines to
-      // NaN, so a balance that is claimable right now could be presented as not claimable and
-      // left behind, unreachable once the account is merged.
-      throw new Error(
-        `Claimable balance ${b.id} has an unusable last_modified_time ` +
-          `(${String(b.last_modified_time)}); claim predicates cannot be evaluated against it.`
-      );
-    }
-    const createdAtEpochSeconds = Math.floor(parsed / 1000);
+    const createdAtEpochSeconds = Number.isFinite(parsed) ? Math.floor(parsed / 1000) : null;
     return {
       id: b.id,
       asset: b.asset,

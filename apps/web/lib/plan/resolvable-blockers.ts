@@ -17,6 +17,16 @@ import type { PlanBlocker } from "@/types/plan";
  */
 const RESOLVABLE_HERE = new Set(["claimable_balance_forfeited", "claimable_balance_unclaimable"]);
 
+/** Must match the API's `DEFI_POSITIONS_UNAVAILABLE_CODE` (positions-gate.ts). Deliberately not
+ *  in RESOLVABLE_HERE: unlike a claimable balance, this blocker's own presence is what decides
+ *  whether the acknowledgement checkbox even renders (DefiPositionsAcknowledgement.tsx), so it
+ *  cannot be pre-emptively filtered out of `hardBlockersOf`'s unconditional set - the caller
+ *  (PlanView) applies a local, acknowledgement-conditional exception instead. The one place this
+ *  code's presence must NEVER be waved away unconditionally is `handleProceed`'s post-decision
+ *  `proceedError` check right before a transaction ever gets built - that call goes through
+ *  `hardBlockersOf` untouched. */
+export const DEFI_POSITIONS_UNAVAILABLE_CODE = "defi_positions_unavailable";
+
 /**
  * Non-blocking but with no dedicated UI of its own, unlike RESOLVABLE_HERE's codes. Mirrors
  * positions-gate.ts's NON_TRAPPING_CODES (apps/api) as plain strings - the web never imports the
@@ -30,6 +40,12 @@ const RESOLVABLE_HERE = new Set(["claimable_balance_forfeited", "claimable_balan
 const NON_BLOCKING_ELSEWHERE = new Set([
   "defi_positions_unconfirmed_no_trustlines",
   "defi_positions_unconfirmed_but_detected",
+  // Only ever produced by the API when the caller sent an explicit, address-scoped
+  // acknowledgement (defiPositionsAcknowledgementToDecisions) - the account's own hard blocker
+  // (`defi_positions_unavailable`) downgrades to this exact code once that answer is included
+  // in the next plan/transactions request, so by the time this code appears here the user has
+  // already resolved it. See DefiPositionsAcknowledgement.tsx for where that answer is given.
+  "defi_positions_unconfirmed_user_verified",
 ]);
 
 export function isResolvableHere(blocker: Pick<PlanBlocker, "code">): boolean {

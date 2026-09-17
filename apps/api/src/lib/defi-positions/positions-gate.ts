@@ -37,13 +37,34 @@ export const DEFI_POSITIONS_UNCONFIRMED_NO_TRUSTLINES_CODE =
 export const DEFI_POSITIONS_UNCONFIRMED_BUT_DETECTED_CODE =
   "defi_positions_unconfirmed_but_detected";
 
+/** The hard-blocking code: nothing here qualifies for either leniency above, so this is the
+ *  genuine "we cannot tell, and the account has enough on it that we shouldn't guess" case.
+ *  Exported so callers deciding whether to surface the acknowledgement below can check for it
+ *  by name instead of re-deriving the same judgment `assessDefiPositionsGate` already made. */
+export const DEFI_POSITIONS_UNAVAILABLE_CODE = "defi_positions_unavailable";
+
+/** Non-trapping, like the two above, but only ever produced when the caller passes
+ *  `userVerifiedNoPositions: true` - the one code on this list that depends on something outside
+ *  the detection result itself. The sweep still found nothing (this never fires when
+ *  `result.positions.length > 0`; that case already has its own, stronger code above), but
+ *  could not rule out a protocol this tool does not yet recognize - a human confirmed manually
+ *  that this account's trustlines are for other assets, not DeFi positions, and that
+ *  confirmation is what downgrades the hard blocker (positions-gate.ts's own "no silent skips"
+ *  invariant otherwise refuses to guess). Scoped per-address by the caller (see
+ *  close-api/decisions.ts's `isDefiPositionsAcknowledged`), so it never survives being carried
+ *  from one account to another. */
+export const DEFI_POSITIONS_UNCONFIRMED_USER_VERIFIED_CODE =
+  "defi_positions_unconfirmed_user_verified";
+
 /** Blocker codes assessDefiPositionsGate can produce that must never trap `buildCloseTransactions`
  *  or the web's "Begin execution" gate (apps/web/lib/plan/resolvable-blockers.ts mirrors this
- *  list as plain strings, since the web never imports API modules). Both carry a `code`, which
- *  plan-response.ts's own convention already treats as "an acknowledged, non-trapping warning." */
+ *  list as plain strings, since the web never imports API modules). All three carry a `code`,
+ *  which plan-response.ts's own convention already treats as "an acknowledged, non-trapping
+ *  warning." */
 const NON_TRAPPING_CODES = new Set([
   DEFI_POSITIONS_UNCONFIRMED_NO_TRUSTLINES_CODE,
   DEFI_POSITIONS_UNCONFIRMED_BUT_DETECTED_CODE,
+  DEFI_POSITIONS_UNCONFIRMED_USER_VERIFIED_CODE,
 ]);
 
 export function isNonTrappingDefiBlocker(blocker: Pick<PlanBlocker, "code">): boolean {
@@ -64,11 +85,26 @@ function explorerUrl(result: DefiPositionsResult): string {
  */
 function unavailableBlocker(result: DefiPositionsResult): PlanBlocker {
   return {
-    code: "defi_positions_unavailable",
+    code: DEFI_POSITIONS_UNAVAILABLE_CODE,
     message:
       "DeFi position data for this account could not be confirmed. This account may hold open " +
       "DeFi positions that have not been detected - verify manually on an explorer before " +
       "proceeding.",
+    helpUrl: explorerUrl(result),
+  };
+}
+
+/** The acknowledged counterpart to `unavailableBlocker`: same underlying uncertainty, but a
+ *  human has manually verified this account's trustlines are for other assets, not DeFi
+ *  positions. Still surfaced as a visible warning (the acknowledgement is an audit trail of a
+ *  choice, not a reason to go quiet about it), just no longer trapping. */
+function userVerifiedBlocker(result: DefiPositionsResult): PlanBlocker {
+  return {
+    code: DEFI_POSITIONS_UNCONFIRMED_USER_VERIFIED_CODE,
+    message:
+      "DeFi position data for this account could not be confirmed, but you confirmed manually " +
+      "that its trustlines are for other assets, not open DeFi positions. This check only " +
+      "covers protocols LumenWipe recognizes today.",
     helpUrl: explorerUrl(result),
   };
 }
@@ -105,11 +141,17 @@ function confirmedButDetectedBlocker(result: DefiPositionsResult): PlanBlocker {
  *   closed to the hard `defi_positions_unavailable` blocker there, same as before this
  *   parameter existed. A confirmed result that actually named a position never needs it - see
  *   DEFI_POSITIONS_UNCONFIRMED_BUT_DETECTED_CODE above.
+ * @param userVerifiedNoPositions Whether the caller has an explicit, address-scoped
+ *   acknowledgement that this account holds no DeFi positions (close-api/decisions.ts's
+ *   `isDefiPositionsAcknowledged`). Only ever downgrades the hard blocker when the sweep itself
+ *   also found nothing (`result.positions.length === 0`) - an acknowledgement never overrides a
+ *   position the sweep actually named, confirmed or not.
  */
 export function assessDefiPositionsGate(
   result: DefiPositionsResult,
   now: Date = new Date(),
-  trustlineCount?: number
+  trustlineCount?: number,
+  userVerifiedNoPositions = false
 ): PlanBlocker[] {
   const blockers: PlanBlocker[] = [];
 
@@ -118,6 +160,8 @@ export function assessDefiPositionsGate(
       blockers.push(confirmedButDetectedBlocker(result));
     } else if (result.source === DEGRADED_SOURCE_CONFIRMED && trustlineCount === 0) {
       blockers.push(confirmedEmptyNoTrustlinesBlocker(result));
+    } else if (userVerifiedNoPositions && result.positions.length === 0) {
+      blockers.push(userVerifiedBlocker(result));
     } else {
       blockers.push(unavailableBlocker(result));
     }
