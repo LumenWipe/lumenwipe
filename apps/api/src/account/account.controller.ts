@@ -74,17 +74,21 @@ export class AccountController {
     }
 
     try {
-      // Soroban token discovery's recent-events scan is its slowest source by far (up to ~14s
-      // of its own reserved budget across 6 ledger-range chunks) and exists only to catch a
-      // token that stellar.expert has not indexed yet, is not in the bundled lists, is not a
-      // detected position's payout, and the user did not type in by hand - a narrow gap next to
-      // what the faster sources already cover. Disabled here so the first analysis of an
-      // account favors stellar.expert (answers in a few hundred ms or times out at 3s) over a
-      // slow scan for that gap; a close round already made this same call (see
-      // CLOSE_ROUND_TOKENS_BUDGET_MS in close-api/read-account.ts).
+      // The analysis is where discovery happens, so the event scan runs here. The gap it covers
+      // is not the narrow one this comment used to describe: measured against mainnet on
+      // 2026-09-17, stellar.expert's per-account listing returns only tokens its own indexer
+      // knows - an account holding a Soroban-native token outside every curated list comes back
+      // as if it held nothing, and the close would then leave that balance behind in silence.
+      // The scan is the only source that can find such a token, so paying for it here is the
+      // difference between a correct close and a quiet loss.
+      //
+      // Its cost is bounded by the two-pass shape in soroban-tokens.ts: a ~0.6s shallow window
+      // on every analysis, and the deeper sweep only for an account no other source could say
+      // anything about. The close round still does not scan (read-account.ts) - by then the
+      // tokens are known and it is re-confirming balances, not looking for more.
       return await getAccountState(address, network, {
         manualTokenCandidates,
-        scanTokenEvents: false,
+        scanTokenEvents: true,
       });
     } catch (err) {
       if (err instanceof HttpException) throw err;
