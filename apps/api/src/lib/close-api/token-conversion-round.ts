@@ -3,7 +3,6 @@ import {
   Address,
   TransactionBuilder,
   rpc as stellarRpc,
-  scValToNative,
   xdr,
   type Transaction,
 } from "@stellar/stellar-sdk";
@@ -19,6 +18,7 @@ import {
   xlmContractId,
   type ConversionDeps,
 } from "@/lib/soroswap/conversion-quotes";
+import { CONTRACT_ID, addressOf, bigOf, collectAccounts } from "@/lib/stellar/scval-read";
 import { formatTokenAmount } from "@/lib/utils/token-amounts";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import { TokenTransferBlockedError, liveTokenBalance } from "./token-transfer-round";
@@ -59,7 +59,6 @@ export interface TokenConversionRound {
 export const SWAP_FUNCTION = "swap_exact_tokens_for_tokens";
 /** Aggregator -> adapter -> router -> token.transfer is the deepest tree a route needs. */
 const MAX_AUTH_DEPTH = 4;
-const CONTRACT_ID = /^C[A-Z2-7]{55}$/;
 /** Applied to every expiry a swap carries - the transaction's own timeBounds and the contract-level
  *  `deadline` argument alike - so a swap offered for signing has room to actually be signed. */
 const SIGNING_BUFFER_SECONDS = 60n;
@@ -72,25 +71,6 @@ export function defaultTokenConversionRoundDeps(
 
 function short(id: string): string {
   return `${id.slice(0, 4)}…${id.slice(-4)}`;
-}
-
-function addressOf(val: xdr.ScVal): string | null {
-  try {
-    return val.switch() === xdr.ScValType.scvAddress() ? Address.fromScVal(val).toString() : null;
-  } catch {
-    return null;
-  }
-}
-
-function bigOf(val: xdr.ScVal): bigint | null {
-  try {
-    const native: unknown = scValToNative(val);
-    if (typeof native === "bigint") return native;
-    if (typeof native === "number" && Number.isSafeInteger(native)) return BigInt(native);
-    return null;
-  } catch {
-    return null;
-  }
 }
 
 export interface ExpectedConversion {
@@ -215,33 +195,6 @@ function walkAuth(
   }
   for (const sub of node.subInvocations()) moved += walkAuth(sub, expected, depth + 1);
   return moved;
-}
-
-function collectAccounts(val: xdr.ScVal, account: string): void {
-  switch (val.switch()) {
-    case xdr.ScValType.scvAddress(): {
-      const addr = val.address();
-      if (addr.switch() === xdr.ScAddressType.scAddressTypeAccount()) {
-        if (Address.fromScAddress(addr).toString() !== account) {
-          throw new Error("the swap names an account other than the one being closed");
-        }
-      } else if (addr.switch() !== xdr.ScAddressType.scAddressTypeContract()) {
-        throw new Error("the swap names an address form that cannot be verified");
-      }
-      return;
-    }
-    case xdr.ScValType.scvVec():
-      for (const v of val.vec() ?? []) collectAccounts(v, account);
-      return;
-    case xdr.ScValType.scvMap():
-      for (const entry of val.map() ?? []) {
-        collectAccounts(entry.key(), account);
-        collectAccounts(entry.val(), account);
-      }
-      return;
-    default:
-      return;
-  }
 }
 
 /**
