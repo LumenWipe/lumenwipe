@@ -489,6 +489,7 @@ export async function buildTokenConversionRound(
         sourceSequence: sequence,
         validUntilLedger,
         covers: ["HANDLE_ASSETS"],
+        coversTargets: [token],
         intent: {
           ...intentFromXdr(xdrBase64, passphrase),
           summary:

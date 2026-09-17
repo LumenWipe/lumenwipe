@@ -106,6 +106,9 @@ export async function buildExitRound(
         sourceSequence: sequence,
         validUntilLedger,
         covers: ["EXIT_POSITIONS"],
+        // One exit target per transaction: a Soroban call cannot share one. Naming it lets the
+        // client mark this exit and no other.
+        coversTargets: [target.contract],
         intent: {
           ...intentFromXdr(xdr, passphrase),
           summary: result.next.step.description,

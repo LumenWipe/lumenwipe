@@ -610,3 +610,77 @@ test("setAccountState still prunes an asset in neither trustlines nor claimable 
 
   expect(useDemolishStore.getState().assetDispositions[gone]).toBeUndefined();
 });
+
+/**
+ * A close can hold several steps of one type - three DeFi exits, two token transfers - and each
+ * is its own transaction. Marking by type alone confirmed all of them off the first transaction
+ * and stamped them all with its hash, so a real close of Blend, Aquarius and Soroswap positions
+ * showed three green exits with one hash while two of its five transactions were missing from
+ * the receipt entirely.
+ */
+describe("markCoveredConfirmed with per-step targets", () => {
+  const POOL_A = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
+  const POOL_B = "CCSXYUVLYALKJGIIYMGYLZI447VS6TDWFTVDL43B4IKK2WERHLWUVCRC";
+  const PAIR = "CDH4NEG6TAII2AXGJY52WSMMOGCPMFIQBBH245ATW2TIZ7MBYM23YOAR";
+
+  function exitStep(index: number, contract: string): PlannedStep {
+    return {
+      ...step(index),
+      type: "EXIT_POSITIONS",
+      title: `Exit ${contract}`,
+      affectedContract: contract,
+    };
+  }
+
+  test("confirms only the exit the transaction was for", () => {
+    useDemolishStore
+      .getState()
+      .setPlan([exitStep(0, POOL_A), exitStep(1, POOL_B), exitStep(2, PAIR)]);
+
+    useDemolishStore.getState().markCoveredConfirmed(["EXIT_POSITIONS"], "hash-a", false, [POOL_A]);
+
+    const plan = useDemolishStore.getState().executionPlan;
+    expect(plan.map((s) => s.status)).toEqual(["confirmed", "pending", "pending"]);
+    expect(plan.map((s) => s.txHash)).toEqual(["hash-a", null, null]);
+  });
+
+  test("each exit ends up with its own hash", () => {
+    useDemolishStore
+      .getState()
+      .setPlan([exitStep(0, POOL_A), exitStep(1, POOL_B), exitStep(2, PAIR)]);
+
+    const store = useDemolishStore.getState();
+    store.markCoveredConfirmed(["EXIT_POSITIONS"], "hash-a", false, [POOL_A]);
+    store.markCoveredConfirmed(["EXIT_POSITIONS"], "hash-b", false, [POOL_B]);
+    store.markCoveredConfirmed(["EXIT_POSITIONS"], "hash-c", false, [PAIR]);
+
+    const plan = useDemolishStore.getState().executionPlan;
+    expect(plan.every((s) => s.status === "confirmed")).toBe(true);
+    expect(plan.map((s) => s.txHash)).toEqual(["hash-a", "hash-b", "hash-c"]);
+  });
+
+  test("a token transfer is matched on the asset it names", () => {
+    const token = "CCZGLAUBDKJSQK72QOZHVU7CUWKW45OZWYWCLL27AEK74U2OIBK6LXF2";
+    const other = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
+    useDemolishStore.getState().setPlan([
+      { ...step(0), type: "HANDLE_ASSETS", affectedAsset: token },
+      { ...step(1), type: "HANDLE_ASSETS", affectedAsset: other },
+    ]);
+
+    useDemolishStore.getState().markCoveredConfirmed(["HANDLE_ASSETS"], "hash-t", false, [token]);
+
+    expect(useDemolishStore.getState().executionPlan.map((s) => s.status)).toEqual([
+      "confirmed",
+      "pending",
+    ]);
+  });
+
+  test("without targets every step of the type is still confirmed", () => {
+    useDemolishStore.getState().setPlan([exitStep(0, POOL_A), exitStep(1, POOL_B)]);
+
+    useDemolishStore.getState().markCoveredConfirmed(["EXIT_POSITIONS"], "hash-all");
+
+    const plan = useDemolishStore.getState().executionPlan;
+    expect(plan.every((s) => s.status === "confirmed" && s.txHash === "hash-all")).toBe(true);
+  });
+});

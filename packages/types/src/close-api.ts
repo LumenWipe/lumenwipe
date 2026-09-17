@@ -195,6 +195,16 @@ export interface CloseTransaction {
   validUntilLedger: number;
   covers: StepType[];
   /**
+   * Which of the covered steps this transaction is for, by the same identity a plan step carries
+   * (`PlannedStep.affectedContract` for an exit, `affectedAsset` for an asset or token). `covers`
+   * names step TYPES, and a close can hold several steps of one type - three DeFi exits, two
+   * token transfers - so a client marking by type alone marked them all done off one transaction
+   * and stamped them all with its hash. The permanent receipt then listed one exit where three
+   * had run. Absent when the transaction covers every step of the types it names, which is the
+   * only shape an older client ever saw.
+   */
+  coversTargets?: string[];
+  /**
    * True when the account cannot pay this transaction's own fee without dropping below its
    * reserve (architecture.md §8.1): the API built it with its own fee at zero, and the client
    * must route the signed envelope through `POST /:network/fee-bump/sponsor` before submitting

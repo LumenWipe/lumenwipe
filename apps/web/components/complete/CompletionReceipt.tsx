@@ -229,7 +229,8 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
     // someone is most likely to need to look up later.
     const { handledAssets, removedTrustlines } = receiptAssetSummary(
       account,
-      claimableBalanceSelections
+      claimableBalanceSelections,
+      Object.keys(assetDispositions)
     );
     // Soroban tokens sit in the same list: the receipt is the one record of a balance left behind.
     const handledBalances = [...handledAssets, ...receiptTokenSummary(account)];

@@ -90,7 +90,14 @@ interface DemolishState {
    * confirmation lands multiple steps at once. `sponsoredFee` records that a dedicated sponsor
    * account, not the user's, paid this round's fee - the user's own account paid "0".
    */
-  markCoveredConfirmed: (coveredTypes: StepType[], txHash: string, sponsoredFee?: boolean) => void;
+  markCoveredConfirmed: (
+    coveredTypes: StepType[],
+    txHash: string,
+    sponsoredFee?: boolean,
+    /** Which steps of those types this transaction was for, by `affectedContract` (an exit) or
+     *  `affectedAsset` (an asset or token). Omitted when it covers every step of those types. */
+    coversTargets?: string[]
+  ) => void;
   markStepFailed: (index: number, error: string) => void;
   setLastError: (error: string | null) => void;
   initSession: () => void;
@@ -267,12 +274,23 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       phase: "STEP_CONFIRMED",
     })),
 
-  markCoveredConfirmed: (coveredTypes, txHash, sponsoredFee) =>
+  markCoveredConfirmed: (coveredTypes, txHash, sponsoredFee, coversTargets) =>
     set((state) => {
       const covered = new Set<StepType>(coveredTypes);
+      // A close can hold several steps of one type - three DeFi exits, two token transfers - and
+      // each is its own transaction. Marking by type alone confirmed all of them off the first
+      // one and stamped them all with its hash, so the receipt reported one exit where three had
+      // run. When the API names which step a transaction was for, only that step is marked.
+      const targets = coversTargets && coversTargets.length > 0 ? new Set(coversTargets) : null;
+      const isFor = (step: PlannedStep): boolean => {
+        if (!covered.has(step.type)) return false;
+        if (!targets) return true;
+        const identity = step.affectedContract ?? step.affectedAsset;
+        return identity !== undefined && targets.has(identity);
+      };
       return {
         executionPlan: state.executionPlan.map((s) =>
-          covered.has(s.type) && s.status !== "confirmed"
+          isFor(s) && s.status !== "confirmed"
             ? {
                 ...s,
                 status: "confirmed",
