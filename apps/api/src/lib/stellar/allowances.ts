@@ -154,9 +154,20 @@ function decodeExpirationLedger(val: xdr.ScVal): number | null {
   }
 }
 
+/** Both shapes an `approve` event comes in, because the RPC matches topics by exact segment
+ *  count: a SEP-41 token emits `[approve, from, spender]`, while a Stellar Asset Contract appends
+ *  the asset it wraps as a fourth topic - its SEP-11 name, `"CODE:ISSUER"` or `"native"`. Filtering on
+ *  the three-segment shape alone silently misses every approval granted on a classic asset's SAC -
+ *  which is most of them - so both are registered, the same way `creditTopicFilters` in
+ *  soroban-tokens.ts already registers both shapes of `transfer`. Five patterns is the RPC's limit
+ *  per filter. The spender stays at topic index 2 in either shape, so decoding is unaffected. */
 function approveTopicFilter(address: string): string[][] {
   const who = new Address(address).toScVal().toXDR("base64");
-  return [[xdr.ScVal.scvSymbol("approve").toXDR("base64"), who, "*"]];
+  const approve = xdr.ScVal.scvSymbol("approve").toXDR("base64");
+  return [
+    [approve, who, "*"],
+    [approve, who, "*", "*"],
+  ];
 }
 
 interface ApprovePair {
