@@ -1,6 +1,8 @@
 ---
-title: On-chain monitoring plan
-description: What LumenWipe watches on the Stellar ledger, which threat each monitor traces back to, and what happens when one fires.
+title: "On-chain monitoring plan"
+sidebarTitle: "Monitoring plan"
+description: "What LumenWipe watches on the Stellar ledger, which threat each monitor traces back to, and what happens when one fires."
+icon: "eye"
 ---
 
 Built from the SCF [On-Chain Monitoring Plan Template (Builders)](https://developers.stellar.org/docs/build/security-docs/monitoring/monitoring-template-builders),
