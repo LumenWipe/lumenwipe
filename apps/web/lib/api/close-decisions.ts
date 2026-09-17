@@ -79,6 +79,20 @@ export function defiPositionsAcknowledgementToDecisions(
   return [{ id: defiPositionsDecisionId(source), choice: DEFI_POSITIONS_ACK_CHOICE }];
 }
 
+/**
+ * Names the Soroban tokens the analysis discovered, so the plan can see them too.
+ *
+ * The close round does not scan for tokens - by design, it re-confirms what is already known -
+ * and its own candidate sources are the bundled lists, the account's positions, and whatever it
+ * is told here. A token the analysis found through the event scan, and that no list knows about,
+ * is therefore invisible to the plan unless it travels with the request: the page would show a
+ * balance the plan had no step for, and say the plan "could not be loaded". The API reads these
+ * ids back through `tokenContractsFromAnswers`, which wants the id and nothing else.
+ */
+export function discoveredTokensToDecisions(contracts: readonly string[]): DecisionAnswer[] {
+  return contracts.map((contract) => ({ id: `token:${contract}`, choice: "" }));
+}
+
 /** Must match the API's `TRANSFER_CHOICE`. */
 const TRANSFER_CHOICE = "transfer_to_account";
 

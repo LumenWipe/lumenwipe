@@ -14,6 +14,7 @@ import {
   claimAnswersKey,
   claimableSelectionsToDecisions,
   defiPositionsAcknowledgementToDecisions,
+  discoveredTokensToDecisions,
 } from "@/lib/api/close-decisions";
 import { loadServedRegistry } from "@/lib/exchange-registry";
 import {
@@ -113,6 +114,13 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
             {
               source: effectiveSource,
               decisions: [
+                // The tokens this analysis found go with the request. The close round has no
+                // scan of its own, so a token no bundled list knows about - the whole point of
+                // the analysis scanning for it - would otherwise be invisible to the plan, and
+                // the page would show a balance it had no step for.
+                ...discoveredTokensToDecisions(
+                  (account?.sorobanTokens?.tokens ?? []).map((t) => t.contract)
+                ),
                 ...claimableSelectionsToDecisions(answers),
                 ...defiPositionsAcknowledgementToDecisions(
                   defiPositionsAcknowledgedFor,

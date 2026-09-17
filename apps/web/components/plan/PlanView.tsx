@@ -14,6 +14,7 @@ import {
   claimableSelectionsToDecisions,
   destinationAcknowledgementToDecisions,
   dispositionsToDecisions,
+  discoveredTokensToDecisions,
 } from "@/lib/api/close-decisions";
 import { apiStepsToPlannedSteps } from "@/lib/api/plan-adapters";
 import { goToReview } from "@/lib/plan/confirm-plan";
@@ -278,6 +279,9 @@ export default function PlanView({
       // and the user's asset + claimable-balance decisions. Execution itself re-requests the
       // transactions.
       const decisions = [
+        ...discoveredTokensToDecisions(
+          (account.sorobanTokens?.tokens ?? []).map((tk) => tk.contract)
+        ),
         ...dispositionsToDecisions(
           useDemolishStore.getState().assetDispositions,
           useDemolishStore.getState().transferDestinations,
