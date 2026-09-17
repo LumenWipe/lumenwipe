@@ -540,7 +540,16 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         // API pins them - the whole authorization tree must invoke only the aggregator, its
         // adapters, the router, and the token itself - so this is the residual trust documented
         // in architecture.md §10.1, bounded by the floor above.
-        if (expected.conversionContracts.includes(op.contract)) {
+        //
+        // Claimed by the FUNCTION as well as the contract, not by the contract alone. Soroswap's
+        // router serves both roles: a token conversion enters through it, and a Soroswap LP exit
+        // calls `remove_liquidity` on it. Matching on the contract alone made the swap rules the
+        // only rules that could ever apply to it, so every real Soroswap exit was refused as a
+        // malformed swap and no such position could be closed from the browser at all. An
+        // operation that is not a swap falls through to the exit branch below, which pins the
+        // contract to a position the analysis found and the function to the one that leaves that
+        // protocol - so nothing is admitted here that was not admitted before.
+        if (expected.conversionContracts.includes(op.contract) && op.function === SWAP_FUNCTION) {
           if (intent.operations.length !== 1) {
             throw new VerificationError("A swap must be the only operation in its transaction.");
           }
@@ -552,11 +561,6 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
           if (op.source !== expected.source) {
             throw new VerificationError(
               "A swap would act for an account other than the one being closed."
-            );
-          }
-          if (op.function !== SWAP_FUNCTION) {
-            throw new VerificationError(
-              "A swap transaction would call something other than a swap."
             );
           }
           const swap = readSwapArgs(op.args);
