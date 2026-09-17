@@ -62,6 +62,7 @@ import {
   defiPositionsDecisionId,
   isDefiPositionsAcknowledged,
 } from "@/lib/close-api/decisions";
+import { ARRIVING_ASSET_PROBE_AMOUNT, assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
 import { DEFI_POSITIONS_UNAVAILABLE_CODE } from "@/lib/defi-positions/positions-gate";
 import { assemblePlanResponse, computePlanHash } from "@/lib/close-api/plan-response";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
@@ -165,6 +166,13 @@ export class CloseController {
       }
       for (const [asset, amount] of claimedPerAsset) {
         if (!pricedByAsset.has(asset)) pricedByAsset.set(asset, amount);
+      }
+      // An asset an exit will pay in holds nothing yet, so it is priced at a nominal unit: this
+      // is the "is there a market at all" gate that decides which options the card offers, and
+      // the amount that actually arrives is re-quoted at build time anyway.
+      for (const asset of assetsArrivingFromExits(accountState)) {
+        if (!pricedByAsset.has(asset))
+          pricedByAsset.set(asset, Number(ARRIVING_ASSET_PROBE_AMOUNT));
       }
       const pricedAssets = [...pricedByAsset.entries()].map(([asset, amount]) => ({
         asset,
@@ -475,6 +483,10 @@ export class CloseController {
       const assetsNeedingDisposition = new Set([
         ...accountState.trustlines.filter((tl) => Number(tl.balance) > 0).map((tl) => tl.asset),
         ...txClaimedPerAsset.keys(),
+        // And the ones a position's exit will pay in. Same dead-end as the claims above, reached
+        // from the other side: the trustline is empty at round 1, the exit fills it, and round 2
+        // refused to build for an answer this endpoint had never asked for.
+        ...assetsArrivingFromExits(accountState),
       ]);
       // A Soroban token balance does not stop the merge, which is exactly why it must be
       // answered: without a decision it would be left behind in silence.

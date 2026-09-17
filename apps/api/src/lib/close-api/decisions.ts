@@ -8,6 +8,7 @@ import type {
 } from "@lumenwipe/types";
 import { StrKey } from "@stellar/stellar-sdk";
 import { lookupExchange } from "@/lib/exchange-registry";
+import { assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
 
 /**
  * Stable id for the unrecognized-destination acknowledgement, scoped to the address it is
@@ -342,6 +343,10 @@ export function deriveDecisionPoints(
    *  the trustline already added and the balance already claimed. */
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {}
 ): DecisionPoint[] {
+  // The same dead-end, reached from the other direction: an exit pays an asset into a trustline
+  // that is empty today, so neither the balance rule nor the claim rule asks about it, and the
+  // round after the exit refuses to build for an answer nobody was shown.
+  const arrivingFromExits = assetsArrivingFromExits(account);
   // What each claim will add, summed per asset - the same will-it-be-claimed rule buildPlan
   // uses: a currently-claimable balance is claimed unless explicitly forfeited (claiming is the
   // opt-out default), and one the account cannot claim yet is claimed only when the caller
@@ -367,6 +372,9 @@ export function deriveDecisionPoints(
     if (!pendingByAsset.has(asset)) {
       pendingByAsset.set(asset, { asset, balance: amount.toFixed(7) });
     }
+  }
+  for (const asset of arrivingFromExits) {
+    if (!pendingByAsset.has(asset)) pendingByAsset.set(asset, { asset, balance: "0" });
   }
   const pending = [...pendingByAsset.values()];
 
@@ -399,7 +407,14 @@ export function deriveDecisionPoints(
     return {
       id: assetDecisionId(tl.asset),
       type: "asset_disposition" as const,
-      subject: { kind: "trustline", asset: tl.asset, balance: tl.balance, convertible },
+      subject: {
+        kind: "trustline",
+        asset: tl.asset,
+        balance: tl.balance,
+        convertible,
+        /** True when nothing holds this asset yet and the balance is what an exit will pay in. */
+        arrivesFromExit: Number(tl.balance) === 0 && arrivingFromExits.has(tl.asset),
+      },
       options,
       default: convertible ? "convert_to_xlm" : "return_to_issuer",
       required: true,
