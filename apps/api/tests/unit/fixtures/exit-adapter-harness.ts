@@ -298,11 +298,22 @@ export function describeExitAdapterInvariants<P extends DefiPosition, L>(
     }
 
     test("the same state yields the same plan and the same bytes", async () => {
-      const first = await run(adapter, healthy, ctx);
-      const second = await run(adapter, healthy, ctx);
-      const shape = (r: ExitRunResult): string =>
-        JSON.stringify({ plan: r.plan, xdr: r.next?.simulation.txXdr ?? null });
-      expect(shape(second)).toBe(shape(first));
+      // The builder stamps a timebound from the wall clock (`setTimeout` in run-exit.ts, which
+      // stellar-sdk resolves as `Math.floor(Date.now() / 1000) + seconds`), so two builds that
+      // straddle a second boundary differ by one byte for a reason that has nothing to do with
+      // determinism. That made this test flaky on CI, where the runner is slow enough to cross
+      // the boundary. Freeze the clock so it measures what it claims to.
+      const realNow = Date.now;
+      Date.now = () => 1_767_225_600_000;
+      try {
+        const first = await run(adapter, healthy, ctx);
+        const second = await run(adapter, healthy, ctx);
+        const shape = (r: ExitRunResult): string =>
+          JSON.stringify({ plan: r.plan, xdr: r.next?.simulation.txXdr ?? null });
+        expect(shape(second)).toBe(shape(first));
+      } finally {
+        Date.now = realNow;
+      }
     });
 
     if (input.indebted) {

@@ -220,7 +220,7 @@ test("discoverAllowances › a getEvents failure is reported in coverage but the
   expect(result.allowances[0]!.spenderProtocol).toBe("soroswap");
 });
 
-test("discoverAllowances › more candidates than the cap allows produces a capped warning and keeps events over registry guesses", async () => {
+test("discoverAllowances › registry guesses stop at the overall cap instead of overflowing it, so a real approval never triggers a capped warning", async () => {
   const manyRegistryEntries: ContractRegistryEntry[] = Array.from({ length: 10 }, (_, i) =>
     registryEntry({ address: contractAddress(i) })
   );
@@ -246,20 +246,64 @@ test("discoverAllowances › more candidates than the cap allows produces a capp
 
   const result = await discoverAllowances(OWNER, "testnet", deps);
 
-  // 10 registry entries x 10 tokens = 100 registry pairs, well past the 50-pair cap.
-  expect(result.warnings.some((w) => w.code === "allowances_capped")).toBe(true);
-  // The one real, event-discovered allowance always survives the cap regardless of how many
-  // registry guesses compete for the remaining slots.
+  // 10 registry entries x 10 tokens is 100 possible guesses, far more than the cap. The source
+  // now stops once the list is full rather than filling its own quota and pushing the total
+  // past the cut - which used to discard exactly as many guesses as the account had real
+  // approvals, and warn about it as if those approvals might have been missed.
+  expect(result.warnings.some((w) => w.code === "allowances_capped")).toBe(false);
+  // The one real, event-discovered allowance always survives regardless of how many registry
+  // guesses compete for the remaining slots.
   expect(result.allowances.some((a) => a.token === TOKEN && a.spender === SPENDER)).toBe(true);
 });
 
-test("discoverAllowances › no candidates at all (empty registry, no events) returns cleanly with nothing to report", async () => {
+test("discoverAllowances › an event scan that stops at its candidate cap says so, since the pairs it drops are the newest ones", async () => {
+  const pairs = Array.from({ length: 60 }, (_, i) => ({
+    token: TOKEN,
+    spender: contractAddress(i),
+    ledger: 999_000 + i,
+    amount: 1n,
+    expirationLedger: 1_100_000,
+  }));
+  const deps = fakeAllowancesDeps({
+    world: {
+      allowances: [{ token: TOKEN, spender: contractAddress(0), amount: 1n, symbol: "XTAR" }],
+      events: { "996001-1000000": pairs },
+    },
+  });
+
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+
+  const warning = result.warnings.find((w) => w.code === "allowances_scan_incomplete");
+  expect(warning).toBeDefined();
+  expect(warning!.message).toContain("50 candidate pairs");
+  expect(result.coverage.find((c) => c.source === "events")).toMatchObject({ status: "ok" });
+});
+
+test("discoverAllowances › a failed source is stated as a warning, not only in coverage", async () => {
+  const deps = fakeAllowancesDeps({
+    world: {
+      allowances: [],
+      events: { "996001-1000000": { error: "getEvents unavailable" } },
+    },
+  });
+
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+
+  // Coverage is a machine-readable footnote; a caller rendering only `warnings` would otherwise
+  // show an empty list as an affirmative "this account has approved nobody".
+  expect(result.warnings.some((w) => w.code === "allowances_source_failed")).toBe(true);
+});
+
+test("discoverAllowances › a source that was never run says so in warnings, not only in coverage", async () => {
   const deps = fakeAllowancesDeps({ world: { allowances: [] } });
 
   const result = await discoverAllowances(OWNER, "testnet", deps);
 
   expect(result.allowances).toEqual([]);
   expect(result.coverage.find((c) => c.source === "registry")).toMatchObject({ status: "skipped" });
+  // An empty list from a source that never ran is not "this account has approved nobody", and a
+  // consumer reading only `warnings` has to be able to tell the difference.
+  expect(result.warnings.some((w) => w.code === "allowances_source_skipped")).toBe(true);
 });
 
 test("discoverAllowances › two approve events landing in the same ledger break the tie by transaction/operation order, not array order", async () => {
@@ -380,4 +424,67 @@ test("discoverAllowances › the event scan asks for both approve topic shapes, 
     expect(pattern[1]).toBe(owner);
     expect(pattern.slice(2).every((segment) => segment === "*")).toBe(true);
   }
+});
+
+test("discoverAllowances › a registry cross-product the budget could not finish is recorded in coverage, without a warning about guesses", async () => {
+  const manyRegistryEntries: ContractRegistryEntry[] = Array.from({ length: 30 }, (_, i) =>
+    registryEntry({ address: contractAddress(i) })
+  );
+  const manyTokens = Array.from({ length: 4 }, (_, i) => contractAddress(100 + i));
+  const deps = fakeAllowancesDeps({
+    world: { allowances: [] },
+    registryEntries: manyRegistryEntries,
+    knownTokens: manyTokens,
+  });
+
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+
+  const registry = result.coverage.find((c) => c.source === "registry");
+  // 30 entries x 4 tokens is 120 combinations against a 50-pair budget: the answer is honest
+  // about how much of its own guessing it got through...
+  expect(registry).toMatchObject({ status: "ok" });
+  expect(registry!.detail).toContain("of 120");
+  // ...but it does not warn, because these are guesses, not approvals the account is known to
+  // have granted. Saying "N were not checked" reads as "we may have missed yours".
+  expect(result.warnings.some((w) => w.code === "allowances_scan_incomplete")).toBe(false);
+});
+
+test("discoverAllowances › the registry budget is spread across entries, so a later protocol still gets probed", async () => {
+  const entries: ContractRegistryEntry[] = Array.from({ length: 40 }, (_, i) =>
+    registryEntry({ address: contractAddress(i) })
+  );
+  const tokens = Array.from({ length: 3 }, (_, i) => contractAddress(100 + i));
+  const last = contractAddress(39);
+  const deps = fakeAllowancesDeps({
+    world: {
+      // The only live allowance sits on the LAST registry entry. Entry-major iteration would
+      // spend the whole budget on the first entries and never reach it.
+      allowances: [{ token: contractAddress(100), spender: last, amount: 7n, symbol: "XTAR" }],
+    },
+    registryEntries: entries,
+    knownTokens: tokens,
+  });
+
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+
+  expect(result.allowances.some((a) => a.spender === last)).toBe(true);
+});
+
+test("discoverAllowances › a scan that stopped on its time budget reads as a sentence, with the raw detail in parentheses", async () => {
+  const deps = fakeAllowancesDeps({
+    world: {
+      allowances: [],
+      events: { "996001-1000000": { error: "time budget" } },
+    },
+  });
+
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+
+  const warning = result.warnings.find((w) => w.code === "allowances_source_failed");
+  expect(warning).toBeDefined();
+  // The detail is a diagnostic string, not a clause: interpolating it mid-sentence produced
+  // "The approval event scan time budget, so ...".
+  expect(warning!.message).toBe(
+    "The approval event scan did not finish (time budget), so this list may be incomplete."
+  );
 });
