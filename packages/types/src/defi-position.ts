@@ -6,7 +6,7 @@ import type { Network } from "./network";
  * adapter rather than represented here, since the type system should not claim LumenWipe can act
  * on a protocol it has no exit path for.
  */
-export type DefiProtocol = "blend" | "aquarius" | "soroswap" | "phoenix" | "fxdao";
+export type DefiProtocol = "blend" | "aquarius" | "soroswap" | "phoenix" | "fxdao" | "xbull";
 
 /**
  * Lowercased from OctoPos's own SUPPLY/BORROW/LP/STAKE tags. FxDAO's COLLATERAL+BORROW pair is

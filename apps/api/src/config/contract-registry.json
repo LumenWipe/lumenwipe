@@ -287,6 +287,17 @@
       "label": "Soroswap aggregator adapter for Aquarius pools (mainnet) - reached only through the aggregator",
       "verifiedLive": true,
       "verifiedBy": "2026-09-08: readLiveWasmHash over RPC (mainnet.sorobanrpc.com) matched the hash published in soroswap/aggregator public/mainnet.contracts.json"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "xbull",
+      "kind": "router",
+      "address": "CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT",
+      "wasmHash": "c2b3ec57fbd45d5bade9df2ad30c464d1588cead18495a5ce327a98c45c02219",
+      "version": "v1",
+      "label": "xBull PathPayment swap router (mainnet, swap-api.xbull.io), strict_send only",
+      "verifiedLive": true,
+      "verifiedBy": "2026-09-17: readLiveWasmHash over RPC (mainnet.sorobanrpc.com) against CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT (xBullCorp/swap-kit SwapContract.MAINNET)"
     }
   ]
 }

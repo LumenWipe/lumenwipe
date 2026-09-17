@@ -20,6 +20,10 @@ const PROTOCOL_LABEL: Record<DefiProtocol, string> = {
   soroswap: "Soroswap",
   phoenix: "Phoenix",
   fxdao: "FxDAO",
+  // xBull is a swap router (contract-registry only), never a DeFi position to exit; this label
+  // exists only so this Record stays exhaustive over DefiProtocol, exactly like PROTOCOLS in
+  // contract-registry/index.ts.
+  xbull: "xBull",
 };
 
 function shortContract(address: string): string {
