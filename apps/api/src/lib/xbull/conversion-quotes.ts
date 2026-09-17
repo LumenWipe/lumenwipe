@@ -11,25 +11,37 @@ import type { TokenConversionQuote } from "@/lib/soroswap/conversion-quotes";
  */
 
 export const XBULL_QUOTE_TIMEOUT_MS = 8_000;
+const DEFAULT_XBULL_API_URL = "https://swap-api.xbull.io";
 
 function readEnv(): { baseUrl: string; enabled: boolean } {
   return {
-    baseUrl: process.env.XBULL_SWAP_API_URL?.trim() || "https://swap-api.xbull.io",
+    baseUrl: process.env.XBULL_SWAP_API_URL?.trim() || DEFAULT_XBULL_API_URL,
     enabled: process.env.XBULL_CONVERSION_ENABLED === "true",
   };
 }
 
+/** Pure function of an env-shaped object, never `process.env` itself: this is what a test
+ *  exercises directly, without needing a real environment variable set. */
 export function isXBullEnabled(env: { enabled: boolean } = readEnv()): boolean {
   return env.enabled;
 }
 
 export interface XBullConversionDeps {
-  fetch: typeof fetch;
+  /** Null when xBull is disabled (the flag is off): every quote/build call reads this, not
+   *  `process.env`, directly, mirroring `soroswap/conversion-quotes.ts`'s `sdk: ConversionSdk |
+   *  null` - a test injects a real function here regardless of the real environment. */
+  fetch: typeof fetch | null;
+  baseUrl: string;
   now: () => number;
 }
 
 export function defaultXBullConversionDeps(): XBullConversionDeps {
-  return { fetch: globalThis.fetch, now: () => Date.now() };
+  const env = readEnv();
+  return {
+    fetch: isXBullEnabled(env) ? globalThis.fetch : null,
+    baseUrl: env.baseUrl,
+    now: () => Date.now(),
+  };
 }
 
 interface XBullQuoteResponse {
@@ -53,15 +65,13 @@ export async function quoteTokenToXlmViaXBull(
   network: Network,
   deps: XBullConversionDeps = defaultXBullConversionDeps()
 ): Promise<TokenConversionQuote | null> {
-  if (network === "testnet" || amountIn <= 0n) return null;
+  if (!deps.fetch || network === "testnet" || amountIn <= 0n) return null;
   const assetOut = xlmContractId(network);
   if (token === assetOut) return null;
-  const env = readEnv();
-  if (!isXBullEnabled(env)) return null;
 
   let raw: XBullQuoteResponse;
   try {
-    const url = new URL("/swaps/quote", env.baseUrl);
+    const url = new URL("/swaps/quote", deps.baseUrl);
     url.searchParams.set("fromAsset", token);
     url.searchParams.set("toAsset", assetOut);
     url.searchParams.set("amount", amountIn.toString());
@@ -99,9 +109,9 @@ export async function fetchXBullSwapArgs(
   minToReceive: bigint,
   deps: XBullConversionDeps = defaultXBullConversionDeps()
 ): Promise<string | null> {
-  const env = readEnv();
+  if (!deps.fetch) return null;
   try {
-    const url = new URL("/swaps/strict-send", env.baseUrl);
+    const url = new URL("/swaps/strict-send", deps.baseUrl);
     url.searchParams.set("route", route);
     url.searchParams.set("from", account);
     url.searchParams.set("to", account);

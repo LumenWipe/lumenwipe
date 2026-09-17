@@ -11,7 +11,11 @@ function fakeFetch(status: number, body: unknown): typeof fetch {
     new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
 }
 
-const deps = (fetchImpl: typeof fetch) => ({ fetch: fetchImpl, now: () => 1_700_000_000_000 });
+const deps = (fetchImpl: typeof fetch | null) => ({
+  fetch: fetchImpl,
+  baseUrl: "https://swap-api.xbull.io",
+  now: () => 1_700_000_000_000,
+});
 
 test("a 200 quote becomes a conversion with our own floor under it, never the API's own fee-adjusted figure", async () => {
   const fetchImpl = fakeFetch(200, {
@@ -70,6 +74,10 @@ test("a non-200, a network error, zero amount, the XLM asset itself, or a mismat
 test("disabled unless the flag is on", () => {
   expect(isXBullEnabled({ enabled: false })).toBe(false);
   expect(isXBullEnabled({ enabled: true })).toBe(true);
+});
+
+test("a null deps.fetch (the flag off) is always null, on any network, without ever being called", async () => {
+  expect(await quoteTokenToXlmViaXBull(TOKEN, 1n, "mainnet", deps(null))).toBeNull();
 });
 
 test("fetchXBullSwapArgs returns the contractArgsXDR the API names, null on any non-200 or malformed body", async () => {
