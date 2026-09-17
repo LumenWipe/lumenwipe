@@ -4,7 +4,7 @@
  * expiration ledger, which SEP-41's `allowance()` cannot return, comes from the event.
  */
 import { expect, test } from "bun:test";
-import { StrKey } from "@stellar/stellar-sdk";
+import { Address, StrKey, xdr } from "@stellar/stellar-sdk";
 import { discoverAllowances } from "@/lib/stellar/allowances";
 import { fakeAllowancesDeps, OWNER } from "./fixtures/fake-allowances";
 import type { ContractRegistryEntry } from "@/lib/contract-registry";
@@ -369,8 +369,15 @@ test("discoverAllowances › the event scan asks for both approve topic shapes, 
   expect(topics).toBeDefined();
   // A SEP-41 token emits [approve, from, spender]; a SAC appends the asset as a fourth topic.
   // Asking only for the three-segment shape misses every approval on a classic asset's SAC.
-  expect(topics!.map((pattern) => pattern.length).sort()).toEqual([3, 4]);
+  expect(topics!.map((pattern) => pattern.length).sort((a, b) => a - b)).toEqual([3, 4]);
+  const approve = xdr.ScVal.scvSymbol("approve").toXDR("base64");
+  const owner = new Address(OWNER).toScVal().toXDR("base64");
   for (const pattern of topics!) {
-    expect(pattern[2]).toBe("*");
+    // Pinning the first two segments is what keeps the scan to THIS account's approvals: a
+    // pattern that wildcarded either one would still have the right lengths while matching
+    // other events, or other people's.
+    expect(pattern[0]).toBe(approve);
+    expect(pattern[1]).toBe(owner);
+    expect(pattern.slice(2).every((segment) => segment === "*")).toBe(true);
   }
 });

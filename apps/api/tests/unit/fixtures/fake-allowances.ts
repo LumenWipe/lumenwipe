@@ -75,19 +75,48 @@ export interface FakeEventRequest {
   topics?: string[][];
 }
 
-/** The real RPC matches an event against a topic pattern segment by segment, and a pattern only
- *  matches a topic list of the SAME length - `*` stands for exactly one segment, never for "the
- *  rest". Reproducing that here is the whole point of this stub: a filter built for the wrong
- *  number of segments must come back empty, the way it does against a live network, instead of
- *  quietly matching anyway and hiding the bug. */
-function topicsMatch(patterns: string[][] | undefined, topic: xdr.ScVal[]): boolean {
-  if (!patterns || patterns.length === 0) return true;
-  const encoded = topic.map((t) => t.toXDR("base64"));
-  return patterns.some(
-    (pattern) =>
-      pattern.length === encoded.length &&
-      pattern.every((segment, i) => segment === "*" || segment === encoded[i])
+/** The topics an `approve` event carries, in the one place both the matcher and the emitted event
+ *  read them from - they must not be able to drift apart, or the filter model stops describing
+ *  the events this stub returns. */
+function approveTopics(spender: string, sacAsset?: string): xdr.ScVal[] {
+  return [
+    xdr.ScVal.scvSymbol("approve"),
+    new Address(OWNER).toScVal(),
+    new Address(spender).toScVal(),
+    ...(sacAsset ? [xdr.ScVal.scvString(sacAsset)] : []),
+  ];
+}
+
+/** One topic pattern, matched the way the RPC matches it: `*` stands for exactly one segment, so
+ *  a pattern otherwise matches only a topic list of its own length, and `**` - legal only as the
+ *  last segment - stands for zero or more remaining ones. Modelling this is the whole point of
+ *  the stub: a filter built for the wrong number of segments must come back empty here, the way
+ *  it does against a live network, instead of quietly matching anyway and hiding the bug. */
+function patternMatches(pattern: string[], encoded: string[]): boolean {
+  if (pattern[pattern.length - 1] === "**") {
+    const head = pattern.slice(0, -1);
+    return (
+      encoded.length >= head.length &&
+      head.every((segment, i) => segment === "*" || segment === encoded[i])
+    );
+  }
+  return (
+    pattern.length === encoded.length &&
+    pattern.every((segment, i) => segment === "*" || segment === encoded[i])
   );
+}
+
+/** The RPC ORs across every pattern of every filter, so the stub collects them all rather than
+ *  reading `filters[0]` - splitting the same patterns across two filter objects is an equivalent
+ *  request and must behave identically here. */
+function topicsMatch(patterns: string[][], topic: xdr.ScVal[]): boolean {
+  if (patterns.length === 0) return true;
+  const encoded = topic.map((t) => t.toXDR("base64"));
+  return patterns.some((pattern) => patternMatches(pattern, encoded));
+}
+
+function requestedPatterns(filters: rpc.Api.EventFilter[] | undefined): string[][] {
+  return (filters ?? []).flatMap((f) => f.topics ?? []);
 }
 
 export function fakeAllowanceRpc(world: FakeAllowancesWorld): AllowanceRpc & {
@@ -120,7 +149,7 @@ export function fakeAllowanceRpc(world: FakeAllowancesWorld): AllowanceRpc & {
         startLedger: r.startLedger,
         endLedger: r.endLedger,
         cursor: r.cursor,
-        topics: r.filters?.[0]?.topics,
+        topics: requestedPatterns(r.filters),
       });
       let start = r.startLedger ?? 0;
       let end = r.endLedger ?? 0;
@@ -133,14 +162,9 @@ export function fakeAllowanceRpc(world: FakeAllowancesWorld): AllowanceRpc & {
       }
       const window = world.events?.[`${start}-${end}`];
       if (window && "error" in window) throw new Error(window.error);
-      const requested = r.filters?.[0]?.topics;
+      const patterns = requestedPatterns(r.filters);
       const all = (window ?? []).filter((e) =>
-        topicsMatch(requested, [
-          xdr.ScVal.scvSymbol("approve"),
-          new Address(OWNER).toScVal(),
-          new Address(e.spender).toScVal(),
-          ...(e.sacAsset ? [xdr.ScVal.scvString(e.sacAsset)] : []),
-        ])
+        topicsMatch(patterns, approveTopics(e.spender, e.sacAsset))
       );
       const limit = r.limit ?? 1_000;
       const page = all.slice(offset, offset + limit);
@@ -153,12 +177,7 @@ export function fakeAllowanceRpc(world: FakeAllowancesWorld): AllowanceRpc & {
         pagingToken: `${start}-${offset + i}`,
         inSuccessfulContractCall: true,
         txHash: "00".repeat(32),
-        topic: [
-          xdr.ScVal.scvSymbol("approve"),
-          new Address(OWNER).toScVal(),
-          new Address(e.spender).toScVal(),
-          ...(e.sacAsset ? [xdr.ScVal.scvString(e.sacAsset)] : []),
-        ],
+        topic: approveTopics(e.spender, e.sacAsset),
         value: xdr.ScVal.scvVec([
           nativeToScVal(e.amount, { type: "i128" }),
           nativeToScVal(e.expirationLedger, { type: "u32" }),
