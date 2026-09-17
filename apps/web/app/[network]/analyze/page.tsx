@@ -109,18 +109,15 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         // The DeFi-positions acknowledgement goes with it too, for the same reason: checking
         // PlanView's box re-plans so the API's real, downgraded blocker code comes back instead
         // of leaving the page showing the hard-blocking one it just answered.
-        fetchPlan: (answers) =>
+        // `tokens` is empty on the first call - it runs alongside the account read, so nothing
+        // is known yet - and carries what the account turned out to hold on the re-plan
+        // loadAnalysis makes when the first plan could not have known about them.
+        fetchPlan: (answers, tokens = []) =>
           fetchClosePlan(
             {
               source: effectiveSource,
               decisions: [
-                // The tokens this analysis found go with the request. The close round has no
-                // scan of its own, so a token no bundled list knows about - the whole point of
-                // the analysis scanning for it - would otherwise be invisible to the plan, and
-                // the page would show a balance it had no step for.
-                ...discoveredTokensToDecisions(
-                  (account?.sorobanTokens?.tokens ?? []).map((t) => t.contract)
-                ),
+                ...discoveredTokensToDecisions(tokens),
                 ...claimableSelectionsToDecisions(answers),
                 ...defiPositionsAcknowledgementToDecisions(
                   defiPositionsAcknowledgedFor,
