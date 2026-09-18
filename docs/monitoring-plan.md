@@ -5,11 +5,6 @@ description: "What LumenWipe watches on the Stellar ledger, which threat each mo
 icon: "eye"
 ---
 
-Built from the SCF [On-Chain Monitoring Plan Template (Builders)](https://developers.stellar.org/docs/build/security-docs/monitoring/monitoring-template-builders),
-using the output of the [threat model](/threat-model). Every monitor here traces back to a threat in that
-document; every threat there is accounted for below, either by a monitor or by a recorded reason it cannot be
-watched on-chain.
-
 ## 1. What are we monitoring?
 
 LumenWipe closes Stellar accounts non-custodially. It deploys **no contracts of its own**, holds **no user
@@ -85,9 +80,29 @@ the form `S<surface>.<Category>.<n>`.
 
 Two of these are already enforced in code rather than only watched. `S7.Tampering.1.M.1` is the monitoring
 counterpart of a control that exists: an unknown code version blocks the exit before any contract state is
-read, and `mainnet-registry.integration.test.ts` runs that comparison in CI. `S4a.Elevation.1.M.1` monitors a
+read, and `mainnet-registry.integration.test.ts` runs that comparison. `S4a.Elevation.1.M.1` monitors a
 risk whose primary control is operational - the mediator holds no spendable surplus - so the alert exists to
 catch the funding policy being broken, not to be the only thing standing in the way.
+
+### How the live ones run
+
+`.github/workflows/onchain-monitors.yml` runs both live monitors at 06:00 UTC daily, and on demand from the
+Actions tab. Both are read-only against public endpoints: no account, no transaction, no funds, no secret.
+
+`S7.Tampering.1.M.1` reads each `verifiedLive` mainnet entry's executable hash over RPC and compares it to the
+registry. It also runs on every pull request as part of the integration suite, but the schedule is what makes
+it a monitor: a contract can be upgraded during a week when nobody opens a pull request.
+
+`S4a.Information.1.M.1` and `S4b.Information.1.M.1` query Horizon for the last 200 transactions touching each
+service account and count the ones it sourced. Measured on the testnet sponsor on 2026-09-18: 8 transactions
+touching the account, 0 sourced from it. The mediator: 0 as well. The threshold is that measurement, not a
+guess.
+
+A failure opens a GitHub issue, assigned rather than merely labelled, and the next clean run closes it. That
+is the same delivery path the nightly end-to-end suite uses. It suits a registry mismatch, where exits already
+fail closed and the response is to re-verify at a desk. **It does not suit a suspected key compromise**, which
+needs someone woken up. Setting up that channel is the next thing this plan needs, and until it exists the
+critical rows in section 5 describe a response with no paging behind it.
 
 ## 5. What happens when an alert fires?
 
@@ -95,17 +110,21 @@ catch the funding policy being broken, not to be the only thing standing in the 
 | ----------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | -------------- | ------------- |
 | `S4a.Elevation.1.M.1`   | High     | Notify the maintainers; verify the mediator's funding policy; investigate the forward that preceded the drop.                               | Maintainers | Planned        | 2026-09-17    |
 | `S4a.Spoofing.1.M.1`    | Critical | Notify the maintainers; rotate the mediator key; the mediator rotates without a client change, by design.                                   | Maintainers | Planned        | 2026-09-17    |
-| `S4a.Information.1.M.1` | Critical | Rotate the mediator key immediately; audit every transaction it signed.                                                                     | Maintainers | Planned        | 2026-09-17    |
+| `S4a.Information.1.M.1` | Critical | Rotate the mediator key immediately; audit every transaction it signed.                                                                     | Maintainers | Active (daily) | 2026-09-18    |
 | `S4b.Elevation.1.M.1`   | High     | Notify the maintainers; disable the sponsored-fee endpoint; audit the inner transactions sponsored.                                         | Maintainers | Planned        | 2026-09-17    |
 | `S4b.Denial.1.M.1`      | Medium   | Top up the sponsor; review the per-key rate limit against the observed rate.                                                                | Maintainers | Planned        | 2026-09-17    |
-| `S4b.Information.1.M.1` | Critical | Rotate the sponsor key immediately; audit every transaction it paid for.                                                                    | Maintainers | Planned        | 2026-09-17    |
-| `S7.Tampering.1.M.1`    | High     | Re-verify the contract against the protocol's own release, update the registry entry, and re-run the integration suite before exits resume. | Maintainers | Active (in CI) | 2026-09-17    |
+| `S4b.Information.1.M.1` | Critical | Rotate the sponsor key immediately; audit every transaction it paid for.                                                                    | Maintainers | Active (daily) | 2026-09-18    |
+| `S7.Tampering.1.M.1`    | High     | Re-verify the contract against the protocol's own release, update the registry entry, and re-run the integration suite before exits resume. | Maintainers | Active (daily) | 2026-09-18    |
 
-**Status is honest, not aspirational.** One monitor is Active: the registry hash comparison, which runs in CI
-today. The six ledger watchers are Planned - the accounts they watch exist only on testnet, and standing them
-up against testnet accounts that a network reset can wipe would produce a plan that looks implemented and
-is not. They are specified now, with their triggers and responses, and go live with the mainnet mediator and
-sponsor accounts as part of the mainnet launch tranche.
+**Status is honest, not aspirational.** Three monitors are Active and run daily: the registry hash
+comparison and the two service-key checks. Four are Planned, and each is waiting on something specific rather
+than on effort. `S4a.Spoofing.1.M.1` and `S4b.Elevation.1.M.1` have to decode a transaction's operations to
+judge its shape, which is more than a scheduled query does. `S4b.Denial.1.M.1` needs a rate baseline that
+does not exist until there is real usage to measure. `S4a.Elevation.1.M.1` watches a balance floor that only
+means something once the mainnet mediator carries one.
+
+The three live ones watch testnet accounts, because those are the only service accounts that exist. Adding
+the mainnet mediator and sponsor is one line each in the workflow once they are deployed.
 
 ## 6. Did we do a good job?
 
@@ -116,9 +135,10 @@ sponsor accounts as part of the mainnet launch tranche.
   exact: these are events that never occur in normal operation. `S4b.Denial.1.M.1`'s rate threshold is
   explicitly deferred until there is 30 days of real usage to set it from, rather than guessed now.
 - **Does every monitor have a response, an owner and a status?** Yes, in §5.
-- **Have any monitors fired?** The registry comparison runs in CI and has not reported drift. The ledger
-  watchers are not yet live, so the honest answer is that they have not been exercised.
-- **Are the addresses current?** Verified 2026-09-17: both testnet accounts resolve on Horizon, and the
+- **Have any monitors fired?** No. The registry comparison has not reported drift. The two service-key
+  checks report zero sourced transactions for both accounts. Each was also run against an account that does
+  source transactions, to confirm it fails when it should rather than passing because it never looks.
+- **Are the addresses current?** Verified 2026-09-18: both testnet accounts resolve on Horizon, and the
   sponsor is confirmed as `fee_account` on the linked transaction. The mainnet rows are empty because those
   accounts do not exist yet.
 - **Any threats that only surface off-chain?** Yes, and they are the majority - see §3. That is a
@@ -127,7 +147,7 @@ sponsor accounts as part of the mainnet launch tranche.
 
 ## 7. Maintenance
 
-Revisit whenever the contracts, the addresses or the threat model change, and on every tranche boundary. The
+Revisit whenever the contracts, the addresses or the threat model change, and at every release milestone. The
 concrete triggers: a new entry or a bumped `validUntil` in `contract-registry.json`, a mediator or sponsor
 key rotation, a new signing key of any kind, and the deployment of the mainnet mediator and sponsor accounts,
-which is what moves six of these monitors from Planned to Active.
+which is when the live checks gain their mainnet addresses and the remaining Planned rows become meaningful.

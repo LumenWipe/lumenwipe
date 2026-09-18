@@ -1,0 +1,143 @@
+name: on-chain monitors
+
+# The ledger watchers from docs/monitoring-plan.md. Scheduled rather than on push: a check that
+# only fires when someone opens a pull request is not monitoring. Read-only, no secret.
+
+on:
+  schedule:
+    # An hour before the nightly e2e, so the two do not report at once.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: onchain-monitors
+  cancel-in-progress: false
+
+jobs:
+  registry:
+    name: registry hashes still match mainnet
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Compare every verifiedLive mainnet entry against the ledger
+        working-directory: apps/api
+        env:
+          LUMENWIPE_RUN_INTEGRATION: "1"
+        run: bun test tests/integration/mainnet-registry.integration.test.ts
+
+  service-keys:
+    name: service keys have not signed anything
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Look for transactions sourced from a service account
+        env:
+          # Testnet only: the mainnet mediator and sponsor are not deployed yet.
+          SPONSOR_TESTNET: GCMCGC6EJZKJJUTFY6RK43PGOODW6EL6FSHSLXBV4EYSZ3GHNJO3FXAP
+          MEDIATOR_TESTNET: GC2VH6XP7HTOZHIX4OC3PU5HUXWY5XANGML4F6GBCNH5MBDFN5MU4WG7
+          HORIZON: https://horizon-testnet.stellar.org
+        run: |
+          set -euo pipefail
+          fail=0
+
+          # The sponsor pays fees, so it appears as fee_account and the user's account is always
+          # the source. The mediator co-signs a forward it never originates. Either one sourcing
+          # a transaction means the key signed something this codebase did not build. Baseline
+          # measured 2026-09-18: 0 for both.
+          for pair in "fee sponsor:$SPONSOR_TESTNET" "mediator:$MEDIATOR_TESTNET"; do
+            label="${pair%%:*}"
+            account="${pair#*:}"
+
+            code=$(curl -sS -o /tmp/txs.json -w '%{http_code}' \
+              "$HORIZON/accounts/$account/transactions?limit=200&order=desc")
+
+            # An endpoint problem must fail loudly, never read as "nothing to report".
+            if [ "$code" != "200" ]; then
+              echo "::error::Horizon returned $code for the $label account. The check did not run."
+              fail=1
+              continue
+            fi
+
+            sourced=$(jq -r --arg a "$account" \
+              '[._embedded.records[] | select(.source_account == $a)] | length' /tmp/txs.json)
+
+            if [ "$sourced" != "0" ]; then
+              echo "::error::The $label key sourced $sourced transaction(s). Expected 0."
+              jq -r --arg a "$account" \
+                '._embedded.records[] | select(.source_account == $a) | "  \(.created_at)  \(.hash)"' \
+                /tmp/txs.json
+              fail=1
+            else
+              echo "$label ($account): 0 transactions sourced from it, as expected."
+            fi
+          done
+
+          exit "$fail"
+
+  report:
+    name: open an issue on failure
+    needs: [registry, service-keys]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or close the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REGISTRY: ${{ needs.registry.result }}
+          KEYS: ${{ needs.service-keys.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE="An on-chain monitor is reporting a finding"
+
+          # Exact title match, not `--search ... in:title`: that qualifier tokenizes and lags, so
+          # it can comment on or close an unrelated issue. See e2e-nightly.yml.
+          EXISTING=$(gh issue list --repo "$REPO" --state open --limit 200 --json number,title 2>/dev/null \
+            | jq -r --arg t "$TITLE" 'map(select(.title == $t)) | .[0].number // empty' || true)
+
+          # `cancelled` and `skipped` are a superseded run or a human stopping a job, not findings.
+          if [ "$REGISTRY" != "failure" ] && [ "$KEYS" != "failure" ]; then
+            if [ "$REGISTRY" = "success" ] && [ "$KEYS" = "success" ] && [ -n "$EXISTING" ]; then
+              gh issue comment "$EXISTING" --repo "$REPO" --body "Both monitors are clean again: $RUN_URL"
+              gh issue close "$EXISTING" --repo "$REPO" --reason completed
+            fi
+            exit 0
+          fi
+
+          BODY=$(printf '%s\n' \
+            "An on-chain monitor failed. Run: $RUN_URL" \
+            "" \
+            "- registry hashes still match mainnet: $REGISTRY" \
+            "- service keys have not signed anything: $KEYS" \
+            "" \
+            "What each failure means, and what to do, is in docs/monitoring-plan.md section 5." \
+            "" \
+            "A registry failure means a protocol redeployed. Exits against that contract already" \
+            "halt at the registry gate, so this is not an emergency: re-verify the contract" \
+            "against the protocol's own release, update the entry, and re-run the integration" \
+            "suite before exits resume." \
+            "" \
+            "A service-key failure is different. It means a key the API holds signed a" \
+            "transaction this codebase did not build. Treat it as a suspected key compromise:" \
+            "rotate the key and audit every transaction it signed or paid for." \
+            "" \
+            "This issue closes itself on the next clean run, including a manual one from the" \
+            "Actions tab.")
+
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --repo "$REPO" --body "Still reporting: $RUN_URL"
+          else
+            gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY" \
+              --label security --assignee miguelnietoa
+          fi
