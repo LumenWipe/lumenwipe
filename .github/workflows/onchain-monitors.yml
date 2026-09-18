@@ -1,16 +1,11 @@
 name: on-chain monitors
 
-# The ledger watchers described in docs/monitoring-plan.md. They answer a question no test suite
-# can: has something changed on chain since the last time anyone looked? Both checks are read-only
-# against public endpoints - no account, no transaction, no funds, no secret.
-#
-# They run on a schedule rather than on push for the reason the plan gives: a check that only fires
-# when a developer happens to open a pull request is not monitoring. A contract can be upgraded, or
-# a key used, during a week when nobody touches the repository.
+# The ledger watchers from docs/monitoring-plan.md. Scheduled rather than on push: a check that
+# only fires when someone opens a pull request is not monitoring. Read-only, no secret.
 
 on:
   schedule:
-    # 06:00 UTC daily, an hour before the nightly e2e so the two do not report at once.
+    # An hour before the nightly e2e, so the two do not report at once.
     - cron: "0 6 * * *"
   workflow_dispatch:
 
@@ -19,9 +14,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # S7.Tampering.1.M.1 - the registry's recorded wasmHash against the code the contract is
-  # actually running. A mismatch means a protocol redeployed and exits against it would halt at
-  # the registry gate, which is the safe outcome, but nobody would know why until a user hit it.
   registry:
     name: registry hashes still match mainnet
     runs-on: ubuntu-latest
@@ -41,13 +33,6 @@ jobs:
           LUMENWIPE_RUN_INTEGRATION: "1"
         run: bun test tests/integration/mainnet-registry.integration.test.ts
 
-  # S4b.Information.1.M.1 - the fee sponsor as a transaction's source account. LumenWipe never
-  # sources a transaction from it: the sponsor pays fees, so it appears as `fee_account` and the
-  # user's own account is always the source. Any transaction it originates means the key signed
-  # something this codebase did not build, which is a suspected key compromise.
-  #
-  # Baseline measured 2026-09-18 on the testnet sponsor: 8 transactions touching the account,
-  # 0 of them sourced from it. The threshold is exact rather than a guess.
   service-keys:
     name: service keys have not signed anything
     runs-on: ubuntu-latest
@@ -55,8 +40,7 @@ jobs:
     steps:
       - name: Look for transactions sourced from a service account
         env:
-          # Testnet only today: the mainnet mediator and sponsor accounts are not deployed yet.
-          # Adding them is one line each here once they exist.
+          # Testnet only: the mainnet mediator and sponsor are not deployed yet.
           SPONSOR_TESTNET: GCMCGC6EJZKJJUTFY6RK43PGOODW6EL6FSHSLXBV4EYSZ3GHNJO3FXAP
           MEDIATOR_TESTNET: GC2VH6XP7HTOZHIX4OC3PU5HUXWY5XANGML4F6GBCNH5MBDFN5MU4WG7
           HORIZON: https://horizon-testnet.stellar.org
@@ -64,21 +48,18 @@ jobs:
           set -euo pipefail
           fail=0
 
+          # The sponsor pays fees, so it appears as fee_account and the user's account is always
+          # the source. The mediator co-signs a forward it never originates. Either one sourcing
+          # a transaction means the key signed something this codebase did not build. Baseline
+          # measured 2026-09-18: 0 for both.
           for pair in "fee sponsor:$SPONSOR_TESTNET" "mediator:$MEDIATOR_TESTNET"; do
             label="${pair%%:*}"
             account="${pair#*:}"
 
-            # A 404 means the account is gone, which for a funded service account is itself worth
-            # knowing. Any other non-200 is an endpoint problem, not a finding, so it fails the
-            # job loudly rather than being read as "nothing to report".
             code=$(curl -sS -o /tmp/txs.json -w '%{http_code}' \
               "$HORIZON/accounts/$account/transactions?limit=200&order=desc")
 
-            if [ "$code" = "404" ]; then
-              echo "::error::The $label account $account does not exist on the ledger."
-              fail=1
-              continue
-            fi
+            # An endpoint problem must fail loudly, never read as "nothing to report".
             if [ "$code" != "200" ]; then
               echo "::error::Horizon returned $code for the $label account. The check did not run."
               fail=1
@@ -101,8 +82,6 @@ jobs:
 
           exit "$fail"
 
-  # Same reporting path as the nightly e2e: a red run nobody opens is the state these watchers
-  # exist to fix. A failure becomes an assigned issue; the next clean run closes it.
   report:
     name: open an issue on failure
     needs: [registry, service-keys]
@@ -122,14 +101,12 @@ jobs:
           set -euo pipefail
           TITLE="An on-chain monitor is reporting a finding"
 
-          # Exact title match, for the reasons the nightly e2e workflow documents: the search
-          # qualifier tokenizes and lags, so it can comment on or close an unrelated issue.
+          # Exact title match, not `--search ... in:title`: that qualifier tokenizes and lags, so
+          # it can comment on or close an unrelated issue. See e2e-nightly.yml.
           EXISTING=$(gh issue list --repo "$REPO" --state open --limit 200 --json number,title 2>/dev/null \
             | jq -r --arg t "$TITLE" 'map(select(.title == $t)) | .[0].number // empty' || true)
 
-          # Only a real failure reports. `cancelled` and `skipped` are a superseded run or a human
-          # stopping a job, and reporting those as findings is the noise that trains people to
-          # ignore the tracker.
+          # `cancelled` and `skipped` are a superseded run or a human stopping a job, not findings.
           if [ "$REGISTRY" != "failure" ] && [ "$KEYS" != "failure" ]; then
             if [ "$REGISTRY" = "success" ] && [ "$KEYS" = "success" ] && [ -n "$EXISTING" ]; then
               gh issue comment "$EXISTING" --repo "$REPO" --body "Both monitors are clean again: $RUN_URL"
