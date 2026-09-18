@@ -63,3 +63,15 @@ playwright/.cache/
 # in the published source tree. Kept as a pattern rather than one path so the next one does not
 # ride in on a `git add -A` the way qa-evidence-epic-159 did.
 qa-evidence-*/
+
+# The repository's own documents are the only things that belong at the root.
+# Anything else there is a local working file - drafts, notes, exports - and an
+# allowlist keeps a wide `git add` from sweeping them into the published tree.
+/*.md
+!/README.md
+!/CONTRIBUTING.md
+!/CLAUDE.md
+!/RELEASING.md
+!/SECURITY.md
+/*.png
+!/lumenwipe.png
