@@ -8,7 +8,11 @@ import {
   type Transaction,
 } from "@stellar/stellar-sdk";
 import type { Network } from "@lumenwipe/types";
-import { MAX_SOROBAN_EXIT_FEE_STROOPS } from "@/config/constants";
+import {
+  BASE_FEE_STROOPS,
+  MAX_SOROBAN_EXIT_FEE_STROOPS,
+  TX_TIMEOUT_SECONDS,
+} from "@/config/constants";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { addressOf, bigOf, collectAccounts, CONTRACT_ID } from "@/lib/stellar/scval-read";
 import { fetchXBullSwapArgs, type XBullConversionDeps } from "@/lib/xbull/conversion-quotes";
@@ -37,7 +41,10 @@ export interface ExpectedXBullConversion {
   nowSeconds: number;
 }
 
-export function assertXBullConversionShape(tx: Transaction, expected: ExpectedXBullConversion): void {
+export function assertXBullConversionShape(
+  tx: Transaction,
+  expected: ExpectedXBullConversion
+): void {
   if (tx.source !== expected.account) throw new Error("the transaction is not this account's");
   if (tx.sequence !== (BigInt(expected.sequence) + 1n).toString()) {
     throw new Error("the transaction is not this account's next transaction");
@@ -53,6 +60,15 @@ export function assertXBullConversionShape(tx: Transaction, expected: ExpectedXB
   const ops = tx.toEnvelope().v1().tx().operations();
   if (ops.length !== 1) throw new Error(`expected one operation, found ${ops.length}`);
   const op = ops[0]!;
+  const src = op.sourceAccount();
+  if (src) {
+    if (
+      src.switch() !== xdr.CryptoKeyType.keyTypeEd25519() ||
+      Address.account(src.ed25519()).toString() !== expected.account
+    ) {
+      throw new Error("the operation acts for another account");
+    }
+  }
   if (op.body().switch() !== xdr.OperationType.invokeHostFunction()) {
     throw new Error("the operation is not a contract invocation");
   }
@@ -72,7 +88,8 @@ export function assertXBullConversionShape(tx: Transaction, expected: ExpectedXB
   const args = call.args();
   if (args.length !== 6) throw new Error(`strict_send takes 6 arguments, found ${args.length}`);
   const [from, to, amount, minToGet, path, refs] = args;
-  if (addressOf(from!) !== expected.account) throw new Error("the swap does not spend this account's balance");
+  if (addressOf(from!) !== expected.account)
+    throw new Error("the swap does not spend this account's balance");
   if (addressOf(to!) !== expected.account) throw new Error("the swap does not pay this account");
   if (bigOf(amount!) !== expected.amountIn) throw new Error("amount is not the live balance");
   const min = bigOf(minToGet!);
@@ -88,7 +105,10 @@ export function assertXBullConversionShape(tx: Transaction, expected: ExpectedXB
     // stale against the path actually being signed.
     throw new Error("the resolved route does not match this transaction's path");
   }
-  if (expected.resolvedPath[0] !== expected.token || expected.resolvedPath.at(-1) !== expected.xlm) {
+  if (
+    expected.resolvedPath[0] !== expected.token ||
+    expected.resolvedPath.at(-1) !== expected.xlm
+  ) {
     throw new Error("the route does not go from this token to XLM");
   }
   if (expected.resolvedPath.some((hop) => !CONTRACT_ID.test(hop))) {
@@ -96,13 +116,19 @@ export function assertXBullConversionShape(tx: Transaction, expected: ExpectedXB
   }
 
   if (host.auth().length === 0) throw new Error("the build produced no authorization for the swap");
+  let moved = 0n;
   for (const auth of host.auth()) {
-    if (auth.credentials().switch() !== xdr.SorobanCredentialsType.sorobanCredentialsSourceAccount()) {
+    if (
+      auth.credentials().switch() !== xdr.SorobanCredentialsType.sorobanCredentialsSourceAccount()
+    ) {
       throw new Error("an authorization entry carries credentials other than the account's own");
     }
     const root = auth.rootInvocation();
     const rootFn = root.function();
-    if (rootFn.switch() !== xdr.SorobanAuthorizedFunctionType.sorobanAuthorizedFunctionTypeContractFn()) {
+    if (
+      rootFn.switch() !==
+      xdr.SorobanAuthorizedFunctionType.sorobanAuthorizedFunctionTypeContractFn()
+    ) {
       throw new Error("an authorization entry is not a plain contract call");
     }
     const rootCall = rootFn.contractFn();
@@ -113,13 +139,31 @@ export function assertXBullConversionShape(tx: Transaction, expected: ExpectedXB
       throw new Error("an authorization entry authorizes a call other than this swap");
     }
     for (const arg of rootCall.args()) collectAccounts(arg, expected.account);
-    for (const sub of root.subInvocations()) walkXBullAuth(sub, expected);
+    for (const sub of root.subInvocations()) moved += walkXBullAuth(sub, expected, 1);
+  }
+  if (moved > expected.amountIn) {
+    throw new Error("the signature would let more of the token leave than the swap spends");
   }
 }
 
-/** The token's own `transfer` is the only sub-invocation a `strict_send` route needs; anything
- *  else nested under it is refused, the same closed-world rule Soroswap's own walk applies. */
-function walkXBullAuth(node: xdr.SorobanAuthorizedInvocation, expected: ExpectedXBullConversion): void {
+/** Applied to every level below the swap's own root call. A single-contract PathPayment router
+ *  needs at most one nesting level (the token's own `transfer`, pulling the input amount from
+ *  the account before the contract routes it through pools with its own balance, needing no
+ *  further authorization), but the same depth guard Soroswap's own walk applies protects
+ *  against a pathological or hostile tree regardless. Unlike Soroswap's router/aggregator
+ *  (whose auth tree legitimately reaches separate adapter and pool contracts as their own
+ *  authorized calls), xBull's single contract needs no reachable contract beyond the token
+ *  itself here. Returns the amount of `expected.token` this subtree moves out of the account,
+ *  so the caller enforces `moved <= expected.amountIn` - without this, a hostile or buggy
+ *  `path` could produce a transfer that spends more than the swap's own `amount` argument
+ *  claims, to a destination this function does not otherwise inspect. */
+const MAX_AUTH_DEPTH = 4;
+function walkXBullAuth(
+  node: xdr.SorobanAuthorizedInvocation,
+  expected: ExpectedXBullConversion,
+  depth: number
+): bigint {
+  if (depth > MAX_AUTH_DEPTH) throw new Error("the authorization tree nests deeper than a swap");
   const fn = node.function();
   if (fn.switch() !== xdr.SorobanAuthorizedFunctionType.sorobanAuthorizedFunctionTypeContractFn()) {
     throw new Error("the signature would authorize something other than a contract call");
@@ -132,8 +176,21 @@ function walkXBullAuth(node: xdr.SorobanAuthorizedInvocation, expected: Expected
   if (call.functionName().toString() !== "transfer") {
     throw new Error(`the signature would authorize ${call.functionName().toString()} on the token`);
   }
+  const args = call.args();
+  if (args.length !== 3) throw new Error("a token transfer takes three arguments");
+  if (addressOf(args[0]!) !== expected.account) {
+    throw new Error("a token transfer would spend a balance other than this account's");
+  }
+  const to = addressOf(args[1]!);
+  if (to === null || !CONTRACT_ID.test(to)) {
+    throw new Error("a token transfer would pay a Stellar account, not the router");
+  }
+  const amount = bigOf(args[2]!);
+  if (amount === null || amount <= 0n) throw new Error("a token transfer has no readable amount");
   for (const arg of call.args()) collectAccounts(arg, expected.account);
-  for (const sub of node.subInvocations()) walkXBullAuth(sub, expected);
+  let moved = amount;
+  for (const sub of node.subInvocations()) moved += walkXBullAuth(sub, expected, depth + 1);
+  return moved;
 }
 
 export interface XBullBuildDeps {
@@ -170,8 +227,12 @@ export async function buildXBullConversion(
   try {
     const contractArgs = xdr.InvokeContractArgs.fromXDR(contractArgsXDR, "base64");
     const account = new Account(from, sequence);
+    // A small, fixed inclusion fee: `assembleTransaction` below adds the simulation's own
+    // resource fee on top, and `assertXBullConversionShape`'s MAX_SOROBAN_EXIT_FEE_STROOPS
+    // check is a ceiling on that *assembled* total, not a budget to spend up front here. The
+    // same split `defi-exits/run-exit.ts` already uses for every other Soroban build.
     const tx = new TransactionBuilder(account, {
-      fee: MAX_SOROBAN_EXIT_FEE_STROOPS.toString(),
+      fee: BASE_FEE_STROOPS.toString(),
       networkPassphrase: NETWORK_PASSPHRASES[network],
     })
       .addOperation(
@@ -179,7 +240,7 @@ export async function buildXBullConversion(
           func: xdr.HostFunction.hostFunctionTypeInvokeContract(contractArgs),
         })
       )
-      .setTimeout(180)
+      .setTimeout(TX_TIMEOUT_SECONDS)
       .build();
     const sim = await deps.rpc.simulateTransaction(tx);
     if (stellarRpc.Api.isSimulationError(sim)) return null;

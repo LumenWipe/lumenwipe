@@ -21,6 +21,40 @@ import {
 export interface AssembleOptions {
   fee?: string;
   maxTime?: number;
+  /** When set, the assembled transaction's single authorization entry carries this
+   *  one-level `subInvocations` entry (a token `transfer(from, to, amount)` call) nested
+   *  under the `strict_send` root, instead of the default empty `subInvocations: []`. */
+  subInvocation?: TransferSubInvocation;
+}
+
+export interface TransferSubInvocation {
+  token: string;
+  from: string;
+  to: string;
+  amount: string;
+}
+
+/**
+ * Builds a `SorobanAuthorizedInvocation` for `token.transfer(from, to, amount)`, the shape a
+ * `strict_send` route's own root invocation nests one level below itself to pull the input
+ * amount from the account before routing it through pools. Used only via `AssembleOptions.
+ * subInvocation` to exercise `walkXBullAuth`, which otherwise has no test coverage at all since
+ * `assembleTestTransaction` always builds `subInvocations: []` by default.
+ */
+function transferSubInvocation(sub: TransferSubInvocation): xdr.SorobanAuthorizedInvocation {
+  const call = new xdr.InvokeContractArgs({
+    contractAddress: new Address(sub.token).toScAddress(),
+    functionName: "transfer",
+    args: [
+      new Address(sub.from).toScVal(),
+      new Address(sub.to).toScVal(),
+      nativeToScVal(BigInt(sub.amount), { type: "i128" }),
+    ],
+  });
+  return new xdr.SorobanAuthorizedInvocation({
+    function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(call),
+    subInvocations: [],
+  });
 }
 
 /**
@@ -39,7 +73,7 @@ export function assembleTestTransaction(
   const contract = Address.fromScAddress(contractArgs.contractAddress()).toString();
   const root = new xdr.SorobanAuthorizedInvocation({
     function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(contractArgs),
-    subInvocations: [],
+    subInvocations: opts.subInvocation ? [transferSubInvocation(opts.subInvocation)] : [],
   });
   const auth = new xdr.SorobanAuthorizationEntry({
     credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
@@ -60,6 +94,28 @@ export function assembleTestTransaction(
     .addOperation(withAuth)
     .setTimebounds(0, opts.maxTime ?? 1_700_000_000 + 3600)
     .build();
+}
+
+/**
+ * Re-encodes a captured `contractArgsXDR`, replacing exactly one of `strict_send`'s six
+ * arguments (`from`, `to`, `amount`, `min_to_get`, `path`, `refs`, by index 0-5) with `value`,
+ * leaving every other argument untouched. Used to build narrowly-targeted tests that trip one
+ * specific argument-level check in `assertXBullConversionShape` without also disturbing the
+ * transaction-level checks (source, sequence) or any other argument.
+ */
+export function reencodeSwapArg(contractArgsXDR: string, index: number, value: xdr.ScVal): string {
+  const contractArgs = xdr.InvokeContractArgs.fromXDR(contractArgsXDR, "base64");
+  const args = [...contractArgs.args()];
+  if (index < 0 || index >= args.length) {
+    throw new Error(`arg index ${index} out of range (0-${args.length - 1})`);
+  }
+  args[index] = value;
+  const rebuilt = new xdr.InvokeContractArgs({
+    contractAddress: contractArgs.contractAddress(),
+    functionName: contractArgs.functionName(),
+    args,
+  });
+  return rebuilt.toXDR("base64");
 }
 
 /**
