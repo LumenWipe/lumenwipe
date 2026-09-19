@@ -26,6 +26,7 @@
 import { Logger } from "@nestjs/common";
 import type { DefiPositionsResult, Network } from "@lumenwipe/types";
 import { isRegistryFresh } from "@/lib/contract-registry";
+import { withTimeout } from "@/lib/utils/with-timeout";
 import { completePositionsFromLedger, type CompletePositionsDeps } from "./complete-positions";
 import { fetchOctoPosPortfolio, type OctoPosDeps } from "./octopos-http";
 import { normalizeOctoPosPortfolio } from "./octopos-adapter";
@@ -121,15 +122,11 @@ async function degradedFallback(
     `OctoPos unavailable for ${network} (${reason}); falling back to a best-effort direct read`
   );
   try {
-    const direct = await Promise.race([
+    const direct = await withTimeout(
       detectDefiPositionsViaDirectRead(address, network, deps.directRead),
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error(`direct read exceeded ${DIRECT_READ_FALLBACK_TIMEOUT_MS} ms`)),
-          DIRECT_READ_FALLBACK_TIMEOUT_MS
-        ).unref?.()
-      ),
-    ]);
+      DIRECT_READ_FALLBACK_TIMEOUT_MS,
+      `direct read exceeded ${DIRECT_READ_FALLBACK_TIMEOUT_MS} ms`
+    );
     // A registry past its validUntil can't back a genuine "we swept everything" claim - rotated
     // addresses or a protocol never added would sweep clean too. soroswapConversionContracts
     // already fails closed on this same flag for conversions; detection needs the same rule.

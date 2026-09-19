@@ -271,6 +271,7 @@ test("decisionPointsToConversions › a convertible token carries its quote; a m
         minAmountOut: "5223381",
         platform: "aggregator",
         route: ["soroswap"],
+        provider: "soroswap",
       }),
     ])
   );
@@ -279,14 +280,96 @@ test("decisionPointsToConversions › a convertible token carries its quote; a m
     minAmountOut: "5223381",
     platform: "aggregator",
     route: ["soroswap"],
+    provider: "soroswap",
   });
   // The API's own `convertible` flag says a route exists, but without a floor the browser could
   // never submit a valid convert answer - so a malformed quote must not leave the option offered.
   const [bad] = decisionPointsToConversions(plan([point({ amountOut: "x", minAmountOut: "0" })]));
   expect(bad!.convertible).toBe(false);
   expect(bad!.token?.quote).toBeUndefined();
+  // No `provider` at all: the server always sets one (Task 6/7), so a quote without it is not a
+  // shape this adapter can trust - the option is not offered rather than defaulted to a provider
+  // the user was never actually quoted through.
+  const [noProvider] = decisionPointsToConversions(
+    plan([point({ amountOut: "5249630", minAmountOut: "5223381", platform: "aggregator" })])
+  );
+  expect(noProvider!.token?.quote).toBeUndefined();
   expect(formatStroops("5223381")).toBe("0.5223381");
   expect(formatStroops("520000000")).toBe("52");
+});
+
+test("decisionPointsToConversions › an xBull quote's resolvedPath is kept only when every hop is a well-formed contract id", () => {
+  const XLM = "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA";
+  const point = (quote: unknown) => ({
+    id: `token:${TOKEN}`,
+    type: "asset_disposition" as const,
+    subject: {
+      kind: "soroban_token",
+      contract: TOKEN,
+      symbol: "XTAR",
+      decimals: 7,
+      balance: "2500000000",
+      convertible: true,
+      quote,
+    },
+    options: [
+      { id: "convert_to_xlm" },
+      { id: "transfer_to_account" },
+      { id: "acknowledge_residue" },
+    ],
+    default: "convert_to_xlm",
+    required: true,
+  });
+  const [good] = decisionPointsToConversions(
+    plan([
+      point({
+        amountOut: "5100000",
+        minAmountOut: "5074650",
+        platform: "router",
+        route: ["xbull"],
+        provider: "xbull",
+        resolvedPath: [TOKEN, XLM],
+      }),
+    ])
+  );
+  expect(good!.token?.quote?.resolvedPath).toEqual([TOKEN, XLM]);
+  // Not a list of strings at all: dropped, not passed through as-is.
+  const [notAList] = decisionPointsToConversions(
+    plan([
+      point({
+        amountOut: "5100000",
+        minAmountOut: "5074650",
+        provider: "xbull",
+        resolvedPath: "not-a-list",
+      }),
+    ])
+  );
+  expect(notAList!.token?.quote?.resolvedPath).toBeUndefined();
+  // One malformed hop poisons the whole path rather than silently shortening it - a route
+  // missing a hop is worse than no route at all.
+  const [oneBadHop] = decisionPointsToConversions(
+    plan([
+      point({
+        amountOut: "5100000",
+        minAmountOut: "5074650",
+        provider: "xbull",
+        resolvedPath: [TOKEN, "not-a-contract-id"],
+      }),
+    ])
+  );
+  expect(oneBadHop!.token?.quote?.resolvedPath).toBeUndefined();
+  // A Soroswap win never carries a resolvedPath at all - verify() only needs one for xBull's
+  // strict_send shape.
+  const [soroswapWin] = decisionPointsToConversions(
+    plan([
+      point({
+        amountOut: "5249630",
+        minAmountOut: "5223381",
+        provider: "soroswap",
+      }),
+    ])
+  );
+  expect(soroswapWin!.token?.quote?.resolvedPath).toBeUndefined();
 });
 
 /**

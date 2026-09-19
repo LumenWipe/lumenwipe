@@ -293,6 +293,7 @@ export interface DecisionAnswer {
     params?: {
         maxSlippageBps?: number;
         minAmountOut?: string;
+        provider?: "soroswap" | "xbull";
         destination?: string;
     };
 }
@@ -375,7 +376,7 @@ export interface DefiPositionsResult {
 export type DefiPositionType = "supply" | "borrow" | "lp" | "cdp" | "stake";
 
 // @public
-export type DefiProtocol = "blend" | "aquarius" | "soroswap" | "phoenix" | "fxdao";
+export type DefiProtocol = "blend" | "aquarius" | "soroswap" | "phoenix" | "fxdao" | "xbull";
 
 // @public (undocumented)
 export interface DefiQueryKeys {

@@ -25,11 +25,14 @@ import {
   SWAP_FUNCTION,
   assertConversionShape,
   buildTokenConversionRound,
+  defaultTokenConversionRoundDeps,
   type ExpectedConversion,
 } from "@/lib/close-api/token-conversion-round";
+import { XBULL_SWAP_FUNCTION } from "@/lib/close-api/xbull-conversion-round";
 import { xlmContractId, type ConversionSdk } from "@/lib/soroswap/conversion-quotes";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { rawSimulation } from "./fixtures/fake-exit-adapter";
+import xbullFixture from "../fixtures/xbull-strict-send-sample.json";
 
 const ACCOUNT = Keypair.random().publicKey();
 const OTHER_ACCOUNT = Keypair.random().publicKey();
@@ -41,10 +44,17 @@ const ADAPTER = "CC6KQUATUBCIFZRDJL5X5PHCYGOHLPHKZQPUOTZTQTASGU5AUQ6DS7SC";
 const ROUTER = "CAG5LRYQ5JVEUI5TEID72EYOVX44TTUJT5BQR2J6J77FH65PCCFAJDDH";
 // The registry's mainnet router hash: the round resolves the live hash against the registry.
 const ROUTER_HASH_LIVE = "4c3db3ebd2d6a2ab23de1f622eaabb39501539b4611b68622ec4e47f76c4ba07";
+// The registry's mainnet xBull router hash (apps/api/src/config/contract-registry.json, protocol
+// "xbull"): distinct from Soroswap's above, so a test can prove the round resolves each branch's
+// live code against the right protocol, not just "some known hash".
+const XBULL_ROUTER_HASH_LIVE = "c2b3ec57fbd45d5bade9df2ad30c464d1588cead18495a5ce327a98c45c02219";
 const PAIR = Address.contract(Buffer.alloc(32, 9)).toString();
 const STRANGER_PAIR = Address.contract(Buffer.alloc(32, 10)).toString();
 const STRANGER = Address.contract(Buffer.alloc(32, 8)).toString();
 const ALLOWED = { aggregator: [AGGREGATOR], adapters: [ADAPTER], routers: [ROUTER] };
+// The real mainnet xBull router the fixture's own contractArgsXDR was captured from
+// (`xbull-strict-send-sample.json`'s `decoded.contractAddress`).
+const XBULL_ROUTER = xbullFixture.decoded.contractAddress;
 const NOW = 1_700_000_000;
 const SEQUENCE = "100";
 const BALANCE = 100_000_000n;
@@ -420,8 +430,29 @@ interface RoundWorld {
   quotedOut: bigint | null;
   /** What the API builds; defaults to a sound router swap at the quoted floor. */
   built?: (quote: QuoteResponse) => Transaction | null;
-  /** The code hash the ledger reports for the called contract. */
+  /** The code hash the ledger reports for the called contract, when it is one of the Soroswap
+   *  contracts (ROUTER/AGGREGATOR); defaults to the registry's real, matching mainnet hash. */
   liveHash?: string;
+  /** The code hash the ledger reports when the called contract is the xBull router; defaults to
+   *  the registry's real, matching mainnet hash so the pre-existing xBull round tests (which
+   *  never set this) exercise the same live-code check Fix 1 added, without changing their own
+   *  bodies. */
+  xbullLiveHash?: string;
+  /** When true, Soroswap's own quote/build stubs throw instead of running - proves a token
+   *  pinned to another provider never touches Soroswap. */
+  forbidSoroswap?: boolean;
+  /** xBull's own fetch stub, serving both `/swaps/quote` and `/swaps/strict-send`; `null` (the
+   *  default) means xBull is unreachable, matching every pre-existing test never entering that
+   *  branch at all. */
+  xbullFetch?: typeof fetch | null;
+  /** The router(s) the xBull dispatch may call; defaults to the fixture's own real router. */
+  xbullRouterAllowed?: string[];
+  /** Authorization entries xBull's own simulation reports; empty unless set. */
+  xbullAuth?: string[];
+  xbullResourceFee?: string;
+  /** Resolves xBull's opaque path indices to asset addresses; throws by default so a test that
+   *  reaches it without configuring one fails loudly instead of silently returning nonsense. */
+  xbullResolvePath?: (contractArgsXDR: string) => Promise<string[]>;
 }
 
 function roundDeps(world: RoundWorld) {
@@ -439,6 +470,14 @@ function roundDeps(world: RoundWorld) {
       return { xdr: tx ? tx.toXDR() : "", action: "swap", description: "" };
     },
   };
+  const forbiddenSdk: ConversionSdk = {
+    async quote() {
+      throw new Error("Soroswap must not be consulted for a token pinned to another provider");
+    },
+    async build() {
+      throw new Error("Soroswap must not be consulted for a token pinned to another provider");
+    },
+  };
   return {
     rpc: {
       async simulateTransaction() {
@@ -453,22 +492,54 @@ function roundDeps(world: RoundWorld) {
       },
       async getLedgerEntries(...keys: xdr.LedgerKey[]) {
         const contract = Address.fromScAddress(keys[0]!.contractData().contract()).toString();
+        const defaultHash = contract === XBULL_ROUTER ? XBULL_ROUTER_HASH_LIVE : ROUTER_HASH_LIVE;
+        const hash =
+          contract === XBULL_ROUTER
+            ? (world.xbullLiveHash ?? defaultHash)
+            : (world.liveHash ?? defaultHash);
         return {
           latestLedger: 1,
-          entries: [instanceEntry(contract, world.liveHash ?? ROUTER_HASH_LIVE)],
+          entries: [instanceEntry(contract, hash)],
         } as unknown as rpc.Api.GetLedgerEntriesResponse;
       },
     } as never,
-    conversion: { sdk, now: () => NOW * 1000 },
+    conversion: { sdk: world.forbidSoroswap ? forbiddenSdk : sdk, now: () => NOW * 1000 },
     allowed: () => ALLOWED,
+    xbull: {
+      rpc: {
+        async simulateTransaction() {
+          return rawSimulation("ok", world.xbullAuth ?? [], world.xbullResourceFee ?? "0");
+        },
+      } as never,
+      xbull: {
+        fetch: world.xbullFetch ?? null,
+        baseUrl: "https://swap-api.xbull.io",
+        now: () => NOW * 1000,
+      },
+      resolvePath:
+        world.xbullResolvePath ??
+        (async () => {
+          throw new Error("resolvePath should not be called in this test");
+        }),
+    },
+    xbullAllowed: () => ({ router: world.xbullRouterAllowed ?? [XBULL_ROUTER] }),
   };
 }
 
-const run = (state: AccountState, floors: Record<string, string>, world: RoundWorld) =>
+const run = (
+  state: AccountState,
+  floors: Record<string, string | { minAmountOut: string; provider: "soroswap" | "xbull" }>,
+  world: RoundWorld
+) =>
   buildTokenConversionRound(
     state,
     { [TOKEN]: "convert" },
-    floors,
+    Object.fromEntries(
+      Object.entries(floors).map(([contract, value]) => [
+        contract,
+        typeof value === "string" ? { minAmountOut: value, provider: "soroswap" as const } : value,
+      ])
+    ),
     "mainnet",
     SEQUENCE,
     5_000,
@@ -589,5 +660,218 @@ describe("the token conversion round", () => {
     );
     await expect(promise).rejects.toMatchObject({ code: "quote_drifted" });
     await expect(promise).rejects.toThrow(/51\.8395 XLM, below the 52 XLM you agreed to/);
+  });
+
+  /** Serves `/swaps/quote` and `/swaps/strict-send` from one stub, the way `defaultXBullConversionDeps`
+   *  wires a single `fetch` to both call sites (the round's quote call and `buildXBullConversion`'s
+   *  build call). `/swaps/quote` echoes the caller's own requested amount back as `fromAmount` so
+   *  the quote always clears `quoteTokenToXlmViaXBull`'s `quotedIn !== amountIn` check regardless
+   *  of which balance a given test uses. */
+  function xbullFetchStub(toAmount: string, contractArgsXDR: string | null): typeof fetch {
+    return (async (input: string | URL) => {
+      const url = new URL(input.toString());
+      if (url.pathname === "/swaps/quote") {
+        return new Response(
+          JSON.stringify({
+            route: "route-1",
+            fromAsset: TOKEN,
+            toAsset: XLM,
+            fromAmount: url.searchParams.get("amount"),
+            toAmount,
+            fee: { platformFee: "0", referralsFee: "0" },
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.pathname === "/swaps/strict-send") {
+        return new Response(JSON.stringify({ contractArgsXDR }), {
+          status: contractArgsXDR ? 200 : 400,
+        });
+      }
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof fetch;
+  }
+
+  /** A bare `strict_send` root authorization, with no sub-invocations - the round's own dispatch
+   *  never inspects `walkXBullAuth`'s tree shape beyond what `assertXBullConversionShape` (unit-
+   *  tested directly in `xbull-conversion-round.test.ts`) already covers, so an empty tree that
+   *  moves nothing is sufficient to prove the round wires xBull's build through correctly. */
+  function xbullAuthEntry(router: string): string {
+    return new xdr.SorobanAuthorizationEntry({
+      credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
+      rootInvocation: new xdr.SorobanAuthorizedInvocation({
+        function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
+          new xdr.InvokeContractArgs({
+            contractAddress: new Address(router).toScAddress(),
+            functionName: XBULL_SWAP_FUNCTION,
+            args: [],
+          })
+        ),
+        subInvocations: [],
+      }),
+    }).toXDR("base64");
+  }
+
+  test("a token pinned to the xbull provider is built and validated through the xbull path, never soroswap's", async () => {
+    // The fixture's own contractArgsXDR bakes in a fixed amount (478,000,000) and min_to_get
+    // (9,129,329,763), captured from a real, already-executed mainnet transaction (Task 1) - so
+    // the live balance this round re-reads, and the pinned/fresh floors it computes, are chosen
+    // to be consistent with those baked figures rather than the file's other TOKEN/BALANCE/FLOOR
+    // constants (which this test does not use for the balance or floor math).
+    const liveBalance = BigInt(xbullFixture.amount);
+    const freshAmountOut = "9175000000"; // floor 9,129,125,000: under the baked min_to_get, above the pinned floor
+    const pinnedFloor = "9000000000";
+    const round = await run(
+      account(xbullFixture.amount, { address: xbullFixture.decoded.from }),
+      { [TOKEN]: { minAmountOut: pinnedFloor, provider: "xbull" } },
+      {
+        balance: liveBalance,
+        quotedOut: null,
+        forbidSoroswap: true,
+        xbullFetch: xbullFetchStub(freshAmountOut, xbullFixture.contractArgsXDR),
+        xbullAuth: [xbullAuthEntry(XBULL_ROUTER)],
+        xbullResolvePath: async () => [TOKEN, XLM],
+      }
+    );
+    expect(round).not.toBeNull();
+    expect(round!.transaction.covers).toEqual(["HANDLE_ASSETS"]);
+    expect(round!.transaction.sourceSequence).toBe(SEQUENCE);
+    expect(round!.transaction.intent.summary).toContain("through xBull");
+    expect(round!.transaction.intent.summary).not.toContain("Soroswap");
+  });
+
+  test("an xbull build whose called contract runs code other than the registry's xbull router is refused", async () => {
+    // Fix 1: the xBull branch must re-read the live wasm hash behind the called address, exactly
+    // like the Soroswap branch already does, not merely check the address against an allowlist.
+    const liveBalance = BigInt(xbullFixture.amount);
+    const freshAmountOut = "9175000000";
+    const pinnedFloor = "9000000000";
+    const promise = run(
+      account(xbullFixture.amount, { address: xbullFixture.decoded.from }),
+      { [TOKEN]: { minAmountOut: pinnedFloor, provider: "xbull" } },
+      {
+        balance: liveBalance,
+        quotedOut: null,
+        forbidSoroswap: true,
+        xbullFetch: xbullFetchStub(freshAmountOut, xbullFixture.contractArgsXDR),
+        xbullAuth: [xbullAuthEntry(XBULL_ROUTER)],
+        xbullResolvePath: async () => [TOKEN, XLM],
+        // The router's address is still in the allowlist, but the code the ledger actually
+        // reports behind it is not the one the registry verified.
+        xbullLiveHash: "00".repeat(32),
+      }
+    );
+    await expect(promise).rejects.toMatchObject({ code: "soroban_token_conversion_unsafe" });
+    await expect(promise).rejects.toThrow(/not the code the registry verified/);
+  });
+
+  test("quote_drifted still fires when the pinned provider's fresh floor falls under the accepted one", async () => {
+    const promise = run(
+      account(BALANCE.toString()),
+      { [TOKEN]: { minAmountOut: "9200000000", provider: "xbull" } },
+      {
+        balance: BALANCE,
+        quotedOut: null,
+        forbidSoroswap: true,
+        // toAmount 9,000,000,000 -> floor 8,955,000,000, under the 9,200,000,000 pinned above.
+        xbullFetch: xbullFetchStub("9000000000", null),
+      }
+    );
+    await expect(promise).rejects.toMatchObject({ code: "quote_drifted" });
+  });
+});
+
+// ─── resolveXBullPath, reached only through defaultTokenConversionRoundDeps's own wiring ────────
+//
+// resolveXBullPath itself is not exported; every real caller reaches it through
+// `defaultTokenConversionRoundDeps(rpc).xbull.resolvePath`, so these tests do too. Fixture:
+// `xbull-strict-send-sample.json`'s own `assetMap` (the contract's real Map(u32) storage, indices
+// 0-40) and `corroboratingEvents` (real multi-hop `strict_send` paths the contract itself emitted).
+
+describe("resolveXBullPath (via defaultTokenConversionRoundDeps)", () => {
+  const assetMap = xbullFixture.assetMap as unknown as Record<string, string>;
+
+  /** Serves the fixture's Map(u32) storage: `getLedgerEntries` decodes the queried index out of
+   *  the key resolveXBullPath itself builds (`scvVec([scvSymbol("Map"), scvU32(index)])`) and
+   *  answers from `map`, or an empty result for an index the map does not have - proving a
+   *  missing entry is a real "no ledger entry" case, not a stubbing shortcut. */
+  function xbullStorageRpc(map: Record<string, string>) {
+    return {
+      async getLedgerEntries(...keys: xdr.LedgerKey[]) {
+        const contractData = keys[0]!.contractData();
+        const index = contractData.key().vec()![1]!.u32();
+        const address = map[String(index)];
+        if (address === undefined) {
+          return { latestLedger: 1, entries: [] } as unknown as rpc.Api.GetLedgerEntriesResponse;
+        }
+        const val = xdr.LedgerEntryData.contractData(
+          new xdr.ContractDataEntry({
+            ext: new xdr.ExtensionPoint(0),
+            contract: contractData.contract(),
+            key: contractData.key(),
+            durability: xdr.ContractDataDurability.persistent(),
+            val: new Address(address).toScVal(),
+          })
+        );
+        return {
+          latestLedger: 1,
+          entries: [{ key: keys[0]!, val, lastModifiedLedgerSeq: 1, liveUntilLedgerSeq: 100 }],
+        } as unknown as rpc.Api.GetLedgerEntriesResponse;
+      },
+      async simulateTransaction() {
+        throw new Error("resolveXBullPath must never simulate a transaction");
+      },
+    } as never;
+  }
+
+  /** The fixture's own captured `contractArgsXDR`, with its `path` argument (index 4) swapped for
+   *  a different set of tuples - everything else (contract address, from/to/amount/refs) is left
+   *  exactly as captured, since resolveXBullPath reads only the contract address and the path. */
+  function withPath(tuples: number[][]): string {
+    const base = xdr.InvokeContractArgs.fromXDR(xbullFixture.contractArgsXDR, "base64");
+    const args = base.args();
+    const pathScVal = xdr.ScVal.scvVec(
+      tuples.map((hop) => xdr.ScVal.scvVec(hop.map((n) => xdr.ScVal.scvU32(n))))
+    );
+    const newArgs = args.map((a, i) => (i === 4 ? pathScVal : a));
+    return new xdr.InvokeContractArgs({
+      contractAddress: base.contractAddress(),
+      functionName: base.functionName(),
+      args: newArgs,
+    }).toXDR("base64");
+  }
+
+  test("resolves the fixture's own one-hop path ([[4,25,1112,33]]) to [fromAsset, toAsset]", async () => {
+    const deps = defaultTokenConversionRoundDeps(xbullStorageRpc(assetMap));
+    const resolved = await deps.xbull.resolvePath(xbullFixture.contractArgsXDR);
+    expect(resolved).toEqual([xbullFixture.fromAsset, xbullFixture.toAsset]);
+  });
+
+  test("resolves a real 3-hop corroborating path to its correct 4-address chain, proving the new hop-continuity check does not false-positive on real data", async () => {
+    const threeHop = xbullFixture.corroboratingEvents.find((e) => e.path.length === 3)!;
+    const deps = defaultTokenConversionRoundDeps(xbullStorageRpc(assetMap));
+    const resolved = await deps.xbull.resolvePath(withPath(threeHop.path));
+    expect(resolved).toEqual([assetMap["0"], assetMap["25"], assetMap["38"], assetMap["33"]]);
+  });
+
+  test("a missing map entry throws a clear error instead of resolving to undefined", async () => {
+    const deps = defaultTokenConversionRoundDeps(xbullStorageRpc(assetMap));
+    // Index 999 is not in the fixture's map (captured for indices 0-40 only).
+    await expect(deps.xbull.resolvePath(withPath([[4, 25, 1112, 999]]))).rejects.toThrow(
+      /no entry for index 999/
+    );
+  });
+
+  test("a disconnected path - a middle hop whose in-index does not match the previous hop's out-index - is refused", async () => {
+    const deps = defaultTokenConversionRoundDeps(xbullStorageRpc(assetMap));
+    // Hop 0 ends at index 33; hop 1 starts at index 99, not 33 - the chain does not continue.
+    await expect(
+      deps.xbull.resolvePath(
+        withPath([
+          [4, 25, 1112, 33],
+          [4, 99, 1, 33],
+        ])
+      )
+    ).rejects.toThrow(/disconnected/);
   });
 });

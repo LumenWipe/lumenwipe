@@ -37,6 +37,7 @@ const PROTOCOLS: Record<DefiProtocol, true> = {
   soroswap: true,
   phoenix: true,
   fxdao: true,
+  xbull: true,
 };
 const NETWORKS: Record<Network, true> = { mainnet: true, testnet: true };
 
@@ -359,4 +360,23 @@ export function soroswapConversionContracts(
   const of = (kind: ContractKind): string[] =>
     live.filter((e) => e.kind === kind).map((e) => e.address);
   return { aggregator: of("aggregator"), adapters: of("adapter"), routers: of("router") };
+}
+
+/**
+ * The xBull PathPayment router a token conversion may invoke on a network: mainnet only, since
+ * xBull publishes no testnet deployment. Empty on any network without a live, fresh entry, so a
+ * conversion whose transaction reaches any other contract is refused the same way the Soroswap
+ * lookup already fails closed.
+ */
+export function xbullConversionContracts(
+  network: Network,
+  now: Date = new Date()
+): { router: string[] } {
+  if (!shipped.isRegistryFresh(now)) return { router: [] };
+  return {
+    router: shipped
+      .entriesForProtocol(network, "xbull")
+      .filter((e) => e.verifiedLive && e.wasmHash !== null && e.kind === "router")
+      .map((e) => e.address),
+  };
 }

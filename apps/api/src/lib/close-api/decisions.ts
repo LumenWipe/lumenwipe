@@ -175,6 +175,30 @@ export class MissingConversionFloorError extends Error {
   }
 }
 
+/** The provider names a convert answer's `params.provider` may name. */
+const KNOWN_PROVIDERS = new Set(["soroswap", "xbull"]);
+
+/**
+ * Raised when a token's convert answer names a `params.provider` that is present but not one of
+ * the recognized values. Mirrors `MissingConversionFloorError`'s pattern exactly: a caller-facing
+ * mistake that must refuse the request rather than be silently coerced into a provider the user
+ * never named. Distinct from the missing-provider case, which `??` already handles correctly by
+ * defaulting to "soroswap" for backward compatibility with answers that predate this feature -
+ * this error only fires when the field is present and wrong, e.g. a typo like "xbulll".
+ */
+export class UnrecognizedConversionProviderError extends Error {
+  constructor(
+    readonly contract: string,
+    readonly provider: string
+  ) {
+    super(
+      `Converting the ${contract.slice(0, 4)}…${contract.slice(-4)} token named an unrecognized ` +
+        `provider "${provider}": params.provider must be "soroswap" or "xbull".`
+    );
+    this.name = "UnrecognizedConversionProviderError";
+  }
+}
+
 /**
  * The floors the convert answers carry, per token contract: the least XLM (stroops) the user saw
  * the swap deliver. Strict like transfer destinations: without a floor there is no drift to
@@ -184,10 +208,10 @@ export class MissingConversionFloorError extends Error {
 export function tokenConversionFloors(
   answers: DecisionAnswer[],
   assetsById: { id: string; asset: string }[]
-): Record<string, string> {
+): Record<string, { minAmountOut: string; provider: "soroswap" | "xbull" }> {
   const assetForId = new Map(assetsById.map((a) => [a.id, a.asset]));
   const dispositions = resolveDispositions(answers, assetsById);
-  const floors: Record<string, string> = {};
+  const floors: Record<string, { minAmountOut: string; provider: "soroswap" | "xbull" }> = {};
   // Answers are last-wins everywhere else, so a first attempt without a floor must not refuse a
   // request whose later answer carries one.
   const latest = new Map<string, DecisionAnswer>();
@@ -203,7 +227,15 @@ export function tokenConversionFloors(
     if (typeof floor !== "string" || !/^[1-9]\d*$/.test(floor)) {
       throw new MissingConversionFloorError(asset);
     }
-    floors[asset] = floor;
+    // No provider on the answer means it predates this feature (or the caller never saw an
+    // xBull quote to pin): soroswap is the only provider that existed before, so that is the
+    // one the build re-quotes and builds through - never a silent upgrade to a route the user
+    // was never shown.
+    const rawProvider = answer.params?.provider;
+    if (rawProvider !== undefined && !KNOWN_PROVIDERS.has(rawProvider)) {
+      throw new UnrecognizedConversionProviderError(asset, rawProvider);
+    }
+    floors[asset] = { minAmountOut: floor, provider: rawProvider ?? "soroswap" };
   }
   return floors;
 }
@@ -233,7 +265,16 @@ export interface TokenQuoteSummary {
   amountOut: string;
   minAmountOut: string;
   platform: "aggregator" | "router";
+  /** Which provider's quote this is: which one the plan-time race picked. */
+  provider: "soroswap" | "xbull";
   route: string[];
+  /** Only for an `xbull` win: the live route (token addresses, in call order, ending at XLM)
+   *  resolved once more at plan time via `resolveXBullPath`, purely so the browser's trust
+   *  anchor has something to hold a later `strict_send` call's opaque path indices to before
+   *  ever signing it. Absent when the token's winning quote is Soroswap's, or when an xBull
+   *  route could not be confirmed live (the plan-time composition falls back rather than ever
+   *  offering an unresolved route). */
+  resolvedPath?: string[];
 }
 
 export function deriveTokenDecisionPoints(

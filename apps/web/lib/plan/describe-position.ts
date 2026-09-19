@@ -1,11 +1,16 @@
 import type { AccountState, DefiPosition } from "@/types/account";
+import type { DefiProtocol } from "@lumenwipe/types";
 
-export const PROTOCOL_LABELS: Record<DefiPosition["protocol"], string> = {
+// Keyed by the full DefiProtocol union, not just DefiPosition["protocol"]: an allowance's
+// spenderProtocol and an UnrecognizedDefiPosition's protocol are both typed DefiProtocol, so
+// either can name a protocol (e.g. xbull) that never appears as an actual position type.
+export const PROTOCOL_LABELS: Record<DefiProtocol, string> = {
   blend: "Blend",
   aquarius: "Aquarius",
   soroswap: "Soroswap",
   phoenix: "Phoenix",
   fxdao: "FxDAO",
+  xbull: "xBull",
 };
 
 function shortAddr(addr: string): string {

@@ -30,7 +30,20 @@ import {
   requiresMediatorForAddress,
 } from "@/lib/exchange-registry";
 import { validateTransferDestinations } from "@/lib/close-api/transfer-destinations";
-import { quoteTokenToXlm } from "@/lib/soroswap/conversion-quotes";
+import { quoteTokenToXlm, xlmContractId } from "@/lib/soroswap/conversion-quotes";
+import {
+  quoteTokenToXlmViaXBull,
+  fetchXBullSwapArgs,
+  defaultXBullConversionDeps,
+} from "@/lib/xbull/conversion-quotes";
+import {
+  quoteAllProviders,
+  resolveTokenQuoteSummary,
+  PROVIDER_QUOTE_TIMEOUT_MS,
+} from "@/lib/close-api/multi-source-conversion";
+import { withTimeout } from "@/lib/utils/with-timeout";
+import { resolveXBullPath } from "@/lib/close-api/token-conversion-round";
+import { getRpcServer } from "@/lib/stellar/rpc";
 
 /** Quotes per plan are bounded like discovery candidates; a token past this is offered no swap. */
 const MAX_TOKEN_QUOTES = 20;
@@ -43,6 +56,7 @@ import {
   decisionIdFor,
   deriveDecisionPoints,
   MissingConversionFloorError,
+  UnrecognizedConversionProviderError,
   tokenConversionFloors,
   tokenDecisionId,
   type TokenQuoteSummary,
@@ -188,23 +202,49 @@ export class CloseController {
         accountState.sponsorshipEnumerationIncomplete
           ? Promise.resolve({ revocable: [], unaffordableOwners: new Map() })
           : assessSponsorshipAffordability(source, nonClaimableSponsoredEntries, network);
-      // Priced through the Soroswap API, one quote per held token with readable metadata, only
-      // when conversion is enabled; anything else is offered transfer or leave.
+      // Raced across both providers (Soroswap and xBull), one quote per held token with
+      // readable metadata; anything else is offered transfer or leave. Neither provider is a
+      // hard dependency for the other - quoteAllProviders never throws, so a provider that is
+      // disabled, errors, or times out simply contributes no candidate, and
+      // resolveTokenQuoteSummary picks whichever candidate delivers more XLM (falling back off
+      // an xBull win whose route cannot be confirmed live).
       const tokenQuotes: Record<string, TokenQuoteSummary | null> = {};
       const tokenQuotePromise = Promise.all(
         (accountState.sorobanTokens?.tokens ?? [])
           .filter((t) => t.symbol !== null && t.decimals !== null && /^[1-9]\d*$/.test(t.balance))
           .slice(0, MAX_TOKEN_QUOTES)
           .map(async (t) => {
-            const quote = await quoteTokenToXlm(t.contract, BigInt(t.balance), network);
-            tokenQuotes[t.contract] = quote
-              ? {
-                  amountOut: quote.amountOut,
-                  minAmountOut: quote.minAmountOut,
-                  platform: quote.platform,
-                  route: quote.route,
-                }
-              : null;
+            const results = await quoteAllProviders(t.contract, BigInt(t.balance), network, {
+              soroswap: quoteTokenToXlm,
+              xbull: quoteTokenToXlmViaXBull,
+            });
+            // xBull's own route is confirmed live, once more, before it is ever offered: see
+            // `resolveTokenQuoteSummary`'s docstring for why an unresolved route falls back
+            // rather than being shown at all. Bounded the same way every other provider call
+            // already is - xBull's own build endpoint is independently unreliable, and without
+            // a timeout a hang here would stall the whole plan response even though the other
+            // provider already answered.
+            tokenQuotes[t.contract] = await resolveTokenQuoteSummary(
+              results,
+              (winner) =>
+                withTimeout(
+                  fetchXBullSwapArgs(
+                    (winner.quote.raw as { route: string }).route,
+                    source,
+                    BigInt(winner.quote.amountIn),
+                    BigInt(winner.quote.minAmountOut),
+                    defaultXBullConversionDeps()
+                  ).then((contractArgsXDR) =>
+                    contractArgsXDR
+                      ? resolveXBullPath(getRpcServer(network), contractArgsXDR)
+                      : undefined
+                  ),
+                  PROVIDER_QUOTE_TIMEOUT_MS,
+                  `xBull route resolution exceeded ${PROVIDER_QUOTE_TIMEOUT_MS} ms`
+                ),
+              t.contract,
+              xlmContractId(network)
+            );
           })
       );
       const [, sponsorshipAffordability] = await Promise.all([
@@ -574,6 +614,11 @@ export class CloseController {
       }
       if (e instanceof MissingConversionFloorError) {
         fail("conversion_floor_missing", e.message, 422, {
+          decisionId: tokenDecisionId(e.contract),
+        });
+      }
+      if (e instanceof UnrecognizedConversionProviderError) {
+        fail("conversion_provider_unrecognized", e.message, 422, {
           decisionId: tokenDecisionId(e.contract),
         });
       }
