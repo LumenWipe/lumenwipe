@@ -19,6 +19,11 @@ these into a new dated section (and bump `package.json`) the next time `packages
   independent of closing an account, a standalone security utility.
 - `LumenWipeClient.revokeAllowance()`: builds the unsigned `approve(owner, spender, 0, 0)`
   transaction that revokes one allowance.
+- `DefiProtocol` gains `"xbull"`: xBull Swap is now a second, mainnet-only conversion-quote
+  source alongside Soroswap for the Soroban-token-to-XLM step of a close. `DecisionAnswer.params`
+  gains an optional `provider?: "soroswap" | "xbull"`, pinning which provider's quote a
+  `convert_to_xlm` answer was accepted from. Both are purely additive; no existing field changed
+  shape.
 
 ## [0.1.0] - 2026-09-07
 
