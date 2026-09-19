@@ -658,12 +658,18 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
             // xBull's shape: `readXBullSwapArgs` cannot say which token this call moves (the
             // rendered path names only opaque indices), so the token is identified by matching
             // the call's own hop count against the one `resolvedPath` this account was shown -
-            // grounded in real per-token data, since the plan never offers "convert via xBull"
-            // without a route having already resolved live (see `CloseExpectation.tokenConversions`
-            // above). A narrow residual limitation: two different pending tokens with the exact
-            // same hop count to XLM are not distinguishable by this alone; that entry's floor and
-            // amount still gate whichever one matches, the same two checks the Soroswap branch
-            // above makes.
+            // grounded in real per-token data (`resolvedPath` is API-sourced, computed at plan
+            // time and re-derived at build time; it is trusted the same way `nativeBalance` and
+            // `accountSigners` already are elsewhere in this file - it catches a build that
+            // drifts from what plan time promised, not an API that lies consistently at both
+            // stages). The plan never offers "convert via xBull" without a route having already
+            // resolved live (see `CloseExpectation.tokenConversions` above), but hop count alone
+            // cannot distinguish two different pending tokens that both happen to route to XLM
+            // in the same number of hops - a real possibility, not a corner case, since a plain
+            // token swap is normally one hop. Rather than picking one of several matches (which
+            // could apply a looser floor from the wrong token), an ambiguous match refuses
+            // outright, the same fail-closed rule this file already applies to every other
+            // unresolvable case.
             const swap = readXBullSwapArgs(op.args);
             if (!swap) {
               throw new VerificationError("A swap's arguments could not be read.");
@@ -673,16 +679,22 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
                 "A swap would pay a referral fee to an address you never agreed to."
               );
             }
-            const match = Object.entries(expected.tokenConversions).find(
+            const matches = Object.entries(expected.tokenConversions).filter(
               ([, v]) =>
                 v.resolvedPath !== undefined && v.resolvedPath.length === swap.pathHopCount + 1
             );
-            if (!match) {
+            if (matches.length === 0) {
               throw new VerificationError(
                 "A swap would exchange a token you did not choose to convert."
               );
             }
-            const [, chosen] = match;
+            if (matches.length > 1) {
+              throw new VerificationError(
+                "A swap cannot be matched to a single token you chose to convert. Run the " +
+                  "analysis again."
+              );
+            }
+            const [, chosen] = matches[0]!;
             if (chosen.resolvedPath!.at(-1) !== expected.xlmContract) {
               throw new VerificationError("A swap would buy something other than XLM.");
             }

@@ -1781,6 +1781,27 @@ test("rejects a strict_send swap whose hop count matches no token the user chose
   ).toThrow(/token you did not choose to convert/);
 });
 
+test("rejects a strict_send swap whose hop count matches more than one chosen token, rather than picking one", () => {
+  const other = "CC64WBDGS6QQP22QTTIACYIXT3WF7BBQEYOQPLTP7GTKYY7PZ74QYGSL";
+  const ambiguous = expectation({
+    conversionContracts: [XBULL_ROUTER],
+    tokenConversions: {
+      [CONVERT_TOKEN]: {
+        minAmountOut: FLOOR,
+        amountIn: "100000000",
+        resolvedPath: [CONVERT_TOKEN, XLM_CONTRACT],
+      },
+      // A different token, also one hop from XLM: same resolvedPath length as CONVERT_TOKEN's,
+      // so hop count alone cannot tell the swap apart from either one.
+      [other]: { minAmountOut: FLOOR, amountIn: "50000000", resolvedPath: [other, XLM_CONTRACT] },
+    },
+    xlmContract: XLM_CONTRACT,
+  });
+  expect(() => assertCloseIntent(exitOnly(xbullSwap()), ambiguous)).toThrow(
+    /cannot be matched to a single token/
+  );
+});
+
 test("rejects a strict_send swap whose arguments cannot be read", () => {
   for (const args of [
     [],
