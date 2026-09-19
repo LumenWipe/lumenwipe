@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   pickBestQuote,
   quoteAllProviders,
+  resolveTokenQuoteSummary,
   type ConversionProviderQuote,
 } from "@/lib/close-api/multi-source-conversion";
 
@@ -61,4 +62,57 @@ test("a provider slower than the timeout is excluded, the other still answers", 
     5
   );
   expect(results).toEqual([q("xbull", "90")]);
+});
+
+test("resolveTokenQuoteSummary offers an xBull win with its resolvedPath once the route confirms live", async () => {
+  const results = [q("soroswap", "100"), q("xbull", "110")];
+  const summary = await resolveTokenQuoteSummary(results, async () => ["TOKEN", "XLM"]);
+  expect(summary).toEqual({
+    amountOut: "110",
+    minAmountOut: "109",
+    platform: "router",
+    provider: "xbull",
+    route: ["xbull"],
+    resolvedPath: ["TOKEN", "XLM"],
+  });
+});
+
+test("resolveTokenQuoteSummary falls back to the next-best quote when xBull's route cannot be confirmed", async () => {
+  const results = [q("soroswap", "100"), q("xbull", "110")];
+  const summary = await resolveTokenQuoteSummary(results, async () => undefined);
+  expect(summary).toEqual({
+    amountOut: "100",
+    minAmountOut: "99",
+    platform: "router",
+    provider: "soroswap",
+    route: ["soroswap"],
+  });
+});
+
+test("resolveTokenQuoteSummary falls back to null when xBull is the only candidate and its route fails", async () => {
+  const results = [q("xbull", "110")];
+  const summary = await resolveTokenQuoteSummary(results, async () => undefined);
+  expect(summary).toBeNull();
+});
+
+test("resolveTokenQuoteSummary treats a thrown resolver and an empty resolved path both as failure", async () => {
+  const results = [q("xbull", "110")];
+  expect(
+    await resolveTokenQuoteSummary(results, async () => {
+      throw new Error("xbull swap-and-build endpoint down");
+    })
+  ).toBeNull();
+  expect(await resolveTokenQuoteSummary(results, async () => [])).toBeNull();
+});
+
+test("resolveTokenQuoteSummary never calls the xBull resolver for a soroswap win", async () => {
+  const results = [q("soroswap", "100")];
+  let called = false;
+  const summary = await resolveTokenQuoteSummary(results, async () => {
+    called = true;
+    return ["TOKEN", "XLM"];
+  });
+  expect(called).toBe(false);
+  expect(summary?.provider).toBe("soroswap");
+  expect(summary).not.toHaveProperty("resolvedPath");
 });

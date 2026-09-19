@@ -1690,3 +1690,136 @@ test("the dual role does not admit a function that is neither a swap nor that pr
     assertCloseIntent(exitOnly(routerSwap({ function: "add_liquidity" })), bothRoles)
   ).toThrow(/function LumenWipe does not use to leave this protocol/);
 });
+
+// ─── xBull's strict_send swap shape (Task 8) ─────────────────────────────────
+
+// The registry's mainnet xBull router: the one other contract a conversion may be entered
+// through. Distinct from SOROSWAP_ROUTER so a test can tell which branch actually ran.
+const XBULL_ROUTER = "CBXBULLROUTERAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY";
+
+/** xBull's PathPayment router call as it renders in an intent: six arguments, the path and refs
+ *  both JSON-encoded index/tuple lists. Unlike Soroswap's shape, no argument names the asset
+ *  being bought or sold - `readXBullSwapArgs` in verify.ts reads only the shape, and the token
+ *  is identified separately by matching hop counts against `resolvedPath` (see verify.ts). */
+const xbullSwap = (over: Partial<ExitOp> = {}): IntentOperation =>
+  exit({
+    contract: XBULL_ROUTER,
+    function: "strict_send",
+    args: [SRC, SRC, "100000000", FLOOR, "[[0,1,0,0]]", "[]"],
+    contractsReferenced: [XBULL_ROUTER],
+    ...over,
+  });
+
+const chosenXBullConversion = (
+  resolvedPath: string[] = [CONVERT_TOKEN, XLM_CONTRACT],
+  floor = FLOOR,
+  amountIn = "100000000"
+) =>
+  expectation({
+    conversionContracts: [XBULL_ROUTER],
+    tokenConversions: { [CONVERT_TOKEN]: { minAmountOut: floor, amountIn, resolvedPath } },
+    xlmContract: XLM_CONTRACT,
+  });
+
+test("a strict_send swap whose resolved path matches the chosen token and XLM passes", () => {
+  expect(() => assertCloseIntent(exitOnly(xbullSwap()), chosenXBullConversion())).not.toThrow();
+  // More XLM than promised is not a loss.
+  const better = xbullSwap({ args: [SRC, SRC, "100000000", "530000000", "[[0,1,0,0]]", "[]"] });
+  expect(() => assertCloseIntent(exitOnly(better), chosenXBullConversion())).not.toThrow();
+});
+
+test("rejects a strict_send swap whose resolved path does not end at XLM", () => {
+  expect(() =>
+    assertCloseIntent(exitOnly(xbullSwap()), chosenXBullConversion([CONVERT_TOKEN, "Cwrong"]))
+  ).toThrow(/something other than XLM/);
+});
+
+test("refuses a strict_send call whose refs is non-empty even before reaching resolvedPath", () => {
+  const withRef = xbullSwap({
+    args: [SRC, SRC, "100000000", FLOOR, "[[0,1,0,0]]", `[["${SRC}","100"]]`],
+  });
+  expect(() => assertCloseIntent(exitOnly(withRef), chosenXBullConversion())).toThrow(
+    /referral fee/
+  );
+});
+
+test("rejects a strict_send swap that would accept less XLM than the minimum the user was shown", () => {
+  const worse = xbullSwap({ args: [SRC, SRC, "100000000", "519999999", "[[0,1,0,0]]", "[]"] });
+  expect(() => assertCloseIntent(exitOnly(worse), chosenXBullConversion())).toThrow(
+    /less XLM than the minimum/
+  );
+});
+
+test("rejects a strict_send swap that spends less of the token than the balance the user was shown", () => {
+  const shortfall = xbullSwap({
+    args: [SRC, SRC, "99999999", FLOOR, "[[0,1,0,0]]", "[]"],
+  });
+  expect(() =>
+    assertCloseIntent(exitOnly(shortfall), chosenXBullConversion(undefined, FLOOR, "100000000"))
+  ).toThrow(/less of the token/);
+});
+
+test("rejects a strict_send swap that pays the proceeds anywhere but the account being closed", () => {
+  const diverted = xbullSwap({
+    args: [SRC, ATTACKER, "100000000", FLOOR, "[[0,1,0,0]]", "[]"],
+    accountsReferenced: [SRC, ATTACKER],
+  });
+  expect(() => assertCloseIntent(exitOnly(diverted), chosenXBullConversion())).toThrow(
+    /other than the account being closed/
+  );
+});
+
+test("rejects a strict_send swap whose hop count matches no token the user chose to convert", () => {
+  // resolvedPath has 2 entries (1 hop); a 2-hop call matches nothing.
+  const twoHop = xbullSwap({ args: [SRC, SRC, "100000000", FLOOR, "[[0,1,0,0],[0,2,1,3]]", "[]"] });
+  expect(() => assertCloseIntent(exitOnly(twoHop), chosenXBullConversion())).toThrow(
+    /token you did not choose to convert/
+  );
+  // With no xBull-resolved conversion at all, the same call is refused the same way.
+  expect(() =>
+    assertCloseIntent(exitOnly(xbullSwap()), expectation({ conversionContracts: [XBULL_ROUTER] }))
+  ).toThrow(/token you did not choose to convert/);
+});
+
+test("rejects a strict_send swap whose arguments cannot be read", () => {
+  for (const args of [
+    [],
+    ["1", "2", "3"],
+    [SRC, SRC, "100000000", FLOOR, "not json", "[]"],
+    [SRC, SRC, "x", FLOOR, "[[0,1,0,0]]", "[]"],
+  ]) {
+    expect(() => assertCloseIntent(exitOnly(xbullSwap({ args })), chosenXBullConversion())).toThrow(
+      /arguments could not be read/
+    );
+  }
+});
+
+test("a strict_send swap is held to the same outer swap-shape rules as Soroswap's: alone, own fee, own source, no extra authorization", () => {
+  expect(() =>
+    assertCloseIntent(
+      intent({
+        operations: [xbullSwap(), xbullSwap()],
+        guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
+      }),
+      chosenXBullConversion()
+    )
+  ).toThrow(/only operation/);
+  expect(() =>
+    assertCloseIntent(exitOnly(xbullSwap({ source: ATTACKER })), chosenXBullConversion())
+  ).toThrow(/other than the one being closed/);
+  expect(() =>
+    assertCloseIntent(exitOnly(xbullSwap(), "20000000"), chosenXBullConversion())
+  ).toThrow(/network fee/);
+  expect(() =>
+    assertCloseIntent(exitOnly(xbullSwap({ authorizesBeyondSelf: true })), chosenXBullConversion())
+  ).toThrow(/beyond this account's own contract calls/);
+  expect(() =>
+    assertCloseIntent(exitOnly(xbullSwap({ unsupportedAddressCount: 1 })), chosenXBullConversion())
+  ).toThrow(/cannot be verified/);
+  expect(() =>
+    assertCloseIntent(
+      exitOnly(xbullSwap({ accountsReferenced: [SRC, ATTACKER] })),
+      chosenXBullConversion()
+    )
+  ).toThrow(/other than the one being closed/);
+});

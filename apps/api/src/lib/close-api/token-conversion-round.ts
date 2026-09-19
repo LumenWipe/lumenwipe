@@ -109,7 +109,7 @@ export function defaultTokenConversionRoundDeps(
  * `apps/api/tests/fixtures/xbull-strict-send-sample.json`'s own `pathTupleOrder` field, captured
  * from the same research.
  */
-async function resolveXBullPath(
+export async function resolveXBullPath(
   rpc: Pick<stellarRpc.Server, "getLedgerEntries">,
   contractArgsXDR: string
 ): Promise<string[]> {

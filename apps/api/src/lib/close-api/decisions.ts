@@ -268,6 +268,13 @@ export interface TokenQuoteSummary {
   /** Which provider's quote this is: which one the plan-time race picked. */
   provider: "soroswap" | "xbull";
   route: string[];
+  /** Only for an `xbull` win: the live route (token addresses, in call order, ending at XLM)
+   *  resolved once more at plan time via `resolveXBullPath`, purely so the browser's trust
+   *  anchor has something to hold a later `strict_send` call's opaque path indices to before
+   *  ever signing it. Absent when the token's winning quote is Soroswap's, or when an xBull
+   *  route could not be confirmed live (the plan-time composition falls back rather than ever
+   *  offering an unresolved route). */
+  resolvedPath?: string[];
 }
 
 export function deriveTokenDecisionPoints(

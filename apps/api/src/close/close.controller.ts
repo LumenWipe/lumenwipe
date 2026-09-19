@@ -31,8 +31,17 @@ import {
 } from "@/lib/exchange-registry";
 import { validateTransferDestinations } from "@/lib/close-api/transfer-destinations";
 import { quoteTokenToXlm } from "@/lib/soroswap/conversion-quotes";
-import { quoteTokenToXlmViaXBull } from "@/lib/xbull/conversion-quotes";
-import { quoteAllProviders, pickBestQuote } from "@/lib/close-api/multi-source-conversion";
+import {
+  quoteTokenToXlmViaXBull,
+  fetchXBullSwapArgs,
+  defaultXBullConversionDeps,
+} from "@/lib/xbull/conversion-quotes";
+import {
+  quoteAllProviders,
+  resolveTokenQuoteSummary,
+} from "@/lib/close-api/multi-source-conversion";
+import { resolveXBullPath } from "@/lib/close-api/token-conversion-round";
+import { getRpcServer } from "@/lib/stellar/rpc";
 
 /** Quotes per plan are bounded like discovery candidates; a token past this is offered no swap. */
 const MAX_TOKEN_QUOTES = 20;
@@ -194,8 +203,9 @@ export class CloseController {
       // Raced across both providers (Soroswap and xBull), one quote per held token with
       // readable metadata; anything else is offered transfer or leave. Neither provider is a
       // hard dependency for the other - quoteAllProviders never throws, so a provider that is
-      // disabled, errors, or times out simply contributes no candidate, and pickBestQuote picks
-      // whichever candidate delivers more XLM.
+      // disabled, errors, or times out simply contributes no candidate, and
+      // resolveTokenQuoteSummary picks whichever candidate delivers more XLM (falling back off
+      // an xBull win whose route cannot be confirmed live).
       const tokenQuotes: Record<string, TokenQuoteSummary | null> = {};
       const tokenQuotePromise = Promise.all(
         (accountState.sorobanTokens?.tokens ?? [])
@@ -206,16 +216,22 @@ export class CloseController {
               soroswap: quoteTokenToXlm,
               xbull: quoteTokenToXlmViaXBull,
             });
-            const best = pickBestQuote(results);
-            tokenQuotes[t.contract] = best
-              ? {
-                  amountOut: best.quote.amountOut,
-                  minAmountOut: best.quote.minAmountOut,
-                  platform: best.quote.platform,
-                  provider: best.provider,
-                  route: best.quote.route,
-                }
-              : null;
+            // xBull's own route is confirmed live, once more, before it is ever offered: see
+            // `resolveTokenQuoteSummary`'s docstring for why an unresolved route falls back
+            // rather than being shown at all.
+            tokenQuotes[t.contract] = await resolveTokenQuoteSummary(results, (winner) =>
+              fetchXBullSwapArgs(
+                (winner.quote.raw as { route: string }).route,
+                source,
+                BigInt(winner.quote.amountIn),
+                BigInt(winner.quote.minAmountOut),
+                defaultXBullConversionDeps()
+              ).then((contractArgsXDR) =>
+                contractArgsXDR
+                  ? resolveXBullPath(getRpcServer(network), contractArgsXDR)
+                  : undefined
+              )
+            );
           })
       );
       const [, sponsorshipAffordability] = await Promise.all([

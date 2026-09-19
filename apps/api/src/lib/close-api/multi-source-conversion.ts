@@ -1,6 +1,7 @@
 import type { Network } from "@lumenwipe/types";
 import { withTimeout } from "@/lib/utils/with-timeout";
 import type { TokenConversionQuote } from "@/lib/soroswap/conversion-quotes";
+import type { TokenQuoteSummary } from "@/lib/close-api/decisions";
 
 /**
  * Races every configured conversion-quote provider for one token and returns whichever
@@ -64,4 +65,40 @@ export function pickBestQuote(results: ConversionProviderQuote[]): ConversionPro
   return results.reduce((best, cur) =>
     BigInt(cur.quote.amountOut) > BigInt(best.quote.amountOut) ? cur : best
   );
+}
+
+/**
+ * Picks the best of the raced quotes and, when it is xBull's, confirms the live route the
+ * browser's trust anchor will need before it can hold a later `strict_send` call to anything -
+ * unlike Soroswap's shape, xBull's call carries no asset-identity argument the browser can read
+ * on its own, so a route that plan time cannot confirm right now must never be offered as
+ * "convert via xBull" (a compromised or buggy build could otherwise route the swap into whatever
+ * it liked and the browser would have nothing to check it against). xBull's own endpoint is
+ * independently known to be unreliable, so this is treated exactly like "no route from this
+ * provider" - the same graceful-degradation rule `quoteAllProviders` already applies to a
+ * provider that errors or times out - and the next-best candidate from this same race stands in,
+ * or nothing does.
+ */
+export async function resolveTokenQuoteSummary(
+  results: ConversionProviderQuote[],
+  resolveXBullRoute: (winner: ConversionProviderQuote) => Promise<string[] | undefined>
+): Promise<TokenQuoteSummary | null> {
+  let winner = pickBestQuote(results);
+  let resolvedPath: string[] | undefined;
+  if (winner?.provider === "xbull") {
+    resolvedPath = await resolveXBullRoute(winner).catch(() => undefined);
+    if (!resolvedPath || resolvedPath.length === 0) {
+      winner = pickBestQuote(results.filter((r) => r !== winner));
+      resolvedPath = undefined;
+    }
+  }
+  if (!winner) return null;
+  return {
+    amountOut: winner.quote.amountOut,
+    minAmountOut: winner.quote.minAmountOut,
+    platform: winner.quote.platform,
+    provider: winner.provider,
+    route: winner.quote.route,
+    ...(winner.provider === "xbull" && resolvedPath ? { resolvedPath } : {}),
+  };
 }
