@@ -45,6 +45,13 @@ export interface DecisionAnswer {
      */
     minAmountOut?: string;
     /**
+     * Pinned alongside `minAmountOut`: which provider's quote the user was shown and accepted.
+     * The build re-quotes and builds through exactly this provider, never a different one that
+     * might look better right now but that the user never saw priced (architecture.md, this
+     * feature's spec §5.2).
+     */
+    provider?: "soroswap" | "xbull";
+    /**
      * Required by the `transfer_to_account` choice: the `G...` address the balance is paid to.
      *
      * It travels with the answer rather than in a separate map so a destination cannot become

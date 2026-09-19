@@ -9,6 +9,7 @@ import type {
 import { Logger } from "@nestjs/common";
 import { Address, Contract, StrKey, scValToNative, xdr } from "@stellar/stellar-sdk";
 import { resolveWasmHash, type ContractResolution } from "@/lib/contract-registry";
+import { withTimeout } from "@/lib/utils/with-timeout";
 import type { LedgerEntriesReader } from "@/lib/stellar/contract-instance";
 import { getRpcServer } from "@/lib/stellar/rpc";
 
@@ -194,12 +195,11 @@ export async function completePositionsFromLedger(
   const instances = new Map<string, Instance>();
   try {
     const keys = contracts.map((c) => new Contract(c).getFootprint());
-    const response = await Promise.race([
+    const response = await withTimeout(
       deps.rpc.getLedgerEntries(...keys),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timed out")), COMPLETION_TIMEOUT_MS).unref?.()
-      ),
-    ]);
+      COMPLETION_TIMEOUT_MS,
+      "timed out"
+    );
     for (const entry of response.entries ?? []) {
       try {
         const contract = Address.fromScAddress(entry.key.contractData().contract()).toString();

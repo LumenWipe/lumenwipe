@@ -15,6 +15,7 @@ import {
   tokenDecisionId,
   tokenConversionFloors,
   MissingConversionFloorError,
+  UnrecognizedConversionProviderError,
   type TokenQuoteSummary,
 } from "@/lib/close-api/decisions";
 
@@ -26,7 +27,15 @@ const QUOTE: TokenQuoteSummary = {
   amountOut: "5249630",
   minAmountOut: "5223381",
   platform: "aggregator",
+  provider: "soroswap",
   route: ["soroswap"],
+};
+const XBULL_QUOTE: TokenQuoteSummary = {
+  amountOut: "5100000",
+  minAmountOut: "5074650",
+  platform: "router",
+  provider: "xbull",
+  route: ["xbull"],
 };
 
 function held(
@@ -63,6 +72,20 @@ test("every token with a balance gets a required decision: transfer and leave al
   expect(b!.options.map((o) => o.id)).toEqual([TRANSFER_CHOICE, LEAVE_CHOICE]);
   expect(b!.default).toBe(TRANSFER_CHOICE);
   expect(b!.subject).toMatchObject({ convertible: false, symbol: null, decimals: null });
+});
+
+test("a quote from either provider produces the same convert_to_xlm option; the subject carries which one won", () => {
+  const points = deriveTokenDecisionPoints(withTokens([held(TOKEN_A, "100")]), {
+    [TOKEN_A]: XBULL_QUOTE,
+  });
+  expect(points[0]!.options.map((o) => o.id)).toEqual([
+    "convert_to_xlm",
+    TRANSFER_CHOICE,
+    LEAVE_CHOICE,
+  ]);
+  expect(points[0]!.default).toBe("convert_to_xlm");
+  expect(points[0]!.subject).toMatchObject({ convertible: true, quote: XBULL_QUOTE });
+  expect((points[0]!.subject as { quote: TokenQuoteSummary }).quote.provider).toBe("xbull");
 });
 
 test("leaving is never the default, and a token with no balance asks nothing", () => {
@@ -160,7 +183,7 @@ test("a token's convert answer must carry the floor it was quoted; a classic ass
       ],
       byId
     )
-  ).toEqual({ [TOKEN_A]: "5223381" });
+  ).toEqual({ [TOKEN_A]: { minAmountOut: "5223381", provider: "soroswap" } });
   for (const params of [undefined, {}, { minAmountOut: "0" }, { minAmountOut: "12.5" }]) {
     expect(() =>
       tokenConversionFloors(
@@ -179,4 +202,48 @@ test("a token's convert answer must carry the floor it was quoted; a classic ass
       byId
     )
   ).toEqual({});
+});
+
+test("tokenConversionFloors carries the pinned provider alongside the floor", () => {
+  const byId = [{ id: tokenDecisionId(TOKEN_A), asset: TOKEN_A }];
+  const floors = tokenConversionFloors(
+    [
+      {
+        id: tokenDecisionId(TOKEN_A),
+        choice: "convert_to_xlm",
+        params: { minAmountOut: "100", provider: "xbull" },
+      },
+    ],
+    byId
+  );
+  expect(floors[TOKEN_A]).toEqual({ minAmountOut: "100", provider: "xbull" });
+});
+
+test("a missing provider defaults to soroswap, the only provider that existed before this feature", () => {
+  const byId = [{ id: tokenDecisionId(TOKEN_A), asset: TOKEN_A }];
+  const floors = tokenConversionFloors(
+    [{ id: tokenDecisionId(TOKEN_A), choice: "convert_to_xlm", params: { minAmountOut: "100" } }],
+    byId
+  );
+  expect(floors[TOKEN_A]).toEqual({ minAmountOut: "100", provider: "soroswap" });
+});
+
+test("a present but unrecognized provider is refused rather than silently built through soroswap", () => {
+  const byId = [{ id: tokenDecisionId(TOKEN_A), asset: TOKEN_A }];
+  expect(() =>
+    tokenConversionFloors(
+      [
+        {
+          id: tokenDecisionId(TOKEN_A),
+          choice: "convert_to_xlm",
+          // A client bug (typo of "xbull") or any other string outside the recognized set: the
+          // DTO's own TS type only names the two real providers, but nothing at runtime stops an
+          // unvalidated request body from carrying anything else, so the check must be a real
+          // runtime one, not just a type annotation.
+          params: { minAmountOut: "100", provider: "xbulll" as never },
+        },
+      ],
+      byId
+    )
+  ).toThrow(UnrecognizedConversionProviderError);
 });

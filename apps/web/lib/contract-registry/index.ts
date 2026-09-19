@@ -59,10 +59,11 @@ export function isContractRegistryUsable(now: Date = new Date()): boolean {
  * expired: an exit through an unverified contract must fail verification, not slip through.
  */
 /**
- * The Soroswap contracts a Soroban token conversion may be entered through on `network`: the
- * aggregator and the router. Bundled, never served, for the same reason the exit contracts are -
- * an API that could add an address here could name its own. Empty when the registry has expired,
- * so a conversion through an unverified contract fails verification rather than slipping through.
+ * The contracts a Soroban token conversion may be entered through on `network`: Soroswap's
+ * aggregator and router, and xBull's router. Bundled, never served, for the same reason the exit
+ * contracts are - an API that could add an address here could name its own. Empty when the
+ * registry has expired, so a conversion through an unverified contract fails verification rather
+ * than slipping through.
  */
 export function conversionContractsFor(network: Network, now: Date = new Date()): string[] {
   if (!isContractRegistryUsable(now)) return [];
@@ -70,7 +71,7 @@ export function conversionContractsFor(network: Network, now: Date = new Date())
     .filter(
       (e) =>
         e.network === network &&
-        e.protocol === "soroswap" &&
+        (e.protocol === "soroswap" || e.protocol === "xbull") &&
         e.verifiedLive &&
         // A hash-less entry is one nobody resolved on-chain; the API refuses those too.
         e.wasmHash !== null &&

@@ -121,6 +121,35 @@ test("carries a null wasmHash for the documented-but-unresolvable FxDAO entry ra
   expect(fxdao.some((e) => e.wasmHash === null && e.verifiedLive === false)).toBe(true);
 });
 
+test("resolves the xBull mainnet router by its live wasm hash", () => {
+  const lookup = createContractRegistryLookup(
+    validateContractRegistry({
+      version: "test",
+      lastVerified: "2026-01-01",
+      validUntil: "2099-01-01",
+      source: "test",
+      entries: [
+        {
+          network: "mainnet",
+          protocol: "xbull",
+          kind: "router",
+          address: "CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT",
+          wasmHash: "c2b3ec57fbd45d5bade9df2ad30c464d1588cead18495a5ce327a98c45c02219",
+          version: "v1",
+          label: "xBull PathPayment swap router",
+          verifiedLive: true,
+        },
+      ],
+    })
+  );
+  expect(
+    lookup.resolveWasmHash(
+      "mainnet",
+      "c2b3ec57fbd45d5bade9df2ad30c464d1588cead18495a5ce327a98c45c02219"
+    )
+  ).toMatchObject({ status: "known", protocol: "xbull", kind: "router" });
+});
+
 test("today's date is within the registry's verification window", () => {
   expect(isRegistryFresh(new Date())).toBe(true);
 });

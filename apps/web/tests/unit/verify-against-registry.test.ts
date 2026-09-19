@@ -194,3 +194,51 @@ describe("the dual role does not widen what the anchor accepts", () => {
     ).toThrow(/not one of this account's detected positions/);
   });
 });
+
+/**
+ * The same class of bug PR #270 caught for Soroswap, for xBull: every other xBull test in
+ * verify.test.ts hand-builds `conversionContracts: [XBULL_ROUTER]`, so none of them would have
+ * caught the router being absent from `conversionContractsFor`'s real filter. xBull is
+ * mainnet-only (no testnet entry exists), so this derives the expectation on mainnet, the one
+ * network where the regression could actually happen.
+ */
+describe("xBull's router, derived from the real registry (mainnet, the only network it exists on)", () => {
+  const XLM_SAC_MAINNET = Asset.native().contractId(Networks.PUBLIC);
+  const XBULL_ROUTER = "CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT";
+  const CONVERT_TOKEN = "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75";
+
+  function xbullExpectation(): CloseExpectation {
+    return {
+      ...expectationFor(accountWith([])),
+      ...exitExpectations(accountWith([]), "mainnet"),
+      tokenConversions: {
+        [CONVERT_TOKEN]: {
+          minAmountOut: "1",
+          amountIn: "100000000",
+          resolvedPath: [CONVERT_TOKEN, XLM_SAC_MAINNET],
+        },
+      },
+    } as CloseExpectation;
+  }
+
+  test("the real registry includes xBull's router in conversionContracts on mainnet", () => {
+    expect(xbullExpectation().conversionContracts).toContain(XBULL_ROUTER);
+  });
+
+  test("a real strict_send call passes the anchor using the registry-derived expectation", () => {
+    const swap: IntentOperation = {
+      source: SRC,
+      type: "invoke_host_function",
+      contract: XBULL_ROUTER,
+      function: "strict_send",
+      args: [SRC, SRC, "100000000", "1", "[[0,1,0,0]]", "[]"],
+      accountsReferenced: [SRC],
+      contractsReferenced: [XBULL_ROUTER],
+      unsupportedAddressCount: 0,
+      authorizesBeyondSelf: false,
+      authDepth: 0,
+      subInvocations: [],
+    } as unknown as IntentOperation;
+    expect(() => assertCloseIntent(exitOnly(swap), xbullExpectation())).not.toThrow();
+  });
+});

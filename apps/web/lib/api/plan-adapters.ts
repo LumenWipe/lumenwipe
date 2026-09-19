@@ -25,22 +25,54 @@ export interface AssetConvertibility {
     rawBalance: string;
     arrivesFromExit: boolean;
     /** The plan's conversion quote when a route exists: XLM out and the floor, in stroops. */
-    quote?: { amountOut: string; minAmountOut: string; platform: string; route: string[] };
+    quote?: TokenQuote;
   };
 }
 
-function tokenQuoteOf(
-  raw: unknown
-): { amountOut: string; minAmountOut: string; platform: string; route: string[] } | undefined {
+/** A Soroban contract id, the same shape `verify.ts`'s own `CONTRACT_ID` checks. */
+const CONTRACT_ID = /^C[A-Z2-7]{55}$/;
+
+export interface TokenQuote {
+  amountOut: string;
+  minAmountOut: string;
+  platform: string;
+  route: string[];
+  /** Which provider's quote this is: which one the plan-time race picked. */
+  provider: "soroswap" | "xbull";
+  /** Only for an `xbull` win: the live route (token addresses, in order, ending at XLM) the API
+   *  resolved once more at plan time - the same route `verify.ts`'s trust anchor needs to hold a
+   *  later `strict_send` call to before it is ever signed. Absent for a Soroswap win, or when
+   *  xBull's route could not be confirmed live (the plan never offers that as convertible). */
+  resolvedPath?: string[];
+}
+
+function tokenQuoteOf(raw: unknown): TokenQuote | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const q = raw as Record<string, unknown>;
   if (typeof q.amountOut !== "string" || typeof q.minAmountOut !== "string") return undefined;
   if (!/^\d+$/.test(q.amountOut) || !/^[1-9]\d*$/.test(q.minAmountOut)) return undefined;
+  if (q.provider !== "soroswap" && q.provider !== "xbull") return undefined;
+  const resolvedPath = Array.isArray(q.resolvedPath)
+    ? q.resolvedPath.filter((r): r is string => typeof r === "string" && CONTRACT_ID.test(r))
+    : undefined;
+  // A resolvedPath present but not entirely well-formed is worth nothing to the trust anchor -
+  // it would either fail to match anything (safe) or, worse, look plausible while silently
+  // missing hops. Dropping it here rather than passing a partial list keeps the token
+  // unconvertible-by-xBull rather than convertible-on-a-corrupted-route.
+  const wellFormedPath =
+    Array.isArray(q.resolvedPath) &&
+    resolvedPath !== undefined &&
+    resolvedPath.length === q.resolvedPath.length &&
+    resolvedPath.length >= 2
+      ? resolvedPath
+      : undefined;
   return {
     amountOut: q.amountOut,
     minAmountOut: q.minAmountOut,
     platform: typeof q.platform === "string" ? q.platform : "",
     route: Array.isArray(q.route) ? q.route.filter((r): r is string => typeof r === "string") : [],
+    provider: q.provider,
+    ...(wellFormedPath ? { resolvedPath: wellFormedPath } : {}),
   };
 }
 

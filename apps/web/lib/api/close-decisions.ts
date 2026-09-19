@@ -5,6 +5,7 @@ import type {
 } from "@/types/plan";
 import type { DecisionAnswer } from "@lumenwipe/sdk";
 import type { AccountState } from "@/types/account";
+import type { TokenConversionFloor } from "@/store/demolish";
 
 /** Stable decision id for a per-asset disposition. Must match the API's `assetDecisionId`. */
 function assetDecisionId(asset: string): string {
@@ -115,7 +116,7 @@ const TRANSFER_CHOICE = "transfer_to_account";
 export function dispositionsToDecisions(
   dispositions: Record<string, AssetDisposition>,
   transferDestinations: TransferDestinations = {},
-  tokenConversionFloors: Record<string, string> = {}
+  tokenConversionFloors: Record<string, TokenConversionFloor> = {}
 ): DecisionAnswer[] {
   return Object.entries(dispositions).map(([asset, disposition]): DecisionAnswer => {
     const id = isTokenContract(asset) ? tokenDecisionId(asset) : assetDecisionId(asset);
@@ -123,10 +124,17 @@ export function dispositionsToDecisions(
       case "convert": {
         // A token's convert answer carries the floor the plan quoted, so the API can refuse a
         // route that drifted under it and the browser can hold the swap to it. Without a floor the
-        // API refuses the answer, which is the intended outcome.
-        const floor = isTokenContract(asset) ? tokenConversionFloors[asset] : undefined;
-        return floor
-          ? { id, choice: "convert_to_xlm", params: { minAmountOut: floor } }
+        // API refuses the answer, which is the intended outcome. The provider travels alongside
+        // it: the build round never falls back to a provider the user was not quoted through
+        // (token-conversion-round.ts), so omitting it here would silently default to Soroswap for
+        // a floor the user actually accepted from xBull.
+        const pinned = isTokenContract(asset) ? tokenConversionFloors[asset] : undefined;
+        return pinned
+          ? {
+              id,
+              choice: "convert_to_xlm",
+              params: { minAmountOut: pinned.minAmountOut, provider: pinned.provider },
+            }
           : { id, choice: "convert_to_xlm" };
       }
       case "issuer":
@@ -246,21 +254,35 @@ export function chosenTokenTransfers(
  * The Soroban token conversions the user chose, keyed by token contract, with the least XLM (in
  * stroops) the plan quoted and they accepted. verify() holds the built swap to at least that
  * figure, and to paying it into this account and no other.
+ *
+ * `resolvedPath` rides along only for a token whose pinned quote is xBull's: it is the one piece
+ * of information verify()'s `strict_send` branch needs that the transaction's own arguments
+ * cannot supply (architecture.md §10.1 / Task 8's dispatch-time ruling). A Soroswap-pinned token
+ * carries none, since verify() reads that shape's asset identity straight off the call itself.
  */
 export function chosenTokenConversions(
   dispositions: Record<string, AssetDisposition>,
-  floors: Record<string, string>,
+  floors: Record<string, TokenConversionFloor>,
   accountState: AccountState | null
-): Record<string, { minAmountOut: string; amountIn: string }> {
-  const conversions: Record<string, { minAmountOut: string; amountIn: string }> = {};
+): Record<string, { minAmountOut: string; amountIn: string; resolvedPath?: string[] }> {
+  const conversions: Record<
+    string,
+    { minAmountOut: string; amountIn: string; resolvedPath?: string[] }
+  > = {};
   const tokens = accountState?.sorobanTokens?.tokens ?? [];
   for (const [contract, disposition] of Object.entries(dispositions)) {
     if (disposition !== "convert" || !isTokenContract(contract)) continue;
-    const floor = floors[contract];
-    if (typeof floor !== "string" || !/^[1-9]\d*$/.test(floor)) continue;
+    const pinned = floors[contract];
+    if (!pinned || !/^[1-9]\d*$/.test(pinned.minAmountOut)) continue;
     const token = tokens.find((t) => t.contract === contract);
     const amountIn = token && /^\d+$/.test(token.balance) ? token.balance : "0";
-    conversions[contract] = { minAmountOut: floor, amountIn };
+    conversions[contract] = {
+      minAmountOut: pinned.minAmountOut,
+      amountIn,
+      ...(pinned.provider === "xbull" && pinned.resolvedPath
+        ? { resolvedPath: pinned.resolvedPath }
+        : {}),
+    };
   }
   return conversions;
 }

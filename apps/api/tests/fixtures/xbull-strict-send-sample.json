@@ -1,0 +1,115 @@
+{
+  "_comment": "Captured 2026-09-17 against mainnet CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT. The live /swaps/strict-send HTTP endpoint itself was retried against multiple real, well-funded mainnet accounts (Kraken's GA5XIGA5...GGKTM with 263308 XLM + a USDC trustline, and Kraken ColdStorage GB6DQO6L...RZCOM5 with 247M XLM + a USDC trustline; also a self-swap), several asset pairs (XLM/USDC, XLM/yXLM), and a range of amount/minToReceive values - every attempt still returned `{\"message\":[null],\"error\":\"Bad Request\",\"statusCode\":400}`, reproducing exactly the unresolved failure the spec's own prior research already hit (confirmed NOT account- or amount-specific: omitting a required field like `route`/`amount`/`minToReceive` instead gives a normal, specific validation message, so this null-message 400 is some other, still-undiagnosed server-side fault independent of caller input). Per the brief's fallback, the path tuple order was instead resolved from two independent, genuinely-live sources and is CONFIRMED, not guessed: (1) a direct getLedgerEntries read of the contract's own Map(u32) persistent storage for indices 0-40 (see assetMap below), and (2) 15 real `strict_send` events the contract itself emitted on mainnet between ledgers 64468572-64476412 (via getEvents), including multi-hop paths where one hop's out-index provably equals the next hop's in-index (e.g. [[4,0,1042,25],[4,25,1049,38],[4,38,1152,33]] for an XLM->USDC->(idx38)->XRF route). Cross-referencing every event's plaintext from_asset/to_asset against the Map gives one, internally-consistent answer across all 15 samples: path tuple = [protocol_id, in_asset_index, pool_id, out_asset_index]. Because the live endpoint would not cooperate, this fixture's contractArgsXDR is not a freshly quoted-and-built call but the genuine InvokeHostFunction operation extracted from a real, already-successfully-executed mainnet transaction (txHash dc911e7d85610b233e29093e27fd8ee61a3604c251984656b3b703d027c11f34, ledger 64468572, a self-swap: from==to==GB35ULWRFMUSI2BAAUVKH3CJ37UIXRUCM4AIMBBPAZ76IUK3RVHEELH7, fetched via Horizon and decoded with this repo's pinned @stellar/stellar-sdk exactly per the brief's Step 2 snippet) - arguably stronger evidence than a self-built quote, since it is proof the exact bytes executed successfully on-chain, not merely that they simulated. Confidence: high (not merely plausible - two independent live data sources agree with each other and are non-guessable, since the pool ids and protocol ids are opaque integers that only make sense if the index positions are as stated).",
+  "fromAsset": "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",
+  "toAsset": "CBLLEW7HD2RWATVSMLAGWM4G3WCHSHDJ25ALP4DI6LULV5TU35N2CIZA",
+  "amount": "478000000",
+  "minToReceive": "9129329763",
+  "contractArgsXDR": "AAAAAZVwk6ZSXCJ9Cl+4deFW2hMqPq5YuCl/5oT7CBx5WPFdAAAAC3N0cmljdF9zZW5kAAAAAAYAAAASAAAAAAAAAAB32i7RKykkaCAFKqPsSd/oi8aCZwCGBC8Gf+RRW41OQgAAABIAAAAAAAAAAHfaLtErKSRoIAUqo+xJ3+iLxoJnAIYELwZ/5FFbjU5CAAAACQAAAAAAAAAAAAAAABx9s4AAAAAJAAAAAAAAAAAAAAACICaEYwAAABAAAAABAAAAAQAAABAAAAABAAAABAAAAAMAAAAEAAAAAwAAABkAAAADAAAEWAAAAAMAAAAhAAAAEAAAAAEAAAAA",
+  "decoded": {
+    "contractAddress": "CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT",
+    "functionName": "strict_send",
+    "from": "GB35ULWRFMUSI2BAAUVKH3CJ37UIXRUCM4AIMBBPAZ76IUK3RVHEELH7",
+    "to": "GB35ULWRFMUSI2BAAUVKH3CJ37UIXRUCM4AIMBBPAZ76IUK3RVHEELH7",
+    "amount": "478000000",
+    "minToGet": "9129329763",
+    "path": [[4, 25, 1112, 33]],
+    "refs": []
+  },
+  "pathTupleOrder": ["protocol_id", "in_asset_index", "pool_id", "out_asset_index"],
+  "sourceTransaction": {
+    "network": "mainnet",
+    "txHash": "dc911e7d85610b233e29093e27fd8ee61a3604c251984656b3b703d027c11f34",
+    "ledger": 64468572,
+    "ledgerClosedAt": "2026-09-17T07:03:58Z",
+    "note": "A real, already-successfully-executed mainnet strict_send call, not a freshly built one - see _comment."
+  },
+  "corroboratingEvents": [
+    {
+      "txHash": "dc911e7d85610b233e29093e27fd8ee61a3604c251984656b3b703d027c11f34",
+      "ledger": 64468572,
+      "fromAssetIndex": 25,
+      "toAssetIndex": 33,
+      "path": [[4, 25, 1112, 33]]
+    },
+    {
+      "txHash": "376d872c0e6ecb2a060c71cd6358b928f6ff37bf853fd07a2f4a8147fdd88c49",
+      "ledger": 64469585,
+      "fromAssetIndex": 0,
+      "toAssetIndex": 33,
+      "path": [[4, 0, 1044, 33]]
+    },
+    {
+      "txHash": "50868cf49cd5f70cefb3e530221b85449bf954a99367d549def68c31612a1c1c",
+      "ledger": 64473702,
+      "fromAssetIndex": 0,
+      "toAssetIndex": 33,
+      "path": [
+        [4, 0, 1042, 25],
+        [4, 25, 1049, 38],
+        [4, 38, 1152, 33]
+      ]
+    },
+    {
+      "txHash": "3815ba331c67aefa3f9cceab14da9242da6c66bb1408068250539b7082ab0064",
+      "ledger": 64474803,
+      "fromAssetIndex": 25,
+      "toAssetIndex": 33,
+      "path": [
+        [3, 25, 1172, 29],
+        [4, 29, 1195, 38],
+        [4, 38, 1152, 33]
+      ]
+    },
+    {
+      "txHash": "765a345fc9f6bbb2ed977b70c50a447867a8e23f9d6d85cb08c0b20b0a06fcc4",
+      "ledger": 64476095,
+      "fromAssetIndex": 25,
+      "toAssetIndex": 4,
+      "path": [[2, 25, 1017, 4]]
+    }
+  ],
+  "assetMap": {
+    "_comment": "The contract's own Map(u32) persistent storage, read directly via getLedgerEntries against mainnet.sorobanrpc.com on 2026-09-17, indices 0-40 (an arbitrary cutoff for this fixture, not the contract's full table). Index 0 and index 37 both resolve to XLM's SAC - the admin registered the same asset at two indices, which is why one of the corroborating XLM->XRF events above uses fromAssetIndex 0.",
+    "0": "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
+    "1": "CCG27OZ5AV4WUXS6XTECWAXEY5UOMEFI2CWFA3LHZGBTLYZWTJF3MJYQ",
+    "2": "CAUIKL3IYGMERDRUN6YSCLWVAKIFG5Q4YJHUKM4S4NJZQIA3BAS6OJPK",
+    "3": "CCYYYCTVCTWCOSE262VEMA6U4LZ3HWAUL245XVR3IKR75TSPYSQAOMNX",
+    "4": "CD25MNVTZDL4Y3XBCPCJXGXATV5WUHHOWMYFF4YBEGU5FCPGMYTVG5JY",
+    "5": "CAO7DDJNGMOYQPRYDY5JVZ5YEK4UQBSMGLAEWRCUOTRMDSBMGWSAATDZ",
+    "6": "CAL6ER2TI6CTRAY6BFXWNWA7WTYXUXTQCHUBCIBU5O6KM3HJFG6Z6VXV",
+    "7": "CBH4M45TQBLDPXOK6L7VYKMEJWFITBOL64BN3WDAIIDT4LNUTWTTOCKF",
+    "8": "CDTKPWPLOURQA2SGTKTUQOWRCBZEORB4BWBOMJ3D3ZTQQSGE5F6JBQLV",
+    "9": "CBVDRT5474OBUEXF5MJB3UGQ5CG7CKGCAH5M4RV5NBCDJUBZ5OXHJLOU",
+    "10": "CBEOWRDE3GBMF6XF5LPIST3E4FUSXW4LYTOSQPVBJXGDVNWR6IK3GIYI",
+    "11": "CBN3NCJSMOQTC6SPEYK3A44NU4VS3IPKTARJLI3Y77OH27EWBY36TP7U",
+    "12": "CANIDMEFQAKFECKVZ7GIIXQWTY35BPIBPBPUWNMUMR7VGBMVVLRCFLMT",
+    "13": "CCHBWUYVW4QAXQ2KVKSCXT37SWLQOCTAYG2QRQDMLAZXVJJPUO2ZAGXS",
+    "14": "CBCO65UOWXY2GR66GOCMCN6IU3Y45TXCPBY3FLUNL4AOUMOCKVIVV6JC",
+    "15": "CB23WRDQWGSP6YPMY4UV5C4OW5CBTXKYN3XEATG7KJEZCXMJBYEHOUOV",
+    "16": "CAB7CSQK7TNVYGVMYEMOAPM56S6WZSZD3MPJCZ5KFPCUVQ4X2VLQOQDT",
+    "17": "CDWGJD5R37BQIU23LBNUQXIW45WS3CIJPJSP3I4FG5OYDX5MZDTP2RZ6",
+    "18": "CBXE6V454EUYWVQCI4TCSOG4CSNPQ2BLYOTKAKXYFHO3KNVX4CXYCY2T",
+    "19": "CBLK4KSE3CZNQNSVVJMD3VMF4AKF4XG7Y2JCIGEC6Q5XAMGN2WAALGJ5",
+    "20": "CCCRWH6Q3FNP3I2I57BDLM5AFAT7O6OF6GKQOC6SSJNDAVRZ57SPHGU2",
+    "21": "CCKCKCPHYVXQD4NECBFJTFSCU2AMSJGCNG4O6K4JVRE2BLPR7WNDBQIQ",
+    "22": "CBIJBDNZNF4X35BJ4FFZWCDBSCKOP5NB4PLG4SNENRMLAPYG4P5FM6VN",
+    "23": "CD6M4R2322BYCY2LNWM74PEBQAQ63SA3DUJLI3L4225U4ZVCLMSCBCIS",
+    "24": "CDTSZ2VWVPLNCTHVFK7Y2KKOYDH32NAZ5KMPZIMP3BJ2WBAVPH6SWECE",
+    "25": "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",
+    "26": "CB226ZOEYXTBPD3QEGABTJYSKZVBP2PASEISLG3SBMTN5CE4QZUVZ3CE",
+    "27": "CAC743NYRBMS76L2DCPAXZTOEF6EJPKPVEC5OX2SXY7HOWNXISSLUE2C",
+    "28": "CCOB35AE6UJQPEUCSJYYX42NAEHQD2FHRQSQYGLJAWJL7STGES7BNVYR",
+    "29": "CB3YA656OYIHU57657I5KGSBRHE5I3OZU4VFC22PYAOANFZHEWNYGAGP",
+    "30": "CDIKURWHYS4FFTR5KOQK6MBFZA2K3E26WGBQI6PXBYWZ4XIOPJHDFJKP",
+    "31": "CBLV4ATSIWU67CFSQU2NVRKINQIKUZ2ODSZBUJTJ43VJVRSBTZYOPNUR",
+    "32": "CAESLMGW5LYTIEJI7FJHK6SFSWRELLNVX5Q4WR4UZEALMTRWQDBKDPAG",
+    "33": "CBLLEW7HD2RWATVSMLAGWM4G3WCHSHDJ25ALP4DI6LULV5TU35N2CIZA",
+    "34": "CAAV3AE3VKD2P4TY7LWTQMMJHIJ4WOCZ5ANCIJPC3NRSERKVXNHBU2W7",
+    "35": "CDCKFBZYF2AQCSM3JOF2ZM27O3Y6AJAI4OTCQKAFNZ3FHBYUTFOKICIY",
+    "36": "CBRP2VD3CZLEQIQZ4JMBXGA5AC2U6JE26YU5CCIOICIZCVWPGBO2QRUB",
+    "37": "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
+    "38": "CDFZUVS5YNLXU7VENKOUDEOHCJGKQNVUBWD7KMN6E7ZROKPYPFLRUJFG",
+    "39": "CAUP7NFABXE5TJRL3FKTPMWRLC7IAXYDCTHQRFSCLR5TMGKHOOQO772J",
+    "40": "CB2XMFB6BDIHFOSFB5IXHDOYV3SI3IXMNIZLPDZHC7ENDCXSBEBZAO2Y"
+  }
+}

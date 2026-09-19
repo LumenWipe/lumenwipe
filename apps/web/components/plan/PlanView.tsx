@@ -8,7 +8,7 @@ import type { AssetDisposition, ClaimableBalanceSelection, PlanBlocker } from "@
 import type { Network } from "@/config/networks";
 import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
 import type { MediatorCheckResult } from "@/types/account";
-import { useDemolishStore } from "@/store/demolish";
+import { useDemolishStore, type TokenConversionFloor } from "@/store/demolish";
 import { fetchClosePlan } from "@/lib/api/close-client";
 import {
   claimableSelectionsToDecisions,
@@ -100,9 +100,12 @@ export default function PlanView({
   // The floors the plan quoted, kept for the convert answers and for verify(): only tokens whose
   // quote is usable get one, and a token without a quote can never be answered "convert".
   useEffect(() => {
-    const floors: Record<string, string> = {};
+    const floors: Record<string, TokenConversionFloor> = {};
     for (const c of conversions) {
-      if (c.token?.quote) floors[c.asset] = c.token.quote.minAmountOut;
+      if (c.token?.quote) {
+        const { minAmountOut, provider, resolvedPath } = c.token.quote;
+        floors[c.asset] = { minAmountOut, provider, ...(resolvedPath ? { resolvedPath } : {}) };
+      }
     }
     useDemolishStore.getState().setTokenConversionFloors(floors);
     // eslint-disable-next-line react-hooks/exhaustive-deps

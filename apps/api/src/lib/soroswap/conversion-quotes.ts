@@ -43,6 +43,20 @@ export const CONVERSION_PROTOCOLS: SupportedProtocols[] = [
 /** A quote that takes longer than this is not worth waiting on inside a plan. */
 export const QUOTE_TIMEOUT_MS = 8_000;
 
+/** The shape of xBull's own raw quote (`xbull/conversion-quotes.ts`'s internal
+ *  `XBullQuoteResponse`), exported here so `TokenConversionQuote.raw` can hold either provider's
+ *  quote without either module casting it away. Provider identity itself is never carried on
+ *  this type or on `TokenConversionQuote` - only `ConversionProviderQuote.provider` (Task 5's
+ *  multi-source orchestration) says which provider a quote came from. */
+export interface XBullRawQuote {
+  route: string;
+  fromAmount: string;
+  toAmount: string;
+  fromAsset: string;
+  toAsset: string;
+  fee: { platformFee: string; referralsFee: string };
+}
+
 export interface TokenConversionQuote {
   token: string;
   /** Base units of the token the quote is for. */
@@ -57,8 +71,8 @@ export interface TokenConversionQuote {
   platform: "aggregator" | "router";
   /** The route, as protocol names, for display. */
   route: string[];
-  /** The API's quote, echoed back to it verbatim to build the transaction. */
-  raw: QuoteResponse;
+  /** The provider's quote, echoed back to it verbatim to build the transaction. */
+  raw: QuoteResponse | XBullRawQuote;
 }
 
 /** What the module needs from the SDK; a test hands in a stand-in. */
@@ -187,6 +201,14 @@ export async function quoteTokenToXlm(
   };
 }
 
+/** `TokenConversionQuote.raw` now holds either provider's quote (Step 1 above); this is the one
+ *  it's really the API's own - the shape the Soroswap SDK's `build` call requires - so a quote
+ *  built from xBull's raw response (which this module never produces) is refused rather than
+ *  handed to an SDK that would reject its fields silently. */
+function isSoroswapRawQuote(raw: QuoteResponse | XBullRawQuote): raw is QuoteResponse {
+  return "assetIn" in raw && "assetOut" in raw;
+}
+
 /**
  * Asks the API to build the swap for a quote, as the account. Returns the unsigned XDR exactly as
  * the API produced it; the caller decodes and asserts it before anything else happens to it.
@@ -197,7 +219,7 @@ export async function buildTokenConversion(
   network: Network,
   deps: ConversionDeps = defaultConversionDeps()
 ): Promise<string | null> {
-  if (!deps.sdk) return null;
+  if (!deps.sdk || !isSoroswapRawQuote(quote.raw)) return null;
   try {
     const built = await deps.sdk.build({ quote: quote.raw, from, to: from }, toSdkNetwork(network));
     return typeof built.xdr === "string" && built.xdr.length > 0 ? built.xdr : null;

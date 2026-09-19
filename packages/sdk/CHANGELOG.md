@@ -7,6 +7,14 @@ release is cut.
 
 ## [Unreleased]
 
+### Added
+
+- `DefiProtocol` gains `"xbull"`: xBull Swap is now a second, mainnet-only conversion-quote
+  source alongside Soroswap for the Soroban-token-to-XLM step of a close. `DecisionAnswer.params`
+  gains an optional `provider?: "soroswap" | "xbull"`, pinning which provider's quote a
+  `convert_to_xlm` answer was accepted from. Both are purely additive; no existing field changed
+  shape.
+
 ## [0.2.0] - 2026-09-23
 
 ### Added
