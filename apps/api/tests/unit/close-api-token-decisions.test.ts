@@ -26,7 +26,15 @@ const QUOTE: TokenQuoteSummary = {
   amountOut: "5249630",
   minAmountOut: "5223381",
   platform: "aggregator",
+  provider: "soroswap",
   route: ["soroswap"],
+};
+const XBULL_QUOTE: TokenQuoteSummary = {
+  amountOut: "5100000",
+  minAmountOut: "5074650",
+  platform: "router",
+  provider: "xbull",
+  route: ["xbull"],
 };
 
 function held(
@@ -63,6 +71,20 @@ test("every token with a balance gets a required decision: transfer and leave al
   expect(b!.options.map((o) => o.id)).toEqual([TRANSFER_CHOICE, LEAVE_CHOICE]);
   expect(b!.default).toBe(TRANSFER_CHOICE);
   expect(b!.subject).toMatchObject({ convertible: false, symbol: null, decimals: null });
+});
+
+test("a quote from either provider produces the same convert_to_xlm option; the subject carries which one won", () => {
+  const points = deriveTokenDecisionPoints(withTokens([held(TOKEN_A, "100")]), {
+    [TOKEN_A]: XBULL_QUOTE,
+  });
+  expect(points[0]!.options.map((o) => o.id)).toEqual([
+    "convert_to_xlm",
+    TRANSFER_CHOICE,
+    LEAVE_CHOICE,
+  ]);
+  expect(points[0]!.default).toBe("convert_to_xlm");
+  expect(points[0]!.subject).toMatchObject({ convertible: true, quote: XBULL_QUOTE });
+  expect((points[0]!.subject as { quote: TokenQuoteSummary }).quote.provider).toBe("xbull");
 });
 
 test("leaving is never the default, and a token with no balance asks nothing", () => {

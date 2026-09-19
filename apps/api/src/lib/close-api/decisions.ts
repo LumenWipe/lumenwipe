@@ -233,6 +233,8 @@ export interface TokenQuoteSummary {
   amountOut: string;
   minAmountOut: string;
   platform: "aggregator" | "router";
+  /** Which provider's quote this is: which one the plan-time race picked. */
+  provider: "soroswap" | "xbull";
   route: string[];
 }
 

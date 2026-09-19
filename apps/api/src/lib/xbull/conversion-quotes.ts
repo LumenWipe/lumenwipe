@@ -1,6 +1,6 @@
 import type { Network } from "@lumenwipe/types";
 import { xlmContractId, floorUnderQuote } from "@/lib/soroswap/conversion-quotes";
-import type { TokenConversionQuote } from "@/lib/soroswap/conversion-quotes";
+import type { TokenConversionQuote, XBullRawQuote } from "@/lib/soroswap/conversion-quotes";
 
 /**
  * Soroban token conversion quotes through xBull's swap API (swap-api.xbull.io): a second,
@@ -44,14 +44,7 @@ export function defaultXBullConversionDeps(): XBullConversionDeps {
   };
 }
 
-interface XBullQuoteResponse {
-  route: string;
-  fromAmount: string;
-  toAmount: string;
-  fromAsset: string;
-  toAsset: string;
-  fee: { platformFee: string; referralsFee: string };
-}
+type XBullQuoteResponse = XBullRawQuote;
 
 function asPositiveBigInt(value: unknown): bigint | null {
   if (typeof value !== "string" || !/^\d+$/.test(value)) return null;
@@ -94,7 +87,7 @@ export async function quoteTokenToXlmViaXBull(
     minAmountOut: minAmountOut.toString(),
     platform: "router",
     route: ["xbull"],
-    raw: raw as unknown as TokenConversionQuote["raw"],
+    raw: raw satisfies XBullRawQuote,
   };
 }
 

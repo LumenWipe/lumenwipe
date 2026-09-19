@@ -31,6 +31,8 @@ import {
 } from "@/lib/exchange-registry";
 import { validateTransferDestinations } from "@/lib/close-api/transfer-destinations";
 import { quoteTokenToXlm } from "@/lib/soroswap/conversion-quotes";
+import { quoteTokenToXlmViaXBull } from "@/lib/xbull/conversion-quotes";
+import { quoteAllProviders, pickBestQuote } from "@/lib/close-api/multi-source-conversion";
 
 /** Quotes per plan are bounded like discovery candidates; a token past this is offered no swap. */
 const MAX_TOKEN_QUOTES = 20;
@@ -188,21 +190,29 @@ export class CloseController {
         accountState.sponsorshipEnumerationIncomplete
           ? Promise.resolve({ revocable: [], unaffordableOwners: new Map() })
           : assessSponsorshipAffordability(source, nonClaimableSponsoredEntries, network);
-      // Priced through the Soroswap API, one quote per held token with readable metadata, only
-      // when conversion is enabled; anything else is offered transfer or leave.
+      // Raced across both providers (Soroswap and xBull), one quote per held token with
+      // readable metadata; anything else is offered transfer or leave. Neither provider is a
+      // hard dependency for the other - quoteAllProviders never throws, so a provider that is
+      // disabled, errors, or times out simply contributes no candidate, and pickBestQuote picks
+      // whichever candidate delivers more XLM.
       const tokenQuotes: Record<string, TokenQuoteSummary | null> = {};
       const tokenQuotePromise = Promise.all(
         (accountState.sorobanTokens?.tokens ?? [])
           .filter((t) => t.symbol !== null && t.decimals !== null && /^[1-9]\d*$/.test(t.balance))
           .slice(0, MAX_TOKEN_QUOTES)
           .map(async (t) => {
-            const quote = await quoteTokenToXlm(t.contract, BigInt(t.balance), network);
-            tokenQuotes[t.contract] = quote
+            const results = await quoteAllProviders(t.contract, BigInt(t.balance), network, {
+              soroswap: quoteTokenToXlm,
+              xbull: quoteTokenToXlmViaXBull,
+            });
+            const best = pickBestQuote(results);
+            tokenQuotes[t.contract] = best
               ? {
-                  amountOut: quote.amountOut,
-                  minAmountOut: quote.minAmountOut,
-                  platform: quote.platform,
-                  route: quote.route,
+                  amountOut: best.quote.amountOut,
+                  minAmountOut: best.quote.minAmountOut,
+                  platform: best.quote.platform,
+                  provider: best.provider,
+                  route: best.quote.route,
                 }
               : null;
           })
