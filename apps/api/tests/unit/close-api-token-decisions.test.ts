@@ -15,6 +15,7 @@ import {
   tokenDecisionId,
   tokenConversionFloors,
   MissingConversionFloorError,
+  UnrecognizedConversionProviderError,
   type TokenQuoteSummary,
 } from "@/lib/close-api/decisions";
 
@@ -225,4 +226,24 @@ test("a missing provider defaults to soroswap, the only provider that existed be
     byId
   );
   expect(floors[TOKEN_A]).toEqual({ minAmountOut: "100", provider: "soroswap" });
+});
+
+test("a present but unrecognized provider is refused rather than silently built through soroswap", () => {
+  const byId = [{ id: tokenDecisionId(TOKEN_A), asset: TOKEN_A }];
+  expect(() =>
+    tokenConversionFloors(
+      [
+        {
+          id: tokenDecisionId(TOKEN_A),
+          choice: "convert_to_xlm",
+          // A client bug (typo of "xbull") or any other string outside the recognized set: the
+          // DTO's own TS type only names the two real providers, but nothing at runtime stops an
+          // unvalidated request body from carrying anything else, so the check must be a real
+          // runtime one, not just a type annotation.
+          params: { minAmountOut: "100", provider: "xbulll" as never },
+        },
+      ],
+      byId
+    )
+  ).toThrow(UnrecognizedConversionProviderError);
 });

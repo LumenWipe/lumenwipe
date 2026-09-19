@@ -45,6 +45,7 @@ import {
   decisionIdFor,
   deriveDecisionPoints,
   MissingConversionFloorError,
+  UnrecognizedConversionProviderError,
   tokenConversionFloors,
   tokenDecisionId,
   type TokenQuoteSummary,
@@ -584,6 +585,11 @@ export class CloseController {
       }
       if (e instanceof MissingConversionFloorError) {
         fail("conversion_floor_missing", e.message, 422, {
+          decisionId: tokenDecisionId(e.contract),
+        });
+      }
+      if (e instanceof UnrecognizedConversionProviderError) {
+        fail("conversion_provider_unrecognized", e.message, 422, {
           decisionId: tokenDecisionId(e.contract),
         });
       }

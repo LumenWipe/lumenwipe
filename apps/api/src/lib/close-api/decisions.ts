@@ -175,6 +175,30 @@ export class MissingConversionFloorError extends Error {
   }
 }
 
+/** The provider names a convert answer's `params.provider` may name. */
+const KNOWN_PROVIDERS = new Set(["soroswap", "xbull"]);
+
+/**
+ * Raised when a token's convert answer names a `params.provider` that is present but not one of
+ * the recognized values. Mirrors `MissingConversionFloorError`'s pattern exactly: a caller-facing
+ * mistake that must refuse the request rather than be silently coerced into a provider the user
+ * never named. Distinct from the missing-provider case, which `??` already handles correctly by
+ * defaulting to "soroswap" for backward compatibility with answers that predate this feature -
+ * this error only fires when the field is present and wrong, e.g. a typo like "xbulll".
+ */
+export class UnrecognizedConversionProviderError extends Error {
+  constructor(
+    readonly contract: string,
+    readonly provider: string
+  ) {
+    super(
+      `Converting the ${contract.slice(0, 4)}…${contract.slice(-4)} token named an unrecognized ` +
+        `provider "${provider}": params.provider must be "soroswap" or "xbull".`
+    );
+    this.name = "UnrecognizedConversionProviderError";
+  }
+}
+
 /**
  * The floors the convert answers carry, per token contract: the least XLM (stroops) the user saw
  * the swap deliver. Strict like transfer destinations: without a floor there is no drift to
@@ -207,7 +231,11 @@ export function tokenConversionFloors(
     // xBull quote to pin): soroswap is the only provider that existed before, so that is the
     // one the build re-quotes and builds through - never a silent upgrade to a route the user
     // was never shown.
-    floors[asset] = { minAmountOut: floor, provider: answer.params?.provider ?? "soroswap" };
+    const rawProvider = answer.params?.provider;
+    if (rawProvider !== undefined && !KNOWN_PROVIDERS.has(rawProvider)) {
+      throw new UnrecognizedConversionProviderError(asset, rawProvider);
+    }
+    floors[asset] = { minAmountOut: floor, provider: rawProvider ?? "soroswap" };
   }
   return floors;
 }

@@ -121,7 +121,11 @@ async function resolveXBullPath(
   const IN_INDEX_POSITION = 1;
   const OUT_INDEX_POSITION = 3;
   const indices = new Set<number>();
-  for (const hop of tuples) {
+  for (let i = 0; i < tuples.length; i++) {
+    const hop = tuples[i]!;
+    if (i > 0 && hop[IN_INDEX_POSITION] !== tuples[i - 1]![OUT_INDEX_POSITION]) {
+      throw new Error(`xBull's path is disconnected: hop ${i} does not continue from hop ${i - 1}`);
+    }
     indices.add(hop[IN_INDEX_POSITION]!);
     indices.add(hop[OUT_INDEX_POSITION]!);
   }
@@ -500,6 +504,28 @@ export async function buildTokenConversionRound(
           sequence,
           nowSeconds: Math.floor(deps.xbull.xbull.now() / 1000),
         });
+        // The address is in the registry; the code behind it must be what the registry verified.
+        const called = Address.fromScAddress(
+          tx
+            .toEnvelope()
+            .v1()
+            .tx()
+            .operations()[0]!
+            .body()
+            .invokeHostFunctionOp()
+            .hostFunction()
+            .invokeContract()
+            .contractAddress()
+        ).toString();
+        const hash = await readLiveWasmHash(deps.rpc, called);
+        const resolved = resolveWasmHash(network, hash ?? "");
+        if (
+          resolved.status !== "known" ||
+          resolved.protocol !== "xbull" ||
+          resolved.kind !== "router"
+        ) {
+          throw new Error("the contract behind the swap is not the code the registry verified");
+        }
       } catch (err) {
         throw new TokenTransferBlockedError(
           "soroban_token_conversion_unsafe",
