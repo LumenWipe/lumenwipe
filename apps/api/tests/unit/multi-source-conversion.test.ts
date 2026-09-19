@@ -66,20 +66,20 @@ test("a provider slower than the timeout is excluded, the other still answers", 
 
 test("resolveTokenQuoteSummary offers an xBull win with its resolvedPath once the route confirms live", async () => {
   const results = [q("soroswap", "100"), q("xbull", "110")];
-  const summary = await resolveTokenQuoteSummary(results, async () => ["TOKEN", "XLM"]);
+  const summary = await resolveTokenQuoteSummary(results, async () => ["T", "XLM"], "T", "XLM");
   expect(summary).toEqual({
     amountOut: "110",
     minAmountOut: "109",
     platform: "router",
     provider: "xbull",
     route: ["xbull"],
-    resolvedPath: ["TOKEN", "XLM"],
+    resolvedPath: ["T", "XLM"],
   });
 });
 
 test("resolveTokenQuoteSummary falls back to the next-best quote when xBull's route cannot be confirmed", async () => {
   const results = [q("soroswap", "100"), q("xbull", "110")];
-  const summary = await resolveTokenQuoteSummary(results, async () => undefined);
+  const summary = await resolveTokenQuoteSummary(results, async () => undefined, "T", "XLM");
   expect(summary).toEqual({
     amountOut: "100",
     minAmountOut: "99",
@@ -89,29 +89,59 @@ test("resolveTokenQuoteSummary falls back to the next-best quote when xBull's ro
   });
 });
 
+test("resolveTokenQuoteSummary falls back to the next-best quote when xBull's route resolves to the wrong token or a different final asset", async () => {
+  const results = [q("soroswap", "100"), q("xbull", "110")];
+  // Right shape, wrong endpoints: neither the token nor the XLM contract this specific request
+  // asked about. A resolved path the browser would refuse anyway is worth nothing here.
+  const wrongToken = await resolveTokenQuoteSummary(
+    results,
+    async () => ["SOME_OTHER_TOKEN", "XLM"],
+    "T",
+    "XLM"
+  );
+  expect(wrongToken?.provider).toBe("soroswap");
+  const wrongAsset = await resolveTokenQuoteSummary(
+    results,
+    async () => ["T", "SOME_OTHER_ASSET"],
+    "T",
+    "XLM"
+  );
+  expect(wrongAsset?.provider).toBe("soroswap");
+});
+
 test("resolveTokenQuoteSummary falls back to null when xBull is the only candidate and its route fails", async () => {
   const results = [q("xbull", "110")];
-  const summary = await resolveTokenQuoteSummary(results, async () => undefined);
+  const summary = await resolveTokenQuoteSummary(results, async () => undefined, "T", "XLM");
   expect(summary).toBeNull();
 });
 
 test("resolveTokenQuoteSummary treats a thrown resolver and an empty resolved path both as failure", async () => {
   const results = [q("xbull", "110")];
   expect(
-    await resolveTokenQuoteSummary(results, async () => {
-      throw new Error("xbull swap-and-build endpoint down");
-    })
+    await resolveTokenQuoteSummary(
+      results,
+      async () => {
+        throw new Error("xbull swap-and-build endpoint down");
+      },
+      "T",
+      "XLM"
+    )
   ).toBeNull();
-  expect(await resolveTokenQuoteSummary(results, async () => [])).toBeNull();
+  expect(await resolveTokenQuoteSummary(results, async () => [], "T", "XLM")).toBeNull();
 });
 
 test("resolveTokenQuoteSummary never calls the xBull resolver for a soroswap win", async () => {
   const results = [q("soroswap", "100")];
   let called = false;
-  const summary = await resolveTokenQuoteSummary(results, async () => {
-    called = true;
-    return ["TOKEN", "XLM"];
-  });
+  const summary = await resolveTokenQuoteSummary(
+    results,
+    async () => {
+      called = true;
+      return ["T", "XLM"];
+    },
+    "T",
+    "XLM"
+  );
   expect(called).toBe(false);
   expect(summary?.provider).toBe("soroswap");
   expect(summary).not.toHaveProperty("resolvedPath");

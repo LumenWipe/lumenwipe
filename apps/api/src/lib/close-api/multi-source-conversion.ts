@@ -81,13 +81,23 @@ export function pickBestQuote(results: ConversionProviderQuote[]): ConversionPro
  */
 export async function resolveTokenQuoteSummary(
   results: ConversionProviderQuote[],
-  resolveXBullRoute: (winner: ConversionProviderQuote) => Promise<string[] | undefined>
+  resolveXBullRoute: (winner: ConversionProviderQuote) => Promise<string[] | undefined>,
+  token: string,
+  xlmContract: string
 ): Promise<TokenQuoteSummary | null> {
   let winner = pickBestQuote(results);
   let resolvedPath: string[] | undefined;
   if (winner?.provider === "xbull") {
     resolvedPath = await resolveXBullRoute(winner).catch(() => undefined);
-    if (!resolvedPath || resolvedPath.length === 0) {
+    // A resolved path that doesn't actually start at this token and end at XLM is exactly as
+    // unusable as no path at all - the whole point of resolving it is so the browser can later
+    // confirm those two endpoints itself; offering one it would refuse anyway helps nobody.
+    if (
+      !resolvedPath ||
+      resolvedPath.length === 0 ||
+      resolvedPath[0] !== token ||
+      resolvedPath.at(-1) !== xlmContract
+    ) {
       winner = pickBestQuote(results.filter((r) => r !== winner));
       resolvedPath = undefined;
     }

@@ -24,9 +24,6 @@ test("CONTRACT_ID matches only a C... address", () => {
 test("collectAccounts throws on any G-account other than the one being closed, anywhere nested", () => {
   expect(() => collectAccounts(nativeToScVal(ACCOUNT, { type: "address" }), ACCOUNT)).not.toThrow();
   expect(() =>
-    collectAccounts(
-      xdr.ScVal.scvVec([nativeToScVal(OTHER_ACCOUNT, { type: "address" })]),
-      ACCOUNT
-    )
+    collectAccounts(xdr.ScVal.scvVec([nativeToScVal(OTHER_ACCOUNT, { type: "address" })]), ACCOUNT)
   ).toThrow("the swap names an account other than the one being closed");
 });

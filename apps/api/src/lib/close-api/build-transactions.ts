@@ -59,6 +59,7 @@ import {
   type TokenConversionRoundDeps,
 } from "@/lib/close-api/token-conversion-round";
 import { isConversionEnabled } from "@/lib/soroswap/conversion-quotes";
+import { isXBullEnabled } from "@/lib/xbull/conversion-quotes";
 
 // Raised when a close cannot be expressed as the phase-1 single fused transaction.
 // The route handler maps `code` to an error response.
@@ -240,7 +241,11 @@ export async function buildCloseTransactions(
         );
       }
     }
-    const conversionOn = conversion.enabled ?? isConversionEnabled();
+    // Either provider being configured is enough to attempt a conversion; the per-provider
+    // availability checks inside the round itself (allowed.aggregator/routers, allowedXBull.router)
+    // are what actually gate which specific route a token gets, at the right granularity. This
+    // early check only rules out the case where neither provider is configured at all.
+    const conversionOn = conversion.enabled ?? (isConversionEnabled() || isXBullEnabled());
     for (const [asset, disposition] of Object.entries(dispositions)) {
       if (disposition === "convert" && isTokenContract(asset) && !conversionOn) {
         throw new TokenTransferBlockedError(

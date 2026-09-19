@@ -1,10 +1,12 @@
 import type { Network } from "./network";
 
 /**
- * Protocols LumenWipe actually knows how to exit (architecture.md §9's table). OctoPos itself
- * indexes more than this (e.g. "untangled-vault", "stellar-wallet") - those are dropped by the
- * adapter rather than represented here, since the type system should not claim LumenWipe can act
- * on a protocol it has no exit path for.
+ * Protocols LumenWipe knows how to act on: most are DeFi positions it knows how to exit
+ * (architecture.md §9's table); `xbull` is the one exception, a swap router with no position to
+ * exit, registered here only so it can share the contract registry's protocol-keyed lookups.
+ * OctoPos itself indexes more than this (e.g. "untangled-vault", "stellar-wallet") - those are
+ * dropped by the adapter rather than represented here, since the type system should not claim
+ * LumenWipe can act on a protocol it has no exit path for.
  */
 export type DefiProtocol = "blend" | "aquarius" | "soroswap" | "phoenix" | "fxdao" | "xbull";
 

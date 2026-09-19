@@ -30,7 +30,7 @@ import {
   requiresMediatorForAddress,
 } from "@/lib/exchange-registry";
 import { validateTransferDestinations } from "@/lib/close-api/transfer-destinations";
-import { quoteTokenToXlm } from "@/lib/soroswap/conversion-quotes";
+import { quoteTokenToXlm, xlmContractId } from "@/lib/soroswap/conversion-quotes";
 import {
   quoteTokenToXlmViaXBull,
   fetchXBullSwapArgs,
@@ -39,7 +39,9 @@ import {
 import {
   quoteAllProviders,
   resolveTokenQuoteSummary,
+  PROVIDER_QUOTE_TIMEOUT_MS,
 } from "@/lib/close-api/multi-source-conversion";
+import { withTimeout } from "@/lib/utils/with-timeout";
 import { resolveXBullPath } from "@/lib/close-api/token-conversion-round";
 import { getRpcServer } from "@/lib/stellar/rpc";
 
@@ -218,19 +220,30 @@ export class CloseController {
             });
             // xBull's own route is confirmed live, once more, before it is ever offered: see
             // `resolveTokenQuoteSummary`'s docstring for why an unresolved route falls back
-            // rather than being shown at all.
-            tokenQuotes[t.contract] = await resolveTokenQuoteSummary(results, (winner) =>
-              fetchXBullSwapArgs(
-                (winner.quote.raw as { route: string }).route,
-                source,
-                BigInt(winner.quote.amountIn),
-                BigInt(winner.quote.minAmountOut),
-                defaultXBullConversionDeps()
-              ).then((contractArgsXDR) =>
-                contractArgsXDR
-                  ? resolveXBullPath(getRpcServer(network), contractArgsXDR)
-                  : undefined
-              )
+            // rather than being shown at all. Bounded the same way every other provider call
+            // already is - xBull's own build endpoint is independently unreliable, and without
+            // a timeout a hang here would stall the whole plan response even though the other
+            // provider already answered.
+            tokenQuotes[t.contract] = await resolveTokenQuoteSummary(
+              results,
+              (winner) =>
+                withTimeout(
+                  fetchXBullSwapArgs(
+                    (winner.quote.raw as { route: string }).route,
+                    source,
+                    BigInt(winner.quote.amountIn),
+                    BigInt(winner.quote.minAmountOut),
+                    defaultXBullConversionDeps()
+                  ).then((contractArgsXDR) =>
+                    contractArgsXDR
+                      ? resolveXBullPath(getRpcServer(network), contractArgsXDR)
+                      : undefined
+                  ),
+                  PROVIDER_QUOTE_TIMEOUT_MS,
+                  `xBull route resolution exceeded ${PROVIDER_QUOTE_TIMEOUT_MS} ms`
+                ),
+              t.contract,
+              xlmContractId(network)
             );
           })
       );

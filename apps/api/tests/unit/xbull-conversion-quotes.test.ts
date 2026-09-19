@@ -1,14 +1,17 @@
 import { expect, test } from "bun:test";
 import { Address } from "@stellar/stellar-sdk";
 import { xlmContractId } from "@/lib/soroswap/conversion-quotes";
-import { isXBullEnabled, quoteTokenToXlmViaXBull, fetchXBullSwapArgs } from "@/lib/xbull/conversion-quotes";
+import {
+  isXBullEnabled,
+  quoteTokenToXlmViaXBull,
+  fetchXBullSwapArgs,
+} from "@/lib/xbull/conversion-quotes";
 
 const TOKEN = Address.contract(Buffer.alloc(32, 2)).toString();
 const XLM = xlmContractId("mainnet");
 
 function fakeFetch(status: number, body: unknown): typeof fetch {
-  return (async () =>
-    new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+  return (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
 }
 
 const deps = (fetchImpl: typeof fetch | null) => ({
@@ -26,12 +29,7 @@ test("a 200 quote becomes a conversion with our own floor under it, never the AP
     toAsset: XLM,
     fee: { platformFee: "6013", referralsFee: "0" },
   });
-  const quote = await quoteTokenToXlmViaXBull(
-    TOKEN,
-    100_000_000n,
-    "mainnet",
-    deps(fetchImpl)
-  );
+  const quote = await quoteTokenToXlmViaXBull(TOKEN, 100_000_000n, "mainnet", deps(fetchImpl));
   expect(quote).toMatchObject({
     token: TOKEN,
     amountIn: "100000000",
@@ -66,7 +64,16 @@ test("a non-200, a network error, zero amount, the XLM asset itself, or a mismat
       TOKEN,
       100n,
       "mainnet",
-      deps(fakeFetch(200, { route: "r", fromAmount: "99", toAmount: "5", fromAsset: TOKEN, toAsset: XLM, fee: { platformFee: "0", referralsFee: "0" } }))
+      deps(
+        fakeFetch(200, {
+          route: "r",
+          fromAmount: "99",
+          toAmount: "5",
+          fromAsset: TOKEN,
+          toAsset: XLM,
+          fee: { platformFee: "0", referralsFee: "0" },
+        })
+      )
     )
   ).toBeNull();
 });
@@ -83,7 +90,13 @@ test("a null deps.fetch (the flag off) is always null, on any network, without e
 test("fetchXBullSwapArgs returns the contractArgsXDR the API names, null on any non-200 or malformed body", async () => {
   const ok = fakeFetch(200, { contractArgsXDR: "AAAA", fromAmount: "10", toAmount: "2" });
   expect(
-    await fetchXBullSwapArgs("route-1", "GBZVDYLAYVGQW6GVBUXROVXZO3AQXC6ZQRJYCNHVXU7NG26BJTHKFSIK", 10n, 1n, deps(ok))
+    await fetchXBullSwapArgs(
+      "route-1",
+      "GBZVDYLAYVGQW6GVBUXROVXZO3AQXC6ZQRJYCNHVXU7NG26BJTHKFSIK",
+      10n,
+      1n,
+      deps(ok)
+    )
   ).toBe("AAAA");
   expect(
     await fetchXBullSwapArgs(

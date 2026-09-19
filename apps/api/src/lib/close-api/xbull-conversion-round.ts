@@ -15,7 +15,12 @@ import {
 } from "@/config/constants";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { addressOf, bigOf, collectAccounts, CONTRACT_ID } from "@/lib/stellar/scval-read";
-import { fetchXBullSwapArgs, type XBullConversionDeps } from "@/lib/xbull/conversion-quotes";
+import {
+  fetchXBullSwapArgs,
+  XBULL_QUOTE_TIMEOUT_MS,
+  type XBullConversionDeps,
+} from "@/lib/xbull/conversion-quotes";
+import { withTimeout } from "@/lib/utils/with-timeout";
 
 /**
  * The xBull PathPayment router's `strict_send` shape (spec §5.4): `(from, to, amount,
@@ -197,8 +202,8 @@ export interface XBullBuildDeps {
   rpc: Pick<stellarRpc.Server, "simulateTransaction">;
   xbull: XBullConversionDeps;
   /** Reads the router's live Map storage and resolves `path`'s indices to asset addresses,
-   *  first hop to last. Implemented in Task 4's follow-up (contract-storage read); a caller
-   *  supplies a stub here and the real implementation in production wiring (Task 7). */
+   *  first hop to last (`resolveXBullPath` in `token-conversion-round.ts` is the real
+   *  implementation `defaultTokenConversionRoundDeps` wires here; a test supplies a stub). */
   resolvePath: (contractArgsXDR: string) => Promise<string[]>;
 }
 
@@ -216,13 +221,22 @@ export async function buildXBullConversion(
   sequence: string,
   deps: XBullBuildDeps
 ): Promise<{ xdr: string; contractArgsXDR: string } | null> {
-  const contractArgsXDR = await fetchXBullSwapArgs(
-    quote.route,
-    from,
-    BigInt(quote.amountIn),
-    BigInt(quote.minAmountOut),
-    deps.xbull
-  );
+  let contractArgsXDR: string | null;
+  try {
+    contractArgsXDR = await withTimeout(
+      fetchXBullSwapArgs(
+        quote.route,
+        from,
+        BigInt(quote.amountIn),
+        BigInt(quote.minAmountOut),
+        deps.xbull
+      ),
+      XBULL_QUOTE_TIMEOUT_MS,
+      `xBull build request exceeded ${XBULL_QUOTE_TIMEOUT_MS} ms`
+    );
+  } catch {
+    return null;
+  }
   if (!contractArgsXDR) return null;
   try {
     const contractArgs = xdr.InvokeContractArgs.fromXDR(contractArgsXDR, "base64");
