@@ -45,8 +45,8 @@ export interface CloseExpectation {
   positionTokenContracts: string[];
   /** Per contract an exit may invoke, the one function that leaves that protocol. */
   exitFunctions: Record<string, string[]>;
-  /** The bundled registry's Soroswap aggregator and router: the only contracts a token
-   *  conversion may be entered through. From the registry alone, never from the API. */
+  /** The bundled registry's Soroswap aggregator/router and xBull's router: the only contracts
+   *  a token conversion may be entered through. From the registry alone, never from the API. */
   conversionContracts: string[];
   /** Whether the destination requires a memo (from the client-bundled exchange registry). */
   memoRequired: boolean;
