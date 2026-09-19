@@ -182,7 +182,7 @@ test("a token's convert answer must carry the floor it was quoted; a classic ass
       ],
       byId
     )
-  ).toEqual({ [TOKEN_A]: "5223381" });
+  ).toEqual({ [TOKEN_A]: { minAmountOut: "5223381", provider: "soroswap" } });
   for (const params of [undefined, {}, { minAmountOut: "0" }, { minAmountOut: "12.5" }]) {
     expect(() =>
       tokenConversionFloors(
@@ -201,4 +201,28 @@ test("a token's convert answer must carry the floor it was quoted; a classic ass
       byId
     )
   ).toEqual({});
+});
+
+test("tokenConversionFloors carries the pinned provider alongside the floor", () => {
+  const byId = [{ id: tokenDecisionId(TOKEN_A), asset: TOKEN_A }];
+  const floors = tokenConversionFloors(
+    [
+      {
+        id: tokenDecisionId(TOKEN_A),
+        choice: "convert_to_xlm",
+        params: { minAmountOut: "100", provider: "xbull" },
+      },
+    ],
+    byId
+  );
+  expect(floors[TOKEN_A]).toEqual({ minAmountOut: "100", provider: "xbull" });
+});
+
+test("a missing provider defaults to soroswap, the only provider that existed before this feature", () => {
+  const byId = [{ id: tokenDecisionId(TOKEN_A), asset: TOKEN_A }];
+  const floors = tokenConversionFloors(
+    [{ id: tokenDecisionId(TOKEN_A), choice: "convert_to_xlm", params: { minAmountOut: "100" } }],
+    byId
+  );
+  expect(floors[TOKEN_A]).toEqual({ minAmountOut: "100", provider: "soroswap" });
 });

@@ -136,8 +136,9 @@ export async function buildCloseTransactions(
   exitDeps: Partial<ExitRoundDeps> = {},
   tokenDeps: Partial<TokenTransferRoundDeps> = {},
   conversion: {
-    /** Per token contract, the least XLM (stroops) the caller agreed to; from the answers. */
-    floors?: Record<string, string>;
+    /** Per token contract, the least XLM (stroops) the caller agreed to and which provider's
+     *  quote they saw it through; from the answers. */
+    floors?: Record<string, { minAmountOut: string; provider: "soroswap" | "xbull" }>;
     deps?: Partial<TokenConversionRoundDeps>;
     /** Overrides the environment flag; tests only. */
     enabled?: boolean;

@@ -1,14 +1,20 @@
 import type { AccountState, AssetDisposition, CloseTransaction, Network } from "@lumenwipe/types";
 import {
   Address,
+  Contract,
   TransactionBuilder,
   rpc as stellarRpc,
+  scValToNative,
   xdr,
   type Transaction,
 } from "@stellar/stellar-sdk";
 import { MAX_SOROBAN_EXIT_FEE_STROOPS } from "@/config/constants";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
-import { resolveWasmHash, soroswapConversionContracts } from "@/lib/contract-registry";
+import {
+  resolveWasmHash,
+  soroswapConversionContracts,
+  xbullConversionContracts,
+} from "@/lib/contract-registry";
 import { readLiveWasmHash } from "@/lib/stellar/contract-instance";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import {
@@ -22,6 +28,12 @@ import { CONTRACT_ID, addressOf, bigOf, collectAccounts } from "@/lib/stellar/sc
 import { formatTokenAmount } from "@/lib/utils/token-amounts";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import { TokenTransferBlockedError, liveTokenBalance } from "./token-transfer-round";
+import {
+  assertXBullConversionShape,
+  buildXBullConversion,
+  type XBullBuildDeps,
+} from "./xbull-conversion-round";
+import { defaultXBullConversionDeps, quoteTokenToXlmViaXBull } from "@/lib/xbull/conversion-quotes";
 
 /**
  * The Soroban token conversion round (#161): one transaction per token the user chose to convert,
@@ -47,8 +59,14 @@ import { TokenTransferBlockedError, liveTokenBalance } from "./token-transfer-ro
 export interface TokenConversionRoundDeps {
   rpc: Pick<stellarRpc.Server, "simulateTransaction" | "getLedgerEntries">;
   conversion: ConversionDeps;
+  /** Everything an xBull build needs: its own RPC view, its HTTP deps, and the live path
+   *  resolver (`resolveXBullPath` below, by default). A sibling of `conversion` above - one
+   *  provider's worth of build dependencies per field, never mixed. */
+  xbull: XBullBuildDeps;
   /** Which contracts a conversion may invoke on this network; the registry's, by default. */
   allowed: (network: Network) => { aggregator: string[]; adapters: string[]; routers: string[] };
+  /** Which router xBull may invoke on this network; the registry's, by default. */
+  xbullAllowed: (network: Network) => { router: string[] };
 }
 
 export interface TokenConversionRound {
@@ -66,7 +84,68 @@ const SIGNING_BUFFER_SECONDS = 60n;
 export function defaultTokenConversionRoundDeps(
   rpc: TokenConversionRoundDeps["rpc"]
 ): TokenConversionRoundDeps {
-  return { rpc, conversion: defaultConversionDeps(), allowed: soroswapConversionContracts };
+  return {
+    rpc,
+    conversion: defaultConversionDeps(),
+    xbull: {
+      rpc,
+      xbull: defaultXBullConversionDeps(),
+      resolvePath: (contractArgsXDR) => resolveXBullPath(rpc, contractArgsXDR),
+    },
+    allowed: soroswapConversionContracts,
+    xbullAllowed: xbullConversionContracts,
+  };
+}
+
+/**
+ * Resolves xBull's `path` argument's opaque indices to the asset addresses they name, by
+ * reading the router's own `Map(u32)` persistent storage entries live - never cached, never
+ * inferred from the quote - the same "re-read exact on-chain state right before building" rule
+ * every other exit already follows. Confirmed field order (Task 1, cross-referenced from two
+ * independent live mainnet sources: the contract's own Map(u32) storage and 15 real
+ * `strict_send` events, including multi-hop self-consistency checks): `(u32, u32, u32, u32)` =
+ * `[protocol_id, in_asset_index, pool_id, out_asset_index]`. `IN_INDEX_POSITION` and
+ * `OUT_INDEX_POSITION` below are that confirmed order, not a guess - see
+ * `apps/api/tests/fixtures/xbull-strict-send-sample.json`'s own `pathTupleOrder` field, captured
+ * from the same research.
+ */
+async function resolveXBullPath(
+  rpc: Pick<stellarRpc.Server, "getLedgerEntries">,
+  contractArgsXDR: string
+): Promise<string[]> {
+  const contractArgs = xdr.InvokeContractArgs.fromXDR(contractArgsXDR, "base64");
+  const args = contractArgs.args();
+  const pathArg = args[4]!;
+  const tuples = scValToNative(pathArg) as number[][];
+  const contract = new Contract(Address.fromScAddress(contractArgs.contractAddress()).toString());
+  const IN_INDEX_POSITION = 1;
+  const OUT_INDEX_POSITION = 3;
+  const indices = new Set<number>();
+  for (const hop of tuples) {
+    indices.add(hop[IN_INDEX_POSITION]!);
+    indices.add(hop[OUT_INDEX_POSITION]!);
+  }
+  const resolved = new Map<number, string>();
+  for (const index of indices) {
+    const key = xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("Map"), xdr.ScVal.scvU32(index)]);
+    const entries = await rpc.getLedgerEntries(
+      xdr.LedgerKey.contractData(
+        new xdr.LedgerKeyContractData({
+          contract: contract.address().toScAddress(),
+          key,
+          durability: xdr.ContractDataDurability.persistent(),
+        })
+      )
+    );
+    const entry = entries.entries?.[0];
+    if (!entry) throw new Error(`xBull's asset map has no entry for index ${index}`);
+    resolved.set(index, scValToNative(entry.val.contractData().val()) as string);
+  }
+  return tuples.flatMap((hop, i) =>
+    i === 0
+      ? [resolved.get(hop[IN_INDEX_POSITION]!)!, resolved.get(hop[OUT_INDEX_POSITION]!)!]
+      : [resolved.get(hop[OUT_INDEX_POSITION]!)!]
+  );
 }
 
 function short(id: string): string {
@@ -287,7 +366,7 @@ export function assertConversionShape(tx: Transaction, expected: ExpectedConvers
 export async function buildTokenConversionRound(
   accountState: AccountState,
   dispositions: Record<string, AssetDisposition>,
-  floors: Record<string, string>,
+  floors: Record<string, { minAmountOut: string; provider: "soroswap" | "xbull" }>,
   network: Network,
   sequence: string,
   validUntilLedger: number,
@@ -318,6 +397,7 @@ export async function buildTokenConversionRound(
   const passphrase = NETWORK_PASSPHRASES[network];
   const account = accountState.address;
   const allowed = deps.allowed(network);
+  const allowedXBull = deps.xbullAllowed(network);
   const xlm = xlmContractId(network);
 
   for (let i = 0; i < due.length; i++) {
@@ -334,14 +414,15 @@ export async function buildTokenConversionRound(
           "Send it to another account, or leave it on record."
       );
     }
-    const floorRaw = floors[token];
-    if (floorRaw === undefined) {
+    const pinned = floors[token]; // { minAmountOut, provider }, never a bare string (Step 4)
+    if (pinned === undefined) {
       throw new TokenTransferBlockedError(
         "conversion_floor_missing",
         `Converting ${name} needs the least XLM you were shown it would deliver (params.minAmountOut).`
       );
     }
-    const floor = BigInt(floorRaw);
+    const provider = pinned.provider;
+    const floor = BigInt(pinned.minAmountOut);
     const balance = await liveTokenBalance(deps.rpc, network, account, token);
     if (balance === null) {
       throw new TokenTransferBlockedError(
@@ -352,6 +433,107 @@ export async function buildTokenConversionRound(
     }
     if (balance <= 0n) continue;
 
+    if (provider === "xbull") {
+      // The plan showed the user an xBull quote and they accepted it; this build never falls
+      // back to Soroswap even if it would now quote better - that would build a swap the user
+      // never saw priced.
+      if (allowedXBull.router.length === 0) {
+        throw new TokenTransferBlockedError(
+          "soroban_token_conversion_unavailable",
+          `Converting ${name} through xBull is not available right now: the contract registry ` +
+            "has no verified xBull entry for this network. Send it to another account, or leave it on record."
+        );
+      }
+      const quote = await quoteTokenToXlmViaXBull(token, balance, network, deps.xbull.xbull);
+      if (!quote) {
+        throw new TokenTransferBlockedError(
+          "soroban_token_route_lost",
+          `There is no longer a route through xBull to exchange ${name} for XLM. Send it to ` +
+            "another account, or leave it on record."
+        );
+      }
+      const freshFloor = BigInt(quote.minAmountOut);
+      if (freshFloor < floor) {
+        throw new TokenTransferBlockedError(
+          "quote_drifted",
+          `The market moved: exchanging ${formatTokenAmount(balance.toString(), meta.decimals)} ${name} ` +
+            `now delivers at least ${stroopsToXlm(quote.minAmountOut)} XLM, below the ` +
+            `${stroopsToXlm(pinned.minAmountOut)} XLM you agreed to. Review the plan again to accept the new rate.`
+        );
+      }
+      const built = await buildXBullConversion(
+        {
+          token,
+          route: (quote.raw as { route: string }).route,
+          amountIn: balance.toString(),
+          minAmountOut: freshFloor.toString(),
+        },
+        account,
+        network,
+        sequence,
+        deps.xbull
+      );
+      if (!built) {
+        throw new TokenTransferBlockedError(
+          "soroban_token_conversion_failed",
+          `The swap for ${name} could not be built through xBull right now. Retry, send the ` +
+            "balance to another account, or leave it on record."
+        );
+      }
+      const xdrBase64 = built.xdr;
+      let tx: Transaction;
+      try {
+        tx = TransactionBuilder.fromXDR(xdrBase64, passphrase) as Transaction;
+        if (!("operations" in tx)) throw new Error("not a plain transaction");
+        // resolvePath takes the raw contractArgsXDR buildXBullConversion fetched from xBull,
+        // never the assembled transaction XDR - a different, smaller XDR structure that
+        // resolvePath's own implementation (resolveXBullPath, above) parses directly.
+        const resolvedPath = await deps.xbull.resolvePath(built.contractArgsXDR);
+        assertXBullConversionShape(tx, {
+          token,
+          account,
+          xlm,
+          amountIn: balance,
+          minOut: freshFloor,
+          resolvedPath,
+          allowed: allowedXBull,
+          sequence,
+          nowSeconds: Math.floor(deps.xbull.xbull.now() / 1000),
+        });
+      } catch (err) {
+        throw new TokenTransferBlockedError(
+          "soroban_token_conversion_unsafe",
+          `The swap for ${name} could not be offered for signing: ` +
+            `${err instanceof Error ? err.message : String(err)}. Send the balance to another ` +
+            "account, or leave it on record."
+        );
+      }
+      return {
+        transaction: {
+          id: "tx-1",
+          order: 0,
+          dependsOn: [],
+          xdr: xdrBase64,
+          networkPassphrase: passphrase,
+          sourceSequence: sequence,
+          validUntilLedger,
+          covers: ["HANDLE_ASSETS"],
+          coversTargets: [token],
+          intent: {
+            ...intentFromXdr(xdrBase64, passphrase),
+            summary:
+              `Exchange ${formatTokenAmount(balance.toString(), meta.decimals)} ${name} for at least ` +
+              `${stroopsToXlm(pinned.minAmountOut)} XLM through xBull`,
+          },
+        },
+        remainingSteps: due.length - i - 1,
+      };
+    }
+
+    // provider === "soroswap": the original body, unchanged below this point except reading
+    // `pinned.minAmountOut` instead of the old bare `floorRaw`, and the summary text staying
+    // "through Soroswap" explicitly (rather than a shared variable) so a reviewer sees at a
+    // glance that this branch's behavior is byte-for-byte what shipped before this feature.
     const quote = await quoteTokenToXlm(token, balance, network, deps.conversion);
     if (!quote) {
       throw new TokenTransferBlockedError(
@@ -366,7 +548,7 @@ export async function buildTokenConversionRound(
         "quote_drifted",
         `The market moved: exchanging ${formatTokenAmount(balance.toString(), meta.decimals)} ${name} ` +
           `now delivers at least ${stroopsToXlm(quote.minAmountOut)} XLM, below the ` +
-          `${stroopsToXlm(floorRaw)} XLM you agreed to. Review the plan again to accept the new rate.`
+          `${stroopsToXlm(pinned.minAmountOut)} XLM you agreed to. Review the plan again to accept the new rate.`
       );
     }
     if (allowed.aggregator.length === 0 && allowed.routers.length === 0) {
@@ -447,7 +629,7 @@ export async function buildTokenConversionRound(
           ...intentFromXdr(xdrBase64, passphrase),
           summary:
             `Exchange ${formatTokenAmount(balance.toString(), meta.decimals)} ${name} for at least ` +
-            `${stroopsToXlm(floorRaw)} XLM through Soroswap`,
+            `${stroopsToXlm(pinned.minAmountOut)} XLM through Soroswap`,
         },
       },
       remainingSteps: due.length - i - 1,

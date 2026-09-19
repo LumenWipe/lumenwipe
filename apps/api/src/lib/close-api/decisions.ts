@@ -184,10 +184,10 @@ export class MissingConversionFloorError extends Error {
 export function tokenConversionFloors(
   answers: DecisionAnswer[],
   assetsById: { id: string; asset: string }[]
-): Record<string, string> {
+): Record<string, { minAmountOut: string; provider: "soroswap" | "xbull" }> {
   const assetForId = new Map(assetsById.map((a) => [a.id, a.asset]));
   const dispositions = resolveDispositions(answers, assetsById);
-  const floors: Record<string, string> = {};
+  const floors: Record<string, { minAmountOut: string; provider: "soroswap" | "xbull" }> = {};
   // Answers are last-wins everywhere else, so a first attempt without a floor must not refuse a
   // request whose later answer carries one.
   const latest = new Map<string, DecisionAnswer>();
@@ -203,7 +203,11 @@ export function tokenConversionFloors(
     if (typeof floor !== "string" || !/^[1-9]\d*$/.test(floor)) {
       throw new MissingConversionFloorError(asset);
     }
-    floors[asset] = floor;
+    // No provider on the answer means it predates this feature (or the caller never saw an
+    // xBull quote to pin): soroswap is the only provider that existed before, so that is the
+    // one the build re-quotes and builds through - never a silent upgrade to a route the user
+    // was never shown.
+    floors[asset] = { minAmountOut: floor, provider: answer.params?.provider ?? "soroswap" };
   }
   return floors;
 }

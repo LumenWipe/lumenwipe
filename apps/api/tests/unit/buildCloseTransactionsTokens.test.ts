@@ -308,7 +308,7 @@ test("with conversion switched off a token's convert answer is refused; switched
     {},
     {},
     {},
-    { enabled: false, floors: { [TOKEN]: "1" } }
+    { enabled: false, floors: { [TOKEN]: { minAmountOut: "1", provider: "soroswap" } } }
   );
   await expect(off).rejects.toMatchObject({ code: "soroban_token_conversion_unavailable" });
 
@@ -326,7 +326,7 @@ test("with conversion switched off a token's convert answer is refused; switched
     { rpc: tokenRpc(250n) },
     {
       enabled: true,
-      floors: { [TOKEN]: "1" },
+      floors: { [TOKEN]: { minAmountOut: "1", provider: "soroswap" } },
       deps: {
         rpc: tokenRpc(250n) as never,
         conversion: {
