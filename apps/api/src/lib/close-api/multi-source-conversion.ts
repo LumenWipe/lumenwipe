@@ -17,8 +17,16 @@ export interface ConversionProviderQuote {
 }
 
 export interface ConversionProviderFns {
-  soroswap: (token: string, amountIn: bigint, network: Network) => Promise<TokenConversionQuote | null>;
-  xbull: (token: string, amountIn: bigint, network: Network) => Promise<TokenConversionQuote | null>;
+  soroswap: (
+    token: string,
+    amountIn: bigint,
+    network: Network
+  ) => Promise<TokenConversionQuote | null>;
+  xbull: (
+    token: string,
+    amountIn: bigint,
+    network: Network
+  ) => Promise<TokenConversionQuote | null>;
 }
 
 export async function quoteAllProviders(

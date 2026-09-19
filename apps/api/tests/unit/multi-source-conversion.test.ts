@@ -54,7 +54,8 @@ test("a provider slower than the timeout is excluded, the other still answers", 
     100n,
     "mainnet",
     {
-      soroswap: () => new Promise((resolve) => setTimeout(() => resolve(q("soroswap", "100").quote), 50)),
+      soroswap: () =>
+        new Promise((resolve) => setTimeout(() => resolve(q("soroswap", "100").quote), 50)),
       xbull: async () => q("xbull", "90").quote,
     },
     5
