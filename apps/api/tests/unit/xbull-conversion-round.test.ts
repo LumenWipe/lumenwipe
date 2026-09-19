@@ -7,7 +7,14 @@
  * real deviation from what xBull's own router actually does on-chain.
  */
 import { expect, test } from "bun:test";
-import { Address, Keypair, nativeToScVal } from "@stellar/stellar-sdk";
+import {
+  Address,
+  Keypair,
+  Networks,
+  TransactionBuilder,
+  nativeToScVal,
+} from "@stellar/stellar-sdk";
+import { MAX_SOROBAN_EXIT_FEE_STROOPS } from "@/config/constants";
 import {
   assertXBullConversionShape,
   buildXBullConversion,
@@ -188,10 +195,14 @@ test("refuses a subInvocation transfer whose destination is a Stellar account, n
 
 // ─── buildXBullConversion ────────────────────────────────────────────────────
 
-function fakeXBullDeps(contractArgsXDR: string | null, resolvedPath: string[]) {
+function fakeXBullDeps(
+  contractArgsXDR: string | null,
+  resolvedPath: string[],
+  minResourceFee = "0"
+) {
   return {
     rpc: {
-      simulateTransaction: async () => rawSimulation("ok", [], "0"),
+      simulateTransaction: async () => rawSimulation("ok", [], minResourceFee),
     } as never,
     xbull: {
       fetch: (async () =>
@@ -220,6 +231,29 @@ test("builds an unsigned transaction from xBull's contractArgsXDR against our ow
   );
   expect(typeof built?.xdr).toBe("string");
   expect(built?.contractArgsXDR).toBe(fixture.contractArgsXDR);
+});
+
+test("assembles with a realistic resource fee and still fits under the ceiling assertXBullConversionShape enforces", async () => {
+  // A representative single-contract-invocation resource fee (tens of thousands of stroops), not
+  // the "0" the other build test uses. With `buildXBullConversion`'s own inclusion fee correctly
+  // set to BASE_FEE_STROOPS, the assembled total (100 + 84,523) stays well under
+  // MAX_SOROBAN_EXIT_FEE_STROOPS. If the builder's own fee ever regresses back to
+  // MAX_SOROBAN_EXIT_FEE_STROOPS itself, the assembled total (10,000,000 + 84,523) would exceed
+  // that same ceiling, and this assertion - unlike the zero-fee build test above - would catch it.
+  const built = await buildXBullConversion(
+    {
+      token: fixture.fromAsset,
+      route: "route-1",
+      amountIn: fixture.amount,
+      minAmountOut: fixture.minToReceive,
+    },
+    fixture.decoded.from,
+    "mainnet",
+    "0",
+    fakeXBullDeps(fixture.contractArgsXDR, [fixture.fromAsset, fixture.toAsset], "84523")
+  );
+  const tx = TransactionBuilder.fromXDR(built!.xdr, Networks.PUBLIC);
+  expect(BigInt(tx.fee)).toBeLessThanOrEqual(BigInt(MAX_SOROBAN_EXIT_FEE_STROOPS));
 });
 
 test("a failed fetch or a simulation error both build null, never throw", async () => {
