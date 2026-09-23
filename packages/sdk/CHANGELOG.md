@@ -7,9 +7,7 @@ release is cut.
 
 ## [Unreleased]
 
-Landed on `main` since the last tagged release - not on npm yet. This is exactly the drift
-[`RELEASING.md`](../../RELEASING.md) and CI's `sdk-version-bump` check exist to surface: move
-these into a new dated section (and bump `package.json`) the next time `packages/sdk` is released.
+## [0.2.0] - 2026-09-23
 
 ### Added
 
@@ -19,6 +17,9 @@ these into a new dated section (and bump `package.json`) the next time `packages
   independent of closing an account, a standalone security utility.
 - `LumenWipeClient.revokeAllowance()`: builds the unsigned `approve(owner, spender, 0, 0)`
   transaction that revokes one allowance.
+- `coversTargets` on a `closeTransactions` step/transaction: which step types a transaction
+  confirms, for cases where one transaction covers more than one step of the same type. Additive
+  and optional - absent, every step of the named types is confirmed exactly as before.
 
 ## [0.1.0] - 2026-09-07
 
@@ -37,4 +38,5 @@ fee-bump/allowance endpoints above weren't added until after this tag.
 - Configurable timeout and custom `fetch` injection, for non-browser/non-Node environments and
   testing.
 
+[0.2.0]: https://github.com/LumenWipe/lumenwipe/releases/tag/sdk-v0.2.0
 [0.1.0]: https://github.com/LumenWipe/lumenwipe/releases/tag/sdk-v0.1.0
