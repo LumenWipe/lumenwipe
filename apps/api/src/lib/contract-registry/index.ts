@@ -42,11 +42,20 @@ const PROTOCOLS: Record<DefiProtocol, true> = {
 const NETWORKS: Record<Network, true> = { mainnet: true, testnet: true };
 
 export type ContractKind =
-  "pool" | "pair" | "backstop" | "vault" | "factory" | "router" | "aggregator" | "adapter";
+  | "pool"
+  | "pair"
+  | "backstop"
+  | "stake"
+  | "vault"
+  | "factory"
+  | "router"
+  | "aggregator"
+  | "adapter";
 const KINDS: Record<ContractKind, true> = {
   pool: true,
   pair: true,
   backstop: true,
+  stake: true,
   vault: true,
   factory: true,
   router: true,
