@@ -2,6 +2,8 @@ import type { DefiPosition, DefiProtocol } from "@lumenwipe/types";
 import type { ExitAdapter } from "./adapter";
 import { aquariusExitAdapter } from "./aquarius";
 import { blendExitAdapter } from "./blend";
+import { fxdaoExitAdapter } from "./fxdao";
+import { phoenixExitAdapter } from "./phoenix";
 import { soroswapExitAdapter } from "./soroswap";
 
 /**
@@ -26,6 +28,8 @@ const ADAPTERS: Partial<Record<DefiProtocol, AnyExitAdapter>> = {
   blend: blendExitAdapter() as AnyExitAdapter,
   soroswap: soroswapExitAdapter() as AnyExitAdapter,
   aquarius: aquariusExitAdapter() as AnyExitAdapter,
+  phoenix: phoenixExitAdapter() as AnyExitAdapter,
+  fxdao: fxdaoExitAdapter() as AnyExitAdapter,
 };
 
 export function exitAdapterFor(protocol: DefiProtocol): AnyExitAdapter | null {

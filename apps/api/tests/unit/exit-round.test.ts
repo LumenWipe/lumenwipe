@@ -8,7 +8,12 @@ import {
   TransactionBuilder,
   nativeToScVal,
 } from "@stellar/stellar-sdk";
-import type { AccountState, BlendBorrowPosition, BlendSupplyPosition } from "@lumenwipe/types";
+import type {
+  AccountState,
+  BlendBorrowPosition,
+  BlendSupplyPosition,
+  DefiPosition,
+} from "@lumenwipe/types";
 import type { ExitRunResult, ExitStep } from "@/lib/defi-exits";
 import { buildExitRound, ExitRoundBlockedError } from "@/lib/defi-exits/exit-round";
 import { fakeExitRpc } from "./fixtures/fake-exit-adapter";
@@ -235,16 +240,19 @@ describe("buildExitRound", () => {
   });
 
   test("a protocol without an adapter refuses as unsupported before running anything", async () => {
+    // xBull is a swap router, never a DeFi position with an exit adapter; it stands in here for
+    // "detection reports a protocol the catalog has no adapter for" now that all five real
+    // position-bearing protocols do.
     let ran = false;
     const promise = buildExitRound(
       account([
         {
-          protocol: "phoenix",
+          protocol: "xbull",
           positionType: "lp",
           contractAddress: POOL,
           shareAmount: "1",
           usdValue: null,
-        },
+        } as unknown as DefiPosition,
       ]),
       "testnet",
       "100",
@@ -263,14 +271,14 @@ describe("buildExitRound", () => {
 
   test("a pool holding a position no adapter can take refuses whole, before running anything", async () => {
     let ran = false;
-    const phoenix = {
-      protocol: "phoenix" as const,
+    const xbull = {
+      protocol: "xbull" as const,
       positionType: "lp" as const,
       contractAddress: POOL,
       shareAmount: "1",
       usdValue: null,
-    };
-    const promise = buildExitRound(account([phoenix]), "testnet", "100", 1000, {
+    } as unknown as DefiPosition;
+    const promise = buildExitRound(account([xbull]), "testnet", "100", 1000, {
       rpc,
       runExitAdapter: async () => {
         ran = true;

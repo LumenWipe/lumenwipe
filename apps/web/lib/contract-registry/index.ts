@@ -26,7 +26,7 @@ interface RegistryEntry {
 const REGISTRY = embedded as { validUntil: string; entries: RegistryEntry[] };
 
 /** The registry kinds an exit may call besides the position's own contract. */
-export type ExitContractKind = "router" | "backstop";
+export type ExitContractKind = "router" | "backstop" | "stake";
 
 /**
  * The functions an exit may call on each kind of contract, per protocol. A position's contract
@@ -34,17 +34,19 @@ export type ExitContractKind = "router" | "backstop";
  * hostile read from turning a whitelisted contract into an arbitrary call - a router that could
  * be asked to `remove_liquidity` must not be askable to swap, and a pair is never called directly.
  * Blend's `claim` collects BLND emissions from the pool; its backstop's `withdraw` takes out a
- * deposit whose withdrawal queue has run out.
+ * deposit whose withdrawal queue has run out. Phoenix's `unbond` runs on a third kind, `stake`:
+ * a pool's staking is a separate contract (read from the pool's own config, never the position
+ * itself), so it is pinned via the registry exactly like Blend's backstop.
  */
 export const EXIT_FUNCTIONS: Record<
   DefiPosition["protocol"],
   { position: readonly string[] } & Record<ExitContractKind, readonly string[]>
 > = {
-  blend: { position: ["submit", "claim"], router: [], backstop: ["withdraw"] },
-  soroswap: { position: [], router: ["remove_liquidity"], backstop: [] },
-  aquarius: { position: ["withdraw", "claim"], router: [], backstop: [] },
-  phoenix: { position: [], router: [], backstop: [] },
-  fxdao: { position: [], router: [], backstop: [] },
+  blend: { position: ["submit", "claim"], router: [], backstop: ["withdraw"], stake: [] },
+  soroswap: { position: [], router: ["remove_liquidity"], backstop: [], stake: [] },
+  aquarius: { position: ["withdraw", "claim"], router: [], backstop: [], stake: [] },
+  phoenix: { position: ["withdraw_liquidity"], router: [], backstop: [], stake: ["unbond"] },
+  fxdao: { position: ["pay_debt"], router: [], backstop: [], stake: [] },
 };
 
 export function isContractRegistryUsable(now: Date = new Date()): boolean {
