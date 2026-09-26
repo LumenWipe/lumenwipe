@@ -1197,6 +1197,34 @@ test("a Blend exit may claim emissions on its pool and withdraw a queued deposit
   ).toThrow(/function LumenWipe does not use/);
 });
 
+test("a Phoenix exit may withdraw_liquidity on its pool and unbond on the registry's stake contract, nothing else", () => {
+  const STAKE = "CDM5OTEDHY4ONKNWZU4YI372NQSPAFD2A4JYI6HOE5FXWL4UUITAHSMC";
+  const expected = expectation({
+    exitContracts: [POOL, STAKE],
+    exitFunctions: { [POOL]: ["withdraw_liquidity"], [STAKE]: ["unbond"] },
+  });
+  const withdraw = exit({ function: "withdraw_liquidity", contractsReferenced: [POOL] });
+  expect(() => assertCloseIntent(exitOnly(withdraw), expected)).not.toThrow();
+  // The stake call names the pool's own contract only through op.contract, not contractsReferenced.
+  const unbond = exit({ contract: STAKE, function: "unbond", contractsReferenced: [STAKE] });
+  expect(() => assertCloseIntent(exitOnly(unbond), expected)).not.toThrow();
+  // The pool's function does not carry over to the stake contract, nor the other way round.
+  expect(() =>
+    assertCloseIntent(exitOnly(exit({ contract: STAKE, function: "withdraw_liquidity" })), expected)
+  ).toThrow(/function LumenWipe does not use/);
+  expect(() => assertCloseIntent(exitOnly(exit({ function: "unbond" })), expected)).toThrow(
+    /function LumenWipe does not use/
+  );
+});
+
+test("a FxDAO exit may only call pay_debt on its vault", () => {
+  expect(() =>
+    assertCloseIntent(exitOnly(exit({ function: "withdraw_collateral" })), expectation())
+  ).toThrow(/function LumenWipe does not use/);
+  const expected = expectation({ exitFunctions: { [POOL]: ["pay_debt"] } });
+  expect(() => assertCloseIntent(exitOnly(exit({ function: "pay_debt" })), expected)).not.toThrow();
+});
+
 test("an Aquarius exit may call withdraw or claim on its pool, and the share token it burns is a permitted contract", () => {
   const SHARE_TOKEN = "CAN7DMIQH7FGKNYCUQMWECJJ74EKN5JATVVUOVTXOWLQGZCWAFWANG5P";
   const expected = expectation({
@@ -1275,6 +1303,40 @@ test("rejects a Soroswap router exit whose remove_liquidity call hides a transfe
     exitContracts: [POOL, ROUTER],
     positionTokenContracts: [TOKEN, XLM_SAC],
     exitFunctions: { [POOL]: [], [ROUTER]: ["remove_liquidity"] },
+  });
+  expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
+    /other than this account or the protocol/
+  );
+});
+
+test("rejects a Phoenix unbond whose call hides a transfer of the share token to a third party", () => {
+  const STAKE = "CDM5OTEDHY4ONKNWZU4YI372NQSPAFD2A4JYI6HOE5FXWL4UUITAHSMC";
+  const SHARE_TOKEN = "CAN7DMIQH7FGKNYCUQMWECJJ74EKN5JATVVUOVTXOWLQGZCWAFWANG5P";
+  const op = exit({
+    contract: STAKE,
+    function: "unbond",
+    contractsReferenced: [STAKE, SHARE_TOKEN],
+    subInvocations: [{ contract: SHARE_TOKEN, function: "transfer", args: [STAKE, ATTACKER, "5"] }],
+  });
+  const expected = expectation({
+    exitContracts: [POOL, STAKE],
+    positionTokenContracts: [SHARE_TOKEN],
+    exitFunctions: { [POOL]: ["withdraw_liquidity"], [STAKE]: ["unbond"] },
+  });
+  expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
+    /other than this account or the protocol/
+  );
+});
+
+test("rejects a FxDAO pay_debt whose call hides a transfer of the debt asset to a third party", () => {
+  const op = exit({
+    function: "pay_debt",
+    contractsReferenced: [POOL, XLM_SAC],
+    subInvocations: [{ contract: XLM_SAC, function: "transfer", args: [SRC, ATTACKER, "100"] }],
+  });
+  const expected = expectation({
+    exitFunctions: { [POOL]: ["pay_debt"] },
+    heldTokenContracts: [XLM_SAC],
   });
   expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
     /other than this account or the protocol/
