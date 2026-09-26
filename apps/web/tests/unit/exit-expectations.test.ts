@@ -106,6 +106,16 @@ test("routers and backstops come only from the bundled registry, for the network
   expect(exitContractsFor("testnet", ["blend"], "backstop", later)).toEqual([]);
 });
 
+test("a Phoenix stake contract comes only from the bundled registry, for the network and protocols asked", () => {
+  const PHOENIX_STAKE = "CDM5OTEDHY4ONKNWZU4YI372NQSPAFD2A4JYI6HOE5FXWL4UUITAHSMC";
+  expect(exitContractsFor("testnet", ["phoenix"], "stake")).toEqual([
+    { address: PHOENIX_STAKE, protocol: "phoenix" },
+  ]);
+  expect(exitContractsFor("testnet", ["blend"], "stake")).toEqual([]);
+  // FxDAO's exit never calls a second contract, so it never pulls in a stake entry either.
+  expect(exitContractsFor("testnet", ["fxdao"], "stake")).toEqual([]);
+});
+
 test("an Aquarius LP position pins its pool, allows withdraw and claim on it, and treats its share token and pool tokens as places a withdrawal may touch", () => {
   const SHARE_TOKEN = "CAN7DMIQH7FGKNYCUQMWECJJ74EKN5JATVVUOVTXOWLQGZCWAFWANG5P";
   const e = exitExpectations(
@@ -127,6 +137,49 @@ test("an Aquarius LP position pins its pool, allows withdraw and claim on it, an
   expect(e.exitContracts).toEqual([PAIR]);
   expect(e.exitFunctions).toEqual({ [PAIR]: ["withdraw", "claim"] });
   expect(e.positionTokenContracts).toEqual([TOKEN_0, TOKEN_1, SHARE_TOKEN]);
+});
+
+test("a Phoenix position pins its pool and the bundled registry's stake contract, each to its own call", () => {
+  const PHOENIX_POOL = "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV";
+  const PHOENIX_STAKE = "CDM5OTEDHY4ONKNWZU4YI372NQSPAFD2A4JYI6HOE5FXWL4UUITAHSMC";
+  const e = exitExpectations(
+    state([
+      {
+        protocol: "phoenix",
+        positionType: "stake",
+        contractAddress: PHOENIX_POOL,
+        stakedAmount: "1",
+        stakedAtEpoch: "1700000000",
+        usdValue: null,
+      },
+    ]),
+    "testnet"
+  );
+  expect(e.exitContracts).toEqual([PHOENIX_POOL, PHOENIX_STAKE]);
+  expect(e.exitFunctions).toEqual({
+    [PHOENIX_POOL]: ["withdraw_liquidity"],
+    [PHOENIX_STAKE]: ["unbond"],
+  });
+});
+
+test("a FxDAO vault position pins only the vault itself, to pay_debt - no router, backstop, or stake", () => {
+  const VAULT = "CBUZ5NJKA5PRS4TBPHWMN4JGGRVIOQOKI4JUYLA2IXS3BEJKQKEWFW7D";
+  const e = exitExpectations(
+    state([
+      {
+        protocol: "fxdao",
+        positionType: "cdp",
+        contractAddress: VAULT,
+        denomination: "USDx",
+        collateralAmount: "100",
+        debtAmount: "50",
+        usdValue: null,
+      },
+    ]),
+    "testnet"
+  );
+  expect(e.exitContracts).toEqual([VAULT]);
+  expect(e.exitFunctions).toEqual({ [VAULT]: ["pay_debt"] });
 });
 
 test("a Soroban token balance the analysis confirmed is a held token contract an exit may reference; an older read adds none", () => {

@@ -4,6 +4,7 @@ import { buildPlan } from "@/lib/stellar/tx-builder";
 import type {
   AccountState,
   ClaimableBalance,
+  DefiPosition,
   DefiPositionsResult,
   DefiQueryKeys,
   SponsoredEntry,
@@ -2102,16 +2103,19 @@ test("buildPlan › exits are listed first even when signers, data, and offers a
 });
 
 test("buildPlan › a position no adapter can exit blocks by name instead of vanishing from the plan", () => {
+  // xBull is a swap router, never a DeFi position with an exit adapter; it stands in here for
+  // "detection reports a protocol the catalog has no adapter for" now that all five real
+  // position-bearing protocols do.
   const account = makeAccount({
     defiPositions: makeDefiResult({
       positions: [
         {
-          protocol: "phoenix",
+          protocol: "xbull",
           positionType: "lp",
           contractAddress: BLEND_POOL,
           shareAmount: "1",
           usdValue: null,
-        },
+        } as unknown as DefiPosition,
       ],
     }),
   });
