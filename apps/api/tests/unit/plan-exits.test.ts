@@ -73,10 +73,14 @@ describe("planExitSteps", () => {
   });
 
   test("a protocol without an adapter blocks by name instead of being left out", () => {
-    const { steps, blockers } = planExitSteps([phoenixLp(POOL_A)], 0);
+    // xBull is a swap router, never a DeFi position with an exit adapter (see PROTOCOL_LABEL's
+    // own comment in plan-exits.ts); this fixture stands in for "detection reports a protocol
+    // the catalog has no adapter for" now that all five real position-bearing protocols do.
+    const xbullPosition = { ...phoenixLp(POOL_A), protocol: "xbull" } as unknown as DefiPosition;
+    const { steps, blockers } = planExitSteps([xbullPosition], 0);
     expect(steps).toEqual([]);
     expect(blockers.map((b) => b.code)).toEqual(["defi_exit_unsupported"]);
-    expect(blockers[0]!.message).toContain("Phoenix");
+    expect(blockers[0]!.message).toContain("xBull");
   });
 
   test("a backstop deposit is the Blend adapter's too: alone or beside a supply, one exit step", () => {
