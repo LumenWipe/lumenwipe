@@ -50,3 +50,12 @@ export {
   type PhoenixPoolState,
   type PhoenixStakeEntry,
 } from "./phoenix";
+export {
+  fxdaoExitAdapter,
+  type FxdaoCoreState,
+  type FxdaoDeps,
+  type FxdaoLive,
+  type FxdaoVaultKeyLike,
+  type FxdaoVaultRecord,
+  type FxdaoVaultsInfo,
+} from "./fxdao";
