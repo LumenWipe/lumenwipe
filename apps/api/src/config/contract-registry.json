@@ -112,7 +112,52 @@
       "wasmHash": null,
       "version": "v1",
       "label": "FxDAO Vaults (testnet, per fxdao.io/docs/addresses) - documented but currently unresolvable on live testnet, a real testnet-reset staleness case rather than a hypothetical one",
-      "verifiedLive": false
+      "verifiedLive": false,
+      "verifiedBy": "2026-09-26: stellar contract info hash and stellar contract restore both against soroban-testnet.stellar.org return no ledger entry at all for this address (not merely archived); the documented mainnet vault also currently exposes only evict/upgrade via stellar contract info interface, so redeploying its current code as a testnet stand-in would register the wrong interface rather than a working one"
+    },
+    {
+      "network": "testnet",
+      "protocol": "phoenix",
+      "kind": "factory",
+      "address": "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+      "wasmHash": "721badb85470a81d9d0a1c72dd0debb37f5f268419d4b94d125e546cc32d350e",
+      "version": "v1",
+      "label": "Phoenix pool factory (testnet) - own redeploy of Phoenix-Protocol-Group/phoenix-contracts' live_factory.wasm mainnet binary; the previously known testnet factory had gone unresolvable, a testnet-reset staleness case; reference only, not probed for balances",
+      "verifiedLive": true,
+      "verifiedBy": "2026-09-26: stellar contract deploy of .wasm_binaries_mainnet/live_factory.wasm to testnet, then stellar contract info hash over RPC (soroban-testnet.stellar.org) confirmed against the file's own sha256"
+    },
+    {
+      "network": "testnet",
+      "protocol": "phoenix",
+      "kind": "router",
+      "address": "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+      "wasmHash": "18336805466bbd05bc388610d36de73994f5b9061bb199c02418a073fcf4b281",
+      "version": "v1",
+      "label": "Phoenix multihop router (testnet) - own redeploy of live_multihop.wasm; enumerates/routes swaps, never a call target of this codebase's exit",
+      "verifiedLive": true,
+      "verifiedBy": "2026-09-26: stellar contract deploy of .wasm_binaries_mainnet/live_multihop.wasm to testnet, then stellar contract info hash over RPC (soroban-testnet.stellar.org) confirmed against the file's own sha256"
+    },
+    {
+      "network": "testnet",
+      "protocol": "phoenix",
+      "kind": "pool",
+      "address": "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+      "wasmHash": "14ed2bb1a025c22bcc730ffc9da3f5aa9f7c653f4be402812c32f249e20dee01",
+      "version": "v1",
+      "label": "Phoenix XYK pool (testnet) - own redeploy of live_xlm_usdc_pool.wasm; stands for the pool code every factory-deployed XYK pool shares; interface confirmed to still expose withdraw_liquidity via stellar contract info interface",
+      "verifiedLive": true,
+      "verifiedBy": "2026-09-26: stellar contract deploy of .wasm_binaries_mainnet/live_xlm_usdc_pool.wasm to testnet, then stellar contract info hash over RPC (soroban-testnet.stellar.org) confirmed against the file's own sha256"
+    },
+    {
+      "network": "testnet",
+      "protocol": "phoenix",
+      "kind": "stake",
+      "address": "CDM5OTEDHY4ONKNWZU4YI372NQSPAFD2A4JYI6HOE5FXWL4UUITAHSMC",
+      "wasmHash": "a27578aaeb9c1d1686b42d48c211436e977d7bf4f57dafca00c03af58984eee1",
+      "version": "v1",
+      "label": "Phoenix stake (testnet) - own redeploy of live_xlm_usdc_stake.wasm; the exit's unbond call target; interface confirmed to still expose unbond via stellar contract info interface",
+      "verifiedLive": true,
+      "verifiedBy": "2026-09-26: stellar contract deploy of .wasm_binaries_mainnet/live_xlm_usdc_stake.wasm to testnet, then stellar contract info hash over RPC (soroban-testnet.stellar.org) confirmed against the file's own sha256"
     },
     {
       "network": "mainnet",

@@ -25,7 +25,10 @@ plus an adapter change, never a rewrite (§18).
 2. Add one object to `entries`:
    - `network`: `mainnet` or `testnet` - the one network you verified this instance on
    - `protocol`: one of `blend`, `aquarius`, `soroswap`, `phoenix`, `fxdao`
-   - `kind`: `pool`, `pair`, `backstop`, `vault`, `factory`, `router`, `aggregator`, or `adapter`.
+   - `kind`: `pool`, `pair`, `backstop`, `stake`, `vault`, `factory`, `router`, `aggregator`, or
+     `adapter`. `stake` is a protocol's separate staking contract (Phoenix's `bond`/`unbond`
+     target) - registered like any other code-representative entry, resolved the same way a plan's
+     other touched contracts are.
      `aggregator` and `adapter` are Soroswap's swap aggregator and the per-protocol adapters it
      dispatches to; a token conversion may invoke only those, the router, and the token itself
      (`soroswapConversionContracts`). A `pair` entry is one
