@@ -55,16 +55,19 @@ export function exitExpectations(
   const positions = accountState.defiPositions?.positions ?? [];
   const trustlines = accountState.trustlines ?? [];
   // Besides the positions' own contracts, an exit may call the bundled registry's routers (an
-  // AMM withdrawal goes through the router) and backstops (Blend's queued withdrawal), each
-  // pinned to its own functions; a protocol that never calls one gets none.
+  // AMM withdrawal goes through the router), backstops (Blend's queued withdrawal), and stakes
+  // (Phoenix's unbond, a separate contract per pool), each pinned to its own functions; a
+  // protocol that never calls one gets none.
   const protocols = positions.map((p) => p.protocol);
   const routers = exitContractsFor(network, protocols, "router");
   const backstops = exitContractsFor(network, protocols, "backstop");
+  const stakes = exitContractsFor(network, protocols, "stake");
   const exitContracts = [
     ...new Set([
       ...positions.map((p) => p.contractAddress),
       ...routers.map((r) => r.address),
       ...backstops.map((b) => b.address),
+      ...stakes.map((s) => s.address),
     ]),
   ];
   const exitFunctions: Record<string, string[]> = {};
@@ -73,6 +76,7 @@ export function exitExpectations(
   }
   for (const r of routers) exitFunctions[r.address] = [...EXIT_FUNCTIONS[r.protocol].router];
   for (const b of backstops) exitFunctions[b.address] = [...EXIT_FUNCTIONS[b.protocol].backstop];
+  for (const s of stakes) exitFunctions[s.address] = [...EXIT_FUNCTIONS[s.protocol].stake];
   // A position's tokens (what a withdrawal pays out) and, where the protocol keeps shares in a
   // separate contract, its share token (what a withdrawal burns, under the account's authority).
   const positionTokenContracts = [
