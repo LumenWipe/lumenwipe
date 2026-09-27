@@ -24,6 +24,10 @@ these into a new dated section (and bump `package.json`) the next time `packages
   gains an optional `provider?: "soroswap" | "xbull"`, pinning which provider's quote a
   `convert_to_xlm` answer was accepted from. Both are purely additive; no existing field changed
   shape.
+- `BatchPlanResult` and `BatchPlanResponse` types, matching the API's new
+  `POST /v1/:network/close/batch-plan` endpoint: plans a bounded list of addresses in one call,
+  isolating any address that can't be read or planned safely as its own blocked result rather
+  than failing the whole batch. Purely additive; no existing field changed shape.
 
 ## [0.1.0] - 2026-09-07
 
