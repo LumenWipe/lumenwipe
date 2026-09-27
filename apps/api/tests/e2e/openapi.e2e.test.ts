@@ -37,6 +37,7 @@ test("spec documents all v1 + read + mediator endpoints", () => {
       "/",
       "/health",
       "/v1/{network}/close/plan",
+      "/v1/{network}/close/batch-plan",
       "/v1/{network}/close/transactions",
       "/v1/{network}/submit",
       "/{network}/account/{address}",
@@ -52,6 +53,7 @@ test("request DTOs are present as schemas", () => {
   expect(schemas).toEqual(
     expect.arrayContaining([
       "ClosePlanRequestDto",
+      "BatchPlanRequestDto",
       "CloseTransactionsRequestDto",
       "SubmitRequestDto",
       "MediatorSignRequestDto",
@@ -110,6 +112,8 @@ test("phase 2 response schemas (allowances, close/plan) are present and wired (#
       "DecisionOptionDto",
       "PlanBlockerDto",
       "PlanResponseBlockerDto",
+      "BatchPlanResultDto",
+      "BatchPlanResponseDto",
     ])
   );
 
@@ -133,6 +137,15 @@ test("phase 2 response schemas (allowances, close/plan) are present and wired (#
         ?.schema
     )
   ).toBe("#/components/schemas/PlanResponseDto");
+
+  const batchPlan = spec.paths["/v1/{network}/close/batch-plan"].post?.responses?.["200"];
+  expect(
+    refOf(
+      (batchPlan as { content?: Record<string, { schema: unknown }> })?.content?.[
+        "application/json"
+      ]?.schema
+    )
+  ).toBe("#/components/schemas/BatchPlanResponseDto");
 });
 
 test("account response schema, including its discriminated unions, is present and wired (#59)", () => {

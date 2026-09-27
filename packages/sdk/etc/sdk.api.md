@@ -126,6 +126,20 @@ export type AquariusPoolType = "constant_product" | "stable" | "concentrated";
 export type AssetDisposition = "convert" | "issuer" | "transfer" | "leave";
 
 // @public (undocumented)
+export interface BatchPlanResponse {
+    // (undocumented)
+    results: BatchPlanResult[];
+}
+
+// @public
+export interface BatchPlanResult {
+    // (undocumented)
+    address: string;
+    // (undocumented)
+    plan: PlanResponse;
+}
+
+// @public (undocumented)
 export interface BlendBorrowPosition extends DefiPositionBase {
     // (undocumented)
     assetAddress: string;
