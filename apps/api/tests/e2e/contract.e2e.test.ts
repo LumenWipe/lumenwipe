@@ -88,6 +88,48 @@ test("close/plan rejects a missing source", async () => {
   });
 });
 
+test("close/batch-plan rejects an invalid network with the v1 error shape", async () => {
+  const res = await authPost("/v1/badnet/close/batch-plan").send({ addresses: [] });
+  expect(res.status).toBe(400);
+  expect(res.body).toEqual({ error: { code: "invalid_network", message: "Invalid network." } });
+});
+
+test("close/batch-plan rejects an empty addresses array", async () => {
+  const res = await authPost("/v1/testnet/close/batch-plan").send({ addresses: [] });
+  expect(res.status).toBe(400);
+  expect(res.body.error.code).toBe("invalid_addresses");
+});
+
+test("close/batch-plan rejects a missing addresses field", async () => {
+  const res = await authPost("/v1/testnet/close/batch-plan").send({});
+  expect(res.status).toBe(400);
+  expect(res.body.error.code).toBe("invalid_addresses");
+});
+
+test("close/batch-plan rejects an invalid address inside the array", async () => {
+  const res = await authPost("/v1/testnet/close/batch-plan").send({
+    addresses: [Keypair.random().publicKey(), "NOPE"],
+  });
+  expect(res.status).toBe(400);
+  expect(res.body.error.code).toBe("invalid_addresses");
+});
+
+test("close/batch-plan rejects more addresses than the batch cap", async () => {
+  const addresses = Array.from({ length: 21 }, () => Keypair.random().publicKey());
+  const res = await authPost("/v1/testnet/close/batch-plan").send({ addresses });
+  expect(res.status).toBe(400);
+  expect(res.body.error.code).toBe("too_many_addresses");
+});
+
+test("close/batch-plan rejects an invalid destination", async () => {
+  const res = await authPost("/v1/testnet/close/batch-plan").send({
+    addresses: [Keypair.random().publicKey()],
+    destination: "NOPE",
+  });
+  expect(res.status).toBe(400);
+  expect(res.body.error.code).toBe("invalid_destination");
+});
+
 test("submit rejects a missing signedXdr", async () => {
   const res = await authPost("/v1/testnet/submit").send({});
   expect(res.status).toBe(400);
