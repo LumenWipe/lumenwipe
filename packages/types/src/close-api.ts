@@ -80,6 +80,18 @@ export interface PlanResponse {
   execution: { estimatedTransactionCount: number; transactions: ExecutionTxBreakdown[] };
 }
 
+/** One address's plan within a batch call - always present, even when the account could not be
+ *  read or planned safely (that failure surfaces as a `blocked` plan with its own blocker,
+ *  never as a missing entry). */
+export interface BatchPlanResult {
+  address: string;
+  plan: PlanResponse;
+}
+
+export interface BatchPlanResponse {
+  results: BatchPlanResult[];
+}
+
 /**
  * One operation in a decoded close transaction.
  *

@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import type { DecisionAnswer } from "@lumenwipe/types";
+import { BATCH_PLAN_MAX_ADDRESSES } from "@/lib/close-api/batch-plan";
 
 // Documentation-only DTOs: they shape the OpenAPI spec (and the generated SDK
 // types). Validation stays manual in the controllers to preserve the exact
@@ -21,6 +22,21 @@ export class ClosePlanRequestDto {
     items: { type: "object" },
   })
   decisions?: DecisionAnswer[];
+}
+
+export class BatchPlanRequestDto {
+  @ApiProperty({
+    description: `Accounts to plan (G...), up to ${BATCH_PLAN_MAX_ADDRESSES} per call.`,
+    type: [String],
+    example: ["GABC...XYZ", "GDEF...UVW"],
+  })
+  addresses!: string[];
+
+  @ApiPropertyOptional({
+    description: "Shared destination for the recovered XLM (G...). Omit to preview without one.",
+    example: "GDEF...UVW",
+  })
+  destination?: string;
 }
 
 export class CloseTransactionsRequestDto {
