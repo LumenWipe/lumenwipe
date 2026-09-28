@@ -194,16 +194,21 @@ describe("phoenix exit adapter", () => {
     ]);
   });
 
-  test("withdraw_liquidity is called with i128 amounts and void deadline/auto_unstake", async () => {
+  // Regression guard: the real pool's withdraw_liquidity takes exactly five arguments (sender,
+  // share_amount, min_a, min_b, deadline) - confirmed against a live pool's own
+  // `stellar contract info interface`. A sixth trailing argument (a stale assumption that
+  // `auto_unstake` was its own parameter) always failed the real call; nothing in this file's
+  // fake harness could ever have caught that, since it reimplements whatever this adapter itself
+  // emits rather than the real contract's own argument count.
+  test("withdraw_liquidity is called with exactly five args: i128 amounts and a void deadline", async () => {
     const result = await run();
     if (!result.next) throw new Error("expected a built step");
     const args = invocationArgs(result.next.simulation.txXdr);
-    expect(args).toHaveLength(6);
+    expect(args).toHaveLength(5);
     expect(args[1]!.switch()).toBe(xdr.ScValType.scvI128());
     expect(args[2]!.switch()).toBe(xdr.ScValType.scvI128());
     expect(args[3]!.switch()).toBe(xdr.ScValType.scvI128());
     expect(args[4]!.switch()).toBe(xdr.ScValType.scvVoid());
-    expect(args[5]!.switch()).toBe(xdr.ScValType.scvVoid());
   });
 
   test("unbonds every stake before any withdrawal, oldest timestamp first, one step per round", async () => {

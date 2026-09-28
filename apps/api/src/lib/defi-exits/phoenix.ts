@@ -18,15 +18,18 @@ import { minReceivedFromQuote } from "./invariants";
 
 /**
  * The Phoenix exit (architecture.md §9.6): an LP position leaves the pool through
- * `withdraw_liquidity(sender, share_amount, min_a, min_b, deadline, auto_unstake)`, which burns
- * the account's shares (held in the pool's own `share_token` SEP-41 balance) and pays both
- * reserves back to the account pro rata, bounded by one floor per token. A staked position must
- * unbond first: staking lives in a separate contract (`config.stake_contract`, itself read from
- * the pool's own storage) whose `unbond(sender, stake_amount, stake_timestamp)` requires an exact
- * match against one of the account's individual stakes and returns the shares to the account's
- * plain balance, ready for `withdraw_liquidity` on a later round. `auto_unstake` (a single
- * combined call) is never used: unbonding every stake as its own step is uniform regardless of
- * how many stakes exist, and the close loop already re-plans fresh state every round.
+ * `withdraw_liquidity(sender, share_amount, min_a, min_b, deadline)` - five arguments, confirmed
+ * against a live pool's own `stellar contract info interface`, not the six a docs-only reading
+ * once assumed (see [[phoenix-fxdao-exit-wiring]] - integration testing caught the mismatch,
+ * which had made every real withdrawal fail). It burns the account's shares (held in the pool's
+ * own `share_token` SEP-41 balance) and pays both reserves back to the account pro rata, bounded
+ * by one floor per token. A staked position must unbond first: staking lives in a separate
+ * contract (`config.stake_contract`, itself read from the pool's own storage) whose
+ * `unbond(sender, stake_amount, stake_timestamp)` requires an exact match against one of the
+ * account's individual stakes and returns the shares to the account's plain balance, ready for
+ * `withdraw_liquidity` on a later round. A single combined auto-unstake call is never used:
+ * unbonding every stake as its own step is uniform regardless of how many stakes exist, and the
+ * close loop already re-plans fresh state every round.
  *
  * Unlike Aquarius and Soroswap, every value here lives in the pool's and stake contract's
  * PERSISTENT storage, not instance storage: `CONFIG` (a symbol key) for the pool's addresses,
@@ -422,19 +425,22 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
       if (step.kind !== "lp_withdraw") throw new Error(`Phoenix: no call for a ${step.kind} step`);
       const [floorA, floorB] = step.minReceived;
       if (!floorA || !floorB) throw new Error("Phoenix: a withdrawal needs both floors");
-      const none = xdr.ScVal.scvVoid();
       return {
         step,
         build: {
           source: "local",
+          // withdraw_liquidity(sender, share_amount, min_a, min_b, deadline) - exactly five
+          // arguments, confirmed against the live pool's own `stellar contract info interface`.
+          // An extra trailing `auto_unstake` argument here (matching this module's own outdated
+          // doc comment) always failed the real call - unbonding every stake first, as this
+          // adapter already does, makes a separate auto_unstake unnecessary anyway.
           op: new Contract(step.contract).call(
             "withdraw_liquidity",
             account,
             i128(step.amount),
             i128(floorA.amount),
             i128(floorB.amount),
-            none,
-            none
+            xdr.ScVal.scvVoid()
           ),
         },
         intent: {
