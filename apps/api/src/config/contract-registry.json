@@ -108,12 +108,12 @@
       "network": "testnet",
       "protocol": "fxdao",
       "kind": "vault",
-      "address": "CBUZ5NJKA5PRS4TBPHWMN4JGGRVIOQOKI4JUYLA2IXS3BEJKQKEWFW7D",
-      "wasmHash": null,
+      "address": "CAARCC4SIEPYOTFTYCSO7Y4H43GVRK4EQUVA2H2MCDICDZM6VJLHOART",
+      "wasmHash": "7291860a57cfcdc499f68ce3116dcbf0b3e214e48b0b3b0e8406cbb86d62419b",
       "version": "v1",
-      "label": "FxDAO Vaults (testnet, per fxdao.io/docs/addresses) - documented but currently unresolvable on live testnet, a real testnet-reset staleness case rather than a hypothetical one",
-      "verifiedLive": false,
-      "verifiedBy": "2026-09-26: stellar contract info hash and stellar contract restore both against soroban-testnet.stellar.org return no ledger entry at all for this address (not merely archived); the documented mainnet vault also currently exposes only evict/upgrade via stellar contract info interface, so redeploying its current code as a testnet stand-in would register the wrong interface rather than a working one"
+      "label": "FxDAO Vaults (testnet) - own build of FxDAO's real open-source vaults contract (FxDAO/FxDAO-SC v0.6.0, not a stub); FxDAO's own testnet and mainnet vaults are both confirmed unusable (see verifiedBy), so this is the reference instance a close is tested against, same reason as Phoenix's testnet entries",
+      "verifiedLive": true,
+      "verifiedBy": "2026-09-27: built github.com/FxDAO/FxDAO-SC (main, vaults v0.6.0) via stellar contract build, deployed to testnet; stellar contract info hash over RPC confirmed the hash; a real vault opened and closed end to end via this adapter's pay_debt call. FxDAO's own testnet vault still has no ledger entry; its documented mainnet vault (CCUN4RXU5...) still exposes only evict/upgrade; founder confirmed the protocol stopped operating, matching DeFiLlama's Stellar TVL at $0 since 2026-05-20"
     },
     {
       "network": "testnet",
@@ -343,6 +343,61 @@
       "label": "xBull PathPayment swap router (mainnet, swap-api.xbull.io), strict_send only",
       "verifiedLive": true,
       "verifiedBy": "2026-09-17: readLiveWasmHash over RPC (mainnet.sorobanrpc.com) against CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT (xBullCorp/swap-kit SwapContract.MAINNET)"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "pool",
+      "address": "CB5QUVK5GS3IU23TMFZQ3P5J24YBBZP5PHUQAEJ2SP5K55PFTJRUQG2L",
+      "wasmHash": "167ab414a226427de34c19947ef9c5cf38c6c0ed91ecf9392f7cef3278ff506c",
+      "version": "v1",
+      "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - stands for the code 9 of the 10 directory-listed Phoenix pools share; positions come from OctoPos, not from this list",
+      "verifiedLive": true,
+      "verifiedBy": "2026-09-26: stellar contract info hash over RPC (mainnet.sorobanrpc.com) against CB5QUVK5GS3IU23TMFZQ3P5J24YBBZP5PHUQAEJ2SP5K55PFTJRUQG2L, one of the stellar.expert directory's 'Phoenix Pool' entries (domain phoenix-hub.io); stellar contract info interface confirms it still exposes withdraw_liquidity"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "stake",
+      "address": "CDBMVFP7KJXW3YEFSLOU5GYUQHHJJI7QPZJPCSPDK6HHBCBZAMCHS2QY",
+      "wasmHash": "649715de2b14df3c34a560d9ffb01deeefe029404cd3e9ab184ba22702cbed79",
+      "version": "v1",
+      "label": "Phoenix stake (mainnet) - the exit's unbond call target for the v1 pool family, read from that pool's own query_config stake_contract field; not listed under its own name in the stellar.expert directory",
+      "verifiedLive": true,
+      "verifiedBy": "2026-09-26: query_config simulated live against CB5QUVK5GS3IU23TMFZQ3P5J24YBBZP5PHUQAEJ2SP5K55PFTJRUQG2L returned this as stake_contract; stellar contract info hash over RPC (mainnet.sorobanrpc.com) confirmed the hash, and stellar contract info interface confirms it still exposes bond/unbond"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "pool",
+      "address": "CD5XNKK3B6BEF2N7ULNHHGAMOKZ7P6456BFNIHRF4WNTEDKBRWAE7IAA",
+      "wasmHash": "13b158655e40396957537bf1c528c6542b315930c1c9e0df640f57293c8af2ca",
+      "version": "v2",
+      "label": "Phoenix XYK pool, a second live code family (mainnet; stellar.expert: 'Phoenix Pool') - the remaining 1 of 10 directory-listed pools runs this hash instead of the v1 entry's",
+      "verifiedLive": true,
+      "verifiedBy": "2026-09-26: stellar contract info hash over RPC (mainnet.sorobanrpc.com) against CD5XNKK3B6BEF2N7ULNHHGAMOKZ7P6456BFNIHRF4WNTEDKBRWAE7IAA, one of the stellar.expert directory's 'Phoenix Pool' entries (domain phoenix-hub.io); stellar contract info interface confirms it still exposes withdraw_liquidity"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "stake",
+      "address": "CDOXQONPND365K6MHR3QBSVVTC3MKR44ORK6TI2GQXUXGGAS5SNDAYRI",
+      "wasmHash": "3cda0d78dfcd8f3b7aab36a8002e887146e17ae982e9553a3f55b4ce61ec17ae",
+      "version": "v2",
+      "label": "Phoenix stake (mainnet) - the exit's unbond call target for the v2 pool family, read from that pool's own query_config stake_contract field",
+      "verifiedLive": true,
+      "verifiedBy": "2026-09-26: query_config simulated live against CD5XNKK3B6BEF2N7ULNHHGAMOKZ7P6456BFNIHRF4WNTEDKBRWAE7IAA returned this as stake_contract; stellar contract info hash over RPC (mainnet.sorobanrpc.com) confirmed the hash, and stellar contract info interface confirms it still exposes bond/unbond"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "fxdao",
+      "kind": "vault",
+      "address": "CCUN4RXU5VNDHSF4S4RKV4ZJYMX2YWKOH6L4AKEKVNVDQ7HY5QIAO4UB",
+      "wasmHash": null,
+      "version": "v1",
+      "label": "FxDAO Vaults (mainnet, per fxdao.io/docs/addresses) - documented as the protocol's Vaults contract, but the deployed code's own interface does not match: no pay_debt or other vault-management entrypoint exists on it today, the same interface gap already found and recorded for the testnet entry",
+      "verifiedLive": false,
+      "verifiedBy": "2026-09-26: stellar contract info interface over RPC (mainnet.sorobanrpc.com) against CCUN4RXU5VNDHSF4S4RKV4ZJYMX2YWKOH6L4AKEKVNVDQ7HY5QIAO4UB shows only evict/upgrade - the contract resolves and has a real code hash, but not the pay_debt interface an exit needs, so it is recorded unresolvable by design rather than trusted"
     }
   ]
 }

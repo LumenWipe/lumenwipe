@@ -162,17 +162,36 @@ const persistentKey = (contract: string, key: xdr.ScVal): xdr.LedgerKey =>
     })
   );
 
-const vaultsInfoLedgerKey = (vault: string, denomination: string): xdr.LedgerKey =>
-  persistentKey(vault, variantVal("VaultsInfo", symbolVal(denomination)));
-
+/** `VaultsDataKeys::Vault` is the only one of these three kept in `persistent` storage, its own
+ *  individually addressed entry (confirmed against FxDAO-SC's `storage/vaults.rs`). `CoreDataKeys::
+ *  CoreState` and `VaultsDataKeys::VaultsInfo` both live in `instance` storage instead
+ *  (`storage/core.rs`, `storage/vaults.rs`), which Soroban keeps inline on the contract's own
+ *  instance ledger entry rather than as separate keyed entries - so reading them means fetching
+ *  that one instance entry (`Contract(vault).getFootprint()`) and looking each key up in its
+ *  `storage()` map, the same way `complete-positions.ts` reads a pool's config. A live redeploy of
+ *  FxDAO's real source is what caught this: every prior reading of this adapter assumed all three
+ *  shared persistent storage, which silently returns zero entries for the two that are wrong,
+ *  never an error. */
 const vaultLedgerKey = (vault: string, account: string, denomination: string): xdr.LedgerKey =>
   persistentKey(
     vault,
     variantVal("Vault", xdr.ScVal.scvVec([addressVal(account), symbolVal(denomination)]))
   );
 
-const coreStateLedgerKey = (vault: string): xdr.LedgerKey =>
-  persistentKey(vault, variantVal("CoreState"));
+/** The keys `CoreState` and `VaultsInfo(denomination)` are found under, in an instance's own
+ *  `storage()` map - matched by their native (not raw ScVal) form, the same way
+ *  `complete-positions.ts` keys its map by `JSON.stringify(scValToNative(entry.key()))`. */
+function instanceStorageMap(val: xdr.LedgerEntryData): Map<string, xdr.ScVal> {
+  const out = new Map<string, xdr.ScVal>();
+  for (const entry of val.contractData().val().instance().storage() ?? []) {
+    try {
+      out.set(JSON.stringify(scValToNative(entry.key())), entry.val());
+    } catch {
+      continue;
+    }
+  }
+  return out;
+}
 
 function mapView(val: xdr.ScVal): Map<string, xdr.ScVal> {
   const out = new Map<string, xdr.ScVal>();
@@ -236,8 +255,12 @@ function decodeVault(val: xdr.LedgerEntryData): FxdaoVaultRecord | null {
   return { account, denomination, index, nextKey, totalCollateral, totalDebt };
 }
 
-function decodeVaultsInfo(val: xdr.LedgerEntryData): FxdaoVaultsInfo | null {
-  const fields = mapView(val.contractData().val());
+/** Both take the value `xdr.ScVal` directly (from `instanceStorageMap`), unlike `decodeVault`
+ *  which takes a whole `LedgerEntryData` - `VaultsInfo`/`CoreState` are entries within an
+ *  instance's storage map, never their own addressed ledger entry. */
+function decodeVaultsInfo(val: xdr.ScVal | undefined): FxdaoVaultsInfo | null {
+  if (!val) return null;
+  const fields = mapView(val);
   const lowestKey = decodeOptionalVaultKey(fields.get("lowest_key"));
   const minColRate = asUnsigned(fields.get("min_col_rate"));
   const totalVaults = asUnsigned(fields.get("total_vaults"));
@@ -245,8 +268,9 @@ function decodeVaultsInfo(val: xdr.LedgerEntryData): FxdaoVaultsInfo | null {
   return { lowestKey, minColRate, totalVaults };
 }
 
-function decodeCoreState(val: xdr.LedgerEntryData): FxdaoCoreState | null {
-  const fields = mapView(val.contractData().val());
+function decodeCoreState(val: xdr.ScVal | undefined): FxdaoCoreState | null {
+  if (!val) return null;
+  const fields = mapView(val);
   const oracle = asAddress(fields.get("oracle"));
   const stableIssuer = asAddress(fields.get("stable_issuer"));
   if (oracle === null || stableIssuer === null) return null;
@@ -376,16 +400,17 @@ export function fxdaoExitAdapter(
       try {
         const vault = position.contractAddress;
         const denomination = position.denomination;
-        const infoKey = vaultsInfoLedgerKey(vault, denomination);
         const ownKey = vaultLedgerKey(vault, ctx.account, denomination);
-        const coreKey = coreStateLedgerKey(vault);
-        const first = await readEntries(rpc, [infoKey, ownKey, coreKey]);
+        const instanceKey = new Contract(vault).getFootprint();
+        const first = await readEntries(rpc, [ownKey, instanceKey]);
 
-        const infoVal = first.get(infoKey.toXDR("base64"));
-        const coreVal = first.get(coreKey.toXDR("base64"));
-        if (!infoVal || !coreVal) return { status: "unreadable" };
-        const vaultsInfo = decodeVaultsInfo(infoVal);
-        const coreState = decodeCoreState(coreVal);
+        const instanceVal = first.get(instanceKey.toXDR("base64"));
+        if (!instanceVal) return { status: "unreadable" };
+        const instanceStorage = instanceStorageMap(instanceVal);
+        const vaultsInfo = decodeVaultsInfo(
+          instanceStorage.get(JSON.stringify(["VaultsInfo", denomination]))
+        );
+        const coreState = decodeCoreState(instanceStorage.get(JSON.stringify(["CoreState"])));
         if (!vaultsInfo || !coreState) return { status: "unreadable" };
 
         const ownVal = first.get(ownKey.toXDR("base64"));
