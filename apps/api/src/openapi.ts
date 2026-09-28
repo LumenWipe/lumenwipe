@@ -24,10 +24,22 @@ export function buildOpenApiConfig() {
       { type: "http", scheme: "bearer", bearerFormat: "opaque", description: "Integrator API key" },
       "api-key"
     )
+    .addBearerAuth(
+      // A distinct scheme from "api-key": admin routes are gated on a separate operator secret
+      // (ADMIN_API_TOKEN), never an integrator key - see admin/admin.guard.ts.
+      {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "opaque",
+        description: "Operator admin token",
+      },
+      "admin-token"
+    )
     .addTag("close", "Build and submit an account close-out")
     .addTag("account", "Read account state and conversion paths")
     .addTag("mediator", "Exchange-destination forwarding")
     .addTag("health", "Service health")
     .addTag("service", "Service index")
+    .addTag("admin", "Operator-only self-serve API key management")
     .build();
 }

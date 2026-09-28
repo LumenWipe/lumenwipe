@@ -60,6 +60,16 @@ const OPTIONAL: Array<{ name: string; consequence: string }> = [
       "DeFi position detection runs at OctoPos's free/IP rate-limit tier instead of the " +
       "authenticated tier",
   },
+  {
+    name: "ADMIN_API_TOKEN",
+    consequence: "self-serve API key management (create/list/revoke/rotate) is unavailable",
+  },
+  {
+    name: "FIRESTORE_PROJECT_ID",
+    consequence:
+      "self-serve API keys are not durable (an in-memory fallback is used) and admin key " +
+      "management is unavailable",
+  },
 ];
 
 /**
