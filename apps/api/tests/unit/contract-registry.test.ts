@@ -125,9 +125,14 @@ test("an unregistered hash resolves to unknown, never to a guess", () => {
   expect(resolveWasmHash("testnet", HASH_B)).toEqual({ status: "unknown", wasmHash: HASH_B });
 });
 
-test("carries a null wasmHash for the documented-but-unresolvable FxDAO entry rather than a guess", () => {
+test("the testnet FxDAO vault is our own reference redeploy of FxDAO's real code, not a guess", () => {
+  // FxDAO's own testnet and mainnet vaults are both confirmed unusable (see the mainnet test
+  // below), so testnet carries our own build of FxDAO's real open-source contract instead of a
+  // null placeholder - the same reason Phoenix's testnet factory/router/pool/stake entries exist.
   const fxdao = entriesForProtocol("testnet", "fxdao");
-  expect(fxdao.some((e) => e.wasmHash === null && e.verifiedLive === false)).toBe(true);
+  expect(fxdao).toHaveLength(1);
+  expect(fxdao[0]).toMatchObject({ kind: "vault", verifiedLive: true });
+  expect(fxdao[0]!.wasmHash).not.toBeNull();
 });
 
 test("the mainnet FxDAO Vaults entry is null/unresolvable too: its live interface does not match documentation", () => {

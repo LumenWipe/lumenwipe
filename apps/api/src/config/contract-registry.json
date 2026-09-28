@@ -108,12 +108,12 @@
       "network": "testnet",
       "protocol": "fxdao",
       "kind": "vault",
-      "address": "CBUZ5NJKA5PRS4TBPHWMN4JGGRVIOQOKI4JUYLA2IXS3BEJKQKEWFW7D",
-      "wasmHash": null,
+      "address": "CAARCC4SIEPYOTFTYCSO7Y4H43GVRK4EQUVA2H2MCDICDZM6VJLHOART",
+      "wasmHash": "7291860a57cfcdc499f68ce3116dcbf0b3e214e48b0b3b0e8406cbb86d62419b",
       "version": "v1",
-      "label": "FxDAO Vaults (testnet, per fxdao.io/docs/addresses) - documented but currently unresolvable on live testnet, a real testnet-reset staleness case rather than a hypothetical one",
-      "verifiedLive": false,
-      "verifiedBy": "2026-09-26: stellar contract info hash and stellar contract restore both against soroban-testnet.stellar.org return no ledger entry at all for this address (not merely archived); the documented mainnet vault also currently exposes only evict/upgrade via stellar contract info interface, so redeploying its current code as a testnet stand-in would register the wrong interface rather than a working one"
+      "label": "FxDAO Vaults (testnet) - own build of FxDAO's real open-source vaults contract (FxDAO/FxDAO-SC v0.6.0, not a stub); FxDAO's own testnet and mainnet vaults are both confirmed unusable (see verifiedBy), so this is the reference instance a close is tested against, same reason as Phoenix's testnet entries",
+      "verifiedLive": true,
+      "verifiedBy": "2026-09-27: built github.com/FxDAO/FxDAO-SC (main, vaults v0.6.0) via stellar contract build, deployed to testnet; stellar contract info hash over RPC confirmed the hash; a real vault opened and closed end to end via this adapter's pay_debt call. FxDAO's own testnet vault still has no ledger entry; its documented mainnet vault (CCUN4RXU5...) still exposes only evict/upgrade; founder confirmed the protocol stopped operating, matching DeFiLlama's Stellar TVL at $0 since 2026-05-20"
     },
     {
       "network": "testnet",
