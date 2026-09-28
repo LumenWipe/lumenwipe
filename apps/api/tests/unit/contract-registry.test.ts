@@ -64,12 +64,20 @@ test("serves the registry with its freshness metadata, frozen", () => {
   expect(Object.isFrozen(registry.entries[0])).toBe(true);
 });
 
-test("every protocol with an exit adapter has verified mainnet entries: the runner halts on any hash the registry does not know for the network", () => {
+test("every protocol with a working exit adapter has verified mainnet entries: the runner halts on any hash the registry does not know for the network", () => {
   expect(entriesForNetwork("testnet").length).toBeGreaterThan(0);
   const mainnet = entriesForNetwork("mainnet");
   expect(mainnet.length).toBeGreaterThan(0);
-  expect(mainnet.every((e) => e.verifiedLive && e.wasmHash !== null)).toBe(true);
-  for (const protocol of ["blend", "aquarius", "soroswap"] as const) {
+  // FxDAO's mainnet Vaults contract is the one documented-but-unresolvable exception (see the
+  // dedicated test below): its live interface does not match protocol documentation, so it is
+  // recorded null/unresolvable on purpose, the same halt-don't-guess convention testnet already
+  // uses. Every other mainnet entry backs a working exit and must resolve.
+  expect(
+    mainnet
+      .filter((e) => e.protocol !== "fxdao")
+      .every((e) => e.verifiedLive && e.wasmHash !== null)
+  ).toBe(true);
+  for (const protocol of ["blend", "aquarius", "soroswap", "phoenix"] as const) {
     const kinds = new Set(entriesForProtocol("mainnet", protocol).map((e) => e.kind));
     expect(kinds.size).toBeGreaterThan(0);
     // The kinds an exit calls or reads must be there, not just a reference contract.
@@ -77,6 +85,7 @@ test("every protocol with an exit adapter has verified mainnet entries: the runn
     if (protocol === "aquarius") expect([...kinds].sort()).toEqual(["pool", "router"]);
     if (protocol === "soroswap")
       expect([...kinds].sort()).toEqual(["aggregator", "factory", "pair", "router"]);
+    if (protocol === "phoenix") expect([...kinds].sort()).toEqual(["pool", "stake"]);
   }
   // Blend V2 ships the same code on both networks; the labels say so, so the file must agree.
   for (const kind of ["factory", "backstop", "pool"] as const) {
@@ -116,9 +125,26 @@ test("an unregistered hash resolves to unknown, never to a guess", () => {
   expect(resolveWasmHash("testnet", HASH_B)).toEqual({ status: "unknown", wasmHash: HASH_B });
 });
 
-test("carries a null wasmHash for the documented-but-unresolvable FxDAO entry rather than a guess", () => {
+test("the testnet FxDAO vault is our own reference redeploy of FxDAO's real code, not a guess", () => {
+  // FxDAO's own testnet and mainnet vaults are both confirmed unusable (see the mainnet test
+  // below), so testnet carries our own build of FxDAO's real open-source contract instead of a
+  // null placeholder - the same reason Phoenix's testnet factory/router/pool/stake entries exist.
   const fxdao = entriesForProtocol("testnet", "fxdao");
-  expect(fxdao.some((e) => e.wasmHash === null && e.verifiedLive === false)).toBe(true);
+  expect(fxdao).toHaveLength(1);
+  expect(fxdao[0]).toMatchObject({ kind: "vault", verifiedLive: true });
+  expect(fxdao[0]!.wasmHash).not.toBeNull();
+});
+
+test("the mainnet FxDAO Vaults entry is null/unresolvable too: its live interface does not match documentation", () => {
+  const fxdao = entriesForProtocol("mainnet", "fxdao");
+  expect(fxdao).toHaveLength(1);
+  expect(fxdao[0]).toMatchObject({ kind: "vault", wasmHash: null, verifiedLive: false });
+  expect(
+    resolveWasmHash("mainnet", "0245bac3d0ada657e247346273316c22b106c113f2085dbbc2c46faa0c28d498")
+  ).toEqual({
+    status: "unknown",
+    wasmHash: "0245bac3d0ada657e247346273316c22b106c113f2085dbbc2c46faa0c28d498",
+  });
 });
 
 test("resolves the xBull mainnet router by its live wasm hash", () => {

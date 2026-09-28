@@ -65,7 +65,14 @@ type Entry = { key: xdr.LedgerKey; val: xdr.LedgerEntryData };
 const wasm = (hex: string): xdr.ContractExecutable =>
   xdr.ContractExecutable.contractExecutableWasm(Buffer.from(hex, "hex"));
 
-function instanceEntry(contract: string, executable: xdr.ContractExecutable): Entry {
+/** `storage` holds `VaultsInfo`/`CoreState` - real FxDAO keeps both on the contract's own instance
+ *  entry (`storage/core.rs`, `storage/vaults.rs`), never as their own individually addressed
+ *  persistent entries the way `Vault` is. A live redeploy of FxDAO's real source caught this. */
+function instanceEntry(
+  contract: string,
+  executable: xdr.ContractExecutable,
+  storage: xdr.ScMapEntry[] = []
+): Entry {
   const key = new Contract(contract).getFootprint();
   const val = xdr.LedgerEntryData.contractData(
     new xdr.ContractDataEntry({
@@ -73,7 +80,7 @@ function instanceEntry(contract: string, executable: xdr.ContractExecutable): En
       contract: new Address(contract).toScAddress(),
       key: xdr.ScVal.scvLedgerKeyContractInstance(),
       durability: xdr.ContractDataDurability.persistent(),
-      val: xdr.ScVal.scvContractInstance(new xdr.ScContractInstance({ executable, storage: null })),
+      val: xdr.ScVal.scvContractInstance(new xdr.ScContractInstance({ executable, storage })),
     })
   );
   return { key, val };
@@ -229,23 +236,27 @@ export function fakeFxdaoRpc(
   }
   const lowest = chain[0]!;
 
-  const entries: Entry[] = [instanceEntry(VAULT, wasm(options.vaultHash ?? FXDAO_VAULT_HASH))];
+  const instanceStorage: xdr.ScMapEntry[] = [];
   if (!options.vaultInfoMissing) {
-    entries.push(
-      persistentEntry(
-        VAULT,
-        vaultsInfoKey(denomination),
-        vaultsInfoVal(
+    instanceStorage.push(
+      new xdr.ScMapEntry({
+        key: vaultsInfoKey(denomination),
+        val: vaultsInfoVal(
           { account: lowest.account, denomination: lowest.denomination, index: lowest.index },
           minColRate,
           BigInt(chain.length)
-        )
-      )
+        ),
+      })
     );
   }
   if (!options.coreStateMissing) {
-    entries.push(persistentEntry(VAULT, coreStateKey(), coreStateVal(ORACLE, STABLE_ISSUER)));
+    instanceStorage.push(
+      new xdr.ScMapEntry({ key: coreStateKey(), val: coreStateVal(ORACLE, STABLE_ISSUER) })
+    );
   }
+  const entries: Entry[] = [
+    instanceEntry(VAULT, wasm(options.vaultHash ?? FXDAO_VAULT_HASH), instanceStorage),
+  ];
   if (!options.ownVaultMissing) {
     for (const v of chain) {
       entries.push(persistentEntry(VAULT, vaultKeyScVal(v.account, v.denomination), vaultVal(v)));
