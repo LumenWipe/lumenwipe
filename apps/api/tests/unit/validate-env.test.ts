@@ -13,6 +13,8 @@ const OK = {
   FEE_ACCOUNT_SECRET_MAINNET: "S...",
   SOROSWAP_API_KEY: "sk_test",
   OCTOPOS_API_KEY: "oct_abc123",
+  ADMIN_API_TOKEN: "admin_test_token",
+  FIRESTORE_PROJECT_ID: "test-project",
 };
 
 test("a complete environment has no problems and no warnings", () => {
@@ -50,6 +52,8 @@ test("a missing mediator secret warns rather than blocking the boot", () => {
     FEE_ACCOUNT_SECRET_MAINNET: "S...",
     OCTOPOS_API_KEY: "oct_abc123",
     SOROSWAP_API_KEY: "sk_test",
+    ADMIN_API_TOKEN: "admin_test_token",
+    FIRESTORE_PROJECT_ID: "test-project",
   } as NodeJS.ProcessEnv);
   expect(problems).toEqual([]);
   expect(warnings.map((w) => w.variable).sort()).toEqual([
@@ -67,6 +71,8 @@ test("a missing fee-account secret warns rather than blocking the boot", () => {
     MEDIATOR_SECRET_MAINNET: "S...",
     OCTOPOS_API_KEY: "oct_abc123",
     SOROSWAP_API_KEY: "sk_test",
+    ADMIN_API_TOKEN: "admin_test_token",
+    FIRESTORE_PROJECT_ID: "test-project",
   } as NodeJS.ProcessEnv);
   expect(problems).toEqual([]);
   expect(warnings.map((w) => w.variable).sort()).toEqual([
@@ -85,9 +91,30 @@ test("a missing OCTOPOS_API_KEY warns rather than blocking the boot", () => {
     FEE_ACCOUNT_SECRET_TESTNET: "S...",
     FEE_ACCOUNT_SECRET_MAINNET: "S...",
     SOROSWAP_API_KEY: "sk_test",
+    ADMIN_API_TOKEN: "admin_test_token",
+    FIRESTORE_PROJECT_ID: "test-project",
   } as NodeJS.ProcessEnv);
   expect(problems).toEqual([]);
   expect(warnings.map((w) => w.variable)).toEqual(["OCTOPOS_API_KEY"]);
+});
+
+test("a missing ADMIN_API_TOKEN or FIRESTORE_PROJECT_ID warns rather than blocking the boot", () => {
+  // Disables self-serve API key management (issue #289), not the service.
+  const base = {
+    API_KEYS: "ci=abc",
+    MEDIATOR_SECRET_TESTNET: "S...",
+    MEDIATOR_SECRET_MAINNET: "S...",
+    FEE_ACCOUNT_SECRET_TESTNET: "S...",
+    FEE_ACCOUNT_SECRET_MAINNET: "S...",
+    OCTOPOS_API_KEY: "oct_abc123",
+    SOROSWAP_API_KEY: "sk_test",
+  };
+  const { problems, warnings } = checkEnv(base as NodeJS.ProcessEnv);
+  expect(problems).toEqual([]);
+  expect(warnings.map((w) => w.variable).sort()).toEqual([
+    "ADMIN_API_TOKEN",
+    "FIRESTORE_PROJECT_ID",
+  ]);
 });
 
 test("the failure message names the variable and where to look", () => {

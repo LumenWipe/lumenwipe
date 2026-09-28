@@ -207,6 +207,8 @@ The web never calls the API directly from the browser; it goes through a server-
 
 Requests are authenticated with an API key and rate-limited per key; the web's proxy holds the key server-side and applies its own per-IP limit on top, so the shared key can never be turned into an anonymous amplifier.
 
+Keys are either manually provisioned (`API_KEYS`, `label=key` pairs - the first-party web app and internal partners) or self-serve, backed by a Firestore-native collection keyed by each key's own SHA-256 hash rather than a separate lookup field, so resolving a key is a single indexed read and the raw secret is never a queryable value. Only the hash is ever persisted or logged; the raw key is returned to its owner exactly once, at issuance or rotation. A self-serve key can carry its own rate-limit override, otherwise the service-wide default applies. Issuance, listing, revocation, and rotation are admin-only for now, gated by a separate operator token distinct from any integrator key - true self-serve issuance needs an integrator-facing auth mechanism (wallet vs. email magic link) that is a decision outside this repository's scope.
+
 ### 7.1 DeFi position adapter
 
 The API consumes OctoPos behind one adapter interface, so the rest of the system never sees provider-specific shapes. OctoPos is a funded DeFi Position API in the Stellar ecosystem, and the API builds on it rather than reinventing protocol indexing. The adapter keeps the provider pluggable: it can be pointed at any compatible provider, and if OctoPos is unavailable the tool enters a degraded mode: classic entries process normally, and the user is warned that DeFi positions could not be detected and must be checked manually.
@@ -486,7 +488,7 @@ The tool protects users on two fronts: their funds and their privacy.
 
 Funds. The irreversibility controls in Section 13 are the protection: explicit per-step confirmations, no auto-submission, destination verification, memo validation for exchanges, per-step simulation before signing, and a resume flow that reconciles against on-chain state so an interrupted wind-down never double-acts.
 
-Privacy. The tool collects no personal information and requires no account. Secret keys never leave the browser and are never logged. The API handles only public addresses, which it does not retain beyond cache TTLs, and it associates no identity with a request. Any product analytics are privacy-preserving and self-hosted (for example Plausible or Umami) with no personal data, no cross-site tracking, and IP anonymization; the default is to ship no third-party trackers at all, and the Content Security Policy blocks third-party scripts. Abuse protection is rate limiting by API key at the service and by IP at the web proxy, neither of which needs a stored identity.
+Privacy. The tool collects no personal information and requires no account. Secret keys never leave the browser and are never logged. The API handles only public addresses, which it does not retain beyond cache TTLs, and it associates no identity with a request. Any product analytics are privacy-preserving and self-hosted (for example Plausible or Umami) with no personal data, no cross-site tracking, and IP anonymization; the default is to ship no third-party trackers at all, and the Content Security Policy blocks third-party scripts. Abuse protection is rate limiting by API key (per-key, optionally overridden for a self-serve key - Section 7) at the service and by IP at the web proxy, neither of which needs a stored identity. API keys themselves are never stored or logged in plaintext - only their hash is persisted (Section 7).
 
 ## 17. Testing strategy
 
@@ -522,7 +524,7 @@ The classic wind-down already runs. The current codebase is a working monorepo -
 Plain-English summary of what the tool is built from and why.
 
 - Frontend: Next.js and TypeScript, a thin open source web client that verifies and signs, with TypeScript's type safety guarding the verification and signing path.
-- API: NestJS and TypeScript, a stateless service that reads state and builds transactions, with a short-TTL cache for public read data; API-key auth with per-key rate limiting.
+- API: NestJS and TypeScript, a stateless service that reads state and builds transactions, with a short-TTL cache for public read data; API-key auth with per-key rate limiting. Self-serve API keys are the one piece of durable state the service keeps, in Google Cloud Firestore (Native mode), accessed via the Cloud Run service account's IAM role rather than a separate stored credential.
 - Packaging: a Bun-workspaces monorepo (`apps/{web,api}`, `packages/{sdk,types}`); `@lumenwipe/sdk` is a thin fetch client over the API, and `@lumenwipe/types` is shared across the API, the SDK, and the web.
 - Stellar SDK: `@stellar/stellar-sdk`, the official SDK, which covers classic and Soroban, used server-side in the API.
 - Wallets: stellar-wallets-kit (Freighter, xBull, Albedo, Rabet, Hana, WalletConnect; LOBSTR is accessible via WalletConnect), including Soroban authorization-entry signing.

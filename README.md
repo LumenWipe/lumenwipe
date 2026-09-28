@@ -193,6 +193,7 @@ The web and the API each read their own `.env.local` (copy from each app's `.env
 | `NEXT_PUBLIC_STELLAR_RPC_TESTNET` / `_MAINNET`      | Stellar RPC endpoints                                                         |
 | `NEXT_PUBLIC_PATH_ROUTING_API_TESTNET` / `_MAINNET` | Horizon-compatible endpoints for offers, full account state, and path finding |
 | `MEDIATOR_SECRET_TESTNET` / `_MAINNET`              | Shared mediator secret (operator-only; enables exchange closes)               |
+| `ADMIN_API_TOKEN` / `FIRESTORE_PROJECT_ID`          | Optional; enables self-serve API key management (`/admin/api-keys`, #289)     |
 
 **`apps/web/.env.local`** - the web:
 
