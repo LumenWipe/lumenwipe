@@ -327,7 +327,7 @@ jobs:
           rm gitleaks.tar.gz
 
       - name: Scan the full history
-        run: ./gitleaks git --config .gitleaks.toml --gitleaks-ignore-path .gitleaksignore --redact --no-banner .
+        run: ./gitleaks git --log-opts=HEAD --config .gitleaks.toml --gitleaks-ignore-path .gitleaksignore --redact --no-banner .
 
   # Aggregate gate: keeps the existing required-status-check name so branch
   # protection needs no change. Passes only if every job above passed.
