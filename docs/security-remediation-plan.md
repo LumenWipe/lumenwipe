@@ -156,6 +156,10 @@ genuinely new findings instead of re-surfacing this one every time.
 - `polar=key_xyz` in a doc comment (`apps/api/src/auth/api-key.service.ts`) and its matching test
   is a worked example of the `API_KEYS=label=key` env-var format, not a real credential.
   Allowlisted by pattern.
+- Stellar account (`G...`) and contract (`C...`) addresses in tests and fixtures, flagged by
+  `generic-api-key` once the exit-adapter work added many of them (45 hits on 2026-09-29, all 56-
+  character public identifiers). Allowlisted by an anchored pattern that matches only a whole
+  `G`/`C` address, never a secret seed (`S...`).
 
 Final state: `gitleaks detect --config .gitleaks.toml` reports **no leaks found**.
 
@@ -194,9 +198,13 @@ What this run changed beyond code, and what's still open:
 2. **`@nestjs/core` moderate injection advisory** (Section 2) has no fix within the installed 10.x
    line; resolving it means a deliberate Nest 11/12 migration, tracked as its own issue rather than
    folded into a dependency-audit PR.
-3. **Re-run `semgrep` on a recurring cadence** (e.g., wired into CI or run manually each release) -
-   this pass found real signal (Section 3) that CI's existing lint job doesn't cover, and cadence is
-   part of the epic's stated target state for security tooling.
+3. **Static analysis and secret scanning now run in CI** (#315). Every PR and every push to `main`
+   runs Semgrep with the same four rule packs as Section 3, gitleaks over the full history as in
+   Section 4, and CodeQL (`javascript-typescript` and `actions`, `security-extended` queries), all
+   feeding the required `type-check · lint · test` gate. A Semgrep or gitleaks finding fails the
+   PR; CodeQL findings land in the repository's Security tab. The dependency audit (Section 2) is
+   not yet a gate: the lockfile currently reports advisories that still need the triage Section 2
+   describes, so it stays a manual pass until that is done.
 4. **Test fixtures never use a real, checksum-valid secret key** - even a publicly-known one, per
    the finding in Section 4 - is now a standing convention in `CLAUDE.md`, so this class of finding
    doesn't recur.

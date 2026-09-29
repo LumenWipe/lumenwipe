@@ -245,12 +245,107 @@ jobs:
             echo "No packages/sdk/src change and no packages/sdk/etc/sdk.api.md content change in this PR - nothing to check."
           fi
 
+  # Findings go to the Security tab and do not fail the job. The repo's CodeQL default setup
+  # must stay off, or GitHub rejects this upload as a conflicting configuration.
+  codeql:
+    name: codeql (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-extended
+          config: |
+            paths-ignore:
+              - .agents
+              - .claude
+              - .codex
+              - "**/node_modules"
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  # The rule packs are fetched unpinned, so a newly published rule can fail a PR that did not
+  # cause it.
+  semgrep:
+    name: semgrep
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep:1.175.0
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan
+        run: |
+          semgrep scan \
+            --config p/security-audit --config p/typescript --config p/javascript --config p/secrets \
+            --metrics=off --error --sarif-output=semgrep.sarif \
+            apps packages
+
+      - name: Upload results
+        if: ${{ always() && hashFiles('semgrep.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  # Full history, since a deleted key is still exposed. Not gitleaks-action: it needs a paid
+  # licence on an organization's repo.
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          rm gitleaks.tar.gz
+
+      - name: Scan the full history
+        run: ./gitleaks git --log-opts=HEAD --config .gitleaks.toml --gitleaks-ignore-path .gitleaksignore --redact --no-banner .
+
   # Aggregate gate: keeps the existing required-status-check name so branch
   # protection needs no change. Passes only if every job above passed.
   ci:
     name: type-check · lint · test
     runs-on: ubuntu-latest
-    needs: [check, integration, integration-funded, docker, prettier, sdk-version-bump]
+    needs:
+      [
+        check,
+        integration,
+        integration-funded,
+        docker,
+        prettier,
+        sdk-version-bump,
+        codeql,
+        semgrep,
+        gitleaks,
+      ]
     if: ${{ always() }}
     steps:
       - name: Verify every check passed
@@ -273,6 +368,18 @@ jobs:
           fi
           if [ "${{ needs.prettier.result }}" != "success" ]; then
             echo "Formatting check failed."
+            exit 1
+          fi
+          if [ "${{ needs.codeql.result }}" != "success" ]; then
+            echo "CodeQL analysis failed to run."
+            exit 1
+          fi
+          if [ "${{ needs.semgrep.result }}" != "success" ]; then
+            echo "Semgrep reported a finding."
+            exit 1
+          fi
+          if [ "${{ needs.gitleaks.result }}" != "success" ]; then
+            echo "gitleaks found a secret in the git history."
             exit 1
           fi
           # skipped (not run on a push event) counts as passing - only a real failure blocks.

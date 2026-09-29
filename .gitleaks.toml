@@ -18,4 +18,6 @@ regexes = [
   # The API_KEYS env var format shown as a worked example in a doc comment and its test,
   # not a real key.
   '''polar=key_xyz''',
+  # Public Stellar account/contract addresses. Anchored so it never covers a secret seed (S...).
+  '''^[GC][A-Z2-7]{55}$''',
 ]

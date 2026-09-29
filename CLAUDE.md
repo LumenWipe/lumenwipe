@@ -85,7 +85,7 @@ CONTRIBUTING.md has the full rules. Essentials:
 
 - Conventional Commits; `security` type for hardening. Scopes: `builder`, `mediator`, `registry`, `ui`, `backend`, `web`, protocol names. Branches `<type>/<short-description>`.
 - Strict TypeScript, no `any` (use `unknown` + a guard); explicit return types on exported functions. Prettier: double quotes, semicolons, printWidth 100.
-- Comments only when the _why_ is non-obvious.
+- No comments by default. Write one only for something a reader could not work out from the code itself (a hidden constraint, a workaround, a surprising reason), and keep it to a line or two. Never restate what the code does, narrate history, or explain a change - that belongs in the commit or PR. This applies to workflows, configs and tests too.
 - Bug fixes require a unit test reproducing the bug. Automated tests never touch mainnet; E2E runs on testnet.
 - Test fixtures never use a real, checksum-valid secret key (Stellar or otherwise) - a synthetic, non-strkey placeholder only, even when a test's plaintext coincidentally looks like key material. A leaked test fixture is exactly as dangerous as a leaked production secret regardless of which network it was ever funded on.
 - Security-sensitive changes - key handling, transaction construction, `verify()`, confirmation flows, the mediator flow, CSP - get closer review; flag them explicitly in PRs.
