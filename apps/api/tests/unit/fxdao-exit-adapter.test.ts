@@ -17,6 +17,7 @@ import {
 } from "@/lib/contract-registry";
 import { describeExitAdapterInvariants, harnessContext } from "./fixtures/exit-adapter-harness";
 import {
+  CURRENCY_CONTRACT,
   DENOMINATION,
   FXDAO_VAULT_HASH,
   STABLE_ISSUER,
@@ -30,7 +31,12 @@ import {
 const ACCOUNT = randomAccount();
 const TOTAL_COLLATERAL = 1_150_000_000n; // 115 XLM
 const TOTAL_DEBT = 100_000_000n; // 100 USDx
-const STABLE_ASSET = new Asset(DENOMINATION, STABLE_ISSUER).contractId(NETWORK_PASSPHRASES.testnet);
+const STABLE_ASSET = CURRENCY_CONTRACT;
+/** What a `stable_issuer`-derived classic SAC would compute - kept only to prove it is genuinely
+ *  a different address from the real, live `Currency.contract` (see the regression test below). */
+const WRONG_STABLE_ISSUER_DERIVED_ASSET = new Asset(DENOMINATION, STABLE_ISSUER).contractId(
+  NETWORK_PASSPHRASES.testnet
+);
 
 function entry(over: Partial<ContractRegistryEntry>): ContractRegistryEntry {
   return {
@@ -121,6 +127,13 @@ describeExitAdapterInvariants("fxdao vault", {
       name: "the vault's core state cannot be read",
       position,
       rpc: rpc({ coreStateMissing: true }),
+      registry: KNOWN,
+      expectCodes: ["fxdao_vault_unreadable"],
+    },
+    {
+      name: "the denomination's registered currency cannot be read",
+      position,
+      rpc: rpc({ currencyMissing: true }),
       registry: KNOWN,
       expectCodes: ["fxdao_vault_unreadable"],
     },
@@ -227,8 +240,11 @@ describe("fxdao exit adapter", () => {
     expect(result.blockers.map((b) => b.code)).toEqual([EXIT_POSITION_GONE]);
   });
 
-  test("the repay asset resolves through the denomination and the live stable issuer", async () => {
+  test("the repay asset is the vault's live Currency.contract, never a stable-issuer-derived SAC", async () => {
     const result = await run();
-    expect(result.plan[0]!.asset).toBe(STABLE_ASSET);
+    expect(result.plan[0]!.asset).toBe(CURRENCY_CONTRACT);
+    // Regression guard: a real reference deployment proved these two addresses differ, so a plan
+    // that accidentally fell back to the classic-asset derivation would spend the wrong token.
+    expect(result.plan[0]!.asset).not.toBe(WRONG_STABLE_ISSUER_DERIVED_ASSET);
   });
 });

@@ -108,12 +108,12 @@
       "network": "testnet",
       "protocol": "fxdao",
       "kind": "vault",
-      "address": "CAARCC4SIEPYOTFTYCSO7Y4H43GVRK4EQUVA2H2MCDICDZM6VJLHOART",
-      "wasmHash": "7291860a57cfcdc499f68ce3116dcbf0b3e214e48b0b3b0e8406cbb86d62419b",
+      "address": "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+      "wasmHash": "e269f0cd2436f38b559bd67de1a658929a7c610c9e72a9e9ee3ae7c5cb4d732d",
       "version": "v1",
-      "label": "FxDAO Vaults (testnet) - own build of FxDAO's real open-source vaults contract (FxDAO/FxDAO-SC v0.6.0, not a stub); FxDAO's own testnet and mainnet vaults are both confirmed unusable (see verifiedBy), so this is the reference instance a close is tested against, same reason as Phoenix's testnet entries",
+      "label": "FxDAO Vaults (testnet) - own build of FxDAO's real open-source vaults contract (FxDAO/FxDAO-SC v0.6.0, not a stub), fully owned with its own oracle and usd stablecoin so the integration suite can self-provision a fresh vault position every run; FxDAO's own testnet and mainnet vaults are both confirmed unusable (see verifiedBy)",
       "verifiedLive": true,
-      "verifiedBy": "2026-09-27: built github.com/FxDAO/FxDAO-SC (main, vaults v0.6.0) via stellar contract build, deployed to testnet; stellar contract info hash over RPC confirmed the hash; a real vault opened and closed end to end via this adapter's pay_debt call. FxDAO's own testnet vault still has no ledger entry; its documented mainnet vault (CCUN4RXU5...) still exposes only evict/upgrade; founder confirmed the protocol stopped operating, matching DeFiLlama's Stellar TVL at $0 since 2026-05-20"
+      "verifiedBy": "2026-09-28: built github.com/FxDAO/FxDAO-SC (main, vaults v0.6.0) via stellar contract build, deployed to testnet with a fresh admin-controlled oracle and usd stablecoin; a real vault opened and closed end to end via this adapter's pay_debt call, collateral returned atomically on full repayment. FxDAO's own testnet vault still has no ledger entry; its mainnet vault still exposes only evict/upgrade; founder confirmed the protocol stopped, matching DeFiLlama's Stellar TVL at $0 since 2026-05-20"
     },
     {
       "network": "testnet",
@@ -144,20 +144,20 @@
       "address": "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
       "wasmHash": "14ed2bb1a025c22bcc730ffc9da3f5aa9f7c653f4be402812c32f249e20dee01",
       "version": "v1",
-      "label": "Phoenix XYK pool (testnet) - own redeploy of live_xlm_usdc_pool.wasm; stands for the pool code every factory-deployed XYK pool shares; interface confirmed to still expose withdraw_liquidity via stellar contract info interface",
+      "label": "Phoenix XYK pool (testnet) - own redeploy of live_xlm_usdc_pool.wasm, genuinely initialized (not just a bytecode reference) with a custom SEP-41 test token so the integration suite can provide and withdraw real liquidity every run; interface confirmed to still expose withdraw_liquidity via stellar contract info interface",
       "verifiedLive": true,
-      "verifiedBy": "2026-09-26: stellar contract deploy of .wasm_binaries_mainnet/live_xlm_usdc_pool.wasm to testnet, then stellar contract info hash over RPC (soroban-testnet.stellar.org) confirmed against the file's own sha256"
+      "verifiedBy": "2026-09-28: initialize()'d directly with native XLM and a fresh admin-mintable token as token_a/token_b, using the real Phoenix LP share-token wasm fetched from a live mainnet pool's own query_share_token_address (the v2.0.0 GitHub release's generic soroban_token_contract.wasm has an incompatible constructor); a real LP position provided and fully withdrawn end to end via withdraw_liquidity"
     },
     {
       "network": "testnet",
       "protocol": "phoenix",
       "kind": "stake",
-      "address": "CDM5OTEDHY4ONKNWZU4YI372NQSPAFD2A4JYI6HOE5FXWL4UUITAHSMC",
+      "address": "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP",
       "wasmHash": "a27578aaeb9c1d1686b42d48c211436e977d7bf4f57dafca00c03af58984eee1",
       "version": "v1",
-      "label": "Phoenix stake (testnet) - own redeploy of live_xlm_usdc_stake.wasm; the exit's unbond call target; interface confirmed to still expose unbond via stellar contract info interface",
+      "label": "Phoenix stake (testnet) - deployed internally by the pool's own initialize() call (the same wasmHash as the previously standalone, unwired redeploy), read from the pool's own query_config stake_contract field; the exit's unbond call target",
       "verifiedLive": true,
-      "verifiedBy": "2026-09-26: stellar contract deploy of .wasm_binaries_mainnet/live_xlm_usdc_stake.wasm to testnet, then stellar contract info hash over RPC (soroban-testnet.stellar.org) confirmed against the file's own sha256"
+      "verifiedBy": "2026-09-28: query_config simulated live against CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV returned this as stake_contract right after the pool's initialize(); interface confirmed to still expose bond/unbond via stellar contract info interface"
     },
     {
       "network": "mainnet",

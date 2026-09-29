@@ -1198,7 +1198,7 @@ test("a Blend exit may claim emissions on its pool and withdraw a queued deposit
 });
 
 test("a Phoenix exit may withdraw_liquidity on its pool and unbond on the registry's stake contract, nothing else", () => {
-  const STAKE = "CDM5OTEDHY4ONKNWZU4YI372NQSPAFD2A4JYI6HOE5FXWL4UUITAHSMC";
+  const STAKE = "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP";
   const expected = expectation({
     exitContracts: [POOL, STAKE],
     exitFunctions: { [POOL]: ["withdraw_liquidity"], [STAKE]: ["unbond"] },
@@ -1310,7 +1310,7 @@ test("rejects a Soroswap router exit whose remove_liquidity call hides a transfe
 });
 
 test("rejects a Phoenix unbond whose call hides a transfer of the share token to a third party", () => {
-  const STAKE = "CDM5OTEDHY4ONKNWZU4YI372NQSPAFD2A4JYI6HOE5FXWL4UUITAHSMC";
+  const STAKE = "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP";
   const SHARE_TOKEN = "CAN7DMIQH7FGKNYCUQMWECJJ74EKN5JATVVUOVTXOWLQGZCWAFWANG5P";
   const op = exit({
     contract: STAKE,

@@ -107,7 +107,7 @@ test("routers and backstops come only from the bundled registry, for the network
 });
 
 test("a Phoenix stake contract comes only from the bundled registry, for the network and protocols asked", () => {
-  const PHOENIX_STAKE = "CDM5OTEDHY4ONKNWZU4YI372NQSPAFD2A4JYI6HOE5FXWL4UUITAHSMC";
+  const PHOENIX_STAKE = "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP";
   expect(exitContractsFor("testnet", ["phoenix"], "stake")).toEqual([
     { address: PHOENIX_STAKE, protocol: "phoenix" },
   ]);
@@ -141,7 +141,7 @@ test("an Aquarius LP position pins its pool, allows withdraw and claim on it, an
 
 test("a Phoenix position pins its pool and the bundled registry's stake contract, each to its own call", () => {
   const PHOENIX_POOL = "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV";
-  const PHOENIX_STAKE = "CDM5OTEDHY4ONKNWZU4YI372NQSPAFD2A4JYI6HOE5FXWL4UUITAHSMC";
+  const PHOENIX_STAKE = "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP";
   const e = exitExpectations(
     state([
       {
