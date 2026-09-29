@@ -64,6 +64,9 @@ function vaultKeyVal(key: VaultKeyLike): xdr.ScVal {
 const optionalVaultKeyVal = (key: VaultKeyLike | null): xdr.ScVal =>
   key === null ? variantVal("None") : variantVal("Some", vaultKeyVal(key));
 
+// One Soroban invoke-host-function operation per transaction - simulation itself refuses more
+// than one, so a caller with two calls to make (see feedFxdaoOraclePrice) must submit them as two
+// separate transactions, not batch them.
 async function buildSignSubmit(source: Keypair, op: xdr.Operation): Promise<void> {
   const rpc = getRpcServer("testnet");
   const horizon = new Horizon.Server(HORIZON_URL);
@@ -84,11 +87,38 @@ async function buildSignSubmit(source: Keypair, op: xdr.Operation): Promise<void
   await submitAndWait(assembled.toXDR(), "testnet");
 }
 
-/** Reads the on-chain price the vault's own `usd` currency needs to be nonzero and fresh enough
- *  to pass `calculate_deposit_ratio`, then overwrites it with a current timestamp. 1 usd = 1 XLM
- *  (both 7-decimal base units), matching how the reference oracle was first seeded. */
+/**
+ * Re-grants the vault's oracle read quota, then feeds a fresh price. Both have to happen every
+ * run, not just once at bootstrap: the oracle's per-caller `CustomerQuota` entry is not permanent
+ * storage - it expired a few hours after the initial manual grant, which briefly made every
+ * `new_vault` call fail with `NotEnoughQuota` even though the price record itself was still
+ * fresh. 1 usd = 1 XLM (both 7-decimal base units), matching how the reference oracle was first
+ * seeded.
+ */
 export async function feedFxdaoOraclePrice(oracleAdmin: Keypair): Promise<void> {
-  const op = new Contract(FXDAO_ORACLE).call(
+  const quotaOp = new Contract(FXDAO_ORACLE).call(
+    "set_quota",
+    addressVal(FXDAO_VAULT),
+    xdr.ScVal.scvMap([
+      new xdr.ScMapEntry({
+        key: symbolVal("current"),
+        val: nativeToScVal(0n, { type: "u64" }),
+      }),
+      new xdr.ScMapEntry({
+        // A generous, far-future expiry rather than a permanent grant - re-set every run anyway,
+        // so an expired quota never blocks a test that's otherwise passing everything else.
+        key: symbolVal("exp"),
+        val: nativeToScVal(BigInt(Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60), {
+          type: "u64",
+        }),
+      }),
+      new xdr.ScMapEntry({
+        key: symbolVal("max"),
+        val: nativeToScVal(1_000_000n, { type: "u64" }),
+      }),
+    ])
+  );
+  const priceOp = new Contract(FXDAO_ORACLE).call(
     "set_records",
     xdr.ScVal.scvVec([variantVal("Other", symbolVal(FXDAO_DENOMINATION))]),
     xdr.ScVal.scvVec([
@@ -106,7 +136,8 @@ export async function feedFxdaoOraclePrice(oracleAdmin: Keypair): Promise<void> 
       ]),
     ])
   );
-  await buildSignSubmit(oracleAdmin, op);
+  await buildSignSubmit(oracleAdmin, quotaOp);
+  await buildSignSubmit(oracleAdmin, priceOp);
 }
 
 /** `VaultsDataKeys::Vault` persistent entry, keyed the same way `fxdao.ts` reads it. */
