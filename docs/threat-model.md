@@ -23,6 +23,10 @@ In scope, one STRIDE pass per surface:
 6. Soroban token conversion via Soroswap (Tranche 2, epic #159).
 7. DeFi exit adapters - Blend, Aquarius, Soroswap router (Tranche 2, epic #151).
 
+Each surface sits on the data-flow diagram's trust boundaries, listed with the data entities that cross them in
+[Trust boundaries and data entities](/architecture#trust-boundaries-and-data-entities): surfaces 1 and 2 are the
+browser (boundary 1), surfaces 3 and 4 the API (boundary 3), and surfaces 5 to 7 cross from one to the other.
+
 Out of scope, deliberately:
 
 - **Read-only external data sources** (RPC providers, the Horizon-compatible enumeration endpoint, the

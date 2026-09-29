@@ -154,6 +154,55 @@ Account age never limits this design, and that is worth stating precisely becaus
 
 ![Data flow: enumerate via stellar.expert indexer, re-read live over RPC, build and simulate the execution plan, then submit](./diagrams/output/02-data-flow.svg)
 
+### Trust boundaries and data entities
+
+The diagram above shows the flow by phase. The same flow, stated as the trust boundaries it crosses and the
+data entities it carries:
+
+**Trust boundaries.**
+
+1. **The user's browser.** Everything that can authorize a transaction lives here and nowhere else: the wallet
+   (or the in-memory secret key), `verify()`, and signing. What crosses in is untrusted, API-built unsigned
+   XDR, checked against the user's own inputs before any signature. What crosses out is signed XDR, and nothing
+   else that could move funds.
+2. **The web server.** A proxy between the browser and the API that holds the API key
+   (`LUMENWIPE_API_KEY`) so the browser never does, and the merge counter's KV credentials. It builds no
+   transaction and holds no signing key.
+3. **The LumenWipe API.** Reads state, builds and simulates every unsigned transaction,
+   and relays submissions. It holds the system's only two server-side signing keys, the mediator and the
+   fee-bump sponsor (Surfaces 4a and 4b of the [threat model](/threat-model)), and the hashes of self-serve API
+   keys in Firestore. It is not trusted to decide what the user signs; that is boundary 1's job.
+4. **External data services.** The Horizon-compatible enumeration endpoint, Stellar RPC, OctoPos, the Soroswap
+   and xBull quote APIs, and stellar.expert. Everything they return is untrusted input to the
+   API: enumerated entries are re-read live over RPC, a protocol contract is used only when its live code hash
+   matches the contract registry, and a quote-built swap is decoded and held to a fixed shape before it is
+   offered.
+5. **The Stellar network.** The authoritative ledger. It enforces signatures, thresholds, sequence numbers,
+   time bounds, and contract-level minimums, whatever any component above it claims.
+
+**Data entities.**
+
+| Entity                                                                                                                | Origin                                  | Where it lives                                                                                                | Crosses                                      |
+| --------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| Private key or wallet session                                                                                         | The user                                | The wallet, or browser memory for the secret-key mode                                                         | Nothing; never leaves boundary 1             |
+| Source address, destination, memo, and per-asset decisions                                                            | The user                                | Browser; sent to the API as request input                                                                     | 1 → 2 → 3; `verify()` keeps its own copy     |
+| Account state (subentries, balances, signers, positions)                                                              | Enumeration endpoint, RPC, OctoPos      | API, per request; shown to the user on the plan                                                               | 4 → 3 → 1                                    |
+| Contract registry (address, kind, code hash)                                                                          | Reviewed into the repository            | Bundled in the API and the web build                                                                          | Ships with each deploy; never served         |
+| Exchange and anchor registry (memo and mediator rules)                                                                | stellar.expert directory, reviewed      | API; served to the web                                                                                        | 3 → 1                                        |
+| Swap quotes and quote-built swap XDR                                                                                  | Soroswap and xBull APIs                 | API, per request                                                                                              | 4 → 3 → 1                                    |
+| Unsigned transactions (XDR)                                                                                           | API                                     | API, then browser                                                                                             | 3 → 1, verified before signing               |
+| Signed transactions and their hashes                                                                                  | Browser                                 | Browser, then submitted through the API                                                                       | 1 → 2 → 3 → 5                                |
+| Session progress (plan and step state, no key material)                                                               | Browser                                 | IndexedDB in the browser                                                                                      | Stays in boundary 1                          |
+| Mediator and fee-bump sponsor secret keys                                                                             | Operator                                | API environment                                                                                               | Never leave boundary 3                       |
+| API keys                                                                                                              | Operator or self-serve issuance         | Hashes in Firestore for self-serve keys; the raw key only with its holder (the proxy's env for the web's own) | 2 → 3, or integrator → 3, as a bearer header |
+| Merge counter (counts, XLM recovered, counted merge transaction hashes; IPs only as one-way hashes for rate limiting) | Web, after verifying the merge on-chain | Vercel KV                                                                                                     | Stays in boundary 2                          |
+
+The [threat model](/threat-model) takes boundaries 1 and 3 surface by surface: key handling and the session
+layer on the browser side, transaction construction and the two signing keys on the API side, and the
+allowance, conversion, and DeFi-exit flows that cross between them. Boundary 2 holds no key that can move
+funds, and boundary 4 is out of the threat model's scope as a read-only, availability-only risk, bounded by the
+live re-reads and registry checks above.
+
 ### Data freshness and consistency
 
 DeFi position data is a snapshot, and acting on a stale snapshot would build a wrong exit. The position API returns freshness metadata with every response: a staleness value in seconds, the last indexed ledger, and a partial-result flag when some protocols could not be read. The tool uses this directly. If position data is older than a short threshold it refreshes before building the plan, and it shows the ledger and staleness so the user knows how fresh the view is.
