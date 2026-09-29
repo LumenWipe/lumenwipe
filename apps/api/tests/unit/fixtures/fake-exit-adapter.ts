@@ -345,8 +345,12 @@ export function rawSimulation(
 }
 
 /** Serves each contract's instance entry (or nothing) and one Balance entry, by exact key. */
-export function fakeExitRpc(options: FakeRpcOptions): ExitRpc & { simulateCalls: Transaction[] } {
+export function fakeExitRpc(options: FakeRpcOptions): ExitRpc & {
+  simulateCalls: Transaction[];
+  simulateLeeway: (rpc.Server.ResourceLeeway | undefined)[];
+} {
   const simulateCalls: Transaction[] = [];
+  const simulateLeeway: (rpc.Server.ResourceLeeway | undefined)[] = [];
   const hashFor = (contract: string): string | null =>
     options.hashesByContract && contract in options.hashesByContract
       ? options.hashesByContract[contract]!
@@ -354,6 +358,7 @@ export function fakeExitRpc(options: FakeRpcOptions): ExitRpc & { simulateCalls:
 
   return {
     simulateCalls,
+    simulateLeeway,
     async getLedgerEntries(...keys: xdr.LedgerKey[]): Promise<rpc.Api.GetLedgerEntriesResponse> {
       const entries = keys.flatMap((key) => {
         if (key.switch() !== xdr.LedgerEntryType.contractData()) return [];
@@ -370,8 +375,12 @@ export function fakeExitRpc(options: FakeRpcOptions): ExitRpc & { simulateCalls:
       });
       return { latestLedger: 1, entries };
     },
-    async simulateTransaction(tx: Transaction): Promise<rpc.Api.SimulateTransactionResponse> {
+    async simulateTransaction(
+      tx: Transaction,
+      leeway?: rpc.Server.ResourceLeeway
+    ): Promise<rpc.Api.SimulateTransactionResponse> {
       simulateCalls.push(tx);
+      simulateLeeway.push(leeway);
       return rawSimulation(
         options.simulation ?? "ok",
         options.simulatedAuth ?? [],
