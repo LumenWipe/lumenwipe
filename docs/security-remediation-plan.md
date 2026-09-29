@@ -218,26 +218,39 @@ reachable from `HEAD`: no leaks, after allowlisting public Stellar `G`/`C` addre
 fixtures (Section 4). Both now run in CI on every PR (Section 6, item 3), as does CodeQL: 0 alerts.
 
 **Dependency audit.** `bun audit` went from **39 advisories across 15 packages** (25 high, 10
-moderate, 4 low) to **25 across 11** (16 high, 6 moderate, 3 low). Four packages were fixed with
-root `overrides`, because each is pinned exactly or held back by a dependency's range:
+moderate, 4 low) to **2** (1 moderate, 1 low). Ten packages were fixed with root `overrides`,
+because each is pinned exactly or held back by a dependency's range:
 
-| Package     | Was           | Now      | Pulled in by                                         |
-| ----------- | ------------- | -------- | ---------------------------------------------------- |
-| `qs`        | 6.14.2/6.15.1 | `6.16.0` | `express` 5 (API runtime), `typed-rest-client` (dev) |
-| `multer`    | 2.2.0         | `2.4.0`  | `@nestjs/platform-express`, pinned exactly           |
-| `smol-toml` | 1.6.1         | `1.9.0`  | `@stellar/stellar-sdk` (`stellar.toml` parsing)      |
-| `fast-uri`  | 3.1.5         | `3.1.8`  | `ajv` 8 (API Extractor, Nest CLI schematics)         |
+| Package                    | Was           | Now       | Pulled in by                                         |
+| -------------------------- | ------------- | --------- | ---------------------------------------------------- |
+| `qs`                       | 6.14.2/6.15.1 | `6.16.0`  | `express` 5 (API runtime), `typed-rest-client` (dev) |
+| `multer`                   | 2.2.0         | `2.4.0`   | `@nestjs/platform-express`, pinned exactly           |
+| `smol-toml`                | 1.6.1         | `1.9.0`   | `@stellar/stellar-sdk` (`stellar.toml` parsing)      |
+| `fast-uri`                 | 3.1.5         | `3.1.8`   | `ajv` 8 (API Extractor, Nest CLI schematics)         |
+| `uuid`                     | 8.3.2         | `11.1.1`  | `jayson`, in the optional Solana wallet-kit chain    |
+| `sharp`                    | 0.34.5        | `0.35.5`  | `next` (image optimization)                          |
+| `esbuild`                  | 0.27.7        | `0.28.2`  | `tsup` (SDK build)                                   |
+| `browserslist`             | 4.28.2        | `4.28.8`  | `@babel/core` 8                                      |
+| `baseline-browser-mapping` | 2.10.29       | `2.11.20` | `browserslist`                                       |
+| `postcss-selector-parser`  | 6.1.2         | `6.1.3`   | Tailwind                                             |
 
-None of the four was reachable before the fix either: the API disables Nest's body parser and
-registers only `express.json()`, Express 5 parses query strings without `qs`, no route accepts
-multipart uploads, and no code resolves a `stellar.toml`. They were fixed because the fix was a
-compatible version bump. Type-check, lint and all 1,917 unit tests pass after the change.
+Three more were only held back by the lockfile, inside ranges their dependents already accept, and
+were moved to the patched release in `bun.lock` directly (a plain `bun update` re-resolves the whole
+tree, far beyond this change): `js-yaml` 3.14.2 → 3.15.2 (`gray-matter`) and 4.1.1 → 4.3.2 (ESLint,
+`cosmiconfig`), `brace-expansion` 1.1.14 → 1.1.21 and 5.0.6 → 5.0.12 (`minimatch`), and the two
+`ajv` 8.12.0 copies under webpack's `schema-utils` → 8.20.0. `bun install --frozen-lockfile`
+verifies every edited entry against its published integrity hash.
 
-**Accepted risk.** Every remaining package was traced the same way as Section 2:
+None of these was reachable before the fix (same method as Section 2: the API registers only
+`express.json()`, Express 5 parses query strings without `qs`, no route accepts uploads, no code
+resolves a `stellar.toml`, and the rest is build tooling or code absent from the web bundle). They
+were fixed because the fix was a compatible bump. Type-check, lint, all 1,917 unit tests, every
+workspace build and the SDK's API report pass after the change, and the API image boots and answers
+`/health`.
 
-| Package (severity)                                                                                                | Reachability                                                                                                                                                                                                                                                              |
-| ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `elliptic` (low), `uuid` 8.3.2 (moderate), `stream-json` (moderate)                                               | Only through the optional NEAR/Solana/HOT wallet-kit modules. A production build of `apps/web` has no `jayson`, `stream-json`, `@solana/web3`, `near-api`, `hot-wallet` or `trezor` code; the one `elliptic` string in the bundle is an error message in `@noble/curves`. |
-| `js-yaml` 3.14.2 / 4.1.1 (high)                                                                                   | 3.14.2 comes from `gray-matter`, which parses only repo-authored blog frontmatter; 4.1.1 from ESLint and `cosmiconfig` (dev). The API's `@nestjs/swagger` now uses 5.3.0, which is not affected.                                                                          |
-| `sharp` (high)                                                                                                    | Next.js image optimization only. `next/image` is not used, and the web app is served by Vercel, whose image optimizer does not run this package.                                                                                                                          |
-| `ajv` 8.12.0, `brace-expansion`, `browserslist`, `baseline-browser-mapping`, `esbuild`, `postcss-selector-parser` | Build and lint tooling only (Nest CLI schematics, `@typescript-eslint`, `autoprefixer`/Tailwind, webpack, `tsup`). None runs against input a user controls, and none ships in the API image, which installs with `--production`.                                          |
+**Accepted risk.** Two advisories remain, neither with a usable fix:
+
+| Advisory                                     | Why it stays                                                                                                                                                                                                                                                          |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `elliptic` GHSA-848j-6mx2-7j84 (low)         | No patched release exists (6.6.1 is the latest and is affected). It comes only through the optional NEAR wallet-kit modules, which a production build of `apps/web` does not contain; the one `elliptic` string in the bundle is an error message in `@noble/curves`. |
+| `stream-json` GHSA-528h-pc64-c93x (moderate) | Fixed only in 3.x, while its sole consumer, `jayson` (optional Solana wallet-kit chain), requires `^1.9.1`. Neither `jayson` nor `stream-json` is in the web bundle.                                                                                                  |
