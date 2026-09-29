@@ -10,6 +10,7 @@ import {
 } from "@stellar/stellar-sdk";
 import {
   BASE_FEE_STROOPS,
+  EXIT_SIMULATION_CPU_LEEWAY,
   MAX_SOROBAN_EXIT_FEE_STROOPS,
   TX_TIMEOUT_SECONDS,
 } from "@/config/constants";
@@ -436,7 +437,9 @@ export async function runExitAdapter<P extends DefiPosition, L>(
 
   let simulation: stellarRpc.Api.SimulateTransactionResponse;
   try {
-    simulation = await deps.rpc.simulateTransaction(tx);
+    simulation = await deps.rpc.simulateTransaction(tx, {
+      cpuInstructions: EXIT_SIMULATION_CPU_LEEWAY,
+    });
   } catch {
     return blocked(contract, resolution, steps, [
       blocker(

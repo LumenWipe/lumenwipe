@@ -5,6 +5,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { Address, Keypair, xdr } from "@stellar/stellar-sdk";
+import { EXIT_SIMULATION_CPU_LEEWAY } from "@/config/constants";
 import { runExitAdapter } from "@/lib/defi-exits";
 import {
   describeExitAdapterInvariants,
@@ -135,6 +136,12 @@ describe("runExitAdapter catches each invariant violation from outside the adapt
     expect(result.next?.simulation.minResourceFee).toBe("12345");
     expect(rpc.simulateCalls).toHaveLength(1);
     expect(result.resolution?.status).toBe("known");
+  });
+
+  test("the exit is simulated with CPU headroom, so execution that runs slightly over still lands", async () => {
+    const rpc = liveRpc();
+    await runWith({}, rpc);
+    expect(rpc.simulateLeeway).toEqual([{ cpuInstructions: EXIT_SIMULATION_CPU_LEEWAY }]);
   });
 
   test("a multi-step plan is returned whole but only its first step is built and simulated", async () => {
