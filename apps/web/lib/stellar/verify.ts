@@ -244,8 +244,10 @@ function assertMergeShape(
  * already read and showed the user, so there is nothing to leave slack for. A mismatch means
  * the transaction is not the one that was approved.
  */
-/** The function a token conversion calls; must match the API's `SWAP_FUNCTION`. */
+/** The functions a token conversion calls; must match the API's `SWAP_FUNCTION` (router) and
+ *  `AGGREGATOR_SWAP_FUNCTION`. */
 const SWAP_FUNCTION = "swap_exact_tokens_for_tokens";
+const AGGREGATOR_SWAP_FUNCTION = "swap_exact_in";
 const CONTRACT_ID = /^C[A-Z2-7]{55}$/;
 
 /**
@@ -278,20 +280,21 @@ interface SwapArgs {
 }
 
 /**
- * What a swap's arguments name, in either shape the Soroswap API builds: a router call
- * `(amount_in, amount_out_min, path, to, deadline)`, where the tokens are the path's first and
- * last hops, or an aggregator call
- * `(token_in, token_out, amount_in, amount_out_min, distribution, to, deadline)`. Null when the
- * arguments are not one of those two shapes, which fails the swap closed.
+ * What a swap's arguments name, in the shape of the function called: the router's
+ * `swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadline)`, where the tokens
+ * are the path's first and last hops, or the aggregator's
+ * `swap_exact_in(user, token_in, amount_in, token_out, min_out, routes, partner)`. Null when the
+ * arguments are not that shape, or when the aggregator call names a fee partner, which fails the
+ * swap closed.
  *
  * The output token is read, not assumed. Without it the minimum below would be compared against a
  * figure denominated in whatever the transaction says it is buying - a swap into a worthless token
  * would satisfy an "at least N XLM" promise in name only.
  */
-function readSwapArgs(args: string[]): SwapArgs | null {
+function readSwapArgs(fn: string, args: string[]): SwapArgs | null {
   const integer = (value: string | undefined): bigint | null =>
     typeof value === "string" && /^\d+$/.test(value) ? BigInt(value) : null;
-  if (args.length === 5) {
+  if (fn === SWAP_FUNCTION && args.length === 5) {
     let path: unknown;
     try {
       path = JSON.parse(args[2] ?? "");
@@ -311,14 +314,16 @@ function readSwapArgs(args: string[]): SwapArgs | null {
       minAmountOut: min,
     };
   }
-  if (args.length === 7) {
-    const token = args[0] ?? "";
-    const assetOut = args[1] ?? "";
+  if (fn === AGGREGATOR_SWAP_FUNCTION && args.length === 7) {
+    const token = args[1] ?? "";
+    const assetOut = args[3] ?? "";
     const amountIn = integer(args[2]);
-    const min = integer(args[3]);
+    const min = integer(args[4]);
     if (!CONTRACT_ID.test(token) || !CONTRACT_ID.test(assetOut)) return null;
     if (amountIn === null || min === null) return null;
-    return { token, assetOut, amountIn, destination: args[5] ?? "", minAmountOut: min };
+    // A partner replaces the aggregator's own 10 bps fee with its own, from 25 bps up to 10%.
+    if (args[6] !== "null") return null;
+    return { token, assetOut, amountIn, destination: args[0] ?? "", minAmountOut: min };
   }
   return null;
 }
@@ -549,7 +554,10 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         // operation that is not a swap falls through to the exit branch below, which pins the
         // contract to a position the analysis found and the function to the one that leaves that
         // protocol - so nothing is admitted here that was not admitted before.
-        if (expected.conversionContracts.includes(op.contract) && op.function === SWAP_FUNCTION) {
+        if (
+          expected.conversionContracts.includes(op.contract) &&
+          (op.function === SWAP_FUNCTION || op.function === AGGREGATOR_SWAP_FUNCTION)
+        ) {
           if (intent.operations.length !== 1) {
             throw new VerificationError("A swap must be the only operation in its transaction.");
           }
@@ -563,7 +571,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
               "A swap would act for an account other than the one being closed."
             );
           }
-          const swap = readSwapArgs(op.args);
+          const swap = readSwapArgs(op.function, op.args);
           if (!swap) {
             throw new VerificationError("A swap's arguments could not be read.");
           }
