@@ -127,6 +127,10 @@ jobs:
           LUMENWIPE_INTEGRATION_FUNDED: "1"
           PHOENIX_TESTNET_TOKEN_ADMIN_SECRET: ${{ secrets.PHOENIX_TESTNET_TOKEN_ADMIN_SECRET }}
           FXDAO_TESTNET_ORACLE_ADMIN_SECRET: ${{ secrets.FXDAO_TESTNET_ORACLE_ADMIN_SECRET }}
+          # Not a secret - the public Horizon-compatible endpoint sponsorship.integration.test.ts
+          # and multisig-close.integration.test.ts read account state through. Never previously
+          # needed in CI because neither test ran anywhere before this job existed.
+          PATH_ROUTING_API_TESTNET: https://horizon-testnet.stellar.org
         run: |
           bun run --filter '@lumenwipe/api' test:integration ||
             bun run --filter '@lumenwipe/api' test:integration
