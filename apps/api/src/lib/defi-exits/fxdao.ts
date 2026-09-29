@@ -1,7 +1,6 @@
 import {
   Account,
   Address,
-  Asset,
   Contract,
   TransactionBuilder,
   nativeToScVal,
@@ -96,7 +95,6 @@ export interface FxdaoVaultsInfo {
 
 export interface FxdaoCoreState {
   oracle: string;
-  stableIssuer: string;
 }
 
 export type FxdaoLive =
@@ -106,6 +104,12 @@ export type FxdaoLive =
       vaultsInfo: FxdaoVaultsInfo;
       prevKey: FxdaoVaultKeyLike | null;
       coreState: FxdaoCoreState;
+      /** The denomination's registered debt-token contract (`CurrenciesDataKeys::Currency`),
+       *  read live rather than derived - it is never the classic-asset SAC `Asset(denomination,
+       *  stable_issuer)` would compute (confirmed against a real reference deployment, where the
+       *  two addresses differ), so repaying debt has to spend whatever `create_currency` actually
+       *  registered. */
+      currencyContract: string;
       /** The vault's live collateral/debt ratio, in the contract's own native units - never
        *  rescaled to a percentage, so it stays comparable to `minColRate` without a decimal-scale
        *  assumption this adapter cannot verify. */
@@ -272,9 +276,15 @@ function decodeCoreState(val: xdr.ScVal | undefined): FxdaoCoreState | null {
   if (!val) return null;
   const fields = mapView(val);
   const oracle = asAddress(fields.get("oracle"));
-  const stableIssuer = asAddress(fields.get("stable_issuer"));
-  if (oracle === null || stableIssuer === null) return null;
-  return { oracle, stableIssuer };
+  if (oracle === null) return null;
+  return { oracle };
+}
+
+/** `Currency{active, contract, denomination}` - only `contract` is needed here; `active` is the
+ *  protocol admin's own kill switch and irrelevant to unwinding an already-open position. */
+function decodeCurrencyContract(val: xdr.ScVal | undefined): string | null {
+  if (!val) return null;
+  return asAddress(mapView(val).get("contract"));
 }
 
 async function readEntries(
@@ -411,7 +421,10 @@ export function fxdaoExitAdapter(
           instanceStorage.get(JSON.stringify(["VaultsInfo", denomination]))
         );
         const coreState = decodeCoreState(instanceStorage.get(JSON.stringify(["CoreState"])));
-        if (!vaultsInfo || !coreState) return { status: "unreadable" };
+        const currencyContract = decodeCurrencyContract(
+          instanceStorage.get(JSON.stringify(["Currency", denomination]))
+        );
+        if (!vaultsInfo || !coreState || !currencyContract) return { status: "unreadable" };
 
         const ownVal = first.get(ownKey.toXDR("base64"));
         if (!ownVal) return { status: "not_found" };
@@ -441,7 +454,15 @@ export function fxdaoExitAdapter(
         );
         if (ratio === null) return { status: "price_unreadable" };
 
-        return { status: "loaded", vault: record, vaultsInfo, prevKey, coreState, ratio };
+        return {
+          status: "loaded",
+          vault: record,
+          vaultsInfo,
+          prevKey,
+          coreState,
+          currencyContract,
+          ratio,
+        };
       } catch {
         return { status: "unreadable" };
       }
@@ -491,10 +512,7 @@ export function fxdaoExitAdapter(
         );
       }
 
-      const passphrase = NETWORK_PASSPHRASES[ctx.network];
-      const stableAsset = new Asset(vault.denomination, live.coreState.stableIssuer).contractId(
-        passphrase
-      );
+      const stableAsset = live.currencyContract;
       const debt = vault.totalDebt.toString();
       const holding = ctx.tokenBalances[stableAsset];
       if (!isBaseUnits(holding)) {

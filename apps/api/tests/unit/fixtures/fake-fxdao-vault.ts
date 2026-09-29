@@ -25,6 +25,10 @@ export const VAULT = contractAddr(10);
 export const ORACLE = contractAddr(11);
 export const STABLE_ISSUER = Keypair.fromRawEd25519Seed(Buffer.alloc(32, 12)).publicKey();
 export const DENOMINATION = "USDx";
+/** The registered `Currency.contract` for `DENOMINATION` - deliberately a different address from
+ *  what `Asset(DENOMINATION, STABLE_ISSUER).contractId(...)` would compute, matching a real
+ *  FxDAO vault (`stable_issuer` is not the debt token's issuer in practice). */
+export const CURRENCY_CONTRACT = contractAddr(13);
 
 const symbol = (s: string): xdr.ScVal => xdr.ScVal.scvSymbol(s);
 const addr = (a: string): xdr.ScVal => new Address(a).toScVal();
@@ -112,6 +116,7 @@ const vaultsInfoKey = (denomination: string): xdr.ScVal =>
 const vaultKeyScVal = (account: string, denomination: string): xdr.ScVal =>
   variant("Vault", xdr.ScVal.scvVec([addr(account), symbol(denomination)]));
 const coreStateKey = (): xdr.ScVal => variant("CoreState");
+const currencyKey = (denomination: string): xdr.ScVal => variant("Currency", symbol(denomination));
 
 function vaultVal(vault: FakeVault): xdr.ScVal {
   return xdr.ScVal.scvMap([
@@ -140,6 +145,14 @@ function coreStateVal(oracle: string, stableIssuer: string): xdr.ScVal {
   return xdr.ScVal.scvMap([
     new xdr.ScMapEntry({ key: symbol("oracle"), val: addr(oracle) }),
     new xdr.ScMapEntry({ key: symbol("stable_issuer"), val: addr(stableIssuer) }),
+  ]);
+}
+
+function currencyVal(active: boolean, contract: string, denomination: string): xdr.ScVal {
+  return xdr.ScVal.scvMap([
+    new xdr.ScMapEntry({ key: symbol("active"), val: xdr.ScVal.scvBool(active) }),
+    new xdr.ScMapEntry({ key: symbol("contract"), val: addr(contract) }),
+    new xdr.ScMapEntry({ key: symbol("denomination"), val: symbol(denomination) }),
   ]);
 }
 
@@ -203,6 +216,8 @@ export interface FakeFxdaoOptions {
   ratio?: bigint;
   vaultInfoMissing?: boolean;
   coreStateMissing?: boolean;
+  currencyMissing?: boolean;
+  currencyContract?: string;
   vaultHash?: string;
   simulation?: "ok" | "error" | "restore";
 }
@@ -252,6 +267,14 @@ export function fakeFxdaoRpc(
   if (!options.coreStateMissing) {
     instanceStorage.push(
       new xdr.ScMapEntry({ key: coreStateKey(), val: coreStateVal(ORACLE, STABLE_ISSUER) })
+    );
+  }
+  if (!options.currencyMissing) {
+    instanceStorage.push(
+      new xdr.ScMapEntry({
+        key: currencyKey(denomination),
+        val: currencyVal(true, options.currencyContract ?? CURRENCY_CONTRACT, denomination),
+      })
     );
   }
   const entries: Entry[] = [
