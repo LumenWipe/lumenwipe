@@ -245,15 +245,8 @@ jobs:
             echo "No packages/sdk/src change and no packages/sdk/etc/sdk.api.md content change in this PR - nothing to check."
           fi
 
-  # The three scans below replace the one manual tooling pass recorded in
-  # docs/security-remediation-plan.md (2026-09-02). A dated snapshot goes stale with every merge,
-  # so they run on every PR and push and feed the aggregate gate like everything else here.
-
-  # Semantic, dataflow-aware SAST. Free on a public repository. Findings land in the Security
-  # tab; the job itself fails only if the analysis cannot run. The repository-level default
-  # setup must stay off, or GitHub rejects this upload as a second, conflicting configuration.
-  # No build is needed (build-mode none). The vendored agent skills (.agents, .claude, .codex)
-  # are third-party examples, not shipped code, so they are left out.
+  # Findings go to the Security tab and do not fail the job. The repo's CodeQL default setup
+  # must stay off, or GitHub rejects this upload as a conflicting configuration.
   codeql:
     name: codeql (${{ matrix.language }})
     runs-on: ubuntu-latest
@@ -285,12 +278,8 @@ jobs:
         with:
           category: "/language:${{ matrix.language }}"
 
-  # Pattern-based SAST with the same rule packs as the September pass, which found one real
-  # issue CodeQL's queries do not look for (a GCM decipher without a tag length). Unlike CodeQL,
-  # a finding fails this job. The CLI version is pinned; the packs are fetched from the registry
-  # on each run, so a newly published rule can turn a PR red without the PR causing it - fix it
-  # or add a reviewed `nosemgrep` with a reason, the same as any other finding. Semgrep's
-  # default ignore list applies (tests, fixtures, node_modules, build output).
+  # The rule packs are fetched unpinned, so a newly published rule can fail a PR that did not
+  # cause it.
   semgrep:
     name: semgrep
     runs-on: ubuntu-latest
@@ -309,8 +298,6 @@ jobs:
             --metrics=off --error --sarif-output=semgrep.sarif \
             apps packages
 
-      # Uploaded even when the scan fails, so a finding shows in the Security tab next to
-      # CodeQL's instead of only in this log.
       - name: Upload results
         if: ${{ always() && hashFiles('semgrep.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@v4
@@ -318,12 +305,8 @@ jobs:
           sarif_file: semgrep.sarif
           category: semgrep
 
-  # Secret scanning over the whole history, not just this PR's diff: a key committed and then
-  # deleted is still exposed. That is 430-odd commits and under 10s. Known, reviewed hits live
-  # in .gitleaks.toml (false positives) and .gitleaksignore (the one real key, a public
-  # tutorial keypair), each with its reason. The binary comes straight from the release and is
-  # checked against its published checksum; gitleaks-action is not used because it needs a paid
-  # licence on an organization's repository.
+  # Full history, since a deleted key is still exposed. Not gitleaks-action: it needs a paid
+  # licence on an organization's repo.
   gitleaks:
     name: gitleaks
     runs-on: ubuntu-latest
@@ -343,8 +326,6 @@ jobs:
           tar -xzf gitleaks.tar.gz gitleaks
           rm gitleaks.tar.gz
 
-      # --redact keeps a real hit out of the public log; the file, line and commit are enough to
-      # find it.
       - name: Scan the full history
         run: ./gitleaks git --config .gitleaks.toml --gitleaks-ignore-path .gitleaksignore --redact --no-banner .
 
