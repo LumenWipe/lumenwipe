@@ -195,16 +195,62 @@ What this run changed beyond code, and what's still open:
 1. **GitHub-native secret scanning, push protection, and Dependabot security updates are now
    enabled** on this repository (Section 4) - confirmed and applied as part of this run, giving this
    point-in-time scan a continuous counterpart going forward.
-2. **`@nestjs/core` moderate injection advisory** (Section 2) has no fix within the installed 10.x
-   line; resolving it means a deliberate Nest 11/12 migration, tracked as its own issue rather than
-   folded into a dependency-audit PR.
+2. **`@nestjs/core` moderate injection advisory** (Section 2) is resolved: the API now runs Nest
+   11 (`@nestjs/core` 11.2.3, past the `<=11.1.17` range). See Section 7.
 3. **Static analysis and secret scanning now run in CI** (#315). Every PR and every push to `main`
    runs Semgrep with the same four rule packs as Section 3, gitleaks over the full history as in
    Section 4, and CodeQL (`javascript-typescript` and `actions`, `security-extended` queries), all
    feeding the required `type-check · lint · test` gate. A Semgrep or gitleaks finding fails the
-   PR; CodeQL findings land in the repository's Security tab. The dependency audit (Section 2) is
-   not yet a gate: the lockfile currently reports advisories that still need the triage Section 2
-   describes, so it stays a manual pass until that is done.
+   PR; CodeQL findings land in the repository's Security tab. The dependency audit is not a gate:
+   the accepted-risk advisories in Sections 2 and 7 would fail it, so it stays a manual pass,
+   refreshed in Section 7.
 4. **Test fixtures never use a real, checksum-valid secret key** - even a publicly-known one, per
    the finding in Section 4 - is now a standing convention in `CLAUDE.md`, so this class of finding
    doesn't recur.
+
+## 7. Refresh (2026-09-29)
+
+Same three tools, re-run on `feature/phase-3` at `980aae4`, which adds the Phoenix and FxDAO exit
+adapters and the Nest 11 migration since Section 1.
+
+**Static analysis and secrets.** Semgrep (same four packs): 0 findings. gitleaks over the history
+reachable from `HEAD`: no leaks, after allowlisting public Stellar `G`/`C` addresses in tests and
+fixtures (Section 4). Both now run in CI on every PR (Section 6, item 3), as does CodeQL: 0 alerts.
+
+**Dependency audit.** `bun audit` went from **39 advisories across 15 packages** (25 high, 10
+moderate, 4 low) to **2** (1 moderate, 1 low). Ten packages were fixed with root `overrides`,
+because each is pinned exactly or held back by a dependency's range:
+
+| Package                    | Was           | Now       | Pulled in by                                         |
+| -------------------------- | ------------- | --------- | ---------------------------------------------------- |
+| `qs`                       | 6.14.2/6.15.1 | `6.16.0`  | `express` 5 (API runtime), `typed-rest-client` (dev) |
+| `multer`                   | 2.2.0         | `2.4.0`   | `@nestjs/platform-express`, pinned exactly           |
+| `smol-toml`                | 1.6.1         | `1.9.0`   | `@stellar/stellar-sdk` (`stellar.toml` parsing)      |
+| `fast-uri`                 | 3.1.5         | `3.1.8`   | `ajv` 8 (API Extractor, Nest CLI schematics)         |
+| `uuid`                     | 8.3.2         | `11.1.1`  | `jayson`, in the optional Solana wallet-kit chain    |
+| `sharp`                    | 0.34.5        | `0.35.5`  | `next` (image optimization)                          |
+| `esbuild`                  | 0.27.7        | `0.28.2`  | `tsup` (SDK build)                                   |
+| `browserslist`             | 4.28.2        | `4.28.8`  | `@babel/core` 8                                      |
+| `baseline-browser-mapping` | 2.10.29       | `2.11.20` | `browserslist`                                       |
+| `postcss-selector-parser`  | 6.1.2         | `6.1.3`   | Tailwind                                             |
+
+Three more were only held back by the lockfile, inside ranges their dependents already accept, and
+were moved to the patched release in `bun.lock` directly (a plain `bun update` re-resolves the whole
+tree, far beyond this change): `js-yaml` 3.14.2 → 3.15.2 (`gray-matter`) and 4.1.1 → 4.3.2 (ESLint,
+`cosmiconfig`), `brace-expansion` 1.1.14 → 1.1.21 and 5.0.6 → 5.0.12 (`minimatch`), and the two
+`ajv` 8.12.0 copies under webpack's `schema-utils` → 8.20.0. `bun install --frozen-lockfile`
+verifies every edited entry against its published integrity hash.
+
+None of these was reachable before the fix (same method as Section 2: the API registers only
+`express.json()`, Express 5 parses query strings without `qs`, no route accepts uploads, no code
+resolves a `stellar.toml`, and the rest is build tooling or code absent from the web bundle). They
+were fixed because the fix was a compatible bump. Type-check, lint, all 1,917 unit tests, every
+workspace build and the SDK's API report pass after the change, and the API image boots and answers
+`/health`.
+
+**Accepted risk.** Two advisories remain, neither with a usable fix:
+
+| Advisory                                     | Why it stays                                                                                                                                                                                                                                                          |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `elliptic` GHSA-848j-6mx2-7j84 (low)         | No patched release exists (6.6.1 is the latest and is affected). It comes only through the optional NEAR wallet-kit modules, which a production build of `apps/web` does not contain; the one `elliptic` string in the bundle is an error message in `@noble/curves`. |
+| `stream-json` GHSA-528h-pc64-c93x (moderate) | Fixed only in 3.x, while its sole consumer, `jayson` (optional Solana wallet-kit chain), requires `^1.9.1`. Neither `jayson` nor `stream-json` is in the web bundle.                                                                                                  |
