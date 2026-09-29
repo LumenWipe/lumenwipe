@@ -31,10 +31,11 @@ import { TokenTransferBlockedError, liveTokenBalance } from "./token-transfer-ro
  *
  * Trust here is by structure, not by source. The API builds the bytes; this module refuses them
  * unless: the transaction is the account's own next transaction with no memo and one operation;
- * that operation is `swap_exact_tokens_for_tokens` on the registry's Soroswap aggregator or
- * router, confirmed by the contract's live code hash and not just its address; the arguments
- * spend exactly the live balance of the chosen token, deliver XLM to the account itself, and set
- * a minimum no lower than the floor the user was shown; and the authorization tree the signature
+ * that operation is `swap_exact_in` on the registry's Soroswap aggregator or
+ * `swap_exact_tokens_for_tokens` on its router, confirmed by the contract's live code hash and not
+ * just its address; the arguments spend exactly the live balance of the chosen token, deliver XLM
+ * to the account itself, set a minimum no lower than the floor the user was shown, and name no
+ * fee partner; and the authorization tree the signature
  * satisfies invokes nothing but the aggregator, its adapters, the router, and the token - every
  * `transfer` of the token from the account, none to a Stellar account. The browser re-checks the
  * same shape from the user's own inputs before signing (architecture.md §10.1).
@@ -57,7 +58,8 @@ export interface TokenConversionRound {
 }
 
 export const SWAP_FUNCTION = "swap_exact_tokens_for_tokens";
-/** Aggregator -> adapter -> router -> token.transfer is the deepest tree a route needs. */
+export const AGGREGATOR_SWAP_FUNCTION = "swap_exact_in";
+/** A bound, not the expected shape: the aggregator authorizes only itself and one transfer. */
 const MAX_AUTH_DEPTH = 4;
 const CONTRACT_ID = /^C[A-Z2-7]{55}$/;
 /** Applied to every expiry a swap carries - the transaction's own timeBounds and the contract-level
@@ -106,9 +108,15 @@ export interface ExpectedConversion {
   nowSeconds: number;
 }
 
-/** The swap call's own arguments, in either shape the API builds. */
-function assertSwapArgs(args: xdr.ScVal[], expected: ExpectedConversion): void {
-  if (args.length === 5) {
+/** The swap call's own arguments, in the shape of the contract it calls. */
+function assertSwapArgs(
+  args: xdr.ScVal[],
+  kind: "aggregator" | "router",
+  expected: ExpectedConversion
+): void {
+  if (kind === "router") {
+    if (args.length !== 5)
+      throw new Error(`the router swap takes 5 arguments, found ${args.length}`);
     // Router: (amount_in, amount_out_min, path, to, deadline).
     const [amountIn, minOut, path, to, deadline] = args;
     if (bigOf(amountIn!) !== expected.amountIn)
@@ -133,27 +141,21 @@ function assertSwapArgs(args: xdr.ScVal[], expected: ExpectedConversion): void {
     }
     return;
   }
-  if (args.length === 7) {
-    // Aggregator: (token_in, token_out, amount_in, amount_out_min, distribution, to, deadline).
-    const [tokenIn, tokenOut, amountIn, minOut, distribution, to, deadline] = args;
-    if (addressOf(tokenIn!) !== expected.token) throw new Error("token_in is not this token");
-    if (addressOf(tokenOut!) !== expected.xlm) throw new Error("token_out is not XLM");
-    if (bigOf(amountIn!) !== expected.amountIn)
-      throw new Error("amount_in is not the live balance");
-    const min = bigOf(minOut!);
-    if (min === null || min < expected.minOut)
-      throw new Error("amount_out_min is below your floor");
-    if (distribution!.switch() !== xdr.ScValType.scvVec()) {
-      throw new Error("distribution is not a list");
-    }
-    if (addressOf(to!) !== expected.account) throw new Error("the swap does not pay this account");
-    const dl = bigOf(deadline!);
-    if (dl === null || dl < BigInt(expected.nowSeconds) + SIGNING_BUFFER_SECONDS) {
-      throw new Error("the deadline leaves no time to sign");
-    }
-    return;
-  }
-  throw new Error(`the swap takes 5 or 7 arguments, found ${args.length}`);
+  // Aggregator: (user, token_in, amount_in, token_out, min_out, routes, partner). It pays `user`
+  // and has no deadline of its own; the transaction's time bounds are the only expiry.
+  if (args.length !== 7)
+    throw new Error(`the aggregator swap takes 7 arguments, found ${args.length}`);
+  const [user, tokenIn, amountIn, tokenOut, minOut, routes, partner] = args;
+  if (addressOf(user!) !== expected.account) throw new Error("the swap does not pay this account");
+  if (addressOf(tokenIn!) !== expected.token) throw new Error("token_in is not this token");
+  if (bigOf(amountIn!) !== expected.amountIn) throw new Error("amount_in is not the live balance");
+  if (addressOf(tokenOut!) !== expected.xlm) throw new Error("token_out is not XLM");
+  const min = bigOf(minOut!);
+  if (min === null || min < expected.minOut) throw new Error("min_out is below your floor");
+  if (routes!.switch() !== xdr.ScValType.scvVec()) throw new Error("routes is not a list");
+  // A partner replaces the aggregator's own 10 bps fee with its own, from 25 bps up to 10%.
+  if (partner!.switch() !== xdr.ScValType.scvVoid())
+    throw new Error("the swap names a fee partner");
 }
 
 /**
@@ -286,16 +288,21 @@ export function assertConversionShape(tx: Transaction, expected: ExpectedConvers
   }
   const call = fn.invokeContract();
   const contract = Address.fromScAddress(call.contractAddress()).toString();
-  const entry = [...expected.allowed.aggregator, ...expected.allowed.routers];
-  if (!entry.includes(contract)) {
+  const kind = expected.allowed.aggregator.includes(contract)
+    ? "aggregator"
+    : expected.allowed.routers.includes(contract)
+      ? "router"
+      : null;
+  if (kind === null) {
     throw new Error(
       `the swap is not a call on Soroswap's aggregator or router (${short(contract)})`
     );
   }
-  if (call.functionName().toString() !== SWAP_FUNCTION) {
-    throw new Error(`the call is ${call.functionName().toString()}, not ${SWAP_FUNCTION}`);
+  const swapFunction = kind === "aggregator" ? AGGREGATOR_SWAP_FUNCTION : SWAP_FUNCTION;
+  if (call.functionName().toString() !== swapFunction) {
+    throw new Error(`the call is ${call.functionName().toString()}, not ${swapFunction}`);
   }
-  assertSwapArgs(call.args(), expected);
+  assertSwapArgs(call.args(), kind, expected);
 
   if (host.auth().length === 0) throw new Error("the build produced no authorization for the swap");
   let moved = 0n;
@@ -316,7 +323,7 @@ export function assertConversionShape(tx: Transaction, expected: ExpectedConvers
     const rootCall = rootFn.contractFn();
     if (
       Address.fromScAddress(rootCall.contractAddress()).toString() !== contract ||
-      rootCall.functionName().toString() !== SWAP_FUNCTION
+      rootCall.functionName().toString() !== swapFunction
     ) {
       throw new Error("an authorization entry authorizes a call other than this swap");
     }

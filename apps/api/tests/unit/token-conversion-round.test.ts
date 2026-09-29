@@ -22,12 +22,15 @@ import {
 import type { AccountState } from "@lumenwipe/types";
 import { SupportedPlatforms, TradeType, type QuoteResponse } from "@soroswap/sdk";
 import {
+  AGGREGATOR_SWAP_FUNCTION,
   SWAP_FUNCTION,
   assertConversionShape,
   buildTokenConversionRound,
   type ExpectedConversion,
 } from "@/lib/close-api/token-conversion-round";
 import { xlmContractId, type ConversionSdk } from "@/lib/soroswap/conversion-quotes";
+import { soroswapConversionContracts } from "@/lib/contract-registry";
+import realSwap from "./fixtures/soroswap-aggregator-v2-swap.json";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { rawSimulation } from "./fixtures/fake-exit-adapter";
 
@@ -36,15 +39,14 @@ const OTHER_ACCOUNT = Keypair.random().publicKey();
 const TOKEN = Address.contract(Buffer.alloc(32, 1)).toString();
 const XLM = xlmContractId("mainnet");
 // The registry's mainnet Soroswap contracts, and one pair the route passes through.
-const AGGREGATOR = "CAYP3UWLJM7ZPTUKL6R6BFGTRWLZ46LRKOXTERI2K6BIJAWGYY62TXTO";
-const ADAPTER = "CC6KQUATUBCIFZRDJL5X5PHCYGOHLPHKZQPUOTZTQTASGU5AUQ6DS7SC";
+const AGGREGATOR = "CARVQXFP4JF5ELLXUMQ6DALR346YVGBMQOHB4ENA7SSVXAYABXLBDDC4";
 const ROUTER = "CAG5LRYQ5JVEUI5TEID72EYOVX44TTUJT5BQR2J6J77FH65PCCFAJDDH";
 // The registry's mainnet router hash: the round resolves the live hash against the registry.
 const ROUTER_HASH_LIVE = "4c3db3ebd2d6a2ab23de1f622eaabb39501539b4611b68622ec4e47f76c4ba07";
 const PAIR = Address.contract(Buffer.alloc(32, 9)).toString();
 const STRANGER_PAIR = Address.contract(Buffer.alloc(32, 10)).toString();
 const STRANGER = Address.contract(Buffer.alloc(32, 8)).toString();
-const ALLOWED = { aggregator: [AGGREGATOR], adapters: [ADAPTER], routers: [ROUTER] };
+const ALLOWED = { aggregator: [AGGREGATOR], adapters: [], routers: [ROUTER] };
 const NOW = 1_700_000_000;
 const SEQUENCE = "100";
 const BALANCE = 100_000_000n;
@@ -85,6 +87,7 @@ interface SwapShape {
   path?: string[];
   tokenIn?: string;
   tokenOut?: string;
+  partner?: xdr.ScVal;
   tree?: (rootArgs: xdr.ScVal[]) => xdr.SorobanAuthorizedInvocation[];
   credentials?: xdr.SorobanCredentials;
   memo?: Memo;
@@ -115,36 +118,24 @@ function swapTx(shape: SwapShape): Transaction {
           u64(deadline),
         ]
       : [
+          addr(to),
           addr(shape.tokenIn ?? TOKEN),
-          addr(shape.tokenOut ?? XLM),
           i128(amountIn),
+          addr(shape.tokenOut ?? XLM),
           i128(minOut),
           vec([]),
-          addr(to),
-          u64(deadline),
+          shape.partner ?? xdr.ScVal.scvVoid(),
         ];
+  // The aggregator pulls the whole amount to itself and pays the pools from its own balance.
   const defaultTree = (): xdr.SorobanAuthorizedInvocation[] =>
-    shape.form === "router"
-      ? [transferLeaf()]
-      : [
-          invocation(
-            ADAPTER,
-            "swap",
-            [],
-            [invocation(ROUTER, SWAP_FUNCTION, [], [transferLeaf()])]
-          ),
-        ];
-  const root = invocation(
-    contract,
-    shape.fn ?? SWAP_FUNCTION,
-    args,
-    (shape.tree ?? defaultTree)(args)
-  );
+    shape.form === "router" ? [transferLeaf()] : [transferLeaf(AGGREGATOR)];
+  const fn = shape.fn ?? (shape.form === "router" ? SWAP_FUNCTION : AGGREGATOR_SWAP_FUNCTION);
+  const root = invocation(contract, fn, args, (shape.tree ?? defaultTree)(args));
   const auth = new xdr.SorobanAuthorizationEntry({
     credentials: shape.credentials ?? xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
     rootInvocation: root,
   });
-  const op = new Contract(contract).call(shape.fn ?? SWAP_FUNCTION, ...args);
+  const op = new Contract(contract).call(fn, ...args);
   // The SDK's Contract.call carries no auth; rebuild the operation with the entry attached.
   const withAuth = xdr.Operation.fromXDR(op.toXDR());
   withAuth
@@ -179,7 +170,7 @@ const expected = (over: Partial<ExpectedConversion> = {}): ExpectedConversion =>
 });
 
 describe("assertConversionShape", () => {
-  test("accepts the two shapes the API builds: a router call with a path, an aggregator call through adapters", () => {
+  test("accepts the two shapes the API builds: a router call with a path, an aggregator call with routes", () => {
     expect(() => assertConversionShape(swapTx({ form: "router" }), expected())).not.toThrow();
     expect(() => assertConversionShape(swapTx({ form: "aggregator" }), expected())).not.toThrow();
     // A minimum above the floor, and a route split into two transfers that add up, are fine.
@@ -218,13 +209,44 @@ describe("assertConversionShape", () => {
       { form: "router", fn: "remove_liquidity" },
       /not swap_exact_tokens_for_tokens/,
     ],
-    // The dangerous lookalike: swap_tokens_for_exact_tokens takes the same seven arguments with
-    // the two amounts swapped (amount_out, amount_in_max), so reading them as an exact-in swap
-    // would hold the wrong figures to the balance and the floor. The name is what stops it.
+    // The dangerous lookalike: swap_exact_out takes the same seven arguments with the two
+    // amounts meaning (max_in, amount_out), so reading them as an exact-in swap would hold the
+    // wrong figures to the balance and the floor. The name is what stops it.
     [
       "the exact-out sibling, whose arguments would otherwise read as an exact-in swap",
-      { form: "aggregator", fn: "swap_tokens_for_exact_tokens" },
-      /not swap_exact_tokens_for_tokens/,
+      { form: "aggregator", fn: "swap_exact_out" },
+      /not swap_exact_in/,
+    ],
+    [
+      "the router's function called on the aggregator",
+      { form: "aggregator", fn: SWAP_FUNCTION },
+      /not swap_exact_in/,
+    ],
+    [
+      "the aggregator paying another account",
+      { form: "aggregator", to: OTHER_ACCOUNT },
+      /does not pay this account/,
+    ],
+    [
+      "an aggregator minimum under the floor",
+      { form: "aggregator", minOut: FLOOR - 1n },
+      /below your floor/,
+    ],
+    [
+      "an aggregator swap spending less than the live balance",
+      { form: "aggregator", amountIn: BALANCE - 1n },
+      /amount_in/,
+    ],
+    [
+      "a fee partner on the aggregator",
+      {
+        form: "aggregator",
+        partner: xdr.ScVal.scvMap([
+          new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("bps"), val: xdr.ScVal.scvU32(25) }),
+          new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("id"), val: xdr.ScVal.scvSymbol("x") }),
+        ]),
+      },
+      /fee partner/,
     ],
     ["less than the live balance", { form: "router", amountIn: BALANCE - 1n }, /amount_in/],
     ["a minimum under the floor", { form: "router", minOut: FLOOR - 1n }, /below your floor/],
@@ -311,8 +333,8 @@ describe("assertConversionShape", () => {
         form: "aggregator",
         tree: () => [
           invocation(
-            ADAPTER,
-            "swap",
+            ROUTER,
+            SWAP_FUNCTION,
             [],
             [
               invocation(
@@ -341,6 +363,55 @@ describe("assertConversionShape", () => {
       expect(() => assertConversionShape(swapTx(shape), expected())).toThrow(message);
     });
   }
+});
+
+describe("assertConversionShape on a swap the Soroswap API really built", () => {
+  // Captured from the live API on mainnet (10 USDC -> XLM for a real holder), unsigned. The
+  // registry that ships is what vouches for the contract it calls.
+  const tx = TransactionBuilder.fromXDR(realSwap.xdr, Networks.PUBLIC) as Transaction;
+  const capturedAt = Math.floor(Date.parse(realSwap.capturedAt) / 1000);
+  const real = (over: Partial<ExpectedConversion> = {}): ExpectedConversion => ({
+    token: realSwap.token,
+    account: realSwap.account,
+    xlm: XLM,
+    amountIn: BigInt(realSwap.amountIn),
+    minOut: BigInt(realSwap.minAmountOut),
+    allowed: soroswapConversionContracts("mainnet", new Date(realSwap.capturedAt)),
+    sequence: realSwap.sequenceBefore,
+    nowSeconds: capturedAt,
+    ...over,
+  });
+
+  test("is accepted as built, against the registry's aggregator", () => {
+    expect(real().allowed.aggregator).toEqual([AGGREGATOR]);
+    expect(() => assertConversionShape(tx, real())).not.toThrow();
+  });
+
+  test("is refused once a fee partner is written into it", () => {
+    const envelope = xdr.TransactionEnvelope.fromXDR(realSwap.xdr, "base64");
+    const call = envelope
+      .v1()
+      .tx()
+      .operations()[0]!
+      .body()
+      .invokeHostFunctionOp()
+      .hostFunction()
+      .invokeContract();
+    const args = call.args();
+    args[6] = xdr.ScVal.scvMap([
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("bps"), val: xdr.ScVal.scvU32(1000) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("id"), val: xdr.ScVal.scvSymbol("x") }),
+    ]);
+    call.args(args);
+    const tampered = TransactionBuilder.fromXDR(envelope, Networks.PUBLIC) as Transaction;
+    expect(() => assertConversionShape(tampered, real())).toThrow(/fee partner/);
+  });
+
+  test("is refused when the floor the user accepted is above what it guarantees", () => {
+    expect(() =>
+      assertConversionShape(tx, real({ minOut: BigInt(realSwap.minAmountOut) + 1n }))
+    ).toThrow(/below your floor/);
+  });
 });
 
 // ─── the round ───────────────────────────────────────────────────────────────
