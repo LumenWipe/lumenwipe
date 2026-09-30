@@ -108,6 +108,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
     year: "numeric",
     month: "long",
     day: "numeric",
+    timeZone: "UTC",
   });
 
   const jsonLd = {
