@@ -8,6 +8,7 @@ export default function PostCard({ post }: { post: PostMeta }) {
     year: "numeric",
     month: "long",
     day: "numeric",
+    timeZone: "UTC",
   });
 
   return (
