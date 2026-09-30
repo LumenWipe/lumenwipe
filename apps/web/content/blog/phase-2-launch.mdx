@@ -39,7 +39,7 @@ Every exit targets a contract whose deployed code matches a versioned, network-s
 
 **Soroban tokens, decided one by one.** LumenWipe now discovers the Soroban token balances an account holds and confirms each one on the ledger. For each token you choose what happens: **convert** it to XLM through the Soroswap Aggregator, behind a minimum you accept on screen; **transfer** it, as the token, to another account; or **leave it on record**, a choice you make per token and that is never the default. A token LumenWipe cannot read is shown as a blocker. It is not skipped.
 
-**An allowance inspector.** A SEP-41 allowance lets another contract spend your tokens, and it outlives the reason you granted it. LumenWipe now lists every live allowance an account has granted, found from `approve` events and a registry of known contracts, and revokes any of them in one click with an `approve(owner, spender, 0, 0)` call on the token contract itself. It also works [without closing the account](/mainnet/allowances), as a security check on its own.
+**An allowance inspector.** A SEP-41 allowance lets another contract spend your tokens, and it outlives the reason you granted it. LumenWipe now lists every live allowance an account has granted, found from `approve` events and a registry of known contracts, and revokes any of them in one click with an `approve(owner, spender, 0, 0)` call on the token contract itself. It also works on its own, without closing the account, as a security check: [open the allowance inspector](/mainnet/allowances).
 
 **Sponsored fees for reserve-locked accounts.** An account holding exactly its minimum balance cannot pay the fee to close itself. LumenWipe now wraps that close in a CAP-15 fee-bump paid by a dedicated sponsor account, so the destination receives the full balance.
 
@@ -47,20 +47,20 @@ Every exit targets a contract whose deployed code matches a versioned, network-s
 
 ## What Phase 2 includes
 
-| Feature                                                    | Status      |
-| ---------------------------------------------------------- | ----------- |
-| DeFi position detection (OctoPos plus direct ledger reads) | ✓ Available |
-| Unconfirmed-position warning and manual acknowledgment     | ✓ Available |
-| Blend exit: repay, withdraw, BLND emissions, backstop      | ✓ Available |
-| Aquarius exit: AQUA rewards and LP withdrawal              | ✓ Available |
-| Soroswap exit: LP withdrawal through the router            | ✓ Available |
-| Versioned `wasmHash` contract registry, mainnet verified   | ✓ Available |
-| Soroban token discovery                                    | ✓ Available |
-| Convert, transfer, or leave each Soroban token             | ✓ Available |
-| Allowance inspector and one-click revocation               | ✓ Available |
-| Sponsored fees (CAP-15 fee-bump)                           | ✓ Available |
-| Adversarial test suite in CI                               | ✓ Available |
-| Threat model and on-chain monitoring plan                  | ✓ Available |
+| Feature                                                             | Status      |
+| ------------------------------------------------------------------- | ----------- |
+| DeFi position detection (OctoPos plus direct ledger reads)          | ✓ Available |
+| Unconfirmed-position warning and manual acknowledgment              | ✓ Available |
+| Blend exit: repay, withdraw, BLND emissions, backstop               | ✓ Available |
+| Aquarius exit: AQUA rewards and LP withdrawal                       | ✓ Available |
+| Soroswap exit: LP withdrawal through the router                     | ✓ Available |
+| Versioned `wasmHash` contract registry, mainnet verified            | ✓ Available |
+| Soroban token discovery                                             | ✓ Available |
+| Convert, transfer, or leave each Soroban token                      | ✓ Available |
+| [Allowance inspector](/mainnet/allowances) and one-click revocation | ✓ Available |
+| Sponsored fees (CAP-15 fee-bump)                                    | ✓ Available |
+| Adversarial test suite in CI                                        | ✓ Available |
+| Threat model and on-chain monitoring plan                           | ✓ Available |
 
 Phase 0's rule still holds for all of it: the plan is deterministic and reviewable before anything executes, every transaction is signed in your browser, and your secret key never reaches LumenWipe servers.
 
