@@ -1,0 +1,102 @@
+---
+title: "LumenWipe Phase 2: DeFi Exits, Soroban Tokens, and Allowances"
+description: "LumenWipe Phase 2 is live: DeFi position detection, exits from Blend, Aquarius, and Soroswap, Soroban token conversion, an allowance inspector, sponsored fees for reserve-locked accounts, and an adversarial test suite with a published threat model."
+publishedAt: "2026-09-30"
+category: "Updates"
+tags:
+  [
+    "lumenwipe",
+    "stellar",
+    "soroban",
+    "defi",
+    "blend",
+    "aquarius",
+    "soroswap",
+    "allowances",
+    "fee-bump",
+    "launch",
+    "non-custodial",
+  ]
+---
+
+Phase 1 finished the classic side of an account: claimable balances, a choice for every asset, and multisig. It also moved Soroban to Phase 2, because classic accounts were what was blocking people first.
+
+Phase 2 is that Soroban work. An account with DeFi positions or Soroban tokens can hold value that no classic operation can reach, and until now LumenWipe could not see that value, let alone move it. Now it finds those positions, exits them, deals with every Soroban token balance, shows the allowances the account has granted, and closes accounts too drained to pay their own fee.
+
+<YouTubeEmbed id="5euq51Wu22c" title="LumenWipe Phase 2 walkthrough" />
+
+## What's new in Phase 2
+
+**DeFi positions, detected before anything is planned.** LumenWipe now reads an account's positions in Blend, Aquarius, and Soroswap and shows each one in the analysis with its pool, asset, amount, and current yield. On mainnet the positions come from OctoPos. On testnet, or whenever OctoPos can't confirm the answer, LumenWipe reads the contracts directly through `getLedgerEntries`. A result it cannot confirm is reported as unconfirmed, with a plain-language warning that says where it came from. It is never reported as an empty account. That matters, because merging an account with a position LumenWipe missed would leave that position behind. When detection stays unconfirmed, you can review the positions yourself and acknowledge them explicitly before the close goes ahead.
+
+**Exits from Blend, Aquarius, and Soroswap.** A detected position is now a step in the plan, and LumenWipe exits it before the merge:
+
+- **Blend**: repays debt before withdrawing collateral and checks the health factor as it goes. It claims BLND emissions first, and it handles the backstop's withdrawal queue, including shares that are still cooling down.
+- **Aquarius**: claims pending AQUA rewards, then withdraws the LP position with a minimum amount for each token.
+- **Soroswap**: builds `remove_liquidity` on the router locally from ledger state, with a minimum-received bound for both tokens of the pair.
+
+Every exit targets a contract whose deployed code matches a versioned, network-scoped `wasmHash` registry, with verified mainnet entries for all three protocols. Contract code the registry does not recognize is sent to manual review. LumenWipe does not guess an exit for it. All three adapters share one interface and run through a common invariant test harness.
+
+**Soroban tokens, decided one by one.** LumenWipe now discovers the Soroban token balances an account holds and confirms each one on the ledger. For each token you choose what happens: **convert** it to XLM through the Soroswap Aggregator, behind a minimum you accept on screen; **transfer** it, as the token, to another account; or **leave it on record**, a choice you make per token and that is never the default. A token LumenWipe cannot read is shown as a blocker. It is not skipped.
+
+**An allowance inspector.** A SEP-41 allowance lets another contract spend your tokens, and it outlives the reason you granted it. LumenWipe now lists every live allowance an account has granted, found from `approve` events and a registry of known contracts, and revokes any of them in one click with an `approve(owner, spender, 0, 0)` call on the token contract itself. It also works [without closing the account](/mainnet/allowances), as a security check on its own.
+
+**Sponsored fees for reserve-locked accounts.** An account holding exactly its minimum balance cannot pay the fee to close itself. LumenWipe now wraps that close in a CAP-15 fee-bump paid by a dedicated sponsor account, so the destination receives the full balance.
+
+**The browser checks every Soroban call before you sign.** Soroban invocations are harder to read than classic operations, so the client-side check got stricter. Before your wallet signs an exit, your browser decodes it and confirms that it calls a contract from the registry, with a function that protocol's exit is allowed to use, that every account and contract it touches (including nested authorizations) belongs to your own close, and that the fee stays under a hard cap. If any of that fails, nothing is signed.
+
+## What Phase 2 includes
+
+| Feature                                                    | Status      |
+| ---------------------------------------------------------- | ----------- |
+| DeFi position detection (OctoPos plus direct ledger reads) | ✓ Available |
+| Unconfirmed-position warning and manual acknowledgment     | ✓ Available |
+| Blend exit: repay, withdraw, BLND emissions, backstop      | ✓ Available |
+| Aquarius exit: AQUA rewards and LP withdrawal              | ✓ Available |
+| Soroswap exit: LP withdrawal through the router            | ✓ Available |
+| Versioned `wasmHash` contract registry, mainnet verified   | ✓ Available |
+| Soroban token discovery                                    | ✓ Available |
+| Convert, transfer, or leave each Soroban token             | ✓ Available |
+| Allowance inspector and one-click revocation               | ✓ Available |
+| Sponsored fees (CAP-15 fee-bump)                           | ✓ Available |
+| Adversarial test suite in CI                               | ✓ Available |
+| Threat model and on-chain monitoring plan                  | ✓ Available |
+
+Phase 0's rule still holds for all of it: the plan is deterministic and reviewable before anything executes, every transaction is signed in your browser, and your secret key never reaches LumenWipe servers.
+
+## Seen on-chain
+
+One testnet account held a position in all three protocols, and it closed in a single pass through the web app. Each exit ran as its own transaction, because a Soroban invocation cannot share a transaction with another operation: [Aquarius](https://stellar.expert/explorer/testnet/tx/81da1b2d860cb7feff3bc3e1c25f653d8a03ae35cb4c9f7e212ab59142cbe040), [Blend](https://stellar.expert/explorer/testnet/tx/787aec9119822b5f094855d7463aa442685d021f41f934c311ca1e11222c0252), and [Soroswap](https://stellar.expert/explorer/testnet/tx/f2a176369ae62029704f55a7c962c98525bdee4db6e1df9f58804c43ccf5d136). A last transaction then swapped the AQUA the Aquarius withdrawal had paid in, removed its trustline, and [merged the account](https://stellar.expert/explorer/testnet/tx/4c2ab3ed209b0f049596623c7ebe00431bc67b84117ef6f0f4c39249e008abb6).
+
+The Soroban token conversion has also run on mainnet with real funds. An account holding a Soroban-native token and no trustlines [converted it](https://stellar.expert/explorer/public/tx/80207b5424bde583103d7e2170879c574d37a508a44c6a83d33fc821d7974ea7) for exactly the XLM amount the screen quoted, then [closed](https://stellar.expert/explorer/public/tx/fc378531e1fdefc8c17331670f91ab673dec9c294b0a05eab4c87f7526be2da0). The amounts reconcile to the stroop.
+
+## Tested against hostile accounts
+
+A close that works on a clean account proves little. Phase 2 adds an adversarial suite that runs the close against the account states most likely to break it: accounts sponsoring other accounts' reserves, accounts at the 1,000-subentry maximum, revoked trustlines, `hash(x)` and pre-authorized-transaction signers, high-slippage conversions, and submissions where the confirmation is lost and the client never learns whether the transaction landed. The suite runs in CI, and a failing case blocks the merge like any other test. Integration tests for each protocol exit also run against live testnet on every pull request.
+
+The security work is published in full on the [documentation site](https://docs.lumenwipe.com):
+
+- A [STRIDE threat model](https://docs.lumenwipe.com/threat-model) for every component that handles a key or builds a transaction, with residual risks and why each one is accepted.
+- A [security remediation plan](https://docs.lumenwipe.com/security-remediation-plan) from a dependency audit, static analysis, and a secret scan across the repository's history.
+- An [on-chain monitoring plan](https://docs.lumenwipe.com/monitoring-plan), with its monitors already running on a schedule.
+
+## Also in this release
+
+- **Faster analysis.** On an account with a DeFi position, analysis used to take about 30 seconds. Parallel ledger reads, and requesting the account read and the plan at the same time, bring that to about 8.
+- **A documented public API.** The API at `api.lumenwipe.com` now publishes real OpenAPI response schemas for every endpoint and a health check that confirms it can reach the Stellar RPC.
+- **SDK v0.2.0.** `@lumenwipe/sdk` adds sponsored fee-bumps, allowance discovery, and allowance revocation.
+
+## What comes next
+
+Phase 3 takes LumenWipe to its production launch on mainnet:
+
+- Exits for Phoenix and FxDAO (FxDAO has stopped operating on mainnet, so its exit runs on testnet only)
+- A security review before the mainnet launch, with every critical and high finding resolved first
+- A public REST API and TypeScript SDK for wallets and services that want to close accounts on their users' behalf
+- Production UX and documentation
+
+We're building in public. If you run into an issue or have feedback, open an issue on the project repository.
+
+---
+
+Ready to wind down an account? [Launch LumenWipe](/mainnet)
