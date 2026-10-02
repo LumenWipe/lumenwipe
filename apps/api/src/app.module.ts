@@ -11,6 +11,7 @@ import { AccountModule } from "./account/account.module";
 import { MediatorModule } from "./mediator/mediator.module";
 import { FeeBumpModule } from "./fee-bump/fee-bump.module";
 import { AdminModule } from "./admin/admin.module";
+import { IntegratorModule } from "./integrator/integrator.module";
 import { AuthModule } from "./auth/auth.module";
 import { ApiKeyGuard } from "./auth/api-key.guard";
 import { ApiKeyThrottlerGuard } from "./auth/api-key-throttler.guard";
@@ -40,6 +41,7 @@ function positiveIntEnv(name: string, fallback: number): number {
     MediatorModule,
     FeeBumpModule,
     AdminModule,
+    IntegratorModule,
   ],
   controllers: [RootController, HealthController, RegistryController],
   providers: [
