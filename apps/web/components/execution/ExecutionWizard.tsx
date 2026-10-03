@@ -344,7 +344,10 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
             </div>
           ) : failed ? (
             <div className="flex flex-col gap-3">
-              <div className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-white/70">
+              <div
+                role="alert"
+                className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-white/70"
+              >
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-destructive" />
                 <span>{lastError ?? "The close could not be completed."}</span>
               </div>

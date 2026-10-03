@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils/cn";
 import AddressInput from "./AddressInput";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import { apiErrorMessage } from "@/lib/api/error-body";
+import { ApiRequestError, toUserMessage } from "@/lib/utils/user-error";
 
 type EntryMode = "wallet" | "address";
 
@@ -38,8 +39,10 @@ export default function AccountEntryForm() {
       // Validate that source account exists before navigating
       const res = await fetch(`/api/${network}/account/${source}`);
       if (!res.ok) {
-        const data = await res.json();
-        setError(apiErrorMessage(data, "Account not found on this network."));
+        const data = await res.json().catch(() => ({}));
+        setError(
+          toUserMessage(new ApiRequestError(res.status, apiErrorMessage(data, "")), "analyze")
+        );
         return;
       }
 
@@ -103,7 +106,10 @@ export default function AccountEntryForm() {
       </div>
 
       {error && (
-        <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+        <div
+          role="alert"
+          className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-3"
+        >
           <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
           {error}
         </div>

@@ -63,7 +63,11 @@ export default function WalletConnectPanel({
       >
         {connecting ? "Connecting…" : "Connect wallet"}
       </button>
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
