@@ -1,4 +1,5 @@
 import type { Network } from "@/config/networks";
+import { ApiRequestError, UserFacingError } from "@/lib/utils/user-error";
 
 /**
  * Asks the backend to wrap a wind-down transaction - built with its own fee already at zero,
@@ -29,10 +30,10 @@ export async function requestFeeBumpSponsorship(
         : typeof data.error === "string"
           ? data.error
           : "Failed to obtain a sponsored fee for this transaction.";
-    throw new Error(message);
+    throw new ApiRequestError(res.status, message);
   }
   if (!data.transaction) {
-    throw new Error("The sponsor endpoint returned no transaction.");
+    throw new UserFacingError("The sponsor endpoint returned no transaction.");
   }
   return data.transaction;
 }

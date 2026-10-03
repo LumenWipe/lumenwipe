@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { hash, Keypair, StrKey } from "@stellar/stellar-sdk";
 import ExecutionWizard from "@/components/execution/ExecutionWizard";
 import { useDemolishStore } from "@/store/demolish";
+import { InvalidPreAuthTxError } from "@/lib/stellar/pre-auth-tx";
 import * as navigation from "next/navigation";
 import * as closeExecution from "@/hooks/useCloseExecution";
 import * as walletKit from "@/hooks/useWalletKitConnection";
@@ -324,7 +325,9 @@ test("execution-wizard › a rejected pre-auth-tx submission shows an inline err
   useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
   runImpl = async () => {};
   submitPreAuthTxImpl = async () => {
-    throw new Error("This transaction's hash does not match the pre-auth-tx signer's key.");
+    throw new InvalidPreAuthTxError(
+      "This transaction's hash does not match the pre-auth-tx signer's key."
+    );
   };
 
   render(<ExecutionWizard network="testnet" />);
