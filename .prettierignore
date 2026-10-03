@@ -18,3 +18,7 @@ skills-lock.json
 # (including its own copy of the skills above). Not application source, and some of the JSON
 # fixtures nested in it are JSONL, which trips Prettier's JSON parser with a hard error.
 .claude/worktrees
+
+# Written by the API's own generator (apps/api/scripts/generate-openapi.ts), and a drift test
+# compares it byte for byte, so Prettier reformatting it would fail that test.
+docs/api-reference/openapi.json
