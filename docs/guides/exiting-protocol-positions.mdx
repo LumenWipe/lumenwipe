@@ -1,0 +1,45 @@
+---
+title: "Exiting protocol positions"
+description: "Why DeFi positions come first, which protocols are supported, and what blocks an exit."
+icon: "arrow-right-from-bracket"
+---
+
+A position in a DeFi protocol lives inside the protocol's contracts, not in your account. The network does not check it, so it will let you merge an account that still has funds deposited.
+
+Nothing fails and nothing warns you. The funds stay in the contracts, under an account that no longer exists. Getting them back means re-funding the address and unwinding by hand.
+
+LumenWipe prevents this by exiting positions first.
+
+## Supported positions
+
+| Protocol    | Position                               | How it exits                                             |
+| ----------- | -------------------------------------- | -------------------------------------------------------- |
+| Classic DEX | Open offers                            | Cancelled                                                |
+| Classic AMM | Liquidity pool shares                  | Withdrawn, then the pool trustline is removed            |
+| Blend       | Supply, borrow, and backstop positions | Repaid and withdrawn, backstop through queued withdrawal |
+| Aquarius    | AMM liquidity and AQUA rewards         | Withdrawn and claimed                                    |
+| Soroswap    | AMM liquidity                          | Liquidity removed through the router                     |
+| Phoenix     | AMM liquidity, with optional staking   | Unbonded first when staked, then withdrawn               |
+| FxDAO       | Collateralized debt vaults             | Testnet only, see below                                  |
+
+## How an exit works
+
+For each position, LumenWipe reads the exact on-chain state, simulates the exit, and shows you the result before you sign. What comes out lands in a trustline that the later steps convert to XLM, so the funds continue toward the merge.
+
+Positions run before every classic step, and each is its own transaction. A repay can only spend what is not held back by an open offer or the minimum reserve.
+
+## When an exit is blocked
+
+A position that cannot be closed safely is reported as a blocker with an explanation. It is never skipped.
+
+- **A debt your spendable balance cannot cover** blocks with the exact shortfall. Add XLM or repay part of the debt elsewhere, then analyze again.
+- **An unknown contract version** is flagged for manual review. LumenWipe will not build an exit against an interface it has not verified.
+- **FxDAO on mainnet** has stopped operating, so its exit is blocked with an explanation instead of attempting a transaction that cannot succeed.
+- **Incomplete position data** flags the affected position. LumenWipe builds no exit from partial data.
+
+If the position data provider is unavailable, the classic flow still works, and you see a warning to check your positions manually.
+
+<Note>
+  A position in a frozen or winding-down protocol stays exitable. Withdrawing and repaying is
+  exactly what those contracts still allow.
+</Note>
