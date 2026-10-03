@@ -1,0 +1,4237 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "RootController_index",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Identifies the service and links to its docs."
+          }
+        },
+        "summary": "Service index (public, no API key).",
+        "tags": [
+          "service"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "HealthController_check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Service is up: `{ \"status\": \"ok\", \"upstreamRateLimitHits\": n, \"defiDegradedFallbackCount\": n, \"octoposConfigured\": bool }`. The first counter is how many upstream account-state requests the provider refused with 429 since this process started - a rising value is the signal to point PATH_ROUTING_API_* at a provider with more headroom. The second is how many DeFi-position reads fell back to a direct on-chain sweep because OctoPos was unavailable, unrecognizable, or not tracking the address. `octoposConfigured` is a plain deploy-time fact - false means OCTOPOS_API_URL_MAINNET was never set on this revision, so every mainnet DeFi read is degrading by design, not because OctoPos is having an outage. All three are weeks-early operational signals, not something discovered from a user's screenshot."
+          }
+        },
+        "summary": "Liveness check (public, no API key).",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/deep": {
+      "get": {
+        "operationId": "HealthController_deep",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "RPC reachable on every network.\n\nThe Health Check is successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "info": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "error": {
+                      "type": "object",
+                      "example": {},
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "details": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "RPC unreachable on at least one network.\n\nThe Health Check is not successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "error"
+                    },
+                    "info": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "error": {
+                      "type": "object",
+                      "example": {
+                        "redis": {
+                          "status": "down",
+                          "message": "Could not connect"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "details": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        },
+                        "redis": {
+                          "status": "down",
+                          "message": "Could not connect"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Deep check (public, no API key): is Stellar RPC reachable on every network.",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/config/exchange-registry": {
+      "get": {
+        "operationId": "RegistryController_registry",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "`entries` plus `lastVerified` and `validUntil`. A consumer MUST refuse to rely on this past `validUntil` rather than proceed on unchecked data: a close into an exchange with the wrong memo rule succeeds on-chain and is credited to nobody, with no error and no source account left to investigate from.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServedRegistryDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The exchange deposit-address registry, with the freshness to judge it by.",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/v1/{network}/close/plan": {
+      "post": {
+        "operationId": "CloseController_plan",
+        "parameters": [
+          {
+            "name": "network",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "testnet",
+                "mainnet"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClosePlanRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Plan with pending decision points, fee and freed-reserve estimate.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid network, source, destination, or JSON body."
+          },
+          "401": {
+            "description": "Missing or invalid API key."
+          },
+          "404": {
+            "description": "Source account not found."
+          },
+          "429": {
+            "description": "Rate limit exceeded for this key."
+          }
+        },
+        "security": [
+          {
+            "api-key": []
+          }
+        ],
+        "summary": "Build a deterministic close plan with decision points and estimates.",
+        "tags": [
+          "close"
+        ]
+      }
+    },
+    "/v1/{network}/close/batch-plan": {
+      "post": {
+        "operationId": "CloseController_batchPlan",
+        "parameters": [
+          {
+            "name": "network",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "testnet",
+                "mainnet"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchPlanRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One plan per address, in the same order as the request. An address that could not be read or planned safely reports as its own `blocked` plan rather than failing the call.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchPlanResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid network, addresses, destination, or JSON body."
+          },
+          "401": {
+            "description": "Missing or invalid API key."
+          },
+          "429": {
+            "description": "Rate limit exceeded for this key."
+          }
+        },
+        "security": [
+          {
+            "api-key": []
+          }
+        ],
+        "summary": "Plan a bounded list of accounts in one call - what each holds, its wind-down steps, and what lands at the shared destination. Read-only; no decisions are applied per address.",
+        "tags": [
+          "close"
+        ]
+      }
+    },
+    "/v1/{network}/close/transactions": {
+      "post": {
+        "operationId": "CloseController_transactions",
+        "parameters": [
+          {
+            "name": "network",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "testnet",
+                "mainnet"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseTransactionsRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Unsigned transaction envelopes ready for client signing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionsResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid network, source, destination, or JSON body."
+          },
+          "401": {
+            "description": "Missing or invalid API key."
+          },
+          "404": {
+            "description": "Source account not found."
+          },
+          "409": {
+            "description": "A conversion route drifted; re-plan and retry."
+          },
+          "422": {
+            "description": "Unprocessable: unresolved asset dispositions, a required exchange memo is missing, the destination is not a recognized exchange address and has not been acknowledged (destination_not_acknowledged), a transfer disposition carries no usable destination (transfer_destination_missing), or a transfer destination cannot receive its asset (transfer_destination_unusable)."
+          },
+          "429": {
+            "description": "Rate limit exceeded for this key."
+          },
+          "503": {
+            "description": "The exchange (mediator) flow is not configured on this server."
+          }
+        },
+        "security": [
+          {
+            "api-key": []
+          }
+        ],
+        "summary": "Build the unsigned close transactions for a resolved plan.",
+        "tags": [
+          "close"
+        ]
+      }
+    },
+    "/v1/{network}/submit": {
+      "post": {
+        "operationId": "CloseController_submit",
+        "parameters": [
+          {
+            "name": "network",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "testnet",
+                "mainnet"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Confirmed: returns the transaction hash and ledger.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or unsigned/undecodable transaction envelope."
+          },
+          "401": {
+            "description": "Missing or invalid API key."
+          },
+          "429": {
+            "description": "Rate limit exceeded for this key."
+          },
+          "502": {
+            "description": "The network rejected the transaction."
+          },
+          "504": {
+            "description": "The transaction did not confirm in time."
+          }
+        },
+        "security": [
+          {
+            "api-key": []
+          }
+        ],
+        "summary": "Submit a client-signed transaction and wait for confirmation.",
+        "tags": [
+          "close"
+        ]
+      }
+    },
+    "/{network}/account/{address}": {
+      "get": {
+        "operationId": "AccountController_account",
+        "parameters": [
+          {
+            "name": "network",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "testnet",
+                "mainnet"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "address",
+            "required": true,
+            "in": "path",
+            "description": "Stellar account (G...).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tokens",
+            "required": false,
+            "in": "query",
+            "description": "Soroban token contracts (C..., comma-separated, at most 20) to check for a balance besides what discovery finds.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Aggregated account state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountStateDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid network or address."
+          },
+          "401": {
+            "description": "Missing or invalid API key."
+          },
+          "404": {
+            "description": "Account not found."
+          },
+          "429": {
+            "description": "Rate limit exceeded for this key."
+          }
+        },
+        "security": [
+          {
+            "api-key": []
+          }
+        ],
+        "summary": "Read full on-chain account state (balances, trustlines, offers, signers).",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/{network}/allowances/{address}": {
+      "get": {
+        "operationId": "AccountController_allowances",
+        "parameters": [
+          {
+            "name": "network",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "testnet",
+                "mainnet"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "address",
+            "required": true,
+            "in": "path",
+            "description": "Stellar account (G...).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Live, non-zero allowances, best effort.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowancesResultDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid network or address."
+          },
+          "401": {
+            "description": "Missing or invalid API key."
+          },
+          "429": {
+            "description": "Rate limit exceeded for this key."
+          }
+        },
+        "security": [
+          {
+            "api-key": []
+          }
+        ],
+        "summary": "Read every live SEP-41 allowance the account has granted (architecture.md §12). Read-only.",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/{network}/allowances/revoke": {
+      "post": {
+        "operationId": "AccountController_revokeAllowance",
+        "parameters": [
+          {
+            "name": "network",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "testnet",
+                "mainnet"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "owner",
+                  "token",
+                  "spender"
+                ],
+                "properties": {
+                  "owner": {
+                    "type": "string",
+                    "description": "The account whose allowance this is (G...)."
+                  },
+                  "token": {
+                    "type": "string",
+                    "description": "The token contract the allowance is on (C...)."
+                  },
+                  "spender": {
+                    "type": "string",
+                    "description": "The spender being revoked (C... or G...)."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The unsigned revocation transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokeAllowanceResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid network, owner, token, or spender."
+          },
+          "401": {
+            "description": "Missing or invalid API key."
+          },
+          "422": {
+            "description": "The revocation could not be built safely."
+          },
+          "429": {
+            "description": "Rate limit exceeded for this key."
+          }
+        },
+        "security": [
+          {
+            "api-key": []
+          }
+        ],
+        "summary": "Build a one-operation approve(owner, spender, 0, 0) transaction that revokes a SEP-41 allowance (architecture.md §12). Unsigned - the caller signs and submits it.",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/{network}/paths": {
+      "get": {
+        "operationId": "AccountController_paths",
+        "parameters": [
+          {
+            "name": "network",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "testnet",
+                "mainnet"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "fromAsset",
+            "required": true,
+            "in": "query",
+            "description": "Asset to convert (e.g. CODE:ISSUER or 'native').",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "amount",
+            "required": true,
+            "in": "query",
+            "description": "Amount of the source asset.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The conversion path (or null if none).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PathResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid network or missing query params."
+          },
+          "401": {
+            "description": "Missing or invalid API key."
+          },
+          "429": {
+            "description": "Rate limit exceeded for this key."
+          }
+        },
+        "security": [
+          {
+            "api-key": []
+          }
+        ],
+        "summary": "Find a conversion path from an asset to XLM.",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/{network}/mediator/sign": {
+      "post": {
+        "operationId": "MediatorController_sign",
+        "parameters": [
+          {
+            "name": "network",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "testnet",
+                "mainnet"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediatorSignRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The transaction with the mediator signature added (base64 XDR).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediatorSignResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid transaction or disallowed structure."
+          },
+          "401": {
+            "description": "Missing or invalid API key."
+          },
+          "429": {
+            "description": "Rate limit exceeded for this key."
+          },
+          "503": {
+            "description": "Mediator flow not configured on this server."
+          }
+        },
+        "security": [
+          {
+            "api-key": []
+          }
+        ],
+        "summary": "Co-sign the mediator forwarding payment of an exchange close.",
+        "tags": [
+          "mediator"
+        ]
+      }
+    },
+    "/{network}/mediator/check/{address}": {
+      "get": {
+        "operationId": "MediatorController_check",
+        "parameters": [
+          {
+            "name": "network",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "testnet",
+                "mainnet"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "address",
+            "required": true,
+            "in": "path",
+            "description": "Destination account (G...).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mediator/memo requirements for the destination.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediatorCheckResultDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid network or address."
+          },
+          "401": {
+            "description": "Missing or invalid API key."
+          },
+          "429": {
+            "description": "Rate limit exceeded for this key."
+          }
+        },
+        "security": [
+          {
+            "api-key": []
+          }
+        ],
+        "summary": "Check whether a destination needs the mediator flow and/or a memo.",
+        "tags": [
+          "mediator"
+        ]
+      }
+    },
+    "/{network}/fee-bump/sponsor": {
+      "post": {
+        "operationId": "FeeBumpController_sponsor",
+        "parameters": [
+          {
+            "name": "network",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "testnet",
+                "mainnet"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeeBumpRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The transaction wrapped in a fee-bump envelope and signed (base64 XDR).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeeBumpSponsorResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid transaction or disallowed structure."
+          },
+          "401": {
+            "description": "Missing or invalid API key."
+          },
+          "429": {
+            "description": "Rate limit exceeded for this key."
+          },
+          "503": {
+            "description": "Sponsored-fee flow not configured on this server."
+          }
+        },
+        "security": [
+          {
+            "api-key": []
+          }
+        ],
+        "summary": "Sponsor a wind-down transaction's fee for a reserve-locked account.",
+        "tags": [
+          "fee-bump"
+        ]
+      }
+    },
+    "/admin/api-keys": {
+      "post": {
+        "operationId": "ApiKeysAdminController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApiKeyRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The raw key, returned exactly once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateApiKeyResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid owner or rateLimit."
+          },
+          "503": {
+            "description": "Self-serve key management is not configured."
+          }
+        },
+        "security": [
+          {
+            "admin-token": []
+          }
+        ],
+        "summary": "Create a new self-serve API key for an integrator.",
+        "tags": [
+          "admin"
+        ]
+      },
+      "get": {
+        "operationId": "ApiKeysAdminController_list",
+        "parameters": [
+          {
+            "name": "owner",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListApiKeysResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing owner query parameter."
+          }
+        },
+        "security": [
+          {
+            "admin-token": []
+          }
+        ],
+        "summary": "List an owner's keys, with a best-effort usage figure.",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/api-keys/{id}/revoke": {
+      "post": {
+        "operationId": "ApiKeysAdminController_revoke",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked."
+          },
+          "404": {
+            "description": "No key with that id."
+          }
+        },
+        "security": [
+          {
+            "admin-token": []
+          }
+        ],
+        "summary": "Revoke a key immediately.",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/api-keys/{id}/rotate": {
+      "post": {
+        "operationId": "ApiKeysAdminController_rotate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The new raw key, returned exactly once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateApiKeyResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No active key with that id."
+          }
+        },
+        "security": [
+          {
+            "admin-token": []
+          }
+        ],
+        "summary": "Revoke a key and issue its replacement in one call.",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/integrator/auth/challenge": {
+      "post": {
+        "operationId": "IntegratorController_challenge",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get a challenge transaction for a wallet to sign.",
+        "tags": [
+          "integrator"
+        ]
+      }
+    },
+    "/integrator/auth/session": {
+      "post": {
+        "operationId": "IntegratorController_session",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Exchange a signed challenge for a short-lived session token.",
+        "tags": [
+          "integrator"
+        ]
+      }
+    },
+    "/integrator/keys": {
+      "get": {
+        "operationId": "IntegratorController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "integrator-session": []
+          }
+        ],
+        "summary": "List the signed-in wallet's keys with a best-effort usage figure.",
+        "tags": [
+          "integrator"
+        ]
+      },
+      "post": {
+        "operationId": "IntegratorController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "integrator-session": []
+          }
+        ],
+        "summary": "Create a key. The raw secret is returned exactly once.",
+        "tags": [
+          "integrator"
+        ]
+      }
+    },
+    "/integrator/keys/{id}/revoke": {
+      "post": {
+        "operationId": "IntegratorController_revoke",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "integrator-session": []
+          }
+        ],
+        "summary": "Revoke one of the signed-in wallet's keys.",
+        "tags": [
+          "integrator"
+        ]
+      }
+    },
+    "/integrator/keys/{id}/rotate": {
+      "post": {
+        "operationId": "IntegratorController_rotate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "integrator-session": []
+          }
+        ],
+        "summary": "Revoke a key and issue its replacement.",
+        "tags": [
+          "integrator"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "LumenWipe API",
+    "description": "Programmatic close-out of Stellar accounts.",
+    "version": "0.1.0",
+    "contact": {}
+  },
+  "tags": [
+    {
+      "name": "close",
+      "description": "Build and submit an account close-out"
+    },
+    {
+      "name": "account",
+      "description": "Read account state and conversion paths"
+    },
+    {
+      "name": "mediator",
+      "description": "Exchange-destination forwarding"
+    },
+    {
+      "name": "health",
+      "description": "Service health"
+    },
+    {
+      "name": "service",
+      "description": "Service index"
+    },
+    {
+      "name": "admin",
+      "description": "Operator-only self-serve API key management"
+    }
+  ],
+  "servers": [
+    {
+      "url": "https://api.lumenwipe.com"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "api-key": {
+        "scheme": "bearer",
+        "bearerFormat": "opaque",
+        "type": "http",
+        "description": "Integrator API key"
+      },
+      "admin-token": {
+        "scheme": "bearer",
+        "bearerFormat": "opaque",
+        "type": "http",
+        "description": "Operator admin token"
+      }
+    },
+    "schemas": {
+      "RegistryEntryDto": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "The exchange's deposit address (G...).",
+            "example": "GABC...XYZ"
+          },
+          "name": {
+            "type": "string",
+            "description": "The exchange's display name.",
+            "example": "Example Exchange"
+          },
+          "domain": {
+            "type": "string",
+            "description": "The exchange's domain.",
+            "example": "example.com"
+          },
+          "requiresMediator": {
+            "type": "boolean",
+            "description": "Whether closing into this exchange needs the mediator flow."
+          },
+          "requiresMemo": {
+            "type": "boolean",
+            "description": "Whether a deposit memo is required."
+          },
+          "memoType": {
+            "type": "string",
+            "description": "The required memo type, if requiresMemo is true.",
+            "enum": [
+              "text",
+              "id",
+              "hash"
+            ]
+          }
+        },
+        "required": [
+          "address",
+          "name",
+          "domain",
+          "requiresMediator",
+          "requiresMemo",
+          "memoType"
+        ]
+      },
+      "ServedRegistryDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "description": "Registry file version.",
+            "example": "1.0.0"
+          },
+          "lastVerified": {
+            "type": "string",
+            "description": "The date a human last checked every entry against the exchanges' own deposit docs.",
+            "example": "2026-08-01"
+          },
+          "validUntil": {
+            "type": "string",
+            "description": "After this date the data is treated as unusable, not merely old.",
+            "example": "2027-02-01"
+          },
+          "source": {
+            "type": "string",
+            "description": "Where this registry data was sourced from."
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryEntryDto"
+            }
+          }
+        },
+        "required": [
+          "version",
+          "lastVerified",
+          "validUntil",
+          "source",
+          "entries"
+        ]
+      },
+      "ClosePlanRequestDto": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "Account to close (G...).",
+            "example": "GABC...XYZ"
+          },
+          "destination": {
+            "type": "string",
+            "description": "Destination for the recovered XLM (G...). Omit to preview without a destination.",
+            "example": "GDEF...UVW"
+          },
+          "decisions": {
+            "type": "array",
+            "description": "Answers to the plan's decision points (per-asset dispositions, etc.).",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "required": [
+          "source"
+        ]
+      },
+      "PlannedStepDto": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "number",
+            "description": "Position in the plan's step list, from 0."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "NORMALIZE_SIGNERS",
+              "REVOKE_SPONSORSHIP",
+              "REMOVE_DATA_ENTRIES",
+              "CANCEL_OFFERS",
+              "ADD_TRUSTLINE_FOR_CLAIM",
+              "CLAIM_BALANCES",
+              "EXIT_POSITIONS",
+              "HANDLE_ASSETS",
+              "REMOVE_TRUSTLINES",
+              "CLOSE_ACCOUNT",
+              "MERGE"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "Short, human-readable title for display."
+          },
+          "description": {
+            "type": "string",
+            "description": "Longer, human-readable description for display."
+          },
+          "operationCount": {
+            "type": "number",
+            "description": "Number of operations this step's transaction will contain."
+          },
+          "estimatedFeeLumens": {
+            "type": "string",
+            "description": "Estimated fee in XLM, before the step actually builds/submits.",
+            "example": "0.0000100"
+          },
+          "txXdr": {
+            "type": "string",
+            "description": "Populated lazily at execution time - null until the step is actually built.",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "signing",
+              "submitted",
+              "confirmed",
+              "failed",
+              "skipped"
+            ]
+          },
+          "txHash": {
+            "type": "string",
+            "description": "Populated once submitted - null before then.",
+            "nullable": true
+          },
+          "error": {
+            "type": "string",
+            "description": "Populated only if the step failed - null otherwise.",
+            "nullable": true
+          },
+          "actualFeeLumens": {
+            "type": "string",
+            "description": "What the user's own account paid for this step, once confirmed - exactly \"0\" when a dedicated sponsor account covered the fee-bump instead. Absent until the step confirms."
+          },
+          "affectedAsset": {
+            "type": "string",
+            "description": "For HANDLE_ASSETS steps: the affected asset."
+          },
+          "affectedContract": {
+            "type": "string",
+            "description": "For EXIT_POSITIONS steps: the pool, pair, or vault left."
+          },
+          "fallbackToIssuer": {
+            "type": "boolean",
+            "description": "Set when no DEX path exists and the user confirmed sending to the issuer instead."
+          }
+        },
+        "required": [
+          "index",
+          "type",
+          "title",
+          "description",
+          "operationCount",
+          "estimatedFeeLumens",
+          "txXdr",
+          "status",
+          "txHash",
+          "error"
+        ]
+      },
+      "QuoteInfoDto": {
+        "type": "object",
+        "properties": {
+          "estimatedReceive": {
+            "type": "string",
+            "description": "Estimated amount received.",
+            "example": "42.5000000"
+          },
+          "path": {
+            "description": "Intermediate assets the route swaps through, in order.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "soroswap",
+              "sdex"
+            ]
+          },
+          "expiresAtLedger": {
+            "type": "number",
+            "description": "The ledger this quote is no longer valid past."
+          }
+        },
+        "required": [
+          "estimatedReceive",
+          "path",
+          "source",
+          "expiresAtLedger"
+        ]
+      },
+      "DecisionOptionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "One of a decision-type-specific set, e.g. \"convert_to_xlm\" | \"return_to_issuer\" | \"transfer_to_account\" | \"acknowledged\"."
+          },
+          "recommended": {
+            "type": "boolean",
+            "description": "Whether this is the option the plan recommends."
+          },
+          "quote": {
+            "$ref": "#/components/schemas/QuoteInfoDto"
+          },
+          "note": {
+            "type": "string",
+            "description": "Plain-language note about this option."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "DecisionPointDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable id, e.g. \"asset:USDC-GISSUER...\"."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "asset_disposition",
+              "confirmation",
+              "choice",
+              "claimable_balance"
+            ]
+          },
+          "subject": {
+            "type": "object",
+            "description": "The subject of this decision - shape depends on `type` (e.g. an asset code/issuer/balance for asset_disposition, a claimable balance id for claimable_balance). Freeform by design: there is one decision-point contract per `type`, not one global shape.",
+            "additionalProperties": true
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DecisionOptionDto"
+            }
+          },
+          "default": {
+            "type": "string",
+            "description": "The option id applied if the caller never answers this decision."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether an answer is mandatory before the plan can proceed."
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "subject",
+          "options",
+          "default",
+          "required"
+        ]
+      },
+      "PlanResponseBlockerDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Stable machine-readable code for this blocker."
+          },
+          "message": {
+            "type": "string",
+            "description": "Plain-language explanation."
+          },
+          "helpUrl": {
+            "type": "string",
+            "description": "A docs link with more detail."
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "PlanEstimateDto": {
+        "type": "object",
+        "properties": {
+          "feeStroops": {
+            "type": "string",
+            "description": "Estimated total fee across every transaction, in stroops."
+          },
+          "freedReserveXlm": {
+            "type": "string",
+            "description": "Estimated XLM freed by removing subentries, in XLM."
+          }
+        },
+        "required": [
+          "feeStroops",
+          "freedReserveXlm"
+        ]
+      },
+      "ExecutionTxBreakdownDto": {
+        "type": "object",
+        "properties": {
+          "order": {
+            "type": "number",
+            "description": "Position among the transactions this plan will take to execute."
+          },
+          "covers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "NORMALIZE_SIGNERS",
+                "REVOKE_SPONSORSHIP",
+                "REMOVE_DATA_ENTRIES",
+                "CANCEL_OFFERS",
+                "ADD_TRUSTLINE_FOR_CLAIM",
+                "CLAIM_BALANCES",
+                "EXIT_POSITIONS",
+                "HANDLE_ASSETS",
+                "REMOVE_TRUSTLINES",
+                "CLOSE_ACCOUNT",
+                "MERGE"
+              ]
+            }
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why this transaction is split from the previous one, when it is.",
+            "enum": [
+              "op_batch",
+              "defi_dependency"
+            ]
+          }
+        },
+        "required": [
+          "order",
+          "covers"
+        ]
+      },
+      "PlanExecutionDto": {
+        "type": "object",
+        "properties": {
+          "estimatedTransactionCount": {
+            "type": "number",
+            "description": "Estimated number of transactions this close will take."
+          },
+          "transactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExecutionTxBreakdownDto"
+            }
+          }
+        },
+        "required": [
+          "estimatedTransactionCount",
+          "transactions"
+        ]
+      },
+      "PlanResponseDto": {
+        "type": "object",
+        "properties": {
+          "planHash": {
+            "type": "string",
+            "description": "Deterministic hash of this plan's content - unchanged inputs yield the same hash."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "needs_decisions",
+              "blocked",
+              "complete"
+            ]
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlannedStepDto"
+            }
+          },
+          "decisionPoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DecisionPointDto"
+            }
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanResponseBlockerDto"
+            }
+          },
+          "estimate": {
+            "$ref": "#/components/schemas/PlanEstimateDto"
+          },
+          "execution": {
+            "$ref": "#/components/schemas/PlanExecutionDto"
+          }
+        },
+        "required": [
+          "planHash",
+          "status",
+          "steps",
+          "decisionPoints",
+          "blockers",
+          "estimate",
+          "execution"
+        ]
+      },
+      "BatchPlanRequestDto": {
+        "type": "object",
+        "properties": {
+          "addresses": {
+            "description": "Accounts to plan (G...), up to 20 per call.",
+            "example": [
+              "GABC...XYZ",
+              "GDEF...UVW"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "destination": {
+            "type": "string",
+            "description": "Shared destination for the recovered XLM (G...). Omit to preview without one.",
+            "example": "GDEF...UVW"
+          }
+        },
+        "required": [
+          "addresses"
+        ]
+      },
+      "BatchPlanResultDto": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "The account this result is for."
+          },
+          "plan": {
+            "description": "This address's plan, in the same shape close/plan returns. An address that could not be read or planned safely comes back with status \"blocked\" and the failure as its own blocker, rather than failing the whole batch.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlanResponseDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "address",
+          "plan"
+        ]
+      },
+      "BatchPlanResponseDto": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "description": "One result per requested address, in the same order as the request.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BatchPlanResultDto"
+            }
+          }
+        },
+        "required": [
+          "results"
+        ]
+      },
+      "CloseTransactionsRequestDto": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "Account to close (G...).",
+            "example": "GABC...XYZ"
+          },
+          "destination": {
+            "type": "string",
+            "description": "Destination for the recovered XLM (G...).",
+            "example": "GDEF...UVW"
+          },
+          "decisions": {
+            "type": "array",
+            "description": "Resolved decision answers; every balance-bearing asset must have a disposition.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "memo": {
+            "type": "string",
+            "description": "Deposit memo value for exchange destinations that require one. The memo type is taken from the exchange registry, not the client.",
+            "example": "1234567890"
+          }
+        },
+        "required": [
+          "source",
+          "destination"
+        ]
+      },
+      "PathPaymentStrictSendOpDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "path_payment_strict_send"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "sendAsset": {
+            "type": "string"
+          },
+          "sendAmount": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "destAsset": {
+            "type": "string"
+          },
+          "destMin": {
+            "type": "string"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "type",
+          "source",
+          "sendAsset",
+          "sendAmount",
+          "destination",
+          "destAsset",
+          "destMin",
+          "path"
+        ]
+      },
+      "PaymentOpDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "payment"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "asset": {
+            "type": "string",
+            "description": "\"CODE:ISSUER\" or \"native\"."
+          },
+          "amount": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "source",
+          "destination",
+          "asset",
+          "amount"
+        ]
+      },
+      "ChangeTrustOpDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "change_trust"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "asset": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "string",
+            "description": "\"0\" removes the trustline."
+          }
+        },
+        "required": [
+          "type",
+          "source",
+          "asset",
+          "limit"
+        ]
+      },
+      "AccountMergeOpDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "account_merge"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "source",
+          "destination"
+        ]
+      },
+      "ManageSellOfferOpDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "manage_sell_offer"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "offerId": {
+            "type": "string",
+            "description": "\"0\" cancels the offer."
+          },
+          "amount": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "source",
+          "offerId",
+          "amount"
+        ]
+      },
+      "ManageDataOpDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "manage_data"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string",
+            "description": "Base64-encoded, or null to remove the entry.",
+            "nullable": true
+          }
+        },
+        "required": [
+          "type",
+          "source",
+          "name",
+          "value"
+        ]
+      },
+      "AccountSignerDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "number"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "ed25519_public_key",
+              "hash_x",
+              "preauth_tx",
+              "ed25519_signed_payload"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "weight",
+          "type"
+        ]
+      },
+      "SetOptionsOpDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "set_options"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "signer": {
+            "description": "The signer this op touches, decoded to its real type/key. Null when the op only touches thresholds/master weight and carries no signer field.",
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AccountSignerDto"
+              }
+            ]
+          },
+          "masterWeight": {
+            "type": "integer",
+            "nullable": true
+          },
+          "lowThreshold": {
+            "type": "integer",
+            "nullable": true
+          },
+          "medThreshold": {
+            "type": "integer",
+            "nullable": true
+          },
+          "highThreshold": {
+            "type": "integer",
+            "nullable": true
+          },
+          "homeDomain": {
+            "type": "string",
+            "description": "The close flow's own normalization never legitimately sets this - carried through so verify() can reject an op that does.",
+            "nullable": true
+          },
+          "setFlags": {
+            "type": "integer",
+            "nullable": true
+          },
+          "clearFlags": {
+            "type": "integer",
+            "nullable": true
+          },
+          "inflationDest": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "type",
+          "source",
+          "signer",
+          "masterWeight",
+          "lowThreshold",
+          "medThreshold",
+          "highThreshold",
+          "homeDomain",
+          "setFlags",
+          "clearFlags",
+          "inflationDest"
+        ]
+      },
+      "ClaimClaimableBalanceOpDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "claim_claimable_balance"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "balanceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "source",
+          "balanceId"
+        ]
+      },
+      "RevokeSponsorshipOpDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "revoke_sponsorship"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "entryKind": {
+            "type": "string",
+            "enum": [
+              "account",
+              "trustline",
+              "offer",
+              "data_entry",
+              "signer"
+            ]
+          },
+          "owner": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "source",
+          "entryKind",
+          "owner"
+        ]
+      },
+      "SubInvocationCallDto": {
+        "type": "object",
+        "properties": {
+          "contract": {
+            "type": "string"
+          },
+          "function": {
+            "type": "string"
+          },
+          "args": {
+            "description": "The decoded arguments rendered for a human, in order.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "contract",
+          "function",
+          "args"
+        ]
+      },
+      "InvokeHostFunctionOpDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "invoke_host_function"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "contract": {
+            "type": "string"
+          },
+          "function": {
+            "type": "string"
+          },
+          "args": {
+            "description": "The decoded arguments rendered for a human, in order.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "accountsReferenced": {
+            "description": "Every Stellar account (G...) named anywhere in the arguments or the authorization tree. A verifier insists these are all the closing account.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "contractsReferenced": {
+            "description": "Every contract (C...) named the same way, including authorized nested calls.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "unsupportedAddressCount": {
+            "type": "number",
+            "description": "Address forms that cannot be pinned to anything (muxed, claimable balance, LP). A verifier refuses any."
+          },
+          "authorizesBeyondSelf": {
+            "type": "boolean",
+            "description": "True when the signature authorizes more than the account's own plain contract calls."
+          },
+          "authDepth": {
+            "type": "number",
+            "description": "How deep the authorization tree nests. A token transfer must be 0."
+          },
+          "subInvocations": {
+            "description": "Every non-root call in the authorization tree, one level down from the root call.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubInvocationCallDto"
+            }
+          }
+        },
+        "required": [
+          "type",
+          "source",
+          "contract",
+          "function",
+          "args",
+          "accountsReferenced",
+          "contractsReferenced",
+          "unsupportedAddressCount",
+          "authorizesBeyondSelf",
+          "authDepth",
+          "subInvocations"
+        ]
+      },
+      "UnknownOpDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "unknown"
+            ]
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "source"
+        ]
+      },
+      "TxGuaranteesDto": {
+        "type": "object",
+        "properties": {
+          "mergeDestination": {
+            "type": "string",
+            "description": "The only address this transaction may merge into, or null if it merges nothing.",
+            "nullable": true
+          },
+          "paymentsOnlyTo": {
+            "description": "Every address this transaction pays to - a payment op to anywhere else fails verification.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "minXlmFromConversions": {
+            "type": "string",
+            "description": "The least XLM any conversion in this transaction is allowed to deliver, or null if none.",
+            "nullable": true
+          }
+        },
+        "required": [
+          "mergeDestination",
+          "paymentsOnlyTo",
+          "minXlmFromConversions"
+        ]
+      },
+      "TxIntentDto": {
+        "type": "object",
+        "properties": {
+          "summary": {
+            "type": "string",
+            "description": "Human-readable summary of what this transaction does."
+          },
+          "source": {
+            "type": "string",
+            "description": "The account this transaction acts as (G...)."
+          },
+          "fee": {
+            "type": "string",
+            "description": "Transaction fee, in stroops."
+          },
+          "memo": {
+            "type": "string",
+            "nullable": true
+          },
+          "memoType": {
+            "type": "string",
+            "enum": [
+              "text",
+              "id",
+              "hash"
+            ],
+            "nullable": true
+          },
+          "guarantees": {
+            "$ref": "#/components/schemas/TxGuaranteesDto"
+          },
+          "operations": {
+            "type": "array",
+            "description": "Every operation this transaction contains, decoded to one of the 11 known shapes.",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/PathPaymentStrictSendOpDto"
+                },
+                {
+                  "$ref": "#/components/schemas/PaymentOpDto"
+                },
+                {
+                  "$ref": "#/components/schemas/ChangeTrustOpDto"
+                },
+                {
+                  "$ref": "#/components/schemas/AccountMergeOpDto"
+                },
+                {
+                  "$ref": "#/components/schemas/ManageSellOfferOpDto"
+                },
+                {
+                  "$ref": "#/components/schemas/ManageDataOpDto"
+                },
+                {
+                  "$ref": "#/components/schemas/SetOptionsOpDto"
+                },
+                {
+                  "$ref": "#/components/schemas/ClaimClaimableBalanceOpDto"
+                },
+                {
+                  "$ref": "#/components/schemas/RevokeSponsorshipOpDto"
+                },
+                {
+                  "$ref": "#/components/schemas/InvokeHostFunctionOpDto"
+                },
+                {
+                  "$ref": "#/components/schemas/UnknownOpDto"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "path_payment_strict_send": "#/components/schemas/PathPaymentStrictSendOpDto",
+                  "payment": "#/components/schemas/PaymentOpDto",
+                  "change_trust": "#/components/schemas/ChangeTrustOpDto",
+                  "account_merge": "#/components/schemas/AccountMergeOpDto",
+                  "manage_sell_offer": "#/components/schemas/ManageSellOfferOpDto",
+                  "manage_data": "#/components/schemas/ManageDataOpDto",
+                  "set_options": "#/components/schemas/SetOptionsOpDto",
+                  "claim_claimable_balance": "#/components/schemas/ClaimClaimableBalanceOpDto",
+                  "revoke_sponsorship": "#/components/schemas/RevokeSponsorshipOpDto",
+                  "invoke_host_function": "#/components/schemas/InvokeHostFunctionOpDto",
+                  "unknown": "#/components/schemas/UnknownOpDto"
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "summary",
+          "source",
+          "fee",
+          "memo",
+          "memoType",
+          "guarantees",
+          "operations"
+        ]
+      },
+      "CloseTransactionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "order": {
+            "type": "number",
+            "description": "Position among the transactions in this round, from 0."
+          },
+          "dependsOn": {
+            "description": "The ids of transactions in this round that must be submitted and confirmed before this one.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "xdr": {
+            "type": "string",
+            "description": "Unsigned transaction envelope, base64 XDR."
+          },
+          "networkPassphrase": {
+            "type": "string"
+          },
+          "sourceSequence": {
+            "type": "string",
+            "description": "The source account's sequence number this transaction was built against."
+          },
+          "validUntilLedger": {
+            "type": "number",
+            "description": "The ledger this transaction's time bound expires at."
+          },
+          "covers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "NORMALIZE_SIGNERS",
+                "REVOKE_SPONSORSHIP",
+                "REMOVE_DATA_ENTRIES",
+                "CANCEL_OFFERS",
+                "ADD_TRUSTLINE_FOR_CLAIM",
+                "CLAIM_BALANCES",
+                "EXIT_POSITIONS",
+                "HANDLE_ASSETS",
+                "REMOVE_TRUSTLINES",
+                "CLOSE_ACCOUNT",
+                "MERGE"
+              ]
+            }
+          },
+          "needsSponsoredFee": {
+            "type": "boolean",
+            "description": "True when the account cannot pay this transaction's own fee without dropping below its reserve - the client must route the signed envelope through POST /:network/fee-bump/sponsor before submitting it. Absent (not false) otherwise.",
+            "enum": [
+              true
+            ]
+          },
+          "intent": {
+            "$ref": "#/components/schemas/TxIntentDto"
+          }
+        },
+        "required": [
+          "id",
+          "order",
+          "dependsOn",
+          "xdr",
+          "networkPassphrase",
+          "sourceSequence",
+          "validUntilLedger",
+          "covers",
+          "intent"
+        ]
+      },
+      "RemainingDto": {
+        "type": "object",
+        "properties": {
+          "steps": {
+            "type": "number",
+            "description": "Approximate number of build rounds still remaining."
+          },
+          "requiresAnotherCall": {
+            "type": "boolean",
+            "description": "True when more transactions follow: submit these, wait for confirmation, then request transactions again."
+          }
+        },
+        "required": [
+          "steps",
+          "requiresAnotherCall"
+        ]
+      },
+      "TransactionsResponseDto": {
+        "type": "object",
+        "properties": {
+          "planHash": {
+            "type": "string",
+            "description": "Deterministic hash of this plan's content - unchanged inputs yield the same hash."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "needs_decisions",
+              "blocked",
+              "complete"
+            ]
+          },
+          "transactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CloseTransactionDto"
+            }
+          },
+          "remaining": {
+            "$ref": "#/components/schemas/RemainingDto"
+          }
+        },
+        "required": [
+          "planHash",
+          "status",
+          "transactions",
+          "remaining"
+        ]
+      },
+      "SubmitRequestDto": {
+        "type": "object",
+        "properties": {
+          "signedXdr": {
+            "type": "string",
+            "description": "Signed transaction envelope (base64 XDR) produced by the client.",
+            "example": "AAAAAgAAAAB..."
+          }
+        },
+        "required": [
+          "signedXdr"
+        ]
+      },
+      "SubmitResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "success"
+            ],
+            "example": "success"
+          },
+          "hash": {
+            "type": "string",
+            "description": "The submitted transaction's hash.",
+            "example": "a1b2c3...d4e5f6"
+          },
+          "ledger": {
+            "type": "number",
+            "description": "The ledger the transaction was included in.",
+            "example": 123456
+          }
+        },
+        "required": [
+          "status",
+          "hash",
+          "ledger"
+        ]
+      },
+      "SponsoredAccountDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "account"
+            ]
+          },
+          "owner": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "owner"
+        ]
+      },
+      "SponsoredTrustlineDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "trustline"
+            ]
+          },
+          "owner": {
+            "type": "string"
+          },
+          "asset": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "owner",
+          "asset"
+        ]
+      },
+      "SponsoredOfferDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "offer"
+            ]
+          },
+          "owner": {
+            "type": "string"
+          },
+          "offerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "owner",
+          "offerId"
+        ]
+      },
+      "SponsoredDataEntryDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "data_entry"
+            ]
+          },
+          "owner": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "owner",
+          "name"
+        ]
+      },
+      "SponsoredSignerDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "signer"
+            ]
+          },
+          "owner": {
+            "type": "string"
+          },
+          "signerKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "owner",
+          "signerKey"
+        ]
+      },
+      "SponsoredClaimableBalanceDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "claimable_balance"
+            ]
+          },
+          "balanceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "balanceId"
+        ]
+      },
+      "ClaimPredicateDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "unconditional",
+              "and",
+              "or",
+              "not",
+              "before_absolute_time",
+              "before_relative_time"
+            ]
+          },
+          "predicates": {
+            "description": "\"and\"/\"or\" only: the combined sub-predicates.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClaimPredicateDto"
+            }
+          },
+          "predicate": {
+            "description": "\"not\" only: the negated sub-predicate.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClaimPredicateDto"
+              }
+            ]
+          },
+          "absBeforeEpoch": {
+            "type": "string",
+            "description": "\"before_absolute_time\" only: Unix epoch seconds, as a string."
+          },
+          "relBeforeSeconds": {
+            "type": "string",
+            "description": "\"before_relative_time\" only: seconds after claim creation."
+          },
+          "deadlineEpoch": {
+            "type": "string",
+            "description": "\"before_relative_time\" only: absolute deadline this resolves to."
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "DataEntryDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string",
+            "description": "Base64-encoded value."
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ]
+      },
+      "AccountThresholdsDto": {
+        "type": "object",
+        "properties": {
+          "low": {
+            "type": "number"
+          },
+          "med": {
+            "type": "number"
+          },
+          "high": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "low",
+          "med",
+          "high"
+        ]
+      },
+      "TrustlineDto": {
+        "type": "object",
+        "properties": {
+          "asset": {
+            "type": "string",
+            "description": "\"CODE:ISSUER\" or \"native\"."
+          },
+          "balance": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "string",
+            "description": "Only from the Horizon-compatible reader; RPC's getAssetBalance doesn't expose it."
+          },
+          "authorized": {
+            "type": "boolean"
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset",
+          "balance",
+          "authorized",
+          "issuer",
+          "code"
+        ]
+      },
+      "OpenOfferDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "selling": {
+            "type": "string",
+            "description": "\"CODE:ISSUER\" or \"native\"."
+          },
+          "buying": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "string"
+          },
+          "price": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "selling",
+          "buying",
+          "amount",
+          "price"
+        ]
+      },
+      "PoolShareEntryDto": {
+        "type": "object",
+        "properties": {
+          "poolId": {
+            "type": "string",
+            "description": "64-char hex, without the L prefix."
+          }
+        },
+        "required": [
+          "poolId"
+        ]
+      },
+      "ClaimableBalanceDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Full 72-char hex balance ID (\"00000000\" + 64-char hash)."
+          },
+          "asset": {
+            "type": "string",
+            "description": "\"CODE:ISSUER\" or \"native\"."
+          },
+          "amount": {
+            "type": "string"
+          },
+          "claimants": {
+            "type": "array",
+            "description": "One entry per claimant, each with its own predicate.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "destination": {
+                  "type": "string"
+                },
+                "predicate": {
+                  "$ref": "#/components/schemas/ClaimPredicateDto"
+                }
+              },
+              "required": [
+                "destination",
+                "predicate"
+              ]
+            }
+          },
+          "sponsor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "asset",
+          "amount",
+          "claimants",
+          "sponsor"
+        ]
+      },
+      "DefiPositionDisplayDto": {
+        "type": "object",
+        "properties": {
+          "pool": {
+            "type": "string",
+            "description": "The pool, pair, or vault by name.",
+            "nullable": true
+          },
+          "asset": {
+            "type": "string",
+            "description": "Symbol of the position's asset; for an LP position, the pair (e.g. \"XLM/USDC\").",
+            "nullable": true
+          },
+          "amount": {
+            "type": "string",
+            "description": "Underlying amount in the asset's own units, decimal string - not shares/bTokens.",
+            "nullable": true
+          },
+          "collateralAmount": {
+            "type": "string",
+            "description": "The part of `amount` posted as collateral, when the protocol distinguishes it.",
+            "nullable": true
+          },
+          "yieldPct": {
+            "type": "string",
+            "description": "Current yield as a percentage with two decimals (\"3.99\").",
+            "nullable": true
+          },
+          "yieldKind": {
+            "type": "string",
+            "enum": [
+              "earned",
+              "paid"
+            ],
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "description": "One protocol-specific closing clause, e.g. \"9.95 XLM + 19.90 USDC\". Null/absent when there is nothing to add.",
+            "nullable": true
+          }
+        },
+        "required": [
+          "pool",
+          "asset",
+          "amount",
+          "collateralAmount",
+          "yieldPct",
+          "yieldKind"
+        ]
+      },
+      "BlendSupplyPositionDto": {
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "blend"
+            ]
+          },
+          "contractAddress": {
+            "type": "string",
+            "description": "Pool, market, or vault contract this position lives in."
+          },
+          "display": {
+            "$ref": "#/components/schemas/DefiPositionDisplayDto"
+          },
+          "wasmHash": {
+            "type": "string",
+            "description": "wasmHash -> protocol-version registry hook (not yet populated)."
+          },
+          "usdValue": {
+            "type": "string",
+            "nullable": true
+          },
+          "positionType": {
+            "type": "string",
+            "enum": [
+              "supply"
+            ]
+          },
+          "assetAddress": {
+            "type": "string"
+          },
+          "bTokenAmount": {
+            "type": "string"
+          },
+          "isBackstop": {
+            "type": "boolean",
+            "description": "True when this supply is also posted as backstop collateral."
+          }
+        },
+        "required": [
+          "protocol",
+          "contractAddress",
+          "usdValue",
+          "positionType",
+          "assetAddress",
+          "bTokenAmount"
+        ]
+      },
+      "BlendBorrowPositionDto": {
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "blend"
+            ]
+          },
+          "contractAddress": {
+            "type": "string",
+            "description": "Pool, market, or vault contract this position lives in."
+          },
+          "display": {
+            "$ref": "#/components/schemas/DefiPositionDisplayDto"
+          },
+          "wasmHash": {
+            "type": "string",
+            "description": "wasmHash -> protocol-version registry hook (not yet populated)."
+          },
+          "usdValue": {
+            "type": "string",
+            "nullable": true
+          },
+          "positionType": {
+            "type": "string",
+            "enum": [
+              "borrow"
+            ]
+          },
+          "assetAddress": {
+            "type": "string"
+          },
+          "dTokenAmount": {
+            "type": "string"
+          },
+          "healthFactor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocol",
+          "contractAddress",
+          "usdValue",
+          "positionType",
+          "assetAddress",
+          "dTokenAmount"
+        ]
+      },
+      "AquariusLpPositionDto": {
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "aquarius"
+            ]
+          },
+          "contractAddress": {
+            "type": "string",
+            "description": "Pool, market, or vault contract this position lives in."
+          },
+          "display": {
+            "$ref": "#/components/schemas/DefiPositionDisplayDto"
+          },
+          "wasmHash": {
+            "type": "string",
+            "description": "wasmHash -> protocol-version registry hook (not yet populated)."
+          },
+          "usdValue": {
+            "type": "string",
+            "nullable": true
+          },
+          "positionType": {
+            "type": "string",
+            "enum": [
+              "lp"
+            ]
+          },
+          "shareAmount": {
+            "type": "string"
+          },
+          "claimableAquaAmount": {
+            "type": "string",
+            "description": "Reported by OctoPos alongside the LP position."
+          },
+          "tokens": {
+            "description": "The pool's tokens in the pool's own order.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "shareToken": {
+            "type": "string",
+            "description": "The pool's separate LP share token contract."
+          },
+          "poolType": {
+            "type": "string",
+            "enum": [
+              "constant_product",
+              "stable",
+              "concentrated"
+            ]
+          }
+        },
+        "required": [
+          "protocol",
+          "contractAddress",
+          "usdValue",
+          "positionType",
+          "shareAmount"
+        ]
+      },
+      "SoroswapLpPositionDto": {
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "soroswap"
+            ]
+          },
+          "contractAddress": {
+            "type": "string",
+            "description": "Pool, market, or vault contract this position lives in."
+          },
+          "display": {
+            "$ref": "#/components/schemas/DefiPositionDisplayDto"
+          },
+          "wasmHash": {
+            "type": "string",
+            "description": "wasmHash -> protocol-version registry hook (not yet populated)."
+          },
+          "usdValue": {
+            "type": "string",
+            "nullable": true
+          },
+          "positionType": {
+            "type": "string",
+            "enum": [
+              "lp"
+            ]
+          },
+          "shareAmount": {
+            "type": "string"
+          },
+          "tokens": {
+            "description": "The pair's two token contracts (token_0, token_1).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "protocol",
+          "contractAddress",
+          "usdValue",
+          "positionType",
+          "shareAmount"
+        ]
+      },
+      "PhoenixLpPositionDto": {
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "phoenix"
+            ]
+          },
+          "contractAddress": {
+            "type": "string",
+            "description": "Pool, market, or vault contract this position lives in."
+          },
+          "display": {
+            "$ref": "#/components/schemas/DefiPositionDisplayDto"
+          },
+          "wasmHash": {
+            "type": "string",
+            "description": "wasmHash -> protocol-version registry hook (not yet populated)."
+          },
+          "usdValue": {
+            "type": "string",
+            "nullable": true
+          },
+          "positionType": {
+            "type": "string",
+            "enum": [
+              "lp"
+            ]
+          },
+          "shareAmount": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocol",
+          "contractAddress",
+          "usdValue",
+          "positionType",
+          "shareAmount"
+        ]
+      },
+      "PhoenixStakePositionDto": {
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "phoenix"
+            ]
+          },
+          "contractAddress": {
+            "type": "string",
+            "description": "Pool, market, or vault contract this position lives in."
+          },
+          "display": {
+            "$ref": "#/components/schemas/DefiPositionDisplayDto"
+          },
+          "wasmHash": {
+            "type": "string",
+            "description": "wasmHash -> protocol-version registry hook (not yet populated)."
+          },
+          "usdValue": {
+            "type": "string",
+            "nullable": true
+          },
+          "positionType": {
+            "type": "string",
+            "enum": [
+              "stake"
+            ]
+          },
+          "stakedAmount": {
+            "type": "string"
+          },
+          "stakedAtEpoch": {
+            "type": "string",
+            "description": "Unix seconds; unbonding needs the original stake's timestamp."
+          }
+        },
+        "required": [
+          "protocol",
+          "contractAddress",
+          "usdValue",
+          "positionType",
+          "stakedAmount",
+          "stakedAtEpoch"
+        ]
+      },
+      "FxdaoCdpPositionDto": {
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "fxdao"
+            ]
+          },
+          "contractAddress": {
+            "type": "string",
+            "description": "Pool, market, or vault contract this position lives in."
+          },
+          "display": {
+            "$ref": "#/components/schemas/DefiPositionDisplayDto"
+          },
+          "wasmHash": {
+            "type": "string",
+            "description": "wasmHash -> protocol-version registry hook (not yet populated)."
+          },
+          "usdValue": {
+            "type": "string",
+            "nullable": true
+          },
+          "positionType": {
+            "type": "string",
+            "enum": [
+              "cdp"
+            ]
+          },
+          "denomination": {
+            "type": "string"
+          },
+          "collateralAmount": {
+            "type": "string"
+          },
+          "debtAmount": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocol",
+          "contractAddress",
+          "usdValue",
+          "positionType",
+          "denomination",
+          "collateralAmount",
+          "debtAmount"
+        ]
+      },
+      "UnrecognizedDefiPositionDto": {
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "blend",
+              "aquarius",
+              "soroswap",
+              "phoenix",
+              "fxdao"
+            ]
+          },
+          "rawType": {
+            "type": "string",
+            "description": "OctoPos's raw type tag (e.g. \"SUPPLY\"), kept for diagnostics."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the shape didn't validate."
+          }
+        },
+        "required": [
+          "protocol",
+          "rawType",
+          "reason"
+        ]
+      },
+      "DefiRpcEndpointDto": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "health": {
+            "type": "string"
+          },
+          "avgLatencyMs": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "url",
+          "health",
+          "avgLatencyMs"
+        ]
+      },
+      "DefiRpcPolicyDto": {
+        "type": "object",
+        "properties": {
+          "maxKeysPerCall": {
+            "type": "number"
+          },
+          "recommendedConcurrency": {
+            "type": "number"
+          },
+          "backoffOn429Ms": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "timeoutMs": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "maxKeysPerCall",
+          "recommendedConcurrency",
+          "backoffOn429Ms",
+          "timeoutMs"
+        ]
+      },
+      "DefiQueryKeysDto": {
+        "type": "object",
+        "properties": {
+          "rpcEndpoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DefiRpcEndpointDto"
+            }
+          },
+          "rpcPolicy": {
+            "$ref": "#/components/schemas/DefiRpcPolicyDto"
+          },
+          "slices": {
+            "type": "object",
+            "description": "Keyed by protocol; only protocols with a live slice are present.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DefiQueryKeysSliceDto"
+            }
+          }
+        },
+        "required": [
+          "rpcEndpoints",
+          "rpcPolicy",
+          "slices"
+        ]
+      },
+      "DefiPositionsResultDto": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "network": {
+            "type": "string",
+            "enum": [
+              "mainnet",
+              "testnet"
+            ]
+          },
+          "positions": {
+            "type": "array",
+            "description": "Every detected position, in whichever of the 7 known shapes it actually is.",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/BlendSupplyPositionDto"
+                },
+                {
+                  "$ref": "#/components/schemas/BlendBorrowPositionDto"
+                },
+                {
+                  "$ref": "#/components/schemas/AquariusLpPositionDto"
+                },
+                {
+                  "$ref": "#/components/schemas/SoroswapLpPositionDto"
+                },
+                {
+                  "$ref": "#/components/schemas/PhoenixLpPositionDto"
+                },
+                {
+                  "$ref": "#/components/schemas/PhoenixStakePositionDto"
+                },
+                {
+                  "$ref": "#/components/schemas/FxdaoCdpPositionDto"
+                }
+              ]
+            }
+          },
+          "unrecognizedPositions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnrecognizedDefiPositionDto"
+            }
+          },
+          "enrichment": {
+            "type": "object",
+            "description": "Keyed by asset/contract address.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DefiEnrichmentEntryDto"
+            }
+          },
+          "source": {
+            "type": "string",
+            "description": "OctoPos's own freshness/provenance signal (\"snapshot\" | \"empty\" | \"cache\" | \"not-tracked\")."
+          },
+          "timestamp": {
+            "type": "string",
+            "nullable": true
+          },
+          "queryKeys": {
+            "$ref": "#/components/schemas/DefiQueryKeysDto"
+          }
+        },
+        "required": [
+          "address",
+          "network",
+          "positions",
+          "unrecognizedPositions",
+          "enrichment",
+          "source",
+          "timestamp",
+          "queryKeys"
+        ]
+      },
+      "PlanBlockerDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Plain-language explanation."
+          },
+          "helpUrl": {
+            "type": "string",
+            "description": "A docs link with more detail."
+          },
+          "code": {
+            "type": "string",
+            "description": "Distinguishes an acknowledged, non-trapping warning (e.g. a chosen forfeit) from a hard blocker. Absent means the generic hard-blocking case."
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "SorobanTokenBalanceDto": {
+        "type": "object",
+        "properties": {
+          "contract": {
+            "type": "string",
+            "description": "The token contract, C..."
+          },
+          "balance": {
+            "type": "string",
+            "description": "Base units, integer string. \"0\" only for a token not yet held whose detected exit will pay out."
+          },
+          "symbol": {
+            "type": "string",
+            "nullable": true
+          },
+          "decimals": {
+            "type": "integer",
+            "nullable": true
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "explorer",
+                "positions",
+                "list",
+                "events",
+                "manual"
+              ]
+            }
+          }
+        },
+        "required": [
+          "contract",
+          "balance",
+          "symbol",
+          "decimals",
+          "sources"
+        ]
+      },
+      "SorobanTokenCoverageDto": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "explorer",
+              "positions",
+              "list",
+              "events",
+              "manual"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "failed",
+              "skipped"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "status"
+        ]
+      },
+      "EventsScannedRangeDto": {
+        "type": "object",
+        "properties": {
+          "fromLedger": {
+            "type": "number"
+          },
+          "toLedger": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "fromLedger",
+          "toLedger"
+        ]
+      },
+      "SorobanTokensResultDto": {
+        "type": "object",
+        "properties": {
+          "tokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SorobanTokenBalanceDto"
+            }
+          },
+          "unreadable": {
+            "description": "Candidate contracts whose balance could not be read.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "coverage": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SorobanTokenCoverageDto"
+            }
+          },
+          "eventsScanned": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EventsScannedRangeDto"
+              }
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanBlockerDto"
+            }
+          }
+        },
+        "required": [
+          "tokens",
+          "unreadable",
+          "coverage",
+          "eventsScanned",
+          "warnings"
+        ]
+      },
+      "AccountStateDto": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "network": {
+            "type": "string",
+            "enum": [
+              "mainnet",
+              "testnet"
+            ]
+          },
+          "sequence": {
+            "type": "string"
+          },
+          "nativeBalanceLumens": {
+            "type": "string"
+          },
+          "dataEntries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DataEntryDto"
+            }
+          },
+          "signers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountSignerDto"
+            }
+          },
+          "thresholds": {
+            "$ref": "#/components/schemas/AccountThresholdsDto"
+          },
+          "numSubEntries": {
+            "type": "number"
+          },
+          "numSponsoring": {
+            "type": "number"
+          },
+          "sponsoredEntries": {
+            "type": "array",
+            "description": "Ledger entries this account currently sponsors, on another account or itself.",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SponsoredAccountDto"
+                },
+                {
+                  "$ref": "#/components/schemas/SponsoredTrustlineDto"
+                },
+                {
+                  "$ref": "#/components/schemas/SponsoredOfferDto"
+                },
+                {
+                  "$ref": "#/components/schemas/SponsoredDataEntryDto"
+                },
+                {
+                  "$ref": "#/components/schemas/SponsoredSignerDto"
+                },
+                {
+                  "$ref": "#/components/schemas/SponsoredClaimableBalanceDto"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "kind",
+                "mapping": {
+                  "account": "#/components/schemas/SponsoredAccountDto",
+                  "trustline": "#/components/schemas/SponsoredTrustlineDto",
+                  "offer": "#/components/schemas/SponsoredOfferDto",
+                  "data_entry": "#/components/schemas/SponsoredDataEntryDto",
+                  "signer": "#/components/schemas/SponsoredSignerDto",
+                  "claimable_balance": "#/components/schemas/SponsoredClaimableBalanceDto"
+                }
+              }
+            }
+          },
+          "sponsorshipEnumerationIncomplete": {
+            "type": "boolean",
+            "description": "True when sponsoredEntries could not be enumerated completely."
+          },
+          "sponsoredBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "authImmutable": {
+            "type": "boolean",
+            "description": "AUTH_IMMUTABLE is set - ACCOUNT_MERGE is permanently blocked."
+          },
+          "trustlines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrustlineDto"
+            }
+          },
+          "openOffers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenOfferDto"
+            }
+          },
+          "poolShares": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PoolShareEntryDto"
+            }
+          },
+          "claimableBalances": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClaimableBalanceDto"
+            }
+          },
+          "subEntryMismatch": {
+            "type": "boolean",
+            "description": "True when the enumerated subentry count is lower than numSubEntries from the ledger."
+          },
+          "defiPositions": {
+            "$ref": "#/components/schemas/DefiPositionsResultDto"
+          },
+          "defiPositionsWarnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanBlockerDto"
+            }
+          },
+          "sorobanTokens": {
+            "description": "Absent on account reads produced before this field existed - treat absence as \"nothing known\", never \"nothing held\".",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SorobanTokensResultDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "address",
+          "network",
+          "sequence",
+          "nativeBalanceLumens",
+          "dataEntries",
+          "signers",
+          "thresholds",
+          "numSubEntries",
+          "numSponsoring",
+          "sponsoredEntries",
+          "sponsorshipEnumerationIncomplete",
+          "sponsoredBy",
+          "authImmutable",
+          "trustlines",
+          "openOffers",
+          "poolShares",
+          "claimableBalances",
+          "subEntryMismatch",
+          "defiPositions",
+          "defiPositionsWarnings"
+        ]
+      },
+      "AllowanceDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "The token contract, C...",
+            "example": "CABC...XYZ"
+          },
+          "tokenSymbol": {
+            "type": "string",
+            "description": "From the token's own symbol(), null when it does not answer.",
+            "nullable": true,
+            "example": "USDC"
+          },
+          "tokenDecimals": {
+            "type": "integer",
+            "description": "From the token's own decimals(), null when it does not answer.",
+            "nullable": true,
+            "example": 7
+          },
+          "spender": {
+            "type": "string",
+            "description": "The approved spender - almost always a contract (C...), occasionally an account (G...).",
+            "example": "CDEF...UVW"
+          },
+          "spenderProtocol": {
+            "type": "string",
+            "description": "The spender's protocol, when its address resolves to a known DeFi contract registry entry. Null does not mean unsafe - most legitimate spenders simply aren't in the registry.",
+            "enum": [
+              "blend",
+              "aquarius",
+              "soroswap",
+              "phoenix",
+              "fxdao"
+            ],
+            "nullable": true
+          },
+          "amount": {
+            "type": "string",
+            "description": "Base units, integer string, as allowance(from, spender) reports it live.",
+            "example": "1000000000"
+          },
+          "expirationLedger": {
+            "type": "integer",
+            "description": "The ledger this allowance expires at, from the approve event that discovered it. Null when the amount is confirmed live but no matching approve event was found (e.g. aged out of the event scan's retention window) - the amount is still ground truth regardless.",
+            "nullable": true,
+            "example": 123456
+          },
+          "sources": {
+            "type": "array",
+            "description": "Every source that proposed this (token, spender) pair.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "events",
+                "registry"
+              ]
+            }
+          }
+        },
+        "required": [
+          "token",
+          "tokenSymbol",
+          "tokenDecimals",
+          "spender",
+          "spenderProtocol",
+          "amount",
+          "expirationLedger",
+          "sources"
+        ]
+      },
+      "AllowanceCoverageDto": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "events",
+              "registry"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "failed",
+              "skipped"
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "description": "Detail on a failed/skipped source."
+          }
+        },
+        "required": [
+          "source",
+          "status"
+        ]
+      },
+      "EventsScannedDto": {
+        "type": "object",
+        "properties": {
+          "fromLedger": {
+            "type": "number",
+            "description": "First ledger the event scan covered."
+          },
+          "toLedger": {
+            "type": "number",
+            "description": "Last ledger the event scan covered."
+          }
+        },
+        "required": [
+          "fromLedger",
+          "toLedger"
+        ]
+      },
+      "AllowancesResultDto": {
+        "type": "object",
+        "properties": {
+          "allowances": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AllowanceDto"
+            }
+          },
+          "coverage": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AllowanceCoverageDto"
+            }
+          },
+          "eventsScanned": {
+            "description": "The ledger range the event scan covered, or null if it ran out of budget before starting.",
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EventsScannedDto"
+              }
+            ]
+          },
+          "warnings": {
+            "description": "Plain-language warnings: a source that failed, candidates dropped by the cap.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanBlockerDto"
+            }
+          }
+        },
+        "required": [
+          "allowances",
+          "coverage",
+          "eventsScanned",
+          "warnings"
+        ]
+      },
+      "RevokeAllowanceResponseDto": {
+        "type": "object",
+        "properties": {
+          "transaction": {
+            "type": "string",
+            "description": "Unsigned revocation transaction envelope (base64 XDR).",
+            "example": "AAAAAgAAAAB..."
+          }
+        },
+        "required": [
+          "transaction"
+        ]
+      },
+      "ConversionPathDto": {
+        "type": "object",
+        "properties": {
+          "fromAsset": {
+            "type": "string",
+            "description": "Asset code:issuer, or `native`.",
+            "example": "USDC:GA2H...ISSUER"
+          },
+          "toAsset": {
+            "type": "string",
+            "description": "Asset code:issuer, or `native`.",
+            "example": "native"
+          },
+          "path": {
+            "description": "Intermediate assets the path routes through, in order.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "estimatedReceive": {
+            "type": "string",
+            "description": "Estimated amount received, before slippage floor.",
+            "example": "42.5000000"
+          },
+          "destMin": {
+            "type": "string",
+            "description": "The minimum accepted after slippage - the actual on-chain floor.",
+            "example": "42.0000000"
+          }
+        },
+        "required": [
+          "fromAsset",
+          "toAsset",
+          "path",
+          "estimatedReceive",
+          "destMin"
+        ]
+      },
+      "PathResponseDto": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "description": "The conversion path, or null if none was found.",
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ConversionPathDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "MediatorSignRequestDto": {
+        "type": "object",
+        "properties": {
+          "transaction": {
+            "type": "string",
+            "description": "Unsigned atomic transaction (base64 XDR): op0 accountMerge into the mediator, op1 payment from the mediator to the destination.",
+            "example": "AAAAAgAAAAB..."
+          }
+        },
+        "required": [
+          "transaction"
+        ]
+      },
+      "MediatorSignResponseDto": {
+        "type": "object",
+        "properties": {
+          "transaction": {
+            "type": "string",
+            "description": "The mediator-co-signed transaction envelope (base64 XDR).",
+            "example": "AAAAAgAAAAB..."
+          }
+        },
+        "required": [
+          "transaction"
+        ]
+      },
+      "MediatorCheckResultDto": {
+        "type": "object",
+        "properties": {
+          "requiresMediator": {
+            "type": "boolean",
+            "description": "Whether closing into this destination needs the mediator flow."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Plain-language reason for the requiresMediator value."
+          },
+          "requiresMemo": {
+            "type": "boolean",
+            "description": "Whether the exchange requires a deposit memo."
+          },
+          "memoType": {
+            "type": "string",
+            "description": "The memo type the exchange requires, or null if none/not applicable.",
+            "enum": [
+              "text",
+              "id",
+              "hash"
+            ],
+            "nullable": true
+          },
+          "exchangeName": {
+            "type": "string",
+            "description": "The matched exchange's name, or null if the destination isn't a known exchange.",
+            "nullable": true
+          },
+          "available": {
+            "type": "boolean",
+            "description": "Whether the server can actually perform the mediator flow (secret configured)."
+          }
+        },
+        "required": [
+          "requiresMediator",
+          "reason",
+          "requiresMemo",
+          "memoType",
+          "exchangeName",
+          "available"
+        ]
+      },
+      "FeeBumpRequestDto": {
+        "type": "object",
+        "properties": {
+          "transaction": {
+            "type": "string",
+            "description": "The unsigned or user-signed wind-down transaction to sponsor (base64 XDR), inner fee set to zero.",
+            "example": "AAAAAgAAAAB..."
+          }
+        },
+        "required": [
+          "transaction"
+        ]
+      },
+      "FeeBumpSponsorResponseDto": {
+        "type": "object",
+        "properties": {
+          "transaction": {
+            "type": "string",
+            "description": "The fee-bumped transaction envelope (base64 XDR), signed by the sponsor.",
+            "example": "AAAABQAAAAB..."
+          }
+        },
+        "required": [
+          "transaction"
+        ]
+      },
+      "RateLimitOverrideDto": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Max requests per window for this key."
+          },
+          "ttlMs": {
+            "type": "number",
+            "description": "Window length, in milliseconds."
+          }
+        },
+        "required": [
+          "limit",
+          "ttlMs"
+        ]
+      },
+      "CreateApiKeyRequestDto": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Integrator identity - used for metering and grouping keys."
+          },
+          "rateLimit": {
+            "description": "Per-key rate limit override. Omit to use the server's global default.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RateLimitOverrideDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "owner"
+        ]
+      },
+      "ApiKeyRecordDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The key's id (the SHA-256 hash of the secret) - never the raw key."
+          },
+          "owner": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "ISO 8601."
+          },
+          "revokedAt": {
+            "type": "string",
+            "description": "ISO 8601, or null if still active.",
+            "nullable": true
+          },
+          "rotatedFrom": {
+            "type": "string",
+            "description": "The previous key's id, if this key replaced one.",
+            "nullable": true
+          },
+          "rateLimit": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RateLimitOverrideDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "owner",
+          "createdAt"
+        ]
+      },
+      "CreateApiKeyResponseDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The raw secret - shown exactly once, never retrievable again."
+          },
+          "record": {
+            "$ref": "#/components/schemas/ApiKeyRecordDto"
+          }
+        },
+        "required": [
+          "key",
+          "record"
+        ]
+      },
+      "ApiKeyUsageDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The key's id (the SHA-256 hash of the secret) - never the raw key."
+          },
+          "owner": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "ISO 8601."
+          },
+          "revokedAt": {
+            "type": "string",
+            "description": "ISO 8601, or null if still active.",
+            "nullable": true
+          },
+          "rotatedFrom": {
+            "type": "string",
+            "description": "The previous key's id, if this key replaced one.",
+            "nullable": true
+          },
+          "rateLimit": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RateLimitOverrideDto"
+              }
+            ]
+          },
+          "requestsSinceStart": {
+            "type": "number",
+            "description": "Best-effort request count for this owner since the API process last started. Not durable across restarts or shared across instances (MeteringService's documented scope)."
+          }
+        },
+        "required": [
+          "id",
+          "owner",
+          "createdAt"
+        ]
+      },
+      "ListApiKeysResponseDto": {
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApiKeyUsageDto"
+            }
+          }
+        },
+        "required": [
+          "keys"
+        ]
+      }
+    }
+  }
+}

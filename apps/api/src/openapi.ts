@@ -1,4 +1,4 @@
-import { DocumentBuilder } from "@nestjs/swagger";
+import { DocumentBuilder, type OpenAPIObject } from "@nestjs/swagger";
 
 /**
  * One source for the version the service reports. The OpenAPI document and the service index
@@ -18,6 +18,7 @@ export function buildOpenApiConfig() {
     .setTitle("LumenWipe API")
     .setDescription("Programmatic close-out of Stellar accounts.")
     .setVersion(API_VERSION)
+    .addServer("https://api.lumenwipe.com")
     .addBearerAuth(
       // bearerFormat is set explicitly: the default is "JWT", but this credential
       // is an opaque integrator API key, not a JWT.
@@ -42,4 +43,9 @@ export function buildOpenApiConfig() {
     .addTag("service", "Service index")
     .addTag("admin", "Operator-only self-serve API key management")
     .build();
+}
+
+/** Stable serialization of the published contract, shared by the docs generator and its drift test. */
+export function serializeOpenApiDocument(document: OpenAPIObject): string {
+  return `${JSON.stringify(document, null, 2)}\n`;
 }

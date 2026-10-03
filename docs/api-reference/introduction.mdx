@@ -1,0 +1,76 @@
+---
+title: "Introduction"
+description: "Authentication, networks, errors, and rate limits for the LumenWipe REST API."
+icon: "code"
+---
+
+The LumenWipe API reads on-chain state and builds every unsigned transaction of a close. Your code verifies, signs, and submits. A private key never reaches the API.
+
+The endpoint pages in this section are generated from the API's OpenAPI document. Prefer a typed client? The `@lumenwipe/sdk` package wraps these endpoints.
+
+## Base URL
+
+```text
+https://api.lumenwipe.com
+```
+
+Most routes take the network in the path, either `mainnet` or `testnet`, for example `/v1/testnet/close/plan`. Any other value returns `400 invalid_network`.
+
+## Authentication
+
+Send your API key as a bearer token:
+
+```bash
+curl https://api.lumenwipe.com/testnet/account/G... \
+  -H "Authorization: Bearer $LUMENWIPE_API_KEY"
+```
+
+`GET /`, the health routes, and `GET /config/exchange-registry` need no key. Everything else does. [Get an API key](https://lumenwipe.com/api-keys) with the self-service page.
+
+<Warning>
+  Keep the key on your server. A browser application should call the API through its own backend, as
+  the LumenWipe web app does.
+</Warning>
+
+## Errors
+
+Every error uses the same envelope, whichever endpoint produced it:
+
+```json
+{
+  "error": {
+    "code": "destination_not_acknowledged",
+    "message": "Plain-language explanation.",
+    "details": {}
+  }
+}
+```
+
+Branch on `code`. The `message` is written for people and may be reworded, and `details` appears only when there is more to say. Responses never include stack traces or raw SDK errors.
+
+| Status | Code             | Meaning                                                                                                                                  |
+| ------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | `bad_request`    | The request is malformed. Specific codes such as `invalid_network` and `invalid_body` name the problem.                                  |
+| 401    | `unauthorized`   | The API key is missing or invalid.                                                                                                       |
+| 404    | `not_found`      | The route or the account does not exist.                                                                                                 |
+| 409    | `quote_drifted`  | A conversion route disappeared between planning and building. Plan again.                                                                |
+| 422    | specific code    | The request is valid but cannot be built, for example `destination_not_acknowledged` when an unrecognized destination was not confirmed. |
+| 429    | `rate_limited`   | Too many requests. Wait and retry.                                                                                                       |
+| 500    | `internal_error` | Something went wrong on the server. Retry.                                                                                               |
+
+Each endpoint page lists the codes that endpoint can return.
+
+## Rate limits
+
+Requests are limited per API key. The default is 120 requests per minute. Rate limiting applies before authentication, so requests without a valid key are limited too. Exceeding the limit returns `429 rate_limited`.
+
+## The close loop
+
+A close is a sequence of calls. The API keeps no state between them, so a close can resume after an interruption.
+
+1. `POST /v1/{network}/close/plan` returns the full plan and any decisions you must answer.
+2. `POST /v1/{network}/close/transactions` returns the next unsigned transactions. Verify and sign them.
+3. `POST /v1/{network}/submit` submits the signed transaction.
+4. Repeat from step 2 while the response says another call is required.
+
+For exchange destinations, `POST /{network}/mediator/sign` co-signs the mediator's forward payment. To plan several accounts at once, use `POST /v1/{network}/close/batch-plan`. See [how a close works](/guides/how-closing-works) for the flow from a user's side.
