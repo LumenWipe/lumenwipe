@@ -55,6 +55,17 @@
           "use-cases/embedded-wallet-platforms",
           "use-cases/businesses-and-operations"
         ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/closing-an-account",
+          "guides/how-closing-works",
+          "guides/signing-options",
+          "guides/exiting-protocol-positions",
+          "guides/exchanges-and-the-mediator",
+          "guides/troubleshooting-and-faq"
+        ]
       }
     ]
   },

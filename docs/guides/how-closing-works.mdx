@@ -1,0 +1,63 @@
+---
+title: "How a close works"
+description: "The analyze, review, sign, and execute flow from the first address to the final merge."
+icon: "route"
+---
+
+A close has four stages. Nothing is signed until you have seen the whole plan.
+
+<Steps>
+  <Step title="Analyze">
+    You enter the account to close, a destination, and the network. LumenWipe reads the live
+    on-chain state: balances, trustlines, offers, data entries, signers, sponsorships, claimable
+    balances, and DeFi positions. For each asset you choose what happens to it: convert to XLM,
+    return to the issuer, or transfer to an account you name.
+  </Step>
+  <Step title="Review">
+    The review page shows the complete ordered plan, the estimated fee, and the estimated XLM that
+    reaches the destination. No transaction exists yet. If you close the tab here, nothing is saved
+    and nothing has happened.
+  </Step>
+  <Step title="Sign">
+    Confirming the review builds the first transaction. Before your signer ever sees it, the browser
+    decodes it and checks that it does exactly what you asked, against your own inputs and not the
+    server's response. A mismatch aborts before signing. See [signing
+    options](/guides/signing-options).
+  </Step>
+  <Step title="Execute">
+    The signed transaction is submitted and confirmed. If more work remains, the next round starts
+    from fresh on-chain state, until the account is merged.
+  </Step>
+</Steps>
+
+## The plan
+
+For a given account state the plan is always the same. It runs in this order, which satisfies the ledger's constraints:
+
+1. Exit DeFi positions, each as its own transaction
+2. Normalize signers, when extra signers exist
+3. Remove data entries
+4. Claim claimable balances
+5. Cancel offers
+6. Withdraw liquidity pool shares
+7. Handle each asset
+8. Remove trustlines
+9. Merge the account
+
+## One transaction, or several
+
+Most accounts close in a single transaction, signed once. More are needed in a few cases:
+
+- **An exchange destination** adds one transaction, the mediator transfer. See [exchange closes](/guides/exchanges-and-the-mediator).
+- **Claimable balances** are claimed first and the account is closed second, so the proceeds are not lost.
+- **A Soroban step**, such as a DeFi exit or a Soroswap aggregator swap, is its own transaction, because it cannot be mixed with other operations.
+- **More than 100 operations** are split into the fewest transactions the protocol limit allows.
+
+## Interruptions are safe
+
+The server keeps no progress between rounds. Each round re-reads the account and works out what remains. If your browser closes or a submission fails, reopen the flow and continue: steps that already confirmed are skipped, and a failed step can be retried on its own.
+
+<Info>
+  Prefer to drive this from your own code? The same flow is available through the REST API and the
+  `@lumenwipe/sdk` package.
+</Info>
