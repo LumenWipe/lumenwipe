@@ -1,0 +1,33 @@
+---
+title: "Error handling"
+description: "The errors the SDK throws and how to handle them."
+icon: "triangle-exclamation"
+---
+
+| Error                              | Thrown when                                                 | Properties                            |
+| ---------------------------------- | ----------------------------------------------------------- | ------------------------------------- |
+| `LumenWipeApiError`                | The API responds with a non-2xx status.                     | `status`, and the parsed error `body` |
+| `LumenWipeTimeoutError`            | A request exceeds the configured `timeout`.                 | `timeoutMs`                           |
+| `InsufficientSignatureWeightError` | `runClose` finds a signature weight below what is required. | `pending`, for resuming               |
+
+```ts
+import { LumenWipeApiError, LumenWipeTimeoutError } from "@lumenwipe/sdk";
+
+try {
+  await client.closeTransactions({ source, destination });
+} catch (error) {
+  if (error instanceof LumenWipeApiError) {
+    console.error(error.status, error.body);
+  } else if (error instanceof LumenWipeTimeoutError) {
+    console.error(`Timed out after ${error.timeoutMs}ms`);
+  } else {
+    throw error;
+  }
+}
+```
+
+## Retrying safely
+
+The API is stateless and re-reads live state each round, so calling `closeTransactions` again after a failure is always safe. Before resubmitting a transaction after a timeout, check whether it already landed. A signed transaction is valid until its `validUntilLedger`.
+
+Show users the plain-language `message` from blockers and error bodies, not raw status codes or stack traces.
