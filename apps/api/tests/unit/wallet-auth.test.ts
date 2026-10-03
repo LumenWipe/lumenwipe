@@ -52,6 +52,20 @@ describe("verifyChallenge", () => {
     expect(verifyChallenge(SECRET, kp.publicKey(), message, sign(kp, message), later)).toBe(false);
   });
 
+  test("still accepts a challenge just before it expires", () => {
+    const kp = Keypair.random();
+    const { message } = buildChallenge(SECRET, kp.publicKey(), NOW);
+    const nearEnd = new Date(NOW.getTime() + 299_000);
+    expect(verifyChallenge(SECRET, kp.publicKey(), message, sign(kp, message), nearEnd)).toBe(true);
+  });
+
+  test("rejects a message whose issued time was edited", () => {
+    const kp = Keypair.random();
+    const { message } = buildChallenge(SECRET, kp.publicKey(), NOW);
+    const forged = message.replace(/Issued: \d+/, "Issued: 9999999999");
+    expect(verifyChallenge(SECRET, kp.publicKey(), forged, sign(kp, forged), NOW)).toBe(false);
+  });
+
   test("rejects a self-made message that was not minted by this server", () => {
     const kp = Keypair.random();
     const { message } = buildChallenge("another-secret-0123456789-abcdef", kp.publicKey(), NOW);

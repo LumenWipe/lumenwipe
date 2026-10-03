@@ -2,10 +2,9 @@ import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { Keypair, StrKey } from "@stellar/stellar-sdk";
 
 const CHALLENGE_TTL_SECONDS = 300;
+const CHALLENGE_WINDOW_SECONDS = 60;
 const SESSION_TTL_SECONDS = 1800;
 const SEP53_PREFIX = "Stellar Signed Message:\n";
-const MESSAGE_PATTERN =
-  /^LumenWipe API keys sign-in\nAddress: (G[A-Z2-7]{55})\nExpires: (\d+)\nNonce: ([A-Za-z0-9_-]+)$/;
 
 export interface Challenge {
   message: string;
@@ -27,24 +26,30 @@ function safeEqual(a: Buffer, b: Buffer): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-function challengeNonce(secret: string, address: string, expires: number): string {
-  return hmac(secret, "challenge", address, String(expires)).toString("base64url");
-}
-
 export function isClassicAddress(address: unknown): address is string {
   return typeof address === "string" && StrKey.isValidEd25519PublicKey(address);
 }
 
+function windowStart(now: Date, windowsAgo = 0): number {
+  const seconds = Math.floor(now.getTime() / 1000);
+  return seconds - (seconds % CHALLENGE_WINDOW_SECONDS) - windowsAgo * CHALLENGE_WINDOW_SECONDS;
+}
+
+function challengeMessage(secret: string, address: string, start: number): string {
+  const nonce = hmac(secret, "challenge", address, String(start)).toString("base64url");
+  return `LumenWipe API keys sign-in\nAddress: ${address}\nIssued: ${start}\nNonce: ${nonce}`;
+}
+
 /**
- * Stateless SEP-53 sign-in challenge: the nonce is an HMAC of the address and expiry, so the API
- * stores nothing and any instance can verify it.
+ * Stateless SEP-53 sign-in challenge: the nonce is an HMAC of the address and a time window, so
+ * the API stores nothing and any instance can verify it. Verification rebuilds the expected
+ * message from the server's clock instead of reading a timestamp out of what the caller sent.
  */
 export function buildChallenge(secret: string, address: string, now: Date = new Date()): Challenge {
-  const expires = Math.floor(now.getTime() / 1000) + CHALLENGE_TTL_SECONDS;
-  const nonce = challengeNonce(secret, address, expires);
+  const start = windowStart(now);
   return {
-    message: `LumenWipe API keys sign-in\nAddress: ${address}\nExpires: ${expires}\nNonce: ${nonce}`,
-    expiresAt: new Date(expires * 1000).toISOString(),
+    message: challengeMessage(secret, address, start),
+    expiresAt: new Date((start + CHALLENGE_TTL_SECONDS) * 1000).toISOString(),
   };
 }
 
@@ -59,13 +64,14 @@ export function verifyChallenge(
   signature: string,
   now: Date = new Date()
 ): boolean {
-  const match = MESSAGE_PATTERN.exec(message);
-  if (!match || match[1] !== address) return false;
-  const expires = Number(match[2]);
-  if (expires < Math.floor(now.getTime() / 1000)) return false;
-  if (!safeEqual(Buffer.from(match[3]), Buffer.from(challengeNonce(secret, address, expires)))) {
-    return false;
+  const windows = CHALLENGE_TTL_SECONDS / CHALLENGE_WINDOW_SECONDS;
+  const received = Buffer.from(message);
+  let valid = false;
+  for (let ago = 0; ago < windows; ago++) {
+    const expected = Buffer.from(challengeMessage(secret, address, windowStart(now, ago)));
+    valid = safeEqual(received, expected) || valid;
   }
+  if (!valid) return false;
   const digest = createHash("sha256").update(`${SEP53_PREFIX}${message}`).digest();
   const sig = Buffer.from(signature, "base64");
   return sig.length === 64 && Keypair.fromPublicKey(address).verify(digest, sig);

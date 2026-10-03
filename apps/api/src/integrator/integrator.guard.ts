@@ -32,7 +32,7 @@ export class IntegratorGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<IntegratorRequest>();
     const header = req.headers.authorization;
     const token = header?.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
-    const address = token ? verifySession(secret, token) : null;
+    const address = verifySession(secret, token);
     if (!address) fail("unauthorized", "Sign in with your wallet to manage API keys.", 401);
     req.integratorAddress = address;
     return true;
