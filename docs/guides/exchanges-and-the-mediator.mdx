@@ -1,0 +1,35 @@
+---
+title: "Exchange closes and the mediator"
+description: "How to close an account into an exchange deposit address, and why a memo is required."
+icon: "building-columns"
+---
+
+Exchanges do not credit an incoming `ACCOUNT_MERGE`. They only recognize a normal payment that carries a memo. A merge sent straight to a deposit address is typically lost.
+
+## How LumenWipe handles it
+
+When the destination is an exchange, the close ends in a single atomic transaction with two operations:
+
+1. Your account merges into a shared **mediator account**.
+2. The mediator immediately pays the full amount to your exchange address as an ordinary payment with your memo.
+
+You sign the merge. LumenWipe co-signs only the mediator's payment, after checking its exact shape. Because both operations are one transaction with a fixed destination and amount, the funds cannot be redirected between them.
+
+The mediator is a persistent account funded once by the operator, so you do not lose 1 XLM to a throwaway intermediary. You recover essentially everything, and pay only network fees.
+
+## Your browser checks it too
+
+Before you sign, the browser confirms that the merge comes from your account, that the payment comes from the account the merge just paid, that it goes to the address you typed, in XLM, and for at least the balance it observed. The mediator is a conduit and never a destination.
+
+## The memo is required
+
+A known exchange or anchor needs the correct memo, of the right type (text, ID, or hash). LumenWipe blocks submission without it, because funds sent to an exchange without a memo are typically lost.
+
+## Addresses LumenWipe does not recognize
+
+The list of known exchanges is curated, so an unlisted address may still be an exchange deposit address. LumenWipe does not assume an unlisted address is a personal wallet. It asks you to confirm the destination, and it will not build the transaction until you answer. Confirm only if you know where the address came from.
+
+<Warning>
+  If you are unsure whether an address belongs to an exchange, check with the exchange before you
+  close. Check the memo as well. Both are irreversible once submitted.
+</Warning>

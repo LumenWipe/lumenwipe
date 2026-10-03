@@ -1,0 +1,51 @@
+---
+title: "Closing a Stellar account"
+description: "What closing an account means, what blocks it, and what you get back."
+icon: "door-closed"
+---
+
+Closing a Stellar account means merging it into another account. The `ACCOUNT_MERGE` operation moves the entire XLM balance to a destination and deletes the source account from the ledger. It cannot be undone.
+
+The network refuses the merge while anything still holds the account open. LumenWipe finds all of it, removes it in the right order, and only then merges.
+
+## What holds an account open
+
+| What                     | Why it blocks the merge                                                              | What LumenWipe does                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| Trustlines               | Each one is a subentry, and a trustline holding a balance cannot be removed          | Converts the balance to XLM, returns it to the issuer, or sends it where you chose, then removes the trustline |
+| Open offers              | Each one is a subentry                                                               | Cancels them                                                                                                   |
+| Data entries             | Each one is a subentry                                                               | Deletes them                                                                                                   |
+| Extra signers            | They hold reserves, but do not block the merge on their own                          | Removes them first, so one key can authorize the rest of the close                                             |
+| Sponsorships you provide | An account that sponsors reserves for others cannot be merged                        | Revokes them when the owner can absorb the reserve, and reports a blocker for the rest                         |
+| Claimable balances       | Sponsoring one blocks the merge, being a claimant does not                           | Claims what you can claim, and explains what you cannot                                                        |
+| DeFi positions           | The network does not check them, so the merge would strand the funds in the contract | Exits them first. See [exiting protocol positions](/guides/exiting-protocol-positions)                         |
+
+## What you get back
+
+Every Stellar account locks XLM it cannot spend: a 1 XLM minimum balance, plus 0.5 XLM for each trustline, offer, data entry, and extra signer. Closing releases all of it.
+
+- The reserves, and any remaining XLM, arrive at your destination in the merge.
+- Balances in other assets are converted to XLM, returned to their issuer, or paid to an account you name. The choice is yours for each asset.
+- You pay only the network fees.
+
+<Note>
+  An account sitting exactly at its minimum balance cannot pay the fee on its own closing
+  transaction. LumenWipe sponsors the fee in that case. The sponsorship can only ever pay fees and
+  cannot touch your funds.
+</Note>
+
+## Things that stop a close
+
+LumenWipe never builds a transaction it expects to fail, and never skips a step silently. When something cannot be closed safely, you see a blocker with an explanation instead.
+
+- **`AUTH_IMMUTABLE` accounts** can never be merged.
+- **A destination that does not exist** must be created and funded first.
+- **Claimable balances this account sponsors** stay a blocker until a claimant claims them. The protocol offers no self-service way around it.
+- **A protocol that has stopped operating**, such as FxDAO on mainnet, is reported as a blocker rather than attempted.
+
+<Warning>
+  Closing an account is irreversible. Check the destination address before you sign, and confirm it
+  is a wallet you control.
+</Warning>
+
+Next: [how a close works, step by step](/guides/how-closing-works).
