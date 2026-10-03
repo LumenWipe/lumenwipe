@@ -1,0 +1,54 @@
+---
+title: "runClose"
+description: "Drive the full fetch, verify, sign, submit loop to completion."
+icon: "rotate"
+---
+
+`runClose` is a pure, dependency-injected runner. It fetches each round, verifies every transaction before signing, signs, and submits only once the signing weight is enough, repeating until the close is done. The LumenWipe web app drives its own closes the same way.
+
+```ts
+import { runClose } from "@lumenwipe/sdk";
+
+await runClose({
+  getTransactions: () => client.closeTransactions({ source, destination, decisions }),
+  verify: (tx) => verifyCloseTransaction(tx, { source, destination }),
+  requiredWeight: () => 1,
+  sign: async (tx, xdr) => ({ xdr: signWithMyKey(xdr), weight: 1 }),
+  submit: async (tx, xdr) => (await client.submit(xdr)).hash,
+});
+```
+
+## Dependencies
+
+| Dependency        | Description                                                                                             |
+| ----------------- | ------------------------------------------------------------------------------------------------------- |
+| `getTransactions` | Fetches the next round, usually `client.closeTransactions(...)`.                                        |
+| `verify`          | Checks one transaction against your own inputs. It must throw on any mismatch. It may be async.         |
+| `requiredWeight`  | The signing weight this transaction needs, from its operations and the account's real thresholds.       |
+| `sign`            | Signs the XDR, which may already carry signatures, and returns the new XDR with its accumulated weight. |
+| `submit`          | Submits a transaction that meets its weight and resolves to the hash.                                   |
+| `onConfirmed`     | Optional. Called with the transaction and its hash after each confirmation.                             |
+| `onProgress`      | Optional. Called with progress messages.                                                                |
+| `maxRounds`       | Optional. Defaults to 25. Stops a misbehaving API from looping forever.                                 |
+
+`verify` is where the security of your integration lives. `runClose` guarantees it runs before every signature, but only your implementation decides what it accepts. See [Verification](/sdk/verification).
+
+## Multisig and partial signing
+
+If `sign` returns a weight below `requiredWeight`, `runClose` throws `InsufficientSignatureWeightError`. Its `pending` property holds everything needed to continue with a different signer on the same envelope. Pass it back as the second argument to resume without re-fetching, which would discard collected signatures:
+
+```ts
+import { runClose, InsufficientSignatureWeightError } from "@lumenwipe/sdk";
+
+try {
+  await runClose(deps);
+} catch (error) {
+  if (error instanceof InsufficientSignatureWeightError) {
+    await runClose(depsWithNextSigner, error.pending);
+  } else {
+    throw error;
+  }
+}
+```
+
+If a close does not converge within `maxRounds`, `runClose` throws a plain error.
