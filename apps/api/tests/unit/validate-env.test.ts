@@ -15,6 +15,7 @@ const OK = {
   OCTOPOS_API_KEY: "oct_abc123",
   ADMIN_API_TOKEN: "admin_test_token",
   FIRESTORE_PROJECT_ID: "test-project",
+  INTEGRATOR_AUTH_SECRET: "test-integrator-auth-secret-0123456789",
 };
 
 test("a complete environment has no problems and no warnings", () => {
@@ -54,6 +55,7 @@ test("a missing mediator secret warns rather than blocking the boot", () => {
     SOROSWAP_API_KEY: "sk_test",
     ADMIN_API_TOKEN: "admin_test_token",
     FIRESTORE_PROJECT_ID: "test-project",
+    INTEGRATOR_AUTH_SECRET: "test-integrator-auth-secret-0123456789",
   } as NodeJS.ProcessEnv);
   expect(problems).toEqual([]);
   expect(warnings.map((w) => w.variable).sort()).toEqual([
@@ -73,6 +75,7 @@ test("a missing fee-account secret warns rather than blocking the boot", () => {
     SOROSWAP_API_KEY: "sk_test",
     ADMIN_API_TOKEN: "admin_test_token",
     FIRESTORE_PROJECT_ID: "test-project",
+    INTEGRATOR_AUTH_SECRET: "test-integrator-auth-secret-0123456789",
   } as NodeJS.ProcessEnv);
   expect(problems).toEqual([]);
   expect(warnings.map((w) => w.variable).sort()).toEqual([
@@ -93,12 +96,13 @@ test("a missing OCTOPOS_API_KEY warns rather than blocking the boot", () => {
     SOROSWAP_API_KEY: "sk_test",
     ADMIN_API_TOKEN: "admin_test_token",
     FIRESTORE_PROJECT_ID: "test-project",
+    INTEGRATOR_AUTH_SECRET: "test-integrator-auth-secret-0123456789",
   } as NodeJS.ProcessEnv);
   expect(problems).toEqual([]);
   expect(warnings.map((w) => w.variable)).toEqual(["OCTOPOS_API_KEY"]);
 });
 
-test("a missing ADMIN_API_TOKEN or FIRESTORE_PROJECT_ID warns rather than blocking the boot", () => {
+test("a missing ADMIN_API_TOKEN, FIRESTORE_PROJECT_ID or INTEGRATOR_AUTH_SECRET warns rather than blocking the boot", () => {
   // Disables self-serve API key management (issue #289), not the service.
   const base = {
     API_KEYS: "ci=abc",
@@ -114,6 +118,7 @@ test("a missing ADMIN_API_TOKEN or FIRESTORE_PROJECT_ID warns rather than blocki
   expect(warnings.map((w) => w.variable).sort()).toEqual([
     "ADMIN_API_TOKEN",
     "FIRESTORE_PROJECT_ID",
+    "INTEGRATOR_AUTH_SECRET",
   ]);
 });
 

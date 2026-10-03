@@ -65,6 +65,10 @@ const OPTIONAL: Array<{ name: string; consequence: string }> = [
     consequence: "self-serve API key management (create/list/revoke/rotate) is unavailable",
   },
   {
+    name: "INTEGRATOR_AUTH_SECRET",
+    consequence: "wallet sign-in for self-service API key management is unavailable",
+  },
+  {
     name: "FIRESTORE_PROJECT_ID",
     consequence:
       "self-serve API keys are not durable (an in-memory fallback is used) and admin key " +

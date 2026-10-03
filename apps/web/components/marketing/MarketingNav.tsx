@@ -14,6 +14,7 @@ const LINKS: NavLink[] = [
   { href: "/security", label: "Security" },
   { href: "/faq", label: "FAQ" },
   { href: "/stats", label: "Stats" },
+  { href: "/api-keys", label: "API keys" },
   { href: "/content", label: "Content" },
 ];
 
