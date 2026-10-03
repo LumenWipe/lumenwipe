@@ -134,6 +134,7 @@
       "devDependencies": {
         "@lumenwipe/types": "workspace:*",
         "@microsoft/api-extractor": "^7.59.0",
+        "@stellar/stellar-sdk": "16.0.1",
         "@types/bun": "^1.4.0",
         "@typescript-eslint/eslint-plugin": "^8.69.0",
         "@typescript-eslint/parser": "^8.69.0",

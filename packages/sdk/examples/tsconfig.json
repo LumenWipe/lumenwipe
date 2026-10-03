@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["bun"],
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": { "@lumenwipe/sdk": ["../src/index.ts"] }
+  },
+  "include": ["./**/*.ts"],
+  "exclude": []
+}
