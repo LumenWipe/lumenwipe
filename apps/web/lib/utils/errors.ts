@@ -211,7 +211,7 @@ export function translateRpcError(code: string, raw?: string): string {
     if (specificCode) {
       const specificMessage = RESULT_CODE_MESSAGES[specificCode];
       if (specificMessage) return specificMessage;
-      return `Transaction failed: ${specificCode.replace(/_/g, " ")}.`;
+      return "The network rejected this transaction. Please try again.";
     }
   }
 
@@ -219,7 +219,7 @@ export function translateRpcError(code: string, raw?: string): string {
   const message = RESULT_CODE_MESSAGES[code];
   if (message) return message;
 
-  return `An unexpected error occurred (code: ${code}).`;
+  return "The transaction could not be completed. Please try again.";
 }
 
 /**
