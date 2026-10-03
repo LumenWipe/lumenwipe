@@ -796,3 +796,32 @@ test("useCloseExecution › a sponsor response that isn't a fee-bump transaction
   expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
   expect(submitCalls).toBe(0);
 });
+
+test("useCloseExecution › a wallet rejection surfaces as plain language, never the raw wallet text", async () => {
+  const source = Keypair.random().publicKey();
+
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: Keypair.random().publicKey(),
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    accountState: {
+      signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 1, med: 1, high: 1 },
+    } as never,
+  } as never);
+  stubFetchCloseTransactions(async () => {
+    throw new Error("User declined access");
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(coSigner(source));
+  });
+
+  const { lastError } = useDemolishStore.getState();
+  expect(lastError).toMatch(/declined the request in your wallet/);
+  expect(lastError).not.toMatch(/User declined access/);
+});
