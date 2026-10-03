@@ -57,6 +57,20 @@ await runClose({
 });
 ```
 
+## Headless example
+
+[`examples/headless-close.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/packages/sdk/examples/headless-close.ts)
+closes a throwaway testnet account end to end from a plain Node/Bun process, with no browser or
+web UI: it funds two accounts, then runs `getAccount`, `closePlan`, `closeTransactions` and
+`submit` through `runClose`, signing with an in-process keypair. It decodes and verifies every
+transaction itself before signing (`examples/verify.ts`), which is the pattern to copy.
+
+```bash
+LUMENWIPE_API_KEY=... bun run --filter '@lumenwipe/sdk' example:headless
+```
+
+`LUMENWIPE_API_URL` overrides the default `https://api.lumenwipe.com`. Testnet only.
+
 ## Verification is the caller's responsibility
 
 This SDK does not verify or sign anything. Every transaction it returns is unsigned XDR built by
