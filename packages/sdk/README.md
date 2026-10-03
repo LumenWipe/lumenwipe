@@ -25,16 +25,16 @@ const client = new LumenWipeClient({
   network: "mainnet", // or "testnet"
 });
 
-const account = await client.getAccount(address);
+const account = await client.getAccount(source);
 
 const plan = await client.closePlan({
-  address,
+  source,
   destination,
   // ...see @lumenwipe/types for the full request shape
 });
 
 const { transactions, remaining } = await client.closeTransactions({
-  address,
+  source,
   destination,
 });
 
@@ -49,7 +49,7 @@ instead of calling `closeTransactions`/`submit` by hand:
 import { runClose } from "@lumenwipe/sdk";
 
 await runClose({
-  getTransactions: () => client.closeTransactions({ address, destination }),
+  getTransactions: () => client.closeTransactions({ source, destination }),
   verify: (tx) => myVerify(tx), // see "Verification" below - this is your responsibility
   requiredWeight: (tx) => myRequiredWeight(tx),
   sign: (tx, xdr) => mySigner(tx, xdr),
@@ -108,7 +108,7 @@ no separate install is needed.
 ## Links
 
 - [Architecture](https://github.com/LumenWipe/lumenwipe/blob/main/docs/architecture.md)
-- [Full documentation](https://docs.lumenwipe.com)
+- [Full documentation](https://docs.lumenwipe.com/sdk/overview)
 - [Issues](https://github.com/LumenWipe/lumenwipe/issues)
 
 ## License
