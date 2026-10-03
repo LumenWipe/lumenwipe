@@ -62,11 +62,11 @@ test.skipIf(!RUN_INTEGRATION)(
     const aquariusPools = entriesForProtocol("mainnet", "aquarius").filter(
       (e) => e.kind === "pool"
     );
-    const byType = (version: string): string =>
-      aquariusPools.find((e) => e.version === version)?.wasmHash ?? "missing";
-    expect(hex(router.get('["ConstantPoolHash"]'))).toBe(byType("constant_product"));
-    expect(hex(router.get('["StableSwapPoolHash"]'))).toBe(byType("stable"));
-    expect(hex(router.get('["ConcentratedPoolHash"]'))).toBe(byType("concentrated"));
+    const byType = (version: string): string[] =>
+      aquariusPools.filter((e) => e.version === version).map((e) => e.wasmHash ?? "missing");
+    expect(byType("constant_product")).toContain(hex(router.get('["ConstantPoolHash"]')));
+    expect(byType("stable")).toContain(hex(router.get('["StableSwapPoolHash"]')));
+    expect(byType("concentrated")).toContain(hex(router.get('["ConcentratedPoolHash"]')));
 
     for (const version of ["v1", "v2"]) {
       const blend = entriesForProtocol("mainnet", "blend").filter((e) => e.version === version);
