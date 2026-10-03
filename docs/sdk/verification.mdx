@@ -1,0 +1,38 @@
+---
+title: "Verification is your responsibility"
+description: "Why the SDK never verifies or signs, and what your code must check before every signature."
+icon: "shield-check"
+---
+
+<Warning>
+  The SDK does not verify or sign anything. Never sign a transaction returned by the SDK without an
+  independent check of your own.
+</Warning>
+
+Closing an account is irreversible: it merges every remaining lumen into one destination. Every transaction the SDK returns is unsigned XDR built by the API from the data you provided. Before signing, your code must independently confirm that the transaction does exactly what the user asked.
+
+## Why
+
+LumenWipe's architecture puts the trust boundary at the signer. The API builds the bytes, and the client decides whether to sign them. If a compromised or faulty API could choose what you sign, it could divert funds. Your own check removes that risk.
+
+## What to check
+
+Decode the XDR yourself and compare it against **your own inputs**, never against values from the API response alone. At minimum:
+
+- The transaction source is the account being closed, and every operation is sourced from it.
+- The account merge goes only to the destination the user stated. For an exchange, the merge goes to the shared mediator, and a forward payment from the mediator goes to the user's stated address in XLM for at least the observed balance.
+- Payments are only a return to the issuer, a transfer matching the user's own asset, destination, and amount choice, or the mediator forward.
+- Conversions are to self or to native, with a positive destination minimum.
+- Removals only: trustlines, data entries, and offers.
+- `SetOptions` never adds a signer or raises a threshold.
+- The memo matches what the user supplied.
+- No unknown operation type. Reject anything you do not recognize rather than signing it.
+
+The `intent` field on a transaction is the API's own summary. Do not use it as a check.
+
+## Reference implementations
+
+- [`assertCloseIntent`](https://github.com/LumenWipe/lumenwipe/blob/main/apps/web/lib/stellar/verify.ts) in the LumenWipe web client is the full reference. Read it before wiring up signing in a production integration.
+- The [headless example](/sdk/headless-example) ships a smaller verifier for the simple case.
+
+Whatever you write, pass it as `verify` to [`runClose`](/sdk/run-close) so it runs before every signature.

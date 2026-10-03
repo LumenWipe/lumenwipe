@@ -1,0 +1,32 @@
+---
+title: "closePlan"
+description: "Preview a close before anything is built or signed."
+icon: "list-check"
+---
+
+`closePlan` returns the whole plan for an account without building a transaction. Use it to show the user what will happen, and to stop early when something cannot close safely.
+
+```ts
+const plan = await client.closePlan({
+  source: "G...ACCOUNT_TO_CLOSE",
+  destination: "G...DESTINATION",
+  decisions,
+});
+```
+
+| Field         | Required | Description                                                                 |
+| ------------- | -------- | --------------------------------------------------------------------------- |
+| `source`      | yes      | The account being closed.                                                   |
+| `destination` | no       | Where the remaining XLM is merged.                                          |
+| `decisions`   | no       | Answers to the plan's `decisionPoints`, such as what to do with each asset. |
+
+## Response
+
+- `status`: the plan's state.
+- `blockers`: positions or steps that cannot be closed safely, each with a plain-language `message`. A blocked step is never silently skipped, so surface every blocker to the user.
+- `decisionPoints`: choices the user must make. Call `closePlan` again with `decisions` filled in.
+- `estimate`: the fee in stroops and the reserve XLM freed.
+- `execution`: the estimated transaction count and a breakdown per transaction.
+- `planHash`: identifies the plan.
+
+The plan is a preview. `closeTransactions` re-reads live on-chain state and re-derives the work, so run it only after the user has reviewed the plan.

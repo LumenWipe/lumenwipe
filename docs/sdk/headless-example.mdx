@@ -1,0 +1,25 @@
+---
+title: "Headless example"
+description: "A complete testnet close from a plain Node or Bun process, as the reference implementation."
+icon: "terminal"
+---
+
+[`examples/headless-close.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/packages/sdk/examples/headless-close.ts) is the reference implementation for an integration. It closes a throwaway testnet account end to end with no browser or web UI.
+
+It funds two accounts through Friendbot, adds a data entry, then runs `getAccount`, `closePlan`, `closeTransactions`, and `submit` through [`runClose`](/sdk/run-close), signing with an in-process keypair.
+
+## The part to copy
+
+Before signing, the example decodes every transaction and checks it against its own inputs in [`examples/verify.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/packages/sdk/examples/verify.ts). It rejects any operation it does not recognize. This is the pattern to follow. See [Verification](/sdk/verification).
+
+The example's verifier covers only what a simple account needs: data entries, empty trustlines, and open offers. A production integration needs a wider check.
+
+## Run it
+
+Create an API key at [lumenwipe.com](https://lumenwipe.com), then, from the repository root:
+
+```bash
+LUMENWIPE_API_KEY=... bun run --filter '@lumenwipe/sdk' example:headless
+```
+
+`LUMENWIPE_API_URL` overrides the default `https://api.lumenwipe.com`. The example runs on testnet only.

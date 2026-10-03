@@ -1,0 +1,19 @@
+---
+title: "Versioning"
+description: "How the SDK is versioned and how to depend on it."
+icon: "tag"
+---
+
+`@lumenwipe/sdk` follows [semantic versioning](https://semver.org). It is currently in the `0.x` series, where minor releases can include breaking changes to the API surface. Pin an exact or tilde range until `1.0`:
+
+```json
+{
+  "dependencies": {
+    "@lumenwipe/sdk": "~0.4.0"
+  }
+}
+```
+
+- The SDK re-exports the request and response types from `@lumenwipe/types`, which ship with it. You never install the types package separately.
+- The SDK tracks the REST API. The [API reference](/api-reference/introduction) is the authoritative description of each endpoint.
+- Read the release notes on [GitHub](https://github.com/LumenWipe/lumenwipe/releases) before upgrading. Re-run your integration against testnet after every upgrade, and re-check your `verify` implementation if new operation types appear.

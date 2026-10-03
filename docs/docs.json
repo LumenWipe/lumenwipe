@@ -68,6 +68,21 @@
         ]
       },
       {
+        "group": "SDK",
+        "pages": [
+          "sdk/overview",
+          "sdk/client",
+          "sdk/close-plan",
+          "sdk/close-transactions",
+          "sdk/submit",
+          "sdk/run-close",
+          "sdk/verification",
+          "sdk/errors",
+          "sdk/versioning",
+          "sdk/headless-example"
+        ]
+      },
+      {
         "group": "API reference",
         "pages": [
           "api-reference/introduction",

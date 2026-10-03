@@ -1,0 +1,62 @@
+---
+title: "SDK overview"
+description: "Install @lumenwipe/sdk and run your first close from Node or Bun."
+icon: "box"
+---
+
+`@lumenwipe/sdk` is a typed fetch client for the LumenWipe API. LumenWipe closes Stellar accounts non-custodially: it unwinds everything holding an account open, converts leftovers to XLM, and merges the account into a destination wallet or exchange.
+
+The SDK only talks to the API over HTTP. It builds no transactions and has no `@stellar/stellar-sdk` dependency. Reading on-chain state and constructing every unsigned transaction happens server-side, and the client relays typed JSON and XDR strings. Signing stays with you, and so does deciding whether a transaction is safe to sign.
+
+<Warning>
+  The SDK does not verify or sign anything. Read [Verification is your
+  responsibility](/sdk/verification) before wiring up signing.
+</Warning>
+
+## Install
+
+```bash
+npm install @lumenwipe/sdk
+```
+
+Request and response types come from `@lumenwipe/types` and are re-exported by the SDK, so no separate install is needed. The SDK uses the global `fetch`. Pass your own through the `fetch` option on runtimes that lack one.
+
+## Quickstart
+
+```ts
+import { LumenWipeClient } from "@lumenwipe/sdk";
+
+const client = new LumenWipeClient({
+  baseUrl: "https://api.lumenwipe.com",
+  apiKey: process.env.LUMENWIPE_API_KEY!,
+  network: "mainnet",
+});
+
+const account = await client.getAccount(source);
+
+const plan = await client.closePlan({ source, destination });
+if (plan.blockers.length > 0) {
+  throw new Error(plan.blockers.map((b) => b.message).join("; "));
+}
+
+const { transactions, remaining } = await client.closeTransactions({ source, destination });
+```
+
+Verify each transaction, sign it, and submit it with [`submit`](/sdk/submit). Repeat while `remaining.requiresAnotherCall` is true. [`runClose`](/sdk/run-close) drives that whole loop for you.
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="Client" icon="plug" href="/sdk/client">
+    Configuration and every method.
+  </Card>
+  <Card title="runClose" icon="rotate" href="/sdk/run-close">
+    The driven fetch, verify, sign, submit loop.
+  </Card>
+  <Card title="Verification" icon="shield-check" href="/sdk/verification">
+    What your code must check before signing.
+  </Card>
+  <Card title="Headless example" icon="terminal" href="/sdk/headless-example">
+    The reference implementation, end to end.
+  </Card>
+</CardGroup>
