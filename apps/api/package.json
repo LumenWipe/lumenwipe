@@ -13,6 +13,7 @@
     "test:coverage": "bun test tests/unit tests/e2e --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage",
     "test:integration": "LUMENWIPE_RUN_INTEGRATION=1 bun test --preload ./tests/setup-env.ts tests/integration",
     "test:adversarial": "bun test tests/adversarial",
+    "openapi:generate": "bun run scripts/generate-openapi.ts",
     "mutation": "stryker run"
   },
   "dependencies": {
