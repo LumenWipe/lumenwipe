@@ -24,8 +24,7 @@ export default function NetworkError({ error, reset }: ErrorProps) {
         <div className="space-y-1.5">
           <h2 className="text-base font-semibold text-white">Something went wrong</h2>
           <p className="text-sm text-white/45 leading-relaxed">
-            {error.message ||
-              "An unexpected error occurred. Your funds are safe - no transaction was submitted."}
+            An unexpected error occurred. Your funds are safe - no transaction was submitted.
           </p>
           {error.digest && (
             <p className="mkt-mono text-[0.65rem] text-white/20 pt-1">ref: {error.digest}</p>

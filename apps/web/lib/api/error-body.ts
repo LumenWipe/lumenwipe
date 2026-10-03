@@ -1,5 +1,6 @@
 /**
- * Reads a human-readable message out of an API error body.
+ * Reads a human-readable message out of an API error body, discarding any that doesn't read as
+ * plain language (codes, stack-shaped text, status numbers) in favor of the caller's fallback.
  *
  * The API speaks one envelope - `{ error: { code, message } }` - but three things make a
  * defensive reader worth having anyway: an in-flight rollout can still serve the previous flat
@@ -10,16 +11,25 @@
  * straight to a `useState<string>` compiled fine and crashed the render with "Objects are not
  * valid as a React child" the moment the envelope changed shape.
  */
+export function looksPlain(message: string): boolean {
+  return (
+    message.length > 0 &&
+    message.length <= 240 &&
+    !/\b(tx|op)_[a-z_]+\b/.test(message) &&
+    !/\b\w*(Error|Exception)\b|\bat \S+ \(|undefined|\[object|[{}]|\(\d{3}\)/.test(message)
+  );
+}
+
 export function apiErrorMessage(body: unknown, fallback: string): string {
   if (typeof body !== "object" || body === null) return fallback;
   const b = body as { error?: unknown; message?: unknown };
 
   if (typeof b.error === "object" && b.error !== null) {
     const message = (b.error as { message?: unknown }).message;
-    if (typeof message === "string" && message.length > 0) return message;
+    if (typeof message === "string" && looksPlain(message)) return message;
   }
-  if (typeof b.error === "string" && b.error.length > 0) return b.error;
+  if (typeof b.error === "string" && looksPlain(b.error)) return b.error;
   // Nest's default filter (throttler, unknown route) has no `error` object at all.
-  if (typeof b.message === "string" && b.message.length > 0) return b.message;
+  if (typeof b.message === "string" && looksPlain(b.message)) return b.message;
   return fallback;
 }

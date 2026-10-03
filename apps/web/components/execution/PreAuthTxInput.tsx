@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AlertTriangle, CheckCircle, Info, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { toUserMessage } from "@/lib/utils/user-error";
 import type { AccountSigner } from "@/types/account";
 
 function shortAddr(addr: string): string {
@@ -37,7 +38,7 @@ export default function PreAuthTxInput({ signer, disabled, onSubmit }: Props) {
       await onSubmit(signer, value.trim());
       setSubmitted(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not submit this transaction.");
+      setError(toUserMessage(err, "execute"));
     } finally {
       setSubmitting(false);
     }
