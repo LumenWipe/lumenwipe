@@ -224,9 +224,9 @@
       "protocol": "aquarius",
       "kind": "router",
       "address": "CBQDHNBFBZYE4MKPWBSJOPIYLW4SFSXAXUTSXJN76GNKYVYPCKWC6QUK",
-      "wasmHash": "06f4207b0c9ef78cc595e075ded8fa40e73fdb8346e5f9281068a2d4ba1e5037",
+      "wasmHash": "c99539b023df4a28d7857d33ca4c915c2e20fec04f12b125132b84fbdf94dad3",
       "version": "v1",
-      "label": "Aquarius AMM router (mainnet, docs.aqua.network; stellar.expert: 'Aquarius Router') - enumerates the pools; never a call target of an exit",
+      "label": "Aquarius AMM router (mainnet, docs.aqua.network; stellar.expert: 'Aquarius Router') - enumerates the pools; never a call target of an exit; hash re-verified 2026-10-02 after an upstream upgrade (interface unchanged)",
       "verifiedLive": true
     },
     {
@@ -234,9 +234,9 @@
       "protocol": "aquarius",
       "kind": "pool",
       "address": "CCSY43EHJAHT3NQDYKAMJXRFBEEH7OXDL3J3VNGO33UUSEXWNN27GBIZ",
-      "wasmHash": "ae0da5a84b15805c5c7931ac567a8d1b34be3f26b483993d9ff80cb2c3de9852",
+      "wasmHash": "d691135aade93ff0f7c229e009cde042130a05124cf7202b03d11246b4f9b473",
       "version": "constant_product",
-      "label": "Aquarius mainnet constant-product pool XLM/AQUA (router ConstantPoolHash; stellar.expert: 'Aquarius Pool') - stands for the code 273 of the router's 346 pools shared on lastVerified",
+      "label": "Aquarius mainnet constant-product pool XLM/AQUA (router ConstantPoolHash; stellar.expert: 'Aquarius Pool') - stands for the code 273 of the router's 346 pools shared on lastVerified; hash re-verified 2026-10-02 after an upstream upgrade (the router's own pool hash, interface only gained view functions)",
       "verifiedLive": true
     },
     {
@@ -244,9 +244,9 @@
       "protocol": "aquarius",
       "kind": "pool",
       "address": "CDKVJYMN34ZIEXSLNFYHVAFF6M6FM5E2U6OHXOTBKH2WLBULXOE53YDP",
-      "wasmHash": "f1077e0b77da5e62d596e13aeae4160104cad99e7ef7f3183a6c9b6ec9e747cd",
+      "wasmHash": "22dff7242d2bc0ea4a4727b4b2cac33b188304d5945740ad24d8a33a5d22741e",
       "version": "stable",
-      "label": "Aquarius mainnet stableswap pool (router StableSwapPoolHash; stellar.expert: 'Aquarius Pool') - stands for the code 42 of the router's pools shared on lastVerified",
+      "label": "Aquarius mainnet stableswap pool (router StableSwapPoolHash; stellar.expert: 'Aquarius Pool') - stands for the code 42 of the router's pools shared on lastVerified; hash re-verified 2026-10-02 after an upstream upgrade (the router's own pool hash, interface only gained view functions)",
       "verifiedLive": true
     },
     {
@@ -257,6 +257,16 @@
       "wasmHash": "12fca5a7a96577273b6d4184cf9c984036cda0e8f0594747e7b2933dced37ee6",
       "version": "concentrated",
       "label": "Aquarius mainnet concentrated-liquidity pool (router ConcentratedPoolHash) - positions are tick ranges, not shares; recognized so they are never mistaken for a share pool, not exited; 31 pools on lastVerified; not in the stellar.expert directory",
+      "verifiedLive": true
+    },
+    {
+      "network": "mainnet",
+      "protocol": "aquarius",
+      "kind": "pool",
+      "address": "CB3ZWHICKIYJOSQ7W2GFN2U2CVSGTFBQ6GCDVGQ354BQYJCKX6L22CNH",
+      "wasmHash": "155a17b9929ffb1f9e84bd6ef5c00a4d613c1ab5f4ad4c502d84515250cc2907",
+      "version": "concentrated",
+      "label": "Aquarius mainnet concentrated-liquidity pool, current router ConcentratedPoolHash (stellar.expert: 'Aquarius Pool') - positions are tick ranges, not shares; recognized so they are never mistaken for a share pool, not exited; added 2026-10-02 alongside the older concentrated code, which pools created before the upgrade still run",
       "verifiedLive": true
     },
     {
