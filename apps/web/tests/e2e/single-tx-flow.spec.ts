@@ -8,13 +8,11 @@ import {
   TransactionBuilder,
   type xdr,
 } from "@stellar/stellar-sdk";
-import { confirmDestinationControl } from "./helpers/destination";
 import {
+  enterDestinationAndBegin,
   enterSecretKey,
-  enterSourceAddress,
+  enterSourceAndAnalyze,
   expectSigningPanel,
-  openTestnetHome,
-  TESTNET_STEP_TIMEOUT,
 } from "./helpers/flow";
 
 // E2E coverage for the REDESIGNED single-transaction flow, exercised end-to-end
@@ -121,49 +119,6 @@ async function hasUsdcRouteFor(amount: string, attempts = 8, delayMs = 2_500): P
 }
 
 // ── Shared UI fragments ──────────────────────────────────────────────────────────
-
-// Home -> analyze with ONLY the public key (the redesigned home no longer takes a
-// destination). Lands on the analyze page once the plan preview has rendered.
-async function enterSourceAndAnalyze(page: Page, source: string): Promise<void> {
-  await openTestnetHome(page);
-
-  await enterSourceAddress(page, source);
-
-  const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
-  await expect(analyzeButton).toBeEnabled();
-  await analyzeButton.click();
-
-  // Navigation only happens after the account-analysis API returns; that read hits
-  // stellar.expert + RPC (and Horizon for open offers), which can exceed the default
-  // 5s expect timeout for heavier accounts. Allow generous headroom.
-  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
-}
-
-// Late-destination step: fills the destination, then "Begin execution" -> /review -> /execute.
-async function enterDestinationAndBegin(page: Page, destination: string): Promise<void> {
-  const beginButton = page.getByRole("button", { name: /Begin execution/i });
-  await expect(beginButton).toBeVisible({ timeout: 30_000 });
-
-  await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination);
-  await confirmDestinationControl(page);
-
-  await expect(beginButton).toBeEnabled();
-  await beginButton.click();
-
-  // Whole-plan review gate: the user must explicitly confirm before anything is built.
-  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
-  const proceedButton = page.getByRole("button", {
-    name: /I understand this plan and want to proceed/i,
-  });
-  await expect(proceedButton).toBeDisabled({ timeout: TESTNET_STEP_TIMEOUT });
-
-  // Explicit acknowledgment checkbox (the only checkbox on the review panel) gates the button.
-  await page.getByRole("checkbox").check();
-  await expect(proceedButton).toBeEnabled();
-  await proceedButton.click();
-
-  await expect(page).toHaveURL(/\/testnet\/execute/, { timeout: TESTNET_STEP_TIMEOUT });
-}
 
 // Execute: a single fused close carries the merge, so the panel surfaces the
 // irreversible-merge warning and the "Sign & execute close" button. The secret
