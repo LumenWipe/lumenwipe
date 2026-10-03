@@ -73,8 +73,11 @@ export function verifyChallenge(
   }
   if (!valid) return false;
   const digest = createHash("sha256").update(`${SEP53_PREFIX}${message}`).digest();
-  const sig = Buffer.from(signature, "base64");
-  return sig.length === 64 && Keypair.fromPublicKey(address).verify(digest, sig);
+  try {
+    return Keypair.fromPublicKey(address).verify(digest, Buffer.from(signature, "base64"));
+  } catch {
+    return false;
+  }
 }
 
 export function issueSession(secret: string, address: string, now: Date = new Date()): Session {
