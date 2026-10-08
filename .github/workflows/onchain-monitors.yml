@@ -220,6 +220,7 @@ jobs:
             echo "alert=finding" >> "$GITHUB_OUTPUT"
             echo "issue=${NEW##*/}" >> "$GITHUB_OUTPUT"
           fi
+          echo "critical=$CRITICAL" >> "$GITHUB_OUTPUT"
           {
             echo "status<<EOF"
             echo "$STATUS"
@@ -231,6 +232,7 @@ jobs:
         env:
           WEBHOOK: ${{ secrets.DISCORD_MONITORS_WEBHOOK_URL }}
           ALERT: ${{ steps.issue.outputs.alert }}
+          CRITICAL: ${{ steps.issue.outputs.critical }}
           STATUS: ${{ steps.issue.outputs.status }}
           ISSUE_URL: ${{ github.server_url }}/${{ github.repository }}/issues/${{ steps.issue.outputs.issue }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -243,15 +245,23 @@ jobs:
             exit 1
           fi
 
+          # Only a suspected key compromise pages everyone; a registry or balance finding, and
+          # a recovery, must not teach anyone to mute the channel.
+          MENTION=""
+          PARSE='[]'
           if [ "$ALERT" = "recovered" ]; then
             CONTENT=$(printf '%s\n' "✅ All on-chain monitors are clean again." "Run: $RUN_URL")
           else
-            CONTENT=$(printf '%s\n' "🚨 An on-chain monitor is reporting a finding." "$STATUS" \
+            if [ "$CRITICAL" = "yes" ]; then
+              MENTION="@everyone "
+              PARSE='["everyone"]'
+            fi
+            CONTENT=$(printf '%s\n' "${MENTION}🚨 An on-chain monitor is reporting a finding." "$STATUS" \
               "What to do: https://docs.lumenwipe.com/monitoring-plan#5-what-happens-when-an-alert-fires (docs/monitoring-plan.md, section 5)" \
               "Issue: $ISSUE_URL" "Run: $RUN_URL")
           fi
 
-          code=$(jq -n --arg c "$CONTENT" '{content: $c}' \
+          code=$(jq -n --arg c "$CONTENT" --argjson p "$PARSE" '{content: $c, allowed_mentions: {parse: $p}}' \
             | curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d @- "$WEBHOOK")
           if [ "$code" != "204" ] && [ "$code" != "200" ]; then
             echo "::error::Discord returned $code; the alert was not delivered."
