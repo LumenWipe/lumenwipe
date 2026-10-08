@@ -109,7 +109,8 @@ the mediator can pay out of its own balance. Measured on the testnet mediator on
 forward equal to the merge in every one.
 
 A finding opens a GitHub issue, assigned rather than merely labelled, and posts to a private Discord channel
-the maintainers watch with notifications on. The two service-key checks and the forward check post again on
+the maintainers watch. A suspected key compromise (the two service-key checks and the forward check) pings
+`@everyone`; a registry or balance finding, and a recovery, do not, so the ping keeps its meaning. The two service-key checks and the forward check post again on
 every hourly run they keep failing, because a suspected key compromise is worth repeating; a registry or
 balance finding posts once, then gets a daily comment on the issue, so the channel stays readable. The next
 clean daily run closes the issue and posts the recovery. A finding the webhook cannot deliver fails the run
