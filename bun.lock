@@ -130,7 +130,7 @@
     },
     "packages/sdk": {
       "name": "@lumenwipe/sdk",
-      "version": "0.4.0",
+      "version": "0.3.0",
       "devDependencies": {
         "@lumenwipe/types": "workspace:*",
         "@microsoft/api-extractor": "^7.59.0",
