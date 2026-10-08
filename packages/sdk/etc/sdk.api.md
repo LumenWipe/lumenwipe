@@ -290,6 +290,13 @@ export interface ConversionPath {
 }
 
 // @public (undocumented)
+export interface DailyActivity {
+    // (undocumented)
+    accountsClosed: number;
+    date: string;
+}
+
+// @public (undocumented)
 export interface DataEntry {
     // (undocumented)
     key: string;
@@ -626,6 +633,19 @@ export interface MediatorSignResponse {
     transaction: string;
 }
 
+// @public
+export interface MergeRecord {
+    // (undocumented)
+    accountsClosed: number;
+    // (undocumented)
+    network: Network;
+    timestamp: string;
+    // (undocumented)
+    txHash: string;
+    // (undocumented)
+    xlmStroops: string;
+}
+
 // @public (undocumented)
 export type Network = "mainnet" | "testnet";
 
@@ -778,6 +798,12 @@ export interface QuoteInfo {
 }
 
 // @public
+export interface RecordMergeResponse {
+    // (undocumented)
+    counted: boolean;
+}
+
+// @public
 export interface RevokeAllowanceResponse {
     // (undocumented)
     transaction: string;
@@ -858,6 +884,26 @@ export type SponsoredEntry = {
     kind: "claimable_balance";
     balanceId: string;
 };
+
+// @public
+export interface StatsFeed {
+    // (undocumented)
+    daily: DailyActivity[];
+    // (undocumented)
+    recent: MergeRecord[];
+    // (undocumented)
+    totals: StatsTotals;
+}
+
+// @public
+export interface StatsTotals {
+    // (undocumented)
+    accountsClosed: number;
+    // (undocumented)
+    network: Network;
+    // (undocumented)
+    xlmRecoveredStroops: string;
+}
 
 // @public (undocumented)
 export type StepStatus = "pending" | "signing" | "submitted" | "confirmed" | "failed" | "skipped";
