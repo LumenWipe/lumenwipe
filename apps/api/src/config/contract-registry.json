@@ -253,20 +253,10 @@
       "network": "mainnet",
       "protocol": "aquarius",
       "kind": "pool",
-      "address": "CA4HTZNY2RBZWEQE5GBMNREZMFRPAZSVJ6OGPC7T3VM7NHRJYFAVID2S",
-      "wasmHash": "12fca5a7a96577273b6d4184cf9c984036cda0e8f0594747e7b2933dced37ee6",
-      "version": "concentrated",
-      "label": "Aquarius mainnet concentrated-liquidity pool (router ConcentratedPoolHash) - positions are tick ranges, not shares; recognized so they are never mistaken for a share pool, not exited; 31 pools on lastVerified; not in the stellar.expert directory",
-      "verifiedLive": true
-    },
-    {
-      "network": "mainnet",
-      "protocol": "aquarius",
-      "kind": "pool",
       "address": "CB3ZWHICKIYJOSQ7W2GFN2U2CVSGTFBQ6GCDVGQ354BQYJCKX6L22CNH",
       "wasmHash": "155a17b9929ffb1f9e84bd6ef5c00a4d613c1ab5f4ad4c502d84515250cc2907",
       "version": "concentrated",
-      "label": "Aquarius mainnet concentrated-liquidity pool, current router ConcentratedPoolHash (stellar.expert: 'Aquarius Pool') - positions are tick ranges, not shares; recognized so they are never mistaken for a share pool, not exited; added 2026-10-02 alongside the older concentrated code, which pools created before the upgrade still run",
+      "label": "Aquarius mainnet concentrated-liquidity pool, current router ConcentratedPoolHash (stellar.expert: 'Aquarius Pool') - positions are tick ranges, not shares; recognized so they are never mistaken for a share pool, not exited; added 2026-10-02, and since 2026-10-07 the only concentrated code: all 43 of the router's concentrated pools run it after the older pools were upgraded in place",
       "verifiedLive": true
     },
     {
