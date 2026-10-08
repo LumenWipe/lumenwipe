@@ -28,6 +28,7 @@ import { submitViaApi } from "@/lib/stellar/submit-via-api";
 import { requestMediatorCosignature } from "@/lib/stellar/mediator";
 import { requestFeeBumpSponsorship } from "@/lib/stellar/fee-bump-sponsor";
 import { notifyStatsRefresh } from "@/lib/stats-events";
+import { toUserMessage, UserFacingError } from "@/lib/utils/user-error";
 import type { TransactionSigner } from "@/lib/stellar/signer";
 import type { AccountSigner } from "@/types/account";
 
@@ -214,7 +215,9 @@ export function useCloseExecution() {
               // signature at all. Assert both before trusting the result any further.
               const signedTx = TransactionBuilder.fromXDR(signedXdr, passphrase);
               if (signedTx.hash().toString("hex") !== approvedHash) {
-                throw new Error("The signed transaction does not match what you approved.");
+                throw new UserFacingError(
+                  "The signed transaction does not match what you approved."
+                );
               }
 
               const contributions = evaluateSignatureContributions(
@@ -224,7 +227,7 @@ export function useCloseExecution() {
               );
               const weight = accumulatedWeight(contributions);
               if (weight <= preSignWeight) {
-                throw new Error(
+                throw new UserFacingError(
                   "This signer didn't add a new signature. If you already signed with this key, connect a different signer."
                 );
               }
@@ -248,10 +251,12 @@ export function useCloseExecution() {
                 const cosignedXdr = await requestMediatorCosignature(xdr, network);
                 const cosigned = TransactionBuilder.fromXDR(cosignedXdr, passphrase);
                 if (cosigned.hash().toString("hex") !== approvedHash) {
-                  throw new Error("The co-signed transaction does not match what you approved.");
+                  throw new UserFacingError(
+                    "The co-signed transaction does not match what you approved."
+                  );
                 }
                 if (cosigned.signatures.length <= preCosignCount) {
-                  throw new Error("The mediator did not add its signature.");
+                  throw new UserFacingError("The mediator did not add its signature.");
                 }
                 finalXdr = cosignedXdr;
               }
@@ -277,16 +282,20 @@ export function useCloseExecution() {
                 // never covers - so the signature count is checked separately to catch a sponsor
                 // that reconstructs the same body but drops the signatures already on it.
                 if (!(sponsored instanceof FeeBumpTransaction)) {
-                  throw new Error("The sponsor did not return a fee-bump transaction.");
+                  throw new UserFacingError("The sponsor did not return a fee-bump transaction.");
                 }
                 if (sponsored.innerTransaction.hash().toString("hex") !== approvedHash) {
-                  throw new Error("The sponsored transaction does not match what you approved.");
+                  throw new UserFacingError(
+                    "The sponsored transaction does not match what you approved."
+                  );
                 }
                 if (sponsored.innerTransaction.signatures.length < approvedSignatureCount) {
-                  throw new Error("The sponsor dropped a signature already on this transaction.");
+                  throw new UserFacingError(
+                    "The sponsor dropped a signature already on this transaction."
+                  );
                 }
                 if (sponsored.signatures.length === 0) {
-                  throw new Error("The sponsor did not add its signature.");
+                  throw new UserFacingError("The sponsor did not add its signature.");
                 }
                 finalXdr = sponsoredXdr;
               }
@@ -334,9 +343,7 @@ export function useCloseExecution() {
         // panel with no explanation of what went wrong.
         pendingRoundRef.current = null;
         setSignatureStatus(null);
-        const message =
-          err instanceof Error ? err.message : typeof err === "string" ? err : "The close failed.";
-        setLastError(message);
+        setLastError(toUserMessage(err, "execute"));
         setPhase("STEP_FAILED");
       } finally {
         setProgressStatus(null);
@@ -367,7 +374,7 @@ export function useCloseExecution() {
   const submitPreAuthTransaction = useCallback(
     async (signer: AccountSigner, xdr: string): Promise<void> => {
       if (!sourceAddress || !destinationAddress) {
-        throw new Error("Missing account or destination.");
+        throw new UserFacingError("Missing account or destination.");
       }
 
       const passphrase = NETWORK_PASSPHRASES[network];

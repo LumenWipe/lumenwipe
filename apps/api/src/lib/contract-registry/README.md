@@ -25,7 +25,10 @@ plus an adapter change, never a rewrite (§18).
 2. Add one object to `entries`:
    - `network`: `mainnet` or `testnet` - the one network you verified this instance on
    - `protocol`: one of `blend`, `aquarius`, `soroswap`, `phoenix`, `fxdao`
-   - `kind`: `pool`, `pair`, `backstop`, `vault`, `factory`, `router`, `aggregator`, or `adapter`.
+   - `kind`: `pool`, `pair`, `backstop`, `stake`, `vault`, `factory`, `router`, `aggregator`, or
+     `adapter`. `stake` is a protocol's separate staking contract (Phoenix's `bond`/`unbond`
+     target) - registered like any other code-representative entry, resolved the same way a plan's
+     other touched contracts are.
      `aggregator` and `adapter` are Soroswap's swap aggregator and the per-protocol adapters it
      dispatches to; a token conversion may invoke only those, the router, and the token itself
      (`soroswapConversionContracts`). A `pair` entry is one
@@ -74,11 +77,20 @@ verified the same way as testnet - the protocol's own published addresses (Blend
 `docs.blend.capital/mainnet-deployments` and `blend-capital/blend-utils` `mainnet.contracts.json`;
 Soroswap: `soroswap/core` `public/mainnet.contracts.json`; Aquarius: `docs.aqua.network`
 addresses-and-networks plus the router's own `ConstantPoolHash`/`StableSwapPoolHash`/
-`ConcentratedPoolHash`) against the live instance's executable hash - and, as a third opinion, the
+`ConcentratedPoolHash`; Phoenix: the [stellar.expert directory](https://stellar.expert/explorer/public/directory)'s
+`Phoenix Pool` entries, since Phoenix publishes no mainnet address list of its own - each pool's
+own `query_config` gives its `stake_contract`, so the stake entries come from the pools
+themselves, not a second directory search; FxDAO: `fxdao.io/docs/addresses`) against the live
+instance's executable hash - and, as a third opinion, the
 [stellar.expert directory](https://stellar.expert/explorer/public/directory): where it names a
 contract, the label agrees (Blend Pool Factory, Blend Backstop, Blend Pool, SoroSwap, SoroSwap
-Router, Aquarius Router, Aquarius Pool), and entries it does not list say so. Pools and pairs are
-code-representative: one per code hash, never a list of every deployment.
+Router, Aquarius Router, Aquarius Pool, Phoenix Pool), and entries it does not list say so. Pools
+and pairs are code-representative: one per code hash, never a list of every deployment - Phoenix
+has two live pool code hashes among the directory's ten listed pools, so both are registered.
+FxDAO's documented Vaults contract is the one mainnet exception: its live interface exposes only
+`evict`/`upgrade`, not `pay_debt` or any other vault-management entrypoint, so it is recorded
+`wasmHash: null, verifiedLive: false` rather than trusted - the same interface gap already found
+and recorded for its testnet entry, now confirmed on mainnet too.
 
 `bun run test:integration` includes a read-only mainnet canary
 (`tests/integration/mainnet-registry.integration.test.ts`) that re-reads every `verifiedLive`

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { KitEventType } from "@creit-tech/stellar-wallets-kit/types";
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
+import { toUserMessage } from "@/lib/utils/user-error";
 import { ensureWalletKitInitialized } from "@/lib/wallet-kit/client";
 
 export interface WalletKitConnection {
@@ -84,7 +85,7 @@ export function useWalletKitConnection(network: Network): WalletKitConnection {
       setAddress(connected);
       setNetworkMismatch(await checkNetworkMismatch());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not connect the wallet.");
+      setError(toUserMessage(err, "wallet"));
     } finally {
       setConnecting(false);
     }
@@ -97,7 +98,7 @@ export function useWalletKitConnection(network: Network): WalletKitConnection {
       setAddress(null);
       setNetworkMismatch(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not disconnect the wallet.");
+      setError(toUserMessage(err, "wallet"));
     }
   }, [network]);
 

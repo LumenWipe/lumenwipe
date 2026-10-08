@@ -55,6 +55,83 @@
           "use-cases/embedded-wallet-platforms",
           "use-cases/businesses-and-operations"
         ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/closing-an-account",
+          "guides/how-closing-works",
+          "guides/signing-options",
+          "guides/exiting-protocol-positions",
+          "guides/exchanges-and-the-mediator",
+          "guides/troubleshooting-and-faq"
+        ]
+      },
+      {
+        "group": "SDK",
+        "pages": [
+          "sdk/overview",
+          "sdk/client",
+          "sdk/close-plan",
+          "sdk/close-transactions",
+          "sdk/submit",
+          "sdk/run-close",
+          "sdk/verification",
+          "sdk/errors",
+          "sdk/versioning",
+          "sdk/headless-example"
+        ]
+      },
+      {
+        "group": "API reference",
+        "pages": [
+          "api-reference/introduction",
+          {
+            "group": "Close",
+            "openapi": "api-reference/openapi.json",
+            "pages": [
+              "POST /v1/{network}/close/plan",
+              "POST /v1/{network}/close/batch-plan",
+              "POST /v1/{network}/close/transactions",
+              "POST /v1/{network}/submit"
+            ]
+          },
+          {
+            "group": "Account",
+            "openapi": "api-reference/openapi.json",
+            "pages": [
+              "GET /{network}/account/{address}",
+              "GET /{network}/allowances/{address}",
+              "POST /{network}/allowances/revoke",
+              "GET /{network}/paths"
+            ]
+          },
+          {
+            "group": "Mediator",
+            "openapi": "api-reference/openapi.json",
+            "pages": ["POST /{network}/mediator/sign", "GET /{network}/mediator/check/{address}"]
+          },
+          {
+            "group": "Fee sponsorship",
+            "openapi": "api-reference/openapi.json",
+            "pages": ["POST /{network}/fee-bump/sponsor"]
+          },
+          {
+            "group": "Config",
+            "openapi": "api-reference/openapi.json",
+            "pages": ["GET /config/exchange-registry"]
+          },
+          {
+            "group": "Health",
+            "openapi": "api-reference/openapi.json",
+            "pages": ["GET /health", "GET /health/deep"]
+          },
+          {
+            "group": "Service",
+            "openapi": "api-reference/openapi.json",
+            "pages": ["GET /"]
+          }
+        ]
       }
     ]
   },

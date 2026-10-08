@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import type { Request } from "express";
-import { ApiKeyService } from "./api-key.service";
+import { ApiKeyDirectory } from "./api-key-directory";
 import { IS_PUBLIC_KEY } from "./public.decorator";
 
 /** Request augmented with the resolved integrator identity, for metering. */
@@ -19,10 +19,10 @@ export interface AuthedRequest extends Request {
 export class ApiKeyGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    private readonly apiKeys: ApiKeyService
+    private readonly apiKeys: ApiKeyDirectory
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -33,14 +33,14 @@ export class ApiKeyGuard implements CanActivate {
     const header = req.headers.authorization;
     const key = header?.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
 
-    const label = key ? this.apiKeys.resolve(key) : null;
-    if (!label) {
+    const resolved = key ? await this.apiKeys.resolve(key) : null;
+    if (!resolved) {
       throw new UnauthorizedException({
         error: { code: "unauthorized", message: "A valid API key is required." },
       });
     }
 
-    req.apiKeyLabel = label;
+    req.apiKeyLabel = resolved.label;
     return true;
   }
 }

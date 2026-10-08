@@ -8,66 +8,51 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import {
+  BatchPlanRequestDto,
   ClosePlanRequestDto,
   CloseTransactionsRequestDto,
   SubmitRequestDto,
 } from "./dto/close-requests.dto";
 import { SubmitResponseDto } from "./dto/close-responses.dto";
-import { PlanResponseDto } from "./dto/plan-response.dto";
+import { BatchPlanResponseDto, PlanResponseDto } from "./dto/plan-response.dto";
 import { TransactionsResponseDto } from "./dto/transactions-response.dto";
 import { isValidNetwork, type Network } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { readAccountState } from "@/lib/close-api/read-account";
-import { fetchConversionPath } from "@/lib/stellar/path-finding";
-import { buildPlan } from "@/lib/stellar/tx-builder";
-import {
-  assessSponsorshipAffordability,
-  type SponsorshipAffordability,
-} from "@/lib/stellar/sponsorship-affordability";
+import { buildAccountPlan } from "@/lib/close-api/account-plan";
+import { BATCH_PLAN_MAX_ADDRESSES, planBatch } from "@/lib/close-api/batch-plan";
 import {
   isRegistryFresh,
   lookupExchange,
   requiresMediatorForAddress,
 } from "@/lib/exchange-registry";
 import { validateTransferDestinations } from "@/lib/close-api/transfer-destinations";
-import { quoteTokenToXlm } from "@/lib/soroswap/conversion-quotes";
-
-/** Quotes per plan are bounded like discovery candidates; a token past this is offered no swap. */
-const MAX_TOKEN_QUOTES = 20;
-import { readTrustlinesOnly } from "@/lib/stellar/account-state";
 import {
-  assetDecisionId,
   claimableBalanceDecisionId,
   claimedAmountsPerAsset,
-  deriveClaimableBalanceDecisionPoints,
+  assetDecisionId,
   decisionIdFor,
-  deriveDecisionPoints,
   MissingConversionFloorError,
+  UnrecognizedConversionProviderError,
   tokenConversionFloors,
   tokenDecisionId,
-  type TokenQuoteSummary,
-  deriveTokenDecisionPoints,
   tokenAssetsById,
   tokenContractsFromAnswers,
-  deriveDestinationDecisionPoints,
   destinationDecisionId,
   isDestinationAcknowledged,
+  isDefiPositionsAcknowledged,
   resolveClaimableBalanceSelections,
   resolveDispositions,
   resolveTransferDestinations,
-  collectTransferDestinations,
   MissingTransferDestinationError,
   DESTINATION_ACK_CHOICE,
-  deriveDefiPositionsDecisionPoints,
-  defiPositionsDecisionId,
-  isDefiPositionsAcknowledged,
 } from "@/lib/close-api/decisions";
-import { ARRIVING_ASSET_PROBE_AMOUNT, assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
-import { DEFI_POSITIONS_UNAVAILABLE_CODE } from "@/lib/defi-positions/positions-gate";
-import { assemblePlanResponse, computePlanHash } from "@/lib/close-api/plan-response";
+import { assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
+import { computePlanHash } from "@/lib/close-api/plan-response";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
 import { submitAndWait, InvalidSignatureError } from "@/lib/stellar/submit";
 import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
+import { readTrustlinesOnly } from "@/lib/stellar/account-state";
 import {
   AccountNotFoundError,
   AssetRouteLostError,
@@ -75,14 +60,8 @@ import {
   TxSubmitError,
   UnusableProviderResponseError,
 } from "@/lib/utils/errors";
-import { BASE_FEE_STROOPS } from "@/config/constants";
 import { fail } from "@/common/fail";
-import type {
-  DecisionAnswer,
-  DecisionPoint,
-  TransactionsResponse,
-  Trustline,
-} from "@lumenwipe/types";
+import type { DecisionAnswer, TransactionsResponse, Trustline } from "@lumenwipe/types";
 
 /**
  * Reads a transfer destination's trustlines, treating "does not exist" as an answer rather than
@@ -137,196 +116,7 @@ export class CloseController {
       : [];
 
     try {
-      const accountState = await readAccountState(
-        source,
-        network,
-        tokenContractsFromAnswers(decisions)
-      );
-      const mediatorRequired = destination ? requiresMediatorForAddress(destination) : false;
-
-      const convertibility: Record<string, boolean> = {};
-      const nonClaimableSponsoredEntries = accountState.sponsoredEntries.filter(
-        (e) => e.kind !== "claimable_balance"
-      );
-      // Priced together, at the amount that will actually need a route: what the account holds
-      // now PLUS what the claims it chose will add, summed per asset by the same
-      // will-it-be-claimed rule buildPlan uses (claimedAmountsPerAsset). Pricing per balance
-      // asked path finding about a smaller amount than the step will move, and two balances of
-      // one asset raced their answers into convertibility[asset] - last write won, so the
-      // offered options could flap between re-plans.
-      const claimableBalanceSelections = resolveClaimableBalanceSelections(
-        decisions,
-        accountState.claimableBalances.map((b) => b.id)
-      );
-      const claimedPerAsset = claimedAmountsPerAsset(accountState, claimableBalanceSelections);
-      const pricedByAsset = new Map<string, number>();
-      for (const tl of accountState.trustlines) {
-        const total = Number(tl.balance) + (claimedPerAsset.get(tl.asset) ?? 0);
-        if (total > 0) pricedByAsset.set(tl.asset, total);
-      }
-      for (const [asset, amount] of claimedPerAsset) {
-        if (!pricedByAsset.has(asset)) pricedByAsset.set(asset, amount);
-      }
-      // An asset an exit will pay in holds nothing yet, so it is priced at a nominal unit: this
-      // is the "is there a market at all" gate that decides which options the card offers, and
-      // the amount that actually arrives is re-quoted at build time anyway.
-      for (const asset of assetsArrivingFromExits(accountState)) {
-        if (!pricedByAsset.has(asset))
-          pricedByAsset.set(asset, Number(ARRIVING_ASSET_PROBE_AMOUNT));
-      }
-      const pricedAssets = [...pricedByAsset.entries()].map(([asset, amount]) => ({
-        asset,
-        amount: amount.toFixed(7),
-      }));
-      const convertibilityPromise = Promise.all(
-        pricedAssets.map(async ({ asset, amount }) => {
-          const path = await fetchConversionPath(asset, amount, network).catch(() => null);
-          convertibility[asset] = path !== null;
-        })
-      );
-      const sponsorshipAffordabilityPromise: Promise<SponsorshipAffordability> =
-        accountState.sponsorshipEnumerationIncomplete
-          ? Promise.resolve({ revocable: [], unaffordableOwners: new Map() })
-          : assessSponsorshipAffordability(source, nonClaimableSponsoredEntries, network);
-      // Priced through the Soroswap API, one quote per held token with readable metadata, only
-      // when conversion is enabled; anything else is offered transfer or leave.
-      const tokenQuotes: Record<string, TokenQuoteSummary | null> = {};
-      const tokenQuotePromise = Promise.all(
-        (accountState.sorobanTokens?.tokens ?? [])
-          .filter((t) => t.symbol !== null && t.decimals !== null && /^[1-9]\d*$/.test(t.balance))
-          .slice(0, MAX_TOKEN_QUOTES)
-          .map(async (t) => {
-            const quote = await quoteTokenToXlm(t.contract, BigInt(t.balance), network);
-            tokenQuotes[t.contract] = quote
-              ? {
-                  amountOut: quote.amountOut,
-                  minAmountOut: quote.minAmountOut,
-                  platform: quote.platform,
-                  route: quote.route,
-                }
-              : null;
-          })
-      );
-      const [, sponsorshipAffordability] = await Promise.all([
-        convertibilityPromise,
-        sponsorshipAffordabilityPromise,
-        tokenQuotePromise,
-      ]);
-
-      // Every asset the close will touch answers here - held or arriving. Without the arriving
-      // ones their disposition never resolves, and the plan would label a balance the caller
-      // chose to return to its issuer as a conversion - the same untruth on the consent surface
-      // that #139 removed. The Set dedupes an asset that is both held and being topped up.
-      const planAssetsById = [
-        ...[
-          ...new Set([...accountState.trustlines.map((tl) => tl.asset), ...claimedPerAsset.keys()]),
-        ].map((asset) => ({ id: assetDecisionId(asset), asset })),
-        // Soroban token balances decide alongside: convert, transfer as the token, or leave on
-        // record. No route pricing yet - conversion is offered once a quote source exists.
-        ...tokenAssetsById(accountState),
-      ];
-      // A transfer answer is well-formed whether or not it names a usable account, so both halves
-      // are taken here. The destinations that resolved describe the plan's asset steps and feed
-      // the live-ledger check below; the ones that did not go back on the pending list.
-      const { destinations: planDestinations, missing: missingDestinations } =
-        collectTransferDestinations(decisions, planAssetsById);
-      const planDispositions = resolveDispositions(decisions, planAssetsById);
-
-      // Whether the unconfirmed-positions gate would produce its hard-blocking code on THIS
-      // read, before any acknowledgement is applied - decides whether the decision point below
-      // even needs to exist. accountState.defiPositionsWarnings is already this exact,
-      // unacknowledged computation (account-state.ts), so it is reused rather than re-derived.
-      const needsDefiPositionsAck = accountState.defiPositionsWarnings.some(
-        (w) => w.code === DEFI_POSITIONS_UNAVAILABLE_CODE
-      );
-      const defiPositionsAcknowledged = isDefiPositionsAcknowledged(decisions, source);
-
-      const buildResult = buildPlan(
-        accountState,
-        mediatorRequired,
-        false,
-        claimableBalanceSelections,
-        sponsorshipAffordability,
-        planDispositions,
-        planDestinations,
-        accountState.defiPositions,
-        defiPositionsAcknowledged
-      );
-      const decisionPoints = [
-        ...deriveDestinationDecisionPoints(destination),
-        ...deriveDefiPositionsDecisionPoints(source, needsDefiPositionsAck),
-        ...deriveDecisionPoints(accountState, convertibility, claimableBalanceSelections),
-        ...deriveTokenDecisionPoints(accountState, tokenQuotes),
-        ...deriveClaimableBalanceDecisionPoints(accountState),
-      ];
-      const answeredIds = new Set(decisions.map((d) => d?.id));
-      // The destination and DeFi-positions acknowledgements are judged on their choice, not
-      // merely on having been answered. For every other decision the choice is re-validated
-      // downstream against a known value set, so presence is a fair proxy; here the choice IS
-      // the content, and reporting "ready" for an answer that /transactions will refuse leaves
-      // a caller with a 422 and no pending decision to point at.
-      const pending: DecisionPoint[] = decisionPoints.filter((dp) => {
-        if (destination !== null && dp.id === destinationDecisionId(destination)) {
-          return !isDestinationAcknowledged(decisions, destination);
-        }
-        if (dp.id === defiPositionsDecisionId(source)) return !defiPositionsAcknowledged;
-        return !answeredIds.has(dp.id);
-      });
-
-      // Same reasoning as the acknowledgement above, one step further out: a transfer answer is
-      // well-formed whether or not it names a usable account, so it counts as answered and the
-      // plan would report "ready" for a close /transactions then refuses. `missingDestinations`
-      // (collected above, before the plan was built) is surfaced here instead - while the caller
-      // can still change the answer, and while nothing has been built or signed.
-      //
-      // An answer with no usable destination is unanswered in the only sense that matters, so it
-      // goes back on the pending list rather than being swallowed. The previous version relied on
-      // it already being pending, which it never was: `pending` is keyed on the answer's id, and
-      // the id is present.
-      for (const asset of missingDestinations) {
-        const id = decisionIdFor(asset);
-        const point = decisionPoints.find((dp) => dp.id === id);
-        if (point && !pending.includes(point)) pending.push(point);
-      }
-
-      const transferProblems = await validateTransferDestinations(
-        planDestinations,
-        accountState.trustlines,
-        source,
-        network,
-        readDestinationTrustlines
-      );
-      if (transferProblems.length > 0) {
-        buildResult.blockers = [
-          ...buildResult.blockers,
-          // No `code`: on PlanBlocker that field marks an acknowledged, non-trapping warning,
-          // and these must trap. A close that cannot pay one of its assets is not a warning.
-          ...transferProblems.map((p) => ({ message: p.message })),
-        ];
-      }
-
-      const planHash = computePlanHash({
-        source,
-        destination,
-        decisions,
-        snapshotLedger: Number(accountState.sequence),
-      });
-
-      const totalOps = buildResult.steps.reduce((n, s) => n + s.operationCount, 0);
-      const estimate = {
-        feeStroops: String(totalOps * BASE_FEE_STROOPS),
-        freedReserveXlm: ((2 + accountState.numSubEntries) * 0.5).toFixed(7),
-      };
-
-      // Every decision point goes back, answered or not - the caller renders its cards from
-      // this list and knows its own answers. Only the status cares about what remains.
-      return assemblePlanResponse({
-        buildResult,
-        decisionPoints,
-        pendingDecisionPoints: pending,
-        planHash,
-        estimate,
-      });
+      return await buildAccountPlan(source, destination, decisions, network);
     } catch (e) {
       if (e instanceof HttpException) throw e;
       if (e instanceof AccountNotFoundError) fail("account_not_found", e.message, 404);
@@ -340,6 +130,54 @@ export class CloseController {
       this.logger.error("close/plan failed", e instanceof Error ? e.stack : String(e));
       fail("plan_failed", "Failed to build the close plan.", 500);
     }
+  }
+
+  @Post("close/batch-plan")
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      "Plan a bounded list of accounts in one call - what each holds, its wind-down steps, and " +
+      "what lands at the shared destination. Read-only; no decisions are applied per address.",
+  })
+  @ApiBody({ type: BatchPlanRequestDto })
+  @ApiResponse({
+    status: 200,
+    description:
+      "One plan per address, in the same order as the request. An address that could not be " +
+      "read or planned safely reports as its own `blocked` plan rather than failing the call.",
+    type: BatchPlanResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: "Invalid network, addresses, destination, or JSON body.",
+  })
+  async batchPlan(
+    @Param("network") network: string,
+    @Body() body: { addresses?: unknown; destination?: unknown }
+  ) {
+    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network.", 400);
+
+    const { addresses } = body;
+    if (!Array.isArray(addresses) || addresses.length === 0) {
+      fail("invalid_addresses", "A non-empty array of source accounts (G...) is required.", 400);
+    }
+    if (addresses.length > BATCH_PLAN_MAX_ADDRESSES) {
+      fail(
+        "too_many_addresses",
+        `At most ${BATCH_PLAN_MAX_ADDRESSES} addresses are allowed per batch.`,
+        400
+      );
+    }
+    if (!addresses.every((a): a is string => typeof a === "string" && isValidGAddress(a))) {
+      fail("invalid_addresses", "Every address must be a valid Stellar account (G...).", 400);
+    }
+    const destination = typeof body.destination === "string" ? body.destination : null;
+    if (destination !== null && !isValidGAddress(destination)) {
+      fail("invalid_destination", "Destination must be a valid account (G...).", 400);
+    }
+
+    const results = await planBatch(addresses as string[], destination, network);
+    return { results };
   }
 
   @Post("close/transactions")
@@ -574,6 +412,11 @@ export class CloseController {
       }
       if (e instanceof MissingConversionFloorError) {
         fail("conversion_floor_missing", e.message, 422, {
+          decisionId: tokenDecisionId(e.contract),
+        });
+      }
+      if (e instanceof UnrecognizedConversionProviderError) {
+        fail("conversion_provider_unrecognized", e.message, 422, {
           decisionId: tokenDecisionId(e.contract),
         });
       }

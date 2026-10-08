@@ -18,7 +18,7 @@ What LumenWipe does have on the ledger is **two service accounts that hold a sig
 
 | Component                          | On-chain address                                            | Notes                                                                                                                                                                                                                                      |
 | ---------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Mediator account (testnet)         | `GC2VH6XP7HTOZHIX4OC3PU5HUXWY5XANGML4F6GBCNH5MBDFN5MU4WG7`  | Co-signs the forwarding payment of the exchange-mediator flow. Funded to its base reserve only, deliberately: it must hold no spendable surplus.                                                                                           |
+| Mediator account (testnet)         | `GC2VH6XP7HTOZHIX4OC3PU5HUXWY5XANGML4F6GBCNH5MBDFN5MU4WG7`  | Co-signs the forwarding payment of the exchange-mediator flow. Holds friendbot XLM; the no-surplus funding policy (base reserve only, nothing spendable) is for the mainnet account.                                                       |
 | Mediator account (mainnet)         | not yet deployed                                            | Exchange closes are testnet-only today. This row exists so the inventory shows the gap rather than hiding it.                                                                                                                              |
 | Fee-bump sponsor (testnet)         | `GCMCGC6EJZKJJUTFY6RK43PGOODW6EL6FSHSLXBV4EYSZ3GHNJO3FXAP`  | Pays the network fee for accounts sitting at their minimum balance, via CAP-15. Verifiable as `fee_account` on [`3f4bad4b…`](https://stellar.expert/explorer/testnet/tx/3f4bad4b3fd8b112790a1fb298dab1187d0a6b17a478d67aafd3810b7d8a382e). |
 | Fee-bump sponsor (mainnet)         | not yet deployed                                            | Sponsored fees are testnet-only today.                                                                                                                                                                                                     |
@@ -86,8 +86,10 @@ catch the funding policy being broken, not to be the only thing standing in the 
 
 ### How the live ones run
 
-`.github/workflows/onchain-monitors.yml` runs both live monitors at 06:00 UTC daily, and on demand from the
-Actions tab. Both are read-only against public endpoints: no account, no transaction, no funds, no secret.
+`.github/workflows/onchain-monitors.yml` runs the service-account checks every hour and the registry
+comparison once a day at 06:00 UTC, and everything on demand from the Actions tab. All of them are read-only
+against public endpoints: no account, no transaction, no funds. The service accounts to watch are one list at
+the top of the workflow, keyed by network.
 
 `S7.Tampering.1.M.1` reads each `verifiedLive` mainnet entry's executable hash over RPC and compares it to the
 registry. It also runs on every pull request as part of the integration suite, but the schedule is what makes
@@ -98,33 +100,43 @@ service account and count the ones it sourced. Measured on the testnet sponsor o
 touching the account, 0 sourced from it. The mediator: 0 as well. The threshold is that measurement, not a
 guess.
 
-A failure opens a GitHub issue, assigned rather than merely labelled, and the next clean run closes it. That
-is the same delivery path the nightly end-to-end suite uses. It suits a registry mismatch, where exits already
-fail closed and the response is to re-verify at a desk. **It does not suit a suspected key compromise**, which
-needs someone woken up. Setting up that channel is the next thing this plan needs, and until it exists the
-critical rows in section 5 describe a response with no paging behind it.
+`S4a.Elevation.1.M.1` has two signals, both in `apps/api/scripts/monitors/service-accounts.ts`. The balance
+floor reads each account's native balance from Horizon and compares it to the floor in the list: the mediator's
+base reserve, and a provisional top-up level for the sponsor that stands in for `S4b.Denial.1.M.1`'s balance
+half until real usage sets one. The forward check reads the effects of every transaction touching the
+mediator and fires when it debited more than the merge credited in the same transaction, which is the only way
+the mediator can pay out of its own balance. Measured on the testnet mediator on 2026-10-07: 6 transactions,
+forward equal to the merge in every one.
+
+A finding opens a GitHub issue, assigned rather than merely labelled, and posts to a private Discord channel
+the maintainers watch with notifications on. The two service-key checks and the forward check post again on
+every hourly run they keep failing, because a suspected key compromise is worth repeating; a registry or
+balance finding posts once, then gets a daily comment on the issue, so the channel stays readable. The next
+clean daily run closes the issue and posts the recovery. A finding the webhook cannot deliver fails the run
+itself, so a missing or revoked webhook shows up as red rather than as silence.
 
 ## 5. What happens when an alert fires?
 
-| Monitor ID              | Severity | Response                                                                                                                                    | Owner       | Status         | Last reviewed |
-| ----------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | -------------- | ------------- |
-| `S4a.Elevation.1.M.1`   | High     | Notify the maintainers; verify the mediator's funding policy; investigate the forward that preceded the drop.                               | Maintainers | Planned        | 2026-09-17    |
-| `S4a.Spoofing.1.M.1`    | Critical | Notify the maintainers; rotate the mediator key; the mediator rotates without a client change, by design.                                   | Maintainers | Planned        | 2026-09-17    |
-| `S4a.Information.1.M.1` | Critical | Rotate the mediator key immediately; audit every transaction it signed.                                                                     | Maintainers | Active (daily) | 2026-09-18    |
-| `S4b.Elevation.1.M.1`   | High     | Notify the maintainers; disable the sponsored-fee endpoint; audit the inner transactions sponsored.                                         | Maintainers | Planned        | 2026-09-17    |
-| `S4b.Denial.1.M.1`      | Medium   | Top up the sponsor; review the per-key rate limit against the observed rate.                                                                | Maintainers | Planned        | 2026-09-17    |
-| `S4b.Information.1.M.1` | Critical | Rotate the sponsor key immediately; audit every transaction it paid for.                                                                    | Maintainers | Active (daily) | 2026-09-18    |
-| `S7.Tampering.1.M.1`    | High     | Re-verify the contract against the protocol's own release, update the registry entry, and re-run the integration suite before exits resume. | Maintainers | Active (daily) | 2026-09-18    |
+| Monitor ID              | Severity | Response                                                                                                                                    | Owner       | Status                                | Last reviewed |
+| ----------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ------------------------------------- | ------------- |
+| `S4a.Elevation.1.M.1`   | High     | Notify the maintainers; verify the mediator's funding policy; investigate the forward that preceded the drop.                               | Maintainers | Active (hourly)                       | 2026-10-07    |
+| `S4a.Spoofing.1.M.1`    | Critical | Notify the maintainers; rotate the mediator key; the mediator rotates without a client change, by design.                                   | Maintainers | Planned                               | 2026-09-17    |
+| `S4a.Information.1.M.1` | Critical | Rotate the mediator key immediately; audit every transaction it signed.                                                                     | Maintainers | Active (hourly)                       | 2026-10-07    |
+| `S4b.Elevation.1.M.1`   | High     | Notify the maintainers; disable the sponsored-fee endpoint; audit the inner transactions sponsored.                                         | Maintainers | Planned                               | 2026-09-17    |
+| `S4b.Denial.1.M.1`      | Medium   | Top up the sponsor; review the per-key rate limit against the observed rate.                                                                | Maintainers | Balance active (hourly); rate planned | 2026-10-07    |
+| `S4b.Information.1.M.1` | Critical | Rotate the sponsor key immediately; audit every transaction it paid for.                                                                    | Maintainers | Active (hourly)                       | 2026-10-07    |
+| `S7.Tampering.1.M.1`    | High     | Re-verify the contract against the protocol's own release, update the registry entry, and re-run the integration suite before exits resume. | Maintainers | Active (daily)                        | 2026-09-18    |
 
-**Status is honest, not aspirational.** Three monitors are Active and run daily: the registry hash
-comparison and the two service-key checks. Four are Planned, and each is waiting on something specific rather
-than on effort. `S4a.Spoofing.1.M.1` and `S4b.Elevation.1.M.1` have to decode a transaction's operations to
-judge its shape, which is more than a scheduled query does. `S4b.Denial.1.M.1` needs a rate baseline that
-does not exist until there is real usage to measure. `S4a.Elevation.1.M.1` watches a balance floor that only
-means something once the mainnet mediator carries one.
+**Status is honest, not aspirational.** Five monitors are Active: the registry hash comparison daily, and
+the two service-key checks, the mediator's balance-and-forward check and the sponsor's balance floor hourly.
+Two are Planned, and each is waiting on something specific rather than on effort. `S4a.Spoofing.1.M.1` and
+`S4b.Elevation.1.M.1` have to decode a transaction's operations to judge its shape, which is more than a
+scheduled query does. `S4b.Denial.1.M.1`'s rate half needs a baseline that does not exist until there is
+real usage to measure.
 
-The three live ones watch testnet accounts, because those are the only service accounts that exist. Adding
-the mainnet mediator and sponsor is one line each in the workflow once they are deployed.
+The live service-account checks watch testnet accounts, because those are the only service accounts that
+exist. Adding the mainnet mediator and sponsor is one entry each in the workflow's list once they are
+deployed.
 
 ## 6. Did we do a good job?
 
@@ -135,9 +147,12 @@ the mainnet mediator and sponsor is one line each in the workflow once they are 
   exact: these are events that never occur in normal operation. `S4b.Denial.1.M.1`'s rate threshold is
   explicitly deferred until there is 30 days of real usage to set it from, rather than guessed now.
 - **Does every monitor have a response, an owner and a status?** Yes, in §5.
-- **Have any monitors fired?** No. The registry comparison has not reported drift. The two service-key
-  checks report zero sourced transactions for both accounts. Each was also run against an account that does
-  source transactions, to confirm it fails when it should rather than passing because it never looks.
+- **Have any monitors fired?** Yes, once, and as designed. The registry comparison reported Aquarius's
+  upstream upgrade on 2026-10-03 and kept reporting until the entries were re-verified against mainnet and
+  updated; exits against those pools halted at the registry gate in the meantime. The service-key checks
+  report zero sourced transactions for both accounts, and the forward check zero over-payments. Each check
+  was also run against a condition that must fail (an account that does source transactions, a floor above
+  the balance), to confirm it fails when it should rather than passing because it never looks.
 - **Are the addresses current?** Verified 2026-09-18: both testnet accounts resolve on Horizon, and the
   sponsor is confirmed as `fee_account` on the linked transaction. The mainnet rows are empty because those
   accounts do not exist yet.

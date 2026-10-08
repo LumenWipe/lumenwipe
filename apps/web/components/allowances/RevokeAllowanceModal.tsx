@@ -8,6 +8,8 @@ import { NETWORK_PASSPHRASES } from "@/config/networks";
 import type { Allowance } from "@/types/allowance";
 import { PROTOCOL_LABELS } from "@/lib/plan/describe-position";
 import { formatTokenAmount } from "@/lib/utils/token-amounts";
+import { apiErrorMessage } from "@/lib/api/error-body";
+import { ApiRequestError, toUserMessage, UserFacingError } from "@/lib/utils/user-error";
 import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
 import { ensureWalletKitInitialized } from "@/lib/wallet-kit/client";
 import { SecretKeySigner, WalletKitSigner, type TransactionSigner } from "@/lib/stellar/signer";
@@ -69,7 +71,7 @@ export default function RevokeAllowanceModal({
       let signer: TransactionSigner;
       if (mode === "wallet") {
         if (!walletConnection.address || !walletMatches) {
-          throw new Error("Connect the wallet that owns this account first.");
+          throw new UserFacingError("Connect the wallet that owns this account first.");
         }
         signer = new WalletKitSigner(walletConnection.address, (xdr, opts) =>
           ensureWalletKitInitialized(network).signTransaction(xdr, opts)
@@ -77,7 +79,9 @@ export default function RevokeAllowanceModal({
       } else {
         signer = new SecretKeySigner(secretKeyRef.current);
         if (signer.publicKey !== owner) {
-          throw new Error("That secret key does not match the account this allowance belongs to.");
+          throw new UserFacingError(
+            "That secret key does not match the account this allowance belongs to."
+          );
         }
       }
 
@@ -91,15 +95,10 @@ export default function RevokeAllowanceModal({
         error?: { message?: string } | string;
       };
       if (!res.ok) {
-        const message =
-          typeof data.error === "object" && data.error?.message
-            ? data.error.message
-            : typeof data.error === "string"
-              ? data.error
-              : "Failed to build the revocation.";
-        throw new Error(message);
+        throw new ApiRequestError(res.status, apiErrorMessage(data, ""));
       }
-      if (!data.transaction) throw new Error("The server returned no transaction to sign.");
+      if (!data.transaction)
+        throw new UserFacingError("The server returned no transaction to sign.");
 
       const passphrase = NETWORK_PASSPHRASES[network];
       // The trust anchor for this action - see verify-revoke-allowance.ts. Every expected value
@@ -113,14 +112,14 @@ export default function RevokeAllowanceModal({
       const signedXdr = await signer.sign(data.transaction, passphrase);
       const signedTx = TransactionBuilder.fromXDR(signedXdr, passphrase);
       if (signedTx.signatures.length === 0) {
-        throw new Error("The signer did not add a signature.");
+        throw new UserFacingError("The signer did not add a signature.");
       }
 
       await submitViaApi(signedXdr, network);
       setStep("done");
       onRevoked(allowance);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to revoke this allowance.");
+      setError(toUserMessage(err, "execute"));
       setStep("failed");
     }
   }

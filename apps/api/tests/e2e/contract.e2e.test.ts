@@ -88,6 +88,48 @@ test("close/plan rejects a missing source", async () => {
   });
 });
 
+test("close/batch-plan rejects an invalid network with the v1 error shape", async () => {
+  const res = await authPost("/v1/badnet/close/batch-plan").send({ addresses: [] });
+  expect(res.status).toBe(400);
+  expect(res.body).toEqual({ error: { code: "invalid_network", message: "Invalid network." } });
+});
+
+test("close/batch-plan rejects an empty addresses array", async () => {
+  const res = await authPost("/v1/testnet/close/batch-plan").send({ addresses: [] });
+  expect(res.status).toBe(400);
+  expect(res.body.error.code).toBe("invalid_addresses");
+});
+
+test("close/batch-plan rejects a missing addresses field", async () => {
+  const res = await authPost("/v1/testnet/close/batch-plan").send({});
+  expect(res.status).toBe(400);
+  expect(res.body.error.code).toBe("invalid_addresses");
+});
+
+test("close/batch-plan rejects an invalid address inside the array", async () => {
+  const res = await authPost("/v1/testnet/close/batch-plan").send({
+    addresses: [Keypair.random().publicKey(), "NOPE"],
+  });
+  expect(res.status).toBe(400);
+  expect(res.body.error.code).toBe("invalid_addresses");
+});
+
+test("close/batch-plan rejects more addresses than the batch cap", async () => {
+  const addresses = Array.from({ length: 21 }, () => Keypair.random().publicKey());
+  const res = await authPost("/v1/testnet/close/batch-plan").send({ addresses });
+  expect(res.status).toBe(400);
+  expect(res.body.error.code).toBe("too_many_addresses");
+});
+
+test("close/batch-plan rejects an invalid destination", async () => {
+  const res = await authPost("/v1/testnet/close/batch-plan").send({
+    addresses: [Keypair.random().publicKey()],
+    destination: "NOPE",
+  });
+  expect(res.status).toBe(400);
+  expect(res.body.error.code).toBe("invalid_destination");
+});
+
 test("submit rejects a missing signedXdr", async () => {
   const res = await authPost("/v1/testnet/submit").send({});
   expect(res.status).toBe(400);
@@ -179,6 +221,126 @@ test("malformed JSON on fee-bump/sponsor returns the same error contract as ever
   expect(res.status).toBe(400);
   expect(res.body.error.code).toBe("invalid_body");
 });
+
+// ─── Admin: self-serve API key management (#289) ─────────────────────────────
+// Unauthenticated on purpose: admin/api-keys is @Public() + AdminGuard, a distinct operator
+// secret from the api-key bearer used everywhere else in this file.
+
+/** Sets ADMIN_API_TOKEN + FIRESTORE_PROJECT_ID for the duration of `fn`, then restores them.
+ *  The store behind these routes was already fixed as in-memory at app boot (beforeAll runs
+ *  with neither var set), so "configuring" here only flips AdminGuard's own checks - the
+ *  in-memory store used underneath means no test ever touches live Firestore. */
+async function withAdminConfigured<T>(fn: () => Promise<T>): Promise<T> {
+  const originalToken = process.env.ADMIN_API_TOKEN;
+  const originalProject = process.env.FIRESTORE_PROJECT_ID;
+  process.env.ADMIN_API_TOKEN = "admin_test_token";
+  process.env.FIRESTORE_PROJECT_ID = "test-project";
+  try {
+    return await fn();
+  } finally {
+    if (originalToken === undefined) delete process.env.ADMIN_API_TOKEN;
+    else process.env.ADMIN_API_TOKEN = originalToken;
+    if (originalProject === undefined) delete process.env.FIRESTORE_PROJECT_ID;
+    else process.env.FIRESTORE_PROJECT_ID = originalProject;
+  }
+}
+
+const adminPost = (path: string) =>
+  request(http).post(path).set("Authorization", "Bearer admin_test_token");
+const adminGet = (path: string) =>
+  request(http).get(path).set("Authorization", "Bearer admin_test_token");
+
+test("admin/api-keys is unavailable with no admin token or Firestore project configured", async () => {
+  const res = await request(http)
+    .post("/admin/api-keys")
+    .set("Authorization", "Bearer whatever")
+    .send({ owner: "polar" });
+  expect(res.status).toBe(503);
+  expect(res.body.error.code).toBe("admin_api_not_configured");
+});
+
+test("admin/api-keys rejects a wrong admin token once configured", async () =>
+  withAdminConfigured(async () => {
+    const res = await request(http)
+      .post("/admin/api-keys")
+      .set("Authorization", "Bearer wrong-token")
+      .send({ owner: "polar" });
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe("unauthorized");
+  }));
+
+test("admin/api-keys create rejects an empty owner", async () =>
+  withAdminConfigured(async () => {
+    const res = await adminPost("/admin/api-keys").send({ owner: "  " });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("invalid_owner");
+  }));
+
+test("admin/api-keys create rejects a malformed rateLimit", async () =>
+  withAdminConfigured(async () => {
+    const res = await adminPost("/admin/api-keys").send({
+      owner: "polar",
+      rateLimit: { limit: -1 },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("invalid_rate_limit");
+  }));
+
+test("admin/api-keys list requires an owner query parameter", async () =>
+  withAdminConfigured(async () => {
+    const res = await adminGet("/admin/api-keys");
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("invalid_owner");
+  }));
+
+test("admin/api-keys revoke and rotate 404 for an unknown id", async () =>
+  withAdminConfigured(async () => {
+    const revoke = await adminPost("/admin/api-keys/does-not-exist/revoke");
+    expect(revoke.status).toBe(404);
+    expect(revoke.body.error.code).toBe("api_key_not_found");
+
+    const rotate = await adminPost("/admin/api-keys/does-not-exist/rotate");
+    expect(rotate.status).toBe(404);
+    expect(rotate.body.error.code).toBe("api_key_not_found");
+  }));
+
+test("admin/api-keys create/list/revoke/rotate work end-to-end", async () =>
+  withAdminConfigured(async () => {
+    const created = await adminPost("/admin/api-keys").send({ owner: "polar-e2e" });
+    expect(created.status).toBe(201);
+    expect(typeof created.body.key).toBe("string");
+    expect(created.body.key).toStartWith("lw_");
+    const keyId = created.body.record.id as string;
+    expect(created.body.record.owner).toBe("polar-e2e");
+    expect(created.body.record.revokedAt).toBeNull();
+
+    // The new key authenticates a real route.
+    const usesNewKey = await request(http)
+      .post("/v1/testnet/close/plan")
+      .set("Authorization", `Bearer ${created.body.key}`)
+      .send({});
+    expect(usesNewKey.status).toBe(400); // past auth, rejected on the missing `source` body field
+    expect(usesNewKey.body.error.code).toBe("invalid_source");
+
+    const listed = await adminGet("/admin/api-keys?owner=polar-e2e");
+    expect(listed.status).toBe(200);
+    expect(listed.body.keys.map((k: { id: string }) => k.id)).toContain(keyId);
+
+    const rotated = await adminPost(`/admin/api-keys/${keyId}/rotate`);
+    expect(rotated.status).toBe(200);
+    expect(rotated.body.record.rotatedFrom).toBe(keyId);
+
+    // The old key is dead now.
+    const revokedNowRejects = await request(http)
+      .post("/v1/testnet/close/plan")
+      .set("Authorization", `Bearer ${created.body.key}`)
+      .send({});
+    expect(revokedNowRejects.status).toBe(401);
+
+    const revoke = await adminPost(`/admin/api-keys/${rotated.body.record.id}/revoke`);
+    expect(revoke.status).toBe(200);
+    expect(revoke.body.status).toBe("revoked");
+  }));
 
 test("responses carry Cache-Control: no-store (success and error)", async () => {
   const ok = await request(http).get("/health");

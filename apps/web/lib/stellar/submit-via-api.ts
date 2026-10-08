@@ -1,4 +1,5 @@
 import type { Network } from "@/config/networks";
+import { ApiRequestError, UserFacingError } from "@/lib/utils/user-error";
 
 export interface SubmitResult {
   txHash: string;
@@ -31,13 +32,15 @@ export async function submitViaApi(signedXdr: string, network: Network): Promise
         : typeof data.error === "string"
           ? data.error
           : "Failed to submit the transaction.";
-    throw new Error(message);
+    throw new ApiRequestError(res.status, message);
   }
 
   // A 2xx with no hash means the response contract drifted; fail loudly rather
   // than marking a step "confirmed" with an empty hash.
   if (!data.hash) {
-    throw new Error("The transaction was submitted but the server returned no hash.");
+    throw new UserFacingError(
+      "The transaction was submitted but we could not confirm it. Check your account before trying again."
+    );
   }
 
   return { txHash: data.hash, ledger: data.ledger ?? 0 };

@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import type {
+  BatchPlanResponse,
+  BatchPlanResult,
   CloseApiStatus,
   DecisionOption,
   DecisionPoint,
@@ -228,4 +230,26 @@ export class PlanResponseDto implements PlanResponse {
 
   @ApiProperty({ type: PlanExecutionDto })
   execution!: { estimatedTransactionCount: number; transactions: ExecutionTxBreakdown[] };
+}
+
+export class BatchPlanResultDto implements BatchPlanResult {
+  @ApiProperty({ description: "The account this result is for." })
+  address!: string;
+
+  @ApiProperty({
+    description:
+      "This address's plan, in the same shape close/plan returns. An address that could not " +
+      'be read or planned safely comes back with status "blocked" and the failure as its own ' +
+      "blocker, rather than failing the whole batch.",
+    type: PlanResponseDto,
+  })
+  plan!: PlanResponse;
+}
+
+export class BatchPlanResponseDto implements BatchPlanResponse {
+  @ApiProperty({
+    description: "One result per requested address, in the same order as the request.",
+    type: [BatchPlanResultDto],
+  })
+  results!: BatchPlanResult[];
 }

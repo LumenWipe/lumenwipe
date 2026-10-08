@@ -14,6 +14,8 @@ import {
   quoteTokenToXlm,
   xlmContractId,
   type ConversionSdk,
+  type XBullRawQuote,
+  type TokenConversionQuote,
 } from "@/lib/soroswap/conversion-quotes";
 
 const TOKEN = Address.contract(Buffer.alloc(32, 1)).toString();
@@ -124,6 +126,29 @@ test("building echoes the API's quote back as the account, and an empty or faile
     await buildTokenConversion(quote, from, "mainnet", deps(fakeSdk(rawQuote(), "")))
   ).toBeNull();
   expect(await buildTokenConversion(quote, from, "mainnet", deps(null))).toBeNull();
+});
+
+test("buildTokenConversion rejects a non-Soroswap raw quote (xBull shape) and returns null", async () => {
+  const xbullRaw: XBullRawQuote = {
+    route: "soroswap",
+    fromAmount: "100000000",
+    toAmount: "524963090",
+    fromAsset: TOKEN,
+    toAsset: XLM,
+    fee: { platformFee: "0", referralsFee: "0" },
+  };
+  const quote: TokenConversionQuote = {
+    token: TOKEN,
+    amountIn: "100000000",
+    amountOut: "524963090",
+    minAmountOut: "523000000",
+    platform: "aggregator",
+    route: ["soroswap"],
+    raw: xbullRaw,
+  };
+  const from = "GBZVDYLAYVGQW6GVBUXROVXZO3AQXC6ZQRJYCNHVXU7NG26BJTHKFSIK";
+  const sdk = fakeSdk(rawQuote());
+  expect(await buildTokenConversion(quote, from, "mainnet", deps(sdk))).toBeNull();
 });
 
 test("conversion is enabled only with the flag on and a key set", () => {

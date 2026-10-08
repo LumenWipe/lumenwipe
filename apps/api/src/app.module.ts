@@ -10,10 +10,12 @@ import { CloseModule } from "./close/close.module";
 import { AccountModule } from "./account/account.module";
 import { MediatorModule } from "./mediator/mediator.module";
 import { FeeBumpModule } from "./fee-bump/fee-bump.module";
-import { ApiKeyService } from "./auth/api-key.service";
+import { AdminModule } from "./admin/admin.module";
+import { IntegratorModule } from "./integrator/integrator.module";
+import { AuthModule } from "./auth/auth.module";
 import { ApiKeyGuard } from "./auth/api-key.guard";
 import { ApiKeyThrottlerGuard } from "./auth/api-key-throttler.guard";
-import { MeteringService } from "./metering/metering.service";
+import { MeteringModule } from "./metering/metering.module";
 import { MeteringInterceptor } from "./metering/metering.interceptor";
 
 /** Reads a positive integer from env, falling back on missing/invalid values. */
@@ -32,15 +34,17 @@ function positiveIntEnv(name: string, fallback: number): number {
       { ttl: positiveIntEnv("THROTTLE_TTL", 60_000), limit: positiveIntEnv("THROTTLE_LIMIT", 120) },
     ]),
     TerminusModule.forRoot(),
+    AuthModule,
+    MeteringModule,
     CloseModule,
     AccountModule,
     MediatorModule,
     FeeBumpModule,
+    AdminModule,
+    IntegratorModule,
   ],
   controllers: [RootController, HealthController, RegistryController],
   providers: [
-    ApiKeyService,
-    MeteringService,
     // Order matters: rate-limit BEFORE authenticating, then meter successful requests.
     // ApiKeyThrottlerGuard's tracker reads the raw Authorization header itself (falling back to
     // the caller's IP when there is none) - it never depends on ApiKeyGuard having already run,

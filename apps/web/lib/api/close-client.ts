@@ -5,6 +5,7 @@ import type {
   TransactionsResponse,
 } from "@lumenwipe/sdk";
 import type { Network } from "@/config/networks";
+import { ApiRequestError } from "@/lib/utils/user-error";
 
 /**
  * Reads the API's error message out of the proxy response.
@@ -18,9 +19,11 @@ async function toError(res: Response): Promise<Error> {
   const data = (await res.json().catch(() => ({}))) as {
     error?: { message?: string } | string;
   };
-  if (typeof data.error === "object" && data.error?.message) return new Error(data.error.message);
-  if (typeof data.error === "string") return new Error(data.error);
-  return new Error(`Request failed (${res.status}).`);
+  if (typeof data.error === "object" && data.error?.message) {
+    return new ApiRequestError(res.status, data.error.message);
+  }
+  if (typeof data.error === "string") return new ApiRequestError(res.status, data.error);
+  return new ApiRequestError(res.status, "");
 }
 
 /** Builds the deterministic close plan (decision points, estimate) via the proxy. */

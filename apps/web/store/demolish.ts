@@ -9,6 +9,15 @@ import type {
   StepType,
 } from "@/types/plan";
 
+/** What a "convert" disposition is pinned to: the floor the plan quoted, which provider quoted
+ *  it, and - only for an xBull-routed token - the live route `verify()` needs to hold its
+ *  `strict_send` call to before signing (see `apps/web/lib/stellar/verify.ts`). */
+export interface TokenConversionFloor {
+  minAmountOut: string;
+  provider: "soroswap" | "xbull";
+  resolvedPath?: string[];
+}
+
 interface DemolishState {
   // Inputs
   sourceAddress: string | null;
@@ -47,7 +56,7 @@ interface DemolishState {
   transferDestinations: Record<string, string>;
   /** Per Soroban token contract, the least XLM (stroops) the plan quoted its conversion at: the
    *  floor the convert answer carries and the built swap is held to. */
-  tokenConversionFloors: Record<string, string>;
+  tokenConversionFloors: Record<string, TokenConversionFloor>;
 
   // Per-claimable-balance selection, keyed by balance id: claim it, add a trustline then
   // claim it, or forfeit it.
@@ -78,7 +87,7 @@ interface DemolishState {
   setPlan: (plan: PlannedStep[]) => void;
   setAssetDisposition: (asset: string, action: AssetDisposition) => void;
   setTransferDestination: (asset: string, destination: string | null) => void;
-  setTokenConversionFloors: (floors: Record<string, string>) => void;
+  setTokenConversionFloors: (floors: Record<string, TokenConversionFloor>) => void;
   setClaimableBalanceSelection: (balanceId: string, selection: ClaimableBalanceSelection) => void;
   setMediatorRequired: (required: boolean) => void;
   setCurrentStepIndex: (index: number) => void;
@@ -125,12 +134,12 @@ function decidableAssets(accountState: AccountState): Set<string> {
   ]);
 }
 
-function pruneToPresentAssets(
-  destinations: Record<string, string>,
+function pruneToPresentAssets<T>(
+  destinations: Record<string, T>,
   accountState: AccountState
-): Record<string, string> {
+): Record<string, T> {
   const present = decidableAssets(accountState);
-  const next: Record<string, string> = {};
+  const next: Record<string, T> = {};
   for (const [asset, destination] of Object.entries(destinations)) {
     if (present.has(asset)) next[asset] = destination;
   }

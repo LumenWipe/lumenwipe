@@ -204,7 +204,9 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         <div className="mkt-panel border-destructive/30 rounded-2xl p-6 text-center space-y-4">
           <AlertTriangle className="h-8 w-8 text-destructive mx-auto" />
           <p className="font-medium text-white">Analysis failed</p>
-          <p className="text-sm text-muted-foreground">{error}</p>
+          <p role="alert" className="text-sm text-muted-foreground">
+            {error}
+          </p>
           <Link
             href={`/${routeNetwork}`}
             className="inline-flex items-center gap-1.5 text-sm text-stellar hover:underline"
@@ -231,7 +233,10 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       </div>
 
       {error && (
-        <div className="mkt-panel border-destructive/30 rounded-xl px-4 py-3 mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+        <div
+          role="alert"
+          className="mkt-panel border-destructive/30 rounded-xl px-4 py-3 mb-4 flex items-center gap-2 text-sm text-muted-foreground"
+        >
           <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
           <span>{error}</span>
         </div>

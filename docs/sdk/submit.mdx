@@ -1,0 +1,16 @@
+---
+title: "submit"
+description: "Submit a signed transaction and read the confirmation."
+icon: "paper-plane"
+---
+
+```ts
+const result = await client.submit(signedXdr);
+// { status: "success", hash: "...", ledger: 123456 }
+```
+
+`submit` sends a transaction you have already verified and signed. It resolves with `status`, the transaction `hash`, and the `ledger` it landed in. A failed submission throws a [`LumenWipeApiError`](/sdk/errors).
+
+Submit transactions in `order`, and wait for each to confirm before the next. For an account that needs several signers, collect signatures on the same envelope until the threshold is met, then submit once.
+
+Because closing an account is irreversible, never submit a transaction you did not verify first.

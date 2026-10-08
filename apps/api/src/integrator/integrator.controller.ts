@@ -1,0 +1,139 @@
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Inject,
+  Param,
+  Post,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
+import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { Public } from "@/auth/public.decorator";
+import { API_KEY_STORE, type ApiKeyRecord, type ApiKeyStore } from "@/auth/api-key-store";
+import { ApiKeyDirectory } from "@/auth/api-key-directory";
+import { MeteringService } from "@/metering/metering.service";
+import { fail } from "@/common/fail";
+import {
+  IntegratorGuard,
+  requireIntegratorConfig,
+  type IntegratorRequest,
+} from "./integrator.guard";
+import { buildChallenge, isClassicAddress, issueSession, verifyChallenge } from "./wallet-auth";
+
+const MAX_ACTIVE_KEYS_PER_OWNER = 5;
+
+function toDto(record: ApiKeyRecord) {
+  return {
+    id: record.hash,
+    createdAt: record.createdAt.toISOString(),
+    revokedAt: record.revokedAt ? record.revokedAt.toISOString() : null,
+    rotatedFrom: record.rotatedFrom,
+  };
+}
+
+/**
+ * Wallet-authenticated self-service key management. The wallet address is the key `owner`, so
+ * every operation is scoped to the session's own address and cannot touch anyone else's keys.
+ */
+@ApiTags("integrator")
+@Public()
+@Controller("integrator")
+export class IntegratorController {
+  constructor(
+    @Inject(API_KEY_STORE) private readonly store: ApiKeyStore,
+    private readonly metering: MeteringService,
+    private readonly directory: ApiKeyDirectory
+  ) {}
+
+  @Post("auth/challenge")
+  @HttpCode(200)
+  @ApiOperation({ summary: "Get a challenge transaction for a wallet to sign." })
+  challenge(@Body() body: { address?: unknown }) {
+    const secret = requireIntegratorConfig();
+    if (!isClassicAddress(body.address)) {
+      fail("invalid_address", "A valid Stellar account address (G...) is required.", 400);
+    }
+    return buildChallenge(secret, body.address);
+  }
+
+  @Post("auth/session")
+  @HttpCode(200)
+  @ApiOperation({ summary: "Exchange a signed challenge for a short-lived session token." })
+  session(@Body() body: { address?: unknown; message?: unknown; signature?: unknown }) {
+    const secret = requireIntegratorConfig();
+    const { address, message, signature } = body;
+    if (
+      !isClassicAddress(address) ||
+      typeof message !== "string" ||
+      typeof signature !== "string"
+    ) {
+      fail("invalid_request", "address, message and signature are required.", 400);
+    }
+    if (!verifyChallenge(secret, address, message, signature)) {
+      fail("invalid_challenge", "The signed challenge is invalid or has expired.", 401);
+    }
+    return issueSession(secret, address);
+  }
+
+  @Get("keys")
+  @ApiBearerAuth("integrator-session")
+  @UseGuards(IntegratorGuard)
+  @ApiOperation({ summary: "List the signed-in wallet's keys with a best-effort usage figure." })
+  async list(@Req() req: IntegratorRequest) {
+    const owner = req.integratorAddress!;
+    const records = await this.store.listByOwner(owner);
+    const requestsSinceStart = this.metering.snapshot()[owner] ?? 0;
+    return { keys: records.map(toDto), requestsSinceStart };
+  }
+
+  @Post("keys")
+  @HttpCode(201)
+  @ApiBearerAuth("integrator-session")
+  @UseGuards(IntegratorGuard)
+  @ApiOperation({ summary: "Create a key. The raw secret is returned exactly once." })
+  async create(@Req() req: IntegratorRequest) {
+    const owner = req.integratorAddress!;
+    const active = (await this.store.listByOwner(owner)).filter((r) => !r.revokedAt);
+    if (active.length >= MAX_ACTIVE_KEYS_PER_OWNER) {
+      fail(
+        "key_limit_reached",
+        `You can have up to ${MAX_ACTIVE_KEYS_PER_OWNER} active keys. Revoke one to create another.`,
+        409
+      );
+    }
+    const { raw, record } = await this.store.create(owner);
+    return { key: raw, record: toDto(record) };
+  }
+
+  @Post("keys/:id/revoke")
+  @HttpCode(200)
+  @ApiBearerAuth("integrator-session")
+  @UseGuards(IntegratorGuard)
+  @ApiOperation({ summary: "Revoke one of the signed-in wallet's keys." })
+  async revoke(@Req() req: IntegratorRequest, @Param("id") id: string) {
+    await this.requireOwned(req.integratorAddress!, id);
+    await this.store.revoke(id);
+    this.directory.invalidate(id);
+    return { status: "revoked" };
+  }
+
+  @Post("keys/:id/rotate")
+  @HttpCode(200)
+  @ApiBearerAuth("integrator-session")
+  @UseGuards(IntegratorGuard)
+  @ApiOperation({ summary: "Revoke a key and issue its replacement." })
+  async rotate(@Req() req: IntegratorRequest, @Param("id") id: string) {
+    await this.requireOwned(req.integratorAddress!, id);
+    const result = await this.store.rotate(id);
+    if (!result) fail("api_key_not_found", "No active key with that id.", 404);
+    this.directory.invalidate(id);
+    return { key: result.raw, record: toDto(result.record) };
+  }
+
+  private async requireOwned(owner: string, id: string): Promise<void> {
+    const owned = (await this.store.listByOwner(owner)).some((r) => r.hash === id);
+    if (!owned) fail("api_key_not_found", "No key with that id.", 404);
+  }
+}

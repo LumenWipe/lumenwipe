@@ -383,6 +383,7 @@ test("receiptAssetSummary › a forfeited balance appears nowhere", () => {
 
 const TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
 const TOKEN_DEST = "GBWLBY2XERGCNM5UWRIF5ZG6LM7Q7B44MHUR54BT3XVHAD5IB4HLN3XG";
+const XLM = "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA";
 
 function withTokens(tokens: Array<{ contract: string; balance: string; symbol?: string | null }>) {
   return {
@@ -483,12 +484,35 @@ test("receiptTokenSummary › every token with a balance, named by symbol or sho
   expect(receiptTokenSummary(null)).toEqual([]);
 });
 
-test("dispositionsToDecisions › a token's convert answer carries the floor the plan quoted; without one it carries none and the API refuses it", () => {
+test("dispositionsToDecisions › a token's convert answer carries the floor and provider the plan quoted; without one it carries none and the API refuses it", () => {
   expect(
-    dispositionsToDecisions({ [TOKEN]: "convert", [ASSET]: "convert" }, {}, { [TOKEN]: "5223381" })
+    dispositionsToDecisions(
+      { [TOKEN]: "convert", [ASSET]: "convert" },
+      {},
+      { [TOKEN]: { minAmountOut: "5223381", provider: "soroswap" } }
+    )
   ).toEqual([
-    { id: `token:${TOKEN}`, choice: "convert_to_xlm", params: { minAmountOut: "5223381" } },
+    {
+      id: `token:${TOKEN}`,
+      choice: "convert_to_xlm",
+      params: { minAmountOut: "5223381", provider: "soroswap" },
+    },
     { id: ASSET_ID, choice: "convert_to_xlm" },
+  ]);
+  // xBull's provider travels the same way - the build must re-quote and build through the exact
+  // provider the user was shown, never silently default to Soroswap.
+  expect(
+    dispositionsToDecisions(
+      { [TOKEN]: "convert" },
+      {},
+      { [TOKEN]: { minAmountOut: "5074650", provider: "xbull", resolvedPath: [TOKEN, XLM] } }
+    )
+  ).toEqual([
+    {
+      id: `token:${TOKEN}`,
+      choice: "convert_to_xlm",
+      params: { minAmountOut: "5074650", provider: "xbull" },
+    },
   ]);
   expect(dispositionsToDecisions({ [TOKEN]: "convert" }, {}, {})).toEqual([
     { id: `token:${TOKEN}`, choice: "convert_to_xlm" },
@@ -500,19 +524,63 @@ test("chosenTokenConversions › only tokens marked convert with a usable floor 
   expect(
     chosenTokenConversions(
       { [TOKEN]: "convert", [ASSET]: "convert" },
-      { [TOKEN]: "5223381" },
+      { [TOKEN]: { minAmountOut: "5223381", provider: "soroswap" } },
       account
     )
   ).toEqual({ [TOKEN]: { minAmountOut: "5223381", amountIn: "2500000000" } });
   // No floor, a zero floor, a non-integer, or another disposition: nothing to hold the swap to.
   expect(chosenTokenConversions({ [TOKEN]: "convert" }, {}, account)).toEqual({});
-  expect(chosenTokenConversions({ [TOKEN]: "convert" }, { [TOKEN]: "0" }, account)).toEqual({});
-  expect(chosenTokenConversions({ [TOKEN]: "convert" }, { [TOKEN]: "1.5" }, account)).toEqual({});
-  expect(chosenTokenConversions({ [TOKEN]: "leave" }, { [TOKEN]: "5223381" }, account)).toEqual({});
+  expect(
+    chosenTokenConversions(
+      { [TOKEN]: "convert" },
+      { [TOKEN]: { minAmountOut: "0", provider: "soroswap" } },
+      account
+    )
+  ).toEqual({});
+  expect(
+    chosenTokenConversions(
+      { [TOKEN]: "convert" },
+      { [TOKEN]: { minAmountOut: "1.5", provider: "soroswap" } },
+      account
+    )
+  ).toEqual({});
+  expect(
+    chosenTokenConversions(
+      { [TOKEN]: "leave" },
+      { [TOKEN]: { minAmountOut: "5223381", provider: "soroswap" } },
+      account
+    )
+  ).toEqual({});
   // No account read: nothing to vouch the balance with, so the amount floors to zero.
-  expect(chosenTokenConversions({ [TOKEN]: "convert" }, { [TOKEN]: "5223381" }, null)).toEqual({
+  expect(
+    chosenTokenConversions(
+      { [TOKEN]: "convert" },
+      { [TOKEN]: { minAmountOut: "5223381", provider: "soroswap" } },
+      null
+    )
+  ).toEqual({
     [TOKEN]: { minAmountOut: "5223381", amountIn: "0" },
   });
+});
+
+test("chosenTokenConversions › an xBull-pinned token carries its resolvedPath alongside the floor; a Soroswap one carries none", () => {
+  const account = withTokens([{ contract: TOKEN, balance: "2500000000" }]);
+  expect(
+    chosenTokenConversions(
+      { [TOKEN]: "convert" },
+      { [TOKEN]: { minAmountOut: "5074650", provider: "xbull", resolvedPath: [TOKEN, XLM] } },
+      account
+    )
+  ).toEqual({
+    [TOKEN]: { minAmountOut: "5074650", amountIn: "2500000000", resolvedPath: [TOKEN, XLM] },
+  });
+  expect(
+    chosenTokenConversions(
+      { [TOKEN]: "convert" },
+      { [TOKEN]: { minAmountOut: "5223381", provider: "soroswap" } },
+      account
+    )
+  ).toEqual({ [TOKEN]: { minAmountOut: "5223381", amountIn: "2500000000" } });
 });
 
 const TOKEN_A = "CCHATUHI32FTTTMTEYHP2UII73XGUXZ5JTNN6OBQMD3PFLSNVPTOIN54";

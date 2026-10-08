@@ -1,0 +1,40 @@
+---
+title: "Signing options"
+description: "Sign with a wallet, a secret key, several signers, a hash(x) preimage, or a pre-authorized transaction."
+icon: "signature"
+---
+
+LumenWipe builds transactions on the server, but signing always happens in your browser. Your private key never reaches LumenWipe.
+
+## Wallet
+
+The default. Connect a wallet through Stellar Wallets Kit, which supports Freighter, xBull, Albedo, Rabet, Hana, and WalletConnect. LOBSTR users can connect through WalletConnect. The app hands the wallet an unsigned transaction and receives the signed one back, so the key stays inside the wallet.
+
+## Secret key
+
+For keys that live in no wallet. The key is held in memory only for the length of the session. It is never written to storage and never sent over the network. It is wiped when the close completes, when you abort, when you leave the page, or when you click **Forget key**.
+
+## Multisig accounts
+
+When an account needs several signers to reach its threshold, connect wallets or enter keys one after another. Signatures accumulate on the same transaction until the threshold is met, then it is submitted. Each signer stays active for the session, because a later round of the same close may need it again.
+
+When extra signers exist, the plan removes them early. That collapses the rest of the close to a single key and releases each signer's reserve.
+
+## hash(x) signers
+
+A hash(x) signer is a key that is the SHA-256 hash of a secret value. To satisfy one, enter the preimage as a hex string. LumenWipe checks that it hashes to the signer's key before using it, and rejects it otherwise.
+
+## Pre-authorized transaction signers
+
+A pre-auth signer's key is the hash of one specific transaction, authorized in advance. It contributes weight only when that exact transaction is submitted, never by signing something new.
+
+LumenWipe builds a fresh transaction every round, so a pre-auth signer will almost never match it. The only way to use one is to paste the exact pre-authorized transaction XDR.
+
+<Warning>
+  LumenWipe did not build or verify a pasted pre-authorized transaction the way it does every other
+  one. Review it yourself before you submit it. The app shows this warning every time.
+</Warning>
+
+## What you are asked to check
+
+Before each signature, the browser shows what the transaction does. The check covers where the funds go, any memo, and that only removals and conversions are included. Read the destination before you confirm.

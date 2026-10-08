@@ -1,0 +1,50 @@
+---
+title: "LumenWipeClient"
+description: "Configure the client and see every method it exposes."
+icon: "plug"
+---
+
+## Configuration
+
+```ts
+import { LumenWipeClient } from "@lumenwipe/sdk";
+
+const client = new LumenWipeClient({
+  baseUrl: "https://api.lumenwipe.com",
+  apiKey: process.env.LUMENWIPE_API_KEY!,
+  network: "mainnet",
+  timeout: 30_000,
+});
+```
+
+| Option    | Required | Description                                                                                  |
+| --------- | -------- | -------------------------------------------------------------------------------------------- |
+| `baseUrl` | yes      | Base URL of the LumenWipe API. Trailing slashes are removed.                                 |
+| `apiKey`  | yes      | Integrator API key, sent as `Authorization: Bearer <apiKey>`.                                |
+| `network` | no       | Default network for calls that omit it: `"mainnet"` or `"testnet"`. Defaults to `"testnet"`. |
+| `fetch`   | no       | Custom fetch for runtimes without a global one, or for testing.                              |
+| `timeout` | no       | Per-request timeout in milliseconds. Defaults to `30000`. `0` or `Infinity` disables it.     |
+
+Keep the API key server-side. Never ship it to a browser.
+
+## Methods
+
+Every method takes an optional trailing `network` that overrides the client default.
+
+| Method                                               | Description                                                                                     |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `health()`                                           | Service health check.                                                                           |
+| `getAccount(address)`                                | Current on-chain state of an account.                                                           |
+| `getPaths({ fromAsset, amount })`                    | Conversion path quote for a source asset.                                                       |
+| [`closePlan(body)`](/sdk/close-plan)                 | Preview of the full close plan, with blockers if a step cannot close safely.                    |
+| [`closeTransactions(body)`](/sdk/close-transactions) | Builds the next round of unsigned transactions.                                                 |
+| [`submit(signedXdr)`](/sdk/submit)                   | Submits a signed transaction.                                                                   |
+| `mediatorCheck(address)`                             | Checks the exchange mediator state for an address.                                              |
+| `mediatorSign(transaction)`                          | Co-signs the mediator forward payment for an exchange close.                                    |
+| `feeBumpSponsor(transaction)`                        | Wraps a zero-fee transaction in a fee-bump envelope for an account that cannot pay its own fee. |
+| `getAllowances(address)`                             | Every live SEP-41 allowance the account has granted.                                            |
+| `revokeAllowance({ owner, token, spender })`         | Builds the unsigned transaction that revokes one allowance.                                     |
+
+`runClose` is a standalone function, not a client method. See [runClose](/sdk/run-close).
+
+Each method maps to an endpoint in the [API reference](/api-reference/introduction).

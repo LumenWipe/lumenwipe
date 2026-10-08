@@ -128,11 +128,12 @@ export default function TokenDispositionCard({
               {token.quote ? (
                 <span className="text-white/40">
                   About {formatStroops(token.quote.amountOut)} XLM, at least{" "}
-                  {formatStroops(token.quote.minAmountOut)} XLM, through Soroswap
+                  {formatStroops(token.quote.minAmountOut)} XLM, through{" "}
+                  {token.quote.provider === "xbull" ? "xBull" : "Soroswap"}
                   {token.quote.route.length > 0 ? ` (${token.quote.route.join(", ")})` : ""}.
                 </span>
               ) : (
-                <span className="text-white/40">Through the Soroswap aggregator.</span>
+                <span className="text-white/40">Through the best available route.</span>
               )}
             </span>
           </label>

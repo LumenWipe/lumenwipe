@@ -7,6 +7,21 @@ release is cut.
 
 ## [Unreleased]
 
+### Added
+
+- `DefiProtocol` gains `"xbull"`: xBull Swap is now a second, mainnet-only conversion-quote
+  source alongside Soroswap for the Soroban-token-to-XLM step of a close. `DecisionAnswer.params`
+  gains an optional `provider?: "soroswap" | "xbull"`, pinning which provider's quote a
+  `convert_to_xlm` answer was accepted from. Both are purely additive; no existing field changed
+  shape.
+- `BatchPlanResult` and `BatchPlanResponse` types, matching the API's new
+  `POST /v1/:network/close/batch-plan` endpoint: plans a bounded list of addresses in one call,
+  isolating any address that can't be read or planned safely as its own blocked result rather
+  than failing the whole batch. Purely additive; no existing field changed shape.
+- A headless example, `examples/headless-close.ts`, that closes a testnet account driven entirely
+  through the SDK with no web UI, verifying each transaction before signing it
+  (`examples/verify.ts`). Linked from the README; not part of the published package.
+
 ## [0.2.0] - 2026-09-23
 
 ### Added

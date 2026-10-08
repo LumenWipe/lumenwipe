@@ -25,6 +25,8 @@ sequenceDiagram
 
 Only the platform's keys can move anything; LumenWipe never holds funds or keys. And every plan is checked against live on-chain state before execution, so an account the user already emptied or changed is handled correctly instead of blindly replayed.
 
+To see the integration end to end, the SDK ships a [headless example](https://github.com/LumenWipe/lumenwipe/blob/main/packages/sdk/examples/headless-close.ts) that closes a testnet account from a plain Node process, signing with an in-process key and verifying every transaction before it signs.
+
 ## Partnership: Pollar
 
 [Pollar](https://pollar.xyz/) is an SDK for onboarding users and enabling payments on Stellar: one integration that creates wallets, activates accounts, sets up USDC trustlines, and sponsors fees so end users never touch crypto mechanics. It is also our first integration partner.

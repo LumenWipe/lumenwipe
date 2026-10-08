@@ -44,3 +44,18 @@ export {
   type SoroswapPairState,
 } from "./soroswap";
 export { aquariusExitAdapter, type AquariusLive, type AquariusPoolState } from "./aquarius";
+export {
+  phoenixExitAdapter,
+  type PhoenixLive,
+  type PhoenixPoolState,
+  type PhoenixStakeEntry,
+} from "./phoenix";
+export {
+  fxdaoExitAdapter,
+  type FxdaoCoreState,
+  type FxdaoDeps,
+  type FxdaoLive,
+  type FxdaoVaultKeyLike,
+  type FxdaoVaultRecord,
+  type FxdaoVaultsInfo,
+} from "./fxdao";

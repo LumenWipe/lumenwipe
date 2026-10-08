@@ -1,0 +1,34 @@
+---
+title: "closeTransactions"
+description: "Fetch each round of unsigned transactions until the close is done."
+icon: "layer-group"
+---
+
+`closeTransactions` builds the next round of unsigned transactions. Most accounts close in one transaction. An exchange adds the mediator transfer, and claimable balances, an aggregator swap, or more than 100 operations force additional transactions.
+
+```ts
+const { transactions, remaining } = await client.closeTransactions({
+  source,
+  destination,
+  decisions,
+  memo,
+});
+```
+
+| Field         | Required | Description                                                                                            |
+| ------------- | -------- | ------------------------------------------------------------------------------------------------------ |
+| `source`      | yes      | The account being closed.                                                                              |
+| `destination` | yes      | Where the remaining XLM is merged.                                                                     |
+| `decisions`   | no       | The same answers you gave to `closePlan`.                                                              |
+| `memo`        | no       | Deposit memo for an exchange destination that requires one. Its type comes from the exchange registry. |
+
+## Working through a round
+
+1. Sort `transactions` by `order`.
+2. [Verify](/sdk/verification) each transaction against your own inputs.
+3. Sign it, then [submit](/sdk/submit) it and wait for confirmation. If `needsSponsoredFee` is true, route the signed envelope through `feeBumpSponsor` first.
+4. If `remaining.requiresAnotherCall` is true, call `closeTransactions` again.
+
+The API is stateless. Each call re-reads live state and re-derives what remains, so an interrupted close resumes by simply calling again. Nothing needs to be reconciled.
+
+Each transaction carries `id`, `order`, `dependsOn`, `xdr`, `networkPassphrase`, `validUntilLedger`, and an `intent` summary. The `intent` is the API's description of the transaction. Treat it as a label for display, never as proof of what the XDR does.

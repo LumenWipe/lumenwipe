@@ -1,0 +1,65 @@
+---
+title: "Troubleshooting and FAQ"
+description: "Common blockers, what they mean, and how to resolve them."
+icon: "circle-question"
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="The plan shows a blocker">
+    A blocker means a step cannot be closed safely, and LumenWipe will not skip it. Read the
+    explanation on the review page. Most blockers name the exact entry and what would resolve it.
+    After you act, analyze the account again.
+  </Accordion>
+  <Accordion title="The account cannot be merged at all">
+    An account with the `AUTH_IMMUTABLE` flag can never be merged. This is a protocol rule, not a
+    LumenWipe limit.
+  </Accordion>
+  <Accordion title="The destination was rejected">
+    The destination must be a funded account that exists on the selected network, and it cannot be
+    the account you are closing. Create and fund it first.
+  </Accordion>
+  <Accordion title="A claimable balance blocks the close">
+    An account that sponsors a claimable balance cannot merge until a claimant claims it. If you are
+    a claimant, LumenWipe claims it for you. If you are not, the claimant has to act.
+  </Accordion>
+  <Accordion title="My account cannot pay the fee">
+    An account at its minimum balance cannot pay its own fee. LumenWipe sponsors the fee for the
+    closing transactions, and the sponsorship can only pay fees.
+  </Accordion>
+  <Accordion title="A swap route disappeared">
+    If the route for an asset is no longer available between analysis and signing, the build is
+    refused and names the asset. LumenWipe will not change your choice for you. Pick a different
+    option for that asset, such as a transfer, which needs no route.
+  </Accordion>
+  <Accordion title="A step failed or my browser closed">
+    Reopen the flow. Completed steps are skipped, and a failed step can be retried. A transaction
+    that confirmed but whose response was lost is detected and not submitted twice.
+  </Accordion>
+  <Accordion title="The exchange did not credit my deposit">
+    Check that the memo matches what the exchange gave you. Contact the exchange with the
+    transaction hash, which the completion page lists.
+  </Accordion>
+</AccordionGroup>
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="Does LumenWipe ever hold my keys or funds?">
+    No. Transactions are built on the server and signed in your browser, and the key never leaves
+    it. For exchange closes, funds pass through the shared mediator account within one atomic
+    transaction.
+  </Accordion>
+  <Accordion title="Can I preview before I sign?">
+    Yes. The review page shows the entire plan, the estimated fee, and the estimated XLM you will
+    receive, before anything is built.
+  </Accordion>
+  <Accordion title="Is it reversible?">
+    No. Once an account is merged it is deleted from the ledger.
+  </Accordion>
+  <Accordion title="Can I try it without real funds?">Yes. Use the testnet.</Accordion>
+  <Accordion title="How much do I pay?">
+    Only the Stellar network fees. The reserves you recover are far larger than the fees.
+  </Accordion>
+</AccordionGroup>

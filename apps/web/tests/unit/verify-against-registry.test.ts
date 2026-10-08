@@ -34,6 +34,9 @@ const SOROSWAP_ROUTER = "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BR
 const SOROSWAP_PAIR = "CDH4NEG6TAII2AXGJY52WSMMOGCPMFIQBBH245ATW2TIZ7MBYM23YOAR";
 const AQUARIUS_POOL = "CCSXYUVLYALKJGIIYMGYLZI447VS6TDWFTVDL43B4IKK2WERHLWUVCRC";
 const XTAR = "CCZGLAUBDKJSQK72QOZHVU7CUWKW45OZWYWCLL27AEK74U2OIBK6LXF2";
+const PHOENIX_POOL = "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV";
+const PHOENIX_STAKE = "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP";
+const FXDAO_VAULT = "CBUZ5NJKA5PRS4TBPHWMN4JGGRVIOQOKI4JUYLA2IXS3BEJKQKEWFW7D";
 
 function accountWith(positions: AccountState["defiPositions"]["positions"]): AccountState {
   return {
@@ -130,6 +133,66 @@ describe("an exit the registry vouches for passes the anchor", () => {
     ).not.toThrow();
   });
 
+  test("Phoenix, through the pool's own withdraw_liquidity", () => {
+    const account = accountWith([
+      {
+        protocol: "phoenix",
+        positionType: "lp",
+        contractAddress: PHOENIX_POOL,
+        shareAmount: "1",
+        usdValue: null,
+      },
+    ] as AccountState["defiPositions"]["positions"]);
+
+    expect(() =>
+      assertCloseIntent(exitOnly(call(PHOENIX_POOL, "withdraw_liquidity")), expectationFor(account))
+    ).not.toThrow();
+  });
+
+  /**
+   * The regression that matters here: Phoenix's unbond runs on a contract the position itself
+   * never names (`live.stakeContract`, read from the pool's own config), sourced only from the
+   * bundled registry's "stake" kind - the same shape Blend's backstop already exercises, now
+   * proven against Phoenix's real testnet registry entry rather than a hand-built address.
+   */
+  test("Phoenix, through the registry's stake contract for a staked position's unbond", () => {
+    const account = accountWith([
+      {
+        protocol: "phoenix",
+        positionType: "stake",
+        contractAddress: PHOENIX_POOL,
+        stakedAmount: "1",
+        stakedAtEpoch: "1700000000",
+        usdValue: null,
+      },
+    ] as AccountState["defiPositions"]["positions"]);
+    const expected = expectationFor(account);
+
+    expect(expected.exitContracts).toContain(PHOENIX_STAKE);
+
+    expect(() =>
+      assertCloseIntent(exitOnly(call(PHOENIX_STAKE, "unbond")), expected)
+    ).not.toThrow();
+  });
+
+  test("FxDAO, through the vault's own pay_debt", () => {
+    const account = accountWith([
+      {
+        protocol: "fxdao",
+        positionType: "cdp",
+        contractAddress: FXDAO_VAULT,
+        denomination: "USDx",
+        collateralAmount: "100",
+        debtAmount: "50",
+        usdValue: null,
+      },
+    ] as AccountState["defiPositions"]["positions"]);
+
+    expect(() =>
+      assertCloseIntent(exitOnly(call(FXDAO_VAULT, "pay_debt")), expectationFor(account))
+    ).not.toThrow();
+  });
+
   /**
    * The regression that matters: the Soroswap exit calls the router, and the router is also a
    * conversion contract. This is the case production had and no fixture did.
@@ -192,5 +255,81 @@ describe("the dual role does not widen what the anchor accepts", () => {
     expect(() =>
       assertCloseIntent(exitOnly(call(BLEND_POOL, "submit")), expectationFor(account))
     ).toThrow(/not one of this account's detected positions/);
+  });
+});
+
+describe("Phoenix's pool and stake contract each pin their own function only", () => {
+  const account = accountWith([
+    {
+      protocol: "phoenix",
+      positionType: "stake",
+      contractAddress: PHOENIX_POOL,
+      stakedAmount: "1",
+      stakedAtEpoch: "1700000000",
+      usdValue: null,
+    },
+  ] as AccountState["defiPositions"]["positions"]);
+
+  test("the pool's withdraw_liquidity does not carry over to the stake contract", () => {
+    expect(() =>
+      assertCloseIntent(
+        exitOnly(call(PHOENIX_STAKE, "withdraw_liquidity")),
+        expectationFor(account)
+      )
+    ).toThrow(/function LumenWipe does not use/);
+  });
+
+  test("the stake contract's unbond does not carry over to the pool", () => {
+    expect(() =>
+      assertCloseIntent(exitOnly(call(PHOENIX_POOL, "unbond")), expectationFor(account))
+    ).toThrow(/function LumenWipe does not use/);
+  });
+});
+
+/**
+ * The same class of bug PR #270 caught for Soroswap, for xBull: every other xBull test in
+ * verify.test.ts hand-builds `conversionContracts: [XBULL_ROUTER]`, so none of them would have
+ * caught the router being absent from `conversionContractsFor`'s real filter. xBull is
+ * mainnet-only (no testnet entry exists), so this derives the expectation on mainnet, the one
+ * network where the regression could actually happen.
+ */
+describe("xBull's router, derived from the real registry (mainnet, the only network it exists on)", () => {
+  const XLM_SAC_MAINNET = Asset.native().contractId(Networks.PUBLIC);
+  const XBULL_ROUTER = "CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT";
+  const CONVERT_TOKEN = "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75";
+
+  function xbullExpectation(): CloseExpectation {
+    return {
+      ...expectationFor(accountWith([])),
+      ...exitExpectations(accountWith([]), "mainnet"),
+      tokenConversions: {
+        [CONVERT_TOKEN]: {
+          minAmountOut: "1",
+          amountIn: "100000000",
+          resolvedPath: [CONVERT_TOKEN, XLM_SAC_MAINNET],
+        },
+      },
+    } as CloseExpectation;
+  }
+
+  test("the real registry includes xBull's router in conversionContracts on mainnet", () => {
+    expect(xbullExpectation().conversionContracts).toContain(XBULL_ROUTER);
+  });
+
+  test("a real strict_send call passes the anchor using the registry-derived expectation", () => {
+    const swap: IntentOperation = {
+      source: SRC,
+      type: "invoke_host_function",
+      contract: XBULL_ROUTER,
+      function: "strict_send",
+      args: [SRC, SRC, "100000000", "1", "[[0,1,0,0]]", "[]"],
+      accountsReferenced: [SRC],
+      contractsReferenced: [XBULL_ROUTER],
+      unsupportedAddressCount: 0,
+      authorizesBeyondSelf: false,
+      authDepth: 0,
+      subInvocations: [],
+    } as unknown as IntentOperation;
+    expect(() => assertCloseIntent(exitOnly(swap), xbullExpectation())).not.toThrow();
   });
 });

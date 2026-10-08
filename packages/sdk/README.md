@@ -25,16 +25,16 @@ const client = new LumenWipeClient({
   network: "mainnet", // or "testnet"
 });
 
-const account = await client.getAccount(address);
+const account = await client.getAccount(source);
 
 const plan = await client.closePlan({
-  address,
+  source,
   destination,
   // ...see @lumenwipe/types for the full request shape
 });
 
 const { transactions, remaining } = await client.closeTransactions({
-  address,
+  source,
   destination,
 });
 
@@ -49,13 +49,27 @@ instead of calling `closeTransactions`/`submit` by hand:
 import { runClose } from "@lumenwipe/sdk";
 
 await runClose({
-  getTransactions: () => client.closeTransactions({ address, destination }),
+  getTransactions: () => client.closeTransactions({ source, destination }),
   verify: (tx) => myVerify(tx), // see "Verification" below - this is your responsibility
   requiredWeight: (tx) => myRequiredWeight(tx),
   sign: (tx, xdr) => mySigner(tx, xdr),
   submit: (tx, xdr) => client.submit(xdr).then((r) => r.hash),
 });
 ```
+
+## Headless example
+
+[`examples/headless-close.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/packages/sdk/examples/headless-close.ts)
+closes a throwaway testnet account end to end from a plain Node/Bun process, with no browser or
+web UI: it funds two accounts, then runs `getAccount`, `closePlan`, `closeTransactions` and
+`submit` through `runClose`, signing with an in-process keypair. It decodes and verifies every
+transaction itself before signing (`examples/verify.ts`), which is the pattern to copy.
+
+```bash
+LUMENWIPE_API_KEY=... bun run --filter '@lumenwipe/sdk' example:headless
+```
+
+`LUMENWIPE_API_URL` overrides the default `https://api.lumenwipe.com`. Testnet only.
 
 ## Verification is the caller's responsibility
 
@@ -94,7 +108,7 @@ no separate install is needed.
 ## Links
 
 - [Architecture](https://github.com/LumenWipe/lumenwipe/blob/main/docs/architecture.md)
-- [Full documentation](https://docs.lumenwipe.com)
+- [Full documentation](https://docs.lumenwipe.com/sdk/overview)
 - [Issues](https://github.com/LumenWipe/lumenwipe/issues)
 
 ## License

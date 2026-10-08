@@ -2,14 +2,18 @@ import { rpc } from "@stellar/stellar-sdk";
 import type { Network } from "@/config/networks";
 import { RPC_URLS, RPC_HEADERS } from "@/config/networks";
 
-// Memoized per-network singletons
-const servers: Partial<Record<Network, rpc.Server>> = {};
+// Memoized per-network singletons. A switch rather than a map keyed by the caller's string, so a
+// value that is not one of the two networks can never name a property.
+let mainnetServer: rpc.Server | undefined;
+let testnetServer: rpc.Server | undefined;
 
 export function getRpcServer(network: Network): rpc.Server {
-  if (!servers[network]) {
-    servers[network] = buildRpcServer(network);
+  switch (network) {
+    case "mainnet":
+      return (mainnetServer ??= buildRpcServer("mainnet"));
+    case "testnet":
+      return (testnetServer ??= buildRpcServer("testnet"));
   }
-  return servers[network]!;
 }
 
 /**

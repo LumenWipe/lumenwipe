@@ -45,6 +45,13 @@ export interface DecisionAnswer {
      */
     minAmountOut?: string;
     /**
+     * Pinned alongside `minAmountOut`: which provider's quote the user was shown and accepted.
+     * The build re-quotes and builds through exactly this provider, never a different one that
+     * might look better right now but that the user never saw priced (architecture.md, this
+     * feature's spec §5.2).
+     */
+    provider?: "soroswap" | "xbull";
+    /**
      * Required by the `transfer_to_account` choice: the `G...` address the balance is paid to.
      *
      * It travels with the answer rather than in a separate map so a destination cannot become
@@ -71,6 +78,18 @@ export interface PlanResponse {
   blockers: { code: string; message: string; helpUrl?: string }[];
   estimate: { feeStroops: string; freedReserveXlm: string };
   execution: { estimatedTransactionCount: number; transactions: ExecutionTxBreakdown[] };
+}
+
+/** One address's plan within a batch call - always present, even when the account could not be
+ *  read or planned safely (that failure surfaces as a `blocked` plan with its own blocker,
+ *  never as a missing entry). */
+export interface BatchPlanResult {
+  address: string;
+  plan: PlanResponse;
+}
+
+export interface BatchPlanResponse {
+  results: BatchPlanResult[];
 }
 
 /**
