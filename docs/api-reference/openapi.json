@@ -479,6 +479,145 @@
         ]
       }
     },
+    "/v1/{network}/stats": {
+      "get": {
+        "operationId": "StatsController_totals",
+        "parameters": [
+          {
+            "name": "network",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "testnet",
+                "mainnet"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsTotalsDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The stats store is unreachable."
+          }
+        },
+        "summary": "Accounts closed and XLM recovered (public, no API key).",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/v1/{network}/stats/feed": {
+      "get": {
+        "operationId": "StatsController_feed",
+        "parameters": [
+          {
+            "name": "network",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "testnet",
+                "mainnet"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsFeedDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The stats store is unreachable."
+          }
+        },
+        "summary": "Totals, recent closes and daily activity (public, no API key).",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/v1/{network}/stats/merges": {
+      "post": {
+        "description": "Closes submitted through `POST /v1/{network}/submit` are counted automatically. The transaction is re-read from the network and counted only if it confirmed and merged an account; repeating a hash never counts it twice.",
+        "operationId": "StatsController_record",
+        "parameters": [
+          {
+            "name": "network",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "testnet",
+                "mainnet"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordMergeRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordMergeResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed hash, or the transaction is not a confirmed account merge."
+          },
+          "401": {
+            "description": "Missing or invalid API key."
+          },
+          "429": {
+            "description": "Rate limit exceeded for this key."
+          },
+          "503": {
+            "description": "The stats store is unreachable."
+          }
+        },
+        "security": [
+          {
+            "api-key": []
+          }
+        ],
+        "summary": "Count a confirmed close submitted outside this API.",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
     "/{network}/account/{address}": {
       "get": {
         "operationId": "AccountController_account",
@@ -1233,6 +1372,10 @@
     {
       "name": "mediator",
       "description": "Exchange-destination forwarding"
+    },
+    {
+      "name": "stats",
+      "description": "Public close counter"
     },
     {
       "name": "health",
@@ -2544,6 +2687,144 @@
           "status",
           "hash",
           "ledger"
+        ]
+      },
+      "StatsTotalsDto": {
+        "type": "object",
+        "properties": {
+          "network": {
+            "type": "string",
+            "enum": [
+              "testnet",
+              "mainnet"
+            ],
+            "example": "mainnet"
+          },
+          "accountsClosed": {
+            "type": "number",
+            "description": "Accounts closed through LumenWipe.",
+            "example": 1284
+          },
+          "xlmRecoveredStroops": {
+            "type": "string",
+            "description": "XLM recovered by those closes, in stroops, as a decimal string.",
+            "example": "52310000000"
+          }
+        },
+        "required": [
+          "network",
+          "accountsClosed",
+          "xlmRecoveredStroops"
+        ]
+      },
+      "MergeRecordDto": {
+        "type": "object",
+        "properties": {
+          "txHash": {
+            "type": "string",
+            "example": "3389e9f0f1a65f19736cacf544c2e825313e8447f569233bb8db39aa607c8889"
+          },
+          "network": {
+            "type": "string",
+            "enum": [
+              "testnet",
+              "mainnet"
+            ],
+            "example": "mainnet"
+          },
+          "accountsClosed": {
+            "type": "number",
+            "description": "Accounts this transaction merged.",
+            "example": 1
+          },
+          "xlmStroops": {
+            "type": "string",
+            "description": "XLM the merges moved, in stroops.",
+            "example": "45000000"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Ledger close time, ISO 8601.",
+            "example": "2026-10-08T14:03:11.000Z"
+          }
+        },
+        "required": [
+          "txHash",
+          "network",
+          "accountsClosed",
+          "xlmStroops",
+          "timestamp"
+        ]
+      },
+      "DailyActivityDto": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "UTC day.",
+            "example": "2026-10-08"
+          },
+          "accountsClosed": {
+            "type": "number",
+            "example": 7
+          }
+        },
+        "required": [
+          "date",
+          "accountsClosed"
+        ]
+      },
+      "StatsFeedDto": {
+        "type": "object",
+        "properties": {
+          "totals": {
+            "$ref": "#/components/schemas/StatsTotalsDto"
+          },
+          "recent": {
+            "description": "The 50 most recent closes, newest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MergeRecordDto"
+            }
+          },
+          "daily": {
+            "description": "The last 365 UTC days, oldest first, zero-filled.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DailyActivityDto"
+            }
+          }
+        },
+        "required": [
+          "totals",
+          "recent",
+          "daily"
+        ]
+      },
+      "RecordMergeRequestDto": {
+        "type": "object",
+        "properties": {
+          "txHash": {
+            "type": "string",
+            "description": "Hash of a confirmed transaction that merged the account being closed.",
+            "example": "3389e9f0f1a65f19736cacf544c2e825313e8447f569233bb8db39aa607c8889"
+          }
+        },
+        "required": [
+          "txHash"
+        ]
+      },
+      "RecordMergeResponseDto": {
+        "type": "object",
+        "properties": {
+          "counted": {
+            "type": "boolean",
+            "description": "True when this call counted the close; false when the hash was already counted.",
+            "example": true
+          }
+        },
+        "required": [
+          "counted"
         ]
       },
       "SponsoredAccountDto": {

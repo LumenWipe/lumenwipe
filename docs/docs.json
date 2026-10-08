@@ -122,6 +122,15 @@
             "pages": ["GET /config/exchange-registry"]
           },
           {
+            "group": "Stats",
+            "openapi": "api-reference/openapi.json",
+            "pages": [
+              "GET /v1/{network}/stats",
+              "GET /v1/{network}/stats/feed",
+              "POST /v1/{network}/stats/merges"
+            ]
+          },
+          {
             "group": "Health",
             "openapi": "api-reference/openapi.json",
             "pages": ["GET /health", "GET /health/deep"]

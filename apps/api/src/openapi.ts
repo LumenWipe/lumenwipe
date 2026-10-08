@@ -39,6 +39,7 @@ export function buildOpenApiConfig() {
     .addTag("close", "Build and submit an account close-out")
     .addTag("account", "Read account state and conversion paths")
     .addTag("mediator", "Exchange-destination forwarding")
+    .addTag("stats", "Public close counter")
     .addTag("health", "Service health")
     .addTag("service", "Service index")
     .addTag("admin", "Operator-only self-serve API key management")

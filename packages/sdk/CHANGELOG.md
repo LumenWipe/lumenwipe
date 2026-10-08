@@ -9,6 +9,10 @@ release is cut.
 
 ### Added
 
+- `StatsTotals`, `StatsFeed`, `MergeRecord`, `DailyActivity` and `RecordMergeResponse` types,
+  matching the API's new public close counter: `GET /v1/:network/stats`,
+  `GET /v1/:network/stats/feed` and `POST /v1/:network/stats/merges`. Purely additive; no existing
+  field changed shape.
 - `DefiProtocol` gains `"xbull"`: xBull Swap is now a second, mainnet-only conversion-quote
   source alongside Soroswap for the Soroban-token-to-XLM step of a close. `DecisionAnswer.params`
   gains an optional `provider?: "soroswap" | "xbull"`, pinning which provider's quote a
