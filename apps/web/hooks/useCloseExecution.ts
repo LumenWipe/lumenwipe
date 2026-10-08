@@ -307,7 +307,7 @@ export function useCloseExecution() {
             onConfirmed: (tx, hash) => {
               markCoveredConfirmed(tx.covers, hash, tx.needsSponsoredFee, tx.coversTargets);
               if (tx.covers.includes("MERGE") || tx.covers.includes("CLOSE_ACCOUNT")) {
-                recordMergeStats(hash, network);
+                notifyStatsRefresh();
               }
             },
             onProgress: setProgressStatus,
@@ -437,23 +437,4 @@ export function useCloseExecution() {
   );
 
   return { run, progressStatus, signatureStatus, submitPreAuthTransaction };
-}
-
-/**
- * Records a confirmed merge for the live stats counter without blocking execution.
- * Failures are logged, not surfaced - the close already succeeded.
- */
-function recordMergeStats(txHash: string, network: string): void {
-  fetch("/api/stats/record", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ txHash, network }),
-  })
-    .then((res) => {
-      if (!res.ok) throw new Error(`stats record returned ${res.status}`);
-      notifyStatsRefresh();
-    })
-    .catch((err) => {
-      console.error(`Failed to record merge stats for tx ${txHash}:`, err);
-    });
 }

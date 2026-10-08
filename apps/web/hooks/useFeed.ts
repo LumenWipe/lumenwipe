@@ -2,15 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { STATS_REFRESH_EVENT } from "@/lib/stats-events";
-import type { MergeRecord, DailyActivity, StatsResult } from "@/lib/kv";
+import type { FeedData } from "@/lib/stats";
 
-export type { MergeRecord, DailyActivity };
-
-export interface FeedData {
-  recent: MergeRecord[];
-  daily: DailyActivity[];
-  totals: StatsResult;
-}
+export type { DailyActivity, FeedData, MergeRecord } from "@/lib/stats";
 
 export interface UseFeedResult {
   feed: FeedData | null;
