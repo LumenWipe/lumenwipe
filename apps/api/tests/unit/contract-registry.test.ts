@@ -94,14 +94,13 @@ test("every protocol with a working exit adapter has verified mainnet entries: t
         .wasmHash;
     expect(on("mainnet")).toBe(on("testnet"));
   }
-  // Aquarius pools come in three kinds; concentrated has two live codes after the router moved
-  // its deployer hash while older pools kept the previous one.
+  // Aquarius pools come in three codes; each has one representative per network.
   expect(
     entriesForProtocol("mainnet", "aquarius")
       .filter((e) => e.kind === "pool")
       .map((e) => e.version)
       .sort()
-  ).toEqual(["concentrated", "concentrated", "constant_product", "stable"]);
+  ).toEqual(["concentrated", "constant_product", "stable"]);
 });
 
 test("filters entries by network and protocol", () => {
