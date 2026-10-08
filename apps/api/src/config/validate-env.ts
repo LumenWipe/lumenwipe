@@ -71,8 +71,8 @@ const OPTIONAL: Array<{ name: string; consequence: string }> = [
   {
     name: "FIRESTORE_PROJECT_ID",
     consequence:
-      "self-serve API keys are not durable (an in-memory fallback is used) and admin key " +
-      "management is unavailable",
+      "self-serve API keys and the public close counter are not durable (in-memory fallbacks " +
+      "are used) and admin key management is unavailable",
   },
 ];
 

@@ -433,3 +433,38 @@ test("a controller's own envelope is passed through, not re-wrapped", async () =
   expect(res.status).toBe(400);
   expect(res.body.error.code).toBe("invalid_network");
 });
+
+// ─── Stats ───────────────────────────────────────────────────────────────────
+
+test("stats totals are public and start at zero", async () => {
+  const res = await request(http).get("/v1/testnet/stats");
+  expect(res.status).toBe(200);
+  expect(res.body).toEqual({ network: "testnet", accountsClosed: 0, xlmRecoveredStroops: "0" });
+});
+
+test("the stats feed is public and covers 365 days", async () => {
+  const res = await request(http).get("/v1/mainnet/stats/feed");
+  expect(res.status).toBe(200);
+  expect(res.body.totals.network).toBe("mainnet");
+  expect(res.body.recent).toEqual([]);
+  expect(res.body.daily).toHaveLength(365);
+});
+
+test("stats reject an invalid network", async () => {
+  const res = await request(http).get("/v1/badnet/stats");
+  expect(res.status).toBe(400);
+  expect(res.body).toEqual({ error: { code: "invalid_network", message: "Invalid network." } });
+});
+
+test("recording a close requires an API key", async () => {
+  const res = await request(http)
+    .post("/v1/testnet/stats/merges")
+    .send({ txHash: "a".repeat(64) });
+  expect(res.status).toBe(401);
+});
+
+test("recording a close rejects a malformed hash", async () => {
+  const res = await authPost("/v1/testnet/stats/merges").send({ txHash: "abc" });
+  expect(res.status).toBe(400);
+  expect(res.body.error.code).toBe("invalid_tx_hash");
+});

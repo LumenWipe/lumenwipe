@@ -61,6 +61,9 @@ import {
   UnusableProviderResponseError,
 } from "@/lib/utils/errors";
 import { fail } from "@/common/fail";
+import { withTimeout } from "@/lib/utils/with-timeout";
+import { StatsService } from "@/stats/stats.service";
+import { signedXdrHasAccountMerge } from "@/stats/merge-verification";
 import type { DecisionAnswer, TransactionsResponse, Trustline } from "@lumenwipe/types";
 
 /**
@@ -72,6 +75,8 @@ import type { DecisionAnswer, TransactionsResponse, Trustline } from "@lumenwipe
  * thousands of sponsorship operations - would turn one inbound request into an unbounded
  * upstream fan-out, and would fail a destination merely for holding more than 1000 offers.
  */
+const COUNT_CLOSE_TIMEOUT_MS = 5_000;
+
 const readDestinationTrustlines = async (
   address: string,
   net: Network
@@ -85,6 +90,8 @@ const readDestinationTrustlines = async (
 @Controller("v1/:network")
 export class CloseController {
   private readonly logger = new Logger(CloseController.name);
+
+  constructor(private readonly stats: StatsService) {}
 
   @Post("close/plan")
   @HttpCode(200)
@@ -451,6 +458,7 @@ export class CloseController {
 
     try {
       const result = await submitAndWait(signedXdr, network);
+      if (signedXdrHasAccountMerge(signedXdr)) await this.countClose(network, result.txHash);
       return { status: "success", hash: result.txHash, ledger: result.ledger };
     } catch (e) {
       if (e instanceof HttpException) throw e;
@@ -476,6 +484,16 @@ export class CloseController {
       }
       this.logger.error("submit failed", e instanceof Error ? e.stack : String(e));
       fail("submit_failed", "Failed to submit the transaction.", 502);
+    }
+  }
+
+  /** Awaited, not fire-and-forget: Cloud Run stops giving the instance CPU once the response is
+   *  sent. Bounded and never thrown, because the close itself already confirmed. */
+  private async countClose(network: Network, txHash: string): Promise<void> {
+    try {
+      await withTimeout(this.stats.record(network, txHash), COUNT_CLOSE_TIMEOUT_MS, "timed out");
+    } catch (e) {
+      this.logger.warn(`could not count close ${txHash}: ${e instanceof Error ? e.message : e}`);
     }
   }
 }
