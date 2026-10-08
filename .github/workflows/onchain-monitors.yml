@@ -183,7 +183,9 @@ jobs:
             "" \
             "$STATUS" \
             "" \
-            "What each failure means, and what to do, is in docs/monitoring-plan.md section 5." \
+            "What each failure means, and what to do:" \
+            "https://docs.lumenwipe.com/monitoring-plan#5-what-happens-when-an-alert-fires" \
+            "(docs/monitoring-plan.md, section 5)." \
             "" \
             "A registry failure means a protocol redeployed. Exits against that contract already" \
             "halt at the registry gate, so this is not an emergency: re-verify the contract" \
@@ -245,7 +247,8 @@ jobs:
             CONTENT=$(printf '%s\n' "✅ All on-chain monitors are clean again." "Run: $RUN_URL")
           else
             CONTENT=$(printf '%s\n' "🚨 An on-chain monitor is reporting a finding." "$STATUS" \
-              "What to do: docs/monitoring-plan.md section 5." "Issue: $ISSUE_URL" "Run: $RUN_URL")
+              "What to do: https://docs.lumenwipe.com/monitoring-plan#5-what-happens-when-an-alert-fires (docs/monitoring-plan.md, section 5)" \
+              "Issue: $ISSUE_URL" "Run: $RUN_URL")
           fi
 
           code=$(jq -n --arg c "$CONTENT" '{content: $c}' \
