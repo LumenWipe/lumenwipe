@@ -2,7 +2,6 @@ import { test, expect } from "bun:test";
 import type { ConfigService } from "@nestjs/config";
 import { ApiKeyService } from "@/auth/api-key.service";
 import { throttleStorageKey, trackerForRequest } from "@/auth/api-key-throttler.guard";
-import { MeteringService } from "@/metering/metering.service";
 
 function service(apiKeys: string): ApiKeyService {
   return new ApiKeyService({ get: () => apiKeys } as unknown as ConfigService);
@@ -40,12 +39,4 @@ test("throttleStorageKey buckets per (name, tracker), one bucket per key across 
   );
   // hashed: the raw key never appears in the storage key
   expect(throttleStorageKey("default", "key_abc")).not.toContain("key_abc");
-});
-
-test("MeteringService counts requests per label", () => {
-  const m = new MeteringService();
-  m.record("polar");
-  m.record("polar");
-  m.record("web");
-  expect(m.snapshot()).toEqual({ polar: 2, web: 1 });
 });

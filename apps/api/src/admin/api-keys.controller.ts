@@ -107,15 +107,15 @@ export class ApiKeysAdminController {
   }
 
   @Get()
-  @ApiOperation({ summary: "List an owner's keys, with a best-effort usage figure." })
+  @ApiOperation({ summary: "List an owner's keys, with the owner's request counts." })
   @ApiQuery({ name: "owner", required: true })
   @ApiResponse({ status: 200, type: ListApiKeysResponseDto })
   @ApiResponse({ status: 400, description: "Missing owner query parameter." })
   async list(@Query("owner") owner?: string) {
     if (!owner) fail("invalid_owner", "An owner query parameter is required.", 400);
     const records = await this.store.listByOwner(owner);
-    const requestsSinceStart = this.metering.snapshot()[owner] ?? 0;
-    return { keys: records.map((r) => ({ ...toRecordDto(r), requestsSinceStart })) };
+    const usage = await this.metering.usage(owner);
+    return { keys: records.map((r) => ({ ...toRecordDto(r), usage })) };
   }
 
   @Post(":id/revoke")

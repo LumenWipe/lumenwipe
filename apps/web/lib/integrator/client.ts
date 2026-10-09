@@ -10,9 +10,15 @@ export interface Session {
   expiresAt: string;
 }
 
+export interface Usage {
+  today: number;
+  last30Days: number;
+}
+
 export interface KeyList {
   keys: KeyRecord[];
-  requestsSinceStart: number;
+  /** Null or absent when the API could not read it; the listing still renders without it. */
+  usage?: Usage | null;
 }
 
 export interface CreatedKey {

@@ -1150,7 +1150,7 @@
             "admin-token": []
           }
         ],
-        "summary": "List an owner's keys, with a best-effort usage figure.",
+        "summary": "List an owner's keys, with the owner's request counts.",
         "tags": [
           "admin"
         ]
@@ -1271,7 +1271,7 @@
             "integrator-session": []
           }
         ],
-        "summary": "List the signed-in wallet's keys with a best-effort usage figure.",
+        "summary": "List the signed-in wallet's keys with its request counts.",
         "tags": [
           "integrator"
         ]
@@ -4455,6 +4455,23 @@
           "record"
         ]
       },
+      "OwnerUsageDto": {
+        "type": "object",
+        "properties": {
+          "today": {
+            "type": "number",
+            "description": "Successful keyed requests by this owner today (UTC)."
+          },
+          "last30Days": {
+            "type": "number",
+            "description": "Successful keyed requests by this owner over the last 30 UTC days."
+          }
+        },
+        "required": [
+          "today",
+          "last30Days"
+        ]
+      },
       "ApiKeyUsageDto": {
         "type": "object",
         "properties": {
@@ -4488,15 +4505,22 @@
               }
             ]
           },
-          "requestsSinceStart": {
-            "type": "number",
-            "description": "Best-effort request count for this owner since the API process last started. Not durable across restarts or shared across instances (MeteringService's documented scope)."
+          "usage": {
+            "nullable": true,
+            "description": "The owner's request counts, shared by all its keys; null if unavailable.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OwnerUsageDto"
+              }
+            ]
           }
         },
         "required": [
           "id",
           "owner",
-          "createdAt"
+          "createdAt",
+          "usage"
         ]
       },
       "ListApiKeysResponseDto": {

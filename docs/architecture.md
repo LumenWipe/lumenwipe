@@ -171,7 +171,7 @@ data entities it carries:
 3. **The LumenWipe API.** Reads state, builds and simulates every unsigned transaction,
    and relays submissions. It holds the system's only two server-side signing keys, the mediator and the
    fee-bump sponsor (Surfaces 4a and 4b of the [threat model](/threat-model)), and, in Firestore, the hashes of
-   self-serve API keys and the public merge counter. It is not trusted to decide what the user signs; that is boundary 1's job.
+   self-serve API keys, the public merge counter and per-integrator request counts. It is not trusted to decide what the user signs; that is boundary 1's job.
 4. **External data services.** The Horizon-compatible enumeration endpoint, Stellar RPC, OctoPos, the Soroswap
    and xBull quote APIs, and stellar.expert. Everything they return is untrusted input to the
    API: enumerated entries are re-read live over RPC, a protocol contract is used only when its live code hash
@@ -196,6 +196,7 @@ data entities it carries:
 | Mediator and fee-bump sponsor secret keys                                                      | Operator                                | API environment                                                                                               | Never leave boundary 3                       |
 | API keys                                                                                       | Operator or self-serve issuance         | Hashes in Firestore for self-serve keys; the raw key only with its holder (the proxy's env for the web's own) | 2 → 3, or integrator → 3, as a bearer header |
 | Merge counter (counts, XLM recovered, counted merge transaction hashes and their ledger times) | API, after verifying the merge on-chain | Firestore, one tree per network                                                                               | 3 → 2 → 1 as public totals                   |
+| Integrator usage (successful keyed requests per owner, per UTC day and route)                  | API, on each successful keyed request   | Firestore, one tree per owner                                                                                 | Stays in boundary 3; owners read their own   |
 | Proxy rate-limit counters (IPs only as one-way hashes)                                         | Web                                     | Upstash Redis                                                                                                 | Stays in boundary 2                          |
 
 The [threat model](/threat-model) takes boundaries 1 and 3 surface by surface: key handling and the session
@@ -576,7 +577,7 @@ The classic wind-down already runs. The current codebase is a working monorepo -
 Plain-English summary of what the tool is built from and why.
 
 - Frontend: Next.js and TypeScript, a thin open source web client that verifies and signs, with TypeScript's type safety guarding the verification and signing path.
-- API: NestJS and TypeScript, a stateless service that reads state and builds transactions, with a short-TTL cache for public read data; API-key auth with per-key rate limiting. Self-serve API keys are the one piece of durable state the service keeps, in Google Cloud Firestore (Native mode), accessed via the Cloud Run service account's IAM role rather than a separate stored credential.
+- API: NestJS and TypeScript, a stateless service that reads state and builds transactions, with a short-TTL cache for public read data; API-key auth with per-key rate limiting. Its durable state - self-serve API keys, the public merge counter and per-integrator usage - lives in Google Cloud Firestore (Native mode), accessed via the Cloud Run service account's IAM role rather than a separate stored credential.
 - Packaging: a Bun-workspaces monorepo (`apps/{web,api}`, `packages/{sdk,types}`); `@lumenwipe/sdk` is a thin fetch client over the API, and `@lumenwipe/types` is shared across the API, the SDK, and the web.
 - Stellar SDK: `@stellar/stellar-sdk`, the official SDK, which covers classic and Soroban, used server-side in the API.
 - Wallets: stellar-wallets-kit (Freighter, xBull, Albedo, Rabet, Hana, WalletConnect; LOBSTR is accessible via WalletConnect), including Soroban authorization-entry signing.

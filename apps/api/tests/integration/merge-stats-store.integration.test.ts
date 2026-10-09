@@ -57,6 +57,7 @@ describe.skipIf(!EMULATOR)("FirestoreMergeStatsStore (emulator)", () => {
     expect((await store.totals("mainnet")).accountsClosed).toBe(1);
   });
 
+  // Ten transactions contend for one totals doc; the emulator's retry backoff can pass 5 s.
   test("concurrent distinct closes all land in the totals", async () => {
     const store = freshStore();
     await Promise.all(Array.from({ length: 10 }, () => store.record(merge())));
@@ -64,7 +65,7 @@ describe.skipIf(!EMULATOR)("FirestoreMergeStatsStore (emulator)", () => {
       accountsClosed: 10,
       xlmStroops: "100000000",
     });
-  });
+  }, 30_000);
 
   test("recent is newest first and limited; daily honours the start date", async () => {
     const store = freshStore();

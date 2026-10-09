@@ -23,8 +23,7 @@ const DEFAULT_CACHE_TTL_MS = 60_000;
  * DI-for-testability convention.
  *
  * Revoke/rotate call `invalidate(hash)` (the admin controller) so the instance that served the
- * admin request enforces it on its very next lookup. This cache is per-process, like every other
- * piece of state in this API (`MeteringService`'s own docstring makes the same call) - a Cloud
+ * admin request enforces it on its very next lookup. This cache is per-process - a Cloud
  * Run deployment with more than one instance can still serve a revoked key from another
  * instance's cache for up to `cacheTtlMs`. Tightening that to zero would mean a Firestore read
  * on every single request; documented here as the deliberate tradeoff, not a silent gap.
