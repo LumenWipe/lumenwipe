@@ -7,6 +7,7 @@ import { ApiKeyDirectory } from "@/auth/api-key-directory";
 import { ApiKeyService } from "@/auth/api-key.service";
 import type { ApiKeyRecord, ApiKeyStore } from "@/auth/api-key-store";
 import { MeteringService } from "@/metering/metering.service";
+import { InMemoryUsageStore } from "@/metering/usage-store";
 import { IntegratorController } from "@/integrator/integrator.controller";
 import { IntegratorGuard, type IntegratorRequest } from "@/integrator/integrator.guard";
 import { issueSession } from "@/integrator/wallet-auth";
@@ -82,7 +83,11 @@ function setup() {
     new ApiKeyService({ get: () => "" } as unknown as ConfigService),
     store
   );
-  const controller = new IntegratorController(store, new MeteringService(), directory);
+  const controller = new IntegratorController(
+    store,
+    new MeteringService(new InMemoryUsageStore(), () => new Date()),
+    directory
+  );
   return { store, controller };
 }
 

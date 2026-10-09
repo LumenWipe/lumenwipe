@@ -223,9 +223,11 @@ export default function ApiKeysPanel() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-white">Your keys</h2>
-              <p className="mt-1 text-xs text-white/55">
-                {list.requestsSinceStart} requests since the API last restarted
-              </p>
+              {list.usage && (
+                <p className="mt-1 text-xs text-white/55">
+                  {list.usage.today} requests today · {list.usage.last30Days} in the last 30 days
+                </p>
+              )}
             </div>
             <button type="button" className={PRIMARY} disabled={busy} onClick={onCreate}>
               <KeyRound className="h-4 w-4" />

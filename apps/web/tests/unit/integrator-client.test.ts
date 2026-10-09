@@ -46,7 +46,7 @@ describe("buildUpstreamRequest", () => {
 
 describe("integrator client", () => {
   test("sends the session token as a bearer credential", async () => {
-    const { calls } = stubFetch(200, { keys: [], requestsSinceStart: 0 });
+    const { calls } = stubFetch(200, { keys: [], usage: { today: 0, last30Days: 0 } });
     await listKeys("lws.token");
     expect((calls[0].init.headers as Record<string, string>).Authorization).toBe(
       "Bearer lws.token"

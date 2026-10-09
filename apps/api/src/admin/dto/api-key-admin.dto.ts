@@ -53,13 +53,23 @@ export class CreateApiKeyResponseDto {
   record!: ApiKeyRecordDto;
 }
 
-export class ApiKeyUsageDto extends ApiKeyRecordDto {
-  @ApiPropertyOptional({
-    description:
-      "Best-effort request count for this owner since the API process last started. Not " +
-      "durable across restarts or shared across instances (MeteringService's documented scope).",
+export class OwnerUsageDto {
+  @ApiProperty({ description: "Successful keyed requests by this owner today (UTC)." })
+  today!: number;
+
+  @ApiProperty({
+    description: "Successful keyed requests by this owner over the last 30 UTC days.",
   })
-  requestsSinceStart?: number;
+  last30Days!: number;
+}
+
+export class ApiKeyUsageDto extends ApiKeyRecordDto {
+  @ApiProperty({
+    type: OwnerUsageDto,
+    nullable: true,
+    description: "The owner's request counts, shared by all its keys; null if unavailable.",
+  })
+  usage!: OwnerUsageDto | null;
 }
 
 export class ListApiKeysResponseDto {

@@ -80,12 +80,12 @@ export class IntegratorController {
   @Get("keys")
   @ApiBearerAuth("integrator-session")
   @UseGuards(IntegratorGuard)
-  @ApiOperation({ summary: "List the signed-in wallet's keys with a best-effort usage figure." })
+  @ApiOperation({ summary: "List the signed-in wallet's keys with its request counts." })
   async list(@Req() req: IntegratorRequest) {
     const owner = req.integratorAddress!;
     const records = await this.store.listByOwner(owner);
-    const requestsSinceStart = this.metering.snapshot()[owner] ?? 0;
-    return { keys: records.map(toDto), requestsSinceStart };
+    const usage = await this.metering.usage(owner);
+    return { keys: records.map(toDto), usage };
   }
 
   @Post("keys")
