@@ -20,6 +20,7 @@ permissions:
 
 env:
   SERVICE: lumenwipe-api
+  DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
   REGION: ${{ vars.GCP_REGION }}
   IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_AR_REPO }}/lumenwipe-api:${{ github.sha }}
 
@@ -40,6 +41,13 @@ jobs:
           service_account: ${{ secrets.GCP_DEPLOY_SA }}
 
       - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_TOKEN != '' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
 
       - name: Build and push image
         run: |
