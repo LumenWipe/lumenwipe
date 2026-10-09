@@ -167,8 +167,17 @@ jobs:
   docker:
     name: api image
     runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7
+
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_TOKEN != '' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
 
       - name: Build the API image
         run: docker build --platform linux/amd64 --provenance=false -f apps/api/Dockerfile -t lumenwipe-api:ci .
@@ -283,13 +292,14 @@ jobs:
   semgrep:
     name: semgrep
     runs-on: ubuntu-latest
-    container:
-      image: semgrep/semgrep:1.175.0
     permissions:
       contents: read
       security-events: write
     steps:
       - uses: actions/checkout@v7
+
+      - name: Install Semgrep
+        run: pipx install semgrep==1.175.0
 
       - name: Scan
         run: |
