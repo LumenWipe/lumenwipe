@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server";
-import { getRecentMerges, getDailyActivity, getStats } from "@/lib/kv";
+import { fetchStatsFeed, fetchStatsTotals } from "@/lib/api/stats-upstream";
+import { toFeedData } from "@/lib/stats";
 
 export const revalidate = 30;
 
 export async function GET() {
   try {
-    const [recent, daily, totals] = await Promise.all([
-      getRecentMerges("mainnet", 50),
-      getDailyActivity("mainnet", 365),
-      getStats(),
+    const [mainnet, testnet] = await Promise.all([
+      fetchStatsFeed("mainnet", revalidate),
+      fetchStatsTotals("testnet", revalidate),
     ]);
-    return NextResponse.json({ recent, daily, totals });
+    return NextResponse.json(toFeedData(mainnet, testnet));
   } catch (err) {
-    console.error("Failed to read feed from KV:", err);
+    console.error("Failed to read the stats feed from the API:", err);
     return NextResponse.json({ error: "feed_unavailable" }, { status: 503 });
   }
 }

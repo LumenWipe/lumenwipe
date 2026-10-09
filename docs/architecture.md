@@ -166,7 +166,7 @@ data entities it carries:
    XDR, checked against the user's own inputs before any signature. What crosses out is signed XDR, and nothing
    else that could move funds.
 2. **The web server.** A proxy between the browser and the API that holds the API key
-   (`LUMENWIPE_API_KEY`) so the browser never does, and the merge counter's KV credentials. It builds no
+   (`LUMENWIPE_API_KEY`) so the browser never does, and the KV credentials for its per-IP rate limit. It builds no
    transaction and holds no signing key.
 3. **The LumenWipe API.** Reads state, builds and simulates every unsigned transaction,
    and relays submissions. It holds the system's only two server-side signing keys, the mediator and the

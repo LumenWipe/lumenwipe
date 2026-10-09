@@ -2,13 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { STATS_REFRESH_EVENT } from "@/lib/stats-events";
+import type { StatsResult as Stats } from "@/lib/stats";
 
-export interface Stats {
-  testnet: number;
-  mainnet: number;
-  testnetXlmStroops: string;
-  mainnetXlmStroops: string;
-}
+export type { Stats };
 
 export interface UseStatsResult {
   /** Last successfully fetched stats; null until the first success. */
