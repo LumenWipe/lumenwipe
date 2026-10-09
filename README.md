@@ -197,11 +197,11 @@ The web and the API each read their own `.env.local` (copy from each app's `.env
 
 **`apps/web/.env.local`** - the web:
 
-| Variable                                           | Description                                                                         |
-| -------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `LUMENWIPE_API_URL` / `LUMENWIPE_API_KEY`          | API base URL and key, injected server-side by the proxy (never sent to the browser) |
-| `NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET` / `_MAINNET` | Public key of the shared mediator, so `verify()` can recognize the merge target     |
-| `KV_REST_API_URL` / `KV_REST_API_TOKEN`            | Vercel KV - for the proxy rate limit                                                |
+| Variable                                              | Description                                                                         |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `LUMENWIPE_API_URL` / `LUMENWIPE_API_KEY`             | API base URL and key, injected server-side by the proxy (never sent to the browser) |
+| `NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET` / `_MAINNET`    | Public key of the shared mediator, so `verify()` can recognize the merge target     |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis - for the proxy rate limit                                            |
 
 ### Running tests
 

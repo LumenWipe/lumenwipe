@@ -14,7 +14,7 @@
   "dependencies": {
     "@lumenwipe/sdk": "workspace:*",
     "@stellar/stellar-sdk": "16.0.1",
-    "@vercel/kv": "^3.0.0",
+    "@upstash/redis": "^1.39.0",
     "lucide-react": "^0.447.0",
     "motion": "^12.43.0",
     "next": "^15.5.25",

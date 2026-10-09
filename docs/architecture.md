@@ -166,7 +166,7 @@ data entities it carries:
    XDR, checked against the user's own inputs before any signature. What crosses out is signed XDR, and nothing
    else that could move funds.
 2. **The web server.** A proxy between the browser and the API that holds the API key
-   (`LUMENWIPE_API_KEY`) so the browser never does, and the KV credentials for its per-IP rate limit. It builds no
+   (`LUMENWIPE_API_KEY`) so the browser never does, and the Upstash Redis credentials for its per-IP rate limit. It builds no
    transaction and holds no signing key.
 3. **The LumenWipe API.** Reads state, builds and simulates every unsigned transaction,
    and relays submissions. It holds the system's only two server-side signing keys, the mediator and the
@@ -196,7 +196,7 @@ data entities it carries:
 | Mediator and fee-bump sponsor secret keys                                                      | Operator                                | API environment                                                                                               | Never leave boundary 3                       |
 | API keys                                                                                       | Operator or self-serve issuance         | Hashes in Firestore for self-serve keys; the raw key only with its holder (the proxy's env for the web's own) | 2 → 3, or integrator → 3, as a bearer header |
 | Merge counter (counts, XLM recovered, counted merge transaction hashes and their ledger times) | API, after verifying the merge on-chain | Firestore, one tree per network                                                                               | 3 → 2 → 1 as public totals                   |
-| Proxy rate-limit counters (IPs only as one-way hashes)                                         | Web                                     | Vercel KV                                                                                                     | Stays in boundary 2                          |
+| Proxy rate-limit counters (IPs only as one-way hashes)                                         | Web                                     | Upstash Redis                                                                                                 | Stays in boundary 2                          |
 
 The [threat model](/threat-model) takes boundaries 1 and 3 surface by surface: key handling and the session
 layer on the browser side, transaction construction and the two signing keys on the API side, and the

@@ -1,7 +1,13 @@
-import { kv } from "@vercel/kv";
+import { Redis } from "@upstash/redis";
 import { createHash } from "crypto";
 
 // {namespace}:ratelimit:{ipHash}:{date} → per-IP daily request counter
+
+let client: Redis | undefined;
+
+function redis(): Redis {
+  return (client ??= Redis.fromEnv());
+}
 
 function hashIp(ip: string): string {
   // One-way hash so no raw IP is stored in Redis
@@ -10,7 +16,7 @@ function hashIp(ip: string): string {
 
 /**
  * Increments this IP's daily counter in `namespace` and returns whether it is within
- * `limitPerDay`. Fails open: if KV is unavailable the request is allowed through.
+ * `limitPerDay`. Fails open: if Upstash Redis is unavailable the request is allowed through.
  */
 export async function checkNamespacedRateLimit(
   namespace: string,
@@ -19,7 +25,7 @@ export async function checkNamespacedRateLimit(
 ): Promise<boolean> {
   try {
     const key = `${namespace}:ratelimit:${hashIp(ip)}:${new Date().toISOString().slice(0, 10)}`;
-    const pipeline = kv.pipeline();
+    const pipeline = redis().pipeline();
     pipeline.incr(key);
     pipeline.expire(key, 86_400);
     const [rawCount] = await pipeline.exec();

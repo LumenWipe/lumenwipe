@@ -1,14 +1,14 @@
 import "server-only";
-import { kv } from "@vercel/kv";
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { isRedisConfigured, redis } from "./upstash-redis";
 
 // Per-IP daily limiter for the playground's public routes.
 //
-// Deliberately a copy of apps/web/lib/rate-limit.ts + the counter half of apps/web/lib/kv.ts
+// Deliberately a copy of apps/web/lib/rate-limit.ts + the counter half of apps/web/lib/upstash-redis.ts
 // rather than an import: apps/playground never imports from apps/web (and vice versa), and it
-// runs against its OWN Vercel KV store, so the two limiters share no counters even when they
-// use the same namespace names.
+// keys every counter under a `playground:` prefix, so the two limiters share no counters even
+// when they use the same namespace names.
 //
 // Both routes it guards spend real resources on an anonymous caller's behalf - one creates and
 // Friendbot-funds a testnet account and writes a custodial session, the other decrypts and
@@ -19,11 +19,7 @@ export const SESSIONS_PER_DAY_PER_IP = 25;
 /** Credential reveals per IP per day. Higher: it is a read of a session the caller already has. */
 export const CREDENTIALS_PER_DAY_PER_IP = 50;
 
-function isKvConfigured(): boolean {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-}
-
-// One-way, so no raw IP is ever written to KV.
+// One-way, so no raw IP is ever written to Redis.
 function hashIp(ip: string): string {
   return createHash("sha256").update(ip).digest("hex").slice(0, 16);
 }
@@ -42,15 +38,15 @@ function clientIp(req: NextRequest): string {
 
 /**
  * Increments this IP's daily counter for `namespace` and reports whether it is still within
- * `limitPerDay`. Fails open on any KV trouble - a limiter outage must not take the playground
- * down - and is a no-op when KV is unconfigured, matching the session store's dev fallback
- * (production has no such fallback: it refuses to run without KV).
+ * `limitPerDay`. Fails open on any Redis trouble - a limiter outage must not take the playground
+ * down - and is a no-op when Redis is unconfigured, matching the session store's dev fallback
+ * (production has no such fallback: it refuses to run without Redis).
  */
 async function withinLimit(namespace: string, ip: string, limitPerDay: number): Promise<boolean> {
-  if (!isKvConfigured()) return true;
+  if (!isRedisConfigured()) return true;
   try {
     const key = `playground:${namespace}:ratelimit:${hashIp(ip)}:${new Date().toISOString().slice(0, 10)}`;
-    const pipeline = kv.pipeline();
+    const pipeline = redis().pipeline();
     pipeline.incr(key);
     pipeline.expire(key, 86_400);
     const [rawCount] = await pipeline.exec();

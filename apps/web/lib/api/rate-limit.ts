@@ -1,6 +1,6 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
-import { checkNamespacedRateLimit } from "@/lib/kv";
+import { checkNamespacedRateLimit } from "@/lib/upstash-redis";
 
 // Generous for a legitimate close flow (a close is a handful of requests), but caps how
 // much any single IP can pump through LumenWipe's shared API key in a day.
@@ -21,7 +21,7 @@ function clientIp(req: NextRequest): string {
  * Per-IP daily rate limit for the key-injecting proxy routes. The browser reaches these
  * routes with no API key, so without this a single client could turn the proxy into an
  * anonymous amplifier against the shared server-side key. Returns a 429 response when the
- * caller is over the limit, or null to proceed. Fails open (a KV outage allows the request)
+ * caller is over the limit, or null to proceed. Fails open (an Upstash Redis outage allows the request)
  * so infrastructure trouble never blocks a legitimate, irreversible close.
  */
 export async function rateLimitProxy(

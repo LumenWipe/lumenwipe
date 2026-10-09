@@ -1,10 +1,10 @@
 import "server-only";
-import { kv } from "@vercel/kv";
 import { v4 as uuidv4 } from "uuid";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IntentOperation } from "@lumenwipe/sdk";
+import { isRedisConfigured, redis } from "./upstash-redis";
 
 // Server-only custodial session storage for the testnet playground.
 // Secrets are stored AES-256-GCM-encrypted (see ./crypto). Sessions expire
@@ -39,11 +39,7 @@ export interface PlaygroundSession {
 
 const sessionKey = (id: string) => `playground:session:${id}`;
 
-function isKvConfigured(): boolean {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-}
-
-// Dev-only fallback so the playground works locally without Vercel KV.
+// Dev-only fallback so the playground works locally without Upstash Redis.
 // Not used in production: there we fail loudly instead of silently losing
 // sessions across serverless instances.
 //
@@ -54,7 +50,7 @@ function isKvConfigured(): boolean {
 // state, so "session_not_found" fired on the very first mess step in local
 // dev, even though the unit tests (which run in one process, no per-route
 // recompilation) never exercised this. The filesystem lives outside any
-// module's memory, so it survives across routes the same way real KV would.
+// module's memory, so it survives across routes the same way real Redis would.
 type DevStoreEntry = { session: PlaygroundSession; expiresAt: number };
 type DevStore = Record<string, DevStoreEntry>;
 const DEV_STORE_FILE = join(tmpdir(), "lumenwipe-playground-dev-sessions.json");
@@ -75,20 +71,20 @@ function writeDevStore(store: DevStore): void {
 
 export class PlaygroundStoreUnavailableError extends Error {
   constructor() {
-    super("Playground session store (Vercel KV) is not configured");
+    super("Playground session store (Upstash Redis) is not configured");
     this.name = "PlaygroundStoreUnavailableError";
   }
 }
 
 function assertStoreAvailable(): void {
-  if (isKvConfigured()) return;
+  if (isRedisConfigured()) return;
   if (process.env.NODE_ENV === "production") {
     throw new PlaygroundStoreUnavailableError();
   }
   if (!warnedMemoryFallback) {
     warnedMemoryFallback = true;
     console.warn(
-      `[playground] KV not configured - using a file-backed dev session store at ${DEV_STORE_FILE} ` +
+      `[playground] Upstash Redis not configured - using a file-backed dev session store at ${DEV_STORE_FILE} ` +
         "(dev/test only). Sessions are lost when that file is removed."
     );
   }
@@ -105,7 +101,7 @@ export async function createSession(
 
 export async function loadSession(id: string): Promise<PlaygroundSession | null> {
   assertStoreAvailable();
-  if (!isKvConfigured()) {
+  if (!isRedisConfigured()) {
     const store = readDevStore();
     const entry = store[sessionKey(id)];
     if (!entry) return null;
@@ -116,13 +112,13 @@ export async function loadSession(id: string): Promise<PlaygroundSession | null>
     }
     return entry.session;
   }
-  return kv.get<PlaygroundSession>(sessionKey(id));
+  return redis().get<PlaygroundSession>(sessionKey(id));
 }
 
 /** Persists the session and refreshes its TTL. */
 export async function saveSession(session: PlaygroundSession): Promise<void> {
   assertStoreAvailable();
-  if (!isKvConfigured()) {
+  if (!isRedisConfigured()) {
     const store = readDevStore();
     store[sessionKey(session.id)] = {
       session,
@@ -131,18 +127,18 @@ export async function saveSession(session: PlaygroundSession): Promise<void> {
     writeDevStore(store);
     return;
   }
-  await kv.set(sessionKey(session.id), session, { ex: SESSION_TTL_SECONDS });
+  await redis().set(sessionKey(session.id), session, { ex: SESSION_TTL_SECONDS });
 }
 
 export async function deleteSession(id: string): Promise<void> {
   assertStoreAvailable();
-  if (!isKvConfigured()) {
+  if (!isRedisConfigured()) {
     const store = readDevStore();
     delete store[sessionKey(id)];
     writeDevStore(store);
     return;
   }
-  await kv.del(sessionKey(id));
+  await redis().del(sessionKey(id));
 }
 
 /** Seconds until the session expires (for the client countdown). */

@@ -2,8 +2,8 @@ import { test, expect, beforeEach } from "bun:test";
 import { createSession, loadSession, saveSession, deleteSession } from "@/lib/session-store";
 
 beforeEach(() => {
-  delete process.env.KV_REST_API_URL;
-  delete process.env.KV_REST_API_TOKEN;
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
   process.env.NODE_ENV = "test";
 });
 
