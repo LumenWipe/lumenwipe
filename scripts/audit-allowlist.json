@@ -1,0 +1,10 @@
+[
+  {
+    "advisory": "GHSA-vfj7-8cjw-p6xm",
+    "package": "braces",
+    "severity": "high",
+    "reason": "No patched release exists (3.0.3 is the latest). Reached only through build and lint tooling (nest cli, tsup, tailwindcss, eslint-config-next) expanding glob patterns authored in this repository, never attacker-controlled input, and not present in any runtime bundle.",
+    "added": "2026-10-10",
+    "expires": "2027-01-08"
+  }
+]

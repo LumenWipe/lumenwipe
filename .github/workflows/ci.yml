@@ -337,6 +337,29 @@ jobs:
       - name: Scan the full history
         run: ./gitleaks git --log-opts=HEAD --config .gitleaks.toml --gitleaks-ignore-path .gitleaksignore --redact --no-banner .
 
+  # The advisory database moves independently of this repo, so a new high or critical advisory
+  # turns this red on an unchanged lockfile. Accepted exceptions live in
+  # scripts/audit-allowlist.json with a reason and an expiry; an unreachable endpoint fails the job.
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Test the audit gate
+        run: bun test scripts/audit-gate.test.ts
+
+      - name: Audit dependencies
+        run: bun run scripts/audit-gate.ts
+
   # Aggregate gate: keeps the existing required-status-check name so branch
   # protection needs no change. Passes only if every job above passed.
   ci:
@@ -353,6 +376,7 @@ jobs:
         codeql,
         semgrep,
         gitleaks,
+        audit,
       ]
     if: ${{ always() }}
     steps:
@@ -388,6 +412,10 @@ jobs:
           fi
           if [ "${{ needs.gitleaks.result }}" != "success" ]; then
             echo "gitleaks found a secret in the git history."
+            exit 1
+          fi
+          if [ "${{ needs.audit.result }}" != "success" ]; then
+            echo "Dependency audit found a blocking advisory or could not run."
             exit 1
           fi
           # skipped (not run on a push event) counts as passing - only a real failure blocks.
