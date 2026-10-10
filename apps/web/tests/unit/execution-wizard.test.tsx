@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { hash, Keypair, StrKey } from "@stellar/stellar-sdk";
 import ExecutionWizard from "@/components/execution/ExecutionWizard";
 import { useDemolishStore } from "@/store/demolish";
@@ -37,7 +37,7 @@ function stubCloseExecution(): void {
     () =>
       ({
         run: (signer: { publicKey: string }) => runImpl(signer),
-        progressStatus: null,
+        progressStatus: currentProgressStatus,
         signatureStatus: currentSignatureStatus,
         submitPreAuthTransaction: (
           signer: { key: string; weight: number; type: string },
@@ -47,6 +47,7 @@ function stubCloseExecution(): void {
   );
 }
 
+let currentProgressStatus: string | null = null;
 let currentSignatureStatus: {
   requiredWeight: number;
   accumulatedWeight: number;
@@ -97,6 +98,7 @@ beforeEach(() => {
   stubWalletKit();
   stubSessionStore();
   currentSignatureStatus = null;
+  currentProgressStatus = null;
   currentWalletAddress = null;
   submitPreAuthTxImpl = async () => {};
   mockSaveSession.mockClear();
@@ -389,4 +391,85 @@ test("execution-wizard › the notice does not repeat once signing progress is o
   // The progress panel already says what remains; a second banner restating the
   // requirement would be noise.
   expect(screen.queryByTestId("multisig-notice")).toBeNull();
+});
+
+// Announcements and focus on view swaps (#357).
+function swapView(
+  rerender: (ui: React.ReactElement) => void,
+  next: { progress: string | null; phase: string }
+): void {
+  currentProgressStatus = next.progress;
+  act(() => {
+    useDemolishStore.setState({ phase: next.phase } as never);
+    rerender(<ExecutionWizard network="testnet" />);
+  });
+}
+
+test("execution-wizard › announces progress through one status region and hides the spinner", () => {
+  currentProgressStatus = "Waiting for your wallet";
+  const { container } = render(<ExecutionWizard network="testnet" />);
+
+  const statuses = screen.getAllByRole("status");
+  expect(statuses).toHaveLength(1);
+  expect(statuses[0].textContent).toBe("Waiting for your wallet");
+  expect(container.querySelector("svg.animate-spin")?.getAttribute("aria-hidden")).toBe("true");
+});
+
+test("execution-wizard › announces that more signatures are needed", () => {
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    remainingSigners: [{ key: cosigner, weight: 1, type: "ed25519_public_key" }],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+  render(<ExecutionWizard network="testnet" />);
+
+  const statuses = screen.getAllByRole("status");
+  expect(statuses).toHaveLength(1);
+  expect(statuses[0].textContent).toBe("More signatures needed. 1 of 2 signing weight collected.");
+});
+
+test("execution-wizard › does not move focus on first render of the setup view", () => {
+  render(<ExecutionWizard network="testnet" />);
+  expect(document.activeElement).toBe(document.body);
+});
+
+test("execution-wizard › focus moves to the heading when signing starts and to Retry after a failure", async () => {
+  currentWalletAddress = source;
+  useDemolishStore.setState({ lastError: "The close failed." } as never);
+  const { rerender } = render(<ExecutionWizard network="testnet" />);
+  const heading = screen.getByRole("heading", { name: /sign & execute the close/i });
+
+  swapView(rerender, { progress: "Confirming", phase: "STEP_EXECUTING" });
+  expect(document.activeElement).toBe(heading);
+
+  swapView(rerender, { progress: null, phase: "STEP_FAILED" });
+  const retry = await screen.findByRole("button", { name: /retry/i });
+  await waitFor(() => expect((retry as HTMLButtonElement).disabled).toBe(false));
+  expect(document.activeElement).toBe(retry);
+  expect(screen.getByRole("alert").textContent).toContain("The close failed.");
+});
+
+test("execution-wizard › a failure with no usable signer focuses the alert instead of a disabled Retry", async () => {
+  useDemolishStore.setState({ lastError: "The close failed." } as never);
+  const { rerender } = render(<ExecutionWizard network="testnet" />);
+
+  swapView(rerender, { progress: "Confirming", phase: "STEP_EXECUTING" });
+  swapView(rerender, { progress: null, phase: "STEP_FAILED" });
+
+  expect(
+    (await screen.findByRole("button", { name: /retry/i })) as HTMLButtonElement
+  ).toHaveProperty("disabled", true);
+  expect(document.activeElement).toBe(screen.getByRole("alert"));
+});
+
+test("execution-wizard › a view swap never steals focus from a field being typed in", () => {
+  const field = document.createElement("input");
+  document.body.appendChild(field);
+  const { rerender } = render(<ExecutionWizard network="testnet" />);
+  act(() => field.focus());
+
+  swapView(rerender, { progress: "Confirming", phase: "STEP_EXECUTING" });
+  expect(document.activeElement).toBe(field);
+  field.remove();
 });
