@@ -73,7 +73,7 @@ export default function SecretKeyInput({
           autoCorrect="off"
           className={cn(
             "w-full font-mono-address bg-black/30 border rounded-lg px-3 py-2.5 pr-16 text-sm",
-            "placeholder:text-white/30",
+            "placeholder:text-fg-subtle",
             "disabled:opacity-50 disabled:cursor-not-allowed",
             showError ? "border-destructive" : "border-white/10",
             isValid && touched ? "border-success/50" : ""

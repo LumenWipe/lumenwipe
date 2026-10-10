@@ -101,7 +101,7 @@ export default function RiskDisclaimerModal() {
           >
             I understand, continue
           </button>
-          <p className="mt-2.5 text-center text-[0.68rem] text-white/30">
+          <p className="mt-2.5 text-center text-[0.68rem] text-fg-subtle">
             This notice appears once per browser session.
           </p>
         </div>

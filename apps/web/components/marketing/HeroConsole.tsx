@@ -105,7 +105,7 @@ export default function HeroConsole() {
                   {done && <Check className="h-3.5 w-3.5 text-stellar" />}
                   <span
                     className={`mkt-mono ml-auto tabular-nums transition-colors duration-500 ${
-                      done ? "text-white/60" : "text-white/30"
+                      done ? "text-white/60" : "text-fg-subtle"
                     }`}
                   >
                     {r.amount > 0 ? `+${r.amount.toFixed(2)}` : "-"}

@@ -51,7 +51,7 @@ export default function NotFound() {
               <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]/70" />
               <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]/70" />
               <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]/30" />
-              <span className="mkt-mono ml-3 text-xs text-white/20">
+              <span className="mkt-mono ml-3 text-xs text-fg-subtle">
                 lumenwipe · account-lookup
               </span>
             </div>
@@ -87,12 +87,12 @@ export default function NotFound() {
                     <div key={s.label}>
                       <div
                         className={`mkt-mono text-base font-semibold ${
-                          s.label === "Status" ? "text-stellar/40" : "text-white/20"
+                          s.label === "Status" ? "text-stellar/40" : "text-fg-subtle"
                         }`}
                       >
                         {s.value}
                       </div>
-                      <div className="mkt-eyebrow mt-1 text-white/20">{s.label}</div>
+                      <div className="mkt-eyebrow mt-1 text-fg-subtle">{s.label}</div>
                     </div>
                   ))}
                 </div>

@@ -173,7 +173,7 @@ export default function ExecutionPlanDemo() {
               {/* delta */}
               <span
                 className={`relative z-10 shrink-0 mkt-mono text-[0.72rem] tabular-nums transition-colors ${
-                  isDone ? "text-value" : "text-white/25"
+                  isDone ? "text-value" : "text-fg-subtle"
                 }`}
               >
                 +{step.delta.toFixed(2)}

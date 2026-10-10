@@ -100,7 +100,7 @@ export default function AssetDispositionCard({
             aria-describedby={showAddressError ? errorId : helpId}
             className={cn(
               "w-full rounded-md border bg-black/30 px-2.5 py-1.5 font-mono text-xs text-white",
-              "placeholder:font-sans placeholder:text-white/30",
+              "placeholder:font-sans placeholder:text-fg-subtle",
               showAddressError
                 ? "border-destructive/50 focus:border-destructive"
                 : "border-white/10"
@@ -217,7 +217,7 @@ export default function AssetDispositionCard({
             disabled={isTransfer}
             className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-stellar disabled:opacity-40"
           />
-          <span className={cn(isTransfer && "text-white/30")}>
+          <span className={cn(isTransfer && "text-fg-disabled")}>
             Return {holding} to the issuer.{" "}
             <span className="text-fg-subtle">You give up these tokens.</span>
           </span>

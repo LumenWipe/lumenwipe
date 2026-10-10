@@ -28,7 +28,7 @@ export default function AllowanceRow({ allowance, onRevoke }: AllowanceRowProps)
           <span className="text-sm font-medium text-white" title={allowance.token}>
             {tokenLabel}
           </span>
-          <span className="text-white/30">→</span>
+          <span className="text-fg-disabled">→</span>
           <span className="font-mono-address text-xs text-white/70" title={allowance.spender}>
             {shortAddress(allowance.spender)}
           </span>
@@ -47,7 +47,7 @@ export default function AllowanceRow({ allowance, onRevoke }: AllowanceRowProps)
               <Clock className="h-3 w-3" /> expires at ledger {allowance.expirationLedger}
             </span>
           ) : (
-            <span className="text-white/30">expiration unknown</span>
+            <span className="text-fg-subtle">expiration unknown</span>
           )}
         </div>
       </div>

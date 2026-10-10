@@ -65,12 +65,12 @@ export default function NetworkStats() {
             {stats.testnet.toLocaleString()}
           </span>
           <span className="text-fg-subtle">testnet</span>
-          <span className="text-white/25">·</span>
+          <span className="text-fg-disabled">·</span>
           <span className="tabular-nums font-semibold text-stellar">
             {stats.mainnet.toLocaleString()}
           </span>
           <span className="text-fg-subtle">mainnet</span>
-          <span className="text-white/25">·</span>
+          <span className="text-fg-disabled">·</span>
           <span className="tabular-nums font-semibold text-value">{xlmRecovered} XLM</span>
           <span className="hidden text-fg-subtle sm:inline">recovered on mainnet</span>
         </div>

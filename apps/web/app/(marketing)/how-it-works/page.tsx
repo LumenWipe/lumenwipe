@@ -197,7 +197,7 @@ export default function HowItWorksPage() {
                 </div>
                 <div className="min-w-0 pb-1">
                   <div className="flex items-center gap-3">
-                    <span className="mkt-mono text-xs text-white/30">
+                    <span className="mkt-mono text-xs text-fg-subtle">
                       {String(i + 1).padStart(2, "0")}
                     </span>
                     <h3 className="text-base font-semibold text-white">{s.title}</h3>
@@ -301,7 +301,9 @@ export default function HowItWorksPage() {
                   <span className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 mkt-mono text-xs text-white/70">
                     {s}
                   </span>
-                  {i < MACHINE.length - 1 && <ArrowRight className="h-3.5 w-3.5 text-white/25" />}
+                  {i < MACHINE.length - 1 && (
+                    <ArrowRight className="h-3.5 w-3.5 text-fg-disabled" />
+                  )}
                 </span>
               ))}
             </div>

@@ -128,16 +128,18 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
         <div className="flex items-center gap-4">
           {feed && (
             <>
-              <span className="mkt-mono text-[0.62rem] text-white/30">{totalDays} active days</span>
+              <span className="mkt-mono text-[0.62rem] text-fg-subtle">
+                {totalDays} active days
+              </span>
               {maxStreak > 1 && (
-                <span className="mkt-mono text-[0.62rem] text-white/30">
+                <span className="mkt-mono text-[0.62rem] text-fg-subtle">
                   {maxStreak}-day streak
                 </span>
               )}
             </>
           )}
           <div className="flex items-center gap-1">
-            <span className="mkt-mono text-[0.58rem] text-white/25">Less</span>
+            <span className="mkt-mono text-[0.58rem] text-fg-subtle">Less</span>
             {([0, 1, 2, 3, 4] as const).map((l) => (
               <div
                 key={l}
@@ -145,7 +147,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
                 style={{ backgroundColor: LEVEL_BG[l] }}
               />
             ))}
-            <span className="mkt-mono text-[0.58rem] text-white/25">More</span>
+            <span className="mkt-mono text-[0.58rem] text-fg-subtle">More</span>
           </div>
         </div>
       </div>
@@ -157,7 +159,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
             {monthLabels.map((m) => (
               <div
                 key={m.label + m.col}
-                className="mkt-mono text-[0.6rem] text-white/30"
+                className="mkt-mono text-[0.6rem] text-fg-subtle"
                 style={{ position: "absolute", left: 24 + m.col * 14 }}
               >
                 {m.label}
@@ -171,7 +173,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
               {Array.from({ length: 7 }).map((_, i) => (
                 <div
                   key={i}
-                  className="mkt-mono text-[0.55rem] text-white/20"
+                  className="mkt-mono text-[0.55rem] text-fg-subtle"
                   style={{ height: 12, lineHeight: "12px" }}
                 >
                   {i === 0 ? "Mon" : i === 2 ? "Wed" : i === 4 ? "Fri" : ""}
@@ -265,7 +267,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
                   </a>
                 ))}
                 {hovered.closes.length > 5 && (
-                  <span className="mkt-mono text-[0.62rem] text-white/25">
+                  <span className="mkt-mono text-[0.62rem] text-fg-subtle">
                     +{hovered.closes.length - 5} more
                   </span>
                 )}
@@ -273,7 +275,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
             )}
           </div>
         ) : (
-          <p className="mkt-mono text-[0.6rem] text-white/20">Hover a day to inspect</p>
+          <p className="mkt-mono text-[0.6rem] text-fg-subtle">Hover a day to inspect</p>
         )}
       </div>
 

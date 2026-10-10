@@ -110,7 +110,7 @@ export default function ConstellationChart({ feed }: { feed: FeedData | null }) 
         <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-fg-muted">
           Each close · last {DAYS_SHOWN} days
         </span>
-        <span className="mkt-mono text-[0.62rem] text-white/25">
+        <span className="mkt-mono text-[0.62rem] text-fg-subtle">
           size = XLM recovered · gold = large close
         </span>
       </div>

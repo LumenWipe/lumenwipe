@@ -78,7 +78,7 @@ export default function PreAuthTxInput({ signer, disabled, onSubmit }: Props) {
         rows={4}
         className={cn(
           "w-full font-mono-address bg-black/30 border rounded-lg px-3 py-2 text-xs",
-          "placeholder:text-white/30",
+          "placeholder:text-fg-subtle",
           "disabled:opacity-50 disabled:cursor-not-allowed",
           error ? "border-destructive" : "border-white/10"
         )}

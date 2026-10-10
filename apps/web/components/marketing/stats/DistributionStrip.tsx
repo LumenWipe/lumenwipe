@@ -51,7 +51,7 @@ export default function DistributionStrip({ feed }: { feed: FeedData | null }) {
         <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-fg-muted">
           XLM distribution · each dot is one close
         </span>
-        <span className="mkt-mono text-[0.62rem] text-white/25">log scale · hover to verify</span>
+        <span className="mkt-mono text-[0.62rem] text-fg-subtle">log scale · hover to verify</span>
       </div>
 
       <div className="relative">

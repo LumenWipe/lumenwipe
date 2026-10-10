@@ -129,9 +129,9 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
             XLM
             <span className="h-1.5 w-1.5 rounded-full bg-stellar" />
           </div>
-          <div className="flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/30 opacity-50 select-none">
+          <div className="flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-fg-disabled opacity-50 select-none">
             USDC
-            <span className="rounded-full border border-white/15 px-1.5 py-0.5 text-[0.55rem] uppercase tracking-wide text-white/30">
+            <span className="rounded-full border border-white/15 px-1.5 py-0.5 text-[0.55rem] uppercase tracking-wide text-fg-disabled">
               Soon
             </span>
           </div>
@@ -152,7 +152,7 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
             </span>
           </span>
         </span>
-        <span className="shrink-0 text-white/30">→</span>
+        <span className="shrink-0 text-fg-disabled">→</span>
       </Link>
     </div>
   );

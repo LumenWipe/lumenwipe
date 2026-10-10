@@ -129,7 +129,7 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
             placeholder="G... (the account to inspect)"
             spellCheck={false}
             autoComplete="off"
-            className="w-full flex-1 font-mono-address bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 text-sm placeholder:text-white/30"
+            className="w-full flex-1 font-mono-address bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 text-sm placeholder:text-fg-subtle"
           />
           <button
             type="submit"
@@ -180,7 +180,7 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
                 <p className="mt-1 text-xs text-fg-subtle">
                   This account has not approved any spender that is currently live.
                 </p>
-                {note && <p className="mt-2 text-[11px] text-white/30">{note}.</p>}
+                {note && <p className="mt-2 text-[11px] text-fg-subtle">{note}.</p>}
               </div>
             )
           ) : (
