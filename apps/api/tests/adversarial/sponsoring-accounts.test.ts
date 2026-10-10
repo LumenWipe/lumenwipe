@@ -22,7 +22,8 @@ import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar
 import * as rpcModule from "@/lib/stellar/rpc";
 import * as sponsorshipAffordabilityModule from "@/lib/stellar/sponsorship-affordability";
 import { buildCloseTransactions } from "@/lib/close-api/build-transactions";
-import type { AccountState, SponsoredEntry } from "@lumenwipe/types";
+import type { AccountState, SponsoredEntry, Trustline } from "@lumenwipe/types";
+import { mirrorSnapshot } from "../unit/fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
 
 const SOURCE = Keypair.random().publicKey();
@@ -39,14 +40,13 @@ function rpcServerStub() {
   return {
     getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
     getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
-    getAssetBalance: () => Promise.reject(new Error("not stubbed")),
+    getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot),
   } as unknown as ReturnType<typeof rpcModule.getRpcServer>;
 }
 
 const SPONSORED_ENTRIES: SponsoredEntry[] = [{ kind: "trustline", owner: OWNER, asset: USDC }];
 
-function accountState(): AccountState {
+function makeState(): AccountState {
   return {
     address: SOURCE,
     network: "testnet",
@@ -69,6 +69,13 @@ function accountState(): AccountState {
     defiPositions: emptyDefiPositionsResult(SOURCE),
     defiPositionsWarnings: [],
   };
+}
+
+let snapshot: Trustline[] = [];
+function accountState(...args: Parameters<typeof makeState>): AccountState {
+  const state = makeState(...args);
+  snapshot = state.trustlines;
+  return state;
 }
 
 function opsOf(xdr: string) {

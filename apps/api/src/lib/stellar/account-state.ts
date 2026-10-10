@@ -78,6 +78,7 @@ interface ApiBalance {
   liquidity_pool_id?: string;
   balance: string;
   limit?: string;
+  buying_liabilities?: string;
   is_authorized?: boolean;
 }
 
@@ -327,7 +328,10 @@ export async function readTrustlinesOnly(
   address: string,
   network: Network = "testnet",
   deps: HorizonDeps = horizonDepsFor(network)
-): Promise<Pick<AccountState, "address" | "trustlines"> | null> {
+): Promise<{
+  address: string;
+  trustlines: Array<Trustline & { buyingLiabilities?: string }>;
+} | null> {
   const account = await horizonGet<ApiAccount>(`/accounts/${address}`, deps);
   if (!account) return null;
   if (!Array.isArray(account.balances)) {
@@ -344,6 +348,7 @@ export async function readTrustlinesOnly(
         asset: horizonAssetToString(b),
         balance: b.balance,
         limit: b.limit,
+        buyingLiabilities: b.buying_liabilities,
         authorized: b.is_authorized ?? true,
         issuer: b.asset_issuer!,
         code: b.asset_code!,

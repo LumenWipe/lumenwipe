@@ -6,7 +6,8 @@ import {
   FastPathUnavailableError,
   AssetRouteLostError,
 } from "@/lib/utils/errors";
-import { stroopsToXlm } from "@/lib/utils/amounts";
+import { stroopsToXlm, xlmToStroops } from "@/lib/utils/amounts";
+import { readLiveTrustline } from "@/lib/stellar/live-trustline";
 import { fetchConversionPath } from "@/lib/stellar/path-finding";
 import { buildRemoveDataEntriesTx } from "@/lib/stellar/tx-builder/data-entries";
 import { buildCancelOffersTx } from "@/lib/stellar/tx-builder/offers";
@@ -61,19 +62,23 @@ export interface StepBuildContext {
 /** Signs an unsigned XDR and returns the signed envelope (local key or remote API). */
 export type StepSigner = (unsignedXdr: string) => Promise<string>;
 
+/**
+ * The line's balance right now. "0" when the ledger confirms the line is gone; a failed read
+ * throws `LiveReadError` and never falls back to the snapshot balance, which would make the
+ * transfer or conversion move less than the account holds.
+ */
 export async function fetchLiveTrustlineBalance(
   tl: Trustline,
   accountAddress: string,
-  server: ReturnType<typeof getRpcServer>
+  server: Pick<ReturnType<typeof getRpcServer>, "getLedgerEntries">
 ): Promise<string> {
-  try {
-    const asset = new Asset(tl.code, tl.issuer);
-    const res = await server.getAssetBalance(accountAddress, asset);
-    if (!res.balanceEntry) return tl.balance;
-    return stroopsToXlm(BigInt(res.balanceEntry.amount));
-  } catch {
-    return tl.balance;
-  }
+  const live = await readLiveTrustline(
+    server,
+    accountAddress,
+    new Asset(tl.code, tl.issuer),
+    `The ${tl.code} balance`
+  );
+  return live ? stroopsToXlm(live.balance) : "0";
 }
 
 export function getBatchIndex(step: PlannedStep, type: string, plan: PlannedStep[]): number {
@@ -234,7 +239,7 @@ export async function buildStepXdrForPlan(
       const withBalanceActions = await Promise.all(
         trustlines.map(async (tl): Promise<AssetAction | null> => {
           const liveBalance = await fetchLiveTrustlineBalance(tl, sourceAddress, server);
-          if (parseFloat(liveBalance) <= 0) return null;
+          if (BigInt(xlmToStroops(liveBalance)) <= 0n) return null;
           const effectiveTl = { ...tl, balance: liveBalance };
           const disposition = ctx.assetDispositions[tl.asset] ?? "convert";
           if (disposition === "issuer") {

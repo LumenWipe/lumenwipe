@@ -13,6 +13,7 @@ import {
 } from "@stellar/stellar-sdk";
 import type { AccountState, Trustline } from "@lumenwipe/types";
 import { buildPlan } from "@/lib/stellar/tx-builder";
+import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { rawSimulation } from "./fixtures/fake-exit-adapter";
 
@@ -31,7 +32,7 @@ function trustline(asset: string, balance: string): Trustline {
   return { asset, balance, authorized: true, issuer: issuer!, code: code!, limit: "1000" };
 }
 
-function accountState(over: Partial<AccountState> = {}): AccountState {
+function makeState(over: Partial<AccountState> = {}): AccountState {
   return {
     address: SOURCE,
     network: "testnet",
@@ -57,6 +58,13 @@ function accountState(over: Partial<AccountState> = {}): AccountState {
   };
 }
 
+let snapshot: Trustline[] = [];
+function accountState(...args: Parameters<typeof makeState>): AccountState {
+  const state = makeState(...args);
+  snapshot = state.trustlines;
+  return state;
+}
+
 function withToken(balance: string, over: Partial<AccountState> = {}): AccountState {
   return accountState({
     sorobanTokens: {
@@ -74,8 +82,7 @@ function rpcServerStub() {
   return {
     getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
     getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
-    getAssetBalance: () => Promise.reject(new Error("not stubbed")),
+    getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot),
   };
 }
 
