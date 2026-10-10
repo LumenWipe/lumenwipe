@@ -4,6 +4,17 @@ description: "Common blockers, what they mean, and how to resolve them."
 icon: "circle-question"
 ---
 
+## What state is my account in
+
+Look up the source address on a public explorer, on the network you used, and match it to a row. The [recovery guide](/guides/recovery) has the steps for each state.
+
+| What you see                                                | What it means                              | Go to                                                                                     |
+| ----------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| The account exists with all its entries                     | Nothing has happened yet                   | [Nothing has happened yet](/guides/recovery#nothing-has-happened-yet)                     |
+| The account exists with fewer entries                       | Some steps confirmed and the close stopped | [The close stopped partway](/guides/recovery#the-close-stopped-partway)                   |
+| The account no longer exists, and a merge is in its history | The merge confirmed                        | [The account is merged](/guides/recovery#the-account-is-merged)                           |
+| The merge paid an exchange through the mediator             | Exchange close, deposit not credited       | [Funds sent to an exchange](/guides/recovery#funds-sent-to-an-exchange-were-not-credited) |
+
 ## Troubleshooting
 
 <AccordionGroup>
@@ -35,7 +46,8 @@ icon: "circle-question"
   </Accordion>
   <Accordion title="A step failed or my browser closed">
     Reopen the flow. Completed steps are skipped, and a failed step can be retried. A transaction
-    that confirmed but whose response was lost is detected and not submitted twice.
+    that confirmed but whose response was lost is detected and not submitted twice. The [recovery
+    guide](/guides/recovery) covers timeouts, expired transactions and each account state.
   </Accordion>
   <Accordion title="The exchange did not credit my deposit">
     Check that the memo matches what the exchange gave you. Contact the exchange with the

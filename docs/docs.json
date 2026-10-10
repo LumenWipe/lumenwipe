@@ -64,7 +64,8 @@
           "guides/signing-options",
           "guides/exiting-protocol-positions",
           "guides/exchanges-and-the-mediator",
-          "guides/troubleshooting-and-faq"
+          "guides/troubleshooting-and-faq",
+          "guides/recovery"
         ]
       },
       {
@@ -95,6 +96,7 @@
         "group": "API reference",
         "pages": [
           "api-reference/introduction",
+          "api-reference/errors",
           {
             "group": "Close",
             "openapi": "api-reference/openapi.json",

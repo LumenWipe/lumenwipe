@@ -385,6 +385,9 @@ jobs:
       - name: Test the Vercel ignore script
         run: bun test scripts/vercel-ignore.test.ts
 
+      - name: Test the error reference check
+        run: bun test scripts/check-error-reference.test.ts
+
       - name: Audit dependencies
         run: bun run scripts/audit-gate.ts
 
@@ -444,7 +447,7 @@ jobs:
         id: changed
         run: |
           if git diff --name-only "origin/${{ github.base_ref }}"...HEAD |
-            grep -qE '^(docs/|diagrams/|README\.md$|CONTRIBUTING\.md$|scripts/check-(docs-nav\.mjs|diagrams\.sh)$|\.github/workflows/ci\.yml$)'; then
+            grep -qE '^(docs/|diagrams/|README\.md$|CONTRIBUTING\.md$|scripts/check-(docs-nav\.mjs|diagrams\.sh|error-reference\.mjs)$|apps/api/src/common/error-codes\.ts$|\.github/workflows/ci\.yml$)'; then
             echo "docs=true" >> "$GITHUB_OUTPUT"
           else
             echo "docs=false" >> "$GITHUB_OUTPUT"
@@ -460,6 +463,10 @@ jobs:
       - name: Check every docs page is in the navigation
         if: steps.changed.outputs.docs == 'true'
         run: node scripts/check-docs-nav.mjs
+
+      - name: Check the error reference lists every API error code
+        if: steps.changed.outputs.docs == 'true'
+        run: node scripts/check-error-reference.mjs
 
       - name: Check internal docs links
         if: steps.changed.outputs.docs == 'true'
