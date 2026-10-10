@@ -6524,6 +6524,10 @@
           "details": {
             "type": "object",
             "description": "Extra structured context, present only when there is more to say."
+          },
+          "requestId": {
+            "type": "string",
+            "description": "The id of this request, also returned in the x-request-id header. Quote it when reporting a problem."
           }
         },
         "required": [

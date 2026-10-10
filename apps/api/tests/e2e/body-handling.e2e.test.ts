@@ -92,7 +92,7 @@ describe.each(POST_ROUTES)("POST %s", (route) => {
     const res = await post(route);
     expect(res.body.error.code).toBeString();
     expect(res.body.error.code).not.toBe("internal_error");
-    expect(spy).not.toHaveBeenCalled();
+    expect(spy.mock.calls.filter(([message]) => typeof message === "string")).toEqual([]);
     spy.mockRestore();
   });
 });

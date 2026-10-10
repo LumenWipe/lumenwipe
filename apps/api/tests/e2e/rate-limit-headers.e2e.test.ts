@@ -132,7 +132,7 @@ test("a 429 is the same whether the key is valid or not", async () => {
     }
     const res = await request(http).get("/testnet/account/G").set("Authorization", `Bearer ${key}`);
     expect(res.status).toBe(429);
-    bodies.push(res.body);
+    bodies.push({ ...res.body.error, requestId: undefined });
   }
   expect(bodies[0]).toEqual(bodies[1]);
 }, 30_000);

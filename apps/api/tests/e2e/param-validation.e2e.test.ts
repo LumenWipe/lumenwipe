@@ -35,7 +35,9 @@ for (const route of ADDRESS_ROUTES) {
       .get(route.path("nope", "x"))
       .set("Authorization", `Bearer ${KEY}`);
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { code: "invalid_network", message: "Invalid network" } });
+    expect(res.body).toMatchObject({
+      error: { code: "invalid_network", message: "Invalid network" },
+    });
   });
 
   test(`${route.path("{network}", "{address}")} rejects only the address on a valid network`, async () => {
@@ -43,7 +45,7 @@ for (const route of ADDRESS_ROUTES) {
       .get(route.path("testnet", "x"))
       .set("Authorization", `Bearer ${KEY}`);
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { code: "invalid_address", message: route.message } });
+    expect(res.body).toMatchObject({ error: { code: "invalid_address", message: route.message } });
   });
 }
 
@@ -52,5 +54,7 @@ test("a bad network on a close route keeps its trailing-period message", async (
     .post("/v1/nope/close/plan")
     .set("Authorization", `Bearer ${KEY}`)
     .send({ source: ADDRESS });
-  expect(res.body).toEqual({ error: { code: "invalid_network", message: "Invalid network." } });
+  expect(res.body).toMatchObject({
+    error: { code: "invalid_network", message: "Invalid network." },
+  });
 });

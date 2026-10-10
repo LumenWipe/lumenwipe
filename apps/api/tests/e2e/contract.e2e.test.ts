@@ -59,7 +59,7 @@ test("the service index at / is public and points at the docs", async () => {
 test("an authenticated route without a key is rejected 401", async () => {
   const res = await request(http).get("/testnet/account/NOPE");
   expect(res.status).toBe(401);
-  expect(res.body).toEqual({
+  expect(res.body).toMatchObject({
     error: { code: "unauthorized", message: "A valid API key is required." },
   });
 });
@@ -67,7 +67,7 @@ test("an authenticated route without a key is rejected 401", async () => {
 test("an authenticated route with an unknown key is rejected 401", async () => {
   const res = await request(http).get("/testnet/account/NOPE").set("Authorization", "Bearer nope");
   expect(res.status).toBe(401);
-  expect(res.body).toEqual({
+  expect(res.body).toMatchObject({
     error: { code: "unauthorized", message: "A valid API key is required." },
   });
 });
@@ -77,13 +77,15 @@ test("an authenticated route with an unknown key is rejected 401", async () => {
 test("close/plan rejects an invalid network with the v1 error shape", async () => {
   const res = await authPost("/v1/badnet/close/plan").send({});
   expect(res.status).toBe(400);
-  expect(res.body).toEqual({ error: { code: "invalid_network", message: "Invalid network." } });
+  expect(res.body).toMatchObject({
+    error: { code: "invalid_network", message: "Invalid network." },
+  });
 });
 
 test("close/plan rejects a missing source", async () => {
   const res = await authPost("/v1/testnet/close/plan").send({});
   expect(res.status).toBe(400);
-  expect(res.body).toEqual({
+  expect(res.body).toMatchObject({
     error: { code: "invalid_source", message: "A valid source account (G...) is required." },
   });
 });
@@ -91,7 +93,9 @@ test("close/plan rejects a missing source", async () => {
 test("close/batch-plan rejects an invalid network with the v1 error shape", async () => {
   const res = await authPost("/v1/badnet/close/batch-plan").send({ addresses: [] });
   expect(res.status).toBe(400);
-  expect(res.body).toEqual({ error: { code: "invalid_network", message: "Invalid network." } });
+  expect(res.body).toMatchObject({
+    error: { code: "invalid_network", message: "Invalid network." },
+  });
 });
 
 test("close/batch-plan rejects an empty addresses array", async () => {
@@ -133,7 +137,7 @@ test("close/batch-plan rejects an invalid destination", async () => {
 test("submit rejects a missing signedXdr", async () => {
   const res = await authPost("/v1/testnet/submit").send({});
   expect(res.status).toBe(400);
-  expect(res.body).toEqual({
+  expect(res.body).toMatchObject({
     error: {
       code: "invalid_signed_xdr",
       message: "A signed transaction envelope (signedXdr) is required.",
@@ -181,7 +185,7 @@ test("malformed JSON on a v1 endpoint returns the invalid_body contract", async 
     .set("Content-Type", "application/json")
     .send('{ "source": ');
   expect(res.status).toBe(400);
-  expect(res.body).toEqual({
+  expect(res.body).toMatchObject({
     error: { code: "invalid_body", message: "Request body must be valid JSON." },
   });
 });
@@ -357,7 +361,7 @@ test("close/transactions rejects a text memo over 28 bytes with 422 (before any 
     memo: "x".repeat(29),
   });
   expect(res.status).toBe(422);
-  expect(res.body).toEqual({
+  expect(res.body).toMatchObject({
     error: { code: "invalid_memo", message: "A text memo must be at most 28 bytes." },
   });
 });
@@ -500,7 +504,9 @@ test("the stats feed is public and covers 365 days", async () => {
 test("stats reject an invalid network", async () => {
   const res = await request(http).get("/v1/badnet/stats");
   expect(res.status).toBe(400);
-  expect(res.body).toEqual({ error: { code: "invalid_network", message: "Invalid network." } });
+  expect(res.body).toMatchObject({
+    error: { code: "invalid_network", message: "Invalid network." },
+  });
 });
 
 test("recording a close requires an API key", async () => {
