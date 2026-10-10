@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { generateApiKey, hashApiKey, InMemoryApiKeyStore } from "@/auth/api-key-store";
-
-// InMemoryApiKeyStore is the reference implementation of ApiKeyStore's contract - every
-// automated test exercises it, never live Firestore (see api-key-store.ts's own docstring on
-// createApiKeyStore). FirestoreApiKeyStore mirrors this exact contract against real documents.
+import { HttpException } from "@nestjs/common";
+import type { Firestore } from "@google-cloud/firestore";
+import {
+  FirestoreApiKeyStore,
+  generateApiKey,
+  hashApiKey,
+  InMemoryApiKeyStore,
+} from "@/auth/api-key-store";
+import { runApiKeyStoreContract } from "../support/api-key-store-contract";
 
 describe("hashApiKey / generateApiKey", () => {
   test("generated keys are prefixed and high-entropy", () => {
@@ -23,65 +27,91 @@ describe("hashApiKey / generateApiKey", () => {
   });
 });
 
-describe("InMemoryApiKeyStore", () => {
-  test("a created key resolves back to its own record", async () => {
-    const store = new InMemoryApiKeyStore();
-    const { raw, record } = await store.create("polar");
-    const resolved = await store.resolve(raw);
-    expect(resolved).toEqual(record);
-    expect(resolved!.owner).toBe("polar");
-    expect(resolved!.revokedAt).toBeNull();
+runApiKeyStoreContract("InMemoryApiKeyStore", () => new InMemoryApiKeyStore());
+
+interface FakeDoc {
+  id: string;
+}
+
+function fakeFirestore(runTransaction: Firestore["runTransaction"]): Firestore {
+  const doc = (id: string): FakeDoc => ({ id });
+  return {
+    collection: () => ({ doc, where: () => ({ get: () => new Promise(() => {}) }) }),
+    runTransaction,
+  } as unknown as Firestore;
+}
+
+async function unavailable(p: Promise<unknown>): Promise<void> {
+  const error = await p.then(
+    () => null,
+    (e: unknown) => e
+  );
+  expect(error).toBeInstanceOf(HttpException);
+  const http = error as HttpException;
+  expect(http.getStatus()).toBe(503);
+  const body = http.getResponse() as { error: { code: string; message: string } };
+  expect(body.error.code).toBe("service_unavailable");
+  expect(body.error.message).not.toMatch(/lw_|firestore|timed out/i);
+}
+
+describe("FirestoreApiKeyStore deadline", () => {
+  const hang = (): Promise<never> => new Promise(() => {});
+
+  test("every operation fails with a plain 503 instead of hanging", async () => {
+    const firestore = {
+      collection: () => ({
+        doc: () => ({ get: hang, create: hang }),
+        where: () => ({ get: hang }),
+      }),
+      runTransaction: hang,
+    } as unknown as Firestore;
+    const store = new FirestoreApiKeyStore(firestore, "apiKeys", 20);
+
+    await unavailable(store.create("polar"));
+    await unavailable(store.resolve("lw_synthetic"));
+    await unavailable(store.findByHash("hash"));
+    await unavailable(store.listByOwner("polar"));
+    await unavailable(store.revoke("hash"));
+    await unavailable(store.rotate("hash"));
   });
 
-  test("an unknown key resolves to null", async () => {
-    const store = new InMemoryApiKeyStore();
-    expect(await store.resolve("lw_nope")).toBeNull();
+  test("a store failure that is not a timeout is not disguised as one", async () => {
+    const firestore = fakeFirestore((async () => {
+      throw new Error("permission denied");
+    }) as Firestore["runTransaction"]);
+    const store = new FirestoreApiKeyStore(firestore, "apiKeys", 20);
+    expect(store.revoke("hash")).rejects.toThrow("permission denied");
   });
+});
 
-  test("revoke makes the key stop resolving, and is idempotent-safe on an unknown id", async () => {
-    const store = new InMemoryApiKeyStore();
-    const { raw, record } = await store.create("polar");
-    expect(await store.revoke(record.hash)).toBe(true);
-    expect(await store.resolve(raw)).toBeNull();
-    expect(await store.revoke("unknown-hash")).toBe(false);
-  });
+describe("FirestoreApiKeyStore rotate retries", () => {
+  test("a transaction retry reuses the same replacement key", async () => {
+    const created: string[] = [];
+    const tx = {
+      get: async () => ({
+        exists: true,
+        id: "old-hash",
+        data: () => ({
+          owner: "polar",
+          createdAt: { toDate: () => new Date() },
+          revokedAt: null,
+          rotatedFrom: null,
+          rateLimit: null,
+        }),
+      }),
+      create: (ref: FakeDoc) => created.push(ref.id),
+      update: () => undefined,
+    };
+    const firestore = fakeFirestore((async (fn: (t: typeof tx) => Promise<unknown>) => {
+      await fn(tx);
+      return fn(tx);
+    }) as unknown as Firestore["runTransaction"]);
+    const store = new FirestoreApiKeyStore(firestore);
 
-  test("rotate revokes the old key and issues a linked replacement", async () => {
-    const store = new InMemoryApiKeyStore();
-    const { raw: oldRaw, record: oldRecord } = await store.create("polar", {
-      limit: 10,
-      ttlMs: 1000,
-    });
-    const rotated = await store.rotate(oldRecord.hash);
+    const rotated = await store.rotate("old-hash");
 
-    expect(rotated).not.toBeNull();
-    expect(rotated!.raw).not.toBe(oldRaw);
-    expect(rotated!.record.owner).toBe("polar");
-    expect(rotated!.record.rotatedFrom).toBe(oldRecord.hash);
-    expect(rotated!.record.rateLimit).toEqual({ limit: 10, ttlMs: 1000 });
-
-    // Old key is dead, new one works.
-    expect(await store.resolve(oldRaw)).toBeNull();
-    expect(await store.resolve(rotated!.raw)).not.toBeNull();
-  });
-
-  test("rotating an unknown or already-revoked key returns null", async () => {
-    const store = new InMemoryApiKeyStore();
-    expect(await store.rotate("unknown-hash")).toBeNull();
-
-    const { record } = await store.create("polar");
-    await store.revoke(record.hash);
-    expect(await store.rotate(record.hash)).toBeNull();
-  });
-
-  test("listByOwner returns only that owner's keys, including revoked ones", async () => {
-    const store = new InMemoryApiKeyStore();
-    const a = await store.create("polar");
-    const b = await store.create("polar");
-    await store.create("other-integrator");
-    await store.revoke(a.record.hash);
-
-    const keys = await store.listByOwner("polar");
-    expect(keys.map((k) => k.hash).sort()).toEqual([a.record.hash, b.record.hash].sort());
+    expect(created).toHaveLength(2);
+    expect(created[0]).toBe(created[1]);
+    expect(hashApiKey(rotated!.raw)).toBe(created[0]);
   });
 });
