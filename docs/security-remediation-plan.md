@@ -1,7 +1,7 @@
 ---
 title: "Security tooling remediation plan"
 sidebarTitle: "Remediation plan"
-description: "Results of the dependency audit, static analysis, and secret scan run for the Phase 2 security hardening pass, with a resolution or accepted-risk rationale for every finding."
+description: "Results of the dependency audit, static analysis, and secret scan run for the security hardening pass, with a resolution or accepted-risk rationale for every finding."
 icon: "clipboard-check"
 ---
 
@@ -10,6 +10,10 @@ icon: "clipboard-check"
 > records what three security tools found against the codebase on **2026-09-02** and, per the
 > commitment, gives every critical, high, and medium finding a resolution or an explicit
 > accepted-risk rationale - never a silent backlog entry.
+
+> **Status as of 2026-10-10, checked against commit `9161997`.** Sections 1 to 6 record the 2026-09-02 pass and
+> Section 7 the 2026-09-29 refresh; findings, counts and versions below are as of those dates, not live.
+> **Next refresh:** the next dated tooling pass, appended as a new section; none is scheduled in this document.
 
 ## 1. Scope and method
 
@@ -60,7 +64,7 @@ by range:
 | `postcss`     | `^8.5.15`     | `^8.5.26` | The existing override's floor predated the two 2026 CVEs; widened past both fix lines       |
 
 Verified safe: `bun run type-check && bun run lint && bun run test` all pass across the full
-workspace after every change (1,181 tests, 0 failures), and `bun run format:check` is clean (the
+workspace after every change (1,181 tests, 0 failures, as of 2026-09-02; the count changes with every commit), and `bun run format:check` is clean (the
 `prettier` devDependency bump pulled in by the same `bun update` reflowed six files' comments -
 purely cosmetic, no logic changed, included in this PR).
 
