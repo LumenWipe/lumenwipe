@@ -7,6 +7,8 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-10
+
 ### Removed
 
 - **Breaking:** the deprecated `PlainApiError` type, and with it the `ApiErrorBody` union member.
