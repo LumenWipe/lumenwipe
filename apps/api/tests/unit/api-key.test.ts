@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import type { ConfigService } from "@nestjs/config";
 import { ApiKeyService } from "@/auth/api-key.service";
-import { throttleStorageKey, trackerForRequest } from "@/auth/api-key-throttler.guard";
+import { throttleStorageKey, trackerForRequest } from "@/auth/rate-limiter";
 
 function service(apiKeys: string): ApiKeyService {
   return new ApiKeyService({ get: () => apiKeys } as unknown as ConfigService);

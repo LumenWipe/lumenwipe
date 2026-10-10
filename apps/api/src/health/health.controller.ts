@@ -1,6 +1,5 @@
 import { Controller, Get } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { SkipThrottle } from "@nestjs/throttler";
 import {
   HealthCheck,
   HealthCheckService,
@@ -39,7 +38,6 @@ export class HealthController {
   ) {}
 
   @Public()
-  @SkipThrottle()
   @Get()
   @ApiOperation({ summary: "Liveness check (public, no API key)." })
   @ApiResponse({
@@ -83,7 +81,6 @@ export class HealthController {
   // service's reported downtime for no operational benefit. This is the separate, deeper
   // check: is Stellar RPC actually reachable on both networks right now.
   @Public()
-  @SkipThrottle()
   @Get("deep")
   @HealthCheck()
   @ApiOperation({

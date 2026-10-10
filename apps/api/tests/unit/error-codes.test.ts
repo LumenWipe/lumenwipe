@@ -76,9 +76,21 @@ describe("error code registry", () => {
 });
 
 describe("ErrorEnvelopeFilter statuses without their own code", () => {
-  function run(exception: unknown): { status: number; body: unknown } {
-    const captured = { status: 0, body: undefined as unknown };
+  function run(exception: unknown): {
+    status: number;
+    body: unknown;
+    headers: Record<string, string>;
+  } {
+    const captured = {
+      status: 0,
+      body: undefined as unknown,
+      headers: {} as Record<string, string>,
+    };
     const res = {
+      getHeader: (name: string) => captured.headers[name],
+      setHeader: (name: string, value: string) => {
+        captured.headers[name] = value;
+      },
       status(code: number) {
         captured.status = code;
         return this;
@@ -100,8 +112,9 @@ describe("ErrorEnvelopeFilter statuses without their own code", () => {
   });
 
   test("503 maps to the registered service_unavailable", () => {
-    const { status, body } = run(new ServiceUnavailableException("down"));
+    const { status, body, headers } = run(new ServiceUnavailableException("down"));
     expect(status).toBe(503);
+    expect(headers["Retry-After"]).toBe("30");
     expect((body as { error: { code: string } }).error.code).toBe("service_unavailable");
     expect(isErrorCode("service_unavailable")).toBe(true);
   });

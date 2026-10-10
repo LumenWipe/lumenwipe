@@ -172,7 +172,20 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 
 ## Rate limits
 
-Requests are limited per API key. The default is 120 requests per minute. Rate limiting applies before authentication, so requests without a valid key are limited too. Exceeding the limit returns `429 rate_limited`.
+Requests are limited per API key, and per client IP when a request carries no key. One budget covers every endpoint. The default is 120 requests per 60 seconds. A key issued through the self-serve flow can carry its own limit and window, which replaces the default for that key only. Rate limiting applies before authentication and before the request body is read, so requests without a valid key, unknown routes and malformed bodies count against the budget too. The service index, the health checks and the documentation pages are not limited.
+
+Every limited response carries the state of the budget:
+
+| Header                | Meaning                                                                             |
+| --------------------- | ----------------------------------------------------------------------------------- |
+| `RateLimit-Limit`     | Requests allowed in the current window.                                             |
+| `RateLimit-Remaining` | Requests left in the current window.                                                |
+| `RateLimit-Reset`     | Seconds until the window resets. On a `429`, seconds until the key is served again. |
+| `Retry-After`         | Seconds to wait before retrying. Sent on every `429` and every `503`.               |
+
+Exceeding the limit returns `429 rate_limited`. The legacy `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers carry the same values and are deprecated: they are sent for one more release and then removed, so read the `RateLimit-*` names.
+
+A single `runClose` over a multi-round account shares this budget with any polling you do, so size your concurrency from `RateLimit-Remaining` rather than guessing.
 
 ## The close loop
 

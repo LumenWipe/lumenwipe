@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { INestApplication } from "@nestjs/common";
-import { SwaggerModule, type OpenAPIObject } from "@nestjs/swagger";
+import type { OpenAPIObject } from "@nestjs/swagger";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "@/app.module";
 import { configureApp } from "@/configure-app";
-import { buildOpenApiConfig } from "@/openapi";
+import { createOpenApiDocument } from "@/openapi";
 
 const KEY = "e2e_test_key";
 const METHODS = ["get", "post"] as const;
@@ -30,7 +30,7 @@ beforeAll(async () => {
   configureApp(app);
   await app.init();
   http = app.getHttpServer();
-  spec = SwaggerModule.createDocument(app, buildOpenApiConfig());
+  spec = createOpenApiDocument(app);
 });
 
 afterAll(async () => {

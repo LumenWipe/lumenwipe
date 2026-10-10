@@ -5,7 +5,7 @@ import { NestFactory } from "@nestjs/core";
 import { SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
 import { configureApp } from "./configure-app";
-import { buildOpenApiConfig } from "./openapi";
+import { createOpenApiDocument } from "./openapi";
 import { checkEnv, formatEnvFailure } from "./config/validate-env";
 import { deprecatedEnvWarnings } from "./config/networks";
 
@@ -33,7 +33,7 @@ async function bootstrap(): Promise<void> {
   // Nest's own routing entirely (SwaggerModule mounts them directly on the underlying HTTP
   // adapter), so `ApiKeyGuard`'s `@Public()` mechanism could not gate them even if this called
   // for it - a deliberate choice, not the guard failing to apply.
-  const document = SwaggerModule.createDocument(app, buildOpenApiConfig());
+  const document = createOpenApiDocument(app);
   SwaggerModule.setup("docs", app, document);
 
   // Fire NestJS shutdown hooks on SIGTERM (Cloud Run sends it with a ~10s grace window on scale-down).

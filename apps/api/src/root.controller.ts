@@ -1,6 +1,5 @@
 import { Controller, Get } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { SkipThrottle } from "@nestjs/throttler";
 import { Public } from "./auth/public.decorator";
 import { API_VERSION } from "./openapi";
 
@@ -16,11 +15,10 @@ export interface ServiceIndex {
 @ApiTags("service")
 @Controller()
 export class RootController {
-  // Public and unthrottled for the same reason /health is: this is what someone gets for typing
+  // Public and unthrottled (rate-limiter.ts's isUnthrottledPath) for the same reason /health is: this is what someone gets for typing
   // the bare hostname, and answering 401 or 404 there reads as "the deploy is broken" to anyone
   // who has not been handed a key yet. It exposes no account state and takes no input.
   @Public()
-  @SkipThrottle()
   @Get()
   @ApiOperation({ summary: "Service index (public, no API key)." })
   @ApiResponse({ status: 200, description: "Identifies the service and links to its docs." })
