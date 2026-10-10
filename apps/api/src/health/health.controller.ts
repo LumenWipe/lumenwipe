@@ -7,6 +7,7 @@ import {
   type HealthIndicatorResult,
 } from "@nestjs/terminus";
 import { Public } from "../auth/public.decorator";
+import { registryDaysRemaining } from "@/lib/exchange-registry";
 import { rateLimitHits } from "@/lib/stellar/horizon-http";
 import { degradedFallbackCount } from "@/lib/defi-positions/resolve-defi-positions";
 import { defiPositionsDepsFor } from "@/lib/stellar/account-state";
@@ -86,16 +87,31 @@ export class HealthController {
   @ApiOperation({
     summary: "Deep check (public, no API key): is Stellar RPC reachable on every network.",
   })
-  @ApiResponse({ status: 200, description: "RPC reachable on every network." })
+  @ApiResponse({
+    status: 200,
+    description:
+      "RPC reachable on every network. `details.exchange_registry.daysRemaining` is the whole " +
+      "days left before the exchange registry expires (negative once expired); it is reported, " +
+      "never a failure, so a monitor can alert on it without the probe going down.",
+  })
   @ApiResponse({ status: 503, description: "RPC unreachable on at least one network." })
   deep(): ReturnType<HealthCheckService["check"]> {
     const now = Date.now();
     if (this.cachedDeepCheck && this.cachedDeepCheck.expiresAt > now) {
       return this.cachedDeepCheck.result;
     }
-    const result = this.health.check(VALID_NETWORKS.map((network) => () => this.checkRpc(network)));
+    const result = this.health.check([
+      ...VALID_NETWORKS.map((network) => () => this.checkRpc(network)),
+      () => this.checkRegistry(),
+    ]);
     this.cachedDeepCheck = { result, expiresAt: now + DEEP_CHECK_CACHE_MS };
     return result;
+  }
+
+  private checkRegistry(): HealthIndicatorResult {
+    return this.indicators
+      .check("exchange_registry")
+      .up({ daysRemaining: registryDaysRemaining() });
   }
 
   private async checkRpc(network: Network): Promise<HealthIndicatorResult> {

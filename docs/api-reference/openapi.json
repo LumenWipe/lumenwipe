@@ -37,7 +37,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "RPC reachable on every network.\n\nThe Health Check is successful",
+            "description": "RPC reachable on every network. `details.exchange_registry.daysRemaining` is the whole days left before the exchange registry expires (negative once expired); it is reported, never a failure, so a monitor can alert on it without the probe going down.\n\nThe Health Check is successful",
             "content": {
               "application/json": {
                 "schema": {
@@ -9372,6 +9372,10 @@
           "available": {
             "type": "boolean",
             "description": "Whether the server can actually perform the mediator flow (secret configured)."
+          },
+          "registryFresh": {
+            "type": "boolean",
+            "description": "Whether the exchange registry is still inside its verification window. When false, exchange closes are refused with registry_expired."
           }
         },
         "required": [
@@ -9380,7 +9384,8 @@
           "requiresMemo",
           "memoType",
           "exchangeName",
-          "available"
+          "available",
+          "registryFresh"
         ]
       },
       "FeeBumpRequestDto": {

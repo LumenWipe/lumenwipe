@@ -2,6 +2,7 @@ import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { Test } from "@nestjs/testing";
 import { TerminusModule } from "@nestjs/terminus";
 import { HealthController } from "@/health/health.controller";
+import { registryDaysRemaining } from "@/lib/exchange-registry";
 import * as rpcModule from "@/lib/stellar/rpc";
 import {
   resetDegradedFallbackCount,
@@ -70,6 +71,22 @@ test("reports up on every network when RPC responds", async () => {
   expect(result.status).toBe("ok");
   expect(result.details.rpc_testnet?.status).toBe("up");
   expect(result.details.rpc_mainnet?.status).toBe("up");
+});
+
+test("reports the exchange registry days remaining without failing the probe", async () => {
+  spyOn(rpcModule, "buildRpcServer").mockReturnValue({
+    getHealth: () => Promise.resolve({ status: "healthy" }),
+  } as unknown as ReturnType<typeof rpcModule.buildRpcServer>);
+
+  const controller = await buildController();
+  const result = await controller.deep();
+
+  expect(result.details.exchange_registry?.status).toBe("up");
+  expect(result.details.exchange_registry?.daysRemaining).toBe(registryDaysRemaining());
+  expect(Object.keys(result.details.exchange_registry ?? {}).sort()).toEqual([
+    "daysRemaining",
+    "status",
+  ]);
 });
 
 test("throws (503) when one network's RPC is unreachable, naming which one", async () => {

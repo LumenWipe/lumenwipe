@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { isRegistryFresh, servedRegistry } from "@/lib/exchange-registry";
+import { REGISTRY_WARN_DAYS, isRegistryFresh, servedRegistry } from "@/lib/exchange-registry";
 
 // The API states an expiry in what it serves and tells clients they MUST honour it. A rule the
 // server declares and does not itself apply protects only the first-party web app -
@@ -19,13 +19,13 @@ test("the shipped registry is currently fresh", () => {
 });
 
 test("the shipped registry is not about to expire", () => {
-  // Warns two weeks ahead, because "fails on the day it expires" is still an outage that
+  // Fails 30 days ahead, because "fails on the day it expires" is still an outage that
   // starts in production. This turns a user-facing refusal into a maintenance ticket, and the
   // fix is the quarterly re-verification CONTRIBUTING describes - not moving the date.
-  const twoWeeksOut = new Date(Date.now() + 14 * 86_400_000);
+  const thirtyDaysOut = new Date(Date.now() + REGISTRY_WARN_DAYS * 86_400_000);
   expect(
-    isRegistryFresh(twoWeeksOut),
-    "the exchange registry expires within two weeks - re-verify the 20 entries against each " +
+    isRegistryFresh(thirtyDaysOut),
+    "the exchange registry expires within 30 days - re-verify every entry against each " +
       "exchange's own deposit docs and restamp lastVerified/validUntil (CONTRIBUTING §9)"
   ).toBe(true);
 });
