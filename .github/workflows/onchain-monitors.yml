@@ -16,9 +16,8 @@ concurrency:
   group: onchain-monitors
   cancel-in-progress: false
 
-# Read-only by default; only `report` writes, and it says so itself.
-permissions:
-  contents: read
+# Nothing by default; each job asks for what it needs, and only `report` writes.
+permissions: {}
 
 env:
   # Every service account with a signing key, by network. Testnet only until the mainnet mediator
@@ -36,8 +35,10 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 6 * * *'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -102,8 +103,10 @@ jobs:
     name: service accounts are above their balance floor
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -118,8 +121,10 @@ jobs:
     name: the mediator never paid out more than a merge delivered
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -135,6 +140,7 @@ jobs:
     needs: [registry, service-keys, balances, mediator-forward]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       issues: write
     steps:
