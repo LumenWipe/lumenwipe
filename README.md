@@ -48,7 +48,7 @@ The system has three layers. The trust boundary is the browser: it verifies ever
 
 **Browser (trust boundary)** - The guided UI, wallet adapter, and `verify()` (the trust anchor) live in the browser. It fetches unsigned transactions from the API through a key-injecting server-side proxy, verifies each one against the user's own choices before signing, signs locally, and submits back through the API. After the user confirms the plan, the session is persisted to IndexedDB; keys are never stored.
 
-**API service** - A stateless NestJS service, and the product itself: it reads account state, detects DeFi positions, quotes routes, and builds the minimal set of unsigned transactions that close an account. It holds no user keys and is not in the signing path; its two signing keys co-sign only the mediator's forward payment and pay fee-bump network fees. A fully compromised API still cannot move funds, because `verify()` refuses to sign anything that does not match the user's intent.
+**API service** - A NestJS service, stateless across a close with small per-process state, and the product itself: it reads account state, detects DeFi positions, quotes routes, and builds the minimal set of unsigned transactions that close an account. It holds no user keys and is not in the signing path; its two signing keys co-sign only the mediator's forward payment and pay fee-bump network fees. A fully compromised API still cannot move funds, because `verify()` refuses to sign anything that does not match the user's intent.
 
 **Stellar network and data services** - The sources and what each is used for are described once in [architecture section 5](docs/architecture.md#5-data-sources-and-why-we-run-no-indexer).
 
@@ -154,19 +154,19 @@ The codebase undergoes internal security reviews as part of the development proc
 
 ## Technology Stack
 
-| Layer          | Choice                                              | Why                                                                                    |
-| -------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Web client     | Next.js, TypeScript                                 | Thin open-source client: verifies (`verify()`) and signs, no transaction-building      |
-| API            | NestJS, TypeScript, cache                           | Builds transactions; stateless; own deployable, reached via a key-injecting proxy      |
-| Packaging      | Bun workspaces monorepo                             | `apps/{web,api}` + `packages/{sdk,types}`; `@lumenwipe/sdk` is a thin API fetch client |
-| Stellar SDK    | `@stellar/stellar-sdk`                              | Official SDK for classic and Soroban                                                   |
-| Wallets        | `stellar-wallets-kit` (SEP-43)                      | One interface across Freighter, xBull, Albedo, LOBSTR, Hana, WalletConnect, and more   |
-| Network access | Stellar RPC                                         | Live reads, simulation, submission, events                                             |
-| Enumeration    | Existing indexer, set by configuration              | See architecture section 5                                                             |
-| Routing        | Soroswap API + SDEX paths                           | Best routes across Soroban and classic venues                                          |
-| DeFi detection | OctoPos                                             | Funded DeFi Position API, behind a pluggable adapter                                   |
-| State          | Zustand + IndexedDB                                 | Resumable sessions, never persists keys                                                |
-| Testing        | Bun test runner (unit), Playwright (E2E on testnet) | Automated tests do not use mainnet; per-package CI across the monorepo                 |
+| Layer          | Choice                                              | Why                                                                                              |
+| -------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Web client     | Next.js, TypeScript                                 | Thin open-source client: verifies (`verify()`) and signs, no transaction-building                |
+| API            | NestJS, TypeScript, cache                           | Builds transactions; stateless across a close; own deployable, reached via a key-injecting proxy |
+| Packaging      | Bun workspaces monorepo                             | `apps/{web,api}` + `packages/{sdk,types}`; `@lumenwipe/sdk` is a thin API fetch client           |
+| Stellar SDK    | `@stellar/stellar-sdk`                              | Official SDK for classic and Soroban                                                             |
+| Wallets        | `stellar-wallets-kit` (SEP-43)                      | One interface across Freighter, xBull, Albedo, LOBSTR, Hana, WalletConnect, and more             |
+| Network access | Stellar RPC                                         | Live reads, simulation, submission, events                                                       |
+| Enumeration    | Existing indexer, set by configuration              | See architecture section 5                                                                       |
+| Routing        | Soroswap API + SDEX paths                           | Best routes across Soroban and classic venues                                                    |
+| DeFi detection | OctoPos                                             | Funded DeFi Position API, behind a pluggable adapter                                             |
+| State          | Zustand + IndexedDB                                 | Resumable sessions, never persists keys                                                          |
+| Testing        | Bun test runner (unit), Playwright (E2E on testnet) | Automated tests do not use mainnet; per-package CI across the monorepo                           |
 
 ---
 
