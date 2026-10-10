@@ -3,6 +3,7 @@ import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "@/app.module";
+import { JsonLogger } from "@/common/json-logger";
 import { configureApp } from "@/configure-app";
 
 // Coverage for #59: a request with no API key (or a wrong one) used to be rejected with 401
@@ -26,7 +27,7 @@ beforeAll(async () => {
   process.env.API_KEYS = "test=real_key_unused_here";
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = moduleRef.createNestApplication({ bodyParser: false });
-  configureApp(app);
+  configureApp(app, new JsonLogger(() => undefined));
   await app.init();
   http = app.getHttpServer();
 });

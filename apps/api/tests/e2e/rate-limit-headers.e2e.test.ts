@@ -4,6 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "@/app.module";
 import { RateLimiter } from "@/auth/rate-limiter";
+import { JsonLogger } from "@/common/json-logger";
 import { configureApp } from "@/configure-app";
 
 const KEY = "e2e_test_key";
@@ -17,7 +18,7 @@ beforeAll(async () => {
   delete process.env.INTEGRATOR_SESSION_SECRET;
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = moduleRef.createNestApplication({ bodyParser: false });
-  configureApp(app);
+  configureApp(app, new JsonLogger(() => undefined));
   await app.init();
   http = app.getHttpServer();
 });
@@ -132,7 +133,7 @@ test("a 429 is the same whether the key is valid or not", async () => {
     }
     const res = await request(http).get("/testnet/account/G").set("Authorization", `Bearer ${key}`);
     expect(res.status).toBe(429);
-    bodies.push(res.body);
+    bodies.push({ ...res.body.error, requestId: undefined });
   }
   expect(bodies[0]).toEqual(bodies[1]);
 }, 30_000);
@@ -186,7 +187,7 @@ test("a limiter failure answers 500 and is non-cacheable", async () => {
   try {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     const broken = moduleRef.createNestApplication({ bodyParser: false });
-    configureApp(broken);
+    configureApp(broken, new JsonLogger(() => undefined));
     await broken.init();
     const res = await request(broken.getHttpServer()).get("/no/such/route");
     expect(res.status).toBe(500);

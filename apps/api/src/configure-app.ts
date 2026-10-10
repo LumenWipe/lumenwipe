@@ -1,9 +1,11 @@
-import type { INestApplication } from "@nestjs/common";
+import type { INestApplication, LoggerService } from "@nestjs/common";
 import type { ErrorCode } from "@lumenwipe/types";
 import { json } from "express";
-import type { ErrorRequestHandler, NextFunction, Request, RequestHandler, Response } from "express";
+import type { ErrorRequestHandler, RequestHandler } from "express";
 import { RateLimiter } from "./auth/rate-limiter";
 import { ErrorEnvelopeFilter } from "./common/error-envelope.filter";
+import { JsonLogger } from "./common/json-logger";
+import { registerRequestSecrets, requestContextMiddleware } from "./common/request-context";
 
 export const JSON_BODY_LIMIT = "100kb";
 
@@ -40,7 +42,10 @@ const BODY_PARSER_ERRORS: Record<string, { status: number; code: ErrorCode; mess
  * we own the JSON error contract: a malformed body must return the original
  * routes' shape, not Nest's default `{ statusCode, message, error }`.
  */
-export function configureApp(app: INestApplication): void {
+export function configureApp(
+  app: INestApplication,
+  logger: LoggerService = new JsonLogger()
+): void {
   // Cloud Run terminates TLS and proxies every request through its own frontend - without this,
   // Express's req.ip reports that proxy's address for every request, not the real caller's, so
   // RateLimiter's per-IP fallback (unauthenticated requests, which carry no API key to
@@ -49,13 +54,14 @@ export function configureApp(app: INestApplication): void {
   // trusting it to report the real client in X-Forwarded-For is safe here.
   app.getHttpAdapter().getInstance().set("trust proxy", true);
 
-  // Every response is dynamic and non-cacheable (account state, plans, unsigned
-  // XDR, mediator co-signatures) - no client, proxy, or CDN should store any of
-  // it, success or error. First, so the limiter's own 429 and 500 carry it too.
-  app.use((_req: Request, res: Response, next: NextFunction) => {
-    res.setHeader("Cache-Control", "no-store");
-    next();
-  });
+  app.useLogger(logger);
+
+  // First, ahead of the rate limiter, body parsing and authentication, so the limiter's own 429,
+  // a 401 and a body error all carry x-request-id. Also sets Cache-Control: no-store: every
+  // response is dynamic and non-cacheable (account state, plans, unsigned XDR, mediator
+  // co-signatures), success or error. Order: request context, rate limiter, filters, body
+  // parser, body-error mapping, body normalization, secret registration.
+  app.use(requestContextMiddleware());
 
   // Ahead of body parsing, routing and authentication, so the budget is spent and
   // reported on every response, including a 404 or a rejected body.
@@ -111,4 +117,5 @@ export function configureApp(app: INestApplication): void {
     next();
   };
   app.use(normalizeBody);
+  app.use(registerRequestSecrets);
 }

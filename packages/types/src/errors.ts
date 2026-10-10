@@ -113,7 +113,7 @@ export type ErrorCode =
 
 /** The single error envelope every API error response carries. */
 export interface StructuredApiError {
-  error: { code: string; message: string; details?: unknown };
+  error: { code: string; message: string; details?: unknown; requestId?: string };
 }
 
 export type ApiErrorBody = StructuredApiError;

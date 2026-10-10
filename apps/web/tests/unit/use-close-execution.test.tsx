@@ -17,6 +17,7 @@ import { useNetworkStore } from "@/store/network";
 import * as closeClient from "@/lib/api/close-client";
 import * as submitViaApiModule from "@/lib/stellar/submit-via-api";
 import * as feeBumpSponsorModule from "@/lib/stellar/fee-bump-sponsor";
+import { ApiRequestError, toUserMessage } from "@/lib/utils/user-error";
 import type { TransactionSigner } from "@/lib/stellar/signer";
 
 /** The stand-ins return only what the hook reads, so they are typed loosely on purpose. */
@@ -824,4 +825,35 @@ test("useCloseExecution › a wallet rejection surfaces as plain language, never
   const { lastError } = useDemolishStore.getState();
   expect(lastError).toMatch(/declined the request in your wallet/);
   expect(lastError).not.toMatch(/User declined access/);
+});
+
+test("useCloseExecution › an API failure keeps its request id beside the unchanged user message", async () => {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: Keypair.random().publicKey(),
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    lastErrorReference: null,
+    accountState: {
+      signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 1, med: 1, high: 1 },
+    } as never,
+  } as never);
+  const id = "0b1f2f6e-5d1c-4a52-9f0e-3a8a4b7c9d10";
+  stubFetchCloseTransactions(async () => {
+    throw new ApiRequestError(503, "", id);
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+
+  const state = useDemolishStore.getState();
+  expect(state.lastError).toBe(toUserMessage(new ApiRequestError(503, ""), "execute"));
+  expect(state.lastErrorReference).toBe(id);
 });

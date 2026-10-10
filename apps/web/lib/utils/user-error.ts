@@ -21,7 +21,8 @@ export class UserFacingError extends Error {
 export class ApiRequestError extends Error {
   constructor(
     readonly status: number,
-    message: string
+    message: string,
+    readonly requestId?: string
   ) {
     super(message);
     this.name = "ApiRequestError";
@@ -75,6 +76,12 @@ function fromStatus(status: number, apiMessage: string, context: ErrorContext): 
   if ((status === 400 || status === 422) && looksPlain(apiMessage)) return apiMessage;
   if (status >= 500) return UNAVAILABLE;
   return FALLBACKS[context];
+}
+
+/** The id to quote when reporting a failed API call, when the error came from one. */
+export function requestIdOf(err: unknown): string | undefined {
+  if (err instanceof ApiRequestError || err instanceof LumenWipeApiError) return err.requestId;
+  return undefined;
 }
 
 /**
