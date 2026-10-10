@@ -7,6 +7,13 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-10
+
+### Added
+
+- `MediatorCheckResult.registryFresh`: whether the exchange registry is inside its verification
+  window, so a client learns of staleness before an exchange close is refused.
+
 ## [0.4.0] - 2026-10-10
 
 ### Removed

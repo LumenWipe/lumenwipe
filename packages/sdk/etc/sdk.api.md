@@ -649,6 +649,7 @@ export interface MediatorCheckResult {
     memoType: "text" | "id" | "hash" | null;
     // (undocumented)
     reason: string;
+    registryFresh: boolean;
     // (undocumented)
     requiresMediator: boolean;
     // (undocumented)
