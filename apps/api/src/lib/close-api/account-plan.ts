@@ -9,6 +9,7 @@ import {
   type SponsorshipAffordability,
 } from "@/lib/stellar/sponsorship-affordability";
 import { requiresMediatorForAddress } from "@/lib/exchange-registry";
+import { assessMergePreflight } from "@/lib/close-api/merge-preflight";
 import { validateTransferDestinations } from "@/lib/close-api/transfer-destinations";
 import { quoteTokenToXlm, xlmContractId } from "@/lib/soroswap/conversion-quotes";
 import {
@@ -284,6 +285,14 @@ export async function buildAccountPlan(
       // No `code`: on PlanBlocker that field marks an acknowledged, non-trapping warning,
       // and these must trap. A close that cannot pay one of its assets is not a warning.
       ...transferProblems.map((p) => ({ message: p.message })),
+    ];
+  }
+
+  const mergeProblems = await assessMergePreflight(accountState, destination, network);
+  if (mergeProblems.length > 0) {
+    buildResult.blockers = [
+      ...buildResult.blockers,
+      ...mergeProblems.map((p) => ({ message: p.message })),
     ];
   }
 

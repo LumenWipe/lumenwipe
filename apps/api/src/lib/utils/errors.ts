@@ -122,7 +122,8 @@ const RESULT_CODE_MESSAGES: Record<string, string> = {
   account_merge_immutable_set: "This account has AUTH_IMMUTABLE set and cannot be merged.",
   account_merge_has_sub_entries:
     "This account still has open subentries (trustlines, offers, or data entries) and cannot be merged yet.",
-  account_merge_seqnum_too_far: "Sequence number is too far ahead. Please retry.",
+  account_merge_seqnum_too_far:
+    "This account's sequence number is too far ahead for the network to merge it. Retrying does not help: it can be closed only once the network's ledger count catches up.",
   account_merge_dest_full:
     "The destination account's XLM balance would exceed the network maximum.",
   account_merge_is_sponsor:

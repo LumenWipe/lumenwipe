@@ -33,6 +33,7 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   defi_positions_stale: "The detected DeFi positions are out of date. Plan again.",
   destination_not_acknowledged:
     "The destination is not a recognized exchange address and was not confirmed.",
+  destination_read_failed: "The destination account could not be read. Retry.",
   fee_bump_exceeds_cap: "The sponsored fee would exceed the cap.",
   fee_bump_not_configured: "Sponsored fees are not configured on this server.",
   forbidden: "The caller is not allowed to do this.",
@@ -63,6 +64,8 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   mediator_key_misconfiguration: "The mediator key on this server is misconfigured.",
   mediator_not_configured: "The exchange (mediator) flow is not configured on this server.",
   memo_required: "The destination exchange requires a memo.",
+  merge_destination_unusable:
+    "The destination cannot receive the merge: it is the closing account, a LumenWipe service account, or does not exist.",
   merged_account_not_found: "The account being merged does not exist.",
   missing_parameters: "A required query parameter is missing.",
   missing_transaction: "The transaction is missing from the request.",
@@ -95,6 +98,8 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   soroban_token_transfer_unsafe: "A Soroban token transfer is not safe.",
   soroban_token_unreadable: "A Soroban token balance could not be read.",
   soroswap_trustline_missing: "A Soroswap exit needs a trustline the account does not have.",
+  source_sequence_too_far:
+    "The account's sequence number is beyond what the network accepts for a merge; it cannot be closed until the ledger catches up.",
   stats_unavailable: "The stats store is unreachable. Retry.",
   submit_failed: "The transaction could not be submitted. Retry.",
   submit_rejected: "The network rejected the transaction.",

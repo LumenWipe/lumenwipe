@@ -69,6 +69,18 @@ describe("toUserMessage", () => {
     ).not.toMatch(LEAKS);
   });
 
+  test("merge pre-flight refusals keep their plain explanation and a failed read stays retryable", () => {
+    const sequence =
+      "This account's sequence number is too far ahead for the network to merge it. Retrying does not help: it can be closed only once the network's ledger count catches up.";
+    const missing =
+      "The destination account does not exist on testnet. A close never creates it: fund the destination first, or choose a different account.";
+    expect(toUserMessage(new ApiRequestError(422, sequence), "review")).toBe(sequence);
+    expect(toUserMessage(new ApiRequestError(422, missing), "review")).toBe(missing);
+    expect(
+      toUserMessage(new ApiRequestError(503, "The destination could not be read."), "review")
+    ).toMatch(/temporarily unavailable/);
+  });
+
   test("a failed fetch is reported as a connection problem", () => {
     expect(toUserMessage(new TypeError("Failed to fetch"), "execute")).toMatch(
       /check your connection/

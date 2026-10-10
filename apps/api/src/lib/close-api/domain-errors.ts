@@ -5,6 +5,7 @@ import {
   AssetRouteLostError,
   UnusableProviderResponseError,
 } from "@/lib/utils/errors";
+import { DestinationReadError, LedgerReadError } from "@/lib/close-api/merge-preflight";
 import {
   decisionIdFor,
   MissingConversionFloorError,
@@ -52,16 +53,33 @@ const PROVIDER_UNUSABLE = entry(UnusableProviderResponseError, (e) => ({
   message: e.message,
 }));
 
+/** A failed read, not an answer: retrying may succeed, so it must never read as "missing". */
+const DESTINATION_READ_FAILED = entry(DestinationReadError, (e) => ({
+  code: "destination_read_failed",
+  status: 503,
+  message: e.message,
+}));
+
+const LEDGER_READ_FAILED = entry(LedgerReadError, (e) => ({
+  code: "service_unavailable",
+  status: 503,
+  message: e.message,
+}));
+
 /** What `close/plan` and each `close/batch-plan` address recognise as a planning failure. */
 export const PLAN_ERRORS: readonly DomainErrorEntry[] = [
   ACCOUNT_NOT_FOUND,
   ACCOUNT_TOO_LARGE,
   PROVIDER_UNUSABLE,
+  DESTINATION_READ_FAILED,
+  LEDGER_READ_FAILED,
 ];
 
 /** What `close/transactions` recognises; anything else is a `transactions_failed`. */
 export const TRANSACTION_ERRORS: readonly DomainErrorEntry[] = [
   ACCOUNT_NOT_FOUND,
+  DESTINATION_READ_FAILED,
+  LEDGER_READ_FAILED,
   entry(AssetRouteLostError, () => ({
     code: "quote_drifted",
     status: 409,

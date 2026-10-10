@@ -657,6 +657,51 @@
                 "$ref": "#/components/headers/RateLimit-Reset"
               }
             }
+          },
+          "503": {
+            "description": "The destination or the ledger could not be read. Retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "destination_read_failed",
+                                "service_unavailable"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/Retry-After"
+              }
+            }
           }
         },
         "security": [
@@ -1266,6 +1311,8 @@
                                 "destination_not_acknowledged",
                                 "needs_decisions",
                                 "transfer_destination_unusable",
+                                "merge_destination_unusable",
+                                "source_sequence_too_far",
                                 "transfer_destination_missing",
                                 "conversion_floor_missing",
                                 "conversion_provider_unrecognized",
@@ -1405,7 +1452,7 @@
             }
           },
           "503": {
-            "description": "The exchange (mediator) flow or the exchange registry is not available.",
+            "description": "The exchange (mediator) flow or the exchange registry is not available, or the destination or ledger could not be read. Retry.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1423,7 +1470,9 @@
                               "type": "string",
                               "enum": [
                                 "mediator_not_configured",
-                                "registry_expired"
+                                "registry_expired",
+                                "destination_read_failed",
+                                "service_unavailable"
                               ]
                             }
                           }
@@ -6384,6 +6433,7 @@
               "defi_positions_stale",
               "defi_positions_unavailable",
               "destination_not_acknowledged",
+              "destination_read_failed",
               "fee_bump_exceeds_cap",
               "fee_bump_not_configured",
               "forbidden",
@@ -6414,6 +6464,7 @@
               "mediator_key_misconfiguration",
               "mediator_not_configured",
               "memo_required",
+              "merge_destination_unusable",
               "merged_account_not_found",
               "missing_parameters",
               "missing_transaction",
@@ -6445,6 +6496,7 @@
               "soroban_token_transfer_unsafe",
               "soroban_token_unreadable",
               "soroswap_trustline_missing",
+              "source_sequence_too_far",
               "stats_unavailable",
               "submit_failed",
               "submit_rejected",
