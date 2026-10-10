@@ -1,7 +1,15 @@
 import { TransactionBuilder, Operation, Asset, Memo, Account, xdr } from "@stellar/stellar-sdk";
+import { stroopsToFixedXlm, xlmToStroops } from "@/lib/utils/amounts";
 import type { Network } from "@/config/networks";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
-import { BASE_FEE_STROOPS, STROOPS_PER_XLM, TX_TIMEOUT_SECONDS } from "@/config/constants";
+import { BASE_FEE_STROOPS, TX_TIMEOUT_SECONDS } from "@/config/constants";
+
+export class ForwardBelowFeeError extends Error {
+  constructor() {
+    super("The account balance is too small to cover the network fee for this transfer.");
+    this.name = "ForwardBelowFeeError";
+  }
+}
 
 function applyMemo(
   builder: TransactionBuilder,
@@ -68,8 +76,9 @@ export function buildMediatorMergePaymentTx(
   const passphrase = NETWORK_PASSPHRASES[network];
 
   // The only cost beyond the standard network fee: a two-operation fee buffer.
-  const feeBuffer = (2 * BASE_FEE_STROOPS) / STROOPS_PER_XLM;
-  const amount = (parseFloat(nativeBalanceLumens) - feeBuffer).toFixed(7);
+  const forwardStroops = BigInt(xlmToStroops(nativeBalanceLumens)) - BigInt(2 * BASE_FEE_STROOPS);
+  if (forwardStroops <= 0n) throw new ForwardBelowFeeError();
+  const amount = stroopsToFixedXlm(forwardStroops);
 
   const builder = new TransactionBuilder(sdkAccount, {
     fee: String(BASE_FEE_STROOPS),

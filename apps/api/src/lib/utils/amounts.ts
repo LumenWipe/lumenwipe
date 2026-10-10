@@ -8,6 +8,12 @@ export function stroopsToXlm(stroops: string | number | bigint): string {
   return `${whole}.${fracStr}`.replace(/\.?0+$/, "") || "0";
 }
 
+export function stroopsToFixedXlm(stroops: bigint): string {
+  const whole = stroops / BigInt(STROOPS_PER_XLM);
+  const frac = stroops % BigInt(STROOPS_PER_XLM);
+  return `${whole}.${frac.toString().padStart(7, "0")}`;
+}
+
 export function xlmToStroops(xlm: string): string {
   const [whole, frac = ""] = xlm.split(".");
   const fracPadded = frac.padEnd(7, "0").slice(0, 7);
