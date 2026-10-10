@@ -382,6 +382,9 @@ jobs:
       - name: Test the audit gate
         run: bun test scripts/audit-gate.test.ts
 
+      - name: Test the Vercel ignore script
+        run: bun test scripts/vercel-ignore.test.ts
+
       - name: Audit dependencies
         run: bun run scripts/audit-gate.ts
 
