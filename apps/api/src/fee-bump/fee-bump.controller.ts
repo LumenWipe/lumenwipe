@@ -11,6 +11,7 @@ import { FeeBumpTransaction, Transaction, TransactionBuilder } from "@stellar/st
 import { FeeBumpRequestDto } from "./dto/fee-bump.dto";
 import { FeeBumpSponsorResponseDto } from "./dto/fee-bump-responses.dto";
 import { actsForOneAccount, isAllowedWindDownOperation } from "./fee-bump-validation";
+import { ApiErrorResponse, ApiBodyErrorResponses } from "@/common/api-error-response.decorator";
 import { isValidNetwork, NETWORK_PASSPHRASES } from "@/config/networks";
 import { BASE_FEE_STROOPS, MAX_FEE_BUMP_STROOPS } from "@/config/constants";
 import { getFeeAccountKeypair } from "@/lib/stellar/fee-account";
@@ -37,10 +38,23 @@ import { fail } from "@/common/fail";
 @ApiTags("fee-bump")
 @ApiBearerAuth("api-key")
 @ApiParam({ name: "network", enum: ["testnet", "mainnet"] })
-@ApiResponse({ status: 401, description: "Missing or invalid API key." })
-@ApiResponse({ status: 429, description: "Rate limit exceeded for this key." })
+@ApiErrorResponse(401, "Missing or invalid API key.", ["unauthorized"])
+@ApiErrorResponse(429, "Rate limit exceeded for this key.", ["rate_limited"])
 @Controller(":network/fee-bump")
 export class FeeBumpController {
+  @ApiErrorResponse(400, "Missing/invalid transaction or disallowed structure.", [
+    "invalid_network",
+    "missing_transaction",
+    "invalid_transaction_xdr",
+    "inner_fee_not_zero",
+    "operation_not_sponsorable",
+    "fee_bump_exceeds_cap",
+    "invalid_body",
+  ])
+  @ApiErrorResponse(503, "Sponsored-fee flow not configured on this server.", [
+    "fee_bump_not_configured",
+  ])
+  @ApiBodyErrorResponses()
   @Post("sponsor")
   @HttpCode(200)
   @ApiOperation({ summary: "Sponsor a wind-down transaction's fee for a reserve-locked account." })
@@ -50,8 +64,6 @@ export class FeeBumpController {
     description: "The transaction wrapped in a fee-bump envelope and signed (base64 XDR).",
     type: FeeBumpSponsorResponseDto,
   })
-  @ApiResponse({ status: 400, description: "Missing/invalid transaction or disallowed structure." })
-  @ApiResponse({ status: 503, description: "Sponsored-fee flow not configured on this server." })
   async sponsor(@Param("network") network: string, @Body() body: { transaction?: string }) {
     if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
 

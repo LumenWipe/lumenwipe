@@ -16,6 +16,7 @@ import {
 import { SubmitResponseDto } from "./dto/close-responses.dto";
 import { BatchPlanResponseDto, PlanResponseDto } from "./dto/plan-response.dto";
 import { TransactionsResponseDto } from "./dto/transactions-response.dto";
+import { ApiErrorResponse, ApiBodyErrorResponses } from "@/common/api-error-response.decorator";
 import { isValidNetwork, type Network } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { readAccountState } from "@/lib/close-api/read-account";
@@ -86,14 +87,28 @@ const readDestinationTrustlines = async (
 @ApiTags("close")
 @ApiBearerAuth("api-key")
 @ApiParam({ name: "network", enum: ["testnet", "mainnet"] })
-@ApiResponse({ status: 401, description: "Missing or invalid API key." })
-@ApiResponse({ status: 429, description: "Rate limit exceeded for this key." })
+@ApiErrorResponse(401, "Missing or invalid API key.", ["unauthorized"])
+@ApiErrorResponse(429, "Rate limit exceeded for this key.", ["rate_limited"])
 @Controller("v1/:network")
 export class CloseController {
   private readonly logger = new Logger(CloseController.name);
 
   constructor(private readonly stats: StatsService) {}
 
+  @ApiErrorResponse(400, "Invalid network, source, destination, or JSON body.", [
+    "invalid_network",
+    "invalid_source",
+    "invalid_destination",
+    "invalid_decisions",
+    "invalid_body",
+  ])
+  @ApiErrorResponse(404, "Source account not found.", ["account_not_found"])
+  @ApiErrorResponse(422, "The account is too large to plan in one request.", ["account_too_large"])
+  @ApiErrorResponse(500, "The plan could not be built.", ["plan_failed"])
+  @ApiErrorResponse(502, "The data provider returned an unusable response.", [
+    "provider_response_unusable",
+  ])
+  @ApiBodyErrorResponses()
   @Post("close/plan")
   @HttpCode(200)
   @ApiOperation({ summary: "Build a deterministic close plan with decision points and estimates." })
@@ -103,8 +118,6 @@ export class CloseController {
     description: "Plan with pending decision points, fee and freed-reserve estimate.",
     type: PlanResponseDto,
   })
-  @ApiResponse({ status: 400, description: "Invalid network, source, destination, or JSON body." })
-  @ApiResponse({ status: 404, description: "Source account not found." })
   async plan(
     @Param("network") network: string,
     @Body() body: { source?: unknown; destination?: unknown; decisions?: unknown }
@@ -138,6 +151,14 @@ export class CloseController {
     }
   }
 
+  @ApiErrorResponse(400, "Invalid network, addresses, destination, or JSON body.", [
+    "invalid_network",
+    "invalid_addresses",
+    "too_many_addresses",
+    "invalid_destination",
+    "invalid_body",
+  ])
+  @ApiBodyErrorResponses()
   @Post("close/batch-plan")
   @HttpCode(200)
   @ApiOperation({
@@ -152,10 +173,6 @@ export class CloseController {
       "One plan per address, in the same order as the request. An address that could not be " +
       "read or planned safely reports as its own `blocked` plan rather than failing the call.",
     type: BatchPlanResponseDto,
-  })
-  @ApiResponse({
-    status: 400,
-    description: "Invalid network, addresses, destination, or JSON body.",
   })
   async batchPlan(
     @Param("network") network: string,
@@ -186,6 +203,65 @@ export class CloseController {
     return { results };
   }
 
+  @ApiErrorResponse(400, "Invalid network, source, destination, or JSON body.", [
+    "invalid_network",
+    "invalid_source",
+    "invalid_destination",
+    "invalid_decisions",
+    "invalid_body",
+  ])
+  @ApiErrorResponse(404, "Source account not found.", ["account_not_found"])
+  @ApiErrorResponse(409, "A conversion route drifted; re-plan and retry.", ["quote_drifted"])
+  @ApiErrorResponse(
+    422,
+    "Unprocessable: the close cannot be built as asked. The code names the reason.",
+    [
+      "memo_required",
+      "unsupported_memo_type",
+      "invalid_memo",
+      "destination_not_acknowledged",
+      "needs_decisions",
+      "transfer_destination_unusable",
+      "transfer_destination_missing",
+      "conversion_floor_missing",
+      "conversion_provider_unrecognized",
+      "signer_normalization_unsafe",
+      "trustline_deauthorized_with_balance",
+      "defi_positions_blocked",
+      "defi_positions_stale",
+      "defi_position_unrecognized",
+      "defi_exit_unsupported",
+      "defi_exit_blocked",
+      "aquarius_trustline_missing",
+      "backstop_emissions_unclaimed",
+      "backstop_token_unconvertible",
+      "backstop_withdrawal_cooling_down",
+      "backstop_withdrawal_not_queued",
+      "blend_emissions_trustline_missing",
+      "blend_repay_asset_balance_unknown",
+      "blend_repay_asset_missing",
+      "phoenix_trustline_missing",
+      "soroswap_trustline_missing",
+      "vault_undercollateralized",
+      "withdraw_before_repay",
+      "soroban_token_conversion_failed",
+      "soroban_token_conversion_unavailable",
+      "soroban_token_conversion_unsafe",
+      "soroban_token_needs_restore",
+      "soroban_token_transfer_failed",
+      "soroban_token_transfer_unsafe",
+      "soroban_token_route_lost",
+      "soroban_token_unreadable",
+      "trustline_cannot_be_left",
+    ]
+  )
+  @ApiErrorResponse(500, "The transactions could not be built.", ["transactions_failed"])
+  @ApiErrorResponse(
+    503,
+    "The exchange (mediator) flow or the exchange registry is not available.",
+    ["mediator_not_configured", "registry_expired"]
+  )
+  @ApiBodyErrorResponses()
   @Post("close/transactions")
   @HttpCode(200)
   @ApiOperation({ summary: "Build the unsigned close transactions for a resolved plan." })
@@ -194,18 +270,6 @@ export class CloseController {
     status: 200,
     description: "Unsigned transaction envelopes ready for client signing.",
     type: TransactionsResponseDto,
-  })
-  @ApiResponse({ status: 400, description: "Invalid network, source, destination, or JSON body." })
-  @ApiResponse({ status: 404, description: "Source account not found." })
-  @ApiResponse({ status: 409, description: "A conversion route drifted; re-plan and retry." })
-  @ApiResponse({
-    status: 422,
-    description:
-      "Unprocessable: unresolved asset dispositions, a required exchange memo is missing, the destination is not a recognized exchange address and has not been acknowledged (destination_not_acknowledged), a transfer disposition carries no usable destination (transfer_destination_missing), or a transfer destination cannot receive its asset (transfer_destination_unusable).",
-  })
-  @ApiResponse({
-    status: 503,
-    description: "The exchange (mediator) flow is not configured on this server.",
   })
   async transactions(
     @Param("network") network: string,
@@ -430,6 +494,17 @@ export class CloseController {
     }
   }
 
+  @ApiErrorResponse(
+    400,
+    "Invalid network, or invalid or unsigned/undecodable transaction envelope.",
+    ["invalid_network", "invalid_signed_xdr", "invalid_signature", "invalid_body"]
+  )
+  @ApiErrorResponse(502, "The network rejected the transaction.", [
+    "submit_rejected",
+    "submit_failed",
+  ])
+  @ApiErrorResponse(504, "The transaction did not confirm in time.", ["confirmation_timeout"])
+  @ApiBodyErrorResponses()
   @Post("submit")
   @HttpCode(200)
   @ApiOperation({ summary: "Submit a client-signed transaction and wait for confirmation." })
@@ -439,12 +514,6 @@ export class CloseController {
     description: "Confirmed: returns the transaction hash and ledger.",
     type: SubmitResponseDto,
   })
-  @ApiResponse({
-    status: 400,
-    description: "Invalid or unsigned/undecodable transaction envelope.",
-  })
-  @ApiResponse({ status: 502, description: "The network rejected the transaction." })
-  @ApiResponse({ status: 504, description: "The transaction did not confirm in time." })
   async submit(@Param("network") network: string, @Body() body: { signedXdr?: unknown }) {
     if (!isValidNetwork(network)) fail("invalid_network", "Invalid network.", 400);
 

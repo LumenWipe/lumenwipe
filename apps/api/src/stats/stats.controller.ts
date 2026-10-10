@@ -8,6 +8,7 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import type { RecordMergeResponse, StatsFeed, StatsTotals } from "@lumenwipe/types";
+import { ApiErrorResponse, ApiBodyErrorResponses } from "@/common/api-error-response.decorator";
 import { Public } from "@/auth/public.decorator";
 import { isValidNetwork, type Network } from "@/config/networks";
 import { fail } from "@/common/fail";
@@ -28,7 +29,7 @@ function networkOrFail(network: string): Network {
 
 @ApiTags("stats")
 @ApiParam({ name: "network", enum: ["testnet", "mainnet"] })
-@ApiResponse({ status: 503, description: "The stats store is unreachable." })
+@ApiErrorResponse(503, "The stats store is unreachable.", ["stats_unavailable"])
 @Controller("v1/:network/stats")
 export class StatsController {
   private readonly logger = new Logger(StatsController.name);
@@ -38,6 +39,7 @@ export class StatsController {
   // Public: these are the numbers lumenwipe.com shows anyone, and no record ties a close to
   // the person who made it.
   @Public()
+  @ApiErrorResponse(400, "Invalid network.", ["invalid_network"])
   @Get()
   @ApiOperation({ summary: "Accounts closed and XLM recovered (public, no API key)." })
   @ApiResponse({ status: 200, type: StatsTotalsDto })
@@ -51,6 +53,7 @@ export class StatsController {
   }
 
   @Public()
+  @ApiErrorResponse(400, "Invalid network.", ["invalid_network"])
   @Get("feed")
   @ApiOperation({ summary: "Totals, recent closes and daily activity (public, no API key)." })
   @ApiResponse({ status: 200, type: StatsFeedDto })
@@ -63,6 +66,14 @@ export class StatsController {
     }
   }
 
+  @ApiErrorResponse(
+    400,
+    "Invalid network, transaction hash or JSON body, or the merge was not verified on the network.",
+    ["invalid_network", "invalid_tx_hash", "tx_not_verified", "invalid_body"]
+  )
+  @ApiErrorResponse(401, "Missing or invalid API key.", ["unauthorized"])
+  @ApiErrorResponse(429, "Rate limit exceeded for this key.", ["rate_limited"])
+  @ApiBodyErrorResponses()
   @Post("merges")
   @HttpCode(200)
   @ApiBearerAuth("api-key")
@@ -75,12 +86,6 @@ export class StatsController {
   })
   @ApiBody({ type: RecordMergeRequestDto })
   @ApiResponse({ status: 200, type: RecordMergeResponseDto })
-  @ApiResponse({
-    status: 400,
-    description: "Malformed hash, or the transaction is not a confirmed account merge.",
-  })
-  @ApiResponse({ status: 401, description: "Missing or invalid API key." })
-  @ApiResponse({ status: 429, description: "Rate limit exceeded for this key." })
   async record(
     @Param("network") network: string,
     @Body() body: { txHash?: unknown }

@@ -9,6 +9,8 @@ release is cut.
 
 ### Added
 
+- `ErrorCode`, the closed union of every `error.code` the API can return. Purely additive;
+  `StructuredApiError.error.code` stays a `string` for now.
 - `StatsTotals`, `StatsFeed`, `MergeRecord`, `DailyActivity` and `RecordMergeResponse` types,
   matching the API's new public close counter: `GET /v1/:network/stats`,
   `GET /v1/:network/stats/feed` and `POST /v1/:network/stats/merges`. Purely additive; no existing

@@ -1,3 +1,4 @@
+import type { ErrorCode } from "@lumenwipe/types";
 import type {
   AccountState,
   AssetDisposition,
@@ -47,7 +48,7 @@ import { formatTokenAmount } from "@/lib/utils/token-amounts";
 /** A token whose transfer cannot be built safely; the close builder turns it into its 422. */
 export class TokenTransferBlockedError extends Error {
   constructor(
-    readonly code: string,
+    readonly code: ErrorCode,
     message: string
   ) {
     super(message);

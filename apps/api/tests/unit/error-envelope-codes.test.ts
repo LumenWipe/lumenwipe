@@ -1,7 +1,8 @@
+import type { ErrorCode } from "@lumenwipe/types";
 import { expect, test } from "bun:test";
 import { codeForStatus } from "@/common/error-envelope.filter";
 
-test.each([
+test.each<[number, ErrorCode]>([
   [400, "bad_request"],
   [401, "unauthorized"],
   [403, "forbidden"],

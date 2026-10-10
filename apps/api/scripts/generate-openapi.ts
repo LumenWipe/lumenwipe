@@ -7,15 +7,17 @@
  *
  *   bun run --filter '@lumenwipe/api' openapi:generate
  */
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { SwaggerModule } from "@nestjs/swagger";
 import { Test } from "@nestjs/testing";
 import { AppModule } from "@/app.module";
 import { configureApp } from "@/configure-app";
+import { renderErrorCodeTable, withErrorCodeTable } from "@/common/error-code-table";
 import { buildOpenApiConfig, serializeOpenApiDocument } from "@/openapi";
 
 const OUTPUT = resolve(import.meta.dir, "../../../docs/api-reference/openapi.json");
+const INTRODUCTION = resolve(import.meta.dir, "../../../docs/api-reference/introduction.mdx");
 
 process.env.API_KEYS ??= "docs=openapi_generation_only";
 
@@ -27,6 +29,10 @@ await app.init();
 const document = SwaggerModule.createDocument(app, buildOpenApiConfig());
 await mkdir(dirname(OUTPUT), { recursive: true });
 await writeFile(OUTPUT, serializeOpenApiDocument(document));
+await writeFile(
+  INTRODUCTION,
+  withErrorCodeTable(await readFile(INTRODUCTION, "utf8"), renderErrorCodeTable(document))
+);
 await app.close();
 
 console.log(`wrote ${OUTPUT}`);

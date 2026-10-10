@@ -1,4 +1,5 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from "@nestjs/common";
+import type { ErrorCode } from "@lumenwipe/types";
 import type { Response } from "express";
 
 /**
@@ -61,7 +62,7 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
 }
 
 /** A stable code for the statuses Nest raises on its own. */
-export function codeForStatus(status: number): string {
+export function codeForStatus(status: number): ErrorCode {
   switch (status) {
     case 400:
       return "bad_request";
