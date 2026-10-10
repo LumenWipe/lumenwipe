@@ -5,10 +5,7 @@
  */
 import { expect, test } from "bun:test";
 import { Account, Keypair, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
-import {
-  accountCanAffordFee,
-  packCloseTransactions,
-} from "@/lib/close-api/build-transactions";
+import { accountCanAffordFee, packCloseTransactions } from "@/lib/close-api/build-transactions";
 import type { CloseOperationsInput } from "@/lib/stellar/tx-builder/close-operations";
 
 const MASTER = Keypair.random().publicKey();
@@ -70,13 +67,11 @@ test("accountCanAffordFee › a sponsored entry costs a reserve exactly like a s
 });
 
 test("packCloseTransactions › a reserve-locked account gets a zero-fee transaction flagged for sponsorship", () => {
-  const lockedTxs = packCloseTransactions(
-    new Account(MASTER, START_SEQ),
-    input(),
-    "testnet",
-    999,
-    { nativeBalanceLumens: "1.0000000", numSubEntries: 0, numSponsoring: 0 }
-  );
+  const lockedTxs = packCloseTransactions(new Account(MASTER, START_SEQ), input(), "testnet", 999, {
+    nativeBalanceLumens: "1.0000000",
+    numSubEntries: 0,
+    numSponsoring: 0,
+  });
   expect(lockedTxs).toHaveLength(1);
   expect(lockedTxs[0]!.needsSponsoredFee).toBe(true);
   const tx = TransactionBuilder.fromXDR(lockedTxs[0]!.xdr, Networks.TESTNET);
@@ -84,13 +79,11 @@ test("packCloseTransactions › a reserve-locked account gets a zero-fee transac
 });
 
 test("packCloseTransactions › an account with room to spare pays its own way, unflagged", () => {
-  const fundedTxs = packCloseTransactions(
-    new Account(MASTER, START_SEQ),
-    input(),
-    "testnet",
-    999,
-    { nativeBalanceLumens: "100.0000000", numSubEntries: 0, numSponsoring: 0 }
-  );
+  const fundedTxs = packCloseTransactions(new Account(MASTER, START_SEQ), input(), "testnet", 999, {
+    nativeBalanceLumens: "100.0000000",
+    numSubEntries: 0,
+    numSponsoring: 0,
+  });
   expect(fundedTxs).toHaveLength(1);
   expect(fundedTxs[0]!.needsSponsoredFee).toBeUndefined();
   const tx = TransactionBuilder.fromXDR(fundedTxs[0]!.xdr, Networks.TESTNET);
@@ -104,13 +97,7 @@ test("packCloseTransactions › exactly enough for this transaction's fee is not
     numSubEntries: 0,
     numSponsoring: 0,
   };
-  const txs = packCloseTransactions(
-    new Account(MASTER, START_SEQ),
-    input(),
-    "testnet",
-    999,
-    exact
-  );
+  const txs = packCloseTransactions(new Account(MASTER, START_SEQ), input(), "testnet", 999, exact);
   expect(txs[0]!.needsSponsoredFee).toBeUndefined();
 });
 

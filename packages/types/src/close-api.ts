@@ -64,8 +64,11 @@ export interface DecisionAnswer {
   };
 }
 
+/** One transaction the close is expected to take. */
 export interface ExecutionTxBreakdown {
+  /** Position among the transactions, from 0, in the order they are built and submitted. */
   order: number;
+  /** The plan step types this transaction carries operations for. */
   covers: StepType[];
   reason?: "op_batch" | "defi_dependency";
 }
@@ -77,7 +80,18 @@ export interface PlanResponse {
   decisionPoints: DecisionPoint[];
   blockers: { code: string; message: string; helpUrl?: string }[];
   estimate: { feeStroops: string; freedReserveXlm: string };
-  execution: { estimatedTransactionCount: number; transactions: ExecutionTxBreakdown[] };
+  /**
+   * The transactions this close is expected to take, counted with the splitter the builder
+   * packs them with: Soroban token moves, the claim round, the classic close split at the
+   * per-transaction operation cap, and, for an exchange destination, the mediator transfer.
+   *
+   * `estimatedTransactionCount` is `null`, with `transactions` empty, when it cannot be known
+   * yet: the plan has a DeFi exit (its transaction count depends on live debt), a held token has
+   * no decision, or no destination was given. Never read it as a number without checking, and
+   * never show an unknown count as a figure. It is an estimate from the account as planned; the
+   * close re-reads live state each round.
+   */
+  execution: { estimatedTransactionCount: number | null; transactions: ExecutionTxBreakdown[] };
 }
 
 /** One address's plan within a batch call - always present, even when the account could not be

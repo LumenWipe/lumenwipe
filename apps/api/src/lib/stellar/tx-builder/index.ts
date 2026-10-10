@@ -8,6 +8,7 @@ import type {
   StepType,
   BuildPlanResult,
   PlanBlocker,
+  SorobanTokenBalance,
   SponsoredEntry,
   TransferDestinations,
   Trustline,
@@ -79,6 +80,15 @@ function assetStepLabels(
     title: `Convert ${tl.code} to XLM`,
     description: `Exchange ${tl.balance} ${tl.code} for XLM via the Stellar DEX.`,
   };
+}
+
+/** The Soroban tokens the account holds a balance of: the ones the close has to decide about. */
+export function heldSorobanTokens(
+  accountState: Pick<AccountState, "sorobanTokens">
+): SorobanTokenBalance[] {
+  return (accountState.sorobanTokens?.tokens ?? []).filter(
+    (t) => /^\d+$/.test(t.balance) && BigInt(t.balance) > 0n
+  );
 }
 
 function tokenStepLabels(
@@ -437,9 +447,7 @@ export function buildPlan(
 
   // A Soroban token the close moves (or has yet to decide about) is its own transaction ahead of
   // the classic close; only a balance explicitly left on record lets the close stay in one transaction.
-  const heldTokens = (accountState.sorobanTokens?.tokens ?? []).filter(
-    (t) => /^\d+$/.test(t.balance) && BigInt(t.balance) > 0n
-  );
+  const heldTokens = heldSorobanTokens(accountState);
   const tokenTransactions = heldTokens.some((t) => dispositions[t.contract] !== "leave");
 
   // Soroban token balances held directly, one step each. A transfer or conversion is its own

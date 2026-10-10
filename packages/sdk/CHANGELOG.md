@@ -7,6 +7,19 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-10
+
+### Changed
+
+- **Breaking:** `PlanResponse.execution.estimatedTransactionCount` is now `number | null`. It is
+  counted with the splitter the builder packs transactions with, so it is no longer always `1`:
+  an exchange destination, claimable balances, Soroban token moves and a close over 100
+  operations each add transactions, and `execution.transactions` lists them with the plan steps
+  each `covers`. It is `null`, with `transactions` empty, when the count cannot be known yet: a
+  DeFi exit in the plan, a held token with no decision, or no destination. Anyone who reads the
+  field as a number (arithmetic, `toFixed`, a `number` annotation, displaying it) must handle
+  `null` first and must not show an unknown count as a figure.
+
 ## [0.4.2] - 2026-10-10
 
 ### Added

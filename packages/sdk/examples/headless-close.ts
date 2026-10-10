@@ -74,7 +74,8 @@ async function main(): Promise<void> {
     throw new Error(`Plan is blocked: ${plan.blockers.map((b) => b.message).join("; ")}`);
   }
   const decisions = buildDecisions(plan.decisionPoints, destinationAddress);
-  console.log(`Plan ready: ${plan.execution.estimatedTransactionCount} transaction(s).`);
+  const count = plan.execution.estimatedTransactionCount;
+  console.log(count === null ? "Plan ready." : `Plan ready: ${count} transaction(s).`);
 
   await runClose({
     getTransactions: () =>

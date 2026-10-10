@@ -11,7 +11,6 @@ import {
   ACCOUNT_BASE_RESERVE_XLM,
   BASE_FEE_STROOPS,
   BASE_RESERVE_XLM,
-  OP_BATCH_LIMIT,
   TX_TIMEOUT_SECONDS,
 } from "@/config/constants";
 import { xlmToStroops } from "@/lib/utils/amounts";
@@ -32,9 +31,9 @@ import {
   assessDeauthorizedTrustlineBlockers,
 } from "@/lib/stellar/tx-builder";
 import { assessSponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
-import { batchItems } from "@/lib/stellar/tx-builder/batching";
 import {
   assembleCloseOpsTagged,
+  splitCloseOps,
   type AssetAction,
   type CloseOperationsInput,
 } from "@/lib/stellar/tx-builder/close-operations";
@@ -583,7 +582,7 @@ export function packCloseTransactions(
   feeAffordability: Pick<AccountState, "nativeBalanceLumens" | "numSubEntries" | "numSponsoring">
 ): CloseTransaction[] {
   const tagged = assembleCloseOpsTagged(sdkAccount.accountId(), input);
-  const chunks = batchItems(tagged, OP_BATCH_LIMIT);
+  const chunks = splitCloseOps(tagged);
   const networkPassphrase = NETWORK_PASSPHRASES[network];
   const fullSummary = buildSummary(input);
   const reserve = reserveStroops(feeAffordability.numSubEntries, feeAffordability.numSponsoring);
