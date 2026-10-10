@@ -293,6 +293,7 @@ export class DefiQueryKeysSliceDto implements DefiQueryKeysSlice {
   poolAddresses!: string[];
 }
 
+@ApiExtraModels(DefiQueryKeysSliceDto)
 export class DefiQueryKeysDto implements DefiQueryKeys {
   @ApiProperty({ type: [DefiRpcEndpointDto] })
   rpcEndpoints!: DefiRpcEndpoint[];
@@ -308,7 +309,7 @@ export class DefiQueryKeysDto implements DefiQueryKeys {
   slices!: Partial<Record<DefiProtocol, DefiQueryKeysSlice>>;
 }
 
-@ApiExtraModels(...DEFI_POSITION_MODELS)
+@ApiExtraModels(...DEFI_POSITION_MODELS, DefiEnrichmentEntryDto)
 export class DefiPositionsResultDto implements DefiPositionsResult {
   @ApiProperty()
   address!: string;
