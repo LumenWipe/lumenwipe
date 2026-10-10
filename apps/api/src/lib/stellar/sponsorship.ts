@@ -2,7 +2,12 @@ import { PATH_ROUTING_API_URLS } from "@/config/networks";
 import type { Network } from "@/config/networks";
 import { SPONSORSHIP_MAX_OPERATIONS_SCANNED } from "@/config/constants";
 import type { Deadline } from "@/common/deadline";
-import { rateLimitHits, resolveDeadline, upstreamGetJson } from "@/lib/stellar/upstream-client";
+import {
+  pathOnBase,
+  rateLimitHits,
+  resolveDeadline,
+  upstreamGetJson,
+} from "@/lib/stellar/upstream-client";
 import { horizonAssetToString } from "@/lib/utils/assets";
 import { parseClaimPredicate } from "@/lib/stellar/horizon-adapter";
 import {
@@ -27,9 +32,16 @@ const OWNER_FETCH_CONCURRENCY = 10;
 
 const OWNER_FETCH_CONCURRENCY_RATE_LIMITED = 2;
 
-function getJson<T>(url: string, deadline: Deadline, notFoundIsNull = false): Promise<T | null> {
-  return upstreamGetJson<T>(url, { target: "sponsorship", deadline, notFoundIsNull });
+function getJson<T>(
+  base: string,
+  path: string,
+  deadline: Deadline,
+  notFoundIsNull = false
+): Promise<T | null> {
+  return upstreamGetJson<T>(base, path, { target: "sponsorship", deadline, notFoundIsNull });
 }
+
+const seg = encodeURIComponent;
 
 interface HorizonOperation {
   type: string;
@@ -71,10 +83,10 @@ async function discoverSponsorshipCandidates(
   const candidates: SponsorshipCandidate[] = [];
   let scanned = 0;
   let incomplete = false;
-  let nextUrl: string | null =
-    `${base}/accounts/${address}/operations?order=asc&limit=${OPERATIONS_PAGE_LIMIT}`;
+  let nextPath: string | null =
+    `/accounts/${seg(address)}/operations?order=asc&limit=${OPERATIONS_PAGE_LIMIT}`;
 
-  while (nextUrl) {
+  while (nextPath) {
     if (scanned >= SPONSORSHIP_MAX_OPERATIONS_SCANNED) {
       incomplete = true;
       break;
@@ -88,7 +100,8 @@ async function discoverSponsorshipCandidates(
     let nextHref: string | undefined;
     try {
       const page: HorizonOperationsPage | null = await getJson<HorizonOperationsPage>(
-        nextUrl,
+        base,
+        nextPath,
         deadline
       );
       const records = page?._embedded?.records ?? [];
@@ -153,7 +166,10 @@ async function discoverSponsorshipCandidates(
       break;
     }
 
-    nextUrl = nextHref && recordCount === OPERATIONS_PAGE_LIMIT ? nextHref : null;
+    nextPath =
+      nextHref && recordCount === OPERATIONS_PAGE_LIMIT
+        ? pathOnBase(nextHref, base, "sponsorship")
+        : null;
   }
 
   return { candidates, incomplete };
@@ -217,7 +233,8 @@ export async function fetchOwnerLiveState(
 
   try {
     const account = await getJson<HorizonAccountForSponsorship>(
-      `${base}/accounts/${owner}`,
+      base,
+      `/accounts/${seg(owner)}`,
       deadline,
       true
     );
@@ -256,7 +273,8 @@ export async function fetchOwnerLiveState(
         // etc. - encode, or such a name silently truncates the path and queries a
         // different key entirely (a wrong-inclusion risk, not just a missed one).
         const data = await getJson<{ sponsor?: string }>(
-          `${base}/accounts/${owner}/data/${encodeURIComponent(key)}`,
+          base,
+          `/accounts/${seg(owner)}/data/${seg(key)}`,
           deadline,
           true
         );
@@ -282,11 +300,11 @@ export async function fetchOwnerLiveState(
     const offerSponsors: Record<string, string | null> = {};
     let offersFetchFailed = false;
     {
-      let nextUrl: string | null = `${base}/accounts/${owner}/offers?limit=200`;
-      while (nextUrl) {
+      let nextPath: string | null = `/accounts/${seg(owner)}/offers?limit=200`;
+      while (nextPath) {
         let page: HorizonOffersPage | null;
         try {
-          page = await getJson<HorizonOffersPage>(nextUrl, deadline);
+          page = await getJson<HorizonOffersPage>(base, nextPath, deadline);
         } catch {
           offersFetchFailed = true;
           break;
@@ -294,7 +312,13 @@ export async function fetchOwnerLiveState(
         const records: HorizonOffer[] = page?._embedded?.records ?? [];
         for (const o of records) offerSponsors[String(o.id)] = o.sponsor ?? null;
         const nextHref: string | undefined = page?._links?.next?.href;
-        nextUrl = nextHref && records.length === 200 ? nextHref : null;
+        try {
+          nextPath =
+            nextHref && records.length === 200 ? pathOnBase(nextHref, base, "sponsorship") : null;
+        } catch {
+          offersFetchFailed = true;
+          break;
+        }
       }
     }
 
@@ -388,17 +412,18 @@ async function fetchClaimableBalancesBySponsor(
 
   const entries: SponsoredEntry[] = [];
   let incomplete = false;
-  let nextUrl: string | null =
-    `${base}/claimable_balances?sponsor=${address}&limit=${CB_PAGE_LIMIT}`;
+  let nextPath: string | null =
+    `/claimable_balances?sponsor=${seg(address)}&limit=${CB_PAGE_LIMIT}`;
 
-  while (nextUrl && entries.length < CB_MAX_TOTAL) {
+  while (nextPath && entries.length < CB_MAX_TOTAL) {
     // As in discoverSponsorshipCandidates: parsing and iteration live inside the try so a
     // malformed body degrades to "incomplete" instead of throwing out of the account read.
     let recordCount = 0;
     let nextHref: string | undefined;
     try {
       const page: HorizonClaimableBalancesPage | null = await getJson<HorizonClaimableBalancesPage>(
-        nextUrl,
+        base,
+        nextPath,
         deadline
       );
       const records = page?._embedded?.records ?? [];
@@ -421,9 +446,10 @@ async function fetchClaimableBalancesBySponsor(
       break;
     }
 
-    nextUrl = nextHref && recordCount === CB_PAGE_LIMIT ? nextHref : null;
+    nextPath =
+      nextHref && recordCount === CB_PAGE_LIMIT ? pathOnBase(nextHref, base, "sponsorship") : null;
   }
-  if (nextUrl) incomplete = true; // hit CB_MAX_TOTAL with more pages remaining
+  if (nextPath) incomplete = true; // hit CB_MAX_TOTAL with more pages remaining
 
   return { entries, claimantCounts, incomplete };
 }

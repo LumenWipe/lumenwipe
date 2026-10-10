@@ -3,6 +3,8 @@ import { Logger } from "@nestjs/common";
 import { createDeadline } from "@/common/deadline";
 import {
   parseRetryAfter,
+  pathOnBase,
+  resolveUpstreamUrl,
   rateLimitHits,
   resetUpstreamCounters,
   upstreamErrorCount,
@@ -10,7 +12,8 @@ import {
   UpstreamError,
 } from "@/lib/stellar/upstream-client";
 
-const URL = "https://horizon.example/accounts/GSECRETADDRESS";
+const BASE = "https://horizon.example";
+const PATH = "/accounts/GSECRETADDRESS";
 
 const json = (body: unknown, init: ResponseInit = {}): Response =>
   new Response(JSON.stringify(body), { status: 200, ...init });
@@ -43,7 +46,7 @@ test("a stalled upstream ends in a typed timeout at the deadline and is never re
   }) as unknown as typeof globalThis.fetch;
 
   const started = Date.now();
-  const failure = await upstreamGetJson(URL, {
+  const failure = await upstreamGetJson(BASE, PATH, {
     target: "horizon",
     fetch,
     deadline: createDeadline(150),
@@ -70,7 +73,7 @@ test("an attempt never outlives what is left of the deadline", async () => {
     );
   }) as unknown as typeof globalThis.fetch;
 
-  await upstreamGetJson(URL, {
+  await upstreamGetJson(BASE, PATH, {
     target: "horizon",
     fetch,
     deadline: createDeadline(80),
@@ -89,7 +92,9 @@ test("retries 429, 5xx and network faults, then returns the body", async () => {
     json({ ok: true })
   );
   const { sleep } = sleeps();
-  expect(await upstreamGetJson<{ ok: boolean }>(URL, { target: "horizon", fetch, sleep })).toEqual({
+  expect(
+    await upstreamGetJson<{ ok: boolean }>(BASE, PATH, { target: "horizon", fetch, sleep })
+  ).toEqual({
     ok: true,
   });
   expect(calls).toHaveLength(4);
@@ -99,7 +104,7 @@ test("retries 429, 5xx and network faults, then returns the body", async () => {
 test("backoff is jittered inside an exponential ceiling", async () => {
   const { fetch } = script(new Response("", { status: 503 }));
   const { waits, sleep } = sleeps();
-  await upstreamGetJson(URL, {
+  await upstreamGetJson(BASE, PATH, {
     target: "horizon",
     fetch,
     sleep,
@@ -108,9 +113,12 @@ test("backoff is jittered inside an exponential ceiling", async () => {
   expect(waits).toEqual([200, 400, 800]);
 
   const low = sleeps();
-  await upstreamGetJson(URL, { target: "horizon", fetch, sleep: low.sleep, random: () => 0 }).catch(
-    () => {}
-  );
+  await upstreamGetJson(BASE, PATH, {
+    target: "horizon",
+    fetch,
+    sleep: low.sleep,
+    random: () => 0,
+  }).catch(() => {});
   expect(low.waits).toEqual([0, 0, 0]);
 });
 
@@ -120,7 +128,7 @@ test("a Retry-After in seconds is honored", async () => {
     json({})
   );
   const { waits, sleep } = sleeps();
-  await upstreamGetJson(URL, { target: "horizon", fetch, sleep });
+  await upstreamGetJson(BASE, PATH, { target: "horizon", fetch, sleep });
   expect(waits).toEqual([2000]);
 });
 
@@ -134,7 +142,7 @@ test("a Retry-After HTTP-date is honored, relative to the clock", async () => {
     json({})
   );
   const { waits, sleep } = sleeps();
-  await upstreamGetJson(URL, { target: "horizon", fetch, sleep, now: () => now });
+  await upstreamGetJson(BASE, PATH, { target: "horizon", fetch, sleep, now: () => now });
   expect(waits).toEqual([3000]);
 });
 
@@ -158,7 +166,7 @@ test("a hostile Retry-After falls back to the jittered backoff", async () => {
     json({})
   );
   const { waits, sleep } = sleeps();
-  await upstreamGetJson(URL, { target: "horizon", fetch, sleep, random: () => 0.5 });
+  await upstreamGetJson(BASE, PATH, { target: "horizon", fetch, sleep, random: () => 0.5 });
   expect(waits).toEqual([200]);
 });
 
@@ -167,7 +175,7 @@ test("does not sleep past the deadline", async () => {
     new Response("", { status: 429, headers: { "Retry-After": "5" } })
   );
   const { waits, sleep } = sleeps();
-  const failure = await upstreamGetJson(URL, {
+  const failure = await upstreamGetJson(BASE, PATH, {
     target: "horizon",
     fetch,
     sleep,
@@ -182,7 +190,7 @@ test.each([400, 401, 403, 410, 422])(
   "status %i is a bad_response with no retry and no status or URL in the message",
   async (status) => {
     const { fetch, calls } = script(new Response("body with GSECRETADDRESS", { status }));
-    const failure = (await upstreamGetJson(URL, { target: "horizon", fetch }).catch(
+    const failure = (await upstreamGetJson(BASE, PATH, { target: "horizon", fetch }).catch(
       (e: unknown) => e
     )) as UpstreamError;
     expect(failure).toBeInstanceOf(UpstreamError);
@@ -200,7 +208,7 @@ test("sustained failures end in the matching kind with a plain message", async (
   ];
   for (const [response, kind] of cases) {
     const { fetch, calls } = script(response);
-    const failure = (await upstreamGetJson(URL, {
+    const failure = (await upstreamGetJson(BASE, PATH, {
       target: "horizon",
       fetch,
       sleep: async () => {},
@@ -214,15 +222,17 @@ test("sustained failures end in the matching kind with a plain message", async (
 
 test("a 200 whose body is not JSON is a bad_response, not an empty result", async () => {
   const { fetch } = script(new Response("<html>oops</html>", { status: 200 }));
-  await expect(upstreamGetJson(URL, { target: "horizon", fetch })).rejects.toMatchObject({
+  await expect(upstreamGetJson(BASE, PATH, { target: "horizon", fetch })).rejects.toMatchObject({
     kind: "bad_response",
   });
 });
 
 test("404 is null only when asked, otherwise a bad_response", async () => {
   const { fetch } = script(new Response("", { status: 404 }));
-  expect(await upstreamGetJson(URL, { target: "horizon", fetch, notFoundIsNull: true })).toBeNull();
-  await expect(upstreamGetJson(URL, { target: "horizon", fetch })).rejects.toMatchObject({
+  expect(
+    await upstreamGetJson(BASE, PATH, { target: "horizon", fetch, notFoundIsNull: true })
+  ).toBeNull();
+  await expect(upstreamGetJson(BASE, PATH, { target: "horizon", fetch })).rejects.toMatchObject({
     kind: "bad_response",
   });
 });
@@ -242,18 +252,18 @@ test("every timer the client creates is cleared on success, failure and throw", 
   }) as typeof clearTimeout;
   try {
     const sleep = async (): Promise<void> => {};
-    await upstreamGetJson(URL, { target: "h", fetch: script(json({})).fetch, sleep });
-    await upstreamGetJson(URL, {
+    await upstreamGetJson(BASE, PATH, { target: "h", fetch: script(json({})).fetch, sleep });
+    await upstreamGetJson(BASE, PATH, {
       target: "h",
       fetch: script(new Response("", { status: 503 })).fetch,
       sleep,
     }).catch(() => {});
-    await upstreamGetJson(URL, {
+    await upstreamGetJson(BASE, PATH, {
       target: "h",
       fetch: script(new Error("boom")).fetch,
       sleep,
     }).catch(() => {});
-    await upstreamGetJson(URL, {
+    await upstreamGetJson(BASE, PATH, {
       target: "h",
       fetch: script(new Response("nope", { status: 200 })).fetch,
       sleep,
@@ -269,7 +279,7 @@ test("the failure log carries only the target label and the error kind", async (
   const warn = spyOn(Logger.prototype, "warn").mockImplementation(() => {});
   try {
     const { fetch } = script(new Response("body with GSECRETADDRESS", { status: 410 }));
-    await upstreamGetJson(URL, { target: "horizon", fetch }).catch(() => {});
+    await upstreamGetJson(BASE, PATH, { target: "horizon", fetch }).catch(() => {});
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]![0]).toEqual({
       message: "upstream read failed",
@@ -278,5 +288,63 @@ test("the failure log carries only the target label and the error kind", async (
     });
   } finally {
     warn.mockRestore();
+  }
+});
+
+test.each([
+  "https://evil.example/x",
+  "//evil.example/x",
+  "/\\evil.example/x",
+  "\\\\evil.example",
+  "evil.example/x",
+  "@evil.example/x",
+  "/accounts/x y",
+  "",
+])("a path that tries to leave the base is refused: %p", (path) => {
+  expect(() => resolveUpstreamUrl(BASE, path, "horizon")).toThrow(UpstreamError);
+});
+
+test.each([
+  ["/accounts/G1%2F..%2F..%2Fx", "/accounts/G1%2F..%2F..%2Fx"],
+  ["/accounts/a@evil.example", "/accounts/a@evil.example"],
+  ["/accounts/x?next=https://evil.example", "/accounts/x"],
+])(
+  "a path with an encoded slash or userinfo trick stays on the base origin: %p",
+  (path, pathname) => {
+    const url = resolveUpstreamUrl("https://user:pw@horizon.example/v1/", path, "horizon");
+    expect(url.origin).toBe("https://horizon.example");
+    expect(url.pathname.startsWith("/v1/accounts/")).toBe(true);
+    expect(url.pathname).toBe(`/v1${pathname}`);
+  }
+);
+
+test("a base that is not a URL is unavailable, not fetched", async () => {
+  const { fetch, calls } = script(json({}));
+  await expect(upstreamGetJson("not a url", PATH, { target: "t", fetch })).rejects.toMatchObject({
+    kind: "unavailable",
+  });
+  expect(calls).toHaveLength(0);
+});
+
+test("a refused path is never fetched", async () => {
+  const { fetch, calls } = script(json({}));
+  await expect(
+    upstreamGetJson(BASE, "//evil.example/x", { target: "t", fetch })
+  ).rejects.toMatchObject({ kind: "bad_response" });
+  expect(calls).toHaveLength(0);
+});
+
+test("a next link is followed only on the base origin, relative to the base path", () => {
+  const base = "https://host.example/horizon/v1";
+  expect(pathOnBase("https://host.example/horizon/v1/offers?cursor=2", base, "h")).toBe(
+    "/offers?cursor=2"
+  );
+  for (const hostile of [
+    "https://host.example.evil.example/offers",
+    "//evil.example/offers",
+    "https://user@evil.example/offers",
+    "https://evil.example\\@host.example/offers",
+  ]) {
+    expect(() => pathOnBase(hostile, base, "h")).toThrow(UpstreamError);
   }
 });

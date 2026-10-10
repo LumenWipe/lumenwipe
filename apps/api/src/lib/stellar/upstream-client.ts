@@ -86,6 +86,52 @@ export function resetUpstreamCounters(): void {
   errorCount = 0;
 }
 
+const SAFE_PATH = /^\/(?!\/)[^\\\s]*$/;
+
+/**
+ * The only way a request URL is made: a trusted base from configuration plus a path-and-query
+ * that must start with a single "/". Anything that could re-point the request (an absolute URL,
+ * "//host", backslashes, whitespace) is refused, and the result is checked to still sit on the
+ * base's origin. Callers encode each user-derived segment before it reaches here.
+ */
+export function resolveUpstreamUrl(baseUrl: string, path: string, target: string): URL {
+  let base: URL;
+  try {
+    base = new URL(baseUrl.replace(/\/+$/, ""));
+  } catch {
+    throw new UpstreamError("unavailable", target);
+  }
+  if (!SAFE_PATH.test(path)) throw new UpstreamError("bad_response", target);
+  const resolved = new URL(`${base.pathname.replace(/\/+$/, "")}${path}`, base.origin);
+  if (resolved.origin !== base.origin) throw new UpstreamError("bad_response", target);
+  return resolved;
+}
+
+/**
+ * Turns a provider-supplied `next` link into a path relative to the configured base.
+ *
+ * Compares parsed origins, not string prefixes: `https://horizon.example.attacker.com` starts
+ * with `https://horizon.example`. Anything off-origin is refused rather than rewritten. The
+ * result is relative to the base's own path so providers served under a prefix
+ * (`https://host/horizon/v1`) do not get that prefix twice on page two onward.
+ */
+export function pathOnBase(href: string, baseUrl: string, target: string): string {
+  let base: URL;
+  let link: URL;
+  try {
+    base = new URL(baseUrl.replace(/\/+$/, ""));
+    link = new URL(href, base);
+  } catch {
+    throw new UpstreamError("bad_response", target);
+  }
+  if (link.origin !== base.origin) throw new UpstreamError("bad_response", target);
+  const basePath = base.pathname.replace(/\/+$/, "");
+  const full = `${link.pathname}${link.search}`;
+  if (basePath && full.startsWith(`${basePath}/`)) return full.slice(basePath.length);
+  if (basePath && full === basePath) return "";
+  return full;
+}
+
 export function resolveDeadline(explicit?: Deadline): Deadline {
   return explicit ?? currentDeadline() ?? createDeadline(REQUEST_DEADLINE_MS);
 }
@@ -134,13 +180,17 @@ function failWith(error: UpstreamError): never {
 }
 
 /**
- * GETs `url` and returns its parsed JSON body, or null for a 404 when `notFoundIsNull`.
+ * GETs `path` on the configured `baseUrl` and returns its parsed JSON body, or null for a 404 when `notFoundIsNull`.
  *
  * Retries 429, 5xx, timeouts and network faults; any other status is `bad_response` at once.
  * Each attempt is bounded by the smaller of the per-attempt limit and what is left of the
  * deadline, and no backoff sleeps past the deadline.
  */
-export async function upstreamGetJson<T>(url: string, options: UpstreamOptions): Promise<T | null> {
+export async function upstreamGetJson<T>(
+  baseUrl: string,
+  path: string,
+  options: UpstreamOptions
+): Promise<T | null> {
   const policy = { ...DEFAULT_UPSTREAM_POLICY, ...options.policy };
   const doFetch = options.fetch ?? globalThis.fetch;
   const deadline = resolveDeadline(options.deadline);
@@ -148,6 +198,7 @@ export async function upstreamGetJson<T>(url: string, options: UpstreamOptions):
   const sleep = options.sleep ?? defaultSleep;
   const now = options.now ?? Date.now;
   const { target } = options;
+  const url = resolveUpstreamUrl(baseUrl, path, target).href;
   let lastKind: UpstreamErrorKind = "unavailable";
 
   for (let attempt = 0; attempt <= policy.maxRetries; attempt++) {

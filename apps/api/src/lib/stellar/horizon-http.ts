@@ -11,6 +11,7 @@
 
 import type { Deadline } from "@/common/deadline";
 import {
+  pathOnBase,
   resolveDeadline,
   UpstreamError,
   upstreamGetJson,
@@ -29,12 +30,6 @@ export interface HorizonDeps {
   client?: Pick<UpstreamOptions, "policy" | "random" | "sleep" | "now">;
 }
 
-/** Trailing slashes would produce `//accounts/...`, which Horizon 404s - reported to the user
- *  as "this account does not exist" when the real fault is a config typo. */
-function normalizeBase(baseUrl: string): string {
-  return baseUrl.replace(/\/+$/, "");
-}
-
 /**
  * GETs a Horizon path with the shared upstream policy. Returns the parsed body, or null for 404.
  *
@@ -42,7 +37,7 @@ function normalizeBase(baseUrl: string): string {
  * than one that fails loudly, so nothing here degrades quietly into an empty result.
  */
 export async function horizonGet<T>(path: string, deps: HorizonDeps): Promise<T | null> {
-  return upstreamGetJson<T>(`${normalizeBase(deps.baseUrl)}${path}`, {
+  return upstreamGetJson<T>(deps.baseUrl, path, {
     target: "horizon",
     fetch: deps.fetch,
     deadline: deps.deadline,
@@ -104,7 +99,7 @@ export async function horizonPaginate<R>(
       );
     }
 
-    path = more ? sameOriginPath(nextHref!, deps.baseUrl) : null;
+    path = more ? pathOnBase(nextHref!, deps.baseUrl, "horizon") : null;
   }
 
   return out;
@@ -122,41 +117,4 @@ export class TruncatedCollectionError extends Error {
     super(message);
     this.name = "TruncatedCollectionError";
   }
-}
-
-/**
- * Normalizes a `next` link to a path on the configured provider.
- *
- * Compares parsed origins, not string prefixes: `https://horizon.example.attacker.com` starts
- * with `https://horizon.example`, so a prefix test would happily follow pagination onto an
- * attacker's host. Anything off-origin is refused rather than rewritten - a provider pointing
- * us elsewhere mid-collection is a fault worth surfacing, not something to silently correct.
- */
-function sameOriginPath(href: string, baseUrl: string): string {
-  const normalized = normalizeBase(baseUrl);
-  let target: URL;
-  let base: URL;
-  try {
-    // Resolved against the base, so a relative href works and a protocol-relative one
-    // ("//evil.example/...") is parsed as the absolute URL it actually is rather than waved
-    // through by a `startsWith("/")` test.
-    base = new URL(normalized);
-    target = new URL(href, base);
-  } catch {
-    throw new UpstreamError("bad_response", "horizon");
-  }
-
-  if (target.origin !== base.origin) {
-    throw new UpstreamError("bad_response", "horizon");
-  }
-
-  // The result is re-appended to the base URL by horizonGet, so it has to be relative to the
-  // base's own path - not the full pathname. Providers that serve Horizon under a prefix
-  // (`https://host/horizon/v1`) are exactly the commercial ones this seam exists to support,
-  // and returning the absolute pathname would duplicate that prefix on page two onward.
-  const basePath = base.pathname.replace(/\/+$/, "");
-  const full = `${target.pathname}${target.search}`;
-  if (basePath && full.startsWith(`${basePath}/`)) return full.slice(basePath.length);
-  if (basePath && full === basePath) return "";
-  return full;
 }

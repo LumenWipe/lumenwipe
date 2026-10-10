@@ -71,19 +71,17 @@ export async function fetchConversionPath(
   const { code, issuer } = parseAsset(fromAsset);
   if (!issuer) return { kind: "none" };
 
-  const url = new URL(`${base}/paths/strict-send`);
-  url.searchParams.set(
-    "source_asset_type",
-    code.length <= 4 ? "credit_alphanum4" : "credit_alphanum12"
-  );
-  url.searchParams.set("source_asset_code", code);
-  url.searchParams.set("source_asset_issuer", issuer);
-  url.searchParams.set("source_amount", amount);
-  url.searchParams.set("destination_assets", toAsset);
+  const query = new URLSearchParams({
+    source_asset_type: code.length <= 4 ? "credit_alphanum4" : "credit_alphanum12",
+    source_asset_code: code,
+    source_asset_issuer: issuer,
+    source_amount: amount,
+    destination_assets: toAsset,
+  });
 
   let data: PathsResponse | null;
   try {
-    data = await upstreamGetJson<PathsResponse>(url.toString(), {
+    data = await upstreamGetJson<PathsResponse>(base, `/paths/strict-send?${query}`, {
       target: "paths",
       fetch: options.fetch,
       deadline: options.deadline,
