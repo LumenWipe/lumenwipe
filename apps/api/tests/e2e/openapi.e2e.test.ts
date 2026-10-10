@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import { SwaggerModule, type OpenAPIObject } from "@nestjs/swagger";
+import type { OpenAPIObject } from "@nestjs/swagger";
 import { AppModule } from "@/app.module";
 import { configureApp } from "@/configure-app";
-import { buildOpenApiConfig } from "@/openapi";
+import { createOpenApiDocument } from "@/openapi";
 
 let app: INestApplication;
 let spec: OpenAPIObject;
@@ -15,7 +15,7 @@ beforeAll(async () => {
   app = moduleRef.createNestApplication({ bodyParser: false });
   configureApp(app);
   await app.init();
-  spec = SwaggerModule.createDocument(app, buildOpenApiConfig());
+  spec = createOpenApiDocument(app);
 });
 
 afterAll(async () => {

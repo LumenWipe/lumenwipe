@@ -13,7 +13,7 @@ const DEFAULT_CACHE_TTL_MS = 60_000;
 /**
  * Resolves a raw API key to its integrator identity, trying the manually-provisioned static
  * map first (`ApiKeyService`, zero I/O) before falling back to the self-serve `ApiKeyStore`.
- * Shared by both `ApiKeyGuard` and `ApiKeyThrottlerGuard` - and cached - so a self-serve key
+ * Shared by both `ApiKeyGuard` and `RateLimiter` - and cached - so a self-serve key
  * costs at most one store read per cache window, not one per request (the throttler resolves
  * independently of the guard, since it deliberately runs first: see `app.module.ts`).
  *

@@ -30,6 +30,7 @@ function networkOrFail(network: string): Network {
 @ApiTags("stats")
 @ApiParam({ name: "network", enum: ["testnet", "mainnet"] })
 @ApiErrorResponse(503, "The stats store is unreachable.", ["stats_unavailable"])
+@ApiErrorResponse(429, "Rate limit exceeded for this key.", ["rate_limited"])
 @Controller("v1/:network/stats")
 export class StatsController {
   private readonly logger = new Logger(StatsController.name);
@@ -72,7 +73,6 @@ export class StatsController {
     ["invalid_network", "invalid_tx_hash", "tx_not_verified", "invalid_body"]
   )
   @ApiErrorResponse(401, "Missing or invalid API key.", ["unauthorized"])
-  @ApiErrorResponse(429, "Rate limit exceeded for this key.", ["rate_limited"])
   @ApiBodyErrorResponses()
   @Post("merges")
   @HttpCode(200)

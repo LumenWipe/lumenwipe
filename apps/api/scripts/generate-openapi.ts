@@ -9,12 +9,11 @@
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { SwaggerModule } from "@nestjs/swagger";
 import { Test } from "@nestjs/testing";
 import { AppModule } from "@/app.module";
 import { configureApp } from "@/configure-app";
 import { renderErrorCodeTable, withErrorCodeTable } from "@/common/error-code-table";
-import { buildOpenApiConfig, serializeOpenApiDocument } from "@/openapi";
+import { createOpenApiDocument, serializeOpenApiDocument } from "@/openapi";
 
 const OUTPUT = resolve(import.meta.dir, "../../../docs/api-reference/openapi.json");
 const INTRODUCTION = resolve(import.meta.dir, "../../../docs/api-reference/introduction.mdx");
@@ -26,7 +25,7 @@ const app = moduleRef.createNestApplication({ bodyParser: false });
 configureApp(app);
 await app.init();
 
-const document = SwaggerModule.createDocument(app, buildOpenApiConfig());
+const document = createOpenApiDocument(app);
 await mkdir(dirname(OUTPUT), { recursive: true });
 await writeFile(OUTPUT, serializeOpenApiDocument(document));
 await writeFile(
