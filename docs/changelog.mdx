@@ -1,0 +1,58 @@
+---
+title: "Changelog"
+description: "Dated, user-visible changes to the LumenWipe web app and API, and current mainnet availability."
+icon: "clock-rotate-left"
+---
+
+The web app has no version number, so entries are dated by the day they were merged. SDK releases are tracked separately: see [SDK versioning](/sdk/versioning). The full history is the repository's commit log.
+
+## Current availability
+
+As of 2026-10-10, the mediator flow (exchange closes) and sponsored fees are available on testnet. Mainnet availability follows the deployment status in the [monitoring plan](/monitoring-plan). FxDAO exits are testnet only. See [Supported](/reference/supported) for the full matrix.
+
+## 2026-10
+
+### 2026-10-10
+
+- **Web:** the shared exchange account is called the relay account in the app, replacing a mix of "mediator" and "intermediary". The API and these docs keep "mediator".
+- **Web:** terminal close states report what actually happened, and signing progress and failures are announced to assistive technology without moving focus.
+- **API:** every response reports the rate limit budget in `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`, plus `Retry-After` when a request is rejected. The older `X-RateLimit-*` names are deprecated.
+- **API:** error responses carry a documented error code, and bad request bodies are answered with a 4xx in the standard error envelope.
+- **Registry:** the contract and exchange registries were re-verified.
+
+### 2026-10-07
+
+- **Registry:** the retired Aquarius concentrated pool code was dropped from the registry.
+
+### 2026-10-02
+
+- **Web:** a self-service page to create an API key.
+- **SDK:** a headless testnet close example.
+
+## 2026-09
+
+### 2026-09-29
+
+- **API:** token conversions are verified against Soroswap's redeployed aggregator.
+
+### 2026-09-27
+
+- **API:** a batch close plan endpoint for a list of addresses, and self-service API key issuance.
+
+### 2026-09-25
+
+- **API and web:** exits for Phoenix liquidity and stakes and for FxDAO vaults, with the exit contracts pinned in the browser's check before signing.
+
+### 2026-09-16
+
+- **API and web:** closes find Soroban tokens that no indexer or token list knows about and carry them into the plan. Approvals granted on Stellar Asset Contracts are found, and an unverified allowance scan is no longer reported as a clean account.
+
+### 2026-09-08
+
+- **API and web:** an allowance inspector with one-click revocation.
+- **API and web:** fees of the closing transactions are sponsored for accounts that sit at their minimum balance.
+- **API and web:** Soroban token balances are decided one by one: sent as the token, converted to XLM behind a minimum you accept, or left on record.
+
+### 2026-09-02
+
+- **API:** verified mainnet registry entries for Blend, Soroswap and Aquarius, and DeFi exits wired into the close plan.
