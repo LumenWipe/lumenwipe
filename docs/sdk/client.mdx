@@ -17,19 +17,24 @@ const client = new LumenWipeClient({
 });
 ```
 
-| Option    | Required | Description                                                                                  |
-| --------- | -------- | -------------------------------------------------------------------------------------------- |
-| `baseUrl` | yes      | Base URL of the LumenWipe API. Trailing slashes are removed.                                 |
-| `apiKey`  | yes      | Integrator API key, sent as `Authorization: Bearer <apiKey>`.                                |
-| `network` | no       | Default network for calls that omit it: `"mainnet"` or `"testnet"`. Defaults to `"testnet"`. |
-| `fetch`   | no       | Custom fetch for runtimes without a global one, or for testing.                              |
-| `timeout` | no       | Per-request timeout in milliseconds. Defaults to `30000`. `0` or `Infinity` disables it.     |
+| Option    | Required | Description                                                                                                     |
+| --------- | -------- | --------------------------------------------------------------------------------------------------------------- |
+| `baseUrl` | yes      | Base URL of the LumenWipe API. Trailing slashes are removed.                                                    |
+| `apiKey`  | yes      | Integrator API key, sent as `Authorization: Bearer <apiKey>`.                                                   |
+| `network` | no       | Default network for calls that omit it: `"mainnet"` or `"testnet"`. Defaults to `"testnet"`.                    |
+| `fetch`   | no       | Custom fetch for runtimes without a global one, or for testing.                                                 |
+| `timeout` | no       | Per-request timeout in milliseconds. Defaults to `30000`. `0` or `Infinity` disables it.                        |
+| `retry`   | no       | `{ attempts, baseDelayMs }`. Opt-in retries; off by default. See [Error handling](/sdk/errors#retrying-safely). |
+| `logger`  | no       | Receives one-time notices. Defaults to `console.warn`.                                                          |
+
+Without `network`, the client defaults to `"testnet"` and logs one notice the first time a call
+omits it. It also logs once if `baseUrl` is plaintext `http://` on a non-local host.
 
 Keep the API key server-side. Never ship it to a browser.
 
 ## Methods
 
-Every method takes an optional trailing `network` that overrides the client default.
+Every method takes an optional trailing `network` that overrides the client default, then an optional `{ signal }` (an `AbortSignal`) to cancel the request.
 
 | Method                                               | Description                                                                                     |
 | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------- |

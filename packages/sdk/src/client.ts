@@ -15,7 +15,18 @@ import type {
   TransactionsResponse,
 } from "@lumenwipe/types";
 import { HttpTransport } from "./http";
-import type { LumenWipeClientOptions } from "./options";
+import type { LumenWipeClientOptions, RequestOptions } from "./options";
+
+function isPlaintextRemote(baseUrl: string): boolean {
+  try {
+    const url = new URL(baseUrl);
+    if (url.protocol !== "http:") return false;
+    const host = url.hostname.replace(/^\[|\]$/g, "");
+    return !(host === "localhost" || host === "::1" || /^127\./.test(host));
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Thin, typed client over the LumenWipe REST API. It only relays JSON and XDR
@@ -24,7 +35,9 @@ import type { LumenWipeClientOptions } from "./options";
  */
 export class LumenWipeClient {
   private readonly http: HttpTransport;
-  private readonly defaultNetwork: Network;
+  private readonly defaultNetwork: Network | undefined;
+  private readonly log: (message: string) => void;
+  private warnedDefaultNetwork = false;
 
   constructor(options: LumenWipeClientOptions) {
     const resolved = options.fetch ?? globalThis.fetch;
@@ -35,32 +48,71 @@ export class LumenWipeClient {
       options.baseUrl.replace(/\/+$/, ""),
       options.apiKey,
       options.timeout ?? 30_000,
-      resolved
+      resolved,
+      options.retry
     );
-    this.defaultNetwork = options.network ?? "testnet";
+    this.defaultNetwork = options.network;
+    this.log = options.logger ?? ((message) => console.warn(message));
+    if (isPlaintextRemote(options.baseUrl)) {
+      this.log(
+        "LumenWipe: baseUrl uses http:// for a non-local host. The API key is sent in clear text; use https://."
+      );
+    }
   }
 
-  health(): Promise<HealthResponse> {
-    return this.http.request<HealthResponse>("GET", "/health");
+  private resolveNetwork(network: Network | undefined): Network {
+    if (network) return network;
+    if (this.defaultNetwork) return this.defaultNetwork;
+    if (!this.warnedDefaultNetwork) {
+      this.warnedDefaultNetwork = true;
+      this.log(
+        'LumenWipe: no network given, defaulting to "testnet". Pass `network` to the client or the call to silence this.'
+      );
+    }
+    return "testnet";
   }
 
-  getAccount(address: string, network: Network = this.defaultNetwork): Promise<AccountState> {
+  health(options?: RequestOptions): Promise<HealthResponse> {
+    return this.http.request<HealthResponse>("GET", "/health", undefined, {
+      ...options,
+      retry: "transient",
+    });
+  }
+
+  getAccount(address: string, network?: Network, options?: RequestOptions): Promise<AccountState> {
     return this.http.request<AccountState>(
       "GET",
-      `/${network}/account/${encodeURIComponent(address)}`
+      `/${this.resolveNetwork(network)}/account/${encodeURIComponent(address)}`,
+      undefined,
+      { ...options, retry: "transient" }
     );
   }
 
   getPaths(
     params: { fromAsset: string; amount: string },
-    network: Network = this.defaultNetwork
+    network?: Network,
+    options?: RequestOptions
   ): Promise<PathResponse> {
     const query = new URLSearchParams({ fromAsset: params.fromAsset, amount: params.amount });
-    return this.http.request<PathResponse>("GET", `/${network}/paths?${query.toString()}`);
+    return this.http.request<PathResponse>(
+      "GET",
+      `/${this.resolveNetwork(network)}/paths?${query.toString()}`,
+      undefined,
+      { ...options, retry: "transient" }
+    );
   }
 
-  closePlan(body: ClosePlanRequest, network: Network = this.defaultNetwork): Promise<PlanResponse> {
-    return this.http.request<PlanResponse>("POST", `/v1/${network}/close/plan`, body);
+  closePlan(
+    body: ClosePlanRequest,
+    network?: Network,
+    options?: RequestOptions
+  ): Promise<PlanResponse> {
+    return this.http.request<PlanResponse>(
+      "POST",
+      `/v1/${this.resolveNetwork(network)}/close/plan`,
+      body,
+      { ...options, retry: "throttle" }
+    );
   }
 
   /**
@@ -72,36 +124,52 @@ export class LumenWipeClient {
    */
   closeTransactions(
     body: CloseTransactionsRequest,
-    network: Network = this.defaultNetwork
+    network?: Network,
+    options?: RequestOptions
   ): Promise<TransactionsResponse> {
     return this.http.request<TransactionsResponse>(
       "POST",
-      `/v1/${network}/close/transactions`,
-      body
+      `/v1/${this.resolveNetwork(network)}/close/transactions`,
+      body,
+      { ...options, retry: "throttle" }
     );
   }
 
-  submit(signedXdr: string, network: Network = this.defaultNetwork): Promise<SubmitResponse> {
-    return this.http.request<SubmitResponse>("POST", `/v1/${network}/submit`, { signedXdr });
+  submit(signedXdr: string, network?: Network, options?: RequestOptions): Promise<SubmitResponse> {
+    return this.http.request<SubmitResponse>(
+      "POST",
+      `/v1/${this.resolveNetwork(network)}/submit`,
+      { signedXdr },
+      { ...options, retry: "never" }
+    );
   }
 
   mediatorCheck(
     address: string,
-    network: Network = this.defaultNetwork
+    network?: Network,
+    options?: RequestOptions
   ): Promise<MediatorCheckResult> {
     return this.http.request<MediatorCheckResult>(
       "GET",
-      `/${network}/mediator/check/${encodeURIComponent(address)}`
+      `/${this.resolveNetwork(network)}/mediator/check/${encodeURIComponent(address)}`,
+      undefined,
+      { ...options, retry: "transient" }
     );
   }
 
   mediatorSign(
     transaction: string,
-    network: Network = this.defaultNetwork
+    network?: Network,
+    options?: RequestOptions
   ): Promise<MediatorSignResponse> {
-    return this.http.request<MediatorSignResponse>("POST", `/${network}/mediator/sign`, {
-      transaction,
-    });
+    return this.http.request<MediatorSignResponse>(
+      "POST",
+      `/${this.resolveNetwork(network)}/mediator/sign`,
+      {
+        transaction,
+      },
+      { ...options, retry: "never" }
+    );
   }
 
   /** Wraps a wind-down transaction (its own fee already zero) in a signed CAP-15 fee-bump
@@ -109,22 +177,31 @@ export class LumenWipeClient {
    *  submits the returned XDR through `submit()`, exactly like any other close transaction. */
   feeBumpSponsor(
     transaction: string,
-    network: Network = this.defaultNetwork
+    network?: Network,
+    options?: RequestOptions
   ): Promise<FeeBumpSponsorResponse> {
-    return this.http.request<FeeBumpSponsorResponse>("POST", `/${network}/fee-bump/sponsor`, {
-      transaction,
-    });
+    return this.http.request<FeeBumpSponsorResponse>(
+      "POST",
+      `/${this.resolveNetwork(network)}/fee-bump/sponsor`,
+      {
+        transaction,
+      },
+      { ...options, retry: "throttle" }
+    );
   }
 
   /** Every live SEP-41 allowance the account has granted (architecture.md §12). Independent of
    *  closing an account - a standalone security utility. */
   getAllowances(
     address: string,
-    network: Network = this.defaultNetwork
+    network?: Network,
+    options?: RequestOptions
   ): Promise<AllowancesResult> {
     return this.http.request<AllowancesResult>(
       "GET",
-      `/${network}/allowances/${encodeURIComponent(address)}`
+      `/${this.resolveNetwork(network)}/allowances/${encodeURIComponent(address)}`,
+      undefined,
+      { ...options, retry: "transient" }
     );
   }
 
@@ -132,12 +209,14 @@ export class LumenWipeClient {
    *  The caller signs and submits it through `submit()`, like any other transaction here. */
   revokeAllowance(
     params: { owner: string; token: string; spender: string },
-    network: Network = this.defaultNetwork
+    network?: Network,
+    options?: RequestOptions
   ): Promise<RevokeAllowanceResponse> {
     return this.http.request<RevokeAllowanceResponse>(
       "POST",
-      `/${network}/allowances/revoke`,
-      params
+      `/${this.resolveNetwork(network)}/allowances/revoke`,
+      params,
+      { ...options, retry: "throttle" }
     );
   }
 }

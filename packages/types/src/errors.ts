@@ -108,15 +108,9 @@ export type ErrorCode =
   | "vault_undercollateralized"
   | "withdraw_before_repay";
 
-/** Structured error body used by the v1 (`/v1/...`) endpoints. */
+/** The single error envelope every API error response carries. */
 export interface StructuredApiError {
   error: { code: string; message: string; details?: unknown };
 }
 
-/** @deprecated The API emits one envelope (`StructuredApiError`). Kept only so a consumer
- *  pinned to an older deployment still type-checks during a rollout; remove once none remain. */
-export interface PlainApiError {
-  error: string;
-}
-
-export type ApiErrorBody = StructuredApiError | PlainApiError;
+export type ApiErrorBody = StructuredApiError;
