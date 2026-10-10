@@ -58,7 +58,7 @@ export default function NetworkStats() {
       <div className="fixed bottom-3 inset-x-0 z-40 flex justify-center px-4 xl:hidden select-none pointer-events-none">
         <div
           title={stale ? STALE_HINT : undefined}
-          className="inline-flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 rounded-full border border-white/10 bg-[hsl(var(--card)/0.85)] backdrop-blur-md px-4 py-1.5 text-[0.7rem] shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+          className="inline-flex max-w-full items-center justify-center gap-x-1.5 overflow-hidden whitespace-nowrap rounded-full border border-white/10 bg-[hsl(var(--card)/0.85)] backdrop-blur-md px-4 py-1.5 text-[0.7rem] shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
         >
           <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
           <span className="tabular-nums font-semibold text-stellar">
@@ -72,7 +72,7 @@ export default function NetworkStats() {
           <span className="text-white/45">mainnet</span>
           <span className="text-white/25">·</span>
           <span className="tabular-nums font-semibold text-value">{xlmRecovered} XLM</span>
-          <span className="text-white/45">recovered on mainnet</span>
+          <span className="hidden text-white/45 sm:inline">recovered on mainnet</span>
         </div>
       </div>
     </>

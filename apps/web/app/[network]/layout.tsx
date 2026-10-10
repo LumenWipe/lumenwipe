@@ -1,12 +1,13 @@
 "use client";
 
 import { use, useEffect } from "react";
-import { notFound } from "next/navigation";
+import { notFound, usePathname } from "next/navigation";
 import { isValidNetwork } from "@/config/networks";
 import { useNetworkStore } from "@/store/network";
 import { useDemolishStore } from "@/store/demolish";
 import NavBar from "@/components/layout/NavBar";
 import NetworkStats from "@/components/stats/NetworkStats";
+import { isSigningRoute } from "@/lib/utils/signing-route";
 import RiskDisclaimerModal from "@/components/RiskDisclaimerModal";
 
 export default function NetworkLayout({
@@ -20,6 +21,7 @@ export default function NetworkLayout({
   const setNetwork = useNetworkStore((s) => s.setNetwork);
   const currentNetwork = useNetworkStore((s) => s.network);
   const reset = useDemolishStore((s) => s.reset);
+  const showStats = !isSigningRoute(usePathname());
 
   if (!isValidNetwork(network)) notFound();
 
@@ -41,9 +43,9 @@ export default function NetworkLayout({
       </div>
       <div className="relative z-10 flex min-h-screen flex-col">
         <NavBar network={network as "mainnet" | "testnet"} />
-        <main className="flex-1 pb-16 xl:pb-0">{children}</main>
+        <main className={showStats ? "flex-1 pb-16 xl:pb-0" : "flex-1"}>{children}</main>
       </div>
-      <NetworkStats />
+      {showStats && <NetworkStats />}
       <RiskDisclaimerModal />
     </div>
   );
