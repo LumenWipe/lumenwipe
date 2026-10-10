@@ -31,6 +31,9 @@ class MemoryStore implements ApiKeyStore {
   async resolve() {
     return null;
   }
+  async findByHash(hash: string) {
+    return this.records.find((r) => r.hash === hash) ?? null;
+  }
   async listByOwner(owner: string) {
     return this.records.filter((r) => r.owner === owner);
   }
@@ -109,6 +112,18 @@ describe("key ownership", () => {
       "api_key_not_found"
     );
     expect(record.revokedAt).toBeNull();
+  });
+
+  test("ownership is checked by hash lookup, never by listing every key", async () => {
+    const { controller, store } = setup();
+    const alice = Keypair.random().publicKey();
+    const { record } = await store.create(alice);
+    store.listByOwner = async () => {
+      throw new Error("listByOwner must not be used for ownership");
+    };
+
+    await controller.revoke(asUser(alice), record.hash);
+    expect(record.revokedAt).not.toBeNull();
   });
 
   test("lists only the signed-in wallet's keys", async () => {

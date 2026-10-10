@@ -6,6 +6,7 @@ import type {
   DecisionPoint,
   TransferDestinations,
 } from "@lumenwipe/types";
+import { stroopsToFixedXlm, xlmToStroops } from "@/lib/utils/amounts";
 import { StrKey } from "@stellar/stellar-sdk";
 import { lookupExchange } from "@/lib/exchange-registry";
 import { assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
@@ -353,11 +354,11 @@ export function isCurrentlyClaimable(
 export function claimedAmountsPerAsset(
   account: Pick<AccountState, "trustlines" | "claimableBalances">,
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection>
-): Map<string, number> {
+): Map<string, bigint> {
   const authorized = new Set(
     account.trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset)
   );
-  const perAsset = new Map<string, number>();
+  const perAsset = new Map<string, bigint>();
   for (const b of account.claimableBalances) {
     if (b.asset === "native") continue;
     const selection = claimableBalanceSelections[b.id];
@@ -365,7 +366,7 @@ export function claimedAmountsPerAsset(
       ? selection !== "forfeit"
       : selection === "add_trustline_then_claim";
     if (!willClaim) continue;
-    perAsset.set(b.asset, (perAsset.get(b.asset) ?? 0) + parseFloat(b.amount));
+    perAsset.set(b.asset, (perAsset.get(b.asset) ?? 0n) + BigInt(xlmToStroops(b.amount)));
   }
   return perAsset;
 }
@@ -402,15 +403,15 @@ export function deriveDecisionPoints(
   // balances), so the close 422'd at round 2 for an answer the caller was never asked for.
   const pendingByAsset = new Map<string, { asset: string; balance: string }>();
   for (const tl of account.trustlines) {
-    const arriving = claimedPerAsset.get(tl.asset) ?? 0;
-    const total = Number(tl.balance) + arriving;
-    if (total > 0) {
-      pendingByAsset.set(tl.asset, { asset: tl.asset, balance: total.toFixed(7) });
+    const arriving = claimedPerAsset.get(tl.asset) ?? 0n;
+    const total = BigInt(xlmToStroops(tl.balance)) + arriving;
+    if (total > 0n) {
+      pendingByAsset.set(tl.asset, { asset: tl.asset, balance: stroopsToFixedXlm(total) });
     }
   }
   for (const [asset, amount] of claimedPerAsset) {
     if (!pendingByAsset.has(asset)) {
-      pendingByAsset.set(asset, { asset, balance: amount.toFixed(7) });
+      pendingByAsset.set(asset, { asset, balance: stroopsToFixedXlm(amount) });
     }
   }
   for (const asset of arrivingFromExits) {
@@ -453,7 +454,7 @@ export function deriveDecisionPoints(
         balance: tl.balance,
         convertible,
         /** True when nothing holds this asset yet and the balance is what an exit will pay in. */
-        arrivesFromExit: Number(tl.balance) === 0 && arrivingFromExits.has(tl.asset),
+        arrivesFromExit: BigInt(xlmToStroops(tl.balance)) === 0n && arrivingFromExits.has(tl.asset),
       },
       options,
       default: convertible ? "convert_to_xlm" : "return_to_issuer",

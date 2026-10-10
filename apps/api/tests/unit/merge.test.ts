@@ -1,6 +1,10 @@
 import { test, expect } from "bun:test";
 import { Account, Keypair, Networks, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
-import { buildMediatorMergePaymentTx, buildMergeTx } from "@/lib/stellar/tx-builder/merge";
+import {
+  buildMediatorMergePaymentTx,
+  buildMergeTx,
+  ForwardBelowFeeError,
+} from "@/lib/stellar/tx-builder/merge";
 import { BASE_FEE_STROOPS } from "@/config/constants";
 
 const USER = Keypair.random().publicKey();
@@ -78,4 +82,27 @@ test("buildMediatorMergePaymentTx > forwards exactly the balance minus the two-o
   const payment = tx.operations[1] as { amount: string };
   const feeBufferXlm = (2 * BASE_FEE_STROOPS) / 10_000_000;
   expect(Number(payment.amount)).toBeCloseTo(50 - feeBufferXlm, 7);
+});
+
+function forwardAmount(balance: string): string {
+  const account = new Account(USER, "100");
+  const xdr = buildMediatorMergePaymentTx(account, MEDIATOR, DEST, balance, null, "testnet");
+  const tx = TransactionBuilder.fromXDR(xdr, Networks.TESTNET) as Transaction;
+  return (tx.operations[1] as { amount: string }).amount;
+}
+
+test("buildMediatorMergePaymentTx > forward is the balance minus exactly 200 stroops", () => {
+  expect(forwardAmount("600000000.1234567")).toBe("600000000.1234367");
+  expect(forwardAmount("922337203685.4775807")).toBe("922337203685.4775607");
+  expect(forwardAmount("0.0000201")).toBe("0.0000001");
+  expect(forwardAmount("0.0000202")).toBe("0.0000002");
+});
+
+test("buildMediatorMergePaymentTx > a balance at or below the two-operation fee is refused with a typed error", () => {
+  const account = new Account(USER, "100");
+  for (const balance of ["0", "0.0000001", "0.0000199", "0.0000200"]) {
+    expect(() =>
+      buildMediatorMergePaymentTx(account, MEDIATOR, DEST, balance, null, "testnet")
+    ).toThrow(ForwardBelowFeeError);
+  }
 });
