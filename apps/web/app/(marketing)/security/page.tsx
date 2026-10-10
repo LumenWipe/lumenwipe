@@ -67,7 +67,7 @@ export default function SecurityPage() {
   return (
     <section className="mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-24">
       <div className="max-w-2xl">
-        <span className="mkt-eyebrow inline-flex items-center gap-2 text-white/55">
+        <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
           <span className="h-px w-5 bg-stellar/60" />
           Trust model
         </span>
@@ -93,20 +93,20 @@ export default function SecurityPage() {
             >
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-semibold text-white">{layer.label}</div>
-                <div className="mkt-mono break-words text-[0.68rem] leading-snug text-white/45">
+                <div className="mkt-mono break-words text-[0.68rem] leading-snug text-fg-subtle">
                   {layer.sub}
                 </div>
               </div>
               <span
                 className={`mkt-mono shrink-0 whitespace-nowrap text-[0.6rem] uppercase tracking-wider ${
-                  layer.key ? "text-value" : "text-white/45"
+                  layer.key ? "text-value" : "text-fg-subtle"
                 }`}
               >
                 {layer.note}
               </span>
             </div>
           ))}
-          <p className="mkt-mono flex items-center gap-2 pt-2 text-[0.72rem] text-white/45">
+          <p className="mkt-mono flex items-center gap-2 pt-2 text-[0.72rem] text-fg-subtle">
             <ShieldCheck className="h-3.5 w-3.5 text-stellar" />0 servers can move your funds
           </p>
         </div>
@@ -122,7 +122,7 @@ export default function SecurityPage() {
               </span>
               <div>
                 <div className="text-sm font-semibold text-white">{row.title}</div>
-                <div className="mt-0.5 text-sm leading-relaxed text-white/55">{row.body}</div>
+                <div className="mt-0.5 text-sm leading-relaxed text-fg-muted">{row.body}</div>
               </div>
             </li>
           ))}

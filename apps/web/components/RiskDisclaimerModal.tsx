@@ -55,7 +55,7 @@ export default function RiskDisclaimerModal() {
             <h2 className="text-base font-semibold text-white">
               Beta Software - Use at Your Own Risk
             </h2>
-            <p className="mt-0.5 text-xs text-white/45">LumenWipe is under active development</p>
+            <p className="mt-0.5 text-xs text-fg-subtle">LumenWipe is under active development</p>
           </div>
         </div>
 
@@ -69,7 +69,7 @@ export default function RiskDisclaimerModal() {
           </p>
 
           <div>
-            <p className="text-xs uppercase tracking-wider text-white/35 mb-2.5 font-medium">
+            <p className="text-xs uppercase tracking-wider text-fg-subtle mb-2.5 font-medium">
               Confirmed working
             </p>
             <ul className="space-y-2">
@@ -82,7 +82,7 @@ export default function RiskDisclaimerModal() {
             </ul>
           </div>
 
-          <p className="text-xs text-white/40">
+          <p className="text-xs text-fg-subtle">
             Soroban DeFi positions, tested on testnet: Blend pool positions (supply, collateral,
             debt) leave with the close, BLND emissions claimed first; so do Aquarius liquidity
             pools, with their AQUA rewards, and Soroswap liquidity pools. Blend backstop deposits

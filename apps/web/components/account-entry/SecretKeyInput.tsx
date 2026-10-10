@@ -90,7 +90,7 @@ export default function SecretKeyInput({
           <button
             type="button"
             onClick={() => setShowKey((v) => !v)}
-            className="text-white/50 hover:text-white transition-colors p-0.5"
+            className="text-fg-muted hover:text-white transition-colors p-0.5"
             tabIndex={-1}
           >
             {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -102,7 +102,7 @@ export default function SecretKeyInput({
         <p className="text-xs text-danger-fg">Not a valid Stellar secret key (must start with S)</p>
       )}
 
-      <p className="flex items-start gap-1.5 text-xs text-white/50">
+      <p className="flex items-start gap-1.5 text-xs text-fg-muted">
         <ShieldAlert className="h-3.5 w-3.5 mt-0.5 shrink-0 text-warning" />
         Your secret key never leaves your browser. It is held in memory only, never persisted, and
         cleared when you finish, leave, or click Forget key.

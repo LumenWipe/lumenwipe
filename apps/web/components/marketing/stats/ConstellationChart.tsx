@@ -107,7 +107,7 @@ export default function ConstellationChart({ feed }: { feed: FeedData | null }) 
     <div className="relative overflow-hidden rounded-2xl border border-white/8 bg-white/[0.02]">
       {/* header */}
       <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
-        <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-white/55">
+        <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-fg-muted">
           Each close · last {DAYS_SHOWN} days
         </span>
         <span className="mkt-mono text-[0.62rem] text-white/25">

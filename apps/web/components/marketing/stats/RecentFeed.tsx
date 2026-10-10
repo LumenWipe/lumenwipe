@@ -42,7 +42,7 @@ export default function RecentFeed({ feed }: { feed: FeedData | null }) {
       <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="h-1.5 w-1.5 rounded-full bg-stellar mkt-pulse" />
-          <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-white/55">
+          <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-fg-muted">
             Recent closes
           </span>
         </div>
@@ -78,7 +78,7 @@ export default function RecentFeed({ feed }: { feed: FeedData | null }) {
                 key={r.txHash}
                 className="grid grid-cols-[90px_80px_1fr_28px] items-center gap-x-2 border-b border-white/[0.04] px-4 py-2.5 transition-colors hover:bg-white/[0.03]"
               >
-                <span className="mkt-mono text-[0.68rem] text-white/40">
+                <span className="mkt-mono text-[0.68rem] text-fg-subtle">
                   {timeAgo(r.timestamp)}
                 </span>
                 <span

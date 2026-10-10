@@ -228,7 +228,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
   if (executionPlan.length === 0 || !destinationAddress) {
     return (
-      <div className="text-center py-12 text-white/45 text-sm">
+      <div className="text-center py-12 text-fg-subtle text-sm">
         No execution plan found. Please go back and analyze your account.
       </div>
     );
@@ -269,7 +269,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           }}
           className={cn(
             "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
-            mode === "wallet" ? "bg-white/10 text-white" : "text-white/50 hover:text-white/80"
+            mode === "wallet" ? "bg-white/10 text-white" : "text-fg-muted hover:text-white/80"
           )}
         >
           Connect wallet
@@ -279,7 +279,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           onClick={() => setMode("secret-key")}
           className={cn(
             "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
-            mode === "secret-key" ? "bg-white/10 text-white" : "text-white/50 hover:text-white/80"
+            mode === "secret-key" ? "bg-white/10 text-white" : "text-fg-muted hover:text-white/80"
           )}
         >
           Use secret key (advanced)
@@ -321,7 +321,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
       {/* Sidebar */}
       <div className="w-52 shrink-0 hidden md:block">
         <div className="sticky top-20">
-          <p className="mkt-eyebrow text-white/45 mb-3">Steps</p>
+          <p className="mkt-eyebrow text-fg-subtle mb-3">Steps</p>
           <PlanSidebar steps={executionPlan} currentIndex={0} />
         </div>
       </div>
@@ -337,7 +337,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
             >
               Sign &amp; execute the close
             </h2>
-            <p className="mt-1 text-sm text-white/55">
+            <p className="mt-1 text-sm text-fg-muted">
               LumenWipe signs each transaction in your browser and submits it through the API. Your
               key never leaves this device.
             </p>
@@ -426,9 +426,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                   </p>
                   <ul className="space-y-1">
                     {multisigNotice.signers.map((s) => (
-                      <li key={s.key} className="font-mono-address text-xs text-white/55">
+                      <li key={s.key} className="font-mono-address text-xs text-fg-muted">
                         {s.key.slice(0, 8)}…{s.key.slice(-8)}{" "}
-                        <span className="text-white/35">· weight {s.weight}</span>
+                        <span className="text-fg-subtle">· weight {s.weight}</span>
                       </li>
                     ))}
                   </ul>
@@ -467,7 +467,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
         {/* Mobile step list */}
         <div className="md:hidden mt-5">
-          <p className="mkt-eyebrow text-white/45 mb-2">All steps</p>
+          <p className="mkt-eyebrow text-fg-subtle mb-2">All steps</p>
           <PlanSidebar steps={executionPlan} currentIndex={0} />
         </div>
       </div>

@@ -137,10 +137,10 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
         body: (
           <ul className="space-y-1">
             {positions.map((p, i) => (
-              <li key={`${p.contractAddress}-${i}`} className="text-xs text-white/55">
+              <li key={`${p.contractAddress}-${i}`} className="text-xs text-fg-muted">
                 {describeDefiPosition(p, account.defiPositions.enrichment)}
                 {!p.display?.pool && (
-                  <span className="font-mono-address text-white/35">
+                  <span className="font-mono-address text-fg-subtle">
                     {" "}
                     · {shortAddr(p.contractAddress)}
                   </span>
@@ -161,8 +161,8 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
         body: (
           <ul className="space-y-1">
             {extraSigners.map((s) => (
-              <li key={s.key} className="font-mono-address text-xs text-white/55">
-                {shortAddr(s.key)} <span className="text-white/35">· weight {s.weight}</span>
+              <li key={s.key} className="font-mono-address text-xs text-fg-muted">
+                {shortAddr(s.key)} <span className="text-fg-subtle">· weight {s.weight}</span>
               </li>
             ))}
           </ul>
@@ -178,7 +178,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
         body: (
           <ul className="space-y-1">
             {account.dataEntries.map((d) => (
-              <li key={d.key} className="font-mono text-xs text-white/55 truncate">
+              <li key={d.key} className="font-mono text-xs text-fg-muted truncate">
                 {d.key}
               </li>
             ))}
@@ -195,9 +195,9 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
         body: (
           <ul className="space-y-1">
             {account.openOffers.map((o) => (
-              <li key={o.id} className="text-xs text-white/55">
+              <li key={o.id} className="text-xs text-fg-muted">
                 <span className="text-white/70">{o.amount}</span> {assetCode(o.selling)}{" "}
-                <span className="text-white/35">→</span> {assetCode(o.buying)}
+                <span className="text-fg-subtle">→</span> {assetCode(o.buying)}
               </li>
             ))}
           </ul>
@@ -218,7 +218,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
         body: (
           <ul className="space-y-1">
             {claimedBalances.map((b) => (
-              <li key={b.id} className="text-xs text-white/55">
+              <li key={b.id} className="text-xs text-fg-muted">
                 <span className="text-white/70">{b.amount}</span> {assetCode(b.asset)}
               </li>
             ))}
@@ -280,9 +280,9 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
                         ? "left with this address"
                         : "resolved";
               return (
-                <li key={tl.asset} className="flex items-center gap-2 text-xs text-white/55">
+                <li key={tl.asset} className="flex items-center gap-2 text-xs text-fg-muted">
                   <span className="font-medium text-white/80">{tl.code}</span>
-                  <span className="text-white/35">→</span>
+                  <span className="text-fg-subtle">→</span>
                   <span>{label}</span>
                 </li>
               );
@@ -300,7 +300,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
         body: (
           <ul className="space-y-1">
             {removedTrustlines.map((tl) => (
-              <li key={tl.asset} className="text-xs text-white/55">
+              <li key={tl.asset} className="text-xs text-fg-muted">
                 {tl.code}
               </li>
             ))}
@@ -320,7 +320,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
           : `to ${shortAddr(destinationAddress)}`
         : "merged to destination",
       body: (
-        <div className="space-y-1 text-xs text-white/55">
+        <div className="space-y-1 text-xs text-fg-muted">
           {destinationAddress && (
             <p>
               Destination:{" "}
@@ -354,7 +354,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
           >
             Account successfully merged
           </h1>
-          <p className="text-sm text-white/55">
+          <p className="text-sm text-fg-muted">
             All assets have been transferred and the account has been removed from the Stellar
             ledger.
           </p>
@@ -372,7 +372,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
           >
             Close not finished
           </h1>
-          <p className="text-sm text-white/55">
+          <p className="text-sm text-fg-muted">
             {confirmedStepCount(executionPlan)} of {executionPlan.length} transactions confirmed.
             The account still exists. Resume the close to finish it.
           </p>
@@ -388,7 +388,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       {/* Grouped summary */}
       <div className="mkt-panel rounded-2xl overflow-hidden">
         <div className="border-b border-white/10 px-4 py-3">
-          <h2 className="mkt-eyebrow text-white/45">What was done</h2>
+          <h2 className="mkt-eyebrow text-fg-subtle">What was done</h2>
         </div>
         <div className="divide-y divide-white/8">
           {groups.map((g) => (
@@ -398,7 +398,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
                   <StepTypeIcon type={g.type} className="h-4 w-4 mt-0.5 shrink-0 text-stellar/70" />
                   <span className="min-w-0">
                     <span className="block text-sm font-medium text-white/85">{g.title}</span>
-                    <span className="block truncate text-xs text-white/45">{g.summary}</span>
+                    <span className="block truncate text-xs text-fg-subtle">{g.summary}</span>
                   </span>
                 </span>
               </div>
@@ -412,7 +412,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       {ledger.length > 0 && (
         <div className="mkt-panel rounded-2xl overflow-hidden">
           <div className="border-b border-white/10 px-4 py-3">
-            <h2 className="mkt-eyebrow text-white/45">
+            <h2 className="mkt-eyebrow text-fg-subtle">
               {ledger.length === 1 ? "Transaction" : `Transactions · ${ledger.length}`}
             </h2>
           </div>
@@ -428,7 +428,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
                     >
                       {labelForTx(tx)}
                     </span>
-                    <span className="block font-mono-address text-xs text-white/40">
+                    <span className="block font-mono-address text-xs text-fg-subtle">
                       {shortHash(tx.txHash)}
                     </span>
                   </span>
@@ -460,25 +460,25 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       {/* Summary */}
       <div className="mkt-panel rounded-2xl p-4 space-y-3">
         <div className="flex justify-between text-sm">
-          <span className="text-white/55">Source account</span>
+          <span className="text-fg-muted">Source account</span>
           <span className="font-mono-address text-xs text-white/70">
             {sourceAddress?.slice(0, 8)}...{sourceAddress?.slice(-8)}
           </span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-white/55">Destination</span>
+          <span className="text-fg-muted">Destination</span>
           <span className="font-mono-address text-xs text-white/70">
             {destinationAddress?.slice(0, 8)}...{destinationAddress?.slice(-8)}
           </span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-white/55">Total fees paid</span>
+          <span className="text-fg-muted">Total fees paid</span>
           <span className="text-xs mkt-mono text-white/70">{formatXlm(totalFee)}</span>
         </div>
       </div>
 
       {closed && (
-        <div className="flex items-start gap-2.5 bg-white/[0.03] border border-white/10 rounded-xl p-3 text-xs text-white/50">
+        <div className="flex items-start gap-2.5 bg-white/[0.03] border border-white/10 rounded-xl p-3 text-xs text-fg-muted">
           <History className="h-4 w-4 shrink-0 mt-0.5 text-stellar" />
           Receipt saved to local history. You can review past merges anytime from the history icon
           in the navigation bar.

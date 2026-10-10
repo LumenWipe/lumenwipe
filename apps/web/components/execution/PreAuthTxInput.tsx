@@ -46,11 +46,11 @@ export default function PreAuthTxInput({ signer, disabled, onSubmit }: Props) {
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-3">
-      <p className="font-mono-address text-xs text-white/55">
-        {shortAddr(signer.key)} <span className="text-white/35">· weight {signer.weight}</span>
+      <p className="font-mono-address text-xs text-fg-muted">
+        {shortAddr(signer.key)} <span className="text-fg-subtle">· weight {signer.weight}</span>
       </p>
-      <p className="flex items-start gap-1.5 text-xs text-white/50">
-        <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-white/40" />
+      <p className="flex items-start gap-1.5 text-xs text-fg-muted">
+        <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-fg-subtle" />
         This is a pre-auth-tx signer - its key is the hash of one exact transaction you authorized
         in advance, not a wallet address. It contributes weight only by that exact transaction being
         submitted, not by signing anything now. If you already hold a transaction you pre-authorized

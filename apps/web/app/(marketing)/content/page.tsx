@@ -66,7 +66,7 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 
 function LangBadge({ lang }: { lang: "EN" | "ES" }) {
   return (
-    <span className="mkt-mono rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[0.62rem] uppercase tracking-wider text-white/45">
+    <span className="mkt-mono rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[0.62rem] uppercase tracking-wider text-fg-subtle">
       {lang}
     </span>
   );
@@ -74,7 +74,7 @@ function LangBadge({ lang }: { lang: "EN" | "ES" }) {
 
 function DurationBadge({ duration }: { duration: string }) {
   return (
-    <span className="mkt-mono inline-flex items-center gap-1 text-[0.68rem] text-white/35">
+    <span className="mkt-mono inline-flex items-center gap-1 text-[0.68rem] text-fg-subtle">
       <Play className="h-2.5 w-2.5" />
       {duration}
     </span>
@@ -124,7 +124,7 @@ export default function ContentPage() {
                 <h3 className="mkt-display text-[0.95rem] font-semibold leading-snug text-white">
                   {v.title}
                 </h3>
-                <p className="text-[0.82rem] leading-relaxed text-white/55">{v.description}</p>
+                <p className="text-[0.82rem] leading-relaxed text-fg-muted">{v.description}</p>
               </div>
             </div>
           ))}
@@ -144,7 +144,7 @@ export default function ContentPage() {
             ))}
           </div>
         ) : (
-          <p className="text-sm text-white/45">No articles published yet.</p>
+          <p className="text-sm text-fg-subtle">No articles published yet.</p>
         )}
       </section>
     </div>

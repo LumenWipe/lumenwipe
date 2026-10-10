@@ -13,7 +13,7 @@ export default function FaqPage() {
   return (
     <section className="mx-auto max-w-3xl px-5 py-20 lg:px-8 lg:py-24">
       <div className="text-center">
-        <span className="mkt-eyebrow inline-flex items-center gap-2 text-white/55">
+        <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
           <span className="h-px w-5 bg-stellar/60" />
           FAQ
         </span>

@@ -29,25 +29,25 @@ export default function NetworkStats() {
         >
           <div className="flex items-center gap-1.5 mb-2">
             <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
-            <span className="mkt-eyebrow text-[0.6rem] text-white/40">
+            <span className="mkt-eyebrow text-[0.6rem] text-fg-subtle">
               {stale ? "Stats · stale" : "Live stats"}
             </span>
           </div>
           <div className="space-y-1 text-xs">
             <div className="flex items-baseline justify-between gap-6">
-              <span className="text-white/45">Testnet closed</span>
+              <span className="text-fg-subtle">Testnet closed</span>
               <span className="tabular-nums font-semibold text-stellar">
                 {stats.testnet.toLocaleString()}
               </span>
             </div>
             <div className="flex items-baseline justify-between gap-6">
-              <span className="text-white/45">Mainnet closed</span>
+              <span className="text-fg-subtle">Mainnet closed</span>
               <span className="tabular-nums font-semibold text-stellar">
                 {stats.mainnet.toLocaleString()}
               </span>
             </div>
             <div className="flex items-baseline justify-between gap-6 border-t border-white/10 pt-1 mt-1">
-              <span className="text-white/45">Recovered on mainnet</span>
+              <span className="text-fg-subtle">Recovered on mainnet</span>
               <span className="tabular-nums font-semibold text-value">{xlmRecovered} XLM</span>
             </div>
           </div>
@@ -64,15 +64,15 @@ export default function NetworkStats() {
           <span className="tabular-nums font-semibold text-stellar">
             {stats.testnet.toLocaleString()}
           </span>
-          <span className="text-white/45">testnet</span>
+          <span className="text-fg-subtle">testnet</span>
           <span className="text-white/25">·</span>
           <span className="tabular-nums font-semibold text-stellar">
             {stats.mainnet.toLocaleString()}
           </span>
-          <span className="text-white/45">mainnet</span>
+          <span className="text-fg-subtle">mainnet</span>
           <span className="text-white/25">·</span>
           <span className="tabular-nums font-semibold text-value">{xlmRecovered} XLM</span>
-          <span className="hidden text-white/45 sm:inline">recovered on mainnet</span>
+          <span className="hidden text-fg-subtle sm:inline">recovered on mainnet</span>
         </div>
       </div>
     </>

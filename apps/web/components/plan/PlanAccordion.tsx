@@ -83,12 +83,12 @@ export default function PlanAccordion({
       body: (
         <ul className="space-y-1">
           {extraSigners.map((s) => (
-            <li key={s.key} className="font-mono-address text-xs text-white/55">
-              {shortAddr(s.key)} <span className="text-white/35">· weight {s.weight}</span>
+            <li key={s.key} className="font-mono-address text-xs text-fg-muted">
+              {shortAddr(s.key)} <span className="text-fg-subtle">· weight {s.weight}</span>
             </li>
           ))}
           {extraSigners.length === 0 && (
-            <li className="text-xs text-white/55">Reset authorization thresholds to single-key.</li>
+            <li className="text-xs text-fg-muted">Reset authorization thresholds to single-key.</li>
           )}
         </ul>
       ),
@@ -106,13 +106,13 @@ export default function PlanAccordion({
       body: (
         <ul className="space-y-1">
           {revocableSponsorships.map((entry, i) => (
-            <li key={i} className="text-xs text-white/55">
+            <li key={i} className="text-xs text-fg-muted">
               {entry.kind === "trustline" && `Trustline for ${entry.asset.split(":")[0]}`}
               {entry.kind === "offer" && `Offer ${entry.offerId}`}
               {entry.kind === "data_entry" && `Data entry "${entry.name}"`}
               {entry.kind === "signer" && "Signer"}
               {entry.kind === "account" && "Account creation"}{" "}
-              <span className="font-mono-address text-white/35">on {shortAddr(entry.owner)}</span>
+              <span className="font-mono-address text-fg-subtle">on {shortAddr(entry.owner)}</span>
             </li>
           ))}
         </ul>
@@ -128,7 +128,7 @@ export default function PlanAccordion({
       body: (
         <ul className="space-y-1">
           {account.dataEntries.map((d) => (
-            <li key={d.key} className="font-mono text-xs text-white/55 truncate">
+            <li key={d.key} className="font-mono text-xs text-fg-muted truncate">
               {d.key}
             </li>
           ))}
@@ -145,10 +145,10 @@ export default function PlanAccordion({
       body: (
         <ul className="space-y-1">
           {account.openOffers.map((o) => (
-            <li key={o.id} className="text-xs text-white/55">
+            <li key={o.id} className="text-xs text-fg-muted">
               <span className="text-white/70">{o.amount}</span> {formatAsset(o.selling)}{" "}
-              <span className="text-white/35">→</span> {formatAsset(o.buying)}{" "}
-              <span className="text-white/35">@ {o.price}</span>
+              <span className="text-fg-subtle">→</span> {formatAsset(o.buying)}{" "}
+              <span className="text-fg-subtle">@ {o.price}</span>
             </li>
           ))}
         </ul>
@@ -198,9 +198,9 @@ export default function PlanAccordion({
           {positions.length > 0 && (
             <ul className="space-y-1">
               {positions.map((p, i) => (
-                <li key={i} className="text-xs text-white/55">
+                <li key={i} className="text-xs text-fg-muted">
                   {describeDefiPosition(p, account.defiPositions.enrichment)}
-                  {p.usdValue && <span className="text-white/35"> · ≈ ${p.usdValue}</span>}
+                  {p.usdValue && <span className="text-fg-subtle"> · ≈ ${p.usdValue}</span>}
                 </li>
               ))}
             </ul>
@@ -272,8 +272,8 @@ export default function PlanAccordion({
       body: (
         <ul className="space-y-1">
           {account.trustlines.map((tl) => (
-            <li key={tl.asset} className="text-xs text-white/55">
-              {tl.code} <span className="text-white/35">· balance {tl.balance}</span>
+            <li key={tl.asset} className="text-xs text-fg-muted">
+              {tl.code} <span className="text-fg-subtle">· balance {tl.balance}</span>
             </li>
           ))}
         </ul>
@@ -290,7 +290,7 @@ export default function PlanAccordion({
         : `to ${shortAddr(destinationAddress)}`
       : "Destination: to be entered",
     body: destinationAddress ? (
-      <div className="space-y-1 text-xs text-white/55">
+      <div className="space-y-1 text-xs text-fg-muted">
         <p>
           Destination:{" "}
           <span className="font-mono-address text-white/70">{shortAddr(destinationAddress)}</span>
@@ -309,7 +309,7 @@ export default function PlanAccordion({
         )}
       </div>
     ) : (
-      <p className="text-xs text-white/55">
+      <p className="text-xs text-fg-muted">
         The destination is entered after every asset above is resolved.
       </p>
     ),
@@ -339,7 +339,7 @@ export default function PlanAccordion({
                   >
                     {g.title}
                   </span>
-                  <span className="block truncate text-xs text-white/45">{g.summary}</span>
+                  <span className="block truncate text-xs text-fg-subtle">{g.summary}</span>
                 </span>
               </span>
               <Plus

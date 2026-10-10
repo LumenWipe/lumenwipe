@@ -48,7 +48,7 @@ export default function DistributionStrip({ feed }: { feed: FeedData | null }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-white/8 bg-white/[0.02]">
       <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
-        <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-white/55">
+        <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-fg-muted">
           XLM distribution · each dot is one close
         </span>
         <span className="mkt-mono text-[0.62rem] text-white/25">log scale · hover to verify</span>

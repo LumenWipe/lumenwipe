@@ -70,7 +70,7 @@ export default function MarketingFooter() {
 
           {COLS.map((col) => (
             <div key={col.title}>
-              <p className="mkt-eyebrow text-white/55">{col.title}</p>
+              <p className="mkt-eyebrow text-fg-muted">{col.title}</p>
               <ul className="mt-4 space-y-2.5">
                 {col.links.map((l) => (
                   <li key={l.label}>
@@ -92,7 +92,7 @@ export default function MarketingFooter() {
           ))}
         </div>
 
-        <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-white/8 pt-6 text-xs text-white/55 sm:flex-row sm:items-center">
+        <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-white/8 pt-6 text-xs text-fg-muted sm:flex-row sm:items-center">
           <p>© {2026} LumenWipe · Open source under Apache 2.0.</p>
           <p className="mkt-mono">Non-custodial · Client-side signing</p>
         </div>

@@ -43,11 +43,11 @@ export default function HashXPreimageInput({ signer, disabled, onApply }: Props)
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-3">
-      <p className="font-mono-address text-xs text-white/55">
-        {shortAddr(signer.key)} <span className="text-white/35">· weight {signer.weight}</span>
+      <p className="font-mono-address text-xs text-fg-muted">
+        {shortAddr(signer.key)} <span className="text-fg-subtle">· weight {signer.weight}</span>
       </p>
-      <p className="flex items-start gap-1.5 text-xs text-white/50">
-        <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-white/40" />
+      <p className="flex items-start gap-1.5 text-xs text-fg-muted">
+        <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-fg-subtle" />
         This is a hash(x) signer - its key is the hash of a secret value (a &quot;preimage&quot;),
         not a wallet address, so no connected wallet or secret key can sign for it. If you know the
         preimage, enter it below to contribute this signer&apos;s weight.

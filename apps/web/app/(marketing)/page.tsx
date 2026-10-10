@@ -86,7 +86,7 @@ const FEATURES = [
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <span className="mkt-eyebrow inline-flex items-center gap-2 text-white/55">
+    <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
       <span className="h-px w-5 bg-stellar/60" />
       {children}
     </span>
@@ -106,7 +106,7 @@ export default function LandingPage() {
         {/* Label - typographic, not a status pill */}
         <div className="mb-8 flex items-center justify-center gap-4">
           <span className="h-px w-12 bg-white/15" />
-          <span className="mkt-mono text-[0.65rem] uppercase tracking-[0.2em] text-white/35">
+          <span className="mkt-mono text-[0.65rem] uppercase tracking-[0.2em] text-fg-subtle">
             Stellar Account Closer
           </span>
           <span className="h-px w-12 bg-white/15" />
@@ -151,7 +151,7 @@ export default function LandingPage() {
               className={`px-4 py-6 ${i >= 2 ? "border-t border-white/[0.07] lg:border-t-0" : ""}`}
             >
               <div className="mkt-display text-2xl font-bold text-value sm:text-3xl">{s.n}</div>
-              <div className="mt-1 text-[0.78rem] leading-snug text-white/55">{s.l}</div>
+              <div className="mt-1 text-[0.78rem] leading-snug text-fg-muted">{s.l}</div>
             </div>
           ))}
         </div>
@@ -174,8 +174,8 @@ export default function LandingPage() {
         <div className="mt-11 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
           <Reveal className="mkt-card p-6">
             <div className="flex items-center justify-between">
-              <span className="mkt-eyebrow text-white/45">Locked reserve</span>
-              <span className="mkt-mono text-xs text-white/45">example account</span>
+              <span className="mkt-eyebrow text-fg-subtle">Locked reserve</span>
+              <span className="mkt-mono text-xs text-fg-subtle">example account</span>
             </div>
             <div className="mt-5 space-y-3.5">
               {RESERVE.map((r) => (
@@ -196,7 +196,7 @@ export default function LandingPage() {
             <div className="mt-5 flex items-baseline justify-between border-t border-white/10 pt-4">
               <span className="text-sm font-semibold text-white">Total locked</span>
               <span className="mkt-display text-2xl font-bold text-value tabular-nums">
-                5.00 <span className="text-sm font-normal text-white/45">XLM</span>
+                5.00 <span className="text-sm font-normal text-fg-subtle">XLM</span>
               </span>
             </div>
           </Reveal>
@@ -304,7 +304,7 @@ export default function LandingPage() {
         <div className="mt-10">
           <Faq />
         </div>
-        <p className="mt-6 text-center text-sm text-white/55">
+        <p className="mt-6 text-center text-sm text-fg-muted">
           Still curious?{" "}
           <a
             href="https://docs.lumenwipe.com"
@@ -338,7 +338,7 @@ export default function LandingPage() {
                 Try on testnet
               </Link>
             </div>
-            <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mkt-mono text-[0.7rem] text-white/55">
+            <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mkt-mono text-[0.7rem] text-fg-muted">
               <span className="inline-flex items-center gap-1.5">
                 <Check className="h-3.5 w-3.5 text-stellar" /> No signup
               </span>

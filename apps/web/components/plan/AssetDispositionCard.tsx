@@ -79,7 +79,7 @@ export default function AssetDispositionCard({
         />
         <span>
           Send {holding} to another account instead.{" "}
-          <span className="text-white/40">You keep the tokens.</span>
+          <span className="text-fg-subtle">You keep the tokens.</span>
         </span>
       </label>
 
@@ -130,7 +130,7 @@ export default function AssetDispositionCard({
               Use the same account I&apos;m merging into
             </button>
           )}
-          <p id={helpId} className="text-[0.7rem] leading-relaxed text-white/45">
+          <p id={helpId} className="text-[0.7rem] leading-relaxed text-fg-subtle">
             That account must already hold a {item.code} trustline - LumenWipe cannot add one for
             it, and the whole close fails if it cannot receive the balance.
           </p>
@@ -149,16 +149,16 @@ export default function AssetDispositionCard({
       >
         <div className="flex items-center gap-3">
           {isTransfer || isIssuer ? (
-            <Send className="h-4 w-4 shrink-0 text-white/50" />
+            <Send className="h-4 w-4 shrink-0 text-fg-muted" />
           ) : (
             <ArrowRightLeft className="h-4 w-4 shrink-0 text-success" />
           )}
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-white">
-              {item.code} <span className="text-white/40">→</span>{" "}
+              {item.code} <span className="text-fg-subtle">→</span>{" "}
               {isTransfer ? "another account" : isIssuer ? "its issuer" : "XLM"}
             </p>
-            <p className="text-xs text-white/50">
+            <p className="text-xs text-fg-muted">
               {isTransfer
                 ? amountPhrase(`sent as ${item.code}, not swapped`)
                 : isIssuer
@@ -191,16 +191,16 @@ export default function AssetDispositionCard({
     >
       <div className="flex items-start gap-3">
         {resolved ? (
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-white/50" />
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
         ) : (
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
         )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-white">
-            {item.code} <span className="text-white/40">·</span>{" "}
+            {item.code} <span className="text-fg-subtle">·</span>{" "}
             <span className="text-amber-300/90">no swap route on the DEX</span>
           </p>
-          <p className="mt-1 text-xs leading-relaxed text-white/55">
+          <p className="mt-1 text-xs leading-relaxed text-fg-muted">
             There is no way to swap {holding} to XLM. A trustline with a balance cannot be removed,
             so the account cannot be closed while this balance remains. You can send these tokens to
             another account that holds them, or return them to the issuer and give them up.
@@ -219,7 +219,7 @@ export default function AssetDispositionCard({
           />
           <span className={cn(isTransfer && "text-white/30")}>
             Return {holding} to the issuer.{" "}
-            <span className="text-white/40">You give up these tokens.</span>
+            <span className="text-fg-subtle">You give up these tokens.</span>
           </span>
         </label>
       </div>

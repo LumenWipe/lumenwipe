@@ -66,7 +66,7 @@ export default function HeroAccountInput() {
           {error}
         </p>
       ) : (
-        <p className="mt-2.5 text-center text-xs text-white/35">
+        <p className="mt-2.5 text-center text-xs text-fg-subtle">
           Analyzes on mainnet · read-only until you sign · no account needed
         </p>
       )}

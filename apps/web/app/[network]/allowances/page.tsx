@@ -168,7 +168,7 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
               <div className="mkt-panel rounded-2xl p-8 text-center">
                 <AlertTriangle className="h-8 w-8 text-warning mx-auto mb-2" />
                 <p className="text-sm font-medium text-white">Could not confirm this account</p>
-                <p className="mt-1 text-xs text-white/45">
+                <p className="mt-1 text-xs text-fg-subtle">
                   Nothing outstanding was found, but {unconfirmed.join(" and ")} did not cover
                   everything it looks at. This is not a confirmation that the account is clear.
                 </p>
@@ -177,7 +177,7 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
               <div className="mkt-panel rounded-2xl p-8 text-center">
                 <ShieldCheck className="h-8 w-8 text-success mx-auto mb-2" />
                 <p className="text-sm font-medium text-white">No outstanding allowances</p>
-                <p className="mt-1 text-xs text-white/45">
+                <p className="mt-1 text-xs text-fg-subtle">
                   This account has not approved any spender that is currently live.
                 </p>
                 {note && <p className="mt-2 text-[11px] text-white/30">{note}.</p>}
@@ -192,7 +192,7 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
           {/* The panel above already names every source that fell short, so repeating the
               warnings underneath it would say the same thing twice in different words. */}
           {result.warnings.length > 0 && unconfirmed.length === 0 && (
-            <p className="flex items-start gap-1.5 text-xs text-white/40">
+            <p className="flex items-start gap-1.5 text-xs text-fg-subtle">
               <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
               {result.warnings.map((w) => w.message).join(" ")}
             </p>

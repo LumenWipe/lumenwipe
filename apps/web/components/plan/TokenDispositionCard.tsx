@@ -72,24 +72,24 @@ export default function TokenDispositionCard({
         {isConvert ? (
           <ArrowRightLeft className="mt-0.5 h-4 w-4 shrink-0 text-success" />
         ) : isTransfer ? (
-          <Send className="mt-0.5 h-4 w-4 shrink-0 text-white/50" />
+          <Send className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
         ) : isLeave ? (
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-white/50" />
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
         ) : (
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
         )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-white">
-            {item.code} <span className="text-white/40">→</span> {headline}
+            {item.code} <span className="text-fg-subtle">→</span> {headline}
           </p>
-          <p className="text-xs text-white/50">
+          <p className="text-xs text-fg-muted">
             {token.arrivesFromExit
               ? "Paid out when a position is exited"
               : `${item.balance} ${item.code}`}
-            <span className="text-white/35"> · Soroban token {shortContract(token.contract)}</span>
+            <span className="text-fg-subtle"> · Soroban token {shortContract(token.contract)}</span>
           </p>
           {!item.convertible && !isTransfer && !isLeave && (
-            <p className="mt-1 text-xs leading-relaxed text-white/55">
+            <p className="mt-1 text-xs leading-relaxed text-fg-muted">
               {unknownUnits
                 ? "This token does not report its symbol or decimals, so the balance is shown in raw units and cannot be exchanged for XLM. "
                 : "There is no route to exchange this token for XLM. "}
@@ -126,14 +126,14 @@ export default function TokenDispositionCard({
             <span>
               Exchange my {item.balance} {item.code} for XLM.{" "}
               {token.quote ? (
-                <span className="text-white/40">
+                <span className="text-fg-subtle">
                   About {formatStroops(token.quote.amountOut)} XLM, at least{" "}
                   {formatStroops(token.quote.minAmountOut)} XLM, through{" "}
                   {token.quote.provider === "xbull" ? "xBull" : "Soroswap"}
                   {token.quote.route.length > 0 ? ` (${token.quote.route.join(", ")})` : ""}.
                 </span>
               ) : (
-                <span className="text-white/40">Through the best available route.</span>
+                <span className="text-fg-subtle">Through the best available route.</span>
               )}
             </span>
           </label>
@@ -148,7 +148,7 @@ export default function TokenDispositionCard({
           />
           <span>
             Send my {item.balance} {item.code} to another account.{" "}
-            <span className="text-white/40">You keep the tokens. No trustline is needed.</span>
+            <span className="text-fg-subtle">You keep the tokens. No trustline is needed.</span>
           </span>
         </label>
         {isTransfer && (
@@ -190,7 +190,7 @@ export default function TokenDispositionCard({
                 Use the same account I&apos;m merging into
               </button>
             )}
-            <p id={helpId} className="text-[0.7rem] leading-relaxed text-white/45">
+            <p id={helpId} className="text-[0.7rem] leading-relaxed text-fg-subtle">
               Not an exchange deposit address: a token transfer carries no deposit memo, so an
               exchange could not credit it.
             </p>

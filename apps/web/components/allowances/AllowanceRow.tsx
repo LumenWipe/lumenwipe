@@ -38,7 +38,7 @@ export default function AllowanceRow({ allowance, onRevoke }: AllowanceRowProps)
             </span>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/45">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-subtle">
           <span>
             <span className="text-white/70">{amountLabel}</span> approved
           </span>

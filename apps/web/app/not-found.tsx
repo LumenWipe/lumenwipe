@@ -61,7 +61,7 @@ export default function NotFound() {
               {/* command */}
               <div className="mkt-mono text-sm">
                 <span className="text-stellar/40">$ </span>
-                <span className="text-white/50">lw analyze --network mainnet </span>
+                <span className="text-fg-muted">lw analyze --network mainnet </span>
                 <span className="text-value/70">this-page</span>
               </div>
 
@@ -72,7 +72,7 @@ export default function NotFound() {
                     <span className={s.ok ? "text-stellar" : "text-danger-fg"}>
                       {s.ok ? "✓" : "✗"}
                     </span>
-                    <span className={s.ok ? "text-white/40" : "text-danger-fg/75"}>
+                    <span className={s.ok ? "text-fg-subtle" : "text-danger-fg/75"}>
                       {s.label}
                       {!s.ok && " - account_not_found"}
                     </span>
@@ -112,7 +112,7 @@ export default function NotFound() {
             <br />
             been closed.
           </h1>
-          <p className="mb-8 text-[0.95rem] leading-relaxed text-white/45">
+          <p className="mb-8 text-[0.95rem] leading-relaxed text-fg-subtle">
             No trustlines. No balance. No subentries.
             <br />
             Looks like this route was already merged out.

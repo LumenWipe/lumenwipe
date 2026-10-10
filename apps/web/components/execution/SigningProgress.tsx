@@ -60,9 +60,9 @@ export default function SigningProgress({
       {satisfiable.length > 0 && (
         <ul className="space-y-1">
           {satisfiable.map((s) => (
-            <li key={s.key} className="font-mono-address text-xs text-white/55">
-              {shortAddr(s.key)} <span className="text-white/35">· weight {s.weight}</span>
-              <span className="text-white/35"> · hasn&apos;t signed yet</span>
+            <li key={s.key} className="font-mono-address text-xs text-fg-muted">
+              {shortAddr(s.key)} <span className="text-fg-subtle">· weight {s.weight}</span>
+              <span className="text-fg-subtle"> · hasn&apos;t signed yet</span>
             </li>
           ))}
         </ul>
@@ -95,7 +95,7 @@ export default function SigningProgress({
         </div>
       )}
       {unsatisfiable.length > 0 && (
-        <p className="text-xs text-white/45">
+        <p className="text-xs text-fg-subtle">
           {unsatisfiable.length} signer{unsatisfiable.length === 1 ? "" : "s"} on this account use a
           signature method LumenWipe can&apos;t yet contribute automatically
           {blockedByUnsatisfiable

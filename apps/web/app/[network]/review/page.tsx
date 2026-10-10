@@ -44,7 +44,7 @@ export default function ReviewPage({ params }: { params: Promise<{ network: Netw
         >
           Review the full plan
         </h1>
-        <span className="text-xs text-white/45 ml-auto mkt-mono">
+        <span className="text-xs text-fg-subtle ml-auto mkt-mono">
           {sourceAddress.slice(0, 8)}...{sourceAddress.slice(-8)}
         </span>
       </div>

@@ -122,7 +122,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
       onMouseLeave={() => setHovered(null)}
     >
       <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
-        <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-white/55">
+        <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-fg-muted">
           Activity - last 12 months
         </span>
         <div className="flex items-center gap-4">
@@ -237,7 +237,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
         {hovered ? (
           <div className="flex items-start gap-4">
             <div className="shrink-0">
-              <span className="mkt-mono text-[0.68rem] text-white/45">
+              <span className="mkt-mono text-[0.68rem] text-fg-subtle">
                 {new Date(hovered.date + "T00:00:00Z").toLocaleDateString("en-US", {
                   month: "long",
                   day: "numeric",
@@ -259,7 +259,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
                     href={`https://stellar.expert/explorer/public/tx/${r.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="mkt-mono rounded-md border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[0.62rem] text-white/40 transition-colors hover:border-stellar/40 hover:text-stellar"
+                    className="mkt-mono rounded-md border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[0.62rem] text-fg-subtle transition-colors hover:border-stellar/40 hover:text-stellar"
                   >
                     {r.txHash.slice(0, 8)}… ↗
                   </a>
