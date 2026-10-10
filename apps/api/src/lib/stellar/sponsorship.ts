@@ -1,6 +1,8 @@
 import { PATH_ROUTING_API_URLS } from "@/config/networks";
 import type { Network } from "@/config/networks";
-import { SPONSORSHIP_MAX_OPERATIONS_SCANNED, HORIZON_TIMEOUT_MS } from "@/config/constants";
+import { SPONSORSHIP_MAX_OPERATIONS_SCANNED } from "@/config/constants";
+import type { Deadline } from "@/common/deadline";
+import { rateLimitHits, resolveDeadline, upstreamGetJson } from "@/lib/stellar/upstream-client";
 import { horizonAssetToString } from "@/lib/utils/assets";
 import { parseClaimPredicate } from "@/lib/stellar/horizon-adapter";
 import {
@@ -23,21 +25,10 @@ const CB_MAX_TOTAL = 1000;
 // connection stall the whole read indefinitely.
 const OWNER_FETCH_CONCURRENCY = 10;
 
-// Same AbortController + setTimeout idiom, applied
-// to every fetch in this module so a slow/hung Horizon-compatible endpoint can't stall
-// enumeration indefinitely.
-async function fetchWithTimeout(url: string): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), HORIZON_TIMEOUT_MS);
-  try {
-    return await fetch(url, {
-      signal: controller.signal,
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
+const OWNER_FETCH_CONCURRENCY_RATE_LIMITED = 2;
+
+function getJson<T>(url: string, deadline: Deadline, notFoundIsNull = false): Promise<T | null> {
+  return upstreamGetJson<T>(url, { target: "sponsorship", deadline, notFoundIsNull });
 }
 
 interface HorizonOperation {
@@ -71,7 +62,8 @@ interface HorizonOperationsPage {
 // for why that's fine.
 async function discoverSponsorshipCandidates(
   address: string,
-  network: Network
+  network: Network,
+  deadline: Deadline
 ): Promise<{ candidates: SponsorshipCandidate[]; incomplete: boolean }> {
   const base = PATH_ROUTING_API_URLS[network];
   if (!base) return { candidates: [], incomplete: true };
@@ -95,13 +87,10 @@ async function discoverSponsorshipCandidates(
     let recordCount = 0;
     let nextHref: string | undefined;
     try {
-      const res = await fetchWithTimeout(nextUrl);
-      if (!res.ok) {
-        incomplete = true;
-        break;
-      }
-
-      const page = (await res.json()) as HorizonOperationsPage;
+      const page: HorizonOperationsPage | null = await getJson<HorizonOperationsPage>(
+        nextUrl,
+        deadline
+      );
       const records = page?._embedded?.records ?? [];
       recordCount = records.length;
       scanned += recordCount;
@@ -211,7 +200,8 @@ interface HorizonOffersPage {
 // this is the only way to still catch that entry once the owner is fetched for any reason.
 export async function fetchOwnerLiveState(
   owner: string,
-  network: Network
+  network: Network,
+  deadline: Deadline = resolveDeadline()
 ): Promise<OwnerLiveState> {
   const base = PATH_ROUTING_API_URLS[network];
   const empty: OwnerLiveState = {
@@ -226,16 +216,18 @@ export async function fetchOwnerLiveState(
   if (!base) return empty;
 
   try {
-    const accountRes = await fetchWithTimeout(`${base}/accounts/${owner}`);
-    if (accountRes.status === 404) {
+    const account = await getJson<HorizonAccountForSponsorship>(
+      `${base}/accounts/${owner}`,
+      deadline,
+      true
+    );
+    if (account === null) {
       // The owner account no longer exists (merged away) - a normal terminal state and
       // unambiguous proof it holds nothing we still sponsor. Same distinction the
       // per-key data read below already makes: 404 is an answer, not a failure. There is
       // no reserve left to check for an account that no longer exists.
       return { ...empty, fetchFailed: false, reserve: null };
     }
-    if (!accountRes.ok) return empty;
-    const account = (await accountRes.json()) as HorizonAccountForSponsorship;
 
     const nativeBalanceRecord = account.balances.find((b) => b.asset_type === "native");
     const reserve = {
@@ -263,26 +255,14 @@ export async function fetchOwnerLiveState(
         // Data-entry names are arbitrary strings and can contain "/", "#", "?", spaces,
         // etc. - encode, or such a name silently truncates the path and queries a
         // different key entirely (a wrong-inclusion risk, not just a missed one).
-        const dataRes = await fetchWithTimeout(
-          `${base}/accounts/${owner}/data/${encodeURIComponent(key)}`
+        const data = await getJson<{ sponsor?: string }>(
+          `${base}/accounts/${owner}/data/${encodeURIComponent(key)}`,
+          deadline,
+          true
         );
-        if (dataRes.status === 404) {
-          // Genuine "this data entry doesn't exist (or isn't sponsored)" - null is correct.
-          dataSponsors[key] = null;
-        } else if (!dataRes.ok) {
-          // Any other non-OK (429/500/503/...) is an unknown state, not a confirmed
-          // "not sponsored" - must not be silently recorded as null.
-          return {
-            ...empty,
-            accountSponsor: account.sponsor ?? null,
-            trustlineSponsors,
-            signerSponsors,
-            fetchFailed: true,
-            reserve: null,
-          };
-        } else {
-          dataSponsors[key] = ((await dataRes.json()).sponsor ?? null) as string | null;
-        }
+        // A 404 is a genuine "this data entry doesn't exist (or isn't sponsored)": null is
+        // correct. Any other failure threw, and is an unknown state, not "not sponsored".
+        dataSponsors[key] = data?.sponsor ?? null;
       } catch {
         return {
           ...empty,
@@ -304,21 +284,16 @@ export async function fetchOwnerLiveState(
     {
       let nextUrl: string | null = `${base}/accounts/${owner}/offers?limit=200`;
       while (nextUrl) {
-        let res: Response;
+        let page: HorizonOffersPage | null;
         try {
-          res = await fetchWithTimeout(nextUrl);
+          page = await getJson<HorizonOffersPage>(nextUrl, deadline);
         } catch {
           offersFetchFailed = true;
           break;
         }
-        if (!res.ok) {
-          offersFetchFailed = true;
-          break;
-        }
-        const page = (await res.json()) as HorizonOffersPage;
-        const records = page._embedded?.records ?? [];
+        const records: HorizonOffer[] = page?._embedded?.records ?? [];
         for (const o of records) offerSponsors[String(o.id)] = o.sponsor ?? null;
-        const nextHref = page._links?.next?.href;
+        const nextHref: string | undefined = page?._links?.next?.href;
         nextUrl = nextHref && records.length === 200 ? nextHref : null;
       }
     }
@@ -354,7 +329,7 @@ export async function fetchOwnerLiveState(
 /**
  * Fan out `fetchOwnerLiveState` over a list of owners in bounded batches rather than one
  * unbounded Promise.all - a sponsor of many accounts must not self-inflict rate limiting,
- * and fetchWithTimeout already bounds how long any single hung connection can stall.
+ * and the shared upstream client already bounds how long any single hung connection can stall.
  * Shared by enumerateSponsoredEntriesUnguarded and assessSponsorshipAffordability, the two
  * call sites that fan out this same per-owner read over an owner list.
  */
@@ -363,12 +338,20 @@ export async function fetchOwnerLiveStatesBounded(
   network: Network
 ): Promise<Map<string, OwnerLiveState>> {
   const liveStateEntries: Array<[string, OwnerLiveState]> = [];
-  for (let i = 0; i < owners.length; i += OWNER_FETCH_CONCURRENCY) {
-    const batch = owners.slice(i, i + OWNER_FETCH_CONCURRENCY);
+  const deadline = resolveDeadline();
+  const rateLimitsBefore = rateLimitHits();
+  for (let i = 0; i < owners.length;) {
+    // Once the provider has refused a request, more simultaneous ones only deepen the refusal.
+    const width =
+      rateLimitHits() > rateLimitsBefore
+        ? OWNER_FETCH_CONCURRENCY_RATE_LIMITED
+        : OWNER_FETCH_CONCURRENCY;
+    const batch = owners.slice(i, i + width);
+    i += batch.length;
     const batchResults = await Promise.all(
       batch.map(async (owner): Promise<[string, OwnerLiveState]> => [
         owner,
-        await fetchOwnerLiveState(owner, network),
+        await fetchOwnerLiveState(owner, network, deadline),
       ])
     );
     liveStateEntries.push(...batchResults);
@@ -392,7 +375,8 @@ interface HorizonClaimableBalancesPage {
 
 async function fetchClaimableBalancesBySponsor(
   address: string,
-  network: Network
+  network: Network,
+  deadline: Deadline
 ): Promise<{
   entries: SponsoredEntry[];
   claimantCounts: Map<string, number>;
@@ -413,13 +397,10 @@ async function fetchClaimableBalancesBySponsor(
     let recordCount = 0;
     let nextHref: string | undefined;
     try {
-      const res = await fetchWithTimeout(nextUrl);
-      if (!res.ok) {
-        incomplete = true;
-        break;
-      }
-
-      const page = (await res.json()) as HorizonClaimableBalancesPage;
+      const page: HorizonClaimableBalancesPage | null = await getJson<HorizonClaimableBalancesPage>(
+        nextUrl,
+        deadline
+      );
       const records = page?._embedded?.records ?? [];
       recordCount = records.length;
 
@@ -496,9 +477,10 @@ async function enumerateSponsoredEntriesUnguarded(
   numSponsoring: number,
   numSponsoringKnown: boolean
 ): Promise<{ sponsoredEntries: SponsoredEntry[]; sponsorshipEnumerationIncomplete: boolean }> {
+  const deadline = resolveDeadline();
   const [{ candidates, incomplete: discoveryIncomplete }, cbResult] = await Promise.all([
-    discoverSponsorshipCandidates(address, network),
-    fetchClaimableBalancesBySponsor(address, network),
+    discoverSponsorshipCandidates(address, network, deadline),
+    fetchClaimableBalancesBySponsor(address, network, deadline),
   ]);
 
   const owners = new Set<string>();

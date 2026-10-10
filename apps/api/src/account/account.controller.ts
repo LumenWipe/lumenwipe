@@ -253,6 +253,9 @@ export class AccountController {
     "missing_parameters",
   ])
   @ApiErrorResponse(500, "The path lookup failed.", ["path_lookup_failed"])
+  @ApiErrorResponse(503, "The price source is unavailable or too slow. Retry.", [
+    "service_unavailable",
+  ])
   @Get("paths")
   @ApiOperation({ summary: "Find a conversion path from an asset to XLM." })
   @ApiQuery({ name: "fromAsset", description: "Asset to convert (e.g. CODE:ISSUER or 'native')." })
@@ -272,9 +275,14 @@ export class AccountController {
     }
 
     try {
-      const path = await fetchConversionPath(fromAsset, amount, network);
-      return { path };
+      const result = await fetchConversionPath(fromAsset, amount, network);
+      if (result.kind === "unavailable") {
+        this.logger.warn({ message: "path lookup unavailable", kind: result.error.kind });
+        fail("service_unavailable", result.error.message, 503);
+      }
+      return { path: result.kind === "route" ? result.path : null };
     } catch (err) {
+      if (err instanceof HttpException) throw err;
       this.logger.error("path fetch failed", err instanceof Error ? err.stack : String(err));
       fail("path_lookup_failed", "Failed to fetch conversion path", 500);
     }

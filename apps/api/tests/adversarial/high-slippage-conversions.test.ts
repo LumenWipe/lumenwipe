@@ -124,14 +124,20 @@ test("a build called twice embeds each call's own fresh quote, never a cached or
     destMin: "99.5000000",
   };
 
-  spyOn(pathFindingModule, "fetchConversionPath").mockResolvedValueOnce(betterPath);
+  spyOn(pathFindingModule, "fetchConversionPath").mockResolvedValueOnce({
+    kind: "route",
+    path: betterPath,
+  });
   const firstResult = await buildCloseTransactions(accountState("100"), DEST, {}, "testnet");
   expect(destMinOf(firstResult.transactions[0]!.xdr)).toBe("99.5000000");
 
   // A second build - a real caller re-requesting after the route degraded between rounds -
   // gets the worse quote embedded, not the first call's now-stale better one. No memoization
   // anywhere in build-transactions.ts's own trustline-conversion loop would let this differ.
-  spyOn(pathFindingModule, "fetchConversionPath").mockResolvedValueOnce(worsePath);
+  spyOn(pathFindingModule, "fetchConversionPath").mockResolvedValueOnce({
+    kind: "route",
+    path: worsePath,
+  });
   const secondResult = await buildCloseTransactions(accountState("100"), DEST, {}, "testnet");
   expect(destMinOf(secondResult.transactions[0]!.xdr)).toBe("80.0000000");
 });
