@@ -1,7 +1,34 @@
 import type { INestApplication } from "@nestjs/common";
 import { json } from "express";
-import type { ErrorRequestHandler, NextFunction, Request, Response } from "express";
+import type { ErrorRequestHandler, NextFunction, Request, RequestHandler, Response } from "express";
 import { ErrorEnvelopeFilter } from "./common/error-envelope.filter";
+
+export const JSON_BODY_LIMIT = "100kb";
+
+const BODY_METHODS = new Set(["POST", "PUT", "PATCH"]);
+
+const BODY_PARSER_ERRORS: Record<string, { status: number; code: string; message: string }> = {
+  "entity.parse.failed": {
+    status: 400,
+    code: "invalid_body",
+    message: "Request body must be valid JSON.",
+  },
+  "entity.too.large": {
+    status: 413,
+    code: "payload_too_large",
+    message: `Request body must be at most ${JSON_BODY_LIMIT}.`,
+  },
+  "charset.unsupported": {
+    status: 415,
+    code: "unsupported_media_type",
+    message: "Request body must be UTF-8 encoded JSON.",
+  },
+  "encoding.unsupported": {
+    status: 415,
+    code: "unsupported_media_type",
+    message: "Request body must not use a content encoding.",
+  },
+};
 
 /**
  * Shared runtime configuration applied by both `main.ts` (bootstrap) and the
@@ -31,21 +58,51 @@ export function configureApp(app: INestApplication): void {
     next();
   });
 
-  app.use(json());
+  app.use(json({ limit: JSON_BODY_LIMIT }));
 
-  const onJsonError: ErrorRequestHandler = (err, req, res, next) => {
-    const isBodyParseError =
-      err instanceof SyntaxError &&
-      (err as SyntaxError & { type?: string }).type === "entity.parse.failed";
-    if (!isBodyParseError) {
+  const onJsonError: ErrorRequestHandler = (err, _req, res, next) => {
+    const type = (err as { type?: unknown } | null)?.type;
+    const zlibCode = (err as { code?: unknown } | null)?.code;
+    const corruptEncoding = typeof zlibCode === "string" && zlibCode.startsWith("Z_");
+    const mapped = corruptEncoding
+      ? BODY_PARSER_ERRORS["entity.parse.failed"]
+      : typeof type === "string"
+        ? BODY_PARSER_ERRORS[type]
+        : undefined;
+    if (!mapped) {
       next(err);
       return;
     }
-    // One shape, whatever the path. This branched on `/mediator/` to keep two different error
-    // contracts alive in the same handler - the clearest instance of the split #59 removes.
-    res
-      .status(400)
-      .json({ error: { code: "invalid_body", message: "Request body must be valid JSON." } });
+    res.status(mapped.status).json({ error: { code: mapped.code, message: mapped.message } });
   };
   app.use(onJsonError);
+
+  // Express 5 leaves req.body undefined when no JSON was parsed, and handlers destructure it.
+  const normalizeBody: RequestHandler = (req, res, next) => {
+    if (!BODY_METHODS.has(req.method)) {
+      next();
+      return;
+    }
+    const hasContent =
+      req.headers["content-type"] !== undefined && req.headers["content-length"] !== "0";
+    if (hasContent && req.is("json") === false) {
+      res.status(415).json({
+        error: {
+          code: "unsupported_media_type",
+          message: "Request body must be JSON (Content-Type: application/json).",
+        },
+      });
+      return;
+    }
+    if (req.body === undefined) {
+      req.body = {};
+    } else if (typeof req.body !== "object" || req.body === null || Array.isArray(req.body)) {
+      res
+        .status(400)
+        .json({ error: { code: "invalid_body", message: "Request body must be a JSON object." } });
+      return;
+    }
+    next();
+  };
+  app.use(normalizeBody);
 }

@@ -16,7 +16,9 @@ export const API_VERSION = "0.1.0";
 export function buildOpenApiConfig() {
   return new DocumentBuilder()
     .setTitle("LumenWipe API")
-    .setDescription("Programmatic close-out of Stellar accounts.")
+    .setDescription(
+      "Programmatic close-out of Stellar accounts. Request bodies must be JSON objects of at most 100 KB: a larger body is rejected with 413 payload_too_large, a non-JSON content type with 415 unsupported_media_type, and a body that is not a JSON object with 400 invalid_body."
+    )
     .setVersion(API_VERSION)
     .addServer("https://api.lumenwipe.com")
     .addBearerAuth(
