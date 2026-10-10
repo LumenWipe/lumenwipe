@@ -502,6 +502,13 @@ jobs:
           pip install --quiet graphviz==0.20.3
           scripts/check-diagrams.sh
 
+      - name: Upload the CI-rendered diagrams
+        if: ${{ failure() && steps.changed.outputs.docs == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rendered-diagrams
+          path: docs/diagrams/output
+
   # Aggregate gate: keeps the existing required-status-check name so branch
   # protection needs no change. Passes only if every job above passed.
   ci:
