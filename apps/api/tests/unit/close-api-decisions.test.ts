@@ -519,3 +519,24 @@ test("a claim topping a positive-balance trustline does not decide the asset twi
 
   expect(points.filter((p) => p.type === "asset_disposition")).toHaveLength(1);
 });
+
+const NEAR_INT64 = "922337203685.4775807";
+
+test("pending balances are the exact stroop sum for 1, 2 and near-int64 balances plus several claims", () => {
+  const asset = `USDC:${ISSUER}`;
+  const cases: [string, string[], string][] = [
+    ["0.0000001", [], "0.0000001"],
+    ["0.0000001", ["0.0000001"], "0.0000002"],
+    ["0.0000001", ["0.0000001", "0.0000001", "0.0000001"], "0.0000004"],
+    [NEAR_INT64, [], NEAR_INT64],
+    ["922337203685.4775806", ["0.0000001"], NEAR_INT64],
+  ];
+  for (const [held, claims, expected] of cases) {
+    const account = makeAccount({
+      trustlines: [makeTrustline("USDC", held)],
+      claimableBalances: claims.map((amount, i) => makeClaimableBalance(`cb${i}`, asset, amount)),
+    });
+    const points = deriveDecisionPoints(account, { [asset]: true });
+    expect(points[0].subject).toMatchObject({ asset, balance: expected });
+  }
+});
