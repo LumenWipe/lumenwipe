@@ -60,17 +60,17 @@ The codebase is a Bun-workspaces monorepo: a NestJS **API** service (the product
 
 Core stack at a glance:
 
-| Layer          | Choice                                                                   |
-| -------------- | ------------------------------------------------------------------------ |
-| API service    | NestJS, TypeScript - builds the transactions, stateless, cached          |
-| Web client     | Next.js, TypeScript, open source - verifies and signs only               |
-| SDK / types    | `@lumenwipe/sdk` (thin fetch client, no Stellar SDK), `@lumenwipe/types` |
-| Stellar SDK    | `@stellar/stellar-sdk` (classic and Soroban): API builds, web verifies   |
-| Wallets        | stellar-wallets-kit (SEP-43), plus an in-memory secret-key mode          |
-| Network access | Stellar RPC: live reads, simulation, submission, events                  |
-| Enumeration    | One Horizon-compatible endpoint, provider set by configuration           |
-| Routing        | Soroswap API, with SDEX paths as fallback                                |
-| DeFi detection | OctoPos DeFi Position API                                                |
+| Layer          | Choice                                                                         |
+| -------------- | ------------------------------------------------------------------------------ |
+| API service    | NestJS, TypeScript - builds the transactions, stateless across a close, cached |
+| Web client     | Next.js, TypeScript, open source - verifies and signs only                     |
+| SDK / types    | `@lumenwipe/sdk` (thin fetch client, no Stellar SDK), `@lumenwipe/types`       |
+| Stellar SDK    | `@stellar/stellar-sdk` (classic and Soroban): API builds, web verifies         |
+| Wallets        | stellar-wallets-kit (SEP-43), plus an in-memory secret-key mode                |
+| Network access | Stellar RPC: live reads, simulation, submission, events                        |
+| Enumeration    | One Horizon-compatible endpoint, provider set by configuration                 |
+| Routing        | Soroswap API, with SDEX paths as fallback                                      |
+| DeFi detection | OctoPos DeFi Position API                                                      |
 
 ## 2. The problem
 
@@ -239,7 +239,7 @@ For multisig accounts the kit and secret-key paths both support accumulating sig
 
 ## 7. The API service
 
-The API is a stateless NestJS service, and the product itself. It reads account state, aggregates the data the client cannot efficiently fetch, builds the minimal set of unsigned transactions that close an account, and caches its reads. It runs as its own service, deployed separately from the web (Section 15), and every request carries an API key. It accepts no user keys and holds no user funds, and every transaction it returns is unsigned: only the user's browser can turn one into something the network will accept. Its two signing keys are the shared mediator, which co-signs the exchange forwarding payment only after validating the transaction shape (operation one merges into the mediator, operation two is a payment from the mediator of at least 1 XLM), and cannot change that payment's destination or amount, and the fee-bump sponsor, which only pays network fees for a transaction the user already signed. If the API were fully compromised it could return a wrong transaction or wrong read data, but the client-side `verify()` refuses to sign anything that does not match the user's intent (Section 6.2), and reads are backed by confirmations and on-chain simulation, so it could never sign for or move a user's account.
+The API is a NestJS service and the product itself. It is stateless across a close (it tracks no per-user progress) and keeps only small per-process state (Section 15). It reads account state, aggregates the data the client cannot efficiently fetch, builds the minimal set of unsigned transactions that close an account, and caches its reads. It runs as its own service, deployed separately from the web (Section 15), and every request carries an API key. It accepts no user keys and holds no user funds, and every transaction it returns is unsigned: only the user's browser can turn one into something the network will accept. Its two signing keys are the shared mediator, which co-signs the exchange forwarding payment only after validating the transaction shape (operation one merges into the mediator, operation two is a payment from the mediator of at least 1 XLM), and cannot change that payment's destination or amount, and the fee-bump sponsor, which only pays network fees for a transaction the user already signed. If the API were fully compromised it could return a wrong transaction or wrong read data, but the client-side `verify()` refuses to sign anything that does not match the user's intent (Section 6.2), and reads are backed by confirmations and on-chain simulation, so it could never sign for or move a user's account.
 
 Building the transactions server-side shapes the rest of the design. The API re-reads live on-chain state itself right before it builds, so it never emits a transaction based on stale data. It stays stateless across a multi-round close by re-deriving the remaining work from current state on each call rather than tracking per-user progress, which is why an interrupted close resumes by simply asking again. And it validates every request, rejecting a bad memo or an unsupported destination with a typed error the client relays in plain language.
 
@@ -288,7 +288,7 @@ Read data is cached with short TTLs, keyed by address: positions for tens of sec
 
 The API is the product, and the guided web app is just its first consumer: it drives the whole wind-down through the same public surface any integrator would use, which is the standing proof that surface is complete. The audiences that close accounts at scale are not clicking through a wizard:
 
-- **REST API**: analysis, plan generation, per-round unsigned-transaction building, mediator co-signing, and submission, so a platform can drive a wind-down from its own backend, verify and sign with its own keys, and submit. It is stateless - each call re-derives the remaining work from live on-chain state - so an operator decommissioning a fleet of deposit or payout accounts just calls again, per account and per round.
+- **REST API**: analysis, plan generation, per-round unsigned-transaction building, mediator co-signing, and submission, so a platform can drive a wind-down from its own backend, verify and sign with its own keys, and submit. It is stateless across a close - each call re-derives the remaining work from live on-chain state - so an operator decommissioning a fleet of deposit or payout accounts just calls again, per account and per round.
 - **TypeScript SDK** (`@lumenwipe/sdk`): a thin, dependency-light fetch client over that API that does not bundle the Stellar SDK, so a wallet can embed a "close account" flow inside its own UI and signer. A shared `@lumenwipe/types` package keeps request and response types identical across the API, the SDK, and the web.
 
 The design cost of this is near zero, because the split makes the public surface the only surface: the transaction-building logic lives in one place (the API), the web is a thin client whose lint boundary forbids it from re-implementing any of it, and signing was never coupled to the UI. The audiences are concrete: wallets offering account closure as a feature, platforms with per-user Stellar accounts (payouts, remittances, embedded wallets) recovering sponsored reserves when users churn, and exchanges or anchors giving customers a clean off-boarding path.
@@ -581,10 +581,10 @@ The classic wind-down already runs. The current codebase is a working monorepo -
 Plain-English summary of what the tool is built from and why.
 
 - Frontend: Next.js and TypeScript, a thin open source web client that verifies and signs, with TypeScript's type safety guarding the verification and signing path.
-- API: NestJS and TypeScript, a stateless service that reads state and builds transactions, with a short-TTL cache for public read data; API-key auth with per-key rate limiting. Its durable state - self-serve API keys, the public merge counter and per-integrator usage - lives in Google Cloud Firestore (Native mode), accessed via the Cloud Run service account's IAM role rather than a separate stored credential.
+- API: NestJS and TypeScript, a service that is stateless across a close and reads state and builds transactions, with a short-TTL cache for public read data; API-key auth with per-key rate limiting. Its durable state - self-serve API keys, the public merge counter and per-integrator usage - lives in Google Cloud Firestore (Native mode), accessed via the Cloud Run service account's IAM role rather than a separate stored credential.
 - Packaging: a Bun-workspaces monorepo (`apps/{web,api}`, `packages/{sdk,types}`); `@lumenwipe/sdk` is a thin fetch client over the API, and `@lumenwipe/types` is shared across the API, the SDK, and the web.
 - Stellar SDK: `@stellar/stellar-sdk`, the official SDK, which covers classic and Soroban, used by the API to build, read and submit, by the web client to parse, verify and sign (never to build a transaction or read chain state), and by the testnet playground. `@lumenwipe/sdk` does not bundle it, and the dual-build hazard (mixing `require()` and `import` of the SDK in one runtime) applies in every runtime that imports it.
-- Wallets: stellar-wallets-kit (Freighter, xBull, Albedo, Rabet, Hana, WalletConnect; LOBSTR is accessible via WalletConnect), including Soroban authorization-entry signing.
+- Wallets: stellar-wallets-kit (Freighter, xBull, Albedo, Rabet, Hana, WalletConnect; LOBSTR is accessible via WalletConnect). The web app signs transactions only; it never signs Soroban authorization entries.
 - Network access: Stellar RPC for live reads, simulation, submission, and events; the stellar.expert API for subentry enumeration; the Soroswap API for routing; OctoPos for DeFi position detection.
 - DeFi integration: the official Blend SDK, the Soroswap API, and the published contract interfaces for Aquarius, Phoenix, and FxDAO, behind per-protocol adapters and a versioned contract registry.
 - State and storage: Zustand for the wizard state machine, IndexedDB for resumable sessions (never keys).
@@ -597,7 +597,7 @@ The tool tracks the current stable protocol (Protocol 26, Yardstick, on mainnet 
 | Standard                          | What it is                                          | How the tool uses it                                                                                                                                                 |
 | --------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | SEP-41                            | Soroban token interface                             | Reads `balance` and `allowance`, revokes with `approve(owner, spender, 0, ledger)` for the allowance inspector, and handles Soroban token balances during conversion |
-| SEP-43                            | Wallet interface implemented by stellar-wallets-kit | `signTransaction` across ecosystem wallets with no per-wallet code; `signAuthEntry` where the wallet implements it                                                   |
+| SEP-43                            | Wallet interface implemented by stellar-wallets-kit | `signTransaction` across ecosystem wallets with no per-wallet code (the web app does not sign Soroban authorization entries)                                         |
 | CAP-38                            | Classic liquidity pools (protocol 18)               | `LiquidityPoolWithdraw` and pool-share trustline removal                                                                                                             |
 | SEP-40                            | Oracle consumer interface                           | Reading a Blend pool's oracle price when validating that a partial repay keeps the health factor at or above 1.0                                                     |
 | Stellar Asset Contract (CAP-46-6) | Classic assets usable inside Soroban                | Bridging classic balances and contract balances when converting Soroban-side                                                                                         |
