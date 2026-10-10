@@ -152,6 +152,10 @@
             "pages": ["GET /"]
           }
         ]
+      },
+      {
+        "group": "Contributing",
+        "pages": ["contributing/add-a-protocol-exit"]
       }
     ]
   },
