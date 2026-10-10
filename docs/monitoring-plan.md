@@ -22,7 +22,7 @@ What LumenWipe does have on the ledger is **two service accounts that hold a sig
 | Mediator account (mainnet)         | not yet deployed                                            | Exchange closes are testnet-only today. This row exists so the inventory shows the gap rather than hiding it.                                                                                                                              |
 | Fee-bump sponsor (testnet)         | `GCMCGC6EJZKJJUTFY6RK43PGOODW6EL6FSHSLXBV4EYSZ3GHNJO3FXAP`  | Pays the network fee for accounts sitting at their minimum balance, via CAP-15. Verifiable as `fee_account` on [`3f4bad4b…`](https://stellar.expert/explorer/testnet/tx/3f4bad4b3fd8b112790a1fb298dab1187d0a6b17a478d67aafd3810b7d8a382e). |
 | Fee-bump sponsor (mainnet)         | not yet deployed                                            | Sponsored fees are testnet-only today.                                                                                                                                                                                                     |
-| Protocol contracts read and exited | The entries in `apps/api/src/config/contract-registry.json` | Third-party contracts (Blend, Aquarius, Soroswap), not ours. We do not control them; we verify their code hash before building anything against them.                                                                                      |
+| Protocol contracts read and exited | The entries in `apps/api/src/config/contract-registry.json` | Third-party contracts (Blend, Aquarius, Soroswap, Phoenix, FxDAO, and the xBull swap router), not ours. We do not control them; we verify their code hash before building anything against them.                                           |
 
 The registry carries a `validUntil` date and every entry's `wasmHash`. **Keeping that file current is the
 single most important piece of inventory hygiene here** - a stale entry is how a monitor, or an exit, quietly
@@ -83,6 +83,24 @@ counterpart of a control that exists: an unknown code version blocks the exit be
 read, and `mainnet-registry.integration.test.ts` runs that comparison. `S4a.Elevation.1.M.1` monitors a
 risk whose primary control is operational - the mediator holds no spendable surplus - so the alert exists to
 catch the funding policy being broken, not to be the only thing standing in the way.
+
+### Registry coverage by protocol (as of 2026-10-10)
+
+The registry comparison behind `S7.Tampering.1.M.1` reads every mainnet entry with `verifiedLive: true`
+(`mainnet-registry.integration.test.ts`). What each protocol's rows contribute today, from
+`contract-registry.json` (`lastVerified` 2026-10-10):
+
+| Protocol | Mainnet entries compared daily                         | Status                                                                                                                                                                                                                        |
+| -------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Blend    | factory, backstop and pool, versions v1 and v2         | Active. The same test also checks that the code the Blend factories deploy today matches the registry's representative pools.                                                                                                 |
+| Aquarius | router and the three pool types                        | Active. The same test also checks the router's current pool hashes against the registry.                                                                                                                                      |
+| Soroswap | factory, pair, router and aggregator                   | Active for the registry hash comparison. No deployer check.                                                                                                                                                                   |
+| Phoenix  | pool and stake contracts, versions v1 and v2           | Active for the registry hash comparison. No deployer check. Phoenix's exit also calls a stake contract, so a stake upgrade is covered by this row.                                                                            |
+| xBull    | the swap router (conversion quotes, not an exit)       | Active for the registry hash comparison. The router is the contract the browser's `verify()` allows a conversion through, so drift here is a conversion-path signal.                                                          |
+| FxDAO    | none: the mainnet vault entry is `verifiedLive: false` | Not monitored. The entry has no `wasmHash` and its deployed code exposes only `evict` and `upgrade`, so there is nothing to compare; no mainnet FxDAO exit is built. The testnet entry is not part of the mainnet comparison. |
+
+Nothing in this table is a new monitor: it records what the existing daily comparison covers, and where it
+does not. Monitor implementation is tracked separately (#278).
 
 ### How the live ones run
 
