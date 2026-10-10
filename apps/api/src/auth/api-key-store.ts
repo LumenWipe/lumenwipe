@@ -1,5 +1,10 @@
 import { createHash, randomBytes } from "crypto";
 import { Firestore, Timestamp } from "@google-cloud/firestore";
+import { fail } from "@/common/fail";
+import { withTimeout } from "@/lib/utils/with-timeout";
+
+const STORE_TIMEOUT_MS = 5_000;
+const STORE_TIMEOUT_MESSAGE = "api key store timed out";
 
 /** Per-key rate limit override; absent means the global default (`app.module.ts`) applies. */
 export interface RateLimitOverride {
@@ -34,7 +39,10 @@ export interface ApiKeyStore {
   /** Null for an unknown OR revoked key - callers don't need to tell the two apart. */
   resolve(rawKey: string): Promise<ApiKeyRecord | null>;
   listByOwner(owner: string): Promise<ApiKeyRecord[]>;
-  /** False if no key with that hash exists. */
+  /** The record for a hash whether active or revoked, or null if none exists. */
+  findByHash(hash: string): Promise<ApiKeyRecord | null>;
+  /** False if no key with that hash exists. Revoking an already revoked key is a no-op that
+   *  keeps the original `revokedAt` and still returns true. */
   revoke(hash: string): Promise<boolean>;
   /** Null if no *active* key with that hash exists (unknown, or already revoked). */
   rotate(hash: string): Promise<{ raw: string; record: ApiKeyRecord } | null>;
@@ -55,6 +63,22 @@ export function hashApiKey(rawKey: string): string {
  *  glance (in logs, in a dashboard) without ever needing to store or display the raw value. */
 export function generateApiKey(): string {
   return `lw_${randomBytes(32).toString("base64url")}`;
+}
+
+function copyRecord(record: ApiKeyRecord): ApiKeyRecord {
+  return {
+    ...record,
+    createdAt: new Date(record.createdAt),
+    revokedAt: record.revokedAt ? new Date(record.revokedAt) : null,
+    rateLimit: record.rateLimit ? { ...record.rateLimit } : null,
+  };
+}
+
+function rethrowUnavailable(error: unknown): never {
+  if (error instanceof Error && error.message === STORE_TIMEOUT_MESSAGE) {
+    fail("service_unavailable", "Key service is busy. Please try again shortly.", 503);
+  }
+  throw error;
 }
 
 function toFirestoreData(record: Omit<ApiKeyRecord, "hash">): FirebaseFirestore.DocumentData {
@@ -78,18 +102,21 @@ function fromFirestoreData(hash: string, data: FirebaseFirestore.DocumentData): 
   };
 }
 
-/**
- * Firestore-backed store (Native mode), one document per key keyed by its own hash. Constructed
- * with no explicit credentials: on Cloud Run the service account's IAM role authorizes access
- * (Application Default Credentials) - this feature introduces no new bearer secret to leak or
- * rotate. Never constructed unless `FIRESTORE_PROJECT_ID` is set (see `createApiKeyStore`), so
- * an environment that hasn't configured it never touches Firestore at all.
- */
 export class FirestoreApiKeyStore implements ApiKeyStore {
   private readonly collection: FirebaseFirestore.CollectionReference;
 
-  constructor(firestore: Firestore, collectionName = "apiKeys") {
+  constructor(
+    private readonly firestore: Firestore,
+    collectionName = "apiKeys",
+    private readonly timeoutMs = STORE_TIMEOUT_MS
+  ) {
     this.collection = firestore.collection(collectionName);
+  }
+
+  private bounded<T>(operation: () => Promise<T>): Promise<T> {
+    return withTimeout(operation(), this.timeoutMs, STORE_TIMEOUT_MESSAGE).catch(
+      rethrowUnavailable
+    );
   }
 
   async create(
@@ -97,101 +124,131 @@ export class FirestoreApiKeyStore implements ApiKeyStore {
     rateLimit: RateLimitOverride | null = null
   ): Promise<{ raw: string; record: ApiKeyRecord }> {
     const raw = generateApiKey();
-    const hash = hashApiKey(raw);
     const record: ApiKeyRecord = {
-      hash,
+      hash: hashApiKey(raw),
       owner,
       createdAt: new Date(),
       revokedAt: null,
       rotatedFrom: null,
       rateLimit,
     };
-    await this.collection.doc(hash).set(toFirestoreData(record));
+    await this.bounded(() => this.collection.doc(record.hash).create(toFirestoreData(record)));
     return { raw, record };
   }
 
   async resolve(rawKey: string): Promise<ApiKeyRecord | null> {
-    const snap = await this.collection.doc(hashApiKey(rawKey)).get();
-    if (!snap.exists) return null;
-    const record = fromFirestoreData(snap.id, snap.data()!);
-    return record.revokedAt ? null : record;
+    const record = await this.findByHash(hashApiKey(rawKey));
+    return record && !record.revokedAt ? record : null;
+  }
+
+  async findByHash(hash: string): Promise<ApiKeyRecord | null> {
+    const snap = await this.bounded(() => this.collection.doc(hash).get());
+    return snap.exists ? fromFirestoreData(snap.id, snap.data()!) : null;
   }
 
   async listByOwner(owner: string): Promise<ApiKeyRecord[]> {
-    const snap = await this.collection.where("owner", "==", owner).get();
+    const snap = await this.bounded(() => this.collection.where("owner", "==", owner).get());
     return snap.docs.map((d) => fromFirestoreData(d.id, d.data()));
   }
 
   async revoke(hash: string): Promise<boolean> {
     const ref = this.collection.doc(hash);
-    const snap = await ref.get();
-    if (!snap.exists) return false;
-    await ref.update({ revokedAt: Timestamp.now() });
-    return true;
+    return this.bounded(() =>
+      this.firestore.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) return false;
+        if (!snap.data()!.revokedAt) tx.update(ref, { revokedAt: Timestamp.now() });
+        return true;
+      })
+    );
   }
 
   async rotate(hash: string): Promise<{ raw: string; record: ApiKeyRecord } | null> {
     const ref = this.collection.doc(hash);
-    const snap = await ref.get();
-    if (!snap.exists) return null;
-    const old = fromFirestoreData(snap.id, snap.data()!);
-    if (old.revokedAt) return null;
+    // Minted once, outside the callback: Firestore re-runs it on contention, and a retry must
+    // not hand the caller a raw key that differs from the document it committed.
+    const raw = generateApiKey();
+    const newHash = hashApiKey(raw);
+    return this.bounded(() =>
+      this.firestore.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) return null;
+        const old = fromFirestoreData(snap.id, snap.data()!);
+        if (old.revokedAt) return null;
 
-    // New key first, then revoke the old one: a crash between the two steps leaves both keys
-    // active (recoverable - just call revoke again) rather than leaving the caller with zero
-    // working keys.
-    const created = await this.create(old.owner, old.rateLimit);
-    await this.collection.doc(created.record.hash).update({ rotatedFrom: hash });
-    await ref.update({ revokedAt: Timestamp.now() });
-    return { raw: created.raw, record: { ...created.record, rotatedFrom: hash } };
+        const record: ApiKeyRecord = {
+          hash: newHash,
+          owner: old.owner,
+          createdAt: new Date(),
+          revokedAt: null,
+          rotatedFrom: hash,
+          rateLimit: old.rateLimit,
+        };
+        tx.create(this.collection.doc(newHash), toFirestoreData(record));
+        tx.update(ref, { revokedAt: Timestamp.now() });
+        return { raw, record };
+      })
+    );
   }
 }
 
-/** In-process test double - every unit/e2e test uses this, never live Firestore. */
+/** In-process test double - every unit/e2e test uses this, never live Firestore. Every check and
+ *  its write share one synchronous section, and records leave as copies, so neither concurrency
+ *  nor a caller's mutation can diverge from Firestore's behavior. */
 export class InMemoryApiKeyStore implements ApiKeyStore {
   private readonly records = new Map<string, ApiKeyRecord>();
+
+  private issue(
+    owner: string,
+    rateLimit: RateLimitOverride | null,
+    rotatedFrom: string | null
+  ): { raw: string; record: ApiKeyRecord } {
+    const raw = generateApiKey();
+    const record: ApiKeyRecord = {
+      hash: hashApiKey(raw),
+      owner,
+      createdAt: new Date(),
+      revokedAt: null,
+      rotatedFrom,
+      rateLimit: rateLimit ? { ...rateLimit } : null,
+    };
+    this.records.set(record.hash, record);
+    return { raw, record: copyRecord(record) };
+  }
 
   async create(
     owner: string,
     rateLimit: RateLimitOverride | null = null
   ): Promise<{ raw: string; record: ApiKeyRecord }> {
-    const raw = generateApiKey();
-    const hash = hashApiKey(raw);
-    const record: ApiKeyRecord = {
-      hash,
-      owner,
-      createdAt: new Date(),
-      revokedAt: null,
-      rotatedFrom: null,
-      rateLimit,
-    };
-    this.records.set(hash, record);
-    return { raw, record };
+    return this.issue(owner, rateLimit, null);
   }
 
   async resolve(rawKey: string): Promise<ApiKeyRecord | null> {
     const record = this.records.get(hashApiKey(rawKey));
-    return record && !record.revokedAt ? record : null;
+    return record && !record.revokedAt ? copyRecord(record) : null;
+  }
+
+  async findByHash(hash: string): Promise<ApiKeyRecord | null> {
+    const record = this.records.get(hash);
+    return record ? copyRecord(record) : null;
   }
 
   async listByOwner(owner: string): Promise<ApiKeyRecord[]> {
-    return [...this.records.values()].filter((r) => r.owner === owner);
+    return [...this.records.values()].filter((r) => r.owner === owner).map(copyRecord);
   }
 
   async revoke(hash: string): Promise<boolean> {
     const record = this.records.get(hash);
     if (!record) return false;
-    record.revokedAt = new Date();
+    record.revokedAt ??= new Date();
     return true;
   }
 
   async rotate(hash: string): Promise<{ raw: string; record: ApiKeyRecord } | null> {
     const old = this.records.get(hash);
     if (!old || old.revokedAt) return null;
-    const created = await this.create(old.owner, old.rateLimit);
-    created.record.rotatedFrom = hash;
     old.revokedAt = new Date();
-    return created;
+    return this.issue(old.owner, old.rateLimit, hash);
   }
 }
 

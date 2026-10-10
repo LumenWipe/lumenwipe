@@ -205,7 +205,7 @@ export class IntegratorController {
   }
 
   private async requireOwned(owner: string, id: string): Promise<void> {
-    const owned = (await this.store.listByOwner(owner)).some((r) => r.hash === id);
-    if (!owned) fail("api_key_not_found", "No key with that id.", 404);
+    const record = await this.store.findByHash(id);
+    if (!record || record.owner !== owner) fail("api_key_not_found", "No key with that id.", 404);
   }
 }
