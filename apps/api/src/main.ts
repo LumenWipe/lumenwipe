@@ -8,6 +8,7 @@ import { configureApp } from "./configure-app";
 import { createOpenApiDocument } from "./openapi";
 import { checkEnv, formatEnvFailure } from "./config/validate-env";
 import { deprecatedEnvWarnings } from "./config/networks";
+import { registryExpiryWarning } from "./lib/exchange-registry";
 
 async function bootstrap(): Promise<void> {
   // Before Nest builds anything. A service that starts without its configuration and fails
@@ -25,6 +26,8 @@ async function bootstrap(): Promise<void> {
   // should learn it here rather than from a user hitting the disabled path.
   for (const w of warnings) bootLogger.warn(w.message);
   for (const w of deprecatedEnvWarnings) bootLogger.warn(w);
+  const registryWarning = registryExpiryWarning();
+  if (registryWarning) bootLogger.warn(registryWarning);
   configureApp(app);
 
   // Deliberately reachable without an API key (#59): the schema itself carries no secret or

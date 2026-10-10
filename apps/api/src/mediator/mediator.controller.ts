@@ -16,7 +16,7 @@ import { NetworkFirstGuard } from "@/common/guards/network-first.guard";
 import { GAddressPipe } from "@/common/pipes/g-address.pipe";
 import { NetworkPipe } from "@/common/pipes/network.pipe";
 import { isValidGAddress } from "@/lib/utils/validation";
-import { lookupExchange } from "@/lib/exchange-registry";
+import { isRegistryFresh, lookupExchange } from "@/lib/exchange-registry";
 import { getMediatorKeypair } from "@/lib/stellar/mediator-server";
 import { readNativeBalance } from "@/lib/stellar/account-state";
 import { AccountNotFoundError } from "@/lib/utils/errors";
@@ -152,6 +152,7 @@ export class MediatorController {
   ) {
     // Whether this server can actually co-sign the mediator flow (secret configured).
     const available = getMediatorKeypair(network) !== null;
+    const registryFresh = isRegistryFresh();
 
     const exchange = lookupExchange(address);
     if (exchange) {
@@ -162,6 +163,7 @@ export class MediatorController {
         memoType: exchange.memoType,
         exchangeName: exchange.name,
         available,
+        registryFresh,
       };
     }
 
@@ -174,6 +176,7 @@ export class MediatorController {
         memoType: null,
         exchangeName: null,
         available,
+        registryFresh,
       };
     } catch (err) {
       if (err instanceof AccountNotFoundError) {
@@ -184,6 +187,7 @@ export class MediatorController {
           memoType: null,
           exchangeName: null,
           available,
+          registryFresh,
         };
       }
       throw err;

@@ -178,4 +178,6 @@ export interface MediatorCheckResult {
   exchangeName: string | null;
   /** Whether the server can actually perform the mediator flow (secret configured). */
   available: boolean;
+  /** Whether the exchange registry is inside its verification window; false means exchange closes are refused. */
+  registryFresh: boolean;
 }

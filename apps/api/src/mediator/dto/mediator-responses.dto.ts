@@ -40,4 +40,11 @@ export class MediatorCheckResultDto implements MediatorCheckResult {
     description: "Whether the server can actually perform the mediator flow (secret configured).",
   })
   available!: boolean;
+
+  @ApiProperty({
+    description:
+      "Whether the exchange registry is still inside its verification window. When false, " +
+      "exchange closes are refused with registry_expired.",
+  })
+  registryFresh!: boolean;
 }
