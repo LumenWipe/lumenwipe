@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { CheckCircle, ExternalLink, History, Link2 } from "lucide-react";
+import { AlertTriangle, CheckCircle, ExternalLink, History, Link2 } from "lucide-react";
 import Link from "next/link";
 import type { Network } from "@/config/networks";
 import { SE_EXPLORER_BASE, SV_EXPLORER_BASE } from "@/config/networks";
@@ -9,6 +9,7 @@ import type { AssetDisposition } from "@/types/plan";
 import { useDemolishStore } from "@/store/demolish";
 import { cleanupSession } from "@/lib/session/recovery";
 import { saveHistory } from "@/lib/session/history";
+import { confirmedStepCount, receiptState } from "@/lib/close-state";
 import { formatXlm } from "@/lib/utils/amounts";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
 import { buildTxLedger, labelForTx } from "@/lib/utils/txLedger";
@@ -65,6 +66,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
   const svExplorerBase = SV_EXPLORER_BASE[network];
 
   const confirmedSteps = executionPlan.filter((s) => s.status === "confirmed" && s.txHash);
+  const closed = receiptState(executionPlan) === "closed";
 
   // A sponsored round's `actualFeeLumens` is exactly "0" - a dedicated sponsor account paid the
   // network fee, not this one. Any step not yet confirmed (this page can still be reached mid-
@@ -76,7 +78,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
     .toFixed(7);
 
   useEffect(() => {
-    if (!sessionId || !sourceAddress || !destinationAddress) return;
+    if (!closed || !sessionId || !sourceAddress || !destinationAddress) return;
 
     saveHistory({
       id: sessionId,
@@ -95,7 +97,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       .then(() => cleanupSession(sessionId))
       .catch((err) => console.error("[receipt] save/cleanup failed:", err));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, closed]);
 
   // The "what was done" groups below describe state changes; the transaction ledger
   // describes the real on-chain transactions. A fused close is one transaction, a
@@ -301,43 +303,70 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
     }
   }
 
-  groups.push({
-    type: "MERGE",
-    title: "Account merged",
-    summary: destinationAddress
-      ? mediatorRequired
-        ? `via intermediary to ${shortAddr(destinationAddress)}`
-        : `to ${shortAddr(destinationAddress)}`
-      : "merged to destination",
-    body: (
-      <div className="space-y-1 text-xs text-white/55">
-        {destinationAddress && (
+  if (closed) {
+    groups.push({
+      type: "MERGE",
+      title: "Account merged",
+      summary: destinationAddress
+        ? mediatorRequired
+          ? `via intermediary to ${shortAddr(destinationAddress)}`
+          : `to ${shortAddr(destinationAddress)}`
+        : "merged to destination",
+      body: (
+        <div className="space-y-1 text-xs text-white/55">
+          {destinationAddress && (
+            <p>
+              Destination:{" "}
+              <span className="font-mono-address text-white/70">
+                {shortAddr(destinationAddress)}
+              </span>
+            </p>
+          )}
           <p>
-            Destination:{" "}
-            <span className="font-mono-address text-white/70">{shortAddr(destinationAddress)}</span>
+            {mediatorRequired
+              ? "The merge was routed through a shared intermediary account as a co-signed transfer."
+              : "The account was merged into the destination and removed from the Stellar ledger."}
           </p>
-        )}
-        <p>
-          {mediatorRequired
-            ? "The merge was routed through a shared intermediary account as a co-signed transfer."
-            : "The account was merged into the destination and removed from the Stellar ledger."}
-        </p>
-      </div>
-    ),
-  });
+        </div>
+      ),
+    });
+  }
 
   return (
     <div className="space-y-6">
-      {/* Success banner */}
-      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-6 text-center">
-        <CheckCircle className="h-12 w-12 text-emerald-500 mx-auto mb-3" />
-        <h2 className="mkt-display text-2xl font-bold mb-1 text-white">
-          Account successfully merged
-        </h2>
-        <p className="text-sm text-white/55">
-          All assets have been transferred and the account has been removed from the Stellar ledger.
-        </p>
-      </div>
+      {closed ? (
+        <div
+          role="status"
+          className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-6 text-center"
+        >
+          <CheckCircle className="h-12 w-12 text-emerald-500 mx-auto mb-3" />
+          <h2 className="mkt-display text-2xl font-bold mb-1 text-white">
+            Account successfully merged
+          </h2>
+          <p className="text-sm text-white/55">
+            All assets have been transferred and the account has been removed from the Stellar
+            ledger.
+          </p>
+        </div>
+      ) : (
+        <div
+          role="status"
+          className="bg-warning/10 border border-warning/30 rounded-2xl p-6 text-center"
+        >
+          <AlertTriangle className="h-12 w-12 text-warning mx-auto mb-3" />
+          <h2 className="mkt-display text-2xl font-bold mb-1 text-white">Close not finished</h2>
+          <p className="text-sm text-white/55">
+            {confirmedStepCount(executionPlan)} of {executionPlan.length} transactions confirmed.
+            The account still exists. Resume the close to finish it.
+          </p>
+          <Link
+            href={`/${network}`}
+            className="mt-4 inline-flex items-center justify-center rounded-xl bg-stellar px-4 py-2.5 text-sm font-semibold text-black transition-colors hover:bg-stellar/90"
+          >
+            Resume
+          </Link>
+        </div>
+      )}
 
       {/* Grouped summary */}
       <div className="mkt-panel rounded-2xl overflow-hidden">
@@ -431,40 +460,54 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
         </div>
       </div>
 
-      {/* History saved notice */}
-      <div className="flex items-start gap-2.5 bg-white/[0.03] border border-white/10 rounded-xl p-3 text-xs text-white/50">
-        <History className="h-4 w-4 shrink-0 mt-0.5 text-stellar" />
-        Receipt saved to local history. You can review past merges anytime from the history icon in
-        the navigation bar.
-      </div>
+      {closed && (
+        <div className="flex items-start gap-2.5 bg-white/[0.03] border border-white/10 rounded-xl p-3 text-xs text-white/50">
+          <History className="h-4 w-4 shrink-0 mt-0.5 text-stellar" />
+          Receipt saved to local history. You can review past merges anytime from the history icon
+          in the navigation bar.
+        </div>
+      )}
 
-      {/* Actions */}
-      <div className="flex gap-3">
-        <button
-          onClick={reset}
-          className="flex-1 py-2.5 px-4 rounded-xl border border-white/15 text-sm font-medium text-white/85 hover:border-white/30 hover:text-white transition-colors"
-        >
-          Merge another account
-        </button>
+      {!closed && sourceAddress && (
         <Link
-          href={`${explorerBase}/account/${destinationAddress}`}
+          href={`${explorerBase}/account/${sourceAddress}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-stellar text-black text-sm font-semibold hover:bg-stellar/90 transition-colors"
+          className="flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl border border-white/15 text-sm font-medium text-white/85 hover:border-white/30 hover:text-white transition-colors"
         >
-          Stellar Expert
+          View the account on Stellar Expert
           <ExternalLink className="h-3.5 w-3.5" />
         </Link>
-        <Link
-          href={`${svExplorerBase}/account/${destinationAddress}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-stellar text-black text-sm font-semibold hover:bg-stellar/90 transition-colors"
-        >
-          StellarView
-          <ExternalLink className="h-3.5 w-3.5" />
-        </Link>
-      </div>
+      )}
+
+      {closed && (
+        <div className="flex gap-3">
+          <button
+            onClick={reset}
+            className="flex-1 py-2.5 px-4 rounded-xl border border-white/15 text-sm font-medium text-white/85 hover:border-white/30 hover:text-white transition-colors"
+          >
+            Merge another account
+          </button>
+          <Link
+            href={`${explorerBase}/account/${destinationAddress}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-stellar text-black text-sm font-semibold hover:bg-stellar/90 transition-colors"
+          >
+            Stellar Expert
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Link>
+          <Link
+            href={`${svExplorerBase}/account/${destinationAddress}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-stellar text-black text-sm font-semibold hover:bg-stellar/90 transition-colors"
+          >
+            StellarView
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
