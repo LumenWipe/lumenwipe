@@ -20,7 +20,8 @@ import { applySlippage } from "@/lib/stellar/path-finding";
 import * as pathFindingModule from "@/lib/stellar/path-finding";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { buildCloseTransactions } from "@/lib/close-api/build-transactions";
-import type { AccountState, ConversionPath } from "@lumenwipe/types";
+import type { AccountState, ConversionPath, Trustline } from "@lumenwipe/types";
+import { mirrorSnapshot } from "../unit/fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
 
 const SOURCE = Keypair.random().publicKey();
@@ -56,7 +57,7 @@ test("applySlippage returns exactly '0' when the slippage-adjusted amount is unu
 
 // ─── build-time re-quote embeds the fresh destMin, not a stale one ──────────────────────────
 
-function accountState(balance: string): AccountState {
+function makeState(balance: string): AccountState {
   return {
     address: SOURCE,
     network: "testnet",
@@ -83,12 +84,18 @@ function accountState(balance: string): AccountState {
   };
 }
 
+let snapshot: Trustline[] = [];
+function accountState(...args: Parameters<typeof makeState>): AccountState {
+  const state = makeState(...args);
+  snapshot = state.trustlines;
+  return state;
+}
+
 function rpcServerStub() {
   return {
     getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
     getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
-    getAssetBalance: () => Promise.resolve("100.0000000"),
+    getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot),
   } as unknown as ReturnType<typeof rpcModule.getRpcServer>;
 }
 

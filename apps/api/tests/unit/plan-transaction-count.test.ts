@@ -1,6 +1,7 @@
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { Account, Keypair } from "@stellar/stellar-sdk";
 import type { AccountState, CloseTransaction, Trustline } from "@lumenwipe/types";
+import { emptyLines } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { buildPlan } from "@/lib/stellar/tx-builder";
@@ -55,7 +56,7 @@ function stubRpc(): void {
   spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
     getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
     getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
+    getLedgerEntries: emptyLines,
   })) as unknown as typeof rpcModule.getRpcServer);
 }
 

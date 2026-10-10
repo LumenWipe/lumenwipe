@@ -48,7 +48,13 @@ import type {
   CloseTransaction,
   TransferDestinations,
 } from "@lumenwipe/types";
-import { MissingTransferDestinationError, isTokenContract } from "@/lib/close-api/decisions";
+import {
+  MissingTransferDestinationError,
+  claimedAmountsPerAsset,
+  isTokenContract,
+} from "@/lib/close-api/decisions";
+import type { TransferDestinationProblem } from "@/lib/close-api/transfer-destinations";
+import { findTransferProblems, type TransferCheck } from "@/lib/close-api/transfer-revalidation";
 import {
   TokenTransferBlockedError,
   buildTokenTransferRound,
@@ -108,6 +114,13 @@ function buildSummary(input: CloseOperationsInput): string {
   if (input.includeMerge) parts.push("merge the account into the destination");
   const joined = parts.length > 0 ? parts.join(", ") : "close the account";
   return `${joined.charAt(0).toUpperCase()}${joined.slice(1)}.`;
+}
+
+function assertTransfersFit(problems: TransferDestinationProblem[]): void {
+  const first = problems[0];
+  if (first) {
+    throw new CloseBuildError("transfer_destination_unusable", first.message, 422);
+  }
 }
 
 /** The next batch of unsigned transactions plus whether the client must call again. */
@@ -326,6 +339,25 @@ export async function buildCloseTransactions(
     );
     const claimRoundBalances = toClaim.concat(toAddTrustlineThenClaim);
     if (claimRoundBalances.length > 0) {
+      // The claims raise what a later transfer moves, and the plan-time check never saw that.
+      // Refused here, before the claims land, rather than at the transfer round after them.
+      const claimed = claimedAmountsPerAsset(
+        { trustlines: accountState.trustlines, claimableBalances: existing },
+        claimableBalanceSelections
+      );
+      const projected: TransferCheck[] = [];
+      for (const [asset, arriving] of claimed) {
+        const destination = transferDestinations[asset];
+        if (dispositions[asset] !== "transfer" || !destination || isTokenContract(asset)) continue;
+        const tl = accountState.trustlines.find((t) => t.asset === asset);
+        const held = tl ? await fetchLiveTrustlineBalance(tl, accountState.address, server) : "0";
+        projected.push({
+          asset,
+          destination,
+          amount: BigInt(xlmToStroops(held)) + arriving,
+        });
+      }
+      assertTransfersFit(await findTransferProblems(server, projected));
       const claimInput: CloseOperationsInput = {
         needsSignerNormalization: false,
         signers: accountState.signers,
@@ -366,7 +398,7 @@ export async function buildCloseTransactions(
   const withActions = await Promise.all(
     accountState.trustlines.map(async (tl): Promise<AssetAction | null> => {
       const liveBalance = await fetchLiveTrustlineBalance(tl, accountState.address, server);
-      if (parseFloat(liveBalance) <= 0) return null;
+      if (BigInt(xlmToStroops(liveBalance)) <= 0n) return null;
       const effectiveTl = { ...tl, balance: liveBalance };
       const disposition = dispositions[tl.asset] ?? "convert";
       // Only a Soroban token can be left behind; a trustline holding a balance stops the merge.
@@ -395,6 +427,23 @@ export async function buildCloseTransactions(
     })
   );
   const assetActions = withActions.filter((a): a is AssetAction => a !== null);
+
+  assertTransfersFit(
+    await findTransferProblems(
+      server,
+      assetActions.flatMap((a) =>
+        a.action === "transfer"
+          ? [
+              {
+                asset: a.trustline.asset,
+                destination: a.destination,
+                amount: BigInt(xlmToStroops(a.trustline.balance)),
+              },
+            ]
+          : []
+      )
+    )
+  );
 
   // The exchange registry dictates the memo type; the client only supplies the value.
   const needsMediator = requiresMediatorForAddress(destinationAddress);

@@ -2,6 +2,15 @@ import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import type { AccountState, Trustline } from "@lumenwipe/types";
+import {
+  AUTHORIZED,
+  AUTHORIZED_TO_MAINTAIN_LIABILITIES,
+  ledgerEntries,
+  mirrorSnapshot,
+  type LineSpec,
+} from "./fixtures/ledger-trustlines";
+import { LiveReadError } from "@/lib/stellar/live-trustline";
+import { DestinationReadError } from "@/lib/close-api/merge-preflight";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 // Wiring coverage for the transfer disposition (#111).
@@ -23,7 +32,7 @@ function trustline(asset: string, balance: string): Trustline {
   return { asset, balance, authorized: true, issuer: issuer!, code: code!, limit: "1000" };
 }
 
-function accountState(over: Partial<AccountState> = {}): AccountState {
+function makeState(over: Partial<AccountState> = {}): AccountState {
   return {
     address: SOURCE,
     network: "testnet",
@@ -49,13 +58,21 @@ function accountState(over: Partial<AccountState> = {}): AccountState {
   };
 }
 
+let snapshot: Trustline[] = [];
+function accountState(...args: Parameters<typeof makeState>): AccountState {
+  const state = makeState(...args);
+  snapshot = state.trustlines;
+  return state;
+}
+
 /** Reports the trustline balance unchanged, so the live re-read is not what these test. */
 function rpcServerStub() {
   return {
     getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
     getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
-    getAssetBalance: () => Promise.reject(new Error("not stubbed")),
+    getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot, {
+      [`${TRANSFER_TO}|${USDC}`]: { balance: 0n },
+    }),
   };
 }
 
@@ -188,4 +205,111 @@ test("the summary names the destination, not just a count", async () => {
   const summary = result.transactions[0]!.intent.summary;
   expect(summary).toContain(TRANSFER_TO);
   expect(summary).toContain("USDC");
+});
+
+const STROOP = 1n;
+const XLM = 10_000_000n;
+
+/** The source holds `live` of USDC on the ledger; the destination's line is `destination`. */
+function useLedger(live: bigint | null, destination: LineSpec | null): void {
+  const lines: Record<string, LineSpec> = {};
+  if (live !== null) lines[`${SOURCE}|${USDC}`] = { balance: live };
+  if (destination) lines[`${TRANSFER_TO}|${USDC}`] = destination;
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
+    ...rpcServerStub(),
+    getLedgerEntries: ledgerEntries(lines),
+  })) as unknown as typeof rpcModule.getRpcServer);
+}
+
+async function buildTransfer(snapshotBalance = "100") {
+  const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
+  return buildCloseTransactions(
+    accountState({ trustlines: [trustline(USDC, snapshotBalance)] }),
+    DEST,
+    { [USDC]: "transfer" },
+    "testnet",
+    null,
+    {},
+    { [USDC]: TRANSFER_TO }
+  );
+}
+
+test("a failed live balance read is refused, never replaced by the snapshot balance", async () => {
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
+    ...rpcServerStub(),
+    getLedgerEntries: () => Promise.reject(new Error("rpc down")),
+  })) as unknown as typeof rpcModule.getRpcServer);
+  await expect(buildTransfer()).rejects.toBeInstanceOf(LiveReadError);
+});
+
+test("a trustline the ledger no longer holds is skipped, not paid from the snapshot", async () => {
+  useLedger(null, { balance: 0n });
+  const result = await buildTransfer();
+  expect(opsOf(result.transactions[0]!.xdr).some((o) => o.type === "payment")).toBe(false);
+});
+
+test("a balance that changed between plan and build is paid from the live value", async () => {
+  useLedger(130_5000000n, { balance: 0n });
+  const result = await buildTransfer("100");
+  const payment = opsOf(result.transactions[0]!.xdr).find((o) => o.type === "payment") as {
+    amount: string;
+  };
+  expect(payment.amount).toBe("130.5000000");
+});
+
+test("buying liabilities reduce destination headroom and an exact fit still passes", async () => {
+  const limit = 1000n * XLM;
+  const fit = { balance: 800n * XLM, buying: 100n * XLM, limit };
+  useLedger(100n * XLM, fit);
+  const ok = await buildTransfer("100");
+  expect(opsOf(ok.transactions[0]!.xdr).some((o) => o.type === "payment")).toBe(true);
+
+  mock.restore();
+  useLedger(100n * XLM + STROOP, fit);
+  await expect(buildTransfer("100")).rejects.toMatchObject({
+    code: "transfer_destination_unusable",
+    status: 422,
+  });
+});
+
+test("headroom is exact beyond double precision", async () => {
+  const limit = 922337203685_4775807n;
+  useLedger(2n, { balance: limit - 1n, buying: 0n, limit });
+  await expect(buildTransfer("100")).rejects.toMatchObject({
+    code: "transfer_destination_unusable",
+  });
+  mock.restore();
+  useLedger(2n, { balance: limit - 2n, buying: 0n, limit });
+  const result = await buildTransfer("100");
+  expect(result.transactions).toHaveLength(1);
+});
+
+test("a destination line authorized only to maintain liabilities cannot receive", async () => {
+  useLedger(100n * XLM, { balance: 0n, flags: AUTHORIZED_TO_MAINTAIN_LIABILITIES });
+  await expect(buildTransfer("100")).rejects.toMatchObject({
+    code: "transfer_destination_unusable",
+  });
+  mock.restore();
+  useLedger(100n * XLM, { balance: 0n, flags: AUTHORIZED });
+  expect((await buildTransfer("100")).transactions).toHaveLength(1);
+});
+
+test("a destination that lost its trustline since the plan is refused", async () => {
+  useLedger(100n * XLM, null);
+  await expect(buildTransfer("100")).rejects.toMatchObject({
+    code: "transfer_destination_unusable",
+  });
+});
+
+test("a failed destination read is a retryable error, not a missing trustline", async () => {
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
+    ...rpcServerStub(),
+    getLedgerEntries: (...keys: Parameters<ReturnType<typeof ledgerEntries>>) => {
+      const owner = keys[0]!.trustLine().accountId().ed25519();
+      return owner.equals(Keypair.fromPublicKey(SOURCE).rawPublicKey())
+        ? ledgerEntries({ [`${SOURCE}|${USDC}`]: { balance: 100n * XLM } })(...keys)
+        : Promise.reject(new Error("rpc down"));
+    },
+  })) as unknown as typeof rpcModule.getRpcServer);
+  await expect(buildTransfer("100")).rejects.toBeInstanceOf(DestinationReadError);
 });

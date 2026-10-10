@@ -1,6 +1,7 @@
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
-import type { AccountState, SponsoredEntry } from "@lumenwipe/types";
+import type { AccountState, SponsoredEntry, Trustline } from "@lumenwipe/types";
+import { ledgerEntries, mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import * as rpcModule from "@/lib/stellar/rpc";
 
@@ -16,7 +17,7 @@ const ISSUER = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
 const USDC = `USDC:${ISSUER}`;
 
-function accountState(over: Partial<AccountState> = {}): AccountState {
+function makeState(over: Partial<AccountState> = {}): AccountState {
   return {
     address: SOURCE,
     network: "testnet",
@@ -42,6 +43,13 @@ function accountState(over: Partial<AccountState> = {}): AccountState {
   };
 }
 
+let snapshot: Trustline[] = [];
+function accountState(...args: Parameters<typeof makeState>): AccountState {
+  const state = makeState(...args);
+  snapshot = state.trustlines;
+  return state;
+}
+
 function balanceId(hexChar: string) {
   return `00000000${hexChar.repeat(64)}`;
 }
@@ -63,7 +71,7 @@ function rpcServerStub() {
   return {
     getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
     getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
+    getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot),
   };
 }
 
@@ -216,4 +224,59 @@ test("buildCloseTransactions › sponsored entry the live re-read marks unafford
   expect(result.transactions[0].covers).not.toContain("REVOKE_SPONSORSHIP");
   const ops = opsOf(result.transactions[0].xdr);
   expect(ops.some((o) => o.type === "revokeSignerSponsorship")).toBe(false);
+});
+
+const TRANSFER_TO = Keypair.random().publicKey();
+const XLM = 10_000_000n;
+
+function heldUsdc(balance: string): Trustline {
+  return { asset: USDC, balance, authorized: true, issuer: ISSUER, code: "USDC", limit: "1000" };
+}
+
+function useTransferLedger(destinationLimit: bigint): void {
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
+    ...rpcServerStub(),
+    getLedgerEntries: ledgerEntries({
+      [`${SOURCE}|${USDC}`]: { balance: 50n * XLM },
+      [`${TRANSFER_TO}|${USDC}`]: { balance: 0n, limit: destinationLimit },
+    }),
+  })) as unknown as typeof rpcModule.getRpcServer);
+}
+
+async function buildTransferWithClaim(selection: "forfeit" | undefined) {
+  const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
+  const balance = claimableBalance("d", USDC, "60.0000000");
+  return buildCloseTransactions(
+    accountState({ trustlines: [heldUsdc("50")], claimableBalances: [balance] }),
+    DEST,
+    { [USDC]: "transfer" },
+    "testnet",
+    null,
+    selection ? { [balance.id]: selection } : {},
+    { [USDC]: TRANSFER_TO }
+  );
+}
+
+test("buildCloseTransactions › a claim that pushes the transfer past the destination limit is refused before the claim round", async () => {
+  useTransferLedger(100n * XLM);
+  await expect(buildTransferWithClaim(undefined)).rejects.toMatchObject({
+    code: "transfer_destination_unusable",
+    status: 422,
+  });
+});
+
+test("buildCloseTransactions › a claim that still fits under the destination limit proceeds to the claim round", async () => {
+  useTransferLedger(110n * XLM);
+  const result = await buildTransferWithClaim(undefined);
+  expect(result.requiresAnotherCall).toBe(true);
+  expect(result.transactions[0]!.covers).toContain("CLAIM_BALANCES");
+});
+
+test("buildCloseTransactions › a forfeited claim does not count toward the transfer amount", async () => {
+  useTransferLedger(60n * XLM);
+  const result = await buildTransferWithClaim("forfeit");
+  const ops = opsOf(result.transactions[0]!.xdr);
+  expect(ops.some((o) => o.type === "claimClaimableBalance")).toBe(false);
+  const payment = ops.find((o) => o.type === "payment") as { amount: string };
+  expect(payment.amount).toBe("50.0000000");
 });

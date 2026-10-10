@@ -287,3 +287,28 @@ test("an exact fit in decimals is not refused by binary-fraction error", async (
   // message quoting numbers that visibly add up.
   expect(problems).toEqual([]);
 });
+
+test("buying liabilities on the destination line reduce its headroom", async () => {
+  const withOffers = { ...trustline(USDC, "800", "1000"), buyingLiabilities: "100.0000001" };
+  const problems = await validateTransferDestinations(
+    { [USDC]: DESTINATION },
+    [trustline(USDC, "100")],
+    SOURCE,
+    "testnet",
+    readerFor([account(DESTINATION, [withOffers])])
+  );
+  expect(problems.map((p) => p.code)).toEqual(["destination_limit_too_low"]);
+  expect(problems[0]!.message).toContain("open buy offers reserve 100.0000001");
+});
+
+test("an exact fit under buying liabilities is accepted", async () => {
+  const withOffers = { ...trustline(USDC, "800", "1000"), buyingLiabilities: "100" };
+  const problems = await validateTransferDestinations(
+    { [USDC]: DESTINATION },
+    [trustline(USDC, "100")],
+    SOURCE,
+    "testnet",
+    readerFor([account(DESTINATION, [withOffers])])
+  );
+  expect(problems).toEqual([]);
+});
