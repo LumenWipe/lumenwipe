@@ -50,7 +50,7 @@ Liquidity pool shares are not unwound by LumenWipe. An account that holds them i
 
 Most accounts close in a single transaction, signed once. More are needed in a few cases:
 
-- **An exchange destination** adds one transaction, the mediator transfer. See [exchange closes](/guides/exchanges-and-the-mediator).
+- **An exchange destination** adds one transaction, the [mediator](/reference/glossary#mediator) transfer. See [exchange closes](/guides/exchanges-and-the-mediator).
 - **Claimable balances** are claimed first and the account is closed second, so the proceeds are not lost.
 - **A Soroban step**, such as a DeFi exit or a Soroswap aggregator swap, is its own transaction, because it cannot be mixed with other operations.
 - **More than 100 operations** are split into the fewest transactions the protocol limit allows.

@@ -15,7 +15,7 @@ LumenWipe prevents this by exiting positions first.
 | Protocol    | Position                               | How it exits                                             |
 | ----------- | -------------------------------------- | -------------------------------------------------------- |
 | Classic DEX | Open offers                            | Cancelled                                                |
-| Classic AMM | Liquidity pool shares                  | Withdrawn, then the pool trustline is removed            |
+| Classic AMM | Liquidity pool shares                  | Not unwound: reported as a blocker, withdraw elsewhere   |
 | Blend       | Supply, borrow, and backstop positions | Repaid and withdrawn, backstop through queued withdrawal |
 | Aquarius    | AMM liquidity and AQUA rewards         | Withdrawn and claimed                                    |
 | Soroswap    | AMM liquidity                          | Liquidity removed through the router                     |

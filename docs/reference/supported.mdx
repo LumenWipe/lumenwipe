@@ -1,0 +1,133 @@
+---
+title: "Supported"
+description: "What LumenWipe supports today, by network: protocols, assets, destinations, signers, wallets and limits, each with the date it was last verified."
+icon: "table-list"
+---
+
+Every table below states the network it applies to and the date it was last checked against the code or registry that enforces it. Tables marked generated are rebuilt from the repository, and a test fails when this page drifts from them. Rows marked "verified 2026-10-10" were read against the code on that date.
+
+## Availability by network
+
+As of 2026-10-10:
+
+| Capability                                              | Mainnet                                                                                                                                                                                      | Testnet   |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| Exchange close through the mediator (the relay account) | Follows the deployment status in the [monitoring plan](/monitoring-plan); the API answers a mainnet exchange close with a "not configured" error unless a mainnet mediator key is configured | Available |
+| Sponsored fees for accounts at their minimum balance    | Follows the deployment status in the [monitoring plan](/monitoring-plan)                                                                                                                     | Available |
+| FxDAO exit                                              | Blocked: see the protocols table                                                                                                                                                             | Available |
+
+## Protocols
+
+Position types and exits are described in [Exiting protocol positions](/guides/exiting-protocol-positions). Rows come from the contract registry the API and the browser both read.
+
+{/* generated:protocols:start */}
+
+| Protocol | Position type                                     | Exit action                                                          | Network | Registry status                                                              | Known limits                                                                  |
+| -------- | ------------------------------------------------- | -------------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Blend    | Supply, borrow, and backstop positions            | Repaid and withdrawn, backstop through queued withdrawal             | Mainnet | Registered, 6 of 6 entries verified live (factory, backstop, pool)           | A debt the spendable balance cannot cover blocks with the exact shortfall     |
+| Blend    | Supply, borrow, and backstop positions            | Repaid and withdrawn, backstop through queued withdrawal             | Testnet | Registered, 3 of 3 entries verified live (factory, backstop, pool)           | A debt the spendable balance cannot cover blocks with the exact shortfall     |
+| Aquarius | AMM liquidity and AQUA rewards                    | Withdrawn and claimed                                                | Mainnet | Registered, 4 of 4 entries verified live (router, pool)                      | A pool whose code version is not in the registry is flagged for manual review |
+| Aquarius | AMM liquidity and AQUA rewards                    | Withdrawn and claimed                                                | Testnet | Registered, 4 of 4 entries verified live (router, pool)                      | A pool whose code version is not in the registry is flagged for manual review |
+| Soroswap | AMM liquidity                                     | Liquidity removed through the router                                 | Mainnet | Registered, 4 of 4 entries verified live (factory, router, pair, aggregator) | An unknown contract version is flagged for manual review                      |
+| Soroswap | AMM liquidity                                     | Liquidity removed through the router                                 | Testnet | Registered, 3 of 3 entries verified live (factory, router, pair)             | An unknown contract version is flagged for manual review                      |
+| Phoenix  | AMM liquidity, with optional staking              | Each stake unbonded first, then liquidity withdrawn on a later round | Mainnet | Registered, 4 of 4 entries verified live (pool, stake)                       | Unbonding and withdrawal are separate transactions                            |
+| Phoenix  | AMM liquidity, with optional staking              | Each stake unbonded first, then liquidity withdrawn on a later round | Testnet | Registered, 4 of 4 entries verified live (factory, router, pool, stake)      | Unbonding and withdrawal are separate transactions                            |
+| FxDAO    | Collateralized debt vaults                        | Debt repaid in full, collateral returned by the protocol             | Mainnet | Registered, not verified live: no exit is built (vault)                      | The debt must be repaid from the account's own balance of the stablecoin      |
+| FxDAO    | Collateralized debt vaults                        | Debt repaid in full, collateral returned by the protocol             | Testnet | Registered, 1 of 1 entries verified live (vault)                             | The debt must be repaid from the account's own balance of the stablecoin      |
+| xBull    | None (conversion quote source for Soroban tokens) | A conversion to XLM through xBull's router, raced against Soroswap   | Mainnet | Registered, 1 of 1 entries verified live (router)                            | Mainnet only, and only when the operator has enabled it                       |
+
+Generated from `contract-registry.json`. Registry last verified 2026-10-10, valid until 2027-01-08.
+
+{/* generated:protocols:end */}
+
+Verified against `apps/api/src/config/contract-registry.json` and the exit adapters under `apps/api/src/lib/defi-exits/`.
+
+## Assets
+
+| Asset kind              | How it is handled                                                                                                                    | Network                                                 | Verified   |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- | ---------- |
+| Classic assets          | Converted to XLM through SDEX path payments or returned to the issuer, then the trustline is removed                                 | Mainnet and testnet                                     | 2026-10-10 |
+| Classic AMM pool shares | Not unwound by LumenWipe: reported as a blocker. Withdraw the shares with another tool first, then the pool trustline can be removed | Mainnet and testnet                                     | 2026-10-10 |
+| Soroban tokens          | Sent as the token, converted to XLM behind a minimum you accept, or left on record, as you decide                                    | Mainnet and testnet, conversion routes by network below | 2026-10-10 |
+| Stellar Asset Contracts | Classic assets used inside Soroban; allowances granted on them can be revoked                                                        | Mainnet and testnet                                     | 2026-10-10 |
+
+{/* generated:tokens:start */}
+
+| Network | Soroban tokens on the bundled list                                  | Last verified |
+| ------- | ------------------------------------------------------------------- | ------------- |
+| Mainnet | deJTRSY, deJAAA                                                     | 2026-09-07    |
+| Testnet | XTAR, USDC, XRP, ARST, AQUA, EURC, BTC, BRL, UXIV, CYON, JAMN, VEOF | 2026-09-07    |
+
+The list is a discovery aid. Generated from `soroban-token-lists.json`.
+
+{/* generated:tokens:end */}
+
+### Quote sources for conversions
+
+| Source                      | Used for                                         | Network                                                         | Verified   |
+| --------------------------- | ------------------------------------------------ | --------------------------------------------------------------- | ---------- |
+| SDEX paths                  | Classic asset conversion                         | Mainnet and testnet                                             | 2026-10-10 |
+| Soroswap router, aggregator | Soroban token conversion                         | Mainnet: aggregator and router. Testnet: router only (registry) | 2026-10-10 |
+| xBull swap router           | Soroban token conversion, raced against Soroswap | Mainnet only, and only when the operator enables it             | 2026-10-10 |
+
+## Destinations
+
+| Destination | How it is closed to                                                                                                        | Network                                                     | Verified   |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ---------- |
+| Wallet      | A single `ACCOUNT_MERGE` into the destination account                                                                      | Mainnet and testnet                                         | 2026-10-10 |
+| Exchange    | A merge into the mediator (the relay account), then a payment from it to the exchange address you typed, with the memo     | Testnet today, see [availability](#availability-by-network) | 2026-10-10 |
+| Anchor      | Not a distinct destination type. There is no anchor-specific handling: an anchor address is treated as an ordinary account | Mainnet and testnet                                         | 2026-10-10 |
+
+{/* generated:destinations:start */}
+
+The exchange registry lists 14 exchanges across 20 deposit addresses: Binance, Bitfinex, Bitpanda, Bitstamp, Blockchain.com, CEX.IO, Coinbase, Crypto.com, Gate.io, Kraken, KuCoin, OKX, Robinhood, Upbit. Every listed address requires a memo (memo types in the registry: id, text). Last verified 2026-10-10, valid until 2027-01-08.
+
+{/* generated:destinations:end */}
+
+The flow is explained in [Exchanges and the mediator](/guides/exchanges-and-the-mediator).
+
+## Signer types
+
+| Signer                     | How it signs                                                                                | Network             | Verified   |
+| -------------------------- | ------------------------------------------------------------------------------------------- | ------------------- | ---------- |
+| Wallet                     | The wallet signs the unsigned transaction and returns it                                    | Mainnet and testnet | 2026-10-10 |
+| Secret key                 | Held in memory for the session only                                                         | Mainnet and testnet | 2026-10-10 |
+| Several signers (multisig) | Signatures accumulate on the same transaction until the threshold is met                    | Mainnet and testnet | 2026-10-10 |
+| hash(x) signer             | You enter the preimage, and the app checks it hashes to the signer key before using it      | Mainnet and testnet | 2026-10-10 |
+| Pre-authorized transaction | Only by pasting the exact pre-authorized transaction, which the app does not verify for you | Mainnet and testnet | 2026-10-10 |
+
+See [Signing options](/guides/signing-options).
+
+## Wallets
+
+The list is read from the wallet modules the web app enables (`apps/web/lib/wallet-kit/modules.ts`), through Stellar Wallets Kit.
+
+{/* generated:wallets:start */}
+
+| Wallet                                           | When enabled                                                                          | Network                        |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------- | ------------------------------ |
+| Freighter                                        | Always enabled                                                                        | Both, set by the app's network |
+| xBull                                            | Always enabled                                                                        | Both, set by the app's network |
+| Albedo                                           | Always enabled                                                                        | Both, set by the app's network |
+| Rabet                                            | Always enabled                                                                        | Both, set by the app's network |
+| Hana                                             | Always enabled                                                                        | Both, set by the app's network |
+| WalletConnect, which is also how LOBSTR connects | Enabled when `NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID` is set on the deployment | Both, set by the app's network |
+
+{/* generated:wallets:end */}
+
+Last verified 2026-10-10. Automated test coverage: a unit test (`wallet-kit-modules.test.ts`) pins which modules are enabled and that LOBSTR's own extension module is excluded. No automated test signs through a real wallet, so a wallet appearing here means the app offers it, not that every release was exercised against it. Per-wallet network support is not tested; the app passes the active network passphrase to the wallet.
+
+## Limits
+
+Verified 2026-10-10 against the code named in each row. Rate limit state is reported on every response in the `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` headers, with `Retry-After` on a rejected request. The older `X-RateLimit-*` names are still sent and are deprecated. See the [API reference](/api-reference/introduction#rate-limits) for the full behavior.
+
+{/* generated:limits:start */}
+
+| Limit                            | Value                                    | Where it is enforced                                                                                                                      |
+| -------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Operations per transaction       | 100                                      | `OP_BATCH_LIMIT` in `apps/api/src/config/constants.ts`                                                                                    |
+| Addresses per batch plan request | 20                                       | `BATCH_PLAN_MAX_ADDRESSES` in `apps/api/src/lib/close-api/batch-plan.ts`                                                                  |
+| JSON request body                | 100 KB                                   | `JSON_BODY_LIMIT` in `apps/api/src/configure-app.ts`                                                                                      |
+| Default request rate             | 120 requests per 60 seconds, per API key | `THROTTLE_LIMIT` and `THROTTLE_TTL` defaults in `apps/api/src/app.module.ts`, overridable per deployment, and per key for self-serve keys |
+
+{/* generated:limits:end */}

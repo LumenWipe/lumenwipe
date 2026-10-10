@@ -6,19 +6,19 @@ icon: "door-closed"
 
 Closing a Stellar account means merging it into another account. The `ACCOUNT_MERGE` operation moves the entire XLM balance to a destination and deletes the source account from the ledger. It cannot be undone.
 
-The network refuses the merge while anything still holds the account open. LumenWipe finds all of it, removes it in the right order, and only then merges.
+The network refuses the [merge](/reference/glossary#merge) while anything still holds the account open. LumenWipe finds all of it, removes it in the right order, and only then merges.
 
 ## What holds an account open
 
-| What                     | Why it blocks the merge                                                              | What LumenWipe does                                                                                            |
-| ------------------------ | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| Trustlines               | Each one is a subentry, and a trustline holding a balance cannot be removed          | Converts the balance to XLM, returns it to the issuer, or sends it where you chose, then removes the trustline |
-| Open offers              | Each one is a subentry                                                               | Cancels them                                                                                                   |
-| Data entries             | Each one is a subentry                                                               | Deletes them                                                                                                   |
-| Extra signers            | They hold reserves, but do not block the merge on their own                          | Removes them first, so one key can authorize the rest of the close                                             |
-| Sponsorships you provide | An account that sponsors reserves for others cannot be merged                        | Revokes them when the owner can absorb the reserve, and reports a blocker for the rest                         |
-| Claimable balances       | Sponsoring one blocks the merge, being a claimant does not                           | Claims what you can claim, and explains what you cannot                                                        |
-| DeFi positions           | The network does not check them, so the merge would strand the funds in the contract | Exits them first. See [exiting protocol positions](/guides/exiting-protocol-positions)                         |
+| What                                                        | Why it blocks the merge                                                                                     | What LumenWipe does                                                                                                   |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| [Trustlines](/reference/glossary#trustline)                 | Each one is a [subentry](/reference/glossary#subentry), and a trustline holding a balance cannot be removed | Converts the balance to XLM, returns it to the issuer, or sends it where you chose, then removes the trustline        |
+| Open offers                                                 | Each one is a subentry                                                                                      | Cancels them                                                                                                          |
+| Data entries                                                | Each one is a subentry                                                                                      | Deletes them                                                                                                          |
+| Extra signers                                               | They hold reserves, but do not block the merge on their own                                                 | Removes them first, so one key can authorize the rest of the close                                                    |
+| [Sponsorships](/reference/glossary#sponsorship) you provide | An account that sponsors reserves for others cannot be merged                                               | Revokes them when the owner can absorb the reserve, and reports a [blocker](/reference/glossary#blocker) for the rest |
+| [Claimable balances](/reference/glossary#claimable-balance) | Sponsoring one blocks the merge, being a claimant does not                                                  | Claims what you can claim, and explains what you cannot                                                               |
+| DeFi positions                                              | The network does not check them, so the merge would strand the funds in the contract                        | Exits them first. See [exiting protocol positions](/guides/exiting-protocol-positions)                                |
 
 ## What you get back
 

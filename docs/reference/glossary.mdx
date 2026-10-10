@@ -1,0 +1,55 @@
+---
+title: "Glossary"
+description: "Plain-language definitions of the Stellar and LumenWipe terms used across these docs."
+icon: "book"
+---
+
+Terms are listed alphabetically. Each term the guides use is linked from its first use there, starting with [Closing an account](/guides/closing-an-account).
+
+## Base reserve
+
+The unit of XLM an account must keep locked. It is currently 0.5 XLM and is set by network vote. An account's minimum balance is two base reserves plus one for each [subentry](#subentry), adjusted for [sponsorship](#sponsorship).
+
+## Blocker
+
+A reason a step cannot be done safely, shown with an explanation and never skipped silently. A debt the balance cannot cover, a claimable balance the account sponsors, and a protocol that has stopped operating are examples.
+
+## Claimable balance
+
+Funds set aside on the ledger for one or more claimants, who can claim them later. LumenWipe claims the ones addressed to your account before it closes the account. A claimable balance your account sponsors stays a [blocker](#blocker) until a claimant claims it.
+
+## Mediator
+
+The API and docs name for the shared account that an exchange close passes through. The app calls the same account the [relay account](#relay-account). Exchanges do not credit an incoming [merge](#merge), so your account merges into the mediator and the mediator then pays the exchange address you typed. It is a conduit, not a destination.
+
+## Memo
+
+A short label attached to a transaction. Exchanges use it to credit the right customer, so an exchange close carries the memo you enter.
+
+## Merge
+
+The `ACCOUNT_MERGE` operation. It moves an account's whole XLM balance to a destination account and deletes the source account. It is the last operation of a close, and the account must have no remaining [subentries](#subentry) other than signers.
+
+## Pre-auth signer
+
+A signer whose key is the hash of one specific transaction, authorized in advance. It adds weight only when that exact transaction is submitted. Because LumenWipe builds a fresh transaction each round, it will almost never match, so the only way to use one is to paste the exact pre-authorized [XDR](#xdr).
+
+## Relay account
+
+What the web app calls the [mediator](#mediator). It is the same shared account, under the name used in the app's own wording.
+
+## Sponsorship
+
+An arrangement where one account pays the [base reserve](#base-reserve) for another account's entry. A sponsoring account cannot be merged until it stops sponsoring. LumenWipe also uses the term for fee sponsorship, where it covers the network fee of the closing transactions of an account that sits at its minimum balance.
+
+## Subentry
+
+A trustline, offer, data entry, or additional signer attached to an account. Each adds one [base reserve](#base-reserve) to the minimum balance, and a liquidity pool share trustline adds two.
+
+## Trustline
+
+An account's declared ability to hold a given asset, with a balance and a limit. It is removed once its balance is zero.
+
+## XDR
+
+The binary encoding Stellar uses for transactions, shown as a base64 string. LumenWipe's API returns each unsigned transaction as XDR, and your browser decodes and checks it before you sign.
