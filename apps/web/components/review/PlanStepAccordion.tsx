@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Plus } from "lucide-react";
 import type { PlannedStep, StepType } from "@/types/plan";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
@@ -30,6 +30,7 @@ export default function PlanStepAccordion({
 }: PlanStepAccordionProps) {
   const groups = groupStepsByType(steps);
   const [open, setOpen] = useState<StepType | null>(groups[0]?.type ?? null);
+  const baseId = useId();
 
   return (
     <div className="divide-y divide-white/8 overflow-hidden rounded-2xl border border-white/10 bg-[hsl(var(--card)/0.6)]">
@@ -40,6 +41,9 @@ export default function PlanStepAccordion({
         return (
           <div key={g.type}>
             <button
+              type="button"
+              id={`${baseId}-${g.type}-header`}
+              aria-controls={`${baseId}-${g.type}-panel`}
               onClick={() => setOpen(isOpen ? null : g.type)}
               aria-expanded={isOpen}
               className="flex w-full items-center justify-between gap-4 px-4 py-3.5 text-left transition-colors hover:bg-white/[0.02]"
@@ -67,6 +71,10 @@ export default function PlanStepAccordion({
               />
             </button>
             <div
+              id={`${baseId}-${g.type}-panel`}
+              role="region"
+              aria-labelledby={`${baseId}-${g.type}-header`}
+              inert={!isOpen}
               className={`grid transition-all duration-300 ease-out ${
                 isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
               }`}
