@@ -154,19 +154,19 @@ The codebase undergoes internal security reviews as part of the development proc
 
 ## Technology Stack
 
-| Layer          | Choice                                              | Why                                                                                              |
-| -------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Web client     | Next.js, TypeScript                                 | Thin open-source client: verifies (`verify()`) and signs, no transaction-building                |
-| API            | NestJS, TypeScript, cache                           | Builds transactions; stateless across a close; own deployable, reached via a key-injecting proxy |
-| Packaging      | Bun workspaces monorepo                             | `apps/{web,api}` + `packages/{sdk,types}`; `@lumenwipe/sdk` is a thin API fetch client           |
-| Stellar SDK    | `@stellar/stellar-sdk`                              | Official SDK for classic and Soroban                                                             |
-| Wallets        | `stellar-wallets-kit` (SEP-43)                      | One interface across Freighter, xBull, Albedo, LOBSTR, Hana, WalletConnect, and more             |
-| Network access | Stellar RPC                                         | Live reads, simulation, submission, events                                                       |
-| Enumeration    | Existing indexer, set by configuration              | See architecture section 5                                                                       |
-| Routing        | Soroswap API + SDEX paths                           | Best routes across Soroban and classic venues                                                    |
-| DeFi detection | OctoPos                                             | Funded DeFi Position API, behind a pluggable adapter                                             |
-| State          | Zustand + IndexedDB                                 | Resumable sessions, never persists keys                                                          |
-| Testing        | Bun test runner (unit), Playwright (E2E on testnet) | Automated tests do not use mainnet; per-package CI across the monorepo                           |
+| Layer          | Choice                                              | Why                                                                                                    |
+| -------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Web client     | Next.js, TypeScript                                 | Thin open-source client: verifies (`verify()`) and signs, no transaction-building                      |
+| API            | NestJS, TypeScript, cache                           | Builds transactions; stateless across a close; own deployable, reached via a key-injecting proxy       |
+| Packaging      | Bun workspaces monorepo                             | `apps/{web,api}` + `packages/{sdk,types}`; `@lumenwipe/sdk` is a thin API fetch client                 |
+| Stellar SDK    | `@stellar/stellar-sdk`                              | Official SDK for classic and Soroban                                                                   |
+| Wallets        | `stellar-wallets-kit` (SEP-43)                      | One interface across wallets; the enabled list is in [Supported](docs/reference/supported.mdx#wallets) |
+| Network access | Stellar RPC                                         | Live reads, simulation, submission, events                                                             |
+| Enumeration    | Existing indexer, set by configuration              | See architecture section 5                                                                             |
+| Routing        | Soroswap API + SDEX paths                           | Best routes across Soroban and classic venues                                                          |
+| DeFi detection | OctoPos                                             | Funded DeFi Position API, behind a pluggable adapter                                                   |
+| State          | Zustand + IndexedDB                                 | Resumable sessions, never persists keys                                                                |
+| Testing        | Bun test runner (unit), Playwright (E2E on testnet) | Automated tests do not use mainnet; per-package CI across the monorepo                                 |
 
 ---
 

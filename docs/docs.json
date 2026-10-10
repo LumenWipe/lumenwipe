@@ -68,6 +68,10 @@
         ]
       },
       {
+        "group": "Reference",
+        "pages": ["reference/glossary", "reference/supported", "changelog"]
+      },
+      {
         "group": "SDK",
         "pages": [
           "sdk/overview",
