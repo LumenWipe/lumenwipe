@@ -22,6 +22,10 @@ Vercel's own GitHub integration deploys on every push to `main` (production) and
 There is no GitHub Actions workflow for this - Vercel watches the repo directly. `package.json`'s
 `version` field is not customer-facing and is not bumped as part of a release.
 
+Each app's `vercel.json` runs `scripts/vercel-ignore.mjs`, which skips a build when nothing the app
+depends on changed since the last deployed commit (its path lists live in that script). It builds
+whenever the comparison cannot be made. A dashboard redeploy always builds.
+
 **Rollback**: promote a previous deployment from the Vercel dashboard. No git revert or redeploy
 needed for an emergency rollback - it's already built.
 
