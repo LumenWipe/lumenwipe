@@ -79,7 +79,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
 
       <div className="mkt-panel rounded-2xl">
         <div className="border-b border-white/10 px-4 py-3">
-          <h3 className="mkt-eyebrow text-white/45">Full plan</h3>
+          <h2 className="mkt-eyebrow text-white/45">Full plan</h2>
         </div>
         <div className="p-3">
           <PlanStepAccordion

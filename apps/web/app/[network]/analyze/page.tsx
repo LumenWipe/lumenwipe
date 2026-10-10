@@ -24,6 +24,8 @@ import {
   type ClaimableBalanceDecision,
 } from "@/lib/api/plan-adapters";
 import PlanView from "@/components/plan/PlanView";
+import StatusMessage from "@/components/a11y/StatusMessage";
+import { useFocusOnMount } from "@/hooks/useFocusOnMount";
 import { apiErrorMessage } from "@/lib/api/error-body";
 import { hardBlockersOf } from "@/lib/plan/resolvable-blockers";
 
@@ -53,6 +55,10 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   // scroll position and reads as a crash. The panel's own refresh indicator is enough.
   const [replanning, setReplanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState("");
+  // Only the first load of a source moves focus; a re-plan must not pull it off the control
+  // the user just answered.
+  const headingRef = useFocusOnMount<HTMLHeadingElement>(!loading && account !== null);
 
   const effectiveSource = source ?? sourceAddress;
   // Both refs are per SOURCE, not per mount: navigating to a different account must show the
@@ -77,7 +83,10 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
 
     const firstLoad = loadedSource.current !== effectiveSource;
     if (firstLoad) setLoading(true);
-    else setReplanning(true);
+    else {
+      setReplanning(true);
+      setStatus("Updating plan");
+    }
     setError(null);
     const seq = ++fetchSeq.current;
     const isStale = () => fetchSeq.current !== seq;
@@ -157,6 +166,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       // decision itself is what clears it - so it must render regardless of blocker state, or
       // the user could never reach the card that resolves it.
       setClaimableBalanceDecisions(decisionPointsToClaimableBalances(plan));
+      setStatus(firstLoad ? "Account analyzed" : "Plan updated");
     } catch {
       if (!isStale()) {
         setError(
@@ -185,8 +195,8 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
 
   if (loading) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-20 flex flex-col items-center gap-4">
-        <Loader2 className="h-8 w-8 animate-spin text-stellar" />
+      <div role="status" className="max-w-2xl mx-auto px-4 py-20 flex flex-col items-center gap-4">
+        <Loader2 aria-hidden="true" className="h-8 w-8 animate-spin text-stellar" />
         <p className="text-muted-foreground text-sm">Analyzing account...</p>
         <p className="text-xs text-muted-foreground/60 font-mono truncate max-w-xs">
           {effectiveSource}
@@ -229,7 +239,13 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         >
           <ArrowLeft className="h-4 w-4" />
         </Link>
-        <h1 className="mkt-display text-xl font-bold text-white">Review &amp; decide</h1>
+        <h1
+          ref={headingRef}
+          tabIndex={-1}
+          className="mkt-display text-xl font-bold text-white outline-none"
+        >
+          Review &amp; decide
+        </h1>
       </div>
 
       {error && (
@@ -249,6 +265,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         network={routeNetwork}
         onRefresh={fetchData}
         loading={replanning}
+        statusMessage={status}
       />
     </div>
   );
