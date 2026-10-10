@@ -129,7 +129,7 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
             placeholder="G... (the account to inspect)"
             spellCheck={false}
             autoComplete="off"
-            className="w-full flex-1 font-mono-address bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-stellar/40"
+            className="w-full flex-1 font-mono-address bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 text-sm placeholder:text-white/30"
           />
           <button
             type="submit"

@@ -166,10 +166,9 @@ export default function TokenDispositionCard({
               className={cn(
                 "w-full rounded-md border bg-black/30 px-2.5 py-1.5 font-mono text-xs text-white",
                 "placeholder:font-sans placeholder:text-white/30",
-                "focus:outline-none focus:ring-1",
                 showAddressError
-                  ? "border-destructive/50 focus:border-destructive focus:ring-destructive/40"
-                  : "border-white/10 focus:border-stellar/50 focus:ring-stellar/40"
+                  ? "border-destructive/50 focus:border-destructive"
+                  : "border-white/10"
               )}
             />
             {showAddressError && (

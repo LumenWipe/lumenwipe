@@ -46,7 +46,7 @@ export default function PlanStepAccordion({
               aria-controls={`${baseId}-${g.type}-panel`}
               onClick={() => setOpen(isOpen ? null : g.type)}
               aria-expanded={isOpen}
-              className="flex w-full items-center justify-between gap-4 px-4 py-3.5 text-left transition-colors hover:bg-white/[0.02]"
+              className="flex w-full items-center justify-between gap-4 px-4 py-3.5 text-left transition-colors hover:bg-white/[0.02] focus-visible:-outline-offset-2"
             >
               <span className="flex min-w-0 items-center gap-2.5">
                 <StepTypeIcon type={g.type} className="h-4 w-4 shrink-0 text-stellar/70" />

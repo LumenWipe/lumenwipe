@@ -32,7 +32,7 @@ export default function HeroAccountInput() {
     <div className="w-full max-w-2xl mx-auto">
       <form onSubmit={handleSubmit}>
         <div
-          className={`flex items-center gap-2 rounded-2xl border bg-white/[0.04] p-2 transition-colors focus-within:border-stellar/50 ${
+          className={`flex items-center gap-2 rounded-2xl border bg-white/[0.04] p-2 transition-colors has-[input:focus-visible]:outline has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-focus ${
             error ? "border-danger/40" : "border-white/12"
           }`}
         >
@@ -45,7 +45,7 @@ export default function HeroAccountInput() {
               if (error) setError(null);
             }}
             placeholder="Paste a Stellar account address - G…"
-            className="flex-1 bg-transparent py-2 pr-2 mkt-mono text-[0.8rem] text-white placeholder:text-white/25 outline-none min-w-0"
+            className="flex-1 bg-transparent py-2 pr-2 mkt-mono text-[0.8rem] text-white placeholder:text-white/25 min-w-0 focus-visible:outline-none"
             spellCheck={false}
             autoComplete="off"
             autoCorrect="off"
