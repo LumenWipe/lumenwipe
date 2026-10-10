@@ -17,7 +17,8 @@ import { SubmitResponseDto } from "./dto/close-responses.dto";
 import { BatchPlanResponseDto, PlanResponseDto } from "./dto/plan-response.dto";
 import { TransactionsResponseDto } from "./dto/transactions-response.dto";
 import { ApiErrorResponse, ApiBodyErrorResponses } from "@/common/api-error-response.decorator";
-import { isValidNetwork, type Network } from "@/config/networks";
+import type { Network } from "@/config/networks";
+import { NetworkPipe } from "@/common/pipes/network.pipe";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { readAccountState } from "@/lib/close-api/read-account";
 import { buildAccountPlan } from "@/lib/close-api/account-plan";
@@ -119,11 +120,9 @@ export class CloseController {
     type: PlanResponseDto,
   })
   async plan(
-    @Param("network") network: string,
+    @Param("network", new NetworkPipe()) network: Network,
     @Body() body: { source?: unknown; destination?: unknown; decisions?: unknown }
   ) {
-    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network.", 400);
-
     const { source } = body;
     if (typeof source !== "string" || !isValidGAddress(source)) {
       fail("invalid_source", "A valid source account (G...) is required.", 400);
@@ -175,11 +174,9 @@ export class CloseController {
     type: BatchPlanResponseDto,
   })
   async batchPlan(
-    @Param("network") network: string,
+    @Param("network", new NetworkPipe()) network: Network,
     @Body() body: { addresses?: unknown; destination?: unknown }
   ) {
-    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network.", 400);
-
     const { addresses } = body;
     if (!Array.isArray(addresses) || addresses.length === 0) {
       fail("invalid_addresses", "A non-empty array of source accounts (G...) is required.", 400);
@@ -272,7 +269,7 @@ export class CloseController {
     type: TransactionsResponseDto,
   })
   async transactions(
-    @Param("network") network: string,
+    @Param("network", new NetworkPipe()) network: Network,
     @Body()
     body: {
       source?: unknown;
@@ -282,8 +279,6 @@ export class CloseController {
       memo?: unknown;
     }
   ) {
-    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network.", 400);
-
     const { source, destination } = body;
     if (typeof source !== "string" || !isValidGAddress(source)) {
       fail("invalid_source", "A valid source account (G...) is required.", 400);
@@ -514,9 +509,10 @@ export class CloseController {
     description: "Confirmed: returns the transaction hash and ledger.",
     type: SubmitResponseDto,
   })
-  async submit(@Param("network") network: string, @Body() body: { signedXdr?: unknown }) {
-    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network.", 400);
-
+  async submit(
+    @Param("network", new NetworkPipe()) network: Network,
+    @Body() body: { signedXdr?: unknown }
+  ) {
     const { signedXdr } = body;
     if (typeof signedXdr !== "string" || signedXdr.length === 0) {
       fail("invalid_signed_xdr", "A signed transaction envelope (signedXdr) is required.", 400);
