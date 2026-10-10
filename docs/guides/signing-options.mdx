@@ -8,7 +8,7 @@ LumenWipe builds transactions on the server, but signing always happens in your 
 
 ## Wallet
 
-The default. Connect a wallet through Stellar Wallets Kit, which supports Freighter, xBull, Albedo, Rabet, Hana, and WalletConnect. LOBSTR users can connect through WalletConnect. The app hands the wallet an unsigned transaction and receives the signed one back, so the key stays inside the wallet.
+The default. Connect a wallet through Stellar Wallets Kit. The wallets the app offers are listed in [Supported](/reference/supported#wallets). The app hands the wallet an unsigned transaction and receives the signed one back, so the key stays inside the wallet.
 
 ## Secret key
 
@@ -26,9 +26,9 @@ A hash(x) signer is a key that is the SHA-256 hash of a secret value. To satisfy
 
 ## Pre-authorized transaction signers
 
-A pre-auth signer's key is the hash of one specific transaction, authorized in advance. It contributes weight only when that exact transaction is submitted, never by signing something new.
+A [pre-auth signer](/reference/glossary#pre-auth-signer)'s key is the hash of one specific transaction, authorized in advance. It contributes weight only when that exact transaction is submitted, never by signing something new.
 
-LumenWipe builds a fresh transaction every round, so a pre-auth signer will almost never match it. The only way to use one is to paste the exact pre-authorized transaction XDR.
+LumenWipe builds a fresh transaction every round, so a pre-auth signer will almost never match it. The only way to use one is to paste the exact pre-authorized transaction [XDR](/reference/glossary#xdr).
 
 <Warning>
   LumenWipe did not build or verify a pasted pre-authorized transaction the way it does every other
@@ -37,4 +37,4 @@ LumenWipe builds a fresh transaction every round, so a pre-auth signer will almo
 
 ## What you are asked to check
 
-Before each signature, the browser shows what the transaction does. The check covers where the funds go, any memo, and that only removals and conversions are included. Read the destination before you confirm.
+Before each signature, the browser shows what the transaction does. The check covers where the funds go, any [memo](/reference/glossary#memo), and that only removals and conversions are included. Read the destination before you confirm.
