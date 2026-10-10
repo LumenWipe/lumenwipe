@@ -173,6 +173,10 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 
 {/* error-codes:end */}
 
+## Request ids
+
+Every response, success or error, carries an `X-Request-Id` header. An error body repeats it as `error.requestId`. The API generates the id for each request and ignores any value a caller sends. Quote it when you report a problem, so it can be matched to the log line for that request. What the logs hold is described in [Logging and privacy](/reference/logging-and-privacy).
+
 ## Rate limits
 
 Requests are limited per API key, and per client IP when a request carries no key. One budget covers every endpoint. The default is 120 requests per 60 seconds. A key issued through the self-serve flow can carry its own limit and window, which replaces the default for that key only. Rate limiting applies before authentication and before the request body is read, so requests without a valid key, unknown routes and malformed bodies count against the budget too. The service index, the health checks and the documentation pages are not limited.
