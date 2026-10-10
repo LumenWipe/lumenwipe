@@ -40,6 +40,55 @@
     --mkt-panel: 198 17% 10.5%;
     --mkt-panel-2: 200 16% 13%;
     --mkt-line: 190 30% 84%;
+
+    /* Semantic tokens (#361). Additive: the shadcn and --mkt-* variables above are
+       untouched until #360 collapses them. Measured by tests/unit/tokens-contrast.test.ts. */
+    --bg: 197 30% 4.5%;
+    --surface: 200 18% 8%;
+    --surface-raised: 198 17% 10.5%;
+    --surface-sunken: 197 30% 3%;
+    --line: 205 12% 16%;
+    --line-strong: 205 10% 42%;
+    --fg: 0 0% 98%;
+    --fg-muted: 205 8% 66%;
+    --fg-subtle: 205 8% 58%;
+    --fg-disabled: 205 8% 45%;
+    --accent-solid: 196 100% 47%;
+    --accent-solid-fg: 200 12% 10%;
+    --success: 152 55% 50%;
+    --warning-fg: 38 60% 8%;
+    --danger: 0 62.8% 30.6%;
+    --danger-on-fill: 0 0% 98%;
+    --danger-fg: 0 90% 76%;
+    --focus: 196 100% 55%;
+
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.25rem;
+    --space-6: 1.5rem;
+    --space-8: 2rem;
+    --space-control: 2.75rem;
+
+    --radius-sm: 0.25rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+    --radius-xl: 1rem;
+
+    --text-caption: 0.6875rem;
+    --text-label: 0.75rem;
+    --text-body-sm: 0.875rem;
+    --text-body: 1rem;
+    --text-title: 1.25rem;
+    --text-heading: 1.75rem;
+    --text-display: 2.5rem;
+    --text-hero: 4rem;
+
+    --duration-fast: 120ms;
+    --duration-base: 200ms;
+    --duration-slow: 320ms;
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   }
 }
 
