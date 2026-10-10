@@ -78,6 +78,10 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
     .toFixed(7);
 
   useEffect(() => {
+    document.title = closed ? "Account closed | LumenWipe" : "Close incomplete | LumenWipe";
+  }, [closed]);
+
+  useEffect(() => {
     if (!closed || !sessionId || !sourceAddress || !destinationAddress) return;
 
     saveHistory({
