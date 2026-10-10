@@ -14,9 +14,7 @@ on:
       - ".github/workflows/deploy-api.yml"
   workflow_dispatch:
 
-permissions:
-  contents: read
-  id-token: write # required for keyless auth (Workload Identity Federation)
+permissions: {}
 
 env:
   SERVICE: lumenwipe-api
@@ -31,16 +29,20 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write # required for keyless auth (Workload Identity Federation)
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Authenticate to Google Cloud (keyless / WIF)
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_DEPLOY_SA }}
 
-      - uses: google-github-actions/setup-gcloud@v2
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
 
       - name: Log in to Docker Hub
         if: ${{ env.DOCKERHUB_TOKEN != '' }}
@@ -62,7 +64,7 @@ jobs:
       # runbook) and inherited by each new revision, so they're not repeated here.
       - name: Deploy to Cloud Run
         id: deploy
-        uses: google-github-actions/deploy-cloudrun@v2
+        uses: google-github-actions/deploy-cloudrun@251330ba9a8a34bfbc1622895f42e1d53fd14522 # v2.7.6
         with:
           service: ${{ env.SERVICE }}
           region: ${{ env.REGION }}

@@ -13,16 +13,18 @@ on:
         description: "Existing sdk-vX.Y.Z tag to publish from"
         required: true
 
-permissions:
-  contents: read
-  id-token: write # required for npm provenance attestation
+permissions: {}
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # required for npm provenance attestation
     environment: npm-publish
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
@@ -69,7 +71,7 @@ jobs:
           fi
 
       - name: Set up Node for npm publish
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
