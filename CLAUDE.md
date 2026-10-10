@@ -10,9 +10,9 @@ The architecture is **API-first and single-channel**. The NestJS **API** is the 
 
 ## Repository layout
 
-Bun-workspaces monorepo. One pinned `@stellar/stellar-sdk` (16.0.1) via root `overrides`, used **server-side only**.
+Bun-workspaces monorepo. One pinned `@stellar/stellar-sdk` (16.0.1) via root `overrides`, used by the API (build, read, submit), by `apps/web` (parse XDR, verify, sign - never to build a transaction or read chain state) and by `apps/playground`.
 
-- `apps/api` - NestJS service, the product. Controllers under `src/{account,close,mediator,health}`. Builds the minimal unsigned transaction set, co-signs the mediator forward payment, submits. Stateless across a multi-round close.
+- `apps/api` - NestJS service, the product. Controllers under `src/{account,close,mediator,health,fee-bump,stats,admin,integrator,config-api}`, plus `src/root.controller.ts`. Builds the minimal unsigned transaction set, co-signs the mediator forward payment, submits. Stateless across a multi-round close.
 - `apps/web` - Next.js thin client. Fetches unsigned XDR, verifies it, signs, submits - all through a server-side proxy. No closing logic.
 - `apps/playground` - isolated testnet demo. Custodial (a throwaway demo account, no real user), server-side only, own deploy target (`playground.lumenwipe.com`). Never imported by `apps/web` or `apps/api`, and never imports their closing modules either - it mess-builds junk trustlines/offers/data entries directly with `@stellar/stellar-sdk`, then demolishes through the real `apps/api` via `@lumenwipe/sdk`'s `runClose`, using its own dedicated, independently-rate-limited API key and its own Upstash Redis store. It is a separate app rather than a route inside `apps/web` because its trust model is the inverse of production's: the playground holds a private key server-side on the user's behalf, which `apps/web` must never do. Keeping them apart means an audit can scope to a path the same way it would to a separate repo, and no custodial code can ever be one bad import away from the production signing flow - without paying the operational cost of a second repository.
 - `packages/sdk` (`@lumenwipe/sdk`) - thin fetch client over the API (tsup ESM+CJS, **does not bundle the Stellar SDK**).
@@ -54,7 +54,7 @@ cd apps/api && bun test tests/close-transactions.test.ts
 The full close needs **both** services. The web reaches the API only through its own proxy, so:
 
 - `apps/api/.env.local` needs `API_KEYS` (label=key) and the read endpoints (RPC / Horizon-compatible `PATH_ROUTING` / mediator secret for exchange closes). All gitignored.
-- `apps/web/.env.local` needs `LUMENWIPE_API_URL` + `LUMENWIPE_API_KEY` (server-side, injected by the proxy), plus `NEXT_PUBLIC_MEDIATOR_PUBLIC_*` so `verify()` can recognize the mediator (see below).
+- `apps/web/.env.local` needs `LUMENWIPE_API_URL` + `LUMENWIPE_API_KEY` (server-side, injected by the proxy), and the Upstash Redis REST pair for the proxy rate limit. The web needs no mediator configuration: `MEDIATOR_PUBLIC_*`, `MEDIATOR_SECRET_*` and `FEE_ACCOUNT_SECRET_*` are API-side only (see below).
 - `apps/playground/.env.local` (only when working on the playground - a third service, `bun run dev:playground`) needs its own `LUMENWIPE_API_URL` + `LUMENWIPE_API_KEY` under a distinct `API_KEYS` label, `PLAYGROUND_ENCRYPTION_KEY`, the testnet issuer/market-maker secrets, and its own Upstash Redis credentials - never `apps/web`'s. See `apps/playground/.env.example`.
 
 ## Architecture
@@ -100,7 +100,7 @@ CONTRIBUTING.md has the full rules. Essentials:
 
 ## Gotchas
 
-- **`@stellar/stellar-sdk` v16 dual-build hazard**: never mix `require()` and `import` of the SDK in the same runtime - the CJS and ESM builds each bundle their own `js-xdr`, and objects don't cross the boundary. Keep it server-side (API) only.
+- **`@stellar/stellar-sdk` v16 dual-build hazard**: never mix `require()` and `import` of the SDK in the same runtime - the CJS and ESM builds each bundle their own `js-xdr`, and objects don't cross the boundary. The hazard applies in every runtime that imports it (the API, `apps/web`, `apps/playground`): pick one module format per runtime.
 - **SDK-from-source resolution**: the web resolves `@lumenwipe/sdk` and `@lumenwipe/types` from TS **source** via tsconfig `paths` + Next `transpilePackages`, so there is no build-order dependency on the packages' `dist` (works in CI, Vercel, and local without a prior package build).
 - **API build**: `nest build` does not rewrite `@/*` tsconfig aliases, so the api build script runs `tsc-alias` after it - otherwise `node dist/main.js` fails with `Cannot find module '@/...'` (latent because dev uses `nest start` and tests run from source).
 - The **playground** was rebuilt as `apps/playground` (it previously lived inside `apps/web` and built transactions client-side, which is why it was removed). It never builds a close transaction itself: the demolish step goes through the real `apps/api` via `@lumenwipe/sdk`. Its own `lib/verify.ts` is a second, narrower trust anchor over the same operation shapes as `apps/web/lib/stellar/verify.ts` - a new close operation has to be added there too, or the playground rejects it.
