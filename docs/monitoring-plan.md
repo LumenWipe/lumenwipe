@@ -59,7 +59,7 @@ the form `S<surface>.<Category>.<n>`.
 **Threats with no on-chain effect, monitored off-chain instead.** The threat model's surfaces 1, 2, 3, 5 and 6
 
 - client-side key handling, the session state machine, API transaction construction, allowance revocation and
-  Soroban conversion - either never touch the ledger or are indistinguishable on-chain from a legitimate
+  Soroban conversion - either leave no trace on the ledger or are indistinguishable on-chain from a legitimate
   user-authorized action, because that is exactly what they are: the user signs in their own browser with their
   own key. A compromised frontend serving hostile bytes is the clearest example; the control against it is
   `verifyCloseTransaction`, the client-side trust anchor, not a ledger watcher. These are covered by
