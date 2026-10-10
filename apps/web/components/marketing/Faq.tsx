@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Plus } from "lucide-react";
 
 type Item = { q: string; a: React.ReactNode };
@@ -102,6 +102,7 @@ const ITEMS: Item[] = [
 
 export default function Faq() {
   const [open, setOpen] = useState<number | null>(0);
+  const baseId = useId();
 
   return (
     <div className="divide-y divide-white/8 overflow-hidden rounded-2xl border border-white/10 bg-[hsl(var(--card)/0.6)]">
@@ -110,6 +111,9 @@ export default function Faq() {
         return (
           <div key={item.q}>
             <button
+              type="button"
+              id={`${baseId}-${i}-header`}
+              aria-controls={`${baseId}-${i}-panel`}
               onClick={() => setOpen(isOpen ? null : i)}
               aria-expanded={isOpen}
               className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-white/[0.02] sm:px-6 sm:py-5"
@@ -128,6 +132,10 @@ export default function Faq() {
               />
             </button>
             <div
+              id={`${baseId}-${i}-panel`}
+              role="region"
+              aria-labelledby={`${baseId}-${i}-header`}
+              inert={!isOpen}
               className={`grid transition-all duration-300 ease-out ${
                 isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
               }`}

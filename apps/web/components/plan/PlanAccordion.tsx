@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Plus } from "lucide-react";
 import type { AccountState, UnrecognizedDefiPosition } from "@/types/account";
 import { PROTOCOL_LABELS, describeDefiPosition } from "@/lib/plan/describe-position";
@@ -68,6 +68,7 @@ export default function PlanAccordion({
   mediatorRequired,
 }: PlanAccordionProps) {
   const [open, setOpen] = useState<GroupType | null>("HANDLE_ASSETS");
+  const baseId = useId();
 
   const groups: Group[] = [];
 
@@ -320,6 +321,9 @@ export default function PlanAccordion({
         return (
           <div key={g.type}>
             <button
+              type="button"
+              id={`${baseId}-${g.type}-header`}
+              aria-controls={`${baseId}-${g.type}-panel`}
               onClick={() => setOpen(isOpen ? null : g.type)}
               aria-expanded={isOpen}
               className="flex w-full items-center justify-between gap-4 px-4 py-3.5 text-left transition-colors hover:bg-white/[0.02]"
@@ -344,6 +348,10 @@ export default function PlanAccordion({
               />
             </button>
             <div
+              id={`${baseId}-${g.type}-panel`}
+              role="region"
+              aria-labelledby={`${baseId}-${g.type}-header`}
+              inert={!isOpen}
               className={`grid transition-all duration-300 ease-out ${
                 isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
               }`}
