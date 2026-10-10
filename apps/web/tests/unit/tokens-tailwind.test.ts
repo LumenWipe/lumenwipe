@@ -18,7 +18,7 @@ describe("tailwind token registration", () => {
 
   test("new color roles support opacity modifiers", () => {
     const flat = (v: unknown): string[] => flatten(v);
-    for (const key of ["canvas", "surface", "line", "fg", "success", "danger-fg", "focus"]) {
+    for (const key of ["canvas", "surface", "line", "fg", "success", "danger", "focus"]) {
       for (const value of flat(colors[key])) expect(value).toContain("<alpha-value>");
     }
     expect(flat(colors.accent)).toContain("hsl(var(--accent-solid) / <alpha-value>)");
@@ -27,8 +27,11 @@ describe("tailwind token registration", () => {
     expect(flat(colors.warning)).toContain("hsl(var(--warning-fg) / <alpha-value>)");
   });
 
-  test("the danger fill utility is left to #350", () => {
-    expect(colors.danger).toBeUndefined();
+  test("danger registers the fill and the text pair", () => {
+    expect(colors.danger).toEqual({
+      DEFAULT: "hsl(var(--danger) / <alpha-value>)",
+      fg: "hsl(var(--danger-fg) / <alpha-value>)",
+    });
   });
 
   test("legacy color keys keep their values", () => {

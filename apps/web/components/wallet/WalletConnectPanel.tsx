@@ -30,8 +30,8 @@ export default function WalletConnectPanel({
 
     return (
       <div className="space-y-1.5">
-        <div className="flex items-center justify-between gap-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2.5">
-          <span className="flex items-center gap-2 text-sm text-emerald-400">
+        <div className="flex items-center justify-between gap-3 bg-success/10 border border-success/20 rounded-lg px-3 py-2.5">
+          <span className="flex items-center gap-2 text-sm text-success">
             <CheckCircle className="h-4 w-4 shrink-0" />
             Connected: {address.slice(0, 4)}…{address.slice(-4)}
           </span>
@@ -64,7 +64,7 @@ export default function WalletConnectPanel({
         {connecting ? "Connecting…" : "Connect wallet"}
       </button>
       {error && (
-        <p role="alert" className="text-xs text-destructive">
+        <p role="alert" className="text-xs text-danger-fg">
           {error}
         </p>
       )}

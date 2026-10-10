@@ -84,13 +84,13 @@ export default function HashXPreimageInput({ signer, disabled, onApply }: Props)
         </button>
       </div>
       {error && (
-        <p className="flex items-center gap-1.5 text-xs text-destructive">
+        <p className="flex items-center gap-1.5 text-xs text-danger-fg">
           <XCircle className="h-3.5 w-3.5 shrink-0" />
           {error}
         </p>
       )}
       {applied && !error && (
-        <p className="flex items-center gap-1.5 text-xs text-emerald-400">
+        <p className="flex items-center gap-1.5 text-xs text-success">
           <CheckCircle className="h-3.5 w-3.5 shrink-0" />
           Preimage matches - contributing this signer&apos;s weight.
         </p>

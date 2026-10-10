@@ -138,7 +138,7 @@ export default function RevokeAllowanceModal({
           <div
             className={cn(
               "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-              step === "done" ? "bg-emerald-500/15 text-emerald-400" : "bg-warning/15 text-warning"
+              step === "done" ? "bg-success/15 text-success" : "bg-warning/15 text-warning"
             )}
           >
             {step === "done" ? (
@@ -242,7 +242,7 @@ export default function RevokeAllowanceModal({
               )}
 
               {error && (
-                <p className="flex items-start gap-1.5 text-xs text-destructive">
+                <p className="flex items-start gap-1.5 text-xs text-danger-fg">
                   <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                   {error}
                 </p>

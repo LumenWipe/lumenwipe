@@ -18,7 +18,7 @@ export default function StepCard({ step, isActive, onClick }: StepCardProps) {
         isActive
           ? "border-stellar/50 bg-stellar/5"
           : step.status === "confirmed"
-            ? "border-emerald-500/20 bg-emerald-500/5"
+            ? "border-success/20 bg-success/5"
             : step.status === "failed"
               ? "border-destructive/30 bg-destructive/5"
               : "border-white/10 bg-white/[0.02] hover:bg-white/[0.05]",
@@ -27,8 +27,8 @@ export default function StepCard({ step, isActive, onClick }: StepCardProps) {
     >
       {/* Status icon */}
       <div className="mt-0.5 shrink-0">
-        {step.status === "confirmed" && <CheckCircle className="h-4 w-4 text-emerald-500" />}
-        {step.status === "failed" && <AlertCircle className="h-4 w-4 text-destructive" />}
+        {step.status === "confirmed" && <CheckCircle className="h-4 w-4 text-success" />}
+        {step.status === "failed" && <AlertCircle className="h-4 w-4 text-danger-fg" />}
         {(step.status === "signing" || step.status === "submitted") && (
           <Loader2 className="h-4 w-4 text-stellar animate-spin" />
         )}
@@ -42,7 +42,7 @@ export default function StepCard({ step, isActive, onClick }: StepCardProps) {
           <p
             className={cn(
               "text-sm font-medium truncate",
-              step.status === "confirmed" ? "text-emerald-400" : "text-white"
+              step.status === "confirmed" ? "text-success" : "text-white"
             )}
           >
             {step.title}
@@ -55,7 +55,7 @@ export default function StepCard({ step, isActive, onClick }: StepCardProps) {
             {step.estimatedFeeLumens} XLM fee
           </span>
           {step.txHash && (
-            <span className="flex items-center gap-1 text-xs text-emerald-500 font-mono truncate">
+            <span className="flex items-center gap-1 text-xs text-success font-mono truncate">
               <CheckCircle className="h-3 w-3 shrink-0" />
               {step.txHash.slice(0, 10)}...
             </span>

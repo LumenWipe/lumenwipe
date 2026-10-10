@@ -33,7 +33,7 @@ export default function HeroAccountInput() {
       <form onSubmit={handleSubmit}>
         <div
           className={`flex items-center gap-2 rounded-2xl border bg-white/[0.04] p-2 transition-colors focus-within:border-stellar/50 ${
-            error ? "border-red-500/40" : "border-white/12"
+            error ? "border-danger/40" : "border-white/12"
           }`}
         >
           <Search className="ml-2 h-4 w-4 shrink-0 text-white/30" />
@@ -61,7 +61,7 @@ export default function HeroAccountInput() {
       </form>
 
       {error ? (
-        <p className="mt-2.5 flex items-center gap-1.5 text-xs text-red-400">
+        <p className="mt-2.5 flex items-center gap-1.5 text-xs text-danger-fg">
           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
           {error}
         </p>

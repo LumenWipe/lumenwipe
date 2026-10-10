@@ -66,7 +66,7 @@ export default function DestinationInput({
         <label className="text-sm font-medium flex items-center gap-1">
           Payment memo
           {memoRequired ? (
-            <span className="text-destructive ml-0.5">*</span>
+            <span className="text-danger-fg ml-0.5">*</span>
           ) : (
             <span className="text-muted-foreground font-normal">(optional)</span>
           )}
@@ -96,7 +96,7 @@ export default function DestinationInput({
             exchange with no memo requirement produced a disabled button and no message
             anywhere on the page. */}
         {isCexAddress(destination) && !isRegistryUsable() && (
-          <p role="alert" className="text-xs text-destructive">
+          <p role="alert" className="text-xs text-danger-fg">
             These deposit rules expired on {activeRegistry().validUntil} and have not been
             re-checked. Closing into an exchange on unverified rules can send the funds somewhere
             nobody can credit them, so this is blocked until they are refreshed.

@@ -93,7 +93,7 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
                       <div className="flex items-center gap-2 shrink-0">
                         <button
                           onClick={() => handleDelete(entry.id)}
-                          className="text-xs text-destructive hover:underline"
+                          className="text-xs text-danger-fg hover:underline"
                         >
                           Confirm
                         </button>
@@ -107,7 +107,7 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
                     ) : (
                       <button
                         onClick={() => setConfirmDelete(entry.id)}
-                        className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                        className="text-muted-foreground hover:text-danger-fg transition-colors shrink-0"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>

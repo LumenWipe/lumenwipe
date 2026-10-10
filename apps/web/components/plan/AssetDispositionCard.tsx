@@ -114,7 +114,7 @@ export default function AssetDispositionCard({
             <p
               id={errorId}
               role="alert"
-              className="flex items-center gap-1 text-[0.7rem] text-destructive"
+              className="flex items-center gap-1 text-[0.7rem] text-danger-fg"
             >
               <AlertCircle className="h-3 w-3 shrink-0" />
               Not a valid Stellar address (must start with G)
@@ -145,16 +145,14 @@ export default function AssetDispositionCard({
       <div
         className={cn(
           "rounded-lg border p-3 transition-colors",
-          resolved
-            ? "border-emerald-500/20 bg-emerald-500/5"
-            : "border-amber-500/30 bg-amber-500/[0.06]"
+          resolved ? "border-success/20 bg-success/5" : "border-amber-500/30 bg-amber-500/[0.06]"
         )}
       >
         <div className="flex items-center gap-3">
           {isTransfer || isIssuer ? (
             <Send className="h-4 w-4 shrink-0 text-white/50" />
           ) : (
-            <ArrowRightLeft className="h-4 w-4 shrink-0 text-emerald-400" />
+            <ArrowRightLeft className="h-4 w-4 shrink-0 text-success" />
           )}
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-white">
@@ -174,7 +172,7 @@ export default function AssetDispositionCard({
               "shrink-0 rounded-full border px-2 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide",
               isTransfer || isIssuer
                 ? "border-white/20 bg-white/5 text-white/70"
-                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                : "border-success/30 bg-success/10 text-success"
             )}
           >
             {isTransfer ? "Send" : isIssuer ? "Return" : "Swap"}

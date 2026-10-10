@@ -57,7 +57,7 @@ export default function SecretKeyInput({
     <div className="space-y-1.5">
       <label className="text-sm font-medium text-white">
         {label}
-        <span className="text-destructive ml-1">*</span>
+        <span className="text-danger-fg ml-1">*</span>
       </label>
 
       <div className="relative">
@@ -77,16 +77,16 @@ export default function SecretKeyInput({
             "focus:outline-none focus:ring-2 focus:ring-stellar/40",
             "disabled:opacity-50 disabled:cursor-not-allowed",
             showError ? "border-destructive" : "border-white/10",
-            isValid && touched ? "border-emerald-500/50" : ""
+            isValid && touched ? "border-success/50" : ""
           )}
         />
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
           {touched &&
             displayValue &&
             (isValid ? (
-              <CheckCircle className="h-4 w-4 text-emerald-500" />
+              <CheckCircle className="h-4 w-4 text-success" />
             ) : (
-              <XCircle className="h-4 w-4 text-destructive" />
+              <XCircle className="h-4 w-4 text-danger-fg" />
             ))}
           <button
             type="button"
@@ -100,9 +100,7 @@ export default function SecretKeyInput({
       </div>
 
       {showError && (
-        <p className="text-xs text-destructive">
-          Not a valid Stellar secret key (must start with S)
-        </p>
+        <p className="text-xs text-danger-fg">Not a valid Stellar secret key (must start with S)</p>
       )}
 
       <p className="flex items-start gap-1.5 text-xs text-white/50">
