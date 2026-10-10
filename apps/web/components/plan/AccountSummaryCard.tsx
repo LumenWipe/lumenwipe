@@ -66,7 +66,7 @@ export default function AccountSummaryCard({
   return (
     <div className="mkt-panel rounded-2xl overflow-hidden">
       <div className="border-b border-white/10 px-4 py-3 flex items-center justify-between">
-        <h3 className="mkt-eyebrow text-white/45">Account summary</h3>
+        <h2 className="mkt-eyebrow text-white/45">Account summary</h2>
         <span className="font-mono-address text-white/55 text-xs truncate max-w-[200px]">
           {account.address.slice(0, 8)}...{account.address.slice(-8)}
         </span>

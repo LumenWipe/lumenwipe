@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import StatusMessage from "@/components/a11y/StatusMessage";
 import { AlertTriangle, ArrowLeft, Loader2, ShieldCheck, Search } from "lucide-react";
 import { coverageNote, unconfirmedSources } from "@/lib/allowances/empty-result";
 import type { Network } from "@/config/networks";
@@ -36,6 +37,16 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<Allowance | null>(null);
+
+  const status = loading
+    ? "Looking up allowances"
+    : error || !result
+      ? ""
+      : result.allowances.length > 0
+        ? `${result.allowances.length} outstanding ${result.allowances.length === 1 ? "allowance" : "allowances"} found`
+        : unconfirmed.length > 0
+          ? "Could not confirm this account"
+          : "No outstanding allowances";
 
   const lookup = useCallback(
     async (addr: string) => {
@@ -126,7 +137,7 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
             className="flex items-center justify-center gap-1.5 bg-stellar text-black font-semibold py-2.5 px-4 rounded-lg hover:bg-stellar/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
           >
             {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
             ) : (
               <Search className="h-4 w-4" />
             )}
@@ -135,15 +146,20 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
         </form>
       </div>
 
+      <StatusMessage message={status} />
+
       {error && (
-        <div className="mkt-panel border-destructive/30 rounded-xl px-4 py-3 mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+        <div
+          role="alert"
+          className="mkt-panel border-destructive/30 rounded-xl px-4 py-3 mb-4 flex items-center gap-2 text-sm text-muted-foreground"
+        >
           <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
           <span>{error}</span>
         </div>
       )}
 
       {result && address && (
-        <div className="space-y-3">
+        <div aria-busy={loading} className="space-y-3">
           {result.allowances.length === 0 ? (
             unconfirmed.length > 0 ? (
               // An empty list only means "none" when every source ran to completion. A scan that

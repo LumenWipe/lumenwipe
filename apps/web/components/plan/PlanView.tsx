@@ -37,6 +37,7 @@ import {
   DEFI_POSITIONS_UNAVAILABLE_CODE,
 } from "@/lib/plan/resolvable-blockers";
 import { defiPositionsAcknowledgementToDecisions } from "@/lib/api/close-decisions";
+import StatusMessage from "@/components/a11y/StatusMessage";
 import { assetsResolved } from "@/lib/plan/asset-resolution";
 
 interface PlanViewProps {
@@ -47,6 +48,7 @@ interface PlanViewProps {
   network: Network;
   onRefresh: () => void;
   loading: boolean;
+  statusMessage?: string;
 }
 
 export default function PlanView({
@@ -57,6 +59,7 @@ export default function PlanView({
   network,
   onRefresh,
   loading,
+  statusMessage = "",
 }: PlanViewProps) {
   const router = useRouter();
   const {
@@ -352,6 +355,7 @@ export default function PlanView({
 
   return (
     <div className="space-y-5">
+      <StatusMessage message={proceeding ? "Preparing transaction" : statusMessage} />
       <AccountSummaryCard
         account={account}
         destinationAddress={isValidGAddress(destination) ? destination : null}
@@ -372,7 +376,7 @@ export default function PlanView({
 
       <div className="mkt-panel rounded-2xl">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <h3 className="mkt-eyebrow text-white/45">What this close will do</h3>
+          <h2 className="mkt-eyebrow text-white/45">What this close will do</h2>
           <button
             onClick={onRefresh}
             disabled={loading}
@@ -415,7 +419,7 @@ export default function PlanView({
       {destinationStepReady && (
         <div className="mkt-panel rounded-2xl p-5 space-y-4">
           <div>
-            <h3 className="mkt-eyebrow text-white/45 mb-1">Destination</h3>
+            <h2 className="mkt-eyebrow text-white/45 mb-1">Destination</h2>
             <p className="text-xs text-white/45">
               Every asset is resolved. Enter where the recovered XLM should go.
             </p>

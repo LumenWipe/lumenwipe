@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useFocusOnMount } from "@/hooks/useFocusOnMount";
 import { AlertTriangle, CheckCircle, ExternalLink, History, Link2 } from "lucide-react";
 import Link from "next/link";
 import type { Network } from "@/config/networks";
@@ -76,6 +77,8 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
   const totalFee = executionPlan
     .reduce((sum, s) => sum + parseFloat(s.actualFeeLumens ?? s.estimatedFeeLumens), 0)
     .toFixed(7);
+
+  const headingRef = useFocusOnMount<HTMLHeadingElement>();
 
   useEffect(() => {
     document.title = closed ? "Account closed | LumenWipe" : "Close incomplete | LumenWipe";
@@ -344,9 +347,13 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
           className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-6 text-center"
         >
           <CheckCircle className="h-12 w-12 text-emerald-500 mx-auto mb-3" />
-          <h2 className="mkt-display text-2xl font-bold mb-1 text-white">
+          <h1
+            ref={headingRef}
+            tabIndex={-1}
+            className="mkt-display text-2xl font-bold mb-1 text-white outline-none"
+          >
             Account successfully merged
-          </h2>
+          </h1>
           <p className="text-sm text-white/55">
             All assets have been transferred and the account has been removed from the Stellar
             ledger.
@@ -358,7 +365,13 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
           className="bg-warning/10 border border-warning/30 rounded-2xl p-6 text-center"
         >
           <AlertTriangle className="h-12 w-12 text-warning mx-auto mb-3" />
-          <h2 className="mkt-display text-2xl font-bold mb-1 text-white">Close not finished</h2>
+          <h1
+            ref={headingRef}
+            tabIndex={-1}
+            className="mkt-display text-2xl font-bold mb-1 text-white outline-none"
+          >
+            Close not finished
+          </h1>
           <p className="text-sm text-white/55">
             {confirmedStepCount(executionPlan)} of {executionPlan.length} transactions confirmed.
             The account still exists. Resume the close to finish it.
@@ -375,7 +388,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       {/* Grouped summary */}
       <div className="mkt-panel rounded-2xl overflow-hidden">
         <div className="border-b border-white/10 px-4 py-3">
-          <h3 className="mkt-eyebrow text-white/45">What was done</h3>
+          <h2 className="mkt-eyebrow text-white/45">What was done</h2>
         </div>
         <div className="divide-y divide-white/8">
           {groups.map((g) => (
@@ -399,9 +412,9 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       {ledger.length > 0 && (
         <div className="mkt-panel rounded-2xl overflow-hidden">
           <div className="border-b border-white/10 px-4 py-3">
-            <h3 className="mkt-eyebrow text-white/45">
+            <h2 className="mkt-eyebrow text-white/45">
               {ledger.length === 1 ? "Transaction" : `Transactions · ${ledger.length}`}
-            </h3>
+            </h2>
           </div>
           <div className="divide-y divide-white/8">
             {ledger.map((tx) => (

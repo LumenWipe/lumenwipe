@@ -33,7 +33,7 @@ export default function BlockersPanel({ blockers, blocking }: BlockersPanelProps
     <div className={`border rounded-xl p-4 ${theme.container}`}>
       <div className="flex items-center gap-2 mb-3">
         {theme.icon}
-        <h3 className={`text-sm font-semibold ${theme.heading}`}>{theme.headingText}</h3>
+        <h2 className={`text-sm font-semibold ${theme.heading}`}>{theme.headingText}</h2>
       </div>
       <ul className="space-y-2">
         {blockers.map((b, i) => (
