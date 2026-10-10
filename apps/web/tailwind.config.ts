@@ -6,6 +6,8 @@ import type { Config } from "tailwindcss";
 // launched through Bun, which made the failure look intermittent and environment-specific.
 import typography from "@tailwindcss/typography";
 
+const token = (name: string): string => `hsl(var(--${name}) / <alpha-value>)`;
+
 const config: Config = {
   darkMode: ["class"],
   content: ["./app/**/*.{js,ts,jsx,tsx,mdx}", "./components/**/*.{js,ts,jsx,tsx,mdx}"],
@@ -20,7 +22,24 @@ const config: Config = {
         value: {
           DEFAULT: "hsl(var(--value))",
           foreground: "hsl(var(--value-foreground))",
+          fg: token("value-foreground"),
         },
+        canvas: token("bg"),
+        surface: {
+          DEFAULT: token("surface"),
+          raised: token("surface-raised"),
+          sunken: token("surface-sunken"),
+        },
+        line: { DEFAULT: token("line"), strong: token("line-strong") },
+        fg: {
+          DEFAULT: token("fg"),
+          muted: token("fg-muted"),
+          subtle: token("fg-subtle"),
+          disabled: token("fg-disabled"),
+        },
+        success: token("success"),
+        "danger-fg": token("danger-fg"),
+        focus: token("focus"),
         // stellar/warning were previously only hand-written bare utilities in globals.css
         // (.text-stellar, .bg-warning, etc.) with no entry here - that covers the plain class,
         // but Tailwind can only generate the `/NN` opacity-modifier variants (bg-warning/10,
@@ -35,6 +54,7 @@ const config: Config = {
         warning: {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
+          fg: token("warning-fg"),
         },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -58,7 +78,8 @@ const config: Config = {
           foreground: "hsl(var(--muted-foreground))",
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
+          DEFAULT: token("accent-solid"),
+          fg: token("accent-solid-fg"),
           foreground: "hsl(var(--accent-foreground))",
         },
         popover: {
@@ -70,7 +91,32 @@ const config: Config = {
           foreground: "hsl(var(--card-foreground))",
         },
       },
+      spacing: {
+        gutter: "var(--space-4)",
+        card: "var(--space-5)",
+        control: "var(--space-control)",
+      },
+      fontSize: {
+        caption: ["var(--text-caption)", { lineHeight: "1rem" }],
+        label: ["var(--text-label)", { lineHeight: "1rem" }],
+        "body-sm": ["var(--text-body-sm)", { lineHeight: "1.25rem" }],
+        body: ["var(--text-body)", { lineHeight: "1.5rem" }],
+        title: ["var(--text-title)", { lineHeight: "1.75rem" }],
+        heading: ["var(--text-heading)", { lineHeight: "2.25rem" }],
+        display: ["var(--text-display)", { lineHeight: "2.75rem" }],
+        hero: ["var(--text-hero)", { lineHeight: "1" }],
+      },
+      transitionDuration: {
+        fast: "var(--duration-fast)",
+        base: "var(--duration-base)",
+        slow: "var(--duration-slow)",
+      },
+      transitionTimingFunction: { standard: "var(--ease-standard)" },
       borderRadius: {
+        badge: "var(--radius-sm)",
+        control: "var(--radius-md)",
+        card: "var(--radius-lg)",
+        dialog: "var(--radius-xl)",
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
