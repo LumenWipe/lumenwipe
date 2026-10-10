@@ -13,6 +13,7 @@ import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import PlanSidebar from "./PlanSidebar";
 import ProgressIndicator from "./ProgressIndicator";
 import SigningProgress from "./SigningProgress";
+import StatusMessage from "@/components/a11y/StatusMessage";
 import { SecretKeySigner, WalletKitSigner, type TransactionSigner } from "@/lib/stellar/signer";
 import { ensureWalletKitInitialized } from "@/lib/wallet-kit/client";
 
@@ -188,6 +189,43 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     [execute]
   );
 
+  const busy = running || progressStatus !== null;
+  const pendingMoreSignatures = phase === "STEP_FAILED" && !running && signatureStatus !== null;
+  const failed = phase === "STEP_FAILED" && !running && !changingSigner && !pendingMoreSignatures;
+  const view = busy ? "busy" : pendingMoreSignatures ? "signatures" : failed ? "failed" : "setup";
+
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const alertRef = useRef<HTMLDivElement>(null);
+  const retryRef = useRef<HTMLButtonElement>(null);
+  const previousView = useRef(view);
+  // Focus follows a view swap only: the control that was clicked is unmounted by it, and focus
+  // would otherwise drop to <body>. It never moves on first render, and never out of a field
+  // the user is typing in.
+  useEffect(() => {
+    if (previousView.current === view) return;
+    previousView.current = view;
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLInputElement ||
+      active instanceof HTMLTextAreaElement ||
+      active instanceof HTMLSelectElement
+    ) {
+      return;
+    }
+    if (view === "failed") {
+      const retry = retryRef.current;
+      (retry && !retry.disabled ? retry : alertRef.current)?.focus();
+    } else {
+      headingRef.current?.focus();
+    }
+  }, [view]);
+
+  const statusMessage = busy
+    ? (progressStatus ?? "Working…")
+    : pendingMoreSignatures && signatureStatus
+      ? `More signatures needed. ${signatureStatus.accumulatedWeight} of ${signatureStatus.requiredWeight} signing weight collected.`
+      : "";
+
   if (executionPlan.length === 0 || !destinationAddress) {
     return (
       <div className="text-center py-12 text-white/45 text-sm">
@@ -208,9 +246,6 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
       ? { requiredWeight: accountState?.thresholds.high ?? 1, signers }
       : null;
 
-  const busy = running || progressStatus !== null;
-  const pendingMoreSignatures = phase === "STEP_FAILED" && !running && signatureStatus !== null;
-  const failed = phase === "STEP_FAILED" && !running && !changingSigner && !pendingMoreSignatures;
   const walletMismatchWarning =
     walletConnection.address && !walletAddressIsKnownSigner
       ? `Connected to ${walletConnection.address.slice(0, 4)}…${walletConnection.address.slice(-4)}, but this isn't one of this account's known signers. Disconnect and reconnect a wallet that can sign for it.`
@@ -295,7 +330,13 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
       <div className="flex-1 min-w-0">
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 flex flex-col gap-5">
           <div>
-            <h2 className="text-lg font-semibold text-white">Sign &amp; execute the close</h2>
+            <h2
+              ref={headingRef}
+              tabIndex={-1}
+              className="text-lg font-semibold text-white outline-none"
+            >
+              Sign &amp; execute the close
+            </h2>
             <p className="mt-1 text-sm text-white/55">
               LumenWipe signs each transaction in your browser and submits it through the API. Your
               key never leaves this device.
@@ -323,6 +364,8 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
             </p>
           </div>
 
+          <StatusMessage message={statusMessage} />
+
           {busy ? (
             <ProgressIndicator status={progressStatus ?? "Working…"} />
           ) : pendingMoreSignatures ? (
@@ -345,8 +388,10 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           ) : failed ? (
             <div className="flex flex-col gap-3">
               <div
+                ref={alertRef}
+                tabIndex={-1}
                 role="alert"
-                className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-white/70"
+                className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-white/70 outline-none"
               >
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-destructive" />
                 <span>{lastError ?? "The close could not be completed."}</span>
@@ -359,6 +404,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 Change wallet or key
               </button>
               <button
+                ref={retryRef}
                 onClick={execute}
                 disabled={!signerReady}
                 className="w-full py-3 px-4 rounded-xl font-semibold text-sm bg-stellar text-black hover:bg-stellar/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
