@@ -7,11 +7,16 @@ import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { goBackToAnalyze } from "@/lib/plan/confirm-plan";
 import ReviewView from "@/components/review/ReviewView";
+import StatusMessage from "@/components/a11y/StatusMessage";
+import { useFocusOnMount } from "@/hooks/useFocusOnMount";
 
 export default function ReviewPage({ params }: { params: Promise<{ network: Network }> }) {
   const { network } = use(params);
   const router = useRouter();
   const { executionPlan, sourceAddress, setPhase } = useDemolishStore();
+
+  const hasPlan = Boolean(sourceAddress) && executionPlan.length > 0;
+  const headingRef = useFocusOnMount<HTMLHeadingElement>(hasPlan);
 
   useEffect(() => {
     if (!sourceAddress || executionPlan.length === 0) {
@@ -32,12 +37,21 @@ export default function ReviewPage({ params }: { params: Promise<{ network: Netw
         >
           <ArrowLeft className="h-4 w-4" />
         </button>
-        <h1 className="mkt-display text-xl font-bold text-white">Review the full plan</h1>
+        <h1
+          ref={headingRef}
+          tabIndex={-1}
+          className="mkt-display text-xl font-bold text-white outline-none"
+        >
+          Review the full plan
+        </h1>
         <span className="text-xs text-white/45 ml-auto mkt-mono">
           {sourceAddress.slice(0, 8)}...{sourceAddress.slice(-8)}
         </span>
       </div>
 
+      <StatusMessage
+        message={`Plan ready to review: ${executionPlan.length} ${executionPlan.length === 1 ? "step" : "steps"}.`}
+      />
       <ReviewView network={network} />
     </div>
   );
