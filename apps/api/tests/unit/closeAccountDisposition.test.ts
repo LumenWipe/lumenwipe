@@ -1,5 +1,7 @@
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import * as pathFinding from "@/lib/stellar/path-finding";
+import type { PathResult } from "@/lib/stellar/path-finding";
+import { UpstreamError } from "@/lib/stellar/upstream-client";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { Account, Keypair, Operation, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import { AssetRouteLostError } from "@/lib/utils/errors";
@@ -109,7 +111,7 @@ function opsOf(xdr: string) {
 test("CLOSE_ACCOUNT › issuer disposition returns the balance to the issuer without re-quoting", async () => {
   // No route exists for this asset. With a "convert" decision this would raise
   // AssetRouteLostError; with the user's "issuer" decision it must not even ask.
-  const fetcher = mock(() => Promise.resolve(null));
+  const fetcher = mock(() => Promise.resolve<PathResult>({ kind: "none" }));
   spyOn(pathFinding, "fetchConversionPath").mockImplementation(
     fetcher as unknown as typeof pathFinding.fetchConversionPath
   );
@@ -137,7 +139,7 @@ test("CLOSE_ACCOUNT › issuer disposition returns the balance to the issuer wit
 test("CLOSE_ACCOUNT › a genuinely lost route for a convert asset still surfaces AssetRouteLostError", async () => {
   // Safety invariant: the issuer fix must not mask a lost route for an asset the
   // user actually wants converted. Default disposition is "convert".
-  const fetcher = mock(() => Promise.resolve(null));
+  const fetcher = mock(() => Promise.resolve<PathResult>({ kind: "none" }));
   spyOn(pathFinding, "fetchConversionPath").mockImplementation(
     fetcher as unknown as typeof pathFinding.fetchConversionPath
   );
@@ -149,4 +151,22 @@ test("CLOSE_ACCOUNT › a genuinely lost route for a convert asset still surface
   await expect(buildStepXdrForPlan(closeStep(), ctx({ [NOSWAP]: "convert" }))).rejects.toThrow(
     AssetRouteLostError
   );
+});
+
+test("CLOSE_ACCOUNT › an unavailable price source is an outage, never a lost route", async () => {
+  const outage = new UpstreamError("unavailable", "paths");
+  spyOn(pathFinding, "fetchConversionPath").mockResolvedValue({
+    kind: "unavailable",
+    error: outage,
+  });
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+
+  const { buildStepXdrForPlan } = await import("@/lib/stellar/step-engine");
+
+  const failure = await buildStepXdrForPlan(closeStep(), ctx({ [NOSWAP]: "convert" })).catch(
+    (e: unknown) => e
+  );
+  expect(failure).toBe(outage);
+  expect(failure).not.toBeInstanceOf(AssetRouteLostError);
 });

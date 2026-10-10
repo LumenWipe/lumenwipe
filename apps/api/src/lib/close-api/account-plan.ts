@@ -45,6 +45,7 @@ import {
   deriveDefiPositionsDecisionPoints,
   defiPositionsDecisionId,
   isDefiPositionsAcknowledged,
+  PRICE_SOURCE_UNAVAILABLE,
 } from "@/lib/close-api/decisions";
 import { ARRIVING_ASSET_PROBE_AMOUNT, assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
 import { DEFI_POSITIONS_UNAVAILABLE_CODE } from "@/lib/defi-positions/positions-gate";
@@ -135,10 +136,12 @@ export async function buildAccountPlan(
   );
   const claimedPerAsset = claimedAmountsPerAsset(accountState, claimableBalanceSelections);
   const pricedAssets = pricedAmountsPerAsset(accountState, claimedPerAsset);
+  const priceSourceUnavailable = new Set<string>();
   const convertibilityPromise = Promise.all(
     pricedAssets.map(async ({ asset, amount }) => {
-      const path = await fetchConversionPath(asset, amount, network).catch(() => null);
-      convertibility[asset] = path !== null;
+      const result = await fetchConversionPath(asset, amount, network);
+      if (result.kind === "unavailable") priceSourceUnavailable.add(asset);
+      else convertibility[asset] = result.kind === "route";
     })
   );
   const sponsorshipAffordabilityPromise: Promise<SponsorshipAffordability> =
@@ -238,7 +241,12 @@ export async function buildAccountPlan(
   const decisionPoints = [
     ...deriveDestinationDecisionPoints(destination),
     ...deriveDefiPositionsDecisionPoints(source, needsDefiPositionsAck),
-    ...deriveDecisionPoints(accountState, convertibility, claimableBalanceSelections),
+    ...deriveDecisionPoints(
+      accountState,
+      convertibility,
+      claimableBalanceSelections,
+      priceSourceUnavailable
+    ),
     ...deriveTokenDecisionPoints(accountState, tokenQuotes),
     ...deriveClaimableBalanceDecisionPoints(accountState),
   ];
@@ -286,6 +294,10 @@ export async function buildAccountPlan(
       // and these must trap. A close that cannot pay one of its assets is not a warning.
       ...transferProblems.map((p) => ({ message: p.message })),
     ];
+  }
+
+  if (priceSourceUnavailable.size > 0) {
+    buildResult.blockers = [...buildResult.blockers, { message: PRICE_SOURCE_UNAVAILABLE }];
   }
 
   const mergeProblems = await assessMergePreflight(accountState, destination, network);

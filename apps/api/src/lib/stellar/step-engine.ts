@@ -8,7 +8,7 @@ import {
 } from "@/lib/utils/errors";
 import { stroopsToXlm, xlmToStroops } from "@/lib/utils/amounts";
 import { readLiveTrustline } from "@/lib/stellar/live-trustline";
-import { fetchConversionPath } from "@/lib/stellar/path-finding";
+import { fetchConversionPath, routeOrNull } from "@/lib/stellar/path-finding";
 import { buildRemoveDataEntriesTx } from "@/lib/stellar/tx-builder/data-entries";
 import { buildCancelOffersTx } from "@/lib/stellar/tx-builder/offers";
 import {
@@ -183,7 +183,9 @@ export async function buildStepXdrForPlan(
       if (step.fallbackToIssuer) {
         return buildSendToIssuerTx(sdkAccount, effectiveTl, network);
       }
-      const path = await fetchConversionPath(effectiveTl.asset, effectiveTl.balance, network);
+      const path = routeOrNull(
+        await fetchConversionPath(effectiveTl.asset, effectiveTl.balance, network)
+      );
       if (!path) throw new NoConversionPathError(tl.code);
       return buildConvertAssetTx(sdkAccount, effectiveTl, path, network);
     }
@@ -252,7 +254,9 @@ export async function buildStepXdrForPlan(
             if (!destination) throw new MissingTransferDestinationError(tl.asset);
             return { trustline: effectiveTl, action: "transfer", destination };
           }
-          const path = await fetchConversionPath(effectiveTl.asset, effectiveTl.balance, network);
+          const path = routeOrNull(
+            await fetchConversionPath(effectiveTl.asset, effectiveTl.balance, network)
+          );
           if (!path) throw new AssetRouteLostError(tl.asset, tl.code);
           return { trustline: effectiveTl, action: "convert", path };
         })

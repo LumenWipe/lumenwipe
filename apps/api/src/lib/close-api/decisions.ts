@@ -371,6 +371,9 @@ export function claimedAmountsPerAsset(
   return perAsset;
 }
 
+export const PRICE_SOURCE_UNAVAILABLE =
+  "The price source is unavailable right now, so some assets cannot be priced. Try again in a moment.";
+
 // Derives the per-asset disposition decisions the caller must resolve before a close
 // can be built. `convertibility[asset]` is the best-effort result of path finding:
 // true when a DEX route to XLM exists, false otherwise. Only trustlines holding a
@@ -382,7 +385,10 @@ export function deriveDecisionPoints(
    *  puts an asset in the account that no trustline represents yet, and that asset needs a
    *  disposition like any other - without one the close dead-ends after the claim round, with
    *  the trustline already added and the balance already claimed. */
-  claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {}
+  claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {},
+  /** Assets whose price source did not answer. They get no decision point: offering "no route,
+   *  return to issuer" for an asset nobody could price would present an outage as a market fact. */
+  priceSourceUnavailable: ReadonlySet<string> = new Set()
 ): DecisionPoint[] {
   // The same dead-end, reached from the other direction: an exit pays an asset into a trustline
   // that is empty today, so neither the balance rule nor the claim rule asks about it, and the
@@ -417,7 +423,9 @@ export function deriveDecisionPoints(
   for (const asset of arrivingFromExits) {
     if (!pendingByAsset.has(asset)) pendingByAsset.set(asset, { asset, balance: "0" });
   }
-  const pending = [...pendingByAsset.values()];
+  const pending = [...pendingByAsset.values()].filter(
+    (tl) => !priceSourceUnavailable.has(tl.asset)
+  );
 
   return pending.map((tl) => {
     const convertible = convertibility[tl.asset] ?? false;

@@ -1,4 +1,6 @@
 import { test, expect, beforeEach } from "bun:test";
+import { UpstreamError } from "@/lib/stellar/upstream-client";
+import { createDeadline } from "@/common/deadline";
 import {
   horizonGet,
   horizonPaginate,
@@ -8,6 +10,7 @@ import {
 } from "@/lib/stellar/horizon-http";
 
 const BASE = "https://horizon.example";
+const NO_WAIT = { sleep: async (): Promise<void> => {} };
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -47,7 +50,12 @@ test("returns null on 404 so callers can distinguish 'absent' from 'failed'", as
 // A partial read is worse than a failed one: a close plan built from it silently skips entries.
 test("throws on a server error instead of degrading to an empty result", async () => {
   const { fetch } = recordingFetch(() => new Response("", { status: 500 }));
-  await expect(horizonGet("/accounts/G1", { baseUrl: BASE, fetch })).rejects.toThrow(/500/);
+  const failure = await horizonGet("/accounts/G1", { baseUrl: BASE, fetch, client: NO_WAIT }).catch(
+    (e: unknown) => e
+  );
+  expect(failure).toBeInstanceOf(UpstreamError);
+  expect(failure).toMatchObject({ kind: "unavailable" });
+  expect((failure as Error).message).not.toMatch(/500|horizon\.example/);
 });
 
 test("retries a 429 and succeeds once the provider relents", async () => {
@@ -64,13 +72,15 @@ test("retries a 429 and succeeds once the provider relents", async () => {
   expect(calls).toHaveLength(2);
 });
 
-test("gives up on sustained 429 with an error naming the config to change", async () => {
+test("gives up on sustained 429 with a plain rate_limited error", async () => {
   const { fetch } = recordingFetch(
     () => new Response("", { status: 429, headers: { "Retry-After": "0" } })
   );
-  await expect(horizonGet("/accounts/G1", { baseUrl: BASE, fetch })).rejects.toThrow(
-    /PATH_ROUTING_API/
+  const failure = await horizonGet("/accounts/G1", { baseUrl: BASE, fetch, client: NO_WAIT }).catch(
+    (e: unknown) => e
   );
+  expect(failure).toMatchObject({ kind: "rate_limited" });
+  expect((failure as Error).message).not.toMatch(/429|horizon\.example/);
 });
 
 // The counter is the early warning: the public Horizon allows 3600 req/hour per IP and Cloud
@@ -80,7 +90,7 @@ test("counts every rate-limited request", async () => {
     () => new Response("", { status: 429, headers: { "Retry-After": "0" } })
   );
   expect(rateLimitHits()).toBe(0);
-  await horizonGet("/accounts/G1", { baseUrl: BASE, fetch }).catch(() => {});
+  await horizonGet("/accounts/G1", { baseUrl: BASE, fetch, client: NO_WAIT }).catch(() => {});
   expect(rateLimitHits()).toBe(4); // initial attempt + 3 retries
 });
 
@@ -185,7 +195,7 @@ test("refuses a pagination link pointing at a different host", async () => {
   );
   await expect(
     horizonPaginate<{ n: number }>("/offers", { baseUrl: BASE, fetch }, PAGE_LIMIT, 100)
-  ).rejects.toThrow(/not the configured provider/);
+  ).rejects.toMatchObject({ kind: "bad_response" });
 });
 
 // The case a string-prefix check waves through: "https://horizon.example.attacker.com"
@@ -199,7 +209,7 @@ test("refuses a pagination link on a host that merely prefixes the provider", as
   );
   await expect(
     horizonPaginate<{ n: number }>("/offers", { baseUrl: BASE, fetch }, PAGE_LIMIT, 100)
-  ).rejects.toThrow(/not the configured provider/);
+  ).rejects.toMatchObject({ kind: "bad_response" });
   expect(calls.every((c) => c.startsWith(`${BASE}/`))).toBe(true);
 });
 
@@ -234,7 +244,7 @@ test("refuses a 404 on a collection page instead of treating it as the end", asy
   );
   await expect(
     horizonPaginate<{ n: number }>("/offers", { baseUrl: BASE, fetch }, PAGE_LIMIT, 100)
-  ).rejects.toThrow(/not an empty result/);
+  ).rejects.toMatchObject({ kind: "bad_response" });
 });
 
 test("a trailing slash on the configured base does not produce a double slash", async () => {
@@ -344,5 +354,29 @@ test("refuses a protocol-relative pagination link", async () => {
   );
   await expect(
     horizonPaginate<{ n: number }>("/offers", { baseUrl: BASE, fetch }, 2, 100)
-  ).rejects.toThrow(/not the configured provider/);
+  ).rejects.toMatchObject({ kind: "bad_response" });
+});
+
+test("one deadline bounds a whole paginated read, not each page", async () => {
+  let pages = 0;
+  const fetch = (async () => {
+    pages++;
+    await new Promise((r) => setTimeout(r, 40));
+    return jsonResponse({
+      _embedded: { records: [{ id: pages }, { id: pages + 0.5 }] },
+      _links: { next: { href: `${BASE}/offers?cursor=${pages}` } },
+    });
+  }) as unknown as typeof globalThis.fetch;
+
+  const started = Date.now();
+  const failure = await horizonPaginate(
+    "/offers",
+    { baseUrl: BASE, fetch, deadline: createDeadline(150) },
+    2,
+    10_000
+  ).catch((e: unknown) => e);
+
+  expect(failure).toMatchObject({ kind: "timeout" });
+  expect(pages).toBeLessThan(6);
+  expect(Date.now() - started).toBeLessThan(500);
 });

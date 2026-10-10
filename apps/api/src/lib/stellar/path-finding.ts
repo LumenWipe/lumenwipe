@@ -1,6 +1,8 @@
 import type { Network } from "@/config/networks";
 import { PATH_ROUTING_API_URLS } from "@/config/networks";
-import { HORIZON_TIMEOUT_MS, SLIPPAGE_BPS } from "@/config/constants";
+import { SLIPPAGE_BPS } from "@/config/constants";
+import type { Deadline } from "@/common/deadline";
+import { UpstreamError, upstreamGetJson, type UpstreamOptions } from "./upstream-client";
 import type { ConversionPath } from "@lumenwipe/types";
 import { isNativeAsset, parseAsset } from "@/lib/utils/assets";
 import { stroopsToXlm, xlmToStroops } from "@/lib/utils/amounts";
@@ -33,60 +35,81 @@ export function applySlippage(amount: string): string {
   return min > BigInt(0) ? stroopsToXlm(min) : "0";
 }
 
+/**
+ * What the price source said. `none` is an answer (the asset has no route to the target);
+ * `unavailable` is the absence of one, and must never be read as `none`.
+ */
+export type PathResult =
+  | { kind: "route"; path: ConversionPath }
+  | { kind: "none" }
+  | { kind: "unavailable"; error: UpstreamError };
+
+export interface PathFindingOptions {
+  fetch?: typeof globalThis.fetch;
+  deadline?: Deadline;
+  client?: Pick<UpstreamOptions, "policy" | "random" | "sleep" | "now">;
+}
+
+/** The route, or null when there is none; an unavailable price source throws instead of
+ *  reading as "no route". */
+export function routeOrNull(result: PathResult): ConversionPath | null {
+  if (result.kind === "unavailable") throw result.error;
+  return result.kind === "route" ? result.path : null;
+}
+
 export async function fetchConversionPath(
   fromAsset: string,
   amount: string,
   network: Network,
-  toAsset = "native"
-): Promise<ConversionPath | null> {
+  toAsset = "native",
+  options: PathFindingOptions = {}
+): Promise<PathResult> {
   const base = PATH_ROUTING_API_URLS[network];
-  if (!base || isNativeAsset(fromAsset) || !(parseFloat(amount) > 0)) return null;
+  if (!base) return { kind: "unavailable", error: new UpstreamError("unavailable", "paths") };
+  if (isNativeAsset(fromAsset) || !(parseFloat(amount) > 0)) return { kind: "none" };
 
   const { code, issuer } = parseAsset(fromAsset);
-  if (!issuer) return null;
+  if (!issuer) return { kind: "none" };
 
-  const url = new URL(`${base}/paths/strict-send`);
-  url.searchParams.set(
-    "source_asset_type",
-    code.length <= 4 ? "credit_alphanum4" : "credit_alphanum12"
-  );
-  url.searchParams.set("source_asset_code", code);
-  url.searchParams.set("source_asset_issuer", issuer);
-  url.searchParams.set("source_amount", amount);
-  url.searchParams.set("destination_assets", toAsset);
+  const query = new URLSearchParams({
+    source_asset_type: code.length <= 4 ? "credit_alphanum4" : "credit_alphanum12",
+    source_asset_code: code,
+    source_asset_issuer: issuer,
+    source_amount: amount,
+    destination_assets: toAsset,
+  });
 
+  let data: PathsResponse | null;
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), HORIZON_TIMEOUT_MS);
-
-    const res = await fetch(url.toString(), {
-      signal: controller.signal,
-      headers: { Accept: "application/json" },
+    data = await upstreamGetJson<PathsResponse>(base, `/paths/strict-send?${query}`, {
+      target: "paths",
+      fetch: options.fetch,
+      deadline: options.deadline,
+      ...options.client,
     });
+  } catch (error) {
+    if (error instanceof UpstreamError) return { kind: "unavailable", error };
+    throw error;
+  }
 
-    clearTimeout(timeout);
+  const records = data?._embedded?.records ?? [];
+  if (records.length === 0) return { kind: "none" };
 
-    if (!res.ok) return null;
+  const best = records.reduce((a, b) =>
+    parseFloat(b.destination_amount) > parseFloat(a.destination_amount) ? b : a
+  );
 
-    const data = (await res.json()) as PathsResponse;
-    const records = data._embedded?.records ?? [];
-    if (records.length === 0) return null;
+  const destMin = applySlippage(best.destination_amount);
+  if (destMin === "0") return { kind: "none" };
 
-    const best = records.reduce((a, b) =>
-      parseFloat(b.destination_amount) > parseFloat(a.destination_amount) ? b : a
-    );
-
-    const destMin = applySlippage(best.destination_amount);
-    if (destMin === "0") return null;
-
-    return {
+  return {
+    kind: "route",
+    path: {
       fromAsset,
       toAsset,
       path: best.path.map(recordAssetToString),
       estimatedReceive: best.destination_amount,
       destMin,
-    };
-  } catch {
-    return null;
-  }
+    },
+  };
 }

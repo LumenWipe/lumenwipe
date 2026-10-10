@@ -308,3 +308,100 @@ test("enumerateSponsoredEntries › a malformed/unexpected response degrades to 
   expect(result.sponsoredEntries).toEqual([]);
   expect(result.sponsorshipEnumerationIncomplete).toBe(true);
 });
+
+function failsOnce(respond: () => Response): () => Response {
+  let calls = 0;
+  return () => (calls++ === 0 ? new Response(null, { status: 503 }) : respond());
+}
+
+test("enumerateSponsoredEntries › one transient 5xx per request no longer marks the enumeration incomplete", async () => {
+  const issuer = "GISSUER0000000000000000000000000000000000000000000000";
+  globalThis.fetch = routedFetch([
+    [
+      `/accounts/${SPONSOR}/operations`,
+      failsOnce(() =>
+        jsonResponse({
+          _embedded: {
+            records: [
+              {
+                type: "change_trust",
+                source_account: OWNER,
+                sponsor: SPONSOR,
+                asset_type: "credit_alphanum4",
+                asset_code: "USDC",
+                asset_issuer: issuer,
+              },
+            ],
+          },
+        })
+      ),
+    ],
+    [`/claimable_balances`, failsOnce(() => jsonResponse({ _embedded: { records: [] } }))],
+    [`/accounts/${OWNER}/offers`, failsOnce(() => jsonResponse({ _embedded: { records: [] } }))],
+    [
+      `/accounts/${OWNER}`,
+      failsOnce(() =>
+        jsonResponse({
+          subentry_count: 1,
+          balances: [
+            { asset_type: "native", balance: "5.0000000" },
+            {
+              asset_type: "credit_alphanum4",
+              asset_code: "USDC",
+              asset_issuer: issuer,
+              balance: "10.0000000",
+              sponsor: SPONSOR,
+            },
+          ],
+          signers: [],
+        })
+      ),
+    ],
+  ]) as unknown as typeof fetch;
+
+  const result = await enumerateSponsoredEntries(SPONSOR, "testnet", 1, true);
+
+  expect(result.sponsorshipEnumerationIncomplete).toBe(false);
+  expect(result.sponsoredEntries).toHaveLength(1);
+});
+
+test("enumerateSponsoredEntries › a provider that keeps failing still degrades to incomplete, after retries", async () => {
+  const fetchMock = mock(async () => new Response(null, { status: 503 }));
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+  const result = await enumerateSponsoredEntries(SPONSOR, "testnet", 1, true);
+
+  expect(result.sponsorshipEnumerationIncomplete).toBe(true);
+  expect(fetchMock.mock.calls.length).toBeGreaterThan(2);
+});
+
+test("fetchOwnerLiveStatesBounded › owner fan-out narrows once a 429 has been seen", async () => {
+  const owners = Array.from({ length: 14 }, (_, i) => `GOWNER${String(i).padStart(2, "0")}`);
+  let rateLimited = false;
+  let inflight = 0;
+  const laterMax: number[] = [];
+  globalThis.fetch = mock(async (url: string) => {
+    const index = owners.findIndex((o) => url.includes(`/accounts/${o}`));
+    if (index === 0 && !rateLimited) {
+      rateLimited = true;
+      return new Response(null, { status: 429, headers: { "Retry-After": "0" } });
+    }
+    inflight++;
+    if (index >= 10) laterMax.push(inflight);
+    await new Promise((r) => setTimeout(r, 15));
+    inflight--;
+    return url.endsWith("/offers?limit=200")
+      ? jsonResponse({ _embedded: { records: [] } })
+      : jsonResponse({
+          subentry_count: 0,
+          balances: [{ asset_type: "native", balance: "5.0000000" }],
+          signers: [],
+        });
+  }) as unknown as typeof fetch;
+
+  const result = await fetchOwnerLiveStatesBounded(owners, "testnet");
+
+  expect(result.size).toBe(14);
+  expect([...result.values()].every((s) => !s.fetchFailed)).toBe(true);
+  expect(Math.max(...laterMax)).toBeLessThanOrEqual(2);
+});

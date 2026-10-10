@@ -23,7 +23,7 @@ import {
   fetchLiveTrustlineBalance,
   filterExistingClaimableBalances,
 } from "@/lib/stellar/step-engine";
-import { fetchConversionPath } from "@/lib/stellar/path-finding";
+import { fetchConversionPath, routeOrNull } from "@/lib/stellar/path-finding";
 import { lookupExchange, requiresMediatorForAddress } from "@/lib/exchange-registry";
 import {
   computeNeedsSignerNormalization,
@@ -421,7 +421,9 @@ export async function buildCloseTransactions(
         return { trustline: effectiveTl, action: "transfer", destination };
       }
 
-      const path = await fetchConversionPath(effectiveTl.asset, effectiveTl.balance, network);
+      const path = routeOrNull(
+        await fetchConversionPath(effectiveTl.asset, effectiveTl.balance, network)
+      );
       if (!path) throw new AssetRouteLostError(tl.asset, tl.code);
       return { trustline: effectiveTl, action: "convert", path };
     })

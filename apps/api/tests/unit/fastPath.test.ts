@@ -1,5 +1,7 @@
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import * as pathFinding from "@/lib/stellar/path-finding";
+import type { PathResult } from "@/lib/stellar/path-finding";
+import { UpstreamError } from "@/lib/stellar/upstream-client";
 import { Keypair } from "@stellar/stellar-sdk";
 import type { AccountState, Trustline, ConversionPath } from "@lumenwipe/types";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
@@ -61,7 +63,7 @@ afterEach(() => {
 });
 
 test("assessConversions › no balance-bearing trustlines → [] without calling the network", async () => {
-  const fetcher = mock(() => Promise.resolve<ConversionPath | null>(null));
+  const fetcher = mock(() => Promise.resolve<PathResult>({ kind: "none" }));
   spyOn(pathFinding, "fetchConversionPath").mockImplementation(
     fetcher as unknown as typeof pathFinding.fetchConversionPath
   );
@@ -78,7 +80,7 @@ test("assessConversions › no balance-bearing trustlines → [] without calling
 
 test("assessConversions › every asset with balance has a path → all convertible", async () => {
   const fetcher = mock((fromAsset: string) =>
-    Promise.resolve<ConversionPath | null>(makePath(fromAsset))
+    Promise.resolve<PathResult>({ kind: "route", path: makePath(fromAsset) })
   );
   spyOn(pathFinding, "fetchConversionPath").mockImplementation(
     fetcher as unknown as typeof pathFinding.fetchConversionPath
@@ -96,16 +98,28 @@ test("assessConversions › every asset with balance has a path → all converti
   expect(result).toHaveLength(2);
   expect(result.every((a) => a.convertible)).toBe(true);
   expect(result).toEqual([
-    { asset: `USDC:${ISSUER}`, code: "USDC", balance: "100", convertible: true },
-    { asset: `EURC:${ISSUER}`, code: "EURC", balance: "50", convertible: true },
+    {
+      asset: `USDC:${ISSUER}`,
+      code: "USDC",
+      balance: "100",
+      convertible: true,
+      priceSourceUnavailable: false,
+    },
+    {
+      asset: `EURC:${ISSUER}`,
+      code: "EURC",
+      balance: "50",
+      convertible: true,
+      priceSourceUnavailable: false,
+    },
   ]);
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
 
 test("assessConversions › one asset returns null → only that entry is not convertible", async () => {
   const fetcher = mock((fromAsset: string) =>
-    Promise.resolve<ConversionPath | null>(
-      fromAsset.startsWith("EURC") ? null : makePath(fromAsset)
+    Promise.resolve<PathResult>(
+      fromAsset.startsWith("EURC") ? { kind: "none" } : { kind: "route", path: makePath(fromAsset) }
     )
   );
   spyOn(pathFinding, "fetchConversionPath").mockImplementation(
@@ -122,13 +136,30 @@ test("assessConversions › one asset returns null → only that entry is not co
   const result = await assessConversions(account, "testnet");
 
   expect(result).toEqual([
-    { asset: `USDC:${ISSUER}`, code: "USDC", balance: "100", convertible: true },
-    { asset: `EURC:${ISSUER}`, code: "EURC", balance: "50", convertible: false },
+    {
+      asset: `USDC:${ISSUER}`,
+      code: "USDC",
+      balance: "100",
+      convertible: true,
+      priceSourceUnavailable: false,
+    },
+    {
+      asset: `EURC:${ISSUER}`,
+      code: "EURC",
+      balance: "50",
+      convertible: false,
+      priceSourceUnavailable: false,
+    },
   ]);
 });
 
-test("assessConversions › a thrown fetcher counts as not convertible", async () => {
-  const fetcher = mock(() => Promise.reject<ConversionPath | null>(new Error("network down")));
+test("assessConversions › an unavailable price source is reported as such, never as no route", async () => {
+  const fetcher = mock(() =>
+    Promise.resolve<PathResult>({
+      kind: "unavailable",
+      error: new UpstreamError("unavailable", "paths"),
+    })
+  );
   spyOn(pathFinding, "fetchConversionPath").mockImplementation(
     fetcher as unknown as typeof pathFinding.fetchConversionPath
   );
@@ -138,6 +169,12 @@ test("assessConversions › a thrown fetcher counts as not convertible", async (
   const result = await assessConversions(account, "testnet");
 
   expect(result).toEqual([
-    { asset: `USDC:${ISSUER}`, code: "USDC", balance: "100", convertible: false },
+    {
+      asset: `USDC:${ISSUER}`,
+      code: "USDC",
+      balance: "100",
+      convertible: false,
+      priceSourceUnavailable: true,
+    },
   ]);
 });

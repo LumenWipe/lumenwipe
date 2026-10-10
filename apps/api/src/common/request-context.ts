@@ -4,12 +4,15 @@ import { Logger } from "@nestjs/common";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { xdr } from "@stellar/stellar-sdk";
 import type { AuthedRequest } from "@/auth/api-key.guard";
+import { REQUEST_DEADLINE_MS } from "@/config/constants";
+import { createDeadline, type Deadline } from "./deadline";
 
 export const REQUEST_ID_HEADER = "x-request-id";
 
 interface RequestContext {
   requestId: string;
   sensitive: Set<string>;
+  deadline: Deadline;
 }
 
 const storage = new AsyncLocalStorage<RequestContext>();
@@ -20,6 +23,11 @@ export function currentRequestId(): string | undefined {
 
 export function currentSensitiveLiterals(): Iterable<string> {
   return storage.getStore()?.sensitive ?? [];
+}
+
+/** Aborts once the request has used its whole upstream budget; absent outside a request. */
+export function currentDeadline(): Deadline | undefined {
+  return storage.getStore()?.deadline;
 }
 
 /** Marks a value the current request carried (a deposit memo) as never to be logged. */
@@ -49,7 +57,7 @@ function severityMethod(status: number): "log" | "warn" | "error" {
  * into the log line it is meant to be matched against. The access line carries the matched route
  * pattern, never the raw path, because paths hold account addresses.
  */
-export function requestContextMiddleware(): RequestHandler {
+export function requestContextMiddleware(deadlineMs: number = REQUEST_DEADLINE_MS): RequestHandler {
   const logger = new Logger("http");
   return (req: Request, res: Response, next: NextFunction): void => {
     const requestId = randomUUID();
@@ -74,7 +82,7 @@ export function requestContextMiddleware(): RequestHandler {
       });
     });
 
-    storage.run({ requestId, sensitive: new Set() }, next);
+    storage.run({ requestId, sensitive: new Set(), deadline: createDeadline(deadlineMs) }, next);
   };
 }
 

@@ -7,6 +7,8 @@ export interface AssetConvertibility {
   code: string;
   balance: string;
   convertible: boolean;
+  /** True when the price source did not answer; `convertible` is then not an answer. */
+  priceSourceUnavailable: boolean;
 }
 
 /**
@@ -24,8 +26,14 @@ export async function assessConversions(
   );
   return Promise.all(
     withBalance.map(async (tl) => {
-      const path = await fetchConversionPath(tl.asset, tl.balance, network).catch(() => null);
-      return { asset: tl.asset, code: tl.code, balance: tl.balance, convertible: path !== null };
+      const result = await fetchConversionPath(tl.asset, tl.balance, network);
+      return {
+        asset: tl.asset,
+        code: tl.code,
+        balance: tl.balance,
+        convertible: result.kind === "route",
+        priceSourceUnavailable: result.kind === "unavailable",
+      };
     })
   );
 }
