@@ -16,6 +16,17 @@ Non-custodial &nbsp;·&nbsp; Client-side signing &nbsp;·&nbsp; Soroban & DeFi s
 
 ---
 
+## Where to read next
+
+| If you are...     | Start with                                                                                                                                                                                          |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A user**        | [Closing an account](docs/guides/closing-an-account.mdx), then [Recovery](docs/guides/recovery.mdx) if a close stops partway and [Troubleshooting and FAQ](docs/guides/troubleshooting-and-faq.mdx) |
+| **An integrator** | [SDK overview](docs/sdk/overview.mdx), the [API introduction](docs/api-reference/introduction.mdx) and the [error reference](docs/api-reference/errors.mdx)                                         |
+| **An evaluator**  | [Executive summary](docs/executive-summary.md), [Technical architecture](docs/architecture.md), the [threat model](docs/threat-model.md) and [SECURITY.md](SECURITY.md)                             |
+| **A contributor** | [CONTRIBUTING.md](CONTRIBUTING.md) and [Add a protocol exit](docs/contributing/add-a-protocol-exit.mdx)                                                                                             |
+
+---
+
 ## What is LumenWipe?
 
 LumenWipe is an open-source, non-custodial web app that walks you through closing a Stellar account from start to finish - automatically. It detects everything holding your account open (trustlines, DEX offers, DeFi positions, data entries, extra signers), unwinds it step by step, converts leftover tokens to XLM, and merges the account into your destination wallet or exchange address.
@@ -233,6 +244,18 @@ Full technical documentation is at [**docs.lumenwipe.com**](https://docs.lumenwi
 | [Technical Architecture](docs/architecture.md)                     | Complete system design: data sources, execution plan, Soroban & DeFi integration, mediator flow, security, testing, and roadmap |
 | [Community & Communications](docs/community-and-communications.md) | Building in the open, update cadence, decentralized social channels, and post-launch maintenance                                |
 | [Diagram sources](diagrams/)                                       | All 9 diagrams: Python/Graphviz generator, Mermaid context copies, rendered PNG/SVG exports                                     |
+| [Docs home](docs/index.mdx)                                        | The documentation site's start page, with a card for each task                                                                  |
+| [Threat model](docs/threat-model.md)                               | STRIDE analysis of key handling, the API's signing keys, transaction construction, the client session layer, and DeFi exits     |
+| [Security remediation plan](docs/security-remediation-plan.md)     | Results of the dependency audit, static analysis, and secret scan, with a resolution or accepted-risk rationale per finding     |
+| [Monitoring plan](docs/monitoring-plan.md)                         | What LumenWipe watches on the Stellar ledger and what happens when a monitor fires                                              |
+| [Changelog](docs/changelog.mdx)                                    | Dated, user-visible changes and current mainnet availability                                                                    |
+| [Security policy](SECURITY.md)                                     | Supported versions and how to report a vulnerability privately                                                                  |
+| [Guides](docs/guides/closing-an-account.mdx)                       | Closing an account, how a close works, signing options, protocol exits, exchange closes, troubleshooting, and recovery          |
+| [Use cases](docs/use-cases/overview.mdx)                           | Who closes accounts and why, from individuals to wallet and embedded-account platforms                                          |
+| [Reference](docs/reference/glossary.mdx)                           | Glossary, the supported matrix, and logging and privacy                                                                         |
+| [SDK](docs/sdk/overview.mdx)                                       | The `@lumenwipe/sdk` client, `runClose`, verification, errors and versioning                                                    |
+| [API reference](docs/api-reference/introduction.mdx)               | Authentication, errors, rate limits and every endpoint, plus the [error reference](docs/api-reference/errors.mdx)               |
+| [Add a protocol exit](docs/contributing/add-a-protocol-exit.mdx)   | The contributor guide for a new DeFi protocol exit                                                                              |
 
 ---
 

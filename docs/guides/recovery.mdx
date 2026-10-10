@@ -1,0 +1,124 @@
+---
+title: "Recovery"
+description: "What to do when a close stops partway, organized by the state your account is in."
+icon: "life-ring"
+---
+
+A close can stop for ordinary reasons: a dropped connection, a closed tab, a transaction that took too long, a route that changed. Almost all of them are safe to resume, because the API keeps no progress between rounds. Each call re-reads the account from the ledger and works out what is left, so calling again continues where the account actually is.
+
+Nothing in this guide asks for a secret key or a seed phrase. LumenWipe never needs one, and nobody supporting you should ask for one.
+
+## What is and is not recoverable
+
+| Situation                                               | Recoverable                                                                             |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| A step failed or did not confirm                        | Yes. Check the ledger, then run the close again.                                        |
+| The browser closed or the connection dropped            | Yes. Resume the close, or start it again from the same account.                         |
+| A signed transaction expired before it was submitted    | Yes. Build and sign a new one. The old one can never confirm.                           |
+| The account is merged                                   | The close is finished. The XLM is at the destination, and the account no longer exists. |
+| An exchange received the payment but did not credit you | Only the exchange can resolve it. LumenWipe cannot move funds or reverse a transaction. |
+| A merge into the wrong destination                      | No. A merge cannot be undone.                                                           |
+
+## Find your account's state
+
+Look up your source address on a public explorer such as [stellar.expert](https://stellar.expert), on the same network you used, and match what you see.
+
+| What the explorer shows                                               | State                                                                     |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| The account exists with all its original entries                      | [Nothing done yet](#nothing-has-happened-yet)                             |
+| The account exists with fewer entries than before                     | [Partly closed](#the-close-stopped-partway)                               |
+| The account does not exist, and a merge transaction is in its history | [Merged](#the-account-is-merged)                                          |
+| The merge paid a mediator, then an exchange address                   | [Funds sent to an exchange](#funds-sent-to-an-exchange-were-not-credited) |
+
+## Nothing has happened yet
+
+Analyzing, planning and reviewing only read the ledger. Nothing is built, signed or saved until you confirm on the review page. If anything failed before that point, close the page or start again. Nothing needs checking.
+
+## The close stopped partway
+
+Every confirmed step stays confirmed. To continue, resume the close in the app, or start a new close with the same account and destination. The API rebuilds only what is still open, and steps that already confirmed are skipped. The browser keeps a resumable session after you confirm the review, in your browser's own storage and never with your keys. The start page offers it as a "Resume" banner.
+
+### A submission did not confirm in time
+
+`confirmation_timeout` means the API waited about 90 seconds for the transaction to appear in a ledger and did not see it. The transaction may still land.
+
+1. Copy the transaction hash if you have it, and look it up on a public explorer.
+2. If it is there and succeeded, that step is done. Run the close again to continue.
+3. If it is not there, running the close again is safe. If the first transaction is still waiting to be included, the new one carries the same sequence number, so only one of the two can confirm.
+
+If you submit the identical signed transaction a second time, the API first checks whether it already confirmed and, if so, reports the success instead of sending it again.
+
+The SDK never retries `submit` for you, so an integration has to make this check itself. See [Retrying safely](/sdk/errors#retrying-safely).
+
+### You lost the connection after signing
+
+A response can be lost after the transaction confirmed. Resume the close. The next round re-reads the account, so a step that confirmed is no longer in the plan. If you still have the signed transaction, submitting it again is also safe for the reason above.
+
+### The transaction expired
+
+A transaction the API builds is valid for 300 seconds. If the signing took longer, for example while waiting on a hardware wallet, the network refuses it with `submit_rejected` and a `details.resultCode` of `tx_too_late`. Nothing was applied. Run the close again to get a new transaction and sign that one. A stale sequence number (`tx_bad_seq`) is handled the same way.
+
+### The network rejected the transaction
+
+`submit_rejected` carries the network's own reason in `details.resultCode`, and the message says it in plain language. If the transaction was rejected, no operation in it took effect. If it was included in a ledger and failed, none of its operations took effect, though the fee is charged. Read the message, fix what it names, and run the close again.
+
+### The network was too busy
+
+`submit_failed` means the API could not tell whether the transaction was accepted, for example because the network stayed congested through its retries. Treat it like a timeout: look the hash up first, then run the close again.
+
+### A conversion route changed
+
+`quote_drifted` means the route for an asset conversion changed between planning and building, and nothing was submitted. Plan again and choose again for that asset. If no route is available, choose a transfer or a return to the issuer instead, which need no route.
+
+### A co-signature or sponsored fee failed
+
+For an exchange destination, the API co-signs the relay account's payment before anything is submitted. If that call fails, or the sponsored fee wrap fails, nothing has reached the ledger and nothing has changed. Run the close again.
+
+A refusal with `transaction_structure_not_allowed` means the transaction was not the exact shape the relay will sign, and trying the same transaction again will not help. `mediator_not_configured` means exchange closes are not set up on that network. Choose a destination that is not an exchange, or see [exchange closes](/guides/exchanges-and-the-mediator).
+
+### The service is unavailable
+
+A `503` carries a `Retry-After` header with a default of 30 seconds. For read failures such as `destination_read_failed` and `service_unavailable`, wait and run the close again. The [error reference](/api-reference/errors) says which codes are worth retrying and which are not. `registry_expired` and `source_sequence_too_far` are not.
+
+### A blocker stops the close
+
+A [blocker](/reference/glossary#blocker) means a step cannot be done safely, and LumenWipe will not skip it. The message names the entry and what would resolve it. Common ones:
+
+- An account with the `AUTH_IMMUTABLE` flag can never be merged.
+- A sequence number too far ahead (`source_sequence_too_far`) cannot be closed until the network's ledger count catches up. Retrying does not help.
+- A DeFi position that cannot be exited safely, such as an undercollateralized vault, has to be resolved in that protocol first.
+- A destination that does not exist yet has to be funded first.
+
+Resolve it, analyze the account again, and plan again. The [troubleshooting page](/guides/troubleshooting-and-faq) covers the most common ones.
+
+### The account needs more signing weight
+
+On a multisig account, a signer that is not enough on its own leaves the transaction waiting. Add another listed signer to the same transaction, and the close continues. See [signing options](/guides/signing-options).
+
+## The account is merged
+
+When the merge confirms, the source account is removed from the ledger. Analyzing it again returns `account_not_found`, and that is the sign of success. The XLM is at the destination.
+
+There is nothing to retry. Check the destination account's balance, or the merge transaction, on an explorer. Reserves returned by the merge are added to the destination balance, minus network fees.
+
+## Funds sent to an exchange were not credited
+
+An exchange close is one transaction with two operations: your account merges into the mediator, and the mediator pays your exchange address with your memo. Because it is atomic, either both happened or neither did.
+
+1. Look up the transaction hash on an explorer and confirm it succeeded.
+2. Check that the payment went to the address you typed, in XLM.
+3. Compare the memo on the payment with the memo the exchange gave you.
+4. Contact the exchange with the transaction hash and your memo. Only the exchange can credit a deposit.
+
+LumenWipe cannot recover funds from an exchange, and a memo entered wrongly cannot be changed afterward.
+
+## What to send when you ask for help
+
+Include:
+
+- The network, mainnet or testnet.
+- The transaction hash, if there is one.
+- The reference id from the error. The app shows it as "Reference", and the API returns it as `error.requestId` and the `X-Request-Id` header.
+- Which step failed and the message you saw.
+
+Never send a secret key or a seed phrase. Ask in the [community channels](/community-and-communications) or open a [GitHub issue](https://github.com/LumenWipe/lumenwipe/issues). Security problems follow the private process in [SECURITY.md](https://github.com/LumenWipe/lumenwipe/blob/main/SECURITY.md) and not a public issue.

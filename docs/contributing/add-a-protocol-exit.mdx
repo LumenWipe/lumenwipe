@@ -1,0 +1,135 @@
+---
+title: "Add a protocol exit"
+description: "Every file a new DeFi protocol exit touches, in the order to change them, and the tests to write."
+icon: "code-branch"
+---
+
+A protocol exit lets LumenWipe close a position in a DeFi protocol before it merges the account. This page lists every place a new exit touches. The invariants an exit must satisfy are in [architecture section 9.9](/architecture#99-exit-adapter-invariants), and this page does not repeat them.
+
+<Warning>
+  A protocol exit is security-sensitive: it constructs transactions that move funds and extends what
+  the browser agrees to sign. Open an issue to agree the approach before writing code, flag the
+  change as security-sensitive in the pull request, and run the repository's security review before
+  opening it.
+</Warning>
+
+## The rule
+
+The API builds every transaction, and the browser decides whether to sign it. The browser's `verify()` is the trust anchor: it decodes the transaction and refuses anything it does not recognize.
+
+**A new close operation must be added to both the API's transaction builder and every verifier allowlist that has to accept it. If it is added to the builder alone, the verifier rejects the transaction as an unknown operation and no user can sign it.**
+
+For a protocol exit this works out as follows:
+
+| Kind of change                                     | Builder place                         | Verifier places                                                                               |
+| -------------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------- |
+| A Soroban exit (an `invokeHostFunction` operation) | The exit adapter in `apps/api`        | `apps/web/lib/stellar/verify.ts`, fed by `exit-expectations.ts` and the web contract registry |
+| A new classic operation type                       | The transaction builder in `apps/api` | `apps/web/lib/stellar/verify.ts` and `apps/playground/lib/verify.ts`                          |
+
+The playground verifier refuses `invokeHostFunction` on purpose, because its throwaway demo accounts never hold DeFi positions, so a Soroban exit needs no entry there. A new classic operation does, or the playground rejects it. The playground never builds a close itself, and every close it runs goes through the real API.
+
+## Steps
+
+Each step names the files to change. Adding the protocol name to `DefiProtocol` makes the type checker fail in four places: the API registry's `PROTOCOLS` and the API's `PROTOCOL_LABEL` (steps 2 and 4), and the web's `EXIT_FUNCTIONS` and position labels (step 5). Everything else on this list compiles without it, so follow the list rather than the compiler.
+
+### 1. Add the protocol type
+
+In `packages/types/src/defi-position.ts`, add the name to `DefiProtocol` and define the position interface (for example an LP position with its share amount), then add it to the `DefiPosition` union.
+
+This changes the public type surface. Regenerate `packages/sdk/etc/sdk.api.md` with the SDK's `build` script and bump the SDK version as described in `RELEASING.md`. CI's SDK version check fails otherwise.
+
+### 2. Register the contracts
+
+Contract entries live in `apps/api/src/config/contract-registry.json`. Each entry records the network, protocol, `kind` (`pool`, `pair`, `backstop`, `stake`, `vault`, `factory`, `router`, `aggregator` or `adapter`), address, `wasmHash`, version, label, `verifiedLive` and, ideally, `verifiedBy`. An exit builds nothing for a contract whose live `wasmHash` the registry does not know.
+
+- Fetch the hash from the ledger yourself and never copy it from another source.
+- `verifiedLive` records whether the address resolved on-chain when you checked. An entry that did not resolve is recorded with `wasmHash: null` and `verifiedLive: false`, and no exit is built for it.
+- Add the protocol to `PROTOCOLS` in `apps/api/src/lib/contract-registry/index.ts`. The loader rejects any entry for a protocol it does not list.
+- Follow `apps/api/src/lib/contract-registry/README.md` for the field reference and the review bar. Run `bun test tests/unit/contract-registry.test.ts` from `apps/api`.
+
+One entry per pull request, with the verification evidence in the description.
+
+### 3. Detect positions
+
+- Mainnet detection comes from OctoPos. Add the protocol to `SUPPORTED_PROTOCOLS` in `apps/api/src/lib/defi-positions/octopos-adapter.ts` and map its raw positions to your position type.
+- Testnet detection reads the registered contracts directly in `apps/api/src/lib/defi-positions/testnet-direct-read.ts`.
+- The OpenAPI response types are in `apps/api/src/account/dto/defi-position-responses.dto.ts`: add the protocol to `DEFI_PROTOCOLS` and add a DTO class for the position.
+- If the exit pays tokens into the account, add a case to `payoutContracts` in `apps/api/src/lib/close-api/exit-payouts.ts`. Its default returns no tokens, so a protocol you forget there does not fail the build.
+
+### 4. Write the adapter
+
+Create `apps/api/src/lib/defi-exits/<protocol>.ts` implementing `ExitAdapter` from `adapter.ts`. Its parts are split so that the network reads are injectable and the decisions are pure:
+
+| Method      | What it does                                                                                                                       |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `supports`  | Says which detected positions this adapter takes.                                                                                  |
+| `readLive`  | Reads the exact amounts, debt and health from the ledger, immediately before building. Detection is never the source of an amount. |
+| `plan`      | Returns the ordered steps, or the blockers that stop the exit.                                                                     |
+| `health`    | Returns the collateral and debt state the plan leaves behind, or `null` for a position with no debt.                               |
+| `buildStep` | Builds one step and describes it as an `ExitIntent` the runner checks against the bytes.                                           |
+
+Then:
+
+- Register it in `apps/api/src/lib/defi-exits/catalog.ts` and export it from `index.ts`. A protocol with no catalog entry reaches the plan as a `defi_exit_unsupported` blocker, so it is never skipped in silence.
+- `runExitAdapter` in `run-exit.ts` enforces the invariants from outside the adapter: registry freshness, the live `wasmHash`, clamping to the live balance, a positive minimum-received on every price-dependent step, repay before withdraw, simulation before the step is offered, and a plan with neither steps nor blockers counting as a blocker.
+- Only the first step of a plan is built per run, because a Soroban call cannot share a transaction with classic operations. The close loop re-plans from live state each round.
+- A position that no longer exists must be reported with `EXIT_POSITION_GONE`, the one code the round builder reads as "nothing left here".
+- Add the protocol's label to `PROTOCOL_LABEL` in `apps/api/src/lib/defi-exits/plan-exits.ts`.
+
+### 5. Teach the browser to verify it
+
+This is the other half of the rule. In `apps/web/lib/contract-registry/index.ts`, add the protocol to `EXIT_FUNCTIONS` with the functions its exit may call, for each kind of contract (`position`, `router`, `backstop`, `stake`). That record is exhaustive over the protocol type, so the type checker reminds you.
+
+`apps/web/lib/stellar/exit-expectations.ts` builds the verifier's expectations from the account read the user reviewed and from the bundled registry, never from the API's transaction. `verifyCloseTransaction` then requires that an exit:
+
+- is the only operation in its transaction, with a bounded fee, and is sourced from the account being closed;
+- invokes only a contract that is one of the account's detected positions or a registry router, backstop or stake, and only a function pinned in `EXIT_FUNCTIONS`;
+- authorizes nothing beyond the account's own call, and names only the closing account and contracts the account holds, has a position in, or that are the position's tokens;
+- calls only token functions that move value to the account or to the exit's own contract.
+
+If your protocol needs a function or a token call outside those lists, the change belongs in `verify.ts` itself, and it needs closer review.
+
+The web uses the bundled copy of the registry, never a served one: an entry reaches users only through a pull request and a web deploy. Add the protocol's display name in `apps/web/lib/plan/describe-position.ts` as well.
+
+### 6. Blockers and plain-language errors
+
+A position or step that cannot be closed safely is a blocker with an explanation, never a silent skip. Error copy is plain language and never a raw SDK code.
+
+- Every code the adapter can raise is registered in `packages/types/src/errors.ts` and `apps/api/src/common/error-codes.ts`, and described in `apps/api/src/common/error-code-descriptions.ts`. A unit test fails for an unregistered code.
+- List the code in the `ApiErrorResponse` decorator of the endpoint that can return it, then regenerate the OpenAPI document and the error table with `bun run --filter '@lumenwipe/api' openapi:generate`.
+- Add a row for it to the [error reference](/api-reference/errors). A check fails when a registered code has no row.
+
+### 7. Tests
+
+Write the tests with the code. The web and API test suites run on every pull request, and no automated test touches mainnet.
+
+| Where                                                                                                | What to cover                                                                                                                                                                  |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `apps/api/tests/unit/<protocol>-exit-adapter.test.ts`, with a fake contract fixture                  | Normal exit, no position, unknown `wasmHash`, clamp to balance, repay before withdraw for lenders. Run the shared `describeExitAdapterInvariants` harness against the adapter. |
+| `apps/api/tests/unit/plan-exits.test.ts`, `exit-round.test.ts`                                       | The plan step and the round it builds.                                                                                                                                         |
+| `apps/api/tests/unit/octopos-adapter.test.ts`, `testnet-direct-read.test.ts`                         | Detection of the new position type.                                                                                                                                            |
+| `apps/web/tests/unit/verify.test.ts`, `verify-against-registry.test.ts`, `exit-expectations.test.ts` | The verifier accepts the real exit shape and refuses a changed contract, function or recipient.                                                                                |
+| `apps/api/tests/integration/<protocol>-exit-adapter.integration.test.ts`                             | The adapter on live testnet. Run with `bun run test:integration` from `apps/api`.                                                                                              |
+
+The integration tier needs a live position. A test that funds accounts or opens a position of its own is gated behind `LUMENWIPE_INTEGRATION_FUNDED`, and CI runs it in a dedicated job. Never use mainnet.
+
+### 8. Documentation
+
+- Add the protocol to the `PROTOCOLS` record in `scripts/supported-matrix.ts`, then regenerate the table: `bun scripts/supported-matrix.ts --write`. The script fails for a registry protocol with no row, and a test fails when `docs/reference/supported.mdx` is out of date.
+- Add a row to the protocol table in [architecture section 9](/architecture#9-closing-positions-classic-and-soroban-defi) and describe the exit.
+
+## Commit scope and pull request
+
+Use [Conventional Commits](https://www.conventionalcommits.org). The scope is the part of the system you change:
+
+| Scope                                                                  | Use for                                                                      |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| The protocol name: `blend`, `aquarius`, `soroswap`, `phoenix`, `fxdao` | The adapter and its tests, for example `feat(phoenix): add the exit adapter` |
+| `registry`                                                             | Contract and exchange registry entries                                       |
+| `api`                                                                  | Builder, plan and API wiring                                                 |
+| `web`                                                                  | `verify()` and other browser changes                                         |
+| `docs`                                                                 | This guide and the generated reference                                       |
+
+`xbull` is not a scope. xBull is a swap router used for token conversion, not a protocol with an exit, so changes to it use `api`, `registry` or `web`.
+
+In the pull request description, say which of the [section 9.9 invariants](/architecture#99-exit-adapter-invariants) the exit satisfies and how, and call out that the change is security-sensitive. One logical change per pull request is the rule in `CONTRIBUTING.md`.
