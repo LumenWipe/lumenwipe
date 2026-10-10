@@ -4,6 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { Keypair } from "@stellar/stellar-sdk";
 import { AppModule } from "@/app.module";
+import { JsonLogger } from "@/common/json-logger";
 import { configureApp } from "@/configure-app";
 import { API_VERSION } from "@/openapi";
 
@@ -24,7 +25,7 @@ beforeAll(async () => {
   process.env.API_KEYS = `test=${KEY}`;
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = moduleRef.createNestApplication({ bodyParser: false });
-  configureApp(app);
+  configureApp(app, new JsonLogger(() => undefined));
   await app.init();
   http = app.getHttpServer();
 });

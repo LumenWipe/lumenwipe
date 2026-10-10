@@ -6,6 +6,7 @@ import { Test } from "@nestjs/testing";
 import SwaggerParser from "@apidevtools/swagger-parser";
 import type { OpenAPIObject } from "@nestjs/swagger";
 import { AppModule } from "@/app.module";
+import { JsonLogger } from "@/common/json-logger";
 import { configureApp } from "@/configure-app";
 import { ERROR_CODES } from "@/common/error-codes";
 import {
@@ -29,7 +30,7 @@ beforeAll(async () => {
   process.env.API_KEYS = "test=e2e_test_key";
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = moduleRef.createNestApplication({ bodyParser: false });
-  configureApp(app);
+  configureApp(app, new JsonLogger(() => undefined));
   await app.init();
   spec = createOpenApiDocument(app);
   generated = serializeOpenApiDocument(spec);

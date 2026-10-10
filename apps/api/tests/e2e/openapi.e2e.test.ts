@@ -3,6 +3,7 @@ import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import type { OpenAPIObject } from "@nestjs/swagger";
 import { AppModule } from "@/app.module";
+import { JsonLogger } from "@/common/json-logger";
 import { configureApp } from "@/configure-app";
 import { createOpenApiDocument } from "@/openapi";
 
@@ -13,7 +14,7 @@ beforeAll(async () => {
   process.env.API_KEYS = "test=e2e_test_key";
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = moduleRef.createNestApplication({ bodyParser: false });
-  configureApp(app);
+  configureApp(app, new JsonLogger(() => undefined));
   await app.init();
   spec = createOpenApiDocument(app);
 });

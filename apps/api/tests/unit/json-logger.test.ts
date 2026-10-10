@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { JsonLogger } from "@/common/json-logger";
-import { scrubLogLine } from "@/common/log-privacy";
+import { scrubText } from "@/common/log-privacy";
 import { servedRegistry } from "@/lib/exchange-registry";
 
 const PLACEHOLDER_SECRET = `S${"A".repeat(55)}`;
@@ -38,7 +38,7 @@ test("structured fields are merged and cannot override the severity", () => {
 test("an address is cut to four and four characters plus a stable keyed hash", () => {
   const address = Keypair.random().publicKey();
   const other = Keypair.random().publicKey();
-  const out = scrubLogLine(`read ${address} then ${address} and ${other}`);
+  const out = scrubText(`read ${address} then ${address} and ${other}`);
   expect(out).not.toContain(address);
   const shown = out.match(/G[A-Z2-7]{3}\.\.\.[A-Z2-7]{4}~[0-9a-f]{8}/g) ?? [];
   expect(shown).toHaveLength(3);
@@ -49,12 +49,12 @@ test("an address is cut to four and four characters plus a stable keyed hash", (
 
 test("an exchange deposit address becomes a fixed token with no prefix suffix or hash", () => {
   const exchange = servedRegistry().entries[0]!.address;
-  const out = scrubLogLine(`destination ${exchange}`);
+  const out = scrubText(`destination ${exchange}`);
   expect(out).toBe("destination [exchange]");
 });
 
 test("secret-shaped strings, bearer tokens and XDR-sized blobs never survive", () => {
-  const out = scrubLogLine(
+  const out = scrubText(
     `key ${PLACEHOLDER_SECRET} Authorization: Bearer abc123 xdr ${"QUFB".repeat(60)}`
   );
   expect(out).not.toContain(PLACEHOLDER_SECRET);
@@ -64,6 +64,6 @@ test("secret-shaped strings, bearer tokens and XDR-sized blobs never survive", (
 });
 
 test("literals the request carried are removed, escaped or not", () => {
-  expect(scrubLogLine('memo "a\\b" and a\\b', ["a\\b"])).toBe('memo "[memo]" and [memo]');
-  expect(scrubLogLine("memo 12", ["12"])).toBe("memo 12");
+  expect(scrubText('memo "a\\b" and a\\b', ["a\\b"])).toBe('memo "[memo]" and [memo]');
+  expect(scrubText("memo 12", ["12"])).toBe("memo 12");
 });

@@ -1,5 +1,5 @@
 import type { LoggerService } from "@nestjs/common";
-import { scrubLogLine } from "./log-privacy";
+import { scrubValue } from "./log-privacy";
 import { currentRequestId, currentSensitiveLiterals } from "./request-context";
 
 type Severity = "DEBUG" | "INFO" | "WARNING" | "ERROR" | "CRITICAL";
@@ -38,29 +38,39 @@ export class JsonLogger implements LoggerService {
     const stack = hasStack ? strings[0] : undefined;
     const context = hasStack && strings.length === 1 ? undefined : strings[strings.length - 1];
 
-    const fields: Record<string, unknown> = {};
     let text: string;
+    let stackText = stack;
+    let fields: Record<string, unknown> = {};
+    let trusted = false;
     if (message instanceof Error) {
       text = message.message;
-      fields.stack = message.stack;
+      stackText = stack ?? message.stack;
     } else if (typeof message === "object" && message !== null) {
       const { message: inner, ...rest } = message as Record<string, unknown>;
       text = typeof inner === "string" ? inner : "";
-      Object.assign(fields, rest);
+      fields = rest;
+      trusted = true;
     } else {
       text = String(message);
     }
-    if (stack !== undefined) fields.stack = stack;
 
-    const line = JSON.stringify({
-      ...fields,
-      severity,
-      time: new Date().toISOString(),
-      message: text,
+    // A structured record is written by our own code (the access line), so it keeps its values;
+    // free text and stacks can carry what a request supplied and lose the request's memo.
+    const literals = [...currentSensitiveLiterals()];
+    const body = {
+      ...(scrubValue(fields, []) as Record<string, unknown>),
+      message: scrubValue(text, trusted ? [] : literals),
       context,
-      requestId: currentRequestId(),
-    });
-    this.write(scrubLogLine(line, currentSensitiveLiterals()));
+      stack: scrubValue(stackText, literals),
+    };
+    this.write(
+      JSON.stringify({
+        ...body,
+        severity,
+        time: new Date().toISOString(),
+        requestId: currentRequestId(),
+      })
+    );
   }
 }
 

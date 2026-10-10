@@ -1,4 +1,4 @@
-import type { INestApplication } from "@nestjs/common";
+import type { INestApplication, LoggerService } from "@nestjs/common";
 import type { ErrorCode } from "@lumenwipe/types";
 import { json } from "express";
 import type { ErrorRequestHandler, RequestHandler } from "express";
@@ -42,7 +42,10 @@ const BODY_PARSER_ERRORS: Record<string, { status: number; code: ErrorCode; mess
  * we own the JSON error contract: a malformed body must return the original
  * routes' shape, not Nest's default `{ statusCode, message, error }`.
  */
-export function configureApp(app: INestApplication): void {
+export function configureApp(
+  app: INestApplication,
+  logger: LoggerService = new JsonLogger()
+): void {
   // Cloud Run terminates TLS and proxies every request through its own frontend - without this,
   // Express's req.ip reports that proxy's address for every request, not the real caller's, so
   // RateLimiter's per-IP fallback (unauthenticated requests, which carry no API key to
@@ -51,7 +54,7 @@ export function configureApp(app: INestApplication): void {
   // trusting it to report the real client in X-Forwarded-For is safe here.
   app.getHttpAdapter().getInstance().set("trust proxy", true);
 
-  app.useLogger(new JsonLogger());
+  app.useLogger(logger);
 
   // First, ahead of the rate limiter, body parsing and authentication, so the limiter's own 429,
   // a 401 and a body error all carry x-request-id. Also sets Cache-Control: no-store: every

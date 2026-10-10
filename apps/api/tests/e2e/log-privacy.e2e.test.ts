@@ -11,6 +11,7 @@ import {
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 import { AppModule } from "@/app.module";
+import { JsonLogger } from "@/common/json-logger";
 import { configureApp } from "@/configure-app";
 import * as accountPlan from "@/lib/close-api/account-plan";
 import * as readAccount from "@/lib/close-api/read-account";
@@ -40,19 +41,14 @@ const SIGNED_XDR = (() => {
 let app: INestApplication;
 let http: ReturnType<INestApplication["getHttpServer"]>;
 const written: string[] = [];
-const realWrite = process.stdout.write.bind(process.stdout);
 
 beforeAll(async () => {
   process.env.API_KEYS = `test=${KEY}`;
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = moduleRef.createNestApplication({ bodyParser: false });
-  configureApp(app);
+  configureApp(app, new JsonLogger((line) => written.push(line)));
   await app.init();
   http = app.getHttpServer();
-  process.stdout.write = ((chunk: string | Uint8Array): boolean => {
-    written.push(String(chunk));
-    return true;
-  }) as typeof process.stdout.write;
 });
 
 afterEach(() => {
@@ -62,7 +58,6 @@ afterEach(() => {
 });
 
 afterAll(async () => {
-  process.stdout.write = realWrite;
   await app.close();
 });
 
@@ -92,7 +87,7 @@ test("an exchange close that fails at every step logs no address, memo, secret o
     expect(res.body.error.requestId).toBe(res.headers["x-request-id"]);
   }
 
-  const lines = written.join("").split("\n").filter(Boolean);
+  const lines = written;
   const records = lines.map((l) => JSON.parse(l) as Record<string, unknown>);
   const text = lines.join("\n");
 
@@ -118,9 +113,6 @@ test("access lines name the route pattern and never the raw path", async () => {
     .set("Authorization", `Bearer ${KEY}`)
     .set("X-Forwarded-For", "203.0.113.23");
   const access = written
-    .join("")
-    .split("\n")
-    .filter(Boolean)
     .map((l) => JSON.parse(l) as Record<string, unknown>)
     .find((r) => r.message === "request");
   expect(access).toMatchObject({
@@ -132,3 +124,29 @@ test("access lines name the route pattern and never the raw path", async () => {
   expect(typeof access?.latencyMs).toBe("number");
   expect(access).not.toHaveProperty("ip");
 });
+
+test.each(['","', '":"', '{"s', "severity", "message", "request", 'a\\b"c'])(
+  "the memo %p never breaks a log line or rewrites its keys",
+  async (memo) => {
+    written.length = 0;
+    spyOn(readAccount, "readAccountState").mockRejectedValue(new Error(`failed for memo ${memo}`));
+    const res = await post("/v1/testnet/close/transactions", "203.0.113.30").send({
+      source: SOURCE,
+      destination: EXCHANGE.address,
+      memo,
+    });
+    expect(res.status).toBeGreaterThanOrEqual(400);
+
+    const records = written.map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(records.length).toBeGreaterThan(0);
+    for (const record of records) {
+      expect(Object.keys(record)).toEqual(expect.arrayContaining(["severity", "time", "message"]));
+      expect(["INFO", "WARNING", "ERROR"]).toContain(record.severity as string);
+      expect(typeof record.requestId).toBe("string");
+    }
+    const failure = records.find((r) => r.context === "CloseController");
+    expect(failure?.message).toBe("close/transactions failed");
+    expect(String(failure?.stack ?? "")).not.toContain(memo);
+    expect(records.some((r) => r.message === "request" && r.status === res.status)).toBe(true);
+  }
+);
