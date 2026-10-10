@@ -25,7 +25,7 @@ Thank you for your interest in contributing. LumenWipe performs irreversible ope
 | Contribution type          | Notes                                                                                                         |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | Bug fixes                  | Include a test that reproduces the bug before the fix                                                         |
-| New DeFi protocol support  | Follow the exit adapter invariants in [docs/architecture.md](docs/architecture.md#99-exit-adapter-invariants) |
+| New DeFi protocol support  | Follow the [add a protocol exit guide](docs/contributing/add-a-protocol-exit.mdx), which links the invariants |
 | Exchange registry entries  | See [Contributing to registries](#9-contributing-to-registries)                                               |
 | Contract registry updates  | New `wasmHash` → protocol version mappings for supported protocols                                            |
 | Documentation improvements | Fix errors, improve clarity, add missing details                                                              |
@@ -40,7 +40,7 @@ If you are planning a large change - a new protocol integration, a significant r
 ## 2. Before you start
 
 - Read the [technical architecture](docs/architecture.md) to understand how the system is designed and why.
-- For protocol integrations, read [Section 9](docs/architecture.md#9-closing-positions-classic-and-soroban-defi) and [Section 9.9](docs/architecture.md#99-exit-adapter-invariants) carefully. Every exit adapter must satisfy the invariants listed there.
+- For protocol integrations, follow the [add a protocol exit guide](docs/contributing/add-a-protocol-exit.mdx), which lists every file an exit touches, and read [Section 9](docs/architecture.md#9-closing-positions-classic-and-soroban-defi) and [Section 9.9](docs/architecture.md#99-exit-adapter-invariants) carefully. Every exit adapter must satisfy the invariants listed there.
 - For security-sensitive changes (key handling, transaction construction, confirmation flows, the mediator flow), read [Section 13](docs/architecture.md#13-security-model) before touching that code.
 
 ---
@@ -143,7 +143,9 @@ Follow [Conventional Commits](https://www.conventionalcommits.org):
 | `chore`    | Dependency updates, tooling, config                                       |
 | `security` | Security fix or hardening (use for key handling, CSP, validation changes) |
 
-**Scopes** (optional, use when it helps): `builder`, `mediator`, `blend`, `aquarius`, `soroswap`, `phoenix`, `fxdao`, `registry`, `ui`, `backend`, `tests`, `deps`
+**Scopes** (optional, use when it helps): `builder`, `mediator`, `blend`, `aquarius`, `soroswap`, `phoenix`, `fxdao`, `registry`, `api`, `web`, `ui`, `backend`, `tests`, `deps`
+
+A protocol name is the scope for that protocol's exit adapter and its tests. `xbull` is not a scope: xBull is a swap router used for token conversion, with no exit of its own, so a change to it uses `api`, `registry` or `web`.
 
 **Examples:**
 

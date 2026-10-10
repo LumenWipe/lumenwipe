@@ -1,0 +1,208 @@
+---
+title: "Error reference"
+description: "Every error code the API returns, with its HTTP status, whether to retry, and what to show the user."
+icon: "triangle-exclamation"
+---
+
+Every error response uses the envelope described in [Errors](/api-reference/introduction#errors). Branch on `error.code`. The `message` is written for people and may be reworded.
+
+This page lists every code in the API's error registry. If a close fails halfway, read [Recovery](/guides/recovery) first: it explains what state the account is in.
+
+## Reading the Retry column
+
+| Retry       | What it means                                                                                                                               |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Yes         | The same request can succeed later with no change. Wait for `Retry-After` when the response carries it, then send the request again.        |
+| After fix   | Something has to change first: the request, the account, the plan, or a period the message names. The identical request fails the same way. |
+| Check first | The outcome may be unknown. Look the transaction up on a ledger explorer before sending anything again.                                     |
+| No          | Retrying does not help. The cause is the account itself, a protocol's state, or how the server is set up.                                   |
+
+Three rules that apply to every row:
+
+- Every `503` and every `429` carries a `Retry-After` header. On a `503` it is a fixed default of 30 seconds, not a measured recovery time. A `503` does not always mean waiting helps: `registry_expired` and the `*_not_configured` codes are marked No because they need the operator to act.
+- The `status` column is the HTTP status the code is returned with. `request_failed` is any other 4xx status, and `defi_positions_unavailable` is raised as a plan blocker rather than a fixed status.
+- The [SDK](/sdk/errors) retries only the calls and statuses it documents, and never retries `submit`.
+
+## What to show the user
+
+Show the plain-language `message`, never the code, the status or a stack trace. When something goes wrong that the user cannot fix, show the `error.requestId` as a reference they can quote when they ask for help. A message from a blocker or a `422` already names what to do, so display it as written.
+
+## Request and authentication
+
+These mean the request itself is wrong or not allowed. Treat them as a fault in the calling code: fix the request and do not resend it unchanged. A user has nothing to act on, so show a short "this request could not be completed" message with the reference id. `unauthorized` means the API key is missing or invalid, and `forbidden` means the key may not do this.
+
+| Code                      | Status | Retry     | Meaning                                                             |
+| ------------------------- | ------ | --------- | ------------------------------------------------------------------- |
+| `bad_request`             | 400    | After fix | The request is malformed.                                           |
+| `invalid_address`         | 400    | After fix | The address is not a valid Stellar account.                         |
+| `invalid_addresses`       | 400    | After fix | The addresses are missing or not valid Stellar accounts.            |
+| `invalid_body`            | 400    | After fix | The request body is not valid JSON or not a JSON object.            |
+| `invalid_decisions`       | 400    | After fix | The decisions in the request are malformed.                         |
+| `invalid_destination`     | 400    | After fix | The destination is missing or not a valid address.                  |
+| `invalid_network`         | 400    | After fix | The network is not testnet or mainnet.                              |
+| `invalid_request`         | 400    | After fix | The request is missing a required field.                            |
+| `invalid_source`          | 400    | After fix | The source is missing or not a valid address.                       |
+| `invalid_spender`         | 400    | After fix | The spender is not a valid address.                                 |
+| `invalid_token`           | 400    | After fix | The token is not a valid contract address.                          |
+| `invalid_tokens`          | 400    | After fix | The token list is malformed.                                        |
+| `invalid_transaction_xdr` | 400    | After fix | The transaction is missing or cannot be decoded.                    |
+| `invalid_tx_hash`         | 400    | After fix | The transaction hash is not a 64-character hex string.              |
+| `missing_parameters`      | 400    | After fix | A required query parameter is missing.                              |
+| `missing_transaction`     | 400    | After fix | The transaction is missing from the request.                        |
+| `not_found`               | 404    | After fix | The route does not exist.                                           |
+| `payload_too_large`       | 413    | After fix | The request body is larger than 100 KB.                             |
+| `request_failed`          | 4xx    | After fix | The request could not be completed.                                 |
+| `too_many_addresses`      | 400    | After fix | More addresses than a batch accepts.                                |
+| `unauthorized`            | 401    | After fix | The API key, session token or operator token is missing or invalid. |
+| `forbidden`               | 403    | No        | The caller is not allowed to do this.                               |
+| `unprocessable_entity`    | 422    | After fix | The request is valid but cannot be processed.                       |
+| `unsupported_media_type`  | 415    | After fix | The request body must be UTF-8 JSON.                                |
+
+## Availability and rate limits
+
+These are transient. Retry with backoff, honoring `Retry-After`. While retrying, show "The service is busy, trying again". If it keeps failing, show the `message` and the reference id.
+
+| Code                  | Status | Retry | Meaning                                                      |
+| --------------------- | ------ | ----- | ------------------------------------------------------------ |
+| `rate_limited`        | 429    | Yes   | Too many requests. Wait and retry.                           |
+| `service_unavailable` | 503    | Yes   | The service or an upstream dependency is unavailable. Retry. |
+| `internal_error`      | 500    | Yes   | Something went wrong on the server. Retry.                   |
+
+## Reading accounts and routes
+
+A failed read is not an answer. `destination_read_failed` is never reported as a missing destination, and `account_read_failed`, `allowances_read_failed` and `path_lookup_failed` are safe to retry. `account_not_found` is a real answer: the account does not exist on that network, or it has already been merged. `account_too_large` means the account has more entries than one request can read.
+
+| Code                         | Status | Retry | Meaning                                                              |
+| ---------------------------- | ------ | ----- | -------------------------------------------------------------------- |
+| `account_not_found`          | 404    | No    | The account does not exist on this network.                          |
+| `account_read_failed`        | 500    | Yes   | The account could not be read. Retry.                                |
+| `account_too_large`          | 422    | No    | The account has too many entries to read in one request.             |
+| `destination_read_failed`    | 503    | Yes   | The destination account could not be read. Retry.                    |
+| `owner_not_found`            | 404    | No    | The owner account does not exist on this network.                    |
+| `path_lookup_failed`         | 500    | Yes   | The conversion path lookup failed. Retry.                            |
+| `provider_response_unusable` | 502    | Yes   | The data provider returned a response that could not be used. Retry. |
+| `allowances_read_failed`     | 500    | Yes   | Token allowances could not be read. Retry.                           |
+
+## Planning and building a close
+
+These come from `close/plan` and `close/transactions`. The `message` names the problem and usually what resolves it, so show it as written. Several carry `details`: `needs_decisions` lists the unanswered decisions in `details.missing`, a missing transfer destination or conversion floor names its `details.decisionId`, and `merge_destination_unusable` lists `details.problems`. `quote_drifted` means a conversion route changed between planning and building: plan again and let the user choose again, or pick a transfer, which needs no route. `source_sequence_too_far` cannot be fixed by the user or the API: the account can be closed only once the network's ledger count catches up.
+
+| Code                                  | Status | Retry     | Meaning                                                                                                                        |
+| ------------------------------------- | ------ | --------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `plan_failed`                         | 500    | Yes       | The plan could not be built. Retry.                                                                                            |
+| `transactions_failed`                 | 500    | Yes       | The transactions could not be built. Retry.                                                                                    |
+| `needs_decisions`                     | 422    | After fix | The plan has decisions that are still unanswered.                                                                              |
+| `quote_drifted`                       | 409    | After fix | A conversion route changed between planning and building. Plan again.                                                          |
+| `conversion_floor_missing`            | 422    | After fix | A conversion carries no destination minimum.                                                                                   |
+| `conversion_provider_unrecognized`    | 422    | After fix | A conversion names a provider the API does not recognize.                                                                      |
+| `transfer_destination_missing`        | 422    | After fix | A transfer carries no destination.                                                                                             |
+| `transfer_destination_unusable`       | 422    | After fix | A transfer destination cannot receive its asset.                                                                               |
+| `destination_not_acknowledged`        | 422    | After fix | The destination is not a recognized exchange address and was not confirmed.                                                    |
+| `merge_destination_unusable`          | 422    | After fix | The destination cannot receive the merge: it is the closing account, a LumenWipe service account, or does not exist.           |
+| `source_sequence_too_far`             | 422    | No        | The account's sequence number is beyond what the network accepts for a merge; it cannot be closed until the ledger catches up. |
+| `memo_required`                       | 422    | After fix | The destination exchange requires a memo.                                                                                      |
+| `unsupported_memo_type`               | 422    | After fix | The memo type is not supported for this destination.                                                                           |
+| `invalid_memo`                        | 422    | After fix | The memo is not valid for its type.                                                                                            |
+| `signer_normalization_unsafe`         | 422    | After fix | The account's signers cannot be normalized safely.                                                                             |
+| `trustline_cannot_be_left`            | 422    | After fix | A trustline cannot be left in place by the close.                                                                              |
+| `trustline_deauthorized_with_balance` | 422    | No        | A trustline holds a balance but was deauthorized by its issuer.                                                                |
+
+## DeFi position exits
+
+A position that cannot be closed safely is reported, never skipped. Show the `message`, which says what to do in the protocol itself (repay a loan, claim rewards, add a trustline, wait out a cooldown). After the user has done that, analyze the account again and plan again. `defi_positions_stale` means the detected positions are out of date, so plan again. `defi_positions_unavailable` appears as a plan blocker when detection could not confirm the account's positions: analyze again.
+
+| Code                                | Status | Retry     | Meaning                                                                     |
+| ----------------------------------- | ------ | --------- | --------------------------------------------------------------------------- |
+| `defi_exit_blocked`                 | 422    | After fix | A DeFi position could not be exited safely.                                 |
+| `defi_exit_unsupported`             | 422    | After fix | The account holds a DeFi position that cannot be exited yet.                |
+| `defi_position_unrecognized`        | 422    | No        | A DeFi position could not be identified.                                    |
+| `defi_positions_blocked`            | 422    | After fix | A DeFi position blocks the close.                                           |
+| `defi_positions_stale`              | 422    | After fix | The detected DeFi positions are out of date. Plan again.                    |
+| `defi_positions_unavailable`        | any    | Yes       | DeFi positions could not be confirmed for this account.                     |
+| `aquarius_trustline_missing`        | 422    | After fix | An Aquarius exit needs a trustline the account does not have.               |
+| `backstop_emissions_unclaimed`      | 422    | After fix | Blend backstop emissions must be claimed before the position can be exited. |
+| `backstop_token_unconvertible`      | 422    | No        | The Blend backstop token cannot be converted to a supported asset.          |
+| `backstop_withdrawal_cooling_down`  | 422    | After fix | A Blend backstop withdrawal is still in its cooldown.                       |
+| `backstop_withdrawal_not_queued`    | 422    | After fix | A Blend backstop withdrawal must be queued first.                           |
+| `blend_emissions_trustline_missing` | 422    | After fix | Claiming Blend emissions needs a trustline the account does not have.       |
+| `blend_repay_asset_balance_unknown` | 422    | Yes       | The balance of an asset needed to repay a Blend loan could not be read.     |
+| `blend_repay_asset_missing`         | 422    | After fix | The account does not hold the asset needed to repay a Blend loan.           |
+| `phoenix_trustline_missing`         | 422    | After fix | A Phoenix exit needs a trustline the account does not have.                 |
+| `soroswap_trustline_missing`        | 422    | After fix | A Soroswap exit needs a trustline the account does not have.                |
+| `vault_undercollateralized`         | 422    | No        | An FxDAO vault is undercollateralized and cannot be exited.                 |
+| `withdraw_before_repay`             | 422    | After fix | A loan must be repaid before the collateral can be withdrawn.               |
+
+## Soroban token balances
+
+These refuse a conversion or transfer of a Soroban token that cannot be done safely. Show the `message`. Where a conversion is refused, offer a transfer to an account the user names. `soroban_token_unreadable` is a failed read and is safe to retry.
+
+| Code                                   | Status | Retry     | Meaning                                                           |
+| -------------------------------------- | ------ | --------- | ----------------------------------------------------------------- |
+| `soroban_token_conversion_failed`      | 422    | After fix | A Soroban token could not be converted.                           |
+| `soroban_token_conversion_unavailable` | 422    | After fix | No conversion is available for a Soroban token.                   |
+| `soroban_token_conversion_unsafe`      | 422    | After fix | Converting a Soroban token is not safe.                           |
+| `soroban_token_needs_restore`          | 422    | After fix | A Soroban token needs ledger entries restored first.              |
+| `soroban_token_route_lost`             | 422    | After fix | The conversion route for a Soroban token disappeared. Plan again. |
+| `soroban_token_transfer_failed`        | 422    | After fix | A Soroban token transfer failed.                                  |
+| `soroban_token_transfer_unsafe`        | 422    | After fix | A Soroban token transfer is not safe.                             |
+| `soroban_token_unreadable`             | 422    | Yes       | A Soroban token balance could not be read.                        |
+
+## Submitting a transaction
+
+`submit` waits up to 90 seconds for confirmation. `submit_rejected` carries the network's own reason in `details.resultCode`, for example `tx_too_late` for an expired transaction or `tx_bad_seq` for a stale sequence number. Build and sign a fresh transaction rather than resending the old one. `confirmation_timeout` and `submit_failed` do not tell you whether the transaction landed. Look the hash up on an explorer before doing anything else. Resubmitting the identical signed transaction is safe, because the API reports an already confirmed transaction as a success. Never rebuild and sign a second transaction while the first may still confirm. See [Recovery](/guides/recovery).
+
+| Code                   | Status | Retry       | Meaning                                                                    |
+| ---------------------- | ------ | ----------- | -------------------------------------------------------------------------- |
+| `invalid_signed_xdr`   | 400    | After fix   | The signed transaction is missing or cannot be decoded.                    |
+| `invalid_signature`    | 400    | After fix   | The signature does not match the transaction.                              |
+| `submit_rejected`      | 502    | After fix   | The network rejected the transaction.                                      |
+| `submit_failed`        | 502    | Check first | The transaction could not be submitted. Retry.                             |
+| `confirmation_timeout` | 504    | Check first | The transaction did not confirm in time. Check its status before retrying. |
+
+## Exchange relay, sponsored fees and the registry
+
+A refusal here happens before anything is submitted, so nothing has changed on the ledger. `transaction_structure_not_allowed` means the transaction is not the exact shape the relay or the fee sponsor will sign, and sending it again will not change that. `registry_expired` and the `*_not_configured` codes are about the server, not the request: show the `message`, and offer a destination that is not an exchange where one exists.
+
+| Code                                | Status | Retry       | Meaning                                                                     |
+| ----------------------------------- | ------ | ----------- | --------------------------------------------------------------------------- |
+| `mediator_not_configured`           | 503    | No          | The exchange (mediator) flow is not configured on this server.              |
+| `mediator_key_misconfiguration`     | 500    | No          | The mediator key on this server is misconfigured.                           |
+| `forward_amount_exceeds_balance`    | 400    | After fix   | The mediator forward is larger than the balance being merged.               |
+| `merged_account_not_found`          | 400    | Check first | The account being merged does not exist.                                    |
+| `transaction_structure_not_allowed` | 400    | After fix   | The transaction is not a shape this endpoint may sign.                      |
+| `fee_bump_not_configured`           | 503    | No          | Sponsored fees are not configured on this server.                           |
+| `fee_bump_exceeds_cap`              | 400    | After fix   | The sponsored fee would exceed the cap.                                     |
+| `inner_fee_not_zero`                | 400    | After fix   | The inner transaction of a sponsored fee bump must carry no fee of its own. |
+| `operation_not_sponsorable`         | 400    | After fix   | The transaction contains an operation that cannot be sponsored.             |
+| `registry_expired`                  | 503    | No          | The exchange registry is out of date.                                       |
+
+## Allowance revocation
+
+These come from the allowance endpoints. `revoke_needs_restore` means ledger entries have to be restored before the revocation can be built. `revoke_build_failed` is safe to retry.
+
+| Code                       | Status | Retry     | Meaning                                                       |
+| -------------------------- | ------ | --------- | ------------------------------------------------------------- |
+| `revoke_build_failed`      | 500    | Yes       | The allowance revocation could not be built. Retry.           |
+| `revoke_needs_restore`     | 422    | After fix | The allowance revocation needs ledger entries restored first. |
+| `revoke_simulation_failed` | 422    | After fix | The allowance revocation failed simulation.                   |
+| `revoke_unsafe`            | 422    | No        | The allowance revocation could not be built safely.           |
+
+## API keys, operator routes and stats
+
+These belong to key management, the operator routes and the public stats counter. `invalid_challenge` means the signed sign-in message is invalid or has expired: request a new one. `tx_not_verified` means the transaction is not a confirmed account merge on that network. Check the hash and the network before sending it again.
+
+| Code                            | Status | Retry       | Meaning                                                          |
+| ------------------------------- | ------ | ----------- | ---------------------------------------------------------------- |
+| `invalid_challenge`             | 401    | After fix   | The signed challenge is invalid or has expired.                  |
+| `invalid_owner`                 | 400    | After fix   | The owner is missing or empty.                                   |
+| `invalid_rate_limit`            | 400    | After fix   | The rate limit override is malformed.                            |
+| `api_key_not_found`             | 404    | After fix   | No active key with that id belongs to the caller.                |
+| `key_limit_reached`             | 409    | After fix   | The wallet already has the maximum number of active keys.        |
+| `admin_api_not_configured`      | 503    | No          | Operator key management is not configured on this server.        |
+| `integrator_api_not_configured` | 503    | No          | Self-serve key management is not configured on this server.      |
+| `tx_not_verified`               | 400    | Check first | The transaction could not be verified as a merge on the network. |
+| `stats_unavailable`             | 503    | Yes         | The stats store is unreachable. Retry.                           |
+
+## Keeping this page current
+
+The Status and Meaning columns repeat the generated registry on the [introduction page](/api-reference/introduction#errors). A check in the repository fails when a code is added to the API without a row here, when a row names an unknown code, or when a status or meaning differs from the generated table.
