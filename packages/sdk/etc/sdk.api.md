@@ -101,7 +101,10 @@ export interface AllowancesResult {
 }
 
 // @public (undocumented)
-export type ApiErrorBody = StructuredApiError | PlainApiError;
+export type ApiErrorBody = StructuredApiError;
+
+// @public
+export type ApiErrorCode = ErrorCode | "upstream_error" | (string & {});
 
 // Warning: (ae-forgotten-export) The symbol "DefiPositionBase" needs to be exported by the entry point index.d.ts
 //
@@ -561,10 +564,30 @@ export type IntentOperationBody = {
 };
 
 // @public
+export function isApiErrorCode<C extends ApiErrorCode>(error: unknown, code: C): error is LumenWipeApiError & {
+    code: C;
+};
+
+// @public
+export class LumenWipeAbortError extends Error {
+    constructor(reason?: unknown | undefined);
+    // (undocumented)
+    readonly reason?: unknown | undefined;
+}
+
+// @public
 export class LumenWipeApiError extends Error {
-    constructor(status: number, body: unknown);
+    constructor(status: number, body: unknown, headers?: Pick<Headers, "get">);
     // (undocumented)
     readonly body: unknown;
+    // (undocumented)
+    readonly code: ApiErrorCode;
+    // (undocumented)
+    readonly details: unknown;
+    // (undocumented)
+    readonly requestId: string | undefined;
+    // (undocumented)
+    readonly retryAfterMs: number | undefined;
     // (undocumented)
     readonly status: number;
 }
@@ -573,30 +596,30 @@ export class LumenWipeApiError extends Error {
 export class LumenWipeClient {
     constructor(options: LumenWipeClientOptions);
     // (undocumented)
-    closePlan(body: ClosePlanRequest, network?: Network): Promise<PlanResponse>;
-    closeTransactions(body: CloseTransactionsRequest, network?: Network): Promise<TransactionsResponse>;
-    feeBumpSponsor(transaction: string, network?: Network): Promise<FeeBumpSponsorResponse>;
+    closePlan(body: ClosePlanRequest, network?: Network, options?: RequestOptions): Promise<PlanResponse>;
+    closeTransactions(body: CloseTransactionsRequest, network?: Network, options?: RequestOptions): Promise<TransactionsResponse>;
+    feeBumpSponsor(transaction: string, network?: Network, options?: RequestOptions): Promise<FeeBumpSponsorResponse>;
     // (undocumented)
-    getAccount(address: string, network?: Network): Promise<AccountState>;
-    getAllowances(address: string, network?: Network): Promise<AllowancesResult>;
+    getAccount(address: string, network?: Network, options?: RequestOptions): Promise<AccountState>;
+    getAllowances(address: string, network?: Network, options?: RequestOptions): Promise<AllowancesResult>;
     // (undocumented)
     getPaths(params: {
         fromAsset: string;
         amount: string;
-    }, network?: Network): Promise<PathResponse>;
+    }, network?: Network, options?: RequestOptions): Promise<PathResponse>;
     // (undocumented)
-    health(): Promise<HealthResponse>;
+    health(options?: RequestOptions): Promise<HealthResponse>;
     // (undocumented)
-    mediatorCheck(address: string, network?: Network): Promise<MediatorCheckResult>;
+    mediatorCheck(address: string, network?: Network, options?: RequestOptions): Promise<MediatorCheckResult>;
     // (undocumented)
-    mediatorSign(transaction: string, network?: Network): Promise<MediatorSignResponse>;
+    mediatorSign(transaction: string, network?: Network, options?: RequestOptions): Promise<MediatorSignResponse>;
     revokeAllowance(params: {
         owner: string;
         token: string;
         spender: string;
-    }, network?: Network): Promise<RevokeAllowanceResponse>;
+    }, network?: Network, options?: RequestOptions): Promise<RevokeAllowanceResponse>;
     // (undocumented)
-    submit(signedXdr: string, network?: Network): Promise<SubmitResponse>;
+    submit(signedXdr: string, network?: Network, options?: RequestOptions): Promise<SubmitResponse>;
 }
 
 // @public (undocumented)
@@ -604,7 +627,9 @@ export interface LumenWipeClientOptions {
     apiKey: string;
     baseUrl: string;
     fetch?: FetchLike;
+    logger?: (message: string) => void;
     network?: Network;
+    retry?: RetryOptions;
     timeout?: number;
 }
 
@@ -709,12 +734,6 @@ export interface PhoenixStakePosition extends DefiPositionBase {
     stakedAtEpoch: string;
 }
 
-// @public @deprecated (undocumented)
-export interface PlainApiError {
-    // (undocumented)
-    error: string;
-}
-
 // @public (undocumented)
 export interface PlanBlocker {
     code?: string;
@@ -804,6 +823,17 @@ export interface QuoteInfo {
 export interface RecordMergeResponse {
     // (undocumented)
     counted: boolean;
+}
+
+// @public (undocumented)
+export interface RequestOptions {
+    signal?: AbortSignal;
+}
+
+// @public (undocumented)
+export interface RetryOptions {
+    attempts: number;
+    baseDelayMs: number;
 }
 
 // @public

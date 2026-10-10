@@ -4,29 +4,51 @@ description: "The errors the SDK throws and how to handle them."
 icon: "triangle-exclamation"
 ---
 
-| Error                              | Thrown when                                                 | Properties                            |
-| ---------------------------------- | ----------------------------------------------------------- | ------------------------------------- |
-| `LumenWipeApiError`                | The API responds with a non-2xx status.                     | `status`, and the parsed error `body` |
-| `LumenWipeTimeoutError`            | A request exceeds the configured `timeout`.                 | `timeoutMs`                           |
-| `InsufficientSignatureWeightError` | `runClose` finds a signature weight below what is required. | `pending`, for resuming               |
+| Error                              | Thrown when                                                 | Properties                                                       |
+| ---------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------- |
+| `LumenWipeApiError`                | The API responds with a non-2xx status.                     | `status`, `code`, `details`, `retryAfterMs`, `requestId`, `body` |
+| `LumenWipeTimeoutError`            | A request exceeds the configured `timeout`.                 | `timeoutMs`                                                      |
+| `LumenWipeAbortError`              | The `signal` you passed aborts the request.                 | `reason`                                                         |
+| `InsufficientSignatureWeightError` | `runClose` finds a signature weight below what is required. | `pending`, for resuming                                          |
 
 ```ts
-import { LumenWipeApiError, LumenWipeTimeoutError } from "@lumenwipe/sdk";
+import {
+  LumenWipeAbortError,
+  LumenWipeApiError,
+  LumenWipeTimeoutError,
+  isApiErrorCode,
+} from "@lumenwipe/sdk";
 
 try {
-  await client.closeTransactions({ source, destination });
+  await client.closeTransactions({ source, destination }, undefined, { signal });
 } catch (error) {
-  if (error instanceof LumenWipeApiError) {
-    console.error(error.status, error.body);
+  if (isApiErrorCode(error, "quote_drifted")) {
+    console.error("Quote drifted, plan again.", error.details);
+  } else if (error instanceof LumenWipeApiError) {
+    console.error(error.message, error.retryAfterMs, error.requestId);
   } else if (error instanceof LumenWipeTimeoutError) {
     console.error(`Timed out after ${error.timeoutMs}ms`);
+  } else if (error instanceof LumenWipeAbortError) {
+    console.error("Cancelled by the caller.");
   } else {
     throw error;
   }
 }
 ```
 
+`code` is one of the API's documented error codes, or `"upstream_error"` when a proxy or CDN in front of the API returned a non-JSON failure. `retryAfterMs` is `undefined` when the response has no `Retry-After`. `requestId` is `undefined` until the API sends `X-Request-Id`.
+
 ## Retrying safely
+
+Retries are off by default. Enable them with `retry: { attempts, baseDelayMs }` on the client. Waits use `Retry-After` when present (capped at 30 seconds), otherwise exponential backoff with jitter, and a `signal` abort cuts a wait short. A timeout or a caller abort is never retried.
+
+| Method                                                                | Retried on                        |
+| --------------------------------------------------------------------- | --------------------------------- |
+| `health`, `getAccount`, `getPaths`, `mediatorCheck`, `getAllowances`  | Network error, 429, 502, 503, 504 |
+| `closePlan`, `closeTransactions`, `feeBumpSponsor`, `revokeAllowance` | 429, 503 only                     |
+| `submit`, `mediatorSign`                                              | Never                             |
+
+`submit` is never retried because a repeated submit can land twice or hide that the first one succeeded; check whether the transaction landed before resubmitting. `mediatorSign` is never retried because it co-signs with the relay account's key.
 
 The API is stateless and re-reads live state each round, so calling `closeTransactions` again after a failure is always safe. Before resubmitting a transaction after a timeout, check whether it already landed. A signed transaction is valid until its `validUntilLedger`.
 

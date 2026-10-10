@@ -36,7 +36,12 @@ function hangingFetch(): FetchLike {
 
 test("closePlan posts to the v1 path with the bearer key and JSON body", async () => {
   const { fetch, calls } = mockFetch(200, { planHash: "h1", status: "ready" });
-  const client = new LumenWipeClient({ baseUrl: "https://api.example.com/", apiKey: "k", fetch });
+  const client = new LumenWipeClient({
+    baseUrl: "https://api.example.com/",
+    apiKey: "k",
+    network: "testnet",
+    fetch,
+  });
 
   const res = await client.closePlan({ source: "GABC" });
 
@@ -52,7 +57,12 @@ test("closePlan posts to the v1 path with the bearer key and JSON body", async (
 
 test("submit relays the signed XDR string", async () => {
   const { fetch, calls } = mockFetch(200, { status: "success", hash: "abc", ledger: 42 });
-  const client = new LumenWipeClient({ baseUrl: "https://x", apiKey: "k", fetch });
+  const client = new LumenWipeClient({
+    baseUrl: "https://x",
+    apiKey: "k",
+    network: "testnet",
+    fetch,
+  });
 
   const res = await client.submit("AAAA...signed");
 
@@ -62,7 +72,12 @@ test("submit relays the signed XDR string", async () => {
 
 test("getPaths builds the query string and respects the network override", async () => {
   const { fetch, calls } = mockFetch(200, { path: null });
-  const client = new LumenWipeClient({ baseUrl: "https://x", apiKey: "k", fetch });
+  const client = new LumenWipeClient({
+    baseUrl: "https://x",
+    apiKey: "k",
+    network: "testnet",
+    fetch,
+  });
 
   await client.getPaths({ fromAsset: "USDC:GISS", amount: "10" }, "mainnet");
 
@@ -72,7 +87,12 @@ test("getPaths builds the query string and respects the network override", async
 
 test("getAllowances GETs the network-scoped path", async () => {
   const { fetch, calls } = mockFetch(200, { allowances: [] });
-  const client = new LumenWipeClient({ baseUrl: "https://x", apiKey: "k", fetch });
+  const client = new LumenWipeClient({
+    baseUrl: "https://x",
+    apiKey: "k",
+    network: "testnet",
+    fetch,
+  });
 
   await client.getAllowances("GABC", "mainnet");
 
@@ -82,7 +102,12 @@ test("getAllowances GETs the network-scoped path", async () => {
 
 test("revokeAllowance posts owner/token/spender to the revoke path", async () => {
   const { fetch, calls } = mockFetch(200, { transaction: "AAAA" });
-  const client = new LumenWipeClient({ baseUrl: "https://x", apiKey: "k", fetch });
+  const client = new LumenWipeClient({
+    baseUrl: "https://x",
+    apiKey: "k",
+    network: "testnet",
+    fetch,
+  });
 
   await client.revokeAllowance({ owner: "GABC", token: "CABC", spender: "CDEF" }, "testnet");
 
@@ -97,7 +122,12 @@ test("revokeAllowance posts owner/token/spender to the revoke path", async () =>
 
 test("GET requests carry no Content-Type and no body", async () => {
   const { fetch, calls } = mockFetch(200, {});
-  const client = new LumenWipeClient({ baseUrl: "https://x", apiKey: "k", fetch });
+  const client = new LumenWipeClient({
+    baseUrl: "https://x",
+    apiKey: "k",
+    network: "testnet",
+    fetch,
+  });
 
   await client.getAccount("GABC");
 
@@ -110,7 +140,12 @@ test("a non-2xx response throws LumenWipeApiError with status and parsed body", 
   const { fetch } = mockFetch(401, {
     error: { code: "unauthorized", message: "A valid API key is required." },
   });
-  const client = new LumenWipeClient({ baseUrl: "https://x", apiKey: "bad", fetch });
+  const client = new LumenWipeClient({
+    baseUrl: "https://x",
+    apiKey: "bad",
+    network: "testnet",
+    fetch,
+  });
 
   let error: unknown;
   try {
@@ -129,6 +164,7 @@ test("a non-JSON error body (e.g. a proxy 502) still throws LumenWipeApiError wi
   const client = new LumenWipeClient({
     baseUrl: "https://x",
     apiKey: "k",
+    network: "testnet",
     fetch: mockRawFetch(502, "<html>502 Bad Gateway</html>"),
   });
 
@@ -147,6 +183,7 @@ test("a request that exceeds the timeout throws LumenWipeTimeoutError", async ()
   const client = new LumenWipeClient({
     baseUrl: "https://x",
     apiKey: "k",
+    network: "testnet",
     timeout: 10,
     fetch: hangingFetch(),
   });

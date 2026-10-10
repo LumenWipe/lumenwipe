@@ -56,10 +56,10 @@ revisions around; nothing needs to be rebuilt.
 ### The checklist
 
 1. Decide the version bump (semver: breaking / feature / fix).
-2. Bump `packages/sdk/package.json`'s `"version"`.
+2. Bump `packages/sdk/package.json`'s `"version"` and `SDK_VERSION` in `packages/sdk/src/version.ts` (a test fails if they differ).
 3. Add an entry to `packages/sdk/CHANGELOG.md` (Keep a Changelog format - see the file for the
    pattern) describing what changed, from the consumer's point of view.
-4. Open a PR with just those two file changes (`chore(sdk): release vX.Y.Z`). Get it merged to
+4. Open a PR with just those file changes (`chore(sdk): release vX.Y.Z`). Get it merged to
    `main` like any other PR - CI runs the same `sdk` matrix entry every other PR gets.
 5. Once merged, tag the exact commit on `main` and push the tag:
    ```bash

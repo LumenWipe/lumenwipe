@@ -100,8 +100,9 @@ no separate install is needed.
 
 ## Errors
 
-- `LumenWipeApiError` - thrown on any non-2xx API response; carries `status` and the parsed
-  error `body`.
+- `LumenWipeApiError` - thrown on any non-2xx API response; carries `status`, `code`, `details`,
+  `retryAfterMs`, `requestId` and the parsed error `body`. Narrow with `isApiErrorCode`.
+- `LumenWipeAbortError` - thrown when the `signal` you passed aborts the request.
 - `LumenWipeTimeoutError` - thrown when a request exceeds the configured `timeout`
   (default 30s).
 

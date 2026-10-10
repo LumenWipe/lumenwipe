@@ -7,7 +7,28 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-10
+
+### Removed
+
+- **Breaking:** the deprecated `PlainApiError` type, and with it the `ApiErrorBody` union member.
+  `ApiErrorBody` is now just `StructuredApiError`; every API error already used that envelope.
+
 ### Added
+
+- `LumenWipeApiError` now exposes `code`, `details`, `retryAfterMs` (from `Retry-After`) and
+  `requestId` (from `X-Request-Id`, when the API sends one) next to `status` and `body`, and its
+  message reads `LumenWipe API error 422 destination_not_acknowledged: <message>`. A non-JSON
+  upstream failure has `code: "upstream_error"`.
+- `isApiErrorCode(error, code)` type guard and the `ApiErrorCode` type.
+- Every client method takes a trailing `{ signal }`. A caller abort rejects with the new
+  `LumenWipeAbortError`, distinct from `LumenWipeTimeoutError`.
+- Opt-in `retry: { attempts, baseDelayMs }` client option, honoring `Retry-After`. Off by default;
+  `submit` and `mediatorSign` are never retried.
+- Every request sends `X-LumenWipe-SDK: sdk/<version>`.
+- The client logs once when a call falls back to the `"testnet"` default network, and once when
+  `baseUrl` is plaintext `http://` on a non-local host. Pass `network`, or a `logger`, to control
+  both; `logger` replaces the default `console.warn`.
 
 - `ErrorCode`, the closed union of every `error.code` the API can return. Purely additive;
   `StructuredApiError.error.code` stays a `string` for now.
