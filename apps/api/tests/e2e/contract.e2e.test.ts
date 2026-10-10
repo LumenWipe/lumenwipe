@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
@@ -396,14 +396,61 @@ test("close/transactions does not accept an acknowledgement given for a differen
   expect(res.body.error.code).toBe("destination_not_acknowledged");
 });
 
-test("close/transactions survives malformed decision entries with a typed error, not a 500", async () => {
-  const res = await authPost("/v1/testnet/close/transactions").send({
-    source: Keypair.random().publicKey(),
-    destination: Keypair.random().publicKey(),
-    decisions: [null, 42],
+describe("malformed decision answers", () => {
+  const malformed: [string, unknown][] = [
+    ["null", null],
+    ["an empty object", {}],
+    ["a numeric id", { id: 1, choice: "x" }],
+  ];
+
+  for (const [name, element] of malformed) {
+    test(`close/transactions answers ${name} next to a valid acknowledgement with 400 invalid_decisions`, async () => {
+      const destination = Keypair.random().publicKey();
+      const res = await authPost("/v1/testnet/close/transactions").send({
+        source: Keypair.random().publicKey(),
+        destination,
+        decisions: [
+          { id: `destination:${destination}`, choice: "i_control_this_address" },
+          element,
+        ],
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe("invalid_decisions");
+    });
+
+    test(`close/plan answers ${name} with 400 invalid_decisions`, async () => {
+      const res = await authPost("/v1/testnet/close/plan").send({
+        source: Keypair.random().publicKey(),
+        decisions: [element],
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe("invalid_decisions");
+    });
+  }
+
+  test("both routes refuse an oversize array and an oversize string", async () => {
+    const destination = Keypair.random().publicKey();
+    const ack = { id: `destination:${destination}`, choice: "i_control_this_address" };
+    for (const extra of [
+      Array.from({ length: 1001 }, () => ({ id: "a", choice: "b" })),
+      [{ id: "a".repeat(201), choice: "b" }],
+    ]) {
+      const decisions = [ack, ...extra];
+      const plan = await authPost("/v1/testnet/close/plan").send({
+        source: Keypair.random().publicKey(),
+        decisions,
+      });
+      const tx = await authPost("/v1/testnet/close/transactions").send({
+        source: Keypair.random().publicKey(),
+        destination,
+        decisions,
+      });
+      for (const res of [plan, tx]) {
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe("invalid_decisions");
+      }
+    }
   });
-  expect(res.status).toBe(422);
-  expect(res.body.error.code).toBe("destination_not_acknowledged");
 });
 
 test("close/transactions does not demand an acknowledgement for a recognized exchange destination", async () => {

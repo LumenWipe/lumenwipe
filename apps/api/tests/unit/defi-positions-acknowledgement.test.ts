@@ -61,9 +61,3 @@ test("an acknowledgement given for one address does not acknowledge another", ()
   expect(isDefiPositionsAcknowledged(answers, other)).toBe(true);
   expect(isDefiPositionsAcknowledged(answers, ADDRESS)).toBe(false);
 });
-
-test("malformed answers do not throw", () => {
-  const answers = [null, undefined, 42, "nope", {}] as unknown as DecisionAnswer[];
-  expect(() => isDefiPositionsAcknowledged(answers, ADDRESS)).not.toThrow();
-  expect(isDefiPositionsAcknowledged(answers, ADDRESS)).toBe(false);
-});

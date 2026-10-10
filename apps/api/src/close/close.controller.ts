@@ -48,6 +48,7 @@ import {
   DESTINATION_ACK_CHOICE,
 } from "@/lib/close-api/decisions";
 import { assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
+import { parseDecisions } from "@/lib/close-api/parse-decisions";
 import { computePlanHash } from "@/lib/close-api/plan-response";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
 import { submitAndWait, InvalidSignatureError } from "@/lib/stellar/submit";
@@ -64,7 +65,7 @@ import { fail } from "@/common/fail";
 import { withTimeout } from "@/lib/utils/with-timeout";
 import { StatsService } from "@/stats/stats.service";
 import { signedXdrHasAccountMerge } from "@/stats/merge-verification";
-import type { DecisionAnswer, TransactionsResponse, Trustline } from "@lumenwipe/types";
+import type { TransactionsResponse, Trustline } from "@lumenwipe/types";
 
 /**
  * Reads a transfer destination's trustlines, treating "does not exist" as an answer rather than
@@ -118,9 +119,7 @@ export class CloseController {
     if (destination !== null && !isValidGAddress(destination)) {
       fail("invalid_destination", "Destination must be a valid account (G...).", 400);
     }
-    const decisions: DecisionAnswer[] = Array.isArray(body.decisions)
-      ? (body.decisions as DecisionAnswer[])
-      : [];
+    const decisions = parseDecisions(body.decisions);
 
     try {
       return await buildAccountPlan(source, destination, decisions, network);
@@ -228,6 +227,7 @@ export class CloseController {
     if (typeof destination !== "string" || !isValidGAddress(destination)) {
       fail("invalid_destination", "A valid destination account (G...) is required.", 400);
     }
+    const decisions = parseDecisions(body.decisions);
     const memo = typeof body.memo === "string" ? body.memo : null;
     const exchange = lookupExchange(destination);
     if (requiresMediatorForAddress(destination) && exchange?.requiresMemo && !memo) {
@@ -252,9 +252,6 @@ export class CloseController {
         fail("invalid_memo", "A text memo must be at most 28 bytes.", 422);
       }
     }
-    const decisions: DecisionAnswer[] = Array.isArray(body.decisions)
-      ? (body.decisions as DecisionAnswer[])
-      : [];
 
     // A destination the registry does not recognize cannot be assumed to be a personal wallet,
     // and a direct merge into an exchange deposit address is unrecoverable (see

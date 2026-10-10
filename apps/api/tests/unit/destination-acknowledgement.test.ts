@@ -93,8 +93,3 @@ test("an acknowledgement given for one address does not acknowledge another", ()
 
 // `decisions` arrives as an unvalidated array from the request body, and this gate runs before
 // the controller's try block - an unguarded property access here is a 500, not a typed 4xx.
-test("malformed answers do not throw", () => {
-  const answers = [null, undefined, 42, "nope", {}] as unknown as DecisionAnswer[];
-  expect(() => isDestinationAcknowledged(answers, UNKNOWN)).not.toThrow();
-  expect(isDestinationAcknowledged(answers, UNKNOWN)).toBe(false);
-});
