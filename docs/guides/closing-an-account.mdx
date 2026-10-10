@@ -32,6 +32,11 @@ Every Stellar account locks XLM it cannot spend: a 1 XLM minimum balance, plus 0
   An account sitting exactly at its minimum balance cannot pay the fee on its own closing
   transaction. LumenWipe sponsors the fee in that case. The sponsorship can only ever pay fees and
   cannot touch your funds.
+
+Availability by network, as of 2026-10-10: sponsored fees are available on testnet. Mainnet
+availability follows the deployment status in the [monitoring plan](/monitoring-plan); where no
+fee account is configured, the API reports sponsored closes as unavailable.
+
 </Note>
 
 ## Things that stop a close
@@ -41,7 +46,7 @@ LumenWipe never builds a transaction it expects to fail, and never skips a step 
 - **`AUTH_IMMUTABLE` accounts** can never be merged.
 - **A destination that does not exist** must be created and funded first.
 - **Claimable balances this account sponsors** stay a blocker until a claimant claims them. The protocol offers no self-service way around it.
-- **A protocol that has stopped operating**, such as FxDAO on mainnet, is reported as a blocker rather than attempted.
+- **A protocol that has stopped operating**, such as FxDAO on mainnet (its exit is testnet only), is reported as a blocker rather than attempted.
 
 <Warning>
   Closing an account is irreversible. Check the destination address before you sign, and confirm it

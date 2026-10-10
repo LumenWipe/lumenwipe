@@ -17,6 +17,10 @@ You sign the merge. LumenWipe co-signs only the mediator's payment, after checki
 
 The mediator is a persistent account funded once by the operator, so you do not lose 1 XLM to a throwaway intermediary. You recover essentially everything, and pay only network fees.
 
+## Availability by network
+
+As of 2026-10-10, the mediator flow is available on testnet. Mainnet availability follows the deployment status in the [monitoring plan](/monitoring-plan): the API only co-signs the mediator payment on a network where a mediator key is configured, and otherwise reports that exchange closes are not configured there.
+
 ## Your browser checks it too
 
 Before you sign, the browser confirms that the merge comes from your account, that the payment comes from the account the merge just paid, that it goes to the address you typed, in XLM, and for at least the balance it observed. The mediator is a conduit and never a destination.

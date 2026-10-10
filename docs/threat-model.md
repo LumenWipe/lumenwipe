@@ -19,9 +19,9 @@ In scope, one STRIDE pass per surface:
 2. The client-side session layer (the `DemolishPhase` state machine and IndexedDB session store).
 3. API transaction construction (the pure transaction-builder module).
 4. The two backend signing keys: the mediator co-sign key, and the fee-bump sponsor key.
-5. Allowance revocation (Tranche 2, epic #159).
-6. Soroban token conversion via Soroswap (Tranche 2, epic #159).
-7. DeFi exit adapters - Blend, Aquarius, Soroswap router (Tranche 2, epic #151).
+5. Allowance revocation (Phase 2, epic #159).
+6. Soroban token conversion via Soroswap (Phase 2, epic #159).
+7. DeFi exit adapters - Blend, Aquarius, Soroswap router (Phase 2, epic #151).
 
 Each surface sits on the data-flow diagram's trust boundaries, listed with the data entities that cross them in
 [Trust boundaries and data entities](/architecture#trust-boundaries-and-data-entities): surfaces 1 and 2 are the
@@ -71,7 +71,7 @@ anchor gating every signature this layer eventually authorizes.
 | Spoofing               | A crafted API response gets signed as if it matched the user's own request                   | `verify()` sources its expected destination, memo, asset, and amount from the user's own inputs, never from the API response (§13.1); a mismatch aborts before signing                                                                                                                   |
 | Tampering              | A resumed session executes a step the user never reviewed                                    | The `PREFLIGHT_COMPLETE → STEP_EXECUTING` transition only fires from the `/review` page's own explicit confirmation; nothing is written to the resumable session store before that fires, so a tab closed mid-review has nothing to resume (§13.3)                                       |
 | Repudiation            | The user disputes having authorized a step that in fact ran                                  | Every destructive step requires an explicit acknowledgment naming the affected entry/balance before submission; the tool never auto-submits (§13.3)                                                                                                                                      |
-| Information disclosure | The persisted session record leaks key material or other sensitive data from IndexedDB       | Verified directly against `apps/web/lib/session/store.ts`: the `SessionRecord` schema persisted via `saveSession`/`loadSession` carries plan and progress state, not signing material - consistent with §13.2's claim that the key never touches any storage layer                       |
+| Information disclosure | The persisted session record leaks key material or other sensitive data from IndexedDB       | Verified directly against `apps/web/lib/session/store.ts`: the `SessionRecord` schema persisted via `saveSession`/`loadSession` carries plan and progress state, not signing material - consistent with §13.2's claim that the key is never written to any storage layer                 |
 | Denial of service      | A malformed or corrupted session record blocks the user from resuming or restarting          | The API is stateless per round and re-reads live account state every call (`remaining.requiresAnotherCall`); an interrupted close resumes by calling again rather than reconciling stored server-side progress, so a corrupted local session degrades to "start over," not a stuck state |
 | Elevation of privilege | An unrelated operation gets appended to a transaction and signed alongside the reviewed plan | `verify()`'s allowlist rejects any operation shape it does not recognize (`docs/architecture.md`, "Consequence for any new close operation"); an unknown operation aborts signing rather than being silently accepted                                                                    |
 

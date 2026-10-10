@@ -22,7 +22,7 @@ LumenWipe is an open-source, non-custodial web app that walks you through closin
 
 **The API builds every unsigned transaction; the browser verifies it against your own choices and signs it. Your private keys never leave your device.** The API holds no user keys and can never move your funds.
 
-> **Status:** the classic account wind-down runs today on testnet and mainnet. Soroban & DeFi protocol exits, the allowance inspector, and sponsored fees are in active development - see the [roadmap](#delivery-roadmap).
+> **Status:** the classic account wind-down runs today on testnet and mainnet. Soroban & DeFi protocol exits, the allowance inspector, and sponsored fees are in active development - see the [roadmap](#delivery-roadmap). Exchange (mediator) closes and sponsored fees are available on testnet; mainnet availability follows the deployment status in the [monitoring plan](docs/monitoring-plan.md). FxDAO exits are testnet only.
 
 ---
 
@@ -46,15 +46,15 @@ The system has three layers. The trust boundary is the browser: it verifies ever
 
 ![System architecture diagram](docs/diagrams/output/01-system-architecture.svg)
 
-**Browser (trust boundary)** - The guided UI, wallet adapter, and `verify()` (the trust anchor) live in the browser. It fetches unsigned transactions from the API through a key-injecting server-side proxy, verifies each one against the user's own choices before signing, signs locally, and submits back through the API. The session is persisted to IndexedDB; keys are never stored.
+**Browser (trust boundary)** - The guided UI, wallet adapter, and `verify()` (the trust anchor) live in the browser. It fetches unsigned transactions from the API through a key-injecting server-side proxy, verifies each one against the user's own choices before signing, signs locally, and submits back through the API. After the user confirms the plan, the session is persisted to IndexedDB; keys are never stored.
 
 **API service** - A stateless NestJS service, and the product itself: it reads account state, detects DeFi positions, quotes routes, and builds the minimal set of unsigned transactions that close an account. It holds no user keys and is not in the signing path; its two signing keys co-sign only the mediator's forward payment and pay fee-bump network fees. A fully compromised API still cannot move funds, because `verify()` refuses to sign anything that does not match the user's intent.
 
-**Stellar network and data services** - Stellar RPC for live reads, simulation, submission, and events; one Horizon-compatible endpoint for subentry enumeration; Soroswap Aggregator API for conversion routing; OctoPos for DeFi position detection.
+**Stellar network and data services** - The sources and what each is used for are described once in [architecture section 5](docs/architecture.md#5-data-sources-and-why-we-run-no-indexer).
 
 **Key design decisions:**
 
-- **No bespoke indexer.** Stellar RPC cannot enumerate unknown subentries, so enumeration comes from one Horizon-compatible endpoint set by configuration. LumenWipe re-reads exact on-chain state over RPC immediately before building each transaction, and never signs based on stale data.
+- **No bespoke indexer.** Stellar RPC cannot enumerate unknown subentries, so enumeration comes from an existing provider set by configuration. LumenWipe re-reads exact on-chain state over RPC immediately before building each transaction, and never signs based on stale data.
 - **Pluggable data sources.** Every read source (RPC provider, indexer, routing API, DeFi position API) is behind an adapter, so any compatible provider can be swapped in without touching the transaction logic.
 - **Soroban exits are simulated before signing.** Every `InvokeHostFunction` is run through `simulateTransaction` to fill in footprint, authorization, and resource fees. The user sees the simulation result before being asked to sign.
 
@@ -64,25 +64,27 @@ The system has three layers. The trust boundary is the browser: it verifies ever
 
 ### Execution plan
 
-LumenWipe builds a **deterministic, ordered execution plan** from the account's live state. The same account state always produces the same plan - which makes it auditable and unit-testable. Steps are reconciled against on-chain state on resume, so an interrupted session never double-executes a completed step.
+LumenWipe builds a **deterministic, ordered execution plan** from the account's live state. The same account state always produces the same plan - which makes it auditable and unit-testable. Each round is reconciled against live on-chain state, so a resumed close never double-executes a completed step. See [how closing works](docs/guides/how-closing-works.mdx#interruptions-are-safe) for when a session can resume.
 
 ![Ordered execution plan](docs/diagrams/output/06-execution-plan.svg)
 
-| Step                               | Operation                               | Details                                                                                                 |
-| ---------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **1. Normalize signers**           | `SetOptions`                            | Removes extra signers, normalizes thresholds to 0/1/1 so a single key can authorize all remaining steps |
-| **2. Remove data entries**         | `ManageData`                            | Clears all `ManageData` entries in batches of 100                                                       |
-| **3. Claim claimable balances**    | `ClaimClaimableBalance`                 | Optional; claims any claimable balances before conversion                                               |
-| **4. Cancel DEX offers**           | `ManageSellOffer` / `ManageBuyOffer`    | Sets amount to 0 on all open order-book offers, freeing reserves                                        |
-| **5. Withdraw AMM & LP positions** | `LiquidityPoolWithdraw` + Soroban calls | Classic CAP-38 pools and all supported Soroban protocol exits                                           |
-| **6. Exit DeFi protocols**         | Soroban `InvokeHostFunction`            | Blend, Phoenix, FxDAO: repay debt then withdraw collateral                                              |
-| **7. Convert assets**              | `PathPaymentStrictSend` / Soroban swaps | Every non-XLM balance converted to XLM via the best available route                                     |
-| **8. Remove trustlines**           | `ChangeTrust` (limit 0)                 | Removes all trustlines once their balances are zero, batched by 100                                     |
-| **9. Merge account**               | `AccountMerge`                          | Direct merge, or via mediator account for exchange destinations                                         |
+| Step                            | Operation                               | Details                                                                                                           |
+| ------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **1. Exit DeFi positions**      | Soroban `InvokeHostFunction`            | Blend, Aquarius, Soroswap, Phoenix (unbond), FxDAO (testnet only): each exit is its own transaction, run first    |
+| **2. Normalize signers**        | `SetOptions`                            | Removes extra signers, normalizes thresholds to 0/1/1 so a single key can authorize all remaining steps           |
+| **3. Revoke sponsorships**      | `RevokeSponsorship`                     | Revokes sponsorships this account provides when the owner can absorb the reserve; the rest surface as blockers    |
+| **4. Remove data entries**      | `ManageData`                            | Clears all `ManageData` entries in batches of 100                                                                 |
+| **5. Cancel DEX offers**        | `ManageSellOffer` / `ManageBuyOffer`    | Sets amount to 0 on all open order-book offers, freeing reserves                                                  |
+| **6. Claim claimable balances** | `ClaimClaimableBalance`                 | Claims balances the account can claim before conversion; adds a trustline first when the user chooses that remedy |
+| **7. Handle each asset**        | `PathPaymentStrictSend` / Soroban swaps | Each non-XLM balance is converted to XLM, transferred, or returned to its issuer, as the user chose               |
+| **8. Remove trustlines**        | `ChangeTrust` (limit 0)                 | Removes all trustlines once their balances are zero, batched by 100                                               |
+| **9. Merge account**            | `AccountMerge`                          | Direct merge, or via mediator account for exchange destinations                                                   |
+
+Liquidity pool shares are not unwound by LumenWipe: an account that holds them is reported as a blocker, and the shares must be withdrawn elsewhere first.
 
 ### Session state machine
 
-The entire wind-down is held as an explicit state machine persisted to IndexedDB. Users can close the tab at any point and resume - completed steps are skipped, never re-executed.
+The entire wind-down is held as an explicit state machine persisted to IndexedDB. A resumable session exists only after the user confirms on the review page; the full rule is in [how closing works](docs/guides/how-closing-works.mdx#interruptions-are-safe).
 
 ![Demolish flow state machine](docs/diagrams/output/03-state-machine.svg)
 
@@ -100,6 +102,8 @@ Exchanges don't support `ACCOUNT_MERGE`. LumenWipe routes the merge through a sh
 
 The mediator is a persistent account funded once by the operator and reused for every close. You recover essentially all of your XLM; only standard network fees apply. The API builds the transaction, `verify()` confirms the merge goes to the shared mediator, and your browser signs the merge half. The API co-signs only the mediator's forward payment, after validating the exact transaction shape, and cannot alter the destination or amount. Known exchange destinations are validated against a registry that enforces the correct memo type - a missing memo blocks submission.
 
+Availability by network (as of 2026-10-10): the mediator flow is available on testnet; mainnet availability follows the deployment status in the [monitoring plan](docs/monitoring-plan.md).
+
 ---
 
 ## Supported DeFi Protocols
@@ -111,12 +115,14 @@ LumenWipe detects and unwinds positions across the major Soroban DeFi protocols 
 | Protocol        | Position type                               | Exit mechanism                                                      |
 | --------------- | ------------------------------------------- | ------------------------------------------------------------------- |
 | **Classic DEX** | Order-book offers                           | `ManageSellOffer` / `ManageBuyOffer` (amount = 0)                   |
-| **Classic AMM** | Pool-share trustline (CAP-38)               | `LiquidityPoolWithdraw`                                             |
+| **Classic AMM** | Pool-share trustline (CAP-38)               | Not unwound: reported as a blocker, withdraw the shares elsewhere   |
 | **Blend**       | Supply (bToken), borrow (dToken), backstop  | `Pool.submit` - repay then withdraw, via `@blend-capital/blend-sdk` |
 | **Aquarius**    | AMM LP, AQUA rewards                        | `withdraw`, `claim` via Aquarius contracts                          |
 | **Soroswap**    | AMM LP                                      | `remove_liquidity` via Soroswap Router API                          |
-| **Phoenix**     | AMM LP, optional stake                      | `withdraw_liquidity`, `unstake` first if staked                     |
-| **FxDAO**       | CDP vault (XLM collateral, stablecoin debt) | `pay_debt` then collateral withdrawal                               |
+| **Phoenix**     | AMM LP, optional stake                      | `withdraw_liquidity`, `unbond` first if staked                      |
+| **FxDAO**       | CDP vault (XLM collateral, stablecoin debt) | `pay_debt` then collateral withdrawal (testnet only, see below)     |
+
+FxDAO has stopped operating on mainnet, so its exit is testnet only and a mainnet FxDAO position is reported as a blocker.
 
 If the DeFi position provider is unavailable, the tool enters **degraded mode**: classic entries process normally and the user is warned to verify DeFi positions manually. The flow never silently fails or skips a position.
 
@@ -150,17 +156,17 @@ The codebase undergoes internal security reviews as part of the development proc
 
 | Layer          | Choice                                              | Why                                                                                    |
 | -------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Web client     | Next.js 15, TypeScript                              | Thin open-source client: verifies (`verify()`) and signs, no transaction-building      |
+| Web client     | Next.js, TypeScript                                 | Thin open-source client: verifies (`verify()`) and signs, no transaction-building      |
 | API            | NestJS, TypeScript, cache                           | Builds transactions; stateless; own deployable, reached via a key-injecting proxy      |
 | Packaging      | Bun workspaces monorepo                             | `apps/{web,api}` + `packages/{sdk,types}`; `@lumenwipe/sdk` is a thin API fetch client |
 | Stellar SDK    | `@stellar/stellar-sdk`                              | Official SDK for classic and Soroban                                                   |
 | Wallets        | `stellar-wallets-kit` (SEP-43)                      | One interface across Freighter, xBull, Albedo, LOBSTR, Hana, WalletConnect, and more   |
 | Network access | Stellar RPC                                         | Live reads, simulation, submission, events                                             |
-| Enumeration    | One Horizon-compatible endpoint                     | Existing production indexers; the provider is set by configuration                     |
+| Enumeration    | Existing indexer, set by configuration              | See architecture section 5                                                             |
 | Routing        | Soroswap API + SDEX paths                           | Best routes across Soroban and classic venues                                          |
 | DeFi detection | OctoPos                                             | Funded DeFi Position API, behind a pluggable adapter                                   |
 | State          | Zustand + IndexedDB                                 | Resumable sessions, never persists keys                                                |
-| Testing        | Bun test runner (unit), Playwright (E2E on testnet) | Automated tests never touch mainnet; per-package CI across the monorepo                |
+| Testing        | Bun test runner (unit), Playwright (E2E on testnet) | Automated tests do not use mainnet; per-package CI across the monorepo                 |
 
 ---
 
@@ -232,15 +238,15 @@ Full technical documentation is at [**docs.lumenwipe.com**](https://docs.lumenwi
 
 ## Delivery Roadmap
 
-The project is delivered in three cumulative tranches, each independently verifiable:
+The project is delivered in three cumulative phases, each independently verifiable:
 
-| Tranche                      | Focus                                                                                                                                                                                                               | Status          |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
-| **1 - Classic MVP**          | Full classic wind-down on testnet: signer normalization, data entries, offer cancellation, classic liquidity pool withdrawal, asset conversion, trustline removal, merge, mediator flow, multisig, session recovery | **In progress** |
-| **2 - Soroban & DeFi**       | DeFi position detection via OctoPos; Blend, Aquarius, Soroswap, Phoenix, and FxDAO exits; Soroban token conversion; allowance inspector; per-step simulation; sponsored fees for reserve-locked accounts            | Planned         |
-| **3 - Production hardening** | Security review and remediation, performance validation, final UX from user testing, complete public documentation, public REST API and TypeScript SDK for integrators                                              | Planned         |
+| Phase                              | Focus                                                                                                                                                                                                                             | Status          |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| **Phase 1 - Classic wind-down**    | Full classic wind-down on testnet: signer normalization, data entries, offer cancellation, classic liquidity pool withdrawal, asset conversion, trustline removal, merge, mediator flow, multisig, session recovery               | **In progress** |
+| **Phase 2 - Soroban & DeFi**       | DeFi position detection via OctoPos; Blend, Aquarius, Soroswap, Phoenix, and FxDAO (testnet only) exits; Soroban token conversion; allowance inspector; per-step simulation; sponsored fees for reserve-locked accounts (testnet) | Planned         |
+| **Phase 3 - Production hardening** | Security review and remediation, performance validation, final UX from user testing, complete public documentation, public REST API and TypeScript SDK for integrators                                                            | Planned         |
 
-> The classic wind-down already runs. The API builds the classic transactions, the browser verifies and signs them, and the tool executes the full path - signer normalization, offer cancellation, asset conversion, trustline removal, and `AccountMerge` including the mediator flow - on both testnet and mainnet.
+> The classic wind-down already runs. The API builds the classic transactions, the browser verifies and signs them, and the tool executes the full path - signer normalization, offer cancellation, asset conversion, trustline removal, and `AccountMerge` - on both testnet and mainnet. The mediator flow for exchange destinations is available on testnet.
 
 ---
 

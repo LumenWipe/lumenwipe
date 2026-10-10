@@ -15,8 +15,8 @@ A close has four stages. Nothing is signed until you have seen the whole plan.
   </Step>
   <Step title="Review">
     The review page shows the complete ordered plan, the estimated fee, and the estimated XLM that
-    reaches the destination. No transaction exists yet. If you close the tab here, nothing is saved
-    and nothing has happened.
+    reaches the destination. No transaction exists yet, and nothing is saved until you confirm. See
+    [Interruptions are safe](#interruptions-are-safe).
   </Step>
   <Step title="Sign">
     Confirming the review builds the first transaction. Before your signer ever sees it, the browser
@@ -36,13 +36,15 @@ For a given account state the plan is always the same. It runs in this order, wh
 
 1. Exit DeFi positions, each as its own transaction
 2. Normalize signers, when extra signers exist
-3. Remove data entries
-4. Claim claimable balances
+3. Revoke the sponsorships this account provides, when the owners can absorb the reserve
+4. Remove data entries
 5. Cancel offers
-6. Withdraw liquidity pool shares
+6. Claim claimable balances
 7. Handle each asset
 8. Remove trustlines
 9. Merge the account
+
+Liquidity pool shares are not unwound by LumenWipe. An account that holds them is reported as a blocker, and the shares have to be withdrawn with another tool first.
 
 ## One transaction, or several
 
@@ -55,7 +57,9 @@ Most accounts close in a single transaction, signed once. More are needed in a f
 
 ## Interruptions are safe
 
-The server keeps no progress between rounds. Each round re-reads the account and works out what remains. If your browser closes or a submission fails, reopen the flow and continue: steps that already confirmed are skipped, and a failed step can be retried on its own.
+A resumable session exists only after you confirm on the review page. Until then nothing is saved, so closing the tab leaves nothing to resume and nothing has happened. After you confirm, your progress is kept in your browser, never your keys.
+
+The server keeps no progress between rounds. Each round re-reads the account and works out what remains. If your browser closes or a submission fails after you confirmed, reopen the flow and continue: steps that already confirmed are skipped, and a failed step can be retried on its own.
 
 <Info>
   Prefer to drive this from your own code? The same flow is available through the REST API and the
