@@ -39,7 +39,7 @@ const GUARANTEES = [
   {
     icon: KeyRound,
     title: "Private key",
-    body: "Never transmitted. It stays in your wallet, or in memory only for the duration of the close, never persisted and wiped when you finish, abort, or navigate away.",
+    body: "Never transmitted. It stays in your wallet, or in memory only for the duration of the close, never persisted and cleared when you finish, abort, or navigate away.",
   },
   {
     icon: ScanLine,
@@ -54,7 +54,7 @@ const GUARANTEES = [
   {
     icon: Server,
     title: "Backend compromise",
-    body: "Its only key is the shared mediator, which can't sign for your account or divert funds (the forwarding payment is atomic and validated). Wrong read data is caught by simulation and confirmations.",
+    body: "Its only key is the shared relay account, which can't sign for your account or divert funds (the forwarding payment is atomic and validated). Wrong read data is caught by simulation and confirmations.",
   },
   {
     icon: Network,
@@ -78,7 +78,7 @@ export default function SecurityPage() {
           LumenWipe builds transactions that drain accounts irreversibly, so the design starts from
           that fact. Your keys are created and used only in your browser and never reach a server.
           The backend can&apos;t touch your account: its one signing key is the shared exchange
-          mediator, which can only co-sign a forwarding payment you already authorized.
+          relay account, which can only co-sign a forwarding payment you already authorized.
         </p>
       </div>
 

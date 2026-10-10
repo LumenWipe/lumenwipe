@@ -99,6 +99,10 @@ bun test         # Unit tests - must all pass
 }
 ```
 
+### User-facing vocabulary
+
+User-facing text in `apps/web` follows the glossary in `apps/web/lib/glossary.ts`: the act is "close", the shared exchange account is the "relay account", and "wind-down", "demolish", "wipe", "mediator" and "intermediary" must not appear in strings or JSX text. Code, docs and the API keep "mediator". `apps/web/tests/unit/user-facing-copy.test.ts` enforces this on `app/` and `components/`.
+
 ### Comments
 
 Write comments only when the **why** is non-obvious - a hidden constraint, a subtle invariant, a workaround for a specific protocol behavior. Do not describe what the code does; well-named identifiers do that.

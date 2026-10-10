@@ -67,7 +67,7 @@ const FEATURES = [
   {
     icon: Building2,
     title: "Exchange-compatible merge",
-    body: "A transparent, shared mediator bridges the merge to any CEX deposit address, with the right memo, validated.",
+    body: "A transparent, shared relay account bridges the final merge to any CEX deposit address, with the right memo, validated.",
     status: "Live",
   },
   {
@@ -107,7 +107,7 @@ export default function LandingPage() {
         <div className="mb-8 flex items-center justify-center gap-4">
           <span className="h-px w-12 bg-white/15" />
           <span className="mkt-mono text-[0.65rem] uppercase tracking-[0.2em] text-white/35">
-            Stellar Account Demolisher
+            Stellar Account Closer
           </span>
           <span className="h-px w-12 bg-white/15" />
         </div>

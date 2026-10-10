@@ -316,7 +316,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       title: "Account merged",
       summary: destinationAddress
         ? mediatorRequired
-          ? `via intermediary to ${shortAddr(destinationAddress)}`
+          ? `via relay account to ${shortAddr(destinationAddress)}`
           : `to ${shortAddr(destinationAddress)}`
         : "merged to destination",
       body: (
@@ -331,7 +331,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
           )}
           <p>
             {mediatorRequired
-              ? "The merge was routed through a shared intermediary account as a co-signed transfer."
+              ? "The merge was routed through a shared relay account, which passes your funds on to the exchange, as a co-signed transfer."
               : "The account was merged into the destination and removed from the Stellar ledger."}
           </p>
         </div>

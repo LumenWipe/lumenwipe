@@ -41,7 +41,7 @@ const VIDEOS: Video[] = [
     id: "nVS2zI9mRzw",
     title: "Full walkthrough: testnet, playground & mainnet",
     description:
-      "An 11-minute demo covering the full demolition flow - from testnet dry run to a live mainnet account close.",
+      "An 11-minute demo covering the full close flow - from testnet dry run to a live mainnet account close.",
     lang: "EN",
     duration: "11 min",
   },
