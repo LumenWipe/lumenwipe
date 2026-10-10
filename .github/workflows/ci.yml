@@ -415,6 +415,100 @@ jobs:
       - name: Require pinned actions and job timeouts
         run: scripts/check-workflows.sh
 
+  # The docs site and the diagrams embedded in it have no other guard: a broken link, a page that
+  # never reaches the sidebar, a failing Mintlify build or a diagram edited without re-rendering
+  # all ship silently. Only meaningful on a PR (a diff against its base); every step is gated on
+  # the changed-files check, so an unrelated PR passes this job without running anything, and
+  # a push skips it. The aggregate gate treats skipped as passing. Link checks on third-party
+  # sites are reported but never fail the job, since someone else's outage must not block a PR.
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    if: github.event_name == 'pull_request'
+    env:
+      LYCHEE_VERSION: 0.24.2
+      LYCHEE_SHA256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+      MINT_VERSION: 4.2.778
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Detect docs changes
+        id: changed
+        run: |
+          if git diff --name-only "origin/${{ github.base_ref }}"...HEAD |
+            grep -qE '^(docs/|diagrams/|README\.md$|CONTRIBUTING\.md$|scripts/check-(docs-nav\.mjs|diagrams\.sh)$|\.github/workflows/ci\.yml$)'; then
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs=false" >> "$GITHUB_OUTPUT"
+            echo "No docs, diagram or docs-tooling change in this PR - nothing to check."
+          fi
+
+      - name: Set up Node
+        if: steps.changed.outputs.docs == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Check every docs page is in the navigation
+        if: steps.changed.outputs.docs == 'true'
+        run: node scripts/check-docs-nav.mjs
+
+      - name: Check internal docs links
+        if: steps.changed.outputs.docs == 'true'
+        working-directory: docs
+        run: npx --yes "mint@${MINT_VERSION}" broken-links
+
+      - name: Validate the Mintlify build
+        if: steps.changed.outputs.docs == 'true'
+        working-directory: docs
+        run: npx --yes "mint@${MINT_VERSION}" validate
+
+      - name: Install lychee
+        if: steps.changed.outputs.docs == 'true'
+        run: |
+          curl -sSfL -o lychee.tar.gz \
+            "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${LYCHEE_SHA256}  lychee.tar.gz" | sha256sum -c -
+          tar -xzf lychee.tar.gz --strip-components=1 lychee-x86_64-unknown-linux-gnu/lychee
+          rm lychee.tar.gz
+
+      - name: Check links in the root documents
+        if: steps.changed.outputs.docs == 'true'
+        run: ./lychee --offline --no-progress README.md CONTRIBUTING.md
+
+      - name: Report external links
+        if: steps.changed.outputs.docs == 'true'
+        continue-on-error: true
+        run: |
+          ./lychee --no-progress --scheme https --max-retries 3 --retry-wait-time 5 --timeout 20 \
+            --accept '200..=299,403,429' README.md CONTRIBUTING.md 'docs/**/*.md' 'docs/**/*.mdx'
+
+      - name: Set up Python
+        if: steps.changed.outputs.docs == 'true'
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Check the rendered diagrams match their sources
+        if: steps.changed.outputs.docs == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq graphviz
+          pip install --quiet graphviz==0.20.3
+          scripts/check-diagrams.sh
+
+      - name: Upload the CI-rendered diagrams
+        if: ${{ failure() && steps.changed.outputs.docs == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rendered-diagrams
+          path: docs/diagrams/output
+
   # Aggregate gate: keeps the existing required-status-check name so branch
   # protection needs no change. Passes only if every job above passed.
   ci:
@@ -435,6 +529,7 @@ jobs:
         gitleaks,
         audit,
         workflow-lint,
+        docs,
       ]
     if: ${{ always() }}
     steps:
@@ -478,6 +573,11 @@ jobs:
           fi
           if [ "${{ needs.workflow-lint.result }}" != "success" ]; then
             echo "A workflow is unpinned, has no job timeout or fails actionlint."
+            exit 1
+          fi
+          # skipped (not run on a push event) counts as passing for docs too.
+          if [ "${{ needs.docs.result }}" != "success" ] && [ "${{ needs.docs.result }}" != "skipped" ]; then
+            echo "Docs links, navigation, build or diagrams are broken - see the docs job."
             exit 1
           fi
           # skipped (not run on a push event) counts as passing - only a real failure blocks.
