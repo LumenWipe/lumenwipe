@@ -187,20 +187,19 @@ The web and the API each read their own `.env.local` (copy from each app's `.env
 
 **`apps/api/.env.local`** - the API:
 
-| Variable                                            | Description                                                                   |
-| --------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `API_KEYS`                                          | Accepted API keys as `label=key` (the web's key must be listed here)          |
-| `NEXT_PUBLIC_STELLAR_RPC_TESTNET` / `_MAINNET`      | Stellar RPC endpoints                                                         |
-| `NEXT_PUBLIC_PATH_ROUTING_API_TESTNET` / `_MAINNET` | Horizon-compatible endpoints for offers, full account state, and path finding |
-| `MEDIATOR_SECRET_TESTNET` / `_MAINNET`              | Shared mediator secret (operator-only; enables exchange closes)               |
-| `ADMIN_API_TOKEN` / `FIRESTORE_PROJECT_ID`          | Optional; enables self-serve API key management (`/admin/api-keys`, #289)     |
+| Variable                                   | Description                                                                   |
+| ------------------------------------------ | ----------------------------------------------------------------------------- |
+| `API_KEYS`                                 | Accepted API keys as `label=key` (the web's key must be listed here)          |
+| `STELLAR_RPC_TESTNET` / `_MAINNET`         | Stellar RPC endpoints                                                         |
+| `PATH_ROUTING_API_TESTNET` / `_MAINNET`    | Horizon-compatible endpoints for offers, full account state, and path finding |
+| `MEDIATOR_PUBLIC_*` / `MEDIATOR_SECRET_*`  | Shared mediator keys (operator-only; enables exchange closes)                 |
+| `ADMIN_API_TOKEN` / `FIRESTORE_PROJECT_ID` | Optional; enables self-serve API key management (`/admin/api-keys`, #289)     |
 
 **`apps/web/.env.local`** - the web:
 
 | Variable                                              | Description                                                                         |
 | ----------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | `LUMENWIPE_API_URL` / `LUMENWIPE_API_KEY`             | API base URL and key, injected server-side by the proxy (never sent to the browser) |
-| `NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET` / `_MAINNET`    | Public key of the shared mediator, so `verify()` can recognize the merge target     |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis - for the proxy rate limit                                            |
 
 ### Running tests

@@ -151,10 +151,8 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # Scoped to the workspaces, not the whole repo: root-level docs (README, CONTRIBUTING,
-      # diagrams/) and non-product assets aren't held to this convention.
       - name: Check formatting
-        run: bunx prettier --check "apps/**/*" "packages/**/*" --ignore-unknown
+        run: bun run format:check
 
   # Everything above runs from source, so nothing exercises the production image, and two
   # different failures have already shipped through that gap. One breaks the build: a workspace
