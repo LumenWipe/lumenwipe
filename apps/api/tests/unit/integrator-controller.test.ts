@@ -6,6 +6,7 @@ import { Keypair } from "@stellar/stellar-sdk";
 import { ApiKeyDirectory } from "@/auth/api-key-directory";
 import { ApiKeyService } from "@/auth/api-key.service";
 import type { ApiKeyRecord, ApiKeyStore } from "@/auth/api-key-store";
+import { AuditLogger } from "@/common/audit-logger";
 import { MeteringService } from "@/metering/metering.service";
 import { InMemoryUsageStore } from "@/metering/usage-store";
 import { IntegratorController } from "@/integrator/integrator.controller";
@@ -89,7 +90,8 @@ function setup() {
   const controller = new IntegratorController(
     store,
     new MeteringService(new InMemoryUsageStore(), () => new Date()),
-    directory
+    directory,
+    new AuditLogger()
   );
   return { store, controller };
 }

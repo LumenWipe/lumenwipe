@@ -27,6 +27,28 @@ Each request produces one line when its response is sent:
 
 Failures inside a request add lines with a message, the error's stack and the same `requestId`. The service also logs its own start-up and degraded-dependency messages.
 
+### Key lifecycle lines
+
+Creating, rotating or revoking an API key, through the operator API or through a wallet session, writes one more line from the `audit` logger, success or failure:
+
+| Field       | Content                                                                                                                                                   |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `requestId` | The id of the request that caused the action.                                                                                                             |
+| `event`     | `api_key.create`, `api_key.rotate` or `api_key.revoke`.                                                                                                   |
+| `actor`     | `admin` for the operator API, or the signed-in wallet address.                                                                                            |
+| `keyId`     | The first 8 hex characters of the key's hash, never the full hash. Null when the action failed before a key was known or the id in the URL is not a hash. |
+| `newKeyId`  | On a successful rotation only, the same cut of the replacement key's hash, so later lines about the new key can be tied to the rotation.                  |
+| `owner`     | The wallet address, or for the operator API the owner label the operator typed. Null when it was not known.                                               |
+| `result`    | `success` or `failure`. A failure carries no error text and no stack; the error itself is logged once by the request's own error line.                    |
+
+Notes:
+
+- The operator API is protected by one shared token, so `actor` cannot say which operator acted; it is always `admin`.
+- Wallet addresses in `actor` and `owner` follow the address rule below: first four and last four characters plus a keyed hash. The hash matches an actor across lines only while `LOG_HASH_KEY` is the same; without it each instance and each restart uses its own random key, so stable correlation across instances requires setting `LOG_HASH_KEY`.
+- The owner label on the operator API is free text. Do not put personal data in it.
+- A rejected operator token, a missing wallet session and an invalid request body are not lifecycle actions and get no such line; the request's access line records them.
+- The raw key, the full key hash and session or operator tokens are never written.
+
 ## What is never logged
 
 - Request or response bodies.
