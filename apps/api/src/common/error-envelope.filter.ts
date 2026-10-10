@@ -61,7 +61,7 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
 }
 
 /** A stable code for the statuses Nest raises on its own. */
-function codeForStatus(status: number): string {
+export function codeForStatus(status: number): string {
   switch (status) {
     case 400:
       return "bad_request";
@@ -71,8 +71,16 @@ function codeForStatus(status: number): string {
       return "forbidden";
     case 404:
       return "not_found";
+    case 413:
+      return "payload_too_large";
+    case 415:
+      return "unsupported_media_type";
+    case 422:
+      return "unprocessable_entity";
     case 429:
       return "rate_limited";
+    case 503:
+      return "service_unavailable";
     default:
       return status >= 500 ? "internal_error" : "request_failed";
   }
