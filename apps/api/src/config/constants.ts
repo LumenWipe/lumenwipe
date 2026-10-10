@@ -8,6 +8,11 @@ export const POLL_INTERVAL_MS = 3000; // 3 seconds between polls
 export const POLL_MAX_ATTEMPTS = 30; // 90 seconds total
 export const SLIPPAGE_BPS = 50; // 0.5% default slippage for path payments
 export const HORIZON_TIMEOUT_MS = 10000; // 10 seconds
+// One inbound request's budget for every upstream read it makes together; the web proxy's
+// maxDuration is 55 s, so the API answers (with a typed error) before the proxy gives up.
+export const REQUEST_DEADLINE_MS = 40_000;
+export const RPC_READ_TIMEOUT_MS = 10_000;
+export const RPC_SIMULATE_TIMEOUT_MS = 20_000;
 // OctoPos is an optional enhancement - fail fast into degraded mode rather than stall the
 // analyze call waiting on a third-party DeFi position provider. Combined with the 1-retry
 // budget in octopos-http.ts, worst case is 2 * 2500ms + one 300ms backoff ~= 5.3s, leaving

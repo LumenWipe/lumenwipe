@@ -21,6 +21,7 @@ import {
 import { StrKey } from "@stellar/stellar-sdk";
 import { ApiErrorResponse, ApiBodyErrorResponses } from "@/common/api-error-response.decorator";
 import { getRpcServer } from "@/lib/stellar/rpc";
+import { mapDomainError, UPSTREAM_ERRORS } from "@/lib/close-api/domain-errors";
 import type { Network } from "@/config/networks";
 import { GAddressPipe } from "@/common/pipes/g-address.pipe";
 import { NetworkFirstGuard } from "@/common/guards/network-first.guard";
@@ -60,6 +61,9 @@ export class AccountController {
   @ApiErrorResponse(500, "The account could not be read.", ["account_read_failed"])
   @ApiErrorResponse(502, "The data provider returned an unusable response.", [
     "provider_response_unusable",
+  ])
+  @ApiErrorResponse(503, "The data provider is unavailable or too slow. Retry.", [
+    "service_unavailable",
   ])
   @UseGuards(new NetworkFirstGuard("Invalid network"))
   @Get("account/:address")
@@ -134,6 +138,8 @@ export class AccountController {
       if (err instanceof UnusableProviderResponseError) {
         fail("provider_response_unusable", err.message, 502);
       }
+      const upstream = mapDomainError(UPSTREAM_ERRORS, err);
+      if (upstream) fail(upstream.code, upstream.message, upstream.status);
       this.logger.error("account fetch failed", err instanceof Error ? err.stack : String(err));
       fail("account_read_failed", "Failed to fetch account data", 500);
     }

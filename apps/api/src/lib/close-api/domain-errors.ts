@@ -1,5 +1,6 @@
 import type { ErrorCode } from "@lumenwipe/types";
 import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
+import { UpstreamError } from "@/lib/stellar/upstream-client";
 import {
   AccountNotFoundError,
   AssetRouteLostError,
@@ -73,6 +74,16 @@ const LIVE_READ_FAILED = entry(LiveReadError, (e) => ({
   message: e.message,
 }));
 
+/** A provider that could not be reached is an outage to retry; one that refused the request is a
+ *  provider we cannot use. Neither message carries a status code or an address. */
+const UPSTREAM_FAILED = entry(UpstreamError, (e) =>
+  e.kind === "bad_response"
+    ? { code: "provider_response_unusable", status: 502, message: e.message }
+    : { code: "service_unavailable", status: 503, message: e.message }
+);
+
+export const UPSTREAM_ERRORS: readonly DomainErrorEntry[] = [UPSTREAM_FAILED];
+
 /** What `close/plan` and each `close/batch-plan` address recognise as a planning failure. */
 export const PLAN_ERRORS: readonly DomainErrorEntry[] = [
   ACCOUNT_NOT_FOUND,
@@ -80,6 +91,7 @@ export const PLAN_ERRORS: readonly DomainErrorEntry[] = [
   PROVIDER_UNUSABLE,
   DESTINATION_READ_FAILED,
   LEDGER_READ_FAILED,
+  UPSTREAM_FAILED,
 ];
 
 /** What `close/transactions` recognises; anything else is a `transactions_failed`. */
@@ -88,6 +100,7 @@ export const TRANSACTION_ERRORS: readonly DomainErrorEntry[] = [
   DESTINATION_READ_FAILED,
   LEDGER_READ_FAILED,
   LIVE_READ_FAILED,
+  UPSTREAM_FAILED,
   entry(AssetRouteLostError, () => ({
     code: "quote_drifted",
     status: 409,

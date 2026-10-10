@@ -16,6 +16,7 @@ import { mapDomainError, PLAN_ERRORS, TRANSACTION_ERRORS } from "@/lib/close-api
 import { DestinationReadError, LedgerReadError } from "@/lib/close-api/merge-preflight";
 import { planBatch } from "@/lib/close-api/batch-plan";
 import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
+import { UpstreamError } from "@/lib/stellar/upstream-client";
 import {
   AccountNotFoundError,
   AssetRouteLostError,
@@ -67,6 +68,27 @@ const PLAN_CASES: Case[] = [
     undefined,
   ],
   ["ledger read failed", new LedgerReadError(), 503, "service_unavailable", undefined],
+  [
+    "provider timed out",
+    new UpstreamError("timeout", "horizon"),
+    503,
+    "service_unavailable",
+    undefined,
+  ],
+  [
+    "provider rate limited",
+    new UpstreamError("rate_limited", "horizon"),
+    503,
+    "service_unavailable",
+    undefined,
+  ],
+  [
+    "provider refused the request",
+    new UpstreamError("bad_response", "horizon"),
+    502,
+    "provider_response_unusable",
+    undefined,
+  ],
 ];
 
 const TRANSACTION_CASES: Case[] = [
@@ -86,6 +108,27 @@ const TRANSACTION_CASES: Case[] = [
     undefined,
   ],
   ["ledger read failed", new LedgerReadError(), 503, "service_unavailable", undefined],
+  [
+    "provider timed out",
+    new UpstreamError("timeout", "horizon"),
+    503,
+    "service_unavailable",
+    undefined,
+  ],
+  [
+    "provider rate limited",
+    new UpstreamError("rate_limited", "horizon"),
+    503,
+    "service_unavailable",
+    undefined,
+  ],
+  [
+    "provider refused the request",
+    new UpstreamError("bad_response", "horizon"),
+    502,
+    "provider_response_unusable",
+    undefined,
+  ],
   [
     "live balance read failed",
     new LiveReadError("The USDC balance"),
@@ -148,7 +191,9 @@ describe("what each filter catches", () => {
     Reflect.getMetadata(FILTER_CATCH_EXCEPTIONS, filter.constructor) as unknown[];
 
   test("the plan filter catches exactly the planning errors", () => {
-    expect(caught(new PlanErrorFilter())).toEqual(PLAN_CASES.map(([, e]) => e.constructor));
+    expect(new Set(caught(new PlanErrorFilter()))).toEqual(
+      new Set(PLAN_CASES.map(([, e]) => e.constructor))
+    );
   });
 
   test("the transactions filter catches exactly the build-time domain errors", () => {

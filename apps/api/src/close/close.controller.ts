@@ -253,6 +253,9 @@ export class CloseController {
     ]
   )
   @ApiErrorResponse(500, "The transactions could not be built.", ["transactions_failed"])
+  @ApiErrorResponse(502, "The data provider returned an unusable response.", [
+    "provider_response_unusable",
+  ])
   @ApiErrorResponse(
     503,
     "The exchange (mediator) flow or the exchange registry is not available, or the destination or ledger could not be read. Retry.",
