@@ -421,9 +421,6 @@ export class CloseController {
         );
       }
 
-      // After the decision gate, never before: this reads one third-party account per distinct
-      // destination, and a request that is going to be refused as incomplete should not pay for
-      // that first.
       const mergeProblems = await assessMergePreflight(accountState, destination, network);
       if (mergeProblems.length > 0) {
         fail(preflightErrorCode(mergeProblems[0]!), mergeProblems[0]!.message, 422, {
@@ -431,6 +428,9 @@ export class CloseController {
         });
       }
 
+      // After the decision gate, never before: this reads one third-party account per distinct
+      // destination, and a request that is going to be refused as incomplete should not pay for
+      // that first.
       const transferProblems = await validateTransferDestinations(
         transferDestinations,
         accountState.trustlines,
