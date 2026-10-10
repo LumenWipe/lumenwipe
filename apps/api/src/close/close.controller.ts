@@ -60,7 +60,7 @@ import { computePlanHash } from "@/lib/close-api/plan-response";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
 import { submitAndWait, InvalidSignatureError } from "@/lib/stellar/submit";
 import { readTrustlinesOnly } from "@/lib/stellar/account-state";
-import { TxTimeoutError, TxSubmitError } from "@/lib/utils/errors";
+import { InvalidXdrError, TxTimeoutError, TxSubmitError } from "@/lib/utils/errors";
 import { fail } from "@/common/fail";
 import { PlanErrorFilter, TransactionErrorFilter } from "./domain-error.filters";
 import { mapDomainError, PLAN_ERRORS, TRANSACTION_ERRORS } from "@/lib/close-api/domain-errors";
@@ -516,7 +516,7 @@ export class CloseController {
           e.resultCode ? { resultCode: e.resultCode } : undefined
         );
       }
-      if (e instanceof Error && /xdr|envelope|decode/i.test(e.message)) {
+      if (e instanceof InvalidXdrError) {
         fail("invalid_signed_xdr", "The transaction envelope could not be decoded.", 400);
       }
       this.logger.error("submit failed", e instanceof Error ? e.stack : String(e));

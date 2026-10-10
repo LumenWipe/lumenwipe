@@ -4,6 +4,7 @@ import {
   translateRpcError,
   TxTimeoutError,
   TxSubmitError,
+  InvalidXdrError,
   extractResultCode,
 } from "@/lib/utils/errors";
 import { checkTransactionSignatures, InvalidSignatureError } from "@/lib/stellar/signature";
@@ -29,12 +30,18 @@ export async function submitAndWait(
   const server = getRpcServer(network);
   const passphrase = NETWORK_PASSPHRASES[network];
 
+  let tx;
+  try {
+    tx = TransactionBuilder.fromXDR(signedXdr, passphrase);
+  } catch {
+    throw new InvalidXdrError();
+  }
+
   // Offline pre-flight: catch missing/invalid signatures before wasting a round-trip
-  checkTransactionSignatures(signedXdr, network);
+  checkTransactionSignatures(tx);
 
   onStatus?.("Submitting to Stellar network...");
 
-  const tx = TransactionBuilder.fromXDR(signedXdr, passphrase);
   const txHash = tx.hash().toString("hex");
 
   // A prior call may have submitted this exact transaction and it confirmed, but the
