@@ -16,7 +16,7 @@ A guided web app that runs the whole wind-down in one flow and signs every trans
 
 ## Why us
 
-The classic wind-down already runs. The current codebase reads account state from the sources described in [the architecture](/architecture#5-data-sources-and-why-we-run-no-indexer), builds and signs classic transactions client-side, and executes the full path (signer normalization, data entry removal, offer cancellation, asset conversion via SDEX path payments, trustline removal, and `AccountMerge`, including the mediator flow for exchange destinations on testnet; mainnet follows the [monitoring plan](/monitoring-plan)), with unit and end-to-end tests. We are extending a working foundation, not starting from a blank page.
+The classic wind-down already runs. The current codebase reads account state from the sources described in [the architecture](/architecture#5-data-sources-and-why-we-run-no-indexer), has the API build every unsigned classic transaction while the browser verifies and signs it, and executes the full path (signer normalization, data entry removal, offer cancellation, asset conversion via SDEX path payments, trustline removal, and `AccountMerge`, including the mediator flow for exchange destinations on testnet; mainnet follows the [monitoring plan](/monitoring-plan)), with unit and end-to-end tests. We are extending a working foundation, not starting from a blank page.
 
 ## How it works
 
@@ -24,7 +24,7 @@ Analyze the account, generate a deterministic ordered plan, execute it step by s
 
 ## Technical pillars
 
-- Non-custodial by construction. A user's private keys never leave the browser. The backend is read-only apart from two signing keys, the shared exchange mediator, which can only co-sign a forwarding payment the user already authorized in an atomic transaction, and the fee-bump sponsor, which only pays network fees; no operator (including us) can move a user's account funds or close their account.
+- Non-custodial by construction. A user's private keys never leave the browser. The backend is read-only apart from two signing keys, the shared exchange mediator, which can only co-sign a forwarding payment the user already authorized in an atomic transaction, and the fee-bump sponsor, which only pays network fees; see the [threat model](/threat-model); no operator (including us) can move a user's account funds or close their account.
 - No bespoke indexer. Stellar RPC reads live state, simulates, and submits; existing indexers handle enumeration and classic path finding, and OctoPos provides DeFi position detection (sources are listed in [the architecture](/architecture#5-data-sources-and-why-we-run-no-indexer)).
 - Per-protocol exit adapters and a versioned contract registry. Detect positions with the DeFi Position API, build the exit with each protocol's SDK, public API, or contract, and simulate before signing. A protocol upgrade is a registry update, not a rewrite.
 - CEX compatibility through a shared mediator account and an atomic forwarding payment, since exchanges do not support `ACCOUNT_MERGE`. The user recovers essentially all of their XLM.
