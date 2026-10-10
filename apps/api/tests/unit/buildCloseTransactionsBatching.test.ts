@@ -118,3 +118,20 @@ test("a follow-up call against the reduced live state converges to the merge", a
   expect(result.requiresAnotherCall).toBe(false);
   expect(opsOf(result.transactions[0]!.xdr).some((o) => o.type === "accountMerge")).toBe(true);
 });
+
+test("an exchange close whose balance cannot cover the forward fee is a typed 422", async () => {
+  const registry = await import("@/lib/exchange-registry");
+  const networks = await import("@/config/networks");
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(registry, "requiresMediatorForAddress").mockReturnValue(true);
+  spyOn(networks, "getMediatorPublicKey").mockReturnValue(Keypair.random().publicKey());
+  const { buildCloseTransactions, CloseBuildError } =
+    await import("@/lib/close-api/build-transactions");
+
+  const state = accountState({ nativeBalanceLumens: "0.0000100" });
+  const failure = await buildCloseTransactions(state, DEST, {}, "testnet").catch((e) => e);
+
+  expect(failure).toBeInstanceOf(CloseBuildError);
+  expect(failure).toMatchObject({ code: "unprocessable_entity", status: 422 });
+});

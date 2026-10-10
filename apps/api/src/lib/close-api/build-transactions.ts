@@ -38,7 +38,7 @@ import {
   type AssetAction,
   type FusedCloseInput,
 } from "@/lib/stellar/tx-builder/fused-close";
-import { buildMediatorMergePaymentTx } from "@/lib/stellar/tx-builder/merge";
+import { buildMediatorMergePaymentTx, ForwardBelowFeeError } from "@/lib/stellar/tx-builder/merge";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { AssetRouteLostError } from "@/lib/utils/errors";
 import type {
@@ -478,15 +478,23 @@ export async function buildCloseTransactions(
 
   const networkPassphrase = NETWORK_PASSPHRASES[network];
   const sourceSequence = sdkAccount.sequenceNumber();
-  const xdr = buildMediatorMergePaymentTx(
-    sdkAccount,
-    mediatorPublicKey,
-    destinationAddress,
-    accountState.nativeBalanceLumens,
-    memo,
-    network,
-    memoType
-  );
+  let xdr: string;
+  try {
+    xdr = buildMediatorMergePaymentTx(
+      sdkAccount,
+      mediatorPublicKey,
+      destinationAddress,
+      accountState.nativeBalanceLumens,
+      memo,
+      network,
+      memoType
+    );
+  } catch (e) {
+    if (e instanceof ForwardBelowFeeError) {
+      throw new CloseBuildError("unprocessable_entity", e.message, 422);
+    }
+    throw e;
+  }
 
   return {
     transactions: [

@@ -1,4 +1,6 @@
+import type { AccountState } from "@lumenwipe/types";
 import type { Network } from "@/config/networks";
+import { stroopsToFixedXlm, xlmToStroops } from "@/lib/utils/amounts";
 import { readAccountState } from "@/lib/close-api/read-account";
 import { fetchConversionPath } from "@/lib/stellar/path-finding";
 import { buildPlan } from "@/lib/stellar/tx-builder";
@@ -66,6 +68,31 @@ const readDestinationTrustlines = async (
   net: Network
 ): Promise<{ trustlines: Trustline[] } | null> => readTrustlinesOnly(address, net);
 
+export function pricedAmountsPerAsset(
+  accountState: AccountState,
+  claimedPerAsset: Map<string, bigint>
+): { asset: string; amount: string }[] {
+  const pricedByAsset = new Map<string, bigint>();
+  for (const tl of accountState.trustlines) {
+    const total = BigInt(xlmToStroops(tl.balance)) + (claimedPerAsset.get(tl.asset) ?? 0n);
+    if (total > 0n) pricedByAsset.set(tl.asset, total);
+  }
+  for (const [asset, amount] of claimedPerAsset) {
+    if (!pricedByAsset.has(asset)) pricedByAsset.set(asset, amount);
+  }
+  // An asset an exit will pay in holds nothing yet, so it is priced at a nominal unit: this
+  // is the "is there a market at all" gate that decides which options the card offers, and
+  // the amount that actually arrives is re-quoted at build time anyway.
+  for (const asset of assetsArrivingFromExits(accountState)) {
+    if (!pricedByAsset.has(asset))
+      pricedByAsset.set(asset, BigInt(xlmToStroops(ARRIVING_ASSET_PROBE_AMOUNT)));
+  }
+  return [...pricedByAsset.entries()].map(([asset, amount]) => ({
+    asset,
+    amount: stroopsToFixedXlm(amount),
+  }));
+}
+
 /**
  * Builds a deterministic close plan for one account: reads live state, prices every held or
  * arriving asset, derives decision points, and reports blockers. This is the single source of
@@ -106,24 +133,7 @@ export async function buildAccountPlan(
     accountState.claimableBalances.map((b) => b.id)
   );
   const claimedPerAsset = claimedAmountsPerAsset(accountState, claimableBalanceSelections);
-  const pricedByAsset = new Map<string, number>();
-  for (const tl of accountState.trustlines) {
-    const total = Number(tl.balance) + (claimedPerAsset.get(tl.asset) ?? 0);
-    if (total > 0) pricedByAsset.set(tl.asset, total);
-  }
-  for (const [asset, amount] of claimedPerAsset) {
-    if (!pricedByAsset.has(asset)) pricedByAsset.set(asset, amount);
-  }
-  // An asset an exit will pay in holds nothing yet, so it is priced at a nominal unit: this
-  // is the "is there a market at all" gate that decides which options the card offers, and
-  // the amount that actually arrives is re-quoted at build time anyway.
-  for (const asset of assetsArrivingFromExits(accountState)) {
-    if (!pricedByAsset.has(asset)) pricedByAsset.set(asset, Number(ARRIVING_ASSET_PROBE_AMOUNT));
-  }
-  const pricedAssets = [...pricedByAsset.entries()].map(([asset, amount]) => ({
-    asset,
-    amount: amount.toFixed(7),
-  }));
+  const pricedAssets = pricedAmountsPerAsset(accountState, claimedPerAsset);
   const convertibilityPromise = Promise.all(
     pricedAssets.map(async ({ asset, amount }) => {
       const path = await fetchConversionPath(asset, amount, network).catch(() => null);
