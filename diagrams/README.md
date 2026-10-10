@@ -17,7 +17,7 @@ Requires Python 3 and Graphviz (`dot`) installed. Output goes to `docs/diagrams/
 
 To change a diagram, edit the corresponding script in `generator/`, then re-run `render-all.py` and commit the updated SVG/PNG in `docs/diagrams/output/` alongside your script change.
 
-CI re-renders every diagram on pull requests that touch docs or diagrams and fails when a committed SVG differs (`scripts/check-diagrams.sh`). The Graphviz version comment is ignored and PNGs are not compared, because both change with the Graphviz build rather than the diagram. If CI reports drift on a diagram you did not touch, the runner's Graphviz renders differently from yours: regenerate from CI's environment and commit that output.
+CI re-renders every diagram on pull requests that touch docs or diagrams and fails when a committed SVG differs (`scripts/check-diagrams.sh`). The Graphviz version comment is ignored and PNGs are not compared, because both change with the Graphviz build rather than the diagram. If CI reports drift on a diagram you did not touch, the runner's Graphviz renders differently from yours: regenerate from CI's environment and commit that output: a failing run uploads it as the `rendered-diagrams` artifact. The committed output was rendered that way, by the runner's Ubuntu Graphviz (2.43.0), because the SVG layout differs between Graphviz versions.
 
 ## About `mmd/`
 
