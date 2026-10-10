@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { LiveReadError } from "@/lib/stellar/live-trustline";
 import { HttpException } from "@nestjs/common";
 import { FILTER_CATCH_EXCEPTIONS } from "@nestjs/common/constants";
 import type { ArgumentsHost } from "@nestjs/common";
@@ -85,6 +86,13 @@ const TRANSACTION_CASES: Case[] = [
     undefined,
   ],
   ["ledger read failed", new LedgerReadError(), 503, "service_unavailable", undefined],
+  [
+    "live balance read failed",
+    new LiveReadError("The USDC balance"),
+    503,
+    "service_unavailable",
+    undefined,
+  ],
 
   [
     "missing transfer destination",

@@ -5,6 +5,7 @@ import { Account, Keypair, Operation, TransactionBuilder, Networks } from "@stel
 import { AssetRouteLostError } from "@/lib/utils/errors";
 import type { AccountState, Trustline, AssetDisposition, PlannedStep } from "@lumenwipe/types";
 import type { StepBuildContext } from "@/lib/stellar/step-engine";
+import { ledgerEntries } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 // Regression coverage for the fused CLOSE_ACCOUNT build honoring the per-asset
@@ -93,11 +94,7 @@ function ctx(dispositions: Record<string, AssetDisposition>): StepBuildContext {
 function rpcServerStub() {
   return {
     getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getAssetBalance: () =>
-      Promise.resolve({
-        latestLedger: 1,
-        balanceEntry: { amount: "100000000", authorized: true, clawback: false },
-      }),
+    getLedgerEntries: ledgerEntries(() => ({ balance: 100000000n })),
   };
 }
 

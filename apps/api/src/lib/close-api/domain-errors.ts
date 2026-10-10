@@ -5,6 +5,7 @@ import {
   AssetRouteLostError,
   UnusableProviderResponseError,
 } from "@/lib/utils/errors";
+import { LiveReadError } from "@/lib/stellar/live-trustline";
 import { DestinationReadError, LedgerReadError } from "@/lib/close-api/merge-preflight";
 import {
   decisionIdFor,
@@ -66,6 +67,12 @@ const LEDGER_READ_FAILED = entry(LedgerReadError, (e) => ({
   message: e.message,
 }));
 
+const LIVE_READ_FAILED = entry(LiveReadError, (e) => ({
+  code: "service_unavailable",
+  status: 503,
+  message: e.message,
+}));
+
 /** What `close/plan` and each `close/batch-plan` address recognise as a planning failure. */
 export const PLAN_ERRORS: readonly DomainErrorEntry[] = [
   ACCOUNT_NOT_FOUND,
@@ -80,6 +87,7 @@ export const TRANSACTION_ERRORS: readonly DomainErrorEntry[] = [
   ACCOUNT_NOT_FOUND,
   DESTINATION_READ_FAILED,
   LEDGER_READ_FAILED,
+  LIVE_READ_FAILED,
   entry(AssetRouteLostError, () => ({
     code: "quote_drifted",
     status: 409,

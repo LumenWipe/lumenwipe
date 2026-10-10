@@ -1,6 +1,7 @@
 import type { Network, TransferDestinations, Trustline } from "@lumenwipe/types";
 import { lookupExchange } from "@/lib/exchange-registry";
-import { xlmToStroops } from "@/lib/utils/amounts";
+import { stroopsToXlm, xlmToStroops } from "@/lib/utils/amounts";
+import type { LiveTrustline } from "@/lib/stellar/live-trustline";
 import { isTokenContract } from "./decisions";
 
 /**
@@ -43,39 +44,107 @@ export interface TransferDestinationProblem {
 export type AccountReader = (
   address: string,
   network: Network
-) => Promise<{ trustlines: Trustline[] } | null>;
+) => Promise<{ trustlines: DestinationTrustline[] } | null>;
 
-function findTrustline(trustlines: Trustline[], asset: string): Trustline | undefined {
+/** A destination's line with the open buy offers that reserve part of its limit. */
+export type DestinationTrustline = Trustline & { buyingLiabilities?: string };
+
+function findTrustline(
+  trustlines: DestinationTrustline[],
+  asset: string
+): DestinationTrustline | undefined {
   return trustlines.find((tl) => tl.asset === asset);
 }
 
 /**
- * Headroom under the destination's trustline limit, in whole stroops.
+ * Whether the destination line can take `incoming` more, in whole stroops.
+ *
+ * The ledger accepts a credit only when `balance + incoming <= limit - buyingLiabilities`
+ * (stellar-core `TrustLineWrapper::getMaxAmountReceive`): open buy offers on the line reserve
+ * part of its limit even though they hold no balance yet.
  *
  * BigInt, not Number. Stellar amounts are int64 stroops - up to 922337203685.4775807 - and a
  * double carries about 15 significant digits, so `Number()` on a 7-decimal string silently
- * rounds exactly where the answer matters. It goes wrong in both directions: a nearly-full
- * line reads as having room (the ledger then rejects the whole atomic close), and an exact fit
- * like 0.2 + 0.1 <= 0.3 reads as overflowing (a legitimate transfer refused, with a message
- * quoting numbers that visibly add up). `verify()` compares in whole stroops for the same
+ * rounds exactly where the answer matters. `verify()` compares in whole stroops for the same
  * reason.
  *
  * An absent limit means unknown, and unknown does not block: the field is optional on
  * `Trustline`, and refusing every transfer because a provider stopped reporting it would be a
  * silent, total outage of the feature rather than a real constraint. The ledger still enforces
- * the real limit.
+ * the real limit. The same holds for absent liabilities.
  */
-function hasRoomFor(destinationTrustline: Trustline, amount: string): boolean {
+function hasRoomFor(destinationTrustline: DestinationTrustline, amount: string): boolean {
   if (destinationTrustline.limit === undefined) return true;
   try {
-    const limit = BigInt(xlmToStroops(destinationTrustline.limit));
-    const held = BigInt(xlmToStroops(destinationTrustline.balance));
-    const incoming = BigInt(xlmToStroops(amount));
-    return held + incoming <= limit;
+    return fitsUnderLimit(
+      BigInt(xlmToStroops(destinationTrustline.limit)),
+      BigInt(xlmToStroops(destinationTrustline.balance)),
+      BigInt(xlmToStroops(destinationTrustline.buyingLiabilities ?? "0")),
+      BigInt(xlmToStroops(amount))
+    );
   } catch {
     // An unparseable figure is not evidence of no room; leave it to the ledger.
     return true;
   }
+}
+
+function fitsUnderLimit(limit: bigint, held: bigint, buying: bigint, incoming: bigint): boolean {
+  return held + buying + incoming <= limit;
+}
+
+function limitMessage(
+  code: string,
+  amount: string,
+  limit: string,
+  held: string,
+  buying: string
+): string {
+  const reserved = buying === "0" ? "" : `, and open buy offers reserve ${buying} of it`;
+  return `The account chosen for ${code} cannot hold ${amount} more ${code}: its trustline limit is ${limit}, it already holds ${held}${reserved}. Raise the limit or cancel those offers from that account and retry, or choose a different account.`;
+}
+
+/**
+ * The same destination checks, against the exact trustline read from the ledger immediately
+ * before building, for the amount the transfer will actually move. Null when it can receive.
+ */
+export function assessLiveTransferDestination(
+  asset: string,
+  destination: string,
+  line: LiveTrustline | null,
+  amount: bigint
+): TransferDestinationProblem | null {
+  const code = asset.split(":")[0] ?? asset;
+  if (!line) {
+    return {
+      asset,
+      destination,
+      code: "destination_lacks_trustline",
+      message: `The account chosen for ${code} does not hold a ${code} trustline, so it cannot receive it. Add the trustline from that account and retry, or convert ${code} to XLM or return it to its issuer.`,
+    };
+  }
+  if (!line.authorized) {
+    return {
+      asset,
+      destination,
+      code: "destination_not_authorized",
+      message: `The account chosen for ${code} holds a ${code} trustline that its issuer has not fully authorized, so it cannot receive it. Ask the issuer to authorize that account, choose a different account, or convert ${code} to XLM.`,
+    };
+  }
+  if (!fitsUnderLimit(line.limit, line.balance, line.buyingLiabilities, amount)) {
+    return {
+      asset,
+      destination,
+      code: "destination_limit_too_low",
+      message: limitMessage(
+        code,
+        stroopsToXlm(amount),
+        stroopsToXlm(line.limit),
+        stroopsToXlm(line.balance),
+        stroopsToXlm(line.buyingLiabilities)
+      ),
+    };
+  }
+  return null;
 }
 
 /**
@@ -114,7 +183,7 @@ export async function validateTransferDestinations(
   // Bounded, not a bare Promise.all. The addresses come from the request body, one per asset,
   // so an unbounded fan-out lets a single call burn the shared Horizon budget - the same reason
   // sponsorship.ts caps its owner reads.
-  const accounts = new Map<string, { trustlines: Trustline[] } | null>();
+  const accounts = new Map<string, { trustlines: DestinationTrustline[] } | null>();
   for (let i = 0; i < needsRead.length; i += DESTINATION_READ_CONCURRENCY) {
     const slice = needsRead.slice(i, i + DESTINATION_READ_CONCURRENCY);
     const read = await Promise.all(slice.map((address) => readAccount(address, network)));
@@ -235,7 +304,13 @@ export async function validateTransferDestinations(
         asset,
         destination,
         code: "destination_limit_too_low",
-        message: `The account chosen for ${code} cannot hold ${amount} more ${code}: its trustline limit is ${trustline.limit}, and it already holds ${trustline.balance}. Raise the limit from that account and retry, or choose a different account.`,
+        message: limitMessage(
+          code,
+          amount,
+          trustline.limit ?? "",
+          trustline.balance,
+          trustline.buyingLiabilities ?? "0"
+        ),
       });
     }
   }

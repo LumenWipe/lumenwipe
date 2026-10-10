@@ -2,6 +2,7 @@ import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { Account, Keypair, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
 import type { AccountState, Trustline } from "@lumenwipe/types";
+import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 // Wiring coverage for #59: a direct (no-mediator) close whose op count spills past
@@ -30,7 +31,7 @@ function manyTrustlines(n: number, start = 0): Trustline[] {
   });
 }
 
-function accountState(over: Partial<AccountState> = {}): AccountState {
+function makeState(over: Partial<AccountState> = {}): AccountState {
   return {
     address: SOURCE,
     network: "testnet",
@@ -56,12 +57,18 @@ function accountState(over: Partial<AccountState> = {}): AccountState {
   };
 }
 
+let snapshot: Trustline[] = [];
+function accountState(...args: Parameters<typeof makeState>): AccountState {
+  const state = makeState(...args);
+  snapshot = state.trustlines;
+  return state;
+}
+
 function rpcServerStub() {
   return {
     getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
     getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
-    getAssetBalance: () => Promise.reject(new Error("not stubbed")),
+    getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot),
   };
 }
 
