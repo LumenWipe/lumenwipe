@@ -286,7 +286,7 @@ export default function PlanAccordion({
     title: "Merge account",
     summary: destinationAddress
       ? mediatorRequired
-        ? "via intermediary, 2 transactions"
+        ? "via relay account, 2 transactions"
         : `to ${shortAddr(destinationAddress)}`
       : "Destination: to be entered",
     body: destinationAddress ? (
@@ -297,8 +297,9 @@ export default function PlanAccordion({
         </p>
         {mediatorRequired ? (
           <p>
-            Your destination is an exchange. The merge is routed through a shared intermediary
-            account as a co-signed transfer. This is a second transaction after the cleanup.
+            Your destination is an exchange. The merge is routed through a shared relay account,
+            which passes your funds on to the exchange, as a co-signed transfer. This is a second
+            transaction after the cleanup.
           </p>
         ) : (
           <p>

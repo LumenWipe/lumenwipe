@@ -46,9 +46,9 @@ const ITEMS: Item[] = [
       <>
         Yes. Exchanges don&apos;t support{" "}
         <span className="mkt-mono text-white/80">ACCOUNT_MERGE</span>, so LumenWipe routes the final
-        merge through a shared mediator account in one atomic transaction and pays out to your
-        deposit address with the correct memo, so you recover essentially all of your XLM. Known
-        exchanges are validated against a registry that enforces the required memo type, so deposits
+        merge through a shared relay account in one atomic transaction and pays out to your deposit
+        address with the correct memo, so you recover essentially all of your XLM. Known exchanges
+        are validated against a registry that enforces the required memo type, so deposits
         don&apos;t go missing.
       </>
     ),
@@ -60,7 +60,7 @@ const ITEMS: Item[] = [
         This is where LumenWipe goes furthest. It detects and exits positions across{" "}
         <span className="text-white/80">Blend, Aquarius, Soroswap, Phoenix and FxDAO</span>, on top
         of classic DEX offers and AMM pools, using OctoPos for position detection. The full classic
-        wind-down is live today; complete DeFi coverage is on the way.
+        close is live today; complete DeFi coverage is on the way.
       </>
     ),
   },
@@ -72,7 +72,7 @@ const ITEMS: Item[] = [
         <span className="mkt-mono text-white/80">stellar-wallets-kit</span>: Freighter, xBull,
         Albedo, LOBSTR, Hana, WalletConnect and more. Power users can also use an advanced
         secret-key mode where the key is held in memory only for the duration of the close, never
-        persisted and never sent to a server, and wiped when you finish, abort, navigate away, or
+        persisted and never sent to a server, and cleared when you finish, abort, navigate away, or
         click &quot;Forget key&quot;.
       </>
     ),
@@ -81,8 +81,8 @@ const ITEMS: Item[] = [
     q: "What if I close the tab in the middle?",
     a: (
       <>
-        Nothing is lost. The wind-down is an explicit state machine persisted in IndexedDB (never
-        your keys). When you return, the session is reconciled against on-chain state and any step
+        Nothing is lost. The close is an explicit state machine persisted in IndexedDB (never your
+        keys). When you return, the session is reconciled against on-chain state and any step
         already completed is skipped, so nothing double-executes.
       </>
     ),

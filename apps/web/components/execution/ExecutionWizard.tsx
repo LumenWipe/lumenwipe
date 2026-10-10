@@ -360,7 +360,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
             <p className="text-white/60">
               The account will be removed from the Stellar ledger and its balance sent to{" "}
               <span className="font-mono text-white/80 break-all">{destinationAddress}</span>
-              {mediatorRequired ? " through the exchange mediator." : "."} Verify it carefully.
+              {mediatorRequired ? " through the exchange relay account." : "."} Verify it carefully.
             </p>
           </div>
 

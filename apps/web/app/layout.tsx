@@ -34,7 +34,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: {
-    default: "LumenWipe - Stellar Account Wind-Down",
+    default: "LumenWipe - Close a Stellar Account",
     template: "%s | LumenWipe",
   },
   description,
@@ -52,7 +52,7 @@ export const metadata: Metadata = {
   ],
   metadataBase: APP_URL ? new URL(APP_URL) : undefined,
   openGraph: {
-    title: "LumenWipe - Stellar Account Wind-Down",
+    title: "LumenWipe - Close a Stellar Account",
     description,
     url: APP_URL,
     siteName: "LumenWipe",
@@ -61,7 +61,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "LumenWipe - Stellar Account Wind-Down",
+    title: "LumenWipe - Close a Stellar Account",
     description,
   },
   robots: {

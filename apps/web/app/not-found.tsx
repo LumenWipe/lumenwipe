@@ -110,7 +110,7 @@ export default function NotFound() {
           <h1 className="mkt-display mb-3 text-[2.6rem] font-bold leading-[1] text-white">
             This page has
             <br />
-            been wiped.
+            been closed.
           </h1>
           <p className="mb-8 text-[0.95rem] leading-relaxed text-white/45">
             No trustlines. No balance. No subentries.

@@ -260,7 +260,7 @@ export default function PlanView({
 
     try {
       const res = await fetch(`/api/${network}/mediator/check/${destination}`);
-      if (!res.ok) throw new Error(`Mediator check failed with status ${res.status}`);
+      if (!res.ok) throw new Error(`Relay check failed with status ${res.status}`);
       const mediatorData: MediatorCheckResult = await res.json();
       const needsMediator = mediatorData.requiresMediator ?? false;
 
