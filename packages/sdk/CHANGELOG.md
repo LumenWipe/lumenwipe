@@ -7,6 +7,16 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-10
+
+### Added
+
+- `ErrorCode` gains `merge_destination_unusable`, `source_sequence_too_far` and
+  `destination_read_failed`: a close whose merge destination is the closing account, a LumenWipe
+  service account or an unfunded account, or whose source sequence number is beyond what the
+  network accepts, is now refused with a 422 before any transaction is built; an unreadable
+  destination is a retryable 503. Purely additive.
+
 ## [0.4.1] - 2026-10-10
 
 ### Added

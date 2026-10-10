@@ -55,6 +55,7 @@ import {
   DESTINATION_ACK_CHOICE,
 } from "@/lib/close-api/decisions";
 import { assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
+import { assessMergePreflight, preflightErrorCode } from "@/lib/close-api/merge-preflight";
 import { parseDecisions } from "@/lib/close-api/parse-decisions";
 import { computePlanHash } from "@/lib/close-api/plan-response";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
@@ -108,6 +109,10 @@ export class CloseController {
   @ApiErrorResponse(500, "The plan could not be built.", ["plan_failed"])
   @ApiErrorResponse(502, "The data provider returned an unusable response.", [
     "provider_response_unusable",
+  ])
+  @ApiErrorResponse(503, "The destination or the ledger could not be read. Retry.", [
+    "destination_read_failed",
+    "service_unavailable",
   ])
   @ApiBodyErrorResponses()
   @UseFilters(PlanErrorFilter)
@@ -212,6 +217,8 @@ export class CloseController {
       "destination_not_acknowledged",
       "needs_decisions",
       "transfer_destination_unusable",
+      "merge_destination_unusable",
+      "source_sequence_too_far",
       "transfer_destination_missing",
       "conversion_floor_missing",
       "conversion_provider_unrecognized",
@@ -248,8 +255,13 @@ export class CloseController {
   @ApiErrorResponse(500, "The transactions could not be built.", ["transactions_failed"])
   @ApiErrorResponse(
     503,
-    "The exchange (mediator) flow or the exchange registry is not available.",
-    ["mediator_not_configured", "registry_expired"]
+    "The exchange (mediator) flow or the exchange registry is not available, or the destination or ledger could not be read. Retry.",
+    [
+      "mediator_not_configured",
+      "registry_expired",
+      "destination_read_failed",
+      "service_unavailable",
+    ]
   )
   @ApiBodyErrorResponses()
   @UseFilters(TransactionErrorFilter)
@@ -412,6 +424,13 @@ export class CloseController {
       // After the decision gate, never before: this reads one third-party account per distinct
       // destination, and a request that is going to be refused as incomplete should not pay for
       // that first.
+      const mergeProblems = await assessMergePreflight(accountState, destination, network);
+      if (mergeProblems.length > 0) {
+        fail(preflightErrorCode(mergeProblems[0]!), mergeProblems[0]!.message, 422, {
+          problems: mergeProblems,
+        });
+      }
+
       const transferProblems = await validateTransferDestinations(
         transferDestinations,
         accountState.trustlines,

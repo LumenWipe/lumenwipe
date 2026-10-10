@@ -12,6 +12,7 @@ import {
   UnrecognizedConversionProviderError,
 } from "@/lib/close-api/decisions";
 import { mapDomainError, PLAN_ERRORS, TRANSACTION_ERRORS } from "@/lib/close-api/domain-errors";
+import { DestinationReadError, LedgerReadError } from "@/lib/close-api/merge-preflight";
 import { planBatch } from "@/lib/close-api/batch-plan";
 import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 import {
@@ -57,6 +58,14 @@ const PLAN_CASES: Case[] = [
     "provider_response_unusable",
     undefined,
   ],
+  [
+    "destination read failed",
+    new DestinationReadError(ADDRESS),
+    503,
+    "destination_read_failed",
+    undefined,
+  ],
+  ["ledger read failed", new LedgerReadError(), 503, "service_unavailable", undefined],
 ];
 
 const TRANSACTION_CASES: Case[] = [
@@ -68,6 +77,15 @@ const TRANSACTION_CASES: Case[] = [
     "quote_drifted",
     undefined,
   ],
+  [
+    "destination read failed",
+    new DestinationReadError(ADDRESS),
+    503,
+    "destination_read_failed",
+    undefined,
+  ],
+  ["ledger read failed", new LedgerReadError(), 503, "service_unavailable", undefined],
+
   [
     "missing transfer destination",
     new MissingTransferDestinationError(`USDC:${ADDRESS}`),
