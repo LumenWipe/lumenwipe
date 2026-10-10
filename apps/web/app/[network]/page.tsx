@@ -82,7 +82,7 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
           Non-custodial · Client-side signing only
         </div>
         <h1 className="mkt-display text-3xl sm:text-4xl font-extrabold tracking-tight mb-2 text-white">
-          Wind down your Stellar account
+          Close your Stellar account
         </h1>
         <p className="text-white/55 text-sm sm:text-base leading-relaxed max-w-lg mx-auto">
           Recover all the XLM locked in reserves. Remove trustlines, cancel offers, and merge your
@@ -111,7 +111,7 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
         {[
           { icon: Zap, label: "Step-by-step", desc: "Guided execution" },
           { icon: ShieldCheck, label: "Non-custodial", desc: "Keys never leave your browser" },
-          { icon: GitMerge, label: "Exchange-friendly", desc: "Intermediary account support" },
+          { icon: GitMerge, label: "Exchange-friendly", desc: "Relay account support" },
         ].map(({ icon: Icon, label, desc }) => (
           <div key={label} className="mkt-panel rounded-xl p-3.5 text-center">
             <Icon className="h-5 w-5 text-stellar mx-auto mb-1.5" />

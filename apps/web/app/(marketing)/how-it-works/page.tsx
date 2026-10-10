@@ -25,7 +25,7 @@ import Faq from "@/components/marketing/Faq";
 export const metadata: Metadata = {
   title: "How it works",
   description:
-    "How LumenWipe closes a Stellar account: a deterministic ordered plan, per-step simulation and confirmation, the CEX mediator flow, and resumable sessions reconciled against on-chain state.",
+    "How LumenWipe closes a Stellar account: a deterministic ordered plan, per-step simulation and confirmation, the CEX relay flow, and resumable sessions reconciled against on-chain state.",
 };
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
@@ -92,7 +92,7 @@ const STEPS = [
   {
     icon: GitMerge,
     title: "Merge the account",
-    body: "Execute the final merge, directly to a wallet or through a mediator account for an exchange destination. The base reserve comes back too.",
+    body: "Execute the final merge, directly to a wallet or through a relay account for an exchange destination. The base reserve comes back too.",
     op: "AccountMerge",
   },
 ];
@@ -220,12 +220,12 @@ export default function HowItWorksPage() {
           <Reveal className="max-w-2xl">
             <Eyebrow>Exchange destinations</Eyebrow>
             <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-[2.6rem] sm:leading-[1.05]">
-              The CEX mediator flow.
+              The CEX relay flow.
             </h2>
             <p className="mt-5 leading-relaxed text-white/85">
               Exchanges don&apos;t support{" "}
               <span className="mkt-mono text-white/80">ACCOUNT_MERGE</span>. LumenWipe bridges the
-              gap with a transparent, single-use mediator account, generated in your browser, used
+              gap with a transparent, single-use relay account, generated in your browser, used
               once, and cleared from memory.
             </p>
           </Reveal>
@@ -237,7 +237,7 @@ export default function HowItWorksPage() {
                   { label: "Source account", sub: "the account you're closing", tone: "white" },
                   { op: "AccountMerge" },
                   {
-                    label: "Mediator account",
+                    label: "Relay account",
                     sub: "single-use · generated in browser",
                     tone: "stellar",
                   },
@@ -273,7 +273,7 @@ export default function HowItWorksPage() {
                 )}
               </div>
               <p className="mt-6 text-center text-sm text-white/65">
-                The ~1 XLM that stays as the mediator&apos;s base reserve is disclosed upfront.
+                The ~1 XLM that stays as the relay account&apos;s base reserve is disclosed upfront.
                 Known exchanges are validated against a registry that enforces the correct memo
                 type.
               </p>
@@ -291,7 +291,7 @@ export default function HowItWorksPage() {
               Close the tab. Pick up where you left off.
             </h2>
             <p className="mt-4 leading-relaxed text-white/85">
-              The entire wind-down is an explicit state machine, persisted in IndexedDB, never your
+              The entire close is an explicit state machine, persisted in IndexedDB, never your
               keys. On return, the session is reconciled against on-chain state, and any completed
               step is skipped, so nothing double-executes.
             </p>

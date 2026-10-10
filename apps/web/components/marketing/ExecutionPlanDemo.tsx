@@ -18,7 +18,7 @@ const STEPS: Step[] = [
   { label: "Exit Blend position", note: "repay + withdraw", delta: 3.84, tag: "Soroban" },
   { label: "Convert assets to XLM", note: "3 tokens routed", delta: 3.08 },
   { label: "Remove trustlines", note: "4 trustlines", delta: 2.0 },
-  { label: "Account merge", note: "via mediator to CEX", delta: 1.0, final: true },
+  { label: "Account merge", note: "via relay account to CEX", delta: 1.0, final: true },
 ];
 
 const TOTAL = STEPS.length;

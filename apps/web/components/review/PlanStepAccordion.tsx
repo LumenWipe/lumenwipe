@@ -93,7 +93,7 @@ export default function PlanStepAccordion({
                       <span className="font-mono-address text-white/70">
                         {shortAddr(destinationAddress)}
                       </span>
-                      {mediatorRequired && " · routed through the shared exchange mediator"}
+                      {mediatorRequired && " · routed through the shared exchange relay account"}
                     </p>
                   )}
                 </div>

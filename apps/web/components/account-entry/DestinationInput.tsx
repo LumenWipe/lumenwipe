@@ -122,9 +122,9 @@ export default function DestinationInput({
             That doesn&apos;t mean it isn&apos;t one. Closing directly into an exchange or custodial
             account loses the funds: exchanges credit deposits from payments carrying a memo, and
             cannot credit a closed account. LumenWipe sends to the exchanges it recognizes through a
-            shared intermediary account, but it cannot do that for an address it does not know. If
-            this one belongs to an exchange, close to a personal wallet you control and send it from
-            there, including the exchange&apos;s deposit memo.
+            shared relay account, but it cannot do that for an address it does not know. If this one
+            belongs to an exchange, close to a personal wallet you control and send it from there,
+            including the exchange&apos;s deposit memo.
           </p>
           <label className="flex cursor-pointer items-start gap-2 text-xs text-white/80">
             <input

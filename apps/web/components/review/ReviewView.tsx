@@ -105,7 +105,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
         <p className="text-white/60">
           The account will be removed from the Stellar ledger and its balance sent to{" "}
           <span className="font-mono text-white/80 break-all">{destinationAddress}</span>
-          {mediatorRequired ? " through the exchange mediator." : "."}
+          {mediatorRequired ? " through the exchange relay account." : "."}
         </p>
         {memo && (
           <p className="text-white/60 mt-1">

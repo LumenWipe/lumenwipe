@@ -147,7 +147,7 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
 
                   <p className="text-xs text-muted-foreground">
                     Total fees: {entry.totalFeeLumens} XLM
-                    {entry.usedMediator && " · used intermediary"}
+                    {entry.usedMediator && " · used relay account"}
                   </p>
                 </div>
               );

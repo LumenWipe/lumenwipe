@@ -15,7 +15,7 @@ import {
 const STORAGE_KEY = "lumenwipe_risk_accepted";
 
 const CONFIRMED_FEATURES = [
-  { icon: GitMerge, label: "Account merge (direct and via exchange intermediary)" },
+  { icon: GitMerge, label: "Account merge (direct and via exchange relay account)" },
   { icon: Unlink, label: "Trustline removal" },
   { icon: ArrowLeftRight, label: "Asset-to-XLM conversion via DEX path payments" },
   { icon: BookX, label: "DEX offer cancellation" },

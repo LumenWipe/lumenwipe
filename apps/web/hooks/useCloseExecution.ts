@@ -256,7 +256,7 @@ export function useCloseExecution() {
                   );
                 }
                 if (cosigned.signatures.length <= preCosignCount) {
-                  throw new UserFacingError("The mediator did not add its signature.");
+                  throw new UserFacingError("The relay account did not add its signature.");
                 }
                 finalXdr = cosignedXdr;
               }
