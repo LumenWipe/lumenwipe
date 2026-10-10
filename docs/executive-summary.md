@@ -24,7 +24,7 @@ Analyze the account, generate a deterministic ordered plan, execute it step by s
 
 ## Technical pillars
 
-- Non-custodial by construction. A user's private keys never leave the browser. The backend is read-only apart from one signing key, the shared exchange mediator, which can only co-sign a forwarding payment the user already authorized in an atomic transaction; no operator (including us) can move a user's account funds or close their account.
+- Non-custodial by construction. A user's private keys never leave the browser. The backend is read-only apart from two signing keys, the shared exchange mediator, which can only co-sign a forwarding payment the user already authorized in an atomic transaction, and the fee-bump sponsor, which only pays network fees; no operator (including us) can move a user's account funds or close their account.
 - No bespoke indexer. Stellar RPC reads live state, simulates, and submits; existing indexers (the stellar.expert API and Horizon-compatible endpoints) handle enumeration and classic path finding; OctoPos provides DeFi position detection.
 - Per-protocol exit adapters and a versioned contract registry. Detect positions with the DeFi Position API, build the exit with each protocol's SDK, public API, or contract, and simulate before signing. A protocol upgrade is a registry update, not a rewrite.
 - CEX compatibility through a shared mediator account and an atomic forwarding payment, since exchanges do not support `ACCOUNT_MERGE`. The user recovers essentially all of their XLM.

@@ -48,7 +48,7 @@ The system has three layers. The trust boundary is the browser: it verifies ever
 
 **Browser (trust boundary)** - The guided UI, wallet adapter, and `verify()` (the trust anchor) live in the browser. It fetches unsigned transactions from the API through a key-injecting server-side proxy, verifies each one against the user's own choices before signing, signs locally, and submits back through the API. The session is persisted to IndexedDB; keys are never stored.
 
-**API service** - A stateless NestJS service, and the product itself: it reads account state, detects DeFi positions, quotes routes, and builds the minimal set of unsigned transactions that close an account. It holds no user keys and is not in the signing path; its one signing key co-signs only the mediator's forward payment. A fully compromised API still cannot move funds, because `verify()` refuses to sign anything that does not match the user's intent.
+**API service** - A stateless NestJS service, and the product itself: it reads account state, detects DeFi positions, quotes routes, and builds the minimal set of unsigned transactions that close an account. It holds no user keys and is not in the signing path; its two signing keys co-sign only the mediator's forward payment and pay fee-bump network fees. A fully compromised API still cannot move funds, because `verify()` refuses to sign anything that does not match the user's intent.
 
 **Stellar network and data services** - Stellar RPC for live reads, simulation, submission, and events; one Horizon-compatible endpoint for subentry enumeration; Soroswap Aggregator API for conversion routing; OctoPos for DeFi position detection.
 
