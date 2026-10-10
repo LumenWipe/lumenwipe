@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { Analytics } from "@vercel/analytics/next";
 import { Toaster } from "sonner";
@@ -25,6 +25,11 @@ const jsonLd = {
     "Soroban DeFi position exit",
     "XLM reserve recovery",
   ],
+};
+
+export const viewport: Viewport = {
+  themeColor: "#080d0f",
+  colorScheme: "dark",
 };
 
 export const metadata: Metadata = {
