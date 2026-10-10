@@ -5,6 +5,7 @@ import type {
   TransactionsResponse,
 } from "@lumenwipe/sdk";
 import type { Network } from "@/config/networks";
+import { apiRequestId } from "@/lib/api/error-body";
 import { ApiRequestError } from "@/lib/utils/user-error";
 
 /**
@@ -20,10 +21,12 @@ async function toError(res: Response): Promise<Error> {
     error?: { message?: string } | string;
   };
   if (typeof data.error === "object" && data.error?.message) {
-    return new ApiRequestError(res.status, data.error.message);
+    return new ApiRequestError(res.status, data.error.message, apiRequestId(res, data));
   }
-  if (typeof data.error === "string") return new ApiRequestError(res.status, data.error);
-  return new ApiRequestError(res.status, "");
+  if (typeof data.error === "string") {
+    return new ApiRequestError(res.status, data.error, apiRequestId(res, data));
+  }
+  return new ApiRequestError(res.status, "", apiRequestId(res, data));
 }
 
 /** Builds the deterministic close plan (decision points, estimate) via the proxy. */

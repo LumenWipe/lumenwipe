@@ -33,6 +33,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const mediatorRequired = useDemolishStore((s) => s.mediatorRequired);
   const phase = useDemolishStore((s) => s.phase);
   const lastError = useDemolishStore((s) => s.lastError);
+  const lastErrorReference = useDemolishStore((s) => s.lastErrorReference);
   const accountState = useDemolishStore((s) => s.accountState);
 
   const { run, progressStatus, signatureStatus, submitPreAuthTransaction } = useCloseExecution();
@@ -394,7 +395,14 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-white/70 outline-none"
               >
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-danger-fg" />
-                <span>{lastError ?? "The close could not be completed."}</span>
+                <span>
+                  {lastError ?? "The close could not be completed."}
+                  {lastErrorReference && (
+                    <span className="mt-1 block text-xs text-fg-subtle">
+                      Reference: {lastErrorReference}
+                    </span>
+                  )}
+                </span>
               </div>
               <button
                 type="button"

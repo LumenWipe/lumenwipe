@@ -1,4 +1,5 @@
 import type { Network } from "@/config/networks";
+import { apiRequestId } from "@/lib/api/error-body";
 import { ApiRequestError, UserFacingError } from "@/lib/utils/user-error";
 
 /**
@@ -30,7 +31,7 @@ export async function requestFeeBumpSponsorship(
         : typeof data.error === "string"
           ? data.error
           : "Failed to obtain a sponsored fee for this transaction.";
-    throw new ApiRequestError(res.status, message);
+    throw new ApiRequestError(res.status, message, apiRequestId(res, data));
   }
   if (!data.transaction) {
     throw new UserFacingError("The sponsor endpoint returned no transaction.");

@@ -1,4 +1,5 @@
 import type { Network } from "@/config/networks";
+import { apiRequestId } from "@/lib/api/error-body";
 import { ApiRequestError, UserFacingError } from "@/lib/utils/user-error";
 
 export interface SubmitResult {
@@ -32,7 +33,7 @@ export async function submitViaApi(signedXdr: string, network: Network): Promise
         : typeof data.error === "string"
           ? data.error
           : "Failed to submit the transaction.";
-    throw new ApiRequestError(res.status, message);
+    throw new ApiRequestError(res.status, message, apiRequestId(res, data));
   }
 
   // A 2xx with no hash means the response contract drifted; fail loudly rather
