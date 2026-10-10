@@ -44,12 +44,12 @@ Verified against `apps/api/src/config/contract-registry.json` and the exit adapt
 
 ## Assets
 
-| Asset kind              | How it is handled                                                                                    | Network                                                 | Verified   |
-| ----------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ---------- |
-| Classic assets          | Converted to XLM through SDEX path payments or returned to the issuer, then the trustline is removed | Mainnet and testnet                                     | 2026-10-10 |
-| Classic AMM pool shares | Withdrawn, then the pool trustline is removed                                                        | Mainnet and testnet                                     | 2026-10-10 |
-| Soroban tokens          | Sent as the token, converted to XLM behind a minimum you accept, or left on record, as you decide    | Mainnet and testnet, conversion routes by network below | 2026-10-10 |
-| Stellar Asset Contracts | Classic assets used inside Soroban; allowances granted on them can be revoked                        | Mainnet and testnet                                     | 2026-10-10 |
+| Asset kind              | How it is handled                                                                                                                    | Network                                                 | Verified   |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- | ---------- |
+| Classic assets          | Converted to XLM through SDEX path payments or returned to the issuer, then the trustline is removed                                 | Mainnet and testnet                                     | 2026-10-10 |
+| Classic AMM pool shares | Not unwound by LumenWipe: reported as a blocker. Withdraw the shares with another tool first, then the pool trustline can be removed | Mainnet and testnet                                     | 2026-10-10 |
+| Soroban tokens          | Sent as the token, converted to XLM behind a minimum you accept, or left on record, as you decide                                    | Mainnet and testnet, conversion routes by network below | 2026-10-10 |
+| Stellar Asset Contracts | Classic assets used inside Soroban; allowances granted on them can be revoked                                                        | Mainnet and testnet                                     | 2026-10-10 |
 
 {/* generated:tokens:start */}
 
