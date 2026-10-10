@@ -27,8 +27,8 @@ Only the platform's keys can move anything; LumenWipe never holds funds or keys.
 
 To see the integration end to end, the SDK ships a [headless example](https://github.com/LumenWipe/lumenwipe/blob/main/packages/sdk/examples/headless-close.ts) that closes a testnet account from a plain Node process, signing with an in-process key and verifying every transaction before it signs.
 
-## Partnership: Pollar
+## Example: a platform that funds its users' accounts
 
-[Pollar](https://pollar.xyz/) is an SDK for onboarding users and enabling payments on Stellar: one integration that creates wallets, activates accounts, sets up USDC trustlines, and sponsors fees so end users never touch crypto mechanics. It is also our first integration partner.
+Consider a platform that activates every user account from a master account. When a user leaves, the platform calls the REST API for the wind-down plan, verifies each transaction, and signs it with its own key infrastructure. Nothing runs without a signature from the platform: the API only builds unsigned transactions. The merge destination is the master account that funded the account, so the activation XLM returns to the pool it came from.
 
-Pollar's funding model is the one described above: a master account activates each user account with XLM. Through this partnership, Pollar is integrating LumenWipe into its account closure path, so that when a user closes their Pollar-powered account, the wind-down runs automatically and the recovered XLM merges back to the master account that originally funded it. For Pollar this turns activation from a sunk cost into a revolving one; for the user, closing an account becomes a single action instead of an impossible checklist.
+This is an integration pattern, not a description of any particular partner, and the SDK headless example above shows it end to end on testnet.

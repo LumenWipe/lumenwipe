@@ -8,7 +8,7 @@ Operating on Stellar accumulates accounts the same way operating on AWS accumula
 
 ## Batch decommissioning
 
-The REST API takes a list of addresses and returns a per-account plan: what each account holds, what the wind-down steps are, what XLM lands at the destination. An operator drives execution from their own backend and signs with their own keys; LumenWipe never holds anything. This is the difference between "we should clean those up someday" and a script that runs in an afternoon.
+The REST API takes a list of addresses and returns a per-account plan: what each account holds, what the wind-down steps are, what XLM lands at the destination. An operator drives execution from their own backend through the hosted API and signs with their own keys; LumenWipe never holds anything. This is the difference between "we should clean those up someday" and a script that runs in an afternoon.
 
 Typical fleets:
 
@@ -19,6 +19,10 @@ Typical fleets:
 
 Leftover non-XLM balances are not an obstacle: the plan converts them to XLM before removing the trustlines, and anything that cannot be converted or closed safely is reported as a blocker for that account rather than silently skipped, so a batch run never half-closes anything.
 
-## Keep your data in your stack
+## What the SDK sends, and to whom
 
-Some operations teams will not route account lists through third-party infrastructure, and they do not have to. The TypeScript SDK exposes the same analysis and transaction construction as a library: plans and unsigned transactions are built inside your own backend, reading the network through your own RPC and data providers, and signed with your own keys. Account lists never touch LumenWipe infrastructure.
+LumenWipe supports only the hosted API at api.lumenwipe.com. `@lumenwipe/sdk` is a thin fetch client to that API: it builds no plans and no transactions locally, and it has no `@stellar/stellar-sdk` dependency. Every account address you send for analysis, and the destination of the close, reaches LumenWipe, which reads the network and builds the unsigned transactions on its side. Self-hosting is not supported.
+
+Your signing keys are never sent. Transactions come back unsigned, and you verify and sign them in your own backend. If your operations team cannot send account lists to a third party, this API is not the right tool for those accounts.
+
+See the [SDK overview](/sdk/overview) for what the client does and does not do.
