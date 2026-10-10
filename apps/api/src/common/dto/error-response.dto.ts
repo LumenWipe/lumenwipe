@@ -16,6 +16,12 @@ export class ErrorBodyDto {
     description: "Extra structured context, present only when there is more to say.",
   })
   details?: unknown;
+
+  @ApiPropertyOptional({
+    description:
+      "The id of this request, also returned in the x-request-id header. Quote it when reporting a problem.",
+  })
+  requestId?: string;
 }
 
 export class ErrorResponseDto {

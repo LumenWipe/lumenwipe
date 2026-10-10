@@ -36,7 +36,7 @@ try {
 }
 ```
 
-`code` is one of the API's documented error codes, or `"upstream_error"` when a proxy or CDN in front of the API returned a non-JSON failure. `retryAfterMs` is `undefined` when the response has no `Retry-After`. `requestId` is `undefined` until the API sends `X-Request-Id`.
+`code` is one of the API's documented error codes, or `"upstream_error"` when a proxy or CDN in front of the API returned a non-JSON failure. `retryAfterMs` is `undefined` when the response has no `Retry-After`. `requestId` is the value of the `X-Request-Id` response header, the same id the error body carries as `error.requestId`; it is `undefined` only when the failure came from something in front of the API. Quote it when reporting a problem.
 
 ## Retrying safely
 

@@ -1,5 +1,6 @@
 import "server-only";
 import { NextResponse } from "next/server";
+import { requestIdHeaders } from "@/lib/api/error-body";
 import { LumenWipeApiError, LumenWipeTimeoutError } from "@lumenwipe/sdk";
 
 /**
@@ -23,7 +24,10 @@ export async function proxy<T>(
           : { error: String(e.body ?? "Upstream error") };
       // Guard against a 0/undefined status defaulting NextResponse to 200,
       // which would relay an error body as a success.
-      return NextResponse.json(body, { status: e.status || 502 });
+      return NextResponse.json(body, {
+        status: e.status || 502,
+        headers: requestIdHeaders(e.requestId),
+      });
     }
     if (e instanceof LumenWipeTimeoutError) {
       return NextResponse.json({ error: "The API request timed out." }, { status: 504 });

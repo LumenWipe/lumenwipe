@@ -4,6 +4,7 @@ import type { OpenAPIObject } from "@nestjs/swagger";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "@/app.module";
+import { JsonLogger } from "@/common/json-logger";
 import { configureApp } from "@/configure-app";
 import { createOpenApiDocument } from "@/openapi";
 
@@ -27,7 +28,7 @@ beforeAll(async () => {
   delete process.env.INTEGRATOR_SESSION_SECRET;
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = moduleRef.createNestApplication({ bodyParser: false });
-  configureApp(app);
+  configureApp(app, new JsonLogger(() => undefined));
   await app.init();
   http = app.getHttpServer();
   spec = createOpenApiDocument(app);

@@ -67,6 +67,7 @@ interface DemolishState {
 
   // Error
   lastError: string | null;
+  lastErrorReference: string | null;
 
   // Session
   sessionId: string | null;
@@ -108,7 +109,7 @@ interface DemolishState {
     coversTargets?: string[]
   ) => void;
   markStepFailed: (index: number, error: string) => void;
-  setLastError: (error: string | null) => void;
+  setLastError: (error: string | null, reference?: string) => void;
   initSession: () => void;
   restoreSession: (id: string) => void;
   reset: () => void;
@@ -192,6 +193,7 @@ const initialState = {
   claimableBalanceSelections: {},
   mediatorRequired: false,
   lastError: null,
+  lastErrorReference: null,
   sessionId: null,
 };
 
@@ -321,7 +323,7 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       lastError: error,
     })),
 
-  setLastError: (lastError) => set({ lastError }),
+  setLastError: (lastError, reference) => set({ lastError, lastErrorReference: reference ?? null }),
 
   initSession: () => set({ sessionId: uuidv4() }),
 

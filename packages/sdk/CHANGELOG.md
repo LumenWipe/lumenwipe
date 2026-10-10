@@ -7,6 +7,14 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-10
+
+### Added
+
+- `StructuredApiError.error` gains an optional `requestId`: every API error body now carries the
+  id of the request, the same value as the `x-request-id` response header that
+  `LumenWipeApiError.requestId` already reads. Quote it when reporting a problem. Purely additive.
+
 ## [0.5.0] - 2026-10-10
 
 ### Changed

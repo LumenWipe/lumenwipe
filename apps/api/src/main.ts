@@ -4,6 +4,7 @@ import { Logger } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
+import { JsonLogger } from "./common/json-logger";
 import { configureApp } from "./configure-app";
 import { createOpenApiDocument } from "./openapi";
 import { checkEnv, formatEnvFailure } from "./config/validate-env";
@@ -20,7 +21,7 @@ async function bootstrap(): Promise<void> {
     process.exit(1);
   }
 
-  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  const app = await NestFactory.create(AppModule, { bodyParser: false, logger: new JsonLogger() });
   const bootLogger = new Logger("bootstrap");
   // Logged, not fatal: each of these disables a path rather than the service, and the operator
   // should learn it here rather than from a user hitting the disabled path.

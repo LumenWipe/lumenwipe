@@ -69,7 +69,12 @@
       },
       {
         "group": "Reference",
-        "pages": ["reference/glossary", "reference/supported", "changelog"]
+        "pages": [
+          "reference/glossary",
+          "reference/supported",
+          "reference/logging-and-privacy",
+          "changelog"
+        ]
       },
       {
         "group": "SDK",

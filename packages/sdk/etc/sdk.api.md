@@ -949,6 +949,7 @@ export interface StructuredApiError {
         code: string;
         message: string;
         details?: unknown;
+        requestId?: string;
     };
 }
 
