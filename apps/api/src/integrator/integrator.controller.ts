@@ -22,6 +22,7 @@ import { Public } from "@/auth/public.decorator";
 import { API_KEY_STORE, type ApiKeyRecord, type ApiKeyStore } from "@/auth/api-key-store";
 import { ApiKeyDirectory } from "@/auth/api-key-directory";
 import { MeteringService } from "@/metering/metering.service";
+import { AuditLogger } from "@/common/audit-logger";
 import { fail } from "@/common/fail";
 import {
   IntegratorGuard,
@@ -62,7 +63,8 @@ export class IntegratorController {
   constructor(
     @Inject(API_KEY_STORE) private readonly store: ApiKeyStore,
     private readonly metering: MeteringService,
-    private readonly directory: ApiKeyDirectory
+    private readonly directory: ApiKeyDirectory,
+    private readonly audit: AuditLogger
   ) {}
 
   @ApiErrorResponse(400, "Missing or invalid address.", ["invalid_address", "invalid_body"])
@@ -147,16 +149,20 @@ export class IntegratorController {
   })
   async create(@Req() req: IntegratorRequest) {
     const owner = req.integratorAddress!;
-    const active = (await this.store.listByOwner(owner)).filter((r) => !r.revokedAt);
-    if (active.length >= MAX_ACTIVE_KEYS_PER_OWNER) {
-      fail(
-        "key_limit_reached",
-        `You can have up to ${MAX_ACTIVE_KEYS_PER_OWNER} active keys. Revoke one to create another.`,
-        409
-      );
-    }
-    const { raw, record } = await this.store.create(owner);
-    return { key: raw, record: toDto(record) };
+    return this.audit.track("api_key.create", owner, async (scope) => {
+      scope.owner = owner;
+      const active = (await this.store.listByOwner(owner)).filter((r) => !r.revokedAt);
+      if (active.length >= MAX_ACTIVE_KEYS_PER_OWNER) {
+        fail(
+          "key_limit_reached",
+          `You can have up to ${MAX_ACTIVE_KEYS_PER_OWNER} active keys. Revoke one to create another.`,
+          409
+        );
+      }
+      const { raw, record } = await this.store.create(owner);
+      scope.keyHash = record.hash;
+      return { key: raw, record: toDto(record) };
+    });
   }
 
   @ApiErrorResponse(401, "Missing, invalid or expired session token.", ["unauthorized"])
@@ -173,10 +179,15 @@ export class IntegratorController {
   @ApiParam({ name: "id", description: "The key id." })
   @ApiResponse({ status: 200, description: "Revoked.", type: RevokeIntegratorKeyResponseDto })
   async revoke(@Req() req: IntegratorRequest, @Param("id") id: string) {
-    await this.requireOwned(req.integratorAddress!, id);
-    await this.store.revoke(id);
-    this.directory.invalidate(id);
-    return { status: "revoked" };
+    const owner = req.integratorAddress!;
+    return this.audit.track("api_key.revoke", owner, async (scope) => {
+      scope.owner = owner;
+      scope.keyHash = id;
+      await this.requireOwned(owner, id);
+      await this.store.revoke(id);
+      this.directory.invalidate(id);
+      return { status: "revoked" };
+    });
   }
 
   @ApiErrorResponse(401, "Missing, invalid or expired session token.", ["unauthorized"])
@@ -197,11 +208,17 @@ export class IntegratorController {
     type: IssuedIntegratorKeyResponseDto,
   })
   async rotate(@Req() req: IntegratorRequest, @Param("id") id: string) {
-    await this.requireOwned(req.integratorAddress!, id);
-    const result = await this.store.rotate(id);
-    if (!result) fail("api_key_not_found", "No active key with that id.", 404);
-    this.directory.invalidate(id);
-    return { key: result.raw, record: toDto(result.record) };
+    const owner = req.integratorAddress!;
+    return this.audit.track("api_key.rotate", owner, async (scope) => {
+      scope.owner = owner;
+      scope.keyHash = id;
+      await this.requireOwned(owner, id);
+      const result = await this.store.rotate(id);
+      if (!result) fail("api_key_not_found", "No active key with that id.", 404);
+      scope.newKeyHash = result.record.hash;
+      this.directory.invalidate(id);
+      return { key: result.raw, record: toDto(result.record) };
+    });
   }
 
   private async requireOwned(owner: string, id: string): Promise<void> {

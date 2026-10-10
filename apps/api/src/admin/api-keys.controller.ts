@@ -19,9 +19,13 @@ import {
 } from "@/auth/api-key-store";
 import { ApiKeyDirectory } from "@/auth/api-key-directory";
 import { MeteringService } from "@/metering/metering.service";
+import { AuditLogger } from "@/common/audit-logger";
 import { fail } from "@/common/fail";
 import { AdminGuard } from "./admin.guard";
 import { ApiKeyRecordDto } from "./dto/api-key-admin.dto";
+
+/** One shared operator token authenticates the admin API, so no finer actor exists to log. */
+const ADMIN_ACTOR = "admin";
 
 function toRecordDto(record: ApiKeyRecord): ApiKeyRecordDto {
   return {
@@ -70,7 +74,8 @@ export class ApiKeysAdminController {
   constructor(
     @Inject(API_KEY_STORE) private readonly store: ApiKeyStore,
     private readonly metering: MeteringService,
-    private readonly directory: ApiKeyDirectory
+    private readonly directory: ApiKeyDirectory,
+    private readonly audit: AuditLogger
   ) {}
 
   @Post()
@@ -80,8 +85,12 @@ export class ApiKeysAdminController {
     if (!owner) fail("invalid_owner", "A non-empty owner is required.", 400);
     const rateLimit = parseRateLimit(body.rateLimit);
 
-    const { raw, record } = await this.store.create(owner, rateLimit);
-    return { key: raw, record: toRecordDto(record) };
+    return this.audit.track("api_key.create", ADMIN_ACTOR, async (scope) => {
+      scope.owner = owner;
+      const { raw, record } = await this.store.create(owner, rateLimit);
+      scope.keyHash = record.hash;
+      return { key: raw, record: toRecordDto(record) };
+    });
   }
 
   @Get()
@@ -95,20 +104,29 @@ export class ApiKeysAdminController {
   @Post(":id/revoke")
   @HttpCode(200)
   async revoke(@Param("id") id: string) {
-    const revoked = await this.store.revoke(id);
-    if (!revoked) fail("api_key_not_found", "No key with that id.", 404);
-    // Enforced immediately on this instance; see ApiKeyDirectory's docstring for the bounded
-    // eventual-consistency window on any other instance.
-    this.directory.invalidate(id);
-    return { status: "revoked" };
+    return this.audit.track("api_key.revoke", ADMIN_ACTOR, async (scope) => {
+      scope.keyHash = id;
+      scope.owner = (await this.store.findByHash(id))?.owner;
+      const revoked = await this.store.revoke(id);
+      if (!revoked) fail("api_key_not_found", "No key with that id.", 404);
+      // Enforced immediately on this instance; see ApiKeyDirectory's docstring for the bounded
+      // eventual-consistency window on any other instance.
+      this.directory.invalidate(id);
+      return { status: "revoked" };
+    });
   }
 
   @Post(":id/rotate")
   @HttpCode(200)
   async rotate(@Param("id") id: string) {
-    const result = await this.store.rotate(id);
-    if (!result) fail("api_key_not_found", "No active key with that id.", 404);
-    this.directory.invalidate(id);
-    return { key: result.raw, record: toRecordDto(result.record) };
+    return this.audit.track("api_key.rotate", ADMIN_ACTOR, async (scope) => {
+      scope.keyHash = id;
+      const result = await this.store.rotate(id);
+      if (!result) fail("api_key_not_found", "No active key with that id.", 404);
+      scope.owner = result.record.owner;
+      scope.newKeyHash = result.record.hash;
+      this.directory.invalidate(id);
+      return { key: result.raw, record: toRecordDto(result.record) };
+    });
   }
 }
