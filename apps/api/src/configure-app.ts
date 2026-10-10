@@ -2,6 +2,7 @@ import type { INestApplication } from "@nestjs/common";
 import type { ErrorCode } from "@lumenwipe/types";
 import { json } from "express";
 import type { ErrorRequestHandler, NextFunction, Request, RequestHandler, Response } from "express";
+import { RateLimiter } from "./auth/rate-limiter";
 import { ErrorEnvelopeFilter } from "./common/error-envelope.filter";
 
 export const JSON_BODY_LIMIT = "100kb";
@@ -42,22 +43,26 @@ const BODY_PARSER_ERRORS: Record<string, { status: number; code: ErrorCode; mess
 export function configureApp(app: INestApplication): void {
   // Cloud Run terminates TLS and proxies every request through its own frontend - without this,
   // Express's req.ip reports that proxy's address for every request, not the real caller's, so
-  // ApiKeyThrottlerGuard's per-IP fallback (unauthenticated requests, which carry no API key to
+  // RateLimiter's per-IP fallback (unauthenticated requests, which carry no API key to
   // key off instead) collapses onto one shared bucket for all callers combined (#59). Cloud
   // Run's proxy is trusted infrastructure the request cannot have come from any other way, so
   // trusting it to report the real client in X-Forwarded-For is safe here.
   app.getHttpAdapter().getInstance().set("trust proxy", true);
 
-  // Catches what the controllers do not: Nest raises 429 and 404 itself, in its own shape.
-  app.useGlobalFilters(new ErrorEnvelopeFilter());
-
   // Every response is dynamic and non-cacheable (account state, plans, unsigned
   // XDR, mediator co-signatures) - no client, proxy, or CDN should store any of
-  // it, success or error.
+  // it, success or error. First, so the limiter's own 429 and 500 carry it too.
   app.use((_req: Request, res: Response, next: NextFunction) => {
     res.setHeader("Cache-Control", "no-store");
     next();
   });
+
+  // Ahead of body parsing, routing and authentication, so the budget is spent and
+  // reported on every response, including a 404 or a rejected body.
+  app.use(app.get(RateLimiter).middleware());
+
+  // Catches what the controllers do not: Nest raises 429 and 404 itself, in its own shape.
+  app.useGlobalFilters(new ErrorEnvelopeFilter());
 
   app.use(json({ limit: JSON_BODY_LIMIT }));
 

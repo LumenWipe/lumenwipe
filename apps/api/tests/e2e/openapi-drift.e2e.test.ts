@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import SwaggerParser from "@apidevtools/swagger-parser";
-import { SwaggerModule, type OpenAPIObject } from "@nestjs/swagger";
+import type { OpenAPIObject } from "@nestjs/swagger";
 import { AppModule } from "@/app.module";
 import { configureApp } from "@/configure-app";
 import { ERROR_CODES } from "@/common/error-codes";
@@ -13,7 +13,7 @@ import {
   ERROR_TABLE_START,
   renderErrorCodeTable,
 } from "@/common/error-code-table";
-import { buildOpenApiConfig, serializeOpenApiDocument } from "@/openapi";
+import { createOpenApiDocument, serializeOpenApiDocument } from "@/openapi";
 
 const COMMITTED = resolve(import.meta.dir, "../../../../docs/api-reference/openapi.json");
 
@@ -31,7 +31,7 @@ beforeAll(async () => {
   app = moduleRef.createNestApplication({ bodyParser: false });
   configureApp(app);
   await app.init();
-  spec = SwaggerModule.createDocument(app, buildOpenApiConfig());
+  spec = createOpenApiDocument(app);
   generated = serializeOpenApiDocument(spec);
 });
 
@@ -208,4 +208,19 @@ test("the error code table in introduction.mdx is generated from the registry", 
     page.slice(start, end) === renderErrorCodeTable(spec),
     "introduction.mdx error table is stale. Regenerate it with: bun run --filter '@lumenwipe/api' openapi:generate"
   ).toBe(true);
+});
+
+test("every throttled response declares the RateLimit headers, and 429 and 503 declare Retry-After", () => {
+  const unthrottled = new Set(["/", "/health", "/health/deep"]);
+  const problems = operations().flatMap(({ id, operation }) => {
+    if (unthrottled.has(id.split(" ")[1]!)) return [];
+    const responses = (operation as { responses?: Record<string, { headers?: object }> }).responses;
+    return Object.entries(responses ?? {}).flatMap(([status, response]) => {
+      const declared = Object.keys(response.headers ?? {});
+      const wanted = ["RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset"];
+      if (status === "429" || status === "503") wanted.push("Retry-After");
+      return wanted.filter((h) => !declared.includes(h)).map((h) => `${id} ${status}: ${h}`);
+    });
+  });
+  expect(problems).toEqual([]);
 });

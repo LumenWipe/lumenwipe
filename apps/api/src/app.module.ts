@@ -14,7 +14,7 @@ import { AdminModule } from "./admin/admin.module";
 import { IntegratorModule } from "./integrator/integrator.module";
 import { AuthModule } from "./auth/auth.module";
 import { ApiKeyGuard } from "./auth/api-key.guard";
-import { ApiKeyThrottlerGuard } from "./auth/api-key-throttler.guard";
+import { RateLimiter } from "./auth/rate-limiter";
 import { MeteringModule } from "./metering/metering.module";
 import { MeteringInterceptor } from "./metering/metering.interceptor";
 
@@ -27,7 +27,7 @@ function positiveIntEnv(name: string, fallback: number): number {
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: [".env.local", ".env"] }),
-    // Per-API-key rate limit (tracker + key in ApiKeyThrottlerGuard); defaults
+    // Per-API-key rate limit (tracker + key in RateLimiter); defaults
     // to 120 requests / minute, overridable via env. A non-numeric override
     // falls back to the default rather than silently disabling the limit.
     ThrottlerModule.forRoot([
@@ -45,15 +45,9 @@ function positiveIntEnv(name: string, fallback: number): number {
   ],
   controllers: [RootController, HealthController, RegistryController],
   providers: [
-    // Order matters: rate-limit BEFORE authenticating, then meter successful requests.
-    // ApiKeyThrottlerGuard's tracker reads the raw Authorization header itself (falling back to
-    // the caller's IP when there is none) - it never depends on ApiKeyGuard having already run,
-    // so this order costs nothing for real traffic. It buys real protection for a request with
-    // no key, or an invalid one: previously ApiKeyGuard's 401 threw before the throttler ever
-    // saw the request, so an unauthenticated flood was entirely unthrottled at the app layer
-    // (#59) - every 401 still cost a guard evaluation with no budget capping how often that
-    // could happen. Now it shares the same per-key/per-IP budget as everything else.
-    { provide: APP_GUARD, useClass: ApiKeyThrottlerGuard },
+    // Rate limiting is the first Express middleware (see configureApp and RateLimiter), so it
+    // runs before body parsing and before ApiKeyGuard authenticates anything (#59).
+    RateLimiter,
     { provide: APP_GUARD, useClass: ApiKeyGuard },
     { provide: APP_INTERCEPTOR, useClass: MeteringInterceptor },
   ],
