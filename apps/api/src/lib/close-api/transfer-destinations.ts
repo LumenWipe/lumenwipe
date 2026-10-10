@@ -8,7 +8,7 @@ import { isTokenContract } from "./decisions";
  *
  * A transfer payment fails on-chain for reasons the caller cannot see from the plan: the account
  * may not exist, may not trust the asset, or may not have room under its trustline limit. Any of
- * those aborts the whole fused close, and because the close is one atomic transaction the account
+ * those aborts the whole close, and because the close is one atomic transaction the account
  * is left exactly as it was - open, with the user believing it was wound down. Catching it here
  * turns a confusing failed submission into a blocker naming what to do about it.
  *

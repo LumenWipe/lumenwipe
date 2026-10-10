@@ -34,10 +34,10 @@ import {
 import { assessSponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
 import { batchItems } from "@/lib/stellar/tx-builder/batching";
 import {
-  assembleFusedCloseOpsTagged,
+  assembleCloseOpsTagged,
   type AssetAction,
-  type FusedCloseInput,
-} from "@/lib/stellar/tx-builder/fused-close";
+  type CloseOperationsInput,
+} from "@/lib/stellar/tx-builder/close-operations";
 import { buildMediatorMergePaymentTx, ForwardBelowFeeError } from "@/lib/stellar/tx-builder/merge";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { AssetRouteLostError } from "@/lib/utils/errors";
@@ -63,7 +63,7 @@ import {
 import { isConversionEnabled } from "@/lib/soroswap/conversion-quotes";
 import { isXBullEnabled } from "@/lib/xbull/conversion-quotes";
 
-// Raised when a close cannot be expressed as the phase-1 single fused transaction.
+// Raised when a close cannot be expressed as the minimal set of transactions.
 // The route handler maps `code` to an error response.
 export class CloseBuildError extends Error {
   constructor(
@@ -76,7 +76,7 @@ export class CloseBuildError extends Error {
   }
 }
 
-function buildSummary(input: FusedCloseInput): string {
+function buildSummary(input: CloseOperationsInput): string {
   const parts: string[] = [];
   if (input.revokeSponsorshipEntries.length > 0)
     parts.push(
@@ -121,7 +121,7 @@ export interface CloseBuildResult {
 // Builds the next unsigned transaction(s) for a close, re-reading live on-chain state.
 // The close is produced as the minimal set of transactions and driven over as many rounds
 // as needed (the client submits, waits for confirmation, then calls again):
-//   - direct destination: a single fused transaction, or a sequence-chained series when it
+//   - direct destination: a single transaction, or a sequence-chained series when it
 //     exceeds the per-transaction operation cap;
 //   - claimable balances: a claim round first, then the close once they confirm;
 //   - exchange (mediator) destination: a cleanup round first (subentries + conversion, no
@@ -327,13 +327,13 @@ export async function buildCloseTransactions(
     );
     const claimRoundBalances = toClaim.concat(toAddTrustlineThenClaim);
     if (claimRoundBalances.length > 0) {
-      const claimInput: FusedCloseInput = {
+      const claimInput: CloseOperationsInput = {
         needsSignerNormalization: false,
         signers: accountState.signers,
         // Sponsorship revocation never belongs in the claim round: it has no ordering
         // dependency on claiming, and Task 5's plan-time gate already excludes any
-        // account with sponsoredEntries from the fused/fast path, so the claim round
-        // (which only ever runs ahead of that fused close) never needs to carry it.
+        // account with sponsoredEntries from a single-transaction close, so the claim round
+        // (which only ever runs ahead of the close) never needs to carry it.
         revokeSponsorshipEntries: [],
         dataEntries: [],
         openOffers: [],
@@ -347,7 +347,7 @@ export async function buildCloseTransactions(
         includeMerge: false,
       };
       return {
-        transactions: packFusedCloseTransactions(
+        transactions: packCloseTransactions(
           sdkAccount,
           claimInput,
           network,
@@ -416,7 +416,7 @@ export async function buildCloseTransactions(
         network
       );
 
-  const input: FusedCloseInput = {
+  const input: CloseOperationsInput = {
     needsSignerNormalization: computeNeedsSignerNormalization(accountState),
     signers: accountState.signers,
     revokeSponsorshipEntries: sponsorshipAffordability.revocable,
@@ -429,12 +429,12 @@ export async function buildCloseTransactions(
     destinationAddress,
     memo,
     memoType,
-    // Direct destinations merge inside the fused tx; exchange destinations merge through
+    // Direct destinations merge inside the close transaction; exchange destinations merge through
     // the mediator in a separate transaction built once cleanup confirms.
     includeMerge: !needsMediator,
   };
 
-  const closeTxs = packFusedCloseTransactions(
+  const closeTxs = packCloseTransactions(
     sdkAccount,
     input,
     network,
@@ -443,7 +443,7 @@ export async function buildCloseTransactions(
   );
 
   if (!needsMediator) {
-    // A single chunk already carries the merge (see `packFusedCloseTransactions`'s `isLast`
+    // A single chunk already carries the merge (see `packCloseTransactions`'s `isLast`
     // gate) and finishes the close outright. Multiple chunks share one `validUntilLedger`
     // computed once above; submitting all of them in sequence can outrun that shared time
     // bound on a large enough account (#59), expiring the later chunks - including the one
@@ -537,7 +537,7 @@ function reserveStroops(numSubEntries: number, numSponsoring: number): bigint {
  * Whether the account can pay a fee of `feeStroops` for a transaction of its own, without going
  * below its reserve, judged from `accountState.nativeBalanceLumens` as given (no running
  * decrement). Exported for direct unit coverage of the reserve arithmetic and for a single
- * transaction's affordability; `packFusedCloseTransactions` below inlines this same comparison
+ * transaction's affordability; `packCloseTransactions` below inlines this same comparison
  * against a running per-chunk balance instead of calling this, since a multi-chunk round needs
  * each later chunk judged against what's left after earlier chunks' fees, not the round's
  * original balance.
@@ -552,8 +552,8 @@ export function accountCanAffordFee(
 }
 
 /**
- * Packs an assembled fused close into the minimal set of unsigned transactions:
- * a single fused tx when it fits under the per-transaction operation cap, or a
+ * Packs an assembled close into the minimal set of unsigned transactions:
+ * a single transaction when it fits under the per-transaction operation cap, or a
  * sequence-chained series of at most OP_BATCH_LIMIT operations each when it does
  * not. The account merge always lands in the last transaction, so every subentry
  * is gone before it runs, and the memo (if any) rides that same last transaction.
@@ -575,14 +575,14 @@ export function accountCanAffordFee(
  * original balance - otherwise a run of several unsponsored chunks near the reserve line could
  * each look affordable in isolation while collectively overdrawing it.
  */
-export function packFusedCloseTransactions(
+export function packCloseTransactions(
   sdkAccount: Account,
-  input: FusedCloseInput,
+  input: CloseOperationsInput,
   network: Network,
   validUntilLedger: number,
   feeAffordability: Pick<AccountState, "nativeBalanceLumens" | "numSubEntries" | "numSponsoring">
 ): CloseTransaction[] {
-  const tagged = assembleFusedCloseOpsTagged(sdkAccount.accountId(), input);
+  const tagged = assembleCloseOpsTagged(sdkAccount.accountId(), input);
   const chunks = batchItems(tagged, OP_BATCH_LIMIT);
   const networkPassphrase = NETWORK_PASSPHRASES[network];
   const fullSummary = buildSummary(input);

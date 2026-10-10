@@ -34,7 +34,7 @@ export type AssetAction =
   | { trustline: Trustline; action: "issuer" }
   | { trustline: Trustline; action: "transfer"; destination: string };
 
-export interface FusedCloseInput {
+export interface CloseOperationsInput {
   needsSignerNormalization: boolean;
   signers: AccountSigner[];
   /** Entries confirmed affordable AND still live-sponsored by this account immediately
@@ -99,9 +99,9 @@ export interface TaggedCloseOp {
  * dispositions because a claim raises the held balance an action spends.
  * The tags let a multi-transaction (batched) close report which steps each transaction covers.
  */
-export function assembleFusedCloseOpsTagged(
+export function assembleCloseOpsTagged(
   masterKey: string,
-  input: FusedCloseInput
+  input: CloseOperationsInput
 ): TaggedCloseOp[] {
   const tagged: TaggedCloseOp[] = [];
   const push = (step: StepType, ops: xdr.Operation[]) => {
@@ -131,8 +131,8 @@ export function assembleFusedCloseOpsTagged(
  * count operations before building. Derived from the tagged assembler so the
  * operation order lives in exactly one place.
  */
-export function assembleFusedCloseOps(masterKey: string, input: FusedCloseInput): xdr.Operation[] {
-  return assembleFusedCloseOpsTagged(masterKey, input).map((t) => t.op);
+export function assembleCloseOps(masterKey: string, input: CloseOperationsInput): xdr.Operation[] {
+  return assembleCloseOpsTagged(masterKey, input).map((t) => t.op);
 }
 
 /**
@@ -148,12 +148,12 @@ export function assembleFusedCloseOps(masterKey: string, input: FusedCloseInput)
  * other operation. At that point the conversion ops leave this builder and
  * become their own isolated transaction(s); the rest of this builder is unchanged.
  */
-export function buildFusedCloseTx(
+export function buildCloseTx(
   sdkAccount: Account,
-  input: FusedCloseInput,
+  input: CloseOperationsInput,
   network: Network
 ): string {
-  const ops = assembleFusedCloseOps(sdkAccount.accountId(), input);
+  const ops = assembleCloseOps(sdkAccount.accountId(), input);
 
   // The SDK multiplies the `fee` option by the operation count, so passing the
   // per-operation base fee yields a total of BASE_FEE_STROOPS * opCount on-chain.

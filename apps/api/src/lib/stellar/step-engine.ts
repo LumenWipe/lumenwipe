@@ -19,11 +19,11 @@ import { buildNormalizeSignersTx } from "@/lib/stellar/tx-builder/signers";
 import { buildClaimBalancesTx } from "@/lib/stellar/tx-builder/claimable-balances";
 import { buildMergeTx, buildMediatorMergePaymentTx } from "@/lib/stellar/tx-builder/merge";
 import {
-  assembleFusedCloseOps,
-  buildFusedCloseTx,
+  assembleCloseOps,
+  buildCloseTx,
   type AssetAction,
-  type FusedCloseInput,
-} from "@/lib/stellar/tx-builder/fused-close";
+  type CloseOperationsInput,
+} from "@/lib/stellar/tx-builder/close-operations";
 import { computeNeedsSignerNormalization } from "@/lib/stellar/tx-builder";
 import { batchItems } from "@/lib/stellar/tx-builder/batching";
 import { OP_BATCH_LIMIT } from "@/config/constants";
@@ -218,7 +218,7 @@ export async function buildStepXdrForPlan(
 
     case "CLOSE_ACCOUNT": {
       // Claimable-balance accounts are routed through the step-by-step CLAIM_BALANCES
-      // flow by buildPlan, so the fused path is claimable-free. Defend against a gate
+      // flow by buildPlan, so the single-transaction path is claimable-free. Defend against a gate
       // regression: fail loudly (degrade to step-by-step) rather than silently
       // abandoning claimable funds at merge.
       if (claimableBalances.length > 0) {
@@ -253,7 +253,7 @@ export async function buildStepXdrForPlan(
         })
       );
       const assetActions = withBalanceActions.filter((a): a is AssetAction => a !== null);
-      const input: FusedCloseInput = {
+      const input: CloseOperationsInput = {
         needsSignerNormalization: computeNeedsSignerNormalization(accountState),
         signers,
         // The fast path above already rejects any account with claimable balances; the
@@ -272,24 +272,24 @@ export async function buildStepXdrForPlan(
         includeMerge: !ctx.mediatorRequired,
       };
       // The Stellar SDK does not enforce the 100-operation protocol cap at build
-      // time, so an oversized fused tx would build and submit and then be rejected
+      // time, so an oversized transaction would build and submit and then be rejected
       // as an opaque failure. Count the ops up front and degrade to the stepwise
       // plan instead. Live balances drive `assetActions`, so a line that was empty
       // at scan but funded since can push the count past the limit.
-      const ops = assembleFusedCloseOps(sourceAddress, input);
+      const ops = assembleCloseOps(sourceAddress, input);
       if (ops.length > OP_BATCH_LIMIT) {
         throw new FastPathUnavailableError(
           `This close needs ${ops.length} operations, over the ${OP_BATCH_LIMIT}-operation limit for one transaction; falling back to step-by-step.`
         );
       }
-      return buildFusedCloseTx(sdkAccount, input, network);
+      return buildCloseTx(sdkAccount, input, network);
     }
 
     // No case for "REVOKE_SPONSORSHIP": this function's step-by-step dispatch path is
     // legacy/unreachable for the real close flow (CLOSE_ACCOUNT above is fast-path-only,
     // and buildPlan already routes any account with sponsoredEntries away from the fast
     // path). The real transaction builder for revoking sponsorships lives in
-    // build-transactions.ts's FusedCloseInput/assembleFusedCloseOpsTagged flow. Don't
+    // build-transactions.ts's CloseOperationsInput/assembleCloseOpsTagged flow. Don't
     // mistake this omission for a bug - see build-transactions.ts for the live path.
     default:
       throw new Error(`Unknown step type: ${step.type}`);

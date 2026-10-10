@@ -6,7 +6,7 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 // Wiring coverage for the transfer disposition (#111).
 //
-// fusedClose.test.ts asserts the assembler emits the right operation, but it hands the
+// closeOperations.test.ts asserts the assembler emits the right operation, but it hands the
 // AssetAction in ready-made, so it would still pass if a `transfer` disposition never reached
 // the builder at all - or reached it and fell through to a conversion. These drive the real
 // `buildCloseTransactions` with the RPC layer mocked, so the mapping from disposition to

@@ -414,11 +414,11 @@ export function buildPlan(
   );
 
   // ─── Fast path: fuse the whole close into one transaction when eligible ──────
-  // Direct destination: a single CLOSE_ACCOUNT (cleanup + merge). Exchange: a fused
+  // Direct destination: a single CLOSE_ACCOUNT (cleanup + merge). Exchange: a
   // cleanup CLOSE_ACCOUNT plus the co-signed mediator MERGE. Excluded when any
   // blocker exists, when claimable balances are present (those route through the
   // step-by-step CLAIM_BALANCES flow so their proceeds are not lost), or when the
-  // fused tx would exceed the per-transaction operation limit. Conversion fuses
+  // transaction would exceed the per-transaction operation limit. Conversion shares it
   // while it is classic; it moves to its own isolated transaction once swaps
   // execute via the Soroswap aggregator (a Soroban op that cannot share a tx).
   const convertible = trustlines.filter((tl) => tl.authorized && parseFloat(tl.balance) > 0);
@@ -428,7 +428,7 @@ export function buildPlan(
     openOffers.length > 0 ||
     trustlines.length > 0;
   const signerOps = needsSignerNormalization ? extraSigners.length + 1 : 0;
-  const fusedOpCount =
+  const singleTxOpCount =
     signerOps + dataEntries.length + openOffers.length + convertible.length + trustlines.length + 1;
 
   // A forfeited-balance blocker is an acknowledged warning, not a hard stop (the user already
@@ -436,7 +436,7 @@ export function buildPlan(
   const hasHardBlocker = blockers.some((b) => b.code !== "claimable_balance_forfeited");
 
   // A Soroban token the close moves (or has yet to decide about) is its own transaction ahead of
-  // the classic close; only a balance explicitly left on record lets the close stay fused.
+  // the classic close; only a balance explicitly left on record lets the close stay in one transaction.
   const heldTokens = (accountState.sorobanTokens?.tokens ?? []).filter(
     (t) => /^\d+$/.test(t.balance) && BigInt(t.balance) > 0n
   );
@@ -468,9 +468,9 @@ export function buildPlan(
     !tokenTransactions &&
     exitBlockers.steps.length === 0 &&
     accountState.sponsoredEntries.length === 0 &&
-    fusedOpCount <= OP_BATCH_LIMIT
+    singleTxOpCount <= OP_BATCH_LIMIT
   ) {
-    const cleanupOps = fusedOpCount - 1; // ops without the merge
+    const cleanupOps = singleTxOpCount - 1; // ops without the merge
     // Only balances left on record reach here (anything else is its own transaction, above).
     pushTokenSteps();
     steps.push(
@@ -481,7 +481,7 @@ export function buildPlan(
         mediatorRequired
           ? "Remove signers, data, offers, and trustlines, and convert balances to XLM, in one transaction. The merge to your exchange address follows as a co-signed transfer."
           : "Remove signers, data, offers, and trustlines, convert balances to XLM, and merge the account, all in one transaction.",
-        mediatorRequired ? cleanupOps : fusedOpCount
+        mediatorRequired ? cleanupOps : singleTxOpCount
       )
     );
     if (mediatorRequired) {
