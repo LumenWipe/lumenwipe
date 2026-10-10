@@ -199,8 +199,13 @@ class PlanEstimateDto {
 }
 
 class PlanExecutionDto {
-  @ApiProperty({ description: "Estimated number of transactions this close will take." })
-  estimatedTransactionCount!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      "Expected number of transactions this close will take, counted with the same splitter the builder packs them with. Null when it cannot be known yet (the plan has a DeFi exit, a held token has no decision, or no destination was given); `transactions` is then empty.",
+  })
+  estimatedTransactionCount!: number | null;
 
   @ApiProperty({ type: [ExecutionTxBreakdownDto] })
   transactions!: ExecutionTxBreakdown[];
@@ -229,7 +234,7 @@ export class PlanResponseDto implements PlanResponse {
   estimate!: { feeStroops: string; freedReserveXlm: string };
 
   @ApiProperty({ type: PlanExecutionDto })
-  execution!: { estimatedTransactionCount: number; transactions: ExecutionTxBreakdown[] };
+  execution!: { estimatedTransactionCount: number | null; transactions: ExecutionTxBreakdown[] };
 }
 
 export class BatchPlanResultDto implements BatchPlanResult {

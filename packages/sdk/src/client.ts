@@ -117,7 +117,7 @@ export class LumenWipeClient {
 
   /**
    * Builds the next unsigned transaction(s) for a close. A close can span several
-   * transactions (a fused close, or separate claim / cleanup / mediator-merge steps),
+   * transactions (a single transaction, or separate claim / cleanup / mediator-merge steps),
    * so the response's `remaining.requiresAnotherCall` says whether more follow: sign and
    * submit the returned transactions in `order`, wait for confirmation, then call this
    * again until `requiresAnotherCall` is false.

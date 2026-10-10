@@ -1,11 +1,11 @@
 import { test, expect } from "bun:test";
 import { Account, Keypair, TransactionBuilder, Transaction, Networks } from "@stellar/stellar-sdk";
 import {
-  assembleFusedCloseOpsTagged,
-  type FusedCloseInput,
-} from "@/lib/stellar/tx-builder/fused-close";
+  assembleCloseOpsTagged,
+  type CloseOperationsInput,
+} from "@/lib/stellar/tx-builder/close-operations";
 import { revokeSponsorshipOps } from "@/lib/stellar/tx-builder/sponsorship";
-import { packFusedCloseTransactions } from "@/lib/close-api/build-transactions";
+import { packCloseTransactions } from "@/lib/close-api/build-transactions";
 import type { SponsoredEntry } from "@lumenwipe/types";
 
 const MASTER = Keypair.random().publicKey();
@@ -23,7 +23,7 @@ function manyTrustlines(n: number) {
   }));
 }
 
-function input(over: Partial<FusedCloseInput> = {}): FusedCloseInput {
+function input(over: Partial<CloseOperationsInput> = {}): CloseOperationsInput {
   return {
     needsSignerNormalization: false,
     signers: [{ key: MASTER, weight: 1, type: "ed25519_public_key" }],
@@ -51,7 +51,7 @@ function opCount(xdr: string): number {
 const WELL_FUNDED = { nativeBalanceLumens: "10000.0000000", numSubEntries: 0, numSponsoring: 0 };
 
 test("a close that fits under the op cap yields a single fused transaction", () => {
-  const txs = packFusedCloseTransactions(
+  const txs = packCloseTransactions(
     new Account(MASTER, START_SEQ),
     input({ trustlines: manyTrustlines(3) }),
     "testnet",
@@ -67,9 +67,9 @@ test("a close that fits under the op cap yields a single fused transaction", () 
 
 test("a close over the op cap is split into sequence-chained transactions with the merge last", () => {
   const in_ = input({ trustlines: manyTrustlines(150) });
-  const total = assembleFusedCloseOpsTagged(MASTER, in_).length; // 150 removals + merge
+  const total = assembleCloseOpsTagged(MASTER, in_).length; // 150 removals + merge
 
-  const txs = packFusedCloseTransactions(
+  const txs = packCloseTransactions(
     new Account(MASTER, START_SEQ),
     in_,
     "testnet",
@@ -117,7 +117,7 @@ function claimables(n: number) {
 }
 
 test("a claim-only round produces claim transactions with no merge", () => {
-  const txs = packFusedCloseTransactions(
+  const txs = packCloseTransactions(
     new Account(MASTER, START_SEQ),
     input({ claimableBalances: claimables(3), includeMerge: false }),
     "testnet",
@@ -131,7 +131,7 @@ test("a claim-only round produces claim transactions with no merge", () => {
 });
 
 test("claims over the op cap are split into sequence-chained transactions", () => {
-  const txs = packFusedCloseTransactions(
+  const txs = packCloseTransactions(
     new Account(MASTER, START_SEQ),
     input({ claimableBalances: claimables(150), includeMerge: false }),
     "testnet",
@@ -154,19 +154,19 @@ function sponsoredEntries(): SponsoredEntry[] {
 
 test("non-empty revokeSponsorshipEntries produce REVOKE_SPONSORSHIP-tagged ops matching revokeSponsorshipOps' count", () => {
   const entries = sponsoredEntries();
-  const tagged = assembleFusedCloseOpsTagged(MASTER, input({ revokeSponsorshipEntries: entries }));
+  const tagged = assembleCloseOpsTagged(MASTER, input({ revokeSponsorshipEntries: entries }));
   const revokeTagged = tagged.filter((t) => t.step === "REVOKE_SPONSORSHIP");
   expect(revokeTagged).toHaveLength(revokeSponsorshipOps(entries).length);
   expect(revokeTagged).toHaveLength(2);
 });
 
 test("empty revokeSponsorshipEntries produces no REVOKE_SPONSORSHIP-tagged ops", () => {
-  const tagged = assembleFusedCloseOpsTagged(MASTER, input({ revokeSponsorshipEntries: [] }));
+  const tagged = assembleCloseOpsTagged(MASTER, input({ revokeSponsorshipEntries: [] }));
   expect(tagged.some((t) => t.step === "REVOKE_SPONSORSHIP")).toBe(false);
 });
 
 test("REVOKE_SPONSORSHIP-tagged ops appear before REMOVE_DATA_ENTRIES-tagged ops", () => {
-  const tagged = assembleFusedCloseOpsTagged(
+  const tagged = assembleCloseOpsTagged(
     MASTER,
     input({
       revokeSponsorshipEntries: sponsoredEntries(),

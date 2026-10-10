@@ -450,11 +450,9 @@ export type DemolishPhase = "IDLE" | "ANALYZING" | "PREFLIGHT_COMPLETE" | "SIGNE
 // @public
 export type ErrorCode = "account_not_found" | "account_read_failed" | "account_too_large" | "admin_api_not_configured" | "allowances_read_failed" | "api_key_not_found" | "aquarius_trustline_missing" | "backstop_emissions_unclaimed" | "backstop_token_unconvertible" | "backstop_withdrawal_cooling_down" | "backstop_withdrawal_not_queued" | "bad_request" | "blend_emissions_trustline_missing" | "blend_repay_asset_balance_unknown" | "blend_repay_asset_missing" | "confirmation_timeout" | "conversion_floor_missing" | "conversion_provider_unrecognized" | "defi_exit_blocked" | "defi_exit_unsupported" | "defi_position_unrecognized" | "defi_positions_blocked" | "defi_positions_stale" | "defi_positions_unavailable" | "destination_not_acknowledged" | "destination_read_failed" | "fee_bump_exceeds_cap" | "fee_bump_not_configured" | "forbidden" | "forward_amount_exceeds_balance" | "inner_fee_not_zero" | "integrator_api_not_configured" | "internal_error" | "invalid_address" | "invalid_addresses" | "invalid_body" | "invalid_challenge" | "invalid_decisions" | "invalid_destination" | "invalid_memo" | "invalid_network" | "invalid_owner" | "invalid_rate_limit" | "invalid_request" | "invalid_signature" | "invalid_signed_xdr" | "invalid_source" | "invalid_spender" | "invalid_token" | "invalid_tokens" | "invalid_transaction_xdr" | "invalid_tx_hash" | "key_limit_reached" | "mediator_key_misconfiguration" | "mediator_not_configured" | "memo_required" | "merge_destination_unusable" | "merged_account_not_found" | "missing_parameters" | "missing_transaction" | "needs_decisions" | "not_found" | "operation_not_sponsorable" | "owner_not_found" | "path_lookup_failed" | "payload_too_large" | "phoenix_trustline_missing" | "plan_failed" | "provider_response_unusable" | "quote_drifted" | "rate_limited" | "registry_expired" | "request_failed" | "revoke_build_failed" | "revoke_needs_restore" | "revoke_simulation_failed" | "revoke_unsafe" | "service_unavailable" | "signer_normalization_unsafe" | "soroban_token_conversion_failed" | "soroban_token_conversion_unavailable" | "soroban_token_conversion_unsafe" | "soroban_token_needs_restore" | "soroban_token_route_lost" | "soroban_token_transfer_failed" | "soroban_token_transfer_unsafe" | "soroban_token_unreadable" | "soroswap_trustline_missing" | "source_sequence_too_far" | "stats_unavailable" | "submit_failed" | "submit_rejected" | "too_many_addresses" | "transaction_structure_not_allowed" | "transactions_failed" | "transfer_destination_missing" | "transfer_destination_unusable" | "trustline_cannot_be_left" | "trustline_deauthorized_with_balance" | "tx_not_verified" | "unauthorized" | "unprocessable_entity" | "unsupported_media_type" | "unsupported_memo_type" | "vault_undercollateralized" | "withdraw_before_repay";
 
-// @public (undocumented)
+// @public
 export interface ExecutionTxBreakdown {
-    // (undocumented)
     covers: StepType[];
-    // (undocumented)
     order: number;
     // (undocumented)
     reason?: "op_batch" | "defi_dependency";
@@ -789,9 +787,8 @@ export interface PlanResponse {
         feeStroops: string;
         freedReserveXlm: string;
     };
-    // (undocumented)
     execution: {
-        estimatedTransactionCount: number;
+        estimatedTransactionCount: number | null;
         transactions: ExecutionTxBreakdown[];
     };
     // (undocumented)

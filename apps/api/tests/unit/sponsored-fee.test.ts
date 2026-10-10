@@ -5,11 +5,8 @@
  */
 import { expect, test } from "bun:test";
 import { Account, Keypair, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
-import {
-  accountCanAffordFee,
-  packFusedCloseTransactions,
-} from "@/lib/close-api/build-transactions";
-import type { FusedCloseInput } from "@/lib/stellar/tx-builder/fused-close";
+import { accountCanAffordFee, packCloseTransactions } from "@/lib/close-api/build-transactions";
+import type { CloseOperationsInput } from "@/lib/stellar/tx-builder/close-operations";
 
 const MASTER = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -26,7 +23,7 @@ function manyTrustlines(n: number) {
   }));
 }
 
-function input(over: Partial<FusedCloseInput> = {}): FusedCloseInput {
+function input(over: Partial<CloseOperationsInput> = {}): CloseOperationsInput {
   return {
     needsSignerNormalization: false,
     signers: [{ key: MASTER, weight: 1, type: "ed25519_public_key" }],
@@ -69,52 +66,42 @@ test("accountCanAffordFee › a sponsored entry costs a reserve exactly like a s
   expect(accountCanAffordFee(twoSubentries, 1n)).toBe(false);
 });
 
-test("packFusedCloseTransactions › a reserve-locked account gets a zero-fee transaction flagged for sponsorship", () => {
-  const lockedTxs = packFusedCloseTransactions(
-    new Account(MASTER, START_SEQ),
-    input(),
-    "testnet",
-    999,
-    { nativeBalanceLumens: "1.0000000", numSubEntries: 0, numSponsoring: 0 }
-  );
+test("packCloseTransactions › a reserve-locked account gets a zero-fee transaction flagged for sponsorship", () => {
+  const lockedTxs = packCloseTransactions(new Account(MASTER, START_SEQ), input(), "testnet", 999, {
+    nativeBalanceLumens: "1.0000000",
+    numSubEntries: 0,
+    numSponsoring: 0,
+  });
   expect(lockedTxs).toHaveLength(1);
   expect(lockedTxs[0]!.needsSponsoredFee).toBe(true);
   const tx = TransactionBuilder.fromXDR(lockedTxs[0]!.xdr, Networks.TESTNET);
   expect(tx.fee).toBe("0");
 });
 
-test("packFusedCloseTransactions › an account with room to spare pays its own way, unflagged", () => {
-  const fundedTxs = packFusedCloseTransactions(
-    new Account(MASTER, START_SEQ),
-    input(),
-    "testnet",
-    999,
-    { nativeBalanceLumens: "100.0000000", numSubEntries: 0, numSponsoring: 0 }
-  );
+test("packCloseTransactions › an account with room to spare pays its own way, unflagged", () => {
+  const fundedTxs = packCloseTransactions(new Account(MASTER, START_SEQ), input(), "testnet", 999, {
+    nativeBalanceLumens: "100.0000000",
+    numSubEntries: 0,
+    numSponsoring: 0,
+  });
   expect(fundedTxs).toHaveLength(1);
   expect(fundedTxs[0]!.needsSponsoredFee).toBeUndefined();
   const tx = TransactionBuilder.fromXDR(fundedTxs[0]!.xdr, Networks.TESTNET);
   expect(tx.fee).toBe(ONE_OP_FEE.toString());
 });
 
-test("packFusedCloseTransactions › exactly enough for this transaction's fee is not locked", () => {
+test("packCloseTransactions › exactly enough for this transaction's fee is not locked", () => {
   // Base reserve 1 XLM, plus exactly the fee this one-operation close will cost.
   const exact = {
     nativeBalanceLumens: (1 + Number(ONE_OP_FEE) / 10_000_000).toFixed(7),
     numSubEntries: 0,
     numSponsoring: 0,
   };
-  const txs = packFusedCloseTransactions(
-    new Account(MASTER, START_SEQ),
-    input(),
-    "testnet",
-    999,
-    exact
-  );
+  const txs = packCloseTransactions(new Account(MASTER, START_SEQ), input(), "testnet", 999, exact);
   expect(txs[0]!.needsSponsoredFee).toBeUndefined();
 });
 
-test("packFusedCloseTransactions › a later chunk is judged against what's left after an earlier chunk's own fee, not the round's original balance", () => {
+test("packCloseTransactions › a later chunk is judged against what's left after an earlier chunk's own fee, not the round's original balance", () => {
   // 150 trustline removals + the merge = 151 ops, split into a 100-op chunk and a 51-op chunk
   // (OP_BATCH_LIMIT). Chunk fees: 100 * 100 = 10,000 stroops, then 100 * 51 = 5,100 stroops.
   // Balance is set to exactly cover the reserve plus chunk 1's fee plus a little more - enough
@@ -128,7 +115,7 @@ test("packFusedCloseTransactions › a later chunk is judged against what's left
   const balanceStroops = reserveStroops + chunk1FeeStroops + remainderAfterChunk1;
   const balanceLumens = (Number(balanceStroops) / 10_000_000).toFixed(7);
 
-  const txs = packFusedCloseTransactions(
+  const txs = packCloseTransactions(
     new Account(MASTER, START_SEQ),
     input({ trustlines: manyTrustlines(150) }),
     "testnet",

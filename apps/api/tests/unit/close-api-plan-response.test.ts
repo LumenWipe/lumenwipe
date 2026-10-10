@@ -61,16 +61,95 @@ test("computePlanHash ignores decision ordering", () => {
   expect(a).toBe(b);
 });
 
-test("toExecutionBreakdown collapses a fused-eligible plan into one transaction", () => {
-  const steps = [step(0, "HANDLE_ASSETS"), step(1, "REMOVE_TRUSTLINES"), step(2, "MERGE")];
-  const breakdown = toExecutionBreakdown(steps);
+const DIRECT = { viaMediator: false, decided: true };
+const EXCHANGE = { viaMediator: true, decided: true };
+
+function steps(...groups: [StepType, number, Partial<PlannedStep>?][]): PlannedStep[] {
+  return groups.map(([type, operationCount, extra], index) => ({
+    ...step(index, type),
+    operationCount,
+    ...extra,
+  }));
+}
+
+const TOKEN = "CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE";
+
+test("a single-transaction account reports one transaction covering every step", () => {
+  const breakdown = toExecutionBreakdown(
+    steps(["HANDLE_ASSETS", 1], ["REMOVE_TRUSTLINES", 1], ["MERGE", 1]),
+    DIRECT
+  );
   expect(breakdown.estimatedTransactionCount).toBe(1);
-  expect(breakdown.transactions).toHaveLength(1);
-  expect(breakdown.transactions[0].covers).toEqual(["HANDLE_ASSETS", "REMOVE_TRUSTLINES", "MERGE"]);
+  expect(breakdown.transactions).toEqual([
+    { order: 0, covers: ["HANDLE_ASSETS", "REMOVE_TRUSTLINES", "MERGE"] },
+  ]);
+});
+
+test("an exchange destination adds the mediator transfer as its own transaction", () => {
+  const breakdown = toExecutionBreakdown(steps(["REMOVE_TRUSTLINES", 2], ["MERGE", 2]), EXCHANGE);
+  expect(breakdown.estimatedTransactionCount).toBe(2);
+  expect(breakdown.transactions.map((t) => t.covers)).toEqual([["REMOVE_TRUSTLINES"], ["MERGE"]]);
+});
+
+test("a claimable-balance account takes a claim round before the close", () => {
+  const breakdown = toExecutionBreakdown(
+    steps(
+      ["ADD_TRUSTLINE_FOR_CLAIM", 1],
+      ["CLAIM_BALANCES", 2],
+      ["HANDLE_ASSETS", 1],
+      ["REMOVE_TRUSTLINES", 1],
+      ["MERGE", 1]
+    ),
+    DIRECT
+  );
+  expect(breakdown.transactions.map((t) => t.covers)).toEqual([
+    ["ADD_TRUSTLINE_FOR_CLAIM", "CLAIM_BALANCES"],
+    ["HANDLE_ASSETS", "REMOVE_TRUSTLINES", "MERGE"],
+  ]);
+});
+
+test("a close over the operation cap is split and the continuations say why", () => {
+  const breakdown = toExecutionBreakdown(
+    steps(["REMOVE_DATA_ENTRIES", 120], ["REMOVE_TRUSTLINES", 30], ["MERGE", 1]),
+    DIRECT
+  );
+  expect(breakdown.estimatedTransactionCount).toBe(2);
+  expect(breakdown.transactions).toEqual([
+    { order: 0, covers: ["REMOVE_DATA_ENTRIES"] },
+    { order: 1, covers: ["REMOVE_DATA_ENTRIES", "REMOVE_TRUSTLINES", "MERGE"], reason: "op_batch" },
+  ]);
+});
+
+test("each Soroban token move is its own transaction ahead of the classic close, a token left is none", () => {
+  const breakdown = toExecutionBreakdown(
+    steps(
+      ["HANDLE_ASSETS", 1, { affectedAsset: TOKEN }],
+      ["HANDLE_ASSETS", 0, { affectedAsset: TOKEN }],
+      ["MERGE", 1]
+    ),
+    DIRECT
+  );
+  expect(breakdown.estimatedTransactionCount).toBe(2);
+});
+
+test("a plan with a DeFi exit has no knowable count", () => {
+  expect(toExecutionBreakdown(steps(["EXIT_POSITIONS", 1], ["MERGE", 1]), DIRECT)).toEqual({
+    estimatedTransactionCount: null,
+    transactions: [],
+  });
+});
+
+test("a count that depends on an undecided input is unknown, not a guess", () => {
+  expect(toExecutionBreakdown(steps(["MERGE", 1]), { viaMediator: false, decided: false })).toEqual(
+    { estimatedTransactionCount: null, transactions: [] }
+  );
 });
 
 test("toExecutionBreakdown reports zero transactions for an empty plan", () => {
-  expect(toExecutionBreakdown([])).toEqual({ estimatedTransactionCount: 0, transactions: [] });
+  expect(toExecutionBreakdown([], DIRECT)).toEqual({
+    estimatedTransactionCount: 0,
+    transactions: [],
+  });
 });
 
 test("assemblePlanResponse status: blocked when blockers exist", () => {
@@ -78,6 +157,7 @@ test("assemblePlanResponse status: blocked when blockers exist", () => {
     buildResult: { steps: [step(0, "MERGE")], blockers: [{ message: "nope" }] },
     decisionPoints: [],
     planHash: "h",
+    execution: DIRECT,
     estimate: { feeStroops: "100", freedReserveXlm: "1" },
   });
   expect(res.status).toBe("blocked");
@@ -92,6 +172,7 @@ test("assemblePlanResponse passes through a blocker's own code", () => {
     },
     decisionPoints: [],
     planHash: "h",
+    execution: DIRECT,
     estimate: { feeStroops: "100", freedReserveXlm: "1" },
   });
   expect(res.blockers[0].code).toBe("claimable_balance_forfeited");
@@ -102,6 +183,7 @@ test("assemblePlanResponse falls back to the generic code when a blocker has non
     buildResult: { steps: [step(0, "MERGE")], blockers: [{ message: "nope" }] },
     decisionPoints: [],
     planHash: "h",
+    execution: DIRECT,
     estimate: { feeStroops: "100", freedReserveXlm: "1" },
   });
   expect(res.blockers[0].code).toBe("plan_blocker");
@@ -112,6 +194,7 @@ test("assemblePlanResponse status: needs_decisions when decision points remain",
     buildResult: { steps: [step(0, "MERGE")], blockers: [] },
     decisionPoints: [decisionPoint],
     planHash: "h",
+    execution: DIRECT,
     estimate: { feeStroops: "100", freedReserveXlm: "1" },
   });
   expect(res.status).toBe("needs_decisions");
@@ -122,6 +205,7 @@ test("assemblePlanResponse status: ready when no blockers and no pending decisio
     buildResult: { steps: [step(0, "MERGE")], blockers: [] },
     decisionPoints: [],
     planHash: "h",
+    execution: DIRECT,
     estimate: { feeStroops: "100", freedReserveXlm: "1" },
   });
   expect(res.status).toBe("ready");
@@ -132,6 +216,7 @@ test("assemblePlanResponse status: complete when there is nothing to do", () => 
     buildResult: { steps: [], blockers: [] },
     decisionPoints: [],
     planHash: "h",
+    execution: DIRECT,
     estimate: { feeStroops: "0", freedReserveXlm: "0" },
   });
   expect(res.status).toBe("complete");
@@ -164,6 +249,7 @@ test("assemblePlanResponse returns every decision point, answered or not", () =>
     decisionPoints: all,
     pendingDecisionPoints: [all[1]!],
     planHash: "h",
+    execution: DIRECT,
     estimate: { feeStroops: "100", freedReserveXlm: "0.5" },
   });
   expect(res.decisionPoints.map((d) => d.id)).toEqual(["a", "b"]);
@@ -177,6 +263,7 @@ test("assemblePlanResponse status: ready once every decision is answered, cards 
     decisionPoints: all,
     pendingDecisionPoints: [],
     planHash: "h",
+    execution: DIRECT,
     estimate: { feeStroops: "100", freedReserveXlm: "0.5" },
   });
   expect(res.status).toBe("ready");

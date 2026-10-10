@@ -1,7 +1,7 @@
 import { TransactionBuilder, Memo, Account, xdr } from "@stellar/stellar-sdk";
 import type { Network } from "@/config/networks";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
-import { BASE_FEE_STROOPS, TX_TIMEOUT_SECONDS } from "@/config/constants";
+import { BASE_FEE_STROOPS, OP_BATCH_LIMIT, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import type {
   AccountSigner,
   ClaimableBalance,
@@ -20,6 +20,7 @@ import { claimBalanceOps } from "./claimable-balances";
 import { trustlineAddForClaimOps, trustlineRemovalOps } from "./trustlines";
 import { mergeOp } from "./merge";
 import { revokeSponsorshipOps } from "./sponsorship";
+import { batchItems } from "./batching";
 
 /**
  * Per-asset disposition. A held asset is either swapped to XLM via a path payment (`convert`),
@@ -34,7 +35,7 @@ export type AssetAction =
   | { trustline: Trustline; action: "issuer" }
   | { trustline: Trustline; action: "transfer"; destination: string };
 
-export interface FusedCloseInput {
+export interface CloseOperationsInput {
   needsSignerNormalization: boolean;
   signers: AccountSigner[];
   /** Entries confirmed affordable AND still live-sponsored by this account immediately
@@ -79,6 +80,12 @@ function assetActionOp(masterKey: string, action: AssetAction): xdr.Operation {
   }
 }
 
+/** How a close's operations are divided into transactions: the one place the cap is applied,
+ *  shared by the builder that packs them and the plan that counts them. */
+export function splitCloseOps<T>(ops: T[]): T[][] {
+  return batchItems(ops, OP_BATCH_LIMIT);
+}
+
 /** A close operation tagged with the plan step it belongs to. */
 export interface TaggedCloseOp {
   op: xdr.Operation;
@@ -99,9 +106,9 @@ export interface TaggedCloseOp {
  * dispositions because a claim raises the held balance an action spends.
  * The tags let a multi-transaction (batched) close report which steps each transaction covers.
  */
-export function assembleFusedCloseOpsTagged(
+export function assembleCloseOpsTagged(
   masterKey: string,
-  input: FusedCloseInput
+  input: CloseOperationsInput
 ): TaggedCloseOp[] {
   const tagged: TaggedCloseOp[] = [];
   const push = (step: StepType, ops: xdr.Operation[]) => {
@@ -131,8 +138,8 @@ export function assembleFusedCloseOpsTagged(
  * count operations before building. Derived from the tagged assembler so the
  * operation order lives in exactly one place.
  */
-export function assembleFusedCloseOps(masterKey: string, input: FusedCloseInput): xdr.Operation[] {
-  return assembleFusedCloseOpsTagged(masterKey, input).map((t) => t.op);
+export function assembleCloseOps(masterKey: string, input: CloseOperationsInput): xdr.Operation[] {
+  return assembleCloseOpsTagged(masterKey, input).map((t) => t.op);
 }
 
 /**
@@ -148,12 +155,12 @@ export function assembleFusedCloseOps(masterKey: string, input: FusedCloseInput)
  * other operation. At that point the conversion ops leave this builder and
  * become their own isolated transaction(s); the rest of this builder is unchanged.
  */
-export function buildFusedCloseTx(
+export function buildCloseTx(
   sdkAccount: Account,
-  input: FusedCloseInput,
+  input: CloseOperationsInput,
   network: Network
 ): string {
-  const ops = assembleFusedCloseOps(sdkAccount.accountId(), input);
+  const ops = assembleCloseOps(sdkAccount.accountId(), input);
 
   // The SDK multiplies the `fee` option by the operation count, so passing the
   // per-operation base fee yields a total of BASE_FEE_STROOPS * opCount on-chain.

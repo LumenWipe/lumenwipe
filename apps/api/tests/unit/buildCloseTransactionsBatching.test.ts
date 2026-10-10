@@ -9,7 +9,7 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 // even though every chunk shares one time bound computed at the top of this call - submitting
 // them all in sequence can outrun that bound on a large enough account and expire the later
 // chunks, including the one carrying the merge. This drives the real `buildCloseTransactions`
-// (not just `packFusedCloseTransactions`, which only tests the chunking math itself) to confirm
+// (not just `packCloseTransactions`, which only tests the chunking math itself) to confirm
 // the higher-level round contract that fixes it.
 
 const SOURCE = Keypair.random().publicKey();
@@ -96,7 +96,7 @@ test("a direct close over the op cap asks for another call instead of expiring l
   const result = await buildCloseTransactions(state, DEST, {}, "testnet");
 
   // Only the first chunk is handed back - not all of them sharing one time bound - and the
-  // merge (which packFusedCloseTransactions only ever puts on the last chunk) is not in it.
+  // merge (which packCloseTransactions only ever puts on the last chunk) is not in it.
   expect(result.transactions).toHaveLength(1);
   expect(result.requiresAnotherCall).toBe(true);
   expect(result.remainingSteps).toBeGreaterThan(0);

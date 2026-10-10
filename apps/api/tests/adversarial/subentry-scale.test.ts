@@ -12,10 +12,10 @@
 import { test, expect } from "bun:test";
 import { Account, Keypair, StrKey, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import {
-  assembleFusedCloseOpsTagged,
-  type FusedCloseInput,
-} from "@/lib/stellar/tx-builder/fused-close";
-import { packFusedCloseTransactions } from "@/lib/close-api/build-transactions";
+  assembleCloseOpsTagged,
+  type CloseOperationsInput,
+} from "@/lib/stellar/tx-builder/close-operations";
+import { packCloseTransactions } from "@/lib/close-api/build-transactions";
 import { readAccountStateFrom } from "@/lib/stellar/account-state";
 import { OFFLINE_SOROBAN_TOKENS } from "../unit/fixtures/fake-soroban-tokens";
 import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
@@ -47,7 +47,7 @@ function manyTrustlines(n: number) {
   }));
 }
 
-function input(over: Partial<FusedCloseInput> = {}): FusedCloseInput {
+function input(over: Partial<CloseOperationsInput> = {}): CloseOperationsInput {
   return {
     needsSignerNormalization: false,
     signers: [{ key: MASTER, weight: 1, type: "ed25519_public_key" }],
@@ -78,9 +78,9 @@ test("a near-1000-subentry account batches into sequence-chained transactions wi
   // 998 trustlines - close to the practical ceiling a single close can enumerate and still
   // fits comfortably under the pagination cap (1000) each individual entry-kind read uses.
   const in_ = input({ trustlines: manyTrustlines(998) });
-  const total = assembleFusedCloseOpsTagged(MASTER, in_).length; // 998 removals + merge
+  const total = assembleCloseOpsTagged(MASTER, in_).length; // 998 removals + merge
 
-  const txs = packFusedCloseTransactions(
+  const txs = packCloseTransactions(
     new Account(MASTER, START_SEQ),
     in_,
     "testnet",
@@ -109,9 +109,9 @@ test("stacked hostile state: near-max trustlines, signer normalization, and spon
     ],
     revokeSponsorshipEntries: revoke,
   });
-  const total = assembleFusedCloseOpsTagged(MASTER, in_).length;
+  const total = assembleCloseOpsTagged(MASTER, in_).length;
 
-  const txs = packFusedCloseTransactions(
+  const txs = packCloseTransactions(
     new Account(MASTER, START_SEQ),
     in_,
     "testnet",

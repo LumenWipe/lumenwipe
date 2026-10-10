@@ -43,7 +43,7 @@ export interface PlanResponse {
   decisionPoints: DecisionPoint[];
   blockers: { code: string; message: string; helpUrl?: string }[];
   estimate: { feeStroops: string; freedReserveXlm: string };
-  execution: { estimatedTransactionCount: number; transactions: ExecutionTxBreakdown[] };
+  execution: { estimatedTransactionCount: number | null; transactions: ExecutionTxBreakdown[] };
 }
 
 /**

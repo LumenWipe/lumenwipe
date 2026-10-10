@@ -6848,7 +6848,8 @@
         "properties": {
           "estimatedTransactionCount": {
             "type": "number",
-            "description": "Estimated number of transactions this close will take."
+            "nullable": true,
+            "description": "Expected number of transactions this close will take, counted with the same splitter the builder packs them with. Null when it cannot be known yet (the plan has a DeFi exit, a held token has no decision, or no destination was given); `transactions` is then empty."
           },
           "transactions": {
             "type": "array",

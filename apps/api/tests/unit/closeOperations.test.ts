@@ -8,11 +8,11 @@ import {
   Networks,
 } from "@stellar/stellar-sdk";
 import {
-  assembleFusedCloseOps,
-  assembleFusedCloseOpsTagged,
-  buildFusedCloseTx,
-  type FusedCloseInput,
-} from "@/lib/stellar/tx-builder/fused-close";
+  assembleCloseOps,
+  assembleCloseOpsTagged,
+  buildCloseTx,
+  type CloseOperationsInput,
+} from "@/lib/stellar/tx-builder/close-operations";
 
 const MASTER = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -57,7 +57,7 @@ function convertPath() {
   };
 }
 
-function baseInput(over: Partial<FusedCloseInput> = {}): FusedCloseInput {
+function baseInput(over: Partial<CloseOperationsInput> = {}): CloseOperationsInput {
   return {
     needsSignerNormalization: false,
     signers: [{ key: MASTER, weight: 1, type: "ed25519_public_key" }],
@@ -80,15 +80,15 @@ function opsOf(xdr: string) {
   return TransactionBuilder.fromXDR(xdr, Networks.TESTNET).operations;
 }
 
-test("buildFusedCloseTx > clean account with merge -> single accountMerge op", () => {
-  const ops = opsOf(buildFusedCloseTx(account(), baseInput(), "testnet"));
+test("buildCloseTx > clean account with merge -> single accountMerge op", () => {
+  const ops = opsOf(buildCloseTx(account(), baseInput(), "testnet"));
   expect(ops).toHaveLength(1);
   expect(ops[0].type).toBe("accountMerge");
 });
 
-test("buildFusedCloseTx > includeMerge=false -> no accountMerge op", () => {
+test("buildCloseTx > includeMerge=false -> no accountMerge op", () => {
   const ops = opsOf(
-    buildFusedCloseTx(
+    buildCloseTx(
       account(),
       baseInput({ includeMerge: false, dataEntries: [{ key: "k", value: "" }] }),
       "testnet"
@@ -98,7 +98,7 @@ test("buildFusedCloseTx > includeMerge=false -> no accountMerge op", () => {
   expect(ops).toHaveLength(1); // just the manageData
 });
 
-test("buildFusedCloseTx > operation order is signers, data, offers, claim, convert, issuer, trustlines, merge", () => {
+test("buildCloseTx > operation order is signers, data, offers, claim, convert, issuer, trustlines, merge", () => {
   const issuerTl = {
     asset: `EURC:${ISSUER}`,
     balance: "5",
@@ -107,7 +107,7 @@ test("buildFusedCloseTx > operation order is signers, data, offers, claim, conve
     code: "EURC",
   };
   const ops = opsOf(
-    buildFusedCloseTx(
+    buildCloseTx(
       account(),
       baseInput({
         needsSignerNormalization: true,
@@ -143,9 +143,9 @@ test("buildFusedCloseTx > operation order is signers, data, offers, claim, conve
   ]);
 });
 
-test("buildFusedCloseTx > claim ops appear one per claimable balance", () => {
+test("buildCloseTx > claim ops appear one per claimable balance", () => {
   const ops = opsOf(
-    buildFusedCloseTx(
+    buildCloseTx(
       account(),
       baseInput({
         includeMerge: false,
@@ -157,9 +157,9 @@ test("buildFusedCloseTx > claim ops appear one per claimable balance", () => {
   expect(ops.filter((o) => o.type === "claimClaimableBalance")).toHaveLength(2);
 });
 
-test("buildFusedCloseTx > trustlinesToAddForClaim emits a changeTrust immediately before the claim", () => {
+test("buildCloseTx > trustlinesToAddForClaim emits a changeTrust immediately before the claim", () => {
   const ops = opsOf(
-    buildFusedCloseTx(
+    buildCloseTx(
       account(),
       baseInput({
         includeMerge: false,
@@ -172,16 +172,16 @@ test("buildFusedCloseTx > trustlinesToAddForClaim emits a changeTrust immediatel
   expect(ops.map((o) => o.type)).toEqual(["changeTrust", "claimClaimableBalance"]);
 });
 
-test("buildFusedCloseTx > no claim ops when claimableBalances empty", () => {
+test("buildCloseTx > no claim ops when claimableBalances empty", () => {
   const ops = opsOf(
-    buildFusedCloseTx(account(), baseInput({ dataEntries: [{ key: "k", value: "" }] }), "testnet")
+    buildCloseTx(account(), baseInput({ dataEntries: [{ key: "k", value: "" }] }), "testnet")
   );
   expect(ops.every((o) => o.type !== "claimClaimableBalance")).toBe(true);
 });
 
-test("buildFusedCloseTx > issuer action produces a payment, not pathPaymentStrictSend", () => {
+test("buildCloseTx > issuer action produces a payment, not pathPaymentStrictSend", () => {
   const ops = opsOf(
-    buildFusedCloseTx(
+    buildCloseTx(
       account(),
       baseInput({
         includeMerge: false,
@@ -195,9 +195,9 @@ test("buildFusedCloseTx > issuer action produces a payment, not pathPaymentStric
   expect(ops.every((o) => o.type !== "pathPaymentStrictSend")).toBe(true);
 });
 
-test("buildFusedCloseTx > convert action produces a pathPaymentStrictSend", () => {
+test("buildCloseTx > convert action produces a pathPaymentStrictSend", () => {
   const ops = opsOf(
-    buildFusedCloseTx(
+    buildCloseTx(
       account(),
       baseInput({
         includeMerge: false,
@@ -211,24 +211,24 @@ test("buildFusedCloseTx > convert action produces a pathPaymentStrictSend", () =
   expect(ops.every((o) => o.type !== "payment")).toBe(true);
 });
 
-test("buildFusedCloseTx > fee equals BASE_FEE * opCount", () => {
+test("buildCloseTx > fee equals BASE_FEE * opCount", () => {
   const tx = TransactionBuilder.fromXDR(
-    buildFusedCloseTx(account(), baseInput({ dataEntries: [{ key: "k", value: "" }] }), "testnet"),
+    buildCloseTx(account(), baseInput({ dataEntries: [{ key: "k", value: "" }] }), "testnet"),
     Networks.TESTNET
   );
   // 1 manageData + 1 accountMerge = 2 ops -> fee 200
   expect(tx.fee).toBe("200");
 });
 
-test("buildFusedCloseTx > no signer normalization when flag false (no stray setOptions)", () => {
+test("buildCloseTx > no signer normalization when flag false (no stray setOptions)", () => {
   const ops = opsOf(
-    buildFusedCloseTx(account(), baseInput({ dataEntries: [{ key: "k", value: "" }] }), "testnet")
+    buildCloseTx(account(), baseInput({ dataEntries: [{ key: "k", value: "" }] }), "testnet")
   );
   expect(ops.every((o) => o.type !== "setOptions")).toBe(true);
 });
 
-test("assembleFusedCloseOps > counts ops for a representative input", () => {
-  const ops = assembleFusedCloseOps(
+test("assembleCloseOps > counts ops for a representative input", () => {
+  const ops = assembleCloseOps(
     MASTER,
     baseInput({
       needsSignerNormalization: true,
@@ -254,8 +254,8 @@ test("assembleFusedCloseOps > counts ops for a representative input", () => {
   expect(ops).toHaveLength(9);
 });
 
-test("assembleFusedCloseOpsTagged > each op group is tagged with its own step, not a neighbor's", () => {
-  const tagged = assembleFusedCloseOpsTagged(
+test("assembleCloseOpsTagged > each op group is tagged with its own step, not a neighbor's", () => {
+  const tagged = assembleCloseOpsTagged(
     MASTER,
     baseInput({
       needsSignerNormalization: true,
@@ -277,35 +277,35 @@ test("assembleFusedCloseOpsTagged > each op group is tagged with its own step, n
   expect(stepsByType.get("changeTrust")).toBe("REMOVE_TRUSTLINES");
 });
 
-test("buildFusedCloseTx > attaches the memo to the merge-carrying transaction (text by default)", () => {
+test("buildCloseTx > attaches the memo to the merge-carrying transaction (text by default)", () => {
   const tx = TransactionBuilder.fromXDR(
-    buildFusedCloseTx(account(), baseInput({ memo: "hello", memoType: null }), "testnet"),
+    buildCloseTx(account(), baseInput({ memo: "hello", memoType: null }), "testnet"),
     Networks.TESTNET
   ) as Transaction;
   expect(tx.memo.type).toBe("text");
   expect(tx.memo.value?.toString()).toBe("hello");
 });
 
-test("buildFusedCloseTx > uses an id memo when memoType is 'id'", () => {
+test("buildCloseTx > uses an id memo when memoType is 'id'", () => {
   const tx = TransactionBuilder.fromXDR(
-    buildFusedCloseTx(account(), baseInput({ memo: "12345", memoType: "id" }), "testnet"),
+    buildCloseTx(account(), baseInput({ memo: "12345", memoType: "id" }), "testnet"),
     Networks.TESTNET
   ) as Transaction;
   expect(tx.memo.type).toBe("id");
   expect(tx.memo.value?.toString()).toBe("12345");
 });
 
-test("buildFusedCloseTx > no memo attached when memo is null", () => {
+test("buildCloseTx > no memo attached when memo is null", () => {
   const tx = TransactionBuilder.fromXDR(
-    buildFusedCloseTx(account(), baseInput({ memo: null }), "testnet"),
+    buildCloseTx(account(), baseInput({ memo: null }), "testnet"),
     Networks.TESTNET
   ) as Transaction;
   expect(tx.memo.type).toBe("none");
 });
 
-test("buildFusedCloseTx > no memo attached when the transaction does not carry the merge", () => {
+test("buildCloseTx > no memo attached when the transaction does not carry the merge", () => {
   const tx = TransactionBuilder.fromXDR(
-    buildFusedCloseTx(
+    buildCloseTx(
       account(),
       baseInput({
         includeMerge: false,
@@ -319,9 +319,9 @@ test("buildFusedCloseTx > no memo attached when the transaction does not carry t
   expect(tx.memo.type).toBe("none");
 });
 
-test("assembleFusedCloseOps > large input exceeds the 100-op protocol cap", () => {
+test("assembleCloseOps > large input exceeds the 100-op protocol cap", () => {
   const dataEntries = Array.from({ length: 120 }, (_, i) => ({ key: `k${i}`, value: "" }));
-  const ops = assembleFusedCloseOps(MASTER, baseInput({ dataEntries, includeMerge: true }));
+  const ops = assembleCloseOps(MASTER, baseInput({ dataEntries, includeMerge: true }));
   // 120 manageData + 1 accountMerge = 121, the count the build-time guard relies on
   expect(ops.length).toBeGreaterThan(100);
   expect(ops).toHaveLength(121);
@@ -333,7 +333,7 @@ const TRANSFER_DEST = Keypair.random().publicKey();
 
 test("a transfer disposition emits a payment of the full balance to the chosen account", () => {
   const ops = opsOf(
-    buildFusedCloseTx(
+    buildCloseTx(
       account(),
       baseInput({
         assetActions: [{ trustline: TL, action: "transfer", destination: TRANSFER_DEST }],
@@ -354,7 +354,7 @@ test("a transfer disposition emits a payment of the full balance to the chosen a
 
 test("the transfer payment precedes the ChangeTrust that removes its trustline", () => {
   const ops = opsOf(
-    buildFusedCloseTx(
+    buildCloseTx(
       account(),
       baseInput({
         assetActions: [{ trustline: TL, action: "transfer", destination: TRANSFER_DEST }],
@@ -379,7 +379,7 @@ test("a transfer goes to the chosen account, never to the issuer", () => {
   // Asserting only `not.toBe(ISSUER)` against a random destination cannot fail: it would pass
   // for any wrong address at all. Pinning the exact address is what makes it a real check.
   const ops = opsOf(
-    buildFusedCloseTx(
+    buildCloseTx(
       account(),
       baseInput({
         assetActions: [{ trustline: TL, action: "transfer", destination: TRANSFER_DEST }],
@@ -412,7 +412,7 @@ test("transfer composes with convert and issuer in one plan, each to its own des
   };
 
   const ops = opsOf(
-    buildFusedCloseTx(
+    buildCloseTx(
       account(),
       baseInput({
         assetActions: [
@@ -442,14 +442,14 @@ test("transfer composes with convert and issuer in one plan, each to its own des
   expect(lastDisposition).toBeLessThan(firstChangeTrust);
 });
 
-test("assembleFusedCloseOps counts the transfer payment, so fees and batching see it", () => {
-  const withTransfer = assembleFusedCloseOps(
+test("assembleCloseOps counts the transfer payment, so fees and batching see it", () => {
+  const withTransfer = assembleCloseOps(
     MASTER,
     baseInput({
       assetActions: [{ trustline: TL, action: "transfer", destination: TRANSFER_DEST }],
       trustlines: [TL],
     })
   );
-  const without = assembleFusedCloseOps(MASTER, baseInput({ trustlines: [TL] }));
+  const without = assembleCloseOps(MASTER, baseInput({ trustlines: [TL] }));
   expect(withTransfer.length).toBe(without.length + 1);
 });
