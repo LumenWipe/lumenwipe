@@ -71,7 +71,7 @@ export default function AccountEntryForm() {
             onClick={() => setMode("wallet")}
             className={cn(
               "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
-              mode === "wallet" ? "bg-white/10 text-white" : "text-white/50 hover:text-white/80"
+              mode === "wallet" ? "bg-white/10 text-white" : "text-fg-muted hover:text-white/80"
             )}
           >
             Connect wallet
@@ -81,7 +81,7 @@ export default function AccountEntryForm() {
             onClick={() => setMode("address")}
             className={cn(
               "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
-              mode === "address" ? "bg-white/10 text-white" : "text-white/50 hover:text-white/80"
+              mode === "address" ? "bg-white/10 text-white" : "text-fg-muted hover:text-white/80"
             )}
           >
             Paste address

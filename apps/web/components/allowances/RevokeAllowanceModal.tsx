@@ -151,14 +151,14 @@ export default function RevokeAllowanceModal({
             <h2 className="text-base font-semibold text-white">
               {step === "done" ? "Allowance revoked" : "Revoke this allowance"}
             </h2>
-            <p className="mt-0.5 text-xs text-white/45">
+            <p className="mt-0.5 text-xs text-fg-subtle">
               {tokenLabel} · {amountLabel}
             </p>
           </div>
           {!busy && (
             <button
               onClick={onClose}
-              className="text-white/40 hover:text-white transition-colors"
+              className="text-fg-subtle hover:text-white transition-colors"
               aria-label="Close"
             >
               <X className="h-4 w-4" />
@@ -170,18 +170,18 @@ export default function RevokeAllowanceModal({
           {step !== "done" && (
             <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 space-y-1.5 text-xs">
               <div className="flex justify-between gap-3">
-                <span className="text-white/45">Token</span>
+                <span className="text-fg-subtle">Token</span>
                 <span className="font-mono-address text-white/80">{tokenLabel}</span>
               </div>
               <div className="flex justify-between gap-3">
-                <span className="text-white/45">Spender</span>
+                <span className="text-fg-subtle">Spender</span>
                 <span className="font-mono-address text-white/80">
                   {shortAddress(allowance.spender)}
-                  {spenderLabel && <span className="ml-1 text-white/50">({spenderLabel})</span>}
+                  {spenderLabel && <span className="ml-1 text-fg-muted">({spenderLabel})</span>}
                 </span>
               </div>
               <div className="flex justify-between gap-3">
-                <span className="text-white/45">Amount</span>
+                <span className="text-fg-subtle">Amount</span>
                 <span className="text-white/80">{amountLabel}</span>
               </div>
             </div>
@@ -203,7 +203,7 @@ export default function RevokeAllowanceModal({
                     "flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 transition-colors",
                     mode === "wallet"
                       ? "bg-white/10 text-white"
-                      : "text-white/50 hover:text-white/80"
+                      : "text-fg-muted hover:text-white/80"
                   )}
                 >
                   <Wallet className="h-3.5 w-3.5" /> Wallet
@@ -216,7 +216,7 @@ export default function RevokeAllowanceModal({
                     "flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 transition-colors",
                     mode === "secret-key"
                       ? "bg-white/10 text-white"
-                      : "text-white/50 hover:text-white/80"
+                      : "text-fg-muted hover:text-white/80"
                   )}
                 >
                   <KeyRound className="h-3.5 w-3.5" /> Secret key

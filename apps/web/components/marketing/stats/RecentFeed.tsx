@@ -42,17 +42,17 @@ export default function RecentFeed({ feed }: { feed: FeedData | null }) {
       <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="h-1.5 w-1.5 rounded-full bg-stellar mkt-pulse" />
-          <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-white/55">
+          <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-fg-muted">
             Recent closes
           </span>
         </div>
-        <span className="mkt-mono text-[0.62rem] text-white/30">mainnet · verified on-chain</span>
+        <span className="mkt-mono text-[0.62rem] text-fg-subtle">mainnet · verified on-chain</span>
       </div>
 
       {/* column labels */}
       <div className="grid grid-cols-[90px_80px_1fr_28px] gap-x-2 border-b border-white/5 px-4 py-2">
         {["When", "XLM", "TX hash", ""].map((h) => (
-          <span key={h} className="mkt-mono text-[0.6rem] uppercase tracking-wider text-white/25">
+          <span key={h} className="mkt-mono text-[0.6rem] uppercase tracking-wider text-fg-subtle">
             {h}
           </span>
         ))}
@@ -63,7 +63,7 @@ export default function RecentFeed({ feed }: { feed: FeedData | null }) {
         {!feed ? (
           Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
         ) : items.length === 0 ? (
-          <div className="flex items-center justify-center py-16 text-sm text-white/30">
+          <div className="flex items-center justify-center py-16 text-sm text-fg-subtle">
             No mainnet closes yet
           </div>
         ) : (
@@ -78,7 +78,7 @@ export default function RecentFeed({ feed }: { feed: FeedData | null }) {
                 key={r.txHash}
                 className="grid grid-cols-[90px_80px_1fr_28px] items-center gap-x-2 border-b border-white/[0.04] px-4 py-2.5 transition-colors hover:bg-white/[0.03]"
               >
-                <span className="mkt-mono text-[0.68rem] text-white/40">
+                <span className="mkt-mono text-[0.68rem] text-fg-subtle">
                   {timeAgo(r.timestamp)}
                 </span>
                 <span
@@ -88,13 +88,13 @@ export default function RecentFeed({ feed }: { feed: FeedData | null }) {
                 >
                   {xlm}
                 </span>
-                <span className="mkt-mono text-[0.68rem] text-white/30">{hash}</span>
+                <span className="mkt-mono text-[0.68rem] text-fg-subtle">{hash}</span>
                 <a
                   href={link}
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="Verify on stellar.expert"
-                  className="flex items-center justify-center text-white/25 transition-colors hover:text-stellar"
+                  className="flex items-center justify-center text-fg-subtle transition-colors hover:text-stellar"
                 >
                   <ExternalLink className="h-3 w-3" />
                 </a>
@@ -107,7 +107,7 @@ export default function RecentFeed({ feed }: { feed: FeedData | null }) {
       {/* footer */}
       {feed && items.length > 0 && (
         <div className="border-t border-white/5 px-4 py-2.5">
-          <span className="mkt-mono text-[0.62rem] text-white/25">
+          <span className="mkt-mono text-[0.62rem] text-fg-subtle">
             Showing last {items.length} closes · each row links to the Stellar blockchain
           </span>
         </div>

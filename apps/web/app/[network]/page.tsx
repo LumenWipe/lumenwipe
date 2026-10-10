@@ -84,7 +84,7 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
         <h1 className="mkt-display text-3xl sm:text-4xl font-extrabold tracking-tight mb-2 text-white">
           Close your Stellar account
         </h1>
-        <p className="text-white/55 text-sm sm:text-base leading-relaxed max-w-lg mx-auto">
+        <p className="text-fg-muted text-sm sm:text-base leading-relaxed max-w-lg mx-auto">
           Recover all the XLM locked in reserves. Remove trustlines, cancel offers, and merge your
           account in a guided, step-by-step flow, signed entirely in your browser.
         </p>
@@ -92,7 +92,7 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
 
       {/* Form */}
       <div className="mkt-panel rounded-2xl p-6 mb-6">
-        <h2 className="mkt-eyebrow text-white/45 mb-5">Account details</h2>
+        <h2 className="mkt-eyebrow text-fg-subtle mb-5">Account details</h2>
         <AccountEntryForm />
       </div>
 
@@ -116,22 +116,22 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
           <div key={label} className="mkt-panel rounded-xl p-3.5 text-center">
             <Icon className="h-5 w-5 text-stellar mx-auto mb-1.5" />
             <p className="text-xs font-medium text-white">{label}</p>
-            <p className="text-xs text-white/45">{desc}</p>
+            <p className="text-xs text-fg-subtle">{desc}</p>
           </div>
         ))}
       </div>
 
       {/* Receive-as row - XLM active; USDC coming soon */}
       <div className="mt-3 flex items-center gap-3 mkt-panel rounded-xl px-4 py-3">
-        <span className="text-xs text-white/40 shrink-0">Receive as</span>
+        <span className="text-xs text-fg-subtle shrink-0">Receive as</span>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 rounded-lg border border-stellar/40 bg-stellar/10 px-3 py-1.5 text-xs font-medium text-stellar">
             XLM
             <span className="h-1.5 w-1.5 rounded-full bg-stellar" />
           </div>
-          <div className="flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/30 opacity-50 select-none">
+          <div className="flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-fg-disabled opacity-50 select-none">
             USDC
-            <span className="rounded-full border border-white/15 px-1.5 py-0.5 text-[0.55rem] uppercase tracking-wide text-white/30">
+            <span className="rounded-full border border-white/15 px-1.5 py-0.5 text-[0.55rem] uppercase tracking-wide text-fg-disabled">
               Soon
             </span>
           </div>
@@ -147,12 +147,12 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
           <ShieldOff className="h-4 w-4 text-stellar shrink-0" />
           <span className="min-w-0">
             <span className="block font-medium text-white">Allowance inspector</span>
-            <span className="block text-xs text-white/45">
+            <span className="block text-xs text-fg-subtle">
               Audit and revoke token approvals - no close required
             </span>
           </span>
         </span>
-        <span className="shrink-0 text-white/30">→</span>
+        <span className="shrink-0 text-fg-disabled">→</span>
       </Link>
     </div>
   );

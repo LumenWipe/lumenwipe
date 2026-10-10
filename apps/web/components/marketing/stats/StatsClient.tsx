@@ -71,7 +71,7 @@ export default function StatsClient() {
             <ExternalLink className="h-4 w-4 text-stellar" />
           </div>
           <div className="flex-1">
-            <p className="text-[0.82rem] leading-relaxed text-white/55">
+            <p className="text-[0.82rem] leading-relaxed text-fg-muted">
               Each close counted here was completed through LumenWipe. Before being recorded, the
               backend confirms the transaction hash is a successful{" "}
               <code className="mkt-mono text-[0.75rem] text-white/70">ACCOUNT_MERGE</code> on the
@@ -83,7 +83,7 @@ export default function StatsClient() {
             href="https://stellar.expert/explorer/public"
             target="_blank"
             rel="noopener noreferrer"
-            className="shrink-0 mkt-mono rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[0.68rem] text-white/50 transition-colors hover:border-stellar/30 hover:text-stellar"
+            className="shrink-0 mkt-mono rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[0.68rem] text-fg-muted transition-colors hover:border-stellar/30 hover:text-stellar"
           >
             stellar.expert ↗
           </a>

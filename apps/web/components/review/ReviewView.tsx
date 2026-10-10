@@ -79,7 +79,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
 
       <div className="mkt-panel rounded-2xl">
         <div className="border-b border-white/10 px-4 py-3">
-          <h2 className="mkt-eyebrow text-white/45">Full plan</h2>
+          <h2 className="mkt-eyebrow text-fg-subtle">Full plan</h2>
         </div>
         <div className="p-3">
           <PlanStepAccordion
@@ -146,13 +146,13 @@ export default function ReviewView({ network }: ReviewViewProps) {
       </button>
 
       {!accountState && (
-        <p className="flex items-center gap-1.5 text-xs text-white/45">
+        <p className="flex items-center gap-1.5 text-xs text-fg-subtle">
           <AlertTriangle className="h-3.5 w-3.5" />
           Account summary unavailable - the plan below is still accurate.
         </p>
       )}
 
-      <p className="text-center text-xs text-white/45">
+      <p className="text-center text-xs text-fg-subtle">
         {formatXlm(totalFee)} in estimated network fees
       </p>
     </div>

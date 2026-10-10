@@ -25,7 +25,7 @@ export default function PlanSidebar({ steps, currentIndex }: PlanSidebarProps) {
                   ? "text-success/70"
                   : step.status === "failed"
                     ? "text-danger-fg/70"
-                    : "text-white/45"
+                    : "text-fg-subtle"
             )}
           >
             {/* Status icon */}

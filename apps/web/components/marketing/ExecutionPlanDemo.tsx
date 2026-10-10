@@ -155,7 +155,7 @@ export default function ExecutionPlanDemo() {
               <span className="relative z-10 min-w-0 flex-1">
                 <span
                   className={`block truncate text-[0.82rem] font-medium transition-colors ${
-                    isDone || isActive ? "text-white" : "text-white/55"
+                    isDone || isActive ? "text-white" : "text-fg-muted"
                   }`}
                 >
                   {step.label}
@@ -165,7 +165,7 @@ export default function ExecutionPlanDemo() {
                     </span>
                   )}
                 </span>
-                <span className="block truncate text-[0.68rem] mkt-mono text-white/50">
+                <span className="block truncate text-[0.68rem] mkt-mono text-fg-muted">
                   {step.note}
                 </span>
               </span>
@@ -173,7 +173,7 @@ export default function ExecutionPlanDemo() {
               {/* delta */}
               <span
                 className={`relative z-10 shrink-0 mkt-mono text-[0.72rem] tabular-nums transition-colors ${
-                  isDone ? "text-value" : "text-white/25"
+                  isDone ? "text-value" : "text-fg-subtle"
                 }`}
               >
                 +{step.delta.toFixed(2)}
@@ -186,8 +186,8 @@ export default function ExecutionPlanDemo() {
       {/* footer meter */}
       <div className="mt-3.5 rounded-xl border border-white/8 bg-black/30 p-3.5">
         <div className="flex items-center justify-between">
-          <span className="mkt-eyebrow text-white/55">Recovered</span>
-          <span className="mkt-mono text-[0.65rem] text-white/55 tabular-nums">
+          <span className="mkt-eyebrow text-fg-muted">Recovered</span>
+          <span className="mkt-mono text-[0.65rem] text-fg-muted tabular-nums">
             {completed}/{TOTAL} steps
           </span>
         </div>
@@ -207,7 +207,7 @@ export default function ExecutionPlanDemo() {
             style={{ width: `${pct}%` }}
           />
         </div>
-        <p className="mt-2 text-[0.68rem] text-white/55">
+        <p className="mt-2 text-[0.68rem] text-fg-muted">
           {done ? (
             <span className="text-value/90">Account closed and removed from the ledger.</span>
           ) : (

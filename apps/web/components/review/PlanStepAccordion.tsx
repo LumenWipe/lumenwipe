@@ -58,7 +58,7 @@ export default function PlanStepAccordion({
                   >
                     {g.label}
                   </span>
-                  <span className="block truncate text-xs text-white/45">
+                  <span className="block truncate text-xs text-fg-subtle">
                     {g.steps.length} step{g.steps.length === 1 ? "" : "s"} · {totalOps} operation
                     {totalOps === 1 ? "" : "s"}
                   </span>
@@ -84,11 +84,11 @@ export default function PlanStepAccordion({
                   {g.steps.map((s) => (
                     <div key={s.index}>
                       <p className="text-xs font-medium text-white/80">{s.title}</p>
-                      <p className="text-xs text-white/55">{s.description}</p>
+                      <p className="text-xs text-fg-muted">{s.description}</p>
                     </div>
                   ))}
                   {g.type === "MERGE" && destinationAddress && (
-                    <p className="text-xs text-white/55">
+                    <p className="text-xs text-fg-muted">
                       Destination:{" "}
                       <span className="font-mono-address text-white/70">
                         {shortAddr(destinationAddress)}

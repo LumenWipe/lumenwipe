@@ -24,11 +24,11 @@ export default function PostCard({ post }: { post: PostMeta }) {
         {post.title}
       </h2>
 
-      <p className="text-sm text-white/55 leading-relaxed mb-4 flex-1 line-clamp-3">
+      <p className="text-sm text-fg-muted leading-relaxed mb-4 flex-1 line-clamp-3">
         {post.description}
       </p>
 
-      <div className="flex items-center gap-4 mkt-mono text-[0.7rem] text-white/40 mt-auto pt-3 border-t border-white/8">
+      <div className="flex items-center gap-4 mkt-mono text-[0.7rem] text-fg-subtle mt-auto pt-3 border-t border-white/8">
         <span className="flex items-center gap-1.5">
           <Calendar className="h-3 w-3" />
           {date}

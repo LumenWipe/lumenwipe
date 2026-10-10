@@ -51,7 +51,7 @@ export default function NotFound() {
               <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]/70" />
               <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]/70" />
               <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]/30" />
-              <span className="mkt-mono ml-3 text-xs text-white/20">
+              <span className="mkt-mono ml-3 text-xs text-fg-subtle">
                 lumenwipe · account-lookup
               </span>
             </div>
@@ -61,7 +61,7 @@ export default function NotFound() {
               {/* command */}
               <div className="mkt-mono text-sm">
                 <span className="text-stellar/40">$ </span>
-                <span className="text-white/50">lw analyze --network mainnet </span>
+                <span className="text-fg-muted">lw analyze --network mainnet </span>
                 <span className="text-value/70">this-page</span>
               </div>
 
@@ -72,7 +72,7 @@ export default function NotFound() {
                     <span className={s.ok ? "text-stellar" : "text-danger-fg"}>
                       {s.ok ? "✓" : "✗"}
                     </span>
-                    <span className={s.ok ? "text-white/40" : "text-danger-fg/75"}>
+                    <span className={s.ok ? "text-fg-subtle" : "text-danger-fg/75"}>
                       {s.label}
                       {!s.ok && " - account_not_found"}
                     </span>
@@ -87,12 +87,12 @@ export default function NotFound() {
                     <div key={s.label}>
                       <div
                         className={`mkt-mono text-base font-semibold ${
-                          s.label === "Status" ? "text-stellar/40" : "text-white/20"
+                          s.label === "Status" ? "text-stellar/40" : "text-fg-subtle"
                         }`}
                       >
                         {s.value}
                       </div>
-                      <div className="mkt-eyebrow mt-1 text-white/20">{s.label}</div>
+                      <div className="mkt-eyebrow mt-1 text-fg-subtle">{s.label}</div>
                     </div>
                   ))}
                 </div>
@@ -112,7 +112,7 @@ export default function NotFound() {
             <br />
             been closed.
           </h1>
-          <p className="mb-8 text-[0.95rem] leading-relaxed text-white/45">
+          <p className="mb-8 text-[0.95rem] leading-relaxed text-fg-subtle">
             No trustlines. No balance. No subentries.
             <br />
             Looks like this route was already merged out.

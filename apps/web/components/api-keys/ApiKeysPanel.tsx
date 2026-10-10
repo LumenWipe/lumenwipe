@@ -174,7 +174,7 @@ export default function ApiKeysPanel() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3 text-xs text-white/55">
+      <div className="flex items-center justify-between gap-3 text-xs text-fg-muted">
         <span className="mkt-mono truncate">Signed in as {address}</span>
         <button type="button" className="underline hover:text-white" onClick={logout}>
           Sign out
@@ -224,7 +224,7 @@ export default function ApiKeysPanel() {
             <div>
               <h2 className="text-lg font-semibold text-white">Your keys</h2>
               {list.usage && (
-                <p className="mt-1 text-xs text-white/55">
+                <p className="mt-1 text-xs text-fg-muted">
                   {list.usage.today} requests today · {list.usage.last30Days} in the last 30 days
                 </p>
               )}
@@ -254,7 +254,7 @@ export default function ApiKeysPanel() {
             </ul>
           )}
           {revokedCount > 0 && (
-            <p className="mt-4 text-xs text-white/45">{revokedCount} revoked or rotated</p>
+            <p className="mt-4 text-xs text-fg-subtle">{revokedCount} revoked or rotated</p>
           )}
         </div>
       )}
@@ -276,7 +276,7 @@ function KeyRow(props: {
     <li className="flex flex-wrap items-center justify-between gap-3 py-3">
       <div>
         <p className="mkt-mono text-xs text-white/80">Key {record.id.slice(0, 8)}</p>
-        <p className="text-xs text-white/45">Created {formatDate(record.createdAt)}</p>
+        <p className="text-xs text-fg-subtle">Created {formatDate(record.createdAt)}</p>
       </div>
       {confirming ? (
         <div className="flex items-center gap-2 text-xs">

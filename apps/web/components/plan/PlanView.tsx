@@ -376,11 +376,11 @@ export default function PlanView({
 
       <div className="mkt-panel rounded-2xl">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <h2 className="mkt-eyebrow text-white/45">What this close will do</h2>
+          <h2 className="mkt-eyebrow text-fg-subtle">What this close will do</h2>
           <button
             onClick={onRefresh}
             disabled={loading}
-            className="text-white/50 transition-colors hover:text-white disabled:opacity-40"
+            className="text-fg-muted transition-colors hover:text-white disabled:opacity-40"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           </button>
@@ -404,7 +404,7 @@ export default function PlanView({
       </div>
 
       {!destinationStepReady && (
-        <p className="text-center text-xs text-white/45">
+        <p className="text-center text-xs text-fg-subtle">
           {hardBlockers.length > 0
             ? "Resolve the blockers above to continue."
             : assetCardsWithheld
@@ -419,8 +419,8 @@ export default function PlanView({
       {destinationStepReady && (
         <div className="mkt-panel rounded-2xl p-5 space-y-4">
           <div>
-            <h2 className="mkt-eyebrow text-white/45 mb-1">Destination</h2>
-            <p className="text-xs text-white/45">
+            <h2 className="mkt-eyebrow text-fg-subtle mb-1">Destination</h2>
+            <p className="text-xs text-fg-subtle">
               Every asset is resolved. Enter where the recovered XLM should go.
             </p>
           </div>

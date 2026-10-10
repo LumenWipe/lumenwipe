@@ -36,7 +36,7 @@ export default function HeroAccountInput() {
             error ? "border-danger/40" : "border-white/12"
           }`}
         >
-          <Search className="ml-2 h-4 w-4 shrink-0 text-white/30" />
+          <Search className="ml-2 h-4 w-4 shrink-0 text-fg-disabled" />
           <input
             type="text"
             value={address}
@@ -45,7 +45,7 @@ export default function HeroAccountInput() {
               if (error) setError(null);
             }}
             placeholder="Paste a Stellar account address - G…"
-            className="flex-1 bg-transparent py-2 pr-2 mkt-mono text-[0.8rem] text-white placeholder:text-white/25 min-w-0 focus-visible:outline-none"
+            className="flex-1 bg-transparent py-2 pr-2 mkt-mono text-[0.8rem] text-white placeholder:text-fg-subtle min-w-0 focus-visible:outline-none"
             spellCheck={false}
             autoComplete="off"
             autoCorrect="off"
@@ -66,7 +66,7 @@ export default function HeroAccountInput() {
           {error}
         </p>
       ) : (
-        <p className="mt-2.5 text-center text-xs text-white/35">
+        <p className="mt-2.5 text-center text-xs text-fg-subtle">
           Analyzes on mainnet · read-only until you sign · no account needed
         </p>
       )}

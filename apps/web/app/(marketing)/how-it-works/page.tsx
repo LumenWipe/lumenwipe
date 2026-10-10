@@ -162,12 +162,12 @@ export default function HowItWorksPage() {
                     <s.icon className="h-4 w-4" />
                   </span>
                   <h3 className="mt-3 text-sm font-semibold text-white">{s.label}</h3>
-                  <p className="mt-0.5 mkt-mono text-[0.66rem] text-white/55">{s.note}</p>
+                  <p className="mt-0.5 mkt-mono text-[0.66rem] text-fg-muted">{s.note}</p>
                 </div>
               </Reveal>
             ))}
           </div>
-          <p className="mt-5 inline-flex items-center gap-2 mkt-mono text-xs text-white/55">
+          <p className="mt-5 inline-flex items-center gap-2 mkt-mono text-xs text-fg-muted">
             <Repeat className="h-3.5 w-3.5 text-stellar" />
             repeats for every step in the plan
           </p>
@@ -197,7 +197,7 @@ export default function HowItWorksPage() {
                 </div>
                 <div className="min-w-0 pb-1">
                   <div className="flex items-center gap-3">
-                    <span className="mkt-mono text-xs text-white/30">
+                    <span className="mkt-mono text-xs text-fg-subtle">
                       {String(i + 1).padStart(2, "0")}
                     </span>
                     <h3 className="text-base font-semibold text-white">{s.title}</h3>
@@ -247,7 +247,7 @@ export default function HowItWorksPage() {
                   "op" in node ? (
                     <div
                       key={i}
-                      className="flex flex-row items-center justify-center gap-2 text-white/50 sm:flex-col"
+                      className="flex flex-row items-center justify-center gap-2 text-fg-muted sm:flex-col"
                     >
                       <ArrowRight className="hidden h-4 w-4 sm:block" />
                       <ArrowDown className="h-4 w-4 sm:hidden" />
@@ -267,7 +267,7 @@ export default function HowItWorksPage() {
                       }`}
                     >
                       <div className="text-sm font-semibold text-white">{node.label}</div>
-                      <div className="mt-1 text-[0.72rem] text-white/55">{node.sub}</div>
+                      <div className="mt-1 text-[0.72rem] text-fg-muted">{node.sub}</div>
                     </div>
                   )
                 )}
@@ -301,7 +301,9 @@ export default function HowItWorksPage() {
                   <span className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 mkt-mono text-xs text-white/70">
                     {s}
                   </span>
-                  {i < MACHINE.length - 1 && <ArrowRight className="h-3.5 w-3.5 text-white/25" />}
+                  {i < MACHINE.length - 1 && (
+                    <ArrowRight className="h-3.5 w-3.5 text-fg-disabled" />
+                  )}
                 </span>
               ))}
             </div>
@@ -343,11 +345,11 @@ export default function HowItWorksPage() {
                 >
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-white">{row.l}</div>
-                    <div className="truncate mkt-mono text-[0.66rem] text-white/55">{row.s}</div>
+                    <div className="truncate mkt-mono text-[0.66rem] text-fg-muted">{row.s}</div>
                   </div>
                   <span
                     className={`shrink-0 mkt-mono text-[0.58rem] uppercase tracking-wider ${
-                      row.tone ? "text-value" : "text-white/50"
+                      row.tone ? "text-value" : "text-fg-muted"
                     }`}
                   >
                     {row.note}

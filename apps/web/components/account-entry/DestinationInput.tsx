@@ -81,13 +81,13 @@ export default function DestinationInput({
                 outside world that changes without telling us, and this is the last screen
                 before something irreversible - so the user can see how old the thing they are
                 relying on is, and whether it came from the API or from the bundled floor. */}
-            <p className="text-[0.7rem] text-white/40">
+            <p className="text-[0.7rem] text-fg-subtle">
               Deposit rules last verified {activeRegistry().lastVerified}
               {activeRegistry().served ? "" : " (offline copy)"}.
             </p>
           </>
         ) : (
-          <p className="text-xs text-white/40">
+          <p className="text-xs text-fg-subtle">
             Required by most exchanges to credit your deposit. Leave empty if not needed.
           </p>
         )}
@@ -108,7 +108,7 @@ export default function DestinationInput({
           onChange={(e) => onMemoChange(e.target.value)}
           placeholder={memoType === "id" ? "Enter numeric ID" : "Enter memo text (max 28 bytes)"}
           maxLength={memoType === "text" ? 28 : undefined}
-          className="w-full text-sm bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 placeholder:text-white/30"
+          className="w-full text-sm bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 placeholder:text-fg-subtle"
         />
       </div>
 

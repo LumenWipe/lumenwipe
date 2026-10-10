@@ -49,7 +49,7 @@ export default function BlogToc({ toc }: { toc: TocEntry[] }) {
   return (
     <aside className="hidden lg:block w-52 flex-shrink-0">
       <div className="sticky top-24">
-        <p className="mkt-eyebrow text-white/40 mb-3">On this page</p>
+        <p className="mkt-eyebrow text-fg-subtle mb-3">On this page</p>
         <nav>
           <ul className="border-l border-white/10">
             {toc.map((entry) => {
@@ -64,7 +64,7 @@ export default function BlogToc({ toc }: { toc: TocEntry[] }) {
                     } ${
                       isActive
                         ? "border-stellar text-stellar"
-                        : "border-transparent text-white/45 hover:text-white/80"
+                        : "border-transparent text-fg-subtle hover:text-white/80"
                     }`}
                   >
                     {entry.text}

@@ -30,7 +30,7 @@ export default function LiveStats() {
       <span className="h-1.5 w-1.5 rounded-full bg-value mkt-pulse" />
       <span className="tabular-nums text-white">{closed.toLocaleString()}</span>
       <span className="text-white/65">accounts closed</span>
-      <span className="text-white/25">·</span>
+      <span className="text-fg-disabled">·</span>
       <span className="tabular-nums text-value">{xlmStr} XLM</span>
       <span className="text-white/65">recovered on mainnet</span>
     </div>

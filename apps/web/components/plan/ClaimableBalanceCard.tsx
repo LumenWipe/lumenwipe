@@ -35,12 +35,12 @@ export default function ClaimableBalanceCard({
           forfeited ? "border-white/15 bg-white/[0.03]" : "border-success/20 bg-success/5"
         )}
       >
-        <Target className={cn("h-4 w-4 shrink-0", forfeited ? "text-white/40" : "text-success")} />
+        <Target className={cn("h-4 w-4 shrink-0", forfeited ? "text-fg-subtle" : "text-success")} />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-white">
             {item.amount} {item.code}
           </p>
-          <p className="text-xs text-white/50">
+          <p className="text-xs text-fg-muted">
             {forfeited
               ? "This claimable balance will be left unclaimed."
               : "This claimable balance will be claimed and added to your account."}
@@ -70,21 +70,21 @@ export default function ClaimableBalanceCard({
     >
       <div className="flex items-start gap-3">
         {resolved ? (
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-white/50" />
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
         ) : (
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
         )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-white">
-            {item.amount} {item.code} <span className="text-white/40">·</span>{" "}
+            {item.amount} {item.code} <span className="text-fg-subtle">·</span>{" "}
             <span className="text-amber-300/90">no trustline for this asset</span>
           </p>
-          <p className="mt-1 text-xs leading-relaxed text-white/55">
+          <p className="mt-1 text-xs leading-relaxed text-fg-muted">
             This account is a claimant for this balance but holds no {item.code} trustline. Add one
             to claim it, or leave it behind - it becomes permanently inaccessible once the account
             is merged.
           </p>
-          {predicateNote && <p className="mt-1 text-xs text-white/45">{predicateNote}</p>}
+          {predicateNote && <p className="mt-1 text-xs text-fg-subtle">{predicateNote}</p>}
         </div>
       </div>
 
@@ -99,7 +99,7 @@ export default function ClaimableBalanceCard({
           />
           <span>
             Add a {item.code} trustline and claim it.{" "}
-            <span className="text-white/40">
+            <span className="text-fg-subtle">
               Recovers the {item.amount} {item.code}.
             </span>
           </span>
@@ -114,7 +114,7 @@ export default function ClaimableBalanceCard({
           />
           <span>
             Forfeit it.{" "}
-            <span className="text-white/40">Inaccessible after the account is merged.</span>
+            <span className="text-fg-subtle">Inaccessible after the account is merged.</span>
           </span>
         </label>
       </div>
