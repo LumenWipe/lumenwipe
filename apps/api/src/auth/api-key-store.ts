@@ -102,6 +102,13 @@ function fromFirestoreData(hash: string, data: FirebaseFirestore.DocumentData): 
   };
 }
 
+/**
+ * Firestore-backed store (Native mode), one document per key keyed by its own hash. Constructed
+ * with no explicit credentials: on Cloud Run the service account's IAM role authorizes access
+ * (Application Default Credentials) - this feature introduces no new bearer secret to leak or
+ * rotate. Never constructed unless `FIRESTORE_PROJECT_ID` is set (see `createApiKeyStore`), so
+ * an environment that hasn't configured it never touches Firestore at all.
+ */
 export class FirestoreApiKeyStore implements ApiKeyStore {
   private readonly collection: FirebaseFirestore.CollectionReference;
 
