@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Param, Post, UseGuards } from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiBody,
@@ -11,7 +11,10 @@ import { Transaction } from "@stellar/stellar-sdk";
 import { MediatorSignRequestDto } from "./dto/mediator-sign.dto";
 import { MediatorCheckResultDto, MediatorSignResponseDto } from "./dto/mediator-responses.dto";
 import { ApiErrorResponse, ApiBodyErrorResponses } from "@/common/api-error-response.decorator";
-import { isValidNetwork, NETWORK_PASSPHRASES, getMediatorPublicKey } from "@/config/networks";
+import { NETWORK_PASSPHRASES, getMediatorPublicKey, type Network } from "@/config/networks";
+import { NetworkFirstGuard } from "@/common/guards/network-first.guard";
+import { GAddressPipe } from "@/common/pipes/g-address.pipe";
+import { NetworkPipe } from "@/common/pipes/network.pipe";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { lookupExchange } from "@/lib/exchange-registry";
 import { getMediatorKeypair } from "@/lib/stellar/mediator-server";
@@ -55,9 +58,10 @@ export class MediatorController {
     description: "The transaction with the mediator signature added (base64 XDR).",
     type: MediatorSignResponseDto,
   })
-  async sign(@Param("network") network: string, @Body() body: { transaction?: string }) {
-    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
-
+  async sign(
+    @Param("network", new NetworkPipe("Invalid network")) network: Network,
+    @Body() body: { transaction?: string }
+  ) {
     const mediatorKeypair = getMediatorKeypair(network);
     if (!mediatorKeypair) {
       fail(
@@ -133,6 +137,7 @@ export class MediatorController {
   }
 
   @ApiErrorResponse(400, "Invalid network or address.", ["invalid_network", "invalid_address"])
+  @UseGuards(new NetworkFirstGuard("Invalid network"))
   @Get("check/:address")
   @ApiOperation({ summary: "Check whether a destination needs the mediator flow and/or a memo." })
   @ApiParam({ name: "address", description: "Destination account (G...)." })
@@ -141,10 +146,10 @@ export class MediatorController {
     description: "Mediator/memo requirements for the destination.",
     type: MediatorCheckResultDto,
   })
-  async check(@Param("network") network: string, @Param("address") address: string) {
-    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
-    if (!isValidGAddress(address)) fail("invalid_address", "Invalid address", 400);
-
+  async check(
+    @Param("network", new NetworkPipe("Invalid network")) network: `${Network}`,
+    @Param("address", new GAddressPipe("invalid_address", "Invalid address")) address: string
+  ) {
     // Whether this server can actually co-sign the mediator flow (secret configured).
     const available = getMediatorKeypair(network) !== null;
 
