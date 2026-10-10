@@ -34,6 +34,7 @@
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
+    "@apidevtools/swagger-parser": "^13.1.0",
     "@lumenwipe/types": "workspace:*",
     "@nestjs/cli": "^11.0.24",
     "@nestjs/schematics": "^11.1.0",

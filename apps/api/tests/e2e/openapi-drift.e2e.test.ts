@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
+import SwaggerParser from "@apidevtools/swagger-parser";
 import { SwaggerModule, type OpenAPIObject } from "@nestjs/swagger";
 import { AppModule } from "@/app.module";
 import { configureApp } from "@/configure-app";
@@ -64,4 +65,83 @@ test("every public endpoint is listed in the docs navigation", async () => {
     }
   }
   expect(missing, "add these endpoints to the API reference group in docs/docs.json").toEqual([]);
+});
+
+type Operation = { tags?: string[]; security?: Record<string, unknown>[]; requestBody?: unknown };
+
+function operations(): { id: string; operation: Operation }[] {
+  return Object.entries(spec.paths).flatMap(([path, item]) =>
+    Object.entries(item)
+      .filter(([method]) => ["get", "post", "put", "patch", "delete"].includes(method))
+      .map(([method, operation]) => ({
+        id: `${method.toUpperCase()} ${path}`,
+        operation: operation as Operation,
+      }))
+  );
+}
+
+function refs(node: unknown): string[] {
+  if (Array.isArray(node)) return node.flatMap(refs);
+  if (typeof node !== "object" || node === null) return [];
+  return Object.entries(node).flatMap(([key, value]) =>
+    key === "$ref" && typeof value === "string" ? [value] : refs(value)
+  );
+}
+
+test("every security scheme an operation references is declared", () => {
+  const declared = new Set(Object.keys(spec.components?.securitySchemes ?? {}));
+  const dangling = operations().flatMap(({ id, operation }) =>
+    (operation.security ?? [])
+      .flatMap((requirement) => Object.keys(requirement))
+      .filter((name) => !declared.has(name))
+      .map((name) => `${id} -> ${name}`)
+  );
+  expect(dangling).toEqual([]);
+});
+
+test("every tag an operation uses is declared", () => {
+  const declared = new Set((spec.tags ?? []).map((tag) => tag.name));
+  const undeclared = new Set(
+    operations().flatMap(({ operation }) => (operation.tags ?? []).filter((t) => !declared.has(t)))
+  );
+  expect([...undeclared]).toEqual([]);
+});
+
+test("every $ref in the document resolves", () => {
+  const unresolved = refs(spec).filter((ref) => {
+    const [, ...segments] = ref.split("/");
+    let node: unknown = spec;
+    for (const segment of segments) {
+      if (typeof node !== "object" || node === null || !(segment in node)) return true;
+      node = (node as Record<string, unknown>)[segment];
+    }
+    return false;
+  });
+  expect(unresolved).toEqual([]);
+});
+
+test("every integrator operation documents its responses and any request body", () => {
+  const integrator = operations().filter(({ id }) => id.includes(" /integrator/"));
+  expect(integrator).toHaveLength(6);
+  const bodyless = new Set([
+    "GET /integrator/keys",
+    "POST /integrator/keys",
+    "POST /integrator/keys/{id}/revoke",
+    "POST /integrator/keys/{id}/rotate",
+  ]);
+  const problems = integrator.flatMap(({ id, operation }) => {
+    const found: string[] = [];
+    const responses = (operation as { responses?: Record<string, { content?: unknown }> })
+      .responses;
+    const success = Object.entries(responses ?? {}).filter(([code]) => code.startsWith("2"));
+    if (!success.every(([, response]) => response.content)) found.push(`${id}: no response schema`);
+    if (Object.keys(responses ?? {}).length < 2) found.push(`${id}: no error responses`);
+    if (!bodyless.has(id) && !operation.requestBody) found.push(`${id}: no request body`);
+    return found;
+  });
+  expect(problems).toEqual([]);
+});
+
+test("the document is valid OpenAPI", async () => {
+  await SwaggerParser.validate(structuredClone(spec) as never);
 });

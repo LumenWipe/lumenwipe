@@ -1231,9 +1231,32 @@
       "post": {
         "operationId": "IntegratorController_challenge",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChallengeRequestDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
-            "description": ""
+            "description": "A challenge to sign.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChallengeResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid address."
+          },
+          "503": {
+            "description": "Self-serve key management is not configured."
           }
         },
         "summary": "Get a challenge transaction for a wallet to sign.",
@@ -1246,9 +1269,35 @@
       "post": {
         "operationId": "IntegratorController_session",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionRequestDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
-            "description": ""
+            "description": "A session token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid address, message or signature."
+          },
+          "401": {
+            "description": "The signed challenge is invalid or has expired."
+          },
+          "503": {
+            "description": "Self-serve key management is not configured."
           }
         },
         "summary": "Exchange a signed challenge for a short-lived session token.",
@@ -1263,7 +1312,20 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListIntegratorKeysResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session token."
+          },
+          "503": {
+            "description": "Self-serve key management is not configured."
           }
         },
         "security": [
@@ -1281,7 +1343,23 @@
         "parameters": [],
         "responses": {
           "201": {
-            "description": ""
+            "description": "The raw key, returned exactly once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedIntegratorKeyResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session token."
+          },
+          "409": {
+            "description": "The wallet already has the maximum active keys."
+          },
+          "503": {
+            "description": "Self-serve key management is not configured."
           }
         },
         "security": [
@@ -1303,6 +1381,7 @@
             "name": "id",
             "required": true,
             "in": "path",
+            "description": "The key id.",
             "schema": {
               "type": "string"
             }
@@ -1310,7 +1389,23 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "Revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokeIntegratorKeyResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session token."
+          },
+          "404": {
+            "description": "No key with that id."
+          },
+          "503": {
+            "description": "Self-serve key management is not configured."
           }
         },
         "security": [
@@ -1332,6 +1427,7 @@
             "name": "id",
             "required": true,
             "in": "path",
+            "description": "The key id.",
             "schema": {
               "type": "string"
             }
@@ -1339,7 +1435,23 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "The new raw key, returned exactly once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedIntegratorKeyResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session token."
+          },
+          "404": {
+            "description": "No active key with that id."
+          },
+          "503": {
+            "description": "Self-serve key management is not configured."
           }
         },
         "security": [
@@ -1386,6 +1498,18 @@
       "description": "Service index"
     },
     {
+      "name": "fee-bump",
+      "description": "Sponsored fees for reserve-locked accounts"
+    },
+    {
+      "name": "config",
+      "description": "Served configuration"
+    },
+    {
+      "name": "integrator",
+      "description": "Wallet-authenticated self-serve API key management"
+    },
+    {
       "name": "admin",
       "description": "Operator-only self-serve API key management"
     }
@@ -1408,6 +1532,12 @@
         "bearerFormat": "opaque",
         "type": "http",
         "description": "Operator admin token"
+      },
+      "integrator-session": {
+        "scheme": "bearer",
+        "bearerFormat": "opaque",
+        "type": "http",
+        "description": "Short-lived wallet session token from POST /integrator/auth/session"
       }
     },
     "schemas": {
@@ -3553,6 +3683,31 @@
           "debtAmount"
         ]
       },
+      "DefiEnrichmentEntryDto": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "decimals": {
+            "type": "number"
+          },
+          "usdPrice": {
+            "type": "string",
+            "nullable": true
+          },
+          "priceSource": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "symbol",
+          "decimals",
+          "usdPrice",
+          "priceSource"
+        ]
+      },
       "UnrecognizedDefiPositionDto": {
         "type": "object",
         "properties": {
@@ -3579,6 +3734,31 @@
           "protocol",
           "rawType",
           "reason"
+        ]
+      },
+      "DefiQueryKeysSliceDto": {
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "string"
+          },
+          "ledgerKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "poolAddresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "protocol",
+          "ledgerKeys",
+          "poolAddresses"
         ]
       },
       "DefiRpcEndpointDto": {
@@ -4535,6 +4715,158 @@
         },
         "required": [
           "keys"
+        ]
+      },
+      "ChallengeRequestDto": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "The Stellar account (G...) that will sign the challenge."
+          }
+        },
+        "required": [
+          "address"
+        ]
+      },
+      "ChallengeResponseDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "The message to sign, per SEP-53."
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "ISO 8601 time after which the challenge is rejected."
+          }
+        },
+        "required": [
+          "message",
+          "expiresAt"
+        ]
+      },
+      "SessionRequestDto": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "The Stellar account (G...) that signed the challenge."
+          },
+          "message": {
+            "type": "string",
+            "description": "The challenge message exactly as returned by the challenge call."
+          },
+          "signature": {
+            "type": "string",
+            "description": "Base64 ed25519 signature over the SEP-53 digest of the message."
+          }
+        },
+        "required": [
+          "address",
+          "message",
+          "signature"
+        ]
+      },
+      "SessionResponseDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Bearer token for the key-management endpoints."
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "ISO 8601 time after which the token is rejected."
+          }
+        },
+        "required": [
+          "token",
+          "expiresAt"
+        ]
+      },
+      "IntegratorKeyRecordDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The key's id (the SHA-256 hash of the secret) - never the raw key."
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "ISO 8601."
+          },
+          "revokedAt": {
+            "type": "string",
+            "description": "ISO 8601, or null if still active.",
+            "nullable": true
+          },
+          "rotatedFrom": {
+            "type": "string",
+            "description": "The previous key's id, if this key replaced one.",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "createdAt",
+          "revokedAt",
+          "rotatedFrom"
+        ]
+      },
+      "ListIntegratorKeysResponseDto": {
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntegratorKeyRecordDto"
+            }
+          },
+          "usage": {
+            "nullable": true,
+            "description": "The wallet's request counts, shared by all its keys; null if unavailable.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OwnerUsageDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "keys",
+          "usage"
+        ]
+      },
+      "IssuedIntegratorKeyResponseDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The raw secret - shown exactly once, never retrievable again."
+          },
+          "record": {
+            "$ref": "#/components/schemas/IntegratorKeyRecordDto"
+          }
+        },
+        "required": [
+          "key",
+          "record"
+        ]
+      },
+      "RevokeIntegratorKeyResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "revoked"
+            ]
+          }
+        },
+        "required": [
+          "status"
         ]
       }
     }

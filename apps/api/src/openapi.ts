@@ -38,12 +38,24 @@ export function buildOpenApiConfig() {
       },
       "admin-token"
     )
+    .addBearerAuth(
+      {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "opaque",
+        description: "Short-lived wallet session token from POST /integrator/auth/session",
+      },
+      "integrator-session"
+    )
     .addTag("close", "Build and submit an account close-out")
     .addTag("account", "Read account state and conversion paths")
     .addTag("mediator", "Exchange-destination forwarding")
     .addTag("stats", "Public close counter")
     .addTag("health", "Service health")
     .addTag("service", "Service index")
+    .addTag("fee-bump", "Sponsored fees for reserve-locked accounts")
+    .addTag("config", "Served configuration")
+    .addTag("integrator", "Wallet-authenticated self-serve API key management")
     .addTag("admin", "Operator-only self-serve API key management")
     .build();
 }
