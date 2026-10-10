@@ -1,7 +1,6 @@
 import type { Network } from "@/config/networks";
 import { buildAccountPlan } from "@/lib/close-api/account-plan";
-import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils/errors";
-import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
+import { mapDomainError, PLAN_ERRORS } from "@/lib/close-api/domain-errors";
 import type { BatchPlanResult, PlanResponse } from "@lumenwipe/types";
 
 /**
@@ -25,26 +24,21 @@ export const defaultBatchPlanDeps = (): BatchPlanDeps => ({ buildAccountPlan });
 const BLOCKED_ESTIMATE = { feeStroops: "0", freedReserveXlm: "0.0000000" } as const;
 
 /**
- * The same error-to-code mapping `CloseController.plan()` uses for a single address, applied
- * per address here so a batch result and a single `close/plan` failure are always the same
- * vocabulary. Anything unrecognized falls back to `plan_failed`, mirroring that endpoint's own
- * catch-all.
+ * Maps through the same table `CloseController.plan()` answers from, so a batch result and a
+ * single `close/plan` failure are always the same vocabulary. Anything unrecognized falls back to
+ * `plan_failed`, mirroring that endpoint's own catch-all.
  */
 function blockedPlanFor(address: string, error: unknown): PlanResponse {
-  const [code, message] = ((): [string, string] => {
-    if (error instanceof AccountNotFoundError) return ["account_not_found", error.message];
-    if (error instanceof TruncatedCollectionError) return ["account_too_large", error.message];
-    if (error instanceof UnusableProviderResponseError) {
-      return ["provider_response_unusable", error.message];
-    }
-    return ["plan_failed", `Failed to build the close plan for ${address}.`];
-  })();
+  const mapped = mapDomainError(PLAN_ERRORS, error);
+  const blocker = mapped
+    ? { code: mapped.code, message: mapped.message }
+    : { code: "plan_failed" as const, message: `Failed to build the close plan for ${address}.` };
   return {
     planHash: "",
     status: "blocked",
     steps: [],
     decisionPoints: [],
-    blockers: [{ code, message }],
+    blockers: [blocker],
     estimate: BLOCKED_ESTIMATE,
     execution: { estimatedTransactionCount: 0, transactions: [] },
   };
