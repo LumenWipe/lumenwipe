@@ -7,12 +7,19 @@ import SwaggerParser from "@apidevtools/swagger-parser";
 import { SwaggerModule, type OpenAPIObject } from "@nestjs/swagger";
 import { AppModule } from "@/app.module";
 import { configureApp } from "@/configure-app";
+import { ERROR_CODES } from "@/common/error-codes";
+import {
+  ERROR_TABLE_END,
+  ERROR_TABLE_START,
+  renderErrorCodeTable,
+} from "@/common/error-code-table";
 import { buildOpenApiConfig, serializeOpenApiDocument } from "@/openapi";
 
 const COMMITTED = resolve(import.meta.dir, "../../../../docs/api-reference/openapi.json");
 
+const INTRODUCTION = resolve(import.meta.dir, "../../../../docs/api-reference/introduction.mdx");
 const DOCS_JSON = resolve(import.meta.dir, "../../../../docs/docs.json");
-const OPERATOR_AND_KEY_ISSUANCE_TAGS = new Set(["admin", "integrator"]);
+const KEY_ISSUANCE_TAGS = new Set(["integrator"]);
 
 let app: INestApplication;
 let spec: OpenAPIObject;
@@ -59,7 +66,7 @@ test("every public endpoint is listed in the docs navigation", async () => {
   for (const [path, item] of Object.entries(spec.paths)) {
     for (const [method, operation] of Object.entries(item)) {
       const tags = (operation as { tags?: string[] }).tags ?? [];
-      if (tags.some((tag) => OPERATOR_AND_KEY_ISSUANCE_TAGS.has(tag))) continue;
+      if (tags.some((tag) => KEY_ISSUANCE_TAGS.has(tag))) continue;
       const entry = `${method.toUpperCase()} ${path}`;
       if (!listed.has(entry)) missing.push(entry);
     }
@@ -144,4 +151,61 @@ test("every integrator operation documents its responses and any request body", 
 
 test("the document is valid OpenAPI", async () => {
   await SwaggerParser.validate(structuredClone(spec) as never);
+});
+
+test("operator-only routes are not in the public document", () => {
+  expect(Object.keys(spec.paths).filter((path) => path.startsWith("/admin"))).toEqual([]);
+  expect(spec.tags?.map((tag) => tag.name)).not.toContain("admin");
+  expect(Object.keys(spec.components?.securitySchemes ?? {})).not.toContain("admin-token");
+});
+
+test("the document names its contact and license", () => {
+  expect(spec.info.contact).toEqual({ name: "LumenWipe", url: "https://lumenwipe.com" });
+  expect(spec.info.license?.name).toBe("Apache-2.0");
+});
+
+// The deep health check answers with Terminus' own body, which carries its indicator results
+// rather than the envelope.
+const TERMINUS_RESPONSES = new Set(["GET /health/deep 503"]);
+
+test("every documented 4xx and 5xx response is the error envelope with a closed set of codes", () => {
+  const registered = new Set<string>(ERROR_CODES);
+  const problems = operations().flatMap(({ id, operation }) => {
+    const responses = (operation as { responses?: Record<string, unknown> }).responses ?? {};
+    return Object.entries(responses).flatMap(([status, response]) => {
+      if (!/^[45]/.test(status) || TERMINUS_RESPONSES.has(`${id} ${status}`)) return [];
+      const schema = (
+        response as {
+          content?: Record<
+            string,
+            {
+              schema?: {
+                allOf?: [
+                  { $ref?: string },
+                  { properties?: { error?: { properties?: { code?: { enum?: string[] } } } } },
+                ];
+              };
+            }
+          >;
+        }
+      ).content?.["application/json"]?.schema;
+      const codes = schema?.allOf?.[1]?.properties?.error?.properties?.code?.enum;
+      if (schema?.allOf?.[0]?.$ref !== "#/components/schemas/ErrorResponseDto") {
+        return [`${id} ${status}: does not reference ErrorResponseDto`];
+      }
+      if (!codes || codes.length === 0) return [`${id} ${status}: no closed set of codes`];
+      return codes.filter((code) => !registered.has(code)).map((c) => `${id} ${status}: ${c}`);
+    });
+  });
+  expect(problems).toEqual([]);
+});
+
+test("the error code table in introduction.mdx is generated from the registry", async () => {
+  const page = await readFile(INTRODUCTION, "utf8");
+  const start = page.indexOf(ERROR_TABLE_START);
+  const end = page.indexOf(ERROR_TABLE_END) + ERROR_TABLE_END.length;
+  expect(
+    page.slice(start, end) === renderErrorCodeTable(spec),
+    "introduction.mdx error table is stale. Regenerate it with: bun run --filter '@lumenwipe/api' openapi:generate"
+  ).toBe(true);
 });

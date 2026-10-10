@@ -9,6 +9,7 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import { StrKey } from "@stellar/stellar-sdk";
+import { ApiErrorResponse, ApiBodyErrorResponses } from "@/common/api-error-response.decorator";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { isValidNetwork } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
@@ -30,12 +31,23 @@ import { AccountStateDto } from "./dto/account-state-response.dto";
 @ApiTags("account")
 @ApiBearerAuth("api-key")
 @ApiParam({ name: "network", enum: ["testnet", "mainnet"] })
-@ApiResponse({ status: 401, description: "Missing or invalid API key." })
-@ApiResponse({ status: 429, description: "Rate limit exceeded for this key." })
+@ApiErrorResponse(401, "Missing or invalid API key.", ["unauthorized"])
+@ApiErrorResponse(429, "Rate limit exceeded for this key.", ["rate_limited"])
 @Controller(":network")
 export class AccountController {
   private readonly logger = new Logger(AccountController.name);
 
+  @ApiErrorResponse(400, "Invalid network, address or token list.", [
+    "invalid_network",
+    "invalid_address",
+    "invalid_tokens",
+  ])
+  @ApiErrorResponse(404, "Account not found.", ["account_not_found"])
+  @ApiErrorResponse(422, "The account is too large to read in one request.", ["account_too_large"])
+  @ApiErrorResponse(500, "The account could not be read.", ["account_read_failed"])
+  @ApiErrorResponse(502, "The data provider returned an unusable response.", [
+    "provider_response_unusable",
+  ])
   @Get("account/:address")
   @ApiOperation({
     summary: "Read full on-chain account state (balances, trustlines, offers, signers).",
@@ -46,7 +58,6 @@ export class AccountController {
     description: "Aggregated account state.",
     type: AccountStateDto,
   })
-  @ApiResponse({ status: 400, description: "Invalid network or address." })
   @ApiQuery({
     name: "tokens",
     required: false,
@@ -54,7 +65,6 @@ export class AccountController {
       "Soroban token contracts (C..., comma-separated, at most 20) to check for a balance besides " +
       "what discovery finds.",
   })
-  @ApiResponse({ status: 404, description: "Account not found." })
   async account(
     @Param("network") network: string,
     @Param("address") address: string,
@@ -116,6 +126,8 @@ export class AccountController {
     }
   }
 
+  @ApiErrorResponse(400, "Invalid network or address.", ["invalid_network", "invalid_address"])
+  @ApiErrorResponse(500, "Allowances could not be read.", ["allowances_read_failed"])
   @Get("allowances/:address")
   @ApiOperation({
     summary:
@@ -127,7 +139,6 @@ export class AccountController {
     description: "Live, non-zero allowances, best effort.",
     type: AllowancesResultDto,
   })
-  @ApiResponse({ status: 400, description: "Invalid network or address." })
   async allowances(@Param("network") network: string, @Param("address") address: string) {
     if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
     if (!isValidGAddress(address)) {
@@ -145,6 +156,21 @@ export class AccountController {
     }
   }
 
+  @ApiErrorResponse(400, "Invalid network, owner, token, spender or JSON body.", [
+    "invalid_network",
+    "invalid_owner",
+    "invalid_token",
+    "invalid_spender",
+    "invalid_body",
+  ])
+  @ApiErrorResponse(404, "The owner account does not exist.", ["owner_not_found"])
+  @ApiErrorResponse(422, "The revocation could not be built safely.", [
+    "revoke_needs_restore",
+    "revoke_simulation_failed",
+    "revoke_unsafe",
+  ])
+  @ApiErrorResponse(500, "The revocation could not be built.", ["revoke_build_failed"])
+  @ApiBodyErrorResponses()
   @Post("allowances/revoke")
   @ApiOperation({
     summary:
@@ -167,8 +193,6 @@ export class AccountController {
     description: "The unsigned revocation transaction.",
     type: RevokeAllowanceResponseDto,
   })
-  @ApiResponse({ status: 400, description: "Invalid network, owner, token, or spender." })
-  @ApiResponse({ status: 422, description: "The revocation could not be built safely." })
   async revokeAllowance(
     @Param("network") network: string,
     @Body() body: { owner?: unknown; token?: unknown; spender?: unknown }
@@ -206,6 +230,11 @@ export class AccountController {
     }
   }
 
+  @ApiErrorResponse(400, "Invalid network or missing query params.", [
+    "invalid_network",
+    "missing_parameters",
+  ])
+  @ApiErrorResponse(500, "The path lookup failed.", ["path_lookup_failed"])
   @Get("paths")
   @ApiOperation({ summary: "Find a conversion path from an asset to XLM." })
   @ApiQuery({ name: "fromAsset", description: "Asset to convert (e.g. CODE:ISSUER or 'native')." })
@@ -215,7 +244,6 @@ export class AccountController {
     description: "The conversion path (or null if none).",
     type: PathResponseDto,
   })
-  @ApiResponse({ status: 400, description: "Invalid network or missing query params." })
   async paths(
     @Param("network") network: string,
     @Query("fromAsset") fromAsset?: string,

@@ -1,3 +1,5 @@
+import type { ErrorCode } from "@lumenwipe/types";
+import { isErrorCode } from "@/common/error-codes";
 import type { AccountState, CloseTransaction, Network } from "@lumenwipe/types";
 import { SLIPPAGE_BPS } from "@/config/constants";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
@@ -19,7 +21,7 @@ import { tokenBalancesFor } from "./token-balances";
 
 export class ExitRoundBlockedError extends Error {
   constructor(
-    public readonly code: string,
+    public readonly code: ErrorCode,
     message: string
   ) {
     super(message);
@@ -89,7 +91,7 @@ export async function buildExitRound(
       if (gone) continue;
       const first = result.blockers[0];
       throw new ExitRoundBlockedError(
-        first?.code ?? "defi_exit_blocked",
+        isErrorCode(first?.code) ? first.code : "defi_exit_blocked",
         first?.message ?? "This DeFi position could not be exited safely."
       );
     }

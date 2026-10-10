@@ -10,6 +10,7 @@ import {
 import { Transaction } from "@stellar/stellar-sdk";
 import { MediatorSignRequestDto } from "./dto/mediator-sign.dto";
 import { MediatorCheckResultDto, MediatorSignResponseDto } from "./dto/mediator-responses.dto";
+import { ApiErrorResponse, ApiBodyErrorResponses } from "@/common/api-error-response.decorator";
 import { isValidNetwork, NETWORK_PASSPHRASES, getMediatorPublicKey } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { lookupExchange } from "@/lib/exchange-registry";
@@ -22,8 +23,8 @@ import { fail } from "@/common/fail";
 @ApiTags("mediator")
 @ApiBearerAuth("api-key")
 @ApiParam({ name: "network", enum: ["testnet", "mainnet"] })
-@ApiResponse({ status: 401, description: "Missing or invalid API key." })
-@ApiResponse({ status: 429, description: "Rate limit exceeded for this key." })
+@ApiErrorResponse(401, "Missing or invalid API key.", ["unauthorized"])
+@ApiErrorResponse(429, "Rate limit exceeded for this key.", ["rate_limited"])
 @Controller(":network/mediator")
 export class MediatorController {
   /**
@@ -31,6 +32,20 @@ export class MediatorController {
    * [accountMerge → mediator, payment mediator → destination] shape and only
    * then adds the mediator signature; it can never change destination/amount.
    */
+  @ApiErrorResponse(400, "Missing/invalid transaction or disallowed structure.", [
+    "invalid_network",
+    "missing_transaction",
+    "invalid_transaction_xdr",
+    "transaction_structure_not_allowed",
+    "merged_account_not_found",
+    "forward_amount_exceeds_balance",
+    "invalid_body",
+  ])
+  @ApiErrorResponse(500, "The mediator key is misconfigured.", ["mediator_key_misconfiguration"])
+  @ApiErrorResponse(503, "Mediator flow not configured on this server.", [
+    "mediator_not_configured",
+  ])
+  @ApiBodyErrorResponses()
   @Post("sign")
   @HttpCode(200)
   @ApiOperation({ summary: "Co-sign the mediator forwarding payment of an exchange close." })
@@ -40,8 +55,6 @@ export class MediatorController {
     description: "The transaction with the mediator signature added (base64 XDR).",
     type: MediatorSignResponseDto,
   })
-  @ApiResponse({ status: 400, description: "Missing/invalid transaction or disallowed structure." })
-  @ApiResponse({ status: 503, description: "Mediator flow not configured on this server." })
   async sign(@Param("network") network: string, @Body() body: { transaction?: string }) {
     if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
 
@@ -119,6 +132,7 @@ export class MediatorController {
     return { transaction: tx.toEnvelope().toXDR("base64") };
   }
 
+  @ApiErrorResponse(400, "Invalid network or address.", ["invalid_network", "invalid_address"])
   @Get("check/:address")
   @ApiOperation({ summary: "Check whether a destination needs the mediator flow and/or a memo." })
   @ApiParam({ name: "address", description: "Destination account (G...)." })
@@ -127,7 +141,6 @@ export class MediatorController {
     description: "Mediator/memo requirements for the destination.",
     type: MediatorCheckResultDto,
   })
-  @ApiResponse({ status: 400, description: "Invalid network or address." })
   async check(@Param("network") network: string, @Param("address") address: string) {
     if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
     if (!isValidGAddress(address)) fail("invalid_address", "Invalid address", 400);

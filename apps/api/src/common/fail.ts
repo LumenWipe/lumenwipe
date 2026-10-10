@@ -1,3 +1,4 @@
+import type { ErrorCode } from "@lumenwipe/types";
 import { HttpException } from "@nestjs/common";
 
 /**
@@ -13,7 +14,7 @@ import { HttpException } from "@nestjs/common";
  * code is a contract, which is why every call site names one rather than letting the status
  * carry the meaning.
  */
-export function fail(code: string, message: string, status: number, details?: unknown): never {
+export function fail(code: ErrorCode, message: string, status: number, details?: unknown): never {
   const error: Record<string, unknown> = { code, message };
   if (details !== undefined) error.details = details;
   throw new HttpException({ error }, status);

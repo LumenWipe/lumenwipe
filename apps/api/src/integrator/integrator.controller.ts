@@ -17,6 +17,7 @@ import {
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
+import { ApiErrorResponse, ApiBodyErrorResponses } from "@/common/api-error-response.decorator";
 import { Public } from "@/auth/public.decorator";
 import { API_KEY_STORE, type ApiKeyRecord, type ApiKeyStore } from "@/auth/api-key-store";
 import { ApiKeyDirectory } from "@/auth/api-key-directory";
@@ -63,13 +64,16 @@ export class IntegratorController {
     private readonly directory: ApiKeyDirectory
   ) {}
 
+  @ApiErrorResponse(400, "Missing or invalid address.", ["invalid_address", "invalid_body"])
+  @ApiErrorResponse(503, "Self-serve key management is not configured.", [
+    "integrator_api_not_configured",
+  ])
+  @ApiBodyErrorResponses()
   @Post("auth/challenge")
   @HttpCode(200)
   @ApiOperation({ summary: "Get a challenge transaction for a wallet to sign." })
   @ApiBody({ type: ChallengeRequestDto })
   @ApiResponse({ status: 200, description: "A challenge to sign.", type: ChallengeResponseDto })
-  @ApiResponse({ status: 400, description: "Missing or invalid address." })
-  @ApiResponse({ status: 503, description: "Self-serve key management is not configured." })
   challenge(@Body() body: { address?: unknown }) {
     const secret = requireIntegratorConfig();
     if (!isClassicAddress(body.address)) {
@@ -78,14 +82,20 @@ export class IntegratorController {
     return buildChallenge(secret, body.address);
   }
 
+  @ApiErrorResponse(400, "Missing or invalid address, message or signature.", [
+    "invalid_request",
+    "invalid_body",
+  ])
+  @ApiErrorResponse(401, "The signed challenge is invalid or has expired.", ["invalid_challenge"])
+  @ApiErrorResponse(503, "Self-serve key management is not configured.", [
+    "integrator_api_not_configured",
+  ])
+  @ApiBodyErrorResponses()
   @Post("auth/session")
   @HttpCode(200)
   @ApiOperation({ summary: "Exchange a signed challenge for a short-lived session token." })
   @ApiBody({ type: SessionRequestDto })
   @ApiResponse({ status: 200, description: "A session token.", type: SessionResponseDto })
-  @ApiResponse({ status: 400, description: "Missing or invalid address, message or signature." })
-  @ApiResponse({ status: 401, description: "The signed challenge is invalid or has expired." })
-  @ApiResponse({ status: 503, description: "Self-serve key management is not configured." })
   session(@Body() body: { address?: unknown; message?: unknown; signature?: unknown }) {
     const secret = requireIntegratorConfig();
     const { address, message, signature } = body;
@@ -102,13 +112,15 @@ export class IntegratorController {
     return issueSession(secret, address);
   }
 
+  @ApiErrorResponse(401, "Missing, invalid or expired session token.", ["unauthorized"])
+  @ApiErrorResponse(503, "Self-serve key management is not configured.", [
+    "integrator_api_not_configured",
+  ])
   @Get("keys")
   @ApiBearerAuth("integrator-session")
   @UseGuards(IntegratorGuard)
   @ApiOperation({ summary: "List the signed-in wallet's keys with its request counts." })
   @ApiResponse({ status: 200, type: ListIntegratorKeysResponseDto })
-  @ApiResponse({ status: 401, description: "Missing, invalid or expired session token." })
-  @ApiResponse({ status: 503, description: "Self-serve key management is not configured." })
   async list(@Req() req: IntegratorRequest) {
     const owner = req.integratorAddress!;
     const records = await this.store.listByOwner(owner);
@@ -116,6 +128,12 @@ export class IntegratorController {
     return { keys: records.map(toDto), usage };
   }
 
+  @ApiErrorResponse(401, "Missing, invalid or expired session token.", ["unauthorized"])
+  @ApiErrorResponse(409, "The wallet already has the maximum active keys.", ["key_limit_reached"])
+  @ApiErrorResponse(503, "Self-serve key management is not configured.", [
+    "integrator_api_not_configured",
+  ])
+  @ApiBodyErrorResponses()
   @Post("keys")
   @HttpCode(201)
   @ApiBearerAuth("integrator-session")
@@ -126,9 +144,6 @@ export class IntegratorController {
     description: "The raw key, returned exactly once.",
     type: IssuedIntegratorKeyResponseDto,
   })
-  @ApiResponse({ status: 401, description: "Missing, invalid or expired session token." })
-  @ApiResponse({ status: 409, description: "The wallet already has the maximum active keys." })
-  @ApiResponse({ status: 503, description: "Self-serve key management is not configured." })
   async create(@Req() req: IntegratorRequest) {
     const owner = req.integratorAddress!;
     const active = (await this.store.listByOwner(owner)).filter((r) => !r.revokedAt);
@@ -143,6 +158,12 @@ export class IntegratorController {
     return { key: raw, record: toDto(record) };
   }
 
+  @ApiErrorResponse(401, "Missing, invalid or expired session token.", ["unauthorized"])
+  @ApiErrorResponse(404, "No key with that id.", ["api_key_not_found"])
+  @ApiErrorResponse(503, "Self-serve key management is not configured.", [
+    "integrator_api_not_configured",
+  ])
+  @ApiBodyErrorResponses()
   @Post("keys/:id/revoke")
   @HttpCode(200)
   @ApiBearerAuth("integrator-session")
@@ -150,9 +171,6 @@ export class IntegratorController {
   @ApiOperation({ summary: "Revoke one of the signed-in wallet's keys." })
   @ApiParam({ name: "id", description: "The key id." })
   @ApiResponse({ status: 200, description: "Revoked.", type: RevokeIntegratorKeyResponseDto })
-  @ApiResponse({ status: 401, description: "Missing, invalid or expired session token." })
-  @ApiResponse({ status: 404, description: "No key with that id." })
-  @ApiResponse({ status: 503, description: "Self-serve key management is not configured." })
   async revoke(@Req() req: IntegratorRequest, @Param("id") id: string) {
     await this.requireOwned(req.integratorAddress!, id);
     await this.store.revoke(id);
@@ -160,6 +178,12 @@ export class IntegratorController {
     return { status: "revoked" };
   }
 
+  @ApiErrorResponse(401, "Missing, invalid or expired session token.", ["unauthorized"])
+  @ApiErrorResponse(404, "No active key with that id.", ["api_key_not_found"])
+  @ApiErrorResponse(503, "Self-serve key management is not configured.", [
+    "integrator_api_not_configured",
+  ])
+  @ApiBodyErrorResponses()
   @Post("keys/:id/rotate")
   @HttpCode(200)
   @ApiBearerAuth("integrator-session")
@@ -171,9 +195,6 @@ export class IntegratorController {
     description: "The new raw key, returned exactly once.",
     type: IssuedIntegratorKeyResponseDto,
   })
-  @ApiResponse({ status: 401, description: "Missing, invalid or expired session token." })
-  @ApiResponse({ status: 404, description: "No active key with that id." })
-  @ApiResponse({ status: 503, description: "Self-serve key management is not configured." })
   async rotate(@Req() req: IntegratorRequest, @Param("id") id: string) {
     await this.requireOwned(req.integratorAddress!, id);
     const result = await this.store.rotate(id);

@@ -1,3 +1,4 @@
+import type { ErrorCode } from "@lumenwipe/types";
 import {
   Account,
   Address,
@@ -30,7 +31,7 @@ import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
  *  own error response rather than ever handing back an unsafe transaction. */
 export class RevokeAllowanceBlockedError extends Error {
   constructor(
-    readonly code: string,
+    readonly code: ErrorCode,
     message: string
   ) {
     super(message);

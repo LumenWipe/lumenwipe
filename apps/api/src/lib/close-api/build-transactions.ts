@@ -1,3 +1,5 @@
+import type { ErrorCode } from "@lumenwipe/types";
+import { isErrorCode } from "@/common/error-codes";
 import { Account, Memo, TransactionBuilder } from "@stellar/stellar-sdk";
 import {
   buildExitRound,
@@ -65,7 +67,7 @@ import { isXBullEnabled } from "@/lib/xbull/conversion-quotes";
 // The route handler maps `code` to an error response.
 export class CloseBuildError extends Error {
   constructor(
-    public readonly code: string,
+    public readonly code: ErrorCode,
     message: string,
     public readonly status = 422
   ) {
@@ -190,7 +192,11 @@ export async function buildCloseTransactions(
   ).filter((b) => !isNonTrappingDefiBlocker(b));
   if (defiBlockers.length > 0) {
     const first = defiBlockers[0]!;
-    throw new CloseBuildError(first.code ?? "defi_positions_blocked", first.message, 422);
+    throw new CloseBuildError(
+      isErrorCode(first.code) ? first.code : "defi_positions_blocked",
+      first.message,
+      422
+    );
   }
 
   const server = getRpcServer(network);

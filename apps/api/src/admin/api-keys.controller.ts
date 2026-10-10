@@ -9,14 +9,7 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common";
-import {
-  ApiBearerAuth,
-  ApiBody,
-  ApiOperation,
-  ApiQuery,
-  ApiResponse,
-  ApiTags,
-} from "@nestjs/swagger";
+import { ApiExcludeController } from "@nestjs/swagger";
 import { Public } from "@/auth/public.decorator";
 import {
   API_KEY_STORE,
@@ -28,12 +21,7 @@ import { ApiKeyDirectory } from "@/auth/api-key-directory";
 import { MeteringService } from "@/metering/metering.service";
 import { fail } from "@/common/fail";
 import { AdminGuard } from "./admin.guard";
-import {
-  ApiKeyRecordDto,
-  CreateApiKeyRequestDto,
-  CreateApiKeyResponseDto,
-  ListApiKeysResponseDto,
-} from "./dto/api-key-admin.dto";
+import { ApiKeyRecordDto } from "./dto/api-key-admin.dto";
 
 function toRecordDto(record: ApiKeyRecord): ApiKeyRecordDto {
   return {
@@ -74,8 +62,7 @@ function parseRateLimit(input: unknown): RateLimitOverride | null {
  * until then, an operator calls these on an integrator's behalf. `@Public()` skips the
  * integrator `ApiKeyGuard` entirely - `AdminGuard` is the only gate.
  */
-@ApiTags("admin")
-@ApiBearerAuth("admin-token")
+@ApiExcludeController()
 @Public()
 @UseGuards(AdminGuard)
 @Controller("admin/api-keys")
@@ -88,15 +75,6 @@ export class ApiKeysAdminController {
 
   @Post()
   @HttpCode(201)
-  @ApiOperation({ summary: "Create a new self-serve API key for an integrator." })
-  @ApiBody({ type: CreateApiKeyRequestDto })
-  @ApiResponse({
-    status: 201,
-    description: "The raw key, returned exactly once.",
-    type: CreateApiKeyResponseDto,
-  })
-  @ApiResponse({ status: 400, description: "Missing/invalid owner or rateLimit." })
-  @ApiResponse({ status: 503, description: "Self-serve key management is not configured." })
   async create(@Body() body: { owner?: unknown; rateLimit?: unknown }) {
     const owner = typeof body.owner === "string" ? body.owner.trim() : "";
     if (!owner) fail("invalid_owner", "A non-empty owner is required.", 400);
@@ -107,10 +85,6 @@ export class ApiKeysAdminController {
   }
 
   @Get()
-  @ApiOperation({ summary: "List an owner's keys, with the owner's request counts." })
-  @ApiQuery({ name: "owner", required: true })
-  @ApiResponse({ status: 200, type: ListApiKeysResponseDto })
-  @ApiResponse({ status: 400, description: "Missing owner query parameter." })
   async list(@Query("owner") owner?: string) {
     if (!owner) fail("invalid_owner", "An owner query parameter is required.", 400);
     const records = await this.store.listByOwner(owner);
@@ -120,9 +94,6 @@ export class ApiKeysAdminController {
 
   @Post(":id/revoke")
   @HttpCode(200)
-  @ApiOperation({ summary: "Revoke a key immediately." })
-  @ApiResponse({ status: 200, description: "Revoked." })
-  @ApiResponse({ status: 404, description: "No key with that id." })
   async revoke(@Param("id") id: string) {
     const revoked = await this.store.revoke(id);
     if (!revoked) fail("api_key_not_found", "No key with that id.", 404);
@@ -134,13 +105,6 @@ export class ApiKeysAdminController {
 
   @Post(":id/rotate")
   @HttpCode(200)
-  @ApiOperation({ summary: "Revoke a key and issue its replacement in one call." })
-  @ApiResponse({
-    status: 200,
-    description: "The new raw key, returned exactly once.",
-    type: CreateApiKeyResponseDto,
-  })
-  @ApiResponse({ status: 404, description: "No active key with that id." })
   async rotate(@Param("id") id: string) {
     const result = await this.store.rotate(id);
     if (!result) fail("api_key_not_found", "No active key with that id.", 404);

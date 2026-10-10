@@ -1,4 +1,5 @@
 import type { INestApplication } from "@nestjs/common";
+import type { ErrorCode } from "@lumenwipe/types";
 import { json } from "express";
 import type { ErrorRequestHandler, NextFunction, Request, RequestHandler, Response } from "express";
 import { ErrorEnvelopeFilter } from "./common/error-envelope.filter";
@@ -7,7 +8,7 @@ export const JSON_BODY_LIMIT = "100kb";
 
 const BODY_METHODS = new Set(["POST", "PUT", "PATCH"]);
 
-const BODY_PARSER_ERRORS: Record<string, { status: number; code: string; message: string }> = {
+const BODY_PARSER_ERRORS: Record<string, { status: number; code: ErrorCode; message: string }> = {
   "entity.parse.failed": {
     status: 400,
     code: "invalid_body",
