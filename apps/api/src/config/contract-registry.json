@@ -1,7 +1,7 @@
 {
-  "version": "2026-09-02",
-  "lastVerified": "2026-09-02",
-  "validUntil": "2026-12-01",
+  "version": "2026-10-10",
+  "lastVerified": "2026-10-10",
+  "validUntil": "2027-01-08",
   "source": "manually verified per-entry against each protocol's official docs/GitHub (Blend: docs.blend.capital/mainnet-deployments + blend-capital/blend-utils mainnet.contracts.json; Soroswap: soroswap/core public/mainnet.contracts.json; Aquarius: docs.aqua.network addresses-and-networks + the router's own instance) and the live instance's executable hash over RPC on lastVerified; mainnet labels cross-checked against the stellar.expert directory where it names the contract",
   "entries": [
     {
