@@ -116,7 +116,7 @@ export default function Faq() {
               aria-controls={`${baseId}-${i}-panel`}
               onClick={() => setOpen(isOpen ? null : i)}
               aria-expanded={isOpen}
-              className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-white/[0.02] sm:px-6 sm:py-5"
+              className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-white/[0.02] focus-visible:-outline-offset-2 sm:px-6 sm:py-5"
             >
               <span
                 className={`text-[0.98rem] font-medium transition-colors ${

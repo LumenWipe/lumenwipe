@@ -344,9 +344,9 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       {closed ? (
         <div
           role="status"
-          className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-6 text-center"
+          className="bg-success/10 border border-success/30 rounded-2xl p-6 text-center"
         >
-          <CheckCircle className="h-12 w-12 text-emerald-500 mx-auto mb-3" />
+          <CheckCircle className="h-12 w-12 text-success mx-auto mb-3" />
           <h1
             ref={headingRef}
             tabIndex={-1}

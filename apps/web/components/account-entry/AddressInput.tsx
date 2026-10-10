@@ -32,7 +32,7 @@ export default function AddressInput({
     <div className="space-y-1.5">
       <label className="text-sm font-medium text-white">
         {label}
-        {required && <span className="text-destructive ml-1">*</span>}
+        {required && <span className="text-danger-fg ml-1">*</span>}
       </label>
       <div className="relative">
         <input
@@ -47,25 +47,24 @@ export default function AddressInput({
           className={cn(
             "w-full font-mono-address bg-black/30 border rounded-lg px-3 py-2.5 pr-9 text-sm",
             "placeholder:text-white/30",
-            "focus:outline-none focus:ring-2 focus:ring-stellar/40 focus:ring-offset-0",
             "disabled:opacity-50 disabled:cursor-not-allowed",
             "transition-colors",
-            showError ? "border-destructive focus:ring-destructive/50" : "border-white/10",
-            isValid && touched ? "border-emerald-500/50" : ""
+            showError ? "border-destructive" : "border-white/10",
+            isValid && touched ? "border-success/50" : ""
           )}
         />
         {touched && value && (
           <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
             {isValid ? (
-              <CheckCircle className="h-4 w-4 text-emerald-500" />
+              <CheckCircle className="h-4 w-4 text-success" />
             ) : (
-              <XCircle className="h-4 w-4 text-destructive" />
+              <XCircle className="h-4 w-4 text-danger-fg" />
             )}
           </div>
         )}
       </div>
       {showError && (
-        <p className="flex items-center gap-1 text-xs text-destructive">
+        <p className="flex items-center gap-1 text-xs text-danger-fg">
           <AlertCircle className="h-3 w-3" />
           Not a valid Stellar address (must start with G)
         </p>

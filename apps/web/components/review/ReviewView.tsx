@@ -99,7 +99,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
       </div>
 
       <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-sm">
-        <p className="font-semibold text-destructive mb-1">
+        <p className="font-semibold text-danger-fg mb-1">
           This plan is permanent and irreversible.
         </p>
         <p className="text-white/60">

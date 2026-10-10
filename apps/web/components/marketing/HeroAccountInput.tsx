@@ -32,8 +32,8 @@ export default function HeroAccountInput() {
     <div className="w-full max-w-2xl mx-auto">
       <form onSubmit={handleSubmit}>
         <div
-          className={`flex items-center gap-2 rounded-2xl border bg-white/[0.04] p-2 transition-colors focus-within:border-stellar/50 ${
-            error ? "border-red-500/40" : "border-white/12"
+          className={`flex items-center gap-2 rounded-2xl border bg-white/[0.04] p-2 transition-colors has-[input:focus-visible]:outline has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-focus ${
+            error ? "border-danger/40" : "border-white/12"
           }`}
         >
           <Search className="ml-2 h-4 w-4 shrink-0 text-white/30" />
@@ -45,7 +45,7 @@ export default function HeroAccountInput() {
               if (error) setError(null);
             }}
             placeholder="Paste a Stellar account address - G…"
-            className="flex-1 bg-transparent py-2 pr-2 mkt-mono text-[0.8rem] text-white placeholder:text-white/25 outline-none min-w-0"
+            className="flex-1 bg-transparent py-2 pr-2 mkt-mono text-[0.8rem] text-white placeholder:text-white/25 min-w-0 focus-visible:outline-none"
             spellCheck={false}
             autoComplete="off"
             autoCorrect="off"
@@ -61,7 +61,7 @@ export default function HeroAccountInput() {
       </form>
 
       {error ? (
-        <p className="mt-2.5 flex items-center gap-1.5 text-xs text-red-400">
+        <p className="mt-2.5 flex items-center gap-1.5 text-xs text-danger-fg">
           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
           {error}
         </p>

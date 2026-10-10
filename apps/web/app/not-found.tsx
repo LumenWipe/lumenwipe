@@ -69,10 +69,10 @@ export default function NotFound() {
               <ul className="mkt-mono space-y-2 text-sm">
                 {STEPS.map((s) => (
                   <li key={s.label} className="flex items-center gap-3">
-                    <span className={s.ok ? "text-stellar" : "text-red-400"}>
+                    <span className={s.ok ? "text-stellar" : "text-danger-fg"}>
                       {s.ok ? "✓" : "✗"}
                     </span>
-                    <span className={s.ok ? "text-white/40" : "text-red-400/75"}>
+                    <span className={s.ok ? "text-white/40" : "text-danger-fg/75"}>
                       {s.label}
                       {!s.ok && " - account_not_found"}
                     </span>

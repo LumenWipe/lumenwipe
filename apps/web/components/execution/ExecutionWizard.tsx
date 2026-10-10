@@ -293,8 +293,8 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           mismatchWarning={walletMismatchWarning}
         />
       ) : keyEntered ? (
-        <div className="flex items-center justify-between gap-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2.5">
-          <span className="flex items-center gap-2 text-sm text-emerald-400">
+        <div className="flex items-center justify-between gap-3 bg-success/10 border border-success/20 rounded-lg px-3 py-2.5">
+          <span className="flex items-center gap-2 text-sm text-success">
             <CheckCircle className="h-4 w-4 shrink-0" />
             Secret key loaded for this session
           </span>
@@ -354,7 +354,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
           {/* Irreversible warning */}
           <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-sm">
-            <p className="font-semibold text-destructive mb-1">
+            <p className="font-semibold text-danger-fg mb-1">
               This action is permanent and irreversible.
             </p>
             <p className="text-white/60">
@@ -393,7 +393,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 role="alert"
                 className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-white/70 outline-none"
               >
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-destructive" />
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-danger-fg" />
                 <span>{lastError ?? "The close could not be completed."}</span>
               </div>
               <button

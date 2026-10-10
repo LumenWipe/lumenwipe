@@ -38,7 +38,7 @@ const config: Config = {
           disabled: token("fg-disabled"),
         },
         success: token("success"),
-        "danger-fg": token("danger-fg"),
+        danger: { DEFAULT: token("danger"), fg: token("danger-fg") },
         focus: token("focus"),
         // stellar/warning were previously only hand-written bare utilities in globals.css
         // (.text-stellar, .bg-warning, etc.) with no entry here - that covers the plain class,
@@ -91,6 +91,7 @@ const config: Config = {
           foreground: "hsl(var(--card-foreground))",
         },
       },
+      opacity: { "6": "0.06", "8": "0.08", "12": "0.12" },
       spacing: {
         gutter: "var(--space-4)",
         card: "var(--space-5)",

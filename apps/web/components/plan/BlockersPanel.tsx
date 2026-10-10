@@ -16,10 +16,10 @@ export default function BlockersPanel({ blockers, blocking }: BlockersPanelProps
   const theme = blocking
     ? {
         container: "bg-destructive/10 border-destructive/30",
-        icon: <AlertOctagon className="h-4 w-4 text-destructive shrink-0" />,
-        heading: "text-destructive",
+        icon: <AlertOctagon className="h-4 w-4 text-danger-fg shrink-0" />,
+        heading: "text-danger-fg",
         headingText: "Cannot proceed - blockers found",
-        bullet: "text-destructive",
+        bullet: "text-danger-fg",
       }
     : {
         container: "bg-amber-500/[0.06] border-amber-500/30",

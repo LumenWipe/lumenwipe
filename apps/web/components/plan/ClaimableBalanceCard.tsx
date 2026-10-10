@@ -32,12 +32,10 @@ export default function ClaimableBalanceCard({
       <div
         className={cn(
           "flex items-center gap-3 rounded-lg border p-3",
-          forfeited ? "border-white/15 bg-white/[0.03]" : "border-emerald-500/20 bg-emerald-500/5"
+          forfeited ? "border-white/15 bg-white/[0.03]" : "border-success/20 bg-success/5"
         )}
       >
-        <Target
-          className={cn("h-4 w-4 shrink-0", forfeited ? "text-white/40" : "text-emerald-400")}
-        />
+        <Target className={cn("h-4 w-4 shrink-0", forfeited ? "text-white/40" : "text-success")} />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-white">
             {item.amount} {item.code}

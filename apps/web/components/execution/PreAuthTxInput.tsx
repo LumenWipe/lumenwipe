@@ -79,7 +79,6 @@ export default function PreAuthTxInput({ signer, disabled, onSubmit }: Props) {
         className={cn(
           "w-full font-mono-address bg-black/30 border rounded-lg px-3 py-2 text-xs",
           "placeholder:text-white/30",
-          "focus:outline-none focus:ring-2 focus:ring-stellar/40",
           "disabled:opacity-50 disabled:cursor-not-allowed",
           error ? "border-destructive" : "border-white/10"
         )}
@@ -93,13 +92,13 @@ export default function PreAuthTxInput({ signer, disabled, onSubmit }: Props) {
         {submitting ? "Submitting…" : "Submit pre-authorized transaction"}
       </button>
       {error && (
-        <p className="flex items-center gap-1.5 text-xs text-destructive">
+        <p className="flex items-center gap-1.5 text-xs text-danger-fg">
           <XCircle className="h-3.5 w-3.5 shrink-0" />
           {error}
         </p>
       )}
       {submitted && !error && (
-        <p className="flex items-center gap-1.5 text-xs text-emerald-400">
+        <p className="flex items-center gap-1.5 text-xs text-success">
           <CheckCircle className="h-3.5 w-3.5 shrink-0" />
           Pre-authorized transaction submitted.
         </p>

@@ -69,7 +69,6 @@ export default function HashXPreimageInput({ signer, disabled, onApply }: Props)
           className={cn(
             "flex-1 font-mono-address bg-black/30 border rounded-lg px-3 py-2 text-sm",
             "placeholder:text-white/30",
-            "focus:outline-none focus:ring-2 focus:ring-stellar/40",
             "disabled:opacity-50 disabled:cursor-not-allowed",
             error ? "border-destructive" : "border-white/10"
           )}
@@ -84,13 +83,13 @@ export default function HashXPreimageInput({ signer, disabled, onApply }: Props)
         </button>
       </div>
       {error && (
-        <p className="flex items-center gap-1.5 text-xs text-destructive">
+        <p className="flex items-center gap-1.5 text-xs text-danger-fg">
           <XCircle className="h-3.5 w-3.5 shrink-0" />
           {error}
         </p>
       )}
       {applied && !error && (
-        <p className="flex items-center gap-1.5 text-xs text-emerald-400">
+        <p className="flex items-center gap-1.5 text-xs text-success">
           <CheckCircle className="h-3.5 w-3.5 shrink-0" />
           Preimage matches - contributing this signer&apos;s weight.
         </p>

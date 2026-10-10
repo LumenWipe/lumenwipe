@@ -22,18 +22,16 @@ export default function PlanSidebar({ steps, currentIndex }: PlanSidebarProps) {
               isActive
                 ? "bg-stellar/10 border border-stellar/30 text-white"
                 : step.status === "confirmed"
-                  ? "text-emerald-400/70"
+                  ? "text-success/70"
                   : step.status === "failed"
-                    ? "text-destructive/70"
+                    ? "text-danger-fg/70"
                     : "text-white/45"
             )}
           >
             {/* Status icon */}
             <div className="shrink-0">
-              {step.status === "confirmed" && (
-                <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />
-              )}
-              {step.status === "failed" && <AlertCircle className="h-3.5 w-3.5 text-destructive" />}
+              {step.status === "confirmed" && <CheckCircle className="h-3.5 w-3.5 text-success" />}
+              {step.status === "failed" && <AlertCircle className="h-3.5 w-3.5 text-danger-fg" />}
               {(step.status === "signing" || step.status === "submitted") && (
                 <Loader2 className="h-3.5 w-3.5 text-stellar animate-spin" />
               )}

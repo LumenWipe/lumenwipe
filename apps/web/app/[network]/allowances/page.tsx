@@ -129,7 +129,7 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
             placeholder="G... (the account to inspect)"
             spellCheck={false}
             autoComplete="off"
-            className="w-full flex-1 font-mono-address bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-stellar/40"
+            className="w-full flex-1 font-mono-address bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 text-sm placeholder:text-white/30"
           />
           <button
             type="submit"
@@ -153,7 +153,7 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
           role="alert"
           className="mkt-panel border-destructive/30 rounded-xl px-4 py-3 mb-4 flex items-center gap-2 text-sm text-muted-foreground"
         >
-          <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+          <AlertTriangle className="h-4 w-4 shrink-0 text-danger-fg" />
           <span>{error}</span>
         </div>
       )}
@@ -175,7 +175,7 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
               </div>
             ) : (
               <div className="mkt-panel rounded-2xl p-8 text-center">
-                <ShieldCheck className="h-8 w-8 text-emerald-400 mx-auto mb-2" />
+                <ShieldCheck className="h-8 w-8 text-success mx-auto mb-2" />
                 <p className="text-sm font-medium text-white">No outstanding allowances</p>
                 <p className="mt-1 text-xs text-white/45">
                   This account has not approved any spender that is currently live.

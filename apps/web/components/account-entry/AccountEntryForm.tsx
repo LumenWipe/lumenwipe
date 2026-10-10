@@ -62,7 +62,7 @@ export default function AccountEntryForm() {
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-white">
           Account to close
-          <span className="text-destructive ml-1">*</span>
+          <span className="text-danger-fg ml-1">*</span>
         </label>
 
         <div className="flex gap-2 rounded-lg bg-white/[0.03] p-1">
@@ -108,7 +108,7 @@ export default function AccountEntryForm() {
       {error && (
         <div
           role="alert"
-          className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-3"
+          className="flex items-start gap-2 text-sm text-danger-fg bg-destructive/10 border border-destructive/20 rounded-lg p-3"
         >
           <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
           {error}
