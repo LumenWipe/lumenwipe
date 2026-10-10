@@ -1,4 +1,13 @@
-import { Body, Controller, HttpCode, HttpException, Logger, Param, Post } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpException,
+  Logger,
+  Param,
+  Post,
+  UseFilters,
+} from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiBody,
@@ -17,7 +26,8 @@ import { SubmitResponseDto } from "./dto/close-responses.dto";
 import { BatchPlanResponseDto, PlanResponseDto } from "./dto/plan-response.dto";
 import { TransactionsResponseDto } from "./dto/transactions-response.dto";
 import { ApiErrorResponse, ApiBodyErrorResponses } from "@/common/api-error-response.decorator";
-import { isValidNetwork, type Network } from "@/config/networks";
+import type { Network } from "@/config/networks";
+import { NetworkPipe } from "@/common/pipes/network.pipe";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { readAccountState } from "@/lib/close-api/read-account";
 import { buildAccountPlan } from "@/lib/close-api/account-plan";
@@ -33,10 +43,7 @@ import {
   claimedAmountsPerAsset,
   assetDecisionId,
   decisionIdFor,
-  MissingConversionFloorError,
-  UnrecognizedConversionProviderError,
   tokenConversionFloors,
-  tokenDecisionId,
   tokenAssetsById,
   tokenContractsFromAnswers,
   destinationDecisionId,
@@ -45,7 +52,6 @@ import {
   resolveClaimableBalanceSelections,
   resolveDispositions,
   resolveTransferDestinations,
-  MissingTransferDestinationError,
   DESTINATION_ACK_CHOICE,
 } from "@/lib/close-api/decisions";
 import { assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
@@ -53,16 +59,11 @@ import { parseDecisions } from "@/lib/close-api/parse-decisions";
 import { computePlanHash } from "@/lib/close-api/plan-response";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
 import { submitAndWait, InvalidSignatureError } from "@/lib/stellar/submit";
-import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 import { readTrustlinesOnly } from "@/lib/stellar/account-state";
-import {
-  AccountNotFoundError,
-  AssetRouteLostError,
-  TxTimeoutError,
-  TxSubmitError,
-  UnusableProviderResponseError,
-} from "@/lib/utils/errors";
+import { InvalidXdrError, TxTimeoutError, TxSubmitError } from "@/lib/utils/errors";
 import { fail } from "@/common/fail";
+import { PlanErrorFilter, TransactionErrorFilter } from "./domain-error.filters";
+import { mapDomainError, PLAN_ERRORS, TRANSACTION_ERRORS } from "@/lib/close-api/domain-errors";
 import { withTimeout } from "@/lib/utils/with-timeout";
 import { StatsService } from "@/stats/stats.service";
 import { signedXdrHasAccountMerge } from "@/stats/merge-verification";
@@ -109,6 +110,7 @@ export class CloseController {
     "provider_response_unusable",
   ])
   @ApiBodyErrorResponses()
+  @UseFilters(PlanErrorFilter)
   @Post("close/plan")
   @HttpCode(200)
   @ApiOperation({ summary: "Build a deterministic close plan with decision points and estimates." })
@@ -119,11 +121,9 @@ export class CloseController {
     type: PlanResponseDto,
   })
   async plan(
-    @Param("network") network: string,
+    @Param("network", new NetworkPipe()) network: Network,
     @Body() body: { source?: unknown; destination?: unknown; decisions?: unknown }
   ) {
-    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network.", 400);
-
     const { source } = body;
     if (typeof source !== "string" || !isValidGAddress(source)) {
       fail("invalid_source", "A valid source account (G...) is required.", 400);
@@ -137,15 +137,7 @@ export class CloseController {
     try {
       return await buildAccountPlan(source, destination, decisions, network);
     } catch (e) {
-      if (e instanceof HttpException) throw e;
-      if (e instanceof AccountNotFoundError) fail("account_not_found", e.message, 404);
-      // A property of the account, with a message that explains it - not a server fault.
-      if (e instanceof TruncatedCollectionError) fail("account_too_large", e.message, 422);
-      // A misconfigured provider, with a message naming the fields it omitted - upstream of us
-      // rather than a fault in the request, and actionable by whoever wired it in.
-      if (e instanceof UnusableProviderResponseError) {
-        fail("provider_response_unusable", e.message, 502);
-      }
+      if (e instanceof HttpException || mapDomainError(PLAN_ERRORS, e)) throw e;
       this.logger.error("close/plan failed", e instanceof Error ? e.stack : String(e));
       fail("plan_failed", "Failed to build the close plan.", 500);
     }
@@ -175,11 +167,9 @@ export class CloseController {
     type: BatchPlanResponseDto,
   })
   async batchPlan(
-    @Param("network") network: string,
+    @Param("network", new NetworkPipe()) network: Network,
     @Body() body: { addresses?: unknown; destination?: unknown }
   ) {
-    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network.", 400);
-
     const { addresses } = body;
     if (!Array.isArray(addresses) || addresses.length === 0) {
       fail("invalid_addresses", "A non-empty array of source accounts (G...) is required.", 400);
@@ -262,6 +252,7 @@ export class CloseController {
     ["mediator_not_configured", "registry_expired"]
   )
   @ApiBodyErrorResponses()
+  @UseFilters(TransactionErrorFilter)
   @Post("close/transactions")
   @HttpCode(200)
   @ApiOperation({ summary: "Build the unsigned close transactions for a resolved plan." })
@@ -272,7 +263,7 @@ export class CloseController {
     type: TransactionsResponseDto,
   })
   async transactions(
-    @Param("network") network: string,
+    @Param("network", new NetworkPipe()) network: Network,
     @Body()
     body: {
       source?: unknown;
@@ -282,8 +273,6 @@ export class CloseController {
       memo?: unknown;
     }
   ) {
-    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network.", 400);
-
     const { source, destination } = body;
     if (typeof source !== "string" || !isValidGAddress(source)) {
       fail("invalid_source", "A valid source account (G...) is required.", 400);
@@ -468,26 +457,7 @@ export class CloseController {
       };
       return response;
     } catch (e) {
-      if (e instanceof HttpException) throw e;
-      if (e instanceof AccountNotFoundError) fail("account_not_found", e.message, 404);
-      if (e instanceof AssetRouteLostError) {
-        fail("quote_drifted", "A conversion route is no longer available; re-plan and retry.", 409);
-      }
-      if (e instanceof MissingTransferDestinationError) {
-        fail("transfer_destination_missing", e.message, 422, {
-          decisionId: decisionIdFor(e.asset),
-        });
-      }
-      if (e instanceof MissingConversionFloorError) {
-        fail("conversion_floor_missing", e.message, 422, {
-          decisionId: tokenDecisionId(e.contract),
-        });
-      }
-      if (e instanceof UnrecognizedConversionProviderError) {
-        fail("conversion_provider_unrecognized", e.message, 422, {
-          decisionId: tokenDecisionId(e.contract),
-        });
-      }
+      if (e instanceof HttpException || mapDomainError(TRANSACTION_ERRORS, e)) throw e;
       if (e instanceof CloseBuildError) fail(e.code, e.message, e.status);
       this.logger.error("close/transactions failed", e instanceof Error ? e.stack : String(e));
       fail("transactions_failed", "Failed to build the close transactions.", 500);
@@ -514,9 +484,10 @@ export class CloseController {
     description: "Confirmed: returns the transaction hash and ledger.",
     type: SubmitResponseDto,
   })
-  async submit(@Param("network") network: string, @Body() body: { signedXdr?: unknown }) {
-    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network.", 400);
-
+  async submit(
+    @Param("network", new NetworkPipe()) network: Network,
+    @Body() body: { signedXdr?: unknown }
+  ) {
     const { signedXdr } = body;
     if (typeof signedXdr !== "string" || signedXdr.length === 0) {
       fail("invalid_signed_xdr", "A signed transaction envelope (signedXdr) is required.", 400);
@@ -545,7 +516,7 @@ export class CloseController {
           e.resultCode ? { resultCode: e.resultCode } : undefined
         );
       }
-      if (e instanceof Error && /xdr|envelope|decode/i.test(e.message)) {
+      if (e instanceof InvalidXdrError) {
         fail("invalid_signed_xdr", "The transaction envelope could not be decoded.", 400);
       }
       this.logger.error("submit failed", e instanceof Error ? e.stack : String(e));

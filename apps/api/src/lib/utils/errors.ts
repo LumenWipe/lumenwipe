@@ -301,6 +301,14 @@ export class UnusableProviderResponseError extends Error {
   }
 }
 
+/** The submitted envelope is not a decodable transaction for the target network. */
+export class InvalidXdrError extends Error {
+  constructor() {
+    super("The transaction envelope could not be decoded.");
+    this.name = "InvalidXdrError";
+  }
+}
+
 export class TxTimeoutError extends Error {
   constructor() {
     super("Transaction confirmation timed out. It is safe to retry.");

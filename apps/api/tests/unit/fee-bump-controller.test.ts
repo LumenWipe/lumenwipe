@@ -173,16 +173,6 @@ describe("FeeBumpController.sponsor", () => {
     expect(feeBump.innerTransaction.operations).toHaveLength(5);
   });
 
-  test("rejects an invalid network before touching configuration", async () => {
-    await expectFail(
-      controller.sponsor("betanet", {
-        transaction: windDownTx(Operation.accountMerge({ destination: DEST })),
-      }),
-      400,
-      "invalid_network"
-    );
-  });
-
   test("refuses a transaction bundling wind-down operations for more than one account", async () => {
     const other = Keypair.random().publicKey();
     const tx = new TransactionBuilder(new Account(SOURCE, "1"), {

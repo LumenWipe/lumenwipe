@@ -12,7 +12,8 @@ import { FeeBumpRequestDto } from "./dto/fee-bump.dto";
 import { FeeBumpSponsorResponseDto } from "./dto/fee-bump-responses.dto";
 import { actsForOneAccount, isAllowedWindDownOperation } from "./fee-bump-validation";
 import { ApiErrorResponse, ApiBodyErrorResponses } from "@/common/api-error-response.decorator";
-import { isValidNetwork, NETWORK_PASSPHRASES } from "@/config/networks";
+import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
+import { NetworkPipe } from "@/common/pipes/network.pipe";
 import { BASE_FEE_STROOPS, MAX_FEE_BUMP_STROOPS } from "@/config/constants";
 import { getFeeAccountKeypair } from "@/lib/stellar/fee-account";
 import { fail } from "@/common/fail";
@@ -64,9 +65,10 @@ export class FeeBumpController {
     description: "The transaction wrapped in a fee-bump envelope and signed (base64 XDR).",
     type: FeeBumpSponsorResponseDto,
   })
-  async sponsor(@Param("network") network: string, @Body() body: { transaction?: string }) {
-    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
-
+  async sponsor(
+    @Param("network", new NetworkPipe("Invalid network")) network: Network,
+    @Body() body: { transaction?: string }
+  ) {
     const feeAccount = getFeeAccountKeypair(network);
     if (!feeAccount) {
       fail(

@@ -1,6 +1,4 @@
-import { TransactionBuilder, Keypair, FeeBumpTransaction } from "@stellar/stellar-sdk";
-import { NETWORK_PASSPHRASES } from "@/config/networks";
-import type { Network } from "@/config/networks";
+import { Keypair, FeeBumpTransaction, type Transaction } from "@stellar/stellar-sdk";
 
 export class InvalidSignatureError extends Error {
   constructor(message: string) {
@@ -27,16 +25,7 @@ export class InvalidSignatureError extends Error {
  * sponsor ever signed it. This heuristic exists to catch wallet mistakes on a user-signed
  * inner transaction; it has nothing to check on the outer envelope of a fee-bump.
  */
-export function checkTransactionSignatures(signedXdr: string, network: Network): void {
-  const passphrase = NETWORK_PASSPHRASES[network];
-  let tx;
-  try {
-    tx = TransactionBuilder.fromXDR(signedXdr, passphrase);
-  } catch {
-    // Unparseable XDR - let submit.ts propagate the real error
-    return;
-  }
-
+export function checkTransactionSignatures(tx: Transaction | FeeBumpTransaction): void {
   if (tx instanceof FeeBumpTransaction) return;
 
   if (tx.signatures.length === 0) {

@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpException, Logger, Param, Post, Query } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpException,
+  Logger,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiBody,
@@ -11,7 +21,10 @@ import {
 import { StrKey } from "@stellar/stellar-sdk";
 import { ApiErrorResponse, ApiBodyErrorResponses } from "@/common/api-error-response.decorator";
 import { getRpcServer } from "@/lib/stellar/rpc";
-import { isValidNetwork } from "@/config/networks";
+import type { Network } from "@/config/networks";
+import { GAddressPipe } from "@/common/pipes/g-address.pipe";
+import { NetworkFirstGuard } from "@/common/guards/network-first.guard";
+import { NetworkPipe } from "@/common/pipes/network.pipe";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { parseTokenContracts } from "@/lib/utils/token-contracts";
 import { getAccountState } from "@/lib/stellar/account-state";
@@ -48,6 +61,7 @@ export class AccountController {
   @ApiErrorResponse(502, "The data provider returned an unusable response.", [
     "provider_response_unusable",
   ])
+  @UseGuards(new NetworkFirstGuard("Invalid network"))
   @Get("account/:address")
   @ApiOperation({
     summary: "Read full on-chain account state (balances, trustlines, offers, signers).",
@@ -65,15 +79,14 @@ export class AccountController {
       "Soroban token contracts (C..., comma-separated, at most 20) to check for a balance besides " +
       "what discovery finds.",
   })
+  // `${Network}` rather than the alias: the alias emits an Object param type, which drops the path
+  // parameter schema from the generated OpenAPI spec.
   async account(
-    @Param("network") network: string,
-    @Param("address") address: string,
+    @Param("network", new NetworkPipe("Invalid network")) network: `${Network}`,
+    @Param("address", new GAddressPipe("invalid_address", "Invalid Stellar address"))
+    address: string,
     @Query("tokens") tokens?: string
   ) {
-    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
-    if (!isValidGAddress(address)) {
-      fail("invalid_address", "Invalid Stellar address", 400);
-    }
     const manualTokenCandidates = parseTokenContracts(tokens);
     if (manualTokenCandidates === null) {
       fail(
@@ -128,6 +141,7 @@ export class AccountController {
 
   @ApiErrorResponse(400, "Invalid network or address.", ["invalid_network", "invalid_address"])
   @ApiErrorResponse(500, "Allowances could not be read.", ["allowances_read_failed"])
+  @UseGuards(new NetworkFirstGuard("Invalid network"))
   @Get("allowances/:address")
   @ApiOperation({
     summary:
@@ -139,12 +153,11 @@ export class AccountController {
     description: "Live, non-zero allowances, best effort.",
     type: AllowancesResultDto,
   })
-  async allowances(@Param("network") network: string, @Param("address") address: string) {
-    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
-    if (!isValidGAddress(address)) {
-      fail("invalid_address", "Invalid Stellar address", 400);
-    }
-
+  async allowances(
+    @Param("network", new NetworkPipe("Invalid network")) network: `${Network}`,
+    @Param("address", new GAddressPipe("invalid_address", "Invalid Stellar address"))
+    address: string
+  ) {
     try {
       return await discoverAllowances(address, network, defaultAllowancesDeps(network));
     } catch (err) {
@@ -194,10 +207,9 @@ export class AccountController {
     type: RevokeAllowanceResponseDto,
   })
   async revokeAllowance(
-    @Param("network") network: string,
+    @Param("network", new NetworkPipe("Invalid network")) network: Network,
     @Body() body: { owner?: unknown; token?: unknown; spender?: unknown }
   ) {
-    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
     const owner = typeof body.owner === "string" ? body.owner : "";
     const token = typeof body.token === "string" ? body.token : "";
     const spender = typeof body.spender === "string" ? body.spender : "";
@@ -245,11 +257,10 @@ export class AccountController {
     type: PathResponseDto,
   })
   async paths(
-    @Param("network") network: string,
+    @Param("network", new NetworkPipe("Invalid network")) network: `${Network}`,
     @Query("fromAsset") fromAsset?: string,
     @Query("amount") amount?: string
   ) {
-    if (!isValidNetwork(network)) fail("invalid_network", "Invalid network", 400);
     if (!fromAsset || !amount) {
       fail("missing_parameters", "Missing fromAsset or amount", 400);
     }

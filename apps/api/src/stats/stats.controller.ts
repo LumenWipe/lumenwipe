@@ -10,7 +10,8 @@ import {
 import type { RecordMergeResponse, StatsFeed, StatsTotals } from "@lumenwipe/types";
 import { ApiErrorResponse, ApiBodyErrorResponses } from "@/common/api-error-response.decorator";
 import { Public } from "@/auth/public.decorator";
-import { isValidNetwork, type Network } from "@/config/networks";
+import type { Network } from "@/config/networks";
+import { NetworkPipe } from "@/common/pipes/network.pipe";
 import { fail } from "@/common/fail";
 import { StatsService } from "./stats.service";
 import {
@@ -21,11 +22,6 @@ import {
 } from "./dto/stats.dto";
 
 const TX_HASH_RE = /^[a-fA-F0-9]{64}$/;
-
-function networkOrFail(network: string): Network {
-  if (!isValidNetwork(network)) fail("invalid_network", "Invalid network.", 400);
-  return network;
-}
 
 @ApiTags("stats")
 @ApiParam({ name: "network", enum: ["testnet", "mainnet"] })
@@ -44,10 +40,9 @@ export class StatsController {
   @Get()
   @ApiOperation({ summary: "Accounts closed and XLM recovered (public, no API key)." })
   @ApiResponse({ status: 200, type: StatsTotalsDto })
-  async totals(@Param("network") network: string): Promise<StatsTotals> {
-    const net = networkOrFail(network);
+  async totals(@Param("network", new NetworkPipe()) network: Network): Promise<StatsTotals> {
     try {
-      return await this.stats.totals(net);
+      return await this.stats.totals(network);
     } catch (e) {
       this.unavailable("stats read failed", e);
     }
@@ -58,10 +53,9 @@ export class StatsController {
   @Get("feed")
   @ApiOperation({ summary: "Totals, recent closes and daily activity (public, no API key)." })
   @ApiResponse({ status: 200, type: StatsFeedDto })
-  async feed(@Param("network") network: string): Promise<StatsFeed> {
-    const net = networkOrFail(network);
+  async feed(@Param("network", new NetworkPipe()) network: Network): Promise<StatsFeed> {
     try {
-      return await this.stats.feed(net);
+      return await this.stats.feed(network);
     } catch (e) {
       this.unavailable("stats feed read failed", e);
     }
@@ -87,10 +81,9 @@ export class StatsController {
   @ApiBody({ type: RecordMergeRequestDto })
   @ApiResponse({ status: 200, type: RecordMergeResponseDto })
   async record(
-    @Param("network") network: string,
+    @Param("network", new NetworkPipe()) network: Network,
     @Body() body: { txHash?: unknown }
   ): Promise<RecordMergeResponse> {
-    const net = networkOrFail(network);
     const { txHash } = body ?? {};
     if (typeof txHash !== "string" || !TX_HASH_RE.test(txHash)) {
       fail("invalid_tx_hash", "txHash must be a 64-character hex transaction hash.", 400);
@@ -98,7 +91,7 @@ export class StatsController {
 
     let outcome: Awaited<ReturnType<StatsService["record"]>>;
     try {
-      outcome = await this.stats.record(net, txHash.toLowerCase());
+      outcome = await this.stats.record(network, txHash.toLowerCase());
     } catch (e) {
       this.unavailable("stats record failed", e);
     }
