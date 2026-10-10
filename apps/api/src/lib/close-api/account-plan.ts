@@ -231,7 +231,7 @@ export async function buildAccountPlan(
     ...deriveTokenDecisionPoints(accountState, tokenQuotes),
     ...deriveClaimableBalanceDecisionPoints(accountState),
   ];
-  const answeredIds = new Set(decisions.map((d) => d?.id));
+  const answeredIds = new Set(decisions.map((d) => d.id));
   // The destination and DeFi-positions acknowledgements are judged on their choice, not
   // merely on having been answered. For every other decision the choice is re-validated
   // downstream against a known value set, so presence is a fair proxy; here the choice IS

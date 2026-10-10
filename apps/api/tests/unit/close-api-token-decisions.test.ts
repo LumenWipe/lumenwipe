@@ -124,7 +124,6 @@ test("the token contracts an answer set names come back deduplicated and well-fo
       { id: tokenDecisionId(TOKEN_B), choice: "convert_to_xlm" },
       { id: "token:not-a-contract", choice: LEAVE_CHOICE },
       { id: `asset:${USDC.replace(":", "-")}`, choice: "convert_to_xlm" },
-      { id: 42 as unknown as string, choice: "x" },
     ])
   ).toEqual([TOKEN_A, TOKEN_B]);
 });

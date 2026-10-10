@@ -63,12 +63,11 @@ export function deriveDestinationDecisionPoints(destination: string | null): Dec
 }
 
 // True when the caller has explicitly asserted control of THIS destination. Defaults to false
-// on a missing, malformed, or differently-addressed answer - silence is not consent, and
-// neither is consent given for some other address. Element-level optional chaining because
-// `decisions` reaches here as an unvalidated array from the request body.
+// on a missing or differently-addressed answer - silence is not consent, and neither is
+// consent given for some other address.
 export function isDestinationAcknowledged(answers: DecisionAnswer[], destination: string): boolean {
   const id = destinationDecisionId(destination);
-  return answers.some((a) => a?.id === id && a?.choice === DESTINATION_ACK_CHOICE);
+  return answers.some((a) => a.id === id && a.choice === DESTINATION_ACK_CHOICE);
 }
 
 /**
@@ -115,7 +114,7 @@ export function deriveDefiPositionsDecisionPoints(
  *  differently-addressed answer. */
 export function isDefiPositionsAcknowledged(answers: DecisionAnswer[], address: string): boolean {
   const id = defiPositionsDecisionId(address);
-  return answers.some((a) => a?.id === id && a?.choice === DEFI_POSITIONS_ACK_CHOICE);
+  return answers.some((a) => a.id === id && a.choice === DEFI_POSITIONS_ACK_CHOICE);
 }
 
 // Stable, URL-safe id for an asset decision: "asset:CODE-ISSUER". The colon in the
@@ -154,7 +153,7 @@ export function tokenContractsFromAnswers(answers: DecisionAnswer[]): string[] {
   const out = new Set<string>();
   for (const answer of answers) {
     if (out.size >= MAX_TOKEN_ANSWERS) break;
-    if (typeof answer?.id !== "string" || !answer.id.startsWith("token:")) continue;
+    if (!answer.id.startsWith("token:")) continue;
     const contract = answer.id.slice("token:".length);
     if (isTokenContract(contract)) out.add(contract);
   }
@@ -216,7 +215,7 @@ export function tokenConversionFloors(
   // request whose later answer carries one.
   const latest = new Map<string, DecisionAnswer>();
   for (const answer of answers) {
-    if (typeof answer?.id === "string") latest.set(answer.id, answer);
+    latest.set(answer.id, answer);
   }
   for (const answer of latest.values()) {
     if (answer.choice !== "convert_to_xlm") continue;
@@ -546,7 +545,7 @@ export function collectTransferDestinations(
   const missing: string[] = [];
 
   for (const answer of answers) {
-    if (answer?.choice !== TRANSFER_CHOICE) continue;
+    if (answer.choice !== TRANSFER_CHOICE) continue;
     const asset = assetForId.get(answer.id);
     if (asset === undefined) continue;
     if (dispositions[asset] !== "transfer") continue;
