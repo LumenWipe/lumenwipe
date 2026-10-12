@@ -44,13 +44,13 @@
     "zustand": "^4.5.7"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.13.1",
+    "@happy-dom/global-registrator": "^21.0.0",
     "@playwright/test": "^1.62.1",
     "@stryker-mutator/core": "^10.0.0",
     "@tailwindcss/typography": "^0.5.20",
     "@testing-library/react": "^16.3.3",
     "@types/bun": "^1.4.0",
-    "@types/node": "^22.20.1",
+    "@types/node": "^26.0.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "@types/uuid": "^10.0.0",

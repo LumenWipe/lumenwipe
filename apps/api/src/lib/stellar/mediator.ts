@@ -19,7 +19,7 @@ export async function requestMediatorCosignature(
     body: JSON.stringify({ transaction: userSignedXdr }),
   });
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}) as { error?: string });
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(data.error ?? "Failed to obtain mediator co-signature.");
   }
   const { transaction } = (await res.json()) as { transaction: string };
