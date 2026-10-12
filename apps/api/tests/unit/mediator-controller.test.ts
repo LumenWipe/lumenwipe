@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import { Test } from "@nestjs/testing";
 import { HttpException } from "@nestjs/common";
 import {
   Account,
@@ -13,9 +14,17 @@ import {
 import { MediatorController } from "@/mediator/mediator.controller";
 import { servedRegistry } from "@/lib/exchange-registry";
 import { AccountNotFoundError } from "@/lib/utils/errors";
-import * as networksModule from "@/config/networks";
-import * as mediatorServerModule from "@/lib/stellar/mediator-server";
-import * as accountStateModule from "@/lib/stellar/account-state";
+import { MediatorSigningService } from "@/mediator/mediator-signing.service";
+import {
+  ACCOUNT_READER,
+  CLOCK,
+  EXCHANGE_REGISTRY,
+  MEDIATOR_KEY_PROVIDER,
+  defaultClock,
+  defaultExchangeRegistry,
+  type AccountReaderPort,
+  type MediatorKeyProvider,
+} from "@/common/ports";
 
 const MEDIATOR = Keypair.random();
 const USER = Keypair.random().publicKey();
@@ -30,27 +39,39 @@ interface Fakes {
 
 const DEFAULTS: Fakes = { keypair: MEDIATOR, configuredPublic: "", balance: "100.0000000" };
 
-function makeController(overrides: Partial<Fakes> = {}): {
+async function makeController(overrides: Partial<Fakes> = {}): Promise<{
   controller: MediatorController;
   balanceReads: string[];
-} {
+}> {
   const fakes = { ...DEFAULTS, ...overrides };
   const balanceReads: string[] = [];
-  spyOn(mediatorServerModule, "getMediatorKeypair").mockReturnValue(fakes.keypair);
-  spyOn(networksModule, "getMediatorPublicKey").mockReturnValue(fakes.configuredPublic);
-  spyOn(accountStateModule, "readNativeBalance").mockImplementation(async (address) => {
-    balanceReads.push(address);
-    if (fakes.balance instanceof Error) throw fakes.balance;
-    return { nativeBalanceLumens: fakes.balance };
-  });
-  return { controller: new MediatorController(), balanceReads };
+  const module = await Test.createTestingModule({
+    controllers: [MediatorController],
+    providers: [
+      MediatorSigningService,
+      {
+        provide: MEDIATOR_KEY_PROVIDER,
+        useValue: {
+          keypair: () => fakes.keypair,
+          configuredPublicKey: () => fakes.configuredPublic,
+        } satisfies MediatorKeyProvider,
+      },
+      { provide: EXCHANGE_REGISTRY, useValue: defaultExchangeRegistry },
+      { provide: CLOCK, useValue: defaultClock },
+      {
+        provide: ACCOUNT_READER,
+        useValue: {
+          readNativeBalance: async (address: string) => {
+            balanceReads.push(address);
+            if (fakes.balance instanceof Error) throw fakes.balance;
+            return { nativeBalanceLumens: fakes.balance };
+          },
+        } satisfies AccountReaderPort,
+      },
+    ],
+  }).compile();
+  return { controller: module.get(MediatorController), balanceReads };
 }
-
-afterEach(() => {
-  spyOn(mediatorServerModule, "getMediatorKeypair").mockRestore();
-  spyOn(networksModule, "getMediatorPublicKey").mockRestore();
-  spyOn(accountStateModule, "readNativeBalance").mockRestore();
-});
 
 interface TxOptions {
   ops?: xdr.Operation[];
@@ -103,7 +124,7 @@ const NOT_ALLOWED = [
 
 describe("sign: configuration gates", () => {
   test("S1 an unconfigured mediator is refused with 503", async () => {
-    const { controller } = makeController({ keypair: null });
+    const { controller } = await makeController({ keypair: null });
     await expectFail(
       controller.sign("testnet", { transaction: buildXdr() }),
       503,
@@ -113,7 +134,7 @@ describe("sign: configuration gates", () => {
   });
 
   test("S2 a configured public key that differs from the secret's is refused with 500", async () => {
-    const { controller } = makeController({ configuredPublic: Keypair.random().publicKey() });
+    const { controller } = await makeController({ configuredPublic: Keypair.random().publicKey() });
     await expectFail(
       controller.sign("testnet", { transaction: buildXdr() }),
       500,
@@ -123,7 +144,7 @@ describe("sign: configuration gates", () => {
   });
 
   test("S2b a configured public key that matches the secret's is accepted", async () => {
-    const { controller } = makeController({ configuredPublic: MEDIATOR.publicKey() });
+    const { controller } = await makeController({ configuredPublic: MEDIATOR.publicKey() });
     const out = await controller.sign("testnet", { transaction: buildXdr() });
     expect(typeof out.transaction).toBe("string");
   });
@@ -131,7 +152,7 @@ describe("sign: configuration gates", () => {
 
 describe("sign: body gates", () => {
   test("S3 a missing body is refused", async () => {
-    const { controller } = makeController();
+    const { controller } = await makeController();
     await expectFail(
       controller.sign("testnet", undefined as unknown as { transaction?: string }),
       400,
@@ -141,7 +162,7 @@ describe("sign: body gates", () => {
   });
 
   test("S3b an empty transaction is refused", async () => {
-    const { controller } = makeController();
+    const { controller } = await makeController();
     await expectFail(
       controller.sign("testnet", { transaction: "" }),
       400,
@@ -151,7 +172,7 @@ describe("sign: body gates", () => {
   });
 
   test("S4 an undecodable envelope is refused", async () => {
-    const { controller } = makeController();
+    const { controller } = await makeController();
     await expectFail(
       controller.sign("testnet", { transaction: "not-xdr" }),
       400,
@@ -163,31 +184,33 @@ describe("sign: body gates", () => {
 
 describe("sign: structure", () => {
   test("S5a a single operation is refused", async () => {
-    const { controller } = makeController();
+    const { controller } = await makeController();
     const transaction = buildXdr({ ops: [merge(MEDIATOR.publicKey())] });
     await expectFail(controller.sign("testnet", { transaction }), 400, ...NOT_ALLOWED);
   });
 
   test("S5b three operations are refused", async () => {
-    const { controller } = makeController();
+    const { controller } = await makeController();
     const transaction = buildXdr({ ops: [merge(MEDIATOR.publicKey()), pay({}), pay({})] });
     await expectFail(controller.sign("testnet", { transaction }), 400, ...NOT_ALLOWED);
   });
 
   test("S5c a first operation that is not an account merge is refused", async () => {
-    const { controller } = makeController();
+    const { controller } = await makeController();
     const transaction = buildXdr({ ops: [pay({ source: USER }), pay({})] });
     await expectFail(controller.sign("testnet", { transaction }), 400, ...NOT_ALLOWED);
   });
 
   test("S5d a second operation that is not a payment is refused", async () => {
-    const { controller } = makeController();
-    const transaction = buildXdr({ ops: [merge(MEDIATOR.publicKey()), merge(EXCHANGE)] });
+    const { controller } = await makeController();
+    const transaction = buildXdr({
+      ops: [merge(MEDIATOR.publicKey()), merge(EXCHANGE, MEDIATOR.publicKey())],
+    });
     await expectFail(controller.sign("testnet", { transaction }), 400, ...NOT_ALLOWED);
   });
 
   test("S6a a merge sourced from the mediator is refused", async () => {
-    const { controller } = makeController();
+    const { controller } = await makeController();
     const transaction = buildXdr({
       ops: [merge(MEDIATOR.publicKey(), MEDIATOR.publicKey()), pay({})],
     });
@@ -195,19 +218,19 @@ describe("sign: structure", () => {
   });
 
   test("S6b a merge into anything other than the mediator is refused", async () => {
-    const { controller } = makeController();
+    const { controller } = await makeController();
     const transaction = buildXdr({ ops: [merge(OTHER), pay({})] });
     await expectFail(controller.sign("testnet", { transaction }), 400, ...NOT_ALLOWED);
   });
 
   test("S6c a payment not sourced from the mediator is refused", async () => {
-    const { controller } = makeController();
+    const { controller } = await makeController();
     const transaction = buildXdr({ ops: [merge(MEDIATOR.publicKey()), pay({ source: OTHER })] });
     await expectFail(controller.sign("testnet", { transaction }), 400, ...NOT_ALLOWED);
   });
 
   test("S6d a payment back to the mediator is refused", async () => {
-    const { controller } = makeController();
+    const { controller } = await makeController();
     const transaction = buildXdr({
       ops: [merge(MEDIATOR.publicKey()), pay({ destination: MEDIATOR.publicKey() })],
     });
@@ -215,7 +238,7 @@ describe("sign: structure", () => {
   });
 
   test("S6e a non-native payment is refused", async () => {
-    const { controller } = makeController();
+    const { controller } = await makeController();
     const transaction = buildXdr({
       ops: [merge(MEDIATOR.publicKey()), pay({ asset: new Asset("USDC", OTHER) })],
     });
@@ -223,7 +246,7 @@ describe("sign: structure", () => {
   });
 
   test("S6f a forward below 1 XLM is refused", async () => {
-    const { controller } = makeController();
+    const { controller } = await makeController();
     const transaction = buildXdr({
       ops: [merge(MEDIATOR.publicKey()), pay({ amount: "0.9999999" })],
     });
@@ -231,7 +254,7 @@ describe("sign: structure", () => {
   });
 
   test("S6g a forward of exactly 1 XLM is accepted", async () => {
-    const { controller } = makeController();
+    const { controller } = await makeController();
     const transaction = buildXdr({
       ops: [merge(MEDIATOR.publicKey()), pay({ amount: "1.0000000" })],
     });
@@ -242,7 +265,7 @@ describe("sign: structure", () => {
 
 describe("sign: source rules", () => {
   test("S7a a transaction sourced from the mediator is refused", async () => {
-    const { controller } = makeController();
+    const { controller } = await makeController();
     const transaction = buildXdr({
       source: MEDIATOR.publicKey(),
       ops: [merge(MEDIATOR.publicKey(), USER), pay({})],
@@ -251,13 +274,13 @@ describe("sign: source rules", () => {
   });
 
   test("S7b a merge without its own source on a mediator-sourced transaction is refused", async () => {
-    const { controller } = makeController();
+    const { controller } = await makeController();
     const transaction = buildXdr({ source: MEDIATOR.publicKey() });
     await expectFail(controller.sign("testnet", { transaction }), 400, ...NOT_ALLOWED);
   });
 
   test("S7c a merged source that is not a plain G address is refused", async () => {
-    const { controller, balanceReads } = makeController();
+    const { controller, balanceReads } = await makeController();
     const muxed = "MA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVAAAAAAAAAAAAAJLK";
     const transaction = buildXdr({ ops: [merge(MEDIATOR.publicKey(), muxed), pay({})] });
     await expectFail(controller.sign("testnet", { transaction }), 400, ...NOT_ALLOWED);
@@ -267,7 +290,7 @@ describe("sign: source rules", () => {
 
 describe("sign: balance bound", () => {
   test("S8 an unknown merged account is refused", async () => {
-    const { controller } = makeController({ balance: new AccountNotFoundError(USER) });
+    const { controller } = await makeController({ balance: new AccountNotFoundError(USER) });
     await expectFail(
       controller.sign("testnet", { transaction: buildXdr() }),
       400,
@@ -277,14 +300,24 @@ describe("sign: balance bound", () => {
   });
 
   test("S8b a failed balance read is rethrown, never co-signed", async () => {
-    const { controller } = makeController({ balance: new Error("horizon down") });
+    const { controller } = await makeController({ balance: new Error("horizon down") });
     await expect(controller.sign("testnet", { transaction: buildXdr() })).rejects.toThrow(
       "horizon down"
     );
   });
 
   test("S9 a forward above the merged balance is refused", async () => {
-    const { controller } = makeController({ balance: "10.0000000" });
+    const { controller } = await makeController({ balance: "10.0000000" });
+    await expectFail(
+      controller.sign("testnet", { transaction: buildXdr() }),
+      400,
+      "forward_amount_exceeds_balance",
+      "Forward amount exceeds the merged balance"
+    );
+  });
+
+  test("S9c a forward one stroop above the balance minus the transaction fee is refused", async () => {
+    const { controller } = await makeController({ balance: "50.0000399" });
     await expectFail(
       controller.sign("testnet", { transaction: buildXdr() }),
       400,
@@ -294,7 +327,7 @@ describe("sign: balance bound", () => {
   });
 
   test("S9b a forward equal to the balance minus the transaction fee is accepted", async () => {
-    const { controller } = makeController({ balance: "50.0000400" });
+    const { controller } = await makeController({ balance: "50.0000400" });
     const out = await controller.sign("testnet", { transaction: buildXdr() });
     expect(typeof out.transaction).toBe("string");
   });
@@ -303,7 +336,7 @@ describe("sign: balance bound", () => {
 describe("sign: success", () => {
   test("S10 co-signs with the mediator key and changes nothing else", async () => {
     const original = buildXdr();
-    const { controller, balanceReads } = makeController();
+    const { controller, balanceReads } = await makeController();
     const out = await controller.sign("testnet", { transaction: original });
     const before = new Transaction(original, Networks.TESTNET);
     const after = new Transaction(out.transaction, Networks.TESTNET);
@@ -315,7 +348,7 @@ describe("sign: success", () => {
   });
 
   test("S10b the balance is read from the merge's own source when it has one", async () => {
-    const { controller, balanceReads } = makeController();
+    const { controller, balanceReads } = await makeController();
     const transaction = buildXdr({ ops: [merge(MEDIATOR.publicKey(), OTHER), pay({})] });
     await controller.sign("testnet", { transaction });
     expect(balanceReads).toEqual([OTHER]);
@@ -325,7 +358,7 @@ describe("sign: success", () => {
 describe("check", () => {
   test("C1 a listed exchange reports the mediator and memo requirements", async () => {
     const entry = servedRegistry().entries[0]!;
-    const { controller, balanceReads } = makeController();
+    const { controller, balanceReads } = await makeController();
     const result = await controller.check("testnet", entry.address);
     expect(result).toEqual({
       requiresMediator: entry.requiresMediator,
@@ -340,7 +373,7 @@ describe("check", () => {
   });
 
   test("C2 an unlisted existing address supports direct merges", async () => {
-    const { controller, balanceReads } = makeController();
+    const { controller, balanceReads } = await makeController();
     expect(await controller.check("testnet", OTHER)).toEqual({
       requiresMediator: false,
       reason: "Destination account exists and supports account merges.",
@@ -354,7 +387,7 @@ describe("check", () => {
   });
 
   test("C3 an unlisted missing address is reported as to-be-created", async () => {
-    const { controller } = makeController({ balance: new AccountNotFoundError(OTHER) });
+    const { controller } = await makeController({ balance: new AccountNotFoundError(OTHER) });
     expect(await controller.check("testnet", OTHER)).toEqual({
       requiresMediator: false,
       reason: "Destination account does not exist yet. Merging into it will create it.",
@@ -367,13 +400,13 @@ describe("check", () => {
   });
 
   test("C4 an unexpected read failure is rethrown", async () => {
-    const { controller } = makeController({ balance: new Error("horizon down") });
+    const { controller } = await makeController({ balance: new Error("horizon down") });
     await expect(controller.check("testnet", OTHER)).rejects.toThrow("horizon down");
   });
 
   test("C5 an unconfigured mediator reports available false on every path", async () => {
     const entry = servedRegistry().entries[0]!;
-    const { controller } = makeController({ keypair: null });
+    const { controller } = await makeController({ keypair: null });
     expect((await controller.check("testnet", entry.address)).available).toBe(false);
     expect((await controller.check("testnet", OTHER)).available).toBe(false);
   });
