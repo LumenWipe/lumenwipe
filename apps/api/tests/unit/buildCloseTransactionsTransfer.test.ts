@@ -1,4 +1,4 @@
-import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, expect, mock, spyOn, test, beforeEach } from "bun:test";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import type { AccountState, Trustline } from "@lumenwipe/types";
@@ -13,6 +13,9 @@ import { LiveReadError } from "@/lib/stellar/live-trustline";
 import { DestinationReadError } from "@/lib/close-api/merge-preflight";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
+import { stubIssuance } from "./fixtures/issuance";
+
+beforeEach(() => stubIssuance());
 
 // Wiring coverage for the transfer disposition (#111).
 //
@@ -213,6 +216,7 @@ const XLM = 10_000_000n;
 
 /** The source holds `live` of USDC on the ledger; the destination's line is `destination`. */
 function useLedger(live: bigint | null, destination: LineSpec | null): void {
+  stubIssuance();
   const lines: Record<string, LineSpec> = {};
   if (live !== null) lines[`${SOURCE}|${USDC}`] = { balance: live };
   if (destination) lines[`${TRANSFER_TO}|${USDC}`] = destination;

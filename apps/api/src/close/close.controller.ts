@@ -44,10 +44,11 @@ export class CloseController {
   @ApiErrorResponse(502, "The data provider returned an unusable response.", [
     "provider_response_unusable",
   ])
-  @ApiErrorResponse(503, "The destination or the ledger could not be read. Retry.", [
-    "destination_read_failed",
-    "service_unavailable",
-  ])
+  @ApiErrorResponse(
+    503,
+    "The destination, the account's issued assets or the ledger could not be read. Retry.",
+    ["destination_read_failed", "issuer_read_failed", "service_unavailable"]
+  )
   @ApiBodyErrorResponses()
   @UseFilters(PlanErrorFilter)
   @Post("close/plan")
@@ -123,6 +124,7 @@ export class CloseController {
       "signer_normalization_unsafe",
       "trustline_deauthorized_with_balance",
       "trustline_maintain_liabilities_with_balance",
+      "issuer_supply_not_acknowledged",
       "defi_positions_blocked",
       "defi_positions_stale",
       "defi_position_unrecognized",
@@ -162,6 +164,7 @@ export class CloseController {
       "mediator_not_configured",
       "registry_expired",
       "destination_read_failed",
+      "issuer_read_failed",
       "service_unavailable",
     ]
   )

@@ -1,4 +1,4 @@
-import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, expect, mock, spyOn, test, beforeEach } from "bun:test";
 import * as rpcModule from "@/lib/stellar/rpc";
 import {
   Account,
@@ -17,6 +17,9 @@ import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { rawSimulation } from "./fixtures/fake-exit-adapter";
 import { authorizationOf } from "./fixtures/trustline";
+import { stubIssuance } from "./fixtures/issuance";
+
+beforeEach(() => stubIssuance());
 
 // Wiring coverage for Soroban token dispositions (#161): the token round runs ahead of the classic
 // close, a trustline can never be "left", and the plan shows each token as its own step.

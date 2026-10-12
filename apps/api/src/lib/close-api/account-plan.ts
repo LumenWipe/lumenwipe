@@ -9,6 +9,8 @@ import {
   type SponsorshipAffordability,
 } from "@/lib/stellar/sponsorship-affordability";
 import { requiresMediatorForAddress } from "@/lib/exchange-registry";
+import { assessIssuance } from "@/lib/close-api/issuance-preflight";
+import { assessIssuanceBlockers } from "@/lib/close-api/issuance-blocker";
 import { assessMergePreflight } from "@/lib/close-api/merge-preflight";
 import { validateTransferDestinations } from "@/lib/close-api/transfer-destinations";
 import { quoteTokenToXlm, xlmContractId } from "@/lib/soroswap/conversion-quotes";
@@ -45,6 +47,9 @@ import {
   deriveDefiPositionsDecisionPoints,
   defiPositionsDecisionId,
   isDefiPositionsAcknowledged,
+  deriveIssuerSupplyDecisionPoints,
+  issuerSupplyDecisionId,
+  isIssuerSupplyAcknowledged,
   PRICE_SOURCE_UNAVAILABLE,
 } from "@/lib/close-api/decisions";
 import { ARRIVING_ASSET_PROBE_AMOUNT, assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
@@ -119,6 +124,7 @@ export async function buildAccountPlan(
     tokenContractsFromAnswers(decisions)
   );
   const mediatorRequired = destination ? requiresMediatorForAddress(destination) : false;
+  const issuancePromise = assessIssuance(source, network);
 
   const convertibility: Record<string, boolean> = {};
   const nonClaimableSponsoredEntries = accountState.sponsoredEntries.filter(
@@ -193,10 +199,11 @@ export async function buildAccountPlan(
         );
       })
   );
-  const [, sponsorshipAffordability] = await Promise.all([
+  const [, sponsorshipAffordability, , issuance] = await Promise.all([
     convertibilityPromise,
     sponsorshipAffordabilityPromise,
     tokenQuotePromise,
+    issuancePromise,
   ]);
 
   // Every asset the close will touch answers here - held or arriving. Without the arriving
@@ -227,6 +234,8 @@ export async function buildAccountPlan(
   );
   const defiPositionsAcknowledged = isDefiPositionsAcknowledged(decisions, source);
 
+  const issuerSupplyAcknowledged = isIssuerSupplyAcknowledged(decisions, source);
+
   const buildResult = buildPlan(
     accountState,
     mediatorRequired,
@@ -247,6 +256,7 @@ export async function buildAccountPlan(
       claimableBalanceSelections,
       priceSourceUnavailable
     ),
+    ...deriveIssuerSupplyDecisionPoints(source, issuance),
     ...deriveTokenDecisionPoints(accountState, tokenQuotes),
     ...deriveClaimableBalanceDecisionPoints(accountState),
   ];
@@ -261,6 +271,7 @@ export async function buildAccountPlan(
       return !isDestinationAcknowledged(decisions, destination);
     }
     if (dp.id === defiPositionsDecisionId(source)) return !defiPositionsAcknowledged;
+    if (dp.id === issuerSupplyDecisionId(source)) return !issuerSupplyAcknowledged;
     return !answeredIds.has(dp.id);
   });
 
@@ -295,6 +306,11 @@ export async function buildAccountPlan(
       ...transferProblems.map((p) => ({ message: p.message })),
     ];
   }
+
+  buildResult.blockers = [
+    ...buildResult.blockers,
+    ...assessIssuanceBlockers(issuance, issuerSupplyAcknowledged),
+  ];
 
   if (priceSourceUnavailable.size > 0) {
     buildResult.blockers = [...buildResult.blockers, { message: PRICE_SOURCE_UNAVAILABLE }];

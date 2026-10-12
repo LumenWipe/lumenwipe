@@ -14,7 +14,7 @@
  * that's still *present* at build time but worse than what analysis showed - as opposed to gone
  * entirely.
  */
-import { test, expect, spyOn, afterEach, mock } from "bun:test";
+import { test, expect, spyOn, afterEach, mock, beforeEach } from "bun:test";
 import { Account, Keypair, TransactionBuilder, Networks, Operation } from "@stellar/stellar-sdk";
 import { applySlippage } from "@/lib/stellar/path-finding";
 import * as pathFindingModule from "@/lib/stellar/path-finding";
@@ -24,6 +24,9 @@ import type { AccountState, ConversionPath, Trustline } from "@lumenwipe/types";
 import { mirrorSnapshot } from "../unit/fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
 import { authorizationOf } from "../unit/fixtures/trustline";
+import { stubIssuance } from "../unit/fixtures/issuance";
+
+beforeEach(() => stubIssuance());
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();

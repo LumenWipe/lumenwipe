@@ -65,6 +65,8 @@ import {
   defaultTokenConversionRoundDeps,
   type TokenConversionRoundDeps,
 } from "@/lib/close-api/token-conversion-round";
+import { assessIssuanceBlockers } from "@/lib/close-api/issuance-blocker";
+import { assessIssuance, type IssuanceDeps } from "@/lib/close-api/issuance-preflight";
 import { isConversionEnabled } from "@/lib/soroswap/conversion-quotes";
 import { isXBullEnabled } from "@/lib/xbull/conversion-quotes";
 
@@ -161,7 +163,12 @@ export async function buildCloseTransactions(
   /** Whether the caller has an explicit, address-scoped acknowledgement that this account
    *  holds no DeFi positions (close-api/decisions.ts's `isDefiPositionsAcknowledged`), passed
    *  straight through to the re-applied plan gate below. */
-  userVerifiedNoDefiPositions = false
+  userVerifiedNoDefiPositions = false,
+  issuer: {
+    /** The caller's address-scoped answer to the outstanding-supply acknowledgement. */
+    acknowledged?: boolean;
+    deps?: IssuanceDeps;
+  } = {}
 ): Promise<CloseBuildResult> {
   // Reject the same two hostile states buildPlan() blocks (issue #167), before any read or
   // build work: /close/transactions is an API-key product surface with an SDK, and
@@ -208,9 +215,16 @@ export async function buildCloseTransactions(
   }
 
   const server = getRpcServer(network);
-  const liveAccount = await server.getAccount(accountState.address);
+  const [liveAccount, latest, issuance] = await Promise.all([
+    server.getAccount(accountState.address),
+    server.getLatestLedger(),
+    assessIssuance(accountState.address, network, issuer.deps),
+  ]);
+  const issuanceBlockers = assessIssuanceBlockers(issuance, issuer.acknowledged ?? false);
+  if (issuanceBlockers.length > 0) {
+    throw new CloseBuildError(issuanceBlockers[0]!.code, issuanceBlockers[0]!.message, 422);
+  }
   const sdkAccount = new Account(accountState.address, liveAccount.sequenceNumber());
-  const latest = await server.getLatestLedger();
   // Ledgers close roughly every 5s; surface an approximate ledger bound for the tx time bound.
   const validUntilLedger = latest.sequence + Math.ceil(TX_TIMEOUT_SECONDS / 5);
 

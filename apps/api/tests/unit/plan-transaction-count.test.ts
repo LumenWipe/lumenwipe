@@ -1,4 +1,4 @@
-import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, expect, mock, spyOn, test, beforeEach } from "bun:test";
 import { Account, Keypair } from "@stellar/stellar-sdk";
 import type { AccountState, CloseTransaction, Trustline } from "@lumenwipe/types";
 import { emptyLines } from "./fixtures/ledger-trustlines";
@@ -7,6 +7,9 @@ import * as rpcModule from "@/lib/stellar/rpc";
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import { toExecutionBreakdown } from "@/lib/close-api/plan-response";
 import { authorizationOf } from "./fixtures/trustline";
+import { stubIssuance } from "./fixtures/issuance";
+
+beforeEach(() => stubIssuance());
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();

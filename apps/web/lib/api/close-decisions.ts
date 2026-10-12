@@ -80,6 +80,24 @@ export function defiPositionsAcknowledgementToDecisions(
   return [{ id: defiPositionsDecisionId(source), choice: DEFI_POSITIONS_ACK_CHOICE }];
 }
 
+/** Must match the API's `issuerSupplyDecisionId`. Scoped to the account being closed. */
+function issuerSupplyDecisionId(address: string): string {
+  return `issuer_supply:${address}`;
+}
+
+/** Must match the API's `ISSUER_SUPPLY_ACK_CHOICE`. */
+const ISSUER_SUPPLY_ACK_CHOICE = "stranding_holders_acknowledged";
+
+/** Same pattern as `defiPositionsAcknowledgementToDecisions`: the acknowledgement names the
+ *  account it was given for, so it cannot be replayed for another. */
+export function issuerSupplyAcknowledgementToDecisions(
+  acknowledgedFor: string | null,
+  source: string
+): DecisionAnswer[] {
+  if (acknowledgedFor !== source) return [];
+  return [{ id: issuerSupplyDecisionId(source), choice: ISSUER_SUPPLY_ACK_CHOICE }];
+}
+
 /**
  * Names the Soroban tokens the analysis discovered, so the plan can see them too.
  *

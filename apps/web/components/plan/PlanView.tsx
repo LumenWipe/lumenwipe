@@ -29,14 +29,19 @@ import AccountSummaryCard from "./AccountSummaryCard";
 import BlockersPanel from "./BlockersPanel";
 import PlanAccordion from "./PlanAccordion";
 import DefiPositionsAcknowledgement from "./DefiPositionsAcknowledgement";
+import IssuerSupplyAcknowledgement from "./IssuerSupplyAcknowledgement";
 import DestinationInput from "@/components/account-entry/DestinationInput";
 import {
   hardBlockersOf,
   displayBlockersOf,
   proceedError,
   DEFI_POSITIONS_UNAVAILABLE_CODE,
+  ISSUER_SUPPLY_BLOCKER_CODE,
 } from "@/lib/plan/resolvable-blockers";
-import { defiPositionsAcknowledgementToDecisions } from "@/lib/api/close-decisions";
+import {
+  defiPositionsAcknowledgementToDecisions,
+  issuerSupplyAcknowledgementToDecisions,
+} from "@/lib/api/close-decisions";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { assetsResolved } from "@/lib/plan/asset-resolution";
 
@@ -77,6 +82,8 @@ export default function PlanView({
     acknowledgeDestination,
     defiPositionsAcknowledgedFor,
     acknowledgeDefiPositions,
+    issuerSupplyAcknowledgedFor,
+    acknowledgeIssuerSupply,
     transferDestinations,
     setTransferDestination,
   } = useDemolishStore();
@@ -202,13 +209,19 @@ export default function PlanView({
   const defiPositionsBlocker = blockers.find((b) => b.code === DEFI_POSITIONS_UNAVAILABLE_CODE);
   const defiPositionsAcknowledged =
     !defiPositionsBlocker || defiPositionsAcknowledgedFor === account.address;
+  const issuerSupplyBlocker = blockers.find((b) => b.code === ISSUER_SUPPLY_BLOCKER_CODE);
+  const issuerSupplyAcknowledged = issuerSupplyAcknowledgedFor === account.address;
   const hardBlockers = hardBlockersOf(blockers).filter(
-    (b) => !(b.code === DEFI_POSITIONS_UNAVAILABLE_CODE && defiPositionsAcknowledged)
+    (b) =>
+      !(b.code === DEFI_POSITIONS_UNAVAILABLE_CODE && defiPositionsAcknowledged) &&
+      !(b.code === ISSUER_SUPPLY_BLOCKER_CODE && issuerSupplyAcknowledged)
   );
   // Unlike hardBlockers, this keeps non-trapping codes with no dedicated card of their own (the
   // DeFi one above) so the panel below still shows them - only codes already fully conveyed by
   // their own UI (claimable balances) are dropped.
-  const displayBlockers = displayBlockersOf(blockers);
+  const displayBlockers = displayBlockersOf(blockers).filter(
+    (b) => b.code !== ISSUER_SUPPLY_BLOCKER_CODE
+  );
 
   const destinationStepReady = allAssetsResolved && allClaimsResolved && hardBlockers.length === 0;
 
@@ -302,6 +315,10 @@ export default function PlanView({
           useDemolishStore.getState().defiPositionsAcknowledgedFor,
           account.address
         ),
+        ...issuerSupplyAcknowledgementToDecisions(
+          useDemolishStore.getState().issuerSupplyAcknowledgedFor,
+          account.address
+        ),
       ];
       const plan = await fetchClosePlan(
         { source: account.address, destination, decisions },
@@ -371,6 +388,14 @@ export default function PlanView({
         <DefiPositionsAcknowledgement
           acknowledged={defiPositionsAcknowledgedFor === account.address}
           onAcknowledgedChange={(ack) => acknowledgeDefiPositions(ack ? account.address : null)}
+        />
+      )}
+
+      {(issuerSupplyBlocker || issuerSupplyAcknowledged) && (
+        <IssuerSupplyAcknowledgement
+          message={issuerSupplyBlocker?.message ?? null}
+          acknowledged={issuerSupplyAcknowledged}
+          onAcknowledgedChange={(ack) => acknowledgeIssuerSupply(ack ? account.address : null)}
         />
       )}
 

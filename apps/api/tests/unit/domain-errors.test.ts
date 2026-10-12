@@ -14,6 +14,7 @@ import {
 } from "@/lib/close-api/decisions";
 import { mapDomainError, PLAN_ERRORS, TRANSACTION_ERRORS } from "@/lib/close-api/domain-errors";
 import { DestinationReadError, LedgerReadError } from "@/lib/close-api/merge-preflight";
+import { IssuerReadError } from "@/lib/close-api/issuance-preflight";
 import { planBatch } from "@/lib/close-api/batch-plan";
 import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 import { UpstreamError } from "@/lib/stellar/upstream-client";
@@ -67,6 +68,7 @@ const PLAN_CASES: Case[] = [
     "destination_read_failed",
     undefined,
   ],
+  ["issuer read failed", new IssuerReadError(), 503, "issuer_read_failed", undefined],
   ["ledger read failed", new LedgerReadError(), 503, "service_unavailable", undefined],
   [
     "provider timed out",
@@ -114,6 +116,7 @@ const TRANSACTION_CASES: Case[] = [
     "provider_response_unusable",
     undefined,
   ],
+  ["issuer read failed", new IssuerReadError(), 503, "issuer_read_failed", undefined],
   ["ledger read failed", new LedgerReadError(), 503, "service_unavailable", undefined],
   [
     "provider timed out",

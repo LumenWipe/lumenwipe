@@ -1,10 +1,13 @@
-import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, expect, mock, spyOn, test, beforeEach } from "bun:test";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { Account, Keypair, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
 import type { AccountState, Trustline } from "@lumenwipe/types";
 import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
+import { stubIssuance } from "./fixtures/issuance";
+
+beforeEach(() => stubIssuance());
 
 // Wiring coverage for #59: a direct (no-mediator) close whose op count spills past
 // OP_BATCH_LIMIT used to be returned as every chunk at once with `requiresAnotherCall: false`,

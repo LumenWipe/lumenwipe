@@ -7,6 +7,19 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-12
+
+### Added
+
+- Closing an account that issued assets still held by other accounts now needs an explicit
+  acknowledgement. `close/plan` returns a `confirmation` decision point with id
+  `issuer_supply:<address>` and the counts in its `subject`, plus a plan blocker with the code
+  `issuer_supply_not_acknowledged` until it is answered with the choice
+  `stranding_holders_acknowledged`. `close/transactions` refuses with the same error code (422)
+  without the answer.
+- Error code `issuer_read_failed` (503, retry): the account's issued assets could not be read.
+  It is never reported as "issues nothing".
+
 ## [0.6.0] - 2026-10-12
 
 ### Added

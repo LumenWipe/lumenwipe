@@ -27,6 +27,10 @@ const RESOLVABLE_HERE = new Set(["claimable_balance_forfeited", "claimable_balan
  *  `hardBlockersOf` untouched. */
 export const DEFI_POSITIONS_UNAVAILABLE_CODE = "defi_positions_unavailable";
 
+/** Must match the API's `issuer_supply_not_acknowledged`. Like the DeFi code above, its presence
+ *  decides whether the acknowledgement renders, so PlanView resolves it locally. */
+export const ISSUER_SUPPLY_BLOCKER_CODE = "issuer_supply_not_acknowledged";
+
 /**
  * Non-blocking but with no dedicated UI of its own, unlike RESOLVABLE_HERE's codes. Mirrors
  * positions-gate.ts's NON_TRAPPING_CODES (apps/api) as plain strings - the web never imports the

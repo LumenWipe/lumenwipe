@@ -9,6 +9,7 @@ import type {
 } from "@lumenwipe/types";
 import { stroopsToFixedXlm, xlmToStroops } from "@/lib/utils/amounts";
 import { StrKey } from "@stellar/stellar-sdk";
+import type { IssuanceSummary } from "@/lib/close-api/issuance-preflight";
 import { lookupExchange } from "@/lib/exchange-registry";
 import { assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
 
@@ -110,6 +111,42 @@ export function deriveDefiPositionsDecisionPoints(
       required: true,
     },
   ];
+}
+
+/** Scoped to the account being closed, like the acknowledgements above. */
+export function issuerSupplyDecisionId(address: string): string {
+  return `issuer_supply:${address}`;
+}
+
+export const ISSUER_SUPPLY_ACK_CHOICE = "stranding_holders_acknowledged";
+
+export function deriveIssuerSupplyDecisionPoints(
+  address: string,
+  issuance: IssuanceSummary | null
+): DecisionPoint[] {
+  if (!issuance) return [];
+  return [
+    {
+      id: issuerSupplyDecisionId(address),
+      type: "confirmation" as const,
+      subject: { kind: "issuer_supply", address, ...issuance },
+      options: [
+        {
+          id: ISSUER_SUPPLY_ACK_CHOICE,
+          note:
+            "I understand that merging this account leaves the holders of the assets it issued " +
+            "unable to redeem them.",
+        },
+      ],
+      default: "",
+      required: true,
+    },
+  ];
+}
+
+export function isIssuerSupplyAcknowledged(answers: DecisionAnswer[], address: string): boolean {
+  const id = issuerSupplyDecisionId(address);
+  return answers.some((a) => a.id === id && a.choice === ISSUER_SUPPLY_ACK_CHOICE);
 }
 
 /** Mirrors `isDestinationAcknowledged`: defaults to false on a missing, malformed, or

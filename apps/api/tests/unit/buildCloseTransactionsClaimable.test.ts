@@ -1,10 +1,13 @@
-import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, expect, mock, spyOn, test, beforeEach } from "bun:test";
 import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import type { AccountState, SponsoredEntry, Trustline } from "@lumenwipe/types";
 import { ledgerEntries, mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { authorizationOf } from "./fixtures/trustline";
+import { stubIssuance } from "./fixtures/issuance";
+
+beforeEach(() => stubIssuance());
 
 // Regression coverage for the real (money-moving) close builder honoring per-balance
 // claimable-balance selections, not just the /close/plan preview (tx-builder/index.ts's

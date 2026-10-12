@@ -17,7 +17,7 @@
  * suite's leaked mock of this same module when run as part of the full test process (confirmed by
  * bisection). `spyOn` patches one named export on the already-loaded module object in place.
  */
-import { test, expect, spyOn, afterEach, mock } from "bun:test";
+import { test, expect, spyOn, afterEach, mock, beforeEach } from "bun:test";
 import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import * as rpcModule from "@/lib/stellar/rpc";
 import * as sponsorshipAffordabilityModule from "@/lib/stellar/sponsorship-affordability";
@@ -25,6 +25,9 @@ import { buildCloseTransactions } from "@/lib/close-api/build-transactions";
 import type { AccountState, SponsoredEntry, Trustline } from "@lumenwipe/types";
 import { mirrorSnapshot } from "../unit/fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
+import { stubIssuance } from "../unit/fixtures/issuance";
+
+beforeEach(() => stubIssuance());
 
 const SOURCE = Keypair.random().publicKey();
 const OWNER = Keypair.random().publicKey();
