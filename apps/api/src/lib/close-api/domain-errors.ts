@@ -97,6 +97,7 @@ export const PLAN_ERRORS: readonly DomainErrorEntry[] = [
 /** What `close/transactions` recognises; anything else is a `transactions_failed`. */
 export const TRANSACTION_ERRORS: readonly DomainErrorEntry[] = [
   ACCOUNT_NOT_FOUND,
+  PROVIDER_UNUSABLE,
   DESTINATION_READ_FAILED,
   LEDGER_READ_FAILED,
   LIVE_READ_FAILED,
