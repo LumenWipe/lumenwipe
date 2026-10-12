@@ -14,7 +14,7 @@ import {
   isDestinationAcknowledged,
   isDefiPositionsAcknowledged,
   isIssuerSupplyAcknowledged,
-  resolveClaimableBalanceSelections,
+  resolveClaimSelections,
   resolveDispositions,
   resolveTransferDestinations,
   DESTINATION_ACK_CHOICE,
@@ -24,6 +24,11 @@ import { preflightErrorCode } from "@/lib/close-api/merge-preflight";
 import { parseDecisions } from "@/lib/close-api/parse-decisions";
 import { computePlanHash } from "@/lib/close-api/plan-response";
 import { CloseBuildError } from "@/lib/close-api/build-transactions";
+import {
+  CLAIM_ANSWER_STALE_MESSAGE,
+  claimStatus,
+  selectionFitsStatus,
+} from "@/lib/stellar/claim-predicates";
 import { InvalidSignatureError } from "@/lib/stellar/signature";
 import { InvalidXdrError, TxTimeoutError, TxSubmitError } from "@/lib/utils/errors";
 import { fail } from "@/common/fail";
@@ -204,10 +209,18 @@ export class CloseService {
 
       // Selections resolve first: which assets can carry a disposition answer depends on which
       // claims will run, so the claim answers shape the asset universe below.
-      const claimableBalanceSelections = resolveClaimableBalanceSelections(
-        decisions,
-        accountState.claimableBalances.map((b) => b.id)
-      );
+      const claimableBalanceSelections = resolveClaimSelections(decisions, accountState);
+      const mismatched = accountState.claimableBalances.some((b) => {
+        const selection = claimableBalanceSelections[b.id];
+        return (
+          selection !== undefined &&
+          !selectionFitsStatus(
+            selection,
+            claimStatus(b, accountState, accountState.ledgerCloseTime)
+          )
+        );
+      });
+      if (mismatched) fail("claimable_balance_not_claimable_now", CLAIM_ANSWER_STALE_MESSAGE, 422);
       const txClaimedPerAsset = claimedAmountsPerAsset(accountState, claimableBalanceSelections);
 
       // Held or arriving - an answer for an asset only the claims will fill must resolve, or
@@ -225,9 +238,6 @@ export class CloseService {
       const transferDestinations = resolveTransferDestinations(decisions, assetsById);
       const conversionFloors = tokenConversionFloors(decisions, assetsById);
 
-      const authorizedTrustlineAssets = new Set(
-        accountState.trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset)
-      );
       // Every asset the close will leave holding a balance needs its disposition answered
       // BEFORE the first round - the held ones and the ones the claims will fill. Gating only
       // on today's trustlines let a caller through round 1 (trustline added, balance claimed)
@@ -251,8 +261,7 @@ export class CloseService {
       const missingClaimDecisions = accountState.claimableBalances
         .filter(
           (b) =>
-            b.asset !== "native" &&
-            !authorizedTrustlineAssets.has(b.asset) &&
+            claimStatus(b, accountState, accountState.ledgerCloseTime) !== "claimable" &&
             !claimableBalanceSelections[b.id]
         )
         .map((b) => claimableBalanceDecisionId(b.id));

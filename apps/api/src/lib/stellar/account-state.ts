@@ -16,6 +16,8 @@ import {
 } from "@/lib/defi-positions/resolve-defi-positions";
 import { enrichDefiPositions, knownTokensFor } from "@/lib/defi-positions/enrich";
 import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
+import { parseLedgerCloseTime } from "./claim-predicates";
+import { getRpcServer } from "./rpc";
 import { Logger } from "@nestjs/common";
 
 // Nest's logger, not console: these lines are how an operator learns the reader silently
@@ -211,6 +213,16 @@ export interface AccountReadOptions {
   scanTokenEvents?: boolean;
   /** Injectable for tests; defaults to the live sources for the network. */
   sorobanTokensDeps?: (positions: DefiPosition[]) => SorobanTokensDeps;
+  /** Close time of the latest ledger in epoch seconds, null when it cannot be read. */
+  ledgerCloseTime?: () => Promise<number | null>;
+}
+
+export async function readLedgerCloseTime(network: Network): Promise<number | null> {
+  try {
+    return parseLedgerCloseTime((await getRpcServer(network).getLatestLedger()).closeTime);
+  } catch {
+    return null;
+  }
 }
 
 export async function readAccountStateFrom(
@@ -245,11 +257,13 @@ export async function readAccountStateFrom(
     })
     .filter((s): s is AccountSigner => s !== null);
 
-  const [openOffers, claimableBalances, detectedPositions] = await Promise.all([
+  const [openOffers, claimableRead, detectedPositions, ledgerCloseTime] = await Promise.all([
     fetchOffersFromAdapter(address, deps),
     fetchClaimableBalancesForClaimant(address, deps),
     resolveDefiPositions(address, network, defiDeps),
+    (options.ledgerCloseTime ?? (() => readLedgerCloseTime(network)))(),
   ]);
+  const { balances: claimableBalances, more: claimableBalancesMore } = claimableRead;
   // The gate judges the detection result as returned, before the enrichment below spends time
   // on pool reads - otherwise a snapshot near the staleness threshold could age past it here.
   const defiPositionsWarnings = assessDefiPositionsGate(
@@ -330,6 +344,8 @@ export async function readAccountStateFrom(
     openOffers,
     poolShares,
     claimableBalances,
+    ...(claimableBalancesMore ? { claimableBalancesMore } : {}),
+    ...(ledgerCloseTime === null ? {} : { ledgerCloseTime }),
     // Ground truth for completeness: numSubEntries is what the ledger says the account holds.
     // Enumerating fewer means the plan would leave entries behind and the merge would fail
     // with op_has_sub_entries, so a mismatch has to reach the caller as a blocker. There is no

@@ -537,6 +537,71 @@ describe("transactions", () => {
     );
   });
 
+  test("T10c a claim answer for a balance that needs a trustline is refused, not merged around", async () => {
+    const id = "1".repeat(72);
+    const { controller } = await makeController({
+      readAccountState: async () =>
+        accountState({
+          claimableBalances: [
+            {
+              id,
+              asset: USDC,
+              amount: "1.0000000",
+              claimants: [{ destination: SOURCE, predicate: { type: "unconditional" } }],
+              sponsor: null,
+            },
+          ],
+        }),
+    });
+    await expectFail(
+      controller.transactions(
+        "testnet",
+        body({ decisions: [ACK, { id: claimableBalanceDecisionId(id), choice: "claim" }] })
+      ),
+      422,
+      "claimable_balance_not_claimable_now"
+    );
+  });
+
+  test("T10d add_trustline_then_claim re-sent after the trustline exists is a plain claim, not a mismatch", async () => {
+    const id = "2".repeat(72);
+    const { controller } = await makeController({
+      readAccountState: async () =>
+        accountState({
+          trustlines: [
+            {
+              asset: USDC,
+              balance: "0.0000000",
+              limit: "1000",
+              ...authorizationOf(true),
+              issuer: ISSUER,
+              code: "USDC",
+            },
+          ],
+          claimableBalances: [
+            {
+              id,
+              asset: USDC,
+              amount: "1.0000000",
+              claimants: [{ destination: SOURCE, predicate: { type: "unconditional" } }],
+              sponsor: null,
+            },
+          ],
+        }),
+    });
+    const result = await controller.transactions(
+      "testnet",
+      body({
+        decisions: [
+          ACK,
+          { id: claimableBalanceDecisionId(id), choice: "add_trustline_then_claim" },
+          { id: decisionIdFor(USDC), choice: "convert_to_xlm" },
+        ],
+      })
+    );
+    expect(result).toBeDefined();
+  });
+
   test("T11 a merge preflight problem is reported under its own code", async () => {
     const problem = {
       code: "destination_missing",

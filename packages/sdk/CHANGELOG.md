@@ -7,6 +7,48 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-12
+
+### Added
+
+- Error code `claimable_balance_not_claimable_now` (422): a balance answered `claim` or
+  `add_trustline_then_claim` can no longer be claimed in this close because its claim window has
+  closed or has not opened. Plan again.
+- Error code `claimable_balance_reserve_short` (422) and the same plan blocker: the account lacks the
+  XLM above its reserve to add the trustlines a claim needs, and the message states the shortfall.
+  An unanswered balance of that kind is no longer offered `add_trustline_then_claim`; its decision
+  carries only `forfeit` with the shortfall in the note. Several balances of one asset need one
+  new reserve.
+- Error code `claimable_balances_too_many` (422) and the same plan blocker: the account holds more
+  claimable balances than one read returns and the ones left unclaimed fill it, so the rest cannot
+  be reached and the account is not closed.
+- Optional decision `claim_bulk:forfeit_unclaimable` (type `choice`, never required), offered when
+  two or more balances cannot be claimed now. Answering `forfeit_unclaimable` forfeits every such
+  balance that has no answer of its own; it never touches a balance claimable now.
+- Claimable-balance decision `subject.claimableFromEpoch`: when a balance is claimable later, the
+  epoch seconds from which it can be claimed, otherwise null.
+
+### Changed
+
+- `close/transactions` refuses (422 `claimable_balance_not_claimable_now`) instead of building the
+  merge when a claimable balance still on-chain is neither answered `forfeit` nor part of the claim
+  round: an answer that does not fit what the account can do with it (`claim` for a balance that
+  needs a trustline, `add_trustline_then_claim` for one that does not), a balance that closed since
+  the plan, or one with no answer. The bulk forfeit is not offered or applied while the ledger time
+  is unknown.
+
+- Accounts with many claimable balances close in batches. The read returns up to 1500 balances
+  (it used to refuse above 1000), each claim round claims at most 100 and reports
+  `requiresAnotherCall`, and the merge is only built once a read finds nothing left to claim and
+  nothing beyond the read.
+
+- A claimable balance whose own claim predicate is false at the ledger close time (an expired
+  `abs_before`, a future `not(before)`, an expired `rel_before`) is no longer defaulted to `claim`.
+  Its decision offers only `forfeit` with no default and states the date from which it becomes
+  claimable, and it is left out of the claim round. A predicate that is about to expire within the
+  transaction window counts as closed. If the ledger time cannot be read, only unconditional
+  claims count as claimable.
+
 ## [0.8.0] - 2026-10-12
 
 ### Added

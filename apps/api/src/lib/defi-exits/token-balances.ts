@@ -1,10 +1,7 @@
 import { Asset } from "@stellar/stellar-sdk";
 import type { AccountState, OpenOffer } from "@lumenwipe/types";
-import {
-  ACCOUNT_BASE_RESERVE_XLM,
-  BASE_RESERVE_XLM,
-  SOROBAN_EXIT_FEE_ESTIMATE_STROOPS,
-} from "@/config/constants";
+import { SOROBAN_EXIT_FEE_ESTIMATE_STROOPS } from "@/config/constants";
+import { minimumBalanceStroops } from "@/lib/stellar/claim-reserve";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { xlmToStroops } from "@/lib/utils/amounts";
 
@@ -38,10 +35,10 @@ function spendable(balance: bigint, held: bigint): string {
  */
 export function tokenBalancesFor(accountState: AccountState): Record<string, string> {
   const passphrase = NETWORK_PASSPHRASES[accountState.network];
-  const reserveStroops =
-    BigInt(xlmToStroops(ACCOUNT_BASE_RESERVE_XLM.toFixed(7))) +
-    BigInt(xlmToStroops(BASE_RESERVE_XLM.toFixed(7))) *
-      BigInt(accountState.numSubEntries + accountState.numSponsoring);
+  const reserveStroops = minimumBalanceStroops(
+    accountState.numSubEntries,
+    accountState.numSponsoring
+  );
   const nativeHeld =
     reserveStroops +
     BigInt(SOROBAN_EXIT_FEE_ESTIMATE_STROOPS) +

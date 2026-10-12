@@ -41,7 +41,8 @@ import {
   deriveDestinationDecisionPoints,
   destinationDecisionId,
   isDestinationAcknowledged,
-  resolveClaimableBalanceSelections,
+  resolveClaimSelections,
+  deriveBulkClaimDecisionPoints,
   resolveDispositions,
   collectTransferDestinations,
   deriveDefiPositionsDecisionPoints,
@@ -137,10 +138,7 @@ export async function buildAccountPlan(
   // asked path finding about a smaller amount than the step will move, and two balances of
   // one asset raced their answers into convertibility[asset] - last write won, so the
   // offered options could flap between re-plans.
-  const claimableBalanceSelections = resolveClaimableBalanceSelections(
-    decisions,
-    accountState.claimableBalances.map((b) => b.id)
-  );
+  const claimableBalanceSelections = resolveClaimSelections(decisions, accountState);
   const claimedPerAsset = claimedAmountsPerAsset(accountState, claimableBalanceSelections);
   const pricedAssets = pricedAmountsPerAsset(accountState, claimedPerAsset);
   const priceSourceUnavailable = new Set<string>();
@@ -265,6 +263,7 @@ export async function buildAccountPlan(
     ...deriveIssuerSupplyDecisionPoints(source, issuance),
     ...deriveTokenDecisionPoints(accountState, tokenQuotes),
     ...deriveClaimableBalanceDecisionPoints(accountState),
+    ...deriveBulkClaimDecisionPoints(accountState),
   ];
   const answeredIds = new Set(decisions.map((d) => d.id));
   // The destination and DeFi-positions acknowledgements are judged on their choice, not
@@ -278,6 +277,10 @@ export async function buildAccountPlan(
     }
     if (dp.id === defiPositionsDecisionId(source)) return !defiPositionsAcknowledged;
     if (dp.id === issuerSupplyDecisionId(source)) return !issuerSupplyAcknowledged;
+    if (!dp.required) return false;
+    if (dp.type === "claimable_balance") {
+      return !answeredIds.has(dp.id) && !claimableBalanceSelections[String(dp.subject.balanceId)];
+    }
     return !answeredIds.has(dp.id);
   });
 

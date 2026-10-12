@@ -8,6 +8,16 @@ import type {
   Trustline,
 } from "@lumenwipe/types";
 import { stroopsToFixedXlm, xlmToStroops } from "@/lib/utils/amounts";
+import {
+  claimStatus,
+  claimableFromEpoch,
+  ownClaimPredicate,
+  predicateBlockedNote,
+} from "@/lib/stellar/claim-predicates";
+import {
+  trustlineReserveShortfallStroops,
+  trustlineShortfallNote,
+} from "@/lib/stellar/claim-reserve";
 import { StrKey } from "@stellar/stellar-sdk";
 import type { IssuanceSummary } from "@/lib/close-api/issuance-preflight";
 import { lookupExchange } from "@/lib/exchange-registry";
@@ -370,15 +380,6 @@ export function claimableBalanceDecisionId(balanceId: string): string {
   return `claim:${balanceId}`;
 }
 
-/** True when the account can claim this balance right now: native asset, or an authorized
- *  trustline already exists. Matches the predicate `buildPlan` uses to decide the same thing. */
-export function isCurrentlyClaimable(
-  asset: string,
-  authorizedTrustlineAssets: ReadonlySet<string>
-): boolean {
-  return asset === "native" || authorizedTrustlineAssets.has(asset);
-}
-
 /**
  * The non-native amounts the close will claim, summed per asset.
  *
@@ -390,19 +391,18 @@ export function isCurrentlyClaimable(
  * exist.
  */
 export function claimedAmountsPerAsset(
-  account: Pick<AccountState, "trustlines" | "claimableBalances">,
+  account: Pick<AccountState, "address" | "trustlines" | "claimableBalances" | "ledgerCloseTime">,
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection>
 ): Map<string, bigint> {
-  const authorized = new Set(
-    account.trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset)
-  );
   const perAsset = new Map<string, bigint>();
   for (const b of account.claimableBalances) {
     if (b.asset === "native") continue;
     const selection = claimableBalanceSelections[b.id];
-    const willClaim = isCurrentlyClaimable(b.asset, authorized)
-      ? selection !== "forfeit"
-      : selection === "add_trustline_then_claim";
+    const status = claimStatus(b, account, account.ledgerCloseTime);
+    const willClaim =
+      status === "claimable"
+        ? selection !== "forfeit"
+        : status === "needs_trustline" && selection === "add_trustline_then_claim";
     if (!willClaim) continue;
     perAsset.set(b.asset, (perAsset.get(b.asset) ?? 0n) + BigInt(xlmToStroops(b.amount)));
   }
@@ -633,33 +633,45 @@ export function collectTransferDestinations(
 // convert. A balance with no authorized trustline forces an explicit choice between adding the
 // trustline (then claiming) or forfeiting it - matching "return to issuer" never defaulting.
 export function deriveClaimableBalanceDecisionPoints(account: AccountState): DecisionPoint[] {
-  const authorizedTrustlineAssets = new Set(
-    account.trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset)
-  );
+  const evalEpoch = account.ledgerCloseTime;
   return account.claimableBalances.map((b) => {
     const code = b.asset === "native" ? "XLM" : b.asset.split(":")[0];
-    const currentlyClaimable = isCurrentlyClaimable(b.asset, authorizedTrustlineAssets);
-    const options = currentlyClaimable
-      ? [
-          { id: "claim", recommended: true },
-          {
-            id: "forfeit",
-            note: `Leaves ${b.amount} ${code} unclaimed; permanently inaccessible once the account is merged.`,
-          },
-        ]
-      : [
-          {
-            id: "add_trustline_then_claim",
-            note: `Adds a ${code} trustline, then claims the balance.`,
-          },
-          {
-            id: "forfeit",
-            note: `Leaves ${b.amount} ${code} unclaimed; permanently inaccessible once the account is merged.`,
-          },
-        ];
-    const ownPredicate = b.claimants.find((c) => c.destination === account.address)?.predicate ?? {
+    const status = claimStatus(b, account, evalEpoch);
+    const currentlyClaimable = status === "claimable";
+    const forfeitNote = `Leaves ${b.amount} ${code} unclaimed; permanently inaccessible once the account is merged.`;
+    const ownPredicate = ownClaimPredicate(b, account.address) ?? {
       type: "unconditional" as const,
     };
+    const claimableFrom =
+      status === "predicate_blocked" && evalEpoch !== null && evalEpoch !== undefined
+        ? claimableFromEpoch(ownPredicate, evalEpoch)
+        : null;
+    const trustlineShortfall =
+      status === "needs_trustline" ? trustlineReserveShortfallStroops(account, 1, 1) : 0n;
+    const options =
+      status === "claimable"
+        ? [
+            { id: "claim", recommended: true },
+            { id: "forfeit", note: forfeitNote },
+          ]
+        : status === "needs_trustline" && trustlineShortfall === 0n
+          ? [
+              {
+                id: "add_trustline_then_claim",
+                note: `Adds a ${code} trustline, then claims the balance.`,
+              },
+              { id: "forfeit", note: forfeitNote },
+            ]
+          : [
+              {
+                id: "forfeit",
+                note: `${
+                  status === "needs_trustline"
+                    ? trustlineShortfallNote(code, trustlineShortfall)
+                    : predicateBlockedNote(evalEpoch, claimableFrom)
+                } ${forfeitNote}`,
+              },
+            ];
     return {
       id: claimableBalanceDecisionId(b.id),
       type: "claimable_balance" as const,
@@ -670,6 +682,7 @@ export function deriveClaimableBalanceDecisionPoints(account: AccountState): Dec
         amount: b.amount,
         currentlyClaimable,
         predicate: ownPredicate,
+        claimableFromEpoch: claimableFrom,
       },
       options,
       // No recommended default when the account cannot yet claim: never silently resolved.
@@ -677,6 +690,67 @@ export function deriveClaimableBalanceDecisionPoints(account: AccountState): Dec
       required: true,
     };
   });
+}
+
+function ledgerTimeKnown(account: Pick<AccountState, "ledgerCloseTime">): boolean {
+  return typeof account.ledgerCloseTime === "number" && Number.isFinite(account.ledgerCloseTime);
+}
+
+export const BULK_FORFEIT_DECISION_ID = "claim_bulk:forfeit_unclaimable";
+const BULK_FORFEIT_CHOICE = "forfeit_unclaimable";
+
+/**
+ * One answer for every balance the account cannot claim now, so a collection of hundreds is not
+ * hundreds of identical questions. Optional: it only resolves balances that have no answer of
+ * their own, and never a balance that is claimable now.
+ */
+export function deriveBulkClaimDecisionPoints(account: AccountState): DecisionPoint[] {
+  if (!ledgerTimeKnown(account)) return [];
+  const blocked = account.claimableBalances.filter(
+    (b) => claimStatus(b, account, account.ledgerCloseTime) !== "claimable"
+  );
+  if (blocked.length < 2) return [];
+  return [
+    {
+      id: BULK_FORFEIT_DECISION_ID,
+      type: "choice",
+      subject: { kind: "claimable_balance_bulk", count: blocked.length },
+      options: [
+        {
+          id: BULK_FORFEIT_CHOICE,
+          note: `Leaves all ${blocked.length} balances that cannot be claimed now unclaimed; they become permanently inaccessible once the account is merged. Balances you can claim now are not affected.`,
+        },
+      ],
+      default: "",
+      required: false,
+    },
+  ];
+}
+
+/**
+ * The caller's per-balance selections, with the bulk forfeit filling in only the balances that
+ * cannot be claimed now and have no answer of their own.
+ */
+export function resolveClaimSelections(
+  answers: DecisionAnswer[],
+  account: Pick<AccountState, "address" | "trustlines" | "claimableBalances" | "ledgerCloseTime">
+): Record<string, ClaimableBalanceSelection> {
+  const selections = resolveClaimableBalanceSelections(
+    answers,
+    account.claimableBalances.map((b) => b.id)
+  );
+  if (
+    !ledgerTimeKnown(account) ||
+    !answers.some((a) => a.id === BULK_FORFEIT_DECISION_ID && a.choice === BULK_FORFEIT_CHOICE)
+  ) {
+    return selections;
+  }
+  for (const b of account.claimableBalances) {
+    if (selections[b.id] !== undefined) continue;
+    if (claimStatus(b, account, account.ledgerCloseTime) !== "claimable")
+      selections[b.id] = "forfeit";
+  }
+  return selections;
 }
 
 // Resolves the caller's answers into a `Record<balanceId, ClaimableBalanceSelection>`. Answers

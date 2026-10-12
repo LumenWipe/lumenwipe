@@ -21,6 +21,12 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   blend_repay_asset_balance_unknown:
     "The balance of an asset needed to repay a Blend loan could not be read.",
   blend_repay_asset_missing: "The account does not hold the asset needed to repay a Blend loan.",
+  claimable_balance_not_claimable_now:
+    "A balance chosen to be claimed can no longer be claimed in this close.",
+  claimable_balance_reserve_short:
+    "The XLM headroom is too small to add the trustlines needed to claim the balances.",
+  claimable_balances_too_many:
+    "The account holds more claimable balances than one read returns and the unclaimed ones fill it.",
   confirmation_timeout:
     "The transaction did not confirm in time. Check its status before retrying.",
   conversion_floor_missing: "A conversion carries no destination minimum.",

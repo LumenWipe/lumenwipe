@@ -40,7 +40,7 @@ test("a null last_modified_time no longer fails the read when no predicate needs
     },
   ]);
 
-  const balances = await fetchClaimableBalancesForClaimant(CLAIMANT, deps);
+  const { balances } = await fetchClaimableBalancesForClaimant(CLAIMANT, deps);
 
   expect(balances).toHaveLength(2);
   expect(balances[0]!.claimants[0]!.predicate).toEqual({ type: "unconditional" });

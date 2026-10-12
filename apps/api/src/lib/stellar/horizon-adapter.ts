@@ -1,6 +1,7 @@
 import type { ClaimableBalance, ClaimPredicate, OpenOffer } from "@lumenwipe/types";
+import { CLAIMABLE_BALANCE_READ_CEILING } from "@/config/constants";
 import { horizonAssetToString } from "@/lib/utils/assets";
-import { horizonPaginate, type HorizonDeps } from "./horizon-http";
+import { horizonPaginate, horizonPaginateUpTo, type HorizonDeps } from "./horizon-http";
 
 interface HorizonOffer {
   id: string | number;
@@ -136,19 +137,20 @@ export async function fetchOffersFromAdapter(
  * These do not count toward numSubEntries, so the reconciliation check cannot catch a short
  * read here - the consequence of missing one is a balance left permanently unreachable after
  * the merge rather than a failed transaction. Errors therefore propagate: an empty list must
- * mean "none exist", never "the read failed".
+ * mean "none exist", never "the read failed". A collection past the read ceiling comes back
+ * truncated with `more` set, which blocks the merge until a later read finds the rest.
  */
 export async function fetchClaimableBalancesForClaimant(
   address: string,
   deps: HorizonDeps
-): Promise<ClaimableBalance[]> {
-  const records = await horizonPaginate<HorizonClaimableBalance>(
+): Promise<{ balances: ClaimableBalance[]; more: boolean }> {
+  const { records, overflowed } = await horizonPaginateUpTo<HorizonClaimableBalance>(
     `/claimable_balances?claimant=${address}&limit=${PAGE_LIMIT}`,
     deps,
     PAGE_LIMIT,
-    MAX_TOTAL
+    CLAIMABLE_BALANCE_READ_CEILING
   );
-  return records.map((b) => {
+  const balances = records.map((b) => {
     // Null (not just unparseable) when Horizon's own retention window has dropped the ledger
     // this balance was created in - a real, observed mainnet state for old balances, not a
     // malformed response. Most predicates (unconditional, abs_before) never need this anchor,
@@ -166,4 +168,5 @@ export async function fetchClaimableBalancesForClaimant(
       })),
     };
   });
+  return { balances, more: overflowed };
 }

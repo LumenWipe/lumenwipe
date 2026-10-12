@@ -4,6 +4,11 @@ import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { BASE_FEE_STROOPS, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import type { ClaimableBalance } from "@lumenwipe/types";
 
+export const TOO_MANY_CLAIMABLE_BALANCES_MESSAGE =
+  "This account holds more claimable balances than a close can read at once, and the ones " +
+  "left unclaimed fill that read, so the rest cannot be reached. It cannot be closed safely " +
+  "until some of them are claimed.";
+
 export function claimBalanceOps(balances: ClaimableBalance[]): xdr.Operation[] {
   return balances.map((b) => Operation.claimClaimableBalance({ balanceId: b.id }));
 }

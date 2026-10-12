@@ -159,9 +159,16 @@ export interface AccountState {
   /** Claimable balances where this account is listed as a claimant. Does not affect
    *  numSubEntries on this account; populated via the Horizon adapter. */
   claimableBalances: ClaimableBalance[];
+  /** True when the account holds more claimable balances than one read returns, so
+   *  `claimableBalances` is a bounded part of them. Set only by the account reader. While it is
+   *  set the merge is never built: the rest would be stranded. */
+  claimableBalancesMore?: boolean;
   // True when the enumerated subentry count is lower than numSubEntries from the ledger -
   // indicates entries we could not enumerate (e.g. offers when adapter URL not configured).
   subEntryMismatch: boolean;
+  /** Close time of the latest ledger (epoch seconds) when the claim predicates were judged.
+   *  Absent means it could not be read, and only unconditional claims count as claimable. */
+  ledgerCloseTime?: number;
   /** Detected DeFi positions (Blend, Aquarius, Soroswap, Phoenix, FxDAO), resolved via OctoPos on
    *  mainnet or a direct contract read on testnet / mainnet degraded mode - architecture.md §7.1.
    *  Never absent: an unconfigured deployment or provider outage still returns a result, stamped

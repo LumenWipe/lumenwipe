@@ -267,6 +267,7 @@ export function fakeSorobanDeps(options: FakeDepsOptions): SorobanTokensDeps & {
 
 /** No network at all: the account-state tests are about the Horizon read, not token discovery. */
 export const OFFLINE_SOROBAN_TOKENS: AccountReadOptions = {
+  ledgerCloseTime: () => Promise.resolve(null),
   sorobanTokensDeps: () =>
     fakeSorobanDeps({ world: { tokens: [] }, explorerBaseUrl: "", listCandidates: [] }),
 };
