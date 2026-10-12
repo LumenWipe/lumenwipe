@@ -2,6 +2,9 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
   "timezone": "UTC",
+  "constraints": {
+    "bun": "1.3.14"
+  },
   "schedule": ["before 7am on monday"],
   "labels": ["dependencies"],
   "prConcurrentLimit": 5,
