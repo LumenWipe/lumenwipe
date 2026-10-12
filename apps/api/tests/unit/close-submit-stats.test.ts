@@ -1,6 +1,6 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { Account, Keypair, Networks, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
-import { CloseController } from "@/close/close.controller";
+import { closeControllerWith } from "../support/close-controller";
 import * as submitModule from "@/lib/stellar/submit";
 import type { StatsService } from "@/stats/stats.service";
 
@@ -27,7 +27,7 @@ function controller(record: StatsService["record"]) {
       return record(network, hash);
     },
   } as unknown as StatsService;
-  return { controller: new CloseController(stats), calls };
+  return { controller: closeControllerWith(stats), calls };
 }
 
 afterEach(() => {
