@@ -3,7 +3,8 @@ import { Keypair } from "@stellar/stellar-sdk";
 import { HttpException } from "@nestjs/common";
 import type { AccountState } from "@lumenwipe/types";
 import registryJson from "@/config/exchange-registry.json";
-import { CloseController } from "@/close/close.controller";
+import type { CloseController } from "@/close/close.controller";
+import { closeControllerWith } from "../support/close-controller";
 import {
   assessMergePreflight,
   DestinationReadError,
@@ -239,7 +240,7 @@ describe("destination", () => {
 
 describe("POST close/transactions", () => {
   function controller(): CloseController {
-    return new CloseController({ record: async () => undefined } as never);
+    return closeControllerWith({ record: async () => undefined } as never);
   }
 
   function arrange(destination: string, opts: { exists: boolean | Error }): void {

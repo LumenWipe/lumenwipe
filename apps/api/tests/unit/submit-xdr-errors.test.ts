@@ -2,12 +2,12 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { HttpException } from "@nestjs/common";
-import { CloseController } from "@/close/close.controller";
+import { closeControllerWith } from "../support/close-controller";
 import * as submitModule from "@/lib/stellar/submit";
 import { InvalidXdrError } from "@/lib/utils/errors";
 import type { StatsService } from "@/stats/stats.service";
 
-const controller = new CloseController({} as unknown as StatsService);
+const controller = closeControllerWith({} as unknown as StatsService);
 
 afterEach(() => {
   spyOn(submitModule, "submitAndWait").mockRestore();

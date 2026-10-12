@@ -1,4 +1,4 @@
-import { TransactionBuilder, xdr } from "@stellar/stellar-sdk";
+import { TransactionBuilder, type rpc, xdr } from "@stellar/stellar-sdk";
 import { getRpcServer } from "./rpc";
 import {
   translateRpcError,
@@ -25,9 +25,10 @@ export interface SubmitResult {
 export async function submitAndWait(
   signedXdr: string,
   network: Network,
-  onStatus?: (status: string) => void
+  onStatus?: (status: string) => void,
+  serverFor: (network: Network) => rpc.Server = getRpcServer
 ): Promise<SubmitResult> {
-  const server = getRpcServer(network);
+  const server = serverFor(network);
   const passphrase = NETWORK_PASSPHRASES[network];
 
   let tx;
