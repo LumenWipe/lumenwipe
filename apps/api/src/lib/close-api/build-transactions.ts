@@ -11,8 +11,10 @@ import {
   ACCOUNT_BASE_RESERVE_XLM,
   BASE_FEE_STROOPS,
   BASE_RESERVE_XLM,
+  CLAIM_ROUND_BATCH_SIZE,
   TX_TIMEOUT_SECONDS,
 } from "@/config/constants";
+import { TOO_MANY_CLAIMABLE_BALANCES_MESSAGE } from "@/lib/stellar/tx-builder/claimable-balances";
 import { claimStatus } from "@/lib/stellar/claim-predicates";
 import { xlmToStroops } from "@/lib/utils/amounts";
 import { getRpcServer } from "@/lib/stellar/rpc";
@@ -44,6 +46,7 @@ import { AssetRouteLostError } from "@/lib/utils/errors";
 import type {
   AccountState,
   AssetDisposition,
+  ClaimableBalance,
   ClaimableBalanceSelection,
   CloseTransaction,
   TransferDestinations,
@@ -330,11 +333,12 @@ export async function buildCloseTransactions(
   // Round 1 for claimable-balance accounts: claim first (re-reading which are still
   // on-chain), then the client calls again to build the now claimable-free close. The
   // claim must precede the close because a claim raises the balance the close disposes of.
-  if (accountState.claimableBalances.length > 0) {
-    const existing = await filterExistingClaimableBalances(accountState.claimableBalances, server);
+  // A round claims a bounded batch; the next call re-reads and carries on, and the close is
+  // not built until a read shows nothing left to claim and nothing beyond the read ceiling.
+  if (accountState.claimableBalances.length > 0 || accountState.claimableBalancesMore) {
     const ledgerCloseTime = Number(latest.closeTime);
     const claimState = { ...accountState, ledgerCloseTime };
-    const staleClaim = existing.find(
+    const staleClaim = accountState.claimableBalances.find(
       (b) =>
         claimStatus(b, claimState, ledgerCloseTime) === "predicate_blocked" &&
         (claimableBalanceSelections[b.id] === "claim" ||
@@ -351,22 +355,29 @@ export async function buildCloseTransactions(
     // Currently claimable and not opted out (the opt-out default), plus the ones remediated
     // with a new trustline. Forfeited or unresolved balances are excluded entirely - never
     // claimed, never blocking the close.
-    const toAddTrustlineThenClaim = existing.filter(
-      (b) =>
-        claimStatus(b, claimState, ledgerCloseTime) === "needs_trustline" &&
-        claimableBalanceSelections[b.id] === "add_trustline_then_claim"
+    const due = accountState.claimableBalances.filter((b) => {
+      const status = claimStatus(b, claimState, ledgerCloseTime);
+      return status === "claimable"
+        ? claimableBalanceSelections[b.id] !== "forfeit"
+        : status === "needs_trustline" &&
+            claimableBalanceSelections[b.id] === "add_trustline_then_claim";
+    });
+    const claimRoundBalances = await firstExistingBatch(due, server);
+    const toAddTrustlineThenClaim = claimRoundBalances.filter(
+      (b) => claimStatus(b, claimState, ledgerCloseTime) === "needs_trustline"
     );
-    const toClaim = existing.filter(
-      (b) =>
-        claimStatus(b, claimState, ledgerCloseTime) === "claimable" &&
-        claimableBalanceSelections[b.id] !== "forfeit"
-    );
-    const claimRoundBalances = toClaim.concat(toAddTrustlineThenClaim);
+    if (claimRoundBalances.length === 0 && accountState.claimableBalancesMore) {
+      throw new CloseBuildError(
+        "claimable_balances_too_many",
+        TOO_MANY_CLAIMABLE_BALANCES_MESSAGE,
+        422
+      );
+    }
     if (claimRoundBalances.length > 0) {
       // The claims raise what a later transfer moves, and the plan-time check never saw that.
       // Refused here, before the claims land, rather than at the transfer round after them.
       const claimed = claimedAmountsPerAsset(
-        { ...claimState, claimableBalances: existing },
+        { ...claimState, claimableBalances: due },
         claimableBalanceSelections
       );
       const projected: TransferCheck[] = [];
@@ -600,6 +611,25 @@ export async function buildCloseTransactions(
  * this line is what a classic transaction's own fee may draw on (architecture.md §8.1's
  * `txINSUFFICIENT_BALANCE`: the fee would take the account below this).
  */
+/**
+ * The next bounded batch of balances that still exist on-chain. Checked a batch at a time, so a
+ * round costs one ledger read whatever the account holds, and a batch whose balances were all
+ * claimed meanwhile moves on to the next rather than ending the claims early.
+ */
+async function firstExistingBatch(
+  due: ClaimableBalance[],
+  server: ReturnType<typeof getRpcServer>
+): Promise<ClaimableBalance[]> {
+  for (let i = 0; i < due.length; i += CLAIM_ROUND_BATCH_SIZE) {
+    const existing = await filterExistingClaimableBalances(
+      due.slice(i, i + CLAIM_ROUND_BATCH_SIZE),
+      server
+    );
+    if (existing.length > 0) return existing;
+  }
+  return [];
+}
+
 function reserveStroops(numSubEntries: number, numSponsoring: number): bigint {
   return (
     BigInt(xlmToStroops(ACCOUNT_BASE_RESERVE_XLM.toFixed(7))) +

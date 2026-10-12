@@ -257,12 +257,13 @@ export async function readAccountStateFrom(
     })
     .filter((s): s is AccountSigner => s !== null);
 
-  const [openOffers, claimableBalances, detectedPositions, ledgerCloseTime] = await Promise.all([
+  const [openOffers, claimableRead, detectedPositions, ledgerCloseTime] = await Promise.all([
     fetchOffersFromAdapter(address, deps),
     fetchClaimableBalancesForClaimant(address, deps),
     resolveDefiPositions(address, network, defiDeps),
     (options.ledgerCloseTime ?? (() => readLedgerCloseTime(network)))(),
   ]);
+  const { balances: claimableBalances, more: claimableBalancesMore } = claimableRead;
   // The gate judges the detection result as returned, before the enrichment below spends time
   // on pool reads - otherwise a snapshot near the staleness threshold could age past it here.
   const defiPositionsWarnings = assessDefiPositionsGate(
@@ -343,6 +344,7 @@ export async function readAccountStateFrom(
     openOffers,
     poolShares,
     claimableBalances,
+    ...(claimableBalancesMore ? { claimableBalancesMore } : {}),
     ...(ledgerCloseTime === null ? {} : { ledgerCloseTime }),
     // Ground truth for completeness: numSubEntries is what the ledger says the account holds.
     // Enumerating fewer means the plan would leave entries behind and the merge would fail

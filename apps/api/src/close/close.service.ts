@@ -14,7 +14,7 @@ import {
   isDestinationAcknowledged,
   isDefiPositionsAcknowledged,
   isIssuerSupplyAcknowledged,
-  resolveClaimableBalanceSelections,
+  resolveClaimSelections,
   resolveDispositions,
   resolveTransferDestinations,
   DESTINATION_ACK_CHOICE,
@@ -205,10 +205,7 @@ export class CloseService {
 
       // Selections resolve first: which assets can carry a disposition answer depends on which
       // claims will run, so the claim answers shape the asset universe below.
-      const claimableBalanceSelections = resolveClaimableBalanceSelections(
-        decisions,
-        accountState.claimableBalances.map((b) => b.id)
-      );
+      const claimableBalanceSelections = resolveClaimSelections(decisions, accountState);
       const txClaimedPerAsset = claimedAmountsPerAsset(accountState, claimableBalanceSelections);
 
       // Held or arriving - an answer for an asset only the claims will fill must resolve, or

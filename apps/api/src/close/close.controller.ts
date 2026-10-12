@@ -126,6 +126,7 @@ export class CloseController {
       "trustline_maintain_liabilities_with_balance",
       "issuer_supply_not_acknowledged",
       "claimable_balance_not_claimable_now",
+      "claimable_balances_too_many",
       "defi_positions_blocked",
       "defi_positions_stale",
       "defi_position_unrecognized",

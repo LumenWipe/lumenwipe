@@ -12,10 +12,21 @@ release is cut.
 - Error code `claimable_balance_not_claimable_now` (422): a balance answered `claim` or
   `add_trustline_then_claim` can no longer be claimed in this close because its claim window has
   closed or has not opened. Plan again.
+- Error code `claimable_balances_too_many` (422) and the same plan blocker: the account holds more
+  claimable balances than one read returns and the ones left unclaimed fill it, so the rest cannot
+  be reached and the account is not closed.
+- Optional decision `claim_bulk:forfeit_unclaimable` (type `choice`, never required), offered when
+  two or more balances cannot be claimed now. Answering `forfeit_unclaimable` forfeits every such
+  balance that has no answer of its own; it never touches a balance claimable now.
 - Claimable-balance decision `subject.claimableFromEpoch`: when a balance is claimable later, the
   epoch seconds from which it can be claimed, otherwise null.
 
 ### Changed
+
+- Accounts with many claimable balances close in batches. The read returns up to 1500 balances
+  (it used to refuse above 1000), each claim round claims at most 100 and reports
+  `requiresAnotherCall`, and the merge is only built once a read finds nothing left to claim and
+  nothing beyond the read.
 
 - A claimable balance whose own claim predicate is false at the ledger close time (an expired
   `abs_before`, a future `not(before)`, an expired `rel_before`) is no longer defaulted to `claim`.

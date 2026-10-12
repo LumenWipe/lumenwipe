@@ -682,6 +682,59 @@ export function deriveClaimableBalanceDecisionPoints(account: AccountState): Dec
   });
 }
 
+export const BULK_FORFEIT_DECISION_ID = "claim_bulk:forfeit_unclaimable";
+const BULK_FORFEIT_CHOICE = "forfeit_unclaimable";
+
+/**
+ * One answer for every balance the account cannot claim now, so a collection of hundreds is not
+ * hundreds of identical questions. Optional: it only resolves balances that have no answer of
+ * their own, and never a balance that is claimable now.
+ */
+export function deriveBulkClaimDecisionPoints(account: AccountState): DecisionPoint[] {
+  const blocked = account.claimableBalances.filter(
+    (b) => claimStatus(b, account, account.ledgerCloseTime) !== "claimable"
+  );
+  if (blocked.length < 2) return [];
+  return [
+    {
+      id: BULK_FORFEIT_DECISION_ID,
+      type: "choice",
+      subject: { kind: "claimable_balance_bulk", count: blocked.length },
+      options: [
+        {
+          id: BULK_FORFEIT_CHOICE,
+          note: `Leaves all ${blocked.length} balances that cannot be claimed now unclaimed; they become permanently inaccessible once the account is merged. Balances you can claim now are not affected.`,
+        },
+      ],
+      default: "",
+      required: false,
+    },
+  ];
+}
+
+/**
+ * The caller's per-balance selections, with the bulk forfeit filling in only the balances that
+ * cannot be claimed now and have no answer of their own.
+ */
+export function resolveClaimSelections(
+  answers: DecisionAnswer[],
+  account: Pick<AccountState, "address" | "trustlines" | "claimableBalances" | "ledgerCloseTime">
+): Record<string, ClaimableBalanceSelection> {
+  const selections = resolveClaimableBalanceSelections(
+    answers,
+    account.claimableBalances.map((b) => b.id)
+  );
+  if (!answers.some((a) => a.id === BULK_FORFEIT_DECISION_ID && a.choice === BULK_FORFEIT_CHOICE)) {
+    return selections;
+  }
+  for (const b of account.claimableBalances) {
+    if (selections[b.id] !== undefined) continue;
+    if (claimStatus(b, account, account.ledgerCloseTime) !== "claimable")
+      selections[b.id] = "forfeit";
+  }
+  return selections;
+}
+
 // Resolves the caller's answers into a `Record<balanceId, ClaimableBalanceSelection>`. Answers
 // whose id does not correspond to a known balance, or whose choice is not a recognized
 // selection, are ignored.

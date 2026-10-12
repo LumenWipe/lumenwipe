@@ -65,6 +65,34 @@ export async function horizonPaginate<R>(
   pageLimit: number,
   maxTotal: number
 ): Promise<R[]> {
+  const { records, overflowed } = await horizonPaginateUpTo<R>(
+    firstPath,
+    deps,
+    pageLimit,
+    maxTotal
+  );
+  if (overflowed) {
+    throw new TruncatedCollectionError(
+      `This account has more than ${maxTotal} entries in ${firstPath.split("?")[0]}, more ` +
+        `than a close can enumerate in a single read. Building a plan from a partial list ` +
+        `would leave the rest behind permanently, so it is refused.`
+    );
+  }
+  return records;
+}
+
+/**
+ * Like `horizonPaginate`, but reaching the ceiling is reported rather than thrown: the first
+ * `maxTotal` records come back with `overflowed` set, so the caller can process a bounded
+ * part and still know the read was not the whole collection. A collection of exactly
+ * `maxTotal` is complete: the page after it is empty, so `overflowed` stays false.
+ */
+export async function horizonPaginateUpTo<R>(
+  firstPath: string,
+  deps: HorizonDeps,
+  pageLimit: number,
+  maxTotal: number
+): Promise<{ records: R[]; overflowed: boolean }> {
   const out: R[] = [];
   const bounded: HorizonDeps = { ...deps, deadline: resolveDeadline(deps.deadline) };
   let path: string | null = firstPath;
@@ -89,20 +117,14 @@ export async function horizonPaginate<R>(
 
     // Strictly greater, checked after accumulating. Horizon advertises `next` on every full
     // page including the last, and the only way to learn a collection ended is to ask for the
-    // page after it and get nothing back. Refusing at `>= maxTotal` would reject a complete
-    // collection of exactly `maxTotal` - an account with exactly 1000 offers - as truncated.
-    if (out.length > maxTotal) {
-      throw new TruncatedCollectionError(
-        `This account has more than ${maxTotal} entries in ${firstPath.split("?")[0]}, more ` +
-          `than a close can enumerate in a single read. Building a plan from a partial list ` +
-          `would leave the rest behind permanently, so it is refused.`
-      );
-    }
+    // page after it and get nothing back. Stopping at `>= maxTotal` would call a complete
+    // collection of exactly `maxTotal` - an account with exactly 1000 offers - truncated.
+    if (out.length > maxTotal) return { records: out.slice(0, maxTotal), overflowed: true };
 
     path = more ? pathOnBase(nextHref!, deps.baseUrl, "horizon") : null;
   }
 
-  return out;
+  return { records: out, overflowed: false };
 }
 
 /**

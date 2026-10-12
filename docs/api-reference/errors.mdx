@@ -31,33 +31,34 @@ Show the plain-language `message`, never the code, the status or a stack trace. 
 
 These mean the request itself is wrong or not allowed. Treat them as a fault in the calling code: fix the request and do not resend it unchanged. A user has nothing to act on, so show a short "this request could not be completed" message with the reference id. `unauthorized` means the API key is missing or invalid, and `forbidden` means the key may not do this.
 
-| Code                                  | Status | Retry     | Meaning                                                                |
-| ------------------------------------- | ------ | --------- | ---------------------------------------------------------------------- |
-| `bad_request`                         | 400    | After fix | The request is malformed.                                              |
-| `claimable_balance_not_claimable_now` | 422    | After fix | A balance chosen to be claimed can no longer be claimed in this close. |
-| `invalid_address`                     | 400    | After fix | The address is not a valid Stellar account.                            |
-| `invalid_addresses`                   | 400    | After fix | The addresses are missing or not valid Stellar accounts.               |
-| `invalid_body`                        | 400    | After fix | The request body is not valid JSON or not a JSON object.               |
-| `invalid_decisions`                   | 400    | After fix | The decisions in the request are malformed.                            |
-| `invalid_destination`                 | 400    | After fix | The destination is missing or not a valid address.                     |
-| `invalid_network`                     | 400    | After fix | The network is not testnet or mainnet.                                 |
-| `invalid_request`                     | 400    | After fix | The request is missing a required field.                               |
-| `invalid_source`                      | 400    | After fix | The source is missing or not a valid address.                          |
-| `invalid_spender`                     | 400    | After fix | The spender is not a valid address.                                    |
-| `invalid_token`                       | 400    | After fix | The token is not a valid contract address.                             |
-| `invalid_tokens`                      | 400    | After fix | The token list is malformed.                                           |
-| `invalid_transaction_xdr`             | 400    | After fix | The transaction is missing or cannot be decoded.                       |
-| `invalid_tx_hash`                     | 400    | After fix | The transaction hash is not a 64-character hex string.                 |
-| `missing_parameters`                  | 400    | After fix | A required query parameter is missing.                                 |
-| `missing_transaction`                 | 400    | After fix | The transaction is missing from the request.                           |
-| `not_found`                           | 404    | After fix | The route does not exist.                                              |
-| `payload_too_large`                   | 413    | After fix | The request body is larger than 100 KB.                                |
-| `request_failed`                      | 4xx    | After fix | The request could not be completed.                                    |
-| `too_many_addresses`                  | 400    | After fix | More addresses than a batch accepts.                                   |
-| `unauthorized`                        | 401    | After fix | The API key, session token or operator token is missing or invalid.    |
-| `forbidden`                           | 403    | No        | The caller is not allowed to do this.                                  |
-| `unprocessable_entity`                | 422    | After fix | The request is valid but cannot be processed.                          |
-| `unsupported_media_type`              | 415    | After fix | The request body must be UTF-8 JSON.                                   |
+| Code                                  | Status | Retry     | Meaning                                                                                         |
+| ------------------------------------- | ------ | --------- | ----------------------------------------------------------------------------------------------- |
+| `bad_request`                         | 400    | After fix | The request is malformed.                                                                       |
+| `claimable_balance_not_claimable_now` | 422    | After fix | A balance chosen to be claimed can no longer be claimed in this close.                          |
+| `claimable_balances_too_many`         | 422    | After fix | The account holds more claimable balances than one read returns and the unclaimed ones fill it. |
+| `invalid_address`                     | 400    | After fix | The address is not a valid Stellar account.                                                     |
+| `invalid_addresses`                   | 400    | After fix | The addresses are missing or not valid Stellar accounts.                                        |
+| `invalid_body`                        | 400    | After fix | The request body is not valid JSON or not a JSON object.                                        |
+| `invalid_decisions`                   | 400    | After fix | The decisions in the request are malformed.                                                     |
+| `invalid_destination`                 | 400    | After fix | The destination is missing or not a valid address.                                              |
+| `invalid_network`                     | 400    | After fix | The network is not testnet or mainnet.                                                          |
+| `invalid_request`                     | 400    | After fix | The request is missing a required field.                                                        |
+| `invalid_source`                      | 400    | After fix | The source is missing or not a valid address.                                                   |
+| `invalid_spender`                     | 400    | After fix | The spender is not a valid address.                                                             |
+| `invalid_token`                       | 400    | After fix | The token is not a valid contract address.                                                      |
+| `invalid_tokens`                      | 400    | After fix | The token list is malformed.                                                                    |
+| `invalid_transaction_xdr`             | 400    | After fix | The transaction is missing or cannot be decoded.                                                |
+| `invalid_tx_hash`                     | 400    | After fix | The transaction hash is not a 64-character hex string.                                          |
+| `missing_parameters`                  | 400    | After fix | A required query parameter is missing.                                                          |
+| `missing_transaction`                 | 400    | After fix | The transaction is missing from the request.                                                    |
+| `not_found`                           | 404    | After fix | The route does not exist.                                                                       |
+| `payload_too_large`                   | 413    | After fix | The request body is larger than 100 KB.                                                         |
+| `request_failed`                      | 4xx    | After fix | The request could not be completed.                                                             |
+| `too_many_addresses`                  | 400    | After fix | More addresses than a batch accepts.                                                            |
+| `unauthorized`                        | 401    | After fix | The API key, session token or operator token is missing or invalid.                             |
+| `forbidden`                           | 403    | No        | The caller is not allowed to do this.                                                           |
+| `unprocessable_entity`                | 422    | After fix | The request is valid but cannot be processed.                                                   |
+| `unsupported_media_type`              | 415    | After fix | The request body must be UTF-8 JSON.                                                            |
 
 ## Availability and rate limits
 

@@ -24,6 +24,7 @@ import {
   predicateBlockedNote,
   type ClaimStatus,
 } from "@/lib/stellar/claim-predicates";
+import { TOO_MANY_CLAIMABLE_BALANCES_MESSAGE } from "./claimable-balances";
 import { batchItems } from "./batching";
 import { OP_BATCH_LIMIT } from "@/config/constants";
 
@@ -463,6 +464,12 @@ export function buildPlan(
       : status === "needs_trustline" &&
           claimableBalanceSelections[b.id] === "add_trustline_then_claim";
   });
+  if (accountState.claimableBalancesMore && balancesNeedingClaimStep.length === 0) {
+    blockers.push({
+      code: "claimable_balances_too_many",
+      message: TOO_MANY_CLAIMABLE_BALANCES_MESSAGE,
+    });
+  }
   const balancesNeedingTrustline = claimableBalances.filter(
     (b) =>
       statusOf(b) === "needs_trustline" &&

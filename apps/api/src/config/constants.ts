@@ -5,6 +5,9 @@ export const OP_BATCH_LIMIT = 100; // max operations per transaction
 export const BASE_FEE_STROOPS = 100; // per operation
 export const TX_TIMEOUT_SECONDS = 300; // 5 minutes
 export const CLAIM_PREDICATE_MARGIN_SECONDS = TX_TIMEOUT_SECONDS + 60;
+// Sized against the SDK's 25-round ceiling: 15 claim rounds plus the close leaves headroom.
+export const CLAIMABLE_BALANCE_READ_CEILING = 1500;
+export const CLAIM_ROUND_BATCH_SIZE = 100;
 export const POLL_INTERVAL_MS = 3000; // 3 seconds between polls
 export const POLL_MAX_ATTEMPTS = 30; // 90 seconds total
 export const SLIPPAGE_BPS = 50; // 0.5% default slippage for path payments
