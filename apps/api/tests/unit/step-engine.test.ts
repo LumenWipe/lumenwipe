@@ -5,6 +5,7 @@ import { LiveReadError } from "@/lib/stellar/live-trustline";
 import { ledgerEntries } from "./fixtures/ledger-trustlines";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import type { Trustline } from "@lumenwipe/types";
+import { authorizationOf } from "./fixtures/trustline";
 
 type RpcServer = ReturnType<typeof getRpcServer>;
 
@@ -15,7 +16,7 @@ const TL: Trustline = {
   asset: `USDC:${ISSUER}`,
   balance: "12.5000000",
   limit: "922337203685.4775807",
-  authorized: true,
+  ...authorizationOf(true),
   issuer: ISSUER,
   code: "USDC",
 };

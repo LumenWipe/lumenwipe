@@ -7,6 +7,7 @@ import {
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { BASE_FEE_STROOPS, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import type { Trustline, ConversionPath } from "@lumenwipe/types";
+import { authorizationOf } from "./fixtures/trustline";
 
 const MASTER = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -14,7 +15,7 @@ const ISSUER = Keypair.random().publicKey();
 const trustline: Trustline = {
   asset: `USDC:${ISSUER}`,
   balance: "100",
-  authorized: true,
+  ...authorizationOf(true),
   issuer: ISSUER,
   code: "USDC",
 };

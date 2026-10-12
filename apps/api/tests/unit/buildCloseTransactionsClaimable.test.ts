@@ -4,6 +4,7 @@ import type { AccountState, SponsoredEntry, Trustline } from "@lumenwipe/types";
 import { ledgerEntries, mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import * as rpcModule from "@/lib/stellar/rpc";
+import { authorizationOf } from "./fixtures/trustline";
 
 // Regression coverage for the real (money-moving) close builder honoring per-balance
 // claimable-balance selections, not just the /close/plan preview (tx-builder/index.ts's
@@ -230,7 +231,14 @@ const TRANSFER_TO = Keypair.random().publicKey();
 const XLM = 10_000_000n;
 
 function heldUsdc(balance: string): Trustline {
-  return { asset: USDC, balance, authorized: true, issuer: ISSUER, code: "USDC", limit: "1000" };
+  return {
+    asset: USDC,
+    balance,
+    ...authorizationOf(true),
+    issuer: ISSUER,
+    code: "USDC",
+    limit: "1000",
+  };
 }
 
 function useTransferLedger(destinationLimit: bigint): void {

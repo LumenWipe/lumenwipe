@@ -215,24 +215,45 @@ export function assessSignerNormalizationSafety(accountState: AccountState): Pla
   return blockers;
 }
 
+export type TrustlineAuthorizationBlockerCode =
+  "trustline_deauthorized_with_balance" | "trustline_maintain_liabilities_with_balance";
+
+export interface TrustlineAuthorizationBlocker extends PlanBlocker {
+  code: TrustlineAuthorizationBlockerCode;
+}
+
 /**
- * Blocks a trustline the issuer has deauthorized while it still holds a balance. Shared by
- * `buildPlan()` and `buildCloseTransactions()` (issue #167) - `ChangeTrust` to limit 0 fails at the
- * ledger while balance > 0, so this must be refused before either the preview or the real build.
+ * Blocks a trustline whose issuer has withdrawn full authorization while it still holds a
+ * balance. Shared by `buildPlan()` and `buildCloseTransactions()` (issue #167): neither a
+ * payment nor a path payment can spend such a line, and `ChangeTrust` to limit 0 fails at the
+ * ledger while balance > 0, so it must be refused before either the preview or the real build.
+ * The two states differ in what the issuer can do about them, so they carry distinct codes.
  */
-export function assessDeauthorizedTrustlineBlockers(trustlines: Trustline[]): PlanBlocker[] {
-  // The issuer has revoked authorization on these trustlines. PathPaymentStrictSend fails with
-  // src_not_authorized, and ChangeTrust limit=0 fails while balance > 0. The issuer must
-  // re-authorize before the account can convert or remove these trustlines.
-  const deauthorizedWithBalance = trustlines.filter(
-    (tl) => !tl.authorized && parseFloat(tl.balance) > 0
-  );
-  return deauthorizedWithBalance.map((tl) => ({
-    message:
-      `Trustline for ${tl.code} has a non-zero balance (${tl.balance}) but is deauthorized ` +
-      `by the issuer. The issuer must re-authorize this trustline before it can be ` +
-      `converted or removed.`,
-  }));
+export function assessTrustlineAuthorizationBlockers(
+  trustlines: Trustline[]
+): TrustlineAuthorizationBlocker[] {
+  const blockers: TrustlineAuthorizationBlocker[] = [];
+  for (const tl of trustlines) {
+    if (tl.authorization === "authorized" || !(parseFloat(tl.balance) > 0)) continue;
+    blockers.push(
+      tl.authorization === "maintain_liabilities"
+        ? {
+            code: "trustline_maintain_liabilities_with_balance",
+            message:
+              `The issuer of ${tl.code} has limited this trustline to keeping existing offers ` +
+              `only. The ${tl.balance} ${tl.code} balance cannot be sold, sent or removed until ` +
+              `the issuer restores full authorization. Ask the issuer, then plan again.`,
+          }
+        : {
+            code: "trustline_deauthorized_with_balance",
+            message:
+              `Trustline for ${tl.code} has a non-zero balance (${tl.balance}) but is deauthorized ` +
+              `by the issuer. The issuer must re-authorize this trustline before it can be ` +
+              `converted or removed.`,
+          }
+    );
+  }
+  return blockers;
 }
 
 export function buildPlan(
@@ -373,7 +394,7 @@ export function buildPlan(
     blockers.push(...assessSignerNormalizationSafety(accountState));
   }
 
-  blockers.push(...assessDeauthorizedTrustlineBlockers(trustlines));
+  blockers.push(...assessTrustlineAuthorizationBlockers(trustlines));
 
   // Claimable balances: each resolves to a per-balance selection - "claim" (the opt-out
   // default once the account can already claim it), "add_trustline_then_claim" (adds a
@@ -691,6 +712,8 @@ export function buildPlan(
     asset,
     balance: "0",
     authorized: true,
+    authorization: "authorized",
+    clawbackEnabled: false,
     issuer: asset.split(":")[1] ?? "",
     code: asset.split(":")[0],
   }));

@@ -21,6 +21,7 @@ import {
   type EnrichContext,
 } from "@/lib/defi-positions/enrich";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { authorizationOf } from "./fixtures/trustline";
 
 const USER = "GBUYBKHUCCAKG4LM76DONHABFRZSZEHK7ARNEEXBZ3CMVIYKZXPLPVRG";
 const POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
@@ -147,7 +148,7 @@ describe("knownTokensFor", () => {
           code: "USDC",
           issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
           balance: "1",
-          authorized: true,
+          ...authorizationOf(true),
         },
       ],
       "testnet"

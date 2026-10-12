@@ -12,6 +12,7 @@ import {
 import { LiveReadError } from "@/lib/stellar/live-trustline";
 import { DestinationReadError } from "@/lib/close-api/merge-preflight";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { authorizationOf } from "./fixtures/trustline";
 
 // Wiring coverage for the transfer disposition (#111).
 //
@@ -29,7 +30,7 @@ const USDC = `USDC:${ISSUER}`;
 
 function trustline(asset: string, balance: string): Trustline {
   const [code, issuer] = asset.split(":");
-  return { asset, balance, authorized: true, issuer: issuer!, code: code!, limit: "1000" };
+  return { asset, balance, ...authorizationOf(true), issuer: issuer!, code: code!, limit: "1000" };
 }
 
 function makeState(over: Partial<AccountState> = {}): AccountState {

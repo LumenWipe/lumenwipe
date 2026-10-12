@@ -5,6 +5,7 @@ import type {
   DecisionAnswer,
   DecisionPoint,
   TransferDestinations,
+  Trustline,
 } from "@lumenwipe/types";
 import { stroopsToFixedXlm, xlmToStroops } from "@/lib/utils/amounts";
 import { StrKey } from "@stellar/stellar-sdk";
@@ -371,6 +372,14 @@ export function claimedAmountsPerAsset(
   return perAsset;
 }
 
+function authorizationSubjectFor(
+  account: AccountState,
+  asset: string
+): Partial<Pick<Trustline, "authorization" | "clawbackEnabled">> {
+  const held = account.trustlines.find((t) => t.asset === asset);
+  return held ? { authorization: held.authorization, clawbackEnabled: held.clawbackEnabled } : {};
+}
+
 export const PRICE_SOURCE_UNAVAILABLE =
   "The price source is unavailable right now, so some assets cannot be priced. Try again in a moment.";
 
@@ -463,6 +472,8 @@ export function deriveDecisionPoints(
         convertible,
         /** True when nothing holds this asset yet and the balance is what an exit will pay in. */
         arrivesFromExit: BigInt(xlmToStroops(tl.balance)) === 0n && arrivingFromExits.has(tl.asset),
+        /** Both are absent for an asset the account holds no trustline for yet. */
+        ...authorizationSubjectFor(account, tl.asset),
       },
       options,
       default: convertible ? "convert_to_xlm" : "return_to_issuer",

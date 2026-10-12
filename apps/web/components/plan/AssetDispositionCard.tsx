@@ -63,6 +63,13 @@ export default function AssetDispositionCard({
   const errorId = `transfer-error-${item.asset}`;
   const helpId = `transfer-help-${item.asset}`;
 
+  const clawbackNote = item.clawbackEnabled ? (
+    <p className="mt-2 pl-7 text-xs leading-relaxed text-fg-muted">
+      The issuer of {item.code} can reclaim this balance at any time, including before the close
+      completes.
+    </p>
+  ) : null;
+
   const transferPanel = (
     <div className="mt-3 pl-7">
       <label className="flex cursor-pointer items-start gap-2 text-xs text-white/70">
@@ -177,6 +184,7 @@ export default function AssetDispositionCard({
             {isTransfer ? "Send" : isIssuer ? "Return" : "Swap"}
           </span>
         </div>
+        {clawbackNote}
         {transferPanel}
       </div>
     );
@@ -208,6 +216,7 @@ export default function AssetDispositionCard({
         </div>
       </div>
 
+      {clawbackNote}
       <div className="mt-3 pl-7">
         <label className="flex cursor-pointer items-start gap-2 text-xs text-white/70">
           <input

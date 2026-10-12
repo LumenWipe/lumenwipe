@@ -1318,6 +1318,7 @@
                                 "conversion_provider_unrecognized",
                                 "signer_normalization_unsafe",
                                 "trustline_deauthorized_with_balance",
+                                "trustline_maintain_liabilities_with_balance",
                                 "defi_positions_blocked",
                                 "defi_positions_stale",
                                 "defi_position_unrecognized",
@@ -6636,6 +6637,7 @@
               "transfer_destination_unusable",
               "trustline_cannot_be_left",
               "trustline_deauthorized_with_balance",
+              "trustline_maintain_liabilities_with_balance",
               "tx_not_verified",
               "unauthorized",
               "unprocessable_entity",
@@ -8230,7 +8232,21 @@
             "description": "Only from the Horizon-compatible reader; RPC's getAssetBalance doesn't expose it."
           },
           "authorized": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "True only when `authorization` is `authorized`."
+          },
+          "authorization": {
+            "type": "string",
+            "enum": [
+              "authorized",
+              "maintain_liabilities",
+              "unauthorized"
+            ],
+            "description": "The issuer's authorization. Only `authorized` can send or receive payments; `maintain_liabilities` keeps existing offers alive and nothing else."
+          },
+          "clawbackEnabled": {
+            "type": "boolean",
+            "description": "The issuer can reclaim this balance at any time."
           },
           "issuer": {
             "type": "string"
@@ -8243,6 +8259,8 @@
           "asset",
           "balance",
           "authorized",
+          "authorization",
+          "clawbackEnabled",
           "issuer",
           "code"
         ]

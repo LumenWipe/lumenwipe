@@ -4,6 +4,7 @@ import { pricedAmountsPerAsset } from "@/lib/close-api/account-plan";
 import { claimedAmountsPerAsset } from "@/lib/close-api/decisions";
 import type { AccountState } from "@lumenwipe/types";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { authorizationOf } from "./fixtures/trustline";
 
 const MASTER = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -22,7 +23,9 @@ function account(held: string, claims: string[]): AccountState {
     numSponsoring: 0,
     sponsoredBy: null,
     authImmutable: false,
-    trustlines: [{ asset: ASSET, balance: held, authorized: true, issuer: ISSUER, code: "USDC" }],
+    trustlines: [
+      { asset: ASSET, balance: held, ...authorizationOf(true), issuer: ISSUER, code: "USDC" },
+    ],
     openOffers: [],
     poolShares: [],
     claimableBalances: claims.map((amount, i) => ({

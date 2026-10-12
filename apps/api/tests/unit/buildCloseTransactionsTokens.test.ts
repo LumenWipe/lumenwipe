@@ -16,6 +16,7 @@ import { buildPlan } from "@/lib/stellar/tx-builder";
 import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { rawSimulation } from "./fixtures/fake-exit-adapter";
+import { authorizationOf } from "./fixtures/trustline";
 
 // Wiring coverage for Soroban token dispositions (#161): the token round runs ahead of the classic
 // close, a trustline can never be "left", and the plan shows each token as its own step.
@@ -29,7 +30,7 @@ const TOKEN = Address.contract(Buffer.alloc(32, 5)).toString();
 
 function trustline(asset: string, balance: string): Trustline {
   const [code, issuer] = asset.split(":");
-  return { asset, balance, authorized: true, issuer: issuer!, code: code!, limit: "1000" };
+  return { asset, balance, ...authorizationOf(true), issuer: issuer!, code: code!, limit: "1000" };
 }
 
 function makeState(over: Partial<AccountState> = {}): AccountState {

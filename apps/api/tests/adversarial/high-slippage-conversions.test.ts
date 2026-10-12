@@ -23,6 +23,7 @@ import { buildCloseTransactions } from "@/lib/close-api/build-transactions";
 import type { AccountState, ConversionPath, Trustline } from "@lumenwipe/types";
 import { mirrorSnapshot } from "../unit/fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
+import { authorizationOf } from "../unit/fixtures/trustline";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -71,7 +72,14 @@ function makeState(balance: string): AccountState {
     sponsoredBy: null,
     authImmutable: false,
     trustlines: [
-      { asset: USDC, balance, authorized: true, issuer: ISSUER, code: "USDC", limit: "1000" },
+      {
+        asset: USDC,
+        balance,
+        ...authorizationOf(true),
+        issuer: ISSUER,
+        code: "USDC",
+        limit: "1000",
+      },
     ],
     openOffers: [],
     poolShares: [],

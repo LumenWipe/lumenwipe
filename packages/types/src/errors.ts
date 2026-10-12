@@ -103,6 +103,7 @@ export type ErrorCode =
   | "transfer_destination_unusable"
   | "trustline_cannot_be_left"
   | "trustline_deauthorized_with_balance"
+  | "trustline_maintain_liabilities_with_balance"
   | "tx_not_verified"
   | "unauthorized"
   | "unprocessable_entity"

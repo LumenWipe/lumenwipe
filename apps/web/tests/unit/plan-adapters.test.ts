@@ -396,3 +396,19 @@ test("apiStepsToPlannedSteps keeps the contract an exit step leaves", () => {
 
   expect(steps[0]!.affectedContract).toBe(POOL);
 });
+
+test("decisionPointsToConversions › a clawback-enabled asset keeps the flag, others do not carry it", () => {
+  const point = (asset: string, subject: Record<string, unknown>) => ({
+    id: `asset:${asset}`,
+    type: "asset_disposition" as const,
+    subject: { asset, balance: "1", ...subject },
+    options: [{ id: "convert_to_xlm" }],
+    default: "convert_to_xlm",
+    required: true,
+  });
+  const [flagged, plain] = decisionPointsToConversions(
+    plan([point("A:G1", { clawbackEnabled: true }), point("B:G2", { clawbackEnabled: false })])
+  );
+  expect(flagged!.clawbackEnabled).toBe(true);
+  expect(plain!.clawbackEnabled).toBeUndefined();
+});

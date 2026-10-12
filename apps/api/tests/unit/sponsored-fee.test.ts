@@ -7,6 +7,7 @@ import { expect, test } from "bun:test";
 import { Account, Keypair, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
 import { accountCanAffordFee, packCloseTransactions } from "@/lib/close-api/build-transactions";
 import type { CloseOperationsInput } from "@/lib/stellar/tx-builder/close-operations";
+import { authorizationOf } from "./fixtures/trustline";
 
 const MASTER = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -17,7 +18,7 @@ function manyTrustlines(n: number) {
   return Array.from({ length: n }, (_, i) => ({
     asset: `AST${i}:${ISSUER}`,
     balance: "0",
-    authorized: true,
+    ...authorizationOf(true),
     issuer: ISSUER,
     code: `AST${i}`,
   }));

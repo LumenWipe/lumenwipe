@@ -7,6 +7,26 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-12
+
+### Added
+
+- `Trustline` gains `authorization` (`"authorized" | "maintain_liabilities" | "unauthorized"`) and
+  `clawbackEnabled`. `authorized` stays and is true only when `authorization` is `"authorized"`.
+  Asset decision points carry both on their `subject` when the account holds the trustline.
+- Error code `trustline_maintain_liabilities_with_balance`, also the `code` of the plan blocker for
+  a line its issuer limited to keeping existing offers, which holds a balance.
+
+### Changed
+
+- The plan blocker for an unauthorized line holding a balance now carries the stable `code`
+  `trustline_deauthorized_with_balance` instead of the generic `plan_blocker`. Its message is
+  unchanged.
+- An account read whose credit balances omit `is_authorized` (or `is_authorized_to_maintain_liabilities`
+  on a line that is not authorized) now fails with the retryable `provider_response_unusable`
+  instead of reading as authorized. `close/transactions` reports it as 502 `provider_response_unusable`
+  rather than a 500 `transactions_failed`.
+
 ## [0.5.1] - 2026-10-10
 
 ### Added

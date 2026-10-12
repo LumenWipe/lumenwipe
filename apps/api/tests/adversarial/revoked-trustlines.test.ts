@@ -1,16 +1,10 @@
 /**
  * Adversarial coverage: revoked trustlines and clawback-adjacent state
- * (docs/architecture.md §17, issue #167).
+ * (docs/architecture.md §17, issues #167 and #441).
  *
- * buildPlan.test.ts already has solid boundary coverage of the deauthorized-with-balance blocker
- * itself. This file targets the three gaps research for #167 found: (a) build-transactions.ts
- * never re-checked that same blocker before this PR's fix - regression-tested here; (b) a
- * provider response omitting `is_authorized` entirely silently defaults to "authorized"; (c) a
- * clawback-enabled trustline is not specially handled anywhere in this codebase today, so a
- * balance the issuer can claw back at any time - including between analysis and signing - gets no
- * warning at all. (c) is documented, not fixed: adding clawback awareness is new product scope
- * beyond this issue's "verify, don't invent" mandate, but the gap needs to be visible and
- * pinned down by a test that goes red the moment someone assumes otherwise.
+ * (a) close/transactions refuses a deauthorized or maintain-liabilities line holding a balance
+ * before any live read; (b) a provider response whose authorization state cannot be read fails
+ * the read instead of reading as authorized; (c) a clawback-enabled line is reported as such.
  */
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import * as rpcModule from "@/lib/stellar/rpc";
@@ -19,9 +13,12 @@ import { readAccountStateFrom } from "@/lib/stellar/account-state";
 import { OFFLINE_SOROBAN_TOKENS } from "../unit/fixtures/fake-soroban-tokens";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
 import { buildPlan } from "@/lib/stellar/tx-builder";
+import { UnusableProviderResponseError } from "@/lib/utils/errors";
+import { mapDomainError, PLAN_ERRORS } from "@/lib/close-api/domain-errors";
 import type { ResolveDefiPositionsDeps } from "@/lib/defi-positions/resolve-defi-positions";
 import type { AccountState } from "@lumenwipe/types";
 import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
+import { authorizationOf } from "../unit/fixtures/trustline";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -63,123 +60,140 @@ afterEach(() => {
 
 // ─── (a) build-transactions.ts regression: the fix from this PR ─────────────────────────────
 
-test("close/transactions refuses to build for a deauthorized trustline holding a balance", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getAccount: () => {
-      throw new Error("should be refused before any live read");
-    },
-    getLatestLedger: () => {
-      throw new Error("should be refused before any live read");
-    },
-  })) as unknown as typeof rpcModule.getRpcServer);
+const REFUSED_STATES = [
+  ["unauthorized", "trustline_deauthorized_with_balance"],
+  ["maintain_liabilities", "trustline_maintain_liabilities_with_balance"],
+] as const;
 
-  const accountState: AccountState = {
-    address: SOURCE,
-    network: "testnet",
-    sequence: "100",
-    nativeBalanceLumens: "5.0000000",
-    dataEntries: [],
-    signers: [{ key: SOURCE, weight: 1, type: "ed25519_public_key" }],
-    thresholds: { low: 0, med: 1, high: 1 },
-    numSubEntries: 1,
-    numSponsoring: 0,
-    sponsoredBy: null,
-    authImmutable: false,
-    trustlines: [
-      {
-        asset: `USDC:${ISSUER}`,
-        balance: "50.0000000",
-        authorized: false,
-        issuer: ISSUER,
-        code: "USDC",
-        limit: "1000",
+test.each(REFUSED_STATES)(
+  "close/transactions refuses to build for a %s trustline holding a balance",
+  async (authorization, code) => {
+    spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
+      getAccount: () => {
+        throw new Error("should be refused before any live read");
       },
-    ],
-    openOffers: [],
-    poolShares: [],
-    claimableBalances: [],
-    subEntryMismatch: false,
-    sponsoredEntries: [],
-    sponsorshipEnumerationIncomplete: false,
-    defiPositions: emptyDefiPositionsResult(SOURCE),
-    defiPositionsWarnings: [],
-  };
+      getLatestLedger: () => {
+        throw new Error("should be refused before any live read");
+      },
+    })) as unknown as typeof rpcModule.getRpcServer);
 
-  const err = await buildCloseTransactions(accountState, DEST, {}, "testnet").catch(
+    const accountState: AccountState = {
+      address: SOURCE,
+      network: "testnet",
+      sequence: "100",
+      nativeBalanceLumens: "5.0000000",
+      dataEntries: [],
+      signers: [{ key: SOURCE, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 0, med: 1, high: 1 },
+      numSubEntries: 1,
+      numSponsoring: 0,
+      sponsoredBy: null,
+      authImmutable: false,
+      trustlines: [
+        {
+          asset: `USDC:${ISSUER}`,
+          balance: "50.0000000",
+          ...authorizationOf(false),
+          authorization,
+          issuer: ISSUER,
+          code: "USDC",
+          limit: "1000",
+        },
+      ],
+      openOffers: [],
+      poolShares: [],
+      claimableBalances: [],
+      subEntryMismatch: false,
+      sponsoredEntries: [],
+      sponsorshipEnumerationIncomplete: false,
+      defiPositions: emptyDefiPositionsResult(SOURCE),
+      defiPositionsWarnings: [],
+    };
+
+    const err = await buildCloseTransactions(accountState, DEST, {}, "testnet").catch(
+      (e: unknown) => e
+    );
+    expect(err).toBeInstanceOf(CloseBuildError);
+    expect((err as CloseBuildError).code).toBe(code);
+    expect((err as CloseBuildError).status).toBe(422);
+  }
+);
+
+// ─── (b) a missing is_authorized field fails the read instead of reading as authorized ─────
+
+const CREDIT_LINE = {
+  asset_type: "credit_alphanum4",
+  asset_code: "USDC",
+  asset_issuer: ISSUER,
+  balance: "10.0000000",
+  limit: "100",
+  is_authorized: true,
+  is_authorized_to_maintain_liabilities: true,
+};
+
+function readWith(balance: Record<string, unknown>) {
+  return readAccountStateFrom(
+    SOURCE,
+    "testnet",
+    { baseUrl: BASE, fetch: stubFetch(balance) },
+    NO_DEFI,
+    OFFLINE_SOROBAN_TOKENS
+  );
+}
+
+test("a trustline balance record omitting is_authorized fails the read, never reads as authorized", async () => {
+  const { is_authorized: _omit, ...withoutAuthField } = CREDIT_LINE; // eslint-disable-line @typescript-eslint/no-unused-vars
+  const err = await readWith(withoutAuthField).catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(UnusableProviderResponseError);
+  expect((err as Error).message).toContain(".is_authorized");
+  expect(mapDomainError(PLAN_ERRORS, err)?.code).toBe("provider_response_unusable");
+});
+
+test("a deauthorized line that omits is_authorized_to_maintain_liabilities fails the read", async () => {
+  const { is_authorized_to_maintain_liabilities: _omit, ...partial } = CREDIT_LINE; // eslint-disable-line @typescript-eslint/no-unused-vars
+  const err = await readWith({ ...partial, is_authorized: false }).catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(UnusableProviderResponseError);
+  expect((err as Error).message).toContain("is_authorized_to_maintain_liabilities");
+});
+
+test("a non-boolean is_clawback_enabled fails the read", async () => {
+  const err = await readWith({ ...CREDIT_LINE, is_clawback_enabled: "yes" }).catch(
     (e: unknown) => e
   );
-  expect(err).toBeInstanceOf(CloseBuildError);
-  expect((err as CloseBuildError).code).toBe("trustline_deauthorized_with_balance");
-  expect((err as CloseBuildError).status).toBe(422);
+  expect(err).toBeInstanceOf(UnusableProviderResponseError);
 });
 
-// ─── (b) a missing is_authorized field silently defaults to "authorized" ────────────────────
+// ─── (c) clawback-enabled trustlines are reported as such ───────────────────────────────────
 
-test("a trustline balance record omitting is_authorized reads as authorized, not unknown", async () => {
-  // The destructure exists only to drop is_authorized from the record under test.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { is_authorized: _omit, ...balanceWithoutAuthField } = {
-    asset_type: "credit_alphanum4",
-    asset_code: "USDC",
-    asset_issuer: ISSUER,
-    balance: "10.0000000",
-    limit: "100",
-    is_authorized: true,
-  };
-  const state = await readAccountStateFrom(
-    SOURCE,
-    "testnet",
-    { baseUrl: BASE, fetch: stubFetch(balanceWithoutAuthField) },
-    NO_DEFI,
-    OFFLINE_SOROBAN_TOKENS
-  );
-  // Documents the current `?? true` default in account-state.ts - if a real provider ever
-  // omits this field for a trustline that is actually deauthorized, this default would silently
-  // misclassify it as safe to convert. Horizon itself always includes the field for a trustline
-  // balance, so this is a defensive default rather than an observed provider gap - but the
-  // default itself is what this test pins down.
-  expect(state.trustlines[0]!.authorized).toBe(true);
-});
+test("a clawback-enabled trustline is reported as clawback-enabled and does not block the plan", async () => {
+  const withState = await readWith({ ...CREDIT_LINE, is_clawback_enabled: true });
+  const omittedState = await readWith(CREDIT_LINE);
+  const falseState = await readWith({ ...CREDIT_LINE, is_clawback_enabled: false });
 
-// ─── (c) clawback-enabled trustlines are not specially handled anywhere today ───────────────
-
-test("a clawback-enabled trustline is treated identically to a non-clawback one - no warning exists today", async () => {
-  const withClawback = {
-    asset_type: "credit_alphanum4",
-    asset_code: "USDC",
-    asset_issuer: ISSUER,
-    balance: "10.0000000",
-    limit: "100",
-    is_authorized: true,
-    is_clawback_enabled: true,
-  };
-  const withoutClawback = { ...withClawback, is_clawback_enabled: false };
-
-  const withState = await readAccountStateFrom(
-    SOURCE,
-    "testnet",
-    { baseUrl: BASE, fetch: stubFetch(withClawback) },
-    NO_DEFI,
-    OFFLINE_SOROBAN_TOKENS
-  );
-  const withoutState = await readAccountStateFrom(
-    SOURCE,
-    "testnet",
-    { baseUrl: BASE, fetch: stubFetch(withoutClawback) },
-    NO_DEFI,
-    OFFLINE_SOROBAN_TOKENS
-  );
-
-  // Identical parsed trustlines: the clawback flag is dropped entirely during mapping, not
-  // read anywhere. If this test ever starts failing because the two diverge, it means clawback
-  // awareness has been added - update this test to assert the new (presumably protective)
-  // behavior instead of deleting it.
-  expect(withState.trustlines).toEqual(withoutState.trustlines);
+  expect(withState.trustlines[0]!.clawbackEnabled).toBe(true);
+  expect(omittedState.trustlines[0]!.clawbackEnabled).toBe(false);
+  expect(falseState.trustlines[0]!.clawbackEnabled).toBe(false);
 
   const withPlan = buildPlan(withState, false, false);
-  const withoutPlan = buildPlan(withoutState, false, false);
-  // No blocker, no distinct wording, no notice: a clawback-enabled balance the issuer could
-  // reclaim between analysis and signing is planned exactly like any other convertible balance.
+  const withoutPlan = buildPlan(omittedState, false, false);
   expect(withPlan.blockers).toEqual(withoutPlan.blockers);
   expect(withPlan.steps.map((s) => s.title)).toEqual(withoutPlan.steps.map((s) => s.title));
+});
+
+test("the three authorization states are told apart", async () => {
+  const states = await Promise.all([
+    readWith(CREDIT_LINE),
+    readWith({ ...CREDIT_LINE, is_authorized: false }),
+    readWith({
+      ...CREDIT_LINE,
+      is_authorized: false,
+      is_authorized_to_maintain_liabilities: false,
+    }),
+  ]);
+  expect(states.map((s) => s.trustlines[0]!.authorization)).toEqual([
+    "authorized",
+    "maintain_liabilities",
+    "unauthorized",
+  ]);
+  expect(states.map((s) => s.trustlines[0]!.authorized)).toEqual([true, false, false]);
 });

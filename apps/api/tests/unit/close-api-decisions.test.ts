@@ -11,6 +11,7 @@ import {
 } from "@/lib/close-api/decisions";
 import type { AccountState, ClaimableBalance, Trustline } from "@lumenwipe/types";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { authorizationOf } from "./fixtures/trustline";
 
 const MASTER = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -43,7 +44,7 @@ function makeAccount(overrides: Partial<AccountState> = {}): AccountState {
 }
 
 function makeTrustline(code: string, balance: string): Trustline {
-  return { asset: `${code}:${ISSUER}`, balance, authorized: true, issuer: ISSUER, code };
+  return { asset: `${code}:${ISSUER}`, balance, ...authorizationOf(true), issuer: ISSUER, code };
 }
 
 function makeClaimableBalance(id: string, asset: string, amount = "10.0000000"): ClaimableBalance {

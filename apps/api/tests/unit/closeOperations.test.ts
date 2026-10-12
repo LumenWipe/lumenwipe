@@ -13,6 +13,7 @@ import {
   buildCloseTx,
   type CloseOperationsInput,
 } from "@/lib/stellar/tx-builder/close-operations";
+import { authorizationOf } from "./fixtures/trustline";
 
 const MASTER = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -42,7 +43,7 @@ function cb(hexChar: string, asset: string, amount: string) {
 const TL = {
   asset: `USDC:${ISSUER}`,
   balance: "10",
-  authorized: true,
+  ...authorizationOf(true),
   issuer: ISSUER,
   code: "USDC",
 };
@@ -102,7 +103,7 @@ test("buildCloseTx > operation order is signers, data, offers, claim, convert, i
   const issuerTl = {
     asset: `EURC:${ISSUER}`,
     balance: "5",
-    authorized: true,
+    ...authorizationOf(true),
     issuer: ISSUER,
     code: "EURC",
   };
@@ -399,14 +400,14 @@ test("transfer composes with convert and issuer in one plan, each to its own des
   const eurc = {
     asset: `EURC:${otherIssuer}`,
     balance: "5",
-    authorized: true,
+    ...authorizationOf(true),
     issuer: otherIssuer,
     code: "EURC",
   };
   const foo = {
     asset: `FOO:${otherIssuer}`,
     balance: "3",
-    authorized: true,
+    ...authorizationOf(true),
     issuer: otherIssuer,
     code: "FOO",
   };

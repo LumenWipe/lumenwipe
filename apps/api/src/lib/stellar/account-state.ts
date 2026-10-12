@@ -27,6 +27,7 @@ import type {
   DataEntry,
   DefiPosition,
   Trustline,
+  TrustlineAuthorization,
   PoolShareEntry,
   SorobanTokensResult,
 } from "@lumenwipe/types";
@@ -80,6 +81,8 @@ interface ApiBalance {
   limit?: string;
   buying_liabilities?: string;
   is_authorized?: boolean;
+  is_authorized_to_maintain_liabilities?: boolean;
+  is_clawback_enabled?: boolean;
 }
 
 interface ApiAccount {
@@ -127,10 +130,58 @@ function assertUsableAccountBody(account: ApiAccount, address: string): void {
   }
   if (typeof account.flags?.auth_immutable !== "boolean") missing.push("flags.auth_immutable");
   if (typeof account.sequence !== "string") missing.push("sequence");
+  if (Array.isArray(account.balances))
+    missing.push(...unusableAuthorizationFields(account.balances));
 
   if (missing.length > 0) {
     throw new UnusableProviderResponseError(address, missing);
   }
+}
+
+function unusableAuthorizationFields(balances: ApiBalance[]): string[] {
+  const missing: string[] = [];
+  for (const b of balances.filter(isCreditBalance)) {
+    const label = `balances[${horizonAssetToString(b)}]`;
+    if (typeof b.is_authorized !== "boolean") missing.push(`${label}.is_authorized`);
+    else if (!b.is_authorized && typeof b.is_authorized_to_maintain_liabilities !== "boolean") {
+      missing.push(`${label}.is_authorized_to_maintain_liabilities`);
+    }
+    if (b.is_clawback_enabled !== undefined && typeof b.is_clawback_enabled !== "boolean") {
+      missing.push(`${label}.is_clawback_enabled`);
+    }
+  }
+  return missing;
+}
+
+function isCreditBalance(b: ApiBalance): boolean {
+  return b.asset_type === "credit_alphanum4" || b.asset_type === "credit_alphanum12";
+}
+
+function authorizationOf(b: ApiBalance): TrustlineAuthorization {
+  if (b.is_authorized) return "authorized";
+  return b.is_authorized_to_maintain_liabilities ? "maintain_liabilities" : "unauthorized";
+}
+
+/**
+ * Maps one credit balance. The authorization fields must already have passed
+ * `assertUsableAccountBody`: there is no default for an issuer's state we could not read.
+ * Horizon omits `is_clawback_enabled` when it is false, so an absent flag means not enabled.
+ */
+function toTrustline(b: ApiBalance): Trustline {
+  const authorization = authorizationOf(b);
+  return {
+    asset: horizonAssetToString(b),
+    balance: b.balance,
+    // Left undefined when the provider omits it, never defaulted to "0". A fabricated zero
+    // is indistinguishable from a trustline with no room at all, which would make every
+    // transfer into that line look impossible (see hasRoomFor in close-api/transfer-destinations).
+    limit: b.limit,
+    authorized: authorization === "authorized",
+    authorization,
+    clawbackEnabled: b.is_clawback_enabled === true,
+    issuer: b.asset_issuer!,
+    code: b.asset_code!,
+  };
 }
 
 /** Resolves the configured provider for a network. Throws rather than reading from nowhere. */
@@ -175,19 +226,7 @@ export async function readAccountStateFrom(
 
   const nativeBalance = account.balances.find((b) => b.asset_type === "native");
 
-  const trustlines: Trustline[] = account.balances
-    .filter((b) => b.asset_type === "credit_alphanum4" || b.asset_type === "credit_alphanum12")
-    .map((b) => ({
-      asset: horizonAssetToString(b),
-      balance: b.balance,
-      // Left undefined when the provider omits it, never defaulted to "0". A fabricated zero
-      // is indistinguishable from a trustline with no room at all, which would make every
-      // transfer into that line look impossible (see hasRoomFor in close-api/transfer-destinations).
-      limit: b.limit,
-      authorized: b.is_authorized ?? true,
-      issuer: b.asset_issuer!,
-      code: b.asset_code!,
-    }));
+  const trustlines: Trustline[] = account.balances.filter(isCreditBalance).map(toTrustline);
 
   const poolShares: PoolShareEntry[] = account.balances
     .filter((b) => b.asset_type === "liquidity_pool_shares" && b.liquidity_pool_id)
@@ -340,19 +379,13 @@ export async function readTrustlinesOnly(
         `absent data as "holds no trustlines".`
     );
   }
+  const unusable = unusableAuthorizationFields(account.balances);
+  if (unusable.length > 0) throw new UnusableProviderResponseError(address, unusable);
   return {
     address,
     trustlines: account.balances
-      .filter((b) => b.asset_type === "credit_alphanum4" || b.asset_type === "credit_alphanum12")
-      .map((b) => ({
-        asset: horizonAssetToString(b),
-        balance: b.balance,
-        limit: b.limit,
-        buyingLiabilities: b.buying_liabilities,
-        authorized: b.is_authorized ?? true,
-        issuer: b.asset_issuer!,
-        code: b.asset_code!,
-      })),
+      .filter(isCreditBalance)
+      .map((b) => ({ ...toTrustline(b), buyingLiabilities: b.buying_liabilities })),
   };
 }
 

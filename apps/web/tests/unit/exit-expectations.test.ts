@@ -3,6 +3,7 @@ import { Asset, Networks } from "@stellar/stellar-sdk";
 import type { AccountState } from "@/types/account";
 import { exitExpectations } from "@/lib/stellar/exit-expectations";
 import { exitContractsFor, isContractRegistryUsable } from "@/lib/contract-registry";
+import { authorizationOf } from "./fixtures/trustline";
 
 const ACCOUNT = "GBUYBKHUCCAKG4LM76DONHABFRZSZEHK7ARNEEXBZ3CMVIYKZXPLPVRG";
 const BLEND_POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
@@ -19,7 +20,13 @@ function state(positions: AccountState["defiPositions"]["positions"]): AccountSt
   return {
     address: ACCOUNT,
     trustlines: [
-      { asset: `USDC:${ISSUER}`, code: "USDC", issuer: ISSUER, balance: "1", authorized: true },
+      {
+        asset: `USDC:${ISSUER}`,
+        code: "USDC",
+        issuer: ISSUER,
+        balance: "1",
+        ...authorizationOf(true),
+      },
     ],
     defiPositions: { positions },
   } as unknown as AccountState;

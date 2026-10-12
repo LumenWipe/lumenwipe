@@ -2,6 +2,7 @@ import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { detectSubEntryMismatch } from "@/lib/stellar/scan-fallback";
 import type { Trustline } from "@lumenwipe/types";
+import { authorizationOf } from "./fixtures/trustline";
 
 const MASTER = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -11,7 +12,7 @@ function makeTrustline(code: string): Trustline {
     asset: `${code}:${ISSUER}`,
     balance: "1.0000000",
     limit: "922337203685.4775807",
-    authorized: true,
+    ...authorizationOf(true),
     issuer: ISSUER,
     code,
   };

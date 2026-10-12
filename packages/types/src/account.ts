@@ -39,13 +39,21 @@ export interface DataEntry {
   value: string; // base64-encoded
 }
 
+/** The issuer's authorization of a trustline. Only `authorized` can send or receive payments;
+ *  `maintain_liabilities` keeps existing offers alive and nothing else. */
+export type TrustlineAuthorization = "authorized" | "maintain_liabilities" | "unauthorized";
+
 export interface Trustline {
   asset: string; // "CODE:ISSUER" or "native"
   balance: string; // in lumens/units as string
   // Only provided by the Horizon-compatible reader; rpc getAssetBalance does not
   // expose it. Nothing consumes it (trustline removal always uses ChangeTrust limit 0).
   limit?: string;
+  /** True only when `authorization` is `authorized`. */
   authorized: boolean;
+  authorization: TrustlineAuthorization;
+  /** The issuer can reclaim this balance at any time. */
+  clawbackEnabled: boolean;
   issuer: string;
   code: string;
 }
