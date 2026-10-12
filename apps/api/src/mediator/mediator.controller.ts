@@ -7,21 +7,14 @@ import {
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
-import { Transaction } from "@stellar/stellar-sdk";
 import { MediatorSignRequestDto } from "./dto/mediator-sign.dto";
 import { MediatorCheckResultDto, MediatorSignResponseDto } from "./dto/mediator-responses.dto";
 import { ApiErrorResponse, ApiBodyErrorResponses } from "@/common/api-error-response.decorator";
-import { NETWORK_PASSPHRASES, getMediatorPublicKey, type Network } from "@/config/networks";
+import type { Network } from "@/config/networks";
+import { MediatorSigningService } from "./mediator-signing.service";
 import { NetworkFirstGuard } from "@/common/guards/network-first.guard";
 import { GAddressPipe } from "@/common/pipes/g-address.pipe";
 import { NetworkPipe } from "@/common/pipes/network.pipe";
-import { isValidGAddress } from "@/lib/utils/validation";
-import { isRegistryFresh, lookupExchange } from "@/lib/exchange-registry";
-import { getMediatorKeypair } from "@/lib/stellar/mediator-server";
-import { readNativeBalance } from "@/lib/stellar/account-state";
-import { AccountNotFoundError } from "@/lib/utils/errors";
-import { forwardExceedsMergedBalance } from "./mediator-validation";
-import { fail } from "@/common/fail";
 
 @ApiTags("mediator")
 @ApiBearerAuth("api-key")
@@ -30,11 +23,8 @@ import { fail } from "@/common/fail";
 @ApiErrorResponse(429, "Rate limit exceeded for this key.", ["rate_limited"])
 @Controller(":network/mediator")
 export class MediatorController {
-  /**
-   * Co-signs the shared-mediator forward payment. Validates the exact
-   * [accountMerge → mediator, payment mediator → destination] shape and only
-   * then adds the mediator signature; it can never change destination/amount.
-   */
+  constructor(private readonly signing: MediatorSigningService) {}
+
   @ApiErrorResponse(400, "Missing/invalid transaction or disallowed structure.", [
     "invalid_network",
     "missing_transaction",
@@ -62,78 +52,7 @@ export class MediatorController {
     @Param("network", new NetworkPipe("Invalid network")) network: Network,
     @Body() body: { transaction?: string }
   ) {
-    const mediatorKeypair = getMediatorKeypair(network);
-    if (!mediatorKeypair) {
-      fail(
-        "mediator_not_configured",
-        "Exchange (mediator) flow is not configured on this server.",
-        503
-      );
-    }
-    const mediator = mediatorKeypair.publicKey();
-
-    const configuredPublic = getMediatorPublicKey(network);
-    if (configuredPublic && configuredPublic !== mediator) {
-      fail("mediator_key_misconfiguration", "Mediator key misconfiguration", 500);
-    }
-
-    if (!body?.transaction) fail("missing_transaction", "Missing transaction", 400);
-
-    let tx: Transaction;
-    try {
-      tx = new Transaction(body.transaction, NETWORK_PASSPHRASES[network]);
-    } catch {
-      fail("invalid_transaction_xdr", "Invalid transaction XDR", 400);
-    }
-
-    const [merge, transfer] = tx.operations;
-
-    if (
-      tx.operations.length !== 2 ||
-      merge?.type !== "accountMerge" ||
-      transfer?.type !== "payment"
-    ) {
-      fail("transaction_structure_not_allowed", "Transaction structure not allowed", 400);
-    }
-
-    if (
-      merge.source === mediator ||
-      merge.destination !== mediator ||
-      transfer.source !== mediator ||
-      transfer.destination === mediator ||
-      !transfer.asset.isNative() ||
-      parseFloat(transfer.amount) < 1
-    ) {
-      fail("transaction_structure_not_allowed", "Transaction structure not allowed", 400);
-    }
-
-    // The mediator must not be the transaction's fee/sequence source (that would consume
-    // its sequence number and make it pay the fee) nor the account being merged.
-    const mergedSource = merge.source ?? tx.source;
-    if (tx.source === mediator || mergedSource === mediator || !isValidGAddress(mergedSource)) {
-      fail("transaction_structure_not_allowed", "Transaction structure not allowed", 400);
-    }
-
-    // Bound the forward payment to what the merge delivers - defense-in-depth against a
-    // naive/accidental over-forward on this public endpoint. This is not a full guarantee
-    // against an active adversary (see forwardExceedsMergedBalance for the TOCTOU limit);
-    // the primary protection stays the operational invariant that the mediator holds no
-    // surplus. Fail closed: if the balance can't be read, do not co-sign.
-    let mergedBalance: string;
-    try {
-      mergedBalance = (await readNativeBalance(mergedSource, network)).nativeBalanceLumens;
-    } catch (err) {
-      if (err instanceof AccountNotFoundError) {
-        fail("merged_account_not_found", "Merged account not found", 400);
-      }
-      throw err;
-    }
-    if (forwardExceedsMergedBalance(transfer.amount, mergedBalance, Number(tx.fee))) {
-      fail("forward_amount_exceeds_balance", "Forward amount exceeds the merged balance", 400);
-    }
-
-    tx.sign(mediatorKeypair);
-    return { transaction: tx.toEnvelope().toXDR("base64") };
+    return this.signing.sign(network, body);
   }
 
   @ApiErrorResponse(400, "Invalid network or address.", ["invalid_network", "invalid_address"])
@@ -150,47 +69,6 @@ export class MediatorController {
     @Param("network", new NetworkPipe("Invalid network")) network: `${Network}`,
     @Param("address", new GAddressPipe("invalid_address", "Invalid address")) address: string
   ) {
-    // Whether this server can actually co-sign the mediator flow (secret configured).
-    const available = getMediatorKeypair(network) !== null;
-    const registryFresh = isRegistryFresh();
-
-    const exchange = lookupExchange(address);
-    if (exchange) {
-      return {
-        requiresMediator: exchange.requiresMediator,
-        reason: `${exchange.name} does not support direct account merges.`,
-        requiresMemo: exchange.requiresMemo,
-        memoType: exchange.memoType,
-        exchangeName: exchange.name,
-        available,
-        registryFresh,
-      };
-    }
-
-    try {
-      await readNativeBalance(address, network);
-      return {
-        requiresMediator: false,
-        reason: "Destination account exists and supports account merges.",
-        requiresMemo: false,
-        memoType: null,
-        exchangeName: null,
-        available,
-        registryFresh,
-      };
-    } catch (err) {
-      if (err instanceof AccountNotFoundError) {
-        return {
-          requiresMediator: false,
-          reason: "Destination account does not exist yet. Merging into it will create it.",
-          requiresMemo: false,
-          memoType: null,
-          exchangeName: null,
-          available,
-          registryFresh,
-        };
-      }
-      throw err;
-    }
+    return this.signing.checkDestination(network, address);
   }
 }
