@@ -50,7 +50,7 @@ async function addDataEntry(keypair: Keypair): Promise<void> {
     .setTimeout(60)
     .build();
   tx.sign(keypair);
-  await client.submit(tx.toEnvelope().toXDR("base64"));
+  await client.submit(tx.toEnvelope().toXdr("base64"));
 }
 
 async function main(): Promise<void> {
@@ -88,10 +88,10 @@ async function main(): Promise<void> {
       verifyCloseTransaction(tx, { source: sourceAddress, destination: destinationAddress }),
     requiredWeight: () => 1,
     sign: async (_tx, xdr) => {
-      const parsed = TransactionBuilder.fromXDR(xdr, Networks.TESTNET);
+      const parsed = TransactionBuilder.fromXdr(xdr, Networks.TESTNET);
       if (!(parsed instanceof Transaction)) throw new Error("Unexpected fee-bump envelope.");
       parsed.sign(source);
-      return { xdr: parsed.toEnvelope().toXDR("base64"), weight: 1 };
+      return { xdr: parsed.toEnvelope().toXdr("base64"), weight: 1 };
     },
     submit: async (_tx, xdr) => (await client.submit(xdr)).hash,
     onProgress: (message) => console.log(message),

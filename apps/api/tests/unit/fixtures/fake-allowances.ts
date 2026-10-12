@@ -48,15 +48,16 @@ export interface FakeAllowancesWorld {
 function calledInvocation(
   tx: Transaction
 ): { contract: string; fn: string; args: xdr.ScVal[] } | null {
-  const op = tx.toEnvelope().v1().tx().operations()[0];
-  if (!op || op.body().switch() !== xdr.OperationType.invokeHostFunction()) return null;
-  const host = op.body().invokeHostFunctionOp().hostFunction();
-  if (host.switch() !== xdr.HostFunctionType.hostFunctionTypeInvokeContract()) return null;
-  const call = host.invokeContract();
+  const envelope = tx.toEnvelope();
+  const op = envelope.type === "envelopeTypeTx" ? envelope.v1.tx.operations[0] : undefined;
+  if (!op || op.body.type !== "invokeHostFunction") return null;
+  const host = op.body.invokeHostFunctionOp.hostFunction;
+  if (host.type !== "hostFunctionTypeInvokeContract") return null;
+  const call = host.invokeContract;
   return {
-    contract: Address.fromScAddress(call.contractAddress()).toString(),
-    fn: call.functionName().toString(),
-    args: call.args(),
+    contract: Address.fromScAddress(call.contractAddress).toString(),
+    fn: call.functionName.toString(),
+    args: call.args,
   };
 }
 

@@ -8,6 +8,7 @@ import * as navigation from "next/navigation";
 import * as closeExecution from "@/hooks/useCloseExecution";
 import * as walletKit from "@/hooks/useWalletKitConnection";
 import * as sessionStore from "@/lib/session/store";
+import { fromHex } from "@/lib/stellar/hex";
 
 // ExecutionWizard calls useRouter() (to navigate to /complete on success) - outside of a
 // real Next.js app router tree that throws "invariant expected app router to be mounted".
@@ -191,7 +192,7 @@ test("execution-wizard › connecting a second (co-signer) wallet enables and dr
 });
 
 test("execution-wizard › a hash(x) signer among remainingSigners renders its explanation and a preimage input", async () => {
-  const preimage = Buffer.from("deadbeef", "hex");
+  const preimage = fromHex("deadbeef");
   const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
   currentSignatureStatus = {
     requiredWeight: 2,
@@ -210,7 +211,7 @@ test("execution-wizard › a hash(x) signer among remainingSigners renders its e
 });
 
 test("execution-wizard › a correct hash(x) preimage calls run() with a signer keyed to the hash(x) signer", async () => {
-  const preimage = Buffer.from("deadbeef", "hex");
+  const preimage = fromHex("deadbeef");
   const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
   currentSignatureStatus = {
     requiredWeight: 2,
@@ -236,7 +237,7 @@ test("execution-wizard › a correct hash(x) preimage calls run() with a signer 
 });
 
 test("execution-wizard › an incorrect hash(x) preimage shows an inline error and never calls run()", async () => {
-  const hashXKey = StrKey.encodeSha256Hash(hash(Buffer.from("deadbeef", "hex")));
+  const hashXKey = StrKey.encodeSha256Hash(hash(fromHex("deadbeef")));
   currentSignatureStatus = {
     requiredWeight: 2,
     accumulatedWeight: 1,

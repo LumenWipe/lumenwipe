@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { Address, TransactionBuilder, type Transaction } from "@stellar/stellar-sdk";
+import { invokedContract } from "@/lib/stellar/envelope-ops";
+import { TransactionBuilder, type Transaction } from "@stellar/stellar-sdk";
 import { SoroswapSDK, SupportedNetworks } from "@soroswap/sdk";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { resolveWasmHash, soroswapConversionContracts } from "@/lib/contract-registry";
@@ -63,18 +64,7 @@ test.skipIf(!RUN)(
       })
     ).not.toThrow();
 
-    const called = Address.fromScAddress(
-      tx
-        .toEnvelope()
-        .v1()
-        .tx()
-        .operations()[0]!
-        .body()
-        .invokeHostFunctionOp()
-        .hostFunction()
-        .invokeContract()
-        .contractAddress()
-    ).toString();
+    const called = invokedContract(tx);
     const hash = await readLiveWasmHash(rpc, called);
     const resolved = resolveWasmHash("mainnet", hash ?? "");
     expect(resolved.status).toBe("known");

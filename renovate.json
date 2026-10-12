@@ -7,26 +7,27 @@
   },
   "schedule": ["before 7am on monday"],
   "labels": ["dependencies"],
-  "prConcurrentLimit": 5,
+  "prConcurrentLimit": 1,
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": ["before 7am on monday"]
   },
   "packageRules": [
     {
-      "description": "Group same-ecosystem minor/patch bumps into one PR instead of one-per-package noise.",
-      "matchUpdateTypes": ["minor", "patch"],
-      "groupName": "non-major dependencies"
+      "description": "Every update (major, minor, patch, pins, overrides, CI runtimes) lands in one PR so the whole dependency set moves together and is validated against every workspace at once.",
+      "matchPackageNames": ["*"],
+      "groupName": "all dependencies",
+      "separateMajorMinor": false
+    },
+    {
+      "description": "typescript stays on the 6.x compiler API (typescript-eslint, nest build, Next and api-extractor cannot load 7); the 7.x compiler arrives through the @typescript/native alias.",
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<6.1.0"
     },
     {
       "description": "Automerge disabled everywhere - this project closes accounts irreversibly, and CONTRIBUTING.md already asks for closer review on anything security-sensitive. A dependency bump is reviewed like any other change, never merged unattended.",
       "matchPackageNames": ["*"],
       "automerge": false
-    },
-    {
-      "description": "@stellar/stellar-sdk is pinned to an exact version via the root `overrides` on purpose (see CLAUDE.md: mixing its CJS/ESM builds across the two package managers' resolution breaks js-xdr identity). Never opened as an automatic PR; still tracked on the dashboard so a real update (e.g. a security fix) isn't missed, but bumping it is a deliberate, manually-triggered change.",
-      "matchPackageNames": ["@stellar/stellar-sdk"],
-      "dependencyDashboardApproval": true
     },
     {
       "description": "Security fixes bypass the weekly schedule and PR concurrency limit - waiting until Monday for a vulnerable dependency defeats the point of scanning for one.",

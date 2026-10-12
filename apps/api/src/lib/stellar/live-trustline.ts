@@ -49,12 +49,13 @@ export async function readLiveTrustline(
   if (!Array.isArray(entries)) throw new LiveReadError(label);
   const entry = entries[0];
   if (!entry) return null;
-  const line = entry.val.trustLine();
-  const v1 = line.ext().switch() === 1 ? line.ext().v1() : null;
+  if (entry.val.type !== "trustline") throw new LiveReadError(label);
+  const line = entry.val.trustLine;
+  const v1 = line.ext.type === "v1" ? line.ext.v1 : null;
   return {
-    balance: BigInt(line.balance().toString()),
-    limit: BigInt(line.limit().toString()),
-    buyingLiabilities: v1 ? BigInt(v1.liabilities().buying().toString()) : 0n,
-    authorized: (line.flags() & AUTHORIZED_FLAG) !== 0,
+    balance: line.balance,
+    limit: line.limit,
+    buyingLiabilities: v1 ? v1.liabilities.buying : 0n,
+    authorized: (line.flags & AUTHORIZED_FLAG) !== 0,
   };
 }

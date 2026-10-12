@@ -45,7 +45,7 @@ export default function NotFound() {
           <p className="mkt-eyebrow mb-7 text-stellar/50">ledger lookup · error_code: 404</p>
 
           {/* terminal panel */}
-          <div className="mb-9 overflow-hidden rounded-2xl border border-white/[0.09] bg-[hsl(var(--card)/0.8)] backdrop-blur-sm">
+          <div className="mb-9 overflow-hidden rounded-2xl border border-white/[0.09] bg-[hsl(var(--card)/0.8)] backdrop-blur-xs">
             {/* title bar */}
             <div className="flex items-center gap-1.5 border-b border-white/[0.07] bg-white/[0.02] px-4 py-3">
               <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]/70" />

@@ -5,6 +5,7 @@ import { blendSdkNetwork } from "@/lib/blend-sdk";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import type { EnrichContext, KnownToken, PositionEnricher } from "./shared";
 import { formatUnits, positionKey } from "./shared";
+import { contractDataEntry, instanceOfEntry } from "@/lib/stellar/contract-data";
 
 /**
  * Display data for Aquarius LP positions, from the pool's own instance: its tokens (`Tokens`, or
@@ -29,9 +30,7 @@ export interface AquariusEnrichDeps {
 }
 
 const asAddress = (val: xdr.ScVal | undefined): string | null =>
-  val && val.switch() === xdr.ScValType.scvAddress()
-    ? Address.fromScAddress(val.address()).toString()
-    : null;
+  val && val.type === "scvAddress" ? Address.fromScAddress(val.address).toString() : null;
 
 const asUnsigned = (val: xdr.ScVal | undefined): bigint | null => {
   if (!val) return null;
@@ -42,9 +41,9 @@ const asUnsigned = (val: xdr.ScVal | undefined): bigint | null => {
 };
 
 function listOf<T>(val: xdr.ScVal | undefined, item: (v: xdr.ScVal) => T | null): T[] | null {
-  if (!val || val.switch() !== xdr.ScValType.scvVec()) return null;
+  if (!val || val.type !== "scvVec") return null;
   const out: T[] = [];
-  for (const v of val.vec() ?? []) {
+  for (const v of val.vec ?? []) {
     const x = item(v);
     if (x === null) return null;
     out.push(x);
@@ -63,18 +62,18 @@ export async function readAquariusPool(
   const poolKey = new Contract(pool).getFootprint();
   const first = await rpc.getLedgerEntries(poolKey);
   const poolVal = first.entries?.find(
-    (e) => e.key.toXDR("base64") === poolKey.toXDR("base64")
+    (e) => e.key.toXdr("base64") === poolKey.toXdr("base64")
   )?.val;
   if (!poolVal) return null;
   const storage = new Map<string, xdr.ScVal>();
-  for (const entry of poolVal.contractData().val().instance().storage() ?? []) {
+  for (const entry of instanceOfEntry(poolVal).storage ?? []) {
     let name: unknown;
     try {
-      name = JSON.stringify(scValToNative(entry.key()));
+      name = JSON.stringify(scValToNative(entry.key));
     } catch {
       continue;
     }
-    if (typeof name === "string") storage.set(name, entry.val());
+    if (typeof name === "string") storage.set(name, entry.val);
   }
   const tokens = storage.has('["Tokens"]')
     ? listOf(storage.get('["Tokens"]'), asAddress)
@@ -105,17 +104,17 @@ export async function readAquariusPool(
     new xdr.LedgerKeyContractData({
       contract: new Address(shareToken).toScAddress(),
       key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("Balance"), new Address(account).toScVal()]),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
     })
   );
   const second = await rpc.getLedgerEntries(balanceKey);
   const balanceVal = second.entries?.find(
-    (e) => e.key.toXDR("base64") === balanceKey.toXDR("base64")
+    (e) => e.key.toXdr("base64") === balanceKey.toXdr("base64")
   )?.val;
   // An absent or malformed balance is not a zero: showing "0 shares" for a position detection
   // found would contradict the exit, which refuses to treat an absent entry as empty.
   if (!balanceVal) return null;
-  const shares = asUnsigned(balanceVal.contractData().val());
+  const shares = asUnsigned(contractDataEntry(balanceVal).val);
   if (shares === null) return null;
   return { tokens, reserves, totalShares, shares, poolType };
 }

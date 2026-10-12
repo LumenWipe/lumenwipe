@@ -146,9 +146,18 @@ const BACKSTOP = "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA";
 const BACKSTOP_WASM_HASH = "c1f4502a757e25c611f5a159bc1ab0eef64085adac6c68123dca66e87faffbc2";
 const BACKSTOP_TOKEN = "CA5UTUUPHYL5K22UBRUVC37EARZUGYOSGK3IKIXG2JLCC5ZZLI4BDWDM";
 
+const balanceLedgerKey = (): Extract<xdr.LedgerKey, { type: "contractData" }> => {
+  const key = xdr.LedgerKey.fromXdr(
+    UserBalance.ledgerKey(BACKSTOP, BLEND_POOL, USER).toXDR("base64"),
+    "base64"
+  );
+  if (key.type !== "contractData") throw new Error("expected a contract data key");
+  return key;
+};
+
 /** The backstop's `UserBalance(pool, user)` entry: shares not queued plus queued withdrawals. */
 function backstopBalanceEntry(shares: bigint, q4w: Array<[bigint, number]>) {
-  const key = UserBalance.ledgerKey(BACKSTOP, BLEND_POOL, USER).contractData().key();
+  const key = balanceLedgerKey().contractData.key;
   return contractDataEntry(
     BACKSTOP,
     key,
@@ -221,11 +230,7 @@ test("no backstop entry, or an empty one, is no position; an unreadable one or a
     rpc: mockRpc([
       contractInstanceEntry(BLEND_POOL, BLEND_WASM_HASH),
       backstopInstance(),
-      contractDataEntry(
-        BACKSTOP,
-        UserBalance.ledgerKey(BACKSTOP, BLEND_POOL, USER).contractData().key(),
-        i128Val(7n)
-      ),
+      contractDataEntry(BACKSTOP, balanceLedgerKey().contractData.key, i128Val(7n)),
     ]),
     registryEntries: blendEntries(),
   });
@@ -689,9 +694,7 @@ function aquariusRegistry(): ContractRegistryEntry[] {
 }
 
 const u128 = (n: number): xdr.ScVal =>
-  xdr.ScVal.scvU128(
-    new xdr.UInt128Parts({ hi: xdr.Uint64.fromString("0"), lo: xdr.Uint64.fromString(String(n)) })
-  );
+  xdr.ScVal.scvU128(new xdr.Uint128Parts({ hi: 0n, lo: BigInt(n) }));
 const sym = (s: string): xdr.ScVal => xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(s)]);
 const addrVal = (a: string): xdr.ScVal => new Address(a).toScVal();
 
@@ -983,8 +986,10 @@ function tracingRpc(
   return { rpc, sizes, maxInFlight: () => maxInFlight };
 }
 
-const contractOf = (key: xdr.LedgerKey): string =>
-  Address.fromScAddress(key.contractData().contract()).toString();
+const contractOf = (key: xdr.LedgerKey): string => {
+  if (key.type !== "contractData") throw new Error("expected a contract data key");
+  return Address.fromScAddress(key.contractData.contract).toString();
+};
 
 test("every registered contract is verified in one ledger read, not one round trip per entry", async () => {
   const entries = [

@@ -19,7 +19,7 @@ export function verifyCloseTransaction(tx: CloseTransaction, expected: CloseExpe
   if (tx.needsSponsoredFee) {
     throw new Error("This example does not handle fee-sponsored transactions.");
   }
-  const parsed = TransactionBuilder.fromXDR(tx.xdr, Networks.TESTNET);
+  const parsed = TransactionBuilder.fromXdr(tx.xdr, Networks.TESTNET);
   if (!(parsed instanceof Transaction)) {
     throw new Error("Unexpected fee-bump envelope.");
   }

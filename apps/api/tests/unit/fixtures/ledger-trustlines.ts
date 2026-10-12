@@ -22,15 +22,14 @@ function entryFor(
   const trustLineAsset = asset.toTrustLineXDRObject();
   const ext =
     spec.buying === undefined
-      ? new xdr.TrustLineEntryExt(0)
-      : new xdr.TrustLineEntryExt(
-          1,
+      ? xdr.TrustLineEntryExt.v0()
+      : xdr.TrustLineEntryExt.v1(
           new xdr.TrustLineEntryV1({
             liabilities: new xdr.Liabilities({
-              buying: xdr.Int64.fromString(spec.buying.toString()),
-              selling: xdr.Int64.fromString("0"),
+              buying: BigInt(spec.buying.toString()),
+              selling: 0n,
             }),
-            ext: new xdr.TrustLineEntryV1Ext(0),
+            ext: xdr.TrustLineEntryV1Ext.v0(),
           })
         );
   return {
@@ -39,8 +38,8 @@ function entryFor(
       new xdr.TrustLineEntry({
         accountId,
         asset: trustLineAsset,
-        balance: xdr.Int64.fromString(spec.balance.toString()),
-        limit: xdr.Int64.fromString((spec.limit ?? MAX_LIMIT).toString()),
+        balance: BigInt(spec.balance.toString()),
+        limit: BigInt((spec.limit ?? MAX_LIMIT).toString()),
         flags: spec.flags ?? AUTHORIZED,
         ext,
       })
@@ -58,10 +57,11 @@ export function ledgerEntries(
   return async (...keys) => {
     const entries: unknown[] = [];
     for (const key of keys) {
-      if (key.switch().name !== "trustline") throw new Error("not stubbed");
-      const tl = key.trustLine();
-      const account = StrKey.encodeEd25519PublicKey(tl.accountId().ed25519());
-      const asset = Asset.fromOperation(xdr.Asset.fromXDR(tl.asset().toXDR()));
+      if (key.type !== "trustline") throw new Error("not stubbed");
+      const tl = key.trustLine;
+      if (tl.accountId.type !== "publicKeyTypeEd25519") throw new Error("not stubbed");
+      const account = StrKey.encodeEd25519PublicKey(tl.accountId.ed25519.toBytes());
+      const asset = Asset.fromOperation(xdr.Asset.fromXdr(tl.asset.toXdr()));
       const id = `${account}|${asset.getCode()}:${asset.getIssuer()}`;
       const spec = typeof lines === "function" ? lines(id) : lines[id];
       if (spec) entries.push(entryFor(account, asset, spec));

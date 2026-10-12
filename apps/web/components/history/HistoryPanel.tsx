@@ -36,7 +36,7 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
   return (
     <>
       {/* Overlay */}
-      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-xs" onClick={onClose} />
 
       {/* Panel */}
       <div className="fixed right-0 top-0 z-50 h-full w-full max-w-sm bg-card border-l border-white/10 flex flex-col shadow-2xl">

@@ -97,28 +97,37 @@ function blocker(code: string, message: string): PlanBlocker {
  * same shape do the same thing.
  */
 function signedShape(tx: Transaction): string {
-  const inner = xdr.Transaction.fromXDR(tx.toEnvelope().v1().tx().toXDR());
-  inner.fee(0);
-  inner.ext(new xdr.TransactionExt(0));
-  return inner.toXDR("base64");
+  const envelope = tx.toEnvelope();
+  if (envelope.type !== "envelopeTypeTx") throw new Error("the transaction is not a v1 envelope");
+  const inner = envelope.v1.tx;
+  return new xdr.Transaction({
+    sourceAccount: inner.sourceAccount,
+    fee: 0,
+    seqNum: inner.seqNum,
+    cond: inner.cond,
+    memo: inner.memo,
+    operations: inner.operations,
+    ext: xdr.TransactionExt.v0(),
+  }).toXdr("base64");
 }
 
 function decodeInvocation(op: xdr.Operation): { contract: string; function: string } | null {
-  if (op.body().switch() !== xdr.OperationType.invokeHostFunction()) return null;
-  const host = op.body().invokeHostFunctionOp().hostFunction();
-  if (host.switch() !== xdr.HostFunctionType.hostFunctionTypeInvokeContract()) return null;
-  const invocation = host.invokeContract();
+  if (op.body.type !== "invokeHostFunction") return null;
+  const host = op.body.invokeHostFunctionOp.hostFunction;
+  if (host.type !== "hostFunctionTypeInvokeContract") return null;
+  const invocation = host.invokeContract;
   return {
-    contract: Address.fromScAddress(invocation.contractAddress()).toString(),
-    function: invocation.functionName().toString(),
+    contract: Address.fromScAddress(invocation.contractAddress).toString(),
+    function: invocation.functionName.toString(),
   };
 }
 
 /** The account an operation's source field names, or null when it inherits the transaction's. */
 function operationSource(op: xdr.Operation): string | null {
-  const source = op.sourceAccount();
+  const source = op.sourceAccount;
   if (!source) return null;
-  return Address.account(source.ed25519()).toString();
+  if (source.type !== "keyTypeEd25519") throw new Error("the operation source is a muxed account");
+  return Address.account(source.ed25519.toBytes()).toString();
 }
 
 /** How far a step that the contract clamps may over-ask, so "a small margin" stays small. */
@@ -394,7 +403,7 @@ export async function runExitAdapter<P extends DefiPosition, L>(
   } else {
     let parsed: Transaction;
     try {
-      const envelope = TransactionBuilder.fromXDR(built.build.envelopeXdr, passphrase);
+      const envelope = TransactionBuilder.fromXdr(built.build.envelopeXdr, passphrase);
       if (!(envelope instanceof Transaction)) throw new Error("fee bump");
       parsed = envelope;
     } catch {
@@ -408,7 +417,9 @@ export async function runExitAdapter<P extends DefiPosition, L>(
     }
     if (parsed.source !== ctx.account || parsed.operations.length !== 1) return intentMismatch;
     tx = parsed;
-    op = tx.toEnvelope().v1().tx().operations()[0]!;
+    const envelope = tx.toEnvelope();
+    if (envelope.type !== "envelopeTypeTx") return intentMismatch;
+    op = envelope.v1.tx.operations[0]!;
   }
 
   const invocation = decodeInvocation(op);
@@ -513,10 +524,7 @@ export async function runExitAdapter<P extends DefiPosition, L>(
   const assembled = signable.operations[0];
   if (assembled?.type === "invokeHostFunction") {
     for (const entry of assembled.auth ?? []) {
-      if (
-        entry.credentials().switch() !==
-        xdr.SorobanCredentialsType.sorobanCredentialsSourceAccount()
-      ) {
+      if (entry.credentials.type !== "sorobanCredentialsSourceAccount") {
         return blocked(contract, resolution, steps, [
           blocker(
             "exit_requires_other_signer",
@@ -547,7 +555,7 @@ export async function runExitAdapter<P extends DefiPosition, L>(
       simulation: {
         minResourceFee: simulation.minResourceFee,
         latestLedger: simulation.latestLedger,
-        txXdr: signable.toXDR(),
+        txXdr: signable.toXdr(),
       },
     },
     blockers: [],

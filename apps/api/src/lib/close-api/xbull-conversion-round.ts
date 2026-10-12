@@ -7,6 +7,7 @@ import {
   xdr,
   type Transaction,
 } from "@stellar/stellar-sdk";
+import { envelopeOps } from "@/lib/stellar/envelope-ops";
 import type { Network } from "@lumenwipe/types";
 import {
   BASE_FEE_STROOPS,
@@ -62,35 +63,35 @@ export function assertXBullConversionShape(
   if (maxTime === 0n || maxTime < BigInt(expected.nowSeconds) + SIGNING_BUFFER_SECONDS) {
     throw new Error("the swap never expires, or expires before it can be signed");
   }
-  const ops = tx.toEnvelope().v1().tx().operations();
+  const ops = envelopeOps(tx);
   if (ops.length !== 1) throw new Error(`expected one operation, found ${ops.length}`);
   const op = ops[0]!;
-  const src = op.sourceAccount();
+  const src = op.sourceAccount;
   if (src) {
     if (
-      src.switch() !== xdr.CryptoKeyType.keyTypeEd25519() ||
-      Address.account(src.ed25519()).toString() !== expected.account
+      src.type !== "keyTypeEd25519" ||
+      Address.account(src.ed25519.toBytes()).toString() !== expected.account
     ) {
       throw new Error("the operation acts for another account");
     }
   }
-  if (op.body().switch() !== xdr.OperationType.invokeHostFunction()) {
+  if (op.body.type !== "invokeHostFunction") {
     throw new Error("the operation is not a contract invocation");
   }
-  const host = op.body().invokeHostFunctionOp();
-  const fn = host.hostFunction();
-  if (fn.switch() !== xdr.HostFunctionType.hostFunctionTypeInvokeContract()) {
+  const host = op.body.invokeHostFunctionOp;
+  const fn = host.hostFunction;
+  if (fn.type !== "hostFunctionTypeInvokeContract") {
     throw new Error("the invocation is not a contract call");
   }
-  const call = fn.invokeContract();
-  const contract = Address.fromScAddress(call.contractAddress()).toString();
+  const call = fn.invokeContract;
+  const contract = Address.fromScAddress(call.contractAddress).toString();
   if (!expected.allowed.router.includes(contract)) {
     throw new Error(`the swap is not a call on xBull's registered router (${contract})`);
   }
-  if (call.functionName().toString() !== XBULL_SWAP_FUNCTION) {
-    throw new Error(`the call is ${call.functionName().toString()}, not ${XBULL_SWAP_FUNCTION}`);
+  if (call.functionName.toString() !== XBULL_SWAP_FUNCTION) {
+    throw new Error(`the call is ${call.functionName.toString()}, not ${XBULL_SWAP_FUNCTION}`);
   }
-  const args = call.args();
+  const args = call.args;
   if (args.length !== 6) throw new Error(`strict_send takes 6 arguments, found ${args.length}`);
   const [from, to, amount, minToGet, path, refs] = args;
   if (addressOf(from!) !== expected.account)
@@ -99,11 +100,11 @@ export function assertXBullConversionShape(
   if (bigOf(amount!) !== expected.amountIn) throw new Error("amount is not the live balance");
   const min = bigOf(minToGet!);
   if (min === null || min < expected.minOut) throw new Error("min_to_get is below your floor");
-  if (refs!.switch() !== xdr.ScValType.scvVec() || (refs!.vec() ?? []).length !== 0) {
+  if (refs!.type !== "scvVec" || (refs!.vec ?? []).length !== 0) {
     throw new Error("the swap would pay a referral fee to an address you never agreed to");
   }
-  if (path!.switch() !== xdr.ScValType.scvVec()) throw new Error("path is not a list");
-  const hopCount = (path!.vec() ?? []).length;
+  if (path!.type !== "scvVec") throw new Error("path is not a list");
+  const hopCount = (path!.vec ?? []).length;
   if (hopCount === 0 || hopCount !== expected.resolvedPath.length - 1) {
     // resolvedPath names every asset the route touches, so it has one more entry than the
     // number of hops between them; a mismatch means the resolution the caller supplied is
@@ -120,31 +121,26 @@ export function assertXBullConversionShape(
     throw new Error("the route names something that is not a token contract");
   }
 
-  if (host.auth().length === 0) throw new Error("the build produced no authorization for the swap");
+  if (host.auth.length === 0) throw new Error("the build produced no authorization for the swap");
   let moved = 0n;
-  for (const auth of host.auth()) {
-    if (
-      auth.credentials().switch() !== xdr.SorobanCredentialsType.sorobanCredentialsSourceAccount()
-    ) {
+  for (const auth of host.auth) {
+    if (auth.credentials.type !== "sorobanCredentialsSourceAccount") {
       throw new Error("an authorization entry carries credentials other than the account's own");
     }
-    const root = auth.rootInvocation();
-    const rootFn = root.function();
-    if (
-      rootFn.switch() !==
-      xdr.SorobanAuthorizedFunctionType.sorobanAuthorizedFunctionTypeContractFn()
-    ) {
+    const root = auth.rootInvocation;
+    const rootFn = root.function;
+    if (rootFn.type !== "sorobanAuthorizedFunctionTypeContractFn") {
       throw new Error("an authorization entry is not a plain contract call");
     }
-    const rootCall = rootFn.contractFn();
+    const rootCall = rootFn.contractFn;
     if (
-      Address.fromScAddress(rootCall.contractAddress()).toString() !== contract ||
-      rootCall.functionName().toString() !== XBULL_SWAP_FUNCTION
+      Address.fromScAddress(rootCall.contractAddress).toString() !== contract ||
+      rootCall.functionName.toString() !== XBULL_SWAP_FUNCTION
     ) {
       throw new Error("an authorization entry authorizes a call other than this swap");
     }
-    for (const arg of rootCall.args()) collectAccounts(arg, expected.account);
-    for (const sub of root.subInvocations()) moved += walkXBullAuth(sub, expected, 1);
+    for (const arg of rootCall.args) collectAccounts(arg, expected.account);
+    for (const sub of root.subInvocations) moved += walkXBullAuth(sub, expected, 1);
   }
   if (moved > expected.amountIn) {
     throw new Error("the signature would let more of the token leave than the swap spends");
@@ -169,19 +165,19 @@ function walkXBullAuth(
   depth: number
 ): bigint {
   if (depth > MAX_AUTH_DEPTH) throw new Error("the authorization tree nests deeper than a swap");
-  const fn = node.function();
-  if (fn.switch() !== xdr.SorobanAuthorizedFunctionType.sorobanAuthorizedFunctionTypeContractFn()) {
+  const fn = node.function;
+  if (fn.type !== "sorobanAuthorizedFunctionTypeContractFn") {
     throw new Error("the signature would authorize something other than a contract call");
   }
-  const call = fn.contractFn();
-  const contract = Address.fromScAddress(call.contractAddress()).toString();
+  const call = fn.contractFn;
+  const contract = Address.fromScAddress(call.contractAddress).toString();
   if (contract !== expected.token) {
     throw new Error(`the signature would authorize a call on ${contract}, which no swap needs`);
   }
-  if (call.functionName().toString() !== "transfer") {
-    throw new Error(`the signature would authorize ${call.functionName().toString()} on the token`);
+  if (call.functionName.toString() !== "transfer") {
+    throw new Error(`the signature would authorize ${call.functionName.toString()} on the token`);
   }
-  const args = call.args();
+  const args = call.args;
   if (args.length !== 3) throw new Error("a token transfer takes three arguments");
   if (addressOf(args[0]!) !== expected.account) {
     throw new Error("a token transfer would spend a balance other than this account's");
@@ -192,9 +188,9 @@ function walkXBullAuth(
   }
   const amount = bigOf(args[2]!);
   if (amount === null || amount <= 0n) throw new Error("a token transfer has no readable amount");
-  for (const arg of call.args()) collectAccounts(arg, expected.account);
+  for (const arg of call.args) collectAccounts(arg, expected.account);
   let moved = amount;
-  for (const sub of node.subInvocations()) moved += walkXBullAuth(sub, expected, depth + 1);
+  for (const sub of node.subInvocations) moved += walkXBullAuth(sub, expected, depth + 1);
   return moved;
 }
 
@@ -239,7 +235,7 @@ export async function buildXBullConversion(
   }
   if (!contractArgsXDR) return null;
   try {
-    const contractArgs = xdr.InvokeContractArgs.fromXDR(contractArgsXDR, "base64");
+    const contractArgs = xdr.InvokeContractArgs.fromXdr(contractArgsXDR, "base64");
     const account = new Account(from, sequence);
     // A small, fixed inclusion fee: `assembleTransaction` below adds the simulation's own
     // resource fee on top, and `assertXBullConversionShape`'s MAX_SOROBAN_EXIT_FEE_STROOPS

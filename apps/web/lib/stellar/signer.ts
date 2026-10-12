@@ -24,9 +24,9 @@ export class SecretKeySigner implements TransactionSigner {
   }
 
   async sign(xdr: string, networkPassphrase: string): Promise<string> {
-    const built = TransactionBuilder.fromXDR(xdr, networkPassphrase);
+    const built = TransactionBuilder.fromXdr(xdr, networkPassphrase);
     built.sign(this.keypair);
-    return built.toEnvelope().toXDR("base64");
+    return built.toEnvelope().toXdr("base64");
   }
 }
 
@@ -42,13 +42,13 @@ export class SecretKeySigner implements TransactionSigner {
 export class HashXPreimageSigner implements TransactionSigner {
   constructor(
     public readonly publicKey: string,
-    private readonly preimage: Buffer
+    private readonly preimage: Uint8Array
   ) {}
 
   async sign(xdr: string, networkPassphrase: string): Promise<string> {
-    const built = TransactionBuilder.fromXDR(xdr, networkPassphrase);
+    const built = TransactionBuilder.fromXdr(xdr, networkPassphrase);
     built.signHashX(this.preimage);
-    return built.toEnvelope().toXDR("base64");
+    return built.toEnvelope().toXdr("base64");
   }
 }
 

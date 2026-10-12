@@ -16,7 +16,7 @@ const UMAMI_HOSTS = "https://gateway.umami.is";
 // Pollar's SDK (the API keys page social login) calls these hosts directly from the browser.
 const POLLAR_HOSTS = "https://sdk.api.pollar.xyz https://server.api.pollar.xyz";
 
-export function middleware(request: NextRequest): NextResponse {
+export function proxy(request: NextRequest): NextResponse {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   // Next.js's dev-mode webpack build wraps every client module in eval() for fast
   // source maps - script-src needs 'unsafe-eval' only in development. The

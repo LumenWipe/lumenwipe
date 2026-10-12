@@ -16,6 +16,7 @@ import {
 } from "@/lib/stellar/signature-weight";
 import { HashXPreimageSigner } from "@/lib/stellar/signer";
 import type { AccountSigner } from "@/types/account";
+import { fromHex } from "@/lib/stellar/hex";
 
 function unsignedXdr(sourcePublicKey: string): string {
   const builder = new TransactionBuilder(new Account(sourcePublicKey, "100"), {
@@ -23,7 +24,7 @@ function unsignedXdr(sourcePublicKey: string): string {
     networkPassphrase: Networks.TESTNET,
   }).setTimeout(300);
   builder.addOperation(Operation.manageData({ name: "close-me", value: null }));
-  return builder.build().toXDR();
+  return builder.build().toXdr();
 }
 
 test("accumulatedWeight › sums only the contributed signers' weight", () => {
@@ -46,7 +47,7 @@ test("evaluateSignatureContributions › a single ed25519 signature is matched t
   const kpA = Keypair.random();
   const kpB = Keypair.random();
   const xdrStr = unsignedXdr(kpA.publicKey());
-  const built = TransactionBuilder.fromXDR(xdrStr, Networks.TESTNET);
+  const built = TransactionBuilder.fromXdr(xdrStr, Networks.TESTNET);
   built.sign(kpA);
 
   const signers: AccountSigner[] = [
@@ -54,7 +55,7 @@ test("evaluateSignatureContributions › a single ed25519 signature is matched t
     { type: "ed25519_public_key", key: kpB.publicKey(), weight: 1 },
   ];
   const contributions = evaluateSignatureContributions(
-    built.toEnvelope().toXDR("base64"),
+    built.toEnvelope().toXdr("base64"),
     Networks.TESTNET,
     signers
   );
@@ -68,7 +69,7 @@ test("evaluateSignatureContributions › accumulates as a second signer signs th
   const kpA = Keypair.random();
   const kpB = Keypair.random();
   const xdrStr = unsignedXdr(kpA.publicKey());
-  const built = TransactionBuilder.fromXDR(xdrStr, Networks.TESTNET);
+  const built = TransactionBuilder.fromXdr(xdrStr, Networks.TESTNET);
   built.sign(kpA);
   built.sign(kpB); // simulates a second signer contributing onto the same envelope
 
@@ -77,7 +78,7 @@ test("evaluateSignatureContributions › accumulates as a second signer signs th
     { type: "ed25519_public_key", key: kpB.publicKey(), weight: 1 },
   ];
   const contributions = evaluateSignatureContributions(
-    built.toEnvelope().toXDR("base64"),
+    built.toEnvelope().toXdr("base64"),
     Networks.TESTNET,
     signers
   );
@@ -88,13 +89,13 @@ test("evaluateSignatureContributions › accumulates as a second signer signs th
 test("evaluateSignatureContributions › a matching hint with an invalid signature is not counted", () => {
   const kpA = Keypair.random();
   const xdrStr = unsignedXdr(kpA.publicKey());
-  const built = TransactionBuilder.fromXDR(xdrStr, Networks.TESTNET);
+  const built = TransactionBuilder.fromXdr(xdrStr, Networks.TESTNET);
   // Craft a decorated signature with A's real hint but garbage signature bytes - hint matching
   // alone must not be enough to count A's weight.
   built.signatures.push(
     new xdr.DecoratedSignature({
       hint: kpA.signatureHint(),
-      signature: Buffer.alloc(64, 1),
+      signature: new Uint8Array(64).fill(1),
     })
   );
 
@@ -102,7 +103,7 @@ test("evaluateSignatureContributions › a matching hint with an invalid signatu
     { type: "ed25519_public_key", key: kpA.publicKey(), weight: 1 },
   ];
   const contributions = evaluateSignatureContributions(
-    built.toEnvelope().toXDR("base64"),
+    built.toEnvelope().toXdr("base64"),
     Networks.TESTNET,
     signers
   );
@@ -113,14 +114,14 @@ test("evaluateSignatureContributions › a matching hint with an invalid signatu
 test("evaluateSignatureContributions › pre-auth-tx signers never contribute (#102's scope)", () => {
   const kpA = Keypair.random();
   const xdrStr = unsignedXdr(kpA.publicKey());
-  const built = TransactionBuilder.fromXDR(xdrStr, Networks.TESTNET);
+  const built = TransactionBuilder.fromXdr(xdrStr, Networks.TESTNET);
   built.sign(kpA);
 
   const signers: AccountSigner[] = [
-    { type: "preauth_tx", key: StrKey.encodePreAuthTx(Buffer.alloc(32, 7)), weight: 5 },
+    { type: "preauth_tx", key: StrKey.encodePreAuthTx(new Uint8Array(32).fill(7)), weight: 5 },
   ];
   const contributions = evaluateSignatureContributions(
-    built.toEnvelope().toXDR("base64"),
+    built.toEnvelope().toXdr("base64"),
     Networks.TESTNET,
     signers
   );
@@ -130,16 +131,16 @@ test("evaluateSignatureContributions › pre-auth-tx signers never contribute (#
 
 test("evaluateSignatureContributions › a correct hash(x) preimage is counted toward accumulated weight", () => {
   const source = Keypair.random();
-  const preimage = Buffer.from("deadbeef", "hex");
+  const preimage = fromHex("deadbeef");
   const signerKey = StrKey.encodeSha256Hash(hash(preimage));
   const xdrStr = unsignedXdr(source.publicKey());
 
-  const signedXdr = TransactionBuilder.fromXDR(xdrStr, Networks.TESTNET);
+  const signedXdr = TransactionBuilder.fromXdr(xdrStr, Networks.TESTNET);
   signedXdr.signHashX(preimage);
 
   const signers: AccountSigner[] = [{ type: "hash_x", key: signerKey, weight: 3 }];
   const contributions = evaluateSignatureContributions(
-    signedXdr.toEnvelope().toXDR("base64"),
+    signedXdr.toEnvelope().toXdr("base64"),
     Networks.TESTNET,
     signers
   );
@@ -150,16 +151,16 @@ test("evaluateSignatureContributions › a correct hash(x) preimage is counted t
 
 test("evaluateSignatureContributions › an unrelated preimage does not count toward a different hash(x) signer", () => {
   const source = Keypair.random();
-  const wrongPreimage = Buffer.from("cafebabe", "hex");
-  const knownSignerKey = StrKey.encodeSha256Hash(hash(Buffer.from("deadbeef", "hex")));
+  const wrongPreimage = fromHex("cafebabe");
+  const knownSignerKey = StrKey.encodeSha256Hash(hash(fromHex("deadbeef")));
   const xdrStr = unsignedXdr(source.publicKey());
 
-  const signedXdr = TransactionBuilder.fromXDR(xdrStr, Networks.TESTNET);
+  const signedXdr = TransactionBuilder.fromXdr(xdrStr, Networks.TESTNET);
   signedXdr.signHashX(wrongPreimage); // signs for a *different* hash(x) key than knownSignerKey
 
   const signers: AccountSigner[] = [{ type: "hash_x", key: knownSignerKey, weight: 3 }];
   const contributions = evaluateSignatureContributions(
-    signedXdr.toEnvelope().toXDR("base64"),
+    signedXdr.toEnvelope().toXdr("base64"),
     Networks.TESTNET,
     signers
   );
@@ -170,24 +171,24 @@ test("evaluateSignatureContributions › an unrelated preimage does not count to
 
 test("evaluateSignatureContributions › a hint match with a non-matching preimage is not counted (hint alone isn't proof)", () => {
   const source = Keypair.random();
-  const preimage = Buffer.from("deadbeef", "hex");
+  const preimage = fromHex("deadbeef");
   const signerKey = StrKey.encodeSha256Hash(hash(preimage));
   const digest = hash(preimage);
   const xdrStr = unsignedXdr(source.publicKey());
 
-  const built = TransactionBuilder.fromXDR(xdrStr, Networks.TESTNET);
+  const built = TransactionBuilder.fromXdr(xdrStr, Networks.TESTNET);
   // Craft a decorated signature with the real hint but garbage "preimage" bytes that don't
   // actually hash to the signer's digest - mirrors the existing ed25519 forged-hint test.
   built.signatures.push(
     new xdr.DecoratedSignature({
       hint: digest.subarray(digest.length - 4),
-      signature: Buffer.alloc(8, 1),
+      signature: new Uint8Array(8).fill(1),
     })
   );
 
   const signers: AccountSigner[] = [{ type: "hash_x", key: signerKey, weight: 3 }];
   const contributions = evaluateSignatureContributions(
-    built.toEnvelope().toXDR("base64"),
+    built.toEnvelope().toXdr("base64"),
     Networks.TESTNET,
     signers
   );
@@ -197,7 +198,7 @@ test("evaluateSignatureContributions › a hint match with a non-matching preima
 
 test("evaluateSignatureContributions › recognizes HashXPreimageSigner's output end to end", async () => {
   const source = Keypair.random();
-  const preimage = Buffer.from("01020304", "hex");
+  const preimage = fromHex("01020304");
   const signerKey = StrKey.encodeSha256Hash(hash(preimage));
   const xdrStr = unsignedXdr(source.publicKey());
 
@@ -217,9 +218,9 @@ test("evaluateSignatureContributions › a decorated signature from a key that i
   const attacker = Keypair.random(); // not in the account's signer list at all
   const xdr = unsignedXdr(knownSigner.publicKey());
 
-  const built = TransactionBuilder.fromXDR(xdr, Networks.TESTNET);
+  const built = TransactionBuilder.fromXdr(xdr, Networks.TESTNET);
   built.sign(attacker); // a real, valid signature - just from an unrelated key
-  const tamperedXdr = built.toEnvelope().toXDR("base64");
+  const tamperedXdr = built.toEnvelope().toXdr("base64");
 
   const signers: AccountSigner[] = [
     { type: "ed25519_public_key", key: knownSigner.publicKey(), weight: 1 },

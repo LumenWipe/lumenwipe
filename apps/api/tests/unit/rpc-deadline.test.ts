@@ -106,3 +106,23 @@ test("outside a request nothing is raced", async () => {
   );
   expect(await getRpcServer("testnet").getLatestLedger()).toEqual({ sequence: 7 } as never);
 });
+
+test("simulation and preparation ask for legacy auth unless the caller says otherwise", async () => {
+  const simulate = spyOn(rpc.Server.prototype, "simulateTransaction").mockResolvedValue(
+    {} as never
+  );
+  const prepare = spyOn(rpc.Server.prototype, "prepareTransaction").mockResolvedValue({} as never);
+  try {
+    const server = getRpcServer("testnet");
+    const tx = {} as never;
+    await server.simulateTransaction(tx, { cpuInstructions: 5 });
+    await server.simulateTransaction(tx, undefined, undefined, true);
+    await server.prepareTransaction(tx);
+    expect(simulate.mock.calls[0]).toEqual([tx, { cpuInstructions: 5 }, undefined, false]);
+    expect(simulate.mock.calls[1]).toEqual([tx, undefined, undefined, true]);
+    expect(prepare.mock.calls[0]).toEqual([tx, false]);
+  } finally {
+    simulate.mockRestore();
+    prepare.mockRestore();
+  }
+});

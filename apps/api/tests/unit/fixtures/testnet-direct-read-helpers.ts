@@ -28,10 +28,10 @@ export function contractInstanceEntry(
   });
   const val = xdr.LedgerEntryData.contractData(
     new xdr.ContractDataEntry({
-      ext: new xdr.ExtensionPoint(0),
+      ext: xdr.ExtensionPoint.v0(),
       contract: new Address(contractAddress).toScAddress(),
       key: xdr.ScVal.scvLedgerKeyContractInstance(),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
       val: xdr.ScVal.scvContractInstance(instance),
     })
   );
@@ -47,15 +47,15 @@ export function contractDataEntry(
     new xdr.LedgerKeyContractData({
       contract: new Address(contractAddress).toScAddress(),
       key,
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
     })
   );
   const val = xdr.LedgerEntryData.contractData(
     new xdr.ContractDataEntry({
-      ext: new xdr.ExtensionPoint(0),
+      ext: xdr.ExtensionPoint.v0(),
       contract: new Address(contractAddress).toScAddress(),
       key,
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
       val: value,
     })
   );
@@ -84,9 +84,9 @@ export const addressListVal = (addresses: string[]): xdr.ScVal =>
 
 export function mockRpc(entries: LedgerEntry[]): RpcServer {
   const getLedgerEntries = async (...keys: xdr.LedgerKey[]) => {
-    const wanted = new Set(keys.map((k) => k.toXDR("base64")));
+    const wanted = new Set(keys.map((k) => k.toXdr("base64")));
     return {
-      entries: entries.filter((e) => wanted.has(e.key.toXDR("base64"))),
+      entries: entries.filter((e) => wanted.has(e.key.toXdr("base64"))),
       latestLedger: 1,
     };
   };

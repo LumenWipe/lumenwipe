@@ -21,6 +21,15 @@ export function getRpcServer(network: Network): rpc.Server {
 
 const SIMULATION_METHODS = new Set<PropertyKey>(["simulateTransaction", "prepareTransaction"]);
 
+// The SDK defaults to CAP-71 v2 address credentials. Every close authorizes with the source
+// account's own credentials, so the legacy format is requested explicitly to keep the built
+// transactions identical to what the web verifier was written against.
+function withLegacyAuth(prop: PropertyKey, args: unknown[]): unknown[] {
+  if (prop === "simulateTransaction") return [args[0], args[1], args[2], args[3] ?? false];
+  if (prop === "prepareTransaction") return [args[0], args[1] ?? false];
+  return args;
+}
+
 // Allowlist, not denylist: a method added to the SDK later is passed through untouched until
 // someone decides it is safe to race. Submission and its confirmation polling are deliberately
 // absent - abandoning a submit mid-flight would leave a transaction that may still land with
@@ -68,7 +77,8 @@ function withRequestDeadline(network: Network): rpc.Server {
       if (typeof value !== "function") return value;
       const bound = (value as (...args: unknown[]) => unknown).bind(owner);
       if (!SIMULATION_METHODS.has(prop) && !READ_METHODS.has(prop)) return bound;
-      return (...args: unknown[]) => raceDeadline(bound(...args) as Promise<unknown>);
+      return (...args: unknown[]) =>
+        raceDeadline(bound(...withLegacyAuth(prop, args)) as Promise<unknown>);
     },
   });
 }

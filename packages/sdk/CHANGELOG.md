@@ -7,6 +7,14 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-12
+
+### Changed
+
+- Declarations are now emitted by the TypeScript 6 compiler, so an optional parameter typed
+  `unknown` (the `reason` of `CloseDidNotConvergeError`) is written `unknown` instead of
+  `unknown | undefined`. The two are the same type, and no runtime code changed.
+
 ## [0.10.0] - 2026-10-12
 
 ### Added

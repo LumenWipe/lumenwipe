@@ -19,6 +19,7 @@ import * as submitViaApiModule from "@/lib/stellar/submit-via-api";
 import * as feeBumpSponsorModule from "@/lib/stellar/fee-bump-sponsor";
 import { ApiRequestError, toUserMessage } from "@/lib/utils/user-error";
 import type { TransactionSigner } from "@/lib/stellar/signer";
+import { fromHex } from "@/lib/stellar/hex";
 
 /** The stand-ins return only what the hook reads, so they are typed loosely on purpose. */
 function stubFetchCloseTransactions(impl: () => Promise<unknown>): void {
@@ -64,7 +65,7 @@ function unsignedMergeXdr(sourceKeypair: Keypair, destination: string): string {
     networkPassphrase: Networks.TESTNET,
   }).setTimeout(300);
   builder.addOperation(Operation.accountMerge({ destination }));
-  return builder.build().toXDR();
+  return builder.build().toXdr();
 }
 
 /** Same shape as unsignedMergeXdr, but fee "0" - what the API builds when it flags a chunk
@@ -75,13 +76,13 @@ function unsignedZeroFeeMergeXdr(sourceKeypair: Keypair, destination: string): s
     networkPassphrase: Networks.TESTNET,
   }).setTimeout(300);
   builder.addOperation(Operation.accountMerge({ destination }));
-  return builder.build().toXDR();
+  return builder.build().toXdr();
 }
 
 /** Wraps the given inner transaction xdr in a signed CAP-15 fee-bump envelope, mirroring what
  *  the real /fee-bump/sponsor endpoint returns (fee-bump.controller.ts). */
 function feeBumpXdr(innerXdr: string, feeKeypair: Keypair): string {
-  const inner = TransactionBuilder.fromXDR(innerXdr, Networks.TESTNET) as Transaction;
+  const inner = TransactionBuilder.fromXdr(innerXdr, Networks.TESTNET) as Transaction;
   const feeBump = TransactionBuilder.buildFeeBumpTransaction(
     feeKeypair,
     "100",
@@ -89,7 +90,7 @@ function feeBumpXdr(innerXdr: string, feeKeypair: Keypair): string {
     Networks.TESTNET
   );
   feeBump.sign(feeKeypair);
-  return feeBump.toXDR();
+  return feeBump.toXdr();
 }
 
 /** Mirrors SecretKeySigner.sign(): parses the given xdr, appends this keypair's signature, and
@@ -98,22 +99,22 @@ function realSigner(keypair: Keypair): TransactionSigner {
   return {
     publicKey: keypair.publicKey(),
     sign: async (xdr, networkPassphrase) => {
-      const built = TransactionBuilder.fromXDR(xdr, networkPassphrase);
+      const built = TransactionBuilder.fromXdr(xdr, networkPassphrase);
       built.sign(keypair);
-      return built.toEnvelope().toXDR("base64");
+      return built.toEnvelope().toXdr("base64");
     },
   };
 }
 
 /** Mirrors HashXPreimageSigner.sign(): applies the preimage via signHashX. publicKey is the
  *  hash(x) signer's own "X..." strkey, matching how HashXPreimageInput constructs it. */
-function realHashXSigner(preimage: Buffer): TransactionSigner {
+function realHashXSigner(preimage: Uint8Array): TransactionSigner {
   return {
     publicKey: StrKey.encodeSha256Hash(hash(preimage)),
     sign: async (xdr, networkPassphrase) => {
-      const built = TransactionBuilder.fromXDR(xdr, networkPassphrase);
+      const built = TransactionBuilder.fromXdr(xdr, networkPassphrase);
       built.signHashX(preimage);
-      return built.toEnvelope().toXDR("base64");
+      return built.toEnvelope().toXdr("base64");
     },
   };
 }
@@ -224,7 +225,7 @@ function tamperingSigner(
   return {
     publicKey: keypair.publicKey(),
     sign: async (xdr, networkPassphrase) => {
-      const original = TransactionBuilder.fromXDR(xdr, networkPassphrase) as Transaction;
+      const original = TransactionBuilder.fromXdr(xdr, networkPassphrase) as Transaction;
       // Same source account and sequence number as the approved envelope - only the
       // operation set differs - so a hash mismatch below can only be attributed to the
       // smuggled-in operation, never to sequence drift or a different source account.
@@ -243,7 +244,7 @@ function tamperingSigner(
         .addOperation(Operation.setOptions({ highThreshold: 2 }))
         .build();
       tampered.sign(keypair);
-      return tampered.toEnvelope().toXDR("base64");
+      return tampered.toEnvelope().toXdr("base64");
     },
   };
 }
@@ -316,7 +317,7 @@ test("useCloseExecution › a hash(x) signer's preimage completes the close by r
   const sourceKeypair = Keypair.random();
   const source = sourceKeypair.publicKey();
   const destination = Keypair.random().publicKey();
-  const preimage = Buffer.from("deadbeef", "hex");
+  const preimage = fromHex("deadbeef");
   const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
 
   const mergeXdr = unsignedMergeXdr(sourceKeypair, destination);
@@ -509,7 +510,7 @@ test("useCloseExecution › submitPreAuthTransaction submits a hash-matched, int
   const source = sourceKeypair.publicKey();
   const destination = Keypair.random().publicKey();
   const preAuthXdr = unsignedMergeXdr(sourceKeypair, destination);
-  const preAuthTx = TransactionBuilder.fromXDR(preAuthXdr, Networks.TESTNET) as Transaction;
+  const preAuthTx = TransactionBuilder.fromXdr(preAuthXdr, Networks.TESTNET) as Transaction;
   const preAuthKey = StrKey.encodePreAuthTx(preAuthTx.hash());
 
   useNetworkStore.setState({ network: "testnet" });
@@ -549,7 +550,7 @@ test("useCloseExecution › submitPreAuthTransaction rejects a hash mismatch wit
   const destination = Keypair.random().publicKey();
   const preAuthXdr = unsignedMergeXdr(sourceKeypair, destination);
   // Deliberately unrelated to preAuthXdr's real hash.
-  const wrongKey = StrKey.encodePreAuthTx(Buffer.alloc(32, 9));
+  const wrongKey = StrKey.encodePreAuthTx(new Uint8Array(32).fill(9));
 
   useNetworkStore.setState({ network: "testnet" });
   useDemolishStore.setState({
@@ -591,7 +592,7 @@ test("useCloseExecution › submitPreAuthTransaction rejects a transaction with 
   // Hash-matches its own signer key, but merges to someone other than the user's own chosen
   // destination - exactly the hostile-pasted-XDR shape assertCloseIntent must still reject.
   const preAuthXdr = unsignedMergeXdr(sourceKeypair, attacker);
-  const preAuthTx = TransactionBuilder.fromXDR(preAuthXdr, Networks.TESTNET) as Transaction;
+  const preAuthTx = TransactionBuilder.fromXdr(preAuthXdr, Networks.TESTNET) as Transaction;
   const preAuthKey = StrKey.encodePreAuthTx(preAuthTx.hash());
 
   useNetworkStore.setState({ network: "testnet" });
@@ -685,7 +686,7 @@ test("useCloseExecution › a transaction flagged needsSponsoredFee is wrapped a
   expect(submitCalls).toBe(1);
   // The sponsor was handed the user's fully-signed inner xdr, not the sponsored result.
   expect(sponsorSawXdr).not.toBe(submittedXdr);
-  const submitted = TransactionBuilder.fromXDR(submittedXdr as string, Networks.TESTNET);
+  const submitted = TransactionBuilder.fromXdr(submittedXdr as string, Networks.TESTNET);
   expect(submitted).toBeInstanceOf(FeeBumpTransaction);
   expect(useDemolishStore.getState().phase).toBe("COMPLETE");
 });
@@ -703,7 +704,7 @@ test("useCloseExecution › a fee-bump wrapping a different inner transaction is
   const mergeXdr = unsignedZeroFeeMergeXdr(sourceKeypair, destination);
   // A different transaction (different destination) that the sponsor swaps in instead.
   const wrongInnerXdr = unsignedZeroFeeMergeXdr(sourceKeypair, attacker);
-  const wrongInnerSigned = TransactionBuilder.fromXDR(
+  const wrongInnerSigned = TransactionBuilder.fromXdr(
     wrongInnerXdr,
     Networks.TESTNET
   ) as Transaction;
@@ -731,7 +732,7 @@ test("useCloseExecution › a fee-bump wrapping a different inner transaction is
     remaining: { steps: 0, requiresAnotherCall: false },
   }));
 
-  stubFeeBumpSponsor(async () => feeBumpXdr(wrongInnerSigned.toXDR(), feeKeypair));
+  stubFeeBumpSponsor(async () => feeBumpXdr(wrongInnerSigned.toXdr(), feeKeypair));
 
   let submitCalls = 0;
   stubSubmitViaApi(async () => {

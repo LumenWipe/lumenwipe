@@ -354,11 +354,13 @@ async function readInstances(
     );
     for (const entry of response.entries ?? []) {
       try {
-        const contract = Address.fromScAddress(entry.key.contractData().contract()).toString();
-        const executable = entry.val.contractData().val().instance().executable();
+        if (entry.key.type !== "contractData") continue;
+        if (entry.val.type !== "contractData") continue;
+        const instanceVal = entry.val.contractData.val;
+        if (instanceVal.type !== "scvContractInstance") continue;
+        const contract = Address.fromScAddress(entry.key.contractData.contract).toString();
         out.set(contract, {
-          isStellarAsset:
-            executable.switch() === xdr.ContractExecutableType.contractExecutableStellarAsset(),
+          isStellarAsset: instanceVal.instance.executable.type === "contractExecutableStellarAsset",
         });
       } catch {
         continue;

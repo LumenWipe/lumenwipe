@@ -5,6 +5,7 @@ import { blendSdkNetwork } from "@/lib/blend-sdk";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import type { EnrichContext, KnownToken, PositionEnricher } from "./shared";
 import { formatUnits, positionKey } from "./shared";
+import { contractDataEntry, instanceOfEntry } from "@/lib/stellar/contract-data";
 
 /**
  * Display data for Soroswap LP positions, from the pair's own instance: its two tokens (keys 0
@@ -32,9 +33,7 @@ export interface SoroswapEnrichDeps {
 }
 
 const asAddress = (val: xdr.ScVal | undefined): string | null =>
-  val && val.switch() === xdr.ScValType.scvAddress()
-    ? Address.fromScAddress(val.address()).toString()
-    : null;
+  val && val.type === "scvAddress" ? Address.fromScAddress(val.address).toString() : null;
 
 const asI128 = (val: xdr.ScVal | undefined): bigint | null => {
   if (!val) return null;
@@ -53,24 +52,24 @@ export async function readSoroswapPair(
     new xdr.LedgerKeyContractData({
       contract: new Address(pair).toScAddress(),
       key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("Balance"), new Address(account).toScVal()]),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
     })
   );
   const res = await rpc.getLedgerEntries(instanceKey, balanceKey);
   const byKey = new Map<string, xdr.LedgerEntryData>();
-  for (const entry of res.entries ?? []) byKey.set(entry.key.toXDR("base64"), entry.val);
-  const instanceVal = byKey.get(instanceKey.toXDR("base64"));
+  for (const entry of res.entries ?? []) byKey.set(entry.key.toXdr("base64"), entry.val);
+  const instanceVal = byKey.get(instanceKey.toXdr("base64"));
   if (!instanceVal) return null;
 
   const storage = new Map<string, xdr.ScVal>();
-  for (const entry of instanceVal.contractData().val().instance().storage() ?? []) {
+  for (const entry of instanceOfEntry(instanceVal).storage ?? []) {
     let name: unknown;
     try {
-      name = JSON.stringify(scValToNative(entry.key()));
+      name = JSON.stringify(scValToNative(entry.key));
     } catch {
       continue;
     }
-    if (typeof name === "string") storage.set(name, entry.val());
+    if (typeof name === "string") storage.set(name, entry.val);
   }
   const token0 = asAddress(storage.get("0"));
   const token1 = asAddress(storage.get("1"));
@@ -96,8 +95,8 @@ export async function readSoroswapPair(
       name = null;
     }
   }
-  const balanceVal = byKey.get(balanceKey.toXDR("base64"));
-  const shares = balanceVal ? (asI128(balanceVal.contractData().val()) ?? 0n) : 0n;
+  const balanceVal = byKey.get(balanceKey.toXdr("base64"));
+  const shares = balanceVal ? (asI128(contractDataEntry(balanceVal).val) ?? 0n) : 0n;
   return { token0, token1, reserve0, reserve1, totalSupply, shares, name };
 }
 

@@ -88,14 +88,14 @@ export function requestContextMiddleware(deadlineMs: number = REQUEST_DEADLINE_M
 
 function memoOfEnvelope(signedXdr: string): string | undefined {
   try {
-    const envelope = xdr.TransactionEnvelope.fromXDR(signedXdr, "base64");
-    const tx =
-      envelope.switch().name === "envelopeTypeTxFeeBump"
-        ? envelope.feeBump().tx().innerTx().v1().tx()
-        : envelope.v1().tx();
-    const memo = tx.memo();
-    if (memo.switch().name === "memoText") return memo.text().toString("utf8");
-    if (memo.switch().name === "memoId") return memo.id().toString();
+    const envelope = xdr.TransactionEnvelope.fromXdr(signedXdr, "base64");
+    let tx: xdr.Transaction;
+    if (envelope.type === "envelopeTypeTxFeeBump") tx = envelope.feeBump.tx.innerTx.v1.tx;
+    else if (envelope.type === "envelopeTypeTx") tx = envelope.v1.tx;
+    else return undefined;
+    const memo = tx.memo;
+    if (memo.type === "memoText") return memo.text.toString();
+    if (memo.type === "memoId") return memo.id.toString();
   } catch {
     return undefined;
   }

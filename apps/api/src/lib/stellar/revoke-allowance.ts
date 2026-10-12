@@ -1,4 +1,5 @@
 import type { ErrorCode } from "@lumenwipe/types";
+import { envelopeOps } from "@/lib/stellar/envelope-ops";
 import {
   Account,
   Address,
@@ -7,7 +8,6 @@ import {
   nativeToScVal,
   rpc as stellarRpc,
   scValToNative,
-  xdr,
   type Transaction,
 } from "@stellar/stellar-sdk";
 import {
@@ -63,23 +63,23 @@ export function assertPlainRevoke(
   tx: Transaction,
   expected: { token: string; owner: string; spender: string }
 ): void {
-  const ops = tx.toEnvelope().v1().tx().operations();
+  const ops = envelopeOps(tx);
   if (ops.length !== 1) throw new Error(`expected one operation, found ${ops.length}`);
   const op = ops[0]!;
-  if (op.body().switch() !== xdr.OperationType.invokeHostFunction()) {
+  if (op.body.type !== "invokeHostFunction") {
     throw new Error("the operation is not a contract invocation");
   }
-  const host = op.body().invokeHostFunctionOp();
-  const fn = host.hostFunction();
-  if (fn.switch() !== xdr.HostFunctionType.hostFunctionTypeInvokeContract()) {
+  const host = op.body.invokeHostFunctionOp;
+  const fn = host.hostFunction;
+  if (fn.type !== "hostFunctionTypeInvokeContract") {
     throw new Error("the invocation is not a contract call");
   }
-  const call = fn.invokeContract();
-  if (Address.fromScAddress(call.contractAddress()).toString() !== expected.token) {
+  const call = fn.invokeContract;
+  if (Address.fromScAddress(call.contractAddress).toString() !== expected.token) {
     throw new Error("the call targets a different contract");
   }
-  if (call.functionName().toString() !== "approve") throw new Error("the call is not approve");
-  const args = call.args();
+  if (call.functionName.toString() !== "approve") throw new Error("the call is not approve");
+  const args = call.args;
   if (args.length !== 4) throw new Error(`approve takes four arguments, found ${args.length}`);
   const [from, spender, amount] = args;
   if (Address.fromScVal(from!).toString() !== expected.owner) {
@@ -92,34 +92,29 @@ export function assertPlainRevoke(
   if (typeof amountNative !== "bigint" || amountNative !== 0n) {
     throw new Error("the amount is not zero - this is not a revocation");
   }
-  if (host.auth().length === 0) {
+  if (host.auth.length === 0) {
     throw new Error("the simulation produced no authorization for the revocation");
   }
-  for (const entry of host.auth()) {
-    if (
-      entry.credentials().switch() !== xdr.SorobanCredentialsType.sorobanCredentialsSourceAccount()
-    ) {
+  for (const entry of host.auth) {
+    if (entry.credentials.type !== "sorobanCredentialsSourceAccount") {
       throw new Error("an authorization entry carries credentials other than the account's own");
     }
-    const root = entry.rootInvocation();
-    if (root.subInvocations().length > 0) {
+    const root = entry.rootInvocation;
+    if (root.subInvocations.length > 0) {
       throw new Error("the token asks the account to authorize a nested call");
     }
-    const rootFn = root.function();
-    if (
-      rootFn.switch() !==
-      xdr.SorobanAuthorizedFunctionType.sorobanAuthorizedFunctionTypeContractFn()
-    ) {
+    const rootFn = root.function;
+    if (rootFn.type !== "sorobanAuthorizedFunctionTypeContractFn") {
       throw new Error("an authorization entry is not a plain contract call");
     }
-    const authorized = rootFn.contractFn();
+    const authorized = rootFn.contractFn;
     if (
-      Address.fromScAddress(authorized.contractAddress()).toString() !== expected.token ||
-      authorized.functionName().toString() !== "approve"
+      Address.fromScAddress(authorized.contractAddress).toString() !== expected.token ||
+      authorized.functionName.toString() !== "approve"
     ) {
       throw new Error("an authorization entry authorizes a call other than this revocation");
     }
-    const authorizedArgs = authorized.args();
+    const authorizedArgs = authorized.args;
     if (
       authorizedArgs.length !== 4 ||
       Address.fromScVal(authorizedArgs[0]!).toString() !== expected.owner ||

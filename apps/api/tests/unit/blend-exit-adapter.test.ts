@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { RequestType, Version } from "@blend-capital/blend-sdk";
-import { Address, scValToNative, xdr } from "@stellar/stellar-sdk";
+import { Address, scValToNative } from "@stellar/stellar-sdk";
 import type { BlendBorrowPosition, BlendSupplyPosition } from "@lumenwipe/types";
 import { assessRepayPlanned, runExitAdapter } from "@/lib/defi-exits";
 import {
@@ -31,6 +31,7 @@ import {
   validateContractRegistry,
   type ContractRegistryLookup,
 } from "@/lib/contract-registry";
+import { invokeContractArgs, v1TransactionFromXdr } from "../support/v1-transaction";
 
 // Sebas's registry entry for the official Blend V2 testnet pool, reused as the fixture address.
 const POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
@@ -354,13 +355,9 @@ describe("blend exit adapter", () => {
         minReceived: [],
       });
       if (!result.next || result.next.build.source !== "local") throw new Error("local build");
-      const call = result.next.build.op
-        .body()
-        .invokeHostFunctionOp()
-        .hostFunction()
-        .invokeContract();
-      expect(call.functionName().toString()).toBe("claim");
-      const [from, ids, to] = call.args();
+      const call = invokeContractArgs(result.next.build.op);
+      expect(call.functionName.toString()).toBe("claim");
+      const [from, ids, to] = call.args;
       expect(Address.fromScVal(from!).toString()).toBe(ctx.account);
       expect(scValToNative(ids!)).toEqual([1, 2]);
       expect(Address.fromScVal(to!).toString()).toBe(ctx.account);
@@ -475,14 +472,10 @@ describe("blend exit adapter", () => {
       );
       expect(result.plan.map((s) => s.kind)).toEqual(["withdraw"]);
       if (!result.next || result.next.build.source !== "local") throw new Error("local build");
-      const call = result.next.build.op
-        .body()
-        .invokeHostFunctionOp()
-        .hostFunction()
-        .invokeContract();
-      expect(Address.fromScAddress(call.contractAddress()).toString()).toBe(BACKSTOP);
-      expect(call.functionName().toString()).toBe("withdraw");
-      const [from, pool, amount] = call.args();
+      const call = invokeContractArgs(result.next.build.op);
+      expect(Address.fromScAddress(call.contractAddress).toString()).toBe(BACKSTOP);
+      expect(call.functionName.toString()).toBe("withdraw");
+      const [from, pool, amount] = call.args;
       expect(Address.fromScVal(from!).toString()).toBe(ctx.account);
       expect(Address.fromScVal(pool!).toString()).toBe(POOL);
       expect(scValToNative(amount!)).toBe(5_000_000n);
@@ -565,11 +558,11 @@ describe("blend exit adapter", () => {
       throw new Error("expected a local build");
     }
     const op = result.next.build.op;
-    const invocation = op.body().invokeHostFunctionOp().hostFunction().invokeContract();
-    expect(Address.fromScAddress(invocation.contractAddress()).toString()).toBe(POOL);
-    expect(invocation.functionName().toString()).toBe("submit");
+    const invocation = invokeContractArgs(op);
+    expect(Address.fromScAddress(invocation.contractAddress).toString()).toBe(POOL);
+    expect(invocation.functionName.toString()).toBe("submit");
 
-    const [from, spender, to, requests] = invocation.args();
+    const [from, spender, to, requests] = invocation.args;
     for (const who of [from, spender, to]) {
       expect(Address.fromScVal(who!).toString()).toBe(ctx.account);
     }
@@ -589,12 +582,7 @@ describe("blend exit adapter", () => {
     const types = steps.map((step) => {
       const built = adapter.buildStep(step, live, ctx);
       if (built.build.source !== "local") throw new Error("expected a local build");
-      const requests = built.build.op
-        .body()
-        .invokeHostFunctionOp()
-        .hostFunction()
-        .invokeContract()
-        .args()[3]!;
+      const requests = invokeContractArgs(built.build.op).args[3]!;
       const [request] = scValToNative(requests) as Array<{ request_type: number }>;
       return request!.request_type;
     });
@@ -610,9 +598,8 @@ describe("blend exit adapter", () => {
     if (!result.next || result.next.build.source !== "local") {
       throw new Error("expected a local build");
     }
-    expect(result.next.build.op.sourceAccount()).toBeUndefined();
-    const envelope = xdr.TransactionEnvelope.fromXDR(result.next.simulation.txXdr, "base64");
-    expect(envelope.v1().tx().operations()).toHaveLength(1);
+    expect(result.next.build.op.sourceAccount).toBeNull();
+    expect(v1TransactionFromXdr(result.next.simulation.txXdr).operations).toHaveLength(1);
   });
 
   describe("the SDK's numbers, reduced", () => {

@@ -47,7 +47,7 @@ export default function BlogToc({ toc }: { toc: TocEntry[] }) {
   if (!toc.length) return null;
 
   return (
-    <aside className="hidden lg:block w-52 flex-shrink-0">
+    <aside className="hidden lg:block w-52 shrink-0">
       <div className="sticky top-24">
         <p className="mkt-eyebrow text-fg-subtle mb-3">On this page</p>
         <nav>

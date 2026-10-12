@@ -147,13 +147,13 @@ test("close API: Blend, Soroswap, and Aquarius positions on one account are all 
           expect(allowed).toContain(contract);
         exitContracts.push(op.contract);
       }
-      const tx = TransactionBuilder.fromXDR(
+      const tx = TransactionBuilder.fromXdr(
         closeTx.xdr,
         closeTx.networkPassphrase ?? Networks.TESTNET
       );
       tx.sign(source);
       const submitRes = await request.post("/api/v1/testnet/submit", {
-        data: { signedXdr: tx.toEnvelope().toXDR("base64") },
+        data: { signedXdr: tx.toEnvelope().toXdr("base64") },
       });
       const label = `${closeTx.covers.join("+")} · ${closeTx.intent.summary} · source ${source.publicKey()} · xdr ${closeTx.xdr}`;
       expect(submitRes.ok(), `${label}\n${await submitRes.text()}`).toBeTruthy();

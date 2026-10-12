@@ -49,7 +49,7 @@ export default function OrbitalNode({ node }: { node: SceneNode }) {
       transition={{ type: "spring", stiffness: 90, damping: 14 }}
     >
       <motion.div
-        className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] mkt-mono backdrop-blur-sm ${
+        className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] mkt-mono backdrop-blur-xs ${
           converting
             ? "border-value/60 bg-[hsl(var(--value)/0.12)] text-value"
             : "border-white/12 bg-[hsl(200_16%_10%/0.85)] text-white/80"

@@ -14,6 +14,7 @@ import {
   scValToNative,
   xdr,
 } from "@stellar/stellar-sdk";
+import { contractDataVal } from "./fixtures/ledger-entry";
 
 // E2E for the Aquarius exit, against live TESTNET, API-only (plan -> transactions -> sign ->
 // submit, repeated until done). It seeds a real LP position in an existing XLM/AQUA
@@ -137,11 +138,15 @@ async function readOnlyRaw(
 
 /** The router's index (a 32-byte hash) for the pool under test, read from the raw map so the bytes
  *  survive - scValToNative would turn them into a lossy string. */
-async function poolIndex(from: string): Promise<Buffer> {
+async function poolIndex(from: string): Promise<Uint8Array> {
   const pools = await readOnlyRaw(from, ROUTER, "get_pools", tokensVal);
-  for (const entry of pools.map() ?? []) {
-    if (Address.fromScAddress(entry.val().address()).toString() === POOL) {
-      return Buffer.from(entry.key().bytes());
+  for (const entry of (pools.type === "scvMap" ? pools.map : null) ?? []) {
+    if (
+      entry.val.type === "scvAddress" &&
+      Address.fromScAddress(entry.val.address).toString() === POOL
+    ) {
+      if (entry.key.type !== "scvBytes") throw new Error("router index is not bytes");
+      return entry.key.bytes.toBytes();
     }
   }
   throw new Error(`pool ${POOL} is not in the router's XLM/AQUA set`);
@@ -187,12 +192,12 @@ async function sharesOf(shareToken: string, owner: string): Promise<bigint> {
     new xdr.LedgerKeyContractData({
       contract: new Address(shareToken).toScAddress(),
       key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("Balance"), addr(owner)]),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
     })
   );
   const res = await server.getLedgerEntries(key);
   if (res.entries.length === 0) return BigInt(0);
-  return scValToNative(res.entries[0]!.val.contractData().val()) as bigint;
+  return scValToNative(contractDataVal(res.entries[0]!.val)) as bigint;
 }
 
 test.skip(
@@ -250,15 +255,15 @@ test("close API: an Aquarius LP position is withdrawn from its pool, then the ac
     addr(source.publicKey())
   )) as bigint;
   const rewardKeyOf = (key: xdr.LedgerKey): boolean => {
-    if (key.switch().name !== "contractData") return false;
-    const val = key.contractData().key();
-    if (val.switch().name !== "scvVec") return false;
-    const [name, who] = val.vec() ?? [];
+    if (key.type !== "contractData") return false;
+    const val = key.contractData.key;
+    if (val.type !== "scvVec") return false;
+    const [name, who] = val.vec ?? [];
     return (
-      name?.switch().name === "scvSymbol" &&
-      name.sym().toString() === "UserRewardData" &&
-      who?.switch().name === "scvAddress" &&
-      Address.fromScAddress(who.address()).toString() === source.publicKey()
+      name?.type === "scvSymbol" &&
+      name.sym.toString() === "UserRewardData" &&
+      who?.type === "scvAddress" &&
+      Address.fromScAddress(who.address).toString() === source.publicKey()
     );
   };
 
@@ -288,24 +293,22 @@ test("close API: an Aquarius LP position is withdrawn from its pool, then the ac
           expect([POOL, shareToken, XLM_SAC, AQUA_SAC]).toContain(contract);
         }
         if (reward > BigInt(0)) {
-          const footprint = xdr.TransactionEnvelope.fromXDR(closeTx.xdr, "base64")
-            .v1()
-            .tx()
-            .ext()
-            .sorobanData()
-            .resources()
-            .footprint();
-          expect(footprint.readOnly().some(rewardKeyOf)).toBe(false);
-          expect(footprint.readWrite().some(rewardKeyOf)).toBe(true);
+          const envelope = xdr.TransactionEnvelope.fromXdr(closeTx.xdr, "base64");
+          if (envelope.type !== "envelopeTypeTx") throw new Error("expected a v1 envelope");
+          const ext = envelope.v1.tx.ext;
+          if (ext.type !== "sorobanData") throw new Error("expected soroban data");
+          const footprint = ext.sorobanData.resources.footprint;
+          expect(footprint.readOnly.some(rewardKeyOf)).toBe(false);
+          expect(footprint.readWrite.some(rewardKeyOf)).toBe(true);
         }
       }
-      const tx = TransactionBuilder.fromXDR(
+      const tx = TransactionBuilder.fromXdr(
         closeTx.xdr,
         closeTx.networkPassphrase ?? Networks.TESTNET
       );
       tx.sign(source);
       const submitRes = await request.post("/api/v1/testnet/submit", {
-        data: { signedXdr: tx.toEnvelope().toXDR("base64") },
+        data: { signedXdr: tx.toEnvelope().toXdr("base64") },
       });
       // On a failure, name the step and keep the envelope so the trap can be simulated by hand.
       const label = `${closeTx.covers.join("+")} · ${closeTx.intent.summary} · source ${source.publicKey()} · xdr ${closeTx.xdr}`;

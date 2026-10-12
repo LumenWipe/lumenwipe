@@ -57,7 +57,7 @@ by range:
 
 | Package       | Was           | Now       | Why an override was needed                                                                  |
 | ------------- | ------------- | --------- | ------------------------------------------------------------------------------------------- |
-| `axios`       | 1.16.0/1.16.1 | `^1.20.0` | Pinned exactly by `@stellar/stellar-sdk@16.0.1` (itself deliberately pinned, see CLAUDE.md) |
+| `axios`       | 1.16.0/1.16.1 | `^1.20.0` | Pinned exactly by `@stellar/stellar-sdk@17.2.1` (itself deliberately pinned, see CLAUDE.md) |
 | `form-data`   | 4.0.5         | `^4.0.6`  | Transitive via the same `axios` chain                                                       |
 | `body-parser` | 1.20.4        | `^1.20.6` | Pinned exactly by `@nestjs/platform-express`                                                |
 | `lodash`      | 4.17.21       | `^4.18.1` | Pinned exactly by `@nestjs/config` and `@nestjs/swagger`                                    |

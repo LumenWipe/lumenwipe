@@ -27,6 +27,7 @@ import {
   type ExitRpc,
   type ExitStep,
 } from "./adapter";
+import { contractDataEntry, instanceOfEntry } from "@/lib/stellar/contract-data";
 import { minReceivedFromQuote } from "./invariants";
 import { REWARD_RATE_SCALE, rewardIsWorthClaiming } from "./reward-dust";
 
@@ -100,26 +101,23 @@ interface InstanceView {
 }
 
 function instanceView(val: xdr.LedgerEntryData): InstanceView {
-  const instance = val.contractData().val().instance();
-  const isStellarAsset =
-    instance.executable().switch() === xdr.ContractExecutableType.contractExecutableStellarAsset();
+  const instance = instanceOfEntry(val);
+  const isStellarAsset = instance.executable.type === "contractExecutableStellarAsset";
   const storage = new Map<string, xdr.ScVal>();
-  for (const entry of instance.storage() ?? []) {
+  for (const entry of instance.storage ?? []) {
     let name: unknown;
     try {
-      name = JSON.stringify(scValToNative(entry.key()));
+      name = JSON.stringify(scValToNative(entry.key));
     } catch {
       continue;
     }
-    if (typeof name === "string") storage.set(name, entry.val());
+    if (typeof name === "string") storage.set(name, entry.val);
   }
   return { isStellarAsset, storage };
 }
 
 const asAddress = (val: xdr.ScVal | undefined): string | null =>
-  val && val.switch() === xdr.ScValType.scvAddress()
-    ? Address.fromScAddress(val.address()).toString()
-    : null;
+  val && val.type === "scvAddress" ? Address.fromScAddress(val.address).toString() : null;
 
 const asUnsigned = (val: xdr.ScVal | undefined): bigint | null => {
   if (!val) return null;
@@ -130,9 +128,9 @@ const asUnsigned = (val: xdr.ScVal | undefined): bigint | null => {
 };
 
 function asAddressList(val: xdr.ScVal | undefined): string[] | null {
-  if (!val || val.switch() !== xdr.ScValType.scvVec()) return null;
+  if (!val || val.type !== "scvVec") return null;
   const out: string[] = [];
-  for (const item of val.vec() ?? []) {
+  for (const item of val.vec ?? []) {
     const address = asAddress(item);
     if (address === null) return null;
     out.push(address);
@@ -141,9 +139,9 @@ function asAddressList(val: xdr.ScVal | undefined): string[] | null {
 }
 
 function asUnsignedList(val: xdr.ScVal | undefined): bigint[] | null {
-  if (!val || val.switch() !== xdr.ScValType.scvVec()) return null;
+  if (!val || val.type !== "scvVec") return null;
   const out: bigint[] = [];
-  for (const item of val.vec() ?? []) {
+  for (const item of val.vec ?? []) {
     const n = asUnsigned(item);
     if (n === null) return null;
     out.push(n);
@@ -157,7 +155,7 @@ async function readEntries(
 ): Promise<Map<string, xdr.LedgerEntryData>> {
   const res = await rpc.getLedgerEntries(...keys);
   const out = new Map<string, xdr.LedgerEntryData>();
-  for (const entry of res.entries ?? []) out.set(entry.key.toXDR("base64"), entry.val);
+  for (const entry of res.entries ?? []) out.set(entry.key.toXdr("base64"), entry.val);
   return out;
 }
 
@@ -166,7 +164,7 @@ const balanceKey = (token: string, account: string): xdr.LedgerKey =>
     new xdr.LedgerKeyContractData({
       contract: new Address(token).toScAddress(),
       key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("Balance"), new Address(account).toScVal()]),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
     })
   );
 
@@ -208,13 +206,13 @@ export function rewardsInfoOf(
   val: xdr.ScVal | null,
   now: bigint
 ): { reward: bigint; rewardRateScaled: bigint } | null {
-  if (!val || val.switch() !== xdr.ScValType.scvMap()) return null;
+  if (!val || val.type !== "scvMap") return null;
   const fields = new Map<string, bigint>();
-  for (const entry of val.map() ?? []) {
-    const key = entry.key();
-    if (key.switch() !== xdr.ScValType.scvSymbol()) continue;
-    const value = asUnsigned(entry.val());
-    if (value !== null) fields.set(key.sym().toString(), value);
+  for (const entry of val.map ?? []) {
+    const key = entry.key;
+    if (key.type !== "scvSymbol") continue;
+    const value = asUnsigned(entry.val);
+    if (value !== null) fields.set(key.sym.toString(), value);
   }
   const reward = fields.get("to_claim");
   const tps = fields.get("tps");
@@ -268,37 +266,39 @@ const PROMOTED_KEY_WRITE_BYTES = 512;
 const PROMOTED_KEY_FEE_STROOPS = 300_000n;
 
 function isAccountRewardKey(key: xdr.LedgerKey, account: string): boolean {
-  if (key.switch() !== xdr.LedgerEntryType.contractData()) return false;
-  const val = key.contractData().key();
-  if (val.switch() !== xdr.ScValType.scvVec()) return false;
-  const parts = val.vec() ?? [];
+  if (key.type !== "contractData") return false;
+  const val = key.contractData.key;
+  if (val.type !== "scvVec") return false;
+  const parts = val.vec ?? [];
   if (parts.length !== 2) return false;
   const [name, who] = parts;
   return (
-    name!.switch() === xdr.ScValType.scvSymbol() &&
-    ACCOUNT_REWARD_KEYS.has(name!.sym().toString()) &&
+    name!.type === "scvSymbol" &&
+    ACCOUNT_REWARD_KEYS.has(name!.sym.toString()) &&
     asAddress(who) === account
   );
 }
 
 /** The assembled transaction with the account's reward keys in the read-write footprint. */
 export function promoteRewardKeys(tx: Transaction, account: string): Transaction {
-  const ext = tx.toEnvelope().v1().tx().ext();
-  if (ext.switch() !== 1) return tx;
-  const data = ext.sorobanData();
-  const footprint = data.resources().footprint();
-  const b64 = (k: xdr.LedgerKey): string => k.toXDR("base64");
-  const alreadyWritable = new Set(footprint.readWrite().map(b64));
+  const envelope = tx.toEnvelope();
+  if (envelope.type !== "envelopeTypeTx") throw new Error("Aquarius: unexpected envelope type");
+  const ext = envelope.v1.tx.ext;
+  if (ext.type !== "sorobanData") return tx;
+  const data = ext.sorobanData;
+  const footprint = data.resources.footprint;
+  const b64 = (k: xdr.LedgerKey): string => k.toXdr("base64");
+  const alreadyWritable = new Set(footprint.readWrite.map(b64));
   // A key may appear in one half of the footprint only.
-  const promoted = footprint
-    .readOnly()
-    .filter((k) => isAccountRewardKey(k, account) && !alreadyWritable.has(b64(k)));
+  const promoted = footprint.readOnly.filter(
+    (k) => isAccountRewardKey(k, account) && !alreadyWritable.has(b64(k))
+  );
   if (promoted.length === 0) return tx;
   const promotedXdr = new Set(promoted.map(b64));
-  const readOnly = footprint.readOnly().filter((k) => !promotedXdr.has(b64(k)));
-  const readWrite = [...footprint.readWrite(), ...promoted];
-  const resources = data.resources();
-  const resourceFee = data.resourceFee().toBigInt();
+  const readOnly = footprint.readOnly.filter((k) => !promotedXdr.has(b64(k)));
+  const readWrite = [...footprint.readWrite, ...promoted];
+  const resources = data.resources;
+  const resourceFee = data.resourceFee;
   const inclusionFee = BigInt(tx.fee) - resourceFee;
   if (inclusionFee < BigInt(BASE_FEE_STROOPS)) {
     throw new Error("Aquarius: assembled transaction carries no inclusion fee");
@@ -307,9 +307,9 @@ export function promoteRewardKeys(tx: Transaction, account: string): Transaction
   const sorobanData = new SorobanDataBuilder(data)
     .setFootprint(readOnly, readWrite)
     .setResources(
-      resources.instructions(),
-      resources.diskReadBytes(),
-      resources.writeBytes() + PROMOTED_KEY_WRITE_BYTES * promoted.length
+      resources.instructions,
+      resources.diskReadBytes,
+      resources.writeBytes + PROMOTED_KEY_WRITE_BYTES * promoted.length
     )
     .setResourceFee(resourceFee + extraFee)
     .build();
@@ -339,7 +339,7 @@ export function aquariusExitAdapter(): ExitAdapter<AquariusLpPosition, AquariusL
         const pool = position.contractAddress;
         const poolKey = new Contract(pool).getFootprint();
         const first = await readEntries(rpc, [poolKey]);
-        const poolVal = first.get(poolKey.toXDR("base64"));
+        const poolVal = first.get(poolKey.toXdr("base64"));
         if (!poolVal) return { status: "unreadable" };
         const { storage } = instanceView(poolVal);
 
@@ -386,13 +386,13 @@ export function aquariusExitAdapter(): ExitAdapter<AquariusLpPosition, AquariusL
         // that is present with 0 means "already withdrawn" and an ABSENT entry means the ledger is
         // not telling us the balance. Absent must never read as zero: the round would take "gone"
         // as done and merge the account with its shares still in the pool.
-        const shareVal = second.get(shareKey.toXDR("base64"));
+        const shareVal = second.get(shareKey.toXdr("base64"));
         if (!shareVal) return { status: "shares_unreadable" };
-        const shares = asUnsigned(shareVal.contractData().val());
+        const shares = asUnsigned(contractDataEntry(shareVal).val);
         if (shares === null) return { status: "unreadable" };
         const stellarAssetTokens = new Set<string>();
         for (let i = 0; i < tokenKeys.length; i++) {
-          const val = second.get(tokenKeys[i]!.toXDR("base64"));
+          const val = second.get(tokenKeys[i]!.toXdr("base64"));
           if (!val) return { status: "unreadable" };
           if (instanceView(val).isStellarAsset) stellarAssetTokens.add(distinctTokens[i]!);
         }

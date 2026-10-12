@@ -96,7 +96,7 @@ async function discoverSponsorshipCandidates(
     // error page served as 200, a truncated body, or an unexpected JSON shape would
     // otherwise throw straight out of getAccountState and take down every endpoint that
     // reads account state. Degrade to "incomplete" instead, like the adapters next door.
-    let recordCount = 0;
+    let recordCount: number;
     let nextHref: string | undefined;
     try {
       const page: HorizonOperationsPage | null = await getJson<HorizonOperationsPage>(
@@ -418,7 +418,7 @@ async function fetchClaimableBalancesBySponsor(
   while (nextPath && entries.length < CB_MAX_TOTAL) {
     // As in discoverSponsorshipCandidates: parsing and iteration live inside the try so a
     // malformed body degrades to "incomplete" instead of throwing out of the account read.
-    let recordCount = 0;
+    let recordCount: number;
     let nextHref: string | undefined;
     try {
       const page: HorizonClaimableBalancesPage | null = await getJson<HorizonClaimableBalancesPage>(

@@ -46,12 +46,13 @@ export function checkTransactionSignatures(tx: Transaction | FeeBumpTransaction)
   const txHash = tx.hash();
 
   for (const sig of tx.signatures) {
-    if (!sig.hint().equals(expectedHint)) {
+    const hint = sig.hint.toBytes();
+    if (hint.length !== expectedHint.length || hint.some((b, i) => b !== expectedHint[i])) {
       // Unrecognized signer - could be a multisig cosigner; let the network decide
       return;
     }
     // Hint matches the source account: verify the signature
-    if (sourceKey.verify(txHash, sig.signature())) return;
+    if (sourceKey.verify(txHash, sig.signature)) return;
 
     // Hint matched but signature is cryptographically invalid - wrong key or corrupted
     throw new InvalidSignatureError(

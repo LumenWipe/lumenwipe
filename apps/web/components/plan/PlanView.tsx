@@ -118,7 +118,6 @@ export default function PlanView({
       }
     }
     useDemolishStore.getState().setTokenConversionFloors(floors);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversions]);
 
   useEffect(() => {

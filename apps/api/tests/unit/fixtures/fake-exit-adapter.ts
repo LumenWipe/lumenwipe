@@ -32,7 +32,9 @@ import type {
   ExitStepKind,
 } from "@/lib/defi-exits";
 import { MIN_RECEIVED_REQUIRED, clampToBalance, minReceivedFromQuote } from "@/lib/defi-exits";
+import { contractDataEntry } from "@/lib/stellar/contract-data";
 import { contractDataKey, symbolVal } from "@/lib/defi-positions/testnet-direct-read";
+import { v1Transaction } from "../../support/v1-transaction";
 
 export const POSITION_CONTRACT = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 export const OTHER_CONTRACT = "CAIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRDB3V";
@@ -125,7 +127,7 @@ export function fakeExitAdapter(
       const res = await rpc.getLedgerEntries(balanceKey(position.contractAddress));
       const entry = res.entries?.[0];
       if (!entry) throw new Error("fake adapter: no live balance entry");
-      const native: unknown = scValToNative(entry.val.contractData().val());
+      const native: unknown = scValToNative(contractDataEntry(entry.val).val);
       return { balance: String(native) };
     },
 
@@ -218,7 +220,7 @@ export function fakeExitAdapter(
         const envelopeXdr = builder
           .setTimebounds(0, Math.floor(ctx.now.getTime() / 1000) + 300)
           .build()
-          .toXDR();
+          .toXdr();
         return { step, build: { source: "external", provider: "fake-api", envelopeXdr }, intent };
       }
       return { step, build: { source: "local", op }, intent };
@@ -232,8 +234,10 @@ export function fakeExitAdapter(
       ? {
           hardenBuilt(tx: Transaction, step: ExitStep, _live: FakeLiveState, ctx: ExitContext) {
             if (knobs.hardenThrows) throw new Error("fake adapter: harden exploded");
-            const data = tx.toEnvelope().v1().tx().ext().sorobanData();
-            const resourceFee = data.resourceFee().toBigInt();
+            const ext = v1Transaction(tx).ext;
+            if (ext.type !== "sorobanData") throw new Error("fake adapter: no soroban data");
+            const data = ext.sorobanData;
+            const resourceFee = data.resourceFee;
             const sorobanData = new SorobanDataBuilder(data)
               .setResourceFee(resourceFee + (knobs.hardenAddsFee ?? 0n))
               .build();
@@ -252,18 +256,26 @@ export function fakeExitAdapter(
             const built = builder.build();
             if (!knobs.hardenChangesTimeBounds) return built;
             // The builder refuses to overwrite bounds; a hook bent on it can still edit the XDR.
-            const envelope = built.toEnvelope();
-            envelope
-              .v1()
-              .tx()
-              .cond(
-                xdr.Preconditions.precondTime(
-                  new xdr.TimeBounds({
-                    minTime: xdr.Uint64.fromString("0"),
-                    maxTime: xdr.Uint64.fromString(String(Math.floor(Date.now() / 1000) + 3_600)),
-                  })
-                )
-              );
+            const original = v1Transaction(built);
+            const envelope = xdr.TransactionEnvelope.envelopeTypeTx(
+              new xdr.TransactionV1Envelope({
+                tx: new xdr.Transaction({
+                  sourceAccount: original.sourceAccount,
+                  fee: original.fee,
+                  seqNum: original.seqNum,
+                  cond: xdr.Preconditions.precondTime(
+                    new xdr.TimeBounds({
+                      minTime: 0n,
+                      maxTime: BigInt(Math.floor(Date.now() / 1000) + 3_600),
+                    })
+                  ),
+                  memo: original.memo,
+                  operations: original.operations,
+                  ext: original.ext,
+                }),
+                signatures: [],
+              })
+            );
             return new Transaction(envelope, built.networkPassphrase);
           },
         }
@@ -290,10 +302,10 @@ export interface FakeRpcOptions {
 function instanceEntry(contract: string, wasmHash: string): xdr.LedgerEntryData {
   return xdr.LedgerEntryData.contractData(
     new xdr.ContractDataEntry({
-      ext: new xdr.ExtensionPoint(0),
+      ext: xdr.ExtensionPoint.v0(),
       contract: new Address(contract).toScAddress(),
       key: xdr.ScVal.scvLedgerKeyContractInstance(),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
       val: xdr.ScVal.scvContractInstance(
         new xdr.ScContractInstance({
           executable: xdr.ContractExecutable.contractExecutableWasm(Buffer.from(wasmHash, "hex")),
@@ -307,16 +319,16 @@ function instanceEntry(contract: string, wasmHash: string): xdr.LedgerEntryData 
 function balanceEntry(contract: string, balance: string): xdr.LedgerEntryData {
   return xdr.LedgerEntryData.contractData(
     new xdr.ContractDataEntry({
-      ext: new xdr.ExtensionPoint(0),
+      ext: xdr.ExtensionPoint.v0(),
       contract: new Address(contract).toScAddress(),
       key: symbolVal("Balance"),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
       val: nativeToScVal(BigInt(balance), { type: "i128" }),
     })
   );
 }
 
-const BALANCE_KEY_XDR = symbolVal("Balance").toXDR("base64");
+const BALANCE_KEY_XDR = symbolVal("Balance").toXdr("base64");
 
 /** Raw (unparsed) simulation responses, the shape the SDK's own parser and assembler accept. */
 export function rawSimulation(
@@ -327,7 +339,7 @@ export function rawSimulation(
   const transactionData = new SorobanDataBuilder()
     .setResourceFee(BigInt(minResourceFee))
     .build()
-    .toXDR("base64");
+    .toXdr("base64");
   const base = { id: "1", latestLedger: 1, events: [] as string[] };
   const body =
     mode === "error"
@@ -336,7 +348,7 @@ export function rawSimulation(
           ...base,
           minResourceFee,
           transactionData,
-          results: [{ auth, xdr: xdr.ScVal.scvVoid().toXDR("base64") }],
+          results: [{ auth, xdr: xdr.ScVal.scvVoid().toXdr("base64") }],
           ...(mode === "restore"
             ? { restorePreamble: { minResourceFee: "500", transactionData } }
             : {}),
@@ -361,14 +373,14 @@ export function fakeExitRpc(options: FakeRpcOptions): ExitRpc & {
     simulateLeeway,
     async getLedgerEntries(...keys: xdr.LedgerKey[]): Promise<rpc.Api.GetLedgerEntriesResponse> {
       const entries = keys.flatMap((key) => {
-        if (key.switch() !== xdr.LedgerEntryType.contractData()) return [];
-        const data = key.contractData();
-        const contract = Address.fromScAddress(data.contract()).toString();
+        if (key.type !== "contractData") return [];
+        const data = key.contractData;
+        const contract = Address.fromScAddress(data.contract).toString();
         let val: xdr.LedgerEntryData | null = null;
-        if (data.key().switch() === xdr.ScValType.scvLedgerKeyContractInstance()) {
+        if (data.key.type === "scvLedgerKeyContractInstance") {
           const hash = hashFor(contract);
           val = hash === null ? null : instanceEntry(contract, hash);
-        } else if (data.key().toXDR("base64") === BALANCE_KEY_XDR) {
+        } else if (data.key.toXdr("base64") === BALANCE_KEY_XDR) {
           val = balanceEntry(contract, options.liveBalance);
         }
         return val ? [{ key, val, lastModifiedLedgerSeq: 1, liveUntilLedgerSeq: 100 }] : [];

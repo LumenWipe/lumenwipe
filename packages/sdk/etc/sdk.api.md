@@ -583,9 +583,9 @@ export function isApiErrorCode<C extends ApiErrorCode>(error: unknown, code: C):
 
 // @public
 export class LumenWipeAbortError extends Error {
-    constructor(reason?: unknown | undefined);
+    constructor(reason?: unknown);
     // (undocumented)
-    readonly reason?: unknown | undefined;
+    readonly reason?: unknown;
 }
 
 // @public

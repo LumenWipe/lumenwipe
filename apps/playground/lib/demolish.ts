@@ -117,12 +117,12 @@ export async function runDemolish(opts: RunDemolishOptions): Promise<void> {
     // key's own weight requirement below what it already satisfies.
     requiredWeight: () => 1,
     sign: async (_tx, xdr) => {
-      const parsed = TransactionBuilder.fromXDR(xdr, Networks.TESTNET);
+      const parsed = TransactionBuilder.fromXdr(xdr, Networks.TESTNET);
       if (!(parsed instanceof Transaction)) {
         throw new Error("Unexpected fee-bump transaction from the API");
       }
       parsed.sign(opts.demoKeypair);
-      return { xdr: parsed.toEnvelope().toXDR("base64"), weight: 1 };
+      return { xdr: parsed.toEnvelope().toXdr("base64"), weight: 1 };
     },
     submit: async (_tx, xdr) => {
       const res = await client.submit(xdr);

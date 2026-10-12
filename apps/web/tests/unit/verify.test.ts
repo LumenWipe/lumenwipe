@@ -20,6 +20,7 @@ import {
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import type { IntentOperation, TxIntent } from "@/types/close-api";
 import type { AccountSigner } from "@/types/account";
+import { fromHex } from "@/lib/stellar/hex";
 
 const SRC = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -190,7 +191,7 @@ function buildXdr(ops: xdr.Operation[], memo?: Memo): string {
   }).setTimeout(300);
   for (const op of ops) builder.addOperation(op);
   if (memo) builder.addMemo(memo);
-  return builder.build().toEnvelope().toXDR("base64");
+  return builder.build().toEnvelope().toXdr("base64");
 }
 
 test("a real close that removes a trustline and cancels an offer passes (zero decodes as 0.0000000)", () => {
@@ -341,8 +342,8 @@ test("a real close removing all four signer types passes when each is genuinely 
   const preAuthRaw = Keypair.random().rawPublicKey();
   const signedPayloadXdr = new xdr.SignerKeyEd25519SignedPayload({
     ed25519: Keypair.random().rawPublicKey(),
-    payload: Buffer.from("cafebabe", "hex"),
-  }).toXDR();
+    payload: fromHex("cafebabe"),
+  }).toXdr();
   const signedPayloadKey = StrKey.encodeSignedPayload(signedPayloadXdr);
   const hashXKey = StrKey.encodeSha256Hash(hashXRaw);
   const preAuthKey = StrKey.encodePreAuthTx(preAuthRaw);
@@ -381,7 +382,7 @@ test("rejects a hash(x) signer removal for a hash that is not a known signer", (
 // ─── Multisig: a hash(x) decorated signature needs no special-casing (#101) ──
 
 test("verifyCloseTransaction still approves a transaction whose only change is an added hash(x) signature", () => {
-  const preimage = Buffer.from("deadbeef", "hex");
+  const preimage = fromHex("deadbeef");
   const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
 
   const unsignedXdr = buildXdr([
@@ -398,9 +399,9 @@ test("verifyCloseTransaction still approves a transaction whose only change is a
 
   // Apply the hash(x) contribution exactly as HashXPreimageSigner does - the transaction
   // body is untouched, only a decorated signature is appended.
-  const built = TransactionBuilder.fromXDR(unsignedXdr, Networks.TESTNET);
+  const built = TransactionBuilder.fromXdr(unsignedXdr, Networks.TESTNET);
   built.signHashX(preimage);
-  const signedXdr = built.toEnvelope().toXDR("base64");
+  const signedXdr = built.toEnvelope().toXdr("base64");
 
   const signedIntent = intentFromXdr(signedXdr, Networks.TESTNET);
   expect(signedIntent).toEqual(unsignedIntent);

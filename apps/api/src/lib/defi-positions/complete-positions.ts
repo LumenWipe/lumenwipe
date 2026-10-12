@@ -12,6 +12,7 @@ import { resolveWasmHash, type ContractResolution } from "@/lib/contract-registr
 import { withTimeout } from "@/lib/utils/with-timeout";
 import type { LedgerEntriesReader } from "@/lib/stellar/contract-instance";
 import { getRpcServer } from "@/lib/stellar/rpc";
+import { contractDataKey, instanceOfEntry } from "@/lib/stellar/contract-data";
 
 /**
  * Fills in what a position indexer does not carry but the exit path needs from the position
@@ -52,17 +53,17 @@ interface Instance {
 }
 
 function parseInstance(val: xdr.LedgerEntryData): Instance {
-  const instance = val.contractData().val().instance();
-  const executable = instance.executable();
+  const instance = instanceOfEntry(val);
+  const executable = instance.executable;
   const wasmHash =
-    executable.switch() === xdr.ContractExecutableType.contractExecutableWasm()
-      ? executable.wasmHash().toString("hex")
+    executable.type === "contractExecutableWasm"
+      ? Buffer.from(executable.wasmHash.toBytes()).toString("hex")
       : null;
   const storage = new Map<string, xdr.ScVal>();
-  for (const entry of instance.storage() ?? []) {
+  for (const entry of instance.storage ?? []) {
     try {
-      const name: unknown = JSON.stringify(scValToNative(entry.key()));
-      if (typeof name === "string") storage.set(name, entry.val());
+      const name: unknown = JSON.stringify(scValToNative(entry.key));
+      if (typeof name === "string") storage.set(name, entry.val);
     } catch {
       continue;
     }
@@ -72,17 +73,15 @@ function parseInstance(val: xdr.LedgerEntryData): Instance {
 
 /** A contract address, and only a contract address: a token is never an account. */
 const asContract = (val: xdr.ScVal | undefined): string | null =>
-  val &&
-  val.switch() === xdr.ScValType.scvAddress() &&
-  val.address().switch() === xdr.ScAddressType.scAddressTypeContract()
-    ? Address.fromScAddress(val.address()).toString()
+  val && val.type === "scvAddress" && val.address.type === "scAddressTypeContract"
+    ? Address.fromScAddress(val.address).toString()
     : null;
 
 /** At least two distinct token contracts, or nothing: a pool of one token is not a pool. */
 function tokenList(val: xdr.ScVal | undefined): string[] | null {
-  if (!val || val.switch() !== xdr.ScValType.scvVec()) return null;
+  if (!val || val.type !== "scvVec") return null;
   const out: string[] = [];
-  for (const item of val.vec() ?? []) {
+  for (const item of val.vec ?? []) {
     const address = asContract(item);
     if (address === null) return null;
     out.push(address);
@@ -202,7 +201,7 @@ export async function completePositionsFromLedger(
     );
     for (const entry of response.entries ?? []) {
       try {
-        const contract = Address.fromScAddress(entry.key.contractData().contract()).toString();
+        const contract = Address.fromScAddress(contractDataKey(entry.key).contract).toString();
         instances.set(contract, parseInstance(entry.val));
       } catch {
         // An entry that is not a contract instance is not one we asked for.
