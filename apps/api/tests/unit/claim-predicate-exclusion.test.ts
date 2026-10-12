@@ -233,3 +233,34 @@ test("buildCloseTransactions › a stale claim answer for a balance now closed i
     })
   ).rejects.toMatchObject({ code: "claimable_balance_not_claimable_now" });
 });
+
+const INT64_MAX = "9223372036854775807";
+
+test("an absurdly distant opening date cannot break the plan or the decisions", () => {
+  const far: ClaimPredicate = {
+    type: "not",
+    predicate: { type: "before_absolute_time", absBeforeEpoch: INT64_MAX },
+  };
+  const s = state([balance("a", far)]);
+  expect(claimableFromEpoch(far, NOW)).toBeNull();
+  const [d] = deriveClaimableBalanceDecisionPoints(s);
+  expect(d!.options.map((o) => o.id)).toEqual(["forfeit"]);
+  expect(d!.options[0]!.note).toContain("can no longer be claimed");
+  expect(buildPlan(s, false).blockers.map((b) => b.code)).toContain(
+    "claimable_balance_unclaimable"
+  );
+});
+
+test.each([["NaN"], ["0"], ["-5"], [undefined]])(
+  "buildCloseTransactions › an unusable ledger close time (%p) is unknown, so a time-bound balance is refused",
+  async (closeTime) => {
+    spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
+      ...rpcStub(NOW),
+      getLatestLedger: () => Promise.resolve({ sequence: 1000, closeTime }),
+    })) as unknown as typeof rpcModule.getRpcServer);
+    const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
+    await expect(
+      buildCloseTransactions(state([balance("a", before(NOW + 100_000))]), DEST, {}, "testnet")
+    ).rejects.toMatchObject({ code: "claimable_balance_not_claimable_now" });
+  }
+);

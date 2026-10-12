@@ -16,6 +16,7 @@ import {
 } from "@/lib/defi-positions/resolve-defi-positions";
 import { enrichDefiPositions, knownTokensFor } from "@/lib/defi-positions/enrich";
 import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
+import { parseLedgerCloseTime } from "./claim-predicates";
 import { getRpcServer } from "./rpc";
 import { Logger } from "@nestjs/common";
 
@@ -218,8 +219,7 @@ export interface AccountReadOptions {
 
 export async function readLedgerCloseTime(network: Network): Promise<number | null> {
   try {
-    const seconds = Number((await getRpcServer(network).getLatestLedger()).closeTime);
-    return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+    return parseLedgerCloseTime((await getRpcServer(network).getLatestLedger()).closeTime);
   } catch {
     return null;
   }

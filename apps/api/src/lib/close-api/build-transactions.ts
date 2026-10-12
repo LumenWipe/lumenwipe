@@ -15,7 +15,11 @@ import {
   minimumBalanceStroops,
   trustlineReserveShortfallStroops,
 } from "@/lib/stellar/claim-reserve";
-import { CLAIM_ANSWER_STALE_MESSAGE, claimStatus } from "@/lib/stellar/claim-predicates";
+import {
+  CLAIM_ANSWER_STALE_MESSAGE,
+  claimStatus,
+  parseLedgerCloseTime,
+} from "@/lib/stellar/claim-predicates";
 import { xlmToStroops } from "@/lib/utils/amounts";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import {
@@ -336,8 +340,11 @@ export async function buildCloseTransactions(
   // A round claims a bounded batch; the next call re-reads and carries on, and the close is
   // not built until a read shows nothing left to claim and nothing beyond the read ceiling.
   if (accountState.claimableBalances.length > 0 || accountState.claimableBalancesMore) {
-    const ledgerCloseTime = Number(latest.closeTime);
-    const claimState = { ...accountState, ledgerCloseTime };
+    const ledgerCloseTime = parseLedgerCloseTime(latest.closeTime);
+    const claimState: AccountState = {
+      ...accountState,
+      ledgerCloseTime: ledgerCloseTime ?? undefined,
+    };
     // Currently claimable and not opted out (the opt-out default), plus the ones remediated
     // with a new trustline. Forfeited or unresolved balances are excluded entirely - never
     // claimed, never blocking the close.

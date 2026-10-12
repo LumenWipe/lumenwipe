@@ -26,6 +26,14 @@ export function isClaimableNow(predicate: ClaimPredicate, claimant: string, now:
   }
 }
 
+const MAX_DATE_MS = 8.64e15;
+
+/** A ledger close time as epoch seconds, or null when the value is not a usable time. */
+export function parseLedgerCloseTime(raw: unknown): number | null {
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+}
+
 function boundaries(predicate: ClaimPredicate): number[] {
   switch (predicate.type) {
     case "unconditional":
@@ -73,7 +81,7 @@ export function predicateHoldsThroughWindow(
 /** The earliest moment after `evalEpoch` from which the predicate holds, or null if it never will. */
 export function claimableFromEpoch(predicate: ClaimPredicate, evalEpoch: number): number | null {
   const later = [...new Set(boundaries(predicate))]
-    .filter((t) => Number.isFinite(t) && t > evalEpoch)
+    .filter((t) => Number.isFinite(t) && t > evalEpoch && t * 1000 <= MAX_DATE_MS)
     .sort((a, b) => a - b);
   return later.find((t) => holdsAt(predicate, t)) ?? null;
 }
