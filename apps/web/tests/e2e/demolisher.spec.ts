@@ -47,7 +47,9 @@ test("old /public route redirects to /mainnet", async ({ page }) => {
 
 test("home page renders the entry form and headline", async ({ page }) => {
   await page.goto("/testnet");
-  await expect(page.getByText("Wind down your Stellar account")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Close your Stellar account" })
+  ).toBeVisible();
   await expect(page.getByText("Account details")).toBeVisible();
   // "Non-custodial" appears both in the hero badge and a feature card; assert the
   // unambiguous badge copy to avoid a strict-mode multiple-match.
