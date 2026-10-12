@@ -228,3 +228,9 @@ test("the bulk decision is offered only when two or more balances cannot be clai
   expect(d!.required).toBe(false);
   expect(d!.subject.count).toBe(2);
 });
+
+test("the bulk forfeit is neither offered nor applied while the ledger time is unknown", () => {
+  const s = state([expired(1), expired(2), expired(3)], { ledgerCloseTime: undefined });
+  expect(deriveBulkClaimDecisionPoints(s)).toEqual([]);
+  expect(resolveClaimSelections([bulk], s)).toEqual({});
+});

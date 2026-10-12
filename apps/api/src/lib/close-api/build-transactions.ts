@@ -15,7 +15,7 @@ import {
   minimumBalanceStroops,
   trustlineReserveShortfallStroops,
 } from "@/lib/stellar/claim-reserve";
-import { claimStatus } from "@/lib/stellar/claim-predicates";
+import { CLAIM_ANSWER_STALE_MESSAGE, claimStatus } from "@/lib/stellar/claim-predicates";
 import { xlmToStroops } from "@/lib/utils/amounts";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import {
@@ -338,20 +338,6 @@ export async function buildCloseTransactions(
   if (accountState.claimableBalances.length > 0 || accountState.claimableBalancesMore) {
     const ledgerCloseTime = Number(latest.closeTime);
     const claimState = { ...accountState, ledgerCloseTime };
-    const staleClaim = accountState.claimableBalances.find(
-      (b) =>
-        claimStatus(b, claimState, ledgerCloseTime) === "predicate_blocked" &&
-        (claimableBalanceSelections[b.id] === "claim" ||
-          claimableBalanceSelections[b.id] === "add_trustline_then_claim")
-    );
-    if (staleClaim) {
-      throw new CloseBuildError(
-        "claimable_balance_not_claimable_now",
-        "A balance you chose to claim can no longer be claimed in this close, because its claim " +
-          "window has closed or has not opened yet. Review the plan again before continuing.",
-        422
-      );
-    }
     // Currently claimable and not opted out (the opt-out default), plus the ones remediated
     // with a new trustline. Forfeited or unresolved balances are excluded entirely - never
     // claimed, never blocking the close.
@@ -362,6 +348,17 @@ export async function buildCloseTransactions(
         : status === "needs_trustline" &&
             claimableBalanceSelections[b.id] === "add_trustline_then_claim";
     });
+    const dueIds = new Set(due.map((b) => b.id));
+    const unaccounted = accountState.claimableBalances.filter(
+      (b) => !dueIds.has(b.id) && claimableBalanceSelections[b.id] !== "forfeit"
+    );
+    if ((await firstExistingBatch(unaccounted, server)).length > 0) {
+      throw new CloseBuildError(
+        "claimable_balance_not_claimable_now",
+        CLAIM_ANSWER_STALE_MESSAGE,
+        422
+      );
+    }
     const claimRoundBalances = await firstExistingBatch(due, server);
     const toAddTrustlineThenClaim = claimRoundBalances.filter(
       (b) => claimStatus(b, claimState, ledgerCloseTime) === "needs_trustline"
@@ -619,13 +616,6 @@ export async function buildCloseTransactions(
   };
 }
 
-/**
- * What stays in the account no matter what: the base reserve, plus one more reserve for each
- * subentry and each entry the account sponsors for someone else - the same figure the network
- * itself enforces before it will let the account's balance drop any further. Everything above
- * this line is what a classic transaction's own fee may draw on (architecture.md §8.1's
- * `txINSUFFICIENT_BALANCE`: the fee would take the account below this).
- */
 /**
  * The next bounded batch of balances that still exist on-chain. Checked a batch at a time, so a
  * round costs one ledger read whatever the account holds, and a batch whose balances were all

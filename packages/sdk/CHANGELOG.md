@@ -30,6 +30,13 @@ release is cut.
 
 ### Changed
 
+- `close/transactions` refuses (422 `claimable_balance_not_claimable_now`) instead of building the
+  merge when a claimable balance still on-chain is neither answered `forfeit` nor part of the claim
+  round: an answer that does not fit what the account can do with it (`claim` for a balance that
+  needs a trustline, `add_trustline_then_claim` for one that does not), a balance that closed since
+  the plan, or one with no answer. The bulk forfeit is not offered or applied while the ledger time
+  is unknown.
+
 - Accounts with many claimable balances close in batches. The read returns up to 1500 balances
   (it used to refuse above 1000), each claim round claims at most 100 and reports
   `requiresAnotherCall`, and the merge is only built once a read finds nothing left to claim and

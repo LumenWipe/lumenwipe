@@ -692,6 +692,10 @@ export function deriveClaimableBalanceDecisionPoints(account: AccountState): Dec
   });
 }
 
+function ledgerTimeKnown(account: Pick<AccountState, "ledgerCloseTime">): boolean {
+  return typeof account.ledgerCloseTime === "number" && Number.isFinite(account.ledgerCloseTime);
+}
+
 export const BULK_FORFEIT_DECISION_ID = "claim_bulk:forfeit_unclaimable";
 const BULK_FORFEIT_CHOICE = "forfeit_unclaimable";
 
@@ -701,6 +705,7 @@ const BULK_FORFEIT_CHOICE = "forfeit_unclaimable";
  * their own, and never a balance that is claimable now.
  */
 export function deriveBulkClaimDecisionPoints(account: AccountState): DecisionPoint[] {
+  if (!ledgerTimeKnown(account)) return [];
   const blocked = account.claimableBalances.filter(
     (b) => claimStatus(b, account, account.ledgerCloseTime) !== "claimable"
   );
@@ -734,7 +739,10 @@ export function resolveClaimSelections(
     answers,
     account.claimableBalances.map((b) => b.id)
   );
-  if (!answers.some((a) => a.id === BULK_FORFEIT_DECISION_ID && a.choice === BULK_FORFEIT_CHOICE)) {
+  if (
+    !ledgerTimeKnown(account) ||
+    !answers.some((a) => a.id === BULK_FORFEIT_DECISION_ID && a.choice === BULK_FORFEIT_CHOICE)
+  ) {
     return selections;
   }
   for (const b of account.claimableBalances) {

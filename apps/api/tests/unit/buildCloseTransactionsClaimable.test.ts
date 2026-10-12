@@ -135,7 +135,7 @@ test("buildCloseTransactions › forfeited unclaimable balance → excluded from
   expect(ops.some((o) => o.type === "changeTrust")).toBe(false);
 });
 
-test("buildCloseTransactions › unresolved unclaimable balance → excluded from the claim round entirely", async () => {
+test("buildCloseTransactions › unresolved unclaimable balance → refused rather than stranded by the merge", async () => {
   spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
     rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
@@ -143,11 +143,9 @@ test("buildCloseTransactions › unresolved unclaimable balance → excluded fro
   const balance = claimableBalance("c", USDC);
   const state = accountState({ claimableBalances: [balance] });
 
-  const result = await buildCloseTransactions(state, DEST, {}, "testnet");
-
-  expect(result.transactions).toHaveLength(1);
-  const ops = opsOf(result.transactions[0].xdr);
-  expect(ops.some((o) => o.type === "claimClaimableBalance")).toBe(false);
+  await expect(buildCloseTransactions(state, DEST, {}, "testnet")).rejects.toMatchObject({
+    code: "claimable_balance_not_claimable_now",
+  });
 });
 
 test("buildCloseTransactions › currently-claimable balance defaults to claim when unresolved (opt-out)", async () => {

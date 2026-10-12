@@ -24,7 +24,11 @@ import { preflightErrorCode } from "@/lib/close-api/merge-preflight";
 import { parseDecisions } from "@/lib/close-api/parse-decisions";
 import { computePlanHash } from "@/lib/close-api/plan-response";
 import { CloseBuildError } from "@/lib/close-api/build-transactions";
-import { claimStatus } from "@/lib/stellar/claim-predicates";
+import {
+  CLAIM_ANSWER_STALE_MESSAGE,
+  claimStatus,
+  selectionFitsStatus,
+} from "@/lib/stellar/claim-predicates";
 import { InvalidSignatureError } from "@/lib/stellar/signature";
 import { InvalidXdrError, TxTimeoutError, TxSubmitError } from "@/lib/utils/errors";
 import { fail } from "@/common/fail";
@@ -206,6 +210,17 @@ export class CloseService {
       // Selections resolve first: which assets can carry a disposition answer depends on which
       // claims will run, so the claim answers shape the asset universe below.
       const claimableBalanceSelections = resolveClaimSelections(decisions, accountState);
+      const mismatched = accountState.claimableBalances.some((b) => {
+        const selection = claimableBalanceSelections[b.id];
+        return (
+          selection !== undefined &&
+          !selectionFitsStatus(
+            selection,
+            claimStatus(b, accountState, accountState.ledgerCloseTime)
+          )
+        );
+      });
+      if (mismatched) fail("claimable_balance_not_claimable_now", CLAIM_ANSWER_STALE_MESSAGE, 422);
       const txClaimedPerAsset = claimedAmountsPerAsset(accountState, claimableBalanceSelections);
 
       // Held or arriving - an answer for an asset only the claims will fill must resolve, or

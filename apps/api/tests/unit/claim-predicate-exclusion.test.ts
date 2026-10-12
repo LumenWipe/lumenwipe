@@ -176,13 +176,50 @@ test("buildCloseTransactions › one expired and one good balance claim only the
   expect(claimIds(result.transactions[0]!.xdr)).toBe(1);
 });
 
-test("buildCloseTransactions › an expired balance never reaches a claim operation by default", async () => {
+test("buildCloseTransactions › an expired balance with no answer is refused, never merged around", async () => {
   spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
     rpcStub(NOW)) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
-  const expired = balance("a", before(NOW - 1));
-  const result = await buildCloseTransactions(state([expired]), DEST, {}, "testnet");
-  expect(result.transactions.every((t) => claimIds(t.xdr) === 0)).toBe(true);
+  await expect(
+    buildCloseTransactions(state([balance("a", before(NOW - 1))]), DEST, {}, "testnet")
+  ).rejects.toMatchObject({ code: "claimable_balance_not_claimable_now" });
+});
+
+test("buildCloseTransactions › a balance claimable at plan time that closed by build time is refused", async () => {
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcStub(NOW + 300)) as unknown as typeof rpcModule.getRpcServer);
+  const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
+  const flips = balance("a", before(NOW + 400));
+  await expect(
+    buildCloseTransactions(state([flips]), DEST, {}, "testnet", null, {})
+  ).rejects.toMatchObject({ code: "claimable_balance_not_claimable_now" });
+});
+
+test("buildCloseTransactions › a claim answer for a balance that needs a trustline is refused", async () => {
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcStub(NOW)) as unknown as typeof rpcModule.getRpcServer);
+  const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
+  const needsTrustline = balance("a", { type: "unconditional" }, "USDC:GX");
+  await expect(
+    buildCloseTransactions(state([needsTrustline]), DEST, {}, "testnet", null, {
+      [needsTrustline.id]: "claim",
+    })
+  ).rejects.toMatchObject({ code: "claimable_balance_not_claimable_now" });
+});
+
+test("buildCloseTransactions › an explicit forfeit of a closed balance still builds the merge", async () => {
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcStub(NOW)) as unknown as typeof rpcModule.getRpcServer);
+  const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
+  const closed = balance("a", before(NOW - 1));
+  const result = await buildCloseTransactions(state([closed]), DEST, {}, "testnet", null, {
+    [closed.id]: "forfeit",
+  });
+  const types = result.transactions.flatMap((t) =>
+    TransactionBuilder.fromXDR(t.xdr, Networks.TESTNET).operations.map((o) => o.type)
+  );
+  expect(types).toContain("accountMerge");
+  expect(types).not.toContain("claimClaimableBalance");
 });
 
 test("buildCloseTransactions › a stale claim answer for a balance now closed is refused, not skipped", async () => {
