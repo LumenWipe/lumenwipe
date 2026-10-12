@@ -25,8 +25,13 @@ import {
   type ClaimStatus,
 } from "@/lib/stellar/claim-predicates";
 import { TOO_MANY_CLAIMABLE_BALANCES_MESSAGE } from "./claimable-balances";
+import {
+  claimReserveShortMessage,
+  trustlineReserveShortfallStroops,
+  trustlineShortfallNote,
+} from "@/lib/stellar/claim-reserve";
 import { batchItems } from "./batching";
-import { OP_BATCH_LIMIT } from "@/config/constants";
+import { CLAIM_ROUND_BATCH_SIZE, OP_BATCH_LIMIT } from "@/config/constants";
 
 function shortAddr(addr: string): string {
   return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
@@ -444,12 +449,17 @@ export function buildPlan(
       });
       continue;
     }
+    const trustlineShortfall = trustlineReserveShortfallStroops(accountState, 1, 1);
     blockers.push({
       code: "claimable_balance_unclaimable",
       message:
-        `This account is a claimant for ${b.amount} ${code} but has no authorized trustline ` +
-        `for it. Establish a ${code} trustline and claim the balance manually before proceeding ` +
-        `- these funds will be permanently inaccessible once the account is merged.`,
+        trustlineShortfall > 0n
+          ? `This account is a claimant for ${b.amount} ${code}. ` +
+            `${trustlineShortfallNote(code, trustlineShortfall)} Add XLM to claim it, or leave it - ` +
+            `it becomes permanently inaccessible once the account is merged.`
+          : `This account is a claimant for ${b.amount} ${code} but has no authorized trustline ` +
+            `for it. Establish a ${code} trustline and claim the balance manually before proceeding ` +
+            `- these funds will be permanently inaccessible once the account is merged.`,
     });
   }
 
@@ -464,17 +474,32 @@ export function buildPlan(
       : status === "needs_trustline" &&
           claimableBalanceSelections[b.id] === "add_trustline_then_claim";
   });
+  const balancesNeedingTrustline = claimableBalances.filter(
+    (b) =>
+      statusOf(b) === "needs_trustline" &&
+      claimableBalanceSelections[b.id] === "add_trustline_then_claim"
+  );
+  const newTrustlineAssets = new Set(balancesNeedingTrustline.map((b) => b.asset));
+  const reserveShortfall =
+    newTrustlineAssets.size === 0
+      ? 0n
+      : trustlineReserveShortfallStroops(
+          accountState,
+          newTrustlineAssets.size,
+          Math.min(balancesNeedingClaimStep.length, CLAIM_ROUND_BATCH_SIZE)
+        );
+  if (reserveShortfall > 0n) {
+    blockers.push({
+      code: "claimable_balance_reserve_short",
+      message: `${claimReserveShortMessage(reserveShortfall)} Leave a balance or add XLM first.`,
+    });
+  }
   if (accountState.claimableBalancesMore && balancesNeedingClaimStep.length === 0) {
     blockers.push({
       code: "claimable_balances_too_many",
       message: TOO_MANY_CLAIMABLE_BALANCES_MESSAGE,
     });
   }
-  const balancesNeedingTrustline = claimableBalances.filter(
-    (b) =>
-      statusOf(b) === "needs_trustline" &&
-      claimableBalanceSelections[b.id] === "add_trustline_then_claim"
-  );
 
   // ─── Fused close: fuse the whole close into one transaction when eligible ──────
   // Direct destination: a single CLOSE_ACCOUNT (cleanup + merge). Exchange: a

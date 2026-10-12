@@ -12,6 +12,11 @@ release is cut.
 - Error code `claimable_balance_not_claimable_now` (422): a balance answered `claim` or
   `add_trustline_then_claim` can no longer be claimed in this close because its claim window has
   closed or has not opened. Plan again.
+- Error code `claimable_balance_reserve_short` (422) and the same plan blocker: the account lacks the
+  XLM above its reserve to add the trustlines a claim needs, and the message states the shortfall.
+  An unanswered balance of that kind is no longer offered `add_trustline_then_claim`; its decision
+  carries only `forfeit` with the shortfall in the note. Several balances of one asset need one
+  new reserve.
 - Error code `claimable_balances_too_many` (422) and the same plan blocker: the account holds more
   claimable balances than one read returns and the ones left unclaimed fill it, so the rest cannot
   be reached and the account is not closed.

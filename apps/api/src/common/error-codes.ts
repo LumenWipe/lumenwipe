@@ -22,6 +22,7 @@ export const ERROR_CODES = [
   "blend_repay_asset_balance_unknown",
   "blend_repay_asset_missing",
   "claimable_balance_not_claimable_now",
+  "claimable_balance_reserve_short",
   "claimable_balances_too_many",
   "confirmation_timeout",
   "conversion_floor_missing",

@@ -7,14 +7,14 @@ import {
   type ExitRoundDeps,
 } from "@/lib/defi-exits/exit-round";
 import { NETWORK_PASSPHRASES, getMediatorPublicKey, type Network } from "@/config/networks";
-import {
-  ACCOUNT_BASE_RESERVE_XLM,
-  BASE_FEE_STROOPS,
-  BASE_RESERVE_XLM,
-  CLAIM_ROUND_BATCH_SIZE,
-  TX_TIMEOUT_SECONDS,
-} from "@/config/constants";
+import { BASE_FEE_STROOPS, CLAIM_ROUND_BATCH_SIZE, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import { TOO_MANY_CLAIMABLE_BALANCES_MESSAGE } from "@/lib/stellar/tx-builder/claimable-balances";
+import {
+  accountPaysFee,
+  claimReserveShortMessage,
+  minimumBalanceStroops,
+  trustlineReserveShortfallStroops,
+} from "@/lib/stellar/claim-reserve";
 import { claimStatus } from "@/lib/stellar/claim-predicates";
 import { xlmToStroops } from "@/lib/utils/amounts";
 import { getRpcServer } from "@/lib/stellar/rpc";
@@ -366,6 +366,21 @@ export async function buildCloseTransactions(
     const toAddTrustlineThenClaim = claimRoundBalances.filter(
       (b) => claimStatus(b, claimState, ledgerCloseTime) === "needs_trustline"
     );
+    const reserveShortfall =
+      toAddTrustlineThenClaim.length === 0
+        ? 0n
+        : trustlineReserveShortfallStroops(
+            accountState,
+            new Set(toAddTrustlineThenClaim.map((b) => b.asset)).size,
+            claimRoundBalances.length
+          );
+    if (reserveShortfall > 0n) {
+      throw new CloseBuildError(
+        "claimable_balance_reserve_short",
+        claimReserveShortMessage(reserveShortfall),
+        422
+      );
+    }
     if (claimRoundBalances.length === 0 && accountState.claimableBalancesMore) {
       throw new CloseBuildError(
         "claimable_balances_too_many",
@@ -630,13 +645,6 @@ async function firstExistingBatch(
   return [];
 }
 
-function reserveStroops(numSubEntries: number, numSponsoring: number): bigint {
-  return (
-    BigInt(xlmToStroops(ACCOUNT_BASE_RESERVE_XLM.toFixed(7))) +
-    BigInt(xlmToStroops(BASE_RESERVE_XLM.toFixed(7))) * BigInt(numSubEntries + numSponsoring)
-  );
-}
-
 /**
  * Whether the account can pay a fee of `feeStroops` for a transaction of its own, without going
  * below its reserve, judged from `accountState.nativeBalanceLumens` as given (no running
@@ -651,8 +659,8 @@ export function accountCanAffordFee(
   feeStroops: bigint
 ): boolean {
   const balance = BigInt(xlmToStroops(accountState.nativeBalanceLumens));
-  const reserve = reserveStroops(accountState.numSubEntries, accountState.numSponsoring);
-  return balance - reserve >= feeStroops;
+  const reserve = minimumBalanceStroops(accountState.numSubEntries, accountState.numSponsoring);
+  return accountPaysFee(balance, reserve, feeStroops);
 }
 
 /**
@@ -690,7 +698,10 @@ export function packCloseTransactions(
   const chunks = splitCloseOps(tagged);
   const networkPassphrase = NETWORK_PASSPHRASES[network];
   const fullSummary = buildSummary(input);
-  const reserve = reserveStroops(feeAffordability.numSubEntries, feeAffordability.numSponsoring);
+  const reserve = minimumBalanceStroops(
+    feeAffordability.numSubEntries,
+    feeAffordability.numSponsoring
+  );
   let remainingBalanceStroops = BigInt(xlmToStroops(feeAffordability.nativeBalanceLumens));
 
   return chunks.map((chunk, i): CloseTransaction => {
@@ -700,7 +711,7 @@ export function packCloseTransactions(
     // The SDK multiplies `fee` by the operation count, so the per-operation base
     // fee yields BASE_FEE_STROOPS * opCount on-chain.
     const chunkFeeStroops = BigInt(BASE_FEE_STROOPS) * BigInt(chunk.length);
-    const needsSponsoredFee = remainingBalanceStroops - reserve < chunkFeeStroops;
+    const needsSponsoredFee = !accountPaysFee(remainingBalanceStroops, reserve, chunkFeeStroops);
     // Only an unsponsored chunk spends the account's own balance on its fee - a sponsored
     // chunk's fee is "0" and paid by the fee account instead, so it doesn't reduce what later
     // chunks in this round have left to draw on.

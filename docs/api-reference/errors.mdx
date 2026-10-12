@@ -35,6 +35,7 @@ These mean the request itself is wrong or not allowed. Treat them as a fault in 
 | ------------------------------------- | ------ | --------- | ----------------------------------------------------------------------------------------------- |
 | `bad_request`                         | 400    | After fix | The request is malformed.                                                                       |
 | `claimable_balance_not_claimable_now` | 422    | After fix | A balance chosen to be claimed can no longer be claimed in this close.                          |
+| `claimable_balance_reserve_short`     | 422    | After fix | The XLM headroom is too small to add the trustlines needed to claim the balances.               |
 | `claimable_balances_too_many`         | 422    | After fix | The account holds more claimable balances than one read returns and the unclaimed ones fill it. |
 | `invalid_address`                     | 400    | After fix | The address is not a valid Stellar account.                                                     |
 | `invalid_addresses`                   | 400    | After fix | The addresses are missing or not valid Stellar accounts.                                        |

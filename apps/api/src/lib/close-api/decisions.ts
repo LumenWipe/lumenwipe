@@ -14,6 +14,10 @@ import {
   ownClaimPredicate,
   predicateBlockedNote,
 } from "@/lib/stellar/claim-predicates";
+import {
+  trustlineReserveShortfallStroops,
+  trustlineShortfallNote,
+} from "@/lib/stellar/claim-reserve";
 import { StrKey } from "@stellar/stellar-sdk";
 import type { IssuanceSummary } from "@/lib/close-api/issuance-preflight";
 import { lookupExchange } from "@/lib/exchange-registry";
@@ -642,13 +646,15 @@ export function deriveClaimableBalanceDecisionPoints(account: AccountState): Dec
       status === "predicate_blocked" && evalEpoch !== null && evalEpoch !== undefined
         ? claimableFromEpoch(ownPredicate, evalEpoch)
         : null;
+    const trustlineShortfall =
+      status === "needs_trustline" ? trustlineReserveShortfallStroops(account, 1, 1) : 0n;
     const options =
       status === "claimable"
         ? [
             { id: "claim", recommended: true },
             { id: "forfeit", note: forfeitNote },
           ]
-        : status === "needs_trustline"
+        : status === "needs_trustline" && trustlineShortfall === 0n
           ? [
               {
                 id: "add_trustline_then_claim",
@@ -659,7 +665,11 @@ export function deriveClaimableBalanceDecisionPoints(account: AccountState): Dec
           : [
               {
                 id: "forfeit",
-                note: `${predicateBlockedNote(evalEpoch, claimableFrom)} ${forfeitNote}`,
+                note: `${
+                  status === "needs_trustline"
+                    ? trustlineShortfallNote(code, trustlineShortfall)
+                    : predicateBlockedNote(evalEpoch, claimableFrom)
+                } ${forfeitNote}`,
               },
             ];
     return {
