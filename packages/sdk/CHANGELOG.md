@@ -7,6 +7,8 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-12
+
 ### Added
 
 - Error code `claimable_balance_not_claimable_now` (422): a balance answered `claim` or
