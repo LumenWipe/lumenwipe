@@ -232,6 +232,25 @@ test.describe("execute with a secret key", () => {
     });
   }
 
+  test("a close the service cannot finish reads as plain copy", async ({ page }) => {
+    test.setTimeout(180_000);
+    await toSigning(page);
+    await page.route("**/api/v1/testnet/close/transactions", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          planHash: "h",
+          status: "ready",
+          transactions: [],
+          remaining: { steps: 2, requiresAnotherCall: true },
+        }),
+      })
+    );
+    await sign(page);
+    await expectPlainCopy(page, /picks up where it stopped/, "CloseDidNotConvergeError");
+  });
+
   test("a dropped connection while building the close reads as a connection problem", async ({
     page,
   }) => {

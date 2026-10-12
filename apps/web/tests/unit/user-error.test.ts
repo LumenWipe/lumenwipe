@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { LumenWipeApiError, LumenWipeTimeoutError } from "@lumenwipe/sdk";
+import { CloseDidNotConvergeError, LumenWipeApiError, LumenWipeTimeoutError } from "@lumenwipe/sdk";
 import { apiErrorMessage } from "@/lib/api/error-body";
 import { VerificationError } from "@/lib/stellar/verify";
 import { TxSubmitError } from "@/lib/utils/errors";
@@ -58,6 +58,14 @@ describe("toUserMessage", () => {
     );
     expect(toUserMessage(new LumenWipeApiError(503, {}), "analyze")).toMatch(/temporarily/);
     expect(toUserMessage(new LumenWipeTimeoutError(30000), "execute")).toMatch(/temporarily/);
+  });
+
+  test("a close that cannot finish reads as plain language that says it can be resumed", () => {
+    for (const reason of ["round_limit", "empty_batch"] as const) {
+      const message = toUserMessage(new CloseDidNotConvergeError(30, 25, reason), "execute");
+      expect(message).toMatch(/picks up where it stopped/);
+      expect(message).not.toMatch(/CloseDidNotConverge|round_limit|empty_batch/);
+    }
   });
 
   test("a plain 422 message from the API is kept, a code-shaped one is not", () => {

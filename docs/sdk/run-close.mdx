@@ -20,16 +20,16 @@ await runClose({
 
 ## Dependencies
 
-| Dependency        | Description                                                                                             |
-| ----------------- | ------------------------------------------------------------------------------------------------------- |
-| `getTransactions` | Fetches the next round, usually `client.closeTransactions(...)`.                                        |
-| `verify`          | Checks one transaction against your own inputs. It must throw on any mismatch. It may be async.         |
-| `requiredWeight`  | The signing weight this transaction needs, from its operations and the account's real thresholds.       |
-| `sign`            | Signs the XDR, which may already carry signatures, and returns the new XDR with its accumulated weight. |
-| `submit`          | Submits a transaction that meets its weight and resolves to the hash.                                   |
-| `onConfirmed`     | Optional. Called with the transaction and its hash after each confirmation.                             |
-| `onProgress`      | Optional. Called with progress messages.                                                                |
-| `maxRounds`       | Optional. Defaults to 25. Stops a misbehaving API from looping forever.                                 |
+| Dependency        | Description                                                                                                    |
+| ----------------- | -------------------------------------------------------------------------------------------------------------- |
+| `getTransactions` | Fetches the next round, usually `client.closeTransactions(...)`.                                               |
+| `verify`          | Checks one transaction against your own inputs. It must throw on any mismatch. It may be async.                |
+| `requiredWeight`  | The signing weight this transaction needs, from its operations and the account's real thresholds.              |
+| `sign`            | Signs the XDR, which may already carry signatures, and returns the new XDR with its accumulated weight.        |
+| `submit`          | Submits a transaction that meets its weight and resolves to the hash.                                          |
+| `onConfirmed`     | Optional. Called with the transaction and its hash after each confirmation.                                    |
+| `onProgress`      | Optional. Called with progress messages.                                                                       |
+| `maxRounds`       | Optional. Overrides the round bound. By default the bound follows the API's `remaining.steps` (capped at 200). |
 
 `verify` is where the security of your integration lives. `runClose` guarantees it runs before every signature, but only your implementation decides what it accepts. See [Verification](/sdk/verification).
 
@@ -51,4 +51,4 @@ try {
 }
 ```
 
-If a close does not converge within `maxRounds`, `runClose` throws a plain error.
+If a close does not finish within the round bound, or the API says another call is needed but returns no transactions, `runClose` throws `CloseDidNotConvergeError`. Its `rounds`, `bound` and `reason` (`round_limit` or `empty_batch`) say why, and its message is plain language. Nothing is lost: run the close again and it picks up where it stopped.

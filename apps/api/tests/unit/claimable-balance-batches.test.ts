@@ -154,6 +154,17 @@ test("a claim round handles a bounded batch and requires another call until the 
   expect(opTypes(last.transactions.map((t) => t.xdr))).toContain("accountMerge");
 });
 
+test("a claim round reports the claim rounds still ahead plus the close", async () => {
+  const batches = (n: number) =>
+    Array.from({ length: CLAIM_ROUND_BATCH_SIZE * n + 1 }, (_, i) => balance(i));
+  expect((await build(state(batches(0)))).remainingSteps).toBe(1);
+  expect((await build(state(batches(1)))).remainingSteps).toBe(2);
+  expect((await build(state(batches(3)))).remainingSteps).toBe(4);
+  expect((await build(state([balance(1)], { claimableBalancesMore: true }))).remainingSteps).toBe(
+    2
+  );
+});
+
 test("an interrupted run resumes by calling again and gets the same batch", async () => {
   const all = Array.from({ length: CLAIM_ROUND_BATCH_SIZE + 5 }, (_, i) => balance(i));
   const a = await build(state(all));

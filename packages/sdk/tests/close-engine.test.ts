@@ -1,5 +1,9 @@
 import { test, expect } from "bun:test";
-import { runClose, InsufficientSignatureWeightError } from "../src/close-engine";
+import {
+  runClose,
+  InsufficientSignatureWeightError,
+  CloseDidNotConvergeError,
+} from "../src/close-engine";
 import type { CloseTransaction, TransactionsResponse } from "@lumenwipe/types";
 
 function tx(order: number, id = `tx${order}`): CloseTransaction {
@@ -8,13 +12,14 @@ function tx(order: number, id = `tx${order}`): CloseTransaction {
 
 function resp(
   transactions: CloseTransaction[],
-  requiresAnotherCall: boolean
+  requiresAnotherCall: boolean,
+  steps = requiresAnotherCall ? 1 : 0
 ): TransactionsResponse {
   return {
     planHash: "h",
     status: "ready",
     transactions,
-    remaining: { steps: requiresAnotherCall ? 1 : 0, requiresAnotherCall },
+    remaining: { steps, requiresAnotherCall },
   } as TransactionsResponse;
 }
 
@@ -268,5 +273,73 @@ test("runClose › bounded rounds - never loops forever", async () => {
   } catch (e) {
     err = e as Error;
   }
-  expect(err?.message).toMatch(/did not converge/);
+  expect(err).toBeInstanceOf(CloseDidNotConvergeError);
+  expect(err).toMatchObject({ reason: "round_limit", rounds: 3, bound: 3 });
+});
+
+const deps = (getTransactions: () => Promise<TransactionsResponse>, extra = {}) => ({
+  getTransactions,
+  verify: () => {},
+  requiredWeight: () => 1,
+  sign: async (_t: CloseTransaction, xdr: string) => ({ xdr, weight: 1 }),
+  submit: async () => "h",
+  ...extra,
+});
+
+function sequence(total: number, steps: (round: number) => number) {
+  let i = 0;
+  return {
+    get calls() {
+      return i;
+    },
+    next: async (): Promise<TransactionsResponse> => {
+      const round = i++;
+      const last = round === total - 1;
+      return resp([tx(0)], !last, last ? 0 : steps(round));
+    },
+  };
+}
+
+test("runClose › 30 rounds complete with default dependencies", async () => {
+  const seq = sequence(30, (round) => 29 - round);
+  await runClose(deps(seq.next));
+  expect(seq.calls).toBe(30);
+});
+
+test("runClose › a low first steps value does not cut a long close short", async () => {
+  const seq = sequence(40, (round) => (round < 15 ? 1 : 39 - round));
+  await runClose(deps(seq.next));
+  expect(seq.calls).toBe(40);
+});
+
+test("runClose › stops at the hard ceiling when the API never converges", async () => {
+  let calls = 0;
+  const err = await runClose(
+    deps(async () => {
+      calls++;
+      return resp([tx(0)], true, 10_000);
+    })
+  ).catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(CloseDidNotConvergeError);
+  expect(err).toMatchObject({ reason: "round_limit", bound: 200 });
+  expect(calls).toBe(200);
+});
+
+test("runClose › an explicit maxRounds above the ceiling is honored", async () => {
+  const seq = sequence(250, () => 10_000);
+  await runClose(deps(seq.next, { maxRounds: 300 }));
+  expect(seq.calls).toBe(250);
+});
+
+test("runClose › an empty batch that asks for another call throws on the first occurrence", async () => {
+  let calls = 0;
+  const err = await runClose(
+    deps(async () => {
+      calls++;
+      return resp([], true, 3);
+    })
+  ).catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(CloseDidNotConvergeError);
+  expect(err).toMatchObject({ reason: "empty_batch", rounds: 1 });
+  expect(calls).toBe(1);
 });

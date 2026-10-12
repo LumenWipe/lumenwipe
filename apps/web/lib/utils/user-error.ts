@@ -1,4 +1,4 @@
-import { LumenWipeApiError, LumenWipeTimeoutError } from "@lumenwipe/sdk";
+import { CloseDidNotConvergeError, LumenWipeApiError, LumenWipeTimeoutError } from "@lumenwipe/sdk";
 import { looksPlain } from "@/lib/api/error-body";
 import { InvalidPreAuthTxError } from "@/lib/stellar/pre-auth-tx";
 import { InvalidPreimageError } from "@/lib/stellar/hash-x";
@@ -92,6 +92,7 @@ export function requestIdOf(err: unknown): string | undefined {
 export function toUserMessage(err: unknown, context: ErrorContext = "generic"): string {
   if (
     err instanceof UserFacingError ||
+    err instanceof CloseDidNotConvergeError ||
     err instanceof InvalidPreAuthTxError ||
     err instanceof InvalidPreimageError ||
     err instanceof RevokeAllowanceVerificationError ||

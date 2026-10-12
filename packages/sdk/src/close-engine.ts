@@ -25,6 +25,29 @@ export class InsufficientSignatureWeightError extends Error {
   }
 }
 
+export type CloseDidNotConvergeReason = "round_limit" | "empty_batch";
+
+const ROUND_MARGIN = 5;
+const HARD_MAX_ROUNDS = 200;
+
+/** Thrown when a close cannot finish: the API kept asking for another call past the round
+ *  bound, or said another call is needed yet returned nothing to sign. Nothing is lost - the
+ *  API re-reads live state, so running the close again picks up where it stopped. */
+export class CloseDidNotConvergeError extends Error {
+  constructor(
+    public readonly rounds: number,
+    public readonly bound: number,
+    public readonly reason: CloseDidNotConvergeReason
+  ) {
+    super(
+      reason === "empty_batch"
+        ? "The close stopped because the service reported more steps but had nothing to sign. Check your account, then try again - the close picks up where it stopped."
+        : `The close needed more steps than expected (${rounds} of at most ${bound}). Check your account, then try again - the close picks up where it stopped.`
+    );
+    this.name = "CloseDidNotConvergeError";
+  }
+}
+
 export interface CloseEngineDeps {
   /** Fetches the next round of unsigned transactions from the API (via the proxy). */
   getTransactions: () => Promise<TransactionsResponse>;
@@ -51,7 +74,10 @@ export interface CloseEngineDeps {
   onConfirmed?: (tx: CloseTransaction, hash: string) => void;
   onProgress?: (message: string) => void;
   /**
-   * Safety bound so a misbehaving API can never spin the loop forever. This is what covers
+   * Overrides the round bound. Without it the bound is derived each round from the API's own
+   * `remaining.steps` (rounds done, plus steps left, plus a margin), only ever raised and capped
+   * at 200, so a long close is not cut short and a misbehaving API still cannot spin forever.
+   * This is what covers
    * #59's mediator-cleanup concern: the API is stateless and re-reads live state every round,
    * so `remaining.requiresAnotherCall` for that flow reflects "cleanup still sees something to
    * remove," not a bounded countdown - if an asset keeps getting re-funded between rounds (or
@@ -70,7 +96,7 @@ export interface CloseEngineDeps {
  * `resume` to continue exactly where it stopped.
  */
 export async function runClose(deps: CloseEngineDeps, resume?: PendingRound): Promise<void> {
-  const maxRounds = deps.maxRounds ?? 25;
+  let bound = 0;
 
   if (resume) {
     await signOrThrow(deps, resume.tx, resume.xdr, resume.queue, resume.requiresAnotherCall);
@@ -78,15 +104,24 @@ export async function runClose(deps: CloseEngineDeps, resume?: PendingRound): Pr
     if (!resume.requiresAnotherCall) return;
   }
 
-  for (let round = 0; round < maxRounds; round++) {
+  for (let round = 0; round < (deps.maxRounds ?? Math.max(bound, 1)); round++) {
     deps.onProgress?.("Preparing transactions…");
     const batch = await deps.getTransactions();
     const txs = [...batch.transactions].sort((a, b) => a.order - b.order);
-    await processTxs(deps, txs, batch.remaining.requiresAnotherCall);
-    if (!batch.remaining.requiresAnotherCall) return;
+    const { requiresAnotherCall, steps } = batch.remaining;
+    if (requiresAnotherCall && txs.length === 0) {
+      throw new CloseDidNotConvergeError(round + 1, deps.maxRounds ?? bound, "empty_batch");
+    }
+    await processTxs(deps, txs, requiresAnotherCall);
+    if (!requiresAnotherCall) return;
+    bound = Math.max(bound, Math.min(HARD_MAX_ROUNDS, round + 1 + steps + ROUND_MARGIN));
   }
 
-  throw new Error("The close did not converge after the maximum number of rounds.");
+  throw new CloseDidNotConvergeError(
+    deps.maxRounds ?? bound,
+    deps.maxRounds ?? bound,
+    "round_limit"
+  );
 }
 
 async function processTxs(
