@@ -1,23 +1,19 @@
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import * as pathFinding from "@/lib/stellar/path-finding";
 import type { PathResult } from "@/lib/stellar/path-finding";
-import { UpstreamError } from "@/lib/stellar/upstream-client";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { Account, Keypair, Operation, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import { AssetRouteLostError } from "@/lib/utils/errors";
-import type { AccountState, Trustline, AssetDisposition, PlannedStep } from "@lumenwipe/types";
-import type { StepBuildContext } from "@/lib/stellar/step-engine";
+import type { AccountState, Trustline } from "@lumenwipe/types";
+import { buildCloseTransactions } from "@/lib/close-api/build-transactions";
 import { ledgerEntries } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
-// Regression coverage for the fused CLOSE_ACCOUNT build honoring the per-asset
-// disposition decided on the analyze page. The bug: a non-convertible asset the
-// user chose to "return to issuer" was re-quoted via the convert branch at build
-// time and raised AssetRouteLostError instead of producing an issuer payment.
-//
-// These tests drive the real buildStepXdrForPlan engine with the RPC and
-// path-finding modules mocked, so they exercise the exact disposition read that
-// the bug depended on, with no network access.
+// Regression coverage for the close build honoring the per-asset disposition decided on the
+// analyze page. The bug: a non-convertible asset the user chose to "return to issuer" was
+// re-quoted via the convert branch at build time and raised AssetRouteLostError instead of
+// producing an issuer payment. An unavailable price source is covered in
+// price-source-unavailable.test.ts.
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -61,41 +57,12 @@ function accountState(): AccountState {
   };
 }
 
-function closeStep(): PlannedStep {
-  return {
-    index: 0,
-    type: "CLOSE_ACCOUNT",
-    title: "Close account",
-    description: "Fused close.",
-    operationCount: 3,
-    estimatedFeeLumens: "0.0000300",
-    txXdr: null,
-    status: "pending",
-    txHash: null,
-    error: null,
-  };
-}
-
-function ctx(dispositions: Record<string, AssetDisposition>): StepBuildContext {
-  const state = accountState();
-  return {
-    network: "testnet",
-    sourceAddress: SOURCE,
-    accountState: state,
-    destinationAddress: DEST,
-    memo: null,
-    memoType: null,
-    mediatorRequired: false,
-    executionPlan: [closeStep()],
-    assetDispositions: dispositions,
-  };
-}
-
 // A live trustline balance read that mirrors the scan-time balance: the asset is
 // funded, so the close must dispose of it (it cannot just be removed).
 function rpcServerStub() {
   return {
     getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
+    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
     getLedgerEntries: ledgerEntries(() => ({ balance: 100000000n })),
   };
 }
@@ -108,7 +75,7 @@ function opsOf(xdr: string) {
   return TransactionBuilder.fromXDR(xdr, Networks.TESTNET).operations;
 }
 
-test("CLOSE_ACCOUNT › issuer disposition returns the balance to the issuer without re-quoting", async () => {
+test("close build › issuer disposition returns the balance to the issuer without re-quoting", async () => {
   // No route exists for this asset. With a "convert" decision this would raise
   // AssetRouteLostError; with the user's "issuer" decision it must not even ask.
   const fetcher = mock(() => Promise.resolve<PathResult>({ kind: "none" }));
@@ -118,15 +85,19 @@ test("CLOSE_ACCOUNT › issuer disposition returns the balance to the issuer wit
   spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
     rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
 
-  const { buildStepXdrForPlan } = await import("@/lib/stellar/step-engine");
-  const xdr = await buildStepXdrForPlan(closeStep(), ctx({ [NOSWAP]: "issuer" }));
+  const result = await buildCloseTransactions(
+    accountState(),
+    DEST,
+    { [NOSWAP]: "issuer" },
+    "testnet"
+  );
 
   // The issuer decision must not trigger a conversion re-quote at build time.
   expect(fetcher).not.toHaveBeenCalled();
 
-  // The fused close must contain a payment of the full balance back to the issuer,
+  // The close must contain a payment of the full balance back to the issuer,
   // the changeTrust removal, and the account merge - and no path payment.
-  const ops = opsOf(xdr);
+  const ops = opsOf(result.transactions[0]!.xdr);
   const payment = ops.find((o) => o.type === "payment");
   expect(payment).toBeDefined();
   expect((payment as Operation.Payment).destination).toBe(ISSUER);
@@ -136,7 +107,7 @@ test("CLOSE_ACCOUNT › issuer disposition returns the balance to the issuer wit
   expect(ops.some((o) => o.type === "accountMerge")).toBe(true);
 });
 
-test("CLOSE_ACCOUNT › a genuinely lost route for a convert asset still surfaces AssetRouteLostError", async () => {
+test("close build › a genuinely lost route for a convert asset still surfaces AssetRouteLostError", async () => {
   // Safety invariant: the issuer fix must not mask a lost route for an asset the
   // user actually wants converted. Default disposition is "convert".
   const fetcher = mock(() => Promise.resolve<PathResult>({ kind: "none" }));
@@ -146,27 +117,7 @@ test("CLOSE_ACCOUNT › a genuinely lost route for a convert asset still surface
   spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
     rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
 
-  const { buildStepXdrForPlan } = await import("@/lib/stellar/step-engine");
-
-  await expect(buildStepXdrForPlan(closeStep(), ctx({ [NOSWAP]: "convert" }))).rejects.toThrow(
-    AssetRouteLostError
-  );
-});
-
-test("CLOSE_ACCOUNT › an unavailable price source is an outage, never a lost route", async () => {
-  const outage = new UpstreamError("unavailable", "paths");
-  spyOn(pathFinding, "fetchConversionPath").mockResolvedValue({
-    kind: "unavailable",
-    error: outage,
-  });
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
-
-  const { buildStepXdrForPlan } = await import("@/lib/stellar/step-engine");
-
-  const failure = await buildStepXdrForPlan(closeStep(), ctx({ [NOSWAP]: "convert" })).catch(
-    (e: unknown) => e
-  );
-  expect(failure).toBe(outage);
-  expect(failure).not.toBeInstanceOf(AssetRouteLostError);
+  await expect(
+    buildCloseTransactions(accountState(), DEST, { [NOSWAP]: "convert" }, "testnet")
+  ).rejects.toThrow(AssetRouteLostError);
 });

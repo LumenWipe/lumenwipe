@@ -26,6 +26,17 @@
           }
         ]
       }
+    ],
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "CallExpression[callee.name='fetch'][arguments.0.value=/^\\//]",
+        "message": "A relative URL throws Invalid URL in Node. Pass an absolute URL to fetch in apps/api."
+      },
+      {
+        "selector": "CallExpression[callee.name='fetch'][arguments.0.type='TemplateLiteral'][arguments.0.quasis.0.value.raw=/^\\//]",
+        "message": "A relative URL throws Invalid URL in Node. Pass an absolute URL to fetch in apps/api."
+      }
     ]
   },
   "ignorePatterns": ["dist", "node_modules"],
@@ -35,6 +46,14 @@
       "rules": {
         "no-restricted-syntax": [
           "error",
+          {
+            "selector": "CallExpression[callee.name='fetch'][arguments.0.value=/^\\//]",
+            "message": "A relative URL throws Invalid URL in Node. Pass an absolute URL to fetch in apps/api."
+          },
+          {
+            "selector": "CallExpression[callee.name='fetch'][arguments.0.type='TemplateLiteral'][arguments.0.quasis.0.value.raw=/^\\//]",
+            "message": "A relative URL throws Invalid URL in Node. Pass an absolute URL to fetch in apps/api."
+          },
           {
             "selector": "CallExpression[callee.object.name='mock'][callee.property.name='module']",
             "message": "mock.module replaces a module for the whole `bun test` process and leaks into other test files depending on file order (it turned CI red on 2026-09-02). Patch the real module object with spyOn(...).mockImplementation(...) and undo it with mock.restore() in afterEach, or inject the dependency."
