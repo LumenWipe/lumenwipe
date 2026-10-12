@@ -26,7 +26,7 @@ const decisionPoint: DecisionPoint = {
   type: "asset_disposition",
   subject: {},
   options: [{ id: "return_to_issuer" }],
-  default: "return_to_issuer",
+  default: "",
   required: true,
 };
 

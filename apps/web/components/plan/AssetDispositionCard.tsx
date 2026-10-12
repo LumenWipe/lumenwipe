@@ -206,12 +206,17 @@ export default function AssetDispositionCard({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-white">
             {item.code} <span className="text-fg-subtle">·</span>{" "}
-            <span className="text-amber-300/90">no swap route on the DEX</span>
+            <span className="text-amber-300/90">
+              {item.dust ? "too small to swap" : "no swap route on the DEX"}
+            </span>
           </p>
           <p className="mt-1 text-xs leading-relaxed text-fg-muted">
-            There is no way to swap {holding} to XLM. A trustline with a balance cannot be removed,
-            so the account cannot be closed while this balance remains. You can send these tokens to
-            another account that holds them, or return them to the issuer and give them up.
+            {item.dust
+              ? `${holding.replace(/^my /, "")} is below the smallest amount the market will swap to XLM.`
+              : `There is no way to swap ${holding} to XLM.`}{" "}
+            A trustline with a balance cannot be removed, so the account cannot be closed while this
+            balance remains. You can send these tokens to another account that holds them, or return
+            them to the issuer and give them up.
           </p>
         </div>
       </div>

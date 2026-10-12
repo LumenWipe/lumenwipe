@@ -78,7 +78,7 @@ test("a non-convertible asset still offers transfer alongside return_to_issuer",
 
   // Transferring needs no DEX route, so an asset with no market is not reduced to burning it.
   expect(points[0].options.map((o) => o.id)).toEqual(["return_to_issuer", "transfer_to_account"]);
-  expect(points[0].default).toBe("return_to_issuer");
+  expect(points[0].default).toBe("");
   expect((points[0].subject as { convertible: boolean }).convertible).toBe(false);
 });
 
@@ -404,7 +404,7 @@ test("an unresolved or forfeited balance produces no disposition decision", () =
   expect(deriveDecisionPoints(account, { [asset]: true }, { cb1: "forfeit" })).toHaveLength(0);
 });
 
-test("a claimed asset with no route defaults to the issuer, like any other illiquid asset", () => {
+test("a claimed asset with no route carries no default, like any other illiquid asset", () => {
   const asset = `JUNK:${ISSUER}`;
   const account = makeAccount({
     claimableBalances: [makeClaimableBalance("cb1", asset, "3.0000000")],
@@ -416,7 +416,7 @@ test("a claimed asset with no route defaults to the issuer, like any other illiq
     { cb1: "add_trustline_then_claim" }
   );
 
-  expect(points[0]!.default).toBe("return_to_issuer");
+  expect(points[0]!.default).toBe("");
 });
 
 test("an asset already trusted is not decided twice", () => {
@@ -540,4 +540,44 @@ test("pending balances are the exact stroop sum for 1, 2 and near-int64 balances
     const points = deriveDecisionPoints(account, { [asset]: true });
     expect(points[0].subject).toMatchObject({ asset, balance: expected });
   }
+});
+
+test("no decision point ever recommends returning an asset to its issuer", () => {
+  const account = makeAccount({
+    trustlines: [
+      makeTrustline("USDC", "10"),
+      makeTrustline("FOO", "5"),
+      makeTrustline("DUST", "1"),
+    ],
+  });
+  const points = deriveDecisionPoints(
+    account,
+    { [`USDC:${ISSUER}`]: true, [`FOO:${ISSUER}`]: false, [`DUST:${ISSUER}`]: false },
+    {},
+    new Set(),
+    new Set([`DUST:${ISSUER}`])
+  );
+
+  for (const point of points) {
+    expect(point.default).not.toBe("return_to_issuer");
+    expect(point.options.find((o) => o.id === "return_to_issuer")?.recommended).toBeUndefined();
+  }
+  expect(points.map((p) => p.default)).toEqual(["convert_to_xlm", "", ""]);
+});
+
+test("a dust balance carries the dust reason and an illiquid one does not", () => {
+  const account = makeAccount({
+    trustlines: [makeTrustline("DUST", "0.0000001"), makeTrustline("FOO", "5")],
+  });
+  const [dust, illiquid] = deriveDecisionPoints(
+    account,
+    { [`DUST:${ISSUER}`]: false, [`FOO:${ISSUER}`]: false },
+    {},
+    new Set(),
+    new Set([`DUST:${ISSUER}`])
+  );
+
+  expect((dust!.subject as { reason?: string }).reason).toBe("dust_below_minimum");
+  expect((dust!.subject as { convertible: boolean }).convertible).toBe(false);
+  expect("reason" in illiquid!.subject).toBe(false);
 });

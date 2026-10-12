@@ -143,6 +143,7 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `revoke_needs_restore`                        | 422    | The allowance revocation needs ledger entries restored first.                                                                  |
 | `revoke_simulation_failed`                    | 422    | The allowance revocation failed simulation.                                                                                    |
 | `revoke_unsafe`                               | 422    | The allowance revocation could not be built safely.                                                                            |
+| `route_lookup_unavailable`                    | any    | The swap route for an asset could not be looked up, so the asset was not classified. Retry.                                    |
 | `service_unavailable`                         | 503    | The service or an upstream dependency is unavailable. Retry.                                                                   |
 | `signer_normalization_unsafe`                 | 422    | The account's signers cannot be normalized safely.                                                                             |
 | `soroban_token_conversion_failed`             | 422    | A Soroban token could not be converted.                                                                                        |

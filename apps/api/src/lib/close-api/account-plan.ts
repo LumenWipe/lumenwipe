@@ -51,6 +51,7 @@ import {
   issuerSupplyDecisionId,
   isIssuerSupplyAcknowledged,
   PRICE_SOURCE_UNAVAILABLE,
+  ROUTE_LOOKUP_UNAVAILABLE_CODE,
 } from "@/lib/close-api/decisions";
 import { ARRIVING_ASSET_PROBE_AMOUNT, assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
 import { DEFI_POSITIONS_UNAVAILABLE_CODE } from "@/lib/defi-positions/positions-gate";
@@ -143,11 +144,15 @@ export async function buildAccountPlan(
   const claimedPerAsset = claimedAmountsPerAsset(accountState, claimableBalanceSelections);
   const pricedAssets = pricedAmountsPerAsset(accountState, claimedPerAsset);
   const priceSourceUnavailable = new Set<string>();
+  const dustAssets = new Set<string>();
   const convertibilityPromise = Promise.all(
     pricedAssets.map(async ({ asset, amount }) => {
       const result = await fetchConversionPath(asset, amount, network);
       if (result.kind === "unavailable") priceSourceUnavailable.add(asset);
-      else convertibility[asset] = result.kind === "route";
+      else {
+        convertibility[asset] = result.kind === "route";
+        if (result.kind === "none" && result.reason === "dust_below_minimum") dustAssets.add(asset);
+      }
     })
   );
   const sponsorshipAffordabilityPromise: Promise<SponsorshipAffordability> =
@@ -254,7 +259,8 @@ export async function buildAccountPlan(
       accountState,
       convertibility,
       claimableBalanceSelections,
-      priceSourceUnavailable
+      priceSourceUnavailable,
+      dustAssets
     ),
     ...deriveIssuerSupplyDecisionPoints(source, issuance),
     ...deriveTokenDecisionPoints(accountState, tokenQuotes),
@@ -313,7 +319,10 @@ export async function buildAccountPlan(
   ];
 
   if (priceSourceUnavailable.size > 0) {
-    buildResult.blockers = [...buildResult.blockers, { message: PRICE_SOURCE_UNAVAILABLE }];
+    buildResult.blockers = [
+      ...buildResult.blockers,
+      { code: ROUTE_LOOKUP_UNAVAILABLE_CODE, message: PRICE_SOURCE_UNAVAILABLE },
+    ];
   }
 
   const mergeProblems = await assessMergePreflight(accountState, destination, network);

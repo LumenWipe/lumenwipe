@@ -332,7 +332,7 @@ export class AssetRouteLostError extends Error {
     public readonly assetCode: string
   ) {
     super(
-      `The swap route for ${assetCode} is no longer available. Return it to the issuer to continue.`
+      `The swap route for ${assetCode} is no longer available. Plan again and choose how to handle it.`
     );
     this.name = "AssetRouteLostError";
   }

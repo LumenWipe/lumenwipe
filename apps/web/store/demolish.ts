@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { v4 as uuidv4 } from "uuid";
+import { hasRouteLookupBlocker } from "@/lib/plan/resolvable-blockers";
 import type { AccountState } from "@/types/account";
 import type {
   PlannedStep,
@@ -89,6 +90,10 @@ interface DemolishState {
   setAccountState: (state: AccountState) => void;
   setPlan: (plan: PlannedStep[]) => void;
   setAssetDisposition: (asset: string, action: AssetDisposition) => void;
+  /** Applies a freshly fetched plan's blockers to the stored answers: when the route lookup
+   *  failed, every return-to-issuer choice is forgotten (the blocker names no asset) and convert
+   *  and transfer answers are kept. */
+  reconcileWithPlanBlockers: (blockers: Array<{ code?: string }>) => void;
   setTransferDestination: (asset: string, destination: string | null) => void;
   setTokenConversionFloors: (floors: Record<string, TokenConversionFloor>) => void;
   setClaimableBalanceSelection: (balanceId: string, selection: ClaimableBalanceSelection) => void;
@@ -255,6 +260,17 @@ export const useDemolishStore = create<DemolishState>((set) => ({
         transferDestinations: rest,
       };
     }),
+
+  reconcileWithPlanBlockers: (blockers) =>
+    set((s) =>
+      hasRouteLookupBlocker(blockers)
+        ? {
+            assetDispositions: Object.fromEntries(
+              Object.entries(s.assetDispositions).filter(([, action]) => action !== "issuer")
+            ),
+          }
+        : {}
+    ),
 
   setTokenConversionFloors: (floors) => set({ tokenConversionFloors: floors }),
 

@@ -412,3 +412,20 @@ test("decisionPointsToConversions › a clawback-enabled asset keeps the flag, o
   expect(flagged!.clawbackEnabled).toBe(true);
   expect(plain!.clawbackEnabled).toBeUndefined();
 });
+
+test("decisionPointsToConversions › the dust reason marks the item, and its absence does not", () => {
+  const point = (id: string, subject: Record<string, unknown>) => ({
+    id: `asset:${id}-GISSUER`,
+    type: "asset_disposition" as const,
+    subject: { asset: `${id}:GISSUER`, balance: "0.0000001", convertible: false, ...subject },
+    options: [{ id: "return_to_issuer" }, { id: "transfer_to_account" }],
+    default: "",
+    required: true,
+  });
+  const [dust, thin] = decisionPointsToConversions(
+    plan([point("DUST", { reason: "dust_below_minimum" }), point("THIN", {})])
+  );
+  expect(dust).toMatchObject({ convertible: false, dust: true });
+  expect(thin).toMatchObject({ convertible: false });
+  expect(thin && "dust" in thin).toBe(false);
+});

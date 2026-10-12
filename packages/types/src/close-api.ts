@@ -22,6 +22,11 @@ export interface DecisionPoint {
   type: "asset_disposition" | "confirmation" | "choice" | "claimable_balance";
   subject: Record<string, unknown>;
   options: DecisionOption[];
+  /**
+   * The recommended option id, advisory only: nothing is applied for an unanswered decision. Empty
+   * when no option is safe to recommend, such as an asset with no swap route. A convertible asset
+   * defaults to converting; no decision ever recommends returning an asset to its issuer.
+   */
   default: string;
   required: boolean;
 }

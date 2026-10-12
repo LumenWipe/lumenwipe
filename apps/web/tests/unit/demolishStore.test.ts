@@ -691,3 +691,25 @@ describe("markCoveredConfirmed with per-step targets", () => {
     expect(plan.every((s) => s.status === "confirmed" && s.txHash === "hash-all")).toBe(true);
   });
 });
+
+test("a plan whose route lookup failed forgets return-to-issuer choices and keeps convert and transfer", () => {
+  const store = useDemolishStore.getState();
+  store.setAssetDisposition("NOSWAP:GISSUER", "issuer");
+  store.setAssetDisposition("USDC:GISSUER", "convert");
+  store.setAssetDisposition("EURC:GOTHER", "transfer");
+  store.setTransferDestination("EURC:GOTHER", "GDEST");
+
+  useDemolishStore.getState().reconcileWithPlanBlockers([{ code: "route_lookup_unavailable" }]);
+
+  expect(useDemolishStore.getState().assetDispositions).toEqual({
+    "USDC:GISSUER": "convert",
+    "EURC:GOTHER": "transfer",
+  });
+  expect(useDemolishStore.getState().transferDestinations).toEqual({ "EURC:GOTHER": "GDEST" });
+});
+
+test("a plan without the lookup blocker leaves return-to-issuer choices alone", () => {
+  useDemolishStore.getState().setAssetDisposition("NOSWAP:GISSUER", "issuer");
+  useDemolishStore.getState().reconcileWithPlanBlockers([{ code: "plan_blocker" }]);
+  expect(useDemolishStore.getState().assetDispositions).toEqual({ "NOSWAP:GISSUER": "issuer" });
+});

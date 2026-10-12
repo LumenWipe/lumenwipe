@@ -156,6 +156,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       });
       if (isStale()) return;
       const { plan } = analysis;
+      useDemolishStore.getState().reconcileWithPlanBlockers(plan.blockers);
       setBlockers(
         plan.blockers.map((b) => ({ message: b.message, helpUrl: b.helpUrl, code: b.code }))
       );
