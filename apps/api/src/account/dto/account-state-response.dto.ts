@@ -16,6 +16,7 @@ import type {
   SorobanTokenSource,
   SorobanTokensResult,
   Trustline,
+  TrustlineAuthorization,
 } from "@lumenwipe/types";
 import { PlanBlockerDto } from "@/common/dto/plan-blocker.dto";
 import { DefiPositionsResultDto } from "./defi-position-responses.dto";
@@ -65,8 +66,18 @@ export class TrustlineDto implements Trustline {
   })
   limit?: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: "True only when `authorization` is `authorized`." })
   authorized!: boolean;
+
+  @ApiProperty({
+    enum: ["authorized", "maintain_liabilities", "unauthorized"],
+    description:
+      "The issuer's authorization. Only `authorized` can send or receive payments; `maintain_liabilities` keeps existing offers alive and nothing else.",
+  })
+  authorization!: TrustlineAuthorization;
+
+  @ApiProperty({ description: "The issuer can reclaim this balance at any time." })
+  clawbackEnabled!: boolean;
 
   @ApiProperty()
   issuer!: string;

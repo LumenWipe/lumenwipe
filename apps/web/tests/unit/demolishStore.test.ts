@@ -32,7 +32,7 @@ function accountState(over: Partial<AccountState> = {}): AccountState {
 
 function trustline(asset: string): Trustline {
   const [code, issuer] = asset.split(":");
-  return { asset, balance: "10.0000000", limit: "1", authorized: true, issuer, code };
+  return { asset, balance: "10.0000000", limit: "1", ...authorizationOf(true), issuer, code };
 }
 
 function step(index: number): PlannedStep {
@@ -315,6 +315,7 @@ describe("step lifecycle", () => {
 // Tests the pure filtering/sorting logic without hitting IndexedDB.
 
 import type { SessionRecord } from "@/types/session";
+import { authorizationOf } from "./fixtures/trustline";
 
 function makeSession(over: Partial<SessionRecord> = {}): SessionRecord {
   return {
@@ -563,7 +564,13 @@ test("re-analyzing prunes destinations for assets the account no longer holds", 
   useDemolishStore.getState().setAccountState(
     accountState({
       trustlines: [
-        { asset: "USDC:GISS", balance: "10", authorized: true, issuer: "GISS", code: "USDC" },
+        {
+          asset: "USDC:GISS",
+          balance: "10",
+          ...authorizationOf(true),
+          issuer: "GISS",
+          code: "USDC",
+        },
       ],
     })
   );

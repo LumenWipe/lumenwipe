@@ -7,6 +7,7 @@ import { trustlineRemovalOps } from "@/lib/stellar/tx-builder/trustlines";
 import { mergeOp } from "@/lib/stellar/tx-builder/merge";
 import { assetConversionOp, issuerPaymentOp } from "@/lib/stellar/tx-builder/asset-conversion";
 import type { Trustline, ConversionPath } from "@lumenwipe/types";
+import { authorizationOf } from "./fixtures/trustline";
 
 const MASTER = Keypair.random().publicKey();
 const EXTRA = Keypair.random().publicKey();
@@ -49,7 +50,13 @@ test("offerCancellationOps > n offers -> n ops", () => {
 
 test("trustlineRemovalOps > n trustlines -> n ops", () => {
   const tls = [
-    { asset: `USDC:${ISSUER}`, balance: "0", authorized: true, issuer: ISSUER, code: "USDC" },
+    {
+      asset: `USDC:${ISSUER}`,
+      balance: "0",
+      ...authorizationOf(true),
+      issuer: ISSUER,
+      code: "USDC",
+    },
   ];
   expect(trustlineRemovalOps(tls)).toHaveLength(1);
 });
@@ -63,7 +70,7 @@ test("assetConversionOp > builds a path payment strict send op", () => {
   const trustline: Trustline = {
     asset: `USDC:${ISSUER}`,
     balance: "100",
-    authorized: true,
+    ...authorizationOf(true),
     issuer: ISSUER,
     code: "USDC",
   };
@@ -82,7 +89,7 @@ test("issuerPaymentOp > builds a payment op to the issuer", () => {
   const trustline: Trustline = {
     asset: `USDC:${ISSUER}`,
     balance: "100",
-    authorized: true,
+    ...authorizationOf(true),
     issuer: ISSUER,
     code: "USDC",
   };

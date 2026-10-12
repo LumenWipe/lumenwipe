@@ -5,6 +5,7 @@ import {
   type AccountReader,
 } from "@/lib/close-api/transfer-destinations";
 import type { Trustline } from "@lumenwipe/types";
+import { authorizationOf } from "./fixtures/trustline";
 
 const SOURCE = Keypair.random().publicKey();
 const DESTINATION = Keypair.random().publicKey();
@@ -13,7 +14,7 @@ const USDC = `USDC:${ISSUER}`;
 
 function trustline(asset: string, balance: string, limit?: string): Trustline {
   const [code, issuer] = asset.split(":");
-  return { asset, balance, authorized: true, issuer: issuer!, code: code!, limit };
+  return { asset, balance, ...authorizationOf(true), issuer: issuer!, code: code!, limit };
 }
 
 /** The destination shape the validator actually needs. */
@@ -235,7 +236,9 @@ test("an unauthorized destination trustline is a blocker", async () => {
     "testnet",
     // Holding the line is not the same as being allowed to use it: for an AUTH_REQUIRED asset
     // the payment fails PAYMENT_NOT_AUTHORIZED and takes the whole atomic close with it.
-    readerFor([account(DESTINATION, [{ ...trustline(USDC, "0", "1000"), authorized: false }])])
+    readerFor([
+      account(DESTINATION, [{ ...trustline(USDC, "0", "1000"), ...authorizationOf(false) }]),
+    ])
   );
   expect(problems).toHaveLength(1);
   expect(problems[0]!.code).toBe("destination_not_authorized");

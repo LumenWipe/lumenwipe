@@ -46,6 +46,7 @@ import { readTrustlinesOnly } from "@/lib/stellar/account-state";
 import { submitAndWait } from "@/lib/stellar/submit";
 import { computePlanHash } from "@/lib/close-api/plan-response";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { authorizationOf } from "./fixtures/trustline";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -499,7 +500,7 @@ describe("transactions", () => {
               asset: USDC,
               balance: "5.0000000",
               limit: "1000",
-              authorized: true,
+              ...authorizationOf(true),
               issuer: ISSUER,
               code: "USDC",
             },

@@ -14,6 +14,7 @@ import { AssetRouteLostError } from "@/lib/utils/errors";
 import { UpstreamError } from "@/lib/stellar/upstream-client";
 import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { authorizationOf } from "./fixtures/trustline";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -41,7 +42,7 @@ function state(): AccountState {
       {
         asset: USDC,
         balance: "100.0000000",
-        authorized: true,
+        ...authorizationOf(true),
         issuer: ISSUER,
         code: "USDC",
         limit: "1000",

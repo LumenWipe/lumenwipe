@@ -8,6 +8,7 @@ import type { AccountState, Trustline } from "@lumenwipe/types";
 import { buildCloseTransactions } from "@/lib/close-api/build-transactions";
 import { ledgerEntries } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { authorizationOf } from "./fixtures/trustline";
 
 // Regression coverage for the close build honoring the per-asset disposition decided on the
 // analyze page. The bug: a non-convertible asset the user chose to "return to issuer" was
@@ -25,7 +26,7 @@ function trustline(over: Partial<Trustline> = {}): Trustline {
     asset: NOSWAP,
     balance: "10.0000000",
     limit: "922337203685.4775807",
-    authorized: true,
+    ...authorizationOf(true),
     issuer: ISSUER,
     code: "NOSWAP",
     ...over,

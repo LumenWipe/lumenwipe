@@ -107,6 +107,13 @@ const TRANSACTION_CASES: Case[] = [
     "destination_read_failed",
     undefined,
   ],
+  [
+    "unusable provider",
+    new UnusableProviderResponseError(ADDRESS, ["balances"]),
+    502,
+    "provider_response_unusable",
+    undefined,
+  ],
   ["ledger read failed", new LedgerReadError(), 503, "service_unavailable", undefined],
   [
     "provider timed out",
@@ -216,9 +223,6 @@ describe("what each filter catches", () => {
 
   test("plan-only errors stay out of the transactions mapping and the reverse", () => {
     expect(mapDomainError(TRANSACTION_ERRORS, new TruncatedCollectionError("x"))).toBeNull();
-    expect(
-      mapDomainError(TRANSACTION_ERRORS, new UnusableProviderResponseError(ADDRESS, ["x"]))
-    ).toBeNull();
     expect(mapDomainError(PLAN_ERRORS, new AssetRouteLostError("a", "A"))).toBeNull();
   });
 });

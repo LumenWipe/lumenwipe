@@ -13,6 +13,7 @@ import {
   discoveredTokensToDecisions,
 } from "@/lib/api/close-decisions";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { authorizationOf } from "./fixtures/trustline";
 
 const ASSET = "USDC:GISSUER0000000000000000000000000000000000000000000000000000";
 // Must match the API's assetDecisionId contract: "asset:" + first ":" replaced with "-".
@@ -253,7 +254,7 @@ test("chosenTransfers › a held balance topped up by a claim floors at the sum"
           asset,
           balance: "2.0000000",
           limit: "100",
-          authorized: true,
+          ...authorizationOf(true),
           issuer: "GISSUER",
           code: "USDC",
         },
@@ -313,7 +314,7 @@ test("receiptAssetSummary › a zero-balance line topped by a claim is listed, h
           asset: eurc,
           balance: "0",
           limit: "100",
-          authorized: true,
+          ...authorizationOf(true),
           issuer: "GISSUER",
           code: "EURC",
         },
@@ -617,7 +618,7 @@ test("receiptAssetSummary › an asset only an exit pays in is listed once it wa
         asset: aqua,
         balance: "0",
         limit: "100",
-        authorized: true,
+        ...authorizationOf(true),
         issuer: "GISSUER",
         code: "AQUA",
       },

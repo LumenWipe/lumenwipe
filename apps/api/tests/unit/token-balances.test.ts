@@ -3,6 +3,7 @@ import { Asset, Keypair, Networks } from "@stellar/stellar-sdk";
 import type { AccountState } from "@lumenwipe/types";
 import { tokenBalancesFor } from "@/lib/defi-exits/token-balances";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { authorizationOf } from "./fixtures/trustline";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -45,14 +46,14 @@ test("keys native XLM and every authorized trustline by its Stellar Asset Contra
           code: "USDC",
           issuer: ISSUER,
           balance: "50.1234567",
-          authorized: true,
+          ...authorizationOf(true),
         },
         {
           asset: `JUNK:${ISSUER}`,
           code: "JUNK",
           issuer: ISSUER,
           balance: "9.0000000",
-          authorized: false,
+          ...authorizationOf(false),
         },
       ],
     })
@@ -86,7 +87,7 @@ test("what an open offer is selling is held by the ledger and not spendable by a
           code: "USDC",
           issuer: ISSUER,
           balance: "50.0000000",
-          authorized: true,
+          ...authorizationOf(true),
         },
       ],
       openOffers: [

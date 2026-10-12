@@ -10,6 +10,7 @@ import type {
   SponsoredEntry,
   Trustline,
 } from "@lumenwipe/types";
+import { authorizationOf } from "./fixtures/trustline";
 
 const MASTER_KP = Keypair.random();
 const EXTRA_KP = Keypair.random();
@@ -47,7 +48,7 @@ function makeTrustline(code: string, balance = "0", authorized = true): Trustlin
   return {
     asset: `${code}:${ISSUER}`,
     balance,
-    authorized,
+    ...authorizationOf(authorized),
     issuer: ISSUER,
     code,
   };
@@ -2007,7 +2008,7 @@ test("buildPlan › a detected Blend position becomes an EXIT_POSITIONS step ahe
         code: "USDC",
         issuer: ISSUER,
         balance: "5.0000000",
-        authorized: true,
+        ...authorizationOf(true),
       },
     ],
     defiPositions: makeDefiResult({
@@ -2066,7 +2067,7 @@ test("buildPlan › exits are listed first even when signers, data, and offers a
         code: "USDC",
         issuer: ISSUER,
         balance: "0.0000000",
-        authorized: true,
+        ...authorizationOf(true),
       },
     ],
     defiPositions: makeDefiResult({

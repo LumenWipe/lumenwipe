@@ -6,6 +6,7 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import { toExecutionBreakdown } from "@/lib/close-api/plan-response";
+import { authorizationOf } from "./fixtures/trustline";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -15,7 +16,7 @@ function trustlines(n: number): Trustline[] {
   return Array.from({ length: n }, (_, i) => ({
     asset: `AST${i}:${ISSUER}`,
     balance: "0",
-    authorized: true,
+    ...authorizationOf(true),
     issuer: ISSUER,
     code: `AST${i}`,
     limit: "1000",

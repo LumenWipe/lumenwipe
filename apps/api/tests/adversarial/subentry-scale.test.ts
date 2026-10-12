@@ -21,6 +21,7 @@ import { OFFLINE_SOROBAN_TOKENS } from "../unit/fixtures/fake-soroban-tokens";
 import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 import type { ResolveDefiPositionsDeps } from "@/lib/defi-positions/resolve-defi-positions";
 import type { SponsoredEntry } from "@lumenwipe/types";
+import { authorizationOf } from "../unit/fixtures/trustline";
 
 const MASTER = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -41,7 +42,7 @@ function manyTrustlines(n: number) {
   return Array.from({ length: n }, (_, i) => ({
     asset: `AST${i}:${ISSUER}`,
     balance: "0",
-    authorized: true,
+    ...authorizationOf(true),
     issuer: ISSUER,
     code: `AST${i}`,
   }));

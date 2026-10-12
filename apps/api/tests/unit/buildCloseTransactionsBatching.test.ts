@@ -4,6 +4,7 @@ import { Account, Keypair, Networks, TransactionBuilder } from "@stellar/stellar
 import type { AccountState, Trustline } from "@lumenwipe/types";
 import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { authorizationOf } from "./fixtures/trustline";
 
 // Wiring coverage for #59: a direct (no-mediator) close whose op count spills past
 // OP_BATCH_LIMIT used to be returned as every chunk at once with `requiresAnotherCall: false`,
@@ -23,7 +24,7 @@ function manyTrustlines(n: number, start = 0): Trustline[] {
     return {
       asset: `AST${idx}:${ISSUER}`,
       balance: "0",
-      authorized: true,
+      ...authorizationOf(true),
       issuer: ISSUER,
       code: `AST${idx}`,
       limit: "1000",

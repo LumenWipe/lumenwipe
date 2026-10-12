@@ -13,6 +13,7 @@ import type { AccountState, AquariusLpPosition, Trustline } from "@lumenwipe/typ
 import { deriveDecisionPoints } from "@/lib/close-api/decisions";
 import { assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { authorizationOf } from "./fixtures/trustline";
 
 const MASTER = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -22,7 +23,13 @@ const XLM_SAC = Asset.native().contractId(Networks.TESTNET);
 const POOL = "CCSXYUVLYALKJGIIYMGYLZI447VS6TDWFTVDL43B4IKK2WERHLWUVCRC";
 
 function trustline(code: string, balance: string, authorized = true): Trustline {
-  return { asset: `${code}:${ISSUER}`, balance, authorized, issuer: ISSUER, code };
+  return {
+    asset: `${code}:${ISSUER}`,
+    balance,
+    ...authorizationOf(authorized),
+    issuer: ISSUER,
+    code,
+  };
 }
 
 function aquariusLp(tokens: string[] | undefined): AquariusLpPosition {

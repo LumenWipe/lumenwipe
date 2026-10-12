@@ -28,7 +28,7 @@ import { lookupExchange, requiresMediatorForAddress } from "@/lib/exchange-regis
 import {
   computeNeedsSignerNormalization,
   assessSignerNormalizationSafety,
-  assessDeauthorizedTrustlineBlockers,
+  assessTrustlineAuthorizationBlockers,
 } from "@/lib/stellar/tx-builder";
 import { assessSponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
 import {
@@ -180,13 +180,9 @@ export async function buildCloseTransactions(
       throw new CloseBuildError("signer_normalization_unsafe", signerBlockers[0]!.message, 422);
     }
   }
-  const trustlineBlockers = assessDeauthorizedTrustlineBlockers(accountState.trustlines);
+  const trustlineBlockers = assessTrustlineAuthorizationBlockers(accountState.trustlines);
   if (trustlineBlockers.length > 0) {
-    throw new CloseBuildError(
-      "trustline_deauthorized_with_balance",
-      trustlineBlockers[0]!.message,
-      422
-    );
+    throw new CloseBuildError(trustlineBlockers[0]!.code, trustlineBlockers[0]!.message, 422);
   }
   // The plan's DeFi gate, re-applied for the same reason: an SDK caller never asked for a plan,
   // and a web session's plan may be minutes old. Positions that could not be confirmed (an

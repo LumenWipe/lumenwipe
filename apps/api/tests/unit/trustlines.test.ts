@@ -7,6 +7,7 @@ import {
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { BASE_FEE_STROOPS } from "@/config/constants";
 import type { ClaimableBalance, Trustline } from "@lumenwipe/types";
+import { authorizationOf } from "./fixtures/trustline";
 
 const MASTER = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -15,7 +16,7 @@ function trustline(over: Partial<Trustline> = {}): Trustline {
   return {
     asset: `USDC:${ISSUER}`,
     balance: "0",
-    authorized: true,
+    ...authorizationOf(true),
     issuer: ISSUER,
     code: "USDC",
     ...over,
