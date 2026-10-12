@@ -655,9 +655,9 @@ test("buildPlan › CLAIM_BALANCES comes before HANDLE_ASSETS for same asset", (
   expect(claimIdx).toBeLessThan(convertIdx);
 });
 
-// ─── Fast-path tests ─────────────────────────────────────────────────────────
+// ─── Fused-close tests ─────────────────────────────────────────────────────────
 
-test("buildPlan › fastPathEligible + cleanup + direct → single CLOSE_ACCOUNT step", () => {
+test("buildPlan › fused-close eligible + cleanup + direct → single CLOSE_ACCOUNT step", () => {
   const account = makeAccount({
     dataEntries: [{ key: "k", value: "" }],
     trustlines: [makeTrustline("USDC", "0")],
@@ -667,26 +667,26 @@ test("buildPlan › fastPathEligible + cleanup + direct → single CLOSE_ACCOUNT
   expect(steps[0].type).toBe("CLOSE_ACCOUNT");
 });
 
-test("buildPlan › fastPathEligible + cleanup + exchange → CLOSE_ACCOUNT then MERGE", () => {
+test("buildPlan › fused-close eligible + cleanup + exchange → CLOSE_ACCOUNT then MERGE", () => {
   const account = makeAccount({ dataEntries: [{ key: "k", value: "" }] });
   const { steps } = buildPlan(account, true, true);
   expect(steps.map((s) => s.type)).toEqual(["CLOSE_ACCOUNT", "MERGE"]);
 });
 
-test("buildPlan › fastPathEligible but clean account → single MERGE (nothing to fuse)", () => {
+test("buildPlan › fused-close eligible but clean account → single MERGE (nothing to fuse)", () => {
   const { steps } = buildPlan(makeAccount(), false, true);
   expect(steps).toHaveLength(1);
   expect(steps[0].type).toBe("MERGE");
 });
 
-test("buildPlan › fastPathEligible but blocker present → falls back to stepwise", () => {
+test("buildPlan › fused-close eligible but blocker present → falls back to stepwise", () => {
   const account = makeAccount({ numSponsoring: 1, dataEntries: [{ key: "k", value: "" }] });
   const { steps } = buildPlan(account, false, true);
   expect(steps.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(false);
   expect(steps.some((s) => s.type === "REMOVE_DATA_ENTRIES")).toBe(true);
 });
 
-test("buildPlan › fastPathEligible but claimable balances present → falls back to stepwise", () => {
+test("buildPlan › fused-close eligible but claimable balances present → falls back to stepwise", () => {
   const account = makeAccount({
     dataEntries: [{ key: "k", value: "" }],
     claimableBalances: [makeClaimableBalance("native")],
@@ -696,7 +696,7 @@ test("buildPlan › fastPathEligible but claimable balances present → falls ba
   expect(steps.some((s) => s.type === "CLAIM_BALANCES")).toBe(true);
 });
 
-test("buildPlan › fastPathEligible but >100 fused ops → falls back to stepwise", () => {
+test("buildPlan › fused-close eligible but >100 fused ops → falls back to stepwise", () => {
   const account = makeAccount({
     dataEntries: Array.from({ length: 101 }, (_, i) => ({ key: `k${i}`, value: "" })),
   });
@@ -704,13 +704,13 @@ test("buildPlan › fastPathEligible but >100 fused ops → falls back to stepwi
   expect(steps.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(false);
 });
 
-test("buildPlan › default (no fastPath arg) is unchanged stepwise plan", () => {
+test("buildPlan › default (no fused-close flag) is unchanged stepwise plan", () => {
   const account = makeAccount({ dataEntries: [{ key: "k", value: "" }] });
   const { steps } = buildPlan(account, false);
   expect(steps.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(false);
 });
 
-test("buildPlan › fastPathEligible + multiple balance-bearing assets → single CLOSE_ACCOUNT", () => {
+test("buildPlan › fused-close eligible + multiple balance-bearing assets → single CLOSE_ACCOUNT", () => {
   // The fused step is disposition-agnostic: buildPlan counts one op per asset-with-balance
   // regardless of whether each asset is later swapped to XLM or returned to its issuer.
   const account = makeAccount({
@@ -878,7 +878,7 @@ test("buildPlan › numSponsoring > 0 but no entries found (defensive fallback) 
 
 // ─── Step indices are sequential across every step type (idx++, not idx--) ───
 
-test("buildPlan › step indices are sequential from 0 across every non-fast-path step type", () => {
+test("buildPlan › step indices are sequential from 0 across every non-fused step type", () => {
   const entry: SponsoredEntry = {
     kind: "trustline",
     owner: SPONSORED_OWNER,
@@ -907,7 +907,7 @@ test("buildPlan › step indices are sequential from 0 across every non-fast-pat
   steps.forEach((s, i) => expect(s.index).toBe(i));
 });
 
-test("buildPlan › step indices are sequential from 0 on the fast path (both CLOSE_ACCOUNT and MERGE)", () => {
+test("buildPlan › step indices are sequential from 0 on the fused close (both CLOSE_ACCOUNT and MERGE)", () => {
   const account = makeAccount({ dataEntries: [{ key: "k", value: "" }] });
   const { steps } = buildPlan(account, true, true);
   expect(steps).toHaveLength(2);
@@ -1303,15 +1303,15 @@ test("buildPlan › CLAIM_BALANCES detail combines XLM and token counts when bot
   );
 });
 
-// ─── Fast-path gate: each of the six conditions isolated ──────────────────────
+// ─── Fused-close gate: each of the six conditions isolated ──────────────────────
 
-test("buildPlan › fast path requires hasCleanup - a clean account with nothing to fuse stays a plain MERGE", () => {
+test("buildPlan › fused close requires hasCleanup - a clean account with nothing to fuse stays a plain MERGE", () => {
   const { steps } = buildPlan(makeAccount(), false, true);
   expect(steps).toHaveLength(1);
   expect(steps[0]!.type).toBe("MERGE");
 });
 
-test("buildPlan › fast path is refused when sponsoredEntries is non-empty even without a blocker", () => {
+test("buildPlan › fused close is refused when sponsoredEntries is non-empty even without a blocker", () => {
   const entry: SponsoredEntry = {
     kind: "trustline",
     owner: SPONSORED_OWNER,
@@ -1332,7 +1332,7 @@ test("buildPlan › fast path is refused when sponsoredEntries is non-empty even
   expect(steps.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(false);
 });
 
-test("buildPlan › fast path fuses exactly at the 100-op boundary, refuses at 101", () => {
+test("buildPlan › fused close fuses exactly at the 100-op boundary, refuses at 101", () => {
   const at100 = makeAccount({
     dataEntries: Array.from({ length: 99 }, (_, i) => ({ key: `k${i}`, value: "" })), // 99 + 1 merge = 100
   });
@@ -1356,7 +1356,7 @@ test("buildPlan › CLOSE_ACCOUNT operationCount for a mediated close excludes t
 
 // ─── Convertible/needs-conversion filters: authorized and balance boundaries ──
 
-test("buildPlan › an unauthorized trustline with a balance is not converted (fast-path fuse count excludes it)", () => {
+test("buildPlan › an unauthorized trustline with a balance is not converted (fused-close fuse count excludes it)", () => {
   const account = makeAccount({
     dataEntries: [{ key: "k", value: "" }],
     trustlines: [makeTrustline("USDC", "10", false)],
@@ -1364,7 +1364,7 @@ test("buildPlan › an unauthorized trustline with a balance is not converted (f
   const { steps } = buildPlan(account, false, true);
   const close = steps.find((s) => s.type === "CLOSE_ACCOUNT");
   // hasCleanup is true (trustlines.length > 0), but the unauthorized trustline with a balance is
-  // a deauthorized-with-balance blocker, so the fast path is refused entirely.
+  // a deauthorized-with-balance blocker, so the fused close is refused entirely.
   expect(close).toBeUndefined();
 });
 
@@ -1579,9 +1579,9 @@ test("buildPlan › describes a claimable_balance sponsored entry (even though b
   expect(b.message).toContain("a claimable balance");
 });
 
-// ─── convertible/fast-path fuse count: balance and authorization boundaries ──
+// ─── convertible/fused-close fuse count: balance and authorization boundaries ──
 
-test("buildPlan › fast path: a trustline with balance exactly 0 is not counted toward the fuse (still just cleanup)", () => {
+test("buildPlan › fused close: a trustline with balance exactly 0 is not counted toward the fuse (still just cleanup)", () => {
   const account = makeAccount({
     dataEntries: [{ key: "k", value: "" }],
     trustlines: [makeTrustline("USDC", "0", true)],
@@ -1593,9 +1593,9 @@ test("buildPlan › fast path: a trustline with balance exactly 0 is not counted
   expect(close.operationCount).toBe(3);
 });
 
-// ─── hasCleanup: openOffers alone is sufficient to trigger the fast path ──────
+// ─── hasCleanup: openOffers alone is sufficient to trigger the fused close ──────
 
-test("buildPlan › fast path triggers on open offers alone, with nothing else to clean up", () => {
+test("buildPlan › fused close triggers on open offers alone, with nothing else to clean up", () => {
   const account = makeAccount({
     openOffers: [{ id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" }],
   });
@@ -1603,18 +1603,18 @@ test("buildPlan › fast path triggers on open offers alone, with nothing else t
   expect(steps.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(true);
 });
 
-// ─── hasHardBlocker: a forfeited-balance blocker alone never excludes the fast path ───
+// ─── hasHardBlocker: a forfeited-balance blocker alone never excludes the fused close ───
 
-test("buildPlan › fast path proceeds when the only blocker is an acknowledged forfeiture", () => {
+test("buildPlan › fused close proceeds when the only blocker is an acknowledged forfeiture", () => {
   const cb = makeClaimableBalance(`USDC:${ISSUER}`);
   const account = makeAccount({ dataEntries: [{ key: "k", value: "" }], claimableBalances: [cb] });
   const { steps } = buildPlan(account, false, true, { [cb.id]: "forfeit" });
-  // balancesNeedingClaimStep is empty (forfeited), so the fast path is otherwise eligible; the
+  // balancesNeedingClaimStep is empty (forfeited), so the fused close is otherwise eligible; the
   // forfeiture blocker alone must not block it.
   expect(steps.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(true);
 });
 
-test("buildPlan › fast path is excluded by any blocker other than an acknowledged forfeiture", () => {
+test("buildPlan › fused close is excluded by any blocker other than an acknowledged forfeiture", () => {
   const account = makeAccount({
     dataEntries: [{ key: "k", value: "" }],
     trustlines: [makeTrustline("USDC", "5", false)], // deauthorized-with-balance: a real blocker
@@ -1623,9 +1623,9 @@ test("buildPlan › fast path is excluded by any blocker other than an acknowled
   expect(steps.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(false);
 });
 
-// ─── Fast-path CLOSE_ACCOUNT: exact title/description, both mediatorRequired branches ─
+// ─── Fused-close CLOSE_ACCOUNT: exact title/description, both mediatorRequired branches ─
 
-test("buildPlan › fast-path CLOSE_ACCOUNT title/description, direct destination", () => {
+test("buildPlan › fused-close CLOSE_ACCOUNT title/description, direct destination", () => {
   const account = makeAccount({ dataEntries: [{ key: "k", value: "" }] });
   const { steps } = buildPlan(account, false, true);
   const s = steps.find((x) => x.type === "CLOSE_ACCOUNT")!;
@@ -1636,7 +1636,7 @@ test("buildPlan › fast-path CLOSE_ACCOUNT title/description, direct destinatio
   );
 });
 
-test("buildPlan › fast-path CLOSE_ACCOUNT title/description, mediator (exchange) destination", () => {
+test("buildPlan › fused-close CLOSE_ACCOUNT title/description, mediator (exchange) destination", () => {
   const account = makeAccount({ dataEntries: [{ key: "k", value: "" }] });
   const { steps } = buildPlan(account, true, true);
   const s = steps.find((x) => x.type === "CLOSE_ACCOUNT")!;
@@ -1647,7 +1647,7 @@ test("buildPlan › fast-path CLOSE_ACCOUNT title/description, mediator (exchang
   );
 });
 
-test("buildPlan › fast-path's own MERGE step (the co-signed forward) has its own exact title/description, distinct from CLOSE_ACCOUNT and the non-fast-path MERGE", () => {
+test("buildPlan › fused-close's own MERGE step (the co-signed forward) has its own exact title/description, distinct from CLOSE_ACCOUNT and the non-fused MERGE", () => {
   const account = makeAccount({ dataEntries: [{ key: "k", value: "" }] });
   const { steps } = buildPlan(account, true, true);
   const s = steps.find((x) => x.type === "MERGE")!;
@@ -1659,7 +1659,7 @@ test("buildPlan › fast-path's own MERGE step (the co-signed forward) has its o
   expect(s.operationCount).toBe(2);
 });
 
-test("buildPlan › fast-path CLOSE_ACCOUNT operationCount for extra signers uses +1 (removal + threshold reset), not -1", () => {
+test("buildPlan › fused-close CLOSE_ACCOUNT operationCount for extra signers uses +1 (removal + threshold reset), not -1", () => {
   const account = makeAccount({
     signers: [
       { key: MASTER, weight: 1, type: "ed25519_public_key" },
@@ -2047,7 +2047,7 @@ test("buildPlan › a detected Blend position becomes an EXIT_POSITIONS step ahe
   expect(types.indexOf("EXIT_POSITIONS")).toBeLessThan(types.indexOf("HANDLE_ASSETS"));
   expect(steps[0]!.affectedContract).toBe(BLEND_POOL);
   expect(steps[0]!.operationCount).toBe(2);
-  // Not fused: an exit needs its own rounds, so the fast path stays off even when eligible.
+  // Not fused: an exit needs its own rounds, so the fused close stays off even when eligible.
   expect(types).not.toContain("CLOSE_ACCOUNT");
   expect(steps.map((s) => s.index)).toEqual(steps.map((_, i) => i));
 });

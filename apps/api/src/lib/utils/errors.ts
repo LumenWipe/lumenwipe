@@ -326,13 +326,6 @@ export class NoConversionPathError extends Error {
   }
 }
 
-export class FastPathUnavailableError extends Error {
-  constructor(reason: string) {
-    super(reason);
-    this.name = "FastPathUnavailableError";
-  }
-}
-
 export class AssetRouteLostError extends Error {
   constructor(
     public readonly asset: string,

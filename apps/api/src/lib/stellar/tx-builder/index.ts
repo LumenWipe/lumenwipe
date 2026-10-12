@@ -412,7 +412,7 @@ export function buildPlan(
   // Balances that will actually need an operation: currently-claimable ones not explicitly
   // forfeited (the opt-out default), plus not-currently-claimable ones the caller chose to
   // remediate. Forfeited/unresolved balances need no operation at all - they're simply left
-  // behind. Reused by both the fast-path gate below and step generation further down.
+  // behind. Reused by both the fused-close gate below and step generation further down.
   const balancesNeedingClaimStep = claimableBalances.filter((b) =>
     isCurrentlyClaimable(b)
       ? claimableBalanceSelections[b.id] !== "forfeit"
@@ -423,7 +423,7 @@ export function buildPlan(
       !isCurrentlyClaimable(b) && claimableBalanceSelections[b.id] === "add_trustline_then_claim"
   );
 
-  // ─── Fast path: fuse the whole close into one transaction when eligible ──────
+  // ─── Fused close: fuse the whole close into one transaction when eligible ──────
   // Direct destination: a single CLOSE_ACCOUNT (cleanup + merge). Exchange: a
   // cleanup CLOSE_ACCOUNT plus the co-signed mediator MERGE. Excluded when any
   // blocker exists, when claimable balances are present (those route through the
@@ -442,7 +442,7 @@ export function buildPlan(
     signerOps + dataEntries.length + openOffers.length + convertible.length + trustlines.length + 1;
 
   // A forfeited-balance blocker is an acknowledged warning, not a hard stop (the user already
-  // chose to give up those funds) - every other blocker code still excludes the fast path.
+  // chose to give up those funds) - every other blocker code still excludes the fused close.
   const hasHardBlocker = blockers.some((b) => b.code !== "claimable_balance_forfeited");
 
   // A Soroban token the close moves (or has yet to decide about) is its own transaction ahead of
