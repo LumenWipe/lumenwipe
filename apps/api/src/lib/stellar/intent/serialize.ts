@@ -90,7 +90,7 @@ function normalizeOp(op: Transaction["operations"][number]): IntentOperationBody
       return {
         type: "manage_data",
         name: op.name,
-        value: op.value ? op.value.toString("base64") : null,
+        value: op.value ? Buffer.from(op.value).toString("base64") : null,
       };
     case "setOptions":
       return {
@@ -177,7 +177,11 @@ export function intentFromXdr(xdr: string, networkPassphrase: string): TxIntent 
     summary: "",
     source: tx.source,
     fee: tx.fee,
-    memo: memoValue ? memoValue.toString() : null,
+    memo: memoValue
+      ? memoValue instanceof Uint8Array
+        ? Buffer.from(memoValue).toString("utf8")
+        : memoValue.toString()
+      : null,
     memoType,
     guarantees: {
       mergeDestination: merge ? merge.destination : null,

@@ -29,7 +29,7 @@ export function verifyPreAuthTxHash(
 ): Transaction {
   let tx;
   try {
-    tx = TransactionBuilder.fromXDR(xdr, networkPassphrase);
+    tx = TransactionBuilder.fromXdr(xdr, networkPassphrase);
   } catch {
     throw new InvalidPreAuthTxError(
       "This does not look like a valid transaction. Paste the exact XDR you pre-authorized."

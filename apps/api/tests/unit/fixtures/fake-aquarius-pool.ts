@@ -15,6 +15,7 @@ import {
   type rpc,
 } from "@stellar/stellar-sdk";
 import type { ExitRpc } from "@/lib/defi-exits";
+import { v1Transaction } from "../../support/v1-transaction";
 
 export const AQ_CONSTANT_HASH = "d691135aade93ff0f7c229e009cde042130a05124cf7202b03d11246b4f9b473";
 export const AQ_STABLE_HASH = "22dff7242d2bc0ea4a4727b4b2cac33b188304d5945740ad24d8a33a5d22741e";
@@ -77,10 +78,10 @@ function instanceEntry(
   const key = new Contract(contract).getFootprint();
   const val = xdr.LedgerEntryData.contractData(
     new xdr.ContractDataEntry({
-      ext: new xdr.ExtensionPoint(0),
+      ext: xdr.ExtensionPoint.v0(),
       contract: new Address(contract).toScAddress(),
       key: xdr.ScVal.scvLedgerKeyContractInstance(),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
       val: xdr.ScVal.scvContractInstance(
         new xdr.ScContractInstance({
           executable,
@@ -102,15 +103,15 @@ function balanceEntry(token: string, account: string, amount: bigint): Entry {
       new xdr.LedgerKeyContractData({
         contract: new Address(token).toScAddress(),
         key,
-        durability: xdr.ContractDataDurability.persistent(),
+        durability: xdr.ContractDataDurability.persistent,
       })
     ),
     val: xdr.LedgerEntryData.contractData(
       new xdr.ContractDataEntry({
-        ext: new xdr.ExtensionPoint(0),
+        ext: xdr.ExtensionPoint.v0(),
         contract: new Address(token).toScAddress(),
         key,
-        durability: xdr.ContractDataDurability.persistent(),
+        durability: xdr.ContractDataDurability.persistent,
         val: i128(amount),
       })
     ),
@@ -126,7 +127,7 @@ export function dataKey(contract: string, key: xdr.ScVal): xdr.LedgerKey {
     new xdr.LedgerKeyContractData({
       contract: new Address(contract).toScAddress(),
       key,
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
     })
   );
 }
@@ -181,7 +182,7 @@ function sourceAuth(fn: string, account: string): string {
             ]
           : [],
     }),
-  }).toXDR("base64");
+  }).toXdr("base64");
 }
 
 /** The `get_rewards_info(user)` map the pool answers with. */
@@ -211,7 +212,7 @@ function simulation(
 ): rpc.Api.SimulateTransactionResponse {
   const builder = new SorobanDataBuilder().setResourceFee(12_345n).setResources(1_000, 2_000, 300);
   if (footprint) builder.setFootprint(footprint.readOnly, footprint.readWrite);
-  const transactionData = builder.build().toXDR("base64");
+  const transactionData = builder.build().toXdr("base64");
   const base = { id: "1", latestLedger: 1, events: [] as string[] };
   const body =
     mode === "error"
@@ -220,7 +221,7 @@ function simulation(
           ...base,
           minResourceFee: "12345",
           transactionData,
-          results: [{ auth, xdr: retval.toXDR("base64") }],
+          results: [{ auth, xdr: retval.toXdr("base64") }],
           ...(mode === "restore"
             ? { restorePreamble: { minResourceFee: "500", transactionData } }
             : {}),
@@ -230,11 +231,11 @@ function simulation(
 
 /** The contract function a simulated transaction's single invocation calls, or null. */
 function calledFunction(tx: Transaction): string | null {
-  const op = tx.toEnvelope().v1().tx().operations()[0];
-  if (!op || op.body().switch() !== xdr.OperationType.invokeHostFunction()) return null;
-  const fn = op.body().invokeHostFunctionOp().hostFunction();
-  if (fn.switch() !== xdr.HostFunctionType.hostFunctionTypeInvokeContract()) return null;
-  return fn.invokeContract().functionName().toString();
+  const op = v1Transaction(tx).operations[0];
+  if (!op || op.body.type !== "invokeHostFunction") return null;
+  const fn = op.body.invokeHostFunctionOp.hostFunction;
+  if (fn.type !== "hostFunctionTypeInvokeContract") return null;
+  return fn.invokeContract.functionName.toString();
 }
 
 export function fakeAquariusRpc(
@@ -291,13 +292,13 @@ export function fakeAquariusRpc(
   return {
     simulateCalls,
     async getLedgerEntries(...keys: xdr.LedgerKey[]) {
-      const wanted = new Set(keys.map((k) => k.toXDR("base64")));
+      const wanted = new Set(keys.map((k) => k.toXdr("base64")));
       // Stellar RPC rejects a request that names the same key twice; so does this stand-in.
       if (wanted.size !== keys.length) throw new Error("duplicate ledger keys in one request");
       return {
         latestLedger: 1,
         entries: entries
-          .filter((e) => wanted.has(e.key.toXDR("base64")))
+          .filter((e) => wanted.has(e.key.toXdr("base64")))
           .map((e) => ({ ...e, lastModifiedLedgerSeq: 1, liveUntilLedgerSeq: 100 })),
       };
     },

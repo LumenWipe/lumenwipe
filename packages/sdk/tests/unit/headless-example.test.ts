@@ -31,7 +31,7 @@ function closeTx(
     memo: options.memo,
   }).setTimeout(60);
   for (const op of ops) builder.addOperation(op);
-  return { xdr: builder.build().toEnvelope().toXDR("base64"), ...extra } as CloseTransaction;
+  return { xdr: builder.build().toEnvelope().toXdr("base64"), ...extra } as CloseTransaction;
 }
 
 const expected = { source, destination };

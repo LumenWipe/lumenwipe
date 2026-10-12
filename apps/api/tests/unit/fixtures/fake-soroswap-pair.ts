@@ -67,10 +67,10 @@ function instanceEntry(
   const key = new Contract(contract).getFootprint();
   const val = xdr.LedgerEntryData.contractData(
     new xdr.ContractDataEntry({
-      ext: new xdr.ExtensionPoint(0),
+      ext: xdr.ExtensionPoint.v0(),
       contract: new Address(contract).toScAddress(),
       key: xdr.ScVal.scvLedgerKeyContractInstance(),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
       val: xdr.ScVal.scvContractInstance(
         new xdr.ScContractInstance({
           executable,
@@ -130,20 +130,20 @@ export function fakeSoroswapRpc(
           xdr.ScVal.scvSymbol("Balance"),
           new Address(options.account).toScVal(),
         ]),
-        durability: xdr.ContractDataDurability.persistent(),
+        durability: xdr.ContractDataDurability.persistent,
       })
     );
     entries.push({
       key,
       val: xdr.LedgerEntryData.contractData(
         new xdr.ContractDataEntry({
-          ext: new xdr.ExtensionPoint(0),
+          ext: xdr.ExtensionPoint.v0(),
           contract: new Address(PAIR).toScAddress(),
           key: xdr.ScVal.scvVec([
             xdr.ScVal.scvSymbol("Balance"),
             new Address(options.account).toScVal(),
           ]),
-          durability: xdr.ContractDataDurability.persistent(),
+          durability: xdr.ContractDataDurability.persistent,
           val: i128(shares),
         })
       ),
@@ -165,11 +165,11 @@ export function fakeSoroswapRpc(
   return {
     simulateCalls,
     async getLedgerEntries(...keys: xdr.LedgerKey[]) {
-      const wanted = new Set(keys.map((k) => k.toXDR("base64")));
+      const wanted = new Set(keys.map((k) => k.toXdr("base64")));
       return {
         latestLedger: 1,
         entries: entries
-          .filter((e) => wanted.has(e.key.toXDR("base64")))
+          .filter((e) => wanted.has(e.key.toXdr("base64")))
           .map((e) => ({ ...e, lastModifiedLedgerSeq: 1, liveUntilLedgerSeq: 100 })),
       };
     },

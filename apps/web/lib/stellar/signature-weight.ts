@@ -1,6 +1,10 @@
 import { hash as sha256, Keypair, StrKey, TransactionBuilder } from "@stellar/stellar-sdk";
 import type { AccountSigner } from "@/types/account";
 
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && a.every((byte, i) => byte === b[i]);
+}
+
 export interface SignerContribution {
   signer: AccountSigner;
   contributed: boolean;
@@ -21,7 +25,7 @@ export function evaluateSignatureContributions(
   networkPassphrase: string,
   signers: AccountSigner[]
 ): SignerContribution[] {
-  const tx = TransactionBuilder.fromXDR(xdr, networkPassphrase);
+  const tx = TransactionBuilder.fromXdr(xdr, networkPassphrase);
   const txHash = tx.hash();
 
   return signers.map((signer) => {
@@ -29,7 +33,8 @@ export function evaluateSignatureContributions(
       const keypair = Keypair.fromPublicKey(signer.key);
       const hint = keypair.signatureHint();
       const contributed = tx.signatures.some(
-        (sig) => sig.hint().equals(hint) && keypair.verify(txHash, sig.signature())
+        (sig) =>
+          bytesEqual(sig.hint.toBytes(), hint) && keypair.verify(txHash, sig.signature.toBytes())
       );
       return { signer, contributed };
     }
@@ -37,7 +42,9 @@ export function evaluateSignatureContributions(
       const digest = StrKey.decodeSha256Hash(signer.key);
       const hint = digest.subarray(digest.length - 4);
       const contributed = tx.signatures.some(
-        (sig) => sig.hint().equals(hint) && sha256(sig.signature()).equals(digest)
+        (sig) =>
+          bytesEqual(sig.hint.toBytes(), hint) &&
+          bytesEqual(sha256(sig.signature.toBytes()), digest)
       );
       return { signer, contributed };
     }

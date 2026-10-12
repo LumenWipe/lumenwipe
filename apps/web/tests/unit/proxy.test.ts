@@ -1,11 +1,11 @@
 import { test, expect } from "bun:test";
 import { NextRequest } from "next/server";
-import { middleware } from "@/middleware";
+import { proxy } from "@/proxy";
 
 function cspFor(url = "https://www.lumenwipe.com/"): string {
-  const response = middleware(new NextRequest(url));
+  const response = proxy(new NextRequest(url));
   const csp = response.headers.get("Content-Security-Policy");
-  if (!csp) throw new Error("middleware did not set a Content-Security-Policy header");
+  if (!csp) throw new Error("proxy did not set a Content-Security-Policy header");
   return csp;
 }
 

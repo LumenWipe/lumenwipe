@@ -4,7 +4,7 @@
  * and the router call the step becomes.
  */
 import { describe, expect, test } from "bun:test";
-import { Address, scValToNative, xdr } from "@stellar/stellar-sdk";
+import { Address, scValToNative } from "@stellar/stellar-sdk";
 import type { SoroswapLpPosition } from "@lumenwipe/types";
 import {
   EXIT_POSITION_GONE,
@@ -33,6 +33,7 @@ import {
   randomAccount,
   type FakePairOptions,
 } from "./fixtures/fake-soroswap-pair";
+import { invokeContractArgs, v1TransactionFromXdr } from "../support/v1-transaction";
 
 const ACCOUNT = randomAccount();
 const SHARES = 100_000_000n; // 10 LP tokens of a 100-token supply: 10% of each reserve
@@ -187,12 +188,10 @@ describe("soroswap exit adapter", () => {
       ACCOUNT,
       String(Math.floor(ctx.now.getTime() / 1000) + 300),
     ]);
-    const envelope = xdr.TransactionEnvelope.fromXDR(next.simulation.txXdr, "base64");
-    const op = envelope.v1().tx().operations()[0]!.body().invokeHostFunctionOp();
-    const call = op.hostFunction().invokeContract();
-    expect(Address.fromScAddress(call.contractAddress()).toString()).toBe(ROUTER);
-    expect(call.functionName().toString()).toBe("remove_liquidity");
-    const args = call.args().map((a) => scValToNative(a) as unknown);
+    const call = invokeContractArgs(v1TransactionFromXdr(next.simulation.txXdr).operations[0]!);
+    expect(Address.fromScAddress(call.contractAddress).toString()).toBe(ROUTER);
+    expect(call.functionName.toString()).toBe("remove_liquidity");
+    const args = call.args.map((a) => scValToNative(a) as unknown);
     expect(args[0]).toBe(XLM_SAC);
     expect(args[1]).toBe(USDC_SAC);
     expect(args[2]).toBe(SHARES);

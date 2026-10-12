@@ -38,6 +38,7 @@ import {
   sameperiodFootprint,
   type FakeAquariusOptions,
 } from "./fixtures/fake-aquarius-pool";
+import { invokeContractArgs, v1TransactionFromXdr } from "../support/v1-transaction";
 
 const ACCOUNT = randomAccount();
 const SHARES = 100_000_000n; // 10% of the 1_000_000_000 total: 10% of each reserve
@@ -212,18 +213,12 @@ describe("aquarius exit adapter", () => {
 
   test("the built withdrawal names the account, every share, and one floor per token as u128", async () => {
     const result = await run();
-    const envelope = xdr.TransactionEnvelope.fromXDR(result.next!.simulation.txXdr, "base64");
-    const call = envelope
-      .v1()
-      .tx()
-      .operations()[0]!
-      .body()
-      .invokeHostFunctionOp()
-      .hostFunction()
-      .invokeContract();
-    expect(Address.fromScAddress(call.contractAddress()).toString()).toBe(POOL);
-    expect(call.functionName().toString()).toBe("withdraw");
-    const args = call.args().map((a) => scValToNative(a) as unknown);
+    const call = invokeContractArgs(
+      v1TransactionFromXdr(result.next!.simulation.txXdr).operations[0]!
+    );
+    expect(Address.fromScAddress(call.contractAddress).toString()).toBe(POOL);
+    expect(call.functionName.toString()).toBe("withdraw");
+    const args = call.args.map((a) => scValToNative(a) as unknown);
     expect(args).toEqual([ACCOUNT, SHARES, [99_500_000n, 199_000_000n]]);
     expect(result.next!.intent.args).toEqual([ACCOUNT, SHARES.toString(), "99500000", "199000000"]);
   });
@@ -370,15 +365,16 @@ describe("aquarius exit adapter", () => {
       dataKey(gauge, xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("UserRewardData"), addr(who)]));
     const addr = (a: string) => new Address(a).toScVal();
     const footprintOf = (txXdr: string) => {
-      const tx = xdr.TransactionEnvelope.fromXDR(txXdr, "base64").v1().tx();
-      const data = tx.ext().sorobanData();
-      const b64 = (k: xdr.LedgerKey) => k.toXDR("base64");
+      const tx = v1TransactionFromXdr(txXdr);
+      if (tx.ext.type !== "sorobanData") throw new Error("no soroban data");
+      const data = tx.ext.sorobanData;
+      const b64 = (k: xdr.LedgerKey) => k.toXdr("base64");
       return {
-        readOnly: data.resources().footprint().readOnly().map(b64),
-        readWrite: data.resources().footprint().readWrite().map(b64),
-        writeBytes: data.resources().writeBytes(),
-        resourceFee: data.resourceFee().toBigInt(),
-        fee: tx.fee(),
+        readOnly: data.resources.footprint.readOnly.map(b64),
+        readWrite: data.resources.footprint.readWrite.map(b64),
+        writeBytes: data.resources.writeBytes,
+        resourceFee: data.resourceFee,
+        fee: tx.fee,
       };
     };
 
@@ -388,17 +384,17 @@ describe("aquarius exit adapter", () => {
       const offered = footprintOf(result.next!.simulation.txXdr);
       const before = sameperiodFootprint(ACCOUNT, GAUGES);
       for (const gauge of GAUGES) {
-        const key = rewardKey(gauge, ACCOUNT).toXDR("base64");
+        const key = rewardKey(gauge, ACCOUNT).toXdr("base64");
         expect(offered.readOnly).not.toContain(key);
         expect(offered.readWrite).toContain(key);
       }
       // The pool instance, a stranger's reward data, and the account's XLM balance stay read-only;
       // the share balance was already writable.
-      const promoted = new Set(GAUGES.map((g) => rewardKey(g, ACCOUNT).toXDR("base64")));
+      const promoted = new Set(GAUGES.map((g) => rewardKey(g, ACCOUNT).toXdr("base64")));
       expect(offered.readOnly).toEqual(
-        before.readOnly.map((k) => k.toXDR("base64")).filter((k) => !promoted.has(k))
+        before.readOnly.map((k) => k.toXdr("base64")).filter((k) => !promoted.has(k))
       );
-      expect(offered.readWrite.slice(0, 1)).toEqual(before.readWrite.map((k) => k.toXDR("base64")));
+      expect(offered.readWrite.slice(0, 1)).toEqual(before.readWrite.map((k) => k.toXdr("base64")));
       expect(offered.readWrite).toHaveLength(3);
     });
 
@@ -418,10 +414,10 @@ describe("aquarius exit adapter", () => {
     test("a reward key the simulation already has read-write is not listed twice", async () => {
       const result = await run({ rewardGauges: GAUGES });
       const offered = footprintOf(result.next!.simulation.txXdr);
-      const key = rewardKey(GAUGES[0]!, ACCOUNT).toXDR("base64");
+      const key = rewardKey(GAUGES[0]!, ACCOUNT).toXdr("base64");
       expect(offered.readWrite.filter((k) => k === key)).toHaveLength(1);
       // Promoting again finds nothing left to move.
-      const tx = TransactionBuilder.fromXDR(
+      const tx = TransactionBuilder.fromXdr(
         result.next!.simulation.txXdr,
         "Test SDF Network ; September 2015"
       ) as Transaction;
@@ -430,7 +426,7 @@ describe("aquarius exit adapter", () => {
 
     test("with no reward key of the account's in the read-only set, the transaction is returned as is", async () => {
       const result = await run();
-      const tx = TransactionBuilder.fromXDR(
+      const tx = TransactionBuilder.fromXdr(
         result.next!.simulation.txXdr,
         "Test SDF Network ; September 2015"
       ) as Transaction;
@@ -447,14 +443,11 @@ describe("aquarius exit adapter", () => {
       // The simulation's authorization tree (the account's own credentials, through to the share
       // token's burn on a withdrawal) travels with the offered bytes.
       const withdraw = await run({ rewardGauges: GAUGES });
-      const op = xdr.TransactionEnvelope.fromXDR(withdraw.next!.simulation.txXdr, "base64")
-        .v1()
-        .tx()
-        .operations()[0]!
-        .body()
-        .invokeHostFunctionOp();
-      expect(op.auth()).toHaveLength(1);
-      expect(op.auth()[0]!.rootInvocation().subInvocations()).toHaveLength(1);
+      const body = v1TransactionFromXdr(withdraw.next!.simulation.txXdr).operations[0]!.body;
+      if (body.type !== "invokeHostFunction") throw new Error("not an invoke host function op");
+      const op = body.invokeHostFunctionOp;
+      expect(op.auth).toHaveLength(1);
+      expect(op.auth[0]!.rootInvocation.subInvocations).toHaveLength(1);
     });
   });
 });

@@ -2,16 +2,15 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "module": "commonjs",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "target": "ES2021",
     "lib": ["ES2022"],
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "types": ["node"],
     "noEmit": true,
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src/**/*.ts"],

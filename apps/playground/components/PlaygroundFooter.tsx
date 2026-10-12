@@ -1,4 +1,5 @@
-import { Github, ArrowUpRight } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
+import { GithubIcon } from "@/components/GithubIcon";
 import Logo from "./Logo";
 
 const MAIN_SITE = "https://lumenwipe.com";
@@ -68,7 +69,7 @@ export default function PlaygroundFooter() {
                 aria-label="GitHub"
                 className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-white/65 transition-colors hover:border-white/20 hover:text-white"
               >
-                <Github className="h-4 w-4" />
+                <GithubIcon className="h-4 w-4" />
               </a>
             </div>
           </div>

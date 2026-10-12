@@ -342,7 +342,7 @@ describe("sign: success", () => {
     const after = new Transaction(out.transaction, Networks.TESTNET);
     expect(balanceReads).toEqual([USER]);
     expect(after.signatures).toHaveLength(1);
-    expect(MEDIATOR.verify(after.hash(), after.signatures[0]!.signature())).toBe(true);
+    expect(MEDIATOR.verify(after.hash(), after.signatures[0]!.signature)).toBe(true);
     expect(after.hash()).toEqual(before.hash());
     expect(after.operations).toEqual(before.operations);
   });

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Menu, X, ArrowUpRight, Github } from "lucide-react";
+import { Menu, X, ArrowUpRight } from "lucide-react";
+import { GithubIcon } from "@/components/GithubIcon";
 import Logo from "./Logo";
 
 type NavLink = { href: string; label: string; external?: boolean };
@@ -93,7 +94,7 @@ export default function PlaygroundNav() {
             aria-label="GitHub repository"
             className="hidden h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-white/65 transition-colors hover:border-white/20 hover:text-white sm:inline-flex"
           >
-            <Github className="h-4 w-4" />
+            <GithubIcon className="h-4 w-4" />
           </a>
           <a
             href={APP}

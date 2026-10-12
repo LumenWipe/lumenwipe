@@ -1,4 +1,4 @@
-import { Contract, xdr, type rpc } from "@stellar/stellar-sdk";
+import { Contract, type rpc } from "@stellar/stellar-sdk";
 
 /** The one RPC read a contract-code check needs, so callers and tests can pass a stub. */
 export type LedgerEntriesReader = Pick<rpc.Server, "getLedgerEntries">;
@@ -17,9 +17,11 @@ export async function readLiveWasmHash(
   const res = await rpc.getLedgerEntries(contract.getFootprint());
   const entry = res.entries?.[0];
   if (!entry) return null;
-  const instance = entry.val.contractData().val().instance();
-  if (instance.executable().switch() !== xdr.ContractExecutableType.contractExecutableWasm()) {
-    return null;
+  const data = entry.val;
+  if (data.type !== "contractData" || data.contractData.val.type !== "scvContractInstance") {
+    throw new Error("the contract instance entry is malformed");
   }
-  return instance.executable().wasmHash().toString("hex");
+  const executable = data.contractData.val.instance.executable;
+  if (executable.type !== "contractExecutableWasm") return null;
+  return Buffer.from(executable.wasmHash.toBytes()).toString("hex");
 }

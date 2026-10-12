@@ -14,6 +14,7 @@ import {
   scValToNative,
   xdr,
 } from "@stellar/stellar-sdk";
+import { contractDataVal } from "./fixtures/ledger-entry";
 
 // E2E for the Soroswap exit, against live TESTNET, API-only (plan -> transactions -> sign ->
 // submit, repeated until done). It seeds a real LP position first: a throwaway classic asset gets
@@ -148,12 +149,12 @@ async function sharesOf(pair: string, owner: string): Promise<bigint> {
     new xdr.LedgerKeyContractData({
       contract: new Address(pair).toScAddress(),
       key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("Balance"), addr(owner)]),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
     })
   );
   const res = await server.getLedgerEntries(key);
   if (res.entries.length === 0) return BigInt(0);
-  return scValToNative(res.entries[0]!.val.contractData().val()) as bigint;
+  return scValToNative(contractDataVal(res.entries[0]!.val)) as bigint;
 }
 
 test.skip(
@@ -230,13 +231,13 @@ test("close API: a Soroswap LP position is withdrawn through the router, then th
           expect([ROUTER, pair, XLM_SAC, assetSac]).toContain(contract);
         }
       }
-      const tx = TransactionBuilder.fromXDR(
+      const tx = TransactionBuilder.fromXdr(
         closeTx.xdr,
         closeTx.networkPassphrase ?? Networks.TESTNET
       );
       tx.sign(source);
       const submitRes = await request.post("/api/v1/testnet/submit", {
-        data: { signedXdr: tx.toEnvelope().toXDR("base64") },
+        data: { signedXdr: tx.toEnvelope().toXdr("base64") },
       });
       expect(submitRes.ok(), await submitRes.text()).toBeTruthy();
       expect((await submitRes.json()).status).toBe("success");

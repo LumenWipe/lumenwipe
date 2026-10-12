@@ -4,6 +4,7 @@
  * Everything here talks to the public testnet RPC and Horizon; nothing touches mainnet.
  */
 import { expect } from "@playwright/test";
+import { contractDataVal } from "./ledger-entry";
 import {
   Address,
   Asset,
@@ -76,7 +77,7 @@ export async function confirmed(hash: string): Promise<void> {
       async () => {
         const result = await server.getTransaction(hash);
         if (result.status === rpc.Api.GetTransactionStatus.FAILED) {
-          throw new Error(`transaction ${hash} failed: ${result.resultXdr.toXDR("base64")}`);
+          throw new Error(`transaction ${hash} failed: ${result.resultXdr.toXdr("base64")}`);
         }
         return result.status;
       },
@@ -154,12 +155,12 @@ export async function tokenBalanceOf(token: string, owner: string): Promise<bigi
     new xdr.LedgerKeyContractData({
       contract: new Address(token).toScAddress(),
       key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("Balance"), addr(owner)]),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
     })
   );
   const res = await server.getLedgerEntries(key);
   if (res.entries.length === 0) return BigInt(0);
-  return scValToNative(res.entries[0]!.val.contractData().val()) as bigint;
+  return scValToNative(contractDataVal(res.entries[0]!.val)) as bigint;
 }
 
 // ─── Blend ───────────────────────────────────────────────────────────────────
@@ -200,13 +201,13 @@ export async function blendPositionExists(owner: string): Promise<boolean> {
     new xdr.LedgerKeyContractData({
       contract: new Address(BLEND_POOL).toScAddress(),
       key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("Positions"), addr(owner)]),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
     })
   );
   const res = await server.getLedgerEntries(key);
   if (res.entries.length === 0) return false;
   // Blend keeps the Positions entry after a full exit, with every map emptied.
-  const native = scValToNative(res.entries[0]!.val.contractData().val()) as Record<string, unknown>;
+  const native = scValToNative(contractDataVal(res.entries[0]!.val)) as Record<string, unknown>;
   const held = (v: unknown): number =>
     v instanceof Map ? v.size : v && typeof v === "object" ? Object.keys(v).length : 0;
   return ["supply", "collateral", "liabilities"].some((k) => held(native[k]) > 0);
@@ -290,11 +291,15 @@ const aquariusTokensVal = xdr.ScVal.scvVec(AQUARIUS_TOKENS.map(addr));
 
 /** The router's index (a 32-byte hash) for the pool under test, read from the raw map so the bytes
  *  survive - scValToNative would turn them into a lossy string. */
-async function aquariusPoolIndex(from: string): Promise<Buffer> {
+async function aquariusPoolIndex(from: string): Promise<Uint8Array> {
   const pools = await readOnlyRaw(from, AQUARIUS_ROUTER, "get_pools", aquariusTokensVal);
-  for (const entry of pools.map() ?? []) {
-    if (Address.fromScAddress(entry.val().address()).toString() === AQUARIUS_POOL) {
-      return Buffer.from(entry.key().bytes());
+  for (const entry of (pools.type === "scvMap" ? pools.map : null) ?? []) {
+    if (
+      entry.val.type === "scvAddress" &&
+      Address.fromScAddress(entry.val.address).toString() === AQUARIUS_POOL
+    ) {
+      if (entry.key.type !== "scvBytes") throw new Error("router index is not bytes");
+      return entry.key.bytes.toBytes();
     }
   }
   throw new Error(`pool ${AQUARIUS_POOL} is not in the router's XLM/AQUA set`);

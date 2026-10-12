@@ -12,6 +12,7 @@ import {
   type ExitStep,
 } from "./adapter";
 import { minReceivedFromQuote } from "./invariants";
+import { contractDataEntry, instanceOfEntry } from "@/lib/stellar/contract-data";
 
 /**
  * Soroswap exit (architecture.md §9.5): an LP position leaves through the router's
@@ -129,26 +130,23 @@ interface InstanceView {
 }
 
 function instanceView(val: xdr.LedgerEntryData): InstanceView {
-  const instance = val.contractData().val().instance();
-  const isStellarAsset =
-    instance.executable().switch() === xdr.ContractExecutableType.contractExecutableStellarAsset();
+  const instance = instanceOfEntry(val);
+  const isStellarAsset = instance.executable.type === "contractExecutableStellarAsset";
   const storage = new Map<string, xdr.ScVal>();
-  for (const entry of instance.storage() ?? []) {
+  for (const entry of instance.storage ?? []) {
     let name: unknown;
     try {
-      name = JSON.stringify(scValToNative(entry.key()));
+      name = JSON.stringify(scValToNative(entry.key));
     } catch {
       continue;
     }
-    if (typeof name === "string") storage.set(name, entry.val());
+    if (typeof name === "string") storage.set(name, entry.val);
   }
   return { isStellarAsset, storage };
 }
 
 const asAddress = (val: xdr.ScVal | undefined): string | null =>
-  val && val.switch() === xdr.ScValType.scvAddress()
-    ? Address.fromScAddress(val.address()).toString()
-    : null;
+  val && val.type === "scvAddress" ? Address.fromScAddress(val.address).toString() : null;
 
 const asI128 = (val: xdr.ScVal | undefined): bigint | null => {
   if (!val) return null;
@@ -162,7 +160,7 @@ async function readEntries(
 ): Promise<Map<string, xdr.LedgerEntryData>> {
   const res = await rpc.getLedgerEntries(...keys);
   const out = new Map<string, xdr.LedgerEntryData>();
-  for (const entry of res.entries ?? []) out.set(entry.key.toXDR("base64"), entry.val);
+  for (const entry of res.entries ?? []) out.set(entry.key.toXdr("base64"), entry.val);
   return out;
 }
 
@@ -200,11 +198,11 @@ export function soroswapExitAdapter(
               xdr.ScVal.scvSymbol("Balance"),
               new Address(ctx.account).toScVal(),
             ]),
-            durability: xdr.ContractDataDurability.persistent(),
+            durability: xdr.ContractDataDurability.persistent,
           })
         );
         const first = await readEntries(rpc, [instanceKey, balanceKey]);
-        const instanceVal = first.get(instanceKey.toXDR("base64"));
+        const instanceVal = first.get(instanceKey.toXdr("base64"));
         if (!instanceVal) return { status: "unreadable" };
         const { storage } = instanceView(instanceVal);
         const token0 = asAddress(storage.get(KEY_TOKEN_0));
@@ -227,9 +225,9 @@ export function soroswapExitAdapter(
         // ledger is not telling us the balance - archived, most likely, for a dormant position.
         // Absent must not read as zero: the round would take "gone" as done and merge the
         // account with its shares still in the pair.
-        const balanceVal = first.get(balanceKey.toXDR("base64"));
+        const balanceVal = first.get(balanceKey.toXdr("base64"));
         if (!balanceVal) return { status: "shares_unreadable" };
-        const shares = asI128(balanceVal.contractData().val());
+        const shares = asI128(contractDataEntry(balanceVal).val);
         if (shares === null) return { status: "unreadable" };
 
         // Which of the two tokens are Stellar Asset Contracts decides whether the account needs
@@ -246,13 +244,13 @@ export function soroswapExitAdapter(
           [token0, tokenKeys[0]!],
           [token1, tokenKeys[1]!],
         ] as const) {
-          const val = tokens.get(key.toXDR("base64"));
+          const val = tokens.get(key.toXdr("base64"));
           if (!val) return { status: "unreadable" };
           if (instanceView(val).isStellarAsset) stellarAssetTokens.add(token);
         }
         let feesEnabled = false;
         if (factoryKey) {
-          const factoryVal = tokens.get(factoryKey.toXDR("base64"));
+          const factoryVal = tokens.get(factoryKey.toXdr("base64"));
           if (!factoryVal) return { status: "unreadable" };
           const flag = instanceView(factoryVal).storage.get(KEY_FEES_ENABLED);
           feesEnabled = flag !== undefined && scValToNative(flag) === true;

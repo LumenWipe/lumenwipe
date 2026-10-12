@@ -92,9 +92,9 @@ test("close API: plan -> transactions -> sign -> submit merges a fresh account",
   expect(txBody.remaining.requiresAnotherCall).toBe(false);
 
   // 3. Sign locally - keys never leave the client.
-  const tx = TransactionBuilder.fromXDR(closeTx.xdr, closeTx.networkPassphrase ?? Networks.TESTNET);
+  const tx = TransactionBuilder.fromXdr(closeTx.xdr, closeTx.networkPassphrase ?? Networks.TESTNET);
   tx.sign(source);
-  const signedXdr = tx.toEnvelope().toXDR("base64");
+  const signedXdr = tx.toEnvelope().toXdr("base64");
 
   // 4. Submit through the API.
   const submitRes = await request.post("/api/v1/testnet/submit", { data: { signedXdr } });

@@ -13,29 +13,30 @@
   },
   "dependencies": {
     "@lumenwipe/sdk": "workspace:*",
-    "@stellar/stellar-sdk": "16.0.1",
+    "@stellar/stellar-sdk": "17.2.1",
     "@upstash/redis": "^1.39.0",
-    "lucide-react": "^0.447.0",
-    "motion": "^12.43.0",
-    "next": "^15.5.27",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "lucide-react": "^1.55.0",
+    "motion": "^14.1.0",
+    "next": "^16.4.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "server-only": "^0.0.1",
-    "uuid": "^11.1.1",
-    "zustand": "^4.5.7"
+    "uuid": "^14.0.3",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "@types/bun": "^1.4.0",
-    "@types/node": "^26.0.0",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.5",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/bun": "^1.4.3",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@types/uuid": "^11.0.0",
-    "autoprefixer": "^10.5.4",
-    "eslint": "^8.57.1",
-    "eslint-config-next": "^15.5.27",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "eslint": "^10.12.0",
+    "eslint-config-next": "^16.4.0",
     "eslint-config-prettier": "^10.1.8",
-    "postcss": "^8.5.26",
-    "tailwindcss": "^3.4.19",
-    "typescript": "^5.9.3"
+    "postcss": "^8.5.29",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3"
   }
 }

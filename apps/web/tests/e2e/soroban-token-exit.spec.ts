@@ -81,13 +81,13 @@ async function runClose(
     for (const closeTx of transactions) {
       covered.push(closeTx.covers as string[]);
       onTransaction(closeTx);
-      const tx = TransactionBuilder.fromXDR(
+      const tx = TransactionBuilder.fromXdr(
         closeTx.xdr as string,
         (closeTx.networkPassphrase as string) ?? Networks.TESTNET
       );
       tx.sign(source);
       const submitRes = await request.post("/api/v1/testnet/submit", {
-        data: { signedXdr: tx.toEnvelope().toXDR("base64") },
+        data: { signedXdr: tx.toEnvelope().toXdr("base64") },
       });
       const intent = closeTx.intent as { summary: string };
       const label = `${(closeTx.covers as string[]).join("+")} · ${intent.summary} · source ${source.publicKey()} · xdr ${closeTx.xdr}`;

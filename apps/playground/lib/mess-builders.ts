@@ -113,7 +113,7 @@ export async function buildSignSubmit(
     tx.sign(sourceKeypair, ...extraSigners);
 
     try {
-      const { txHash } = await submit(tx.toEnvelope().toXDR("base64"));
+      const { txHash } = await submit(tx.toEnvelope().toXdr("base64"));
       return txHash;
     } catch (err) {
       lastErr = err;

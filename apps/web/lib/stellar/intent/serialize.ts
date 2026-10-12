@@ -1,7 +1,22 @@
 import { TransactionBuilder, StrKey, type Asset, type Transaction } from "@stellar/stellar-sdk";
 import { describeInvocation } from "./invocation";
+import { toBase64, toHex } from "@/lib/stellar/hex";
 import type { AccountSigner } from "@/types/account";
 import type { IntentOperation, IntentOperationBody, TxIntent } from "@/types/close-api";
+
+function signerBytes(value: string | Uint8Array | undefined): Uint8Array {
+  if (!(value instanceof Uint8Array)) throw new Error("Signer key was not decoded to raw bytes.");
+  return value;
+}
+
+function memoToString(
+  value: string | Uint8Array | null | undefined,
+  type: "text" | "id" | "hash" | null
+): string | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "string") return value;
+  return type === "hash" ? toHex(value) : new TextDecoder().decode(value);
+}
 
 function assetToString(asset: Asset): string {
   return asset.isNative() ? "native" : `${asset.getCode()}:${asset.getIssuer()}`;
@@ -25,19 +40,18 @@ function decodeSigner(signer: NonNullable<DecodedSetOptions["signer"]>): Account
     };
   }
   if ("sha256Hash" in signer) {
-    // The decode path (Transaction.operations via TransactionBuilder.fromXDR) always yields a
-    // raw Buffer here - the SDK's `Buffer | string` type only allows `string` for the
-    // operation-*building* input, never what decoding produces.
+    // The decode path (Transaction.operations via TransactionBuilder.fromXdr) always yields raw
+    // bytes here - never the string form only the operation-building input accepts.
     return {
       type: "hash_x",
-      key: StrKey.encodeSha256Hash(signer.sha256Hash! as Buffer),
+      key: StrKey.encodeSha256Hash(signerBytes(signer.sha256Hash)),
       weight: Number(signer.weight),
     };
   }
   if ("preAuthTx" in signer) {
     return {
       type: "preauth_tx",
-      key: StrKey.encodePreAuthTx(signer.preAuthTx! as Buffer),
+      key: StrKey.encodePreAuthTx(signerBytes(signer.preAuthTx)),
       weight: Number(signer.weight),
     };
   }
@@ -86,7 +100,7 @@ function normalizeOp(op: Transaction["operations"][number]): IntentOperationBody
       return {
         type: "manage_data",
         name: op.name,
-        value: op.value ? op.value.toString("base64") : null,
+        value: op.value ? toBase64(op.value) : null,
       };
     case "setOptions":
       return {
@@ -135,7 +149,7 @@ function sumAmounts(a: string, b: string): string {
 // Pure: no network access. The future SDK verify() re-runs this and asserts the
 // result matches what the API declared before signing.
 export function intentFromXdr(xdr: string, networkPassphrase: string): TxIntent {
-  const tx = TransactionBuilder.fromXDR(xdr, networkPassphrase) as Transaction;
+  const tx = TransactionBuilder.fromXdr(xdr, networkPassphrase) as Transaction;
 
   // `op.source ?? tx.source` is the account an operation acts as. Carrying it per operation is
   // what lets verification check relationships between operations - that the account which
@@ -176,7 +190,7 @@ export function intentFromXdr(xdr: string, networkPassphrase: string): TxIntent 
     summary: "",
     source: tx.source,
     fee: tx.fee,
-    memo: memoValue ? memoValue.toString() : null,
+    memo: memoToString(memoValue, memoType),
     memoType,
     guarantees: {
       mergeDestination: merge ? merge.destination : null,

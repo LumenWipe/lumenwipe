@@ -68,7 +68,7 @@ describe("FeeBumpController.sponsor", () => {
     // Signed by the fee account and nothing else - the inner transaction's own signatures (or
     // lack of them) are untouched, and this wrapper carries none of its own besides the sponsor's.
     expect(feeBump.signatures).toHaveLength(1);
-    const sigOk = FEE_ACCOUNT.verify(feeBump.hash(), feeBump.signatures[0]!.signature());
+    const sigOk = FEE_ACCOUNT.verify(feeBump.hash(), feeBump.signatures[0]!.signature);
     expect(sigOk).toBe(true);
     // The fee is capped and computed from the fee account's own choice of base fee, never from
     // anything the caller supplied.

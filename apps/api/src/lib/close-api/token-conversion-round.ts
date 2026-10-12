@@ -1,4 +1,5 @@
 import type { AccountState, AssetDisposition, CloseTransaction, Network } from "@lumenwipe/types";
+import { envelopeOps, invokedContract } from "@/lib/stellar/envelope-ops";
 import {
   Address,
   Contract,
@@ -115,11 +116,11 @@ export async function resolveXBullPath(
   rpc: Pick<stellarRpc.Server, "getLedgerEntries">,
   contractArgsXDR: string
 ): Promise<string[]> {
-  const contractArgs = xdr.InvokeContractArgs.fromXDR(contractArgsXDR, "base64");
-  const args = contractArgs.args();
+  const contractArgs = xdr.InvokeContractArgs.fromXdr(contractArgsXDR, "base64");
+  const args = contractArgs.args;
   const pathArg = args[4]!;
   const tuples = scValToNative(pathArg) as number[][];
-  const contract = new Contract(Address.fromScAddress(contractArgs.contractAddress()).toString());
+  const contract = new Contract(Address.fromScAddress(contractArgs.contractAddress).toString());
   const IN_INDEX_POSITION = 1;
   const OUT_INDEX_POSITION = 3;
   const indices = new Set<number>();
@@ -139,13 +140,16 @@ export async function resolveXBullPath(
         new xdr.LedgerKeyContractData({
           contract: contract.address().toScAddress(),
           key,
-          durability: xdr.ContractDataDurability.persistent(),
+          durability: xdr.ContractDataDurability.persistent,
         })
       )
     );
     const entry = entries.entries?.[0];
     if (!entry) throw new Error(`xBull's asset map has no entry for index ${index}`);
-    resolved.set(index, scValToNative(entry.val.contractData().val()) as string);
+    if (entry.val.type !== "contractData") {
+      throw new Error(`xBull's asset map entry for index ${index} is not contract data`);
+    }
+    resolved.set(index, scValToNative(entry.val.contractData.val) as string);
   }
   return tuples.flatMap((hop, i) =>
     i === 0
@@ -187,8 +191,8 @@ function assertSwapArgs(
     const min = bigOf(minOut!);
     if (min === null || min < expected.minOut)
       throw new Error("amount_out_min is below your floor");
-    if (path!.switch() !== xdr.ScValType.scvVec()) throw new Error("path is not a list");
-    const hops = (path!.vec() ?? []).map(addressOf);
+    if (path!.type !== "scvVec") throw new Error("path is not a list");
+    const hops = (path!.vec ?? []).map(addressOf);
     if (hops.length < 2 || hops[0] !== expected.token || hops[hops.length - 1] !== expected.xlm) {
       throw new Error("the route does not go from this token to XLM");
     }
@@ -215,10 +219,9 @@ function assertSwapArgs(
   if (addressOf(tokenOut!) !== expected.xlm) throw new Error("token_out is not XLM");
   const min = bigOf(minOut!);
   if (min === null || min < expected.minOut) throw new Error("min_out is below your floor");
-  if (routes!.switch() !== xdr.ScValType.scvVec()) throw new Error("routes is not a list");
+  if (routes!.type !== "scvVec") throw new Error("routes is not a list");
   // A partner replaces the aggregator's own 10 bps fee with its own, from 25 bps up to 10%.
-  if (partner!.switch() !== xdr.ScValType.scvVoid())
-    throw new Error("the swap names a fee partner");
+  if (partner!.type !== "scvVoid") throw new Error("the swap names a fee partner");
 }
 
 /**
@@ -232,13 +235,13 @@ function walkAuth(
   depth: number
 ): bigint {
   if (depth > MAX_AUTH_DEPTH) throw new Error("the authorization tree nests deeper than a swap");
-  const fn = node.function();
-  if (fn.switch() !== xdr.SorobanAuthorizedFunctionType.sorobanAuthorizedFunctionTypeContractFn()) {
+  const fn = node.function;
+  if (fn.type !== "sorobanAuthorizedFunctionTypeContractFn") {
     throw new Error("the signature would authorize something other than a contract call");
   }
-  const call = fn.contractFn();
-  const contract = Address.fromScAddress(call.contractAddress()).toString();
-  const name = call.functionName().toString();
+  const call = fn.contractFn;
+  const contract = Address.fromScAddress(call.contractAddress).toString();
+  const name = call.functionName.toString();
   const reachable = new Set([
     ...expected.allowed.aggregator,
     ...expected.allowed.adapters,
@@ -261,7 +264,7 @@ function walkAuth(
   }
   if (contract === expected.token) {
     if (name !== "transfer") throw new Error(`the signature would authorize ${name} on the token`);
-    const args = call.args();
+    const args = call.args;
     if (args.length !== 3) throw new Error("a token transfer takes three arguments");
     if (addressOf(args[0]!) !== expected.account) {
       throw new Error("a token transfer would spend a balance other than this account's");
@@ -274,11 +277,11 @@ function walkAuth(
     if (amount === null || amount <= 0n) throw new Error("a token transfer has no readable amount");
     moved += amount;
   }
-  for (const arg of call.args()) {
+  for (const arg of call.args) {
     // No Stellar account may appear anywhere but as the account itself.
     collectAccounts(arg, expected.account);
   }
-  for (const sub of node.subInvocations()) moved += walkAuth(sub, expected, depth + 1);
+  for (const sub of node.subInvocations) moved += walkAuth(sub, expected, depth + 1);
   return moved;
 }
 
@@ -302,28 +305,28 @@ export function assertConversionShape(tx: Transaction, expected: ExpectedConvers
   if (maxTime < BigInt(expected.nowSeconds) + SIGNING_BUFFER_SECONDS) {
     throw new Error("the transaction expires before it can be signed");
   }
-  const ops = tx.toEnvelope().v1().tx().operations();
+  const ops = envelopeOps(tx);
   if (ops.length !== 1) throw new Error(`expected one operation, found ${ops.length}`);
   const op = ops[0]!;
-  const src = op.sourceAccount();
+  const src = op.sourceAccount;
   if (src) {
     if (
-      src.switch() !== xdr.CryptoKeyType.keyTypeEd25519() ||
-      Address.account(src.ed25519()).toString() !== expected.account
+      src.type !== "keyTypeEd25519" ||
+      Address.account(src.ed25519.toBytes()).toString() !== expected.account
     ) {
       throw new Error("the operation acts for another account");
     }
   }
-  if (op.body().switch() !== xdr.OperationType.invokeHostFunction()) {
+  if (op.body.type !== "invokeHostFunction") {
     throw new Error("the operation is not a contract invocation");
   }
-  const host = op.body().invokeHostFunctionOp();
-  const fn = host.hostFunction();
-  if (fn.switch() !== xdr.HostFunctionType.hostFunctionTypeInvokeContract()) {
+  const host = op.body.invokeHostFunctionOp;
+  const fn = host.hostFunction;
+  if (fn.type !== "hostFunctionTypeInvokeContract") {
     throw new Error("the invocation is not a contract call");
   }
-  const call = fn.invokeContract();
-  const contract = Address.fromScAddress(call.contractAddress()).toString();
+  const call = fn.invokeContract;
+  const contract = Address.fromScAddress(call.contractAddress).toString();
   const kind = expected.allowed.aggregator.includes(contract)
     ? "aggregator"
     : expected.allowed.routers.includes(contract)
@@ -335,31 +338,26 @@ export function assertConversionShape(tx: Transaction, expected: ExpectedConvers
     );
   }
   const swapFunction = kind === "aggregator" ? AGGREGATOR_SWAP_FUNCTION : SWAP_FUNCTION;
-  if (call.functionName().toString() !== swapFunction) {
-    throw new Error(`the call is ${call.functionName().toString()}, not ${swapFunction}`);
+  if (call.functionName.toString() !== swapFunction) {
+    throw new Error(`the call is ${call.functionName.toString()}, not ${swapFunction}`);
   }
-  assertSwapArgs(call.args(), kind, expected);
+  assertSwapArgs(call.args, kind, expected);
 
-  if (host.auth().length === 0) throw new Error("the build produced no authorization for the swap");
+  if (host.auth.length === 0) throw new Error("the build produced no authorization for the swap");
   let moved = 0n;
-  for (const auth of host.auth()) {
-    if (
-      auth.credentials().switch() !== xdr.SorobanCredentialsType.sorobanCredentialsSourceAccount()
-    ) {
+  for (const auth of host.auth) {
+    if (auth.credentials.type !== "sorobanCredentialsSourceAccount") {
       throw new Error("an authorization entry carries credentials other than the account's own");
     }
-    const root = auth.rootInvocation();
-    const rootFn = root.function();
-    if (
-      rootFn.switch() !==
-      xdr.SorobanAuthorizedFunctionType.sorobanAuthorizedFunctionTypeContractFn()
-    ) {
+    const root = auth.rootInvocation;
+    const rootFn = root.function;
+    if (rootFn.type !== "sorobanAuthorizedFunctionTypeContractFn") {
       throw new Error("an authorization entry is not a plain contract call");
     }
-    const rootCall = rootFn.contractFn();
+    const rootCall = rootFn.contractFn;
     if (
-      Address.fromScAddress(rootCall.contractAddress()).toString() !== contract ||
-      rootCall.functionName().toString() !== swapFunction
+      Address.fromScAddress(rootCall.contractAddress).toString() !== contract ||
+      rootCall.functionName.toString() !== swapFunction
     ) {
       throw new Error("an authorization entry authorizes a call other than this swap");
     }
@@ -512,18 +510,7 @@ export async function buildTokenConversionRound(
           nowSeconds: Math.floor(deps.xbull.xbull.now() / 1000),
         });
         // The address is in the registry; the code behind it must be what the registry verified.
-        const called = Address.fromScAddress(
-          tx
-            .toEnvelope()
-            .v1()
-            .tx()
-            .operations()[0]!
-            .body()
-            .invokeHostFunctionOp()
-            .hostFunction()
-            .invokeContract()
-            .contractAddress()
-        ).toString();
+        const called = invokedContract(tx);
         const hash = await readLiveWasmHash(deps.rpc, called);
         const resolved = resolveWasmHash(network, hash ?? "");
         if (
@@ -618,18 +605,7 @@ export async function buildTokenConversionRound(
         nowSeconds: Math.floor(deps.conversion.now() / 1000),
       });
       // The address is in the registry; the code behind it must be what the registry verified.
-      const called = Address.fromScAddress(
-        tx
-          .toEnvelope()
-          .v1()
-          .tx()
-          .operations()[0]!
-          .body()
-          .invokeHostFunctionOp()
-          .hostFunction()
-          .invokeContract()
-          .contractAddress()
-      ).toString();
+      const called = invokedContract(tx);
       const hash = await readLiveWasmHash(deps.rpc, called);
       const resolved = resolveWasmHash(network, hash ?? "");
       if (

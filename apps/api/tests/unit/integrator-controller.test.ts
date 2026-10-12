@@ -198,7 +198,7 @@ describe("auth endpoints", () => {
     const kp = Keypair.random();
     const { message } = controller.challenge({ address: kp.publicKey() });
     const digest = createHash("sha256").update(`Stellar Signed Message:\n${message}`).digest();
-    const signature = kp.sign(digest).toString("base64");
+    const signature = Buffer.from(kp.sign(digest)).toString("base64");
     const session = controller.session({ address: kp.publicKey(), message, signature });
     expect(session.token.startsWith("lws.")).toBe(true);
   });

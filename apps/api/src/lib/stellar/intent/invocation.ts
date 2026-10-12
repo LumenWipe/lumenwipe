@@ -11,11 +11,11 @@ interface Referenced {
 }
 
 function collectAddress(address: xdr.ScAddress, into: Referenced): void {
-  switch (address.switch()) {
-    case xdr.ScAddressType.scAddressTypeAccount():
+  switch (address.type) {
+    case "scAddressTypeAccount":
       into.accounts.add(Address.fromScAddress(address).toString());
       return;
-    case xdr.ScAddressType.scAddressTypeContract():
+    case "scAddressTypeContract":
       into.contracts.add(Address.fromScAddress(address).toString());
       return;
     default:
@@ -25,17 +25,17 @@ function collectAddress(address: xdr.ScAddress, into: Referenced): void {
 
 /** Every address that appears anywhere inside a value, at any depth. */
 function collectFromValue(value: xdr.ScVal, into: Referenced): void {
-  switch (value.switch()) {
-    case xdr.ScValType.scvAddress():
-      collectAddress(value.address(), into);
+  switch (value.type) {
+    case "scvAddress":
+      collectAddress(value.address, into);
       return;
-    case xdr.ScValType.scvVec():
-      for (const item of value.vec() ?? []) collectFromValue(item, into);
+    case "scvVec":
+      for (const item of value.vec ?? []) collectFromValue(item, into);
       return;
-    case xdr.ScValType.scvMap():
-      for (const entry of value.map() ?? []) {
-        collectFromValue(entry.key(), into);
-        collectFromValue(entry.val(), into);
+    case "scvMap":
+      for (const entry of value.map ?? []) {
+        collectFromValue(entry.key, into);
+        collectFromValue(entry.val, into);
       }
       return;
     default:
@@ -68,22 +68,22 @@ function collectFromInvocation(
   topLevel: { contract: string; function: string },
   isEntryRoot: boolean
 ): boolean {
-  const fn = node.function();
-  if (fn.switch() !== xdr.SorobanAuthorizedFunctionType.sorobanAuthorizedFunctionTypeContractFn()) {
+  const fn = node.function;
+  if (fn.type !== "sorobanAuthorizedFunctionTypeContractFn") {
     return false;
   }
-  const call = fn.contractFn();
-  const contract = Address.fromScAddress(call.contractAddress()).toString();
-  const functionName = call.functionName().toString();
-  collectAddress(call.contractAddress(), into);
-  for (const arg of call.args()) collectFromValue(arg, into);
+  const call = fn.contractFn;
+  const contract = Address.fromScAddress(call.contractAddress).toString();
+  const functionName = call.functionName.toString();
+  collectAddress(call.contractAddress, into);
+  for (const arg of call.args) collectFromValue(arg, into);
   const isTopLevelCall =
     isEntryRoot && contract === topLevel.contract && functionName === topLevel.function;
   if (!isTopLevelCall) {
-    subInvocations.push({ contract, function: functionName, args: call.args().map(render) });
+    subInvocations.push({ contract, function: functionName, args: call.args.map(render) });
   }
   let plain = true;
-  for (const sub of node.subInvocations()) {
+  for (const sub of node.subInvocations) {
     plain = collectFromInvocation(sub, into, subInvocations, topLevel, false) && plain;
   }
   return plain;
@@ -92,7 +92,7 @@ function collectFromInvocation(
 /** How many levels of nested calls an authorized invocation carries: 0 for a lone call. */
 function invocationDepth(node: xdr.SorobanAuthorizedInvocation): number {
   let deepest = 0;
-  for (const sub of node.subInvocations()) deepest = Math.max(deepest, 1 + invocationDepth(sub));
+  for (const sub of node.subInvocations) deepest = Math.max(deepest, 1 + invocationDepth(sub));
   return deepest;
 }
 
@@ -104,7 +104,7 @@ function render(value: xdr.ScVal): string {
     if (typeof native === "bigint" || typeof native === "number") return native.toString();
     return JSON.stringify(native, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v));
   } catch {
-    return value.toXDR("base64");
+    return value.toXdr("base64");
   }
 }
 
@@ -122,33 +122,29 @@ function render(value: xdr.ScVal): string {
  */
 export function describeInvocation(op: Operation.InvokeHostFunction): IntentOperationBody {
   const func = op.func;
-  if (func.switch() !== xdr.HostFunctionType.hostFunctionTypeInvokeContract()) {
+  if (func.type !== "hostFunctionTypeInvokeContract") {
     return { type: "unknown" };
   }
-  const invocation = func.invokeContract();
+  const invocation = func.invokeContract;
   const referenced: Referenced = { accounts: new Set(), contracts: new Set(), unsupported: 0 };
-  const args = invocation.args();
+  const args = invocation.args;
   for (const arg of args) collectFromValue(arg, referenced);
   const topLevel = {
-    contract: Address.fromScAddress(invocation.contractAddress()).toString(),
-    function: invocation.functionName().toString(),
+    contract: Address.fromScAddress(invocation.contractAddress).toString(),
+    function: invocation.functionName.toString(),
   };
 
   let authorizesBeyondSelf = false;
   let authDepth = 0;
   const subInvocations: SubInvocationCall[] = [];
   for (const entry of op.auth ?? []) {
-    authDepth = Math.max(authDepth, invocationDepth(entry.rootInvocation()));
-    if (
-      entry.credentials().switch() !== xdr.SorobanCredentialsType.sorobanCredentialsSourceAccount()
-    ) {
+    authDepth = Math.max(authDepth, invocationDepth(entry.rootInvocation));
+    if (entry.credentials.type !== "sorobanCredentialsSourceAccount") {
       // Credentials for some other address: the transaction would carry another party's
       // authorization, which a single-account close never needs.
       authorizesBeyondSelf = true;
     }
-    if (
-      !collectFromInvocation(entry.rootInvocation(), referenced, subInvocations, topLevel, true)
-    ) {
+    if (!collectFromInvocation(entry.rootInvocation, referenced, subInvocations, topLevel, true)) {
       authorizesBeyondSelf = true;
     }
   }

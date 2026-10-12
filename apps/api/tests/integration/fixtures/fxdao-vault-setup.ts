@@ -24,6 +24,7 @@ import {
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { submitAndWait } from "@/lib/stellar/submit";
+import { contractDataEntry, instanceOfEntry } from "@/lib/stellar/contract-data";
 
 export const FXDAO_VAULT = "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N";
 export const FXDAO_ORACLE = "CBWWY2QDQ2UVCUBR2SHWML7R5MN7I6WA5TDJCOPHKLE3RHQO2OSFOUDJ";
@@ -84,7 +85,7 @@ async function buildSignSubmit(source: Keypair, op: xdr.Operation): Promise<void
   }
   const assembled = stellarRpc.assembleTransaction(tx, simulation).build();
   assembled.sign(source);
-  await submitAndWait(assembled.toXDR(), "testnet");
+  await submitAndWait(assembled.toXdr(), "testnet");
 }
 
 /**
@@ -146,29 +147,33 @@ function vaultLedgerKey(account: string, denomination: string): xdr.LedgerKey {
     new xdr.LedgerKeyContractData({
       contract: new Address(FXDAO_VAULT).toScAddress(),
       key: variantVal("Vault", xdr.ScVal.scvVec([addressVal(account), symbolVal(denomination)])),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
     })
   );
 }
 
 function mapView(val: xdr.ScVal): Map<string, xdr.ScVal> {
   const out = new Map<string, xdr.ScVal>();
-  if (val.switch() !== xdr.ScValType.scvMap()) return out;
-  for (const entry of val.map() ?? []) {
-    const key = entry.key();
-    if (key.switch() === xdr.ScValType.scvSymbol()) out.set(key.sym().toString(), entry.val());
+  if (val.type !== "scvMap") return out;
+  for (const entry of val.map ?? []) {
+    const key = entry.key;
+    if (key.type === "scvSymbol") out.set(key.sym.toString(), entry.val);
   }
   return out;
 }
 
 function decodeOptionalKey(val: xdr.ScVal | undefined): VaultKeyLike | null {
-  if (!val || val.switch() !== xdr.ScValType.scvVec()) return null;
-  const vec = val.vec() ?? [];
-  if (vec[0]?.sym().toString() !== "Some" || !vec[1]) return null;
+  if (!val || val.type !== "scvVec") return null;
+  const vec = val.vec ?? [];
+  const tag = vec[0];
+  if (tag?.type !== "scvSymbol" || tag.sym.toString() !== "Some" || !vec[1]) return null;
   const fields = mapView(vec[1]);
+  const account = fields.get("account");
+  const denomination = fields.get("denomination");
+  if (account?.type !== "scvAddress" || denomination?.type !== "scvSymbol") return null;
   return {
-    account: Address.fromScAddress(fields.get("account")!.address()).toString(),
-    denomination: fields.get("denomination")!.sym().toString(),
+    account: Address.fromScAddress(account.address).toString(),
+    denomination: denomination.sym.toString(),
     index: BigInt(scValToNative(fields.get("index")!) as bigint),
   };
 }
@@ -185,13 +190,13 @@ export async function findFxdaoInsertionPrevKey(): Promise<VaultKeyLike | null> 
   const instanceRes = await rpc.getLedgerEntries(instanceKey);
   const instanceVal = instanceRes.entries?.[0]?.val;
   if (!instanceVal) throw new Error("fxdao vault instance entry not found");
-  const storage = instanceVal.contractData().val().instance().storage() ?? [];
+  const storage = instanceOfEntry(instanceVal).storage ?? [];
   let vaultsInfoVal: xdr.ScVal | undefined;
   for (const entry of storage) {
     try {
-      const native = scValToNative(entry.key());
+      const native = scValToNative(entry.key);
       if (Array.isArray(native) && native[0] === "VaultsInfo" && native[1] === FXDAO_DENOMINATION) {
-        vaultsInfoVal = entry.val();
+        vaultsInfoVal = entry.val;
       }
     } catch {
       continue;
@@ -205,7 +210,7 @@ export async function findFxdaoInsertionPrevKey(): Promise<VaultKeyLike | null> 
     const res = await rpc.getLedgerEntries(key);
     const val = res.entries?.[0]?.val;
     if (!val) throw new Error(`fxdao vault entry for ${cursor.account} not found mid-chain`);
-    const fields = mapView(val.contractData().val());
+    const fields = mapView(contractDataEntry(val).val);
     const next = decodeOptionalKey(fields.get("next_key"));
     if (!next) return cursor;
     cursor = next;

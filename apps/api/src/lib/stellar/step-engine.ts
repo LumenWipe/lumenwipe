@@ -37,7 +37,7 @@ export async function filterExistingClaimableBalances(
   const keys = balances.map((b) =>
     xdr.LedgerKey.claimableBalance(
       new xdr.LedgerKeyClaimableBalance({
-        balanceId: xdr.ClaimableBalanceId.fromXDR(b.id, "hex"),
+        balanceId: xdr.ClaimableBalanceId.fromXdr(b.id, "hex"),
       })
     )
   );
@@ -45,7 +45,9 @@ export async function filterExistingClaimableBalances(
   try {
     const res = await server.getLedgerEntries(...keys);
     const existingIds = new Set(
-      (res.entries ?? []).map((e) => e.key.claimableBalance().balanceId().toXDR("hex"))
+      (res.entries ?? []).flatMap((e) =>
+        e.key.type === "claimableBalance" ? [e.key.claimableBalance.balanceId.toXdr("hex")] : []
+      )
     );
     return balances.filter((b) => existingIds.has(b.id));
   } catch {

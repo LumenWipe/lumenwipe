@@ -4,6 +4,13 @@
  * aggregator call with a distribution, each with the authorization tree the signature would
  * satisfy - so every refusal below is a real deviation from that shape.
  */
+import {
+  callOf,
+  envelopeWithOperations,
+  onlyOperation,
+  withAuth as withAuthEntries,
+  withCallArgs,
+} from "../support/xdr-edit";
 import { describe, expect, test } from "bun:test";
 import {
   Account,
@@ -147,11 +154,7 @@ function swapTx(shape: SwapShape): Transaction {
   });
   const op = new Contract(contract).call(fn, ...args);
   // The SDK's Contract.call carries no auth; rebuild the operation with the entry attached.
-  const withAuth = xdr.Operation.fromXDR(op.toXDR());
-  withAuth
-    .body()
-    .invokeHostFunctionOp()
-    .auth(shape.noAuth ? [] : [auth]);
+  const withAuth = withAuthEntries(xdr.Operation.fromXdr(op.toXdr()), shape.noAuth ? [] : [auth]);
   const builder = new TransactionBuilder(
     new Account(shape.source ?? ACCOUNT, shape.sequence ?? SEQUENCE),
     {
@@ -293,7 +296,7 @@ describe("assertConversionShape", () => {
         credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(
           new xdr.SorobanAddressCredentials({
             address: new Address(ACCOUNT).toScAddress(),
-            nonce: new xdr.Int64(1),
+            nonce: 1n,
             signatureExpirationLedger: 1,
             signature: xdr.ScVal.scvVoid(),
           })
@@ -398,21 +401,15 @@ describe("assertConversionShape on a swap the Soroswap API really built", () => 
   });
 
   test("is refused once a fee partner is written into it", () => {
-    const envelope = xdr.TransactionEnvelope.fromXDR(realSwap.xdr, "base64");
-    const call = envelope
-      .v1()
-      .tx()
-      .operations()[0]!
-      .body()
-      .invokeHostFunctionOp()
-      .hostFunction()
-      .invokeContract();
-    const args = call.args();
+    const original = TransactionBuilder.fromXDR(realSwap.xdr, Networks.PUBLIC) as Transaction;
+    const args = [...callOf(onlyOperation(original)).args];
     args[6] = xdr.ScVal.scvMap([
       new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("bps"), val: xdr.ScVal.scvU32(1000) }),
       new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("id"), val: xdr.ScVal.scvSymbol("x") }),
     ]);
-    call.args(args);
+    const envelope = envelopeWithOperations(original, [
+      withCallArgs(onlyOperation(original), args),
+    ]);
     const tampered = TransactionBuilder.fromXDR(envelope, Networks.PUBLIC) as Transaction;
     expect(() => assertConversionShape(tampered, real())).toThrow(/fee partner/);
   });
@@ -463,10 +460,10 @@ function instanceEntry(contract: string, hashHex: string): rpc.Api.LedgerEntryRe
   const key = new Contract(contract).getFootprint();
   const val = xdr.LedgerEntryData.contractData(
     new xdr.ContractDataEntry({
-      ext: new xdr.ExtensionPoint(0),
+      ext: xdr.ExtensionPoint.v0(),
       contract: new Address(contract).toScAddress(),
       key: xdr.ScVal.scvLedgerKeyContractInstance(),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
       val: xdr.ScVal.scvContractInstance(
         new xdr.ScContractInstance({
           executable: xdr.ContractExecutable.contractExecutableWasm(Buffer.from(hashHex, "hex")),
@@ -562,7 +559,9 @@ function roundDeps(world: RoundWorld) {
         } as unknown as rpc.Api.SimulateTransactionResponse;
       },
       async getLedgerEntries(...keys: xdr.LedgerKey[]) {
-        const contract = Address.fromScAddress(keys[0]!.contractData().contract()).toString();
+        const key0 = keys[0]!;
+        if (key0.type !== "contractData") throw new Error("not stubbed");
+        const contract = Address.fromScAddress(key0.contractData.contract).toString();
         const defaultHash = contract === XBULL_ROUTER ? XBULL_ROUTER_HASH_LIVE : ROUTER_HASH_LIVE;
         const hash =
           contract === XBULL_ROUTER
@@ -869,18 +868,24 @@ describe("resolveXBullPath (via defaultTokenConversionRoundDeps)", () => {
   function xbullStorageRpc(map: Record<string, string>) {
     return {
       async getLedgerEntries(...keys: xdr.LedgerKey[]) {
-        const contractData = keys[0]!.contractData();
-        const index = contractData.key().vec()![1]!.u32();
+        const key0 = keys[0]!;
+        if (key0.type !== "contractData") throw new Error("not stubbed");
+        const contractData = key0.contractData;
+        const mapKey = contractData.key;
+        if (mapKey.type !== "scvVec") throw new Error("not stubbed");
+        const indexVal = mapKey.vec![1]!;
+        if (indexVal.type !== "scvU32") throw new Error("not stubbed");
+        const index = indexVal.u32;
         const address = map[String(index)];
         if (address === undefined) {
           return { latestLedger: 1, entries: [] } as unknown as rpc.Api.GetLedgerEntriesResponse;
         }
         const val = xdr.LedgerEntryData.contractData(
           new xdr.ContractDataEntry({
-            ext: new xdr.ExtensionPoint(0),
-            contract: contractData.contract(),
-            key: contractData.key(),
-            durability: xdr.ContractDataDurability.persistent(),
+            ext: xdr.ExtensionPoint.v0(),
+            contract: contractData.contract,
+            key: contractData.key,
+            durability: xdr.ContractDataDurability.persistent,
             val: new Address(address).toScVal(),
           })
         );
@@ -900,14 +905,14 @@ describe("resolveXBullPath (via defaultTokenConversionRoundDeps)", () => {
    *  exactly as captured, since resolveXBullPath reads only the contract address and the path. */
   function withPath(tuples: number[][]): string {
     const base = xdr.InvokeContractArgs.fromXDR(xbullFixture.contractArgsXDR, "base64");
-    const args = base.args();
+    const args = base.args;
     const pathScVal = xdr.ScVal.scvVec(
       tuples.map((hop) => xdr.ScVal.scvVec(hop.map((n) => xdr.ScVal.scvU32(n))))
     );
     const newArgs = args.map((a, i) => (i === 4 ? pathScVal : a));
     return new xdr.InvokeContractArgs({
-      contractAddress: base.contractAddress(),
-      functionName: base.functionName(),
+      contractAddress: base.contractAddress,
+      functionName: base.functionName,
       args: newArgs,
     }).toXDR("base64");
   }

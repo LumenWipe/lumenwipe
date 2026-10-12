@@ -310,8 +310,10 @@ test("a failed destination read is a retryable error, not a missing trustline", 
   spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
     ...rpcServerStub(),
     getLedgerEntries: (...keys: Parameters<ReturnType<typeof ledgerEntries>>) => {
-      const owner = keys[0]!.trustLine().accountId().ed25519();
-      return owner.equals(Keypair.fromPublicKey(SOURCE).rawPublicKey())
+      const key = keys[0]!;
+      const accountId = key.type === "trustline" ? key.trustLine.accountId : null;
+      const owner = accountId?.type === "publicKeyTypeEd25519" ? accountId.ed25519.toBytes() : null;
+      return owner && Buffer.from(owner).equals(Keypair.fromPublicKey(SOURCE).rawPublicKey())
         ? ledgerEntries({ [`${SOURCE}|${USDC}`]: { balance: 100n * XLM } })(...keys)
         : Promise.reject(new Error("rpc down"));
     },

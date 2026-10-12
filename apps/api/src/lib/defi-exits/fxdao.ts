@@ -21,6 +21,7 @@ import {
   type ExitStep,
 } from "./adapter";
 import { compareBaseUnits, isBaseUnits } from "./invariants";
+import { contractDataEntry, instanceOfEntry } from "@/lib/stellar/contract-data";
 
 /**
  * The FxDAO exit (architecture.md §9.7): a CDP vault locks XLM collateral and mints one of three
@@ -162,7 +163,7 @@ const persistentKey = (contract: string, key: xdr.ScVal): xdr.LedgerKey =>
     new xdr.LedgerKeyContractData({
       contract: new Address(contract).toScAddress(),
       key,
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
     })
   );
 
@@ -184,12 +185,12 @@ const vaultLedgerKey = (vault: string, account: string, denomination: string): x
 
 /** The keys `CoreState` and `VaultsInfo(denomination)` are found under, in an instance's own
  *  `storage()` map - matched by their native (not raw ScVal) form, the same way
- *  `complete-positions.ts` keys its map by `JSON.stringify(scValToNative(entry.key()))`. */
+ *  `complete-positions.ts` keys its map by `JSON.stringify(scValToNative(entry.key))`. */
 function instanceStorageMap(val: xdr.LedgerEntryData): Map<string, xdr.ScVal> {
   const out = new Map<string, xdr.ScVal>();
-  for (const entry of val.contractData().val().instance().storage() ?? []) {
+  for (const entry of instanceOfEntry(val).storage ?? []) {
     try {
-      out.set(JSON.stringify(scValToNative(entry.key())), entry.val());
+      out.set(JSON.stringify(scValToNative(entry.key)), entry.val);
     } catch {
       continue;
     }
@@ -199,21 +200,19 @@ function instanceStorageMap(val: xdr.LedgerEntryData): Map<string, xdr.ScVal> {
 
 function mapView(val: xdr.ScVal): Map<string, xdr.ScVal> {
   const out = new Map<string, xdr.ScVal>();
-  if (val.switch() !== xdr.ScValType.scvMap()) return out;
-  for (const entry of val.map() ?? []) {
-    const key = entry.key();
-    if (key.switch() === xdr.ScValType.scvSymbol()) out.set(key.sym().toString(), entry.val());
+  if (val.type !== "scvMap") return out;
+  for (const entry of val.map ?? []) {
+    const key = entry.key;
+    if (key.type === "scvSymbol") out.set(key.sym.toString(), entry.val);
   }
   return out;
 }
 
 const asAddress = (val: xdr.ScVal | undefined): string | null =>
-  val && val.switch() === xdr.ScValType.scvAddress()
-    ? Address.fromScAddress(val.address()).toString()
-    : null;
+  val && val.type === "scvAddress" ? Address.fromScAddress(val.address).toString() : null;
 
 const asSymbol = (val: xdr.ScVal | undefined): string | null =>
-  val && val.switch() === xdr.ScValType.scvSymbol() ? val.sym().toString() : null;
+  val && val.type === "scvSymbol" ? val.sym.toString() : null;
 
 const asUnsigned = (val: xdr.ScVal | undefined): bigint | null => {
   if (!val) return null;
@@ -225,8 +224,8 @@ const asUnsigned = (val: xdr.ScVal | undefined): bigint | null => {
 
 /** `null` for a genuine `OptionalVaultKey::None`; `undefined` for anything malformed. */
 function decodeOptionalVaultKey(val: xdr.ScVal | undefined): FxdaoVaultKeyLike | null | undefined {
-  if (!val || val.switch() !== xdr.ScValType.scvVec()) return undefined;
-  const vec = val.vec() ?? [];
+  if (!val || val.type !== "scvVec") return undefined;
+  const vec = val.vec ?? [];
   const tag = asSymbol(vec[0]);
   if (tag === "None") return null;
   if (tag !== "Some" || !vec[1]) return undefined;
@@ -239,7 +238,7 @@ function decodeOptionalVaultKey(val: xdr.ScVal | undefined): FxdaoVaultKeyLike |
 }
 
 function decodeVault(val: xdr.LedgerEntryData): FxdaoVaultRecord | null {
-  const fields = mapView(val.contractData().val());
+  const fields = mapView(contractDataEntry(val).val);
   const account = asAddress(fields.get("account"));
   const denomination = asSymbol(fields.get("denomination"));
   const index = asUnsigned(fields.get("index"));
@@ -293,7 +292,7 @@ async function readEntries(
 ): Promise<Map<string, xdr.LedgerEntryData>> {
   const res = await rpc.getLedgerEntries(...keys);
   const out = new Map<string, xdr.LedgerEntryData>();
-  for (const entry of res.entries ?? []) out.set(entry.key.toXDR("base64"), entry.val);
+  for (const entry of res.entries ?? []) out.set(entry.key.toXdr("base64"), entry.val);
   return out;
 }
 
@@ -317,7 +316,7 @@ async function findPrevKey(
   for (let hop = 0; hop < maxHops; hop++) {
     const key = vaultLedgerKey(vault, cursor.account, denomination);
     const entries = await readEntries(rpc, [key]);
-    const val = entries.get(key.toXDR("base64"));
+    const val = entries.get(key.toXdr("base64"));
     if (!val) return undefined;
     const decoded = decodeVault(val);
     if (!decoded) return undefined;
@@ -355,7 +354,7 @@ async function simulateReadonly(
 
 /** SEP-40-shaped `PriceData{price, timestamp}`; `void` (soroban_sdk's `Option::None`) has no rate. */
 function priceFromLastprice(val: xdr.ScVal): bigint | null {
-  if (val.switch() === xdr.ScValType.scvVoid()) return null;
+  if (val.type === "scvVoid") return null;
   return asUnsigned(mapView(val).get("price"));
 }
 
@@ -414,7 +413,7 @@ export function fxdaoExitAdapter(
         const instanceKey = new Contract(vault).getFootprint();
         const first = await readEntries(rpc, [ownKey, instanceKey]);
 
-        const instanceVal = first.get(instanceKey.toXDR("base64"));
+        const instanceVal = first.get(instanceKey.toXdr("base64"));
         if (!instanceVal) return { status: "unreadable" };
         const instanceStorage = instanceStorageMap(instanceVal);
         const vaultsInfo = decodeVaultsInfo(
@@ -426,7 +425,7 @@ export function fxdaoExitAdapter(
         );
         if (!vaultsInfo || !coreState || !currencyContract) return { status: "unreadable" };
 
-        const ownVal = first.get(ownKey.toXDR("base64"));
+        const ownVal = first.get(ownKey.toXdr("base64"));
         if (!ownVal) return { status: "not_found" };
         const record = decodeVault(ownVal);
         if (!record || record.account !== ctx.account) return { status: "unreadable" };

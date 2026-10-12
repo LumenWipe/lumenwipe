@@ -1,4 +1,5 @@
 import { afterEach, expect, mock, spyOn, test, beforeEach } from "bun:test";
+import { callOf, onlyOperation } from "../support/xdr-edit";
 import * as rpcModule from "@/lib/stellar/rpc";
 import {
   Account,
@@ -94,16 +95,8 @@ function rpcServerStub() {
 function tokenRpc(balance: bigint): { simulateTransaction: rpc.Server["simulateTransaction"] } {
   return {
     async simulateTransaction(tx) {
-      const call = (tx as Transaction)
-        .toEnvelope()
-        .v1()
-        .tx()
-        .operations()[0]!
-        .body()
-        .invokeHostFunctionOp()
-        .hostFunction()
-        .invokeContract();
-      if (call.functionName().toString() === "balance") {
+      const call = callOf(onlyOperation(tx as Transaction));
+      if (call.functionName.toString() === "balance") {
         const base = rawSimulation("ok", [], "100") as unknown as Record<string, unknown>;
         return {
           ...base,
@@ -115,9 +108,9 @@ function tokenRpc(balance: bigint): { simulateTransaction: rpc.Server["simulateT
         rootInvocation: new xdr.SorobanAuthorizedInvocation({
           function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
             new xdr.InvokeContractArgs({
-              contractAddress: call.contractAddress(),
+              contractAddress: call.contractAddress,
               functionName: "transfer",
-              args: call.args(),
+              args: call.args,
             })
           ),
           subInvocations: [],

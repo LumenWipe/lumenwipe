@@ -21,6 +21,7 @@ import {
   type FakeAdapterKnobs,
   type FakeRpcOptions,
 } from "./fixtures/fake-exit-adapter";
+import { v1TransactionFromXdr } from "../support/v1-transaction";
 
 const WASM_HASH = "c".repeat(64);
 const LIVE_BALANCE = "750000000";
@@ -94,7 +95,7 @@ function authEntryFor(credentials: xdr.SorobanCredentials): string {
       ),
       subInvocations: [],
     }),
-  }).toXDR("base64");
+  }).toXdr("base64");
 }
 
 describe("runExitAdapter checks what the simulation added before offering the bytes", () => {
@@ -201,8 +202,7 @@ describe("runExitAdapter catches each invariant violation from outside the adapt
       const plain = await runWith({});
       const hardened = await runWith({ hardenAddsFee: 70_000n });
       expect(hardened.blockers).toEqual([]);
-      const feeOf = (txXdr: string) =>
-        xdr.TransactionEnvelope.fromXDR(txXdr, "base64").v1().tx().fee();
+      const feeOf = (txXdr: string) => v1TransactionFromXdr(txXdr).fee;
       expect(feeOf(hardened.next!.simulation.txXdr) - feeOf(plain.next!.simulation.txXdr)).toBe(
         70_000
       );

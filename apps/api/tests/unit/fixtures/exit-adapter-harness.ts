@@ -8,7 +8,7 @@
  * for its exit-adapter coverage.
  */
 import { describe, expect, test } from "bun:test";
-import { Keypair, xdr } from "@stellar/stellar-sdk";
+import { Keypair } from "@stellar/stellar-sdk";
 import type { DefiPosition, DefiProtocol, Network } from "@lumenwipe/types";
 import {
   MAX_CLAMPED_OVER_ASK_BPS,
@@ -30,6 +30,7 @@ import {
   type ContractKind,
   type ContractRegistryLookup,
 } from "@/lib/contract-registry";
+import { v1TransactionFromXdr } from "../../support/v1-transaction";
 
 /** The live ceiling for every withdrawal, or one per asset (keyed by contract address) when a
  *  plan takes several assets out of one position. */
@@ -206,10 +207,9 @@ export function expectBuiltInvariants(next: SimulatedExitStep, ctx: ExitContext)
   expect(next.intent.function).toBe(next.step.function);
   expect(next.intent.recipient).toBe(ctx.account);
   expect(next.simulation.minResourceFee).toMatch(/^\d+$/);
-  const envelope = xdr.TransactionEnvelope.fromXDR(next.simulation.txXdr, "base64");
-  const ops = envelope.v1().tx().operations();
+  const ops = v1TransactionFromXdr(next.simulation.txXdr).operations;
   expect(ops).toHaveLength(1);
-  expect(ops[0]!.body().switch()).toBe(xdr.OperationType.invokeHostFunction());
+  expect(ops[0]!.body.type).toBe("invokeHostFunction");
 }
 
 export function describeExitAdapterInvariants<P extends DefiPosition, L>(
