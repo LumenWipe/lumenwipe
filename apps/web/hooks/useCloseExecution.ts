@@ -29,6 +29,7 @@ import { requestMediatorCosignature } from "@/lib/stellar/mediator";
 import { requestFeeBumpSponsorship } from "@/lib/stellar/fee-bump-sponsor";
 import { notifyStatsRefresh } from "@/lib/stats-events";
 import { requestIdOf, toUserMessage, UserFacingError } from "@/lib/utils/user-error";
+import { toHex } from "@/lib/stellar/hex";
 import type { TransactionSigner } from "@/lib/stellar/signer";
 import type { AccountSigner } from "@/types/account";
 
@@ -191,9 +192,7 @@ export function useCloseExecution() {
               // the anchor for both checks below. The hash covers only the transaction body
               // (source, ops, sequence, memo, fee), never signatures, so it stays valid
               // whether taken before or after signing.
-              const approvedHash = TransactionBuilder.fromXDR(xdr, passphrase)
-                .hash()
-                .toString("hex");
+              const approvedHash = toHex(TransactionBuilder.fromXdr(xdr, passphrase).hash());
               // On a fresh envelope this is 0. On a RESUMED envelope it already carries a
               // prior signer's contribution - captured here (not just "length === 0" on the
               // result) so a signer who does nothing, OR re-signs with a key that already
@@ -213,8 +212,8 @@ export function useCloseExecution() {
               // re-serializing it (so its output can never diverge in body), an external signer
               // could in principle return a signature over a different transaction, or no
               // signature at all. Assert both before trusting the result any further.
-              const signedTx = TransactionBuilder.fromXDR(signedXdr, passphrase);
-              if (signedTx.hash().toString("hex") !== approvedHash) {
+              const signedTx = TransactionBuilder.fromXdr(signedXdr, passphrase);
+              if (toHex(signedTx.hash()) !== approvedHash) {
                 throw new UserFacingError(
                   "The signed transaction does not match what you approved."
                 );
@@ -243,14 +242,12 @@ export function useCloseExecution() {
                 setProgressStatus("Co-signing the forward payment…");
                 // Defense-in-depth: the mediator may ONLY add its signature - assert it did not
                 // alter the body, and that it actually added one, before submit.
-                const approvedHash = TransactionBuilder.fromXDR(xdr, passphrase)
-                  .hash()
-                  .toString("hex");
-                const preCosignCount = TransactionBuilder.fromXDR(xdr, passphrase).signatures
+                const approvedHash = toHex(TransactionBuilder.fromXdr(xdr, passphrase).hash());
+                const preCosignCount = TransactionBuilder.fromXdr(xdr, passphrase).signatures
                   .length;
                 const cosignedXdr = await requestMediatorCosignature(xdr, network);
-                const cosigned = TransactionBuilder.fromXDR(cosignedXdr, passphrase);
-                if (cosigned.hash().toString("hex") !== approvedHash) {
+                const cosigned = TransactionBuilder.fromXdr(cosignedXdr, passphrase);
+                if (toHex(cosigned.hash()) !== approvedHash) {
                   throw new UserFacingError(
                     "The co-signed transaction does not match what you approved."
                   );
@@ -269,11 +266,11 @@ export function useCloseExecution() {
               // but the inner transaction has to be complete before there is anything to wrap.
               if (tx.needsSponsoredFee) {
                 setProgressStatus("Requesting a sponsored fee…");
-                const approved = TransactionBuilder.fromXDR(finalXdr, passphrase);
-                const approvedHash = approved.hash().toString("hex");
+                const approved = TransactionBuilder.fromXdr(finalXdr, passphrase);
+                const approvedHash = toHex(approved.hash());
                 const approvedSignatureCount = approved.signatures.length;
                 const sponsoredXdr = await requestFeeBumpSponsorship(finalXdr, network);
-                const sponsored = TransactionBuilder.fromXDR(sponsoredXdr, passphrase);
+                const sponsored = TransactionBuilder.fromXdr(sponsoredXdr, passphrase);
                 // Defense-in-depth, matching the mediator co-sign above: the sponsor may only
                 // wrap the exact transaction it was handed and add its own signature over the
                 // envelope - never alter what the inner transaction does. The hash check alone
@@ -284,7 +281,7 @@ export function useCloseExecution() {
                 if (!(sponsored instanceof FeeBumpTransaction)) {
                   throw new UserFacingError("The sponsor did not return a fee-bump transaction.");
                 }
-                if (sponsored.innerTransaction.hash().toString("hex") !== approvedHash) {
+                if (toHex(sponsored.innerTransaction.hash()) !== approvedHash) {
                   throw new UserFacingError(
                     "The sponsored transaction does not match what you approved."
                   );

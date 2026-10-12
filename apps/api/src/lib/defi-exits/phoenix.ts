@@ -15,6 +15,7 @@ import {
   type ExitStep,
 } from "./adapter";
 import { minReceivedFromQuote } from "./invariants";
+import { contractDataEntry, instanceOfEntry } from "@/lib/stellar/contract-data";
 
 /**
  * The Phoenix exit (architecture.md §9.6): an LP position leaves the pool through
@@ -83,29 +84,28 @@ interface InstanceView {
   isStellarAsset: boolean;
 }
 
+const entryVal = (entry: xdr.LedgerEntryData | undefined): xdr.ScVal | undefined =>
+  entry ? contractDataEntry(entry).val : undefined;
+
 function instanceView(val: xdr.LedgerEntryData): InstanceView {
-  const instance = val.contractData().val().instance();
+  const instance = instanceOfEntry(val);
   return {
-    isStellarAsset:
-      instance.executable().switch() ===
-      xdr.ContractExecutableType.contractExecutableStellarAsset(),
+    isStellarAsset: instance.executable.type === "contractExecutableStellarAsset",
   };
 }
 
 function mapView(val: xdr.ScVal): Map<string, xdr.ScVal> {
   const out = new Map<string, xdr.ScVal>();
-  if (val.switch() !== xdr.ScValType.scvMap()) return out;
-  for (const entry of val.map() ?? []) {
-    const key = entry.key();
-    if (key.switch() === xdr.ScValType.scvSymbol()) out.set(key.sym().toString(), entry.val());
+  if (val.type !== "scvMap") return out;
+  for (const entry of val.map ?? []) {
+    const key = entry.key;
+    if (key.type === "scvSymbol") out.set(key.sym.toString(), entry.val);
   }
   return out;
 }
 
 const asAddress = (val: xdr.ScVal | undefined): string | null =>
-  val && val.switch() === xdr.ScValType.scvAddress()
-    ? Address.fromScAddress(val.address()).toString()
-    : null;
+  val && val.type === "scvAddress" ? Address.fromScAddress(val.address).toString() : null;
 
 const asUnsigned = (val: xdr.ScVal | undefined): bigint | null => {
   if (!val) return null;
@@ -121,7 +121,7 @@ const persistentKey = (contract: string, key: xdr.ScVal): xdr.LedgerKey =>
     new xdr.LedgerKeyContractData({
       contract: new Address(contract).toScAddress(),
       key,
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
     })
   );
 
@@ -147,7 +147,7 @@ async function readEntries(
 ): Promise<Map<string, xdr.LedgerEntryData>> {
   const res = await rpc.getLedgerEntries(...keys);
   const out = new Map<string, xdr.LedgerEntryData>();
-  for (const entry of res.entries ?? []) out.set(entry.key.toXDR("base64"), entry.val);
+  for (const entry of res.entries ?? []) out.set(entry.key.toXdr("base64"), entry.val);
   return out;
 }
 
@@ -155,9 +155,9 @@ async function readEntries(
 function stakesFrom(val: xdr.ScVal): PhoenixStakeEntry[] | null {
   const fields = mapView(val);
   const stakesVal = fields.get("stakes");
-  if (!stakesVal || stakesVal.switch() !== xdr.ScValType.scvVec()) return null;
+  if (!stakesVal || stakesVal.type !== "scvVec") return null;
   const stakes: PhoenixStakeEntry[] = [];
-  for (const item of stakesVal.vec() ?? []) {
+  for (const item of stakesVal.vec ?? []) {
     const stakeFields = mapView(item);
     const amount = asUnsigned(stakeFields.get("stake"));
     const timestamp = asUnsigned(stakeFields.get("stake_timestamp"));
@@ -194,16 +194,16 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
         const cfgKey = configKey(pool);
         const sharesKey = totalSharesKey(pool);
         const first = await readEntries(rpc, [cfgKey, sharesKey]);
-        const configVal = first.get(cfgKey.toXDR("base64"));
-        const totalSharesVal = first.get(sharesKey.toXDR("base64"));
+        const configVal = first.get(cfgKey.toXdr("base64"));
+        const totalSharesVal = first.get(sharesKey.toXdr("base64"));
         if (!configVal || !totalSharesVal) return { status: "unreadable" };
 
-        const config = mapView(configVal.contractData().val());
+        const config = mapView(contractDataEntry(configVal).val);
         const tokenA = asAddress(config.get("token_a"));
         const tokenB = asAddress(config.get("token_b"));
         const shareToken = asAddress(config.get("share_token"));
         const stakeContract = asAddress(config.get("stake_contract"));
-        const totalShares = asUnsigned(totalSharesVal.contractData().val());
+        const totalShares = asUnsigned(contractDataEntry(totalSharesVal).val);
         if (!tokenA || !tokenB || !shareToken || !stakeContract || totalShares === null) {
           return { status: "unreadable" };
         }
@@ -222,24 +222,24 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
           tokenAKey,
           tokenBKey,
         ]);
-        const reserveA = asUnsigned(second.get(reserveAK.toXDR("base64"))?.contractData().val());
-        const reserveB = asUnsigned(second.get(reserveBK.toXDR("base64"))?.contractData().val());
+        const reserveA = asUnsigned(entryVal(second.get(reserveAK.toXdr("base64"))));
+        const reserveB = asUnsigned(entryVal(second.get(reserveBK.toXdr("base64"))));
         if (reserveA === null || reserveB === null) return { status: "unreadable" };
 
         // The share token writes a zero balance on a full withdrawal and keeps the entry (SEP-41
         // convention); a present-but-empty stake entry behaves the same way. So an absent entry is
         // ambiguous between "never held" and "archived while still holding" - safe to treat as
         // empty only when detection did not claim this specific sub-resource exists here.
-        const shareEntry = second.get(shareBalanceKey.toXDR("base64"));
+        const shareEntry = second.get(shareBalanceKey.toXdr("base64"));
         if (!shareEntry && position.positionType === "lp") return { status: "shares_unreadable" };
-        const shares = shareEntry ? asUnsigned(shareEntry.contractData().val()) : 0n;
+        const shares = shareEntry ? asUnsigned(contractDataEntry(shareEntry).val) : 0n;
         if (shares === null) return { status: "unreadable" };
 
-        const bondingEntry = second.get(bondingKey.toXDR("base64"));
+        const bondingEntry = second.get(bondingKey.toXdr("base64"));
         if (!bondingEntry && position.positionType === "stake") {
           return { status: "stakes_unreadable" };
         }
-        const stakes = bondingEntry ? stakesFrom(bondingEntry.contractData().val()) : [];
+        const stakes = bondingEntry ? stakesFrom(contractDataEntry(bondingEntry).val) : [];
         if (stakes === null) return { status: "unreadable" };
 
         const stellarAssetTokens = new Set<string>();
@@ -247,7 +247,7 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
           [tokenA, tokenAKey],
           [tokenB, tokenBKey],
         ] as const) {
-          const val = second.get(key.toXDR("base64"));
+          const val = second.get(key.toXdr("base64"));
           if (!val) return { status: "unreadable" };
           if (instanceView(val).isStellarAsset) stellarAssetTokens.add(token);
         }

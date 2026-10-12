@@ -80,10 +80,10 @@ function instanceEntry(
   const key = new Contract(contract).getFootprint();
   const val = xdr.LedgerEntryData.contractData(
     new xdr.ContractDataEntry({
-      ext: new xdr.ExtensionPoint(0),
+      ext: xdr.ExtensionPoint.v0(),
       contract: new Address(contract).toScAddress(),
       key: xdr.ScVal.scvLedgerKeyContractInstance(),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
       val: xdr.ScVal.scvContractInstance(new xdr.ScContractInstance({ executable, storage })),
     })
   );
@@ -96,15 +96,15 @@ function persistentEntry(contract: string, key: xdr.ScVal, val: xdr.ScVal): Entr
       new xdr.LedgerKeyContractData({
         contract: new Address(contract).toScAddress(),
         key,
-        durability: xdr.ContractDataDurability.persistent(),
+        durability: xdr.ContractDataDurability.persistent,
       })
     ),
     val: xdr.LedgerEntryData.contractData(
       new xdr.ContractDataEntry({
-        ext: new xdr.ExtensionPoint(0),
+        ext: xdr.ExtensionPoint.v0(),
         contract: new Address(contract).toScAddress(),
         key,
-        durability: xdr.ContractDataDurability.persistent(),
+        durability: xdr.ContractDataDurability.persistent,
         val,
       })
     ),
@@ -172,7 +172,7 @@ function simulationResponse(
     .setResourceFee(12_345n)
     .setResources(1_000, 2_000, 300)
     .build()
-    .toXDR("base64");
+    .toXdr("base64");
   const base = { id: "1", latestLedger: 1, events: [] as string[] };
   const body =
     mode === "error"
@@ -181,7 +181,7 @@ function simulationResponse(
           ...base,
           minResourceFee: "12345",
           transactionData,
-          results: [{ auth: [] as string[], xdr: retval.toXDR("base64") }],
+          results: [{ auth: [] as string[], xdr: retval.toXdr("base64") }],
           ...(mode === "restore"
             ? { restorePreamble: { minResourceFee: "500", transactionData } }
             : {}),
@@ -192,10 +192,11 @@ function simulationResponse(
 function decodeInvocation(tx: Transaction): { contract: string; fn: string } | null {
   const op = tx.operations[0];
   if (!op || op.type !== "invokeHostFunction") return null;
-  const invocation = op.func.invokeContract();
+  if (op.func.type !== "hostFunctionTypeInvokeContract") return null;
+  const invocation = op.func.invokeContract;
   return {
-    contract: Address.fromScAddress(invocation.contractAddress()).toString(),
-    fn: invocation.functionName().toString(),
+    contract: Address.fromScAddress(invocation.contractAddress).toString(),
+    fn: invocation.functionName.toString(),
   };
 }
 
@@ -294,12 +295,12 @@ export function fakeFxdaoRpc(
   return {
     simulateCalls,
     async getLedgerEntries(...keys: xdr.LedgerKey[]) {
-      const wanted = new Set(keys.map((k) => k.toXDR("base64")));
+      const wanted = new Set(keys.map((k) => k.toXdr("base64")));
       if (wanted.size !== keys.length) throw new Error("duplicate ledger keys in one request");
       return {
         latestLedger: 1,
         entries: entries
-          .filter((e) => wanted.has(e.key.toXDR("base64")))
+          .filter((e) => wanted.has(e.key.toXdr("base64")))
           .map((e) => ({ ...e, lastModifiedLedgerSeq: 1, liveUntilLedgerSeq: 100 })),
       };
     },

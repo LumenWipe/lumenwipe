@@ -43,7 +43,7 @@ export async function submitAndWait(
 
   onStatus?.("Submitting to Stellar network...");
 
-  const txHash = tx.hash().toString("hex");
+  const txHash = Buffer.from(tx.hash()).toString("hex");
 
   // A prior call may have submitted this exact transaction and it confirmed, but the
   // caller never saw the response (network drop, client timeout). By the time a retry
@@ -61,7 +61,6 @@ export async function submitAndWait(
   // surfacing it as an error, so users are not interrupted for a recoverable state
   let sendResult: Awaited<ReturnType<typeof server.sendTransaction>>;
   let tryAgainCount = 0;
-  // eslint-disable-next-line no-constant-condition -- intentional retry loop; exits via break on non-retryable status or throw at the retry cap
   while (true) {
     try {
       sendResult = await server.sendTransaction(tx);

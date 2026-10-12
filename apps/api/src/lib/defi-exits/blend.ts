@@ -711,7 +711,7 @@ export function blendExitAdapter(
         const opXdr = client.claim({ from: ctx.account, reserve_token_ids: ids, to: ctx.account });
         return {
           step,
-          build: { source: "local", op: xdr.Operation.fromXDR(opXdr, "base64") },
+          build: { source: "local", op: xdr.Operation.fromXdr(opXdr, "base64") },
           intent: {
             contract: step.contract,
             function: "claim",
@@ -737,7 +737,7 @@ export function blendExitAdapter(
         });
         return {
           step,
-          build: { source: "local", op: xdr.Operation.fromXDR(opXdr, "base64") },
+          build: { source: "local", op: xdr.Operation.fromXdr(opXdr, "base64") },
           intent: {
             contract: step.contract,
             function: "withdraw",
@@ -768,7 +768,7 @@ export function blendExitAdapter(
       });
       return {
         step,
-        build: { source: "local", op: xdr.Operation.fromXDR(opXdr, "base64") },
+        build: { source: "local", op: xdr.Operation.fromXdr(opXdr, "base64") },
         intent: {
           contract: step.contract,
           function: "submit",

@@ -63,7 +63,7 @@ async function submitOps(kp: Keypair, ops: xdr.Operation[]): Promise<void> {
   const res = await fetch(`${HORIZON}/transactions`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ tx: tx.toEnvelope().toXDR("base64") }),
+    body: new URLSearchParams({ tx: tx.toEnvelope().toXdr("base64") }),
   });
   const body = (await res.json()) as { successful?: boolean; extras?: { result_codes?: unknown } };
   if (!res.ok || !body.successful) {

@@ -1,4 +1,5 @@
 import { test, expect } from "bun:test";
+import { memoText } from "../support/xdr-edit";
 import { Account, Keypair, Networks, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
 import {
   buildMediatorMergePaymentTx,
@@ -29,7 +30,7 @@ test("buildMergeTx > attaches a text memo when the type is omitted (default bran
 
   const tx = TransactionBuilder.fromXDR(xdr, Networks.TESTNET) as Transaction;
   expect(tx.memo.type).toBe("text");
-  expect(tx.memo.value?.toString()).toBe("hello");
+  expect(memoText(tx)).toBe("hello");
 });
 
 test("buildMergeTx > attaches an id memo when memoType is 'id'", () => {
@@ -38,7 +39,7 @@ test("buildMergeTx > attaches an id memo when memoType is 'id'", () => {
 
   const tx = TransactionBuilder.fromXDR(xdr, Networks.TESTNET) as Transaction;
   expect(tx.memo.type).toBe("id");
-  expect(tx.memo.value?.toString()).toBe("12345");
+  expect(memoText(tx)).toBe("12345");
 });
 
 test("buildMergeTx > an empty-string memo is treated as no memo (falsy guard)", () => {
@@ -63,7 +64,7 @@ test("buildMediatorMergePaymentTx > an id memoType attaches an id memo instead o
 
   const tx = TransactionBuilder.fromXDR(xdr, Networks.TESTNET) as Transaction;
   expect(tx.memo.type).toBe("id");
-  expect(tx.memo.value?.toString()).toBe("999");
+  expect(memoText(tx)).toBe("999");
 });
 
 test("buildMediatorMergePaymentTx > no memo when none is given", () => {

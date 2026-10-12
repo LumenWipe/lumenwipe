@@ -15,38 +15,40 @@ export interface VerifiedMerge extends MergeSummary {
 type GetTransaction = (txHash: string) => Promise<rpc.Api.GetTransactionResponse>;
 
 function envelopeOperations(envelope: xdr.TransactionEnvelope): xdr.Operation[] {
-  switch (envelope.switch().name) {
+  switch (envelope.type) {
     case "envelopeTypeTx":
-      return envelope.v1().tx().operations();
+      return envelope.v1.tx.operations;
     case "envelopeTypeTxV0":
-      return envelope.v0().tx().operations();
+      return envelope.v0.tx.operations;
     case "envelopeTypeTxFeeBump":
-      return envelope.feeBump().tx().innerTx().v1().tx().operations();
+      return envelope.feeBump.tx.innerTx.v1.tx.operations;
     default:
       return [];
   }
 }
 
 function operationResults(result: xdr.TransactionResult): xdr.OperationResult[] {
-  const body = result.result();
-  switch (body.switch().name) {
+  const body = result.result;
+  switch (body.type) {
     case "txSuccess":
-      return body.results();
-    case "txFeeBumpInnerSuccess":
-      return body.innerResultPair().result().result().results();
+      return body.results;
+    case "txFeeBumpInnerSuccess": {
+      const inner = body.innerResultPair.result.result;
+      return inner.type === "txSuccess" ? inner.results : [];
+    }
     default:
       return [];
   }
 }
 
 export function hasAccountMerge(envelope: xdr.TransactionEnvelope): boolean {
-  return envelopeOperations(envelope).some((op) => op.body().switch().name === "accountMerge");
+  return envelopeOperations(envelope).some((op) => op.body.type === "accountMerge");
 }
 
 /** Decodes a client-signed envelope; false for anything that does not decode. */
 export function signedXdrHasAccountMerge(signedXdr: string): boolean {
   try {
-    return hasAccountMerge(xdr.TransactionEnvelope.fromXDR(signedXdr, "base64"));
+    return hasAccountMerge(xdr.TransactionEnvelope.fromXdr(signedXdr, "base64"));
   } catch {
     return false;
   }
@@ -66,13 +68,13 @@ export function summarizeMerges(
   let accountsClosed = 0;
   let stroops = 0n;
   for (const op of operationResults(result)) {
-    if (op.switch().name !== "opInner") continue;
-    const tr = op.tr();
-    if (tr.switch().name !== "accountMerge") continue;
-    const merge = tr.accountMergeResult();
-    if (merge.switch().name !== "accountMergeSuccess") continue;
+    if (op.type !== "opInner") continue;
+    const tr = op.tr;
+    if (tr.type !== "accountMerge") continue;
+    const merge = tr.accountMergeResult;
+    if (merge.type !== "accountMergeSuccess") continue;
     accountsClosed += 1;
-    stroops += BigInt(merge.sourceAccountBalance().toString());
+    stroops += merge.sourceAccountBalance;
   }
   return accountsClosed > 0 ? { accountsClosed, xlmStroops: stroops.toString() } : null;
 }

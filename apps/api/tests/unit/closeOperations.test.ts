@@ -1,4 +1,5 @@
 import { test, expect } from "bun:test";
+import { memoText } from "../support/xdr-edit";
 import {
   Account,
   Keypair,
@@ -284,7 +285,7 @@ test("buildCloseTx > attaches the memo to the merge-carrying transaction (text b
     Networks.TESTNET
   ) as Transaction;
   expect(tx.memo.type).toBe("text");
-  expect(tx.memo.value?.toString()).toBe("hello");
+  expect(memoText(tx)).toBe("hello");
 });
 
 test("buildCloseTx > uses an id memo when memoType is 'id'", () => {
@@ -293,7 +294,7 @@ test("buildCloseTx > uses an id memo when memoType is 'id'", () => {
     Networks.TESTNET
   ) as Transaction;
   expect(tx.memo.type).toBe("id");
-  expect(tx.memo.value?.toString()).toBe("12345");
+  expect(memoText(tx)).toBe("12345");
 });
 
 test("buildCloseTx > no memo attached when memo is null", () => {

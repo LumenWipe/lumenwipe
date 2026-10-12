@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import { hash, StrKey } from "@stellar/stellar-sdk";
 import { verifyHashXPreimage, InvalidPreimageError } from "@/lib/stellar/hash-x";
+import { toHex } from "@/lib/stellar/hex";
 
 function signerKeyFor(preimageHex: string): string {
   return StrKey.encodeSha256Hash(hash(Buffer.from(preimageHex, "hex")));
@@ -12,7 +13,7 @@ test("verifyHashXPreimage › a correct preimage returns the matching preimage b
 
   const preimage = verifyHashXPreimage(preimageHex, signerKey);
 
-  expect(preimage.toString("hex")).toBe(preimageHex);
+  expect(toHex(preimage)).toBe(preimageHex);
 });
 
 test("verifyHashXPreimage › a preimage that doesn't hash to the signer's key is rejected", () => {

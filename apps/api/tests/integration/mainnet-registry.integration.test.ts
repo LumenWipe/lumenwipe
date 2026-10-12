@@ -40,8 +40,13 @@ async function instanceStorage(contract: string): Promise<Map<string, unknown>> 
   const rpc = getRpcServer("mainnet");
   const response = await rpc.getLedgerEntries(new Contract(contract).getFootprint());
   const storage = new Map<string, unknown>();
-  for (const entry of response.entries[0]?.val.contractData().val().instance().storage() ?? []) {
-    storage.set(JSON.stringify(scValToNative(entry.key())), scValToNative(entry.val()));
+  const data = response.entries[0]?.val;
+  const instance =
+    data?.type === "contractData" && data.contractData.val.type === "scvContractInstance"
+      ? data.contractData.val.instance
+      : null;
+  for (const entry of instance?.storage ?? []) {
+    storage.set(JSON.stringify(scValToNative(entry.key)), scValToNative(entry.val));
   }
   return storage;
 }

@@ -65,7 +65,7 @@ async function submitOps(kp: Keypair, ops: ReturnType<typeof Operation.payment>[
   const res = await fetch(`${HORIZON}/transactions`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ tx: tx.toEnvelope().toXDR("base64") }),
+    body: new URLSearchParams({ tx: tx.toEnvelope().toXdr("base64") }),
   });
   const body = (await res.json()) as {
     successful?: boolean;

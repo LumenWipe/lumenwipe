@@ -110,7 +110,7 @@ export default function RevokeAllowanceModal({
       });
 
       const signedXdr = await signer.sign(data.transaction, passphrase);
-      const signedTx = TransactionBuilder.fromXDR(signedXdr, passphrase);
+      const signedTx = TransactionBuilder.fromXdr(signedXdr, passphrase);
       if (signedTx.signatures.length === 0) {
         throw new UserFacingError("The signer did not add a signature.");
       }
@@ -129,7 +129,7 @@ export default function RevokeAllowanceModal({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/70 backdrop-blur-xs"
         onClick={busy ? undefined : onClose}
       />
 

@@ -2,10 +2,10 @@ import { test, expect } from "bun:test";
 import {
   Account,
   Address,
-  Contract,
   Keypair,
   Memo,
   Networks,
+  Operation,
   TransactionBuilder,
   nativeToScVal,
   xdr,
@@ -17,9 +17,9 @@ import {
 
 const OWNER_KP = Keypair.random();
 const OWNER = OWNER_KP.publicKey();
-const TOKEN = Address.contract(Buffer.alloc(32, 1)).toString();
-const SPENDER = Address.contract(Buffer.alloc(32, 2)).toString();
-const OTHER_CONTRACT = Address.contract(Buffer.alloc(32, 9)).toString();
+const TOKEN = Address.contract(new Uint8Array(32).fill(1)).toString();
+const SPENDER = Address.contract(new Uint8Array(32).fill(2)).toString();
+const OTHER_CONTRACT = Address.contract(new Uint8Array(32).fill(9)).toString();
 const OTHER_ACCOUNT = Keypair.random().publicKey();
 
 interface AuthShape {
@@ -46,7 +46,7 @@ function authEntry(
     ? xdr.SorobanCredentials.sorobanCredentialsAddress(
         new xdr.SorobanAddressCredentials({
           address: new Address(OWNER).toScAddress(),
-          nonce: new xdr.Int64(1),
+          nonce: BigInt(1),
           signatureExpirationLedger: 1,
           signature: xdr.ScVal.scvVoid(),
         })
@@ -92,30 +92,26 @@ function buildRevokeXdr(
 ): string {
   const args = options.args ?? approveArgs();
   const contract = options.contract ?? TOKEN;
-  const op = new Contract(contract).call("approve", ...args);
+  const hostFunction = xdr.HostFunction.hostFunctionTypeInvokeContract(
+    new xdr.InvokeContractArgs({
+      contractAddress: new Address(contract).toScAddress(),
+      functionName: "approve",
+      args,
+    })
+  );
+  const op = Operation.invokeHostFunction({
+    func: hostFunction,
+    auth: [authEntry(contract, args, options.auth ?? {})],
+  });
   const raw = new TransactionBuilder(new Account(options.txSource ?? OWNER, "100"), {
     fee: options.fee ?? "100",
     networkPassphrase: Networks.TESTNET,
   });
   if (options.memo) raw.addMemo(options.memo);
-  raw.addOperation(op).setTimeout(30);
-  const built = raw.build();
-  // Attach auth entries to the one operation by round-tripping through the XDR envelope, since
-  // `Contract.call()` builds a bare invocation with no auth of its own.
-  const envelope = built.toEnvelope();
-  const txOps = envelope.v1().tx().operations();
-  const hostOp = txOps[0]!.body().invokeHostFunctionOp();
-  const authEntries = [authEntry(contract, args, options.auth ?? {})];
-  const rebuilt = new xdr.InvokeHostFunctionOp({
-    hostFunction: hostOp.hostFunction(),
-    auth: authEntries,
-  });
-  txOps[0]!.body(xdr.OperationBody.invokeHostFunction(rebuilt));
-  if (options.extraOp) {
-    txOps.push(txOps[0]!);
-    envelope.v1().tx().operations(txOps);
-  }
-  return envelope.toXDR("base64");
+  raw.addOperation(op);
+  if (options.extraOp) raw.addOperation(op);
+  raw.setTimeout(30);
+  return raw.build().toEnvelope().toXdr("base64");
 }
 
 function expectation(over: Partial<{ owner: string; token: string; spender: string }> = {}) {

@@ -3,9 +3,9 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import {
   Account,
   Address,
-  Contract,
   Keypair,
   Networks,
+  Operation,
   TransactionBuilder,
   nativeToScVal,
   xdr,
@@ -34,8 +34,8 @@ afterEach(() => {
 
 const OWNER_KP = Keypair.random();
 const OWNER = OWNER_KP.publicKey();
-const TOKEN = Address.contract(Buffer.alloc(32, 1)).toString();
-const SPENDER = Address.contract(Buffer.alloc(32, 2)).toString();
+const TOKEN = Address.contract(new Uint8Array(32).fill(1)).toString();
+const SPENDER = Address.contract(new Uint8Array(32).fill(2)).toString();
 
 function allowance(): Allowance {
   return {
@@ -63,17 +63,6 @@ function realRevokeXdr(options: { token?: string; spender?: string; owner?: stri
     nativeToScVal(BigInt(0), { type: "i128" }),
     nativeToScVal(0, { type: "u32" }),
   ];
-  const op = new Contract(token).call("approve", ...args);
-  const built = new TransactionBuilder(new Account(owner, "100"), {
-    fee: "100",
-    networkPassphrase: Networks.TESTNET,
-  })
-    .addOperation(op)
-    .setTimeout(30)
-    .build();
-  const envelope = built.toEnvelope();
-  const txOps = envelope.v1().tx().operations();
-  const hostOp = txOps[0]!.body().invokeHostFunctionOp();
   const authEntry = new xdr.SorobanAuthorizationEntry({
     credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
     rootInvocation: new xdr.SorobanAuthorizedInvocation({
@@ -87,12 +76,25 @@ function realRevokeXdr(options: { token?: string; spender?: string; owner?: stri
       subInvocations: [],
     }),
   });
-  txOps[0]!.body(
-    xdr.OperationBody.invokeHostFunction(
-      new xdr.InvokeHostFunctionOp({ hostFunction: hostOp.hostFunction(), auth: [authEntry] })
-    )
-  );
-  return envelope.toXDR("base64");
+  const op = Operation.invokeHostFunction({
+    func: xdr.HostFunction.hostFunctionTypeInvokeContract(
+      new xdr.InvokeContractArgs({
+        contractAddress: new Address(token).toScAddress(),
+        functionName: "approve",
+        args,
+      })
+    ),
+    auth: [authEntry],
+  });
+  return new TransactionBuilder(new Account(owner, "100"), {
+    fee: "100",
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(op)
+    .setTimeout(30)
+    .build()
+    .toEnvelope()
+    .toXdr("base64");
 }
 
 function mockFetchSequence(responses: Array<{ status: number; body: unknown }>): void {

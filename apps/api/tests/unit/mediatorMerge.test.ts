@@ -1,4 +1,5 @@
 import { test, expect } from "bun:test";
+import { memoText } from "../support/xdr-edit";
 import {
   Account,
   Keypair,
@@ -41,5 +42,5 @@ test("mediator merge tx merges to the mediator and forwards the balance to the d
   expect(Number(payment.amount)).toBeLessThan(50);
 
   // The deposit memo rides the forwarding transaction.
-  expect(tx.memo.value?.toString()).toBe("deposit-123");
+  expect(memoText(tx)).toBe("deposit-123");
 });

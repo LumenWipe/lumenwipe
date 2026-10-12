@@ -11,6 +11,7 @@
  * so a refusal proven here is a real deviation from what xBull's own router actually does
  * on-chain.
  */
+import { envelopeWithOperations, onlyOperation } from "../support/xdr-edit";
 import { expect, test } from "bun:test";
 import {
   Networks,
@@ -63,11 +64,10 @@ test("a swap that pays out to a second operation's account is refused (single-op
   // envelope - the second operation could just as well pay out anywhere; assertXBullConversionShape
   // must refuse on operation count alone, before it ever inspects a second operation's contents.
   const first = assembleTestTransaction(fixture.contractArgsXDR, fixture.decoded.from, "0");
-  const firstOp = first.toEnvelope().v1().tx().operations()[0]!;
+  const firstOp = onlyOperation(first);
   const second = assembleTestTransaction(fixture.contractArgsXDR, fixture.decoded.from, "0");
-  const secondOp = second.toEnvelope().v1().tx().operations()[0]!;
-  const envelope = first.toEnvelope();
-  envelope.v1().tx().operations([firstOp, secondOp]);
+  const secondOp = onlyOperation(second);
+  const envelope = envelopeWithOperations(first, [firstOp, secondOp]);
   const tx = TransactionBuilder.fromXDR(envelope, Networks.PUBLIC) as Transaction;
   expect(() => assertXBullConversionShape(tx, expectedFromFixture())).toThrow(
     "expected one operation"

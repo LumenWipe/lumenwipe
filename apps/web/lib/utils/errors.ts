@@ -159,8 +159,8 @@ function camelToSnake(str: string): string {
  */
 function extractFirstFailedOpCode(resultXdrBase64: string): string | null {
   try {
-    const txResult = xdr.TransactionResult.fromXDR(resultXdrBase64, "base64");
-    const txCode = (txResult.result().switch() as { name: string }).name;
+    const txResult = xdr.TransactionResult.fromXdr(resultXdrBase64, "base64");
+    const txCode = txResult.result.type;
 
     if (txCode !== "txFailed") {
       // Transaction-level failure (txBadAuth, txBadSeq, txTooLate, etc.)
@@ -170,27 +170,21 @@ function extractFirstFailedOpCode(resultXdrBase64: string): string | null {
     }
 
     // Operation-level failures
-    for (const opResult of txResult.result().results()) {
-      const opCode = (opResult.switch() as { name: string }).name;
-
-      if (opCode !== "opInner") {
-        return camelToSnake(opCode);
+    for (const opResult of txResult.result.results) {
+      if (opResult.type !== "opInner") {
+        return camelToSnake(opResult.type);
       }
 
-      const tr = opResult.tr() as unknown as Record<
-        string,
-        () => { switch: () => { name: string } }
-      >;
-      const opType = (opResult.tr().switch() as { name: string }).name;
+      const tr: Record<string, unknown> = { ...opResult.tr };
+      const opType = opResult.tr.type;
 
-      try {
-        const innerResult = tr[`${opType}Result`]?.();
-        const resultCode = innerResult?.switch().name;
-        if (resultCode && !resultCode.endsWith("Success") && !resultCode.endsWith("success")) {
-          return camelToSnake(resultCode);
-        }
-      } catch {
-        // Accessor failed - skip this op result
+      const innerResult = tr[`${opType}Result`];
+      const resultCode =
+        typeof innerResult === "object" && innerResult !== null && "type" in innerResult
+          ? String(innerResult.type)
+          : undefined;
+      if (resultCode && !resultCode.endsWith("Success") && !resultCode.endsWith("success")) {
+        return camelToSnake(resultCode);
       }
     }
 

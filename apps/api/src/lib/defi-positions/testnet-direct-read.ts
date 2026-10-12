@@ -54,8 +54,13 @@ import type {
   SoroswapLpPosition,
   UnrecognizedDefiPosition,
 } from "@lumenwipe/types";
+import { contractDataEntry, instanceOfEntry } from "@/lib/stellar/contract-data";
 
 type RpcServer = ReturnType<typeof getRpcServer>;
+
+// Blend ships its own copy of the Stellar SDK, so its XDR objects only cross over as bytes.
+const backstopBalanceKey = (backstop: string, pool: string, user: string): xdr.LedgerKey =>
+  xdr.LedgerKey.fromXdr(UserBalance.ledgerKey(backstop, pool, user).toXDR("base64"), "base64");
 /** Everything below needs exactly one RPC method, so the real server and a stub both fit. */
 type LedgerReader = LedgerEntriesReader;
 
@@ -154,7 +159,7 @@ export function contractDataKey(contractAddress: string, key: xdr.ScVal): xdr.Le
     new xdr.LedgerKeyContractData({
       contract: new Address(contractAddress).toScAddress(),
       key,
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
     })
   );
 }
@@ -175,14 +180,14 @@ async function batchRead(
   const res = await rpc.getLedgerEntries(...keys);
   const map = new Map<string, xdr.LedgerEntryData>();
   for (const entry of res.entries ?? []) {
-    map.set(entry.key.toXDR("base64"), entry.val);
+    map.set(entry.key.toXdr("base64"), entry.val);
   }
   return map;
 }
 
 function contractDataScVal(val: xdr.LedgerEntryData | undefined): unknown {
   if (!val) return undefined;
-  return scValToNative(val.contractData().val());
+  return scValToNative(contractDataEntry(val).val);
 }
 
 /** A Rust `Map<K,V>` may decode to a JS `Map` or a plain object depending on key type -
@@ -266,10 +271,10 @@ async function readBlendPoolPositions(
   const positionsKey = contractDataKey(entry.address, variantVal("Positions", addressVal(address)));
   const results = await batchRead(rpc, [resListKey, positionsKey]);
 
-  const resListNative = contractDataScVal(results.get(resListKey.toXDR("base64")));
+  const resListNative = contractDataScVal(results.get(resListKey.toXdr("base64")));
   const reserveList = Array.isArray(resListNative) ? (resListNative as string[]) : [];
 
-  const positionsNative = contractDataScVal(results.get(positionsKey.toXDR("base64")));
+  const positionsNative = contractDataScVal(results.get(positionsKey.toXdr("base64")));
   if (!isRecord(positionsNative)) return [];
 
   const assetFor = (index: string): string | null => reserveList[Number(index)] ?? null;
@@ -346,9 +351,9 @@ async function readBlendBackstopPositions(
       e.verifiedLive
   );
   if (pools.length === 0) return [];
-  const keys = pools.map((pool) => UserBalance.ledgerKey(backstop.address, pool.address, address));
+  const keys = pools.map((pool) => backstopBalanceKey(backstop.address, pool.address, address));
   const results = await batchRead(rpc, [instanceKey(backstop.address), ...keys]);
-  const instance = results.get(instanceKey(backstop.address).toXDR("base64"));
+  const instance = results.get(instanceKey(backstop.address).toXdr("base64"));
   // The backstop keeps its config under bare symbols (`BToken` is the deposit token).
   const backstopToken = instance
     ? asAddress(parseInstance(instance).storage.get('"BToken"'))
@@ -356,11 +361,11 @@ async function readBlendBackstopPositions(
 
   const positions: DefiPosition[] = [];
   for (let i = 0; i < pools.length; i++) {
-    const val = results.get(keys[i]!.toXDR("base64"));
+    const val = results.get(keys[i]!.toXdr("base64"));
     if (!val) continue;
     let balance: UserBalance;
     try {
-      balance = UserBalance.fromLedgerEntryData(val, Math.floor(Date.now() / 1000));
+      balance = UserBalance.fromLedgerEntryData(val.toXdr("base64"), Math.floor(Date.now() / 1000));
     } catch {
       unrecognized.push({
         protocol: "blend",
@@ -394,6 +399,9 @@ async function readBlendBackstopPositions(
   return positions;
 }
 
+const entryVal = (entry: xdr.LedgerEntryData | undefined): xdr.ScVal | undefined =>
+  entry ? contractDataEntry(entry).val : undefined;
+
 // ─── Soroswap: every pair the factory deployed ───────────────────────────────
 
 /** Stellar RPC caps getLedgerEntries at 200 keys per call; stay under it with room to spare. */
@@ -426,22 +434,22 @@ interface ParsedInstance {
 
 /** A contract instance entry as its code hash and storage. Pure: one entry in, no network. */
 function parseInstance(val: xdr.LedgerEntryData): ParsedInstance {
-  const instance = val.contractData().val().instance();
-  const executable = instance.executable();
+  const instance = instanceOfEntry(val);
+  const executable = instance.executable;
   const wasmHash =
-    executable.switch() === xdr.ContractExecutableType.contractExecutableWasm()
-      ? executable.wasmHash().toString("hex")
+    executable.type === "contractExecutableWasm"
+      ? Buffer.from(executable.wasmHash.toBytes()).toString("hex")
       : null;
   const storage = new Map<string, xdr.ScVal>();
-  for (const entry of instance.storage() ?? []) {
+  for (const entry of instance.storage ?? []) {
     let name: unknown;
     try {
-      name = JSON.stringify(scValToNative(entry.key()));
+      name = JSON.stringify(scValToNative(entry.key));
     } catch {
       continue;
     }
     if (typeof name !== "string") continue;
-    storage.set(name, entry.val());
+    storage.set(name, entry.val);
   }
   return { wasmHash, storage };
 }
@@ -450,8 +458,8 @@ const instanceKey = (contractAddress: string): xdr.LedgerKey =>
   new Contract(contractAddress).getFootprint();
 
 const asAddress = (val: xdr.ScVal | undefined): string | null => {
-  if (!val || val.switch() !== xdr.ScValType.scvAddress()) return null;
-  return Address.fromScAddress(val.address()).toString();
+  if (!val || val.type !== "scvAddress") return null;
+  return Address.fromScAddress(val.address).toString();
 };
 
 /**
@@ -477,7 +485,7 @@ async function readSoroswapFactoryPairs(
   };
 
   const factoryKey = instanceKey(factory.address);
-  const factoryVal = (await batchRead(rpc, [factoryKey])).get(factoryKey.toXDR("base64"));
+  const factoryVal = (await batchRead(rpc, [factoryKey])).get(factoryKey.toXdr("base64"));
   const total = factoryVal
     ? scValToNative(parseInstance(factoryVal).storage.get('["TotalPairs"]') ?? xdr.ScVal.scvVoid())
     : null;
@@ -500,7 +508,7 @@ async function readSoroswapFactoryPairs(
   const indexed = await batchReadChunked(rpc, indexKeys);
   const pairs = new Set<string>();
   for (const key of indexKeys) {
-    const pair = asAddress(indexed.get(key.toXDR("base64"))?.contractData().val());
+    const pair = asAddress(entryVal(indexed.get(key.toXdr("base64"))));
     if (pair) pairs.add(pair);
   }
   if (pairs.size !== count) {
@@ -520,7 +528,7 @@ async function readSoroswapFactoryPairs(
   const balances = await batchReadChunked(rpc, balanceKeys);
   const held: Array<{ pair: string; shares: bigint }> = [];
   for (let i = 0; i < pairList.length; i++) {
-    const shares = asBigInt(contractDataScVal(balances.get(balanceKeys[i]!.toXDR("base64"))));
+    const shares = asBigInt(contractDataScVal(balances.get(balanceKeys[i]!.toXdr("base64"))));
     if (shares === null || shares === 0n) continue;
     held.push({ pair: pairList[i]!, shares });
   }
@@ -539,7 +547,7 @@ async function readSoroswapFactoryPairs(
   const positions: DefiPosition[] = [];
   for (let i = 0; i < held.length; i++) {
     const { pair, shares } = held[i]!;
-    const val = instances.get(heldKeys[i]!.toXDR("base64"));
+    const val = instances.get(heldKeys[i]!.toXdr("base64"));
     if (!val) {
       flag(
         "pair-code-unknown",
@@ -587,7 +595,7 @@ function aquariusPoolType(version: string): AquariusPoolType | null {
 
 /** The router keys a token set's pools by sha256 over the tokens' ScVal XDR, concatenated. */
 export function aquariusTokensHash(tokens: string[]): Buffer {
-  return hash(Buffer.concat(tokens.map((t) => new Address(t).toScVal().toXDR())));
+  return Buffer.from(hash(Buffer.concat(tokens.map((t) => new Address(t).toScVal().toXdr()))));
 }
 
 const asU128 = (val: xdr.ScVal | undefined): bigint | null => {
@@ -600,9 +608,9 @@ const asU128 = (val: xdr.ScVal | undefined): bigint | null => {
 
 /** Every address in an ScVec of addresses; null when the value is not exactly that. */
 function asAddressList(val: xdr.ScVal | undefined): string[] | null {
-  if (!val || val.switch() !== xdr.ScValType.scvVec()) return null;
+  if (!val || val.type !== "scvVec") return null;
   const out: string[] = [];
-  for (const item of val.vec() ?? []) {
+  for (const item of val.vec ?? []) {
     const address = asAddress(item);
     if (address === null) return null;
     out.push(address);
@@ -616,12 +624,12 @@ function asAddressList(val: xdr.ScVal | undefined): string[] | null {
  * map of addresses); a bare address is accepted too so an older router build still decodes.
  */
 function aquariusPoolAddress(val: xdr.ScVal): string | null {
-  if (val.switch() === xdr.ScValType.scvAddress()) return asAddress(val);
-  if (val.switch() !== xdr.ScValType.scvMap()) return null;
-  for (const entry of val.map() ?? []) {
-    const key = entry.key();
-    if (key.switch() === xdr.ScValType.scvSymbol() && key.sym().toString() === "address") {
-      return asAddress(entry.val());
+  if (val.type === "scvAddress") return asAddress(val);
+  if (val.type !== "scvMap") return null;
+  for (const entry of val.map ?? []) {
+    const key = entry.key;
+    if (key.type === "scvSymbol" && key.sym.toString() === "address") {
+      return asAddress(entry.val);
     }
   }
   return null;
@@ -649,7 +657,7 @@ export async function enumerateAquariusPools(
   // integration test) gets the same concurrency bound rather than an unbounded fan-out.
   const rpc = limitReads(reader, LEDGER_READ_CONCURRENCY);
   const routerKey = instanceKey(router.address);
-  const routerVal = (await batchRead(rpc, [routerKey])).get(routerKey.toXDR("base64"));
+  const routerVal = (await batchRead(rpc, [routerKey])).get(routerKey.toXdr("base64"));
   const count = routerVal
     ? asU128(parseInstance(routerVal).storage.get('["TokensSetCounter"]'))
     : null;
@@ -677,8 +685,8 @@ export async function enumerateAquariusPools(
   const sets = await batchReadChunked(rpc, setKeys);
   const tokenSets: string[][] = [];
   for (const key of setKeys) {
-    const val = sets.get(key.toXDR("base64"));
-    const tokens = val ? asAddressList(val.contractData().val()) : null;
+    const val = sets.get(key.toXdr("base64"));
+    const tokens = val ? asAddressList(contractDataEntry(val).val) : null;
     if (tokens) tokenSets.push(tokens);
   }
   const poolKeys = tokenSets.map((tokens) =>
@@ -692,18 +700,18 @@ export async function enumerateAquariusPools(
   let poolMapsMissing = 0;
   let poolEntriesUnrecognized = 0;
   for (const key of poolKeys) {
-    const val = poolMaps.get(key.toXDR("base64"));
+    const val = poolMaps.get(key.toXdr("base64"));
     if (!val) {
       poolMapsMissing += 1;
       continue;
     }
-    const map = val.contractData().val();
-    if (map.switch() !== xdr.ScValType.scvMap()) {
+    const map = contractDataEntry(val).val;
+    if (map.type !== "scvMap") {
       poolEntriesUnrecognized += 1;
       continue;
     }
-    for (const entry of map.map() ?? []) {
-      const pool = aquariusPoolAddress(entry.val());
+    for (const entry of map.map ?? []) {
+      const pool = aquariusPoolAddress(entry.val);
       if (pool) pools.add(pool);
       else poolEntriesUnrecognized += 1;
     }
@@ -731,7 +739,7 @@ export async function enumerateAquariusPools(
   const views: AquariusPoolView[] = [];
   let poolInstancesMissing = 0;
   for (let i = 0; i < poolList.length; i++) {
-    const val = poolInstances.get(poolInstanceKeys[i]!.toXDR("base64"));
+    const val = poolInstances.get(poolInstanceKeys[i]!.toXdr("base64"));
     if (!val) {
       poolInstancesMissing += 1;
       continue;
@@ -826,7 +834,7 @@ async function readAquariusRouterPools(
   const positions: DefiPosition[] = [];
   for (let i = 0; i < readable.length; i++) {
     const view = readable[i]!;
-    const shares = asBigInt(contractDataScVal(balances.get(balanceKeys[i]!.toXDR("base64"))));
+    const shares = asBigInt(contractDataScVal(balances.get(balanceKeys[i]!.toXdr("base64"))));
     if (shares === null || shares === 0n) continue;
     if (!view.type) {
       flag(
@@ -862,7 +870,7 @@ async function readLpShareBalance(
 ): Promise<DefiPosition | null> {
   const balanceKey = contractDataKey(entry.address, variantVal("Balance", addressVal(address)));
   const results = await batchRead(rpc, [balanceKey]);
-  const native = contractDataScVal(results.get(balanceKey.toXDR("base64")));
+  const native = contractDataScVal(results.get(balanceKey.toXdr("base64")));
   const shareAmount = typeof native === "bigint" ? native : null;
   if (shareAmount === null || shareAmount === 0n) return null;
 
@@ -896,7 +904,7 @@ async function readFxdaoVaults(
 
   const positions: DefiPosition[] = [];
   for (let i = 0; i < FXDAO_DENOMINATIONS.length; i++) {
-    const native = contractDataScVal(results.get(keys[i]!.toXDR("base64")));
+    const native = contractDataScVal(results.get(keys[i]!.toXdr("base64")));
     if (!isRecord(native)) continue;
     const collateral = native.total_collateral;
     const debt = native.total_debt;
@@ -1003,7 +1011,7 @@ export async function detectDefiPositionsViaDirectRead(
       readEntry(
         rpc,
         entry,
-        liveWasmHashOf(instances.get(instanceKeys[i]!.toXDR("base64"))),
+        liveWasmHashOf(instances.get(instanceKeys[i]!.toXdr("base64"))),
         entries,
         address
       )

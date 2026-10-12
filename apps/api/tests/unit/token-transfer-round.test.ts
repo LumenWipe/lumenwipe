@@ -3,6 +3,7 @@
  * chose to send as-is, simulated, assembled, and refused by name whenever its shape is anything
  * other than that one call under the account's own credentials.
  */
+import { callOf, onlyOperation } from "../support/xdr-edit";
 import { describe, expect, test } from "bun:test";
 import {
   Address,
@@ -70,12 +71,11 @@ function account(
 }
 
 function calledFunction(tx: Transaction): { contract: string; fn: string; args: xdr.ScVal[] } {
-  const op = tx.toEnvelope().v1().tx().operations()[0]!;
-  const call = op.body().invokeHostFunctionOp().hostFunction().invokeContract();
+  const call = callOf(onlyOperation(tx));
   return {
-    contract: Address.fromScAddress(call.contractAddress()).toString(),
-    fn: call.functionName().toString(),
-    args: call.args(),
+    contract: Address.fromScAddress(call.contractAddress).toString(),
+    fn: call.functionName.toString(),
+    args: call.args,
   };
 }
 
@@ -100,7 +100,7 @@ function authEntry(token: string, args: xdr.ScVal[], shape: AuthShape = {}): str
     ? xdr.SorobanCredentials.sorobanCredentialsAddress(
         new xdr.SorobanAddressCredentials({
           address: new Address(SOURCE).toScAddress(),
-          nonce: new xdr.Int64(1),
+          nonce: 1n,
           signatureExpirationLedger: 1,
           signature: xdr.ScVal.scvVoid(),
         })

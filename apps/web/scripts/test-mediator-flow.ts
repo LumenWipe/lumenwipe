@@ -103,7 +103,7 @@ const evil = new TransactionBuilder(
   .setTimeout(120)
   .build();
 evil.sign(dest);
-const evilRes = await cosign(evil.toEnvelope().toXDR("base64"));
+const evilRes = await cosign(evil.toEnvelope().toXdr("base64"));
 log(evilRes.ok ? "  ✗ ACCEPTED - SECURITY FAILURE" : `  ✓ rejected (HTTP ${evilRes.status})`);
 
 // ── Happy path: atomic merge -> mediator -> destination ───────────────────────
@@ -128,7 +128,7 @@ const tx = new TransactionBuilder(new Account(source.publicKey(), srcAcc.sequenc
 tx.sign(source);
 
 log("\n[flow] Co-signing the forward payment via the app endpoint...");
-const signRes = await cosign(tx.toEnvelope().toXDR("base64"));
+const signRes = await cosign(tx.toEnvelope().toXdr("base64"));
 if (!signRes.ok) {
   log(`  ✗ co-sign failed (HTTP ${signRes.status}): ${await signRes.text()}`);
   process.exit(1);

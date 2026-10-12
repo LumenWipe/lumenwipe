@@ -20,7 +20,7 @@ function buildTx(source: Keypair, ops: xdr.Operation[]): string {
     networkPassphrase: PASSPHRASE,
   }).setTimeout(30);
   ops.forEach((op) => builder.addOperation(op));
-  return builder.build().toEnvelope().toXDR("base64");
+  return builder.build().toEnvelope().toXdr("base64");
 }
 
 /**
@@ -29,10 +29,37 @@ function buildTx(source: Keypair, ops: xdr.Operation[]): string {
  * shape a compromised or buggy API could still hand us, and the case the floor check exists for.
  */
 function zeroOutDestMin(envelopeXdr: string): string {
-  const envelope = xdr.TransactionEnvelope.fromXDR(envelopeXdr, "base64");
-  const op = envelope.v1().tx().operations()[0]!;
-  op.body().pathPaymentStrictSendOp().destMin(xdr.Int64.fromString("0"));
-  return envelope.toXDR("base64");
+  const envelope = xdr.TransactionEnvelope.fromXdr(envelopeXdr, "base64");
+  if (envelope.type !== "envelopeTypeTx") throw new Error("expected a v1 envelope");
+  const tx = envelope.v1.tx;
+  const first = tx.operations[0]!;
+  if (first.body.type !== "pathPaymentStrictSend") throw new Error("expected a conversion");
+  const inner = first.body.pathPaymentStrictSendOp;
+  const rewritten = new xdr.Operation({
+    sourceAccount: first.sourceAccount,
+    body: xdr.OperationBody.pathPaymentStrictSend(
+      new xdr.PathPaymentStrictSendOp({
+        sendAsset: inner.sendAsset,
+        sendAmount: inner.sendAmount,
+        destination: inner.destination,
+        destAsset: inner.destAsset,
+        destMin: BigInt(0),
+        path: inner.path,
+      })
+    ),
+  });
+  const patched = new xdr.Transaction({
+    sourceAccount: tx.sourceAccount,
+    fee: tx.fee,
+    seqNum: tx.seqNum,
+    cond: tx.cond,
+    memo: tx.memo,
+    operations: [rewritten, ...tx.operations.slice(1)],
+    ext: tx.ext,
+  });
+  return xdr.TransactionEnvelope.envelopeTypeTx(
+    new xdr.TransactionV1Envelope({ tx: patched, signatures: envelope.v1.signatures })
+  ).toXdr("base64");
 }
 
 function closeTx(envelopeXdr: string): CloseTransaction {

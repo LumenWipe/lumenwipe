@@ -7,11 +7,13 @@ import {
   TransactionBuilder,
   Networks,
   Keypair,
+  Memo,
   StrKey,
   nativeToScVal,
   xdr,
 } from "@stellar/stellar-sdk";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
+import { fromHex } from "@/lib/stellar/hex";
 
 const SRC = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -24,7 +26,7 @@ function txWith(...ops: ReturnType<typeof Operation.accountMerge>[]): string {
     networkPassphrase: Networks.TESTNET,
   }).setTimeout(300);
   for (const op of ops) b.addOperation(op);
-  return b.build().toEnvelope().toXDR("base64");
+  return b.build().toEnvelope().toXdr("base64");
 }
 
 test("intentFromXdr normalizes change_trust and account_merge", () => {
@@ -148,8 +150,8 @@ test("intentFromXdr decodes a pre-auth-tx signer removal, re-encoding the raw ha
 test("intentFromXdr decodes an ed25519 signed-payload (CAP-40) signer removal", () => {
   const payloadXdr = new xdr.SignerKeyEd25519SignedPayload({
     ed25519: Keypair.random().rawPublicKey(),
-    payload: Buffer.from("cafebabe", "hex"),
-  }).toXDR();
+    payload: fromHex("cafebabe"),
+  }).toXdr();
   const signedPayloadKey = StrKey.encodeSignedPayload(payloadXdr);
   const txXdr = txWith(
     Operation.setOptions({ signer: { ed25519SignedPayload: signedPayloadKey, weight: 0 } })
@@ -386,4 +388,60 @@ test("intentFromXdr counts a muxed account, a claimable balance, or a pool addre
     accountsReferenced: [SRC],
     unsupportedAddressCount: 1,
   });
+});
+
+function txWithMemo(memo: Memo): string {
+  return new TransactionBuilder(new Account(SRC, "100"), {
+    fee: "100",
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(Operation.bumpSequence({ bumpTo: "5" }))
+    .addMemo(memo)
+    .setTimeout(300)
+    .build()
+    .toEnvelope()
+    .toXdr("base64");
+}
+
+test("intentFromXdr › decodes a text memo as its text", () => {
+  const intent = intentFromXdr(txWithMemo(Memo.text("deposit-1")), Networks.TESTNET);
+  expect(intent.memo).toBe("deposit-1");
+  expect(intent.memoType).toBe("text");
+});
+
+test("intentFromXdr › decodes an id memo as its decimal string", () => {
+  const intent = intentFromXdr(txWithMemo(Memo.id("12345")), Networks.TESTNET);
+  expect(intent.memo).toBe("12345");
+  expect(intent.memoType).toBe("id");
+});
+
+test("intentFromXdr › decodes a hash memo as lowercase hex", () => {
+  const intent = intentFromXdr(txWithMemo(Memo.hash("ab".repeat(32))), Networks.TESTNET);
+  expect(intent.memo).toBe("ab".repeat(32));
+  expect(intent.memoType).toBe("hash");
+});
+
+test("intentFromXdr › reports no memo when none is set", () => {
+  const intent = intentFromXdr(
+    txWith(Operation.accountMerge({ destination: DEST })),
+    Networks.TESTNET
+  );
+  expect(intent.memo).toBeNull();
+});
+
+test("intentFromXdr › manage_data value is base64 and a deletion is null", () => {
+  const build = (value: Uint8Array | null): string =>
+    new TransactionBuilder(new Account(SRC, "100"), {
+      fee: "100",
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(Operation.manageData({ name: "k", value }))
+      .setTimeout(300)
+      .build()
+      .toEnvelope()
+      .toXdr("base64");
+  const set = intentFromXdr(build(new Uint8Array([1, 2, 3])), Networks.TESTNET).operations[0];
+  const cleared = intentFromXdr(build(null), Networks.TESTNET).operations[0];
+  expect(set).toMatchObject({ type: "manage_data", name: "k", value: "AQID" });
+  expect(cleared).toMatchObject({ type: "manage_data", name: "k", value: null });
 });

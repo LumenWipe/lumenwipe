@@ -7,6 +7,7 @@
  * so both the shape-assertion suite (Task 4) and the adversarial suite (Task 9) build their
  * fixtures from the one real captured `contractArgsXDR`, never a hand-typed approximation of it.
  */
+import { withAuth as withAuthEntries } from "./xdr-edit";
 import {
   Account,
   Address,
@@ -70,7 +71,7 @@ export function assembleTestTransaction(
   opts: AssembleOptions = {}
 ): Transaction {
   const contractArgs = xdr.InvokeContractArgs.fromXDR(contractArgsXDR, "base64");
-  const contract = Address.fromScAddress(contractArgs.contractAddress()).toString();
+  const contract = Address.fromScAddress(contractArgs.contractAddress).toString();
   const root = new xdr.SorobanAuthorizedInvocation({
     function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(contractArgs),
     subInvocations: opts.subInvocation ? [transferSubInvocation(opts.subInvocation)] : [],
@@ -80,13 +81,12 @@ export function assembleTestTransaction(
     rootInvocation: root,
   });
   const op = new Contract(contract).call(
-    contractArgs.functionName().toString(),
-    ...contractArgs.args()
+    contractArgs.functionName.toString(),
+    ...contractArgs.args
   );
   // Contract.call() carries no auth of its own; rebuild the operation with the entry attached,
   // the same round-trip token-conversion-round.test.ts's swapTx() uses.
-  const withAuth = xdr.Operation.fromXDR(op.toXDR());
-  withAuth.body().invokeHostFunctionOp().auth([auth]);
+  const withAuth = withAuthEntries(xdr.Operation.fromXdr(op.toXdr()), [auth]);
   return new TransactionBuilder(new Account(source, sequence), {
     fee: opts.fee ?? "52485",
     networkPassphrase: Networks.PUBLIC,
@@ -105,14 +105,14 @@ export function assembleTestTransaction(
  */
 export function reencodeSwapArg(contractArgsXDR: string, index: number, value: xdr.ScVal): string {
   const contractArgs = xdr.InvokeContractArgs.fromXDR(contractArgsXDR, "base64");
-  const args = [...contractArgs.args()];
+  const args = [...contractArgs.args];
   if (index < 0 || index >= args.length) {
     throw new Error(`arg index ${index} out of range (0-${args.length - 1})`);
   }
   args[index] = value;
   const rebuilt = new xdr.InvokeContractArgs({
-    contractAddress: contractArgs.contractAddress(),
-    functionName: contractArgs.functionName(),
+    contractAddress: contractArgs.contractAddress,
+    functionName: contractArgs.functionName,
     args,
   });
   return rebuilt.toXDR("base64");
@@ -127,7 +127,7 @@ export function reencodeSwapArg(contractArgsXDR: string, index: number, value: x
  */
 export function reencodeWithRefs(contractArgsXDR: string, refs: Array<[string, string]>): string {
   const contractArgs = xdr.InvokeContractArgs.fromXDR(contractArgsXDR, "base64");
-  const args = contractArgs.args();
+  const args = contractArgs.args;
   if (args.length !== 6) throw new Error(`expected 6 args, found ${args.length}`);
   const refsVec = xdr.ScVal.scvVec(
     refs.map(([address, amount]) =>
@@ -138,8 +138,8 @@ export function reencodeWithRefs(contractArgsXDR: string, refs: Array<[string, s
     )
   );
   const rebuilt = new xdr.InvokeContractArgs({
-    contractAddress: contractArgs.contractAddress(),
-    functionName: contractArgs.functionName(),
+    contractAddress: contractArgs.contractAddress,
+    functionName: contractArgs.functionName,
     args: [...args.slice(0, 5), refsVec],
   });
   return rebuilt.toXDR("base64");

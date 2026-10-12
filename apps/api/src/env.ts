@@ -12,8 +12,8 @@ import { config } from "dotenv";
  * had a chance to run.
  */
 export function loadEnvFiles(): void {
-  config({ path: ".env.local", override: false });
-  config({ path: ".env", override: false });
+  config({ path: ".env.local", override: false, quiet: true });
+  config({ path: ".env", override: false, quiet: true });
 }
 
 loadEnvFiles();

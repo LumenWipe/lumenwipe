@@ -57,10 +57,10 @@ function poolInstance(): xdr.LedgerEntryData {
   const entry = (k: xdr.ScVal, v: xdr.ScVal) => new xdr.ScMapEntry({ key: k, val: v });
   return xdr.LedgerEntryData.contractData(
     new xdr.ContractDataEntry({
-      ext: new xdr.ExtensionPoint(0),
+      ext: xdr.ExtensionPoint.v0(),
       contract: new Address(POOL).toScAddress(),
       key: xdr.ScVal.scvLedgerKeyContractInstance(),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
       val: xdr.ScVal.scvContractInstance(
         new xdr.ScContractInstance({
           executable: xdr.ContractExecutable.contractExecutableWasm(Buffer.alloc(32, 1)),
@@ -118,7 +118,7 @@ describe("aquarius enricher", () => {
       getLedgerEntries: async (...keys: xdr.LedgerKey[]) => ({
         latestLedger: 1,
         entries: keys
-          .filter((k) => k.toXDR("base64") === new Contract(POOL).getFootprint().toXDR("base64"))
+          .filter((k) => k.toXdr("base64") === new Contract(POOL).getFootprint().toXdr("base64"))
           .map((key) => ({ key, val: poolInstance(), lastModifiedLedgerSeq: 1 })),
       }),
     };

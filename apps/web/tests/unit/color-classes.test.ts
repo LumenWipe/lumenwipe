@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import fs from "fs";
 import path from "path";
 import postcss from "postcss";
-import tailwind from "tailwindcss";
+import { compile, type Config } from "tailwindcss";
+import type Plugin from "tailwindcss/plugin";
 import config from "../../tailwind.config";
 
 const root = process.cwd();
@@ -32,12 +33,30 @@ function candidates(src: string): string[] {
   return [...src.matchAll(re)].map((m) => m[1]);
 }
 
+const tailwindDir = path.dirname(require.resolve("tailwindcss/package.json"));
+const entryCss = [
+  '@import "tailwindcss/theme.css" layer(theme);',
+  '@import "tailwindcss/utilities.css" layer(utilities);',
+  '@config "./tailwind.config.ts";',
+].join("\n");
+
 async function emittedSelectors(classes: string[]): Promise<Set<string>> {
-  const result = await postcss([
-    tailwind({ ...config, content: [{ raw: classes.join(" ") }] }),
-  ]).process("@tailwind utilities;", { from: undefined });
+  const compiler = await compile(entryCss, {
+    base: root,
+    async loadStylesheet(id, base) {
+      const file = id.startsWith("tailwindcss/")
+        ? path.join(tailwindDir, id.slice("tailwindcss/".length))
+        : path.resolve(base, id);
+      return { path: file, base: path.dirname(file), content: fs.readFileSync(file, "utf8") };
+    },
+    async loadModule(id, base) {
+      const file = path.resolve(base, id);
+      const mod = (await import(file)) as { default: Config | ReturnType<typeof Plugin> };
+      return { path: file, base: path.dirname(file), module: mod.default };
+    },
+  });
   const emitted = new Set<string>();
-  result.root.walkRules((rule) => {
+  postcss.parse(compiler.build(classes)).walkRules((rule) => {
     for (const m of rule.selector.matchAll(/\.((?:\\.|[^\s.:>+~,[\]()])+)/g)) {
       emitted.add(m[1].replace(/\\(.)/g, "$1"));
     }

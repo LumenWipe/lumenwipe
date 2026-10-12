@@ -30,9 +30,7 @@ const bump = () => Operation.bumpSequence({ bumpTo: "200" });
 
 const mergeSuccess = (stroops: string) =>
   xdr.OperationResult.opInner(
-    xdr.OperationResultTr.accountMerge(
-      xdr.AccountMergeResult.accountMergeSuccess(xdr.Int64.fromString(stroops))
-    )
+    xdr.OperationResultTr.accountMerge(xdr.AccountMergeResult.accountMergeSuccess(BigInt(stroops)))
   );
 
 const bumpSuccess = () =>
@@ -42,31 +40,31 @@ const bumpSuccess = () =>
 
 function txResult(results: xdr.OperationResult[]): xdr.TransactionResult {
   return new xdr.TransactionResult({
-    feeCharged: xdr.Int64.fromString("100"),
+    feeCharged: 100n,
     result: xdr.TransactionResultResult.txSuccess(results),
-    ext: new xdr.TransactionResultExt(0),
+    ext: xdr.TransactionResultExt.v0(),
   });
 }
 
 function feeBumpResult(results: xdr.OperationResult[]): xdr.TransactionResult {
   return new xdr.TransactionResult({
-    feeCharged: xdr.Int64.fromString("200"),
+    feeCharged: 200n,
     result: xdr.TransactionResultResult.txFeeBumpInnerSuccess(
       new xdr.InnerTransactionResultPair({
-        transactionHash: Buffer.alloc(32),
+        transactionHash: new xdr.Hash(Buffer.alloc(32)),
         result: new xdr.InnerTransactionResult({
-          feeCharged: xdr.Int64.fromString("100"),
+          feeCharged: 100n,
           result: xdr.InnerTransactionResultResult.txSuccess(results),
-          ext: new xdr.InnerTransactionResultExt(0),
+          ext: xdr.InnerTransactionResultExt.v0(),
         }),
       })
     ),
-    ext: new xdr.TransactionResultExt(0),
+    ext: xdr.TransactionResultExt.v0(),
   });
 }
 
 function feeBumpEnvelope(inner: xdr.TransactionEnvelope): xdr.TransactionEnvelope {
-  const innerTx = TransactionBuilder.fromXDR(inner, Networks.TESTNET);
+  const innerTx = TransactionBuilder.fromXdr(inner, Networks.TESTNET);
   const sponsor = Keypair.random();
   const bumped = TransactionBuilder.buildFeeBumpTransaction(
     sponsor,
@@ -120,14 +118,14 @@ describe("summarizeMerges", () => {
 
 describe("signedXdrHasAccountMerge", () => {
   test("detects a merge in a plain and a fee-bumped envelope", () => {
-    expect(signedXdrHasAccountMerge(envelope([merge()]).toXDR("base64"))).toBe(true);
-    expect(signedXdrHasAccountMerge(feeBumpEnvelope(envelope([merge()])).toXDR("base64"))).toBe(
+    expect(signedXdrHasAccountMerge(envelope([merge()]).toXdr("base64"))).toBe(true);
+    expect(signedXdrHasAccountMerge(feeBumpEnvelope(envelope([merge()])).toXdr("base64"))).toBe(
       true
     );
   });
 
   test("is false for a non-merge envelope and for garbage", () => {
-    expect(signedXdrHasAccountMerge(envelope([bump()]).toXDR("base64"))).toBe(false);
+    expect(signedXdrHasAccountMerge(envelope([bump()]).toXdr("base64"))).toBe(false);
     expect(signedXdrHasAccountMerge("not-xdr")).toBe(false);
   });
 });

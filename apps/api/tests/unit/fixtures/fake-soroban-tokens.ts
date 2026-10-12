@@ -54,15 +54,15 @@ function instanceEntry(contract: string, isStellarAsset: boolean): rpc.Api.Ledge
   const key = new Contract(contract).getFootprint();
   const val = xdr.LedgerEntryData.contractData(
     new xdr.ContractDataEntry({
-      ext: new xdr.ExtensionPoint(0),
+      ext: xdr.ExtensionPoint.v0(),
       contract: new Address(contract).toScAddress(),
       key: xdr.ScVal.scvLedgerKeyContractInstance(),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
       val: xdr.ScVal.scvContractInstance(
         new xdr.ScContractInstance({
           executable: isStellarAsset
             ? xdr.ContractExecutable.contractExecutableStellarAsset()
-            : xdr.ContractExecutable.contractExecutableWasm(Buffer.alloc(32, 7)),
+            : xdr.ContractExecutable.contractExecutableWasm(new Uint8Array(32).fill(7)),
           storage: null,
         })
       ),
@@ -73,14 +73,15 @@ function instanceEntry(contract: string, isStellarAsset: boolean): rpc.Api.Ledge
 
 /** The contract and function a simulated single-invocation transaction calls. */
 function calledFunction(tx: Transaction): { contract: string; fn: string } | null {
-  const op = tx.toEnvelope().v1().tx().operations()[0];
-  if (!op || op.body().switch() !== xdr.OperationType.invokeHostFunction()) return null;
-  const host = op.body().invokeHostFunctionOp().hostFunction();
-  if (host.switch() !== xdr.HostFunctionType.hostFunctionTypeInvokeContract()) return null;
-  const call = host.invokeContract();
+  const envelope = tx.toEnvelope();
+  const op = envelope.type === "envelopeTypeTx" ? envelope.v1.tx.operations[0] : undefined;
+  if (!op || op.body.type !== "invokeHostFunction") return null;
+  const host = op.body.invokeHostFunctionOp.hostFunction;
+  if (host.type !== "hostFunctionTypeInvokeContract") return null;
+  const call = host.invokeContract;
   return {
-    contract: Address.fromScAddress(call.contractAddress()).toString(),
-    fn: call.functionName().toString(),
+    contract: Address.fromScAddress(call.contractAddress).toString(),
+    fn: call.functionName.toString(),
   };
 }
 
@@ -88,7 +89,7 @@ function simulationWith(retval: xdr.ScVal): rpc.Api.SimulateTransactionResponse 
   const base = rawSimulation("ok", [], "1000") as unknown as Record<string, unknown>;
   return {
     ...base,
-    results: [{ auth: [], xdr: retval.toXDR("base64") }],
+    results: [{ auth: [], xdr: retval.toXdr("base64") }],
   } as unknown as rpc.Api.SimulateTransactionResponse;
 }
 
@@ -117,7 +118,8 @@ export function fakeSorobanRpc(world: FakeSorobanWorld): SorobanTokenRpc & {
     async getLedgerEntries(...keys: xdr.LedgerKey[]) {
       const entries: rpc.Api.LedgerEntryResult[] = [];
       for (const key of keys) {
-        const contract = Address.fromScAddress(key.contractData().contract()).toString();
+        if (key.type !== "contractData") throw new Error("not stubbed");
+        const contract = Address.fromScAddress(key.contractData.contract).toString();
         const token = tokens.get(contract);
         if (!token || token.exists === false) continue;
         entries.push(instanceEntry(contract, token.isStellarAsset ?? false));

@@ -77,7 +77,7 @@ async function configureTwoOfThree(master: Keypair, coSignerB: Keypair, coSigner
   const submitRes = await fetch(`${HORIZON}/transactions`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ tx: tx.toEnvelope().toXDR("base64") }),
+    body: new URLSearchParams({ tx: tx.toEnvelope().toXdr("base64") }),
   });
   if (!submitRes.ok) {
     throw new Error(

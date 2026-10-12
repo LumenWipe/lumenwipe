@@ -52,7 +52,7 @@ test("verify › a plain revoke-account-sponsorship op is accepted", () => {
     .addOperation(Operation.accountMerge({ destination: DEST_KP.publicKey() }))
     .setTimeout(60)
     .build();
-  const intent = intentFromXdr(tx.toEnvelope().toXDR("base64"), Networks.TESTNET);
+  const intent = intentFromXdr(tx.toEnvelope().toXdr("base64"), Networks.TESTNET);
   expect(intent.operations[0]).toEqual({
     source: SOURCE_KP.publicKey(),
     type: "revoke_sponsorship",
@@ -82,7 +82,7 @@ test("verify › a revoke op wrapped in a sponsorship-transfer bracket is reject
     .addOperation(Operation.accountMerge({ destination: DEST_KP.publicKey() }))
     .setTimeout(60)
     .build();
-  const intent = intentFromXdr(tx.toEnvelope().toXDR("base64"), Networks.TESTNET);
+  const intent = intentFromXdr(tx.toEnvelope().toXdr("base64"), Networks.TESTNET);
   // The bracket ops must stay unrecognized - that, and only that, is what rejects the attack.
   // Their sources differ (the sponsor opens the bracket, the sponsored account closes it),
   // which is exactly why operations carry the account they act as rather than inheriting the
@@ -112,7 +112,7 @@ test("verify › a sponsorship bracket is rejected wherever it sits in the opera
     .addOperation(Operation.endSponsoringFutureReserves({ source: SOURCE_KP.publicKey() }))
     .setTimeout(60)
     .build();
-  const intent = intentFromXdr(tx.toEnvelope().toXDR("base64"), Networks.TESTNET);
+  const intent = intentFromXdr(tx.toEnvelope().toXdr("base64"), Networks.TESTNET);
   expect(() => assertCloseIntent(intent, baseExpected())).toThrow(/unrecognized operation/);
 });
 
@@ -142,7 +142,7 @@ test("verify › the reverse bracket orientation (closing account becomes the ne
     .addOperation(Operation.accountMerge({ destination: DEST_KP.publicKey() }))
     .setTimeout(60)
     .build();
-  const intent = intentFromXdr(tx.toEnvelope().toXDR("base64"), Networks.TESTNET);
+  const intent = intentFromXdr(tx.toEnvelope().toXdr("base64"), Networks.TESTNET);
   expect(() => assertCloseIntent(intent, baseExpected())).toThrow(/unrecognized operation/);
 });
 
@@ -160,7 +160,7 @@ test("verify › revokeClaimableBalanceSponsorship stays unrecognized and is rej
     .addOperation(Operation.accountMerge({ destination: DEST_KP.publicKey() }))
     .setTimeout(60)
     .build();
-  const intent = intentFromXdr(tx.toEnvelope().toXDR("base64"), Networks.TESTNET);
+  const intent = intentFromXdr(tx.toEnvelope().toXdr("base64"), Networks.TESTNET);
   expect(intent.operations[0]).toEqual({ source: SOURCE_KP.publicKey(), type: "unknown" });
   expect(() => assertCloseIntent(intent, baseExpected())).toThrow(/unrecognized operation/);
 });
@@ -188,7 +188,7 @@ test("verify › every revoke-sponsorship op kind is recognized and accepted", (
     .addOperation(Operation.accountMerge({ destination: DEST_KP.publicKey() }))
     .setTimeout(60)
     .build();
-  const intent = intentFromXdr(tx.toEnvelope().toXDR("base64"), Networks.TESTNET);
+  const intent = intentFromXdr(tx.toEnvelope().toXdr("base64"), Networks.TESTNET);
   expect(intent.operations.slice(0, 5).map((o) => o.type)).toEqual([
     "revoke_sponsorship",
     "revoke_sponsorship",

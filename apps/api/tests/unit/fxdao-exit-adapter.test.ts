@@ -27,6 +27,7 @@ import {
   type FakeFxdaoOptions,
   type FakeVault,
 } from "./fixtures/fake-fxdao-vault";
+import { invokeContractArgs, v1TransactionFromXdr } from "../support/v1-transaction";
 
 const ACCOUNT = randomAccount();
 const TOTAL_COLLATERAL = 1_150_000_000n; // 115 XLM
@@ -181,13 +182,14 @@ async function run(over: Partial<FakeFxdaoOptions> = {}, ctxOver: Partial<typeof
 }
 
 function invocationArgs(txXdr: string): xdr.ScVal[] {
-  const envelope = xdr.TransactionEnvelope.fromXDR(txXdr, "base64");
-  const op = envelope.v1().tx().operations()[0]!;
-  return op.body().invokeHostFunctionOp().hostFunction().invokeContract().args();
+  return invokeContractArgs(v1TransactionFromXdr(txXdr).operations[0]!).args;
 }
 
 function optionalKeyTag(val: xdr.ScVal): string {
-  return val.vec()![0]!.sym().toString();
+  if (val.type !== "scvVec") throw new Error("expected a vec");
+  const tag = val.vec?.[0];
+  if (tag?.type !== "scvSymbol") throw new Error("expected a symbol tag");
+  return tag.sym.toString();
 }
 
 describe("fxdao exit adapter", () => {
@@ -212,10 +214,10 @@ describe("fxdao exit adapter", () => {
     expect(args).toHaveLength(4);
     // prev_key: no preceding vaults in the default fixture, so our vault is the lowest.
     expect(optionalKeyTag(args[0]!)).toBe("None");
-    expect(args[1]!.switch()).toBe(xdr.ScValType.scvMap());
+    expect(args[1]!.type).toBe("scvMap");
     // new_prev_key is always None: a full repay always zeroes the vault's sort index.
     expect(optionalKeyTag(args[2]!)).toBe("None");
-    expect(args[3]!.switch()).toBe(xdr.ScValType.scvU128());
+    expect(args[3]!.type).toBe("scvU128");
   });
 
   test("walks a chain of other vaults to find the correct prev_key", async () => {

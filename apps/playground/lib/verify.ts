@@ -24,7 +24,7 @@ const ALLOWED_OP_TYPES = new Set([
   "claimClaimableBalance",
   // Sponsorship revocation, as the real close builder emits it (apps/api's tx-builder/
   // sponsorship.ts). The SDK's *builder* input type is the single string "revokeSponsorship",
-  // but a DECODED operation never carries that: Operation.fromXDRObject expands the union into
+  // but a DECODED operation never carries that: Operation.fromXdrObject expands the union into
   // one concrete type per ledger-entry kind (see the SDK's base/operation.js
   // `extractRevokeSponshipDetails`), so these are the strings that actually reach `op.type`.
   // Only the kinds the builder can emit are listed; a claimable-balance sponsorship can never
@@ -56,7 +56,7 @@ export function verifyDemolishTransaction(
   tx: CloseTransaction,
   expected: PlaygroundCloseExpectation
 ): void {
-  const parsed = TransactionBuilder.fromXDR(tx.xdr, Networks.TESTNET);
+  const parsed = TransactionBuilder.fromXdr(tx.xdr, Networks.TESTNET);
   if (!(parsed instanceof Transaction)) {
     throw new PlaygroundVerificationError("fee_bump_not_allowed");
   }

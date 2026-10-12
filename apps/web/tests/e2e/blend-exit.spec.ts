@@ -13,6 +13,7 @@ import {
   scValToNative,
   xdr,
 } from "@stellar/stellar-sdk";
+import { contractDataVal } from "./fixtures/ledger-entry";
 
 // E2E for the DeFi exit round, against live TESTNET, API-only (plan -> transactions -> sign ->
 // submit, repeated until done). It seeds a real Blend position first - 10 XLM supplied to the
@@ -104,13 +105,13 @@ async function poolPositionExists(owner: string): Promise<boolean> {
     new xdr.LedgerKeyContractData({
       contract: new Address(BLEND_POOL).toScAddress(),
       key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("Positions"), new Address(owner).toScVal()]),
-      durability: xdr.ContractDataDurability.persistent(),
+      durability: xdr.ContractDataDurability.persistent,
     })
   );
   const res = await server.getLedgerEntries(key);
   if (res.entries.length === 0) return false;
   // Blend keeps the Positions entry after a full exit, with every map emptied.
-  const native = scValToNative(res.entries[0]!.val.contractData().val()) as Record<string, unknown>;
+  const native = scValToNative(contractDataVal(res.entries[0]!.val)) as Record<string, unknown>;
   const held = (v: unknown): number =>
     v instanceof Map ? v.size : v && typeof v === "object" ? Object.keys(v).length : 0;
   return ["supply", "collateral", "liabilities"].some((k) => held(native[k]) > 0);
@@ -179,13 +180,13 @@ test("close API: a Blend supply position is exited, then the account is merged",
           accountsReferenced: [source.publicKey()],
         });
       }
-      const tx = TransactionBuilder.fromXDR(
+      const tx = TransactionBuilder.fromXdr(
         closeTx.xdr,
         closeTx.networkPassphrase ?? Networks.TESTNET
       );
       tx.sign(source);
       const submitRes = await request.post("/api/v1/testnet/submit", {
-        data: { signedXdr: tx.toEnvelope().toXDR("base64") },
+        data: { signedXdr: tx.toEnvelope().toXdr("base64") },
       });
       expect(submitRes.ok(), await submitRes.text()).toBeTruthy();
       expect((await submitRes.json()).status).toBe("success");

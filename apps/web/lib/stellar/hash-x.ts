@@ -1,4 +1,5 @@
 import { hash, StrKey } from "@stellar/stellar-sdk";
+import { fromHex } from "@/lib/stellar/hex";
 
 /** Thrown when a user-supplied hash(x) preimage is malformed or does not hash to the
  *  signer's key. Message is plain language per CLAUDE.md's user-facing-errors rule. */
@@ -15,7 +16,7 @@ export class InvalidPreimageError extends Error {
  * preimage that doesn't match - the caller must not apply one that wasn't returned here.
  * Mirrors the length bound the SDK's own `Transaction.signHashX` enforces (max 64 bytes).
  */
-export function verifyHashXPreimage(preimageHex: string, signerKey: string): Buffer {
+export function verifyHashXPreimage(preimageHex: string, signerKey: string): Uint8Array {
   const trimmed = preimageHex.trim();
   if (trimmed.length === 0 || !/^[0-9a-fA-F]+$/.test(trimmed) || trimmed.length % 2 !== 0) {
     throw new InvalidPreimageError(
@@ -23,7 +24,7 @@ export function verifyHashXPreimage(preimageHex: string, signerKey: string): Buf
     );
   }
 
-  const preimage = Buffer.from(trimmed, "hex");
+  const preimage = fromHex(trimmed);
   if (preimage.length > 64) {
     throw new InvalidPreimageError("The preimage is too long - it must be at most 64 bytes.");
   }

@@ -5,7 +5,7 @@
  * argument encoding `withdraw_liquidity` and `unbond` actually need.
  */
 import { describe, expect, test } from "bun:test";
-import { xdr } from "@stellar/stellar-sdk";
+import { scValToNative, xdr } from "@stellar/stellar-sdk";
 import type { PhoenixLpPosition, PhoenixStakePosition } from "@lumenwipe/types";
 import { EXIT_POSITION_GONE, phoenixExitAdapter, runExitAdapter } from "@/lib/defi-exits";
 import {
@@ -28,6 +28,7 @@ import {
   randomAccount,
   type FakePhoenixOptions,
 } from "./fixtures/fake-phoenix-pool";
+import { invokeContractArgs, v1TransactionFromXdr } from "../support/v1-transaction";
 
 const ACCOUNT = randomAccount();
 const SHARES = 100_000_000n; // 10% of the 1_000_000_000 total: 10% of each reserve
@@ -169,9 +170,7 @@ async function run(over: Partial<FakePhoenixOptions> = {}, ctxOver: Partial<type
 }
 
 function invocationArgs(txXdr: string): xdr.ScVal[] {
-  const envelope = xdr.TransactionEnvelope.fromXDR(txXdr, "base64");
-  const op = envelope.v1().tx().operations()[0]!;
-  return op.body().invokeHostFunctionOp().hostFunction().invokeContract().args();
+  return invokeContractArgs(v1TransactionFromXdr(txXdr).operations[0]!).args;
 }
 
 describe("phoenix exit adapter", () => {
@@ -205,10 +204,10 @@ describe("phoenix exit adapter", () => {
     if (!result.next) throw new Error("expected a built step");
     const args = invocationArgs(result.next.simulation.txXdr);
     expect(args).toHaveLength(5);
-    expect(args[1]!.switch()).toBe(xdr.ScValType.scvI128());
-    expect(args[2]!.switch()).toBe(xdr.ScValType.scvI128());
-    expect(args[3]!.switch()).toBe(xdr.ScValType.scvI128());
-    expect(args[4]!.switch()).toBe(xdr.ScValType.scvVoid());
+    expect(args[1]!.type).toBe("scvI128");
+    expect(args[2]!.type).toBe("scvI128");
+    expect(args[3]!.type).toBe("scvI128");
+    expect(args[4]!.type).toBe("scvVoid");
   });
 
   test("unbonds every stake before any withdrawal, oldest timestamp first, one step per round", async () => {
@@ -233,9 +232,9 @@ describe("phoenix exit adapter", () => {
     expect(result.next?.step.amount).toBe("3000000");
     const args = invocationArgs(result.next!.simulation.txXdr);
     expect(args).toHaveLength(3);
-    expect(args[1]!.switch()).toBe(xdr.ScValType.scvI128());
-    expect(args[2]!.switch()).toBe(xdr.ScValType.scvU64());
-    expect(args[2]!.u64().toString()).toBe("100");
+    expect(args[1]!.type).toBe("scvI128");
+    expect(args[2]!.type).toBe("scvU64");
+    expect(scValToNative(args[2]!)).toBe(100n);
   });
 
   test("a fully unstaked position with no shares left is reported as already gone", async () => {

@@ -10,6 +10,7 @@ import {
   type Transaction,
 } from "@stellar/stellar-sdk";
 import { verifyPreAuthTxHash, InvalidPreAuthTxError } from "@/lib/stellar/pre-auth-tx";
+import { toHex } from "@/lib/stellar/hex";
 
 function unsignedXdr(sourcePublicKey: string, sequence = "1"): string {
   const account = new Account(sourcePublicKey, sequence);
@@ -17,24 +18,24 @@ function unsignedXdr(sourcePublicKey: string, sequence = "1"): string {
     .addOperation(Operation.accountMerge({ destination: Keypair.random().publicKey() }))
     .setTimeout(30)
     .build()
-    .toXDR();
+    .toXdr();
 }
 
 test("verifyPreAuthTxHash › a transaction whose hash matches the signer's key is accepted", () => {
   const source = Keypair.random();
   const xdr = unsignedXdr(source.publicKey());
-  const tx = TransactionBuilder.fromXDR(xdr, Networks.TESTNET);
+  const tx = TransactionBuilder.fromXdr(xdr, Networks.TESTNET);
   const signerKey = StrKey.encodePreAuthTx(tx.hash());
 
   const verified = verifyPreAuthTxHash(xdr, Networks.TESTNET, signerKey);
 
-  expect(verified.hash().toString("hex")).toBe(tx.hash().toString("hex"));
+  expect(toHex(verified.hash())).toBe(toHex(tx.hash()));
 });
 
 test("verifyPreAuthTxHash › a transaction whose hash does not match the signer's key is rejected", () => {
   const source = Keypair.random();
   const xdr = unsignedXdr(source.publicKey());
-  const wrongSignerKey = StrKey.encodePreAuthTx(Buffer.alloc(32, 7));
+  const wrongSignerKey = StrKey.encodePreAuthTx(new Uint8Array(32).fill(7));
 
   expect(() => verifyPreAuthTxHash(xdr, Networks.TESTNET, wrongSignerKey)).toThrow(
     InvalidPreAuthTxError
@@ -45,7 +46,7 @@ test("verifyPreAuthTxHash › a transaction whose hash does not match the signer
 });
 
 test("verifyPreAuthTxHash › unparseable xdr is rejected before hashing", () => {
-  const signerKey = StrKey.encodePreAuthTx(Buffer.alloc(32, 1));
+  const signerKey = StrKey.encodePreAuthTx(new Uint8Array(32).fill(1));
 
   expect(() => verifyPreAuthTxHash("not valid xdr", Networks.TESTNET, signerKey)).toThrow(
     InvalidPreAuthTxError
@@ -57,7 +58,7 @@ test("verifyPreAuthTxHash › unparseable xdr is rejected before hashing", () =>
 
 test("verifyPreAuthTxHash › a fee-bump transaction is rejected", () => {
   const source = Keypair.random();
-  const inner = TransactionBuilder.fromXDR(
+  const inner = TransactionBuilder.fromXdr(
     unsignedXdr(source.publicKey()),
     Networks.TESTNET
   ) as Transaction;
@@ -68,17 +69,17 @@ test("verifyPreAuthTxHash › a fee-bump transaction is rejected", () => {
     "200",
     inner,
     Networks.TESTNET
-  ).toXDR();
-  const signerKey = StrKey.encodePreAuthTx(Buffer.alloc(32, 1));
+  ).toXdr();
+  const signerKey = StrKey.encodePreAuthTx(new Uint8Array(32).fill(1));
 
   expect(() => verifyPreAuthTxHash(feeBumpXdr, Networks.TESTNET, signerKey)).toThrow(
     InvalidPreAuthTxError
   );
   expect(() => verifyPreAuthTxHash(feeBumpXdr, Networks.TESTNET, signerKey)).toThrow(/fee-bump/i);
 
-  // Sanity check that this really is what TransactionBuilder.fromXDR returns for a fee-bump
+  // Sanity check that this really is what TransactionBuilder.fromXdr returns for a fee-bump
   // envelope, so the rejection above is exercising the intended branch.
-  expect(TransactionBuilder.fromXDR(feeBumpXdr, Networks.TESTNET)).toBeInstanceOf(
+  expect(TransactionBuilder.fromXdr(feeBumpXdr, Networks.TESTNET)).toBeInstanceOf(
     FeeBumpTransaction
   );
 });
