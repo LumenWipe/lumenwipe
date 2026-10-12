@@ -13,6 +13,7 @@ import {
   destinationDecisionId,
   isDestinationAcknowledged,
   isDefiPositionsAcknowledged,
+  isIssuerSupplyAcknowledged,
   resolveClaimableBalanceSelections,
   resolveDispositions,
   resolveTransferDestinations,
@@ -304,7 +305,8 @@ export class CloseService {
         {},
         {},
         { floors: conversionFloors },
-        isDefiPositionsAcknowledged(decisions, source)
+        isDefiPositionsAcknowledged(decisions, source),
+        { acknowledged: isIssuerSupplyAcknowledged(decisions, source) }
       );
 
       const planHash = computePlanHash({

@@ -38,6 +38,7 @@ interface DemolishState {
    * cannot outlive the account it was given for.
    */
   defiPositionsAcknowledgedFor: string | null;
+  issuerSupplyAcknowledgedFor: string | null;
 
   // Preflight
   phase: DemolishPhase;
@@ -83,6 +84,7 @@ interface DemolishState {
   acknowledgeDestination: (address: string | null) => void;
   /** Records (or clears, with null) the account the user confirmed has no DeFi positions. */
   acknowledgeDefiPositions: (address: string | null) => void;
+  acknowledgeIssuerSupply: (address: string | null) => void;
   setPhase: (phase: DemolishPhase) => void;
   setAccountState: (state: AccountState) => void;
   setPlan: (plan: PlannedStep[]) => void;
@@ -183,6 +185,7 @@ const initialState = {
   memoType: null,
   destinationAcknowledgedFor: null,
   defiPositionsAcknowledgedFor: null,
+  issuerSupplyAcknowledgedFor: null,
   phase: "IDLE" as DemolishPhase,
   accountState: null,
   executionPlan: [],
@@ -211,6 +214,7 @@ export const useDemolishStore = create<DemolishState>((set) => ({
   acknowledgeDestination: (address) => set({ destinationAcknowledgedFor: address }),
 
   acknowledgeDefiPositions: (address) => set({ defiPositionsAcknowledgedFor: address }),
+  acknowledgeIssuerSupply: (address) => set({ issuerSupplyAcknowledgedFor: address }),
 
   setPhase: (phase) => set({ phase }),
 

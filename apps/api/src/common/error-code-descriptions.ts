@@ -60,6 +60,9 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   invalid_tokens: "The token list is malformed.",
   invalid_transaction_xdr: "The transaction is missing or cannot be decoded.",
   invalid_tx_hash: "The transaction hash is not a 64-character hex string.",
+  issuer_read_failed: "The assets issued by the account could not be read. Retry.",
+  issuer_supply_not_acknowledged:
+    "The account issues assets that are still held and the close was not acknowledged.",
   key_limit_reached: "The wallet already has the maximum number of active keys.",
   mediator_key_misconfiguration: "The mediator key on this server is misconfigured.",
   mediator_not_configured: "The exchange (mediator) flow is not configured on this server.",

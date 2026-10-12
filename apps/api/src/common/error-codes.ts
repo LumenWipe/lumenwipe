@@ -58,6 +58,8 @@ export const ERROR_CODES = [
   "invalid_tokens",
   "invalid_transaction_xdr",
   "invalid_tx_hash",
+  "issuer_read_failed",
+  "issuer_supply_not_acknowledged",
   "key_limit_reached",
   "mediator_key_misconfiguration",
   "mediator_not_configured",

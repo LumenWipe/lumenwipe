@@ -1,10 +1,13 @@
-import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, expect, mock, spyOn, test, beforeEach } from "bun:test";
 import { Account, Keypair } from "@stellar/stellar-sdk";
 import type { AccountState } from "@lumenwipe/types";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
 import { DEGRADED_SOURCE_CONFIRMED } from "@/lib/defi-positions/resolve-defi-positions";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import * as rpcModule from "@/lib/stellar/rpc";
+import { stubIssuance } from "./fixtures/issuance";
+
+beforeEach(() => stubIssuance());
 
 // /close/transactions must refuse the same unconfirmed-positions states the plan blocks on: an
 // SDK caller never requests a plan, and a web session's plan may be minutes old. The gate runs

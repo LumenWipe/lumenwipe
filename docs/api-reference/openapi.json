@@ -659,7 +659,7 @@
             }
           },
           "503": {
-            "description": "The destination or the ledger could not be read. Retry.",
+            "description": "The destination, the account's issued assets or the ledger could not be read. Retry.",
             "content": {
               "application/json": {
                 "schema": {
@@ -677,6 +677,7 @@
                               "type": "string",
                               "enum": [
                                 "destination_read_failed",
+                                "issuer_read_failed",
                                 "service_unavailable"
                               ]
                             }
@@ -1319,6 +1320,7 @@
                                 "signer_normalization_unsafe",
                                 "trustline_deauthorized_with_balance",
                                 "trustline_maintain_liabilities_with_balance",
+                                "issuer_supply_not_acknowledged",
                                 "defi_positions_blocked",
                                 "defi_positions_stale",
                                 "defi_position_unrecognized",
@@ -1514,6 +1516,7 @@
                                 "mediator_not_configured",
                                 "registry_expired",
                                 "destination_read_failed",
+                                "issuer_read_failed",
                                 "service_unavailable"
                               ]
                             }
@@ -6590,6 +6593,8 @@
               "invalid_tokens",
               "invalid_transaction_xdr",
               "invalid_tx_hash",
+              "issuer_read_failed",
+              "issuer_supply_not_acknowledged",
               "key_limit_reached",
               "mediator_key_misconfiguration",
               "mediator_not_configured",

@@ -116,6 +116,8 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `invalid_tokens`                              | 400    | The token list is malformed.                                                                                                   |
 | `invalid_transaction_xdr`                     | 400    | The transaction is missing or cannot be decoded.                                                                               |
 | `invalid_tx_hash`                             | 400    | The transaction hash is not a 64-character hex string.                                                                         |
+| `issuer_read_failed`                          | 503    | The assets issued by the account could not be read. Retry.                                                                     |
+| `issuer_supply_not_acknowledged`              | 422    | The account issues assets that are still held and the close was not acknowledged.                                              |
 | `key_limit_reached`                           | 409    | The wallet already has the maximum number of active keys.                                                                      |
 | `mediator_key_misconfiguration`               | 500    | The mediator key on this server is misconfigured.                                                                              |
 | `mediator_not_configured`                     | 503    | The exchange (mediator) flow is not configured on this server.                                                                 |

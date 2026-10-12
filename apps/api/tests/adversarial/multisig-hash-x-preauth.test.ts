@@ -18,7 +18,7 @@
  *      signerNormalizationOps handles a genuinely mixed hostile signer set - hash_x and
  *      preauth_tx together, at different weights - not just each type in isolation.
  */
-import { test, expect, spyOn, afterEach, mock } from "bun:test";
+import { test, expect, spyOn, afterEach, mock, beforeEach } from "bun:test";
 import {
   Account,
   Keypair,
@@ -33,6 +33,9 @@ import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-t
 import { signerNormalizationOps } from "@/lib/stellar/tx-builder/signers";
 import type { AccountSigner, AccountState } from "@lumenwipe/types";
 import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
+import { stubIssuance } from "../unit/fixtures/issuance";
+
+beforeEach(() => stubIssuance());
 
 const MASTER = Keypair.random().publicKey();
 const CO_SIGNER_KP = Keypair.random();

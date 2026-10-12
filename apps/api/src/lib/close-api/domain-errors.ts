@@ -8,6 +8,7 @@ import {
 } from "@/lib/utils/errors";
 import { LiveReadError } from "@/lib/stellar/live-trustline";
 import { DestinationReadError, LedgerReadError } from "@/lib/close-api/merge-preflight";
+import { IssuerReadError } from "@/lib/close-api/issuance-preflight";
 import {
   decisionIdFor,
   MissingConversionFloorError,
@@ -62,6 +63,12 @@ const DESTINATION_READ_FAILED = entry(DestinationReadError, (e) => ({
   message: e.message,
 }));
 
+const ISSUER_READ_FAILED = entry(IssuerReadError, (e) => ({
+  code: "issuer_read_failed",
+  status: 503,
+  message: e.message,
+}));
+
 const LEDGER_READ_FAILED = entry(LedgerReadError, (e) => ({
   code: "service_unavailable",
   status: 503,
@@ -90,6 +97,7 @@ export const PLAN_ERRORS: readonly DomainErrorEntry[] = [
   ACCOUNT_TOO_LARGE,
   PROVIDER_UNUSABLE,
   DESTINATION_READ_FAILED,
+  ISSUER_READ_FAILED,
   LEDGER_READ_FAILED,
   UPSTREAM_FAILED,
 ];
@@ -99,6 +107,7 @@ export const TRANSACTION_ERRORS: readonly DomainErrorEntry[] = [
   ACCOUNT_NOT_FOUND,
   PROVIDER_UNUSABLE,
   DESTINATION_READ_FAILED,
+  ISSUER_READ_FAILED,
   LEDGER_READ_FAILED,
   LIVE_READ_FAILED,
   UPSTREAM_FAILED,

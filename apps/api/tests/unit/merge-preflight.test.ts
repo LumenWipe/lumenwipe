@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { HttpException } from "@nestjs/common";
 import type { AccountState } from "@lumenwipe/types";
@@ -19,6 +19,7 @@ import * as readAccountModule from "@/lib/close-api/read-account";
 import * as accountStateModule from "@/lib/stellar/account-state";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { stubIssuance } from "./fixtures/issuance";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -304,6 +305,8 @@ describe("POST close/transactions", () => {
 });
 
 describe("POST close/plan", () => {
+  beforeEach(() => stubIssuance());
+
   function arrange(account: AccountState, exists: boolean): void {
     spyOn(readAccountModule, "readAccountState").mockResolvedValue(account);
     spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({

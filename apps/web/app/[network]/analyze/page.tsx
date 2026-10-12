@@ -14,6 +14,7 @@ import {
   claimAnswersKey,
   claimableSelectionsToDecisions,
   defiPositionsAcknowledgementToDecisions,
+  issuerSupplyAcknowledgementToDecisions,
   discoveredTokensToDecisions,
 } from "@/lib/api/close-decisions";
 import { loadServedRegistry } from "@/lib/exchange-registry";
@@ -41,6 +42,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     sourceAddress,
     claimableBalanceSelections,
     defiPositionsAcknowledgedFor,
+    issuerSupplyAcknowledgedFor,
   } = useDemolishStore();
 
   const [account, setAccount] = useState<AccountState | null>(null);
@@ -132,6 +134,10 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
                   defiPositionsAcknowledgedFor,
                   effectiveSource
                 ),
+                ...issuerSupplyAcknowledgementToDecisions(
+                  issuerSupplyAcknowledgedFor,
+                  effectiveSource
+                ),
               ],
             },
             routeNetwork
@@ -187,6 +193,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     setAccountState,
     answersKey,
     defiPositionsAcknowledgedFor,
+    issuerSupplyAcknowledgedFor,
   ]);
 
   useEffect(() => {

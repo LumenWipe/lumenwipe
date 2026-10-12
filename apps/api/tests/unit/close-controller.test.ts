@@ -36,6 +36,8 @@ import {
   claimableBalanceDecisionId,
   decisionIdFor,
   destinationDecisionId,
+  ISSUER_SUPPLY_ACK_CHOICE,
+  issuerSupplyDecisionId,
 } from "@/lib/close-api/decisions";
 import { BATCH_PLAN_MAX_ADDRESSES, planBatch } from "@/lib/close-api/batch-plan";
 import { readAccountState } from "@/lib/close-api/read-account";
@@ -619,6 +621,28 @@ describe("transactions", () => {
     });
     expect(calls).toHaveLength(1);
     expect(calls[0]!.slice(1, 5)).toEqual([DEST, {}, "testnet", "note"]);
+  });
+
+  test("T13b the issuer-supply acknowledgement reaches the builder only when the caller sent it", async () => {
+    const received: unknown[] = [];
+    const { controller } = await makeController({
+      buildCloseTransactions: (async (...args: unknown[]) => {
+        received.push(args[11]);
+        return { transactions: TX, requiresAnotherCall: false, remainingSteps: 0 };
+      }) as unknown as Builder,
+    });
+    const answer = { id: issuerSupplyDecisionId(SOURCE), choice: ISSUER_SUPPLY_ACK_CHOICE };
+    await controller.transactions("testnet", body({ decisions: [ACK] }));
+    await controller.transactions("testnet", body({ decisions: [ACK, answer] }));
+    await controller.transactions(
+      "testnet",
+      body({ decisions: [ACK, { ...answer, id: issuerSupplyDecisionId(DEST) }] })
+    );
+    expect(received).toEqual([
+      { acknowledged: false },
+      { acknowledged: true },
+      { acknowledged: false },
+    ]);
   });
 
   test("T14 an HttpException from a collaborator passes through unchanged", async () => {
