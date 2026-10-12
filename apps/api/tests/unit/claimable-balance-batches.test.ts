@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
-import type { AccountState, ClaimableBalance, DecisionAnswer } from "@lumenwipe/types";
+import type {
+  AccountState,
+  ClaimableBalance,
+  ClaimableBalanceSelection,
+  DecisionAnswer,
+} from "@lumenwipe/types";
 import { CLAIMABLE_BALANCE_READ_CEILING, CLAIM_ROUND_BATCH_SIZE } from "@/config/constants";
 import { fetchClaimableBalancesForClaimant } from "@/lib/stellar/horizon-adapter";
 import {
@@ -121,7 +126,7 @@ function opTypes(xdrs: string[]): string[] {
   );
 }
 
-async function build(s: AccountState, selections: Record<string, "claim" | "forfeit"> = {}) {
+async function build(s: AccountState, selections: Record<string, ClaimableBalanceSelection> = {}) {
   spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
     rpcStub()) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
@@ -233,4 +238,35 @@ test("the bulk forfeit is neither offered nor applied while the ledger time is u
   const s = state([expired(1), expired(2), expired(3)], { ledgerCloseTime: undefined });
   expect(deriveBulkClaimDecisionPoints(s)).toEqual([]);
   expect(resolveClaimSelections([bulk], s)).toEqual({});
+});
+
+test("add_trustline_then_claim answers re-sent across rounds keep claiming once the trustline exists", async () => {
+  const ISSUER = Keypair.random().publicKey();
+  const USDC = `USDC:${ISSUER}`;
+  const all = Array.from({ length: CLAIM_ROUND_BATCH_SIZE + 20 }, (_, i) =>
+    balance(i, { type: "unconditional" }, USDC)
+  );
+  const answers = Object.fromEntries(all.map((b) => [b.id, "add_trustline_then_claim" as const]));
+  const trustline = {
+    asset: USDC,
+    balance: "0.0000000",
+    limit: "1000",
+    authorized: true,
+    authorization: "authorized",
+    clawbackEnabled: false,
+    issuer: ISSUER,
+    code: "USDC",
+  } as unknown as AccountState["trustlines"][number];
+
+  const first = await build(state(all), answers);
+  const firstTypes = opTypes(first.transactions.map((t) => t.xdr));
+  expect(firstTypes.filter((t) => t === "changeTrust")).toHaveLength(1);
+  expect(claims(first.transactions.map((t) => t.xdr))).toHaveLength(CLAIM_ROUND_BATCH_SIZE);
+
+  const second = await build(
+    state(all.slice(CLAIM_ROUND_BATCH_SIZE), { trustlines: [trustline] }),
+    answers
+  );
+  expect(claims(second.transactions.map((t) => t.xdr))).toHaveLength(20);
+  expect(second.requiresAnotherCall).toBe(true);
 });

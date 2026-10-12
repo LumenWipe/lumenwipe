@@ -126,9 +126,16 @@ export const CLAIM_ANSWER_STALE_MESSAGE =
   "A claimable balance on this account can no longer be handled the way it was answered, " +
   "because its claim window or its trustline changed. Review the plan again before continuing.";
 
-/** Whether a per-balance answer is valid for what the account can do with the balance now. */
+/**
+ * Whether a per-balance answer is valid for what the account can do with the balance now.
+ * `add_trustline_then_claim` stays valid once the trustline exists: answers are re-sent every
+ * round, and by a later batch it is a plain claim.
+ */
 export function selectionFitsStatus(selection: string, status: ClaimStatus): boolean {
   if (selection === "forfeit") return true;
   if (selection === "claim") return status === "claimable";
-  return selection === "add_trustline_then_claim" && status === "needs_trustline";
+  return (
+    selection === "add_trustline_then_claim" &&
+    (status === "needs_trustline" || status === "claimable")
+  );
 }
