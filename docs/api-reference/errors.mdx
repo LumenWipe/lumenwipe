@@ -20,7 +20,7 @@ This page lists every code in the API's error registry. If a close fails halfway
 Three rules that apply to every row:
 
 - Every `503` and every `429` carries a `Retry-After` header. On a `503` it is a fixed default of 30 seconds, not a measured recovery time. A `503` does not always mean waiting helps: `registry_expired` and the `*_not_configured` codes are marked No because they need the operator to act.
-- The `status` column is the HTTP status the code is returned with. `request_failed` is any other 4xx status, and `defi_positions_unavailable` is raised as a plan blocker rather than a fixed status.
+- The `status` column is the HTTP status the code is returned with. `request_failed` is any other 4xx status, and `defi_positions_unavailable` and `route_lookup_unavailable` are raised as plan blockers rather than a fixed status.
 - The [SDK](/sdk/errors) retries only the calls and statuses it documents, and never retries `submit`.
 
 ## What to show the user
@@ -62,11 +62,12 @@ These mean the request itself is wrong or not allowed. Treat them as a fault in 
 
 These are transient. Retry with backoff, honoring `Retry-After`. While retrying, show "The service is busy, trying again". If it keeps failing, show the `message` and the reference id.
 
-| Code                  | Status | Retry | Meaning                                                      |
-| --------------------- | ------ | ----- | ------------------------------------------------------------ |
-| `rate_limited`        | 429    | Yes   | Too many requests. Wait and retry.                           |
-| `service_unavailable` | 503    | Yes   | The service or an upstream dependency is unavailable. Retry. |
-| `internal_error`      | 500    | Yes   | Something went wrong on the server. Retry.                   |
+| Code                       | Status | Retry | Meaning                                                                                     |
+| -------------------------- | ------ | ----- | ------------------------------------------------------------------------------------------- |
+| `rate_limited`             | 429    | Yes   | Too many requests. Wait and retry.                                                          |
+| `service_unavailable`      | 503    | Yes   | The service or an upstream dependency is unavailable. Retry.                                |
+| `route_lookup_unavailable` | any    | Yes   | The swap route for an asset could not be looked up, so the asset was not classified. Retry. |
+| `internal_error`           | 500    | Yes   | Something went wrong on the server. Retry.                                                  |
 
 ## Reading accounts and routes
 

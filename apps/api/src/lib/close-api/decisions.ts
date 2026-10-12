@@ -417,6 +417,10 @@ function authorizationSubjectFor(
   return held ? { authorization: held.authorization, clawbackEnabled: held.clawbackEnabled } : {};
 }
 
+export const ROUTE_LOOKUP_UNAVAILABLE_CODE = "route_lookup_unavailable";
+
+export const DUST_REASON = "dust_below_minimum";
+
 export const PRICE_SOURCE_UNAVAILABLE =
   "The price source is unavailable right now, so some assets cannot be priced. Try again in a moment.";
 
@@ -434,7 +438,9 @@ export function deriveDecisionPoints(
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {},
   /** Assets whose price source did not answer. They get no decision point: offering "no route,
    *  return to issuer" for an asset nobody could price would present an outage as a market fact. */
-  priceSourceUnavailable: ReadonlySet<string> = new Set()
+  priceSourceUnavailable: ReadonlySet<string> = new Set(),
+  /** Assets with a market whose balance would receive nothing once slippage is applied. */
+  dustAssets: ReadonlySet<string> = new Set()
 ): DecisionPoint[] {
   // The same dead-end, reached from the other direction: an exit pays an asset into a trustline
   // that is empty today, so neither the balance rule nor the claim rule asks about it, and the
@@ -495,7 +501,9 @@ export function deriveDecisionPoints(
       : [
           {
             id: "return_to_issuer",
-            note: "No conversion route exists; the balance is returned to the issuer.",
+            note: dustAssets.has(tl.asset)
+              ? "The balance is too small to swap; it is returned to the issuer."
+              : "No conversion route exists; the balance is returned to the issuer.",
           },
           transferOption,
         ];
@@ -507,13 +515,14 @@ export function deriveDecisionPoints(
         asset: tl.asset,
         balance: tl.balance,
         convertible,
+        ...(!convertible && dustAssets.has(tl.asset) ? { reason: DUST_REASON } : {}),
         /** True when nothing holds this asset yet and the balance is what an exit will pay in. */
         arrivesFromExit: BigInt(xlmToStroops(tl.balance)) === 0n && arrivingFromExits.has(tl.asset),
         /** Both are absent for an asset the account holds no trustline for yet. */
         ...authorizationSubjectFor(account, tl.asset),
       },
       options,
-      default: convertible ? "convert_to_xlm" : "return_to_issuer",
+      default: convertible ? "convert_to_xlm" : "",
       required: true,
     };
   });

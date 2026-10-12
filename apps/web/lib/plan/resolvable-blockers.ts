@@ -31,6 +31,14 @@ export const DEFI_POSITIONS_UNAVAILABLE_CODE = "defi_positions_unavailable";
  *  decides whether the acknowledgement renders, so PlanView resolves it locally. */
 export const ISSUER_SUPPLY_BLOCKER_CODE = "issuer_supply_not_acknowledged";
 
+/** Must match the API's `route_lookup_unavailable`: the route lookup failed, so assets were not
+ *  classified. A hard blocker; clearing it means planning again. */
+export const ROUTE_LOOKUP_UNAVAILABLE_CODE = "route_lookup_unavailable";
+
+export function hasRouteLookupBlocker(blockers: Array<Pick<PlanBlocker, "code">>): boolean {
+  return blockers.some((b) => b.code === ROUTE_LOOKUP_UNAVAILABLE_CODE);
+}
+
 /**
  * Non-blocking but with no dedicated UI of its own, unlike RESOLVABLE_HERE's codes. Mirrors
  * positions-gate.ts's NON_TRAPPING_CODES (apps/api) as plain strings - the web never imports the

@@ -13,6 +13,8 @@ export interface AssetConvertibility {
   /** Human-readable balance: decimal for a classic asset or a token with known decimals. */
   balance: string;
   convertible: boolean;
+  /** A market exists but the balance would receive nothing once slippage is applied. */
+  dust?: boolean;
   /** True when nothing holds this asset yet and the balance is what a position's exit will pay
    *  in. The disposition is still required - it is answered before the exit runs, not after. */
   arrivesFromExit?: boolean;
@@ -136,6 +138,7 @@ export function decisionPointsToConversions(plan: PlanResponse): AssetConvertibi
         code: asset.includes(":") ? asset.split(":")[0] : asset,
         balance: String(dp.subject.balance ?? "0"),
         convertible,
+        ...(dp.subject.reason === "dust_below_minimum" ? { dust: true } : {}),
         arrivesFromExit: dp.subject.arrivesFromExit === true,
         ...(dp.subject.clawbackEnabled === true ? { clawbackEnabled: true } : {}),
       };

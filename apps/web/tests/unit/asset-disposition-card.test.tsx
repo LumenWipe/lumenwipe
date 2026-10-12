@@ -35,3 +35,16 @@ for (const convertible of [true, false]) {
     expect(screen.queryByText(NOTE)).toBeNull();
   });
 }
+
+test("a dust balance reads as too small to swap, not as a missing market", () => {
+  renderCard({ convertible: false, dust: true, balance: "0.0000001" });
+  expect(screen.getByText("too small to swap")).toBeTruthy();
+  expect(screen.queryByText("no swap route on the DEX")).toBeNull();
+  expect(screen.getByText(/below the smallest amount the market will swap/)).toBeTruthy();
+});
+
+test("an asset with no market keeps the no-route wording", () => {
+  renderCard({ convertible: false });
+  expect(screen.getByText("no swap route on the DEX")).toBeTruthy();
+  expect(screen.queryByText("too small to swap")).toBeNull();
+});

@@ -158,7 +158,13 @@ export class DecisionPointDto implements DecisionPoint {
   @ApiProperty({ type: [DecisionOptionDto] })
   options!: DecisionOption[];
 
-  @ApiProperty({ description: "The option id applied if the caller never answers this decision." })
+  @ApiProperty({
+    description:
+      "The recommended option id, advisory only: nothing is applied for an unanswered decision, " +
+      "which `close/transactions` refuses with `needs_decisions`. An asset with no swap route " +
+      "carries an empty default; a convertible asset defaults to `convert_to_xlm`. No decision " +
+      "ever recommends returning an asset to its issuer.",
+  })
   default!: string;
 
   @ApiProperty({ description: "Whether an answer is mandatory before the plan can proceed." })

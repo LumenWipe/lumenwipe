@@ -6620,6 +6620,7 @@
               "revoke_needs_restore",
               "revoke_simulation_failed",
               "revoke_unsafe",
+              "route_lookup_unavailable",
               "service_unavailable",
               "signer_normalization_unsafe",
               "soroban_token_conversion_failed",
@@ -6889,7 +6890,7 @@
           },
           "default": {
             "type": "string",
-            "description": "The option id applied if the caller never answers this decision."
+            "description": "The recommended option id, advisory only: nothing is applied for an unanswered decision, which `close/transactions` refuses with `needs_decisions`. An asset with no swap route carries an empty default; a convertible asset defaults to `convert_to_xlm`. No decision ever recommends returning an asset to its issuer."
           },
           "required": {
             "type": "boolean",

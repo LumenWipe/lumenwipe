@@ -36,13 +36,47 @@ export function applySlippage(amount: string): string {
 }
 
 /**
+ * Why a confirmed answer carries no route: the market is empty, or it exists but the amount would
+ * receive nothing once slippage is applied.
+ */
+export type NoRouteReason = "no_market" | "dust_below_minimum";
+
+/**
  * What the price source said. `none` is an answer (the asset has no route to the target);
  * `unavailable` is the absence of one, and must never be read as `none`.
  */
 export type PathResult =
   | { kind: "route"; path: ConversionPath }
-  | { kind: "none" }
+  | { kind: "none"; reason: NoRouteReason }
   | { kind: "unavailable"; error: UpstreamError };
+
+const AMOUNT = /^\d+(\.\d+)?$/;
+
+function isUsableRecord(value: unknown): value is PathRecord {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Partial<PathRecord>;
+  return (
+    typeof record.destination_amount === "string" &&
+    AMOUNT.test(record.destination_amount) &&
+    Array.isArray(record.path) &&
+    record.path.every(
+      (hop) =>
+        typeof hop === "object" &&
+        hop !== null &&
+        (hop.asset_type === "native" ||
+          (typeof hop.asset_code === "string" && typeof hop.asset_issuer === "string"))
+    )
+  );
+}
+
+/** Only an array of well-formed records is an answer; anything else is no answer at all. */
+function recordsOf(body: PathsResponse | null): PathRecord[] {
+  const records: unknown = body?._embedded?.records;
+  if (!Array.isArray(records) || !records.every(isUsableRecord)) {
+    throw new UpstreamError("bad_response", "paths");
+  }
+  return records;
+}
 
 export interface PathFindingOptions {
   fetch?: typeof globalThis.fetch;
@@ -50,7 +84,7 @@ export interface PathFindingOptions {
   client?: Pick<UpstreamOptions, "policy" | "random" | "sleep" | "now">;
 }
 
-/** The route, or null when there is none; an unavailable price source throws instead of
+/** The route, or null when there is a confirmed none; an unavailable price source throws instead of
  *  reading as "no route". */
 export function routeOrNull(result: PathResult): ConversionPath | null {
   if (result.kind === "unavailable") throw result.error;
@@ -66,10 +100,12 @@ export async function fetchConversionPath(
 ): Promise<PathResult> {
   const base = PATH_ROUTING_API_URLS[network];
   if (!base) return { kind: "unavailable", error: new UpstreamError("unavailable", "paths") };
-  if (isNativeAsset(fromAsset) || !(parseFloat(amount) > 0)) return { kind: "none" };
+  if (isNativeAsset(fromAsset) || !(parseFloat(amount) > 0)) {
+    return { kind: "none", reason: "no_market" };
+  }
 
   const { code, issuer } = parseAsset(fromAsset);
-  if (!issuer) return { kind: "none" };
+  if (!issuer) return { kind: "none", reason: "no_market" };
 
   const query = new URLSearchParams({
     source_asset_type: code.length <= 4 ? "credit_alphanum4" : "credit_alphanum12",
@@ -79,28 +115,32 @@ export async function fetchConversionPath(
     destination_assets: toAsset,
   });
 
-  let data: PathsResponse | null;
+  let records: PathRecord[];
   try {
-    data = await upstreamGetJson<PathsResponse>(base, `/paths/strict-send?${query}`, {
-      target: "paths",
-      fetch: options.fetch,
-      deadline: options.deadline,
-      ...options.client,
-    });
+    records = recordsOf(
+      await upstreamGetJson<PathsResponse>(base, `/paths/strict-send?${query}`, {
+        target: "paths",
+        fetch: options.fetch,
+        deadline: options.deadline,
+        ...options.client,
+      })
+    );
   } catch (error) {
-    if (error instanceof UpstreamError) return { kind: "unavailable", error };
-    throw error;
+    if (!(error instanceof UpstreamError)) throw error;
+    // A lookup that returned nothing usable is retried like an outage; it is never an answer.
+    const retryable =
+      error.kind === "bad_response" ? new UpstreamError("unavailable", error.target) : error;
+    return { kind: "unavailable", error: retryable };
   }
 
-  const records = data?._embedded?.records ?? [];
-  if (records.length === 0) return { kind: "none" };
+  if (records.length === 0) return { kind: "none", reason: "no_market" };
 
   const best = records.reduce((a, b) =>
     parseFloat(b.destination_amount) > parseFloat(a.destination_amount) ? b : a
   );
 
   const destMin = applySlippage(best.destination_amount);
-  if (destMin === "0") return { kind: "none" };
+  if (destMin === "0") return { kind: "none", reason: "dust_below_minimum" };
 
   return {
     kind: "route",

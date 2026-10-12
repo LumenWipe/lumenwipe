@@ -7,6 +7,28 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-12
+
+### Added
+
+- Plan blocker and error code `route_lookup_unavailable` (retryable): the swap route lookup failed,
+  so the asset was not classified. It is distinct from an asset with no route. `close/transactions`
+  reports a failed lookup as 503 `service_unavailable`, and `quote_drifted` only when the route
+  was confirmed gone.
+- Asset decision `subject.reason`: `dust_below_minimum` when a market exists but the balance would
+  receive nothing once slippage is applied. It is absent for an asset with no market.
+
+### Changed
+
+- Asset decision points no longer carry `default: "return_to_issuer"`. An asset with no swap route,
+  or a balance too small to swap, has an empty `default` and needs an explicit answer; an
+  unanswered decision is refused with `needs_decisions`. A convertible asset still defaults to
+  `convert_to_xlm`. Returning an asset to its issuer is never recommended or applied automatically.
+  A caller that echoed `default` back as its answer for an asset with no route is now asked for a
+  decision.
+- A price source answer that is not a well-formed list of routes, and a rejected lookup, is a
+  failed lookup rather than "no route".
+
 ## [0.7.0] - 2026-10-12
 
 ### Added

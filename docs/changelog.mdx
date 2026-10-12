@@ -12,6 +12,11 @@ As of 2026-10-10, the mediator flow (exchange closes) and sponsored fees are ava
 
 ## 2026-10
 
+### 2026-10-11
+
+- **API:** an asset with no swap route no longer defaults to a return to its issuer. The decision has an empty default and needs an explicit answer. A failed route lookup is a retryable `route_lookup_unavailable` blocker, and a balance too small to swap is reported as such.
+- **Web:** a balance too small to swap has its own card, and a stored return-to-issuer choice is dropped when a re-analyze cannot confirm routes.
+
 ### 2026-10-10
 
 - **Web:** the shared exchange account is called the relay account in the app, replacing a mix of "mediator" and "intermediary". The API and these docs keep "mediator".

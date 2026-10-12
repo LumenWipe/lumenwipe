@@ -1,6 +1,8 @@
 import { test, expect } from "bun:test";
 import {
   hardBlockersOf,
+  hasRouteLookupBlocker,
+  ROUTE_LOOKUP_UNAVAILABLE_CODE,
   isResolvableHere,
   proceedError,
   displayBlockersOf,
@@ -153,4 +155,11 @@ test("defi_positions_unavailable still hard-blocks on its own, unlike its acknow
     { code: "defi_positions_unavailable", message: "DeFi position data could not be confirmed…" },
   ]);
   expect(err).not.toBeNull();
+});
+
+test("hasRouteLookupBlocker recognises the retryable lookup blocker and is a hard blocker", () => {
+  const blocker = { code: ROUTE_LOOKUP_UNAVAILABLE_CODE };
+  expect(hasRouteLookupBlocker([{ code: "plan_blocker" }, blocker])).toBe(true);
+  expect(hasRouteLookupBlocker([{ code: "plan_blocker" }])).toBe(false);
+  expect(hardBlockersOf([blocker])).toEqual([blocker]);
 });

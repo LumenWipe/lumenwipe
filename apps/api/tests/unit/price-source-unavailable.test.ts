@@ -86,15 +86,19 @@ test("plan: an unavailable price source is a price-source blocker, not an illiqu
   expect(plan.decisionPoints.some((d) => d.default === "return_to_issuer")).toBe(false);
 });
 
-test("plan: a genuine empty market still offers return to issuer, with no outage blocker", async () => {
+test("plan: a genuine empty market still offers return to issuer without a default, with no outage blocker", async () => {
   spyOn(readAccount, "readAccountState").mockResolvedValue(state());
-  spyOn(pathFinding, "fetchConversionPath").mockResolvedValue({ kind: "none" });
+  spyOn(pathFinding, "fetchConversionPath").mockResolvedValue({
+    kind: "none",
+    reason: "no_market",
+  });
 
   const plan = await buildAccountPlan(SOURCE, null, [], "testnet");
 
   expect(plan.blockers.map((b) => b.message)).not.toContain(PRICE_SOURCE_UNAVAILABLE);
   const card = plan.decisionPoints.find((d) => d.type === "asset_disposition");
-  expect(card?.default).toBe("return_to_issuer");
+  expect(card?.options.map((o) => o.id)).toContain("return_to_issuer");
+  expect(card?.default).toBe("");
 });
 
 test("transactions: an unavailable price source is a 503, never a quote_drifted 409", async () => {
@@ -133,6 +137,9 @@ test("paths endpoint: an unavailable price source is a 503 service_unavailable, 
 });
 
 test("paths endpoint: a genuine none is still a 200 with a null path", async () => {
-  spyOn(pathFinding, "fetchConversionPath").mockResolvedValue({ kind: "none" });
+  spyOn(pathFinding, "fetchConversionPath").mockResolvedValue({
+    kind: "none",
+    reason: "no_market",
+  });
   expect(await new AccountController().paths("testnet", USDC, "10")).toEqual({ path: null });
 });

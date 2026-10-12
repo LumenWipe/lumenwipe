@@ -82,7 +82,7 @@ function opsOf(xdr: string) {
 test("close build › issuer disposition returns the balance to the issuer without re-quoting", async () => {
   // No route exists for this asset. With a "convert" decision this would raise
   // AssetRouteLostError; with the user's "issuer" decision it must not even ask.
-  const fetcher = mock(() => Promise.resolve<PathResult>({ kind: "none" }));
+  const fetcher = mock(() => Promise.resolve<PathResult>({ kind: "none", reason: "no_market" }));
   spyOn(pathFinding, "fetchConversionPath").mockImplementation(
     fetcher as unknown as typeof pathFinding.fetchConversionPath
   );
@@ -114,7 +114,7 @@ test("close build › issuer disposition returns the balance to the issuer witho
 test("close build › a genuinely lost route for a convert asset still surfaces AssetRouteLostError", async () => {
   // Safety invariant: the issuer fix must not mask a lost route for an asset the
   // user actually wants converted. Default disposition is "convert".
-  const fetcher = mock(() => Promise.resolve<PathResult>({ kind: "none" }));
+  const fetcher = mock(() => Promise.resolve<PathResult>({ kind: "none", reason: "no_market" }));
   spyOn(pathFinding, "fetchConversionPath").mockImplementation(
     fetcher as unknown as typeof pathFinding.fetchConversionPath
   );

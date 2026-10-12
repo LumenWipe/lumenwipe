@@ -90,6 +90,8 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   revoke_needs_restore: "The allowance revocation needs ledger entries restored first.",
   revoke_simulation_failed: "The allowance revocation failed simulation.",
   revoke_unsafe: "The allowance revocation could not be built safely.",
+  route_lookup_unavailable:
+    "The swap route for an asset could not be looked up, so the asset was not classified. Retry.",
   service_unavailable: "The service or an upstream dependency is unavailable. Retry.",
   signer_normalization_unsafe: "The account's signers cannot be normalized safely.",
   soroban_token_conversion_failed: "A Soroban token could not be converted.",

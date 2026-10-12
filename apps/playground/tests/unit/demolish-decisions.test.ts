@@ -17,7 +17,7 @@ function assetPoint(code: string): DecisionPoint {
     type: "asset_disposition",
     subject: { kind: "trustline", asset: `${code}:${ISSUER}`, balance: "25", convertible: false },
     options: [{ id: "return_to_issuer" }, { id: "transfer_to_account" }],
-    default: "return_to_issuer",
+    default: "",
     required: true,
   };
 }

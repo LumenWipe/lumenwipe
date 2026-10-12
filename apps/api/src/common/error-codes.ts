@@ -85,6 +85,7 @@ export const ERROR_CODES = [
   "revoke_needs_restore",
   "revoke_simulation_failed",
   "revoke_unsafe",
+  "route_lookup_unavailable",
   "service_unavailable",
   "signer_normalization_unsafe",
   "soroban_token_conversion_failed",
