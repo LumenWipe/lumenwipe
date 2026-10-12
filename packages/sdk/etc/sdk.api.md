@@ -219,6 +219,20 @@ export type ClaimPredicate = {
 // @public (undocumented)
 export type CloseApiStatus = "ready" | "needs_decisions" | "blocked" | "complete";
 
+// @public
+export class CloseDidNotConvergeError extends Error {
+    constructor(rounds: number, bound: number, reason: CloseDidNotConvergeReason);
+    // (undocumented)
+    readonly bound: number;
+    // (undocumented)
+    readonly reason: CloseDidNotConvergeReason;
+    // (undocumented)
+    readonly rounds: number;
+}
+
+// @public (undocumented)
+export type CloseDidNotConvergeReason = "round_limit" | "empty_batch";
+
 // @public (undocumented)
 export interface CloseEngineDeps {
     getTransactions: () => Promise<TransactionsResponse>;

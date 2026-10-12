@@ -440,7 +440,10 @@ export async function buildCloseTransactions(
           accountState
         ),
         requiresAnotherCall: true,
-        remainingSteps: 1,
+        remainingSteps:
+          Math.ceil((due.length - claimRoundBalances.length) / CLAIM_ROUND_BATCH_SIZE) +
+          (accountState.claimableBalancesMore ? 1 : 0) +
+          1,
       };
     }
     // Every reported balance was already claimed, or every remaining one is

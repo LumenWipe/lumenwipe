@@ -14,6 +14,8 @@ export type * from "@lumenwipe/types";
 export {
   runClose,
   InsufficientSignatureWeightError,
+  CloseDidNotConvergeError,
+  type CloseDidNotConvergeReason,
   type PendingRound,
   type CloseEngineDeps,
 } from "./close-engine";

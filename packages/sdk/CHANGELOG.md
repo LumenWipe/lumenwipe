@@ -7,6 +7,21 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-12
+
+### Added
+
+- `CloseDidNotConvergeError`, thrown by `runClose` instead of a bare `Error` when a close cannot
+  finish. It carries `rounds`, `bound` and `reason` (`round_limit` or `empty_batch`).
+
+### Changed
+
+- `runClose` derives its round bound from the API's `remaining.steps` (rounds done, plus steps
+  left, plus a margin of 5), recomputed every round and capped at 200, instead of a fixed 25. An
+  explicit `maxRounds` still overrides it. A close with many claimable balances or token transfers
+  no longer stops early.
+- `runClose` stops on the first response that asks for another call but carries no transactions.
+
 ## [0.9.0] - 2026-10-12
 
 ### Added
