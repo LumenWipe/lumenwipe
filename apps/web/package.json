@@ -44,7 +44,7 @@
     "zustand": "^4.5.7"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.13.1",
+    "@happy-dom/global-registrator": "^21.0.0",
     "@playwright/test": "^1.62.1",
     "@stryker-mutator/core": "^10.0.0",
     "@tailwindcss/typography": "^0.5.20",
