@@ -407,3 +407,18 @@ test("a discovery that throws leaves the read intact with a warning instead of f
   expect(state.sorobanTokens?.tokens).toEqual([]);
   expect(state.sorobanTokens?.warnings[0]?.code).toBe("soroban_tokens_partial");
 });
+
+test("the ledger close time the claim predicates are judged at is read once and carried on the state", async () => {
+  const provider = stubProvider(accountBody());
+  const state = await readAccountStateFrom(ADDRESS, "testnet", provider.deps, NO_DEFI, {
+    ...OFFLINE_SOROBAN_TOKENS,
+    ledgerCloseTime: () => Promise.resolve(1_800_000_000),
+  });
+  expect(state.ledgerCloseTime).toBe(1_800_000_000);
+
+  const unread = await readAccountStateFrom(ADDRESS, "testnet", provider.deps, NO_DEFI, {
+    ...OFFLINE_SOROBAN_TOKENS,
+    ledgerCloseTime: () => Promise.resolve(null),
+  });
+  expect("ledgerCloseTime" in unread).toBe(false);
+});

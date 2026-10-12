@@ -21,6 +21,7 @@ export const ERROR_CODES = [
   "blend_emissions_trustline_missing",
   "blend_repay_asset_balance_unknown",
   "blend_repay_asset_missing",
+  "claimable_balance_not_claimable_now",
   "confirmation_timeout",
   "conversion_floor_missing",
   "conversion_provider_unrecognized",

@@ -79,6 +79,7 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `blend_emissions_trustline_missing`           | 422    | Claiming Blend emissions needs a trustline the account does not have.                                                          |
 | `blend_repay_asset_balance_unknown`           | 422    | The balance of an asset needed to repay a Blend loan could not be read.                                                        |
 | `blend_repay_asset_missing`                   | 422    | The account does not hold the asset needed to repay a Blend loan.                                                              |
+| `claimable_balance_not_claimable_now`         | 422    | A balance chosen to be claimed can no longer be claimed in this close.                                                         |
 | `confirmation_timeout`                        | 504    | The transaction did not confirm in time. Check its status before retrying.                                                     |
 | `conversion_floor_missing`                    | 422    | A conversion carries no destination minimum.                                                                                   |
 | `conversion_provider_unrecognized`            | 422    | A conversion names a provider the API does not recognize.                                                                      |

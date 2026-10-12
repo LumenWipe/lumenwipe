@@ -7,6 +7,23 @@ release is cut.
 
 ## [Unreleased]
 
+### Added
+
+- Error code `claimable_balance_not_claimable_now` (422): a balance answered `claim` or
+  `add_trustline_then_claim` can no longer be claimed in this close because its claim window has
+  closed or has not opened. Plan again.
+- Claimable-balance decision `subject.claimableFromEpoch`: when a balance is claimable later, the
+  epoch seconds from which it can be claimed, otherwise null.
+
+### Changed
+
+- A claimable balance whose own claim predicate is false at the ledger close time (an expired
+  `abs_before`, a future `not(before)`, an expired `rel_before`) is no longer defaulted to `claim`.
+  Its decision offers only `forfeit` with no default and states the date from which it becomes
+  claimable, and it is left out of the claim round. A predicate that is about to expire within the
+  transaction window counts as closed. If the ledger time cannot be read, only unconditional
+  claims count as claimable.
+
 ## [0.8.0] - 2026-10-12
 
 ### Added

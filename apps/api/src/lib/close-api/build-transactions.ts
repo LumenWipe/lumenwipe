@@ -13,6 +13,7 @@ import {
   BASE_RESERVE_XLM,
   TX_TIMEOUT_SECONDS,
 } from "@/config/constants";
+import { claimStatus } from "@/lib/stellar/claim-predicates";
 import { xlmToStroops } from "@/lib/utils/amounts";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import {
@@ -43,7 +44,6 @@ import { AssetRouteLostError } from "@/lib/utils/errors";
 import type {
   AccountState,
   AssetDisposition,
-  ClaimableBalance,
   ClaimableBalanceSelection,
   CloseTransaction,
   TransferDestinations,
@@ -332,27 +332,41 @@ export async function buildCloseTransactions(
   // claim must precede the close because a claim raises the balance the close disposes of.
   if (accountState.claimableBalances.length > 0) {
     const existing = await filterExistingClaimableBalances(accountState.claimableBalances, server);
-    const authorizedTrustlineAssets = new Set(
-      accountState.trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset)
+    const ledgerCloseTime = Number(latest.closeTime);
+    const claimState = { ...accountState, ledgerCloseTime };
+    const staleClaim = existing.find(
+      (b) =>
+        claimStatus(b, claimState, ledgerCloseTime) === "predicate_blocked" &&
+        (claimableBalanceSelections[b.id] === "claim" ||
+          claimableBalanceSelections[b.id] === "add_trustline_then_claim")
     );
-    const isCurrentlyClaimable = (b: ClaimableBalance): boolean =>
-      b.asset === "native" || authorizedTrustlineAssets.has(b.asset);
+    if (staleClaim) {
+      throw new CloseBuildError(
+        "claimable_balance_not_claimable_now",
+        "A balance you chose to claim can no longer be claimed in this close, because its claim " +
+          "window has closed or has not opened yet. Review the plan again before continuing.",
+        422
+      );
+    }
     // Currently claimable and not opted out (the opt-out default), plus the ones remediated
     // with a new trustline. Forfeited or unresolved balances are excluded entirely - never
     // claimed, never blocking the close.
     const toAddTrustlineThenClaim = existing.filter(
       (b) =>
-        !isCurrentlyClaimable(b) && claimableBalanceSelections[b.id] === "add_trustline_then_claim"
+        claimStatus(b, claimState, ledgerCloseTime) === "needs_trustline" &&
+        claimableBalanceSelections[b.id] === "add_trustline_then_claim"
     );
     const toClaim = existing.filter(
-      (b) => isCurrentlyClaimable(b) && claimableBalanceSelections[b.id] !== "forfeit"
+      (b) =>
+        claimStatus(b, claimState, ledgerCloseTime) === "claimable" &&
+        claimableBalanceSelections[b.id] !== "forfeit"
     );
     const claimRoundBalances = toClaim.concat(toAddTrustlineThenClaim);
     if (claimRoundBalances.length > 0) {
       // The claims raise what a later transfer moves, and the plan-time check never saw that.
       // Refused here, before the claims land, rather than at the transfer round after them.
       const claimed = claimedAmountsPerAsset(
-        { trustlines: accountState.trustlines, claimableBalances: existing },
+        { ...claimState, claimableBalances: existing },
         claimableBalanceSelections
       );
       const projected: TransferCheck[] = [];

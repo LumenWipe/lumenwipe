@@ -24,6 +24,7 @@ import { preflightErrorCode } from "@/lib/close-api/merge-preflight";
 import { parseDecisions } from "@/lib/close-api/parse-decisions";
 import { computePlanHash } from "@/lib/close-api/plan-response";
 import { CloseBuildError } from "@/lib/close-api/build-transactions";
+import { claimStatus } from "@/lib/stellar/claim-predicates";
 import { InvalidSignatureError } from "@/lib/stellar/signature";
 import { InvalidXdrError, TxTimeoutError, TxSubmitError } from "@/lib/utils/errors";
 import { fail } from "@/common/fail";
@@ -225,9 +226,6 @@ export class CloseService {
       const transferDestinations = resolveTransferDestinations(decisions, assetsById);
       const conversionFloors = tokenConversionFloors(decisions, assetsById);
 
-      const authorizedTrustlineAssets = new Set(
-        accountState.trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset)
-      );
       // Every asset the close will leave holding a balance needs its disposition answered
       // BEFORE the first round - the held ones and the ones the claims will fill. Gating only
       // on today's trustlines let a caller through round 1 (trustline added, balance claimed)
@@ -251,8 +249,7 @@ export class CloseService {
       const missingClaimDecisions = accountState.claimableBalances
         .filter(
           (b) =>
-            b.asset !== "native" &&
-            !authorizedTrustlineAssets.has(b.asset) &&
+            claimStatus(b, accountState, accountState.ledgerCloseTime) !== "claimable" &&
             !claimableBalanceSelections[b.id]
         )
         .map((b) => claimableBalanceDecisionId(b.id));

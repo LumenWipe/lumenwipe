@@ -17,6 +17,13 @@ import type { SponsorshipAffordability } from "@/lib/stellar/sponsorship-afforda
 import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
 import { planExitSteps } from "@/lib/defi-exits/plan-exits";
 import { estimateFeeLumens } from "@/lib/utils/amounts";
+import {
+  claimStatus,
+  claimableFromEpoch,
+  ownClaimPredicate,
+  predicateBlockedNote,
+  type ClaimStatus,
+} from "@/lib/stellar/claim-predicates";
 import { batchItems } from "./batching";
 import { OP_BATCH_LIMIT } from "@/config/constants";
 
@@ -403,21 +410,36 @@ export function buildPlan(
   // has no selection remains a hard blocker; an explicit forfeit still surfaces a warning
   // (differently worded, and non-trapping - see close.controller.ts's blocker-code handling)
   // so giving up the funds is never silent.
-  const authorizedTrustlineAssets = new Set(
-    trustlines.filter((tl) => tl.authorized).map((tl) => tl.asset)
-  );
-  const isCurrentlyClaimable = (b: (typeof claimableBalances)[number]): boolean =>
-    b.asset === "native" || authorizedTrustlineAssets.has(b.asset);
+  const evalEpoch = accountState.ledgerCloseTime;
+  const statusOf = (b: (typeof claimableBalances)[number]): ClaimStatus =>
+    claimStatus(b, accountState, evalEpoch);
 
   for (const b of claimableBalances) {
-    if (isCurrentlyClaimable(b)) continue;
+    const status = statusOf(b);
+    if (status === "claimable") continue;
     const code = b.asset.split(":")[0];
     const selection = claimableBalanceSelections[b.id];
-    if (selection === "add_trustline_then_claim") continue;
+    if (status === "needs_trustline" && selection === "add_trustline_then_claim") continue;
     if (selection === "forfeit") {
       blockers.push({
         code: "claimable_balance_forfeited",
         message: `You chose to forfeit ${b.amount} ${code}; it will be permanently inaccessible once the account is merged.`,
+      });
+      continue;
+    }
+    if (status === "predicate_blocked") {
+      const claimableFrom =
+        evalEpoch === null || evalEpoch === undefined
+          ? null
+          : claimableFromEpoch(
+              ownClaimPredicate(b, accountState.address) ?? { type: "unconditional" },
+              evalEpoch
+            );
+      blockers.push({
+        code: "claimable_balance_unclaimable",
+        message:
+          `${predicateBlockedNote(evalEpoch, claimableFrom)} Closing the account now would make ` +
+          `${b.amount} ${code} permanently inaccessible.`,
       });
       continue;
     }
@@ -434,14 +456,17 @@ export function buildPlan(
   // forfeited (the opt-out default), plus not-currently-claimable ones the caller chose to
   // remediate. Forfeited/unresolved balances need no operation at all - they're simply left
   // behind. Reused by both the fused-close gate below and step generation further down.
-  const balancesNeedingClaimStep = claimableBalances.filter((b) =>
-    isCurrentlyClaimable(b)
+  const balancesNeedingClaimStep = claimableBalances.filter((b) => {
+    const status = statusOf(b);
+    return status === "claimable"
       ? claimableBalanceSelections[b.id] !== "forfeit"
-      : claimableBalanceSelections[b.id] === "add_trustline_then_claim"
-  );
+      : status === "needs_trustline" &&
+          claimableBalanceSelections[b.id] === "add_trustline_then_claim";
+  });
   const balancesNeedingTrustline = claimableBalances.filter(
     (b) =>
-      !isCurrentlyClaimable(b) && claimableBalanceSelections[b.id] === "add_trustline_then_claim"
+      statusOf(b) === "needs_trustline" &&
+      claimableBalanceSelections[b.id] === "add_trustline_then_claim"
   );
 
   // ─── Fused close: fuse the whole close into one transaction when eligible ──────
