@@ -47,7 +47,7 @@ cd apps/web && bun test tests/unit/verify.test.ts
 cd apps/api && bun test tests/close-transactions.test.ts
 ```
 
-`bun type-check && bun lint && bun test` must pass before pushing. Run `bun run format` before opening a PR - CI's `format` job runs `bun run format:check` (`prettier --check .`) and fails the build on any drift, so an unformatted file blocks the PR the same way a failing test does. CI (`.github/workflows/ci.yml`) runs every package's checks on each change as a matrix - a shared `packages/types` change is validated against every consumer, not skipped by a path filter. `deploy-api.yml` deploys the API to Cloud Run on push to `main` (keyless WIF).
+`bun type-check && bun lint && bun test` must pass before pushing. Run `bun run format` before opening a PR - CI's `prettier` job runs `bun run format:check` (`prettier --check .`) and fails the build on any drift, so an unformatted file blocks the PR the same way a failing test does. CI (`.github/workflows/ci.yml`) runs every package's checks on each change as a matrix - a shared `packages/types` change is validated against every consumer, not skipped by a path filter. `deploy-api.yml` deploys the API to Cloud Run on push to `main` (keyless WIF).
 
 ### Local full-flow dev
 
@@ -63,7 +63,7 @@ The full close needs **both** services. The web reaches the API only through its
 
 The API builds the bytes; the browser decides whether to sign them. `apps/web/lib/stellar/verify.ts` (`verifyCloseTransaction` / the pure `assertCloseIntent`) is the **trust anchor**: before signing, it decodes the API-built XDR and asserts it does exactly what the user asked - merge only to the stated destination or the shared mediator, payments only return-to-issuer, the mediator forward, or a transfer matching the user's own asset/destination/amount choice - and always sourced from the account being closed, conversions to self/native with a positive destination minimum, only removals of trustlines/data/offers, `SetOptions` that never adds a signer or raises thresholds, matching memo, no unknown operation. Its expected values come from the **user's own inputs, never the API response**, so a compromised API cannot get funds diverted. A mismatch aborts before signing.
 
-**Consequence for any new close operation** (e.g. a sponsorship-revoke or a new claiming step): add it in **two** places - the API's transaction builder **and** `verify()`'s allowlist - or the anchor rejects the transaction as an unknown op.
+**Consequence for any new close operation** (e.g. a sponsorship-revoke or a new claiming step): add it in **two** places - the API's transaction builder **and** `verify()`'s allowlist - or the anchor rejects the transaction as an unknown op. Then update its row in the invariant register (`docs/invariants.mdx`) and run `bun run check:docs`, which fails when a file, symbol or test the register names no longer exists.
 
 ### The close loop
 

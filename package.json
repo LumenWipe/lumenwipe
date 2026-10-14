@@ -27,7 +27,8 @@
     "type-check": "bun run --filter '*' type-check",
     "test": "bun run --filter '*' test",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "check:docs": "bun scripts/check-docs-claims.ts"
   },
   "devDependencies": {
     "prettier": "^3.9.10"
