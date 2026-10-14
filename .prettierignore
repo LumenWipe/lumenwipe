@@ -22,7 +22,3 @@ skills-lock.json
 # Written by the API's own generator (apps/api/scripts/generate-openapi.ts), and a drift test
 # compares it byte for byte, so Prettier reformatting it would fail that test.
 docs/api-reference/openapi.json
-
-# Written by scripts/security-scan.ts and committed as the dated record of a tooling pass;
-# reformatting would make the file differ from what the script produced.
-security-reports

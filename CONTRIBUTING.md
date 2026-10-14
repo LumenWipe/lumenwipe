@@ -316,5 +316,5 @@ reachable from `HEAD`, with the tool versions, rule pack names, flags and target
 the commit and the findings by severity. Semgrep's rule packs and the advisory database are fetched live, so two
 runs on different days can differ. A finding never fails the script; it fails only when a tool cannot run, so a
 report it writes is a complete one. It needs `semgrep` and `gitleaks` at the pinned versions and prints the
-install command when either is missing. Commit a report when it backs a refresh of the
-[remediation plan](docs/security-remediation-plan.md).
+install command when either is missing. Reports stay local (`security-reports/` is ignored by git); a refresh
+of the [remediation plan](docs/security-remediation-plan.md) carries the counts, findings and decisions.

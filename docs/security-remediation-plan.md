@@ -263,9 +263,9 @@ workspace build and the SDK's API report pass after the change, and the API imag
 
 The first pass run with `bun run security:scan` (Section 9). It ran on commit `d1ab2cb`, which is `main` at
 `7f07aeb` plus the script itself, in the pull request that added it; the squash merge gives that change a
-different hash on `main`. The full dated report, with every finding, is
-[`security-reports/2026-10-13.md`](https://github.com/LumenWipe/lumenwipe/blob/main/security-reports/2026-10-13.md)
-and its machine-readable twin `security-reports/2026-10-13.json`.
+different hash on `main`. The counts and every finding below come from that run's report; reports stay local
+(Section 9), so re-running the script on that commit reproduces it, apart from rule packs and advisories
+published since.
 
 | Tool      | Version | Scope                                                                                                                                | Critical | High | Medium | Low |
 | --------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------- | ---- | ------ | --- |
@@ -308,7 +308,8 @@ surfaces, or the integrator access layer. Its residual-risk table (Section 11) n
 3. For every critical, high and medium finding, either fix it (a compatible bump or a root `overrides` entry,
    then `bun install --frozen-lockfile` and the full test suite) or record an accepted-risk decision here with
    the evidence: the `bun pm why` path and whether the package reaches a production bundle.
-4. Append a dated section like Section 8, update the status line at the top, and commit the report with it.
+4. Append a dated section like Section 8 and update the status line at the top. The report itself stays local
+   (`security-reports/` is ignored by git); this page carries the counts, the findings and the decisions.
 
 Cadence: at least once a month, before an external review, and whenever a new dependency enters a
 security-sensitive path (`verify()`, transaction construction, the signing keys).
