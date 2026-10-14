@@ -28,7 +28,8 @@
     "test": "bun run --filter '*' test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check:docs": "bun scripts/check-docs-claims.ts"
+    "check:docs": "bun scripts/check-docs-claims.ts",
+    "security:scan": "bun scripts/security-scan.ts"
   },
   "devDependencies": {
     "prettier": "^3.9.10"

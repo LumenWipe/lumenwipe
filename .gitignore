@@ -75,3 +75,6 @@ qa-evidence-*/
 !/SECURITY.md
 /*.png
 !/lumenwipe.png
+
+# Local output of `bun run security:scan`; the remediation plan carries what a refresh needs.
+security-reports/
