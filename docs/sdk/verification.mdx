@@ -28,6 +28,20 @@ Decode the XDR yourself and compare it against **your own inputs**, never agains
 - The memo matches what the user supplied.
 - No unknown operation type. Reject anything you do not recognize rather than signing it.
 
+## Mediated closes: the destination is yours to check
+
+The API's co-sign endpoint checks the **structure** of the mediated pair, not where it pays. It accepts a forward to any address other than the mediator and does not read the memo, because it cannot know which exchange address the user meant. In the LumenWipe web client, `verify()` makes that check with the address the user typed. An integration that calls the API or the SDK directly has no such check unless it writes one, so for a mediated close confirm, from your own inputs:
+
+1. The transaction source is the account being closed, with exactly two operations: an `accountMerge`, then a `payment`.
+2. The merge is sourced from the account being closed.
+3. The payment is sourced from the merge's destination, the account the merge pays into.
+4. The payment goes to the exchange address the user entered.
+5. The payment is in native XLM.
+6. The payment's amount is at least the native balance you observed, less a small fee tolerance (the web client allows 0.01 XLM).
+7. The memo and its type match what the user entered and what the exchange requires.
+
+Pinning the mediator's address instead of steps 2 and 3 proves which account receives the merge, not that the balance moves on. The [threat model](/threat-model#integrator-responsibility-for-a-mediated-close) states this responsibility and the known forward window (`S4a.Elevation.1`) next to it.
+
 The `intent` field on a transaction is the API's own summary. Do not use it as a check.
 
 ## Reference implementations

@@ -99,34 +99,62 @@ envelopes out, no network side effects (CLAUDE.md, "Hard invariants") - which is
 
 `apps/api/src/mediator/mediator.controller.ts` and `mediator-validation.ts`. The mediator is the one signing
 key the API holds today; it co-signs only the forwarding payment of the exchange-mediator flow
-([Section 11](/architecture#11-the-mediator-account-flow-for-exchanges)).
+([Section 12](/architecture#11-the-mediator-account-flow-for-exchanges)).
 
-| Threat category        | Threat                                                                                                                                    | Mitigation                                                                                                                                                                                                                                                                                           |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Spoofing               | A caller submits a transaction shaped to make the mediator sign something other than its own forward payment                              | `MediatorController.sign` requires exactly two operations - `accountMerge` into the mediator, `payment` sourced from the mediator - and rejects any other shape (`transaction_structure_not_allowed`)                                                                                                |
-| Tampering              | The forward payment's destination or amount is altered after the user set them                                                            | The mediator signs the exact transaction it validated; changing either after co-signing invalidates the merge signature the user already applied, since both operations share one envelope                                                                                                           |
-| Repudiation            | The mediator denies having co-signed a forward it did in fact sign                                                                        | The mediator's signature is a standard ed25519 signature over the envelope, verifiable on-chain like any other signer - out of scope to add further non-repudiation controls here                                                                                                                    |
-| Information disclosure | The mediator's secret key leaks through logging or an error path                                                                          | The mediator secret lives only in the API's environment (`MEDIATOR_SECRET_*`), never in the browser, and is used exclusively inside `getMediatorKeypair` (§13.2)                                                                                                                                     |
-| Denial of service      | The mediator is spammed with malformed transactions to exhaust request budget                                                             | Per-key rate limiting at the service layer (`@ApiResponse 429`); malformed requests fail fast on `Transaction` XDR parse before any account-state read                                                                                                                                               |
-| Elevation of privilege | The mediator is tricked into paying its own fee or consuming its own sequence number, or forwarding more than the merge actually delivers | `sign` explicitly rejects the mediator as `tx.source` or as the merge's source (`transaction_structure_not_allowed`); `forwardExceedsMergedBalance` bounds the forward to the merged account's native balance minus fee, checked against a balance read at co-sign time, fail-closed on read failure |
+| Threat category        | Threat                                                                                                                                    | Mitigation                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spoofing               | A caller submits a transaction shaped to make the mediator sign something other than its own forward payment                              | `MediatorController.sign` requires exactly two operations - `accountMerge` into the mediator, `payment` sourced from the mediator - and rejects any other shape (`transaction_structure_not_allowed`)                                                                                                                                                    |
+| Tampering              | The forward payment's destination or amount is altered after the user set them                                                            | The mediator signs the exact transaction it validated; changing either after co-signing invalidates the merge signature the user already applied, since both operations share one envelope                                                                                                                                                               |
+| Repudiation            | The mediator denies having co-signed a forward it did in fact sign                                                                        | The mediator's signature is a standard ed25519 signature over the envelope, verifiable on-chain like any other signer - out of scope to add further non-repudiation controls here                                                                                                                                                                        |
+| Information disclosure | The mediator's secret key leaks through logging or an error path                                                                          | The mediator secret lives only in the API's environment (`MEDIATOR_SECRET_*`), never in the browser, and is used exclusively inside `getMediatorKeypair` (§13.2)                                                                                                                                                                                         |
+| Denial of service      | The mediator is spammed with malformed transactions to exhaust request budget                                                             | Per-key rate limiting at the service layer (`@ApiResponse 429`); malformed requests fail fast on `Transaction` XDR parse before any account-state read                                                                                                                                                                                                   |
+| Elevation of privilege | The mediator is tricked into paying its own fee or consuming its own sequence number, or forwarding more than the merge actually delivers | `sign` explicitly rejects the mediator as `tx.source` or as the merge's source (`transaction_structure_not_allowed`); `forwardExceedsMergedBalance` bounds the forward to the merged account's native balance minus fee, checked against a balance read at co-sign time, fail-closed on read failure. The window this leaves is `S4a.Elevation.1`, below |
 
-### Known residual risk: mediator forward TOCTOU
+### S4a.Elevation.1: the mediator forward window
 
-`forwardExceedsMergedBalance` (`apps/api/src/mediator/mediator-validation.ts`) documents, in its own source
-comment, a genuine time-of-check/time-of-use gap: the bound is checked against a balance read taken at
-co-sign time, but the merge's actual delivery is decided at submit time, which the caller controls. An
-adversary who controls the merged account can drain it after co-signing (draining does not consume the
-co-signed transaction's sequence number, since it is a separate operation from a separate account), then
-submit - so `op0` (the merge) delivers close to nothing while `op1` (the forward) still pays out the amount
-that was valid at co-sign time, sourced from the mediator's own balance rather than the merge.
+**Statement.** The forward bound is checked against the merged account's balance read at co-sign time, but
+what the merge delivers is decided at submit time, so an adversary who controls the merged account can drain
+it in between and the co-signed forward then pays out of the mediator's own balance.
 
-This check is explicitly defense-in-depth, not a complete guarantee, against that active-adversary case. The
-primary control is operational, not code-level: **the shared mediator is funded to its base reserve only and
-holds no spendable surplus**, so even a successful exploitation of this gap has nothing to forward beyond
-dust. The check in code stops the passive cases - a client bug, rounding dust, or a naive over-forward -
-and raises the bar for the active case. This residual risk is carried forward into the summary table in
-Section 10 as an accepted risk with an operational (not code) compensating control, which is the shape
-`#171`'s remediation plan expects findings to already be in.
+The identifier is the one the [monitoring plan](/monitoring-plan) already uses for this threat, and Section 11
+refers to it by the same name. The drain can be an operation sourced from the merged account inside a
+transaction whose source is another account, which leaves the co-signed transaction's sequence number valid.
+When the co-signed transaction is then submitted, `op0` (the merge) delivers close to nothing while `op1` (the
+forward) still pays the amount that was valid at co-sign time.
+
+| Control                                                                                                                                                                                                                                                                                                                  | Kind        | Status                                                                                                                                                          | Covered by                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| The co-sign accepts only `[accountMerge into the mediator, native payment from the mediator]`, with neither the transaction nor the merge sourced from the mediator ([`mediator-signing.service.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/apps/api/src/mediator/mediator-signing.service.ts))                | Code        | Running                                                                                                                                                         | `apps/api/tests/unit/mediator-controller.test.ts` (cases S5 to S7)                                                     |
+| The forward may not exceed the merged account's native balance minus the transaction fee, read at co-sign time; an unreadable or missing account is refused, never co-signed ([`mediator-validation.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/apps/api/src/mediator/mediator-validation.ts))                 | Code        | Running. Stops the passive cases (a client bug, rounding dust, a naive over-forward); it does not close the window, by construction                             | `apps/api/tests/unit/mediator-validation.test.ts`, `apps/api/tests/unit/mediator-controller.test.ts` (cases S8 and S9) |
+| The shared mediator is funded to its base reserve only and holds no spendable surplus, so a successful drain has nothing to forward beyond dust                                                                                                                                                                          | Operational | Planned for mainnet, where the mediator is not deployed yet ([monitoring plan](/monitoring-plan), Section 1). The testnet mediator holds friendbot XLM above it | Not testable in code; the balance-floor monitor below is what detects a breach                                         |
+| An hourly balance-floor check on the mediator, and a forward check that fires when a transaction debits the mediator by more than the merge credited ([`service-accounts.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/apps/api/scripts/monitors/service-accounts.ts), `.github/workflows/onchain-monitors.yml`) | Detection   | Running on testnet. Planned for mainnet: the monitored account list gains the mainnet mediator when it is deployed                                              | `apps/api/tests/unit/service-account-monitors.test.ts`                                                                 |
+
+No code-level control closes the window today. The check in code raises the bar for the active case; the
+funding policy is what bounds it. The risk is carried into Section 11 as accepted with an operational
+compensating control.
+
+### Integrator responsibility for a mediated close
+
+The co-sign endpoint enforces the **structure** of the mediated pair, not its destination. It refuses a
+forward to the mediator itself and checks the forward amount against the merged balance, but it accepts any
+other destination and does not read the memo: it cannot know which exchange address the user meant. In the
+LumenWipe web client, `verify()` holds that check, with the destination the user typed. An integrator calling
+the API or the SDK directly has no such check unless it writes one, so before signing a mediated close it must
+confirm, from its own inputs and never from the API response:
+
+1. The transaction source is the account being closed, and the transaction has exactly two operations: an
+   `accountMerge` followed by a `payment`.
+2. The merge is sourced from the account being closed (explicitly, or by inheriting the transaction source).
+3. The payment is sourced from the merge's destination, the account the merge pays into.
+4. The payment's destination is the exchange address the user entered.
+5. The payment's asset is native XLM.
+6. The payment's amount is at least the native balance the integrator observed for the account, less a small
+   fee tolerance (the web client allows 0.01 XLM).
+7. The memo, and its type, match what the user entered and what the exchange requires.
+
+A check that pins the mediator's address instead of steps 2 and 3 proves which account receives the merge, but
+not that the balance moves on. The reference implementation is `assertCloseIntent` in
+[`apps/web/lib/stellar/verify.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/apps/web/lib/stellar/verify.ts).
 
 ## 6. Surface 4b: backend signing key (fee-bump sponsor)
 

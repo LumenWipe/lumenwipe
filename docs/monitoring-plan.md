@@ -31,8 +31,10 @@ starts working against the wrong code.
 ## 2. What could go wrong?
 
 Carried over from the [threat model](/threat-model), which runs one STRIDE pass per surface. That document
-identifies threats by surface and category rather than by number, so each threat below is given a stable id of
-the form `S<surface>.<Category>.<n>`.
+identifies most threats by surface and category rather than by number, so each threat below is given a stable id
+of the form `S<surface>.<Category>.<n>`. The mediator forward window carries its id in the threat model itself:
+`S4a.Elevation.1` (Section 5) lists its controls, which of them
+run today, and the tests that cover them.
 
 | Threat ID           | Threat (from the threat model)                                                                                                                         | Affected component | Severity |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------ | -------- |

@@ -16,6 +16,8 @@ What the wallet gets for one dependency:
 - Exits for the main Soroban DeFi protocols, kept current on our side: when a protocol upgrades its contracts, the wallet does not need to ship a release.
 - Exchange destination validation, including the memo enforcement that prevents the classic lost-deposit mistake.
 
+What stays with the wallet is the check before every signature. For an exchange close in particular, the API co-signs the mediator's forward on structure and does not know which deposit address the user meant, so the wallet's verification must pin the destination, the amount and the memo itself. The [mediated close checks](/sdk/verification#mediated-closes-the-destination-is-yours-to-check) list what to compare.
+
 ## Exchanges and anchors: clean off-boarding
 
 A customer leaving an exchange or an anchor often leaves a Stellar account behind with reserves locked in it. Pointing them at a tool that ends with a properly memo-tagged deposit, rather than an `ACCOUNT_MERGE` the exchange cannot credit, turns a support ticket into a working flow. Anchors with per-customer accounts can drive the same wind-down from their backend through the REST API, which accepts a list of addresses and returns a per-account plan.
