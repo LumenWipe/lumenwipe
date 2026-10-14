@@ -8,6 +8,7 @@ export interface Problem {
 
 const REGISTER = "docs/invariants.mdx";
 const THREAT_MODEL = "docs/threat-model.md";
+const SECURITY_SCOPE = "docs/security-scope.md";
 const CLAUDE_MD = "CLAUDE.md";
 const CI_WORKFLOW = ".github/workflows/ci.yml";
 const SDK_PACKAGE = "packages/sdk/package.json";
@@ -419,6 +420,46 @@ export function checkThreatModelCoverage(root: string): Problem[] {
   return problems;
 }
 
+const ROOT_FILE = /^\.?[\w-]+(?:\.[\w-]+)+$/;
+
+/** A code span that names a repository path: anything with a slash, or a root-level file name. */
+export function isScopePath(span: string): boolean {
+  if (/\s|:\/\/|^@|^\//.test(span)) return false;
+  return span.includes("/") || ROOT_FILE.test(span);
+}
+
+function scopePathProblem(root: string, span: string): string | null {
+  if (span.split("/").includes("..")) return `names ${span}, which climbs out of the repository`;
+  for (const path of expandBraces(span)) {
+    if (path.includes("*")) {
+      const matches = [
+        ...new Bun.Glob(path.replace(/\/$/, "")).scanSync({ cwd: root, onlyFiles: false }),
+      ];
+      if (matches.length === 0) return `names ${path}, which matches nothing`;
+    } else if (!existsSync(join(root, path))) {
+      return `names ${path}, which does not exist`;
+    }
+  }
+  return null;
+}
+
+/**
+ * Every repository path the security scope names must exist, so the list cannot point at moved code.
+ * Braces expand and `*` globs must match at least one file.
+ */
+export function checkSecurityScope(root: string): Problem[] {
+  const text = read(root, SECURITY_SCOPE);
+  if (text === null) return [{ source: SECURITY_SCOPE, message: "the security scope is missing" }];
+  const paths = codeSpans(text).filter(isScopePath);
+  if (paths.length === 0) {
+    return [{ source: SECURITY_SCOPE, message: "the security scope names no repository path" }];
+  }
+  return paths
+    .map((span) => scopePathProblem(root, span))
+    .filter((message): message is string => message !== null)
+    .map((message) => ({ source: SECURITY_SCOPE, message }));
+}
+
 export function checkAll(root: string): Problem[] {
   return [
     ...checkRegister(root),
@@ -428,6 +469,7 @@ export function checkAll(root: string): Problem[] {
     ...checkFormatCommand(root),
     ...checkSdkDoesNotBundleStellarSdk(root),
     ...checkThreatModelCoverage(root),
+    ...checkSecurityScope(root),
   ].map((problem) => ({ ...problem, source: toPosix(problem.source) }));
 }
 

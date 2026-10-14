@@ -42,6 +42,7 @@
           "architecture",
           "threat-model",
           "invariants",
+          "security-scope",
           "security-remediation-plan",
           "monitoring-plan",
           "community-and-communications"

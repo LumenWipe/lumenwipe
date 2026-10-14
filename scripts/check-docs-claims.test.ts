@@ -9,6 +9,8 @@ import {
   checkPlaygroundImports,
   checkRegister,
   checkSdkDoesNotBundleStellarSdk,
+  checkSecurityScope,
+  isScopePath,
   checkThreatModelCoverage,
   checkWebBuildsNoTransactions,
   declares,
@@ -67,6 +69,9 @@ function fixture(files: Record<string, string | null>): string {
     }),
     "packages/sdk/src/client.ts": "export class LumenWipeClient {}\n",
     "docs/invariants.mdx": register(ROW),
+    "docs/security-scope.md":
+      "| Group | `apps/web/lib/verify.ts`, `apps/web/app/(marketing)/page.tsx`, `.github/workflows/ci.yml` |\n\nRun `bun run check:docs` and `security-review`.\n",
+    "apps/web/app/(marketing)/page.tsx": "export default function Page() {}\n",
     "docs/threat-model.md":
       "## 12. Coverage cross-reference\n\n| x | `apps/web/tests/unit/{verify}.test.ts` |\n\n## 13. Maintenance\n\n`apps/missing/elsewhere.ts`\n",
   };
@@ -106,6 +111,7 @@ describe("the command", () => {
       { ".github/workflows/ci.yml": WORKFLOW.replace("format:check", "format") },
       { "packages/sdk/src/x.ts": 'import { Keypair } from "@stellar/stellar-sdk";\n' },
       { "docs/threat-model.md": "## 12. Coverage cross-reference\n\n`apps/gone.ts`\n" },
+      { "apps/web/app/(marketing)/page.tsx": null },
     ];
     for (const files of stale) {
       const { code, output } = run(fixture(files));
@@ -395,5 +401,72 @@ describe("helpers", () => {
     expect(hasTest('it("does x", () => {})', "does x")).toBe(true);
     expect(hasTest("test.only(`does x`, () => {})", "does x")).toBe(true);
     expect(hasTest('test("does x and y", () => {})', "does x")).toBe(false);
+  });
+});
+
+describe("the security scope", () => {
+  const scope = (body: string) => fixture({ "docs/security-scope.md": body });
+
+  test("a path it names that no longer exists is reported, including paths with parentheses", () => {
+    const root = fixture({ "apps/web/app/(marketing)/page.tsx": null });
+    expect(checkSecurityScope(root)).toEqual([
+      {
+        source: "docs/security-scope.md",
+        message: "names apps/web/app/(marketing)/page.tsx, which does not exist",
+      },
+    ]);
+  });
+
+  test("dotfiles, root files, .github paths and directories are checked", () => {
+    const root = scope(
+      "`.gitleaks.toml`, `renovate.json`, `.github/workflows/gone.yml`, `apps/web/lib/`, `apps/web/gone/`\n"
+    );
+    expect(checkSecurityScope(root).map((p) => p.message)).toEqual([
+      "names .gitleaks.toml, which does not exist",
+      "names renovate.json, which does not exist",
+      "names .github/workflows/gone.yml, which does not exist",
+      "names apps/web/gone/, which does not exist",
+    ]);
+  });
+
+  test("dynamic route segments, braces and globs resolve, and a glob that matches nothing is reported", () => {
+    const root = fixture({
+      "apps/web/app/api/[network]/route.ts": "export function GET() {}\n",
+      "docs/security-scope.md":
+        "`apps/web/app/api/[network]/route.ts`, `apps/web/lib/{verify}.ts`, `apps/web/lib/ver*.ts`, `apps/web/lib/nothing*.ts`\n",
+    });
+    expect(checkSecurityScope(root).map((p) => p.message)).toEqual([
+      "names apps/web/lib/nothing*.ts, which matches nothing",
+    ]);
+  });
+
+  test("a path that climbs out of the repository is reported even when it exists", () => {
+    expect(checkSecurityScope(scope("`apps/../../etc`\n")).map((p) => p.message)).toEqual([
+      "names apps/../../etc, which climbs out of the repository",
+    ]);
+  });
+
+  test("commands, calls, bare extensions, packages and URLs are not taken for paths", () => {
+    for (const span of [
+      "bun run check:docs",
+      "security-review",
+      "verify()",
+      "CODEOWNERS",
+      ".ts",
+      "@lumenwipe/sdk",
+      "https://example.com/x",
+    ]) {
+      expect(isScopePath(span)).toBe(false);
+    }
+    expect(checkSecurityScope(fixture({}))).toEqual([]);
+  });
+
+  test("a scope that names no path, or a missing scope, is reported", () => {
+    expect(checkSecurityScope(scope("Nothing here.\n"))[0]?.message).toBe(
+      "the security scope names no repository path"
+    );
+    expect(checkSecurityScope(fixture({ "docs/security-scope.md": null }))[0]?.message).toBe(
+      "the security scope is missing"
+    );
   });
 });
