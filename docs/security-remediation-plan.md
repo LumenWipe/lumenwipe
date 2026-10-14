@@ -11,9 +11,9 @@ icon: "clipboard-check"
 > commitment, gives every critical, high, and medium finding a resolution or an explicit
 > accepted-risk rationale - never a silent backlog entry.
 
-> **Status as of 2026-10-10, checked against commit `9161997`.** Sections 1 to 6 record the 2026-09-02 pass and
-> Section 7 the 2026-09-29 refresh; findings, counts and versions below are as of those dates, not live.
-> **Next refresh:** the next dated tooling pass, appended as a new section; none is scheduled in this document.
+> **Status as of 2026-10-13, checked against commit `d1ab2cb`.** Sections 1 to 6 record the 2026-09-02 pass,
+> Section 7 the 2026-09-29 refresh and Section 8 the 2026-10-13 pass; findings, counts and versions are as of
+> those dates, not live. **Next refresh:** see Section 9.
 
 ## 1. Scope and method
 
@@ -31,7 +31,7 @@ Three tool categories, run against `chore/security-tooling-remediation-171` (bra
 Every finding below was triaged by actual reachability, not by severity label alone: for each
 flagged package, its dependency path was traced (`bun pm why`), and where the code could plausibly
 ship to a browser, the production bundle was inspected directly for its presence. This mirrors the
-method the [threat model](/threat-model) uses for its own residual-risk table (Section 7) - a
+method the [threat model](/threat-model) uses for its own residual-risk table (now Section 11) - a
 mitigation or an acceptance is only as good as the evidence behind it.
 
 Out of scope: a third-party penetration test or formal audit, deferred by epic #166 itself.
@@ -190,7 +190,7 @@ client-side session layer, API transaction construction, and the two backend sig
   (CLAUDE.md: "never imports \[production's] closing modules") - it is not one of the two
   production backend signing keys the threat model covers.
 
-No update to `docs/threat-model.md` §7's residual-risk table was needed as a result of this run.
+No update to the threat model's residual-risk table (now Section 11) was needed as a result of this run.
 
 ## 6. Follow-up
 
@@ -258,3 +258,57 @@ workspace build and the SDK's API report pass after the change, and the API imag
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `elliptic` GHSA-848j-6mx2-7j84 (low)         | No patched release exists (6.6.1 is the latest and is affected). It comes only through the optional NEAR wallet-kit modules, which a production build of `apps/web` does not contain; the one `elliptic` string in the bundle is an error message in `@noble/curves`. |
 | `stream-json` GHSA-528h-pc64-c93x (moderate) | Fixed only in 3.x, while its sole consumer, `jayson` (optional Solana wallet-kit chain), requires `^1.9.1`. Neither `jayson` nor `stream-json` is in the web bundle.                                                                                                  |
+
+## 8. Tooling pass (2026-10-13)
+
+The first pass run with `bun run security:scan` (Section 9). It ran on commit `d1ab2cb`, which is `main` at
+`7f07aeb` plus the script itself, in the pull request that added it; the squash merge gives that change a
+different hash on `main`. The full dated report, with every finding, is
+[`security-reports/2026-10-13.md`](https://github.com/LumenWipe/lumenwipe/blob/main/security-reports/2026-10-13.md)
+and its machine-readable twin `security-reports/2026-10-13.json`.
+
+| Tool      | Version | Scope                                                                                                                                | Critical | High | Medium | Low |
+| --------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------- | ---- | ------ | --- |
+| bun audit | 1.3.14  | the workspace lockfile                                                                                                               | 0        | 1    | 4      | 1   |
+| semgrep   | 1.175.0 | `p/security-audit`, `p/typescript`, `p/javascript`, `p/secrets` over `apps/` and `packages/`                                         | 0        | 0    | 0      | 0   |
+| gitleaks  | 8.30.1  | the history reachable from `HEAD` (323 commits; merge commits add no diff of their own), with `.gitleaks.toml` and `.gitleaksignore` | 0        | 0    | 0      | 0   |
+
+Semgrep reported one analysis error: a partial parse of `packages/sdk/src/index.ts` at line 12,
+`export type * from "@lumenwipe/types"`. The file holds only re-exports, so no rule had logic to miss there. The
+`js-yaml` advisories of Section 7 no longer appear: the lockfile moves recorded there cleared them.
+
+**Every high and medium finding.** No override can fix any of them: each one either has no patched release or
+needs a major version its only consumer does not accept. So nothing in `package.json` or `bun.lock` changed in
+this pass. Each was traced with `bun pm why`, and the web app's production build (`next build` on this commit)
+was searched for the package and its identifiers. None of them appears in the client or server output. None reaches the API image either: the only paths into `apps/api` run through
+development dependencies (`tsc-alias`), which the production install leaves out.
+
+| Package and advisory                                                        | Severity | Path into the repo                                                                                                                      | Decision                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `braces` GHSA-vfj7-8cjw-p6xm                                                | high     | `micromatch` and `chokidar`, in build and lint tooling only: `tsc-alias` (API build) and `eslint-config-next`                           | Accepted. No patched release exists (3.0.3 is the latest and is affected). It expands glob patterns written in this repository, never user input, and is absent from every runtime bundle. Already allowlisted in `scripts/audit-allowlist.json`, with an expiry of 2027-01-08 that forces a re-check, so the CI audit gate stays green on purpose.                      |
+| `sprintf-js` GHSA-hp3w-g68c-fv3c                                            | medium   | `argparse` 1.x, from `js-yaml` 3.x (`gray-matter`, used by the web's blog loader) and from `@rushstack/ts-command-line` (API Extractor) | Accepted. No patched release exists (1.1.3 is the latest and is affected). `js-yaml` loads `argparse` only in its command-line entry point (`bin/js-yaml.js`), never from the library that `gray-matter` calls, and the blog loader runs on the server at build time; API Extractor is a development tool. The vulnerable formatter is never reached with outside input. |
+| `stream-json` GHSA-hqr4-qq8f-hg3x, GHSA-mjw6-4jj6-33hc, GHSA-528h-pc64-c93x | medium   | `jayson`, from `@solana/web3.js`, from `@hot-wallet/sdk`, a dependency of the wallet kit                                                | Accepted. Fixed only in 3.x, which is published as an ES module only, while `jayson` requires `^1.9.1` through CommonJS, so an override would break the require. The web never imports the HOT wallet module, so it is not part of the production build, and the package is absent from its output.                                                                      |
+
+The low finding, `elliptic` GHSA-848j-6mx2-7j84, is unchanged from Section 7: no patched release, reached only
+through the optional NEAR wallet modules, absent from the production build.
+
+**Cross-reference.** None of these findings touches a surface of the [threat model](/threat-model): key
+handling, the session layer, transaction construction, the two signing keys, the DeFi exit and conversion
+surfaces, or the integrator access layer. Its residual-risk table (Section 11) needs no change.
+
+## 9. How to refresh this plan
+
+1. Install the two pinned tools, at the versions in `scripts/security-tools.json` (the same file CI reads):
+   `pipx install semgrep==<version>`, and gitleaks `<version>` from its release page (Homebrew works only while
+   its formula is at that version). The script refuses to run on another version and prints the install command.
+2. Run `bun run security:scan` on a clean checkout of `main`, or of the pull request that changes the scan. It writes `security-reports/YYYY-MM-DD.md` and
+   `.json` with the tool versions, the commit and every finding by severity. A finding never fails it; it
+   fails only when a tool cannot run, and the gates are the `audit`, `semgrep` and `gitleaks` CI jobs. Semgrep's
+   rule packs and the advisory database are fetched live, so a later run can differ on the same commit.
+3. For every critical, high and medium finding, either fix it (a compatible bump or a root `overrides` entry,
+   then `bun install --frozen-lockfile` and the full test suite) or record an accepted-risk decision here with
+   the evidence: the `bun pm why` path and whether the package reaches a production bundle.
+4. Append a dated section like Section 8, update the status line at the top, and commit the report with it.
+
+Cadence: at least once a month, before an external review, and whenever a new dependency enters a
+security-sensitive path (`verify()`, transaction construction, the signing keys).
