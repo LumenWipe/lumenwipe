@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 
 export interface Problem {
@@ -37,8 +37,11 @@ function escapeRegExp(text: string): string {
 }
 
 function read(root: string, path: string): string | null {
-  const full = join(root, path);
-  return existsSync(full) && statSync(full).isFile() ? readFileSync(full, "utf8") : null;
+  try {
+    return readFileSync(join(root, path), "utf8");
+  } catch {
+    return null;
+  }
 }
 
 function walk(root: string, dir: string, skip: (path: string) => boolean): string[] {
@@ -182,10 +185,16 @@ function checkReference(root: string, span: string): string | null {
     return `\`${span}\` is not a reference this check can read`;
   }
   for (const path of expandBraces(rawPath)) {
-    if (!existsSync(join(root, path))) return `${path} does not exist`;
-    if (target === undefined) continue;
+    if (target === undefined) {
+      if (!existsSync(join(root, path))) return `${path} does not exist`;
+      continue;
+    }
     const source = read(root, path);
-    if (source === null) return `${path} is not a file, so it has no ${target}`;
+    if (source === null) {
+      return existsSync(join(root, path))
+        ? `${path} is not a file, so it has no ${target}`
+        : `${path} does not exist`;
+    }
     if (target.length > 1 && target.startsWith('"') && target.endsWith('"')) {
       const name = target.slice(1, -1);
       if (!hasTest(source, name)) return `${path} has no active test named "${name}"`;
