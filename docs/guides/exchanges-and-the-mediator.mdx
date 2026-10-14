@@ -27,7 +27,7 @@ Before you sign, the browser confirms that the merge comes from your account, th
 
 ## Integrating without the LumenWipe web client
 
-The co-sign endpoint checks the shape of the mediated pair, not its destination or memo. If you call the API or the SDK directly, your own verification is the only check that the forward goes to the exchange address your user entered, in XLM, for the full balance, with the right memo. The [SDK verification page](/sdk/verification#mediated-closes-the-destination-is-yours-to-check) lists the exact checks, and the [threat model](/threat-model#integrator-responsibility-for-a-mediated-close) explains why.
+The co-sign endpoint checks the shape of the mediated pair and caps the forward at the merged balance, but it does not check the destination or the memo. If you call the API or the SDK directly, your own verification is the only check that the forward goes to the exchange address your user entered, in XLM, for at least the balance you observed less a small fee tolerance, with the right memo. The [SDK verification page](/sdk/verification#mediated-closes-the-destination-is-yours-to-check) lists the exact checks, and the [threat model](/threat-model#integrator-responsibility-for-a-mediated-close) explains why.
 
 ## The memo is required
 
