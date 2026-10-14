@@ -9,7 +9,8 @@ icon: "shield-halved"
 > already narrates in prose. It is not a rewrite of that section - it restates the same design as a
 > structured STRIDE analysis (Spoofing, Tampering, Repudiation, Information disclosure, Denial of service,
 > Elevation of privilege) so a reader, an auditor, or the security-tooling remediation plan can check specific
-> threats against specific mitigations, one surface at a time.
+> threats against specific mitigations, one surface at a time. The [invariant register](/invariants) lists the
+> invariants these mitigations rest on, each with the code that enforces it and the test that proves it.
 
 > **Status as of 2026-10-13, checked against commit `6a76eab`.** This is a point-in-time document: it
 > describes the controls present in the code at that commit and the residual risk accepted at that date.

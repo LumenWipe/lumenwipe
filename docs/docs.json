@@ -41,6 +41,7 @@
           "executive-summary",
           "architecture",
           "threat-model",
+          "invariants",
           "security-remediation-plan",
           "monitoring-plan",
           "community-and-communications"
