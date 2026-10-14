@@ -307,3 +307,14 @@ Open a [GitHub Issue](https://github.com/LumenWipe/lumenwipe/issues) with:
 **Do not open a public issue for security vulnerabilities.**
 
 Report them privately following the process in [SECURITY.md](SECURITY.md).
+
+### Security tooling report
+
+`bun run security:scan` runs the dependency audit (`bun audit`), Semgrep and gitleaks over the history
+reachable from `HEAD`, with the tool versions, rule pack names, flags and targets CI reads from
+`scripts/security-tools.json`, and writes `security-reports/YYYY-MM-DD.md` and `.json` with the tool versions,
+the commit and the findings by severity. Semgrep's rule packs and the advisory database are fetched live, so two
+runs on different days can differ. A finding never fails the script; it fails only when a tool cannot run, so a
+report it writes is a complete one. It needs `semgrep` and `gitleaks` at the pinned versions and prints the
+install command when either is missing. Commit a report when it backs a refresh of the
+[remediation plan](docs/security-remediation-plan.md).

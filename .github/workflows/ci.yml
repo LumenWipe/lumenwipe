@@ -315,15 +315,22 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Version, rule pack names, flags and targets come from scripts/security-tools.json, which
+      # `bun run security:scan` reads too. The packs themselves are fetched live, so two runs on
+      # different days can still differ.
       - name: Install Semgrep
-        run: pipx install semgrep==1.175.0
+        run: pipx install "semgrep==$(jq -er .semgrep.version scripts/security-tools.json)"
 
       - name: Scan
         run: |
-          semgrep scan \
-            --config p/security-audit --config p/typescript --config p/javascript --config p/secrets \
-            --metrics=off --error --sarif-output=semgrep.sarif \
-            apps packages
+          pins=scripts/security-tools.json
+          configs_out="$(jq -er '.semgrep.configs[] | "--config", .' "$pins")"
+          flags_out="$(jq -er '.semgrep.flags[]' "$pins")"
+          targets_out="$(jq -er '.semgrep.targets[]' "$pins")"
+          mapfile -t configs <<< "$configs_out"
+          mapfile -t flags <<< "$flags_out"
+          mapfile -t targets <<< "$targets_out"
+          semgrep scan "${configs[@]}" "${flags[@]}" --error --sarif-output=semgrep.sarif "${targets[@]}"
 
       - name: Upload results
         if: ${{ always() && hashFiles('semgrep.sarif') != '' }}
@@ -340,16 +347,17 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-    env:
-      GITLEAKS_VERSION: 8.30.1
-      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
+      # Version, checksum, config and log range come from scripts/security-tools.json, shared
+      # with `bun run security:scan`.
       - name: Install gitleaks
         run: |
+          GITLEAKS_VERSION="$(jq -er .gitleaks.version scripts/security-tools.json)"
+          GITLEAKS_SHA256="$(jq -er .gitleaks.linuxSha256 scripts/security-tools.json)"
           curl -sSfL -o gitleaks.tar.gz \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
@@ -357,7 +365,15 @@ jobs:
           rm gitleaks.tar.gz
 
       - name: Scan the full history
-        run: ./gitleaks git --log-opts=HEAD --config .gitleaks.toml --gitleaks-ignore-path .gitleaksignore --redact --no-banner .
+        run: |
+          pins=scripts/security-tools.json
+          flags_out="$(jq -er '.gitleaks.flags[]' "$pins")"
+          log_opts="$(jq -er .gitleaks.logOpts "$pins")"
+          config="$(jq -er .gitleaks.config "$pins")"
+          ignore="$(jq -er .gitleaks.ignore "$pins")"
+          mapfile -t flags <<< "$flags_out"
+          ./gitleaks git --log-opts="$log_opts" --config "$config" --gitleaks-ignore-path "$ignore" \
+            "${flags[@]}" .
 
   # The advisory database moves independently of this repo, so a new high or critical advisory
   # turns this red on an unchanged lockfile. Accepted exceptions live in
@@ -387,6 +403,9 @@ jobs:
 
       - name: Test the error reference check
         run: bun test scripts/check-error-reference.test.ts
+
+      - name: Test the security scan report
+        run: bun test scripts/security-scan.test.ts
 
       - name: Audit dependencies
         run: bun run scripts/audit-gate.ts
