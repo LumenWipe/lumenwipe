@@ -194,7 +194,7 @@ chore/registry-kraken-address
    - How it was tested
    - Any risk or edge cases the reviewer should pay attention to
    - For protocol changes: which invariants in [Section 9.9](docs/architecture.md#99-exit-adapter-invariants) are satisfied and how
-7. **Security-sensitive changes** (key handling, transaction construction, confirmation flows, mediator flow, CSP) require extra description and will receive closer review. Flag them explicitly. A new close operation, signing key, adapter or app boundary also adds or updates its row in the [invariant register](docs/invariants.mdx); run `bun run check:docs`, which CI runs on every pull request, to confirm every file, symbol and test it names still exists.
+7. **Security-sensitive changes** (key handling, transaction construction, confirmation flows, mediator flow, CSP) require extra description and will receive closer review. Flag them explicitly. The [security scope](docs/security-scope.md) lists the paths this covers, the owner role of each, and the closer-review rule those changes follow. A new close operation, signing key, adapter, surface or app boundary also updates the [threat model](docs/threat-model.md) and its row in the [invariant register](docs/invariants.mdx); run `bun run check:docs`, which CI runs on every pull request, to confirm every file, symbol and test it names still exists.
 8. A maintainer will review your PR. Be prepared for back-and-forth - the review is thorough because the operations are irreversible.
 9. Squash commits if requested before merge.
 
