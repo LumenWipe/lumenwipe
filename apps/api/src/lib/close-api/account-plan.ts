@@ -55,6 +55,7 @@ import {
   positionsLeftBehind,
   PRICE_SOURCE_UNAVAILABLE,
   ROUTE_LOOKUP_UNAVAILABLE_CODE,
+  type ClassicQuote,
 } from "@/lib/close-api/decisions";
 import { ARRIVING_ASSET_PROBE_AMOUNT, assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
 import { DEFI_POSITIONS_UNAVAILABLE_CODE } from "@/lib/defi-positions/positions-gate";
@@ -119,8 +120,9 @@ const readDestinationTrustlines = async (
 export function pricedAmountsPerAsset(
   accountState: AccountState,
   claimedPerAsset: Map<string, bigint>
-): { asset: string; amount: string }[] {
+): { asset: string; amount: string; probe?: true }[] {
   const pricedByAsset = new Map<string, bigint>();
+  const probed = new Set<string>();
   for (const tl of accountState.trustlines) {
     const total = BigInt(xlmToStroops(tl.balance)) + (claimedPerAsset.get(tl.asset) ?? 0n);
     if (total > 0n) pricedByAsset.set(tl.asset, total);
@@ -132,12 +134,15 @@ export function pricedAmountsPerAsset(
   // is the "is there a market at all" gate that decides which options the card offers, and
   // the amount that actually arrives is re-quoted at build time anyway.
   for (const asset of assetsArrivingFromExits(accountState)) {
-    if (!pricedByAsset.has(asset))
+    if (!pricedByAsset.has(asset)) {
       pricedByAsset.set(asset, BigInt(xlmToStroops(ARRIVING_ASSET_PROBE_AMOUNT)));
+      probed.add(asset);
+    }
   }
   return [...pricedByAsset.entries()].map(([asset, amount]) => ({
     asset,
     amount: stroopsToFixedXlm(amount),
+    ...(probed.has(asset) ? { probe: true as const } : {}),
   }));
 }
 
@@ -188,12 +193,21 @@ export async function buildAccountPlan(
   const pricedAssets = pricedAmountsPerAsset(accountState, claimedPerAsset);
   const priceSourceUnavailable = new Set<string>();
   const dustAssets = new Set<string>();
+  // The quote shown for a held or claimed balance becomes the floor the convert answer carries.
+  // An asset priced at the exit probe amount gets none: its real amount is unknown until it lands.
+  const classicQuotes: Record<string, ClassicQuote> = {};
   const convertibilityPromise = Promise.all(
-    pricedAssets.map(async ({ asset, amount }) => {
+    pricedAssets.map(async ({ asset, amount, probe }) => {
       const result = await fetchConversionPath(asset, amount, network);
       if (result.kind === "unavailable") priceSourceUnavailable.add(asset);
       else {
         convertibility[asset] = result.kind === "route";
+        if (result.kind === "route" && !probe) {
+          classicQuotes[asset] = {
+            estimatedReceive: xlmToStroops(result.path.estimatedReceive),
+            minAmountOut: xlmToStroops(result.path.destMin),
+          };
+        }
         if (result.kind === "none" && result.reason === "dust_below_minimum") dustAssets.add(asset);
       }
     })
@@ -312,7 +326,8 @@ export async function buildAccountPlan(
       convertibility,
       claimableBalanceSelections,
       priceSourceUnavailable,
-      dustAssets
+      dustAssets,
+      classicQuotes
     ),
     ...deriveIssuerSupplyDecisionPoints(source, issuance),
     ...leavePoints,

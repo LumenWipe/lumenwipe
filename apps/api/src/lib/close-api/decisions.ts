@@ -347,6 +347,47 @@ export function tokenConversionFloors(
   return floors;
 }
 
+/**
+ * The floors the convert answers carry for classic assets, in stroops: the least XLM the plan
+ * showed the conversion delivering. Optional, so a caller that never saw a quote still builds;
+ * when present it must be a positive whole number of stroops, and the build refuses a route
+ * that no longer clears it.
+ */
+export function classicConversionFloors(
+  answers: DecisionAnswer[],
+  assetsById: { id: string; asset: string }[]
+): Record<string, bigint> {
+  const assetForId = new Map(assetsById.map((a) => [a.id, a.asset]));
+  const dispositions = resolveDispositions(answers, assetsById);
+  const latest = new Map<string, DecisionAnswer>();
+  for (const answer of answers) latest.set(answer.id, answer);
+  const floors: Record<string, bigint> = {};
+  for (const answer of latest.values()) {
+    if (answer.choice !== "convert_to_xlm") continue;
+    const asset = assetForId.get(answer.id);
+    if (asset === undefined || isTokenContract(asset) || dispositions[asset] !== "convert")
+      continue;
+    const floor = answer.params?.minAmountOut;
+    if (floor === undefined) continue;
+    if (typeof floor !== "string" || !/^[1-9]\d*$/.test(floor)) {
+      throw new InvalidConversionFloorError(asset);
+    }
+    floors[asset] = BigInt(floor);
+  }
+  return floors;
+}
+
+/** Raised when a classic convert answer carries a floor that is not a positive number of stroops. */
+export class InvalidConversionFloorError extends Error {
+  constructor(readonly asset: string) {
+    super(
+      `The minimum for converting ${asset.split(":")[0]} must be a positive whole number of ` +
+        "stroops in params.minAmountOut."
+    );
+    this.name = "InvalidConversionFloorError";
+  }
+}
+
 /** Every held Soroban token with a balance, keyed for the decision machinery like an asset. */
 export function tokenAssetsById(
   account: Pick<AccountState, "sorobanTokens">
@@ -367,6 +408,13 @@ export function tokenAssetsById(
  * convert option is not offered. A token whose symbol or decimals could not be read is not
  * offered conversion either - a swap amount nobody can read is not a decision anyone can make.
  */
+/** What the plan shows for a convertible classic asset, in stroops: the quoted XLM and the floor
+ *  the conversion must clear. */
+export interface ClassicQuote {
+  estimatedReceive: string;
+  minAmountOut: string;
+}
+
 /** What the plan shows for a convertible token: the quoted XLM and the floor the swap must clear. */
 export interface TokenQuoteSummary {
   amountOut: string;
@@ -499,7 +547,9 @@ export function deriveDecisionPoints(
    *  return to issuer" for an asset nobody could price would present an outage as a market fact. */
   priceSourceUnavailable: ReadonlySet<string> = new Set(),
   /** Assets with a market whose balance would receive nothing once slippage is applied. */
-  dustAssets: ReadonlySet<string> = new Set()
+  dustAssets: ReadonlySet<string> = new Set(),
+  /** The quote for each convertible asset priced at the amount it will actually move. */
+  classicQuotes: Readonly<Record<string, ClassicQuote>> = {}
 ): DecisionPoint[] {
   // The same dead-end, reached from the other direction: an exit pays an asset into a trustline
   // that is empty today, so neither the balance rule nor the claim rule asks about it, and the
@@ -575,6 +625,7 @@ export function deriveDecisionPoints(
         balance: tl.balance,
         convertible,
         ...(!convertible && dustAssets.has(tl.asset) ? { reason: DUST_REASON } : {}),
+        ...(convertible && classicQuotes[tl.asset] ? { quote: classicQuotes[tl.asset] } : {}),
         /** True when nothing holds this asset yet and the balance is what an exit will pay in. */
         arrivesFromExit: BigInt(xlmToStroops(tl.balance)) === 0n && arrivingFromExits.has(tl.asset),
         /** Both are absent for an asset the account holds no trustline for yet. */

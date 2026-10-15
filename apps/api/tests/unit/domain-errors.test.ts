@@ -7,6 +7,7 @@ import { PlanErrorFilter, TransactionErrorFilter } from "@/close/domain-error.fi
 import { CloseBuildError } from "@/lib/close-api/build-transactions";
 import {
   decisionIdFor,
+  InvalidConversionFloorError,
   MissingConversionFloorError,
   MissingTransferDestinationError,
   tokenDecisionId,
@@ -160,6 +161,13 @@ const TRANSACTION_CASES: Case[] = [
     422,
     "conversion_floor_missing",
     { decisionId: tokenDecisionId(CONTRACT) },
+  ],
+  [
+    "malformed classic conversion floor",
+    new InvalidConversionFloorError(`USDC:${ADDRESS}`),
+    422,
+    "conversion_floor_missing",
+    { decisionId: decisionIdFor(`USDC:${ADDRESS}`) },
   ],
   [
     "unrecognized provider",

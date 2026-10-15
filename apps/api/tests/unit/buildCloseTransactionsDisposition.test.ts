@@ -125,3 +125,44 @@ test("close build › a genuinely lost route for a convert asset still surfaces 
     buildCloseTransactions(accountState(), DEST, { [NOSWAP]: "convert" }, "testnet")
   ).rejects.toThrow(AssetRouteLostError);
 });
+
+function routeAt(destMin: string): PathResult {
+  return {
+    kind: "route",
+    path: {
+      fromAsset: NOSWAP,
+      toAsset: "native",
+      path: [],
+      estimatedReceive: destMin,
+      destMin,
+    },
+  };
+}
+
+test("close build › a conversion is refused when the route no longer clears the minimum the plan showed", async () => {
+  spyOn(pathFinding, "fetchConversionPath").mockResolvedValue(routeAt("4.9999999"));
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+
+  const build = (floor: bigint) =>
+    buildCloseTransactions(
+      accountState(),
+      DEST,
+      { [NOSWAP]: "convert" },
+      "testnet",
+      null,
+      {},
+      {},
+      {},
+      {},
+      {
+        classicFloors: { [NOSWAP]: floor },
+      }
+    );
+  await expect(build(50_000_000n)).rejects.toMatchObject({ code: "quote_drifted", status: 409 });
+  const result = await build(49_999_999n);
+  const conversion = opsOf(result.transactions[0]!.xdr).find(
+    (o) => o.type === "pathPaymentStrictSend"
+  ) as Operation.PathPaymentStrictSend;
+  expect(conversion.destMin).toBe("4.9999999");
+});

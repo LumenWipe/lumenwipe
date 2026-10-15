@@ -12,6 +12,7 @@ import { Asset, Keypair, Networks } from "@stellar/stellar-sdk";
 import type { AccountState, AquariusLpPosition, Trustline } from "@lumenwipe/types";
 import { deriveDecisionPoints } from "@/lib/close-api/decisions";
 import { assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
+import { pricedAmountsPerAsset } from "@/lib/close-api/account-plan";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
 
@@ -177,4 +178,29 @@ test("XLM arriving from an exit needs no disposition", () => {
 
   expect(assetsArrivingFromExits(account).size).toBe(0);
   expect(deriveDecisionPoints(account, {})).toEqual([]);
+});
+
+test("an asset an exit pays in is priced at the probe amount and marked as such", () => {
+  const account = makeAccount({ trustlines: [trustline("USDC", "0"), trustline("EURC", "4")] });
+  const withBlend: AccountState = {
+    ...account,
+    defiPositions: {
+      ...account.defiPositions,
+      positions: [
+        {
+          protocol: "blend",
+          positionType: "supply",
+          contractAddress: POOL,
+          assetAddress: new Asset("USDC", ISSUER).contractId(Networks.TESTNET),
+          bTokenAmount: "489171880",
+          usdValue: null,
+        },
+      ],
+    },
+  };
+
+  expect(pricedAmountsPerAsset(withBlend, new Map())).toEqual([
+    { asset: `EURC:${ISSUER}`, amount: "4.0000000" },
+    { asset: `USDC:${ISSUER}`, amount: "1.0000000", probe: true },
+  ]);
 });

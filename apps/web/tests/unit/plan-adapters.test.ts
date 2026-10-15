@@ -429,3 +429,24 @@ test("decisionPointsToConversions › the dust reason marks the item, and its ab
   expect(thin).toMatchObject({ convertible: false });
   expect(thin && "dust" in thin).toBe(false);
 });
+
+test("decisionPointsToConversions › a convertible classic asset carries its quote only when it is well formed", () => {
+  const point = (asset: string, quote: unknown) => ({
+    id: `asset:${asset}`,
+    type: "asset_disposition" as const,
+    subject: { asset, balance: "10", quote },
+    options: [{ id: "convert_to_xlm" }],
+    default: "convert_to_xlm",
+    required: true,
+  });
+  const [good, zero, missing] = decisionPointsToConversions(
+    plan([
+      point("A:G1", { estimatedReceive: "50000000", minAmountOut: "49750000" }),
+      point("B:G2", { estimatedReceive: "50000000", minAmountOut: "0" }),
+      point("C:G3", undefined),
+    ])
+  );
+  expect(good!.quote).toEqual({ estimatedReceive: "50000000", minAmountOut: "49750000" });
+  expect(zero!.quote).toBeUndefined();
+  expect(missing!.quote).toBeUndefined();
+});

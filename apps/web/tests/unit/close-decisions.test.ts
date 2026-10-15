@@ -1,5 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import {
+  chosenClassicConversions,
+  classicFloorFromQuote,
   chosenTokenConversions,
   chosenTokenTransfers,
   chosenTransfers,
@@ -701,4 +703,41 @@ test("chosenTransfers › a large balance floors at exactly what it holds", () =
     {}
   );
   expect(transfers[asset]).toEqual({ destination: "GDEST", amount: "30660577096.7429913" });
+});
+
+test("chosenClassicConversions › only classic assets marked convert with a recorded floor are vouched for", () => {
+  const asset = "USDC:GISSUER";
+  const arriving = "AQUA:GAQUA";
+  expect(
+    chosenClassicConversions(
+      { [asset]: "convert", [arriving]: "convert", "EURC:GEURC": "convert", "YXLM:GY": "issuer" },
+      {
+        [asset]: { minAmountOut: "49750000" },
+        [arriving]: { minAmountOut: null },
+        "YXLM:GY": { minAmountOut: "1" },
+      }
+    )
+  ).toEqual({ [asset]: { minAmountOut: "49750000" }, [arriving]: { minAmountOut: null } });
+});
+
+test("dispositionsToDecisions › a classic convert answer carries the floor the plan showed", () => {
+  const asset = "USDC:GISSUER";
+  expect(
+    dispositionsToDecisions(
+      { [asset]: "convert" },
+      {},
+      {},
+      { [asset]: { minAmountOut: "49750000" } }
+    )
+  ).toEqual([
+    { id: "asset:USDC-GISSUER", choice: "convert_to_xlm", params: { minAmountOut: "49750000" } },
+  ]);
+  expect(
+    dispositionsToDecisions({ [asset]: "convert" }, {}, {}, { [asset]: { minAmountOut: null } })
+  ).toEqual([{ id: "asset:USDC-GISSUER", choice: "convert_to_xlm" }]);
+});
+
+test("classicFloorFromQuote › leaves 1% under the plan's quoted minimum, rounded down", () => {
+  expect(classicFloorFromQuote("49750000")).toBe("49252500");
+  expect(classicFloorFromQuote("99")).toBe("98");
 });

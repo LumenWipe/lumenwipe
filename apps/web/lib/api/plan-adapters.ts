@@ -20,6 +20,9 @@ export interface AssetConvertibility {
   arrivesFromExit?: boolean;
   /** The issuer can reclaim this balance at any time. Disclosure only; it changes no option. */
   clawbackEnabled?: boolean;
+  /** For a convertible classic asset priced at the balance it will move: the XLM the plan
+   *  quoted and the least the conversion may deliver, in stroops. */
+  quote?: { estimatedReceive: string; minAmountOut: string };
   /** Present for a Soroban token: its contract and the raw balance verify() holds a transfer to.
    *  `arrivesFromExit`: the balance is what a position's exit will pay out, not what is held now. */
   token?: {
@@ -48,6 +51,19 @@ export interface TokenQuote {
    *  later `strict_send` call to before it is ever signed. Absent for a Soroswap win, or when
    *  xBull's route could not be confirmed live (the plan never offers that as convertible). */
   resolvedPath?: string[];
+}
+
+function classicQuoteOf(
+  raw: unknown
+): { estimatedReceive: string; minAmountOut: string } | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const q = raw as Record<string, unknown>;
+  if (typeof q.estimatedReceive !== "string" || typeof q.minAmountOut !== "string")
+    return undefined;
+  if (!/^[1-9]\d*$/.test(q.estimatedReceive) || !/^[1-9]\d*$/.test(q.minAmountOut)) {
+    return undefined;
+  }
+  return { estimatedReceive: q.estimatedReceive, minAmountOut: q.minAmountOut };
 }
 
 function tokenQuoteOf(raw: unknown): TokenQuote | undefined {
@@ -141,6 +157,9 @@ export function decisionPointsToConversions(plan: PlanResponse): AssetConvertibi
         ...(dp.subject.reason === "dust_below_minimum" ? { dust: true } : {}),
         arrivesFromExit: dp.subject.arrivesFromExit === true,
         ...(dp.subject.clawbackEnabled === true ? { clawbackEnabled: true } : {}),
+        ...(convertible && classicQuoteOf(dp.subject.quote)
+          ? { quote: classicQuoteOf(dp.subject.quote) }
+          : {}),
       };
     });
 }

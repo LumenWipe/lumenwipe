@@ -102,6 +102,12 @@ export interface CloseExpectation {
     string,
     { minAmountOut: string; amountOut?: string; amountIn: string; resolvedPath?: string[] }
   >;
+  /**
+   * The classic conversions the user chose, keyed by `CODE:ISSUER`, with the least XLM (stroops)
+   * the plan showed each delivering. Null for an asset only an exit pays in: it had no amount to
+   * quote, so only the choice and a positive minimum are held. Only these assets may be sold.
+   */
+  classicConversions: Record<string, { minAmountOut: string | null }>;
   /** XLM's own contract on this network, derived client-side from the network passphrase. The one
    *  asset a conversion may buy: without pinning it, the minimum above would be compared against a
    *  figure denominated in whatever the transaction claims to be buying. */
@@ -537,6 +543,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
   // One transfer per asset. Without this, a transaction could repeat the payment the user
   // approved and drain the balance in multiples - each copy individually matching the choice.
   const seenTransfers = new Set<string>();
+  const seenConversions = new Set<string>();
 
   for (const op of intent.operations) {
     switch (op.type) {
@@ -563,7 +570,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         }
         break;
       }
-      case "path_payment_strict_send":
+      case "path_payment_strict_send": {
         // Conversions must swap to XLM into the account itself, with a positive floor.
         if (op.destination !== expected.source) {
           throw new VerificationError("A conversion would send funds out of your account.");
@@ -574,7 +581,29 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         if (!(Number(op.destMin) > 0)) {
           throw new VerificationError("A conversion has no minimum-received floor.");
         }
+        const chosen = expected.classicConversions[op.sendAsset];
+        if (!chosen) {
+          throw new VerificationError(
+            "A conversion would sell an asset you did not choose to convert. If a balance arrived " +
+              "since the analysis, run it again."
+          );
+        }
+        if (seenConversions.has(op.sendAsset)) {
+          throw new VerificationError(
+            `The transaction would convert ${assetCode(op.sendAsset)} more than once.`
+          );
+        }
+        seenConversions.add(op.sendAsset);
+        if (
+          chosen.minAmountOut !== null &&
+          BigInt(xlmToStroops(op.destMin)) < BigInt(chosen.minAmountOut)
+        ) {
+          throw new VerificationError(
+            `A conversion of ${assetCode(op.sendAsset)} would accept less XLM than the minimum you were shown.`
+          );
+        }
         break;
+      }
       case "change_trust":
         // The close only removes trustlines (limit 0, however the amount decodes) - with one
         // narrow exception: a raised trustline for an asset the user themselves chose to add
@@ -1059,6 +1088,7 @@ export function verifyCloseTransaction(opts: {
      *  it. */
     transfers: Record<string, { destination: string; amount: string }>;
     tokenTransfers: Record<string, { destination: string; amount: string }>;
+    classicConversions: Record<string, { minAmountOut: string | null }>;
     tokenConversions: Record<
       string,
       { minAmountOut: string; amountOut?: string; amountIn: string; resolvedPath?: string[] }

@@ -1,7 +1,8 @@
 "use client";
 
 import { AlertCircle, ArrowRightLeft, AlertTriangle, CheckCircle2, Send } from "lucide-react";
-import type { AssetConvertibility } from "@/lib/api/plan-adapters";
+import { formatStroops, type AssetConvertibility } from "@/lib/api/plan-adapters";
+import { classicFloorFromQuote } from "@/lib/api/close-decisions";
 import type { AssetDisposition } from "@/types/plan";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { cn } from "@/lib/utils/cn";
@@ -170,7 +171,10 @@ export default function AssetDispositionCard({
                 ? amountPhrase(`sent as ${item.code}, not swapped`)
                 : isIssuer
                   ? amountPhrase("returned to its issuer") + " You give up these tokens."
-                  : amountPhrase("swapped to XLM on the DEX")}
+                  : amountPhrase("swapped to XLM on the DEX") +
+                    (item.quote
+                      ? ` About ${formatStroops(item.quote.estimatedReceive)} XLM, at least ${formatStroops(classicFloorFromQuote(item.quote.minAmountOut))} XLM.`
+                      : "")}
             </p>
           </div>
           <span
