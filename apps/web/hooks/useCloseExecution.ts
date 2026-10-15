@@ -16,8 +16,10 @@ import {
   chosenTokenTransfers,
   chosenTransfers,
   claimableSelectionsToDecisions,
+  defiPositionsAcknowledgementToDecisions,
   destinationAcknowledgementToDecisions,
   dispositionsToDecisions,
+  issuerSupplyAcknowledgementToDecisions,
   positionsLeftBehindToDecisions,
 } from "@/lib/api/close-decisions";
 import { verifyCloseTransaction } from "@/lib/stellar/verify";
@@ -143,6 +145,14 @@ export function useCloseExecution() {
         ...destinationAcknowledgementToDecisions(
           useDemolishStore.getState().destinationAcknowledgedFor,
           useDemolishStore.getState().destinationAddress
+        ),
+        ...defiPositionsAcknowledgementToDecisions(
+          useDemolishStore.getState().defiPositionsAcknowledgedFor,
+          sourceAddress
+        ),
+        ...issuerSupplyAcknowledgementToDecisions(
+          useDemolishStore.getState().issuerSupplyAcknowledgedFor,
+          sourceAddress
         ),
         ...positionsLeftBehindToDecisions(
           useDemolishStore.getState().positionsLeftBehind,

@@ -212,7 +212,7 @@ function checkReference(root: string, span: string): string | null {
  * Every code span in a register row's "Enforced by" and "Proved by" cells that names a path must
  * resolve: `path`, `path#symbol` (a declaration, or a job in a workflow) or `path#"test name"`
  * (an active `test()` with exactly that name). A row whose status starts with "Enforced" must
- * name at least one test or job.
+ * name at least one test or job. Each id names exactly one row.
  */
 export function checkRegister(root: string): Problem[] {
   const text = read(root, REGISTER);
@@ -220,12 +220,15 @@ export function checkRegister(root: string): Problem[] {
   const problems: Problem[] = [];
   const rows = text.split("\n").filter((line) => /^\|\s*INV-\d+\s*\|/.test(line));
   if (rows.length === 0) problems.push({ source: REGISTER, message: "the register has no rows" });
+  const seen = new Set<string>();
   for (const row of rows) {
     const cells = row
       .split("|")
       .slice(1, -1)
       .map((cell) => cell.trim());
     const id = cells[0]!;
+    if (seen.has(id)) problems.push({ source: REGISTER, message: `${id} names more than one row` });
+    seen.add(id);
     if (cells.length !== 5) {
       problems.push({ source: REGISTER, message: `${id} has ${cells.length} cells, expected 5` });
       continue;

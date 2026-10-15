@@ -209,6 +209,13 @@ describe("the invariant register", () => {
     );
   });
 
+  test("an id given to two rows is reported", () => {
+    const root = fixture({ "docs/invariants.mdx": register(ROW, ROW.replace("| x |", "| y |")) });
+    expect(checkRegister(root)).toEqual([
+      { source: "docs/invariants.mdx", message: "INV-01 names more than one row" },
+    ]);
+  });
+
   test("a register with no rows, or a missing register, is reported", () => {
     expect(checkRegister(fixture({ "docs/invariants.mdx": register() }))[0]?.message).toBe(
       "the register has no rows"
