@@ -103,6 +103,17 @@ test("every protocol with a working exit adapter has verified mainnet entries: t
   ).toEqual(["concentrated", "constant_product", "stable"]);
 });
 
+test("mainnet Blend and Phoenix pools listed by address all run a pool code already registered for that protocol", () => {
+  for (const [protocol, codes] of [
+    ["blend", 2],
+    ["phoenix", 2],
+  ] as const) {
+    const pools = entriesForProtocol("mainnet", protocol).filter((e) => e.kind === "pool");
+    expect(pools.length).toBeGreaterThan(codes);
+    expect(new Set(pools.map((e) => e.wasmHash)).size).toBe(codes);
+  }
+});
+
 test("filters entries by network and protocol", () => {
   const blend = entriesForProtocol("testnet", "blend");
   expect(blend.length).toBeGreaterThan(0);
