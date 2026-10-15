@@ -5,13 +5,17 @@ import {
   Asset,
   FeeBumpTransaction,
   Keypair,
+  MuxedAccount,
   Networks,
   Operation,
   Transaction,
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 import { FeeBumpController } from "@/fee-bump/fee-bump.controller";
-import { MAX_FEE_BUMP_STROOPS } from "@/config/constants";
+import { LiveReadError } from "@/lib/stellar/live-trustline";
+import { SponsorshipBudget } from "@/fee-bump/sponsorship-budget";
+import { MAX_FEE_BUMP_STROOPS, MAX_SIGNED_VALIDITY_SECONDS } from "@/config/constants";
+import type { Network } from "@/config/networks";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -51,8 +55,28 @@ async function expectFail(promise: Promise<unknown>, status: number, code: strin
   }
 }
 
+function sponsorWith(
+  budget = new SponsorshipBudget(),
+  clock: () => Date = () => new Date(),
+  apiKeyLabel = "test-key",
+  sequences: (address: string) => Promise<bigint | null> = async () => 1n
+) {
+  const inner = new FeeBumpController(budget, clock, sequences);
+  const headers = new Map<string, string>();
+  return {
+    headers,
+    sponsor: (network: Network, body: { transaction?: string }) =>
+      inner.sponsor(
+        network,
+        body,
+        { apiKeyLabel },
+        { setHeader: (k, v) => headers.set(k, String(v)) }
+      ),
+  };
+}
+
 describe("FeeBumpController.sponsor", () => {
-  const controller = new FeeBumpController();
+  const controller = sponsorWith();
 
   test("wraps a wind-down transaction in a fee-bump envelope, signed by the fee account, unsigned by anything else", async () => {
     const xdr = windDownTx(Operation.accountMerge({ destination: DEST }));
@@ -201,5 +225,170 @@ describe("FeeBumpController.sponsor", () => {
       503,
       "fee_bump_not_configured"
     );
+  });
+});
+
+describe("FeeBumpController.sponsor time bounds", () => {
+  const NOW = new Date("2026-10-15T12:00:00Z");
+  const nowSeconds = Math.floor(NOW.getTime() / 1000);
+  const controller = sponsorWith(new SponsorshipBudget(), () => NOW);
+
+  function boundedTx(minTime: number, maxTime: number): string {
+    return new TransactionBuilder(new Account(SOURCE, "1"), {
+      fee: "0",
+      networkPassphrase: Networks.TESTNET,
+      timebounds: { minTime, maxTime },
+    })
+      .addOperation(Operation.accountMerge({ destination: DEST }))
+      .build()
+      .toXDR();
+  }
+
+  test("refuses an inner transaction that never expires", async () => {
+    await expectFail(
+      controller.sponsor("testnet", { transaction: boundedTx(0, 0) }),
+      400,
+      "time_bounds_required"
+    );
+  });
+
+  test("refuses an inner transaction valid for longer than an envelope built now", async () => {
+    const tooLong = nowSeconds + MAX_SIGNED_VALIDITY_SECONDS + 1;
+    await expectFail(
+      controller.sponsor("testnet", { transaction: boundedTx(0, tooLong) }),
+      400,
+      "time_bounds_required"
+    );
+  });
+
+  test("refuses an inner transaction that has already expired", async () => {
+    await expectFail(
+      controller.sponsor("testnet", { transaction: boundedTx(0, nowSeconds) }),
+      400,
+      "transaction_expired"
+    );
+  });
+
+  test("sponsors an inner transaction at the longest allowed validity", async () => {
+    const atLimit = nowSeconds + MAX_SIGNED_VALIDITY_SECONDS;
+    const { transaction } = await controller.sponsor("testnet", {
+      transaction: boundedTx(0, atLimit),
+    });
+    expect(TransactionBuilder.fromXDR(transaction, Networks.TESTNET)).toBeInstanceOf(
+      FeeBumpTransaction
+    );
+  });
+});
+
+describe("FeeBumpController.sponsor budget", () => {
+  const merge = () =>
+    windDownTx(Operation.accountMerge({ destination: Keypair.random().publicKey() }));
+
+  test("charges the same inner transaction once however often it is sponsored", async () => {
+    const controller = sponsorWith(
+      new SponsorshipBudget({ perSource: 200n, perKey: 10_000n, total: 10_000n })
+    );
+    const transaction = merge();
+    await controller.sponsor("testnet", { transaction });
+    const again = await controller.sponsor("testnet", { transaction });
+    expect(typeof again.transaction).toBe("string");
+  });
+
+  test("refuses with 429 once a scope's daily budget is spent, and signs nothing", async () => {
+    const controller = sponsorWith(
+      new SponsorshipBudget({ perSource: 200n, perKey: 10_000n, total: 10_000n })
+    );
+    await controller.sponsor("testnet", { transaction: merge() });
+    await expectFail(
+      controller.sponsor("testnet", { transaction: merge() }),
+      429,
+      "sponsorship_budget_exhausted"
+    );
+    expect(Number(controller.headers.get("Retry-After"))).toBeGreaterThan(0);
+  });
+
+  test("tells the caller to come back at the start of the next UTC day", async () => {
+    const now = new Date("2026-10-15T23:59:00Z");
+    const controller = sponsorWith(
+      new SponsorshipBudget({ perSource: 0n, perKey: 0n, total: 0n }),
+      () => now
+    );
+    const nowSeconds = Math.floor(now.getTime() / 1000);
+    const transaction = new TransactionBuilder(new Account(SOURCE, "1"), {
+      fee: "0",
+      networkPassphrase: Networks.TESTNET,
+      timebounds: { minTime: 0, maxTime: nowSeconds + 30 },
+    })
+      .addOperation(Operation.accountMerge({ destination: DEST }))
+      .build()
+      .toXDR();
+    await expectFail(
+      controller.sponsor("testnet", { transaction }),
+      429,
+      "sponsorship_budget_exhausted"
+    );
+    expect(controller.headers.get("Retry-After")).toBe("60");
+  });
+});
+
+describe("FeeBumpController.sponsor source account", () => {
+  const merge = () => windDownTx(Operation.accountMerge({ destination: DEST }));
+
+  test("refuses a source account that does not exist", async () => {
+    const controller = sponsorWith(undefined, undefined, undefined, async () => null);
+    await expectFail(
+      controller.sponsor("testnet", { transaction: merge() }),
+      400,
+      "sponsor_source_unusable"
+    );
+  });
+
+  test("refuses a transaction that is not the source account's next one", async () => {
+    const controller = sponsorWith(undefined, undefined, undefined, async () => 5n);
+    await expectFail(
+      controller.sponsor("testnet", { transaction: merge() }),
+      400,
+      "sponsor_source_unusable"
+    );
+  });
+
+  test("refuses with 503 when the source account cannot be read", async () => {
+    const controller = sponsorWith(undefined, undefined, undefined, async () => {
+      throw new LiveReadError("The account to sponsor");
+    });
+    await expectFail(
+      controller.sponsor("testnet", { transaction: merge() }),
+      503,
+      "service_unavailable"
+    );
+  });
+
+  test("reads and budgets a muxed source as its base account", async () => {
+    const reads: string[] = [];
+    const controller = sponsorWith(
+      new SponsorshipBudget({ perSource: 200n, perKey: 10_000n, total: 10_000n }),
+      undefined,
+      undefined,
+      async (address) => {
+        reads.push(address);
+        return 1n;
+      }
+    );
+    const muxedTx = (id: string) =>
+      new TransactionBuilder(new MuxedAccount(new Account(SOURCE, "1"), id), {
+        fee: "0",
+        networkPassphrase: Networks.TESTNET,
+      })
+        .addOperation(Operation.accountMerge({ destination: DEST }))
+        .setTimeout(30)
+        .build()
+        .toXDR();
+    await controller.sponsor("testnet", { transaction: muxedTx("1") });
+    await expectFail(
+      controller.sponsor("testnet", { transaction: muxedTx("2") }),
+      429,
+      "sponsorship_budget_exhausted"
+    );
+    expect(reads).toEqual([SOURCE, SOURCE]);
   });
 });

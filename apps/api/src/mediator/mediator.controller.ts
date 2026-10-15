@@ -32,6 +32,8 @@ export class MediatorController {
     "transaction_structure_not_allowed",
     "merged_account_not_found",
     "forward_amount_exceeds_balance",
+    "time_bounds_required",
+    "transaction_expired",
     "invalid_body",
   ])
   @ApiErrorResponse(422, "The forward's memo does not meet the destination's memo rule.", [

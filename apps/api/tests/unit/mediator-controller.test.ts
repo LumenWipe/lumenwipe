@@ -16,6 +16,7 @@ import { MediatorController } from "@/mediator/mediator.controller";
 import { servedRegistry } from "@/lib/exchange-registry";
 import { AccountNotFoundError } from "@/lib/utils/errors";
 import { LiveReadError } from "@/lib/stellar/live-trustline";
+import { MAX_SIGNED_VALIDITY_SECONDS, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import { MediatorSigningService } from "@/mediator/mediator-signing.service";
 import {
   ACCOUNT_READER,
@@ -94,6 +95,7 @@ interface TxOptions {
   source?: string;
   fee?: string;
   memo?: Memo;
+  timebounds?: { minTime: number; maxTime: number };
 }
 
 function merge(destination: string, source?: string) {
@@ -113,10 +115,12 @@ function buildXdr(opts: TxOptions = {}): string {
   const builder = new TransactionBuilder(new Account(opts.source ?? USER, "1"), {
     fee: opts.fee ?? "200",
     networkPassphrase: Networks.TESTNET,
+    ...(opts.timebounds ? { timebounds: opts.timebounds } : {}),
   });
   for (const op of opts.ops ?? [merge(MEDIATOR.publicKey()), pay({})]) builder.addOperation(op);
   builder.addMemo(opts.memo ?? Memo.text("deposit-4411"));
-  return builder.setTimeout(30).build().toXDR();
+  if (!opts.timebounds) builder.setTimeout(30);
+  return builder.build().toXDR();
 }
 
 async function expectFail(
@@ -263,7 +267,7 @@ describe("sign: structure", () => {
     await expectFail(controller.sign("testnet", { transaction }), 400, ...NOT_ALLOWED);
   });
 
-  test("S6f a forward below 1 XLM is refused", async () => {
+  test("S6f a forward of 9999999 stroops is refused", async () => {
     const { controller } = await makeController();
     const transaction = buildXdr({
       ops: [merge(MEDIATOR.publicKey()), pay({ amount: "0.9999999" })],
@@ -271,12 +275,60 @@ describe("sign: structure", () => {
     await expectFail(controller.sign("testnet", { transaction }), 400, ...NOT_ALLOWED);
   });
 
-  test("S6g a forward of exactly 1 XLM is accepted", async () => {
+  test("S6g a forward of 10000000 stroops is accepted", async () => {
     const { controller } = await makeController();
     const transaction = buildXdr({
       ops: [merge(MEDIATOR.publicKey()), pay({ amount: "1.0000000" })],
     });
     const out = await controller.sign("testnet", { transaction });
+    expect(typeof out.transaction).toBe("string");
+  });
+});
+
+describe("sign: time bounds", () => {
+  const nowSeconds = () => Math.floor(Date.now() / 1000);
+
+  test("S13a an envelope that never expires is not co-signed", async () => {
+    const { controller, balanceReads } = await makeController();
+    const transaction = buildXdr({ timebounds: { minTime: 0, maxTime: 0 } });
+    await expectFail(
+      controller.sign("testnet", { transaction }),
+      400,
+      "time_bounds_required",
+      `The transaction must expire within ${MAX_SIGNED_VALIDITY_SECONDS} seconds.`
+    );
+    expect(balanceReads).toEqual([]);
+  });
+
+  test("S13b an envelope valid for longer than one built now is not co-signed", async () => {
+    const { controller } = await makeController();
+    const maxTime = nowSeconds() + MAX_SIGNED_VALIDITY_SECONDS + 60;
+    const transaction = buildXdr({ timebounds: { minTime: 0, maxTime } });
+    await expectFail(
+      controller.sign("testnet", { transaction }),
+      400,
+      "time_bounds_required",
+      `The transaction must expire within ${MAX_SIGNED_VALIDITY_SECONDS} seconds.`
+    );
+  });
+
+  test("S13c an expired envelope is not co-signed", async () => {
+    const { controller } = await makeController();
+    const transaction = buildXdr({ timebounds: { minTime: 0, maxTime: nowSeconds() - 1 } });
+    await expectFail(
+      controller.sign("testnet", { transaction }),
+      400,
+      "transaction_expired",
+      "The transaction has expired. Request a new one and sign it again."
+    );
+  });
+
+  test("S13d an envelope built with the close's own validity window is co-signed", async () => {
+    const { controller } = await makeController();
+    const maxTime = nowSeconds() + TX_TIMEOUT_SECONDS;
+    const out = await controller.sign("testnet", {
+      transaction: buildXdr({ timebounds: { minTime: 0, maxTime } }),
+    });
     expect(typeof out.transaction).toBe("string");
   });
 });

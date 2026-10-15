@@ -12,6 +12,9 @@ import {
 } from "@/lib/close-api/memo-rules";
 import { LiveReadError } from "@/lib/stellar/live-trustline";
 import { fail } from "@/common/fail";
+import { MIN_MEDIATOR_FORWARD_STROOPS } from "@/config/constants";
+import { xlmToStroops } from "@/lib/utils/amounts";
+import { validityProblem, VALIDITY_MESSAGES } from "@/lib/stellar/validity-window";
 import {
   ACCOUNT_READER,
   CLOCK,
@@ -78,7 +81,7 @@ export class MediatorSigningService {
       transfer.source !== mediator ||
       transfer.destination === mediator ||
       !transfer.asset.isNative() ||
-      parseFloat(transfer.amount) < 1
+      BigInt(xlmToStroops(transfer.amount)) < MIN_MEDIATOR_FORWARD_STROOPS
     ) {
       fail("transaction_structure_not_allowed", "Transaction structure not allowed", 400);
     }
@@ -88,6 +91,15 @@ export class MediatorSigningService {
     const mergedSource = merge.source ?? tx.source;
     if (tx.source === mediator || mergedSource === mediator || !isValidGAddress(mergedSource)) {
       fail("transaction_structure_not_allowed", "Transaction structure not allowed", 400);
+    }
+
+    const validity = validityProblem(tx, this.clock());
+    if (validity) {
+      fail(
+        validity === "expired" ? "transaction_expired" : "time_bounds_required",
+        VALIDITY_MESSAGES[validity],
+        400
+      );
     }
 
     // A muxed forward destination is never built by the close API and has no data entry to read.
