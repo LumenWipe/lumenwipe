@@ -41,6 +41,7 @@ function baseExpected(): CloseExpectation {
     registryContracts: [],
     protectedTokenContracts: [],
     xbullAssets: {},
+    ownTokensByContract: {},
   };
 }
 

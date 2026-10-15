@@ -47,6 +47,8 @@ export interface ExitExpectations {
   protectedTokenContracts: string[];
   /** xBull's router asset table from the bundle, index to token contract; empty off mainnet. */
   xbullAssets: Record<string, string>;
+  /** Per position contract, the tokens the account read names as that position's own. */
+  ownTokensByContract: Record<string, string[]>;
 }
 
 function xbullAssetsFor(network: Network): Record<string, string> {
@@ -68,6 +70,7 @@ export function exitExpectations(
       registryContracts: registryContractsFor(network),
       protectedTokenContracts: [Asset.native().contractId(NETWORK_PASSPHRASES[network])],
       xbullAssets: xbullAssetsFor(network),
+      ownTokensByContract: {},
     };
   }
   const passphrase = NETWORK_PASSPHRASES[network];
@@ -133,5 +136,14 @@ export function exitExpectations(
       ]),
     ],
     xbullAssets: xbullAssetsFor(network),
+    ownTokensByContract: Object.fromEntries(
+      positions.map((p) => [
+        p.contractAddress,
+        [
+          ...("tokens" in p && p.tokens ? p.tokens : []),
+          ...("shareToken" in p && p.shareToken ? [p.shareToken] : []),
+        ],
+      ])
+    ),
   };
 }

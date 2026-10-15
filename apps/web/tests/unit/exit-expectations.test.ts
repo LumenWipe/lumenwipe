@@ -47,6 +47,7 @@ test("no account read vouches for nothing", () => {
     registryContracts: registryContractsFor("testnet"),
     protectedTokenContracts: [Asset.native().contractId(Networks.TESTNET)],
     xbullAssets: {},
+    ownTokensByContract: {},
   });
 });
 

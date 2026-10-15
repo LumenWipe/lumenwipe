@@ -57,9 +57,11 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
     ],
     accountThresholds: { low: 0, med: 1, high: 1 },
     nowSeconds: NOW,
-    registryContracts: [],
+    // Exit contracts count as registry-listed unless a test says otherwise.
+    registryContracts: over.exitContracts ?? [POOL],
     protectedTokenContracts: [],
     xbullAssets: { "0": XLM_CONTRACT, "1": CONVERT_TOKEN, "2": OTHER_TOKEN },
+    ownTokensByContract: {},
     ...over,
   };
 }
@@ -783,6 +785,7 @@ test("verifyCloseTransaction passes a mediated close to a memo-requiring exchang
         registryContracts: [],
         protectedTokenContracts: [],
         xbullAssets: {},
+        ownTokensByContract: {},
       },
     })
   ).not.toThrow();
@@ -825,6 +828,7 @@ test("verifyCloseTransaction rejects a mediated close to a memo-requiring exchan
         registryContracts: [],
         protectedTokenContracts: [],
         xbullAssets: {},
+        ownTokensByContract: {},
       },
     })
   ).toThrow(/requires a deposit memo/);
@@ -858,6 +862,7 @@ test("verifyCloseTransaction passes a direct close to a destination the registry
         registryContracts: [],
         protectedTokenContracts: [],
         xbullAssets: {},
+        ownTokensByContract: {},
       },
     })
   ).not.toThrow();
@@ -2221,7 +2226,22 @@ test("an exit through a contract outside the bundled registry may not touch XLM 
     contractsReferenced: [POOL, SHARE],
     subInvocations: [{ contract: SHARE, function: "transfer", args: [SRC, POOL, "100"] }],
   });
-  expect(() => assertCloseIntent(exitOnly(shareBack), unregistered)).not.toThrow();
+  expect(() =>
+    assertCloseIntent(exitOnly(shareBack), {
+      ...unregistered,
+      ownTokensByContract: { [POOL]: [SHARE] },
+    })
+  ).not.toThrow();
+  // Another position's token, or a token the account merely holds, stays out of its reach.
+  expect(() => assertCloseIntent(exitOnly(shareBack), unregistered)).toThrow(/has not verified/);
+  expect(() =>
+    assertCloseIntent(exitOnly(shareBack), {
+      ...unregistered,
+      positionTokenContracts: [],
+      heldTokenContracts: [XLM_SAC, SHARE],
+      ownTokensByContract: { [POOL]: [] },
+    })
+  ).toThrow(/has not verified/);
 });
 
 test("a swap may authorize only paying in the token it sells, from this account, up to the amount it sells", () => {

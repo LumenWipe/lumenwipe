@@ -114,6 +114,9 @@ export interface CloseExpectation {
   /** xBull's router asset table from the bundle, index to token contract. The only way an xBull
    *  route's opaque indices are read; an index missing here fails the swap closed. */
   xbullAssets: Record<string, string>;
+  /** Per position contract, the tokens the account read names as that position's own. Through a
+   *  contract outside the registry, an exit may touch only these, and never a protected token. */
+  ownTokensByContract: Record<string, string[]>;
   /** XLM's own contract on this network, derived client-side from the network passphrase. The one
    *  asset a conversion may buy: without pinning it, the minimum above would be compared against a
    *  figure denominated in whatever the transaction claims to be buying. */
@@ -1026,14 +1029,22 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         // this account holds or has a position in is pinned here to a function that only ever
         // moves value to this account or to the contract at the root of this exact invocation -
         // never a third party (issue #208).
-        // A position's contract comes from the account read. Only a contract the bundled registry
-        // names may move or burn the account's XLM and classic assets.
+        // A position's contract comes from the account read. A contract the bundled registry does
+        // not name may touch only that position's own tokens, and never XLM or a classic asset.
         if (!expected.registryContracts.includes(op.contract)) {
+          const own = expected.ownTokensByContract[op.contract] ?? [];
           for (const sub of op.subInvocations) {
-            if (expected.protectedTokenContracts.includes(sub.contract)) {
+            const isAccountToken =
+              expected.protectedTokenContracts.includes(sub.contract) ||
+              expected.heldTokenContracts.includes(sub.contract) ||
+              expected.positionTokenContracts.includes(sub.contract);
+            if (
+              expected.protectedTokenContracts.includes(sub.contract) ||
+              (isAccountToken && !own.includes(sub.contract))
+            ) {
               throw new VerificationError(
-                "A DeFi exit would spend your XLM or a classic asset through a contract LumenWipe " +
-                  "has not verified."
+                "A DeFi exit would spend your XLM, a classic asset or another token through a " +
+                  "contract LumenWipe has not verified."
               );
             }
           }
@@ -1182,6 +1193,7 @@ export function verifyCloseTransaction(opts: {
     registryContracts: string[];
     protectedTokenContracts: string[];
     xbullAssets: Record<string, string>;
+    ownTokensByContract: Record<string, string[]>;
   };
 }): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);
