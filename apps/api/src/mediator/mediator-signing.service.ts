@@ -4,7 +4,12 @@ import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { AccountNotFoundError } from "@/lib/utils/errors";
 import { forwardExceedsMergedBalance } from "./mediator-validation";
-import { envelopeMemoProblem, memoRuleFor } from "@/lib/close-api/memo-rules";
+import {
+  envelopeMemoProblem,
+  envelopeMemoSatisfiesAccountRule,
+  memoRuleFor,
+  needsLedgerMemoRead,
+} from "@/lib/close-api/memo-rules";
 import { LiveReadError } from "@/lib/stellar/live-trustline";
 import { fail } from "@/common/fail";
 import {
@@ -85,10 +90,14 @@ export class MediatorSigningService {
       fail("transaction_structure_not_allowed", "Transaction structure not allowed", 400);
     }
 
+    // A muxed forward destination is never built by the close API and has no data entry to read.
+    if (!isValidGAddress(transfer.destination)) {
+      fail("transaction_structure_not_allowed", "Transaction structure not allowed", 400);
+    }
     const exchange = this.registry.lookup(transfer.destination);
-    const requiredOnChain = exchange?.requiresMemo
-      ? false
-      : await this.memoRequiredOnChain(transfer.destination, network);
+    const requiredOnChain = needsLedgerMemoRead(exchange, envelopeMemoSatisfiesAccountRule(tx.memo))
+      ? await this.memoRequiredOnChain(transfer.destination, network)
+      : false;
     const memoProblem = envelopeMemoProblem(tx.memo, memoRuleFor(exchange, requiredOnChain));
     if (memoProblem) fail(memoProblem.code, memoProblem.message, 422, memoProblem.details);
 

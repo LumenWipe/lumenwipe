@@ -9,7 +9,6 @@ export interface MemoRule {
   /** From the registry, so the memo must be exactly this type. An unlisted destination states
    *  only that it needs a memo, never which kind. */
   fixedType: boolean;
-  /** Where the requirement comes from, so the refusal can say why. */
   source: "registry" | "account" | null;
 }
 
@@ -65,7 +64,24 @@ function valueProblem(memo: string, memoType: MemoType): MemoProblem | null {
   return null;
 }
 
-/** The memo a close request supplies, as the builder will attach it (`null` when none). */
+/** A blank memo is no memo: it would credit nobody, so it never satisfies a requirement. */
+export function normalizeRequestMemo(raw: unknown): { memo: string | null } | MemoProblem {
+  if (raw === undefined || raw === null) return { memo: null };
+  if (typeof raw !== "string") {
+    return { code: "invalid_memo", message: "A memo must be a string." };
+  }
+  return { memo: raw.trim() === "" ? null : raw };
+}
+
+/** Whether the destination's own ledger entry must be read: only when the registry has not
+ *  already required a memo and the memo at hand would not satisfy an account that asks for one. */
+export function needsLedgerMemoRead(
+  exchange: RegistryEntry | null,
+  memoSatisfiesAccountRule: boolean
+): boolean {
+  return !(exchange?.requiresMemo ?? false) && !memoSatisfiesAccountRule;
+}
+
 export function requestMemoProblem(memo: string | null, rule: MemoRule): MemoProblem | null {
   if (memo === null) return rule.required ? missing(rule) : null;
   return valueProblem(memo, rule.memoType);
@@ -73,10 +89,15 @@ export function requestMemoProblem(memo: string | null, rule: MemoRule): MemoPro
 
 function envelopeMemoIsEmpty(memo: Memo<EnvelopeMemoType>): boolean {
   if (memo.type === "none" || memo.value === null || memo.value === undefined) return true;
-  return memo.type === "text" && memo.value.length === 0;
+  if (memo.type !== "text") return false;
+  const text = typeof memo.value === "string" ? memo.value : Buffer.from(memo.value).toString();
+  return text.replace(/\0/g, "").trim() === "";
 }
 
-/** The memo an already-built envelope carries, judged by the same rule. */
+export function envelopeMemoSatisfiesAccountRule(memo: Memo<EnvelopeMemoType>): boolean {
+  return !envelopeMemoIsEmpty(memo) && (memo.type === "text" || memo.type === "id");
+}
+
 export function envelopeMemoProblem(
   memo: Memo<EnvelopeMemoType>,
   rule: MemoRule

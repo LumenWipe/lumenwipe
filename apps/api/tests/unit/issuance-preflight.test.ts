@@ -236,6 +236,7 @@ function arrangePlan(): void {
   spyOn(accountStateModule, "readTrustlinesOnly").mockResolvedValue({
     address: DEST,
     trustlines: [],
+    memoRequired: false,
   });
 }
 

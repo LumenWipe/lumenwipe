@@ -44,6 +44,7 @@ import {
 } from "@/lib/api/close-decisions";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { assetsResolved } from "@/lib/plan/asset-resolution";
+import { missingRequiredMemoError } from "@/lib/plan/memo-requirement";
 
 interface PlanViewProps {
   account: AccountState;
@@ -286,10 +287,9 @@ export default function PlanView({
         return;
       }
 
-      if (mediatorData.requiresMemo && memo.trim() === "") {
-        setError(
-          "This account says every payment to it needs a memo. Add the memo it gave you, such as an exchange deposit memo, before continuing."
-        );
+      const memoError = missingRequiredMemoError(mediatorData, memo);
+      if (memoError !== null) {
+        setError(memoError);
         return;
       }
 

@@ -495,7 +495,39 @@ describe("transactions", () => {
       }) as unknown as Builder,
     });
     expect((await controller.transactions("testnet", body({ memo: "" }))).status).toBe("ready");
+    expect((await controller.transactions("testnet", body({ memo: "  " }))).status).toBe("ready");
     expect(calls[0]![4]).toBeNull();
+    expect(calls[1]![4]).toBeNull();
+  });
+
+  test("T4g a blank memo does not satisfy an on-chain memo requirement", async () => {
+    const { controller } = await makeController({ readMemoRequired: async () => true });
+    await expectFail(
+      controller.transactions("testnet", body({ memo: " \t" })),
+      422,
+      "memo_required"
+    );
+  });
+
+  test("T4h a memo that is not a string is refused", async () => {
+    const { controller } = await makeController();
+    await expectFail(
+      controller.transactions("testnet", body({ memo: 4411 })),
+      422,
+      "invalid_memo",
+      "A memo must be a string."
+    );
+  });
+
+  test("T4i an unacknowledged destination is refused before its memo requirement is read", async () => {
+    const { controller } = await makeController({
+      readMemoRequired: unexpected("readMemoRequired") as Fakes["readMemoRequired"],
+    });
+    await expectFail(
+      controller.transactions("testnet", body({ decisions: [] })),
+      422,
+      "destination_not_acknowledged"
+    );
   });
 
   test("T5 a hash memo is not supported", async () => {

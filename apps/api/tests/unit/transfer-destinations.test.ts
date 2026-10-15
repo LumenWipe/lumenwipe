@@ -315,3 +315,15 @@ test("an exact fit under buying liabilities is accepted", async () => {
   );
   expect(problems).toEqual([]);
 });
+
+test("a destination that requires a memo on-chain is a blocker", async () => {
+  const problems = await validateTransferDestinations(
+    { [USDC]: DESTINATION },
+    [trustline(USDC, "100")],
+    SOURCE,
+    "testnet",
+    async () => ({ trustlines: [trustline(USDC, "5", "1000")], memoRequired: true })
+  );
+  expect(problems).toHaveLength(1);
+  expect(problems[0]!.code).toBe("destination_requires_memo");
+});

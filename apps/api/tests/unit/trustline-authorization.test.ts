@@ -179,3 +179,20 @@ test("a destination line with no is_authorized fails the read instead of reading
   }).catch((e: unknown) => e);
   expect(err).toBeInstanceOf(UnusableProviderResponseError);
 });
+
+test("a destination's config.memo_required data entry is read from the same account response", async () => {
+  const withData = (data: Record<string, string> | undefined) =>
+    (async () =>
+      new Response(JSON.stringify({ balances: [HORIZON_CREDIT_LINE], data }), {
+        status: 200,
+      })) as unknown as typeof globalThis.fetch;
+  const read = (data: Record<string, string> | undefined) =>
+    readTrustlinesOnly(DEST, "testnet", {
+      baseUrl: "https://horizon.example",
+      fetch: withData(data),
+    });
+  expect((await read({ "config.memo_required": "MQ==" }))!.memoRequired).toBe(true);
+  expect((await read({ "config.memo_required": "MA==" }))!.memoRequired).toBe(false);
+  expect((await read({}))!.memoRequired).toBe(false);
+  expect((await read(undefined))!.memoRequired).toBe(false);
+});

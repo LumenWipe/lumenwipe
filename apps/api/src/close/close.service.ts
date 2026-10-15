@@ -23,7 +23,12 @@ import { assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
 import { preflightErrorCode } from "@/lib/close-api/merge-preflight";
 import { parseDecisions } from "@/lib/close-api/parse-decisions";
 import { computePlanHash } from "@/lib/close-api/plan-response";
-import { memoRuleFor, requestMemoProblem } from "@/lib/close-api/memo-rules";
+import {
+  memoRuleFor,
+  needsLedgerMemoRead,
+  normalizeRequestMemo,
+  requestMemoProblem,
+} from "@/lib/close-api/memo-rules";
 import { CloseBuildError } from "@/lib/close-api/build-transactions";
 import {
   CLAIM_ANSWER_STALE_MESSAGE,
@@ -145,13 +150,11 @@ export class CloseService {
       fail("invalid_destination", "A valid destination account (G...) is required.", 400);
     }
     const decisions = parseDecisions(body.decisions);
-    const memo = typeof body.memo === "string" && body.memo !== "" ? body.memo : null;
+    const normalized = normalizeRequestMemo(body.memo);
+    if (!("memo" in normalized)) fail(normalized.code, normalized.message, 422);
+    const { memo } = normalized;
     const exchange = this.registry.lookup(destination);
-    const requiredOnChain =
-      memo === null && !exchange?.requiresMemo
-        ? await this.reader.readMemoRequired(destination, network)
-        : false;
-    const memoProblem = requestMemoProblem(memo, memoRuleFor(exchange, requiredOnChain));
+    const memoProblem = requestMemoProblem(memo, memoRuleFor(exchange, false));
     if (memoProblem) fail(memoProblem.code, memoProblem.message, 422, memoProblem.details);
 
     // A destination the registry does not recognize cannot be assumed to be a personal wallet,
@@ -183,6 +186,14 @@ export class CloseService {
         422,
         { decisionId: destinationDecisionId(destination), choice: DESTINATION_ACK_CHOICE }
       );
+    }
+
+    if (
+      needsLedgerMemoRead(exchange, memo !== null) &&
+      (await this.reader.readMemoRequired(destination, network))
+    ) {
+      const missing = requestMemoProblem(memo, memoRuleFor(exchange, true));
+      if (missing) fail(missing.code, missing.message, 422, missing.details);
     }
 
     try {

@@ -18,6 +18,7 @@ import { enrichDefiPositions, knownTokensFor } from "@/lib/defi-positions/enrich
 import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
 import { parseLedgerCloseTime } from "./claim-predicates";
 import { getRpcServer } from "./rpc";
+import { MEMO_REQUIRED_DATA_NAME } from "./memo-required";
 import { Logger } from "@nestjs/common";
 
 // Nest's logger, not console: these lines are how an operator learns the reader silently
@@ -386,6 +387,7 @@ export async function readTrustlinesOnly(
 ): Promise<{
   address: string;
   trustlines: Array<Trustline & { buyingLiabilities?: string }>;
+  memoRequired: boolean;
 } | null> {
   const account = await horizonGet<ApiAccount>(`/accounts/${address}`, deps);
   if (!account) return null;
@@ -402,7 +404,13 @@ export async function readTrustlinesOnly(
     trustlines: account.balances
       .filter(isCreditBalance)
       .map((b) => ({ ...toTrustline(b), buyingLiabilities: b.buying_liabilities })),
+    memoRequired: dataValue(account.data, MEMO_REQUIRED_DATA_NAME) === "1",
   };
+}
+
+function dataValue(data: Record<string, string> | undefined, name: string): string | null {
+  const encoded = data?.[name];
+  return typeof encoded === "string" ? Buffer.from(encoded, "base64").toString("utf8") : null;
 }
 
 /**

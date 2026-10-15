@@ -423,13 +423,27 @@ describe("sign: memo rules", () => {
     });
   });
 
-  test("S12b a forward to an account that requires a memo on-chain is co-signed with one", async () => {
+  test("S12b a forward that carries a text or id memo is co-signed without a ledger read", async () => {
     const { controller, memoReads } = await makeController({ memoRequired: true });
     for (const memo of [Memo.text("4411"), Memo.id("4411")]) {
       const out = await controller.sign("testnet", { transaction: forwardTo(OTHER, memo) });
       expect(typeof out.transaction).toBe("string");
     }
-    expect(memoReads).toEqual([OTHER, OTHER]);
+    expect(memoReads).toEqual([]);
+  });
+
+  test("S12e a blank text memo does not satisfy a memo requirement", async () => {
+    await expectMemoFail(forwardTo(EXCHANGE, Memo.text("  ")), "memo_required");
+    await expectMemoFail(forwardTo(OTHER, Memo.text(" ")), "memo_required", { memoRequired: true });
+  });
+
+  test("S12f a forward to a muxed destination is refused before any ledger read", async () => {
+    const { controller, memoReads, balanceReads } = await makeController();
+    const muxed = "MA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVAAAAAAAAAAAAAJLK";
+    const transaction = forwardTo(muxed, Memo.text("4411"));
+    await expectFail(controller.sign("testnet", { transaction }), 400, ...NOT_ALLOWED);
+    expect(memoReads).toEqual([]);
+    expect(balanceReads).toEqual([]);
   });
 
   test("S12c a forward to an account with no memo requirement needs no memo", async () => {

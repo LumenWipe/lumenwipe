@@ -13,9 +13,10 @@ export interface CloseTransactionsRequest {
   destination: string;
   decisions?: DecisionAnswer[];
   /**
-   * Deposit memo value for exchange destinations that require one. The memo type
-   * is taken from the exchange registry, not the client. Required when the
-   * destination is an exchange that mandates a memo.
+   * Deposit memo value. The memo type is taken from the exchange registry, not the
+   * client, and is text for an unlisted destination. Required when the destination
+   * is an exchange that mandates a memo, or an account whose `config.memo_required`
+   * data entry is set (SEP-29). A blank memo counts as none.
    */
   memo?: string;
 }
