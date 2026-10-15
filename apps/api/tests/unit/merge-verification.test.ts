@@ -8,7 +8,12 @@ import {
   rpc,
   xdr,
 } from "@stellar/stellar-sdk";
-import { signedXdrHasAccountMerge, summarizeMerges, verifyMerge } from "@/stats/merge-verification";
+import {
+  builtCloseHashes,
+  signedXdrHasAccountMerge,
+  summarizeMerges,
+  verifyMerge,
+} from "@/stats/merge-verification";
 
 const SOURCE = Keypair.random();
 const DESTINATION = Keypair.random().publicKey();
@@ -61,6 +66,10 @@ function feeBumpResult(results: xdr.OperationResult[]): xdr.TransactionResult {
     ),
     ext: xdr.TransactionResultExt.v0(),
   });
+}
+
+function hashOf(env: xdr.TransactionEnvelope): string {
+  return Buffer.from(TransactionBuilder.fromXDR(env, Networks.TESTNET).hash()).toString("hex");
 }
 
 function feeBumpEnvelope(inner: xdr.TransactionEnvelope): xdr.TransactionEnvelope {
@@ -152,11 +161,13 @@ describe("verifyMerge", () => {
     }) as unknown as rpc.Api.GetTransactionResponse;
 
   test("returns the verified close, timestamped by its ledger close time", async () => {
+    const env = envelope([merge()]);
     const verified = await verifyMerge(HASH, "testnet", async () =>
-      success(envelope([merge()]), txResult([mergeSuccess("45000000")]))
+      success(env, txResult([mergeSuccess("45000000")]))
     );
     expect(verified).toEqual({
       txHash: HASH,
+      builtHash: hashOf(env),
       accountsClosed: 1,
       xlmStroops: "45000000",
       closedAt: new Date(1_760_000_000_000),
@@ -178,11 +189,54 @@ describe("verifyMerge", () => {
     expect(await verifyMerge(HASH, "testnet", async () => response)).toBeNull();
   });
 
+  test("reports the inner transaction as the build of a fee-bumped close", async () => {
+    const inner = envelope([merge()]);
+    const verified = await verifyMerge(HASH, "testnet", async () =>
+      success(feeBumpEnvelope(inner), feeBumpResult([mergeSuccess("12")]))
+    );
+    expect(verified?.builtHash).toBe(hashOf(inner));
+  });
+
+  test("rejects a response for a different transaction than the one asked about", async () => {
+    const response = {
+      ...success(envelope([merge()]), txResult([mergeSuccess("1")])),
+      txHash: "b".repeat(64),
+    } as rpc.Api.GetTransactionResponse;
+    expect(await verifyMerge(HASH, "testnet", async () => response)).toBeNull();
+  });
+
+  test("does not count a transaction whose envelope cannot be read", async () => {
+    const broken = {
+      ...success(envelope([merge()]), txResult([mergeSuccess("1")])),
+      envelopeXdr: { type: "envelopeTypeTx" },
+    } as unknown as rpc.Api.GetTransactionResponse;
+    expect(await verifyMerge(HASH, "testnet", async () => broken)).toBeNull();
+  });
+
   test("does not count on trust when the RPC errors", async () => {
     expect(
       await verifyMerge(HASH, "testnet", async () => {
         throw new Error("rpc down");
       })
     ).toBeNull();
+  });
+});
+
+describe("builtCloseHashes", () => {
+  test("returns the hash of each built transaction that merges, skipping the rest", () => {
+    const closing = envelope([merge()]);
+    const transactions = [
+      { xdr: envelope([bump()]).toXDR("base64") },
+      { xdr: "not-xdr" },
+      { xdr: closing.toXDR("base64") },
+    ];
+    expect(builtCloseHashes(transactions, "testnet")).toEqual([hashOf(closing)]);
+  });
+
+  test("hashes against the network the close was built for", () => {
+    const closing = envelope([merge()]);
+    expect(builtCloseHashes([{ xdr: closing.toXDR("base64") }], "mainnet")).not.toEqual([
+      hashOf(closing),
+    ]);
   });
 });

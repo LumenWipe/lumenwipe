@@ -31,10 +31,14 @@ export class StatsService {
     @Inject(STATS_CLOCK) private readonly now: Clock
   ) {}
 
-  /** Counts a close only after confirming it on-chain; the caller's word is never enough. */
+  /**
+   * Counts a close only after confirming it on-chain and that this API built it; the caller's
+   * word is never enough.
+   */
   async record(network: Network, txHash: string): Promise<RecordOutcome> {
     const merge = await this.verify(txHash, network);
     if (!merge) return "unverified";
+    if (!(await this.store.wasBuilt(network, merge.builtHash))) return "unverified";
 
     const counted = await this.store.record({
       txHash: merge.txHash,
@@ -48,6 +52,10 @@ export class StatsService {
     this.cache.delete(`totals:${network}`);
     this.cache.delete(`feed:${network}`);
     return "counted";
+  }
+
+  rememberBuilt(network: Network, txHashes: readonly string[]): Promise<void> {
+    return this.store.rememberBuilt(network, txHashes, this.now());
   }
 
   totals(network: Network): Promise<StatsTotals> {

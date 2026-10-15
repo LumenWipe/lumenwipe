@@ -23,12 +23,18 @@ export interface MergeStatsStore {
   recent(network: Network, limit: number): Promise<MergeRecord[]>;
   /** Only days with at least one close, from `fromDate` (inclusive) onward. */
   daily(network: Network, fromDate: string): Promise<DayCount[]>;
+  /** Notes the hashes of close transactions this API built, so only those are ever counted. */
+  rememberBuilt(network: Network, txHashes: readonly string[], builtAt: Date): Promise<void>;
+  wasBuilt(network: Network, txHash: string): Promise<boolean>;
 }
 
 export const MERGE_STATS_STORE = Symbol("MERGE_STATS_STORE");
 
 /** Daily buckets outlive the 365-day chart by about a month, then a TTL policy deletes them. */
 export const DAILY_RETENTION_DAYS = 400;
+
+/** Long enough to count a close reported well after it confirmed, then a TTL policy deletes it. */
+export const BUILT_RETENTION_DAYS = 30;
 
 export function utcDate(at: Date): string {
   return at.toISOString().slice(0, 10);
@@ -40,6 +46,7 @@ export function utcDate(at: Date): string {
  *   stats/{network}                      { accountsClosed, xlmStroops, updatedAt }
  *   stats/{network}/merges/{txHash}      { network, accountsClosed, xlmStroops, timestamp }
  *   stats/{network}/mergeDaily/{date}    { date, accountsClosed, expireAt }
+ *   stats/{network}/builtCloses/{txHash} { expireAt }
  *
  * `xlmStroops` is a decimal string summed with BigInt inside the transaction, because
  * `FieldValue.increment` only takes a JS number and the running total can pass 2^53 stroops.
@@ -118,6 +125,20 @@ export class FirestoreMergeStatsStore implements MergeStatsStore {
     }));
   }
 
+  async rememberBuilt(network: Network, txHashes: readonly string[], builtAt: Date): Promise<void> {
+    if (txHashes.length === 0) return;
+    const built = this.root.doc(network).collection("builtCloses");
+    const expireAt = Timestamp.fromMillis(builtAt.getTime() + BUILT_RETENTION_DAYS * 86_400_000);
+    const batch = this.firestore.batch();
+    for (const hash of txHashes) batch.set(built.doc(hash), { expireAt });
+    await batch.commit();
+  }
+
+  async wasBuilt(network: Network, txHash: string): Promise<boolean> {
+    const snap = await this.root.doc(network).collection("builtCloses").doc(txHash).get();
+    return snap.exists;
+  }
+
   async daily(network: Network, fromDate: string): Promise<DayCount[]> {
     const snap = await this.root
       .doc(network)
@@ -134,6 +155,15 @@ export class FirestoreMergeStatsStore implements MergeStatsStore {
 /** In-process store for dev, tests and CI - none of which set `FIRESTORE_PROJECT_ID`. */
 export class InMemoryMergeStatsStore implements MergeStatsStore {
   private readonly merges = new Map<string, MergeRecord>();
+  private readonly built = new Set<string>();
+
+  async rememberBuilt(network: Network, txHashes: readonly string[]): Promise<void> {
+    for (const hash of txHashes) this.built.add(`${network}:${hash}`);
+  }
+
+  async wasBuilt(network: Network, txHash: string): Promise<boolean> {
+    return this.built.has(`${network}:${txHash}`);
+  }
 
   async record(merge: MergeRecord): Promise<boolean> {
     const key = `${merge.network}:${merge.txHash}`;

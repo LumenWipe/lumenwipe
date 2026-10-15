@@ -8,10 +8,22 @@ const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
 
 function verified(txHash: string, closedAt: string, stroops = "10000000"): VerifiedMerge {
-  return { txHash, accountsClosed: 1, xlmStroops: stroops, closedAt: new Date(closedAt) };
+  return {
+    txHash,
+    builtHash: builtHashOf(txHash),
+    accountsClosed: 1,
+    xlmStroops: stroops,
+    closedAt: new Date(closedAt),
+  };
 }
 
-function setup(opts: { chain?: Record<string, VerifiedMerge>; store?: MergeStatsStore } = {}) {
+function builtHashOf(txHash: string): string {
+  return [...txHash].reverse().join("").replace(/^./, "f");
+}
+
+function setup(
+  opts: { chain?: Record<string, VerifiedMerge>; store?: MergeStatsStore; built?: boolean } = {}
+) {
   const chain = opts.chain ?? {};
   const calls: Array<[string, Network]> = [];
   const verify: MergeVerifier = async (hash, network) => {
@@ -21,6 +33,15 @@ function setup(opts: { chain?: Record<string, VerifiedMerge>; store?: MergeStats
   const clock = { now: new Date("2026-10-08T12:00:00Z") };
   const store = opts.store ?? new InMemoryMergeStatsStore();
   const service = new StatsService(store, verify, () => clock.now);
+  if (opts.built ?? true) {
+    for (const network of ["testnet", "mainnet"] as const) {
+      void store.rememberBuilt(
+        network,
+        Object.values(chain).map((m) => m.builtHash),
+        clock.now
+      );
+    }
+  }
   return { service, store, calls, clock };
 }
 
@@ -29,6 +50,35 @@ describe("StatsService.record", () => {
     const { service, store } = setup();
     expect(await service.record("testnet", HASH_A)).toBe("unverified");
     expect(await store.totals("testnet")).toEqual({ accountsClosed: 0, xlmStroops: "0" });
+  });
+
+  test("writes nothing for a confirmed merge this API did not build", async () => {
+    const { service, store } = setup({
+      chain: { [HASH_A]: verified(HASH_A, "2026-10-08T10:00:00Z") },
+      built: false,
+    });
+    expect(await service.record("mainnet", HASH_A)).toBe("unverified");
+    expect(await store.totals("mainnet")).toEqual({ accountsClosed: 0, xlmStroops: "0" });
+  });
+
+  test("matches the build by the transaction as built, not by the hash that was reported", async () => {
+    const { service, store } = setup({
+      chain: { [HASH_A]: verified(HASH_A, "2026-10-08T10:00:00Z") },
+      built: false,
+    });
+    await store.rememberBuilt("mainnet", [HASH_A], new Date());
+    expect(await service.record("mainnet", HASH_A)).toBe("unverified");
+    await service.rememberBuilt("mainnet", [builtHashOf(HASH_A)]);
+    expect(await service.record("mainnet", HASH_A)).toBe("counted");
+  });
+
+  test("a build noted on one network does not count a close on the other", async () => {
+    const { service } = setup({
+      chain: { [HASH_A]: verified(HASH_A, "2026-10-08T10:00:00Z") },
+      built: false,
+    });
+    await service.rememberBuilt("testnet", [builtHashOf(HASH_A)]);
+    expect(await service.record("mainnet", HASH_A)).toBe("unverified");
   });
 
   test("counts a verified close once, however many times it is reported", async () => {
@@ -106,6 +156,8 @@ describe("StatsService.feed", () => {
       totals: (n) => (failing ? Promise.reject(new Error("store down")) : inner.totals(n)),
       recent: (n, l) => inner.recent(n, l),
       daily: (n, f) => inner.daily(n, f),
+      rememberBuilt: (n, h) => inner.rememberBuilt(n, h),
+      wasBuilt: (n, h) => inner.wasBuilt(n, h),
     };
     const { service } = setup({ store });
     await expect(service.totals("mainnet")).rejects.toThrow("store down");
@@ -124,6 +176,8 @@ describe("StatsService.feed", () => {
       },
       recent: (n, l) => inner.recent(n, l),
       daily: (n, f) => inner.daily(n, f),
+      rememberBuilt: (n, h) => inner.rememberBuilt(n, h),
+      wasBuilt: (n, h) => inner.wasBuilt(n, h),
     };
     const { service, clock } = setup({ store });
     await service.totals("mainnet");
