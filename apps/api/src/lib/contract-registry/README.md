@@ -86,7 +86,13 @@ instance's executable hash - and, as a third opinion, the
 contract, the label agrees (Blend Pool Factory, Blend Backstop, Blend Pool, SoroSwap, SoroSwap
 Router, Aquarius Router, Aquarius Pool, Phoenix Pool), and entries it does not list say so. Pools
 and pairs are code-representative: one per code hash, never a list of every deployment - Phoenix
-has two live pool code hashes among the directory's ten listed pools, so both are registered.
+has two live pool code hashes among the directory's listed pools, so both are registered. Blend and
+Phoenix pools go further: the web lets an exit move the account's XLM, classic assets or held
+tokens only through a contract this file names, and a Blend repay or a Phoenix withdrawal does, so
+each live mainnet pool is listed by address. A Blend pool is added only when its instance runs the
+registered V1 or V2 pool hash and its factory's `is_pool` returns true (candidates: the V1
+backstop's reward zone, `blend-utils`, and the directory's `Blend Pool` entries); a Phoenix pool
+only when it is a directory `Phoenix Pool` running a registered pool hash.
 FxDAO's documented Vaults contract is the one mainnet exception: its live interface exposes only
 `evict`/`upgrade`, not `pay_debt` or any other vault-management entrypoint, so it is recorded
 `wasmHash: null, verifiedLive: false` rather than trusted - the same interface gap already found

@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-10",
+  "version": "2026-10-15",
   "lastVerified": "2026-10-10",
   "validUntil": "2027-01-08",
   "source": "manually verified per-entry against each protocol's official docs/GitHub (Blend: docs.blend.capital/mainnet-deployments + blend-capital/blend-utils mainnet.contracts.json; Soroswap: soroswap/core public/mainnet.contracts.json; Aquarius: docs.aqua.network addresses-and-networks + the router's own instance) and the live instance's executable hash over RPC on lastVerified; mainnet labels cross-checked against the stellar.expert directory where it names the contract",
@@ -192,6 +192,50 @@
     {
       "network": "mainnet",
       "protocol": "blend",
+      "kind": "pool",
+      "address": "CBP7NO6F7FRDHSOFQBT2L2UWYIZ2PU76JKVRYAQTG3KZSQLYAOKIF2WB",
+      "wasmHash": "baf978f10efdbcd85747868bef8832845ea6809f7643b67a4ac0cd669327fc2c",
+      "version": "v1",
+      "label": "Blend V1 'YieldBlox' pool (mainnet; blend-utils YieldBlox; stellar.expert: 'Blend Pool'; in the V1 backstop's reward zone) - listed by address so an exit that repays into it is verified like the Fixed pool; its backstop is the registered V1 backstop",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V1 pool hash; simulated is_pool on the V1 factory (CCZD6ESMOG...) returned true; instance Name 'YieldBlox'"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "blend",
+      "kind": "pool",
+      "address": "CDE65QK2ROZ32V2LVLBOKYPX47TYMYO37Z6ASQTBRTBNK53C7C6QF4Y7",
+      "wasmHash": "baf978f10efdbcd85747868bef8832845ea6809f7643b67a4ac0cd669327fc2c",
+      "version": "v1",
+      "label": "Blend V1 'FxDAO' pool (mainnet; stellar.expert: 'Blend Pool'; in the V1 backstop's reward zone) - listed by address so an exit that repays into it is verified like the Fixed pool; its backstop is the registered V1 backstop",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V1 pool hash; simulated is_pool on the V1 factory (CCZD6ESMOG...) returned true; instance Name 'FxDAO'"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "blend",
+      "kind": "pool",
+      "address": "CAQF5KNOFIGRI24NQRRGUPD46Q45MGMXZMRTQFXS25Y4NZVNPT34GM6S",
+      "wasmHash": "baf978f10efdbcd85747868bef8832845ea6809f7643b67a4ac0cd669327fc2c",
+      "version": "v1",
+      "label": "Blend V1 'ReflectorFusion' pool (mainnet; not in the stellar.expert directory; in the V1 backstop's reward zone) - listed by address so an exit that repays into it is verified like the Fixed pool; its backstop is the registered V1 backstop",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V1 pool hash; simulated is_pool on the V1 factory (CCZD6ESMOG...) returned true; instance Name 'ReflectorFusion'"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "blend",
+      "kind": "pool",
+      "address": "CBVOPI6QC6OWVCOEZDCFELAGQNAOHUS4CWOKAVADKQZXVSWR2R5IAKO7",
+      "wasmHash": "baf978f10efdbcd85747868bef8832845ea6809f7643b67a4ac0cd669327fc2c",
+      "version": "v1",
+      "label": "Blend V1 'ClickPesa DebtFund Managed' pool (mainnet; not in the stellar.expert directory; in the V1 backstop's reward zone) - listed by address so an exit that repays into it is verified like the Fixed pool; its backstop is the registered V1 backstop",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V1 pool hash; simulated is_pool on the V1 factory (CCZD6ESMOG...) returned true; instance Name 'ClickPesa DebtFund Managed'"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "blend",
       "kind": "factory",
       "address": "CDSYOAVXFY7SM5S64IZPPPYB4GVGGLMQVFREPSQQEZVIWXX5R23G4QSU",
       "wasmHash": "31328050548831f63d2b72e37bcfd0bb7371b7907135755dbe09ed434d755ca9",
@@ -218,6 +262,50 @@
       "version": "v2",
       "label": "Blend V2 'Fixed' pool (mainnet; stellar.expert: 'Blend Pool') - stands for the V2 pool code the factory's PoolMeta.pool_hash deploys (YieldBlox V2 CCCCIQSD\u2026 runs the same hash, as does the testnet pool); positions come from OctoPos, not from this list",
       "verifiedLive": true
+    },
+    {
+      "network": "mainnet",
+      "protocol": "blend",
+      "kind": "pool",
+      "address": "CCCCIQSDILITHMM7PBSLVDT5MISSY7R26MNZXCX4H7J5JQ5FPIYOGYFS",
+      "wasmHash": "a41fc53d6753b6c04eb15b021c55052366a4c8e0e21bc72700f461264ec1350e",
+      "version": "v2",
+      "label": "Blend V2 'YieldBlox' pool (mainnet; blend-utils YieldBloxV2; stellar.expert: 'Blend Pool') - listed by address so an exit that repays into it is verified like the Fixed pool; its backstop is the registered V2 backstop",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V2 pool hash; simulated is_pool on the V2 factory (CDSYOAVXFY...) returned true; instance Name 'YieldBlox'"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "blend",
+      "kind": "pool",
+      "address": "CAE7QVOMBLZ53CDRGK3UNRRHG5EZ5NQA7HHTFASEMYBWHG6MDFZTYHXC",
+      "wasmHash": "a41fc53d6753b6c04eb15b021c55052366a4c8e0e21bc72700f461264ec1350e",
+      "version": "v2",
+      "label": "Blend V2 'Orbit' pool (mainnet; stellar.expert: 'Blend Pool') - listed by address so an exit that repays into it is verified like the Fixed pool; its backstop is the registered V2 backstop",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V2 pool hash; simulated is_pool on the V2 factory (CDSYOAVXFY...) returned true; instance Name 'Orbit'"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "blend",
+      "kind": "pool",
+      "address": "CBYOBT7ZCCLQCBUYYIABZLSEGDPEUWXCUXQTZYOG3YBDR7U357D5ZIRF",
+      "wasmHash": "a41fc53d6753b6c04eb15b021c55052366a4c8e0e21bc72700f461264ec1350e",
+      "version": "v2",
+      "label": "Blend V2 'Forex' pool (mainnet; stellar.expert: 'Blend Pool') - listed by address so an exit that repays into it is verified like the Fixed pool; its backstop is the registered V2 backstop",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V2 pool hash; simulated is_pool on the V2 factory (CDSYOAVXFY...) returned true; instance Name 'Forex'"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "blend",
+      "kind": "pool",
+      "address": "CDMAVJPFXPADND3YRL4BSM3AKZWCTFMX27GLLXCML3PD62HEQS5FPVAI",
+      "wasmHash": "a41fc53d6753b6c04eb15b021c55052366a4c8e0e21bc72700f461264ec1350e",
+      "version": "v2",
+      "label": "Blend V2 'Etherfuse' pool (mainnet; stellar.expert: 'Blend Pool') - listed by address so an exit that repays into it is verified like the Fixed pool; its backstop is the registered V2 backstop",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V2 pool hash; simulated is_pool on the V2 factory (CDSYOAVXFY...) returned true; instance Name 'Etherfuse'"
     },
     {
       "network": "mainnet",
@@ -321,6 +409,105 @@
       "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - stands for the code 9 of the 10 directory-listed Phoenix pools share; positions come from OctoPos, not from this list",
       "verifiedLive": true,
       "verifiedBy": "2026-09-26: stellar contract info hash over RPC (mainnet.sorobanrpc.com) against CB5QUVK5GS3IU23TMFZQ3P5J24YBBZP5PHUQAEJ2SP5K55PFTJRUQG2L, one of the stellar.expert directory's 'Phoenix Pool' entries (domain phoenix-hub.io); stellar contract info interface confirms it still exposes withdraw_liquidity"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "pool",
+      "address": "CBCZGGNOEUZG4CAAE7TGTQQHETZMKUT4OIPFHHPKEUX46U4KXBBZ3GLH",
+      "wasmHash": "167ab414a226427de34c19947ef9c5cf38c6c0ed91ecf9392f7cef3278ff506c",
+      "version": "v1",
+      "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "pool",
+      "address": "CBHCRSVX3ZZ7EGTSYMKPEFGZNWRVCSESQR3UABET4MIW52N4EVU6BIZX",
+      "wasmHash": "167ab414a226427de34c19947ef9c5cf38c6c0ed91ecf9392f7cef3278ff506c",
+      "version": "v1",
+      "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "pool",
+      "address": "CBISULYO5ZGS32WTNCBMEFCNKNSLFXCQ4Z3XHVDP4X4FLPSEALGSY3PS",
+      "wasmHash": "167ab414a226427de34c19947ef9c5cf38c6c0ed91ecf9392f7cef3278ff506c",
+      "version": "v1",
+      "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "pool",
+      "address": "CBW5G5SO5SDYUGQVU7RMZ2KJ34POM3AMODOBIV2RQYG4KJDUUBVC3P2T",
+      "wasmHash": "167ab414a226427de34c19947ef9c5cf38c6c0ed91ecf9392f7cef3278ff506c",
+      "version": "v1",
+      "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "pool",
+      "address": "CC6MJZN3HFOJKXN42ANTSCLRFOMHLFXHWPNAX64DQNUEBDMUYMPHASAV",
+      "wasmHash": "167ab414a226427de34c19947ef9c5cf38c6c0ed91ecf9392f7cef3278ff506c",
+      "version": "v1",
+      "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "pool",
+      "address": "CCKOC2LJTPDBKDHTL3M5UO7HFZ2WFIHSOKCELMKQP3TLCIVUBKOQL4HB",
+      "wasmHash": "167ab414a226427de34c19947ef9c5cf38c6c0ed91ecf9392f7cef3278ff506c",
+      "version": "v1",
+      "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "pool",
+      "address": "CCUCE5H5CKW3S7JBESGCES6ZGDMWLNRY3HOFET3OH33MXZWKXNJTKSM3",
+      "wasmHash": "167ab414a226427de34c19947ef9c5cf38c6c0ed91ecf9392f7cef3278ff506c",
+      "version": "v1",
+      "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "pool",
+      "address": "CDMXKSLG5GITGFYERUW2MRYOBUQCMRT2QE5Y4PU3QZ53EBFWUXAXUTBC",
+      "wasmHash": "167ab414a226427de34c19947ef9c5cf38c6c0ed91ecf9392f7cef3278ff506c",
+      "version": "v1",
+      "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "pool",
+      "address": "CDQLKNH3725BUP4HPKQKMM7OO62FDVXVTO7RCYPID527MZHJG2F3QBJW",
+      "wasmHash": "167ab414a226427de34c19947ef9c5cf38c6c0ed91ecf9392f7cef3278ff506c",
+      "version": "v1",
+      "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract"
     },
     {
       "network": "mainnet",

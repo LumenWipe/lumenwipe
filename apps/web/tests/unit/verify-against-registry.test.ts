@@ -17,7 +17,7 @@
  * exit through the anchor.
  */
 import { expect, test, describe } from "bun:test";
-import { Asset, Keypair, Networks } from "@stellar/stellar-sdk";
+import { Asset, Keypair, Networks, StrKey } from "@stellar/stellar-sdk";
 import type { AccountState } from "@/types/account";
 import type { IntentOperation, TxIntent } from "@/types/close-api";
 import { assertCloseIntent, type CloseExpectation } from "@/lib/stellar/verify";
@@ -371,4 +371,140 @@ test("a swap the Soroswap aggregator really built passes the anchor, and only fo
   expect(() =>
     assertCloseIntent(intent, expected(String(BigInt(realAggregatorSwap.minAmountOut) + BigInt(1))))
   ).toThrow(/less XLM than the minimum/);
+});
+
+describe("mainnet exits through every live pool the registry lists, not only its representatives", () => {
+  const USDC_ISSUER = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
+  const USDC = new Asset("USDC", USDC_ISSUER).contractId(Networks.PUBLIC);
+  const XLM = Asset.native().contractId(Networks.PUBLIC);
+  const YIELDBLOX_V1 = "CBP7NO6F7FRDHSOFQBT2L2UWYIZ2PU76JKVRYAQTG3KZSQLYAOKIF2WB";
+  const YIELDBLOX_V2 = "CCCCIQSDILITHMM7PBSLVDT5MISSY7R26MNZXCX4H7J5JQ5FPIYOGYFS";
+  const UNLISTED_POOL = StrKey.encodeContract(Buffer.alloc(32, 7));
+  const PHOENIX_XLM_USDC = "CBHCRSVX3ZZ7EGTSYMKPEFGZNWRVCSESQR3UABET4MIW52N4EVU6BIZX";
+  const PHOENIX_XLM_USDC_SHARE = "CBTCSVZBJFGMW7E2LKFKRIUARUKZK2DTBUC7X5QPQJLXMAH42DB3ALE5";
+  const AQUARIUS_UNLISTED_POOL = StrKey.encodeContract(Buffer.alloc(32, 8));
+  const AQUARIUS_SHARE = StrKey.encodeContract(Buffer.alloc(32, 9));
+
+  function mainnetAccount(
+    positions: AccountState["defiPositions"]["positions"],
+    sorobanTokens: Array<{ contract: string; balance: string }> = []
+  ): AccountState {
+    return {
+      address: SRC,
+      trustlines: [
+        {
+          asset: `USDC:${USDC_ISSUER}`,
+          code: "USDC",
+          issuer: USDC_ISSUER,
+          balance: "5",
+          isAuthorized: true,
+          isAuthorizedToMaintainLiabilities: false,
+        },
+      ],
+      sorobanTokens: { tokens: sorobanTokens },
+      defiPositions: { positions },
+    } as unknown as AccountState;
+  }
+
+  const mainnetExpectation = (account: AccountState): CloseExpectation =>
+    ({ ...expectationFor(account), ...exitExpectations(account, "mainnet") }) as CloseExpectation;
+
+  function blendBorrow(pool: string, asset: string): AccountState["defiPositions"]["positions"] {
+    return [
+      {
+        protocol: "blend",
+        positionType: "borrow",
+        contractAddress: pool,
+        assetAddress: asset,
+        dTokenAmount: "1",
+        usdValue: null,
+      },
+      {
+        protocol: "blend",
+        positionType: "supply",
+        contractAddress: pool,
+        assetAddress: XLM,
+        bTokenAmount: "1",
+        usdValue: null,
+      },
+    ] as AccountState["defiPositions"]["positions"];
+  }
+
+  function repayAndWithdraw(pool: string, repaid: string): IntentOperation {
+    return {
+      ...call(pool, "submit", [repaid, XLM]),
+      subInvocations: [{ contract: repaid, function: "transfer", args: [SRC, pool, "1000"] }],
+    } as unknown as IntentOperation;
+  }
+
+  test("a Blend repay and withdraw that pays USDC into YieldBlox V2 passes", () => {
+    const account = mainnetAccount(blendBorrow(YIELDBLOX_V2, USDC));
+    expect(() =>
+      assertCloseIntent(exitOnly(repayAndWithdraw(YIELDBLOX_V2, USDC)), mainnetExpectation(account))
+    ).not.toThrow();
+  });
+
+  test("a Blend repay that pays XLM into YieldBlox V1 passes", () => {
+    const account = mainnetAccount(blendBorrow(YIELDBLOX_V1, XLM));
+    expect(() =>
+      assertCloseIntent(exitOnly(repayAndWithdraw(YIELDBLOX_V1, XLM)), mainnetExpectation(account))
+    ).not.toThrow();
+  });
+
+  test("the same repay into a pool the registry does not list is still refused", () => {
+    const account = mainnetAccount(blendBorrow(UNLISTED_POOL, USDC));
+    expect(() =>
+      assertCloseIntent(
+        exitOnly(repayAndWithdraw(UNLISTED_POOL, USDC)),
+        mainnetExpectation(account)
+      )
+    ).toThrow(/contract LumenWipe has not verified/);
+  });
+
+  test("a Phoenix withdraw_liquidity on a pool other than the representative one passes", () => {
+    const account = mainnetAccount(
+      [
+        {
+          protocol: "phoenix",
+          positionType: "lp",
+          contractAddress: PHOENIX_XLM_USDC,
+          shareAmount: "1",
+          usdValue: null,
+        },
+      ] as AccountState["defiPositions"]["positions"],
+      [{ contract: PHOENIX_XLM_USDC_SHARE, balance: "1000" }]
+    );
+    const withdraw = {
+      ...call(PHOENIX_XLM_USDC, "withdraw_liquidity", [PHOENIX_XLM_USDC_SHARE]),
+      subInvocations: [
+        {
+          contract: PHOENIX_XLM_USDC_SHARE,
+          function: "transfer",
+          args: [SRC, PHOENIX_XLM_USDC, "1000"],
+        },
+      ],
+    } as unknown as IntentOperation;
+    expect(() => assertCloseIntent(exitOnly(withdraw), mainnetExpectation(account))).not.toThrow();
+  });
+
+  test("an Aquarius withdraw on an unlisted pool burns only its own share token, so it passes", () => {
+    const account = mainnetAccount([
+      {
+        protocol: "aquarius",
+        positionType: "lp",
+        contractAddress: AQUARIUS_UNLISTED_POOL,
+        shareAmount: "1",
+        tokens: [XLM, USDC],
+        shareToken: AQUARIUS_SHARE,
+        poolType: "constant_product",
+        usdValue: null,
+      },
+    ] as AccountState["defiPositions"]["positions"]);
+    const withdraw = {
+      ...call(AQUARIUS_UNLISTED_POOL, "withdraw", [AQUARIUS_SHARE]),
+      subInvocations: [{ contract: AQUARIUS_SHARE, function: "burn", args: [SRC, "1000"] }],
+    } as unknown as IntentOperation;
+    expect(mainnetExpectation(account).registryContracts).not.toContain(AQUARIUS_UNLISTED_POOL);
+    expect(() => assertCloseIntent(exitOnly(withdraw), mainnetExpectation(account))).not.toThrow();
+  });
 });

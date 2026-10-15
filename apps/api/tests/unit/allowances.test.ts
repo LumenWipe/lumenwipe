@@ -5,7 +5,8 @@
  */
 import { expect, test } from "bun:test";
 import { Address, StrKey, xdr } from "@stellar/stellar-sdk";
-import { discoverAllowances } from "@/lib/stellar/allowances";
+import { discoverAllowances, onePerCode } from "@/lib/stellar/allowances";
+import { entriesForNetwork } from "@/lib/contract-registry";
 import { fakeAllowancesDeps, OWNER } from "./fixtures/fake-allowances";
 import type { ContractRegistryEntry } from "@/lib/contract-registry";
 
@@ -487,4 +488,15 @@ test("discoverAllowances › a scan that stopped on its time budget reads as a s
   expect(warning!.message).toBe(
     "The approval event scan did not finish (time budget), so this list may be incomplete."
   );
+});
+
+test("the registry probe takes one entry per code, so pools listed by address do not crowd out other protocols", () => {
+  const mainnet = entriesForNetwork("mainnet");
+  const probed = onePerCode(mainnet);
+  const hashes = mainnet.flatMap((e) => (e.wasmHash ? [e.wasmHash] : []));
+  expect(probed.filter((e) => e.wasmHash !== null).length).toBe(new Set(hashes).size);
+  expect(probed.length).toBeLessThan(mainnet.length);
+  for (const protocol of ["blend", "aquarius", "soroswap", "phoenix", "xbull"]) {
+    expect(probed.some((e) => e.protocol === protocol)).toBe(true);
+  }
 });
