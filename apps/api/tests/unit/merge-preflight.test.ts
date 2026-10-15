@@ -248,10 +248,11 @@ describe("POST close/transactions", () => {
     spyOn(readAccountModule, "readAccountState").mockResolvedValue(state());
     spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
       getLatestLedger: () => Promise.resolve({ sequence: LEDGER }),
+      getLedgerEntries: () => Promise.resolve({ entries: [], latestLedger: LEDGER }),
     })) as unknown as typeof rpcModule.getRpcServer);
     spyOn(accountStateModule, "readTrustlinesOnly").mockImplementation(async () => {
       if (opts.exists instanceof Error) throw opts.exists;
-      return opts.exists ? { address: destination, trustlines: [] } : null;
+      return opts.exists ? { address: destination, trustlines: [], memoRequired: false } : null;
     });
   }
 
@@ -313,7 +314,7 @@ describe("POST close/plan", () => {
       getLatestLedger: () => Promise.resolve({ sequence: LEDGER }),
     })) as unknown as typeof rpcModule.getRpcServer);
     spyOn(accountStateModule, "readTrustlinesOnly").mockImplementation(async () =>
-      exists ? { address: DEST, trustlines: [] } : null
+      exists ? { address: DEST, trustlines: [], memoRequired: false } : null
     );
   }
 

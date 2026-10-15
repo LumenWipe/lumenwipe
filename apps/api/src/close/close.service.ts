@@ -23,6 +23,12 @@ import { assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
 import { preflightErrorCode } from "@/lib/close-api/merge-preflight";
 import { parseDecisions } from "@/lib/close-api/parse-decisions";
 import { computePlanHash } from "@/lib/close-api/plan-response";
+import {
+  memoRuleFor,
+  needsLedgerMemoRead,
+  normalizeRequestMemo,
+  requestMemoProblem,
+} from "@/lib/close-api/memo-rules";
 import { CloseBuildError } from "@/lib/close-api/build-transactions";
 import {
   CLAIM_ANSWER_STALE_MESSAGE,
@@ -144,30 +150,12 @@ export class CloseService {
       fail("invalid_destination", "A valid destination account (G...) is required.", 400);
     }
     const decisions = parseDecisions(body.decisions);
-    const memo = typeof body.memo === "string" ? body.memo : null;
+    const normalized = normalizeRequestMemo(body.memo);
+    if (!("memo" in normalized)) fail(normalized.code, normalized.message, 422);
+    const { memo } = normalized;
     const exchange = this.registry.lookup(destination);
-    if (this.registry.requiresMediator(destination) && exchange?.requiresMemo && !memo) {
-      fail("memo_required", "This exchange destination requires a deposit memo.", 422, {
-        memoType: exchange.memoType,
-      });
-    }
-    if (memo !== null) {
-      // The memo type comes from the exchange registry; direct destinations default to text.
-      const memoType = exchange?.memoType ?? "text";
-      if (memoType === "hash") {
-        fail("unsupported_memo_type", "Hash memos are not supported.", 422);
-      }
-      if (memoType === "id" && !(/^\d+$/.test(memo) && BigInt(memo) <= 18446744073709551615n)) {
-        fail(
-          "invalid_memo",
-          "This destination requires a numeric id memo within the uint64 range.",
-          422
-        );
-      }
-      if (memoType === "text" && Buffer.byteLength(memo, "utf8") > 28) {
-        fail("invalid_memo", "A text memo must be at most 28 bytes.", 422);
-      }
-    }
+    const memoProblem = requestMemoProblem(memo, memoRuleFor(exchange, false));
+    if (memoProblem) fail(memoProblem.code, memoProblem.message, 422, memoProblem.details);
 
     // A destination the registry does not recognize cannot be assumed to be a personal wallet,
     // and a direct merge into an exchange deposit address is unrecoverable (see
@@ -198,6 +186,14 @@ export class CloseService {
         422,
         { decisionId: destinationDecisionId(destination), choice: DESTINATION_ACK_CHOICE }
       );
+    }
+
+    if (
+      needsLedgerMemoRead(exchange, memo !== null) &&
+      (await this.reader.readMemoRequired(destination, network))
+    ) {
+      const missing = requestMemoProblem(memo, memoRuleFor(exchange, true));
+      if (missing) fail(missing.code, missing.message, 422, missing.details);
     }
 
     try {

@@ -44,6 +44,7 @@ import {
 } from "@/lib/api/close-decisions";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { assetsResolved } from "@/lib/plan/asset-resolution";
+import { missingRequiredMemoError } from "@/lib/plan/memo-requirement";
 
 interface PlanViewProps {
   account: AccountState;
@@ -283,6 +284,12 @@ export default function PlanView({
         setError(
           "Sending your balance straight to this exchange isn't available right now. Instead, merge to a personal Stellar wallet you control, then send it to the exchange from there - remember to include the exchange's deposit memo, or it won't be credited."
         );
+        return;
+      }
+
+      const memoError = missingRequiredMemoError(mediatorData, memo);
+      if (memoError !== null) {
+        setError(memoError);
         return;
       }
 

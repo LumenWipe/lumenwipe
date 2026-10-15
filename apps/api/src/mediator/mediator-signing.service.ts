@@ -4,6 +4,13 @@ import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { AccountNotFoundError } from "@/lib/utils/errors";
 import { forwardExceedsMergedBalance } from "./mediator-validation";
+import {
+  envelopeMemoProblem,
+  envelopeMemoSatisfiesAccountRule,
+  memoRuleFor,
+  needsLedgerMemoRead,
+} from "@/lib/close-api/memo-rules";
+import { LiveReadError } from "@/lib/stellar/live-trustline";
 import { fail } from "@/common/fail";
 import {
   ACCOUNT_READER,
@@ -83,6 +90,17 @@ export class MediatorSigningService {
       fail("transaction_structure_not_allowed", "Transaction structure not allowed", 400);
     }
 
+    // A muxed forward destination is never built by the close API and has no data entry to read.
+    if (!isValidGAddress(transfer.destination)) {
+      fail("transaction_structure_not_allowed", "Transaction structure not allowed", 400);
+    }
+    const exchange = this.registry.lookup(transfer.destination);
+    const requiredOnChain = needsLedgerMemoRead(exchange, envelopeMemoSatisfiesAccountRule(tx.memo))
+      ? await this.memoRequiredOnChain(transfer.destination, network)
+      : false;
+    const memoProblem = envelopeMemoProblem(tx.memo, memoRuleFor(exchange, requiredOnChain));
+    if (memoProblem) fail(memoProblem.code, memoProblem.message, 422, memoProblem.details);
+
     // Bound the forward payment to what the merge delivers - defense-in-depth against a
     // naive/accidental over-forward on this public endpoint. This is not a full guarantee
     // against an active adversary (see forwardExceedsMergedBalance for the TOCTOU limit);
@@ -106,6 +124,15 @@ export class MediatorSigningService {
     return { transaction: tx.toEnvelope().toXDR("base64") };
   }
 
+  private async memoRequiredOnChain(address: string, network: Network): Promise<boolean> {
+    try {
+      return await this.accounts.readMemoRequired(address, network);
+    } catch (err) {
+      if (err instanceof LiveReadError) fail("service_unavailable", err.message, 503);
+      throw err;
+    }
+  }
+
   async checkDestination(network: Network, address: string) {
     // Whether this server can actually co-sign the mediator flow (secret configured).
     const available = this.keys.keypair(network) !== null;
@@ -126,15 +153,6 @@ export class MediatorSigningService {
 
     try {
       await this.accounts.readNativeBalance(address, network);
-      return {
-        requiresMediator: false,
-        reason: "Destination account exists and supports account merges.",
-        requiresMemo: false,
-        memoType: null,
-        exchangeName: null,
-        available,
-        registryFresh,
-      };
     } catch (err) {
       if (err instanceof AccountNotFoundError) {
         return {
@@ -149,5 +167,17 @@ export class MediatorSigningService {
       }
       throw err;
     }
+    const requiresMemo = await this.memoRequiredOnChain(address, network);
+    return {
+      requiresMediator: false,
+      reason: requiresMemo
+        ? "Destination account exists and states that payments to it need a memo."
+        : "Destination account exists and supports account merges.",
+      requiresMemo,
+      memoType: requiresMemo ? ("text" as const) : null,
+      exchangeName: null,
+      available,
+      registryFresh,
+    };
   }
 }

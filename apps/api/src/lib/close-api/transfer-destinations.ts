@@ -35,6 +35,7 @@ export interface TransferDestinationProblem {
     | "destination_limit_too_low"
     | "destination_is_source"
     | "destination_is_exchange"
+    | "destination_requires_memo"
     | "token_destination_missing";
   message: string;
 }
@@ -44,7 +45,7 @@ export interface TransferDestinationProblem {
 export type AccountReader = (
   address: string,
   network: Network
-) => Promise<{ trustlines: DestinationTrustline[] } | null>;
+) => Promise<{ trustlines: DestinationTrustline[]; memoRequired?: boolean } | null>;
 
 /** A destination's line with the open buy offers that reserve part of its limit. */
 export type DestinationTrustline = Trustline & { buyingLiabilities?: string };
@@ -147,6 +148,19 @@ export function assessLiveTransferDestination(
   return null;
 }
 
+function memoRequiredProblem(
+  asset: string,
+  destination: string,
+  what: string
+): TransferDestinationProblem {
+  return {
+    asset,
+    destination,
+    code: "destination_requires_memo",
+    message: `The account chosen for ${what} states on the network that every payment to it needs a memo. A transfer in a close cannot carry its own memo, so the payment could not be credited. Send it to a wallet you control instead.`,
+  };
+}
+
 /**
  * Checks every transfer destination against live ledger state.
  *
@@ -183,7 +197,10 @@ export async function validateTransferDestinations(
   // Bounded, not a bare Promise.all. The addresses come from the request body, one per asset,
   // so an unbounded fan-out lets a single call burn the shared Horizon budget - the same reason
   // sponsorship.ts caps its owner reads.
-  const accounts = new Map<string, { trustlines: DestinationTrustline[] } | null>();
+  const accounts = new Map<
+    string,
+    { trustlines: DestinationTrustline[]; memoRequired?: boolean } | null
+  >();
   for (let i = 0; i < needsRead.length; i += DESTINATION_READ_CONCURRENCY) {
     const slice = needsRead.slice(i, i + DESTINATION_READ_CONCURRENCY);
     const read = await Promise.all(slice.map((address) => readAccount(address, network)));
@@ -213,6 +230,8 @@ export async function validateTransferDestinations(
           code: "destination_is_exchange",
           message: `The account chosen for the ${short} token is a deposit address for ${exchange.name}. A token transfer cannot carry the deposit memo an exchange needs to credit it, so the balance would be lost. Send it to a wallet you control instead.`,
         });
+      } else if (accounts.get(destination)?.memoRequired === true) {
+        problems.push(memoRequiredProblem(asset, destination, `the ${short} token`));
       } else if ((accounts.get(destination) ?? null) === null) {
         problems.push({
           asset,
@@ -269,6 +288,11 @@ export async function validateTransferDestinations(
         code: "destination_missing",
         message: `The account chosen for ${code} does not exist on ${network}. Fund it first, or choose a different account.`,
       });
+      continue;
+    }
+
+    if (account.memoRequired === true) {
+      problems.push(memoRequiredProblem(asset, destination, code));
       continue;
     }
 

@@ -13,6 +13,7 @@ import { assessMergePreflight } from "@/lib/close-api/merge-preflight";
 import { readAccountState } from "@/lib/close-api/read-account";
 import { validateTransferDestinations } from "@/lib/close-api/transfer-destinations";
 import { getRpcServer } from "@/lib/stellar/rpc";
+import { readMemoRequired } from "@/lib/stellar/memo-required";
 import { submitAndWait, type SubmitResult } from "@/lib/stellar/submit";
 import { getMediatorKeypair } from "@/lib/stellar/mediator-server";
 
@@ -32,11 +33,19 @@ export const defaultExchangeRegistry: ExchangeRegistryPort = {
   requiresMediator: requiresMediatorForAddress,
 };
 
+export type MemoRequiredReader = (address: string, network: Network) => Promise<boolean>;
+const readMemoRequiredOnNetwork: MemoRequiredReader = (address, network) =>
+  readMemoRequired(getRpcServer(network), address);
+
 export interface AccountReaderPort {
   readNativeBalance: typeof readNativeBalance;
+  readMemoRequired: MemoRequiredReader;
 }
 export const ACCOUNT_READER = Symbol("ACCOUNT_READER");
-export const defaultAccountReader: AccountReaderPort = { readNativeBalance };
+export const defaultAccountReader: AccountReaderPort = {
+  readNativeBalance,
+  readMemoRequired: readMemoRequiredOnNetwork,
+};
 
 export interface MediatorKeyProvider {
   keypair(network: Network): Keypair | null;
@@ -57,6 +66,7 @@ export interface CloseReaderPort {
   readTrustlinesOnly: typeof readTrustlinesOnly;
   buildAccountPlan: typeof buildAccountPlan;
   planBatch: typeof planBatch;
+  readMemoRequired: MemoRequiredReader;
 }
 export const CLOSE_READER = Symbol("CLOSE_READER");
 export const defaultCloseReader: CloseReaderPort = {
@@ -64,6 +74,7 @@ export const defaultCloseReader: CloseReaderPort = {
   readTrustlinesOnly: (...args) => readTrustlinesOnly(...args),
   buildAccountPlan: (...args) => buildAccountPlan(...args),
   planBatch: (...args) => planBatch(...args),
+  readMemoRequired: (...args) => readMemoRequiredOnNetwork(...args),
 };
 
 export interface CloseBuilderPort {

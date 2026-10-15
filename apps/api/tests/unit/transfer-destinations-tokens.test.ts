@@ -57,3 +57,14 @@ test("the account being closed, an exchange, and a missing account are each refu
   );
   expect(toNobody.map((p) => p.code)).toEqual(["token_destination_missing"]);
 });
+
+test("a token sent to an account that requires a memo on-chain is a blocker", async () => {
+  const problems = await validateTransferDestinations(
+    { [TOKEN]: EXISTING },
+    [],
+    SOURCE,
+    "testnet",
+    async () => ({ trustlines: [], memoRequired: true })
+  );
+  expect(problems.map((p) => p.code)).toEqual(["destination_requires_memo"]);
+});

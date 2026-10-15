@@ -34,10 +34,17 @@ export class MediatorController {
     "forward_amount_exceeds_balance",
     "invalid_body",
   ])
-  @ApiErrorResponse(500, "The mediator key is misconfigured.", ["mediator_key_misconfiguration"])
-  @ApiErrorResponse(503, "Mediator flow not configured on this server.", [
-    "mediator_not_configured",
+  @ApiErrorResponse(422, "The forward's memo does not meet the destination's memo rule.", [
+    "memo_required",
+    "unsupported_memo_type",
+    "invalid_memo",
   ])
+  @ApiErrorResponse(500, "The mediator key is misconfigured.", ["mediator_key_misconfiguration"])
+  @ApiErrorResponse(
+    503,
+    "Mediator flow not configured on this server, or the destination could not be read.",
+    ["mediator_not_configured", "service_unavailable"]
+  )
   @ApiBodyErrorResponses()
   @Post("sign")
   @HttpCode(200)
@@ -56,6 +63,7 @@ export class MediatorController {
   }
 
   @ApiErrorResponse(400, "Invalid network or address.", ["invalid_network", "invalid_address"])
+  @ApiErrorResponse(503, "The destination could not be read.", ["service_unavailable"])
   @UseGuards(new NetworkFirstGuard("Invalid network"))
   @Get("check/:address")
   @ApiOperation({ summary: "Check whether a destination needs the mediator flow and/or a memo." })

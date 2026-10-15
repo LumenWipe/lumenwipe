@@ -72,7 +72,7 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   key_limit_reached: "The wallet already has the maximum number of active keys.",
   mediator_key_misconfiguration: "The mediator key on this server is misconfigured.",
   mediator_not_configured: "The exchange (mediator) flow is not configured on this server.",
-  memo_required: "The destination exchange requires a memo.",
+  memo_required: "The destination requires a memo.",
   merge_destination_unusable:
     "The destination cannot receive the merge: it is the closing account, a LumenWipe service account, or does not exist.",
   merged_account_not_found: "The account being merged does not exist.",
