@@ -398,6 +398,7 @@ export function useCloseExecution() {
       // requires the persistent UI warning, not a code-level check.
       verifyCloseTransaction({
         unsignedXdr: xdr,
+        preAuthorized: true,
         network,
         expected: {
           source: sourceAddress,

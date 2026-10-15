@@ -286,10 +286,6 @@ function walkAuth(
 }
 
 /**
- * Refuses a built swap whose shape is anything but the one described above. Exported for direct
- * coverage; the round below calls it on every build before offering the transaction.
- */
-/**
  * Replaces the expiry the Soroswap API gave its unsigned swap with the one every close
  * transaction carries. Its own window is more than a day.
  */
@@ -301,6 +297,7 @@ export function withCloseExpiry(tx: Transaction, nowSeconds: number): Transactio
     throw new Error("the swap carries preconditions beyond a time bound");
   }
   const minTime = inner.cond.type === "precondTime" ? inner.cond.timeBounds.minTime : 0n;
+  if (minTime > BigInt(nowSeconds)) throw new Error("the swap is not valid yet");
   const rebuilt = xdr.TransactionEnvelope.envelopeTypeTx(
     new xdr.TransactionV1Envelope({
       tx: new xdr.Transaction({
@@ -320,6 +317,10 @@ export function withCloseExpiry(tx: Transaction, nowSeconds: number): Transactio
   return new Transaction(rebuilt, tx.networkPassphrase);
 }
 
+/**
+ * Refuses a built swap whose shape is anything but the one described above. Exported for direct
+ * coverage; the round below calls it on every build before offering the transaction.
+ */
 export function assertConversionShape(tx: Transaction, expected: ExpectedConversion): void {
   if (tx.source !== expected.account) throw new Error("the transaction is not this account's");
   if (tx.sequence !== (BigInt(expected.sequence) + 1n).toString()) {

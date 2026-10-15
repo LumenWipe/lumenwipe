@@ -14,8 +14,8 @@ const MAX_EXIT_FEE_STROOPS = BigInt(10_000_000);
  *  at most 0.01 XLM for a full 100-operation transaction. */
 const MAX_CLASSIC_FEE_PER_OPERATION_STROOPS = BigInt(1_000);
 
-/** The builder gives every transaction 300 seconds; the rest absorbs a browser clock running
- *  behind. A signed envelope with a later expiry stays submittable long after the user's review. */
+/** The builder gives every transaction 300 seconds; the rest absorbs a browser clock running up
+ *  to ten minutes behind. Keeps a signed envelope tied to the moment the user reviewed it. */
 const MAX_VALIDITY_SECONDS = 900;
 
 /** Thrown when a server-built close transaction fails verification. Never sign past this. */
@@ -138,6 +138,9 @@ export interface CloseExpectation {
   /** When verification runs, in unix seconds from the browser's clock: the reference for the
    *  transaction's expiry. */
   nowSeconds: number;
+  /** The user's own transaction, already authorized by a pre-auth-tx signer and only submitted
+   *  here: its expiry and fee are the user's, set before this close existed. */
+  preAuthorized?: boolean;
 }
 
 /**
@@ -508,8 +511,10 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
     throw new VerificationError("The transaction is not for your account.");
   }
 
-  assertExpiresSoon(intent, expected.nowSeconds);
-  assertClassicFee(intent);
+  if (!expected.preAuthorized) {
+    assertExpiresSoon(intent, expected.nowSeconds);
+    assertClassicFee(intent);
+  }
 
   // An exchange close cannot merge to the address the user typed - exchanges credit payments
   // carrying a memo and cannot credit a merge - so the balance goes to an intermediary that
@@ -996,9 +1001,9 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         throw new VerificationError("The transaction contains an unrecognized operation.");
       }
     }
-    // One signature satisfies every operation whose source lists that key, so an operation acting
-    // for another account the same key signs for would ride along. The forward is sent by the
-    // intermediary, and `assertMergeShape` has already pinned it to the account the merge paid.
+    // A signature covers every operation whose source lists the key, so each operation is held to
+    // the account being closed. The forward is the exception: `assertMergeShape` pins its source
+    // to the account the merge paid into.
     if (op !== forward && op.source !== expected.source) {
       throw new VerificationError(
         "The transaction would act for an account other than the one being closed."
@@ -1041,6 +1046,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
 export function verifyCloseTransaction(opts: {
   unsignedXdr: string;
   network: Network;
+  preAuthorized?: boolean;
   expected: {
     source: string;
     destination: string;
@@ -1088,5 +1094,6 @@ export function verifyCloseTransaction(opts: {
     memoRequired: exchange?.requiresMemo ?? false,
     memoType: exchange?.memoType ?? null,
     nowSeconds: Math.floor(Date.now() / 1000),
+    preAuthorized: opts.preAuthorized === true,
   });
 }

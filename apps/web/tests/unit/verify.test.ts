@@ -1997,6 +1997,13 @@ test("every operation must act for the account being closed", () => {
   for (const op of others) {
     expect(() =>
       assertCloseIntent(intent({ operations: [op, merge(DEST)] }), expectation())
-    ).toThrow(/other than the one being closed/);
+    ).toThrow(/^The transaction would act for an account other than the one being closed\.$/);
   }
+});
+
+test("a pre-authorized transaction keeps its own expiry and fee", () => {
+  const ops = [merge(DEST)];
+  const own = intent({ operations: ops, maxTime: null, fee: "5000" });
+  expect(() => assertCloseIntent(own, expectation({ preAuthorized: true }))).not.toThrow();
+  expect(() => assertCloseIntent(own, expectation())).toThrow(/never expires/);
 });

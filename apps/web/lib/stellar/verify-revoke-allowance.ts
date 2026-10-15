@@ -5,6 +5,9 @@ import { intentFromXdr } from "./intent/serialize";
  *  bounded rather than trusted outright. Mirrors the API's own MAX_SOROBAN_EXIT_FEE_STROOPS. */
 const MAX_REVOKE_FEE_STROOPS = BigInt(10_000_000);
 
+/** The same expiry window `verify()` holds a close transaction to. */
+const MAX_VALIDITY_SECONDS = BigInt(900);
+
 /**
  * The trust anchor for one allowance revocation (#163, architecture.md §12) - independent of the
  * account-close flow, so it does not go through `verify()`/`assertCloseIntent`'s close-shaped
@@ -35,9 +38,17 @@ function fail(message: string): never {
 export function verifyRevokeAllowanceTransaction(
   xdr: string,
   networkPassphrase: string,
-  expected: RevokeAllowanceExpectation
+  expected: RevokeAllowanceExpectation,
+  nowSeconds: number = Math.floor(Date.now() / 1000)
 ): void {
   const intent = intentFromXdr(xdr, networkPassphrase);
+  const maxTime = intent.maxTime ?? null;
+  if (maxTime === null || !/^\d+$/.test(maxTime)) {
+    fail("This transaction never expires, so it could be submitted long after you approved it.");
+  }
+  if (BigInt(maxTime) > BigInt(Math.floor(nowSeconds)) + MAX_VALIDITY_SECONDS) {
+    fail("This transaction stays valid for far longer than a revocation needs.");
+  }
   if (intent.source !== expected.owner) {
     fail("This transaction is not sourced from the account being revoked for.");
   }
