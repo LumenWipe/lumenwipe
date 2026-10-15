@@ -66,6 +66,11 @@ export function builtTransactionHash(envelope: xdr.TransactionEnvelope, network:
   return Buffer.from(built.hash()).toString("hex");
 }
 
+function envelopeHash(envelope: xdr.TransactionEnvelope, network: Network): string {
+  const tx = TransactionBuilder.fromXDR(envelope, NETWORK_PASSPHRASES[network]);
+  return Buffer.from(tx.hash()).toString("hex");
+}
+
 /** Hashes of the built transactions that carry an account merge; anything undecodable is skipped. */
 export function builtCloseHashes(transactions: { xdr: string }[], network: Network): string[] {
   const hashes: string[] = [];
@@ -118,7 +123,7 @@ export async function verifyMerge(
   try {
     const response = await getTransaction(txHash);
     if (response.status !== rpc.Api.GetTransactionStatus.SUCCESS) return null;
-    if (response.txHash.toLowerCase() !== txHash.toLowerCase()) return null;
+    if (envelopeHash(response.envelopeXdr, network) !== txHash.toLowerCase()) return null;
 
     const summary = summarizeMerges(response.envelopeXdr, response.resultXdr);
     if (!summary) return null;

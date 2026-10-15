@@ -162,11 +162,11 @@ describe("verifyMerge", () => {
 
   test("returns the verified close, timestamped by its ledger close time", async () => {
     const env = envelope([merge()]);
-    const verified = await verifyMerge(HASH, "testnet", async () =>
+    const verified = await verifyMerge(hashOf(env), "testnet", async () =>
       success(env, txResult([mergeSuccess("45000000")]))
     );
     expect(verified).toEqual({
-      txHash: HASH,
+      txHash: hashOf(env),
       builtHash: hashOf(env),
       accountsClosed: 1,
       xlmStroops: "45000000",
@@ -191,18 +191,28 @@ describe("verifyMerge", () => {
 
   test("reports the inner transaction as the build of a fee-bumped close", async () => {
     const inner = envelope([merge()]);
-    const verified = await verifyMerge(HASH, "testnet", async () =>
-      success(feeBumpEnvelope(inner), feeBumpResult([mergeSuccess("12")]))
+    const bumped = feeBumpEnvelope(inner);
+    const outer = Buffer.from(TransactionBuilder.fromXDR(bumped, Networks.TESTNET).hash()).toString(
+      "hex"
     );
+    const verified = await verifyMerge(outer, "testnet", async () =>
+      success(bumped, feeBumpResult([mergeSuccess("12")]))
+    );
+    expect(verified?.txHash).toBe(outer);
     expect(verified?.builtHash).toBe(hashOf(inner));
   });
 
-  test("rejects a response for a different transaction than the one asked about", async () => {
-    const response = {
-      ...success(envelope([merge()]), txResult([mergeSuccess("1")])),
-      txHash: "b".repeat(64),
-    } as rpc.Api.GetTransactionResponse;
+  test("rejects a confirmed merge whose envelope is not the transaction asked about", async () => {
+    const env = envelope([merge()]);
+    const response = success(env, txResult([mergeSuccess("1")]));
     expect(await verifyMerge(HASH, "testnet", async () => response)).toBeNull();
+    expect(await verifyMerge(hashOf(env), "testnet", async () => response)).not.toBeNull();
+  });
+
+  test("does not count the inner hash of a fee-bumped close as a close of its own", async () => {
+    const inner = envelope([merge()]);
+    const response = success(feeBumpEnvelope(inner), feeBumpResult([mergeSuccess("12")]));
+    expect(await verifyMerge(hashOf(inner), "testnet", async () => response)).toBeNull();
   });
 
   test("does not count a transaction whose envelope cannot be read", async () => {
