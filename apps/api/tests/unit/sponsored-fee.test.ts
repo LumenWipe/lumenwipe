@@ -48,11 +48,21 @@ const ONE_OP_FEE = 100n;
 
 test("accountCanAffordFee › exactly at the reserve line, a fee of any size is refused; one stroop more, and it's affordable", () => {
   // Base reserve 1 XLM + 0 subentries: nothing above the reserve to spend on a fee at all.
-  const atReserve = { nativeBalanceLumens: "1.0000000", numSubEntries: 0, numSponsoring: 0 };
+  const atReserve = {
+    nativeBalanceLumens: "1.0000000",
+    numSubEntries: 0,
+    numSponsoring: 0,
+    openOffers: [],
+  };
   expect(accountCanAffordFee(atReserve, 1n)).toBe(false);
   expect(accountCanAffordFee(atReserve, 0n)).toBe(true); // a zero fee never needs sponsorship
 
-  const oneStroopOver = { nativeBalanceLumens: "1.0000001", numSubEntries: 0, numSponsoring: 0 };
+  const oneStroopOver = {
+    nativeBalanceLumens: "1.0000001",
+    numSubEntries: 0,
+    numSponsoring: 0,
+    openOffers: [],
+  };
   expect(accountCanAffordFee(oneStroopOver, 1n)).toBe(true);
   expect(accountCanAffordFee(oneStroopOver, 2n)).toBe(false);
 });
@@ -60,19 +70,37 @@ test("accountCanAffordFee › exactly at the reserve line, a fee of any size is 
 test("accountCanAffordFee › a sponsored entry costs a reserve exactly like a subentry does", () => {
   // 1 XLM base + 0.5 XLM per (subentry + sponsoring) - one of each is the same reserve as two
   // of either, so the two accounts below must answer identically.
-  const twoSubentries = { nativeBalanceLumens: "2.0000000", numSubEntries: 2, numSponsoring: 0 };
-  const oneOfEach = { nativeBalanceLumens: "2.0000000", numSubEntries: 1, numSponsoring: 1 };
+  const twoSubentries = {
+    nativeBalanceLumens: "2.0000000",
+    numSubEntries: 2,
+    numSponsoring: 0,
+    openOffers: [],
+  };
+  const oneOfEach = {
+    nativeBalanceLumens: "2.0000000",
+    numSubEntries: 1,
+    numSponsoring: 1,
+    openOffers: [],
+  };
   expect(accountCanAffordFee(twoSubentries, 0n)).toBe(accountCanAffordFee(oneOfEach, 0n));
   expect(accountCanAffordFee(twoSubentries, 0n)).toBe(true);
   expect(accountCanAffordFee(twoSubentries, 1n)).toBe(false);
 });
 
 test("packCloseTransactions › a reserve-locked account gets a zero-fee transaction flagged for sponsorship", () => {
-  const lockedTxs = packCloseTransactions(new Account(MASTER, START_SEQ), input(), "testnet", 999, {
-    nativeBalanceLumens: "1.0000000",
-    numSubEntries: 0,
-    numSponsoring: 0,
-  });
+  const lockedTxs = packCloseTransactions(
+    new Account(MASTER, START_SEQ),
+    input(),
+    "testnet",
+    999,
+    {
+      nativeBalanceLumens: "1.0000000",
+      numSubEntries: 0,
+      numSponsoring: 0,
+      openOffers: [],
+    },
+    true
+  );
   expect(lockedTxs).toHaveLength(1);
   expect(lockedTxs[0]!.needsSponsoredFee).toBe(true);
   const tx = TransactionBuilder.fromXDR(lockedTxs[0]!.xdr, Networks.TESTNET);
@@ -80,11 +108,19 @@ test("packCloseTransactions › a reserve-locked account gets a zero-fee transac
 });
 
 test("packCloseTransactions › an account with room to spare pays its own way, unflagged", () => {
-  const fundedTxs = packCloseTransactions(new Account(MASTER, START_SEQ), input(), "testnet", 999, {
-    nativeBalanceLumens: "100.0000000",
-    numSubEntries: 0,
-    numSponsoring: 0,
-  });
+  const fundedTxs = packCloseTransactions(
+    new Account(MASTER, START_SEQ),
+    input(),
+    "testnet",
+    999,
+    {
+      nativeBalanceLumens: "100.0000000",
+      numSubEntries: 0,
+      numSponsoring: 0,
+      openOffers: [],
+    },
+    true
+  );
   expect(fundedTxs).toHaveLength(1);
   expect(fundedTxs[0]!.needsSponsoredFee).toBeUndefined();
   const tx = TransactionBuilder.fromXDR(fundedTxs[0]!.xdr, Networks.TESTNET);
@@ -97,8 +133,16 @@ test("packCloseTransactions › exactly enough for this transaction's fee is not
     nativeBalanceLumens: (1 + Number(ONE_OP_FEE) / 10_000_000).toFixed(7),
     numSubEntries: 0,
     numSponsoring: 0,
+    openOffers: [],
   };
-  const txs = packCloseTransactions(new Account(MASTER, START_SEQ), input(), "testnet", 999, exact);
+  const txs = packCloseTransactions(
+    new Account(MASTER, START_SEQ),
+    input(),
+    "testnet",
+    999,
+    exact,
+    true
+  );
   expect(txs[0]!.needsSponsoredFee).toBeUndefined();
 });
 
@@ -121,7 +165,8 @@ test("packCloseTransactions › a later chunk is judged against what's left afte
     input({ trustlines: manyTrustlines(150) }),
     "testnet",
     999,
-    { nativeBalanceLumens: balanceLumens, numSubEntries: 0, numSponsoring: 0 }
+    { nativeBalanceLumens: balanceLumens, numSubEntries: 0, numSponsoring: 0, openOffers: [] },
+    true
   );
 
   expect(txs).toHaveLength(2);
@@ -131,4 +176,91 @@ test("packCloseTransactions › a later chunk is judged against what's left afte
   );
   expect(txs[1]!.needsSponsoredFee).toBe(true); // chunk 2: no longer affordable once chunk 1's fee is spent
   expect(TransactionBuilder.fromXDR(txs[1]!.xdr, Networks.TESTNET).fee).toBe("0");
+});
+
+test("accountCanAffordFee › XLM held by an open offer selling XLM is not spendable on a fee", () => {
+  const offer = (selling: string, amount: string) => ({
+    id: "1",
+    selling,
+    buying: `AST0:${ISSUER}`,
+    amount,
+    price: "1",
+  });
+  const base = { nativeBalanceLumens: "2.9000100", numSubEntries: 2, numSponsoring: 0 };
+  expect(accountCanAffordFee({ ...base, openOffers: [offer("native", "0.9000000")] }, 100n)).toBe(
+    true
+  );
+  expect(accountCanAffordFee({ ...base, openOffers: [offer("native", "0.9000001")] }, 100n)).toBe(
+    false
+  );
+  expect(
+    accountCanAffordFee({ ...base, openOffers: [offer(`AST0:${ISSUER}`, "0.9000001")] }, 100n)
+  ).toBe(true);
+});
+
+test("packCloseTransactions › a fee only an offer's XLM could cover is flagged for sponsorship", () => {
+  const txs = packCloseTransactions(
+    new Account(MASTER, START_SEQ),
+    input(),
+    "testnet",
+    999,
+    {
+      nativeBalanceLumens: "1.9000100",
+      numSubEntries: 1,
+      numSponsoring: 0,
+      openOffers: [
+        { id: "1", selling: "native", buying: `AST0:${ISSUER}`, amount: "0.9000000", price: "1" },
+      ],
+    },
+    true
+  );
+  expect(txs[0]!.needsSponsoredFee).toBe(true);
+  expect(TransactionBuilder.fromXDR(txs[0]!.xdr, Networks.TESTNET).fee).toBe("0");
+});
+
+test("packCloseTransactions › a fee the account cannot pay is refused when no sponsor is configured", () => {
+  expect(() =>
+    packCloseTransactions(
+      new Account(MASTER, START_SEQ),
+      input(),
+      "testnet",
+      999,
+      { nativeBalanceLumens: "1.0000000", numSubEntries: 0, numSponsoring: 0, openOffers: [] },
+      false
+    )
+  ).toThrow(expect.objectContaining({ code: "close_fee_balance_short" }));
+});
+
+test("packCloseTransactions › a chunk the sponsor would not accept is refused rather than flagged", () => {
+  const issuerReturn = input({
+    assetActions: [
+      {
+        trustline: { ...manyTrustlines(1)[0]!, balance: "5.0000000" },
+        action: "issuer",
+      },
+    ],
+    trustlines: manyTrustlines(1),
+  });
+  expect(() =>
+    packCloseTransactions(
+      new Account(MASTER, START_SEQ),
+      issuerReturn,
+      "testnet",
+      999,
+      { nativeBalanceLumens: "1.5000000", numSubEntries: 1, numSponsoring: 0, openOffers: [] },
+      true
+    )
+  ).toThrow(expect.objectContaining({ code: "close_fee_balance_short" }));
+});
+
+test("accountCanAffordFee › reserves another account pays for lower the minimum", () => {
+  const sponsored = {
+    nativeBalanceLumens: "0.5000100",
+    numSubEntries: 1,
+    numSponsoring: 0,
+    numSponsored: 2,
+    openOffers: [],
+  };
+  expect(accountCanAffordFee(sponsored, 100n)).toBe(true);
+  expect(accountCanAffordFee(sponsored, 101n)).toBe(false);
 });

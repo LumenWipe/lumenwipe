@@ -128,6 +128,7 @@ export class CloseController {
       "claimable_balance_not_claimable_now",
       "claimable_balances_too_many",
       "claimable_balance_reserve_short",
+      "close_fee_balance_short",
       "defi_positions_blocked",
       "defi_positions_stale",
       "defi_position_unrecognized",

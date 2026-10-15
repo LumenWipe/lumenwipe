@@ -12,9 +12,18 @@ import { TOO_MANY_CLAIMABLE_BALANCES_MESSAGE } from "@/lib/stellar/tx-builder/cl
 import {
   accountPaysFee,
   claimReserveShortMessage,
-  minimumBalanceStroops,
+  closeFeeShortMessage,
+  feeFloorStroops,
+  laterOwnFeesStroops,
+  MEDIATOR_MIN_FORWARD_STROOPS,
+  MEDIATOR_TX_FEE_STROOPS,
+  ownFeeShortfallStroops,
+  tokenRoundsAhead,
   trustlineReserveShortfallStroops,
+  type FeeAffordability,
 } from "@/lib/stellar/claim-reserve";
+import { getFeeAccountKeypair } from "@/lib/stellar/fee-account";
+import { actsForOneAccount, isAllowedWindDownOperation } from "@/fee-bump/fee-bump-validation";
 import {
   CLAIM_ANSWER_STALE_MESSAGE,
   claimStatus,
@@ -42,6 +51,7 @@ import {
   assembleCloseOpsTagged,
   splitCloseOps,
   type AssetAction,
+  type TaggedCloseOp,
   type CloseOperationsInput,
 } from "@/lib/stellar/tx-builder/close-operations";
 import { buildMediatorMergePaymentTx, ForwardBelowFeeError } from "@/lib/stellar/tx-builder/merge";
@@ -123,6 +133,30 @@ function buildSummary(input: CloseOperationsInput): string {
   if (input.includeMerge) parts.push("merge the account into the destination");
   const joined = parts.length > 0 ? parts.join(", ") : "close the account";
   return `${joined.charAt(0).toUpperCase()}${joined.slice(1)}.`;
+}
+
+function feeBalanceShortError(shortStroops: bigint): CloseBuildError {
+  return new CloseBuildError("close_fee_balance_short", closeFeeShortMessage(shortStroops), 422);
+}
+
+function feeOf(tx: CloseTransaction): bigint {
+  return BigInt(TransactionBuilder.fromXDR(tx.xdr, tx.networkPassphrase).fee);
+}
+
+/**
+ * Refuses a Soroban round the account could not see through. No sponsor pays a Soroban round, so
+ * this one, the later ones, the classic fees and the exchange merge must all fit in what the
+ * account holds above its reserve and its offers before this round is signed.
+ */
+function assertOwnFeesFit(
+  state: AccountState,
+  tx: CloseTransaction,
+  laterSorobanRounds: number,
+  viaMediator: boolean
+): void {
+  const owed = feeOf(tx) + laterOwnFeesStroops(state, laterSorobanRounds, viaMediator);
+  const short = ownFeeShortfallStroops(state, owed);
+  if (short > 0n) throw feeBalanceShortError(short);
 }
 
 function assertTransfersFit(problems: TransferDestinationProblem[]): void {
@@ -234,6 +268,8 @@ export async function buildCloseTransactions(
   const sdkAccount = new Account(accountState.address, liveAccount.sequenceNumber());
   // Ledgers close roughly every 5s; surface an approximate ledger bound for the tx time bound.
   const validUntilLedger = latest.sequence + Math.ceil(TX_TIMEOUT_SECONDS / 5);
+  const needsMediator = requiresMediatorForAddress(destinationAddress);
+  const sponsorConfigured = getFeeAccountKeypair(network) !== null;
 
   // Round 0 for accounts with DeFi positions: leave every protocol first, one Soroban transaction
   // per step (a repay, then a withdraw...), each simulated against the current ledger. Proceeds
@@ -248,6 +284,14 @@ export async function buildCloseTransactions(
       { rpc: server, ...exitDeps }
     );
     if (exit) {
+      assertOwnFeesFit(
+        accountState,
+        exit.transaction,
+        exit.remainingSteps +
+          accountState.defiPositions.positions.length +
+          tokenRoundsAhead(accountState, dispositions),
+        needsMediator
+      );
       return {
         transactions: [exit.transaction],
         requiresAnotherCall: true,
@@ -300,6 +344,12 @@ export async function buildCloseTransactions(
       { rpc: server, ...tokenDeps }
     );
     if (tokenRound) {
+      assertOwnFeesFit(
+        accountState,
+        tokenRound.transaction,
+        tokenRound.remainingSteps + tokenRoundsAhead(accountState, dispositions, "convert"),
+        needsMediator
+      );
       return {
         transactions: [tokenRound.transaction],
         requiresAnotherCall: true,
@@ -319,6 +369,12 @@ export async function buildCloseTransactions(
         { ...defaultTokenConversionRoundDeps(server), ...conversion.deps }
       );
       if (conversionRound) {
+        assertOwnFeesFit(
+          accountState,
+          conversionRound.transaction,
+          conversionRound.remainingSteps,
+          needsMediator
+        );
         return {
           transactions: [conversionRound.transaction],
           requiresAnotherCall: true,
@@ -437,7 +493,8 @@ export async function buildCloseTransactions(
           claimInput,
           network,
           validUntilLedger,
-          accountState
+          accountState,
+          sponsorConfigured
         ),
         requiresAnotherCall: true,
         remainingSteps:
@@ -505,7 +562,6 @@ export async function buildCloseTransactions(
   );
 
   // The exchange registry dictates the memo type; the client only supplies the value.
-  const needsMediator = requiresMediatorForAddress(destinationAddress);
   const exchange = lookupExchange(destinationAddress);
   const memoType = exchange?.memoType ?? (memo ? "text" : null);
 
@@ -546,7 +602,8 @@ export async function buildCloseTransactions(
     input,
     network,
     validUntilLedger,
-    accountState
+    accountState,
+    sponsorConfigured
   );
 
   if (!needsMediator) {
@@ -571,6 +628,25 @@ export async function buildCloseTransactions(
   // Exchange destination. Clean up first (remove subentries, convert assets); once those
   // confirm, the account holds only XLM and the next call builds the mediator merge.
   if (closeTxs.length > 0) {
+    // The merge after cleanup cannot be sponsored, so cleanup is refused unless what is left
+    // once it lands covers the least forward and the merge fee. Conversions count at their
+    // destination minimum; fees the account pays itself in cleanup are spent.
+    const ownCleanupFees = closeTxs
+      .filter((tx) => !tx.needsSponsoredFee)
+      .reduce((sum, tx) => sum + feeOf(tx), 0n);
+    const conversionFloor = assetActions.reduce(
+      (sum, a) =>
+        a.action === "convert" && a.path.toAsset === "native"
+          ? sum + BigInt(xlmToStroops(a.path.destMin))
+          : sum,
+      0n
+    );
+    const leftAfterCleanup =
+      BigInt(xlmToStroops(accountState.nativeBalanceLumens)) - ownCleanupFees + conversionFloor;
+    const neededForMerge = MEDIATOR_MIN_FORWARD_STROOPS + MEDIATOR_TX_FEE_STROOPS;
+    if (leftAfterCleanup < neededForMerge) {
+      throw feeBalanceShortError(neededForMerge - leftAfterCleanup);
+    }
     return { transactions: closeTxs, requiresAnotherCall: true, remainingSteps: 1 };
   }
 
@@ -582,6 +658,13 @@ export async function buildCloseTransactions(
       503
     );
   }
+
+  const balance = BigInt(xlmToStroops(accountState.nativeBalanceLumens));
+  const mergeShort = [
+    ownFeeShortfallStroops(accountState, MEDIATOR_TX_FEE_STROOPS),
+    MEDIATOR_MIN_FORWARD_STROOPS + MEDIATOR_TX_FEE_STROOPS - balance,
+  ].reduce((a, b) => (a > b ? a : b));
+  if (mergeShort > 0n) throw feeBalanceShortError(mergeShort);
 
   const networkPassphrase = NETWORK_PASSPHRASES[network];
   const sourceSequence = sdkAccount.sequenceNumber();
@@ -647,20 +730,28 @@ async function firstExistingBatch(
 
 /**
  * Whether the account can pay a fee of `feeStroops` for a transaction of its own, without going
- * below its reserve, judged from `accountState.nativeBalanceLumens` as given (no running
+ * below its reserve plus the XLM its open offers are selling, judged from `accountState.nativeBalanceLumens` as given (no running
  * decrement). Exported for direct unit coverage of the reserve arithmetic and for a single
  * transaction's affordability; `packCloseTransactions` below inlines this same comparison
  * against a running per-chunk balance instead of calling this, since a multi-chunk round needs
  * each later chunk judged against what's left after earlier chunks' fees, not the round's
  * original balance.
  */
-export function accountCanAffordFee(
-  accountState: Pick<AccountState, "nativeBalanceLumens" | "numSubEntries" | "numSponsoring">,
-  feeStroops: bigint
-): boolean {
+export function accountCanAffordFee(accountState: FeeAffordability, feeStroops: bigint): boolean {
   const balance = BigInt(xlmToStroops(accountState.nativeBalanceLumens));
-  const reserve = minimumBalanceStroops(accountState.numSubEntries, accountState.numSponsoring);
-  return accountPaysFee(balance, reserve, feeStroops);
+  return accountPaysFee(balance, feeFloorStroops(accountState), feeStroops);
+}
+
+/** Whether the fee sponsor accepts a transaction made of these operations, judged by the same
+ *  rule its endpoint applies. */
+function sponsorWouldPay(sdkAccount: Account, chunk: TaggedCloseOp[], network: Network): boolean {
+  const probe = new TransactionBuilder(
+    new Account(sdkAccount.accountId(), sdkAccount.sequenceNumber()),
+    { fee: "0", networkPassphrase: NETWORK_PASSPHRASES[network] }
+  ).setTimeout(TX_TIMEOUT_SECONDS);
+  for (const t of chunk) probe.addOperation(t.op);
+  const tx = probe.build();
+  return tx.operations.every(isAllowedWindDownOperation) && actsForOneAccount(tx);
 }
 
 /**
@@ -674,9 +765,12 @@ export function accountCanAffordFee(
  *
  * `feeAffordability` is the account state to judge each chunk's fee against - the round's own
  * snapshot, read once and held fixed for every chunk built here (architecture.md §8.1). A chunk
- * whose fee the account cannot pay without dropping below its reserve is built with its own fee
+ * whose fee the account cannot pay without dropping below its reserve (plus the XLM its open offers
+ * are selling, held fixed for the round like the reserve) is built with its own fee
  * at zero and flagged `needsSponsoredFee: true`, so the client routes it through the fee-bump
- * sponsor (`/fee-bump/sponsor`) before submitting instead of paying the network directly. The
+ * sponsor (`/fee-bump/sponsor`) before submitting instead of paying the network directly, and
+ * the round is refused instead when no sponsor is configured or the sponsor would not accept the
+ * chunk's operations. The
  * account's *reserve* is not re-evaluated chunk to chunk, even though an earlier chunk would free
  * reserve on-chain by removing subentries: this round's transactions are all built from one
  * static snapshot with no network access in between, and a later round - which does re-read
@@ -692,16 +786,14 @@ export function packCloseTransactions(
   input: CloseOperationsInput,
   network: Network,
   validUntilLedger: number,
-  feeAffordability: Pick<AccountState, "nativeBalanceLumens" | "numSubEntries" | "numSponsoring">
+  feeAffordability: FeeAffordability,
+  sponsorConfigured: boolean
 ): CloseTransaction[] {
   const tagged = assembleCloseOpsTagged(sdkAccount.accountId(), input);
   const chunks = splitCloseOps(tagged);
   const networkPassphrase = NETWORK_PASSPHRASES[network];
   const fullSummary = buildSummary(input);
-  const reserve = minimumBalanceStroops(
-    feeAffordability.numSubEntries,
-    feeAffordability.numSponsoring
-  );
+  const reserve = feeFloorStroops(feeAffordability);
   let remainingBalanceStroops = BigInt(xlmToStroops(feeAffordability.nativeBalanceLumens));
 
   return chunks.map((chunk, i): CloseTransaction => {
@@ -712,6 +804,13 @@ export function packCloseTransactions(
     // fee yields BASE_FEE_STROOPS * opCount on-chain.
     const chunkFeeStroops = BigInt(BASE_FEE_STROOPS) * BigInt(chunk.length);
     const needsSponsoredFee = !accountPaysFee(remainingBalanceStroops, reserve, chunkFeeStroops);
+    if (needsSponsoredFee && !(sponsorConfigured && sponsorWouldPay(sdkAccount, chunk, network))) {
+      throw new CloseBuildError(
+        "close_fee_balance_short",
+        closeFeeShortMessage(chunkFeeStroops - (remainingBalanceStroops - reserve)),
+        422
+      );
+    }
     // Only an unsponsored chunk spends the account's own balance on its fee - a sponsored
     // chunk's fee is "0" and paid by the fee account instead, so it doesn't reduce what later
     // chunks in this round have left to draw on.

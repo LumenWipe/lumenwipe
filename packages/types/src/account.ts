@@ -137,6 +137,10 @@ export interface AccountState {
   thresholds: AccountThresholds;
   numSubEntries: number;
   numSponsoring: number;
+  /** Reserves another account pays for this one: its own base reserve when its creation was
+   *  sponsored, and each sponsored subentry. Lowers the minimum balance. Absent when the read
+   *  did not report it, which is treated as none. */
+  numSponsored?: number;
   /** Ledger entries this account currently sponsors (on other accounts, or itself via a
    *  fully-sponsored account creation). Populated by replaying sponsorship-relevant
    *  operations and re-verifying each candidate's live sponsor - see sponsorship.ts. */

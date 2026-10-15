@@ -189,8 +189,10 @@ describe("buildExitRound", () => {
       }
     );
     expect(seen!.sequence).toBe("4242");
-    // Spendable, not nominal: 7 XLM less the 1 XLM base reserve and the exit fee margin.
-    expect(Object.values(seen!.balances)).toContain("59900000");
+    // Spendable, not nominal: 7 XLM less the 1 XLM base reserve and the exit fee margin, and
+    // less what the close still pays itself: two exit rounds for the position at the estimate,
+    // the signer's and the merge's classic fees, and the exchange merge.
+    expect(Object.values(seen!.balances)).toContain(String(59_900_000 - 2 * 100_000 - 200 - 200));
   });
 
   test("a target already gone (exited on a previous round) is skipped, the next one builds", async () => {

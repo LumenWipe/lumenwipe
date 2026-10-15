@@ -27,6 +27,10 @@ import {
 import { TOO_MANY_CLAIMABLE_BALANCES_MESSAGE } from "./claimable-balances";
 import {
   claimReserveShortMessage,
+  closeFeeShortMessage,
+  laterOwnFeesStroops,
+  ownFeeShortfallStroops,
+  tokenRoundsAhead,
   trustlineReserveShortfallStroops,
   trustlineShortfallNote,
 } from "@/lib/stellar/claim-reserve";
@@ -499,6 +503,19 @@ export function buildPlan(
       code: "claimable_balances_too_many",
       message: TOO_MANY_CLAIMABLE_BALANCES_MESSAGE,
     });
+  }
+
+  // The same budget the build holds each Soroban round to, with every such round at the estimate.
+  const sorobanRounds = 2 * detectedPositions.length + tokenRoundsAhead(accountState, dispositions);
+  const ownFeeShort =
+    sorobanRounds === 0
+      ? 0n
+      : ownFeeShortfallStroops(
+          accountState,
+          laterOwnFeesStroops(accountState, sorobanRounds, mediatorRequired)
+        );
+  if (ownFeeShort > 0n) {
+    blockers.push({ code: "close_fee_balance_short", message: closeFeeShortMessage(ownFeeShort) });
   }
 
   // ─── Fused close: fuse the whole close into one transaction when eligible ──────

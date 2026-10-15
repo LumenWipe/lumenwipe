@@ -27,6 +27,8 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
     "The XLM headroom is too small to add the trustlines needed to claim the balances.",
   claimable_balances_too_many:
     "The account holds more claimable balances than one read returns and the unclaimed ones fill it.",
+  close_fee_balance_short:
+    "The account lacks the XLM above its reserve to pay the fees of the steps no sponsor can cover.",
   confirmation_timeout:
     "The transaction did not confirm in time. Check its status before retrying.",
   conversion_floor_missing: "A conversion carries no destination minimum.",

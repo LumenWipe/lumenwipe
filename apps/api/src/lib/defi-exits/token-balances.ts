@@ -1,7 +1,7 @@
 import { Asset } from "@stellar/stellar-sdk";
 import type { AccountState, OpenOffer } from "@lumenwipe/types";
 import { SOROBAN_EXIT_FEE_ESTIMATE_STROOPS } from "@/config/constants";
-import { minimumBalanceStroops } from "@/lib/stellar/claim-reserve";
+import { feeFloorStroops, laterOwnFeesStroops } from "@/lib/stellar/claim-reserve";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { xlmToStroops } from "@/lib/utils/amounts";
 
@@ -24,8 +24,9 @@ function spendable(balance: bigint, held: bigint): string {
  * repay that needs USDC looks it up by USDC's SAC id, the same address Blend's reserve carries.
  *
  * Spendable, not nominal: the exit round runs before offers are cancelled, so what an open offer
- * is selling is not available to a repay, and XLM below the minimum reserve (plus the fee of the
- * exit transaction itself) is not either. A repay sized from the nominal balance would pass the
+ * is selling is not available to a repay, and XLM below the minimum reserve is not either. Nor
+ * are the fees the close still has to pay itself, counted at their worst case, so a repay never
+ * spends what a later round needs. A repay sized from the nominal balance would pass the
  * adapter's check, fail in simulation, and block the close on every retry - the offers that
  * would free it are only cancelled once the exit round is done.
  *
@@ -35,14 +36,15 @@ function spendable(balance: bigint, held: bigint): string {
  */
 export function tokenBalancesFor(accountState: AccountState): Record<string, string> {
   const passphrase = NETWORK_PASSPHRASES[accountState.network];
-  const reserveStroops = minimumBalanceStroops(
-    accountState.numSubEntries,
-    accountState.numSponsoring
-  );
   const nativeHeld =
-    reserveStroops +
+    feeFloorStroops(accountState) +
     BigInt(SOROBAN_EXIT_FEE_ESTIMATE_STROOPS) +
-    sellingLiabilities(accountState.openOffers, "native");
+    laterOwnFeesStroops(
+      accountState,
+      2 * accountState.defiPositions.positions.length +
+        (accountState.sorobanTokens?.tokens.length ?? 0),
+      true
+    );
   const balances: Record<string, string> = {
     [Asset.native().contractId(passphrase)]: spendable(
       BigInt(xlmToStroops(accountState.nativeBalanceLumens)),
