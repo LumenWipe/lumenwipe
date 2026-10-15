@@ -101,3 +101,15 @@ export function exitContractsFor(
     )
     .map((e) => ({ address: e.address, protocol: e.protocol as DefiPosition["protocol"] }));
 }
+
+/**
+ * Every contract the bundled registry names on `network`. An exit through one of these may move
+ * the account's own XLM and classic assets; an exit through any other contract may not. Empty
+ * when the registry has expired.
+ */
+export function registryContractsFor(network: Network, now: Date = new Date()): string[] {
+  if (!isContractRegistryUsable(now)) return [];
+  return REGISTRY.entries
+    .filter((e) => e.network === network && e.verifiedLive)
+    .map((e) => e.address);
+}

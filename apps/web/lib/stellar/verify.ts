@@ -92,11 +92,9 @@ export interface CloseExpectation {
    * shown is what makes that impossible, and the figure comes from their own decision, never from
    * the plan under verification.
    *
-   * `resolvedPath` is present only for a token whose winning quote was xBull's: the live route
-   * (token addresses, in order, ending at XLM) the API resolved once more at plan time via the
-   * same `resolveXBullPath` the build round uses. It exists because xBull's `strict_send` call
-   * (unlike Soroswap's shape) carries no asset-identity argument the browser can read on its
-   * own - see `readXBullSwapArgs` below for how it is used.
+   * `resolvedPath` rides along for a token whose winning quote was xBull's, as the API resolved
+   * it at plan time. `verify()` does not rely on it: it reads an xBull route through
+   * `xbullAssets`, which is bundled.
    */
   tokenConversions: Record<
     string,
@@ -108,6 +106,14 @@ export interface CloseExpectation {
    * quote, so only the choice and a positive minimum are held. Only these assets may be sold.
    */
   classicConversions: Record<string, { minAmountOut: string | null }>;
+  /** Every contract the bundled registry names on this network. */
+  registryContracts: string[];
+  /** XLM's contract and the contract of every classic asset the account holds. A DeFi exit
+   *  through a contract outside the registry may not touch these at all. */
+  protectedTokenContracts: string[];
+  /** xBull's router asset table from the bundle, index to token contract. The only way an xBull
+   *  route's opaque indices are read; an index missing here fails the swap closed. */
+  xbullAssets: Record<string, string>;
   /** XLM's own contract on this network, derived client-side from the network passphrase. The one
    *  asset a conversion may buy: without pinning it, the minimum above would be compared against a
    *  figure denominated in whatever the transaction claims to be buying. */
@@ -356,12 +362,8 @@ interface XBullSwapArgs {
   to: string;
   amount: bigint;
   minToGet: bigint;
-  /** Parsed straight from the rendered path, still index tuples: this function alone cannot say
-   *  what asset each index names. The caller checks that separately, against
-   *  `expected.tokenConversions[token].resolvedPath`, computed once server-side at plan time -
-   *  the same category of trusted-from-the-user's-own-analysis input `nativeBalance` and
-   *  `accountSigners` already are (see the module docstring above). */
-  pathHopCount: number;
+  /** The route's `[protocol_id, in_asset_index, pool_id, out_asset_index]` tuples. */
+  path: number[][];
   refsCount: number;
 }
 
@@ -387,12 +389,15 @@ function readXBullSwapArgs(args: string[]): XBullSwapArgs | null {
     return null;
   }
   if (!Array.isArray(parsedPath) || !Array.isArray(parsedRefs)) return null;
+  const isTuple = (hop: unknown): hop is number[] =>
+    Array.isArray(hop) && hop.length === 4 && hop.every((n) => Number.isSafeInteger(n) && n >= 0);
+  if (parsedPath.length === 0 || !parsedPath.every(isTuple)) return null;
   return {
     from,
     to,
     amount: amt,
     minToGet: min,
-    pathHopCount: parsedPath.length,
+    path: parsedPath,
     refsCount: parsedRefs.length,
   };
 }
@@ -413,6 +418,74 @@ function swapFloor(chosen: { minAmountOut: string; amountOut?: string }): bigint
   const fromQuote = (BigInt(quoted) * (BigInt(10_000) - MAX_SWAP_SLIPPAGE_BPS)) / BigInt(10_000);
   const pinned = BigInt(chosen.minAmountOut);
   return pinned > fromQuote ? pinned : fromQuote;
+}
+
+/**
+ * The tokens an xBull route spends and buys, read from its own index tuples through the bundled
+ * asset table. Null when a hop does not continue from the one before it or names an index the
+ * table does not hold.
+ */
+function readXBullRoute(
+  path: number[][],
+  assets: Record<string, string>
+): { spends: string; buys: string } | null {
+  const IN = 1;
+  const OUT = 3;
+  for (let i = 1; i < path.length; i++) {
+    if (path[i]![IN] !== path[i - 1]![OUT]) return null;
+  }
+  const lookup = (index: number): string | undefined =>
+    Object.prototype.hasOwnProperty.call(assets, String(index)) ? assets[String(index)] : undefined;
+  for (const hop of path) {
+    if (lookup(hop[IN]!) === undefined || lookup(hop[OUT]!) === undefined) return null;
+  }
+  return { spends: lookup(path[0]![IN]!)!, buys: lookup(path[path.length - 1]![OUT]!)! };
+}
+
+/**
+ * Holds what a swap's signature authorizes below the root call: moving at most `amountIn` of the
+ * token being sold, from the account, to a contract on the route, plus swap calls on contracts
+ * that are none of the account's own tokens. Any further token movement those calls need would
+ * itself appear here, on a token.
+ */
+function assertSwapAuthorizesOnlyItsInput(
+  subInvocations: { contract: string; function: string; args: string[] }[],
+  token: string,
+  amountIn: bigint,
+  expected: CloseExpectation
+): void {
+  const ownTokens = new Set([
+    ...expected.heldTokenContracts,
+    ...expected.protectedTokenContracts,
+    ...expected.positionTokenContracts,
+    expected.xlmContract,
+  ]);
+  let moved = BigInt(0);
+  for (const sub of subInvocations) {
+    if (sub.contract !== token) {
+      if (ownTokens.has(sub.contract) || !sub.function.startsWith("swap")) {
+        throw new VerificationError(
+          "A swap would authorize something other than paying in the token you chose to convert."
+        );
+      }
+      continue;
+    }
+    if (
+      sub.function !== "transfer" ||
+      sub.args.length !== 3 ||
+      sub.args[0] !== expected.source ||
+      !CONTRACT_ID.test(sub.args[1] ?? "") ||
+      !/^\d+$/.test(sub.args[2] ?? "")
+    ) {
+      throw new VerificationError(
+        "A swap would authorize something other than paying in the token you chose to convert."
+      );
+    }
+    moved += BigInt(sub.args[2]!);
+  }
+  if (moved > amountIn) {
+    throw new VerificationError("A swap would authorize spending more than the balance it sells.");
+  }
 }
 
 function assertUserChoseThisTransfer(
@@ -735,22 +808,15 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
                 "A swap would accept less XLM than the minimum you were shown."
               );
             }
+            assertSwapAuthorizesOnlyItsInput(
+              op.subInvocations,
+              swap.token,
+              swap.amountIn,
+              expected
+            );
           } else {
-            // xBull's shape: `readXBullSwapArgs` cannot say which token this call moves (the
-            // rendered path names only opaque indices), so the token is identified by matching
-            // the call's own hop count against the one `resolvedPath` this account was shown -
-            // grounded in real per-token data (`resolvedPath` is API-sourced, computed at plan
-            // time and re-derived at build time; it is trusted the same way `nativeBalance` and
-            // `accountSigners` already are elsewhere in this file - it catches a build that
-            // drifts from what plan time promised, not an API that lies consistently at both
-            // stages). The plan never offers "convert via xBull" without a route having already
-            // resolved live (see `CloseExpectation.tokenConversions` above), but hop count alone
-            // cannot distinguish two different pending tokens that both happen to route to XLM
-            // in the same number of hops - a real possibility, not a corner case, since a plain
-            // token swap is normally one hop. Rather than picking one of several matches (which
-            // could apply a looser floor from the wrong token), an ambiguous match refuses
-            // outright, the same fail-closed rule this file already applies to every other
-            // unresolvable case.
+            // xBull's shape names its route only by index tuples into the router's own asset
+            // table, so the tokens it spends and buys are read through the bundled copy of it.
             const swap = readXBullSwapArgs(op.args);
             if (!swap) {
               throw new VerificationError("A swap's arguments could not be read.");
@@ -760,23 +826,19 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
                 "A swap would pay a referral fee to an address you never agreed to."
               );
             }
-            const matches = Object.entries(expected.tokenConversions).filter(
-              ([, v]) =>
-                v.resolvedPath !== undefined && v.resolvedPath.length === swap.pathHopCount + 1
-            );
-            if (matches.length === 0) {
+            const route = readXBullRoute(swap.path, expected.xbullAssets);
+            if (!route) {
+              throw new VerificationError(
+                "A swap's route names an asset LumenWipe cannot identify. Run the analysis again."
+              );
+            }
+            const chosen = expected.tokenConversions[route.spends];
+            if (!chosen) {
               throw new VerificationError(
                 "A swap would exchange a token you did not choose to convert."
               );
             }
-            if (matches.length > 1) {
-              throw new VerificationError(
-                "A swap cannot be matched to a single token you chose to convert. Run the " +
-                  "analysis again."
-              );
-            }
-            const [, chosen] = matches[0]!;
-            if (chosen.resolvedPath!.at(-1) !== expected.xlmContract) {
+            if (route.buys !== expected.xlmContract) {
               throw new VerificationError("A swap would buy something other than XLM.");
             }
             if (swap.amount < BigInt(chosen.amountIn)) {
@@ -795,6 +857,12 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
                 "A swap would accept less XLM than the minimum you were shown."
               );
             }
+            assertSwapAuthorizesOnlyItsInput(
+              op.subInvocations,
+              route.spends,
+              swap.amount,
+              expected
+            );
           }
           if (op.authorizesBeyondSelf) {
             throw new VerificationError(
@@ -958,6 +1026,18 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         // this account holds or has a position in is pinned here to a function that only ever
         // moves value to this account or to the contract at the root of this exact invocation -
         // never a third party (issue #208).
+        // A position's contract comes from the account read. Only a contract the bundled registry
+        // names may move or burn the account's XLM and classic assets.
+        if (!expected.registryContracts.includes(op.contract)) {
+          for (const sub of op.subInvocations) {
+            if (expected.protectedTokenContracts.includes(sub.contract)) {
+              throw new VerificationError(
+                "A DeFi exit would spend your XLM or a classic asset through a contract LumenWipe " +
+                  "has not verified."
+              );
+            }
+          }
+        }
         for (const sub of op.subInvocations) {
           const isToken =
             expected.heldTokenContracts.includes(sub.contract) ||
@@ -1099,6 +1179,9 @@ export function verifyCloseTransaction(opts: {
     exitFunctions: Record<string, string[]>;
     conversionContracts: string[];
     xlmContract: string;
+    registryContracts: string[];
+    protectedTokenContracts: string[];
+    xbullAssets: Record<string, string>;
   };
 }): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);
