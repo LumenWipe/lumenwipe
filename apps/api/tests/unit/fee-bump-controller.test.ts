@@ -5,12 +5,14 @@ import {
   Asset,
   FeeBumpTransaction,
   Keypair,
+  MuxedAccount,
   Networks,
   Operation,
   Transaction,
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 import { FeeBumpController } from "@/fee-bump/fee-bump.controller";
+import { LiveReadError } from "@/lib/stellar/live-trustline";
 import { SponsorshipBudget } from "@/fee-bump/sponsorship-budget";
 import { MAX_FEE_BUMP_STROOPS, MAX_SIGNED_VALIDITY_SECONDS } from "@/config/constants";
 import type { Network } from "@/config/networks";
@@ -56,9 +58,10 @@ async function expectFail(promise: Promise<unknown>, status: number, code: strin
 function sponsorWith(
   budget = new SponsorshipBudget(),
   clock: () => Date = () => new Date(),
-  apiKeyLabel = "test-key"
+  apiKeyLabel = "test-key",
+  sequences: (address: string) => Promise<bigint | null> = async () => 1n
 ) {
-  const inner = new FeeBumpController(budget, clock);
+  const inner = new FeeBumpController(budget, clock, sequences);
   const headers = new Map<string, string>();
   return {
     headers,
@@ -278,7 +281,18 @@ describe("FeeBumpController.sponsor time bounds", () => {
 });
 
 describe("FeeBumpController.sponsor budget", () => {
-  const merge = () => windDownTx(Operation.accountMerge({ destination: DEST }));
+  const merge = () =>
+    windDownTx(Operation.accountMerge({ destination: Keypair.random().publicKey() }));
+
+  test("charges the same inner transaction once however often it is sponsored", async () => {
+    const controller = sponsorWith(
+      new SponsorshipBudget({ perSource: 200n, perKey: 10_000n, total: 10_000n })
+    );
+    const transaction = merge();
+    await controller.sponsor("testnet", { transaction });
+    const again = await controller.sponsor("testnet", { transaction });
+    expect(typeof again.transaction).toBe("string");
+  });
 
   test("refuses with 429 once a scope's daily budget is spent, and signs nothing", async () => {
     const controller = sponsorWith(
@@ -314,5 +328,67 @@ describe("FeeBumpController.sponsor budget", () => {
       "sponsorship_budget_exhausted"
     );
     expect(controller.headers.get("Retry-After")).toBe("60");
+  });
+});
+
+describe("FeeBumpController.sponsor source account", () => {
+  const merge = () => windDownTx(Operation.accountMerge({ destination: DEST }));
+
+  test("refuses a source account that does not exist", async () => {
+    const controller = sponsorWith(undefined, undefined, undefined, async () => null);
+    await expectFail(
+      controller.sponsor("testnet", { transaction: merge() }),
+      400,
+      "sponsor_source_unusable"
+    );
+  });
+
+  test("refuses a transaction that is not the source account's next one", async () => {
+    const controller = sponsorWith(undefined, undefined, undefined, async () => 5n);
+    await expectFail(
+      controller.sponsor("testnet", { transaction: merge() }),
+      400,
+      "sponsor_source_unusable"
+    );
+  });
+
+  test("refuses with 503 when the source account cannot be read", async () => {
+    const controller = sponsorWith(undefined, undefined, undefined, async () => {
+      throw new LiveReadError("The account to sponsor");
+    });
+    await expectFail(
+      controller.sponsor("testnet", { transaction: merge() }),
+      503,
+      "service_unavailable"
+    );
+  });
+
+  test("reads and budgets a muxed source as its base account", async () => {
+    const reads: string[] = [];
+    const controller = sponsorWith(
+      new SponsorshipBudget({ perSource: 200n, perKey: 10_000n, total: 10_000n }),
+      undefined,
+      undefined,
+      async (address) => {
+        reads.push(address);
+        return 1n;
+      }
+    );
+    const muxedTx = (id: string) =>
+      new TransactionBuilder(new MuxedAccount(new Account(SOURCE, "1"), id), {
+        fee: "0",
+        networkPassphrase: Networks.TESTNET,
+      })
+        .addOperation(Operation.accountMerge({ destination: DEST }))
+        .setTimeout(30)
+        .build()
+        .toXDR();
+    await controller.sponsor("testnet", { transaction: muxedTx("1") });
+    await expectFail(
+      controller.sponsor("testnet", { transaction: muxedTx("2") }),
+      429,
+      "sponsorship_budget_exhausted"
+    );
+    expect(reads).toEqual([SOURCE, SOURCE]);
   });
 });

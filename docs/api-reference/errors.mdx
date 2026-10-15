@@ -171,21 +171,22 @@ These refuse a conversion or transfer of a Soroban token that cannot be done saf
 
 A refusal here happens before anything is submitted, so nothing has changed on the ledger. `transaction_structure_not_allowed` means the transaction is not the exact shape the relay or the fee sponsor will sign, and sending it again will not change that. `registry_expired` and the `*_not_configured` codes are about the server, not the request: show the `message`, and offer a destination that is not an exchange where one exists.
 
-| Code                                | Status | Retry       | Meaning                                                                     |
-| ----------------------------------- | ------ | ----------- | --------------------------------------------------------------------------- |
-| `mediator_not_configured`           | 503    | No          | The exchange (mediator) flow is not configured on this server.              |
-| `mediator_key_misconfiguration`     | 500    | No          | The mediator key on this server is misconfigured.                           |
-| `forward_amount_exceeds_balance`    | 400    | After fix   | The mediator forward is larger than the balance being merged.               |
-| `merged_account_not_found`          | 400    | Check first | The account being merged does not exist.                                    |
-| `transaction_structure_not_allowed` | 400    | After fix   | The transaction is not a shape this endpoint may sign.                      |
-| `fee_bump_not_configured`           | 503    | No          | Sponsored fees are not configured on this server.                           |
-| `fee_bump_exceeds_cap`              | 400    | After fix   | The sponsored fee would exceed the cap.                                     |
-| `inner_fee_not_zero`                | 400    | After fix   | The inner transaction of a sponsored fee bump must carry no fee of its own. |
-| `operation_not_sponsorable`         | 400    | After fix   | The transaction contains an operation that cannot be sponsored.             |
-| `sponsorship_budget_exhausted`      | 429    | Yes         | The fee sponsor's daily budget for this request is used up.                 |
-| `time_bounds_required`              | 400    | After fix   | The transaction must expire within a short window to be signed.             |
-| `transaction_expired`               | 400    | After fix   | The transaction has already expired.                                        |
-| `registry_expired`                  | 503    | No          | The exchange registry is out of date.                                       |
+| Code                                | Status | Retry       | Meaning                                                                        |
+| ----------------------------------- | ------ | ----------- | ------------------------------------------------------------------------------ |
+| `mediator_not_configured`           | 503    | No          | The exchange (mediator) flow is not configured on this server.                 |
+| `mediator_key_misconfiguration`     | 500    | No          | The mediator key on this server is misconfigured.                              |
+| `forward_amount_exceeds_balance`    | 400    | After fix   | The mediator forward is larger than the balance being merged.                  |
+| `merged_account_not_found`          | 400    | Check first | The account being merged does not exist.                                       |
+| `transaction_structure_not_allowed` | 400    | After fix   | The transaction is not a shape this endpoint may sign.                         |
+| `fee_bump_not_configured`           | 503    | No          | Sponsored fees are not configured on this server.                              |
+| `fee_bump_exceeds_cap`              | 400    | After fix   | The sponsored fee would exceed the cap.                                        |
+| `inner_fee_not_zero`                | 400    | After fix   | The inner transaction of a sponsored fee bump must carry no fee of its own.    |
+| `operation_not_sponsorable`         | 400    | After fix   | The transaction contains an operation that cannot be sponsored.                |
+| `sponsor_source_unusable`           | 400    | After fix   | The account to sponsor does not exist, or the transaction is not its next one. |
+| `sponsorship_budget_exhausted`      | 429    | Yes         | The fee sponsor's daily budget for this request is used up.                    |
+| `time_bounds_required`              | 400    | After fix   | The transaction must expire within a short window to be signed.                |
+| `transaction_expired`               | 400    | After fix   | The transaction has already expired.                                           |
+| `registry_expired`                  | 503    | No          | The exchange registry is out of date.                                          |
 
 ## Allowance revocation
 

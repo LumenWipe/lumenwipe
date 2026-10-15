@@ -7,7 +7,12 @@ import {
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
-import { FeeBumpTransaction, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
+import {
+  FeeBumpTransaction,
+  Transaction,
+  TransactionBuilder,
+  extractBaseAddress,
+} from "@stellar/stellar-sdk";
 import { FeeBumpRequestDto } from "./dto/fee-bump.dto";
 import { FeeBumpSponsorResponseDto } from "./dto/fee-bump-responses.dto";
 import { actsForOneAccount, isAllowedWindDownOperation } from "./fee-bump-validation";
@@ -17,7 +22,13 @@ import { NetworkPipe } from "@/common/pipes/network.pipe";
 import { BASE_FEE_STROOPS, MAX_FEE_BUMP_STROOPS } from "@/config/constants";
 import { getFeeAccountKeypair } from "@/lib/stellar/fee-account";
 import { fail } from "@/common/fail";
-import { CLOCK, type Clock } from "@/common/ports";
+import {
+  ACCOUNT_SEQUENCE_READER,
+  CLOCK,
+  type AccountSequenceReader,
+  type Clock,
+} from "@/common/ports";
+import { LiveReadError } from "@/lib/stellar/live-trustline";
 import type { AuthedRequest } from "@/auth/api-key.guard";
 import { validityProblem, VALIDITY_MESSAGES } from "@/lib/stellar/validity-window";
 import { SPONSORSHIP_BUDGET, type SponsorshipBudget } from "./sponsorship-budget";
@@ -49,7 +60,8 @@ import { SPONSORSHIP_BUDGET, type SponsorshipBudget } from "./sponsorship-budget
 export class FeeBumpController {
   constructor(
     @Inject(SPONSORSHIP_BUDGET) private readonly budget: SponsorshipBudget,
-    @Inject(CLOCK) private readonly clock: Clock
+    @Inject(CLOCK) private readonly clock: Clock,
+    @Inject(ACCOUNT_SEQUENCE_READER) private readonly sequences: AccountSequenceReader
   ) {}
 
   @ApiErrorResponse(400, "Missing/invalid transaction or disallowed structure.", [
@@ -61,14 +73,19 @@ export class FeeBumpController {
     "fee_bump_exceeds_cap",
     "time_bounds_required",
     "transaction_expired",
+    "sponsor_source_unusable",
     "invalid_body",
   ])
-  @ApiErrorResponse(429, "The fee sponsor's daily budget for this request is used up.", [
-    "sponsorship_budget_exhausted",
-  ])
-  @ApiErrorResponse(503, "Sponsored-fee flow not configured on this server.", [
-    "fee_bump_not_configured",
-  ])
+  @ApiErrorResponse(
+    429,
+    "Rate limit exceeded for this key, or the fee sponsor's daily budget for this request is used up.",
+    ["rate_limited", "sponsorship_budget_exhausted"]
+  )
+  @ApiErrorResponse(
+    503,
+    "Sponsored-fee flow not configured on this server, or the account could not be read.",
+    ["fee_bump_not_configured", "service_unavailable"]
+  )
   @ApiBodyErrorResponses()
   @Post("sponsor")
   @HttpCode(200)
@@ -149,6 +166,24 @@ export class FeeBumpController {
       );
     }
 
+    // Only the next transaction of an existing account can land, so nothing else is worth a
+    // signature or a share of the day's budget.
+    const source = extractBaseAddress(tx.source);
+    let sequence: bigint | null;
+    try {
+      sequence = await this.sequences(source, network);
+    } catch (err) {
+      if (err instanceof LiveReadError) fail("service_unavailable", err.message, 503);
+      throw err;
+    }
+    if (sequence === null || BigInt(tx.sequence) !== sequence + 1n) {
+      fail(
+        "sponsor_source_unusable",
+        "The account to sponsor does not exist, or this transaction is not its next one. Request a new transaction and sign it again.",
+        400
+      );
+    }
+
     const feeBumpTx = TransactionBuilder.buildFeeBumpTransaction(
       feeAccount,
       String(BASE_FEE_STROOPS),
@@ -163,10 +198,17 @@ export class FeeBumpController {
       fail("fee_bump_exceeds_cap", "The sponsored fee exceeds what this endpoint will cover", 400);
     }
 
+    feeBumpTx.sign(feeAccount);
+    const envelope = feeBumpTx.toEnvelope().toXDR("base64");
+
     const exhausted = this.budget.reserve(
-      tx.source,
-      req.apiKeyLabel ?? "",
-      BigInt(feeBumpTx.fee),
+      {
+        network,
+        source,
+        key: req.apiKeyLabel ?? "",
+        innerHash: Buffer.from(tx.hash()).toString("hex"),
+        fee: BigInt(feeBumpTx.fee),
+      },
       now
     );
     if (exhausted) {
@@ -178,9 +220,7 @@ export class FeeBumpController {
         { scope: exhausted }
       );
     }
-
-    feeBumpTx.sign(feeAccount);
-    return { transaction: feeBumpTx.toEnvelope().toXDR("base64") };
+    return { transaction: envelope };
   }
 }
 

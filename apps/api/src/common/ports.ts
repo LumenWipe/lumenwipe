@@ -14,6 +14,7 @@ import { readAccountState } from "@/lib/close-api/read-account";
 import { validateTransferDestinations } from "@/lib/close-api/transfer-destinations";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { readMemoRequired } from "@/lib/stellar/memo-required";
+import { readAccountSequence } from "@/lib/stellar/account-sequence";
 import { submitAndWait, type SubmitResult } from "@/lib/stellar/submit";
 import { getMediatorKeypair } from "@/lib/stellar/mediator-server";
 
@@ -96,3 +97,8 @@ export const TRANSACTION_SUBMITTER = Symbol("TRANSACTION_SUBMITTER");
 export const submitterFor = (serverFor: RpcServerFactory): TransactionSubmitterPort => ({
   submitAndWait: (signedXdr, network) => submitAndWait(signedXdr, network, undefined, serverFor),
 });
+
+export type AccountSequenceReader = (address: string, network: Network) => Promise<bigint | null>;
+export const ACCOUNT_SEQUENCE_READER = Symbol("ACCOUNT_SEQUENCE_READER");
+export const defaultAccountSequenceReader: AccountSequenceReader = (address, network) =>
+  readAccountSequence(getRpcServer(network), address);

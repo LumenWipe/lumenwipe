@@ -160,6 +160,7 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `soroban_token_unreadable`                    | 422    | A Soroban token balance could not be read.                                                                                     |
 | `soroswap_trustline_missing`                  | 422    | A Soroswap exit needs a trustline the account does not have.                                                                   |
 | `source_sequence_too_far`                     | 422    | The account's sequence number is beyond what the network accepts for a merge; it cannot be closed until the ledger catches up. |
+| `sponsor_source_unusable`                     | 400    | The account to sponsor does not exist, or the transaction is not its next one.                                                 |
 | `sponsorship_budget_exhausted`                | 429    | The fee sponsor's daily budget for this request is used up.                                                                    |
 | `stats_unavailable`                           | 503    | The stats store is unreachable. Retry.                                                                                         |
 | `submit_failed`                               | 502    | The transaction could not be submitted. Retry.                                                                                 |

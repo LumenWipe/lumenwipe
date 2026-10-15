@@ -4053,6 +4053,8 @@
                                 "transaction_structure_not_allowed",
                                 "merged_account_not_found",
                                 "forward_amount_exceeds_balance",
+                                "time_bounds_required",
+                                "transaction_expired",
                                 "invalid_body"
                               ]
                             }
@@ -4690,6 +4692,7 @@
                                 "fee_bump_exceeds_cap",
                                 "time_bounds_required",
                                 "transaction_expired",
+                                "sponsor_source_unusable",
                                 "invalid_body"
                               ]
                             }
@@ -4837,7 +4840,7 @@
             }
           },
           "429": {
-            "description": "The fee sponsor's daily budget for this request is used up.",
+            "description": "Rate limit exceeded for this key, or the fee sponsor's daily budget for this request is used up.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4854,6 +4857,7 @@
                             "code": {
                               "type": "string",
                               "enum": [
+                                "rate_limited",
                                 "sponsorship_budget_exhausted"
                               ]
                             }
@@ -4881,7 +4885,7 @@
             }
           },
           "503": {
-            "description": "Sponsored-fee flow not configured on this server.",
+            "description": "Sponsored-fee flow not configured on this server, or the account could not be read.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4898,7 +4902,8 @@
                             "code": {
                               "type": "string",
                               "enum": [
-                                "fee_bump_not_configured"
+                                "fee_bump_not_configured",
+                                "service_unavailable"
                               ]
                             }
                           }
@@ -6799,6 +6804,7 @@
               "soroban_token_unreadable",
               "soroswap_trustline_missing",
               "source_sequence_too_far",
+              "sponsor_source_unusable",
               "sponsorship_budget_exhausted",
               "stats_unavailable",
               "submit_failed",

@@ -100,6 +100,7 @@ export type ErrorCode =
   | "soroban_token_unreadable"
   | "soroswap_trustline_missing"
   | "source_sequence_too_far"
+  | "sponsor_source_unusable"
   | "sponsorship_budget_exhausted"
   | "stats_unavailable"
   | "submit_failed"
