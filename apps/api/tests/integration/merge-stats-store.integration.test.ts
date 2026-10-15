@@ -30,6 +30,15 @@ function merge(overrides: Partial<MergeRecord> = {}): MergeRecord {
 }
 
 describe.skipIf(!EMULATOR)("FirestoreMergeStatsStore (emulator)", () => {
+  test("knows a built close only on the network it was built for", async () => {
+    const store = freshStore();
+    const hash = randomBytes(32).toString("hex");
+    expect(await store.wasBuilt("mainnet", hash)).toBe(false);
+    await store.rememberBuilt("mainnet", [hash], new Date("2026-10-08T10:00:00Z"));
+    expect(await store.wasBuilt("mainnet", hash)).toBe(true);
+    expect(await store.wasBuilt("testnet", hash)).toBe(false);
+  });
+
   test("counts a hash once and leaves every counter untouched on a repeat", async () => {
     const store = freshStore();
     const m = merge();

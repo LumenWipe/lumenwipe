@@ -2333,7 +2333,7 @@
     },
     "/v1/{network}/stats/merges": {
       "post": {
-        "description": "Closes submitted through `POST /v1/{network}/submit` are counted automatically. The transaction is re-read from the network and counted only if it confirmed and merged an account; repeating a hash never counts it twice.",
+        "description": "Closes submitted through `POST /v1/{network}/submit` are counted automatically. The transaction is re-read from the network and counted only if this API built it, it confirmed and it merged an account; repeating a hash never counts it twice.",
         "operationId": "StatsController_record",
         "parameters": [
           {

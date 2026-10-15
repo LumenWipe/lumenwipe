@@ -75,8 +75,8 @@ export class StatsController {
     summary: "Count a confirmed close submitted outside this API.",
     description:
       "Closes submitted through `POST /v1/{network}/submit` are counted automatically. The " +
-      "transaction is re-read from the network and counted only if it confirmed and merged an " +
-      "account; repeating a hash never counts it twice.",
+      "transaction is re-read from the network and counted only if this API built it, it " +
+      "confirmed and it merged an account; repeating a hash never counts it twice.",
   })
   @ApiBody({ type: RecordMergeRequestDto })
   @ApiResponse({ status: 200, type: RecordMergeResponseDto })
@@ -98,7 +98,7 @@ export class StatsController {
     if (outcome === "unverified") {
       fail(
         "tx_not_verified",
-        "That transaction is not a confirmed account merge on this network.",
+        "That transaction is not a confirmed LumenWipe close on this network.",
         400
       );
     }

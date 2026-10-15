@@ -35,7 +35,7 @@ import { fail } from "@/common/fail";
 import { mapDomainError, PLAN_ERRORS, TRANSACTION_ERRORS } from "@/lib/close-api/domain-errors";
 import { withTimeout } from "@/lib/utils/with-timeout";
 import { StatsService } from "@/stats/stats.service";
-import { signedXdrHasAccountMerge } from "@/stats/merge-verification";
+import { builtCloseHashes, signedXdrHasAccountMerge } from "@/stats/merge-verification";
 import type { TransactionsResponse, Trustline } from "@lumenwipe/types";
 import {
   CLOCK,
@@ -334,6 +334,7 @@ export class CloseService {
           requiresAnotherCall: result.requiresAnotherCall,
         },
       };
+      await this.rememberBuiltCloses(network, result.transactions);
       return response;
     } catch (e) {
       if (e instanceof HttpException || mapDomainError(TRANSACTION_ERRORS, e)) throw e;
@@ -377,6 +378,21 @@ export class CloseService {
       }
       this.logger.error("submit failed", e instanceof Error ? e.stack : String(e));
       fail("submit_failed", "Failed to submit the transaction.", 502);
+    }
+  }
+
+  /** Bounded and never thrown: a close is never refused because the counter is unreachable. */
+  private async rememberBuiltCloses(network: Network, transactions: { xdr: string }[]) {
+    const hashes = builtCloseHashes(transactions, network);
+    if (hashes.length === 0) return;
+    try {
+      await withTimeout(
+        this.stats.rememberBuilt(network, hashes),
+        COUNT_CLOSE_TIMEOUT_MS,
+        "timed out"
+      );
+    } catch (e) {
+      this.logger.warn(`could not note built close: ${e instanceof Error ? e.message : e}`);
     }
   }
 

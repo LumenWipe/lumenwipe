@@ -124,7 +124,7 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
     "A trustline holds a balance but was deauthorized by its issuer.",
   trustline_maintain_liabilities_with_balance:
     "A trustline holds a balance but its issuer limited it to keeping existing offers only.",
-  tx_not_verified: "The transaction could not be verified as a merge on the network.",
+  tx_not_verified: "The transaction could not be verified as a LumenWipe close on the network.",
   unauthorized: "The API key, session token or operator token is missing or invalid.",
   unprocessable_entity: "The request is valid but cannot be processed.",
   unsupported_media_type: "The request body must be UTF-8 JSON.",

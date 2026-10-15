@@ -107,6 +107,7 @@ interface Fakes {
   readTrustlinesOnly: TrustlineReader;
   submitAndWait: Submitter;
   record: StatsService["record"];
+  rememberBuilt: StatsService["rememberBuilt"];
   lookup: (address: string) => RegistryEntry | null;
   isFresh: () => boolean;
 }
@@ -126,6 +127,7 @@ function defaults(): Fakes {
     readTrustlinesOnly: unexpected("readTrustlinesOnly") as TrustlineReader,
     submitAndWait: unexpected("submitAndWait") as Submitter,
     record: async () => "counted",
+    rememberBuilt: async () => undefined,
     lookup: (address) => servedRegistry().entries.find((e) => e.address === address) ?? null,
     isFresh: () => true,
   };
@@ -140,7 +142,10 @@ async function makeController(overrides: Partial<Fakes> = {}): Promise<{
     controllers: [CloseController],
     providers: [
       CloseService,
-      { provide: StatsService, useValue: { record: fakes.record } },
+      {
+        provide: StatsService,
+        useValue: { record: fakes.record, rememberBuilt: fakes.rememberBuilt },
+      },
       {
         provide: CLOSE_READER,
         useValue: {
@@ -708,6 +713,52 @@ describe("transactions", () => {
       { acknowledged: true },
       { acknowledged: false },
     ]);
+  });
+
+  function builtTx(op: ReturnType<typeof Operation.accountMerge>) {
+    const tx = new TransactionBuilder(new Account(SOURCE, "100"), {
+      fee: "100",
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(op)
+      .setTimeout(300)
+      .build();
+    return { tx, entry: { xdr: tx.toXDR(), networkPassphrase: Networks.TESTNET } };
+  }
+
+  test("T13c the hash of every built transaction that merges the account is noted for the counter", async () => {
+    const merge = builtTx(Operation.accountMerge({ destination: DEST }));
+    const other = builtTx(Operation.bumpSequence({ bumpTo: "200" }));
+    const noted: Array<[string, readonly string[]]> = [];
+    const { controller } = await makeController({
+      buildCloseTransactions: (async () => ({
+        transactions: [other.entry, merge.entry],
+        requiresAnotherCall: false,
+        remainingSteps: 0,
+      })) as unknown as Builder,
+      rememberBuilt: async (network, hashes) => {
+        noted.push([network, hashes]);
+      },
+    });
+    await controller.transactions("testnet", body());
+    expect(noted).toEqual([["testnet", [Buffer.from(merge.tx.hash()).toString("hex")]]]);
+  });
+
+  test("T13d a counter that cannot note the build never refuses the close", async () => {
+    const merge = builtTx(Operation.accountMerge({ destination: DEST }));
+    const { controller } = await makeController({
+      buildCloseTransactions: (async () => ({
+        transactions: [merge.entry],
+        requiresAnotherCall: false,
+        remainingSteps: 0,
+      })) as unknown as Builder,
+      rememberBuilt: async () => {
+        throw new Error("firestore down");
+      },
+    });
+    const result = await controller.transactions("testnet", body());
+    expect(result.status).toBe("ready");
+    expect(result.transactions).toEqual([merge.entry] as never);
   });
 
   test("T14 an HttpException from a collaborator passes through unchanged", async () => {

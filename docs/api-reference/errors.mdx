@@ -196,19 +196,19 @@ These come from the allowance endpoints. `revoke_needs_restore` means ledger ent
 
 ## API keys, operator routes and stats
 
-These belong to key management, the operator routes and the public stats counter. `invalid_challenge` means the signed sign-in message is invalid or has expired: request a new one. `tx_not_verified` means the transaction is not a confirmed account merge on that network. Check the hash and the network before sending it again.
+These belong to key management, the operator routes and the public stats counter. `invalid_challenge` means the signed sign-in message is invalid or has expired: request a new one. `tx_not_verified` means the transaction is not a confirmed account merge that LumenWipe built, on that network. Check the hash and the network before sending it again.
 
-| Code                            | Status | Retry       | Meaning                                                          |
-| ------------------------------- | ------ | ----------- | ---------------------------------------------------------------- |
-| `invalid_challenge`             | 401    | After fix   | The signed challenge is invalid or has expired.                  |
-| `invalid_owner`                 | 400    | After fix   | The owner is missing or empty.                                   |
-| `invalid_rate_limit`            | 400    | After fix   | The rate limit override is malformed.                            |
-| `api_key_not_found`             | 404    | After fix   | No active key with that id belongs to the caller.                |
-| `key_limit_reached`             | 409    | After fix   | The wallet already has the maximum number of active keys.        |
-| `admin_api_not_configured`      | 503    | No          | Operator key management is not configured on this server.        |
-| `integrator_api_not_configured` | 503    | No          | Self-serve key management is not configured on this server.      |
-| `tx_not_verified`               | 400    | Check first | The transaction could not be verified as a merge on the network. |
-| `stats_unavailable`             | 503    | Yes         | The stats store is unreachable. Retry.                           |
+| Code                            | Status | Retry       | Meaning                                                                    |
+| ------------------------------- | ------ | ----------- | -------------------------------------------------------------------------- |
+| `invalid_challenge`             | 401    | After fix   | The signed challenge is invalid or has expired.                            |
+| `invalid_owner`                 | 400    | After fix   | The owner is missing or empty.                                             |
+| `invalid_rate_limit`            | 400    | After fix   | The rate limit override is malformed.                                      |
+| `api_key_not_found`             | 404    | After fix   | No active key with that id belongs to the caller.                          |
+| `key_limit_reached`             | 409    | After fix   | The wallet already has the maximum number of active keys.                  |
+| `admin_api_not_configured`      | 503    | No          | Operator key management is not configured on this server.                  |
+| `integrator_api_not_configured` | 503    | No          | Self-serve key management is not configured on this server.                |
+| `tx_not_verified`               | 400    | Check first | The transaction could not be verified as a LumenWipe close on the network. |
+| `stats_unavailable`             | 503    | Yes         | The stats store is unreachable. Retry.                                     |
 
 ## Keeping this page current
 
