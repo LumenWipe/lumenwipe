@@ -4,7 +4,7 @@ import { TransactionBuilder, type Transaction } from "@stellar/stellar-sdk";
 import { SoroswapSDK, SupportedNetworks } from "@soroswap/sdk";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { resolveWasmHash, soroswapConversionContracts } from "@/lib/contract-registry";
-import { assertConversionShape } from "@/lib/close-api/token-conversion-round";
+import { assertConversionShape, withCloseExpiry } from "@/lib/close-api/token-conversion-round";
 import {
   buildTokenConversion,
   quoteTokenToXlm,
@@ -45,7 +45,11 @@ test.skipIf(!RUN)(
 
     const xdr = await buildTokenConversion(quote!, HOLDER, "mainnet", deps);
     expect(xdr).not.toBeNull();
-    const tx = TransactionBuilder.fromXDR(xdr!, NETWORK_PASSPHRASES.mainnet) as Transaction;
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const tx = withCloseExpiry(
+      TransactionBuilder.fromXDR(xdr!, NETWORK_PASSPHRASES.mainnet) as Transaction,
+      nowSeconds
+    );
 
     const rpc = getRpcServer("mainnet");
     const live = await rpc.getAccount(HOLDER);
@@ -60,7 +64,7 @@ test.skipIf(!RUN)(
         minOut: BigInt(quote!.minAmountOut),
         allowed,
         sequence: live.sequenceNumber(),
-        nowSeconds: Math.floor(Date.now() / 1000),
+        nowSeconds,
       })
     ).not.toThrow();
 

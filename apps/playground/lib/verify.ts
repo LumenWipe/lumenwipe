@@ -40,6 +40,11 @@ const ALLOWED_OP_TYPES = new Set([
   // verify.ts) is where an exit is verified structurally.
 ]);
 
+// Mirrors apps/web/lib/stellar/verify.ts: ten times the base fee per operation, and an expiry no
+// later than fifteen minutes out.
+const MAX_FEE_PER_OPERATION_STROOPS = BigInt(1_000);
+const MAX_VALIDITY_SECONDS = BigInt(900);
+
 export class PlaygroundVerificationError extends Error {
   constructor(message: string) {
     super(message);
@@ -54,7 +59,8 @@ export interface PlaygroundCloseExpectation {
 
 export function verifyDemolishTransaction(
   tx: CloseTransaction,
-  expected: PlaygroundCloseExpectation
+  expected: PlaygroundCloseExpectation,
+  nowSeconds: number = Math.floor(Date.now() / 1000)
 ): void {
   const parsed = TransactionBuilder.fromXdr(tx.xdr, Networks.TESTNET);
   if (!(parsed instanceof Transaction)) {
@@ -63,6 +69,18 @@ export function verifyDemolishTransaction(
 
   if (parsed.source !== expected.demoPublic) {
     throw new PlaygroundVerificationError("source_not_allowed");
+  }
+
+  if (BigInt(parsed.fee) > BigInt(parsed.operations.length) * MAX_FEE_PER_OPERATION_STROOPS) {
+    throw new PlaygroundVerificationError("fee_too_high");
+  }
+
+  const maxTime = BigInt(parsed.timeBounds?.maxTime ?? "0");
+  if (maxTime === BigInt(0)) {
+    throw new PlaygroundVerificationError("no_expiry");
+  }
+  if (maxTime > BigInt(Math.floor(nowSeconds)) + MAX_VALIDITY_SECONDS) {
+    throw new PlaygroundVerificationError("expiry_too_far");
   }
 
   for (const op of parsed.operations) {

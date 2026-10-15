@@ -32,6 +32,7 @@ import {
   AGGREGATOR_SWAP_FUNCTION,
   SWAP_FUNCTION,
   assertConversionShape,
+  withCloseExpiry,
   buildTokenConversionRound,
   defaultTokenConversionRoundDeps,
   type ExpectedConversion,
@@ -164,7 +165,7 @@ function swapTx(shape: SwapShape): Transaction {
     }
   )
     .addOperation(withAuth)
-    .setTimebounds(0, shape.maxTime ?? NOW + 3600)
+    .setTimebounds(0, shape.maxTime ?? NOW + 300)
     .setSorobanData(new SorobanDataBuilder().setResourceFee(50_000n).build());
   if (shape.extraOp) builder.addOperation(new Contract(TOKEN).call("balance", addr(ACCOUNT)));
   return builder.build();
@@ -211,6 +212,7 @@ describe("assertConversionShape", () => {
     ["a memo", { form: "router", memo: Memo.text("hi") }, /memo/],
     ["an outsized fee", { form: "router", fee: "20000000" }, /fee exceeds/],
     ["an expiry too close", { form: "router", maxTime: NOW + 10 }, /expires/],
+    ["an expiry further out than a close allows", { form: "router", maxTime: NOW + 361 }, /longer/],
     ["a second operation", { form: "router", extraOp: true }, /one operation/],
     [
       "a contract outside the registry",
@@ -381,8 +383,9 @@ describe("assertConversionShape", () => {
 describe("assertConversionShape on a swap the Soroswap API really built", () => {
   // Captured from the live API on mainnet (10 USDC -> XLM for a real holder), unsigned. The
   // registry that ships is what vouches for the contract it calls.
-  const tx = TransactionBuilder.fromXDR(realSwap.xdr, Networks.PUBLIC) as Transaction;
+  const raw = TransactionBuilder.fromXDR(realSwap.xdr, Networks.PUBLIC) as Transaction;
   const capturedAt = Math.floor(Date.parse(realSwap.capturedAt) / 1000);
+  const tx = withCloseExpiry(raw, capturedAt);
   const real = (over: Partial<ExpectedConversion> = {}): ExpectedConversion => ({
     token: realSwap.token,
     account: realSwap.account,
@@ -395,13 +398,33 @@ describe("assertConversionShape on a swap the Soroswap API really built", () => 
     ...over,
   });
 
-  test("is accepted as built, against the registry's aggregator", () => {
+  test("is accepted with the close expiry, against the registry's aggregator", () => {
     expect(real().allowed.aggregator).toEqual([AGGREGATOR]);
     expect(() => assertConversionShape(tx, real())).not.toThrow();
   });
 
+  test("is refused with the expiry the provider gave it", () => {
+    expect(() => assertConversionShape(raw, real())).toThrow(/longer/);
+  });
+
+  test("keeps every part of the swap but the expiry when the close expiry replaces it", () => {
+    expect(tx.timeBounds).toEqual({ minTime: "0", maxTime: String(capturedAt + 300) });
+    expect(tx.fee).toBe(raw.fee);
+    expect(tx.sequence).toBe(raw.sequence);
+    const body = (t: Transaction) => {
+      const envelope = t.toEnvelope();
+      if (envelope.type !== "envelopeTypeTx") throw new Error("not a v1 envelope");
+      const inner = envelope.v1.tx;
+      return [inner.ext.toXDR("base64"), ...inner.operations.map((o) => o.toXDR("base64"))];
+    };
+    expect(body(tx)).toEqual(body(raw));
+  });
+
   test("is refused once a fee partner is written into it", () => {
-    const original = TransactionBuilder.fromXDR(realSwap.xdr, Networks.PUBLIC) as Transaction;
+    const original = withCloseExpiry(
+      TransactionBuilder.fromXDR(realSwap.xdr, Networks.PUBLIC) as Transaction,
+      capturedAt
+    );
     const args = [...callOf(onlyOperation(original)).args];
     args[6] = xdr.ScVal.scvMap([
       new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("bps"), val: xdr.ScVal.scvU32(1000) }),

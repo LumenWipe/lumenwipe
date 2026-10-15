@@ -190,6 +190,7 @@ export function intentFromXdr(xdr: string, networkPassphrase: string): TxIntent 
     summary: "",
     source: tx.source,
     fee: tx.fee,
+    maxTime: tx.timeBounds && tx.timeBounds.maxTime !== "0" ? tx.timeBounds.maxTime : null,
     memo: memoToString(memoValue, memoType),
     memoType,
     guarantees: {

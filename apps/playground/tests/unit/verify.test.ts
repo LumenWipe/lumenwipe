@@ -339,3 +339,35 @@ test("accepts sponsorship revocation, which decodes to per-entry-kind op types",
     })
   ).not.toThrow();
 });
+
+const NOW = 1_800_000_000;
+
+function mergeTx(demo: Keypair, sink: Keypair, fee: string, maxTime: number): string {
+  const builder = new TransactionBuilder(new Account(demo.publicKey(), "1"), {
+    fee,
+    networkPassphrase: PASSPHRASE,
+  }).setTimebounds(0, maxTime);
+  builder.addOperation(Operation.accountMerge({ destination: sink.publicKey() }));
+  return builder.build().toEnvelope().toXdr("base64");
+}
+
+test("refuses a fee above ten times the base fee per operation", () => {
+  const demo = Keypair.random();
+  const sink = Keypair.random();
+  const expected = { demoPublic: demo.publicKey(), sinkPublic: sink.publicKey() };
+  const run = (fee: string) =>
+    verifyDemolishTransaction(closeTx(mergeTx(demo, sink, fee, NOW + 300)), expected, NOW);
+  expect(() => run("1000")).not.toThrow();
+  expect(() => run("1001")).toThrow("fee_too_high");
+});
+
+test("refuses a transaction that never expires or stays valid past fifteen minutes", () => {
+  const demo = Keypair.random();
+  const sink = Keypair.random();
+  const expected = { demoPublic: demo.publicKey(), sinkPublic: sink.publicKey() };
+  const run = (maxTime: number) =>
+    verifyDemolishTransaction(closeTx(mergeTx(demo, sink, "100", maxTime)), expected, NOW);
+  expect(() => run(0)).toThrow("no_expiry");
+  expect(() => run(NOW + 901)).toThrow("expiry_too_far");
+  expect(() => run(NOW + 900)).not.toThrow();
+});

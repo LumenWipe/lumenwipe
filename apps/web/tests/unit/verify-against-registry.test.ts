@@ -26,6 +26,7 @@ import { isContractRegistryUsable } from "@/lib/contract-registry";
 
 const SRC = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
+const NOW = 1_800_000_000;
 const XLM_SAC = Asset.native().contractId(Networks.TESTNET);
 
 /** Registry testnet addresses, the ones detection actually reports. */
@@ -63,6 +64,7 @@ function expectationFor(account: AccountState): CloseExpectation {
     tokenConversions: {},
     accountSigners: [{ key: SRC, weight: 1, type: "ed25519_public_key" }],
     accountThresholds: { low: 0, med: 1, high: 1 },
+    nowSeconds: NOW,
     ...exitExpectations(account, "testnet"),
   } as CloseExpectation;
 }
@@ -72,6 +74,7 @@ function exitOnly(op: IntentOperation): TxIntent {
     summary: "",
     source: SRC,
     fee: "100",
+    maxTime: String(NOW + 300),
     memo: null,
     memoType: null,
     guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },

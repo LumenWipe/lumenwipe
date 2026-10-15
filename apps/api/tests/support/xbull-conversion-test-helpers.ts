@@ -92,7 +92,7 @@ export function assembleTestTransaction(
     networkPassphrase: Networks.PUBLIC,
   })
     .addOperation(withAuth)
-    .setTimebounds(0, opts.maxTime ?? 1_700_000_000 + 3600)
+    .setTimebounds(0, opts.maxTime ?? 1_700_000_000 + 300)
     .build();
 }
 
