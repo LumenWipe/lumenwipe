@@ -1,4 +1,5 @@
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { Logger } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { TerminusModule } from "@nestjs/terminus";
 import { HealthController } from "@/health/health.controller";
@@ -138,4 +139,96 @@ test("coalesces requests within the cache window into one shared result, without
   // route that fanned out a fresh RPC call per inbound request would be free amplification
   // against the configured providers (#59's review flagged this).
   expect(buildSpy).toHaveBeenCalledTimes(2);
+});
+
+async function deepFailure(controller: HealthController): Promise<Record<string, unknown>> {
+  try {
+    await controller.deep();
+  } catch (error) {
+    return (error as { getResponse: () => Record<string, unknown> }).getResponse();
+  }
+  throw new Error("expected deep() to fail");
+}
+
+const PROVIDER_ERROR =
+  "request to https://rpc.example.net/v1/k3yInPath0123456789?apikey=q7uerySecret failed, reason: ECONNREFUSED";
+
+test("a failed RPC probe reports only a fixed status and latency, never the upstream error text", async () => {
+  spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+  spyOn(rpcModule, "buildRpcServer").mockImplementation(((network: string) => ({
+    getHealth: () =>
+      network === "mainnet"
+        ? Promise.reject(new Error(PROVIDER_ERROR))
+        : Promise.resolve({ status: "healthy" }),
+  })) as unknown as typeof rpcModule.buildRpcServer);
+
+  const response = await deepFailure(await buildController());
+  const details = response.details as Record<string, Record<string, unknown>>;
+
+  expect(Object.keys(details.rpc_mainnet ?? {}).sort()).toEqual([
+    "message",
+    "responseTime",
+    "status",
+  ]);
+  expect(details.rpc_mainnet?.message).toBe("unreachable");
+  expect(typeof details.rpc_mainnet?.responseTime).toBe("number");
+  expect(typeof details.rpc_testnet?.responseTime).toBe("number");
+  const body = JSON.stringify(response);
+  for (const leaked of ["k3yInPath", "q7uerySecret", "rpc.example.net", "ECONNREFUSED", "http"]) {
+    expect(body).not.toContain(leaked);
+  }
+});
+
+test("a non-Error rejection is reported with the same fixed status", async () => {
+  spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+  spyOn(rpcModule, "buildRpcServer").mockReturnValue({
+    getHealth: () => Promise.reject(PROVIDER_ERROR),
+  } as unknown as ReturnType<typeof rpcModule.buildRpcServer>);
+
+  const response = await deepFailure(await buildController());
+  const details = response.details as Record<string, Record<string, unknown>>;
+
+  expect(details.rpc_testnet?.message).toBe("unreachable");
+  expect(details.rpc_mainnet?.message).toBe("unreachable");
+  expect(JSON.stringify(response)).not.toContain("q7uerySecret");
+});
+
+test("a probe that runs out its timeout reports timeout", async () => {
+  spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+  let clock = 1_000_000;
+  spyOn(Date, "now").mockImplementation(() => clock);
+  spyOn(rpcModule, "buildRpcServer").mockImplementation(((network: string) => ({
+    getHealth: () =>
+      network === "mainnet"
+        ? Promise.resolve().then(() => {
+            clock += 60_000;
+            throw new Error(PROVIDER_ERROR);
+          })
+        : Promise.resolve({ status: "healthy" }),
+  })) as unknown as typeof rpcModule.buildRpcServer);
+
+  const response = await deepFailure(await buildController());
+  const details = response.details as Record<string, Record<string, unknown>>;
+
+  expect(details.rpc_mainnet?.message).toBe("timeout");
+  expect(details.rpc_mainnet?.responseTime).toBe(60_000);
+});
+
+test("the upstream detail is logged with the provider reduced to its host", async () => {
+  const warn = spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+  spyOn(rpcModule, "buildRpcServer").mockImplementation(((network: string) => ({
+    getHealth: () =>
+      network === "mainnet"
+        ? Promise.reject(new Error(PROVIDER_ERROR))
+        : Promise.resolve({ status: "healthy" }),
+  })) as unknown as typeof rpcModule.buildRpcServer);
+
+  await deepFailure(await buildController());
+
+  const logged = warn.mock.calls.map((call) => String(call[0])).join("\n");
+  expect(logged).toContain("rpc_mainnet");
+  expect(logged).toContain("rpc.example.net");
+  expect(logged).toContain("ECONNREFUSED");
+  expect(logged).not.toContain("k3yInPath");
+  expect(logged).not.toContain("q7uerySecret");
 });
