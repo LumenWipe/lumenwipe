@@ -62,26 +62,16 @@ export interface CloseExpectation {
   /** The memo type the destination requires (from the registry), or null. */
   memoType: "text" | "id" | "hash" | null;
   /**
-   * The per-asset transfers the user chose: the account each balance goes to, and the balance
-   * the user was shown for it, keyed by the same canonical `CODE:ISSUER` string.
+   * The per-asset payments the user chose, keyed by canonical `CODE:ISSUER`: a transfer to the
+   * account they named, with the balance they were shown as a floor, or a return to the issuer
+   * of an asset they chose to return. Every payment but the mediated forward must match one.
    *
-   * The destination is sourced from the user's own decisions, never from the plan or the
-   * transaction under verification. That is the security property that matters here. The
-   * amount is the trustline balance from the account read, which comes from the same API that
-   * builds the transaction - the same honest caveat `nativeBalance` and `accountSigners` carry
-   * above: it catches builder bugs and partial compromise, not an adversary who keeps both
-   * sides consistent. Return-to-issuer and the mediated
-   * forward are both structurally constrained - the issuer is derivable from the asset, and
-   * the forward's destination is the address the user typed - so neither can be redirected.
-   * A transfer has neither property: its destination is an arbitrary address, which is exactly
-   * the shape of a fund-diversion attack. The only thing separating a legitimate transfer from
-   * a diversion is that this map came from the user.
-   *
-   * The amount is here for the same reason the destination is: binding only the destination
-   * would let a transaction pay one stroop to the right account and route the rest elsewhere.
-   * It is a floor rather than an exact figure - a claim round can legitimately raise the
-   * balance between this read and the build, and paying more to an already-pinned destination
-   * is not a loss.
+   * The destination and the choice come from the user's own decisions, never from the plan or
+   * the transaction under verification. The amount is the balance from the account read, which
+   * comes from the same API that builds the transaction, so it catches builder bugs and partial
+   * compromise rather than an adversary who keeps both consistent. It is a floor rather than an
+   * exact figure: a claim round can raise the balance before the build, and paying more to an
+   * already-pinned destination is not a loss.
    */
   transfers: Record<string, { destination: string; amount: string }>;
   /**
@@ -409,7 +399,7 @@ const MAX_SWAP_SLIPPAGE_BPS = BigInt(100);
  *  MAX_SWAP_SLIPPAGE_BPS under the quote the user was shown beside it. */
 function swapFloor(chosen: { minAmountOut: string; amountOut?: string }): bigint {
   const quoted = chosen.amountOut ?? "";
-  if (!/^\d+$/.test(chosen.minAmountOut) || !/^\d+$/.test(quoted)) {
+  if (!/^\d+$/.test(chosen.minAmountOut) || !/^[1-9]\d*$/.test(quoted)) {
     throw new VerificationError(
       "A swap cannot be checked against the quote you were shown. Run the analysis again."
     );
@@ -466,8 +456,8 @@ function assertUserChoseThisTransfer(
 /**
  * The code half of a canonical "CODE:ISSUER" asset string, for error messages.
  *
- * No "native" case: this is only ever reached for a payment that is neither an issuer-return
- * nor the mediated forward, and `expected.transfers` is keyed by trustline asset, so XLM cannot
+ * No "native" case: this is only reached for a payment other than the mediated forward that
+ * matched an entry in `expected.transfers`, which is keyed by trustline asset, so XLM cannot
  * appear here. A branch for it would be untestable dead code.
  */
 function assetCode(asset: string): string {

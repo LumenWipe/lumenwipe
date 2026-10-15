@@ -105,7 +105,9 @@ function isUsableEntry(e: unknown): e is RegistryEntry {
  * So the served copy is an upper bound on trust, not a replacement: for an address the bundle
  * already knows, a served entry may only make the rules STRICTER. Relaxing one is refused and
  * the embedded entry stands. Addresses the bundle does not know are purely additive - that is
- * the whole point of serving it, and adding an exchange can only ever add protection.
+ * the whole point of serving it: a new address gains its memo rule and the
+ * unrecognized-destination confirmation stops applying, but it never enables the mediated
+ * hand-off (`mediatorAllowedFor`).
  */
 function tightenedOver(embeddedEntry: RegistryEntry, servedEntry: RegistryEntry): RegistryEntry {
   return {
@@ -216,7 +218,7 @@ export function requiresMediatorForAddress(address: string): boolean {
  * registry lists qualifies; a served copy can tighten its rules but cannot add one.
  */
 export function mediatorAllowedFor(address: string): boolean {
-  return EMBEDDED.entries.some((e) => e.address === address) && requiresMediatorForAddress(address);
+  return EMBEDDED.entries.find((e) => e.address === address)?.requiresMediator === true;
 }
 
 export function getMemoRequirement(address: string): {

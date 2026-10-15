@@ -2114,3 +2114,24 @@ test("a swap floor sits no more than 1% under the quote the user was shown, what
     /quote you were shown/
   );
 });
+
+test("a strict_send swap floor also sits no more than 1% under the quote the user was shown", () => {
+  const quoted = expectation({
+    conversionContracts: [XBULL_ROUTER],
+    tokenConversions: {
+      [CONVERT_TOKEN]: {
+        minAmountOut: "1",
+        amountOut: "6000000000",
+        amountIn: "100000000",
+        resolvedPath: [CONVERT_TOKEN, XLM_CONTRACT],
+      },
+    },
+    xlmContract: XLM_CONTRACT,
+  });
+  const withMin = (min: string) =>
+    exitOnly(xbullSwap({ args: [SRC, SRC, "100000000", min, "[[0,1,0,0]]", "[]"] }));
+  expect(() => assertCloseIntent(withMin("5940000000"), quoted)).not.toThrow();
+  expect(() => assertCloseIntent(withMin("5939999999"), quoted)).toThrow(
+    /less XLM than the minimum/
+  );
+});
