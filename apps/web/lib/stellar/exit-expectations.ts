@@ -1,6 +1,12 @@
 import { Asset } from "@stellar/stellar-sdk";
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
-import { conversionContractsFor, EXIT_FUNCTIONS, exitContractsFor } from "@/lib/contract-registry";
+import {
+  conversionContractsFor,
+  EXIT_FUNCTIONS,
+  exitContractsFor,
+  registryContractsFor,
+} from "@/lib/contract-registry";
+import xbullAssetMap from "@/config/xbull-asset-map.json";
 import type { AccountState } from "@/types/account";
 
 /**
@@ -34,6 +40,19 @@ export interface ExitExpectations {
   conversionContracts: string[];
   /** XLM's contract on this network: the one asset a token conversion may buy. */
   xlmContract: string;
+  /** Every contract the bundled registry names on this network. */
+  registryContracts: string[];
+  /** XLM's contract and the contract of every classic asset the account holds, derived here. Only
+   *  a registry contract may receive or spend these in an exit. */
+  protectedTokenContracts: string[];
+  /** xBull's router asset table from the bundle, index to token contract; empty off mainnet. */
+  xbullAssets: Record<string, string>;
+  /** Per position contract, the tokens the account read names as that position's own. */
+  ownTokensByContract: Record<string, string[]>;
+}
+
+function xbullAssetsFor(network: Network): Record<string, string> {
+  return xbullAssetMap.network === network ? { ...xbullAssetMap.assets } : {};
 }
 
 export function exitExpectations(
@@ -48,6 +67,10 @@ export function exitExpectations(
       heldTokenContracts: [],
       positionTokenContracts: [],
       exitFunctions: {},
+      registryContracts: registryContractsFor(network),
+      protectedTokenContracts: [Asset.native().contractId(NETWORK_PASSPHRASES[network])],
+      xbullAssets: xbullAssetsFor(network),
+      ownTokensByContract: {},
     };
   }
   const passphrase = NETWORK_PASSPHRASES[network];
@@ -105,5 +128,22 @@ export function exitExpectations(
     exitFunctions,
     conversionContracts: conversionContractsFor(network),
     xlmContract: Asset.native().contractId(passphrase),
+    registryContracts: registryContractsFor(network),
+    protectedTokenContracts: [
+      ...new Set([
+        Asset.native().contractId(passphrase),
+        ...trustlines.map((tl) => new Asset(tl.code, tl.issuer).contractId(passphrase)),
+      ]),
+    ],
+    xbullAssets: xbullAssetsFor(network),
+    ownTokensByContract: Object.fromEntries(
+      positions.map((p) => [
+        p.contractAddress,
+        [
+          ...("tokens" in p && p.tokens ? p.tokens : []),
+          ...("shareToken" in p && p.shareToken ? [p.shareToken] : []),
+        ],
+      ])
+    ),
   };
 }

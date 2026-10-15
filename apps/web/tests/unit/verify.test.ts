@@ -57,6 +57,11 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
     ],
     accountThresholds: { low: 0, med: 1, high: 1 },
     nowSeconds: NOW,
+    // Exit contracts count as registry-listed unless a test says otherwise.
+    registryContracts: over.exitContracts ?? [POOL],
+    protectedTokenContracts: [],
+    xbullAssets: { "0": XLM_CONTRACT, "1": CONVERT_TOKEN, "2": OTHER_TOKEN },
+    ownTokensByContract: {},
     ...over,
   };
 }
@@ -777,6 +782,10 @@ test("verifyCloseTransaction passes a mediated close to a memo-requiring exchang
         exitFunctions: {},
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
+        registryContracts: [],
+        protectedTokenContracts: [],
+        xbullAssets: {},
+        ownTokensByContract: {},
       },
     })
   ).not.toThrow();
@@ -816,6 +825,10 @@ test("verifyCloseTransaction rejects a mediated close to a memo-requiring exchan
         exitFunctions: {},
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
+        registryContracts: [],
+        protectedTokenContracts: [],
+        xbullAssets: {},
+        ownTokensByContract: {},
       },
     })
   ).toThrow(/requires a deposit memo/);
@@ -846,6 +859,10 @@ test("verifyCloseTransaction passes a direct close to a destination the registry
         exitFunctions: {},
         accountSigners: wrapperSigners(),
         accountThresholds: wrapperThresholds,
+        registryContracts: [],
+        protectedTokenContracts: [],
+        xbullAssets: {},
+        ownTokensByContract: {},
       },
     })
   ).not.toThrow();
@@ -1558,6 +1575,7 @@ test("a token the user never chose to transfer is judged as a DeFi exit, and fai
 // ─── Soroban token conversions (#161) ────────────────────────────────────────
 
 const CONVERT_TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
+const OTHER_TOKEN = "CC64WBDGS6QQP22QTTIACYIXT3WF7BBQEYOQPLTP7GTKYY7PZ74QYGSL";
 const XLM_CONTRACT = "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA";
 const FLOOR = "520000000";
 
@@ -1804,8 +1822,8 @@ const XBULL_ROUTER = "CBXBULLROUTERAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY";
 
 /** xBull's PathPayment router call as it renders in an intent: six arguments, the path and refs
  *  both JSON-encoded index/tuple lists. Unlike Soroswap's shape, no argument names the asset
- *  being bought or sold - `readXBullSwapArgs` in verify.ts reads only the shape, and the token
- *  is identified separately by matching hop counts against `resolvedPath` (see verify.ts). */
+ *  being bought or sold: the tokens are read through `expected.xbullAssets`, where index 1 is
+ *  CONVERT_TOKEN and index 0 is XLM. */
 const xbullSwap = (over: Partial<ExitOp> = {}): IntentOperation =>
   exit({
     contract: XBULL_ROUTER,
@@ -1835,10 +1853,11 @@ test("a strict_send swap whose resolved path matches the chosen token and XLM pa
   expect(() => assertCloseIntent(exitOnly(better), chosenXBullConversion())).not.toThrow();
 });
 
-test("rejects a strict_send swap whose resolved path does not end at XLM", () => {
-  expect(() =>
-    assertCloseIntent(exitOnly(xbullSwap()), chosenXBullConversion([CONVERT_TOKEN, "Cwrong"]))
-  ).toThrow(/something other than XLM/);
+test("rejects a strict_send swap whose route does not end at XLM", () => {
+  const toOther = xbullSwap({ args: [SRC, SRC, "100000000", FLOOR, "[[0,1,0,2]]", "[]"] });
+  expect(() => assertCloseIntent(exitOnly(toOther), chosenXBullConversion())).toThrow(
+    /something other than XLM/
+  );
 });
 
 test("refuses a strict_send call whose refs is non-empty even before reaching resolvedPath", () => {
@@ -1876,43 +1895,25 @@ test("rejects a strict_send swap that pays the proceeds anywhere but the account
   );
 });
 
-test("rejects a strict_send swap whose hop count matches no token the user chose to convert", () => {
-  // resolvedPath has 2 entries (1 hop); a 2-hop call matches nothing.
-  const twoHop = xbullSwap({ args: [SRC, SRC, "100000000", FLOOR, "[[0,1,0,0],[0,2,1,3]]", "[]"] });
-  expect(() => assertCloseIntent(exitOnly(twoHop), chosenXBullConversion())).toThrow(
+test("rejects a strict_send swap whose route spends a token the user did not choose to convert", () => {
+  const spendsOther = xbullSwap({ args: [SRC, SRC, "100000000", FLOOR, "[[0,2,0,0]]", "[]"] });
+  expect(() => assertCloseIntent(exitOnly(spendsOther), chosenXBullConversion())).toThrow(
     /token you did not choose to convert/
   );
-  // With no xBull-resolved conversion at all, the same call is refused the same way.
   expect(() =>
     assertCloseIntent(exitOnly(xbullSwap()), expectation({ conversionContracts: [XBULL_ROUTER] }))
   ).toThrow(/token you did not choose to convert/);
 });
 
-test("rejects a strict_send swap whose hop count matches more than one chosen token, rather than picking one", () => {
-  const other = "CC64WBDGS6QQP22QTTIACYIXT3WF7BBQEYOQPLTP7GTKYY7PZ74QYGSL";
-  const ambiguous = expectation({
-    conversionContracts: [XBULL_ROUTER],
-    tokenConversions: {
-      [CONVERT_TOKEN]: {
-        minAmountOut: FLOOR,
-        amountOut: FLOOR,
-        amountIn: "100000000",
-        resolvedPath: [CONVERT_TOKEN, XLM_CONTRACT],
-      },
-      // A different token, also one hop from XLM: same resolvedPath length as CONVERT_TOKEN's,
-      // so hop count alone cannot tell the swap apart from either one.
-      [other]: {
-        minAmountOut: FLOOR,
-        amountOut: FLOOR,
-        amountIn: "50000000",
-        resolvedPath: [other, XLM_CONTRACT],
-      },
-    },
-    xlmContract: XLM_CONTRACT,
-  });
-  expect(() => assertCloseIntent(exitOnly(xbullSwap()), ambiguous)).toThrow(
-    /cannot be matched to a single token/
-  );
+test("rejects a strict_send swap whose route names an index the bundled table does not hold, or breaks between hops", () => {
+  for (const path of ["[[0,7,0,0]]", "[[0,1,0,2],[0,1,3,0]]", "[[0,1,0]]", "[]"]) {
+    const swap = xbullSwap({ args: [SRC, SRC, "100000000", FLOOR, path, "[]"] });
+    expect(() => assertCloseIntent(exitOnly(swap), chosenXBullConversion())).toThrow(
+      VerificationError
+    );
+  }
+  const twoHop = xbullSwap({ args: [SRC, SRC, "100000000", FLOOR, "[[0,1,0,2],[0,2,1,0]]", "[]"] });
+  expect(() => assertCloseIntent(exitOnly(twoHop), chosenXBullConversion())).not.toThrow();
 });
 
 test("rejects a strict_send swap whose arguments cannot be read", () => {
@@ -2198,4 +2199,91 @@ test("a classic conversion of XLM itself, or of an asset the user chose to send 
       })
     )
   ).toThrow(/did not choose to convert/);
+});
+
+// ─── Exits outside the registry and what a swap authorizes ───────────────────
+
+test("an exit through a contract outside the bundled registry may not touch XLM or a classic asset", () => {
+  const SHARE = "CAN7DMIQH7FGKNYCUQMWECJJ74EKN5JATVVUOVTXOWLQGZCWAFWANG5P";
+  const unregistered = expectation({
+    heldTokenContracts: [XLM_SAC],
+    positionTokenContracts: [SHARE],
+    protectedTokenContracts: [XLM_SAC],
+    registryContracts: [],
+  });
+  for (const sub of [
+    { contract: XLM_SAC, function: "transfer", args: [SRC, POOL, "100"] },
+    { contract: XLM_SAC, function: "approve", args: [SRC, POOL, "100", "1000"] },
+    { contract: XLM_SAC, function: "burn", args: [SRC, "100"] },
+  ]) {
+    const op = exit({ contractsReferenced: [POOL, XLM_SAC], subInvocations: [sub] });
+    expect(() => assertCloseIntent(exitOnly(op), unregistered)).toThrow(/has not verified/);
+    expect(() =>
+      assertCloseIntent(exitOnly(op), { ...unregistered, registryContracts: [POOL] })
+    ).not.toThrow();
+  }
+  const shareBack = exit({
+    contractsReferenced: [POOL, SHARE],
+    subInvocations: [{ contract: SHARE, function: "transfer", args: [SRC, POOL, "100"] }],
+  });
+  expect(() =>
+    assertCloseIntent(exitOnly(shareBack), {
+      ...unregistered,
+      ownTokensByContract: { [POOL]: [SHARE] },
+    })
+  ).not.toThrow();
+  // Another position's token, or a token the account merely holds, stays out of its reach.
+  expect(() => assertCloseIntent(exitOnly(shareBack), unregistered)).toThrow(/has not verified/);
+  expect(() =>
+    assertCloseIntent(exitOnly(shareBack), {
+      ...unregistered,
+      positionTokenContracts: [],
+      heldTokenContracts: [XLM_SAC, SHARE],
+      ownTokensByContract: { [POOL]: [] },
+    })
+  ).toThrow(/has not verified/);
+});
+
+test("a swap may authorize only paying in the token it sells, from this account, up to the amount it sells", () => {
+  const withSubs = (subInvocations: { contract: string; function: string; args: string[] }[]) =>
+    exitOnly(routerSwap({ subInvocations }));
+  const PAIR = "CB46LMGJFTHSOVT7B2HV7JLQ5Y3UT4R4UVQIIQ3RDYALS4Y47YC5UPQI";
+  expect(() =>
+    assertCloseIntent(
+      withSubs([{ contract: CONVERT_TOKEN, function: "transfer", args: [SRC, PAIR, "100000000"] }]),
+      chosenConversion()
+    )
+  ).not.toThrow();
+  for (const sub of [
+    { contract: XLM_CONTRACT, function: "transfer", args: [SRC, PAIR, "1"] },
+    { contract: CONVERT_TOKEN, function: "approve", args: [SRC, PAIR, "1", "1"] },
+    { contract: CONVERT_TOKEN, function: "transfer", args: [SRC, DEST, "1"] },
+    { contract: CONVERT_TOKEN, function: "transfer", args: [ATTACKER, PAIR, "1"] },
+    { contract: PAIR, function: "withdraw", args: [] },
+  ]) {
+    expect(() => assertCloseIntent(withSubs([sub]), chosenConversion())).toThrow(
+      /other than paying in the token/
+    );
+  }
+  expect(() =>
+    assertCloseIntent(
+      withSubs([{ contract: CONVERT_TOKEN, function: "transfer", args: [SRC, PAIR, "100000001"] }]),
+      chosenConversion()
+    )
+  ).toThrow(/more than the balance it sells/);
+  expect(() =>
+    assertCloseIntent(
+      withSubs([
+        { contract: PAIR, function: "swap", args: [] },
+        { contract: CONVERT_TOKEN, function: "transfer", args: [SRC, PAIR, "100000000"] },
+      ]),
+      chosenConversion()
+    )
+  ).not.toThrow();
+  expect(() =>
+    assertCloseIntent(
+      withSubs([{ contract: XLM_CONTRACT, function: "swap", args: [] }]),
+      chosenConversion()
+    )
+  ).toThrow(/other than paying in the token/);
 });

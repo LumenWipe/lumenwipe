@@ -23,6 +23,8 @@ import type { IntentOperation, TxIntent } from "@/types/close-api";
 import { assertCloseIntent, type CloseExpectation } from "@/lib/stellar/verify";
 import { exitExpectations } from "@/lib/stellar/exit-expectations";
 import { isContractRegistryUsable } from "@/lib/contract-registry";
+import { intentFromXdr } from "@/lib/stellar/intent/serialize";
+import realAggregatorSwap from "../../../api/tests/unit/fixtures/soroswap-aggregator-v2-swap.json";
 
 const SRC = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -327,7 +329,8 @@ describe("xBull's router, derived from the real registry (mainnet, the only netw
       type: "invoke_host_function",
       contract: XBULL_ROUTER,
       function: "strict_send",
-      args: [SRC, SRC, "100000000", "1", "[[0,1,0,0]]", "[]"],
+      // USDC is index 25 and XLM index 0 in the bundled table read from the live router.
+      args: [SRC, SRC, "100000000", "1", "[[4,25,1112,0]]", "[]"],
       accountsReferenced: [SRC],
       contractsReferenced: [XBULL_ROUTER],
       unsupportedAddressCount: 0,
@@ -336,5 +339,36 @@ describe("xBull's router, derived from the real registry (mainnet, the only netw
       subInvocations: [],
     } as unknown as IntentOperation;
     expect(() => assertCloseIntent(exitOnly(swap), xbullExpectation())).not.toThrow();
+    const toUsdcAgain = { ...swap, args: [SRC, SRC, "100000000", "1", "[[4,25,1112,25]]", "[]"] };
+    expect(() =>
+      assertCloseIntent(exitOnly(toUsdcAgain as IntentOperation), xbullExpectation())
+    ).toThrow(/something other than XLM/);
   });
+});
+
+test("a swap the Soroswap aggregator really built passes the anchor, and only for the token and floor chosen", () => {
+  const capturedAt = Math.floor(Date.parse(realAggregatorSwap.capturedAt) / 1000);
+  const intent: TxIntent = {
+    ...intentFromXdr(realAggregatorSwap.xdr, Networks.PUBLIC),
+    maxTime: String(capturedAt + 300),
+  };
+  const account = { ...accountWith([]), address: realAggregatorSwap.account } as AccountState;
+  const expected = (minAmountOut: string): CloseExpectation =>
+    ({
+      ...expectationFor(account),
+      ...exitExpectations(account, "mainnet"),
+      source: realAggregatorSwap.account,
+      nowSeconds: capturedAt,
+      tokenConversions: {
+        [realAggregatorSwap.token]: {
+          minAmountOut,
+          amountOut: minAmountOut,
+          amountIn: realAggregatorSwap.amountIn,
+        },
+      },
+    }) as CloseExpectation;
+  expect(() => assertCloseIntent(intent, expected(realAggregatorSwap.minAmountOut))).not.toThrow();
+  expect(() =>
+    assertCloseIntent(intent, expected(String(BigInt(realAggregatorSwap.minAmountOut) + BigInt(1))))
+  ).toThrow(/less XLM than the minimum/);
 });

@@ -2,7 +2,11 @@ import { expect, test } from "bun:test";
 import { Asset, Networks } from "@stellar/stellar-sdk";
 import type { AccountState } from "@/types/account";
 import { exitExpectations } from "@/lib/stellar/exit-expectations";
-import { exitContractsFor, isContractRegistryUsable } from "@/lib/contract-registry";
+import {
+  exitContractsFor,
+  isContractRegistryUsable,
+  registryContractsFor,
+} from "@/lib/contract-registry";
 import { authorizationOf } from "./fixtures/trustline";
 
 const ACCOUNT = "GBUYBKHUCCAKG4LM76DONHABFRZSZEHK7ARNEEXBZ3CMVIYKZXPLPVRG";
@@ -40,7 +44,25 @@ test("no account read vouches for nothing", () => {
     positionTokenContracts: [],
     exitFunctions: {},
     xlmContract: Asset.native().contractId(Networks.TESTNET),
+    registryContracts: registryContractsFor("testnet"),
+    protectedTokenContracts: [Asset.native().contractId(Networks.TESTNET)],
+    xbullAssets: {},
+    ownTokensByContract: {},
   });
+});
+
+test("XLM and every trustline are protected tokens; the xBull table is bundled for mainnet only", () => {
+  const e = exitExpectations(state([]), "testnet");
+  expect(e.protectedTokenContracts).toEqual([
+    Asset.native().contractId(Networks.TESTNET),
+    new Asset("USDC", ISSUER).contractId(Networks.TESTNET),
+  ]);
+  expect(e.xbullAssets).toEqual({});
+  const mainnet = exitExpectations(state([]), "mainnet");
+  expect(mainnet.xbullAssets["0"]).toBe(Asset.native().contractId(Networks.PUBLIC));
+  expect(mainnet.registryContracts).toContain(
+    "CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT"
+  );
 });
 
 test("a Blend position pins its pool and the bundled backstop, each to its own calls; XLM and every trustline are held tokens", () => {

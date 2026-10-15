@@ -38,6 +38,10 @@ function baseExpected(): CloseExpectation {
     accountSigners: [],
     accountThresholds: { low: 0, med: 1, high: 1 },
     nowSeconds: Math.floor(Date.now() / 1000),
+    registryContracts: [],
+    protectedTokenContracts: [],
+    xbullAssets: {},
+    ownTokensByContract: {},
   };
 }
 
