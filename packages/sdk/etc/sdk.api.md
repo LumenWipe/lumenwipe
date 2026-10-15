@@ -1002,6 +1002,10 @@ export interface TransactionsResponse {
         steps: number;
         requiresAnotherCall: boolean;
     };
+    sourceAccount?: {
+        signers: AccountSigner[];
+        thresholds: AccountThresholds;
+    };
     // (undocumented)
     status: CloseApiStatus;
     // (undocumented)

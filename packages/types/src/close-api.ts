@@ -1,5 +1,5 @@
 import type { StepType } from "./plan";
-import type { AccountSigner } from "./account";
+import type { AccountSigner, AccountThresholds } from "./account";
 
 export type CloseApiStatus = "ready" | "needs_decisions" | "blocked" | "complete";
 
@@ -263,4 +263,12 @@ export interface TransactionsResponse {
    * approximate number of build rounds still remaining.
    */
   remaining: { steps: number; requiresAnotherCall: boolean };
+  /**
+   * The closing account's signers and thresholds as read at the start of this round, the read
+   * the transactions were built from. A transaction can change them (signer normalization), so a
+   * client judges signing weight against this, with each confirmed `SetOptions` of the round
+   * applied on top, rather than against an earlier read. Absent from responses produced before
+   * this field existed.
+   */
+  sourceAccount?: { signers: AccountSigner[]; thresholds: AccountThresholds };
 }

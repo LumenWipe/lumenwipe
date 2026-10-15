@@ -7971,6 +7971,43 @@
           "requiresAnotherCall"
         ]
       },
+      "AccountThresholdsDto": {
+        "type": "object",
+        "properties": {
+          "low": {
+            "type": "number"
+          },
+          "med": {
+            "type": "number"
+          },
+          "high": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "low",
+          "med",
+          "high"
+        ]
+      },
+      "RoundSourceAccountDto": {
+        "type": "object",
+        "properties": {
+          "signers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountSignerDto"
+            }
+          },
+          "thresholds": {
+            "$ref": "#/components/schemas/AccountThresholdsDto"
+          }
+        },
+        "required": [
+          "signers",
+          "thresholds"
+        ]
+      },
       "TransactionsResponseDto": {
         "type": "object",
         "properties": {
@@ -7995,6 +8032,14 @@
           },
           "remaining": {
             "$ref": "#/components/schemas/RemainingDto"
+          },
+          "sourceAccount": {
+            "description": "The closing account's signers and thresholds as read at the start of this round, the read these transactions were built from. Judge signing weight against these, with each confirmed SetOptions of the round applied on top.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RoundSourceAccountDto"
+              }
+            ]
           }
         },
         "required": [
@@ -8366,25 +8411,6 @@
         "required": [
           "key",
           "value"
-        ]
-      },
-      "AccountThresholdsDto": {
-        "type": "object",
-        "properties": {
-          "low": {
-            "type": "number"
-          },
-          "med": {
-            "type": "number"
-          },
-          "high": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "low",
-          "med",
-          "high"
         ]
       },
       "TrustlineDto": {

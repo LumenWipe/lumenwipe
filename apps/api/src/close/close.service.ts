@@ -329,6 +329,7 @@ export class CloseService {
           steps: result.remainingSteps,
           requiresAnotherCall: result.requiresAnotherCall,
         },
+        sourceAccount: { signers: accountState.signers, thresholds: accountState.thresholds },
       };
       await this.rememberBuiltCloses(network, result.transactions);
       return response;

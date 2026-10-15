@@ -7,6 +7,15 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-15
+
+### Added
+
+- `TransactionsResponse.sourceAccount`: the closing account's signers and thresholds as read at
+  the start of that round, the read its transactions were built from. A transaction can remove
+  signers and lower thresholds, so judge signing weight against it, with each confirmed
+  `SetOptions` of the round applied on top, rather than against an earlier read.
+
 ## [0.11.0] - 2026-10-15
 
 ### Added

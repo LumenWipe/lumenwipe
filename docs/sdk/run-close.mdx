@@ -35,6 +35,8 @@ await runClose({
 
 ## Multisig and partial signing
 
+A round can change the account's signers and thresholds: signer normalization removes extra signers and lowers the thresholds. Judge `requiredWeight` and `sign` against the response's `sourceAccount`, the read the round was built from, with each confirmed `SetOptions` applied on top as its transaction lands. Against an earlier read, a later transaction asks for weight the account no longer needs, or for a signature from a key it no longer has, which the network refuses.
+
 If `sign` returns a weight below `requiredWeight`, `runClose` throws `InsufficientSignatureWeightError`. Its `pending` property holds everything needed to continue with a different signer on the same envelope. Pass it back as the second argument to resume without re-fetching, which would discard collected signatures:
 
 ```ts

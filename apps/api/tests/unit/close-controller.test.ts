@@ -790,6 +790,10 @@ describe("transactions", () => {
       status: "ready",
       transactions: TX,
       remaining: { steps: 2, requiresAnotherCall: true },
+      sourceAccount: {
+        signers: [{ key: SOURCE, weight: 1, type: "ed25519_public_key" }],
+        thresholds: { low: 0, med: 1, high: 1 },
+      },
     });
     expect(calls).toHaveLength(1);
     expect(calls[0]!.slice(1, 5)).toEqual([DEST, {}, "testnet", "note"]);

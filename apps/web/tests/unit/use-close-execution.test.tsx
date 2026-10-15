@@ -858,3 +858,299 @@ test("useCloseExecution › an API failure keeps its request id beside the uncha
   expect(state.lastError).toBe(toUserMessage(new ApiRequestError(503, ""), "execute"));
   expect(state.lastErrorReference).toBe(id);
 });
+
+function unsignedNormalizeXdr(sourceKeypair: Keypair, removed: string[], sequence: string): string {
+  const builder = new TransactionBuilder(new Account(sourceKeypair.publicKey(), sequence), {
+    fee: "100",
+    networkPassphrase: Networks.TESTNET,
+  }).setTimeout(300);
+  for (const key of removed) {
+    builder.addOperation(Operation.setOptions({ signer: { ed25519PublicKey: key, weight: 0 } }));
+  }
+  builder.addOperation(
+    Operation.setOptions({ lowThreshold: 0, medThreshold: 1, highThreshold: 1 })
+  );
+  return builder.build().toXdr();
+}
+
+function signatureCount(xdr: string): number {
+  return TransactionBuilder.fromXdr(xdr, Networks.TESTNET).signatures.length;
+}
+
+test("useCloseExecution › a round is judged against the signers and thresholds read for that round", async () => {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const cosigners = [Keypair.random().publicKey(), Keypair.random().publicKey()];
+  const destination = Keypair.random().publicKey();
+  const mergeXdr = unsignedMergeXdr(sourceKeypair, destination);
+
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    accountState: {
+      signers: [
+        { key: source, weight: 1, type: "ed25519_public_key" },
+        ...cosigners.map((key) => ({ key, weight: 1, type: "ed25519_public_key" })),
+      ],
+      thresholds: { low: 0, med: 3, high: 3 },
+    } as never,
+  } as never);
+
+  stubFetchCloseTransactions(async () => ({
+    planHash: "h",
+    status: "ready",
+    transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+    remaining: { steps: 0, requiresAnotherCall: false },
+    sourceAccount: {
+      signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 0, med: 1, high: 1 },
+    },
+  }));
+  const submitted: string[] = [];
+  stubSubmitViaApi(async (xdr) => {
+    submitted.push(xdr as string);
+    return { txHash: "merge-hash" };
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+
+  expect(result.current.signatureStatus).toBeNull();
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+  expect(submitted).toHaveLength(1);
+  expect(signatureCount(submitted[0]!)).toBe(1);
+});
+
+test("useCloseExecution › a later transaction in the round is signed against the signers an earlier one left", async () => {
+  const sourceKeypair = Keypair.random();
+  const cosignerKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const cosigner = cosignerKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  const normalizeXdr = unsignedNormalizeXdr(sourceKeypair, [cosigner], "100");
+  const mergeXdr = (() => {
+    const builder = new TransactionBuilder(new Account(source, "101"), {
+      fee: "100",
+      networkPassphrase: Networks.TESTNET,
+    }).setTimeout(300);
+    builder.addOperation(Operation.accountMerge({ destination }));
+    return builder.build().toXdr();
+  })();
+  const roundSigners = {
+    signers: [
+      { key: source, weight: 1, type: "ed25519_public_key" },
+      { key: cosigner, weight: 1, type: "ed25519_public_key" },
+    ],
+    thresholds: { low: 0, med: 2, high: 2 },
+  };
+
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    accountState: roundSigners as never,
+  } as never);
+
+  let fetches = 0;
+  stubFetchCloseTransactions(async () => {
+    fetches++;
+    return {
+      planHash: "h",
+      status: "ready",
+      transactions: [
+        { id: "t0", order: 0, xdr: normalizeXdr, covers: ["NORMALIZE_SIGNERS"] },
+        { id: "t1", order: 1, xdr: mergeXdr, covers: ["MERGE"] },
+      ],
+      remaining: { steps: 0, requiresAnotherCall: false },
+      sourceAccount: roundSigners,
+    };
+  });
+  const submitted: string[] = [];
+  stubSubmitViaApi(async (xdr) => {
+    submitted.push(xdr as string);
+    return { txHash: `hash-${submitted.length}` };
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(result.current.signatureStatus?.requiredWeight).toBe(2);
+
+  await act(async () => {
+    await result.current.run(realSigner(cosignerKeypair));
+  });
+  expect(submitted).toHaveLength(1);
+  expect(result.current.signatureStatus).toEqual({
+    requiredWeight: 1,
+    accumulatedWeight: 0,
+    remainingSigners: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+  });
+
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(fetches).toBe(1);
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+  expect(submitted).toHaveLength(2);
+  expect(signatureCount(submitted[1]!)).toBe(1);
+});
+
+async function twoRoundClose(roundTwoReportsSigners: boolean): Promise<void> {
+  const sourceKeypair = Keypair.random();
+  const cosignerKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const cosigner = cosignerKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  const multisig = {
+    signers: [
+      { key: source, weight: 1, type: "ed25519_public_key" },
+      { key: cosigner, weight: 1, type: "ed25519_public_key" },
+    ],
+    thresholds: { low: 0, med: 2, high: 2 },
+  };
+  const masterOnly = {
+    signers: [{ key: source, weight: 1, type: "ed25519_public_key" as const }],
+    thresholds: { low: 0, med: 1, high: 1 },
+  };
+
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    accountState: multisig as never,
+  } as never);
+
+  let fetches = 0;
+  stubFetchCloseTransactions(async () => {
+    fetches++;
+    return fetches === 1
+      ? {
+          planHash: "h",
+          status: "ready",
+          transactions: [
+            {
+              id: "t0",
+              order: 0,
+              xdr: unsignedNormalizeXdr(sourceKeypair, [cosigner], "100"),
+              covers: ["NORMALIZE_SIGNERS"],
+            },
+          ],
+          remaining: { steps: 1, requiresAnotherCall: true },
+          sourceAccount: multisig,
+        }
+      : {
+          planHash: "h",
+          status: "ready",
+          transactions: [
+            {
+              id: "t1",
+              order: 0,
+              xdr: unsignedMergeXdr(sourceKeypair, destination),
+              covers: ["MERGE"],
+            },
+          ],
+          remaining: { steps: 0, requiresAnotherCall: false },
+          ...(roundTwoReportsSigners ? { sourceAccount: masterOnly } : {}),
+        };
+  });
+  const submitted: string[] = [];
+  stubSubmitViaApi(async (xdr) => {
+    submitted.push(xdr as string);
+    return { txHash: `hash-${submitted.length}` };
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(result.current.signatureStatus?.requiredWeight).toBe(2);
+
+  await act(async () => {
+    await result.current.run(realSigner(cosignerKeypair));
+  });
+  expect(fetches).toBe(2);
+  expect(submitted).toHaveLength(1);
+  expect(result.current.signatureStatus).toEqual({
+    requiredWeight: 1,
+    accumulatedWeight: 0,
+    remainingSigners: masterOnly.signers,
+  });
+
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+  expect(submitted).toHaveLength(2);
+  expect(signatureCount(submitted[1]!)).toBe(1);
+}
+
+test("useCloseExecution › after a round normalizes the signers, the next round is signed by the master key alone", async () => {
+  await twoRoundClose(true);
+});
+
+test("useCloseExecution › without a reported signer set, the next round follows what the confirmed round changed", async () => {
+  await twoRoundClose(false);
+});
+
+test("useCloseExecution › a key the round no longer lists pauses for a current signer even where the threshold is 0", async () => {
+  const sourceKeypair = Keypair.random();
+  const cosignerKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  const masterOnly = [{ key: source, weight: 1, type: "ed25519_public_key" as const }];
+
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    accountState: {
+      signers: [
+        ...masterOnly,
+        { key: cosignerKeypair.publicKey(), weight: 1, type: "ed25519_public_key" },
+      ],
+      thresholds: { low: 0, med: 0, high: 0 },
+    } as never,
+  } as never);
+  stubFetchCloseTransactions(async () => ({
+    planHash: "h",
+    status: "ready",
+    transactions: [
+      { id: "t0", order: 0, xdr: unsignedMergeXdr(sourceKeypair, destination), covers: ["MERGE"] },
+    ],
+    remaining: { steps: 0, requiresAnotherCall: false },
+    sourceAccount: { signers: masterOnly, thresholds: { low: 0, med: 0, high: 0 } },
+  }));
+  let submits = 0;
+  stubSubmitViaApi(async () => {
+    submits++;
+    return { txHash: "h" };
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(cosignerKeypair));
+  });
+
+  expect(submits).toBe(0);
+  expect(result.current.signatureStatus).toEqual({
+    requiredWeight: 1,
+    accumulatedWeight: 0,
+    remainingSigners: masterOnly,
+  });
+});

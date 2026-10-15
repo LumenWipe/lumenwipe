@@ -7,6 +7,7 @@ import type {
   TxIntent,
 } from "@lumenwipe/types";
 import type { StepType } from "@lumenwipe/types";
+import { AccountSignerDto, AccountThresholdsDto } from "@/account/dto/account-state-response.dto";
 import {
   INTENT_OPERATION_EXTRA_MODELS,
   intentOperationSchema,
@@ -142,6 +143,14 @@ class RemainingDto {
   requiresAnotherCall!: boolean;
 }
 
+class RoundSourceAccountDto {
+  @ApiProperty({ type: [AccountSignerDto] })
+  signers!: AccountSignerDto[];
+
+  @ApiProperty({ type: AccountThresholdsDto })
+  thresholds!: AccountThresholdsDto;
+}
+
 export class TransactionsResponseDto implements TransactionsResponse {
   @ApiProperty({
     description:
@@ -157,4 +166,13 @@ export class TransactionsResponseDto implements TransactionsResponse {
 
   @ApiProperty({ type: RemainingDto })
   remaining!: { steps: number; requiresAnotherCall: boolean };
+
+  @ApiPropertyOptional({
+    type: RoundSourceAccountDto,
+    description:
+      "The closing account's signers and thresholds as read at the start of this round, the read " +
+      "these transactions were built from. Judge signing weight against these, with each " +
+      "confirmed SetOptions of the round applied on top.",
+  })
+  sourceAccount?: RoundSourceAccountDto;
 }

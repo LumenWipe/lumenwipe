@@ -22,8 +22,14 @@ import {
 import { verifyCloseTransaction } from "@/lib/stellar/verify";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { requiredSignatureWeight } from "@/lib/stellar/thresholds";
-import { evaluateSignatureContributions, accumulatedWeight } from "@/lib/stellar/signature-weight";
 import { verifyPreAuthTxHash } from "@/lib/stellar/pre-auth-tx";
+import {
+  accumulatedWeight,
+  applyConfirmedTransaction,
+  evaluateSignatureContributions,
+  parseRoundSignerState,
+  type SignerState,
+} from "@/lib/stellar/signature-weight";
 import { submitViaApi } from "@/lib/stellar/submit-via-api";
 import { requestMediatorCosignature } from "@/lib/stellar/mediator";
 import { requestFeeBumpSponsorship } from "@/lib/stellar/fee-bump-sponsor";
@@ -68,6 +74,11 @@ export function useCloseExecution() {
   // partially-signed envelope the first signer left behind, instead of re-fetching and
   // discarding that signature.
   const pendingRoundRef = useRef<PendingRound | null>(null);
+  // The signers and thresholds the current round is signed against. A round can remove signers
+  // and lower thresholds, so it follows each round's own read and each confirmed transaction,
+  // and survives a pause so a resumed round is judged against the same state.
+  const signerStateRef = useRef<SignerState | null>(null);
+  const signerStateForRef = useRef<string | null>(null);
 
   const run = useCallback(
     async (signer: TransactionSigner): Promise<void> => {
@@ -87,18 +98,35 @@ export function useCloseExecution() {
       // A valid signer is any key the account actually recognizes - for a single-sig account
       // that's just the master key (itself listed in accountState.signers, per
       // apps/api/src/lib/stellar/account.ts), for a multisig account it's any co-signer.
-      const knownSigners = useDemolishStore.getState().accountState?.signers ?? [];
+      const snapshot = useDemolishStore.getState().accountState;
+      const snapshotState: SignerState = {
+        signers: snapshot?.signers ?? [],
+        thresholds: snapshot?.thresholds ?? { low: 0, med: 1, high: 1 },
+      };
+      const stateFor = `${network}:${sourceAddress}`;
+      if (signerStateForRef.current !== stateFor) {
+        pendingRoundRef.current = null;
+        signerStateRef.current = null;
+        signerStateForRef.current = stateFor;
+      }
+      if (!signerStateRef.current) signerStateRef.current = snapshotState;
+      const resuming = pendingRoundRef.current !== null;
+      const knownSigners = (resuming ? signerStateRef.current : snapshotState).signers;
       if (!knownSigners.some((s) => s.key === signer.publicKey)) {
         pendingRoundRef.current = null;
         setSignatureStatus(null);
         setLastError(
-          "The signer you're using isn't one of this account's known signers. Reconnect the correct wallet or secret key and try again."
+          resuming && snapshotState.signers.some((s) => s.key === signer.publicKey)
+            ? "An earlier step of this close removed this key from the account's signers. Connect one of the signers it still has and try again."
+            : "The signer you're using isn't one of this account's known signers. Reconnect the correct wallet or secret key and try again."
         );
         setPhase("STEP_FAILED");
         return;
       }
 
       const passphrase = NETWORK_PASSPHRASES[network];
+      const initialSignerState = signerStateRef.current;
+      const roundSignerState = (): SignerState => signerStateRef.current ?? initialSignerState;
       // Read dispositions/selections live so a mid-flow re-decision is honored.
       const claimableBalanceSelections = useDemolishStore.getState().claimableBalanceSelections;
       const accountState = useDemolishStore.getState().accountState;
@@ -134,8 +162,8 @@ export function useCloseExecution() {
       try {
         await runClose(
           {
-            getTransactions: () =>
-              fetchCloseTransactions(
+            getTransactions: async () => {
+              const batch = await fetchCloseTransactions(
                 {
                   source: sourceAddress,
                   destination: destinationAddress,
@@ -143,7 +171,11 @@ export function useCloseExecution() {
                   memo: memo ?? undefined,
                 },
                 network
-              ),
+              );
+              signerStateRef.current =
+                parseRoundSignerState(batch.sourceAccount) ?? signerStateRef.current;
+              return batch;
+            },
             verify: (tx: CloseTransaction) =>
               verifyCloseTransaction({
                 unsignedXdr: tx.xdr,
@@ -181,10 +213,14 @@ export function useCloseExecution() {
                   ...exitExpectations(accountState, network),
                 },
               }),
+            // The network needs at least one matching signature even where a threshold is 0.
             requiredWeight: (tx: CloseTransaction) =>
-              requiredSignatureWeight(
-                intentFromXdr(tx.xdr, passphrase).operations,
-                accountState?.thresholds ?? { low: 0, med: 1, high: 1 }
+              Math.max(
+                1,
+                requiredSignatureWeight(
+                  intentFromXdr(tx.xdr, passphrase).operations,
+                  roundSignerState().thresholds
+                )
               ),
             sign: async (tx: CloseTransaction, xdr: string) => {
               setProgressStatus("Signing transaction…");
@@ -203,8 +239,13 @@ export function useCloseExecution() {
               // nothing new - evaluateSignatureContributions dedupes by signer key, so weight
               // only goes up when a signer that hadn't yet contributed actually does.
               const preSignWeight = accumulatedWeight(
-                evaluateSignatureContributions(xdr, passphrase, accountState?.signers ?? [])
+                evaluateSignatureContributions(xdr, passphrase, roundSignerState().signers)
               );
+              // A key the round no longer lists would add a signature the network refuses as
+              // extra, so it is not asked to sign; the round pauses for a current signer.
+              if (!roundSignerState().signers.some((s) => s.key === signer.publicKey)) {
+                return { xdr, weight: preSignWeight };
+              }
               const signedXdr = await signer.sign(xdr, passphrase);
 
               // A connected wallet (WalletKitSigner) is a black box outside this app's trust
@@ -222,7 +263,7 @@ export function useCloseExecution() {
               const contributions = evaluateSignatureContributions(
                 signedXdr,
                 passphrase,
-                accountState?.signers ?? []
+                roundSignerState().signers
               );
               const weight = accumulatedWeight(contributions);
               if (weight <= preSignWeight) {
@@ -303,6 +344,13 @@ export function useCloseExecution() {
             },
             onConfirmed: (tx, hash) => {
               markCoveredConfirmed(tx.covers, hash, tx.needsSponsoredFee, tx.coversTargets);
+              signerStateRef.current = applyConfirmedTransaction(
+                roundSignerState(),
+                tx.xdr,
+                passphrase,
+                intentFromXdr(tx.xdr, passphrase).operations,
+                sourceAddress
+              );
               if (tx.covers.includes("MERGE") || tx.covers.includes("CLOSE_ACCOUNT")) {
                 notifyStatsRefresh();
               }
@@ -312,6 +360,8 @@ export function useCloseExecution() {
           pendingRoundRef.current ?? undefined
         );
         pendingRoundRef.current = null; // full success - nothing left to resume
+        signerStateRef.current = null;
+        signerStateForRef.current = null;
         setPhase("COMPLETE");
       } catch (err) {
         if (err instanceof InsufficientSignatureWeightError) {
@@ -322,7 +372,7 @@ export function useCloseExecution() {
             remainingSigners: evaluateSignatureContributions(
               err.pending.xdr,
               passphrase,
-              accountState?.signers ?? []
+              roundSignerState().signers
             )
               .filter((c) => !c.contributed)
               .map((c) => c.signer),
@@ -430,6 +480,15 @@ export function useCloseExecution() {
       });
 
       await submitViaApi(xdr, network);
+      if (signerStateRef.current && signerStateForRef.current === `${network}:${sourceAddress}`) {
+        signerStateRef.current = applyConfirmedTransaction(
+          signerStateRef.current,
+          xdr,
+          passphrase,
+          intentFromXdr(xdr, passphrase).operations,
+          sourceAddress
+        );
+      }
     },
     [network, sourceAddress, destinationAddress, memo, mediatorRequired]
   );
