@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import {
   chosenClassicConversions,
+  classicFloorFromQuote,
   chosenTokenConversions,
   chosenTokenTransfers,
   chosenTransfers,
@@ -734,4 +735,9 @@ test("dispositionsToDecisions › a classic convert answer carries the floor the
   expect(
     dispositionsToDecisions({ [asset]: "convert" }, {}, {}, { [asset]: { minAmountOut: null } })
   ).toEqual([{ id: "asset:USDC-GISSUER", choice: "convert_to_xlm" }]);
+});
+
+test("classicFloorFromQuote › leaves 1% under the plan's quoted minimum, rounded down", () => {
+  expect(classicFloorFromQuote("49750000")).toBe("49252500");
+  expect(classicFloorFromQuote("99")).toBe("98");
 });

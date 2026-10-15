@@ -2174,3 +2174,28 @@ test("an asset is converted at most once per transaction", () => {
   const i = intent({ operations: [conversion(), conversion(), merge(DEST)] });
   expect(() => assertCloseIntent(i, expectation())).toThrow(/convert USDC more than once/);
 });
+
+test("a classic conversion of XLM itself, or of an asset the user chose to send elsewhere, is refused", () => {
+  const nativeSale: IntentOperation = {
+    source: SRC,
+    type: "path_payment_strict_send",
+    sendAsset: "native",
+    sendAmount: "10",
+    destination: SRC,
+    destAsset: "native",
+    destMin: "9",
+    path: [],
+  };
+  const native = intent({ operations: [nativeSale, merge(DEST)] });
+  expect(() => assertCloseIntent(native, expectation())).toThrow(/did not choose to convert/);
+  const kept = intent({ operations: [conversion(SRC, "native", "9.0000000"), merge(DEST)] });
+  expect(() =>
+    assertCloseIntent(
+      kept,
+      expectation({
+        classicConversions: {},
+        transfers: { [`USDC:${ISSUER}`]: { destination: DEST, amount: "10" } },
+      })
+    )
+  ).toThrow(/did not choose to convert/);
+});

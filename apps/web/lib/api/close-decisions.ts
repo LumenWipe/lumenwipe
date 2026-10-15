@@ -305,6 +305,17 @@ export function chosenTokenTransfers(
   return transfers;
 }
 
+/** Room under the plan's quoted minimum for the market to move between analysis and the build. */
+const CLASSIC_FLOOR_DRIFT_BPS = BigInt(100);
+
+/** The minimum a classic conversion is held to: the plan's quoted minimum, less 1%. */
+export function classicFloorFromQuote(minAmountOut: string): string {
+  return (
+    (BigInt(minAmountOut) * (BigInt(10_000) - CLASSIC_FLOOR_DRIFT_BPS)) /
+    BigInt(10_000)
+  ).toString();
+}
+
 /**
  * The classic conversions the user chose, keyed by `CODE:ISSUER`, each with the least XLM (in
  * stroops) the plan showed it delivering, or null for an asset only an exit pays in. An asset

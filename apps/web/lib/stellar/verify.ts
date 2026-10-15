@@ -584,7 +584,8 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         const chosen = expected.classicConversions[op.sendAsset];
         if (!chosen) {
           throw new VerificationError(
-            "A conversion would sell an asset you did not choose to convert."
+            "A conversion would sell an asset you did not choose to convert. If a balance arrived " +
+              "since the analysis, run it again."
           );
         }
         if (seenConversions.has(op.sendAsset)) {

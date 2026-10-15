@@ -20,6 +20,7 @@ import {
 import { fetchClosePlan } from "@/lib/api/close-client";
 import {
   claimableSelectionsToDecisions,
+  classicFloorFromQuote,
   destinationAcknowledgementToDecisions,
   dispositionsToDecisions,
   discoveredTokensToDecisions,
@@ -142,7 +143,7 @@ export default function PlanView({
     const classic: Record<string, ClassicConversionFloor> = {};
     for (const c of conversions) {
       if (c.token || !c.convertible) continue;
-      if (c.quote) classic[c.asset] = { minAmountOut: c.quote.minAmountOut };
+      if (c.quote) classic[c.asset] = { minAmountOut: classicFloorFromQuote(c.quote.minAmountOut) };
       else if (c.arrivesFromExit) classic[c.asset] = { minAmountOut: null };
     }
     useDemolishStore.getState().setClassicConversionFloors(classic);
