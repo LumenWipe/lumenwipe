@@ -113,10 +113,13 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   soroswap_trustline_missing: "A Soroswap exit needs a trustline the account does not have.",
   source_sequence_too_far:
     "The account's sequence number is beyond what the network accepts for a merge; it cannot be closed until the ledger catches up.",
+  sponsorship_budget_exhausted: "The fee sponsor's daily budget for this request is used up.",
   stats_unavailable: "The stats store is unreachable. Retry.",
   submit_failed: "The transaction could not be submitted. Retry.",
   submit_rejected: "The network rejected the transaction.",
+  time_bounds_required: "The transaction must expire within a short window to be signed.",
   too_many_addresses: "More addresses than a batch accepts.",
+  transaction_expired: "The transaction has already expired.",
   transaction_structure_not_allowed: "The transaction is not a shape this endpoint may sign.",
   transactions_failed: "The transactions could not be built. Retry.",
   transfer_destination_missing: "A transfer carries no destination.",

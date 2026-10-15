@@ -160,10 +160,13 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `soroban_token_unreadable`                    | 422    | A Soroban token balance could not be read.                                                                                     |
 | `soroswap_trustline_missing`                  | 422    | A Soroswap exit needs a trustline the account does not have.                                                                   |
 | `source_sequence_too_far`                     | 422    | The account's sequence number is beyond what the network accepts for a merge; it cannot be closed until the ledger catches up. |
+| `sponsorship_budget_exhausted`                | 429    | The fee sponsor's daily budget for this request is used up.                                                                    |
 | `stats_unavailable`                           | 503    | The stats store is unreachable. Retry.                                                                                         |
 | `submit_failed`                               | 502    | The transaction could not be submitted. Retry.                                                                                 |
 | `submit_rejected`                             | 502    | The network rejected the transaction.                                                                                          |
+| `time_bounds_required`                        | 400    | The transaction must expire within a short window to be signed.                                                                |
 | `too_many_addresses`                          | 400    | More addresses than a batch accepts.                                                                                           |
+| `transaction_expired`                         | 400    | The transaction has already expired.                                                                                           |
 | `transaction_structure_not_allowed`           | 400    | The transaction is not a shape this endpoint may sign.                                                                         |
 | `transactions_failed`                         | 500    | The transactions could not be built. Retry.                                                                                    |
 | `transfer_destination_missing`                | 422    | A transfer carries no destination.                                                                                             |

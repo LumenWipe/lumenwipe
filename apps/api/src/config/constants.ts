@@ -61,9 +61,16 @@ export const MAX_SOROBAN_EXIT_FEE_STROOPS = 10_000_000; // 1 XLM
  *  ledger time do slightly more work at execution than at simulation (an Aquarius withdraw ran
  *  21 instructions over its 15.1M budget), and the network rejects the whole transaction. */
 export const EXIT_SIMULATION_CPU_LEEWAY = 1_000_000;
-/** Ceiling on the outer fee of one fee-bump transaction (architecture.md §8.1, threat-model.md
- *  §6's "outer fee is capped per transaction"). Well above what even a fully batched, heavily
- *  surge-priced classic wind-down step needs (100 operations at the 100-stroop base fee floor
- *  is 10,000 stroops), but far below anything that could meaningfully drain the fee account's
- *  small operational float in one request. */
-export const MAX_FEE_BUMP_STROOPS = 1_000_000; // 0.1 XLM
+/** Ceiling on the outer fee of one fee-bump transaction: the sponsor pays the base fee for at
+ *  most a full 100-operation inner transaction plus the fee-bump itself, never more. */
+export const MAX_FEE_BUMP_STROOPS = (OP_BATCH_LIMIT + 1) * BASE_FEE_STROOPS;
+/** What the fee sponsor will pay per UTC day, per inner transaction source, per API key, and in
+ *  total. A reserve-locked account needs a handful of sponsored rounds to close; the totals keep
+ *  the fee account's float from being spent faster than an operator can notice and top it up. */
+export const FEE_BUMP_DAILY_BUDGET_PER_SOURCE_STROOPS = 25 * MAX_FEE_BUMP_STROOPS;
+export const FEE_BUMP_DAILY_BUDGET_PER_KEY_STROOPS = 50_000_000; // 5 XLM
+export const FEE_BUMP_DAILY_BUDGET_TOTAL_STROOPS = 200_000_000; // 20 XLM
+/** Longest validity a co-signed or sponsored envelope may have left: the window every envelope
+ *  is built with, plus slack for clock drift between the builder and the signer. */
+export const MAX_SIGNED_VALIDITY_SECONDS = TX_TIMEOUT_SECONDS + 30;
+export const MIN_MEDIATOR_FORWARD_STROOPS = 10_000_000n; // 1 XLM

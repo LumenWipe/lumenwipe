@@ -11,7 +11,9 @@ import {
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 import { FeeBumpController } from "@/fee-bump/fee-bump.controller";
-import { MAX_FEE_BUMP_STROOPS } from "@/config/constants";
+import { SponsorshipBudget } from "@/fee-bump/sponsorship-budget";
+import { MAX_FEE_BUMP_STROOPS, MAX_SIGNED_VALIDITY_SECONDS } from "@/config/constants";
+import type { Network } from "@/config/networks";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -51,8 +53,27 @@ async function expectFail(promise: Promise<unknown>, status: number, code: strin
   }
 }
 
+function sponsorWith(
+  budget = new SponsorshipBudget(),
+  clock: () => Date = () => new Date(),
+  apiKeyLabel = "test-key"
+) {
+  const inner = new FeeBumpController(budget, clock);
+  const headers = new Map<string, string>();
+  return {
+    headers,
+    sponsor: (network: Network, body: { transaction?: string }) =>
+      inner.sponsor(
+        network,
+        body,
+        { apiKeyLabel },
+        { setHeader: (k, v) => headers.set(k, String(v)) }
+      ),
+  };
+}
+
 describe("FeeBumpController.sponsor", () => {
-  const controller = new FeeBumpController();
+  const controller = sponsorWith();
 
   test("wraps a wind-down transaction in a fee-bump envelope, signed by the fee account, unsigned by anything else", async () => {
     const xdr = windDownTx(Operation.accountMerge({ destination: DEST }));
@@ -201,5 +222,97 @@ describe("FeeBumpController.sponsor", () => {
       503,
       "fee_bump_not_configured"
     );
+  });
+});
+
+describe("FeeBumpController.sponsor time bounds", () => {
+  const NOW = new Date("2026-10-15T12:00:00Z");
+  const nowSeconds = Math.floor(NOW.getTime() / 1000);
+  const controller = sponsorWith(new SponsorshipBudget(), () => NOW);
+
+  function boundedTx(minTime: number, maxTime: number): string {
+    return new TransactionBuilder(new Account(SOURCE, "1"), {
+      fee: "0",
+      networkPassphrase: Networks.TESTNET,
+      timebounds: { minTime, maxTime },
+    })
+      .addOperation(Operation.accountMerge({ destination: DEST }))
+      .build()
+      .toXDR();
+  }
+
+  test("refuses an inner transaction that never expires", async () => {
+    await expectFail(
+      controller.sponsor("testnet", { transaction: boundedTx(0, 0) }),
+      400,
+      "time_bounds_required"
+    );
+  });
+
+  test("refuses an inner transaction valid for longer than an envelope built now", async () => {
+    const tooLong = nowSeconds + MAX_SIGNED_VALIDITY_SECONDS + 1;
+    await expectFail(
+      controller.sponsor("testnet", { transaction: boundedTx(0, tooLong) }),
+      400,
+      "time_bounds_required"
+    );
+  });
+
+  test("refuses an inner transaction that has already expired", async () => {
+    await expectFail(
+      controller.sponsor("testnet", { transaction: boundedTx(0, nowSeconds) }),
+      400,
+      "transaction_expired"
+    );
+  });
+
+  test("sponsors an inner transaction at the longest allowed validity", async () => {
+    const atLimit = nowSeconds + MAX_SIGNED_VALIDITY_SECONDS;
+    const { transaction } = await controller.sponsor("testnet", {
+      transaction: boundedTx(0, atLimit),
+    });
+    expect(TransactionBuilder.fromXDR(transaction, Networks.TESTNET)).toBeInstanceOf(
+      FeeBumpTransaction
+    );
+  });
+});
+
+describe("FeeBumpController.sponsor budget", () => {
+  const merge = () => windDownTx(Operation.accountMerge({ destination: DEST }));
+
+  test("refuses with 429 once a scope's daily budget is spent, and signs nothing", async () => {
+    const controller = sponsorWith(
+      new SponsorshipBudget({ perSource: 200n, perKey: 10_000n, total: 10_000n })
+    );
+    await controller.sponsor("testnet", { transaction: merge() });
+    await expectFail(
+      controller.sponsor("testnet", { transaction: merge() }),
+      429,
+      "sponsorship_budget_exhausted"
+    );
+    expect(Number(controller.headers.get("Retry-After"))).toBeGreaterThan(0);
+  });
+
+  test("tells the caller to come back at the start of the next UTC day", async () => {
+    const now = new Date("2026-10-15T23:59:00Z");
+    const controller = sponsorWith(
+      new SponsorshipBudget({ perSource: 0n, perKey: 0n, total: 0n }),
+      () => now
+    );
+    const nowSeconds = Math.floor(now.getTime() / 1000);
+    const transaction = new TransactionBuilder(new Account(SOURCE, "1"), {
+      fee: "0",
+      networkPassphrase: Networks.TESTNET,
+      timebounds: { minTime: 0, maxTime: nowSeconds + 30 },
+    })
+      .addOperation(Operation.accountMerge({ destination: DEST }))
+      .build()
+      .toXDR();
+    await expectFail(
+      controller.sponsor("testnet", { transaction }),
+      429,
+      "sponsorship_budget_exhausted"
+    );
+    expect(controller.headers.get("Retry-After")).toBe("60");
   });
 });

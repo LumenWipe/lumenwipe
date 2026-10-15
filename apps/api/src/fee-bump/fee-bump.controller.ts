@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Param, Post } from "@nestjs/common";
+import { Body, Controller, HttpCode, Inject, Param, Post, Req, Res } from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiBody,
@@ -17,6 +17,10 @@ import { NetworkPipe } from "@/common/pipes/network.pipe";
 import { BASE_FEE_STROOPS, MAX_FEE_BUMP_STROOPS } from "@/config/constants";
 import { getFeeAccountKeypair } from "@/lib/stellar/fee-account";
 import { fail } from "@/common/fail";
+import { CLOCK, type Clock } from "@/common/ports";
+import type { AuthedRequest } from "@/auth/api-key.guard";
+import { validityProblem, VALIDITY_MESSAGES } from "@/lib/stellar/validity-window";
+import { SPONSORSHIP_BUDGET, type SponsorshipBudget } from "./sponsorship-budget";
 
 /**
  * Sponsors the fee of a wind-down transaction for an account that cannot pay its own way
@@ -43,6 +47,11 @@ import { fail } from "@/common/fail";
 @ApiErrorResponse(429, "Rate limit exceeded for this key.", ["rate_limited"])
 @Controller(":network/fee-bump")
 export class FeeBumpController {
+  constructor(
+    @Inject(SPONSORSHIP_BUDGET) private readonly budget: SponsorshipBudget,
+    @Inject(CLOCK) private readonly clock: Clock
+  ) {}
+
   @ApiErrorResponse(400, "Missing/invalid transaction or disallowed structure.", [
     "invalid_network",
     "missing_transaction",
@@ -50,7 +59,12 @@ export class FeeBumpController {
     "inner_fee_not_zero",
     "operation_not_sponsorable",
     "fee_bump_exceeds_cap",
+    "time_bounds_required",
+    "transaction_expired",
     "invalid_body",
+  ])
+  @ApiErrorResponse(429, "The fee sponsor's daily budget for this request is used up.", [
+    "sponsorship_budget_exhausted",
   ])
   @ApiErrorResponse(503, "Sponsored-fee flow not configured on this server.", [
     "fee_bump_not_configured",
@@ -67,7 +81,9 @@ export class FeeBumpController {
   })
   async sponsor(
     @Param("network", new NetworkPipe("Invalid network")) network: Network,
-    @Body() body: { transaction?: string }
+    @Body() body: { transaction?: string },
+    @Req() req: Pick<AuthedRequest, "apiKeyLabel">,
+    @Res({ passthrough: true }) res?: { setHeader(name: string, value: string): unknown }
   ) {
     const feeAccount = getFeeAccountKeypair(network);
     if (!feeAccount) {
@@ -100,6 +116,16 @@ export class FeeBumpController {
       fail(
         "inner_fee_not_zero",
         "The transaction to sponsor must have its own fee set to zero.",
+        400
+      );
+    }
+
+    const now = this.clock();
+    const validity = validityProblem(tx, now);
+    if (validity) {
+      fail(
+        validity === "expired" ? "transaction_expired" : "time_bounds_required",
+        VALIDITY_MESSAGES[validity],
         400
       );
     }
@@ -137,7 +163,28 @@ export class FeeBumpController {
       fail("fee_bump_exceeds_cap", "The sponsored fee exceeds what this endpoint will cover", 400);
     }
 
+    const exhausted = this.budget.reserve(
+      tx.source,
+      req.apiKeyLabel ?? "",
+      BigInt(feeBumpTx.fee),
+      now
+    );
+    if (exhausted) {
+      res?.setHeader("Retry-After", String(secondsUntilNextUtcDay(now)));
+      fail(
+        "sponsorship_budget_exhausted",
+        "Sponsored fees for this request have reached today's limit. Try again tomorrow, or fund the account so it can pay its own fee.",
+        429,
+        { scope: exhausted }
+      );
+    }
+
     feeBumpTx.sign(feeAccount);
     return { transaction: feeBumpTx.toEnvelope().toXDR("base64") };
   }
+}
+
+function secondsUntilNextUtcDay(now: Date): number {
+  const next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+  return Math.max(1, Math.ceil((next - now.getTime()) / 1000));
 }

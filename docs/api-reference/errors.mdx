@@ -182,6 +182,9 @@ A refusal here happens before anything is submitted, so nothing has changed on t
 | `fee_bump_exceeds_cap`              | 400    | After fix   | The sponsored fee would exceed the cap.                                     |
 | `inner_fee_not_zero`                | 400    | After fix   | The inner transaction of a sponsored fee bump must carry no fee of its own. |
 | `operation_not_sponsorable`         | 400    | After fix   | The transaction contains an operation that cannot be sponsored.             |
+| `sponsorship_budget_exhausted`      | 429    | Yes         | The fee sponsor's daily budget for this request is used up.                 |
+| `time_bounds_required`              | 400    | After fix   | The transaction must expire within a short window to be signed.             |
+| `transaction_expired`               | 400    | After fix   | The transaction has already expired.                                        |
 | `registry_expired`                  | 503    | No          | The exchange registry is out of date.                                       |
 
 ## Allowance revocation

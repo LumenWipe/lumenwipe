@@ -4688,6 +4688,8 @@
                                 "inner_fee_not_zero",
                                 "operation_not_sponsorable",
                                 "fee_bump_exceeds_cap",
+                                "time_bounds_required",
+                                "transaction_expired",
                                 "invalid_body"
                               ]
                             }
@@ -4835,7 +4837,7 @@
             }
           },
           "429": {
-            "description": "Rate limit exceeded for this key.",
+            "description": "The fee sponsor's daily budget for this request is used up.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4852,7 +4854,7 @@
                             "code": {
                               "type": "string",
                               "enum": [
-                                "rate_limited"
+                                "sponsorship_budget_exhausted"
                               ]
                             }
                           }
@@ -6797,10 +6799,13 @@
               "soroban_token_unreadable",
               "soroswap_trustline_missing",
               "source_sequence_too_far",
+              "sponsorship_budget_exhausted",
               "stats_unavailable",
               "submit_failed",
               "submit_rejected",
+              "time_bounds_required",
               "too_many_addresses",
+              "transaction_expired",
               "transaction_structure_not_allowed",
               "transactions_failed",
               "transfer_destination_missing",
