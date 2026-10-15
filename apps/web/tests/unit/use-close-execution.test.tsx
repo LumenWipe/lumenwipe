@@ -1154,3 +1154,77 @@ test("useCloseExecution › a key the round no longer lists pauses for a current
     remainingSigners: masterOnly,
   });
 });
+
+async function buildRequestDecisions(
+  acknowledgements: Partial<{
+    defiPositionsAcknowledgedFor: string | null;
+    issuerSupplyAcknowledgedFor: string | null;
+  }>,
+  source: string
+): Promise<{ id: string; choice: string }[]> {
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: Keypair.random().publicKey(),
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    assetDispositions: {},
+    transferDestinations: {},
+    tokenConversionFloors: {},
+    claimableBalanceSelections: {},
+    destinationAcknowledgedFor: null,
+    positionsLeftBehind: [],
+    defiPositionsAcknowledgedFor: null,
+    issuerSupplyAcknowledgedFor: null,
+    ...acknowledgements,
+    accountState: {
+      signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 1, med: 1, high: 1 },
+    } as never,
+  } as never);
+  let sent: { id: string; choice: string }[] | null = null;
+  spyOn(closeClient, "fetchCloseTransactions").mockImplementation((async (req: {
+    decisions: { id: string; choice: string }[];
+  }) => {
+    sent = req.decisions;
+    throw new Error("stop after the request");
+  }) as unknown as typeof closeClient.fetchCloseTransactions);
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(coSigner(source));
+  });
+  if (!sent) throw new Error("no build request was made");
+  return sent;
+}
+
+test("useCloseExecution › the build request carries the DeFi positions acknowledgement given for this account", async () => {
+  const source = Keypair.random().publicKey();
+  const decisions = await buildRequestDecisions({ defiPositionsAcknowledgedFor: source }, source);
+  expect(decisions).toContainEqual({
+    id: `defi_positions:${source}`,
+    choice: "no_defi_positions_confirmed_manually",
+  });
+});
+
+test("useCloseExecution › the build request carries the issuer supply acknowledgement given for this account", async () => {
+  const source = Keypair.random().publicKey();
+  const decisions = await buildRequestDecisions({ issuerSupplyAcknowledgedFor: source }, source);
+  expect(decisions).toContainEqual({
+    id: `issuer_supply:${source}`,
+    choice: "stranding_holders_acknowledged",
+  });
+});
+
+test("useCloseExecution › acknowledgements given for another account never reach the build request", async () => {
+  const source = Keypair.random().publicKey();
+  const other = Keypair.random().publicKey();
+  const decisions = await buildRequestDecisions(
+    { defiPositionsAcknowledgedFor: other, issuerSupplyAcknowledgedFor: other },
+    source
+  );
+  expect(
+    decisions.filter((d) => d.id.startsWith("defi_positions:") || d.id.startsWith("issuer_supply:"))
+  ).toEqual([]);
+});
