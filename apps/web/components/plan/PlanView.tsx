@@ -24,6 +24,7 @@ import {
   isCexAddress,
   isRegistryUsable,
   requiresMediatorForAddress,
+  mediatorAllowedFor,
 } from "@/lib/exchange-registry";
 import AccountSummaryCard from "./AccountSummaryCard";
 import BlockersPanel from "./BlockersPanel";
@@ -114,8 +115,13 @@ export default function PlanView({
     const floors: Record<string, TokenConversionFloor> = {};
     for (const c of conversions) {
       if (c.token?.quote) {
-        const { minAmountOut, provider, resolvedPath } = c.token.quote;
-        floors[c.asset] = { minAmountOut, provider, ...(resolvedPath ? { resolvedPath } : {}) };
+        const { minAmountOut, amountOut, provider, resolvedPath } = c.token.quote;
+        floors[c.asset] = {
+          minAmountOut,
+          amountOut,
+          provider,
+          ...(resolvedPath ? { resolvedPath } : {}),
+        };
       }
     }
     useDemolishStore.getState().setTokenConversionFloors(floors);
@@ -276,6 +282,15 @@ export default function PlanView({
       if (!res.ok) throw new Error(`Relay check failed with status ${res.status}`);
       const mediatorData: MediatorCheckResult = await res.json();
       const needsMediator = mediatorData.requiresMediator ?? false;
+
+      // The browser decides the hand-off from its own bundled registry; an answer that disagrees
+      // stops here rather than at signing.
+      if (needsMediator !== mediatorAllowedFor(destination)) {
+        setError(
+          "The rules for this destination could not be confirmed. Refresh the page and try again. If it keeps happening, close to a personal Stellar wallet you control and send to the exchange from there."
+        );
+        return;
+      }
 
       // Exchange destinations go through the shared mediator. If the API can't co-sign it
       // (no mediator configured), stop here - before the user enters a key or signs -

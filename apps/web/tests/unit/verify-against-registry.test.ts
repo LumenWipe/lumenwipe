@@ -308,6 +308,7 @@ describe("xBull's router, derived from the real registry (mainnet, the only netw
       tokenConversions: {
         [CONVERT_TOKEN]: {
           minAmountOut: "1",
+          amountOut: "1",
           amountIn: "100000000",
           resolvedPath: [CONVERT_TOKEN, XLM_SAC_MAINNET],
         },

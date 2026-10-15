@@ -640,3 +640,65 @@ test("receiptAssetSummary › a decided Soroban token contract is not mistaken f
 
   expect(summary.handledAssets).toEqual([]);
 });
+
+test("chosenTransfers › a return to the issuer is pinned to the asset's issuer, with no amount floor", () => {
+  const held = "USDC:GISSUER";
+  const arriving = "AQUA:GAQUA";
+  const transfers = chosenTransfers(
+    { [held]: "issuer", [arriving]: "issuer", "EURC:GEURC": "convert" },
+    {},
+    {
+      ...ACCOUNT_BASE,
+      trustlines: [
+        {
+          asset: held,
+          balance: "2.0000000",
+          limit: "100",
+          ...authorizationOf(true),
+          issuer: "GISSUER",
+          code: "USDC",
+        },
+      ],
+    },
+    {}
+  );
+
+  expect(transfers).toEqual({
+    [held]: { destination: "GISSUER", amount: "0" },
+    [arriving]: { destination: "GAQUA", amount: "0" },
+  });
+});
+
+test("chosenTokenConversions › carries the quote shown beside the floor", () => {
+  const account = withTokens([{ contract: TOKEN, balance: "2500000000" }]);
+  expect(
+    chosenTokenConversions(
+      { [TOKEN]: "convert" },
+      { [TOKEN]: { minAmountOut: "5223381", amountOut: "5249629", provider: "soroswap" } },
+      account
+    )
+  ).toEqual({ [TOKEN]: { minAmountOut: "5223381", amountOut: "5249629", amountIn: "2500000000" } });
+});
+
+test("chosenTransfers › a large balance floors at exactly what it holds", () => {
+  const asset = "SPAM:GISSUER";
+  const transfers = chosenTransfers(
+    { [asset]: "transfer" },
+    { [asset]: "GDEST" },
+    {
+      ...ACCOUNT_BASE,
+      trustlines: [
+        {
+          asset,
+          balance: "30660577096.7429913",
+          limit: "922337203685.4775807",
+          ...authorizationOf(true),
+          issuer: "GISSUER",
+          code: "SPAM",
+        },
+      ],
+    },
+    {}
+  );
+  expect(transfers[asset]).toEqual({ destination: "GDEST", amount: "30660577096.7429913" });
+});

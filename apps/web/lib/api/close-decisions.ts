@@ -6,6 +6,7 @@ import type {
 import type { DecisionAnswer } from "@lumenwipe/sdk";
 import type { AccountState } from "@/types/account";
 import type { TokenConversionFloor } from "@/store/demolish";
+import { xlmToStroops } from "@/lib/utils/amounts";
 
 /** Stable decision id for a per-asset disposition. Must match the API's `assetDecisionId`. */
 function assetDecisionId(asset: string): string {
@@ -205,7 +206,8 @@ export function claimAnswersKey(selections: Record<string, ClaimableBalanceSelec
 }
 
 /**
- * The per-asset transfers the user chose, with the amount floor verify() holds each payment to.
+ * The per-asset payments the user chose, transfers and returns to the issuer, with the amount
+ * floor verify() holds each payment to.
  *
  * The floor is what the account will hold when the payment runs: today's trustline balance plus
  * every claimable balance of the asset that this close will claim (currently claimable and not
@@ -227,16 +229,26 @@ export function chosenTransfers(
   const trustlines = accountState.trustlines ?? [];
   const claimableBalances = accountState.claimableBalances ?? [];
 
-  const claimedPerAsset = claimedAmounts(accountState, claimableBalanceSelections);
+  const claimedPerAsset = claimedStroops(accountState, claimableBalanceSelections);
 
   for (const [asset, disposition] of Object.entries(dispositions)) {
-    if (disposition !== "transfer" || isTokenContract(asset)) continue;
+    if (isTokenContract(asset)) continue;
+    if (disposition === "issuer") {
+      // The issuer is fixed by the asset, and a single payment per asset is all `verify()`
+      // accepts, so the choice is what needs pinning. No amount floor: a balance read before an
+      // earlier round (a repay, a partial fill) can only be stale on the high side.
+      const issuer = asset.split(":")[1];
+      if (issuer) transfers[asset] = { destination: issuer, amount: "0" };
+      continue;
+    }
+    if (disposition !== "transfer") continue;
     const destination = destinations[asset];
     if (!destination) continue;
     const trustline = trustlines.find((tl) => tl.asset === asset);
-    const floor = parseFloat(trustline?.balance ?? "0") + (claimedPerAsset.get(asset) ?? 0);
-    if (floor <= 0) continue;
-    transfers[asset] = { destination, amount: floor.toFixed(7) };
+    const floor =
+      BigInt(xlmToStroops(trustline?.balance ?? "0")) + (claimedPerAsset.get(asset) ?? BigInt(0));
+    if (floor <= BigInt(0)) continue;
+    transfers[asset] = { destination, amount: fixedXlm(floor) };
   }
   return transfers;
 }
@@ -282,10 +294,13 @@ export function chosenTokenConversions(
   dispositions: Record<string, AssetDisposition>,
   floors: Record<string, TokenConversionFloor>,
   accountState: AccountState | null
-): Record<string, { minAmountOut: string; amountIn: string; resolvedPath?: string[] }> {
+): Record<
+  string,
+  { minAmountOut: string; amountOut?: string; amountIn: string; resolvedPath?: string[] }
+> {
   const conversions: Record<
     string,
-    { minAmountOut: string; amountIn: string; resolvedPath?: string[] }
+    { minAmountOut: string; amountOut?: string; amountIn: string; resolvedPath?: string[] }
   > = {};
   const tokens = accountState?.sorobanTokens?.tokens ?? [];
   for (const [contract, disposition] of Object.entries(dispositions)) {
@@ -296,6 +311,7 @@ export function chosenTokenConversions(
     const amountIn = token && /^\d+$/.test(token.balance) ? token.balance : "0";
     conversions[contract] = {
       minAmountOut: pinned.minAmountOut,
+      ...(pinned.amountOut !== undefined ? { amountOut: pinned.amountOut } : {}),
       amountIn,
       ...(pinned.provider === "xbull" && pinned.resolvedPath
         ? { resolvedPath: pinned.resolvedPath }
@@ -318,6 +334,32 @@ export function receiptTokenSummary(
       asset: t.contract,
       code: t.symbol ?? `${t.contract.slice(0, 4)}…${t.contract.slice(-4)}`,
     }));
+}
+
+function fixedXlm(stroops: bigint): string {
+  const unit = BigInt(10_000_000);
+  return `${stroops / unit}.${(stroops % unit).toString().padStart(7, "0")}`;
+}
+
+/** `claimedAmounts` in whole stroops, so a large balance cannot round past what it holds. */
+function claimedStroops(
+  accountState: AccountState,
+  claimableBalanceSelections: Record<string, ClaimableBalanceSelection>
+): Map<string, bigint> {
+  const perAsset = new Map<string, bigint>();
+  const authorized = new Set(
+    (accountState.trustlines ?? []).filter((tl) => tl.authorized).map((tl) => tl.asset)
+  );
+  for (const b of accountState.claimableBalances ?? []) {
+    if (b.asset === "native") continue;
+    const selection = claimableBalanceSelections[b.id];
+    const willClaim = authorized.has(b.asset)
+      ? selection !== "forfeit"
+      : selection === "add_trustline_then_claim";
+    if (!willClaim) continue;
+    perAsset.set(b.asset, (perAsset.get(b.asset) ?? BigInt(0)) + BigInt(xlmToStroops(b.amount)));
+  }
+  return perAsset;
 }
 
 /**
