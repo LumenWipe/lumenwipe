@@ -65,6 +65,13 @@ export function generateApiKey(): string {
   return `lw_${randomBytes(32).toString("base64url")}`;
 }
 
+const API_KEY_FORMAT = /^lw_[A-Za-z0-9_-]{43}$/;
+
+/** True when `raw` has the exact shape `generateApiKey` produces. */
+export function isApiKeyFormat(raw: string): boolean {
+  return API_KEY_FORMAT.test(raw);
+}
+
 function copyRecord(record: ApiKeyRecord): ApiKeyRecord {
   return {
     ...record,

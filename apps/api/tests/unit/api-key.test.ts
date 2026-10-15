@@ -1,7 +1,12 @@
 import { test, expect } from "bun:test";
 import type { ConfigService } from "@nestjs/config";
 import { ApiKeyService } from "@/auth/api-key.service";
-import { throttleStorageKey, trackerForRequest } from "@/auth/rate-limiter";
+import {
+  bearerFromRequest,
+  clientIdentity,
+  ipTracker,
+  throttleStorageKey,
+} from "@/auth/rate-limiter";
 
 function service(apiKeys: string): ApiKeyService {
   return new ApiKeyService({ get: () => apiKeys } as unknown as ConfigService);
@@ -25,10 +30,27 @@ test("ApiKeyService skips malformed pairs", () => {
   expect(s.resolve("orphan")).toBeNull();
 });
 
-test("trackerForRequest prefers the bearer key, falls back to ip", () => {
-  expect(trackerForRequest({ headers: { authorization: "Bearer key_abc" } })).toBe("key_abc");
-  expect(trackerForRequest({ headers: {}, ip: "1.2.3.4" })).toBe("1.2.3.4");
-  expect(trackerForRequest({})).toBe("unknown");
+test("bearerFromRequest reads the bearer value, null when absent or empty", () => {
+  expect(bearerFromRequest({ headers: { authorization: "Bearer key_abc" } })).toBe("key_abc");
+  expect(bearerFromRequest({ headers: { authorization: "Bearer   " } })).toBeNull();
+  expect(bearerFromRequest({ headers: { authorization: "Basic abc" } })).toBeNull();
+  expect(bearerFromRequest({ headers: {} })).toBeNull();
+  expect(bearerFromRequest({})).toBeNull();
+});
+
+test("ipTracker is namespaced apart from key trackers", () => {
+  expect(ipTracker({ headers: {}, ip: "1.2.3.4" })).toBe("ip:1.2.3.4");
+  expect(ipTracker({})).toBe("ip:unknown");
+});
+
+test("clientIdentity maps IPv4-mapped addresses to IPv4 and IPv6 addresses to their /64", () => {
+  expect(clientIdentity("203.0.113.4")).toBe("203.0.113.4");
+  expect(clientIdentity("::ffff:203.0.113.4")).toBe("203.0.113.4");
+  expect(clientIdentity("2001:db8:1:2:3:4:5:6")).toBe("2001:db8:1:2::/64");
+  expect(clientIdentity("2001:DB8:1:2::7")).toBe("2001:db8:1:2::/64");
+  expect(clientIdentity("2001:db8::1")).toBe("2001:db8:0:0::/64");
+  expect(clientIdentity("::1")).toBe("0:0:0:0::/64");
+  expect(clientIdentity(undefined)).toBe("unknown");
 });
 
 test("throttleStorageKey buckets per (name, tracker), one bucket per key across routes", () => {
