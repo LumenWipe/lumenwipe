@@ -81,14 +81,27 @@ test("shortfall › open sell offers hold XLM back, existing sub-entries raise t
   );
 });
 
-test("shortfall › a fee the sponsor pays is not counted against the account", () => {
-  expect(trustlineReserveShortfallStroops(state("1.0000000", []), 1, 1)).toBe(5_000_000n);
+test("shortfall › the round's fees are the account's own, since no sponsor pays for a new trustline", () => {
+  expect(trustlineReserveShortfallStroops(state("1.0000000", []), 1, 1)).toBe(5_000_200n);
+});
+
+test("shortfall › reserves another account pays for lower the minimum", () => {
+  expect(
+    trustlineReserveShortfallStroops(
+      state("1.0000200", [], { numSubEntries: 2, numSponsored: 2 }),
+      1,
+      1
+    )
+  ).toBe(5_000_000n);
+  expect(trustlineReserveShortfallStroops(state("0.5000200", [], { numSponsored: 2 }), 1, 1)).toBe(
+    0n
+  );
 });
 
 test("decisions › an account at its minimum is not offered add_trustline_then_claim and is told the shortfall", () => {
   const [d] = deriveClaimableBalanceDecisionPoints(state("1.0000000", [balance(1, USDC)]));
   expect(d!.options.map((o) => o.id)).toEqual(["forfeit"]);
-  expect(d!.options[0]!.note).toContain("USDC trustline needs 0.5000000 XLM");
+  expect(d!.options[0]!.note).toContain("USDC trustline needs 0.5000200 XLM");
 });
 
 test("decisions › an account with headroom keeps both options", () => {
@@ -99,7 +112,7 @@ test("decisions › an account with headroom keeps both options", () => {
 test("plan › the shortfall is a blocker, and the unanswered balance names it", () => {
   const b = balance(1, USDC);
   const unanswered = buildPlan(state("1.0000000", [b]), false);
-  expect(unanswered.blockers[0]!.message).toContain("0.5000000 XLM");
+  expect(unanswered.blockers[0]!.message).toContain("0.5000200 XLM");
 
   const chosen = buildPlan(state("1.0000000", [b]), false, false, {
     [b.id]: "add_trustline_then_claim",

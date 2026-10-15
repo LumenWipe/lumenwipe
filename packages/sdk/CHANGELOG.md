@@ -7,6 +7,27 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-15
+
+### Added
+
+- Error code `close_fee_balance_short` (422) and the same plan blocker: the account lacks the XLM
+  above its reserve to pay the fees of the steps no sponsor can cover (Soroban rounds, the exchange
+  merge, and any transaction the sponsor would not accept or when no sponsor is configured). It is
+  raised before such a round is built, and the message states how much XLM to add.
+- `AccountState.numSponsored`: the reserves another account pays for this one. It lowers the
+  minimum balance used to judge fees.
+
+### Changed
+
+- Fee affordability counts the XLM held by open offers selling XLM as unavailable, as the network
+  does, so a transaction that would otherwise be rejected for insufficient balance is flagged
+  `needsSponsoredFee` instead.
+- A transaction is flagged `needsSponsoredFee` only when the fee sponsor is configured and would
+  accept its operations; otherwise the build is refused with `close_fee_balance_short`.
+- The trustline reserve shortfall for a claim counts the claim round's fees as the account's own,
+  since no sponsor pays for a round that opens a trustline.
+
 ## [0.10.1] - 2026-10-12
 
 ### Changed

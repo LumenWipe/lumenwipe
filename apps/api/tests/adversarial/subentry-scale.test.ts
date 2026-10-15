@@ -73,7 +73,12 @@ function opCount(xdr: string): number {
 
 // Comfortably funded: these tests are about batching mechanics, not fee affordability -
 // a balance this large can never trip the new needsSponsoredFee check below.
-const WELL_FUNDED = { nativeBalanceLumens: "10000.0000000", numSubEntries: 0, numSponsoring: 0 };
+const WELL_FUNDED = {
+  nativeBalanceLumens: "10000.0000000",
+  numSubEntries: 0,
+  numSponsoring: 0,
+  openOffers: [],
+};
 
 test("a near-1000-subentry account batches into sequence-chained transactions with no ops lost", () => {
   // 998 trustlines - close to the practical ceiling a single close can enumerate and still
@@ -86,7 +91,8 @@ test("a near-1000-subentry account batches into sequence-chained transactions wi
     in_,
     "testnet",
     999,
-    WELL_FUNDED
+    WELL_FUNDED,
+    true
   );
 
   expect(txs.length).toBe(10); // ceil(999 / 100)
@@ -117,7 +123,8 @@ test("stacked hostile state: near-max trustlines, signer normalization, and spon
     in_,
     "testnet",
     999,
-    WELL_FUNDED
+    WELL_FUNDED,
+    true
   );
 
   const counts = txs.map((t) => opCount(t.xdr));

@@ -34,8 +34,10 @@ function account(over: Partial<AccountState> = {}): AccountState {
   };
 }
 
-// 12.5 XLM held; 1 XLM base reserve and 0.01 XLM fee margin are not spendable.
-const NATIVE_SPENDABLE = "114900000";
+// 12.5 XLM held; 1 XLM base reserve and 0.01 XLM fee margin are not spendable, nor the fees the
+// close still pays itself: the exchange merge (200 stroops) and 100 stroops per classic operation
+// it may need (the signer, two per trustline, and the merge).
+const NATIVE_SPENDABLE = String(114_900_000 - 200 - 100 * (1 + 2 * 2 + 1));
 
 test("keys native XLM and every authorized trustline by its Stellar Asset Contract, in base units", () => {
   const balances = tokenBalancesFor(
@@ -75,7 +77,9 @@ test("the network decides the contract id - the same asset has a different SAC o
 test("reports what is spendable: the reserve grows with every subentry and sponsorship", () => {
   // 2 trustlines + 1 sponsored entry = 3 x 0.5 XLM on top of the 1 XLM base reserve.
   const balances = tokenBalancesFor(account({ numSubEntries: 2, numSponsoring: 1 }));
-  expect(balances[Asset.native().contractId(Networks.TESTNET)]).toBe("99900000");
+  expect(balances[Asset.native().contractId(Networks.TESTNET)]).toBe(
+    String(99_900_000 - 200 - 200)
+  );
 });
 
 test("what an open offer is selling is held by the ledger and not spendable by a repay", () => {
@@ -99,7 +103,9 @@ test("what an open offer is selling is held by the ledger and not spendable by a
     })
   );
   expect(balances[new Asset("USDC", ISSUER).contractId(Networks.TESTNET)]).toBe("300000000");
-  expect(balances[Asset.native().contractId(Networks.TESTNET)]).toBe("84900000");
+  expect(balances[Asset.native().contractId(Networks.TESTNET)]).toBe(
+    String(84_900_000 - 200 - 100 * (1 + 3 + 2 + 1))
+  );
 });
 
 test("a balance entirely held back reports zero, never a negative amount", () => {
@@ -123,4 +129,19 @@ test("a Soroban token balance the analysis found is not a carry target: an exit 
     })
   );
   expect(Object.keys(balances)).not.toContain(TOKEN);
+});
+
+test("the Soroban rounds still to come are held back at the plan's estimate", () => {
+  const withPositions = account({
+    defiPositions: {
+      ...emptyDefiPositionsResult(SOURCE),
+      positions: [{}, {}] as unknown as AccountState["defiPositions"]["positions"],
+    },
+  });
+  const withoutPositions = account();
+  const native = Asset.native().contractId(Networks.TESTNET);
+  expect(
+    BigInt(tokenBalancesFor(withoutPositions)[native]!) -
+      BigInt(tokenBalancesFor(withPositions)[native]!)
+  ).toBe(4n * 100_000n);
 });

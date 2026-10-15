@@ -1392,6 +1392,7 @@
                                 "claimable_balance_not_claimable_now",
                                 "claimable_balances_too_many",
                                 "claimable_balance_reserve_short",
+                                "close_fee_balance_short",
                                 "defi_positions_blocked",
                                 "defi_positions_stale",
                                 "defi_position_unrecognized",
@@ -6718,6 +6719,7 @@
               "claimable_balance_not_claimable_now",
               "claimable_balance_reserve_short",
               "claimable_balances_too_many",
+              "close_fee_balance_short",
               "confirmation_timeout",
               "conversion_floor_missing",
               "conversion_provider_unrecognized",
@@ -9340,6 +9342,10 @@
           },
           "numSponsoring": {
             "type": "number"
+          },
+          "numSponsored": {
+            "type": "number",
+            "description": "Reserves another account pays for this one (its base reserve when its creation was sponsored, and each sponsored subentry). Lowers the minimum balance. Absent means none."
           },
           "sponsoredEntries": {
             "type": "array",

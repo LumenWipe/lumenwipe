@@ -144,5 +144,6 @@ test("an exchange close whose balance cannot cover the forward fee is a typed 42
   const failure = await buildCloseTransactions(state, DEST, {}, "testnet").catch((e) => e);
 
   expect(failure).toBeInstanceOf(CloseBuildError);
-  expect(failure).toMatchObject({ code: "unprocessable_entity", status: 422 });
+  expect(failure).toMatchObject({ code: "close_fee_balance_short", status: 422 });
+  expect(failure.message).toContain("1.0000100 XLM");
 });

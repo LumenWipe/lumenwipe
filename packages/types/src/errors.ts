@@ -22,6 +22,7 @@ export type ErrorCode =
   | "claimable_balance_not_claimable_now"
   | "claimable_balance_reserve_short"
   | "claimable_balances_too_many"
+  | "close_fee_balance_short"
   | "confirmation_timeout"
   | "conversion_floor_missing"
   | "conversion_provider_unrecognized"

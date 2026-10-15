@@ -368,6 +368,13 @@ export class AccountStateDto implements AccountState {
   @ApiProperty()
   numSponsoring!: number;
 
+  @ApiPropertyOptional({
+    description:
+      "Reserves another account pays for this one (its base reserve when its creation was " +
+      "sponsored, and each sponsored subentry). Lowers the minimum balance. Absent means none.",
+  })
+  numSponsored?: number;
+
   @ApiProperty({
     description: "Ledger entries this account currently sponsors, on another account or itself.",
     type: "array",

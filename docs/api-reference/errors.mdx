@@ -113,6 +113,7 @@ These come from `close/plan` and `close/transactions`. The `message` names the p
 | `trustline_deauthorized_with_balance`         | 422    | No        | A trustline holds a balance but was deauthorized by its issuer.                                                                |
 | `trustline_maintain_liabilities_with_balance` | 422    | No        | A trustline holds a balance but its issuer limited it to keeping existing offers only.                                         |
 | `issuer_supply_not_acknowledged`              | 422    | After fix | The account issues assets that are still held and the close was not acknowledged.                                              |
+| `close_fee_balance_short`                     | 422    | After fix | The account lacks the XLM above its reserve to pay the fees of the steps no sponsor can cover.                                 |
 
 ## DeFi position exits
 

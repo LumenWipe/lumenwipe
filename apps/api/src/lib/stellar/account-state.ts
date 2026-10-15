@@ -98,6 +98,7 @@ interface ApiAccount {
   flags?: { auth_immutable: boolean };
   sponsor?: string;
   num_sponsoring?: number;
+  num_sponsored?: number;
 }
 
 /**
@@ -337,6 +338,9 @@ export async function readAccountStateFrom(
     },
     numSubEntries,
     numSponsoring,
+    ...(typeof account.num_sponsored === "number" && account.num_sponsored > 0
+      ? { numSponsored: account.num_sponsored }
+      : {}),
     sponsoredEntries,
     sponsorshipEnumerationIncomplete,
     sponsoredBy: account.sponsor ?? null,
