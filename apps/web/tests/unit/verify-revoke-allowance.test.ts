@@ -88,6 +88,7 @@ function buildRevokeXdr(
     memo?: Memo;
     extraOp?: boolean;
     fee?: string;
+    timeout?: number;
   } = {}
 ): string {
   const args = options.args ?? approveArgs();
@@ -110,7 +111,7 @@ function buildRevokeXdr(
   if (options.memo) raw.addMemo(options.memo);
   raw.addOperation(op);
   if (options.extraOp) raw.addOperation(op);
-  raw.setTimeout(30);
+  raw.setTimeout(options.timeout ?? 30);
   return raw.build().toEnvelope().toXdr("base64");
 }
 
@@ -200,4 +201,18 @@ test("verifyRevokeAllowanceTransaction › rejects a fee higher than a revocatio
   expect(() =>
     verifyRevokeAllowanceTransaction(xdrBase64, Networks.TESTNET, expectation())
   ).toThrow(/fee is higher/);
+});
+
+test("verifyRevokeAllowanceTransaction › rejects a revocation that never expires or stays valid past fifteen minutes", () => {
+  const run = (timeout: number, now: number) =>
+    verifyRevokeAllowanceTransaction(
+      buildRevokeXdr({ timeout }),
+      Networks.TESTNET,
+      expectation(),
+      now
+    );
+  const now = Math.floor(Date.now() / 1000) + 1;
+  expect(() => run(0, now)).toThrow(/never expires/);
+  expect(() => run(3600, now)).toThrow(/far longer/);
+  expect(() => run(300, now)).not.toThrow();
 });

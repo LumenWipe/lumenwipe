@@ -3,13 +3,13 @@ import { envelopeOps, invokedContract } from "@/lib/stellar/envelope-ops";
 import {
   Address,
   Contract,
+  Transaction,
   TransactionBuilder,
   rpc as stellarRpc,
   scValToNative,
   xdr,
-  type Transaction,
 } from "@stellar/stellar-sdk";
-import { MAX_SOROBAN_EXIT_FEE_STROOPS } from "@/config/constants";
+import { MAX_SOROBAN_EXIT_FEE_STROOPS, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import {
   resolveWasmHash,
@@ -286,6 +286,38 @@ function walkAuth(
 }
 
 /**
+ * Replaces the expiry the Soroswap API gave its unsigned swap with the one every close
+ * transaction carries. Its own window is more than a day.
+ */
+export function withCloseExpiry(tx: Transaction, nowSeconds: number): Transaction {
+  const envelope = tx.toEnvelope();
+  if (envelope.type !== "envelopeTypeTx") throw new Error("not a plain transaction");
+  const inner = envelope.v1.tx;
+  if (inner.cond.type !== "precondTime" && inner.cond.type !== "precondNone") {
+    throw new Error("the swap carries preconditions beyond a time bound");
+  }
+  const minTime = inner.cond.type === "precondTime" ? inner.cond.timeBounds.minTime : 0n;
+  if (minTime > BigInt(nowSeconds)) throw new Error("the swap is not valid yet");
+  const rebuilt = xdr.TransactionEnvelope.envelopeTypeTx(
+    new xdr.TransactionV1Envelope({
+      tx: new xdr.Transaction({
+        sourceAccount: inner.sourceAccount,
+        fee: inner.fee,
+        seqNum: inner.seqNum,
+        cond: xdr.Preconditions.precondTime(
+          new xdr.TimeBounds({ minTime, maxTime: BigInt(nowSeconds + TX_TIMEOUT_SECONDS) })
+        ),
+        memo: inner.memo,
+        operations: inner.operations,
+        ext: inner.ext,
+      }),
+      signatures: envelope.v1.signatures,
+    })
+  );
+  return new Transaction(rebuilt, tx.networkPassphrase);
+}
+
+/**
  * Refuses a built swap whose shape is anything but the one described above. Exported for direct
  * coverage; the round below calls it on every build before offering the transaction.
  */
@@ -304,6 +336,9 @@ export function assertConversionShape(tx: Transaction, expected: ExpectedConvers
   if (maxTime === 0n) throw new Error("the swap never expires");
   if (maxTime < BigInt(expected.nowSeconds) + SIGNING_BUFFER_SECONDS) {
     throw new Error("the transaction expires before it can be signed");
+  }
+  if (maxTime > BigInt(expected.nowSeconds) + BigInt(TX_TIMEOUT_SECONDS) + SIGNING_BUFFER_SECONDS) {
+    throw new Error("the swap stays valid for longer than a close transaction may");
   }
   const ops = envelopeOps(tx);
   if (ops.length !== 1) throw new Error(`expected one operation, found ${ops.length}`);
@@ -588,8 +623,10 @@ export async function buildTokenConversionRound(
     }
     let tx: Transaction;
     try {
-      tx = TransactionBuilder.fromXDR(xdrBase64, passphrase) as Transaction;
-      if (!("operations" in tx)) throw new Error("not a plain transaction");
+      const nowSeconds = Math.floor(deps.conversion.now() / 1000);
+      const built = TransactionBuilder.fromXDR(xdrBase64, passphrase);
+      if (!(built instanceof Transaction)) throw new Error("not a plain transaction");
+      tx = withCloseExpiry(built, nowSeconds);
       assertConversionShape(tx, {
         token,
         account,
@@ -602,7 +639,7 @@ export async function buildTokenConversionRound(
         minOut: freshFloor,
         allowed,
         sequence,
-        nowSeconds: Math.floor(deps.conversion.now() / 1000),
+        nowSeconds,
       });
       // The address is in the registry; the code behind it must be what the registry verified.
       const called = invokedContract(tx);
@@ -628,14 +665,14 @@ export async function buildTokenConversionRound(
         id: "tx-1",
         order: 0,
         dependsOn: [],
-        xdr: xdrBase64,
+        xdr: tx.toXDR(),
         networkPassphrase: passphrase,
         sourceSequence: sequence,
         validUntilLedger,
         covers: ["HANDLE_ASSETS"],
         coversTargets: [token],
         intent: {
-          ...intentFromXdr(xdrBase64, passphrase),
+          ...intentFromXdr(tx.toXDR(), passphrase),
           summary:
             `Exchange ${formatTokenAmount(balance.toString(), meta.decimals)} ${name} for at least ` +
             `${stroopsToXlm(pinned.minAmountOut)} XLM through Soroswap`,

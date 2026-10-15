@@ -28,6 +28,7 @@ const MED = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
 const ATTACKER = Keypair.random().publicKey();
 const REMOVED_SIGNER = Keypair.random().publicKey();
+const NOW = 1_800_000_000;
 
 function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
   return {
@@ -53,6 +54,7 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
       { key: REMOVED_SIGNER, weight: 1, type: "ed25519_public_key" },
     ],
     accountThresholds: { low: 0, med: 1, high: 1 },
+    nowSeconds: NOW,
     ...over,
   };
 }
@@ -62,6 +64,7 @@ function intent(over: Partial<TxIntent> = {}): TxIntent {
     summary: "",
     source: SRC,
     fee: "100",
+    maxTime: String(NOW + 300),
     memo: null,
     memoType: null,
     guarantees: { mergeDestination: DEST, paymentsOnlyTo: [], minXlmFromConversions: null },
@@ -478,28 +481,28 @@ test("a real SetOptions carrying a home-domain change is decoded and rejected (c
 });
 
 test("rejects a memo the user did not set", () => {
-  const i = intent({ memo: "not-mine" });
+  const i = intent({ memo: "not-mine", operations: [merge(DEST)] });
   expect(() => assertCloseIntent(i, expectation({ memo: "mine" }))).toThrow(/memo you did not set/);
 });
 
 // A missing memo is not the same claim as a memo the user did not set - the transaction simply
 // carries none, which the later "required memo" check (not this one) is responsible for.
 test("does not reject a memo-less transaction just because the user typed one elsewhere", () => {
-  const i = intent({ memo: null });
+  const i = intent({ memo: null, operations: [merge(DEST)] });
   expect(() =>
     assertCloseIntent(i, expectation({ memo: "typed-but-irrelevant-here" }))
   ).not.toThrow();
 });
 
 test("rejects a missing memo when the destination requires one (even if the user left it blank)", () => {
-  const i = intent({ memo: null });
+  const i = intent({ memo: null, operations: [merge(DEST)] });
   expect(() =>
     assertCloseIntent(i, expectation({ memo: null, memoRequired: true, memoType: "id" }))
   ).toThrow(/requires a deposit memo/);
 });
 
 test("rejects a memo of the wrong type for the destination", () => {
-  const i = intent({ memo: "12345", memoType: "text" });
+  const i = intent({ memo: "12345", memoType: "text", operations: [merge(DEST)] });
   expect(() =>
     assertCloseIntent(i, expectation({ memo: "12345", memoRequired: true, memoType: "id" }))
   ).toThrow(/wrong type for this destination/);
@@ -1921,4 +1924,86 @@ test("a strict_send swap is held to the same outer swap-shape rules as Soroswap'
       chosenXBullConversion()
     )
   ).toThrow(/other than the one being closed/);
+});
+
+// ─── Network fee and expiry ──────────────────────────────────────────────────
+
+test("a classic close may pay up to ten times the base fee per operation", () => {
+  const ops = [setOptions(), payment(ISSUER), merge(DEST)];
+  expect(() =>
+    assertCloseIntent(intent({ operations: ops, fee: "3000" }), expectation())
+  ).not.toThrow();
+  expect(() => assertCloseIntent(intent({ operations: ops, fee: "3001" }), expectation())).toThrow(
+    /network fee far above/
+  );
+});
+
+test("a classic close whose fee is paid by a sponsor carries a zero fee and passes", () => {
+  expect(() =>
+    assertCloseIntent(intent({ operations: [merge(DEST)], fee: "0" }), expectation())
+  ).not.toThrow();
+});
+
+test("a fee that is not a whole number of stroops is refused", () => {
+  expect(() =>
+    assertCloseIntent(intent({ operations: [merge(DEST)], fee: "1e3" }), expectation())
+  ).toThrow(/fee could not be read/);
+});
+
+test("a transaction without an upper time bound is refused", () => {
+  for (const maxTime of [null, undefined, "0"]) {
+    expect(() =>
+      assertCloseIntent(intent({ operations: [merge(DEST)], maxTime }), expectation())
+    ).toThrow(/never expires/);
+  }
+});
+
+test("a transaction may stay valid for at most fifteen minutes from verification", () => {
+  const at = (maxTime: number) => intent({ operations: [merge(DEST)], maxTime: String(maxTime) });
+  expect(() => assertCloseIntent(at(NOW + 900), expectation())).not.toThrow();
+  expect(() => assertCloseIntent(at(NOW + 901), expectation())).toThrow(/far longer/);
+});
+
+test("verifyCloseTransaction reads the expiry from the envelope itself", () => {
+  const unsignedXdr = (timeout: number) => {
+    const builder = new TransactionBuilder(new Account(SRC, "100"), {
+      fee: "100",
+      networkPassphrase: Networks.TESTNET,
+    });
+    builder.addOperation(Operation.accountMerge({ destination: DEST }));
+    return builder.setTimeout(timeout).build().toEnvelope().toXdr("base64");
+  };
+  const run = (xdrString: string) =>
+    verifyCloseTransaction({
+      unsignedXdr: xdrString,
+      network: "testnet",
+      expected: expectation(),
+    });
+  expect(() => run(unsignedXdr(300))).not.toThrow();
+  expect(() => run(unsignedXdr(0))).toThrow(/never expires/);
+  expect(() => run(unsignedXdr(3600))).toThrow(/far longer/);
+});
+
+test("every operation must act for the account being closed", () => {
+  const others: IntentOperation[] = [
+    setOptions({ source: ATTACKER }),
+    { source: ATTACKER, type: "manage_data", name: "k", value: null },
+    { source: ATTACKER, type: "change_trust", asset: `USDC:${ISSUER}`, limit: "0" },
+    { source: ATTACKER, type: "manage_sell_offer", offerId: "1", amount: "0" },
+    { source: ATTACKER, type: "claim_claimable_balance", balanceId: "00".repeat(36) },
+    { source: ATTACKER, type: "revoke_sponsorship", entryKind: "account", owner: ATTACKER },
+    { ...conversion(), source: ATTACKER },
+  ];
+  for (const op of others) {
+    expect(() =>
+      assertCloseIntent(intent({ operations: [op, merge(DEST)] }), expectation())
+    ).toThrow(/^The transaction would act for an account other than the one being closed\.$/);
+  }
+});
+
+test("a pre-authorized transaction keeps its own expiry and fee", () => {
+  const ops = [merge(DEST)];
+  const own = intent({ operations: ops, maxTime: null, fee: "5000" });
+  expect(() => assertCloseIntent(own, expectation({ preAuthorized: true }))).not.toThrow();
+  expect(() => assertCloseIntent(own, expectation())).toThrow(/never expires/);
 });

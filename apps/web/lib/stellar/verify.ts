@@ -10,6 +10,14 @@ import type { IntentOperation, TxIntent } from "@/types/close-api";
  *  (1 XLM) bounds what a wrong or hostile simulation could make the account pay to the fee pool. */
 const MAX_EXIT_FEE_STROOPS = BigInt(10_000_000);
 
+/** Ten times the 100-stroop base fee the builder sets per operation: room for surge pricing, and
+ *  at most 0.01 XLM for a full 100-operation transaction. */
+const MAX_CLASSIC_FEE_PER_OPERATION_STROOPS = BigInt(1_000);
+
+/** The builder gives every transaction 300 seconds; the rest absorbs a browser clock running up
+ *  to ten minutes behind. Keeps a signed envelope tied to the moment the user reviewed it. */
+const MAX_VALIDITY_SECONDS = 900;
+
 /** Thrown when a server-built close transaction fails verification. Never sign past this. */
 export class VerificationError extends Error {
   constructor(message: string) {
@@ -127,6 +135,12 @@ export interface CloseExpectation {
    *  (multisig epic #97, issue #2) that computes how much signing weight a transaction
    *  actually needs. */
   accountThresholds: AccountThresholds;
+  /** When verification runs, in unix seconds from the browser's clock: the reference for the
+   *  transaction's expiry. */
+  nowSeconds: number;
+  /** The user's own transaction, already authorized by a pre-auth-tx signer and only submitted
+   *  here: its expiry and fee are the user's, set before this close existed. */
+  preAuthorized?: boolean;
 }
 
 /**
@@ -462,10 +476,44 @@ function assertForwardCarriesTheBalance(forwardAmount: string, nativeBalance: st
  */
 const FORWARD_SHORTFALL_TOLERANCE_STROOPS = BigInt("100000");
 
+function assertExpiresSoon(intent: TxIntent, nowSeconds: number): void {
+  const maxTime = intent.maxTime ?? null;
+  if (maxTime === null || !/^\d+$/.test(maxTime) || BigInt(maxTime) === BigInt(0)) {
+    throw new VerificationError(
+      "This transaction never expires, so it could be submitted long after you approved it."
+    );
+  }
+  if (BigInt(maxTime) > BigInt(Math.floor(nowSeconds)) + BigInt(MAX_VALIDITY_SECONDS)) {
+    throw new VerificationError(
+      "This transaction stays valid for far longer than a close needs. If your device clock is " +
+        "wrong, correct it and try again."
+    );
+  }
+}
+
+function assertClassicFee(intent: TxIntent): void {
+  if (!/^\d+$/.test(intent.fee)) {
+    throw new VerificationError("The transaction's network fee could not be read.");
+  }
+  // A Soroban call's fee includes simulated resources; its own branch caps it.
+  if (intent.operations.some((op) => op.type === "invoke_host_function")) return;
+  const cap = BigInt(intent.operations.length) * MAX_CLASSIC_FEE_PER_OPERATION_STROOPS;
+  if (BigInt(intent.fee) > cap) {
+    throw new VerificationError(
+      "This transaction would pay a network fee far above what its operations need."
+    );
+  }
+}
+
 export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation): void {
   // The transaction must be for the account being closed.
   if (intent.source !== expected.source) {
     throw new VerificationError("The transaction is not for your account.");
+  }
+
+  if (!expected.preAuthorized) {
+    assertExpiresSoon(intent, expected.nowSeconds);
+    assertClassicFee(intent);
   }
 
   // An exchange close cannot merge to the address the user typed - exchanges credit payments
@@ -953,6 +1001,14 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         throw new VerificationError("The transaction contains an unrecognized operation.");
       }
     }
+    // A signature covers every operation whose source lists the key, so each operation is held to
+    // the account being closed. The forward is the exception: `assertMergeShape` pins its source
+    // to the account the merge paid into.
+    if (op !== forward && op.source !== expected.source) {
+      throw new VerificationError(
+        "The transaction would act for an account other than the one being closed."
+      );
+    }
   }
 
   // Memo integrity: the transaction must never carry a memo other than the one the user set.
@@ -990,6 +1046,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
 export function verifyCloseTransaction(opts: {
   unsignedXdr: string;
   network: Network;
+  preAuthorized?: boolean;
   expected: {
     source: string;
     destination: string;
@@ -1036,5 +1093,7 @@ export function verifyCloseTransaction(opts: {
     ...opts.expected,
     memoRequired: exchange?.requiresMemo ?? false,
     memoType: exchange?.memoType ?? null,
+    nowSeconds: Math.floor(Date.now() / 1000),
+    preAuthorized: opts.preAuthorized === true,
   });
 }

@@ -143,6 +143,8 @@ export interface TxIntent {
   summary: string;
   source: string;
   fee: string;
+  /** The transaction's upper time bound in unix seconds, or null when it never expires. */
+  maxTime?: string | null;
   memo: string | null;
   memoType: "text" | "id" | "hash" | null;
   guarantees: {

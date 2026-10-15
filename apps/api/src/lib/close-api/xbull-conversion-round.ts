@@ -63,6 +63,9 @@ export function assertXBullConversionShape(
   if (maxTime === 0n || maxTime < BigInt(expected.nowSeconds) + SIGNING_BUFFER_SECONDS) {
     throw new Error("the swap never expires, or expires before it can be signed");
   }
+  if (maxTime > BigInt(expected.nowSeconds) + BigInt(TX_TIMEOUT_SECONDS) + SIGNING_BUFFER_SECONDS) {
+    throw new Error("the swap stays valid for longer than a close transaction may");
+  }
   const ops = envelopeOps(tx);
   if (ops.length !== 1) throw new Error(`expected one operation, found ${ops.length}`);
   const op = ops[0]!;
@@ -250,7 +253,7 @@ export async function buildXBullConversion(
           func: xdr.HostFunction.hostFunctionTypeInvokeContract(contractArgs),
         })
       )
-      .setTimeout(TX_TIMEOUT_SECONDS)
+      .setTimebounds(0, Math.floor(deps.xbull.now() / 1000) + TX_TIMEOUT_SECONDS)
       .build();
     const sim = await deps.rpc.simulateTransaction(tx);
     if (stellarRpc.Api.isSimulationError(sim)) return null;

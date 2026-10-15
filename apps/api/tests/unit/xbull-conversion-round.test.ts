@@ -59,6 +59,17 @@ test("accepts the real captured shape when every expectation matches it", () => 
   expect(() => assertXBullConversionShape(tx, expectedFromFixture())).not.toThrow();
 });
 
+test("refuses a swap that stays valid for longer than a close transaction", () => {
+  const at = (maxTime: number) =>
+    assembleTestTransaction(fixture.contractArgsXDR, fixture.decoded.from, "0", { maxTime });
+  expect(() =>
+    assertXBullConversionShape(at(1_700_000_000 + 360), expectedFromFixture())
+  ).not.toThrow();
+  expect(() => assertXBullConversionShape(at(1_700_000_000 + 361), expectedFromFixture())).toThrow(
+    /longer/
+  );
+});
+
 test("refuses a build whose refs is non-empty", () => {
   const withRefs = assembleTestTransaction(
     reencodeWithRefs(fixture.contractArgsXDR, [[fixture.decoded.from, "1"]]),
