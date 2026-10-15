@@ -7,6 +7,22 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-15
+
+### Added
+
+- `ErrorCode` gains `time_bounds_required` and `transaction_expired`, returned by the mediator
+  co-sign and the fee sponsor for an envelope with no expiry, too long a validity or one that has
+  expired; `sponsor_source_unusable`, returned by the fee sponsor when the inner transaction is
+  not the next one of an existing account; and `sponsorship_budget_exhausted` (429), returned by
+  the fee sponsor once a daily budget is spent.
+
+### Changed
+
+- `mediatorSign` and `feeBumpSponsor` now refuse an envelope that does not expire within 330
+  seconds. Envelopes from `close/transactions` already do; an integration that builds its own
+  must set a time bound.
+
 ## [0.12.0] - 2026-10-15
 
 ### Added
