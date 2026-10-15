@@ -1,4 +1,4 @@
-import { Controller, Get } from "@nestjs/common";
+import { Controller, Get, Logger } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import {
   HealthCheck,
@@ -24,6 +24,21 @@ const RPC_HEALTH_TIMEOUT_MS = 3000;
 // bounds the real call rate to at most once per this window, independent of how many requests
 // arrive.
 const DEEP_CHECK_CACHE_MS = 2000;
+
+export type RpcProbeFailure = "timeout" | "unreachable";
+
+const logger = new Logger("health");
+
+// A provider URL can carry a credential in its path or query, so logs keep the host only.
+function hostOnly(text: string): string {
+  return text.replace(/[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/gi, (url) => {
+    try {
+      return new URL(url).host;
+    } catch {
+      return "[url]";
+    }
+  });
+}
 
 @ApiTags("health")
 @Controller("health")
@@ -90,11 +105,18 @@ export class HealthController {
   @ApiResponse({
     status: 200,
     description:
-      "RPC reachable on every network. `details.exchange_registry.daysRemaining` is the whole " +
+      "RPC reachable on every network; each `rpc_<network>` entry carries its `responseTime` in " +
+      "ms. `details.exchange_registry.daysRemaining` is the whole " +
       "days left before the exchange registry expires (negative once expired); it is reported, " +
       "never a failure, so a monitor can alert on it without the probe going down.",
   })
-  @ApiResponse({ status: 503, description: "RPC unreachable on at least one network." })
+  @ApiResponse({
+    status: 503,
+    description:
+      "RPC unreachable on at least one network. Each failed network reports only a fixed " +
+      '`message` (`"timeout"` or `"unreachable"`) and its `responseTime` in ms; the upstream ' +
+      "detail is logged, never returned.",
+  })
   deep(): ReturnType<HealthCheckService["check"]> {
     const now = Date.now();
     if (this.cachedDeepCheck && this.cachedDeepCheck.expiresAt > now) {
@@ -116,15 +138,24 @@ export class HealthController {
 
   private async checkRpc(network: Network): Promise<HealthIndicatorResult> {
     const indicator = this.indicators.check(`rpc_${network}`);
+    const startedAt = Date.now();
     try {
       // A dedicated, short-timeout server, never the shared getRpcServer() singleton every real
       // close operation uses - `timeout` here aborts the actual in-flight HTTP request (the SDK
       // wires it into a real AbortSignal), so an unreachable provider can't leave this route
       // holding an open outbound connection for however long that provider takes to give up.
       await buildRpcServer(network, { timeout: RPC_HEALTH_TIMEOUT_MS }).getHealth();
-      return indicator.up();
+      return indicator.up({ responseTime: Date.now() - startedAt });
     } catch (error) {
-      return indicator.down(error instanceof Error ? error.message : String(error));
+      const responseTime = Date.now() - startedAt;
+      const failure: RpcProbeFailure =
+        responseTime >= RPC_HEALTH_TIMEOUT_MS ? "timeout" : "unreachable";
+      logger.warn(
+        `rpc_${network} probe failed (${failure}, ${responseTime} ms): ${hostOnly(
+          error instanceof Error ? error.message : String(error)
+        )}`
+      );
+      return indicator.down({ message: failure, responseTime });
     }
   }
 }

@@ -37,7 +37,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "RPC reachable on every network. `details.exchange_registry.daysRemaining` is the whole days left before the exchange registry expires (negative once expired); it is reported, never a failure, so a monitor can alert on it without the probe going down.\n\nThe Health Check is successful",
+            "description": "RPC reachable on every network; each `rpc_<network>` entry carries its `responseTime` in ms. `details.exchange_registry.daysRemaining` is the whole days left before the exchange registry expires (negative once expired); it is reported, never a failure, so a monitor can alert on it without the probe going down.\n\nThe Health Check is successful",
             "content": {
               "application/json": {
                 "schema": {
@@ -144,7 +144,7 @@
             }
           },
           "503": {
-            "description": "RPC unreachable on at least one network.\n\nThe Health Check is not successful",
+            "description": "RPC unreachable on at least one network. Each failed network reports only a fixed `message` (`\"timeout\"` or `\"unreachable\"`) and its `responseTime` in ms; the upstream detail is logged, never returned.\n\nThe Health Check is not successful",
             "content": {
               "application/json": {
                 "schema": {
