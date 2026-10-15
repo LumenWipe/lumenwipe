@@ -205,7 +205,8 @@ export function claimAnswersKey(selections: Record<string, ClaimableBalanceSelec
 }
 
 /**
- * The per-asset transfers the user chose, with the amount floor verify() holds each payment to.
+ * The per-asset payments the user chose, transfers and returns to the issuer, with the amount
+ * floor verify() holds each payment to.
  *
  * The floor is what the account will hold when the payment runs: today's trustline balance plus
  * every claimable balance of the asset that this close will claim (currently claimable and not
@@ -230,11 +231,19 @@ export function chosenTransfers(
   const claimedPerAsset = claimedAmounts(accountState, claimableBalanceSelections);
 
   for (const [asset, disposition] of Object.entries(dispositions)) {
-    if (disposition !== "transfer" || isTokenContract(asset)) continue;
-    const destination = destinations[asset];
-    if (!destination) continue;
+    if (isTokenContract(asset)) continue;
     const trustline = trustlines.find((tl) => tl.asset === asset);
     const floor = parseFloat(trustline?.balance ?? "0") + (claimedPerAsset.get(asset) ?? 0);
+    if (disposition === "issuer") {
+      // The issuer is fixed by the asset itself. A zero floor still pins the choice for an
+      // asset that only arrives during the close, from an exit.
+      const issuer = asset.split(":")[1];
+      if (issuer) transfers[asset] = { destination: issuer, amount: floor.toFixed(7) };
+      continue;
+    }
+    if (disposition !== "transfer") continue;
+    const destination = destinations[asset];
+    if (!destination) continue;
     if (floor <= 0) continue;
     transfers[asset] = { destination, amount: floor.toFixed(7) };
   }
@@ -282,10 +291,13 @@ export function chosenTokenConversions(
   dispositions: Record<string, AssetDisposition>,
   floors: Record<string, TokenConversionFloor>,
   accountState: AccountState | null
-): Record<string, { minAmountOut: string; amountIn: string; resolvedPath?: string[] }> {
+): Record<
+  string,
+  { minAmountOut: string; amountOut?: string; amountIn: string; resolvedPath?: string[] }
+> {
   const conversions: Record<
     string,
-    { minAmountOut: string; amountIn: string; resolvedPath?: string[] }
+    { minAmountOut: string; amountOut?: string; amountIn: string; resolvedPath?: string[] }
   > = {};
   const tokens = accountState?.sorobanTokens?.tokens ?? [];
   for (const [contract, disposition] of Object.entries(dispositions)) {
@@ -296,6 +308,7 @@ export function chosenTokenConversions(
     const amountIn = token && /^\d+$/.test(token.balance) ? token.balance : "0";
     conversions[contract] = {
       minAmountOut: pinned.minAmountOut,
+      ...(pinned.amountOut !== undefined ? { amountOut: pinned.amountOut } : {}),
       amountIn,
       ...(pinned.provider === "xbull" && pinned.resolvedPath
         ? { resolvedPath: pinned.resolvedPath }

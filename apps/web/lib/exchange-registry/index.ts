@@ -211,6 +211,14 @@ export function requiresMediatorForAddress(address: string): boolean {
   return byAddress().get(address)?.requiresMediator ?? false;
 }
 
+/**
+ * Whether a close to this address may take the mediated hand-off. Only an exchange the bundled
+ * registry lists qualifies; a served copy can tighten its rules but cannot add one.
+ */
+export function mediatorAllowedFor(address: string): boolean {
+  return EMBEDDED.entries.some((e) => e.address === address) && requiresMediatorForAddress(address);
+}
+
 export function getMemoRequirement(address: string): {
   requiresMemo: boolean;
   memoType: "text" | "id" | "hash" | null;

@@ -1,5 +1,5 @@
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
-import { isRegistryUsable, lookupExchange } from "@/lib/exchange-registry";
+import { isRegistryUsable, lookupExchange, mediatorAllowedFor } from "@/lib/exchange-registry";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { xlmToStroops } from "@/lib/utils/amounts";
 import type { AccountSigner, AccountThresholds } from "@/types/account";
@@ -32,10 +32,11 @@ export interface CloseExpectation {
   source: string;
   /** The user's chosen final destination. */
   destination: string;
-  /** Whether the user's destination routes through the shared intermediary, from the client's
-   *  own registry lookup. Without it the two-operation hand-off would be accepted for a close
-   *  the user asked to send straight to their own wallet - so a shape that only makes sense
-   *  for an exchange would become reachable for everyone. */
+  /** Whether the user's destination routes through the shared intermediary.
+   *  `verifyCloseTransaction` sets it only when the bundled exchange registry lists the
+   *  destination as needing one, whatever the caller passed. Without it the two-operation
+   *  hand-off would be accepted for a close the user asked to send straight to their own
+   *  wallet. */
   mediatorRequired: boolean;
   /** The account's native balance in XLM as the client last read it. The floor under the
    *  forwarded amount: the intermediary is only a conduit if what leaves it is what arrived. */
@@ -109,7 +110,7 @@ export interface CloseExpectation {
    */
   tokenConversions: Record<
     string,
-    { minAmountOut: string; amountIn: string; resolvedPath?: string[] }
+    { minAmountOut: string; amountOut?: string; amountIn: string; resolvedPath?: string[] }
   >;
   /** XLM's own contract on this network, derived client-side from the network passphrase. The one
    *  asset a conversion may buy: without pinning it, the minimum above would be compared against a
@@ -400,6 +401,24 @@ function readXBullSwapArgs(args: string[]): XBullSwapArgs | null {
   };
 }
 
+/** How far under the quoted XLM a swap's floor may sit, whatever floor the plan carried: twice
+ *  the 0.5% slippage the API applies to every quote. */
+const MAX_SWAP_SLIPPAGE_BPS = BigInt(100);
+
+/** The least XLM a chosen swap may accept: the plan's floor, and never more than
+ *  MAX_SWAP_SLIPPAGE_BPS under the quote the user was shown beside it. */
+function swapFloor(chosen: { minAmountOut: string; amountOut?: string }): bigint {
+  const quoted = chosen.amountOut ?? "";
+  if (!/^\d+$/.test(chosen.minAmountOut) || !/^\d+$/.test(quoted)) {
+    throw new VerificationError(
+      "A swap cannot be checked against the quote you were shown. Run the analysis again."
+    );
+  }
+  const fromQuote = (BigInt(quoted) * (BigInt(10_000) - MAX_SWAP_SLIPPAGE_BPS)) / BigInt(10_000);
+  const pinned = BigInt(chosen.minAmountOut);
+  return pinned > fromQuote ? pinned : fromQuote;
+}
+
 function assertUserChoseThisTransfer(
   op: Extract<IntentOperation, { type: "payment" }>,
   expected: CloseExpectation,
@@ -547,21 +566,9 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
             "The transaction would pay funds from an account other than the one being closed."
           );
         }
-        // A payment is only ever a return-to-issuer (the asset paid back to its own issuer)
-        // or the mediated forward, which `assertMergeShape` has already vouched for.
-        // Stryker disable next-line StringLiteral,ConditionalExpression: `issuer` is null/
-        // undefined whenever `op.asset` has no ":" - which is always true for "native", the only
-        // value that makes `op.asset !== "native"` false. `issuer === op.destination` can then
-        // never be true in that case (destination is always a real address, never null or
-        // undefined), so neither the ":" split nor the "native" comparison is individually
-        // observable: isIssuerReturn is false for a native asset regardless of how either is
-        // mutated, because the other term already forces it.
-        const issuer = op.asset.includes(":") ? op.asset.split(":")[1] : null;
-        // Stryker disable next-line StringLiteral,ConditionalExpression: see above - mutating
-        // either the "native" literal or the whole clause only matters when asset === "native",
-        // where `issuer` (null/undefined either way) can never equal a real destination address.
-        const isIssuerReturn = op.asset !== "native" && issuer === op.destination;
-        if (!isIssuerReturn && op !== forward) {
+        // Anything but the forward is a payment the user chose: a transfer to the account they
+        // named, or a return to the issuer of an asset they chose to return.
+        if (op !== forward) {
           assertUserChoseThisTransfer(op, expected, seenTransfers);
         }
         break;
@@ -704,7 +711,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
                 "A swap would pay the proceeds to an address other than the account being closed."
               );
             }
-            if (swap.minAmountOut < BigInt(chosen.minAmountOut)) {
+            if (swap.minAmountOut < swapFloor(chosen)) {
               throw new VerificationError(
                 "A swap would accept less XLM than the minimum you were shown."
               );
@@ -764,7 +771,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
                 "A swap would pay the proceeds to an address other than the account being closed."
               );
             }
-            if (swap.minToGet < BigInt(chosen.minAmountOut)) {
+            if (swap.minToGet < swapFloor(chosen)) {
               throw new VerificationError(
                 "A swap would accept less XLM than the minimum you were shown."
               );
@@ -1064,7 +1071,7 @@ export function verifyCloseTransaction(opts: {
     tokenTransfers: Record<string, { destination: string; amount: string }>;
     tokenConversions: Record<
       string,
-      { minAmountOut: string; amountIn: string; resolvedPath?: string[] }
+      { minAmountOut: string; amountOut?: string; amountIn: string; resolvedPath?: string[] }
     >;
     exitContracts: string[];
     heldTokenContracts: string[];
@@ -1091,6 +1098,8 @@ export function verifyCloseTransaction(opts: {
   }
   assertCloseIntent(intent, {
     ...opts.expected,
+    mediatorRequired:
+      opts.expected.mediatorRequired && mediatorAllowedFor(opts.expected.destination),
     memoRequired: exchange?.requiresMemo ?? false,
     memoType: exchange?.memoType ?? null,
     nowSeconds: Math.floor(Date.now() / 1000),

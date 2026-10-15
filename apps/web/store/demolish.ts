@@ -15,6 +15,8 @@ import type {
  *  `strict_send` call to before signing (see `apps/web/lib/stellar/verify.ts`). */
 export interface TokenConversionFloor {
   minAmountOut: string;
+  /** The quoted XLM the plan showed beside the floor. */
+  amountOut?: string;
   provider: "soroswap" | "xbull";
   resolvedPath?: string[];
 }

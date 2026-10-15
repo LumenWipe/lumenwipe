@@ -21,6 +21,7 @@ import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import type { IntentOperation, TxIntent } from "@/types/close-api";
 import type { AccountSigner } from "@/types/account";
 import { fromHex } from "@/lib/stellar/hex";
+import { activeRegistry, setRegistry } from "@/lib/exchange-registry";
 
 const SRC = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -151,7 +152,12 @@ test("a well-formed direct close passes", () => {
     },
     operations: [setOptions(), conversion(), payment(ISSUER), merge(DEST)],
   });
-  expect(() => assertCloseIntent(i, expectation())).not.toThrow();
+  expect(() =>
+    assertCloseIntent(
+      i,
+      expectation({ transfers: { [`USDC:${ISSUER}`]: { destination: ISSUER, amount: "5" } } })
+    )
+  ).not.toThrow();
 });
 
 test("a well-formed mediator close passes (merge to mediator, forward to destination, memo)", () => {
@@ -955,12 +961,25 @@ test("the rejection names the asset code, so the user can tell which one is wron
   }
 });
 
-test("a transfer does not loosen the issuer-return rule", () => {
-  // Paying an asset to its own issuer stays allowed on its own terms, with no transfer chosen.
+test("a return to the issuer passes only for an asset the user chose to return", () => {
   const i = intent({
     operations: [transferPayment(ISSUER, "10", USDC), merge(DEST)],
   });
-  expect(() => assertCloseIntent(i, expectation({ transfers: {} }))).not.toThrow();
+  const returned = { [USDC]: { destination: ISSUER, amount: "10" } };
+  expect(() => assertCloseIntent(i, expectation({ transfers: returned }))).not.toThrow();
+  expect(() => assertCloseIntent(i, expectation({ transfers: {} }))).toThrow(VerificationError);
+  expect(() =>
+    assertCloseIntent(
+      i,
+      expectation({ transfers: { [USDC]: { destination: ISSUER, amount: "11" } } })
+    )
+  ).toThrow(/less USDC than you approved/);
+  expect(() =>
+    assertCloseIntent(
+      i,
+      expectation({ transfers: { [USDC]: { destination: TRANSFER_DEST, amount: "10" } } })
+    )
+  ).toThrow(/address you did not choose/);
 });
 
 test("a close with no transfers verifies exactly as before", () => {
@@ -1570,7 +1589,7 @@ const aggregatorSwap = (over: Partial<ExitOp> = {}): IntentOperation =>
 
 const chosenConversion = (floor = FLOOR, amountIn = "100000000") =>
   expectation({
-    tokenConversions: { [CONVERT_TOKEN]: { minAmountOut: floor, amountIn } },
+    tokenConversions: { [CONVERT_TOKEN]: { minAmountOut: floor, amountOut: floor, amountIn } },
     xlmContract: XLM_CONTRACT,
   });
 
@@ -1798,7 +1817,9 @@ const chosenXBullConversion = (
 ) =>
   expectation({
     conversionContracts: [XBULL_ROUTER],
-    tokenConversions: { [CONVERT_TOKEN]: { minAmountOut: floor, amountIn, resolvedPath } },
+    tokenConversions: {
+      [CONVERT_TOKEN]: { minAmountOut: floor, amountOut: floor, amountIn, resolvedPath },
+    },
     xlmContract: XLM_CONTRACT,
   });
 
@@ -1869,12 +1890,18 @@ test("rejects a strict_send swap whose hop count matches more than one chosen to
     tokenConversions: {
       [CONVERT_TOKEN]: {
         minAmountOut: FLOOR,
+        amountOut: FLOOR,
         amountIn: "100000000",
         resolvedPath: [CONVERT_TOKEN, XLM_CONTRACT],
       },
       // A different token, also one hop from XLM: same resolvedPath length as CONVERT_TOKEN's,
       // so hop count alone cannot tell the swap apart from either one.
-      [other]: { minAmountOut: FLOOR, amountIn: "50000000", resolvedPath: [other, XLM_CONTRACT] },
+      [other]: {
+        minAmountOut: FLOOR,
+        amountOut: FLOOR,
+        amountIn: "50000000",
+        resolvedPath: [other, XLM_CONTRACT],
+      },
     },
     xlmContract: XLM_CONTRACT,
   });
@@ -1930,10 +1957,11 @@ test("a strict_send swap is held to the same outer swap-shape rules as Soroswap'
 
 test("a classic close may pay up to ten times the base fee per operation", () => {
   const ops = [setOptions(), payment(ISSUER), merge(DEST)];
-  expect(() =>
-    assertCloseIntent(intent({ operations: ops, fee: "3000" }), expectation())
-  ).not.toThrow();
-  expect(() => assertCloseIntent(intent({ operations: ops, fee: "3001" }), expectation())).toThrow(
+  const chosen = expectation({
+    transfers: { [`USDC:${ISSUER}`]: { destination: ISSUER, amount: "5" } },
+  });
+  expect(() => assertCloseIntent(intent({ operations: ops, fee: "3000" }), chosen)).not.toThrow();
+  expect(() => assertCloseIntent(intent({ operations: ops, fee: "3001" }), chosen)).toThrow(
     /network fee far above/
   );
 });
@@ -2006,4 +2034,83 @@ test("a pre-authorized transaction keeps its own expiry and fee", () => {
   const own = intent({ operations: ops, maxTime: null, fee: "5000" });
   expect(() => assertCloseIntent(own, expectation({ preAuthorized: true }))).not.toThrow();
   expect(() => assertCloseIntent(own, expectation())).toThrow(/never expires/);
+});
+
+// ─── The mediated hand-off follows the bundled registry ─────────────────────
+
+function mediatedWrapper(destination: string, mediatorRequired: boolean): () => void {
+  const intermediary = Keypair.random().publicKey();
+  const unsignedXdr = buildXdr([
+    Operation.accountMerge({ destination: intermediary }),
+    Operation.payment({
+      destination,
+      asset: Asset.native(),
+      amount: "100",
+      source: intermediary,
+    }),
+  ]);
+  return () =>
+    verifyCloseTransaction({
+      unsignedXdr,
+      network: "testnet",
+      expected: { ...expectation({ destination }), mediatorRequired },
+    });
+}
+
+test("the mediated hand-off is refused for a destination the bundled registry does not list, whatever the caller says", () => {
+  expect(mediatedWrapper(DEST, true)).toThrow(/address you did not choose/);
+});
+
+test("a served registry entry cannot make the mediated hand-off reachable for a new address", () => {
+  const before = activeRegistry();
+  setRegistry({
+    ...before,
+    served: true,
+    entries: [
+      ...before.entries,
+      {
+        address: DEST,
+        name: "Served only",
+        domain: "example.com",
+        requiresMediator: true,
+        requiresMemo: false,
+        memoType: "text",
+      },
+    ],
+  });
+  try {
+    expect(mediatedWrapper(DEST, true)).toThrow(/address you did not choose/);
+  } finally {
+    setRegistry(before);
+  }
+});
+
+test("a swap floor sits no more than 1% under the quote the user was shown, whatever floor the plan carried", () => {
+  // Quote 600 XLM: the floor is at least 594 XLM even when the plan carries a lower one.
+  const quoted = (minAmountOut: string, amountOut?: string) =>
+    expectation({
+      tokenConversions: {
+        [CONVERT_TOKEN]: {
+          minAmountOut,
+          ...(amountOut !== undefined ? { amountOut } : {}),
+          amountIn: "100000000",
+        },
+      },
+      xlmContract: XLM_CONTRACT,
+    });
+  const swapWithMin = (min: string) =>
+    exitOnly(
+      routerSwap({
+        args: ["100000000", min, JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), SRC, "1"],
+      })
+    );
+  expect(() =>
+    assertCloseIntent(swapWithMin("5940000000"), quoted("1", "6000000000"))
+  ).not.toThrow();
+  expect(() => assertCloseIntent(swapWithMin("5939999999"), quoted("1", "6000000000"))).toThrow(
+    /less XLM than the minimum/
+  );
+  expect(() => assertCloseIntent(swapWithMin("5940000000"), quoted("1"))).toThrow(
+    /quote you were shown/
+  );
 });
