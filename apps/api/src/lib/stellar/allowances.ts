@@ -91,6 +91,18 @@ export const ALLOWANCE_TIMEOUT_MS = 5_000;
 const LEDGER_READS_RESERVE_MS = 6_000;
 const RPC_CALL_TIMEOUT_MS = 12_000;
 
+/** One entry per code hash: the pools listed by address share their representative's code, and
+ *  probing each would spend the capped speculative budget before reaching the other protocols. */
+export function onePerCode(entries: ContractRegistryEntry[]): ContractRegistryEntry[] {
+  const seen = new Set<string>();
+  return entries.filter((e) => {
+    if (e.wasmHash === null) return true;
+    if (seen.has(e.wasmHash)) return false;
+    seen.add(e.wasmHash);
+    return true;
+  });
+}
+
 export function defaultAllowancesDeps(
   network: Network,
   options: { budgetMs?: number } = {}
@@ -99,7 +111,7 @@ export function defaultAllowancesDeps(
     rpc: getRpcServer(network),
     now: () => Date.now(),
     budgetMs: options.budgetMs ?? ALLOWANCES_BUDGET_MS,
-    registryEntries: entriesForNetwork(network),
+    registryEntries: onePerCode(entriesForNetwork(network)),
     knownTokens: bundledListCandidates(network),
   };
 }
