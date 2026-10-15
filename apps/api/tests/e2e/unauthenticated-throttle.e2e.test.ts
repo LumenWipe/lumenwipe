@@ -3,6 +3,7 @@ import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "@/app.module";
+import { generateApiKey } from "@/auth/api-key-store";
 import { JsonLogger } from "@/common/json-logger";
 import { configureApp } from "@/configure-app";
 
@@ -63,3 +64,27 @@ test("trust proxy is honored: X-Forwarded-For, not the raw socket address, is th
     .set("X-Forwarded-For", "203.0.113.21");
   expect(fresh.status).toBe(401);
 });
+
+test("only the last X-Forwarded-For entry identifies the client", async () => {
+  const statuses: number[] = [];
+  for (let i = 0; i < THROTTLE_LIMIT + 2; i++) {
+    const res = await request(http)
+      .get("/testnet/account/GABC")
+      .set("X-Forwarded-For", `198.51.100.${i % 250}, 203.0.113.30`);
+    statuses.push(res.status);
+  }
+  expect(statuses.slice(THROTTLE_LIMIT)).toEqual([429, 429]);
+}, 20_000);
+
+test("a different bearer on every request does not earn a fresh budget", async () => {
+  const statuses: number[] = [];
+  for (let i = 0; i < THROTTLE_LIMIT + 2; i++) {
+    const res = await request(http)
+      .get("/testnet/account/GABC")
+      .set("Authorization", `Bearer ${i % 2 === 0 ? `invented-${i}` : generateApiKey()}`)
+      .set("X-Forwarded-For", "203.0.113.31");
+    statuses.push(res.status);
+  }
+  expect(statuses.slice(0, THROTTLE_LIMIT).every((s) => s === 401)).toBe(true);
+  expect(statuses.slice(THROTTLE_LIMIT)).toEqual([429, 429]);
+}, 20_000);

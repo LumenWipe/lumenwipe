@@ -1,8 +1,12 @@
-import { test, expect } from "bun:test";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import type { ConfigService } from "@nestjs/config";
 import { ApiKeyService } from "@/auth/api-key.service";
 import { ApiKeyDirectory } from "@/auth/api-key-directory";
-import { InMemoryApiKeyStore } from "@/auth/api-key-store";
+import { InMemoryApiKeyStore, generateApiKey, isApiKeyFormat } from "@/auth/api-key-store";
+
+afterEach(() => {
+  mock.restore();
+});
 
 function staticKeys(apiKeys: string): ApiKeyService {
   return new ApiKeyService({ get: () => apiKeys } as unknown as ConfigService);
@@ -108,8 +112,83 @@ test("negative results are cached too, so repeated bad keys don't hammer the sto
   };
 
   const directory = new ApiKeyDirectory(staticKeys("web=key_abc"), store, 10_000);
-  await directory.resolve("garbage");
-  await directory.resolve("garbage");
+  const unknown = generateApiKey();
+  await directory.resolve(unknown);
+  await directory.resolve(unknown);
 
   expect(storeCalls).toBe(1);
+});
+
+test("a value without the generated key shape resolves to null without a store read", async () => {
+  const store = new InMemoryApiKeyStore();
+  const storeResolve = spyOn(store, "resolve");
+  const directory = new ApiKeyDirectory(staticKeys("web=key_abc"), store);
+
+  for (const value of [
+    "garbage",
+    "lw_",
+    `lw_${"a".repeat(42)}`,
+    `lw_${"a".repeat(44)}`,
+    `lw_${"a".repeat(42)}=`,
+  ]) {
+    expect(await directory.resolve(value)).toBeNull();
+    expect(directory.peek(value)).toBeNull();
+  }
+  expect(storeResolve).not.toHaveBeenCalled();
+  expect(directory.negativeCacheSize).toBe(0);
+});
+
+test("generated keys always have the accepted shape", () => {
+  for (let i = 0; i < 200; i++) expect(isApiKeyFormat(generateApiKey())).toBe(true);
+});
+
+test("peek answers from the static map and the cache, and is undefined when only the store knows", async () => {
+  const store = new InMemoryApiKeyStore();
+  const { raw } = await store.create("polar");
+  const directory = new ApiKeyDirectory(staticKeys("web=key_abc"), store);
+
+  expect(directory.peek("key_abc")).toEqual({ label: "web", rateLimit: null });
+  expect(directory.peek(raw)).toBeUndefined();
+  await directory.resolve(raw);
+  expect(directory.peek(raw)).toEqual({ label: "polar", rateLimit: null });
+
+  const unknown = generateApiKey();
+  expect(directory.peek(unknown)).toBeUndefined();
+  await directory.resolve(unknown);
+  expect(directory.peek(unknown)).toBeNull();
+});
+
+test("the unknown-key cache never holds more than its cap, dropping the oldest first", async () => {
+  const store = new InMemoryApiKeyStore();
+  const directory = new ApiKeyDirectory(staticKeys(""), store, 60_000, 3);
+  const keys = Array.from({ length: 10 }, () => generateApiKey());
+  for (const key of keys) await directory.resolve(key);
+
+  expect(directory.negativeCacheSize).toBe(3);
+  expect(directory.peek(keys[9]!)).toBeNull();
+  expect(directory.peek(keys[0]!)).toBeUndefined();
+});
+
+test("expired unknown-key entries are dropped before live ones when the cap is reached", async () => {
+  const store = new InMemoryApiKeyStore();
+  const directory = new ApiKeyDirectory(staticKeys(""), store, 1, 2);
+  await directory.resolve(generateApiKey());
+  await directory.resolve(generateApiKey());
+  await Bun.sleep(5);
+  await directory.resolve(generateApiKey());
+
+  expect(directory.negativeCacheSize).toBe(1);
+});
+
+test("a flood of unknown keys does not evict a cached known key", async () => {
+  const store = new InMemoryApiKeyStore();
+  const { raw } = await store.create("polar");
+  const directory = new ApiKeyDirectory(staticKeys(""), store, 60_000, 2);
+  await directory.resolve(raw);
+  const storeResolve = spyOn(store, "resolve");
+  for (let i = 0; i < 20; i++) await directory.resolve(generateApiKey());
+  storeResolve.mockClear();
+
+  expect(await directory.resolve(raw)).toEqual({ label: "polar", rateLimit: null });
+  expect(storeResolve).not.toHaveBeenCalled();
 });

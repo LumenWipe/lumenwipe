@@ -9,6 +9,8 @@ import { registerRequestSecrets, requestContextMiddleware } from "./common/reque
 
 export const JSON_BODY_LIMIT = "100kb";
 
+export const TRUSTED_PROXY_HOPS = 1;
+
 const BODY_METHODS = new Set(["POST", "PUT", "PATCH"]);
 
 const BODY_PARSER_ERRORS: Record<string, { status: number; code: ErrorCode; message: string }> = {
@@ -46,13 +48,10 @@ export function configureApp(
   app: INestApplication,
   logger: LoggerService = new JsonLogger()
 ): void {
-  // Cloud Run terminates TLS and proxies every request through its own frontend - without this,
-  // Express's req.ip reports that proxy's address for every request, not the real caller's, so
-  // RateLimiter's per-IP fallback (unauthenticated requests, which carry no API key to
-  // key off instead) collapses onto one shared bucket for all callers combined (#59). Cloud
-  // Run's proxy is trusted infrastructure the request cannot have come from any other way, so
-  // trusting it to report the real client in X-Forwarded-For is safe here.
-  app.getHttpAdapter().getInstance().set("trust proxy", true);
+  // Cloud Run's front end keeps any X-Forwarded-For the caller sent and appends the address it
+  // accepted the connection from, so only the last entry is trustworthy. Exactly one hop: an
+  // external load balancer in front of the service would add a second entry and need 2.
+  app.getHttpAdapter().getInstance().set("trust proxy", TRUSTED_PROXY_HOPS);
 
   app.useLogger(logger);
 

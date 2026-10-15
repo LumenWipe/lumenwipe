@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { isIPv6 } from "net";
 import { Injectable, Logger } from "@nestjs/common";
 import {
   InjectThrottlerOptions,
@@ -7,18 +8,49 @@ import {
   type ThrottlerStorage,
 } from "@nestjs/throttler";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
-import { ApiKeyDirectory } from "./api-key-directory";
+import { ApiKeyDirectory, type ResolvedApiKey } from "./api-key-directory";
 
-/**
- * Rate-limit tracker: the API key when present, else the client IP (for public
- * routes that carry no key). Pure and exported so it can be unit-tested without
- * standing up the throttler's injected dependencies.
- */
-export function trackerForRequest(req: Record<string, unknown>): string {
+/** The bearer value of the `Authorization` header, or null when there is none. */
+export function bearerFromRequest(req: Record<string, unknown>): string | null {
   const headers = (req.headers ?? {}) as Record<string, string | undefined>;
   const auth = headers.authorization;
-  if (auth?.startsWith("Bearer ")) return auth.slice("Bearer ".length).trim();
-  return (req as { ip?: string }).ip ?? "unknown";
+  if (!auth?.startsWith("Bearer ")) return null;
+  const value = auth.slice("Bearer ".length).trim();
+  return value === "" ? null : value;
+}
+
+/**
+ * The client address as a rate-limit identity: an IPv4-mapped IPv6 address becomes plain IPv4,
+ * and any other IPv6 address is reduced to its /64, the block a single client usually holds.
+ */
+export function clientIdentity(ip: string | undefined): string {
+  if (!ip) return "unknown";
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
+  if (mapped) return mapped[1]!;
+  if (isIPv6(ip)) return `${expandIPv6(ip).slice(0, 4).join(":")}::/64`;
+  return ip;
+}
+
+function expandIPv6(ip: string): string[] {
+  const [head = "", tail = ""] = ip.split("%")[0]!.split("::");
+  const left = head ? head.split(":") : [];
+  const right = ip.includes("::") && tail ? tail.split(":") : [];
+  if (!ip.includes("::")) return left.map((h) => h.toLowerCase());
+  const fill: string[] = Array.from({ length: 8 - left.length - right.length }, () => "0");
+  return [...left, ...fill, ...right].map((h) => h.toLowerCase());
+}
+
+/** Tracker for a request counted against its client rather than a key. */
+export function ipTracker(req: Record<string, unknown>): string {
+  return `ip:${clientIdentity((req as { ip?: string }).ip)}`;
+}
+
+function lookupTracker(req: Record<string, unknown>): string {
+  return `lookup:${clientIdentity((req as { ip?: string }).ip)}`;
+}
+
+function keyTracker(rawKey: string): string {
+  return `key:${rawKey}`;
 }
 
 /** Storage key for a limiter `name` + `tracker`, hashed so the raw key never lands in storage/logs. */
@@ -49,16 +81,23 @@ export interface RateLimitDecision {
 }
 
 /**
- * One budget per API key (per IP when there is no key) across every route, counted in the
- * throttler's own storage so the numbers are the ones the limiter already used.
+ * One budget per known API key across every route, and one per client IP for everything else:
+ * no key, a value that is not a key, or a key that does not resolve. Counted in the throttler's
+ * own storage so the numbers are the ones the limiter already used.
  *
  * It runs as the first Express middleware (see `configureApp`), ahead of body parsing, routing
  * and `ApiKeyGuard`, so every response, including a 404 or a body error, is counted and carries
  * the budget headers, and a request without a valid key is still throttled before it is
  * authenticated (#59).
  *
+ * A bearer that only the key store can answer for is looked up under a separate per-client
+ * lookup budget, so the store is read at most that many times per client per window whatever
+ * the bearer values, and a known key is still found while its client's request budget is spent.
+ * A key that resolves is counted against the key alone; one that does not, against the client.
+ * An IPv6 client is one /64.
+ *
  * A self-serve key can carry its own `rateLimit` override (issue #289), resolved through the
- * cached `ApiKeyDirectory`; a resolution failure fails open to the global default. The block
+ * cached `ApiKeyDirectory`; a resolution failure leaves the request on its client budget. The block
  * duration is deliberately left at the global window for override keys: the storage releases a
  * blocked key and resets its count when that block ends, so `Retry-After` is exactly the time
  * until the key is served again.
@@ -83,8 +122,22 @@ export class RateLimiter {
   }
 
   async consume(req: Record<string, unknown>): Promise<RateLimitDecision> {
-    const tracker = trackerForRequest(req);
-    const resolved = await this.apiKeys.resolve(tracker).catch(() => null);
+    const bearer = bearerFromRequest(req);
+    if (bearer !== null) {
+      const peeked = this.apiKeys.peek(bearer);
+      if (peeked) return this.count(keyTracker(bearer), peeked);
+      if (peeked === undefined && !(await this.count(lookupTracker(req), null)).blocked) {
+        const resolved = await this.apiKeys.resolve(bearer).catch(() => null);
+        if (resolved) return this.count(keyTracker(bearer), resolved);
+      }
+    }
+    return this.count(ipTracker(req), null);
+  }
+
+  private async count(
+    tracker: string,
+    resolved: ResolvedApiKey | null
+  ): Promise<RateLimitDecision> {
     const defaults = this.defaults();
     const limit = resolved?.rateLimit?.limit ?? defaults.limit;
     const ttl = resolved?.rateLimit?.ttlMs ?? defaults.ttl;
