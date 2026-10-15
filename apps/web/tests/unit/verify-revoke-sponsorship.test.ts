@@ -27,6 +27,7 @@ function baseExpected(): CloseExpectation {
     claimTrustlineAssets: [],
     transfers: {},
     tokenTransfers: {},
+    classicConversions: {},
     tokenConversions: {},
     conversionContracts: [],
     xlmContract: Asset.native().contractId(Networks.TESTNET),

@@ -43,6 +43,7 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
     claimTrustlineAssets: [],
     transfers: {},
     tokenTransfers: {},
+    classicConversions: { [`USDC:${ISSUER}`]: { minAmountOut: "90000000" } },
     tokenConversions: {},
     conversionContracts: [SOROSWAP_ROUTER],
     xlmContract: XLM_SAC,
@@ -766,6 +767,7 @@ test("verifyCloseTransaction passes a mediated close to a memo-requiring exchang
         claimTrustlineAssets: [],
         transfers: {},
         tokenTransfers: {},
+        classicConversions: {},
         tokenConversions: {},
         conversionContracts: [],
         xlmContract: XLM_SAC,
@@ -804,6 +806,7 @@ test("verifyCloseTransaction rejects a mediated close to a memo-requiring exchan
         claimTrustlineAssets: [],
         transfers: {},
         tokenTransfers: {},
+        classicConversions: {},
         tokenConversions: {},
         conversionContracts: [],
         xlmContract: XLM_SAC,
@@ -833,6 +836,7 @@ test("verifyCloseTransaction passes a direct close to a destination the registry
         claimTrustlineAssets: [],
         transfers: {},
         tokenTransfers: {},
+        classicConversions: {},
         tokenConversions: {},
         conversionContracts: [],
         xlmContract: XLM_SAC,
@@ -1034,6 +1038,7 @@ test("the mediated forward is exempt: it is sent by the intermediary, not the so
         memoType: "text",
         transfers: {},
         tokenTransfers: {},
+        classicConversions: {},
         tokenConversions: {},
         conversionContracts: [],
       })
@@ -2134,4 +2139,38 @@ test("a strict_send swap floor also sits no more than 1% under the quote the use
   expect(() => assertCloseIntent(withMin("5939999999"), quoted)).toThrow(
     /less XLM than the minimum/
   );
+});
+
+// ─── Classic conversions follow the user's choice and the plan's quote ───────
+
+test("a classic conversion sells only an asset the user chose to convert", () => {
+  const i = intent({ operations: [conversion(), merge(DEST)] });
+  expect(() => assertCloseIntent(i, expectation({ classicConversions: {} }))).toThrow(
+    /did not choose to convert/
+  );
+});
+
+test("a classic conversion accepts at least the minimum the plan showed", () => {
+  const at = (destMin: string) =>
+    intent({ operations: [conversion(SRC, "native", destMin), merge(DEST)] });
+  expect(() => assertCloseIntent(at("9.0000000"), expectation())).not.toThrow();
+  expect(() => assertCloseIntent(at("8.9999999"), expectation())).toThrow(
+    /less XLM than the minimum you were shown/
+  );
+  expect(() => assertCloseIntent(at("0.0000001"), expectation())).toThrow(
+    /less XLM than the minimum you were shown/
+  );
+});
+
+test("an asset only an exit pays in is held to the user's choice and a positive minimum", () => {
+  const chosen = expectation({
+    classicConversions: { [`USDC:${ISSUER}`]: { minAmountOut: null } },
+  });
+  const i = intent({ operations: [conversion(SRC, "native", "0.0000001"), merge(DEST)] });
+  expect(() => assertCloseIntent(i, chosen)).not.toThrow();
+});
+
+test("an asset is converted at most once per transaction", () => {
+  const i = intent({ operations: [conversion(), conversion(), merge(DEST)] });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/convert USDC more than once/);
 });

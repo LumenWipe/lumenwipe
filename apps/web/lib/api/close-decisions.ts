@@ -5,7 +5,7 @@ import type {
 } from "@/types/plan";
 import type { DecisionAnswer } from "@lumenwipe/sdk";
 import type { AccountState } from "@/types/account";
-import type { TokenConversionFloor } from "@/store/demolish";
+import type { ClassicConversionFloor, TokenConversionFloor } from "@/store/demolish";
 import { xlmToStroops } from "@/lib/utils/amounts";
 
 /** Stable decision id for a per-asset disposition. Must match the API's `assetDecisionId`. */
@@ -153,7 +153,8 @@ const TRANSFER_CHOICE = "transfer_to_account";
 export function dispositionsToDecisions(
   dispositions: Record<string, AssetDisposition>,
   transferDestinations: TransferDestinations = {},
-  tokenConversionFloors: Record<string, TokenConversionFloor> = {}
+  tokenConversionFloors: Record<string, TokenConversionFloor> = {},
+  classicConversionFloors: Record<string, ClassicConversionFloor> = {}
 ): DecisionAnswer[] {
   return Object.entries(dispositions).map(([asset, disposition]): DecisionAnswer => {
     const id = isTokenContract(asset) ? tokenDecisionId(asset) : assetDecisionId(asset);
@@ -165,7 +166,13 @@ export function dispositionsToDecisions(
         // it: the build round never falls back to a provider the user was not quoted through
         // (token-conversion-round.ts), so omitting it here would silently default to Soroswap for
         // a floor the user actually accepted from xBull.
-        const pinned = isTokenContract(asset) ? tokenConversionFloors[asset] : undefined;
+        if (!isTokenContract(asset)) {
+          const classicFloor = classicConversionFloors[asset]?.minAmountOut;
+          return classicFloor
+            ? { id, choice: "convert_to_xlm", params: { minAmountOut: classicFloor } }
+            : { id, choice: "convert_to_xlm" };
+        }
+        const pinned = tokenConversionFloors[asset];
         return pinned
           ? {
               id,
@@ -296,6 +303,26 @@ export function chosenTokenTransfers(
     transfers[contract] = { destination, amount };
   }
   return transfers;
+}
+
+/**
+ * The classic conversions the user chose, keyed by `CODE:ISSUER`, each with the least XLM (in
+ * stroops) the plan showed it delivering, or null for an asset only an exit pays in. An asset
+ * marked convert with no recorded floor is left out, so `verify()` refuses its conversion.
+ */
+export function chosenClassicConversions(
+  dispositions: Record<string, AssetDisposition>,
+  floors: Record<string, ClassicConversionFloor>
+): Record<string, { minAmountOut: string | null }> {
+  const conversions: Record<string, { minAmountOut: string | null }> = {};
+  for (const [asset, disposition] of Object.entries(dispositions)) {
+    if (disposition !== "convert" || isTokenContract(asset)) continue;
+    const floor = floors[asset];
+    if (!floor) continue;
+    if (floor.minAmountOut !== null && !/^[1-9]\d*$/.test(floor.minAmountOut)) continue;
+    conversions[asset] = { minAmountOut: floor.minAmountOut };
+  }
+  return conversions;
 }
 
 /**

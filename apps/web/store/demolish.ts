@@ -21,6 +21,12 @@ export interface TokenConversionFloor {
   resolvedPath?: string[];
 }
 
+/** The least XLM, in stroops, the plan showed a classic asset's conversion delivering; null for
+ *  an asset only an exit pays in, which has no amount to quote until it lands. */
+export interface ClassicConversionFloor {
+  minAmountOut: string | null;
+}
+
 interface DemolishState {
   // Inputs
   sourceAddress: string | null;
@@ -64,6 +70,7 @@ interface DemolishState {
   /** Per Soroban token contract, the least XLM (stroops) the plan quoted its conversion at: the
    *  floor the convert answer carries and the built swap is held to. */
   tokenConversionFloors: Record<string, TokenConversionFloor>;
+  classicConversionFloors: Record<string, ClassicConversionFloor>;
 
   // Per-claimable-balance selection, keyed by balance id: claim it, add a trustline then
   // claim it, or forfeit it.
@@ -104,6 +111,7 @@ interface DemolishState {
   reconcileWithPlanBlockers: (blockers: Array<{ code?: string }>) => void;
   setTransferDestination: (asset: string, destination: string | null) => void;
   setTokenConversionFloors: (floors: Record<string, TokenConversionFloor>) => void;
+  setClassicConversionFloors: (floors: Record<string, ClassicConversionFloor>) => void;
   setClaimableBalanceSelection: (balanceId: string, selection: ClaimableBalanceSelection) => void;
   setMediatorRequired: (required: boolean) => void;
   setCurrentStepIndex: (index: number) => void;
@@ -207,6 +215,7 @@ const initialState = {
   assetDispositions: {},
   transferDestinations: {},
   tokenConversionFloors: {},
+  classicConversionFloors: {},
   claimableBalanceSelections: {},
   mediatorRequired: false,
   lastError: null,
@@ -254,6 +263,7 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       assetDispositions: pruneDispositions(s.assetDispositions, accountState),
       transferDestinations: pruneToPresentAssets(s.transferDestinations, accountState),
       tokenConversionFloors: pruneToPresentAssets(s.tokenConversionFloors, accountState),
+      classicConversionFloors: pruneToPresentAssets(s.classicConversionFloors, accountState),
       claimableBalanceSelections: pruneClaimableSelections(
         s.claimableBalanceSelections,
         accountState
@@ -292,6 +302,7 @@ export const useDemolishStore = create<DemolishState>((set) => ({
     ),
 
   setTokenConversionFloors: (floors) => set({ tokenConversionFloors: floors }),
+  setClassicConversionFloors: (floors) => set({ classicConversionFloors: floors }),
 
   setTransferDestination: (asset, destination) =>
     set((s) => {

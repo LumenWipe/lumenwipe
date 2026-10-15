@@ -11,6 +11,7 @@ import { DestinationReadError, LedgerReadError } from "@/lib/close-api/merge-pre
 import { IssuerReadError } from "@/lib/close-api/issuance-preflight";
 import {
   decisionIdFor,
+  InvalidConversionFloorError,
   MissingConversionFloorError,
   MissingTransferDestinationError,
   tokenDecisionId,
@@ -127,6 +128,12 @@ export const TRANSACTION_ERRORS: readonly DomainErrorEntry[] = [
     status: 422,
     message: e.message,
     details: { decisionId: tokenDecisionId(e.contract) },
+  })),
+  entry(InvalidConversionFloorError, (e) => ({
+    code: "conversion_floor_missing",
+    status: 422,
+    message: e.message,
+    details: { decisionId: decisionIdFor(e.asset) },
   })),
   entry(UnrecognizedConversionProviderError, (e) => ({
     code: "conversion_provider_unrecognized",

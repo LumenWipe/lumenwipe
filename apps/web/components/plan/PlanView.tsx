@@ -12,7 +12,11 @@ import type {
   LeavablePosition,
 } from "@/lib/api/plan-adapters";
 import type { MediatorCheckResult } from "@/types/account";
-import { useDemolishStore, type TokenConversionFloor } from "@/store/demolish";
+import {
+  useDemolishStore,
+  type ClassicConversionFloor,
+  type TokenConversionFloor,
+} from "@/store/demolish";
 import { fetchClosePlan } from "@/lib/api/close-client";
 import {
   claimableSelectionsToDecisions,
@@ -135,6 +139,13 @@ export default function PlanView({
       }
     }
     useDemolishStore.getState().setTokenConversionFloors(floors);
+    const classic: Record<string, ClassicConversionFloor> = {};
+    for (const c of conversions) {
+      if (c.token || !c.convertible) continue;
+      if (c.quote) classic[c.asset] = { minAmountOut: c.quote.minAmountOut };
+      else if (c.arrivesFromExit) classic[c.asset] = { minAmountOut: null };
+    }
+    useDemolishStore.getState().setClassicConversionFloors(classic);
   }, [conversions]);
 
   useEffect(() => {
@@ -335,7 +346,8 @@ export default function PlanView({
         ...dispositionsToDecisions(
           useDemolishStore.getState().assetDispositions,
           useDemolishStore.getState().transferDestinations,
-          useDemolishStore.getState().tokenConversionFloors
+          useDemolishStore.getState().tokenConversionFloors,
+          useDemolishStore.getState().classicConversionFloors
         ),
         ...claimableSelectionsToDecisions(useDemolishStore.getState().claimableBalanceSelections),
         ...destinationAcknowledgementToDecisions(

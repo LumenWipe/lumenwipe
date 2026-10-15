@@ -61,6 +61,7 @@ function expectationFor(account: AccountState): CloseExpectation {
     claimTrustlineAssets: [],
     transfers: {},
     tokenTransfers: {},
+    classicConversions: {},
     tokenConversions: {},
     accountSigners: [{ key: SRC, weight: 1, type: "ed25519_public_key" }],
     accountThresholds: { low: 0, med: 1, high: 1 },

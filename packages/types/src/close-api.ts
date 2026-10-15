@@ -43,10 +43,11 @@ export interface DecisionAnswer {
   params?: {
     maxSlippageBps?: number;
     /**
-     * Required by `convert_to_xlm` on a Soroban token: the least XLM, in stroops, the user was
-     * shown the swap would deliver (the plan's `quote.minAmountOut`). The build refuses a route
-     * that no longer clears it (`quote_drifted`) instead of swapping at a rate nobody agreed to,
-     * and the browser holds the built swap's own minimum to at least this figure.
+     * Required by `convert_to_xlm` on a Soroban token, optional on a classic asset: the least
+     * XLM, in stroops, the user was shown the conversion would deliver (the plan's
+     * `quote.minAmountOut`). The build refuses a route that no longer clears it
+     * (`quote_drifted`) instead of converting at a rate nobody agreed to, and the browser holds
+     * the built conversion's own minimum to at least this figure.
      */
     minAmountOut?: string;
     /**

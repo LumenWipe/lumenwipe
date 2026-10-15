@@ -8,6 +8,7 @@ import {
   assetDecisionId,
   decisionIdFor,
   tokenConversionFloors,
+  classicConversionFloors,
   tokenAssetsById,
   tokenContractsFromAnswers,
   destinationDecisionId,
@@ -234,6 +235,7 @@ export class CloseService {
       const dispositions = resolveDispositions(decisions, assetsById);
       const transferDestinations = resolveTransferDestinations(decisions, assetsById);
       const conversionFloors = tokenConversionFloors(decisions, assetsById);
+      const classicFloors = classicConversionFloors(decisions, assetsById);
 
       // Every asset the close will leave holding a balance needs its disposition answered
       // BEFORE the first round - the held ones and the ones the claims will fill. Gating only
@@ -310,7 +312,7 @@ export class CloseService {
         transferDestinations,
         { leaveBehind: positionsLeftBehind(decisions, source) },
         {},
-        { floors: conversionFloors },
+        { floors: conversionFloors, classicFloors },
         isDefiPositionsAcknowledged(decisions, source),
         { acknowledged: isIssuerSupplyAcknowledged(decisions, source) }
       );

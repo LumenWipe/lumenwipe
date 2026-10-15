@@ -1,6 +1,8 @@
 import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import {
+  classicConversionFloors,
+  InvalidConversionFloorError,
   deriveClaimableBalanceDecisionPoints,
   deriveDecisionPoints,
   collectTransferDestinations,
@@ -580,4 +582,38 @@ test("a dust balance carries the dust reason and an illiquid one does not", () =
   expect((dust!.subject as { reason?: string }).reason).toBe("dust_below_minimum");
   expect((dust!.subject as { convertible: boolean }).convertible).toBe(false);
   expect("reason" in illiquid!.subject).toBe(false);
+});
+
+test("a convertible asset carries the quote it was priced at, and an unpriced one carries none", () => {
+  const account = makeAccount({
+    trustlines: [makeTrustline("USDC", "10"), makeTrustline("FOO", "3")],
+  });
+  const quote = { estimatedReceive: "50000000", minAmountOut: "49750000" };
+  const points = deriveDecisionPoints(
+    account,
+    { [`USDC:${ISSUER}`]: true, [`FOO:${ISSUER}`]: false },
+    {},
+    new Set(),
+    new Set(),
+    { [`USDC:${ISSUER}`]: quote, [`FOO:${ISSUER}`]: quote }
+  );
+  expect(points.find((p) => p.subject.asset === `USDC:${ISSUER}`)?.subject.quote).toEqual(quote);
+  expect(points.find((p) => p.subject.asset === `FOO:${ISSUER}`)?.subject.quote).toBeUndefined();
+});
+
+test("a classic convert answer may carry the floor it was shown, in whole stroops", () => {
+  const asset = `USDC:${ISSUER}`;
+  const ids = [{ id: `asset:USDC-${ISSUER}`, asset }];
+  const answer = (minAmountOut?: string) => [
+    {
+      id: `asset:USDC-${ISSUER}`,
+      choice: "convert_to_xlm",
+      ...(minAmountOut !== undefined ? { params: { minAmountOut } } : {}),
+    },
+  ];
+  expect(classicConversionFloors(answer("49750000"), ids)).toEqual({ [asset]: 49_750_000n });
+  expect(classicConversionFloors(answer(), ids)).toEqual({});
+  for (const bad of ["0", "4.975", "-1", "abc"]) {
+    expect(() => classicConversionFloors(answer(bad), ids)).toThrow(InvalidConversionFloorError);
+  }
 });

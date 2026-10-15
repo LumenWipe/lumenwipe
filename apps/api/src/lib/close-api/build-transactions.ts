@@ -29,7 +29,7 @@ import {
   claimStatus,
   parseLedgerCloseTime,
 } from "@/lib/stellar/claim-predicates";
-import { xlmToStroops } from "@/lib/utils/amounts";
+import { stroopsToFixedXlm, xlmToStroops } from "@/lib/utils/amounts";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import {
   assessDefiPositionsGate,
@@ -197,6 +197,8 @@ export async function buildCloseTransactions(
     /** Per token contract, the least XLM (stroops) the caller agreed to and which provider's
      *  quote they saw it through; from the answers. */
     floors?: Record<string, { minAmountOut: string; provider: "soroswap" | "xbull" }>;
+    /** Per classic asset, the least XLM (stroops) the plan showed its conversion delivering. */
+    classicFloors?: Record<string, bigint>;
     deps?: Partial<TokenConversionRoundDeps>;
     /** Overrides the environment flag; tests only. */
     enabled?: boolean;
@@ -539,6 +541,16 @@ export async function buildCloseTransactions(
         await fetchConversionPath(effectiveTl.asset, effectiveTl.balance, network)
       );
       if (!path) throw new AssetRouteLostError(tl.asset, tl.code);
+      const agreed = conversion.classicFloors?.[tl.asset];
+      if (agreed !== undefined && BigInt(xlmToStroops(path.destMin)) < agreed) {
+        throw new CloseBuildError(
+          "quote_drifted",
+          `The market moved: converting ${tl.code} now delivers at least ${path.destMin} XLM, ` +
+            `below the ${stroopsToFixedXlm(agreed)} XLM you agreed to. Review the plan again to ` +
+            "accept the new rate.",
+          409
+        );
+      }
       return { trustline: effectiveTl, action: "convert", path };
     })
   );
