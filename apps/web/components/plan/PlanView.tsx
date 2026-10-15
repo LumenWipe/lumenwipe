@@ -6,7 +6,11 @@ import { ArrowRight, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 import type { AccountState } from "@/types/account";
 import type { AssetDisposition, ClaimableBalanceSelection, PlanBlocker } from "@/types/plan";
 import type { Network } from "@/config/networks";
-import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
+import type {
+  AssetConvertibility,
+  ClaimableBalanceDecision,
+  LeavablePosition,
+} from "@/lib/api/plan-adapters";
 import type { MediatorCheckResult } from "@/types/account";
 import { useDemolishStore, type TokenConversionFloor } from "@/store/demolish";
 import { fetchClosePlan } from "@/lib/api/close-client";
@@ -16,7 +20,7 @@ import {
   dispositionsToDecisions,
   discoveredTokensToDecisions,
 } from "@/lib/api/close-decisions";
-import { apiStepsToPlannedSteps } from "@/lib/api/plan-adapters";
+import { apiStepsToPlannedSteps, decisionPointsToLeavablePositions } from "@/lib/api/plan-adapters";
 import { goToReview } from "@/lib/plan/confirm-plan";
 import { isValidGAddress, isValidMemo } from "@/lib/utils/validation";
 import {
@@ -31,6 +35,7 @@ import BlockersPanel from "./BlockersPanel";
 import PlanAccordion from "./PlanAccordion";
 import DefiPositionsAcknowledgement from "./DefiPositionsAcknowledgement";
 import IssuerSupplyAcknowledgement from "./IssuerSupplyAcknowledgement";
+import LeavePositionAcknowledgement from "./LeavePositionAcknowledgement";
 import DestinationInput from "@/components/account-entry/DestinationInput";
 import {
   hardBlockersOf,
@@ -42,6 +47,7 @@ import {
 import {
   defiPositionsAcknowledgementToDecisions,
   issuerSupplyAcknowledgementToDecisions,
+  positionsLeftBehindToDecisions,
 } from "@/lib/api/close-decisions";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { assetsResolved } from "@/lib/plan/asset-resolution";
@@ -51,6 +57,7 @@ interface PlanViewProps {
   account: AccountState;
   conversions: AssetConvertibility[];
   claimableBalanceDecisions: ClaimableBalanceDecision[];
+  leavablePositions?: LeavablePosition[];
   blockers: PlanBlocker[];
   network: Network;
   onRefresh: () => void;
@@ -62,6 +69,7 @@ export default function PlanView({
   account,
   conversions,
   claimableBalanceDecisions,
+  leavablePositions = [],
   blockers,
   network,
   onRefresh,
@@ -86,6 +94,8 @@ export default function PlanView({
     acknowledgeDefiPositions,
     issuerSupplyAcknowledgedFor,
     acknowledgeIssuerSupply,
+    positionsLeftBehind,
+    setPositionLeftBehind,
     transferDestinations,
     setTransferDestination,
   } = useDemolishStore();
@@ -340,6 +350,10 @@ export default function PlanView({
           useDemolishStore.getState().issuerSupplyAcknowledgedFor,
           account.address
         ),
+        ...positionsLeftBehindToDecisions(
+          useDemolishStore.getState().positionsLeftBehind,
+          account.address
+        ),
       ];
       const plan = await fetchClosePlan(
         { source: account.address, destination, decisions },
@@ -361,6 +375,9 @@ export default function PlanView({
       const proceedBlockersError = proceedError(plan.blockers);
       if (proceedBlockersError !== null) {
         setError(proceedBlockersError);
+        // A position that became impossible to exit since the page loaded needs its own card.
+        const offered = decisionPointsToLeavablePositions(plan).map((p) => p.decisionId);
+        if (offered.some((id) => !leavablePositions.some((p) => p.decisionId === id))) onRefresh();
         return;
       }
 
@@ -419,6 +436,15 @@ export default function PlanView({
           onAcknowledgedChange={(ack) => acknowledgeIssuerSupply(ack ? account.address : null)}
         />
       )}
+
+      {leavablePositions.map((position) => (
+        <LeavePositionAcknowledgement
+          key={position.decisionId}
+          position={position}
+          leftBehind={positionsLeftBehind.includes(position.decisionId)}
+          onLeftBehindChange={(leave) => setPositionLeftBehind(position.decisionId, leave)}
+        />
+      ))}
 
       <div className="mkt-panel rounded-2xl">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">

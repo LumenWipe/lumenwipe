@@ -15,7 +15,11 @@ import type {
   DefiPosition,
 } from "@lumenwipe/types";
 import type { ExitRunResult, ExitStep } from "@/lib/defi-exits";
-import { buildExitRound, ExitRoundBlockedError } from "@/lib/defi-exits/exit-round";
+import {
+  buildExitRound,
+  ExitRoundBlockedError,
+  preflightExitTargets,
+} from "@/lib/defi-exits/exit-round";
 import { fakeExitRpc } from "./fixtures/fake-exit-adapter";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
@@ -126,15 +130,25 @@ function built(plan: ExitStep[], contract: string): ExitRunResult {
   };
 }
 
-function blocked(contract: string, code: string): ExitRunResult {
+function blocked(contract: string, code: string, leaveEligible = false): ExitRunResult {
   return {
     contract,
     resolution: null,
     plan: [],
     next: null,
     blockers: [{ code, message: `blocked: ${code}` }],
+    leaveEligible,
   };
 }
+
+const xbullAt = (contract: string): DefiPosition =>
+  ({
+    protocol: "xbull",
+    positionType: "lp",
+    contractAddress: contract,
+    shareAmount: "1",
+    usdValue: null,
+  }) as unknown as DefiPosition;
 
 const rpc = fakeExitRpc({ liveWasmHash: null, liveBalance: "0" });
 
@@ -309,5 +323,125 @@ describe("buildExitRound", () => {
     // POOL_2 sorts before POOL (CAAA < CCEB): its 2 steps minus the one built, plus POOL's target.
     expect(round?.transaction.intent.operations[0]).toMatchObject({ contract: POOL_2 });
     expect(round?.remainingSteps).toBe(2);
+  });
+});
+
+describe("buildExitRound with positions the user chose to leave behind", () => {
+  test("a left-behind target whose exit cannot be built is skipped and the next one builds", async () => {
+    const round = await buildExitRound(
+      account([supply(POOL), supply(POOL_2)]),
+      "testnet",
+      "100",
+      1000,
+      {
+        rpc,
+        leaveBehind: new Set([POOL_2]),
+        runExitAdapter: async (_adapter, position) =>
+          position.contractAddress === POOL
+            ? built([step("withdraw", POOL)], POOL)
+            : blocked(POOL_2, "exit_simulation_failed", true),
+      }
+    );
+    expect(round?.transaction.coversTargets).toEqual([POOL]);
+  });
+
+  test("leaving every remaining target behind leaves no exit round", async () => {
+    const round = await buildExitRound(account([supply(POOL)]), "testnet", "100", 1000, {
+      rpc,
+      leaveBehind: new Set([POOL]),
+      runExitAdapter: async () => blocked(POOL, "exit_needs_restore", true),
+    });
+    expect(round).toBeNull();
+  });
+
+  test("a target without an adapter can be left behind", async () => {
+    const round = await buildExitRound(account([xbullAt(POOL)]), "testnet", "100", 1000, {
+      rpc,
+      leaveBehind: new Set([POOL]),
+    });
+    expect(round).toBeNull();
+  });
+
+  test("a left-behind target whose exit builds after all is exited, not left", async () => {
+    const round = await buildExitRound(account([supply(POOL)]), "testnet", "100", 1000, {
+      rpc,
+      leaveBehind: new Set([POOL]),
+      runExitAdapter: async () => built([step("withdraw", POOL)], POOL),
+    });
+    expect(round?.transaction.coversTargets).toEqual([POOL]);
+  });
+
+  test("a blocker that is not leave-eligible still refuses the round", async () => {
+    await expect(
+      buildExitRound(account([supply(POOL)]), "testnet", "100", 1000, {
+        rpc,
+        leaveBehind: new Set([POOL]),
+        runExitAdapter: async () => blocked(POOL, "exit_read_failed", false),
+      })
+    ).rejects.toMatchObject({ code: "defi_exit_blocked", message: "blocked: exit_read_failed" });
+  });
+
+  test("a choice to leave one target never covers another", async () => {
+    await expect(
+      buildExitRound(account([supply(POOL)]), "testnet", "100", 1000, {
+        rpc,
+        leaveBehind: new Set([POOL_2]),
+        runExitAdapter: async () => blocked(POOL, "exit_simulation_failed", true),
+      })
+    ).rejects.toMatchObject({
+      code: "defi_exit_blocked",
+      message: expect.stringContaining("Analyze the account again to choose whether to leave it"),
+    });
+  });
+});
+
+describe("preflightExitTargets", () => {
+  test("reports only the targets whose exit cannot be built, with whether each may be left", async () => {
+    const blockedTargets = await preflightExitTargets(
+      account([supply(POOL), supply(POOL_2)]),
+      "testnet",
+      {
+        rpc,
+        runExitAdapter: async (_adapter, position) =>
+          position.contractAddress === POOL
+            ? built([step("withdraw", POOL)], POOL)
+            : blocked(POOL_2, "exit_simulation_failed", true),
+      }
+    );
+    expect([...blockedTargets.entries()]).toEqual([
+      [
+        POOL_2,
+        {
+          code: "exit_simulation_failed",
+          message: "blocked: exit_simulation_failed",
+          leaveEligible: true,
+        },
+      ],
+    ]);
+  });
+
+  test("a target that is gone or has no adapter is reported accordingly", async () => {
+    const blockedTargets = await preflightExitTargets(
+      account([supply(POOL), xbullAt(POOL_2)]),
+      "testnet",
+      { rpc, runExitAdapter: async () => blocked(POOL, "exit_position_gone") }
+    );
+    expect([...blockedTargets.keys()]).toEqual([POOL_2]);
+    expect(blockedTargets.get(POOL_2)).toMatchObject({
+      code: "defi_exit_unsupported",
+      leaveEligible: true,
+    });
+  });
+
+  test("simulates against the account read the plan uses", async () => {
+    let sequence: string | null = null;
+    await preflightExitTargets(account([supply(POOL)]), "testnet", {
+      rpc,
+      runExitAdapter: async (_adapter, _position, ctx) => {
+        sequence = ctx.sequence;
+        return built([step("withdraw", POOL)], POOL);
+      },
+    });
+    expect(sequence!).toBe("100");
   });
 });

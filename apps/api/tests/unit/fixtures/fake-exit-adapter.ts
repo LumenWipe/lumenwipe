@@ -92,6 +92,8 @@ export interface FakeAdapterKnobs {
   hardenChangesTimeBounds?: boolean;
   /** Have the post-assembly hook bump the resource fee by this many stroops. */
   hardenAddsFee?: bigint;
+  /** Return no steps and one blocker with this code, as an adapter that refuses the position. */
+  planBlockerCode?: string;
 }
 
 export function balanceKey(contract: string): xdr.LedgerKey {
@@ -134,6 +136,14 @@ export function fakeExitAdapter(
     plan(position, live, _code, ctx): ExitPlan {
       if (knobs.throwInPlan) throw new Error("fake adapter: plan exploded");
       if (knobs.emptyPlan) return { steps: [], blockers: [] };
+      if (knobs.planBlockerCode) {
+        return {
+          steps: [],
+          blockers: [
+            { code: knobs.planBlockerCode, message: "The adapter refused this position." },
+          ],
+        };
+      }
       const requested = knobs.overWithdraw
         ? (BigInt(live.balance) + 1n).toString()
         : clampToBalance(position.bTokenAmount, live.balance);

@@ -53,6 +53,7 @@ describe("error code registry", () => {
         const code = match[1]!;
         if (
           code !== "exit_position_gone" &&
+          code !== "defi_position_left_behind" &&
           !code.startsWith("defi_positions_unconfirmed_") &&
           !isErrorCode(code)
         ) {

@@ -18,6 +18,7 @@ import {
   claimableSelectionsToDecisions,
   destinationAcknowledgementToDecisions,
   dispositionsToDecisions,
+  positionsLeftBehindToDecisions,
 } from "@/lib/api/close-decisions";
 import { verifyCloseTransaction } from "@/lib/stellar/verify";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
@@ -142,6 +143,10 @@ export function useCloseExecution() {
         ...destinationAcknowledgementToDecisions(
           useDemolishStore.getState().destinationAcknowledgedFor,
           useDemolishStore.getState().destinationAddress
+        ),
+        ...positionsLeftBehindToDecisions(
+          useDemolishStore.getState().positionsLeftBehind,
+          useDemolishStore.getState().sourceAddress ?? ""
         ),
       ];
       // The set of assets the user themselves chose to add a trustline for, to claim an

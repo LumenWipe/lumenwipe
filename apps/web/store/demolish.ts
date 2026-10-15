@@ -42,6 +42,9 @@ interface DemolishState {
    */
   defiPositionsAcknowledgedFor: string | null;
   issuerSupplyAcknowledgedFor: string | null;
+  /** Decision ids (`defi_leave:<account>:<contract>`) of the DeFi positions whose exit cannot be
+   *  built that the user explicitly chose to leave behind. Each id names its account. */
+  positionsLeftBehind: string[];
 
   // Preflight
   phase: DemolishPhase;
@@ -88,6 +91,9 @@ interface DemolishState {
   /** Records (or clears, with null) the account the user confirmed has no DeFi positions. */
   acknowledgeDefiPositions: (address: string | null) => void;
   acknowledgeIssuerSupply: (address: string | null) => void;
+  setPositionLeftBehind: (decisionId: string, leave: boolean) => void;
+  /** Drops every leave choice the latest plan no longer offers, so none outlives its card. */
+  prunePositionsLeftBehind: (offered: string[]) => void;
   setPhase: (phase: DemolishPhase) => void;
   setAccountState: (state: AccountState) => void;
   setPlan: (plan: PlannedStep[]) => void;
@@ -193,6 +199,7 @@ const initialState = {
   destinationAcknowledgedFor: null,
   defiPositionsAcknowledgedFor: null,
   issuerSupplyAcknowledgedFor: null,
+  positionsLeftBehind: [] as string[],
   phase: "IDLE" as DemolishPhase,
   accountState: null,
   executionPlan: [],
@@ -222,6 +229,16 @@ export const useDemolishStore = create<DemolishState>((set) => ({
 
   acknowledgeDefiPositions: (address) => set({ defiPositionsAcknowledgedFor: address }),
   acknowledgeIssuerSupply: (address) => set({ issuerSupplyAcknowledgedFor: address }),
+  setPositionLeftBehind: (decisionId, leave) =>
+    set((s) => {
+      const rest = s.positionsLeftBehind.filter((id) => id !== decisionId);
+      return { positionsLeftBehind: leave ? [...rest, decisionId] : rest };
+    }),
+  prunePositionsLeftBehind: (offered) =>
+    set((s) => {
+      const kept = s.positionsLeftBehind.filter((id) => offered.includes(id));
+      return kept.length === s.positionsLeftBehind.length ? {} : { positionsLeftBehind: kept };
+    }),
 
   setPhase: (phase) => set({ phase }),
 

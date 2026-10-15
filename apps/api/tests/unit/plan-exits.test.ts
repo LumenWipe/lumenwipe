@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { BlendSupplyPosition, DefiPosition, PhoenixLpPosition } from "@lumenwipe/types";
-import { groupExitTargets, planExitSteps } from "@/lib/defi-exits/plan-exits";
+import {
+  DEFI_POSITION_LEFT_BEHIND_CODE,
+  groupExitTargets,
+  planExitSteps,
+  type ExitTargetBlock,
+} from "@/lib/defi-exits/plan-exits";
 
 const POOL_A = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 const POOL_B = "CAIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRDB3V";
@@ -94,6 +99,112 @@ describe("planExitSteps", () => {
   });
 
   test("no positions, no steps, no blockers", () => {
-    expect(planExitSteps([], 3)).toEqual({ steps: [], blockers: [] });
+    expect(planExitSteps([], 3)).toEqual({ steps: [], blockers: [], leavable: [] });
+  });
+});
+
+describe("planExitSteps with a preflight", () => {
+  const simFails: ExitTargetBlock = {
+    code: "exit_simulation_failed",
+    message: "Simulating the withdraw of this Blend position failed on the network.",
+    leaveEligible: true,
+  };
+
+  test("a target whose exit cannot be built blocks the merge by name and value, and is leavable", () => {
+    const result = planExitSteps(
+      [blendSupply(POOL_A, { usdValue: "10.50" }), blendSupply(POOL_B)],
+      0,
+      { blocked: new Map([[POOL_A, simFails]]), leftBehind: new Set() }
+    );
+    expect(result.steps.map((s) => s.affectedContract)).toEqual([POOL_B]);
+    expect(result.blockers).toHaveLength(1);
+    expect(result.blockers[0]!.code).toBe("exit_simulation_failed");
+    expect(result.blockers[0]!.message).toContain("CAAA…BSC4");
+    expect(result.blockers[0]!.message).toContain("about $10.50");
+    expect(result.blockers[0]!.message).toContain("cannot be merged");
+    expect(result.leavable).toEqual([
+      {
+        protocol: "blend",
+        label: "Blend",
+        contract: POOL_A,
+        positionCount: 1,
+        usdValue: "10.50",
+        reason: simFails.message,
+      },
+    ]);
+  });
+
+  test("once the user leaves it behind, the blocker becomes a recorded, non-trapping warning", () => {
+    const result = planExitSteps([blendSupply(POOL_A)], 0, {
+      blocked: new Map([[POOL_A, simFails]]),
+      leftBehind: new Set([POOL_A]),
+    });
+    expect(result.steps).toEqual([]);
+    expect(result.blockers.map((b) => b.code)).toEqual([DEFI_POSITION_LEFT_BEHIND_CODE]);
+    expect(result.blockers[0]!.message).toContain("value unknown");
+    expect(result.leavable.map((t) => t.contract)).toEqual([POOL_A]);
+  });
+
+  test("a blocker that is not leave-eligible stays a hard blocker even with a leave answer", () => {
+    const result = planExitSteps([blendSupply(POOL_A)], 0, {
+      blocked: new Map([
+        [
+          POOL_A,
+          { code: "exit_read_failed", message: "Retry the analysis.", leaveEligible: false },
+        ],
+      ]),
+      leftBehind: new Set([POOL_A]),
+    });
+    expect(result.steps).toEqual([]);
+    expect(result.blockers).toEqual([{ code: "exit_read_failed", message: "Retry the analysis." }]);
+    expect(result.leavable).toEqual([]);
+  });
+
+  test("a leave answer for a target whose exit builds changes nothing: it is exited", () => {
+    const result = planExitSteps([blendSupply(POOL_A)], 0, {
+      blocked: new Map(),
+      leftBehind: new Set([POOL_A]),
+    });
+    expect(result.steps.map((s) => s.affectedContract)).toEqual([POOL_A]);
+    expect(result.blockers).toEqual([]);
+    expect(result.leavable).toEqual([]);
+  });
+
+  test("a target without an adapter is leavable too", () => {
+    const xbullPosition = { ...phoenixLp(POOL_A), protocol: "xbull" } as unknown as DefiPosition;
+    const left = planExitSteps([xbullPosition], 0, {
+      blocked: new Map(),
+      leftBehind: new Set([POOL_A]),
+    });
+    expect(left.blockers.map((b) => b.code)).toEqual([DEFI_POSITION_LEFT_BEHIND_CODE]);
+  });
+
+  test("the value is the positions' sum, and unknown when any one of them is", () => {
+    const summed = planExitSteps(
+      [blendSupply(POOL_A, { usdValue: "1.25" }), blendSupply(POOL_A, { usdValue: "2.80" })],
+      0,
+      { blocked: new Map([[POOL_A, simFails]]), leftBehind: new Set() }
+    );
+    expect(summed.leavable[0]!.usdValue).toBe("4.05");
+    expect(summed.blockers[0]!.message).toContain("the 2 Blend positions in CAAA…BSC4");
+    const partial = planExitSteps(
+      [blendSupply(POOL_A, { usdValue: "1.25" }), blendSupply(POOL_A)],
+      0,
+      { blocked: new Map([[POOL_A, simFails]]), leftBehind: new Set() }
+    );
+    expect(partial.leavable[0]!.usdValue).toBeNull();
+    const withDebt = planExitSteps(
+      [
+        blendSupply(POOL_A, { usdValue: "100.00" }),
+        {
+          ...blendSupply(POOL_A, { usdValue: "80.00" }),
+          positionType: "borrow",
+          dTokenAmount: "1",
+        } as unknown as DefiPosition,
+      ],
+      0,
+      { blocked: new Map([[POOL_A, simFails]]), leftBehind: new Set() }
+    );
+    expect(withDebt.leavable[0]!.usdValue).toBe("20.00");
   });
 });

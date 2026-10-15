@@ -58,6 +58,9 @@ const NON_BLOCKING_ELSEWHERE = new Set([
   // in the next plan/transactions request, so by the time this code appears here the user has
   // already resolved it. See DefiPositionsAcknowledgement.tsx for where that answer is given.
   "defi_positions_unconfirmed_user_verified",
+  // The record of a position the user explicitly chose to leave behind
+  // (LeavePositionAcknowledgement); the API emits it only once that answer is sent.
+  "defi_position_left_behind",
 ]);
 
 export function isResolvableHere(blocker: Pick<PlanBlocker, "code">): boolean {

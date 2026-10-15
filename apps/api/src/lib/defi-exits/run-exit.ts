@@ -71,7 +71,28 @@ export interface ExitRunResult {
    *  Later steps are re-planned against fresh state once it confirms. Null when blocked. */
   next: SimulatedExitStep | null;
   blockers: PlanBlocker[];
+  /** True when the blockers mean this tool cannot exit the position at all (unverified or
+   *  unsupported code, a failing or overpriced simulation, archived data, a third party's
+   *  signature, an adapter that cannot handle it), as opposed to a failed read, an expired
+   *  registry, an unsafe position or a state the user can fix. Only then may a close leave the
+   *  position behind, and only on the user's explicit choice. Absent means false. */
+  leaveEligible?: boolean;
 }
+
+/** Adapter blocker codes that mean the position is beyond what this tool can exit. */
+const ADAPTER_UNEXITABLE_CODES: ReadonlySet<string> = new Set([
+  "aquarius_contract_not_pool",
+  "aquarius_pool_type_unsupported",
+  "aquarius_position_too_small",
+  "blend_contract_not_pool",
+  "blend_pool_version_unsupported",
+  "fxdao_contract_not_vault",
+  "phoenix_contract_not_pool",
+  "phoenix_position_too_small",
+  "soroswap_contract_not_pair",
+  "soroswap_pair_foreign_factory",
+  "soroswap_position_too_small",
+]);
 
 function shortContract(address: string): string {
   return `${address.slice(0, 4)}…${address.slice(-4)}`;
@@ -81,9 +102,10 @@ function blocked(
   contract: string,
   resolution: ContractResolution | null,
   plan: ExitStep[],
-  blockers: PlanBlocker[]
+  blockers: PlanBlocker[],
+  leaveEligible = false
 ): ExitRunResult {
-  return { contract, resolution, plan, next: null, blockers };
+  return { contract, resolution, plan, next: null, blockers, leaveEligible };
 }
 
 function blocker(code: string, message: string): PlanBlocker {
@@ -183,7 +205,11 @@ export async function runExitAdapter<P extends DefiPosition, L>(
   //    ever decoded against code the registry has not vouched for on this network.
   const gate = async (
     address: string
-  ): Promise<{ resolution: ContractResolution | null; blockers: PlanBlocker[] }> => {
+  ): Promise<{
+    resolution: ContractResolution | null;
+    blockers: PlanBlocker[];
+    leaveEligible: boolean;
+  }> => {
     let liveHash: string | null;
     try {
       liveHash = await readHash(deps.rpc, address);
@@ -197,6 +223,7 @@ export async function runExitAdapter<P extends DefiPosition, L>(
               "right now, so no exit was built. Retry the analysis."
           ),
         ],
+        leaveEligible: false,
       };
     }
     if (liveHash === null) {
@@ -210,6 +237,7 @@ export async function runExitAdapter<P extends DefiPosition, L>(
               "before proceeding."
           ),
         ],
+        leaveEligible: true,
       };
     }
     const resolution = resolve(ctx.network, liveHash);
@@ -223,6 +251,7 @@ export async function runExitAdapter<P extends DefiPosition, L>(
               "LumenWipe has not verified, so no exit was built. This position needs manual review."
           ),
         ],
+        leaveEligible: true,
       };
     }
     if (resolution.protocol !== adapter.protocol) {
@@ -236,14 +265,15 @@ export async function runExitAdapter<P extends DefiPosition, L>(
               "needs manual review."
           ),
         ],
+        leaveEligible: true,
       };
     }
-    return { resolution, blockers: [] };
+    return { resolution, blockers: [], leaveEligible: false };
   };
 
   const primary = await gate(contract);
   if (primary.blockers.length > 0 || primary.resolution?.status !== "known") {
-    return blocked(contract, primary.resolution, [], primary.blockers);
+    return blocked(contract, primary.resolution, [], primary.blockers, primary.leaveEligible);
   }
   const resolution = primary.resolution;
 
@@ -278,13 +308,19 @@ export async function runExitAdapter<P extends DefiPosition, L>(
           `LumenWipe could not ${phase} an exit for this ${protocol} position. Nothing was built; ` +
             "this position needs manual review."
         ),
-      ]
+      ],
+      true
     );
 
   let steps: ExitStep[];
   try {
     const plan = adapter.plan(position, live, code, ctx);
-    if (plan.blockers.length > 0) return blocked(contract, resolution, plan.steps, plan.blockers);
+    if (plan.blockers.length > 0) {
+      const unexitable = plan.blockers.every(
+        (b) => b.code !== undefined && ADAPTER_UNEXITABLE_CODES.has(b.code)
+      );
+      return blocked(contract, resolution, plan.steps, plan.blockers, unexitable);
+    }
     steps = plan.steps;
   } catch {
     return adapterError("plan");
@@ -300,7 +336,8 @@ export async function runExitAdapter<P extends DefiPosition, L>(
           `The ${protocol} adapter produced no steps and no explanation for this position. ` +
             "Nothing was built; this position needs manual review."
         ),
-      ]
+      ],
+      true
     );
   }
 
@@ -361,7 +398,9 @@ export async function runExitAdapter<P extends DefiPosition, L>(
   for (const other of new Set(steps.map((s) => s.contract))) {
     if (other === contract) continue;
     const check = await gate(other);
-    if (check.blockers.length > 0) return blocked(contract, resolution, steps, check.blockers);
+    if (check.blockers.length > 0) {
+      return blocked(contract, resolution, steps, check.blockers, check.leaveEligible);
+    }
   }
 
   // 6. Build the first step, check the claim against the bytes, simulate before it is offered.
@@ -461,23 +500,35 @@ export async function runExitAdapter<P extends DefiPosition, L>(
     ]);
   }
   if (stellarRpc.Api.isSimulationError(simulation)) {
-    return blocked(contract, resolution, steps, [
-      blocker(
-        "exit_simulation_failed",
-        `Simulating the ${step.kind} of this ${protocol} position failed on the network, so ` +
-          "nothing was built. The position may have changed; retry the analysis, and if it keeps " +
-          "failing it needs manual review."
-      ),
-    ]);
+    return blocked(
+      contract,
+      resolution,
+      steps,
+      [
+        blocker(
+          "exit_simulation_failed",
+          `Simulating the ${step.kind} of this ${protocol} position failed on the network, so ` +
+            "nothing was built. The position may have changed; retry the analysis, and if it keeps " +
+            "failing it needs manual review."
+        ),
+      ],
+      true
+    );
   }
   if (stellarRpc.Api.isSimulationRestore(simulation)) {
-    return blocked(contract, resolution, steps, [
-      blocker(
-        "exit_needs_restore",
-        `Part of this ${protocol} position's on-chain data has been archived and must be restored ` +
-          "before it can be exited. Nothing was built; this position needs manual review."
-      ),
-    ]);
+    return blocked(
+      contract,
+      resolution,
+      steps,
+      [
+        blocker(
+          "exit_needs_restore",
+          `Part of this ${protocol} position's on-chain data has been archived and must be restored ` +
+            "before it can be exited. Nothing was built; this position needs manual review."
+        ),
+      ],
+      true
+    );
   }
 
   let signable: Transaction;
@@ -525,24 +576,36 @@ export async function runExitAdapter<P extends DefiPosition, L>(
   if (assembled?.type === "invokeHostFunction") {
     for (const entry of assembled.auth ?? []) {
       if (entry.credentials.type !== "sorobanCredentialsSourceAccount") {
-        return blocked(contract, resolution, steps, [
-          blocker(
-            "exit_requires_other_signer",
-            `Exiting this ${protocol} position would need authorization from another account, ` +
-              "which a close cannot provide. Nothing was built; this position needs manual review."
-          ),
-        ]);
+        return blocked(
+          contract,
+          resolution,
+          steps,
+          [
+            blocker(
+              "exit_requires_other_signer",
+              `Exiting this ${protocol} position would need authorization from another account, ` +
+                "which a close cannot provide. Nothing was built; this position needs manual review."
+            ),
+          ],
+          true
+        );
       }
     }
   }
   if (BigInt(signable.fee) > BigInt(MAX_SOROBAN_EXIT_FEE_STROOPS)) {
-    return blocked(contract, resolution, steps, [
-      blocker(
-        "exit_fee_excessive",
-        `The network priced this ${protocol} exit far above what an exit normally costs, so ` +
-          "nothing was built. Retry the analysis; if it keeps happening the position needs manual review."
-      ),
-    ]);
+    return blocked(
+      contract,
+      resolution,
+      steps,
+      [
+        blocker(
+          "exit_fee_excessive",
+          `The network priced this ${protocol} exit far above what an exit normally costs, so ` +
+            "nothing was built. Retry the analysis; if it keeps happening the position needs manual review."
+        ),
+      ],
+      true
+    );
   }
 
   return {
