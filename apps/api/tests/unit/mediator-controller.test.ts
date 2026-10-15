@@ -5,6 +5,7 @@ import {
   Account,
   Asset,
   Keypair,
+  Memo,
   Networks,
   Operation,
   Transaction,
@@ -14,6 +15,7 @@ import {
 import { MediatorController } from "@/mediator/mediator.controller";
 import { servedRegistry } from "@/lib/exchange-registry";
 import { AccountNotFoundError } from "@/lib/utils/errors";
+import { LiveReadError } from "@/lib/stellar/live-trustline";
 import { MediatorSigningService } from "@/mediator/mediator-signing.service";
 import {
   ACCOUNT_READER,
@@ -30,21 +32,30 @@ const MEDIATOR = Keypair.random();
 const USER = Keypair.random().publicKey();
 const EXCHANGE = servedRegistry().entries[0]!.address;
 const OTHER = Keypair.random().publicKey();
+const ID_EXCHANGE = servedRegistry().entries.find((e) => e.memoType === "id")!.address;
 
 interface Fakes {
   keypair: Keypair | null;
   configuredPublic: string;
   balance: string | Error;
+  memoRequired: boolean | Error;
 }
 
-const DEFAULTS: Fakes = { keypair: MEDIATOR, configuredPublic: "", balance: "100.0000000" };
+const DEFAULTS: Fakes = {
+  keypair: MEDIATOR,
+  configuredPublic: "",
+  balance: "100.0000000",
+  memoRequired: false,
+};
 
 async function makeController(overrides: Partial<Fakes> = {}): Promise<{
   controller: MediatorController;
   balanceReads: string[];
+  memoReads: string[];
 }> {
   const fakes = { ...DEFAULTS, ...overrides };
   const balanceReads: string[] = [];
+  const memoReads: string[] = [];
   const module = await Test.createTestingModule({
     controllers: [MediatorController],
     providers: [
@@ -66,17 +77,23 @@ async function makeController(overrides: Partial<Fakes> = {}): Promise<{
             if (fakes.balance instanceof Error) throw fakes.balance;
             return { nativeBalanceLumens: fakes.balance };
           },
+          readMemoRequired: async (address: string) => {
+            memoReads.push(address);
+            if (fakes.memoRequired instanceof Error) throw fakes.memoRequired;
+            return fakes.memoRequired;
+          },
         } satisfies AccountReaderPort,
       },
     ],
   }).compile();
-  return { controller: module.get(MediatorController), balanceReads };
+  return { controller: module.get(MediatorController), balanceReads, memoReads };
 }
 
 interface TxOptions {
   ops?: xdr.Operation[];
   source?: string;
   fee?: string;
+  memo?: Memo;
 }
 
 function merge(destination: string, source?: string) {
@@ -98,6 +115,7 @@ function buildXdr(opts: TxOptions = {}): string {
     networkPassphrase: Networks.TESTNET,
   });
   for (const op of opts.ops ?? [merge(MEDIATOR.publicKey()), pay({})]) builder.addOperation(op);
+  builder.addMemo(opts.memo ?? Memo.text("deposit-4411"));
   return builder.setTimeout(30).build().toXDR();
 }
 
@@ -355,6 +373,85 @@ describe("sign: success", () => {
   });
 });
 
+describe("sign: memo rules", () => {
+  const forwardTo = (destination: string, memo: Memo) =>
+    buildXdr({ ops: [merge(MEDIATOR.publicKey()), pay({ destination })], memo });
+
+  async function expectMemoFail(transaction: string, code: string, fakes: Partial<Fakes> = {}) {
+    const { controller } = await makeController(fakes);
+    const err = await controller.sign("testnet", { transaction }).then(
+      () => null,
+      (e: unknown) => e
+    );
+    expect(err).toBeInstanceOf(HttpException);
+    expect((err as HttpException).getStatus()).toBe(422);
+    expect(((err as HttpException).getResponse() as { error: { code: string } }).error.code).toBe(
+      code
+    );
+  }
+
+  test("S11a a forward to a listed exchange without a memo is not co-signed", async () => {
+    await expectMemoFail(forwardTo(EXCHANGE, Memo.none()), "memo_required");
+  });
+
+  test("S11b an empty text memo counts as no memo", async () => {
+    await expectMemoFail(forwardTo(EXCHANGE, Memo.text("")), "memo_required");
+  });
+
+  test("S11c a memo of the wrong type for a listed exchange is not co-signed", async () => {
+    await expectMemoFail(forwardTo(EXCHANGE, Memo.id("4411")), "invalid_memo");
+    await expectMemoFail(forwardTo(ID_EXCHANGE, Memo.text("4411")), "invalid_memo");
+  });
+
+  test("S11d a hash memo is not co-signed", async () => {
+    await expectMemoFail(forwardTo(EXCHANGE, Memo.hash("a".repeat(64))), "unsupported_memo_type");
+  });
+
+  test("S11e a forward to a listed exchange with its memo type is co-signed without a ledger read", async () => {
+    const { controller, memoReads } = await makeController({ memoRequired: new Error("unused") });
+    const out = await controller.sign("testnet", {
+      transaction: forwardTo(ID_EXCHANGE, Memo.id("4411")),
+    });
+    expect(typeof out.transaction).toBe("string");
+    expect(memoReads).toEqual([]);
+  });
+
+  test("S12a a forward to an account that requires a memo on-chain needs one", async () => {
+    await expectMemoFail(forwardTo(OTHER, Memo.none()), "memo_required", { memoRequired: true });
+    await expectMemoFail(forwardTo(OTHER, Memo.hash("a".repeat(64))), "unsupported_memo_type", {
+      memoRequired: true,
+    });
+  });
+
+  test("S12b a forward to an account that requires a memo on-chain is co-signed with one", async () => {
+    const { controller, memoReads } = await makeController({ memoRequired: true });
+    for (const memo of [Memo.text("4411"), Memo.id("4411")]) {
+      const out = await controller.sign("testnet", { transaction: forwardTo(OTHER, memo) });
+      expect(typeof out.transaction).toBe("string");
+    }
+    expect(memoReads).toEqual([OTHER, OTHER]);
+  });
+
+  test("S12c a forward to an account with no memo requirement needs no memo", async () => {
+    const { controller } = await makeController();
+    const out = await controller.sign("testnet", { transaction: forwardTo(OTHER, Memo.none()) });
+    expect(typeof out.transaction).toBe("string");
+  });
+
+  test("S12d an unreadable memo requirement is never co-signed", async () => {
+    const { controller, balanceReads } = await makeController({
+      memoRequired: new LiveReadError("The destination's memo requirement"),
+    });
+    await expectFail(
+      controller.sign("testnet", { transaction: forwardTo(OTHER, Memo.none()) }),
+      503,
+      "service_unavailable",
+      "The destination's memo requirement could not be read from the network. Retry in a moment."
+    );
+    expect(balanceReads).toEqual([]);
+  });
+});
+
 describe("check", () => {
   test("C1 a listed exchange reports the mediator and memo requirements", async () => {
     const entry = servedRegistry().entries[0]!;
@@ -397,6 +494,20 @@ describe("check", () => {
       available: true,
       registryFresh: true,
     });
+  });
+
+  test("C2b an unlisted address that requires a memo on-chain reports it", async () => {
+    const { controller, memoReads } = await makeController({ memoRequired: true });
+    expect(await controller.check("testnet", OTHER)).toEqual({
+      requiresMediator: false,
+      reason: "Destination account exists and states that payments to it need a memo.",
+      requiresMemo: true,
+      memoType: "text",
+      exchangeName: null,
+      available: true,
+      registryFresh: true,
+    });
+    expect(memoReads).toEqual([OTHER]);
   });
 
   test("C4 an unexpected read failure is rethrown", async () => {

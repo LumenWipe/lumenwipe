@@ -248,6 +248,7 @@ describe("POST close/transactions", () => {
     spyOn(readAccountModule, "readAccountState").mockResolvedValue(state());
     spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
       getLatestLedger: () => Promise.resolve({ sequence: LEDGER }),
+      getLedgerEntries: () => Promise.resolve({ entries: [], latestLedger: LEDGER }),
     })) as unknown as typeof rpcModule.getRpcServer);
     spyOn(accountStateModule, "readTrustlinesOnly").mockImplementation(async () => {
       if (opts.exists instanceof Error) throw opts.exists;

@@ -30,6 +30,7 @@ import {
   TxTimeoutError,
 } from "@/lib/utils/errors";
 import { InvalidSignatureError } from "@/lib/stellar/signature";
+import { LiveReadError } from "@/lib/stellar/live-trustline";
 import { CloseBuildError, buildCloseTransactions } from "@/lib/close-api/build-transactions";
 import {
   DESTINATION_ACK_CHOICE,
@@ -110,6 +111,7 @@ interface Fakes {
   rememberBuilt: StatsService["rememberBuilt"];
   lookup: (address: string) => RegistryEntry | null;
   isFresh: () => boolean;
+  readMemoRequired: (address: string) => Promise<boolean>;
 }
 
 const unexpected = (name: string) => () => {
@@ -130,6 +132,7 @@ function defaults(): Fakes {
     rememberBuilt: async () => undefined,
     lookup: (address) => servedRegistry().entries.find((e) => e.address === address) ?? null,
     isFresh: () => true,
+    readMemoRequired: async () => false,
   };
 }
 
@@ -153,6 +156,7 @@ async function makeController(overrides: Partial<Fakes> = {}): Promise<{
           readTrustlinesOnly: fakes.readTrustlinesOnly,
           buildAccountPlan: fakes.buildAccountPlan,
           planBatch: fakes.planBatch,
+          readMemoRequired: (address: string) => fakes.readMemoRequired(address),
         } satisfies CloseReaderPort,
       },
       {
@@ -426,6 +430,72 @@ describe("transactions", () => {
       422,
       "memo_required"
     );
+  });
+
+  test("T4b a destination that requires a memo on-chain refuses a close without one", async () => {
+    const reads: string[] = [];
+    const { controller } = await makeController({
+      readMemoRequired: async (address) => {
+        reads.push(address);
+        return true;
+      },
+    });
+    await expectFail(
+      controller.transactions("testnet", body()),
+      422,
+      "memo_required",
+      "This destination account states on the network that every payment to it needs a " +
+        "memo. Add the memo it gave you, such as an exchange deposit memo, and retry.",
+      { memoType: "text" }
+    );
+    await expectFail(controller.transactions("testnet", body({ memo: "" })), 422, "memo_required");
+    expect(reads).toEqual([DEST, DEST]);
+    expect((await controller.transactions("testnet", body({ memo: "4411" }))).status).toBe("ready");
+    expect(reads).toEqual([DEST, DEST]);
+  });
+
+  test("T4c a destination without an on-chain memo requirement closes without a memo", async () => {
+    const reads: string[] = [];
+    const { controller } = await makeController({
+      readMemoRequired: async (address) => {
+        reads.push(address);
+        return false;
+      },
+    });
+    expect((await controller.transactions("testnet", body())).status).toBe("ready");
+    expect(reads).toEqual([DEST]);
+  });
+
+  test("T4d a listed exchange's memo rule is not re-read from the ledger", async () => {
+    const { controller } = await makeController({
+      readMemoRequired: unexpected("readMemoRequired") as Fakes["readMemoRequired"],
+    });
+    const result = await controller.transactions(
+      "testnet",
+      body({ destination: TEXT_EXCHANGE.address, memo: "m", decisions: [] })
+    );
+    expect(result.status).toBe("ready");
+  });
+
+  test("T4e an unreadable memo requirement refuses the close", async () => {
+    const { controller } = await makeController({
+      readMemoRequired: async () => {
+        throw new LiveReadError("The destination's memo requirement");
+      },
+    });
+    await expect(controller.transactions("testnet", body())).rejects.toBeInstanceOf(LiveReadError);
+  });
+
+  test("T4f an empty memo is built as no memo", async () => {
+    const calls: unknown[][] = [];
+    const { controller } = await makeController({
+      buildCloseTransactions: (async (...args: unknown[]) => {
+        calls.push(args);
+        return BUILT;
+      }) as unknown as Builder,
+    });
+    expect((await controller.transactions("testnet", body({ memo: "" }))).status).toBe("ready");
+    expect(calls[0]![4]).toBeNull();
   });
 
   test("T5 a hash memo is not supported", async () => {

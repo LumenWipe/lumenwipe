@@ -286,6 +286,13 @@ export default function PlanView({
         return;
       }
 
+      if (mediatorData.requiresMemo && memo.trim() === "") {
+        setError(
+          "This account says every payment to it needs a memo. Add the memo it gave you, such as an exchange deposit memo, before continuing."
+        );
+        return;
+      }
+
       // No second gate on knowing the intermediary's address: verification asserts the
       // hand-off structurally, so nothing client-side needs to be told which account it is.
 

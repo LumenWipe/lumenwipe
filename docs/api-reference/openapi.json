@@ -4198,6 +4198,49 @@
               }
             }
           },
+          "422": {
+            "description": "The forward's memo does not meet the destination's memo rule.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "memo_required",
+                                "unsupported_memo_type",
+                                "invalid_memo"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            }
+          },
           "429": {
             "description": "Rate limit exceeded for this key.",
             "content": {
@@ -4284,7 +4327,7 @@
             }
           },
           "503": {
-            "description": "Mediator flow not configured on this server.",
+            "description": "Mediator flow not configured on this server, or the destination could not be read.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4301,7 +4344,8 @@
                             "code": {
                               "type": "string",
                               "enum": [
-                                "mediator_not_configured"
+                                "mediator_not_configured",
+                                "service_unavailable"
                               ]
                             }
                           }
@@ -4489,6 +4533,50 @@
                               "type": "string",
                               "enum": [
                                 "rate_limited"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/Retry-After"
+              }
+            }
+          },
+          "503": {
+            "description": "The destination could not be read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "service_unavailable"
                               ]
                             }
                           }

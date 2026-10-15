@@ -145,7 +145,10 @@ being in place before the mainnet mediator is deployed. The risk is carried into
 
 The co-sign endpoint enforces the **structure** of the mediated pair, not its destination. It refuses a
 forward to the mediator itself and caps the forward amount at the merged balance read at co-sign time, but it
-accepts any other destination and does not read the memo: it cannot know which exchange address the user meant.
+accepts any other destination: it cannot know which exchange address the user meant. It does hold the forward to
+the destination's memo rule: a listed exchange needs a memo of the registry's type, and an account whose
+`config.memo_required` data entry is set (SEP-29) needs a text or id memo. It cannot know which memo value the
+user meant.
 In the LumenWipe web client, `verify()` holds that check, with the destination the user typed. An integrator
 calling the API or the SDK directly has no such check unless it writes one, so before signing a mediated close it
 must confirm, from its own inputs and never from the API response:

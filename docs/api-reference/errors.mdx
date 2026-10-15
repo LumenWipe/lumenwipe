@@ -105,7 +105,7 @@ These come from `close/plan` and `close/transactions`. The `message` names the p
 | `destination_not_acknowledged`                | 422    | After fix | The destination is not a recognized exchange address and was not confirmed.                                                    |
 | `merge_destination_unusable`                  | 422    | After fix | The destination cannot receive the merge: it is the closing account, a LumenWipe service account, or does not exist.           |
 | `source_sequence_too_far`                     | 422    | No        | The account's sequence number is beyond what the network accepts for a merge; it cannot be closed until the ledger catches up. |
-| `memo_required`                               | 422    | After fix | The destination exchange requires a memo.                                                                                      |
+| `memo_required`                               | 422    | After fix | The destination requires a memo.                                                                                               |
 | `unsupported_memo_type`                       | 422    | After fix | The memo type is not supported for this destination.                                                                           |
 | `invalid_memo`                                | 422    | After fix | The memo is not valid for its type.                                                                                            |
 | `signer_normalization_unsafe`                 | 422    | After fix | The account's signers cannot be normalized safely.                                                                             |
