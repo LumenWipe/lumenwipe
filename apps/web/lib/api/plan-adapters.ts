@@ -202,3 +202,37 @@ export function apiStepsToPlannedSteps(plan: PlanResponse): PlannedStep[] {
     error: null,
   }));
 }
+
+/** A DeFi position whose exit cannot be built, which the user may choose to leave behind. */
+export interface LeavablePosition {
+  /** The API's decision id for this choice; the answer is sent back under it. */
+  decisionId: string;
+  /** The protocol's display name. */
+  protocol: string;
+  contract: string;
+  /** USD value as a decimal string, or null when the plan could not price it. */
+  usdValue: string | null;
+  /** Why it cannot be exited, in the plan's words. */
+  reason: string;
+  /** What the user confirms by leaving it, in the plan's words. */
+  note: string;
+}
+
+export function decisionPointsToLeavablePositions(plan: PlanResponse): LeavablePosition[] {
+  return plan.decisionPoints.flatMap((dp) => {
+    if (dp.type !== "confirmation" || dp.subject.kind !== "defi_position_leave") return [];
+    const contract = String(dp.subject.contract ?? "");
+    const note = dp.options.find((o) => o.id === "leave_position_behind")?.note;
+    if (!CONTRACT_ID.test(contract) || typeof note !== "string") return [];
+    return [
+      {
+        decisionId: dp.id,
+        protocol: String(dp.subject.label ?? dp.subject.protocol ?? ""),
+        contract,
+        usdValue: typeof dp.subject.usdValue === "string" ? dp.subject.usdValue : null,
+        reason: String(dp.subject.reason ?? ""),
+        note,
+      },
+    ];
+  });
+}

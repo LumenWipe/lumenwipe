@@ -81,6 +81,24 @@ export function defiPositionsAcknowledgementToDecisions(
   return [{ id: defiPositionsDecisionId(source), choice: DEFI_POSITIONS_ACK_CHOICE }];
 }
 
+/** Must match the API's `LEAVE_POSITION_CHOICE`. */
+const LEAVE_POSITION_CHOICE = "leave_position_behind";
+
+/**
+ * The positions the user chose to leave behind, as the API's own decision ids
+ * (`defi_leave:<account>:<contract>`). Only ids naming this account are sent, so a choice made
+ * while looking at one account is never carried to another.
+ */
+export function positionsLeftBehindToDecisions(
+  leftBehind: readonly string[],
+  source: string
+): DecisionAnswer[] {
+  const prefix = `defi_leave:${source}:`;
+  return leftBehind
+    .filter((id) => id.startsWith(prefix) && isTokenContract(id.slice(prefix.length)))
+    .map((id) => ({ id, choice: LEAVE_POSITION_CHOICE }));
+}
+
 /** Must match the API's `issuerSupplyDecisionId`. Scoped to the account being closed. */
 function issuerSupplyDecisionId(address: string): string {
   return `issuer_supply:${address}`;

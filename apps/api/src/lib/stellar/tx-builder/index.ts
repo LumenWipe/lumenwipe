@@ -15,7 +15,7 @@ import type {
 } from "@lumenwipe/types";
 import type { SponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
 import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
-import { planExitSteps } from "@/lib/defi-exits/plan-exits";
+import { planExitSteps, type ExitPreflight } from "@/lib/defi-exits/plan-exits";
 import { estimateFeeLumens } from "@/lib/utils/amounts";
 import {
   claimStatus,
@@ -294,7 +294,10 @@ export function buildPlan(
   /** Whether the caller has an explicit, address-scoped acknowledgement that this account
    *  holds no DeFi positions (close-api/decisions.ts's `isDefiPositionsAcknowledged`), passed
    *  straight through to assessDefiPositionsGate. */
-  userVerifiedNoDefiPositions = false
+  userVerifiedNoDefiPositions = false,
+  /** Which exit targets could not be built when the caller checked them, and which of those the
+   *  user chose to leave behind. Absent, every target the catalog supports plans as an exit. */
+  exitPreflight?: ExitPreflight
 ): BuildPlanResult {
   const steps: PlannedStep[] = [];
   const blockers: PlanBlocker[] = [];
@@ -398,7 +401,7 @@ export function buildPlan(
   // DeFi positions the catalog cannot exit block here; the ones it can become EXIT_POSITIONS
   // steps below. Either way no detected position is left out of the plan in silence.
   const detectedPositions = defiPositions?.positions ?? [];
-  const exitBlockers = planExitSteps(detectedPositions, 0);
+  const exitBlockers = planExitSteps(detectedPositions, 0, exitPreflight);
   blockers.push(...exitBlockers.blockers);
 
   // Threshold gating: SetOptions is a HIGH-threshold operation. If no combination of
@@ -609,7 +612,7 @@ export function buildPlan(
   // DeFi exits come first, exactly where the round builder runs them: each is its own Soroban
   // transaction ahead of every classic step, and what it withdraws lands in a trustline the steps
   // below then dispose of and remove. Shown first so the plan reads in execution order.
-  for (const exitStep of planExitSteps(detectedPositions, idx).steps) {
+  for (const exitStep of planExitSteps(detectedPositions, idx, exitPreflight).steps) {
     steps.push(exitStep);
     idx++;
   }

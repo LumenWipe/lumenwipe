@@ -22,6 +22,11 @@ import { StrKey } from "@stellar/stellar-sdk";
 import type { IssuanceSummary } from "@/lib/close-api/issuance-preflight";
 import { lookupExchange } from "@/lib/exchange-registry";
 import { assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
+import {
+  describeLeavableTarget,
+  describeUsdValue,
+  type LeavableExitTarget,
+} from "@/lib/defi-exits/plan-exits";
 
 /**
  * Stable id for the unrecognized-destination acknowledgement, scoped to the address it is
@@ -157,6 +162,60 @@ export function deriveIssuerSupplyDecisionPoints(
 export function isIssuerSupplyAcknowledged(answers: DecisionAnswer[], address: string): boolean {
   const id = issuerSupplyDecisionId(address);
   return answers.some((a) => a.id === id && a.choice === ISSUER_SUPPLY_ACK_CHOICE);
+}
+
+/**
+ * A DeFi position whose exit cannot be built may be left behind at the merge, but only on an
+ * answer that names both the account and the position's contract, so it cannot be replayed for
+ * another account or stretched to cover another position.
+ */
+export function leavePositionDecisionId(address: string, contract: string): string {
+  return `defi_leave:${address}:${contract}`;
+}
+
+export const LEAVE_POSITION_CHOICE = "leave_position_behind";
+
+export function deriveLeavePositionDecisionPoints(
+  address: string,
+  leavable: LeavableExitTarget[]
+): DecisionPoint[] {
+  return leavable.map((target) => ({
+    id: leavePositionDecisionId(address, target.contract),
+    type: "confirmation" as const,
+    subject: {
+      kind: "defi_position_leave",
+      address,
+      protocol: target.protocol,
+      label: target.label,
+      contract: target.contract,
+      positionCount: target.positionCount,
+      usdValue: target.usdValue,
+      reason: target.reason,
+    },
+    options: [
+      {
+        id: LEAVE_POSITION_CHOICE,
+        note:
+          `I choose to close this account without withdrawing ${describeLeavableTarget(target)} ` +
+          `(${describeUsdValue(target.usdValue)}). It stays tied to this address after the ` +
+          "merge, and this close does not recover it.",
+      },
+    ],
+    default: "",
+    required: true,
+  }));
+}
+
+/** The contracts the answers explicitly leave behind for this account. */
+export function positionsLeftBehind(answers: DecisionAnswer[], address: string): Set<string> {
+  const prefix = `defi_leave:${address}:`;
+  const left = new Set<string>();
+  for (const a of answers) {
+    if (a.choice !== LEAVE_POSITION_CHOICE || !a.id.startsWith(prefix)) continue;
+    const contract = a.id.slice(prefix.length);
+    if (StrKey.isValidContract(contract)) left.add(contract);
+  }
+  return left;
 }
 
 /** Mirrors `isDestinationAcknowledged`: defaults to false on a missing, malformed, or

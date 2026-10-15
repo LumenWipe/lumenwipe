@@ -347,3 +347,79 @@ describe("runExitAdapter catches each invariant violation from outside the adapt
     expect(result.blockers[0]!.message).toContain("retry the analysis");
   });
 });
+
+describe("runExitAdapter marks which blockers a close may leave a position behind for", () => {
+  test("a failing or overpriced simulation, archived data and a third party's signature are leave-eligible", async () => {
+    const foreign = xdr.SorobanCredentials.sorobanCredentialsAddress(
+      new xdr.SorobanAddressCredentials({
+        address: new Address(Keypair.random().publicKey()).toScAddress(),
+        nonce: xdr.Int64.fromString("1"),
+        signatureExpirationLedger: 1000,
+        signature: xdr.ScVal.scvVoid(),
+      })
+    );
+    for (const rpc of [
+      liveRpc({ simulation: "error" }),
+      liveRpc({ simulation: "restore" }),
+      liveRpc({ simulatedAuth: [authEntryFor(foreign)] }),
+      liveRpc({ simulatedResourceFee: "50000000" }),
+    ]) {
+      const result = await runWith({}, rpc);
+      expect(result.next).toBeNull();
+      expect(result.leaveEligible).toBe(true);
+    }
+  });
+
+  test("code the registry does not know, for the position or another step's contract, is leave-eligible", async () => {
+    const unknown = await runExitAdapter(fakeExitAdapter(), position, ctx, { rpc: liveRpc() });
+    expect(unknown.blockers.map((b) => b.code)).toEqual(["exit_unknown_contract_version"]);
+    expect(unknown.leaveEligible).toBe(true);
+    const foreignStep = await runWith(
+      { foreignContractStep: true },
+      liveRpc({ hashesByContract: { [OTHER_CONTRACT]: "d".repeat(64) } })
+    );
+    expect(foreignStep.leaveEligible).toBe(true);
+  });
+
+  test("an adapter refusal is leave-eligible only for a position beyond what the tool can exit", async () => {
+    const tooSmall = await runWith({ planBlockerCode: "soroswap_position_too_small" });
+    expect(tooSmall.leaveEligible).toBe(true);
+    const fixable = await runWith({ planBlockerCode: "soroswap_trustline_missing" });
+    expect(fixable.leaveEligible).toBe(false);
+    const broken = await runWith({ throwInPlan: true });
+    expect(broken.blockers.map((b) => b.code)).toEqual(["exit_adapter_error"]);
+    expect(broken.leaveEligible).toBe(true);
+  });
+
+  test("a network failure, an expired registry or an unsafe position never is", async () => {
+    const rpc = liveRpc();
+    const readFails = await runWith({}, {
+      ...rpc,
+      getLedgerEntries: async () => {
+        throw new Error("ECONNRESET");
+      },
+    } as typeof rpc);
+    const simulateFails = await runWith({}, {
+      ...rpc,
+      simulateTransaction: async () => {
+        throw new Error("timeout");
+      },
+    } as typeof rpc);
+    const expired = await runExitAdapter(fakeExitAdapter(), position, ctx, {
+      rpc: liveRpc(),
+      resolveWasmHash: registry.resolveWasmHash,
+      isRegistryFresh: () => false,
+    });
+    const unhealthy = await runWith({ debt: true }, liveRpc({ liveBalance: "520000000" }));
+    for (const result of [readFails, simulateFails, expired, unhealthy]) {
+      expect(result.next).toBeNull();
+      expect(result.leaveEligible).toBe(false);
+    }
+  });
+
+  test("an exit that builds is never leave-eligible", async () => {
+    const result = await runWith({});
+    expect(result.next).not.toBeNull();
+    expect(result.leaveEligible).not.toBe(true);
+  });
+});

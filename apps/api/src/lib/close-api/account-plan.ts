@@ -51,17 +51,56 @@ import {
   deriveIssuerSupplyDecisionPoints,
   issuerSupplyDecisionId,
   isIssuerSupplyAcknowledged,
+  deriveLeavePositionDecisionPoints,
+  positionsLeftBehind,
   PRICE_SOURCE_UNAVAILABLE,
   ROUTE_LOOKUP_UNAVAILABLE_CODE,
 } from "@/lib/close-api/decisions";
 import { ARRIVING_ASSET_PROBE_AMOUNT, assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
 import { DEFI_POSITIONS_UNAVAILABLE_CODE } from "@/lib/defi-positions/positions-gate";
+import { preflightExitTargets } from "@/lib/defi-exits/exit-round";
+import {
+  planExitSteps,
+  type ExitPreflight,
+  type ExitTargetBlock,
+} from "@/lib/defi-exits/plan-exits";
 import { assemblePlanResponse, computePlanHash } from "@/lib/close-api/plan-response";
 import { BASE_FEE_STROOPS } from "@/config/constants";
 import type { DecisionAnswer, DecisionPoint, PlanResponse, Trustline } from "@lumenwipe/types";
 
 /** Quotes per plan are bounded like discovery candidates; a token past this is offered no swap. */
 const MAX_TOKEN_QUOTES = 20;
+
+export const EXIT_PREFLIGHT_TIMEOUT_MS = 10_000;
+
+export interface AccountPlanDeps {
+  preflightExits?: typeof preflightExitTargets;
+}
+
+/**
+ * Which exit targets cannot be built and may be left behind. Only those change the plan: the
+ * preflight grades each target alone, while the round runs them in order (an earlier exit can pay
+ * the asset a later repay needs), so any other blocker is left for the round to decide, as before.
+ * A preflight that fails or runs long reports nothing; the round re-runs every check itself and
+ * refuses to build what it cannot, so a missing preflight never lets a merge pass a position.
+ */
+async function exitPreflightFor(
+  accountState: AccountState,
+  network: Network,
+  preflight: typeof preflightExitTargets
+): Promise<ReadonlyMap<string, ExitTargetBlock>> {
+  if (accountState.defiPositions.positions.length === 0) return new Map();
+  try {
+    const blocked = await withTimeout(
+      preflight(accountState, network, { rpc: getRpcServer(network) }),
+      EXIT_PREFLIGHT_TIMEOUT_MS,
+      `exit preflight exceeded ${EXIT_PREFLIGHT_TIMEOUT_MS} ms`
+    );
+    return new Map([...blocked].filter(([, block]) => block.leaveEligible));
+  } catch {
+    return new Map();
+  }
+}
 
 /**
  * Reads a transfer destination's trustlines, treating "does not exist" as an answer rather than
@@ -118,7 +157,8 @@ export async function buildAccountPlan(
   source: string,
   destination: string | null,
   decisions: DecisionAnswer[],
-  network: Network
+  network: Network,
+  deps: AccountPlanDeps = {}
 ): Promise<PlanResponse> {
   const accountState = await readAccountState(
     source,
@@ -127,6 +167,11 @@ export async function buildAccountPlan(
   );
   const mediatorRequired = destination ? requiresMediatorForAddress(destination) : false;
   const issuancePromise = assessIssuance(source, network);
+  const exitPreflightPromise = exitPreflightFor(
+    accountState,
+    network,
+    deps.preflightExits ?? preflightExitTargets
+  );
 
   const convertibility: Record<string, boolean> = {};
   const nonClaimableSponsoredEntries = accountState.sponsoredEntries.filter(
@@ -202,12 +247,15 @@ export async function buildAccountPlan(
         );
       })
   );
-  const [, sponsorshipAffordability, , issuance] = await Promise.all([
+  const [, sponsorshipAffordability, , issuance, blockedExits] = await Promise.all([
     convertibilityPromise,
     sponsorshipAffordabilityPromise,
     tokenQuotePromise,
     issuancePromise,
+    exitPreflightPromise,
   ]);
+  const leftBehind = positionsLeftBehind(decisions, source);
+  const exitPreflight: ExitPreflight = { blocked: blockedExits, leftBehind };
 
   // Every asset the close will touch answers here - held or arriving. Without the arriving
   // ones their disposition never resolves, and the plan would label a balance the caller
@@ -248,8 +296,14 @@ export async function buildAccountPlan(
     planDispositions,
     planDestinations,
     accountState.defiPositions,
-    defiPositionsAcknowledged
+    defiPositionsAcknowledged,
+    exitPreflight
   );
+  const leavePoints = deriveLeavePositionDecisionPoints(
+    source,
+    planExitSteps(accountState.defiPositions.positions, 0, exitPreflight).leavable
+  );
+  const leaveContractById = new Map(leavePoints.map((dp) => [dp.id, String(dp.subject.contract)]));
   const decisionPoints = [
     ...deriveDestinationDecisionPoints(destination),
     ...deriveDefiPositionsDecisionPoints(source, needsDefiPositionsAck),
@@ -261,6 +315,7 @@ export async function buildAccountPlan(
       dustAssets
     ),
     ...deriveIssuerSupplyDecisionPoints(source, issuance),
+    ...leavePoints,
     ...deriveTokenDecisionPoints(accountState, tokenQuotes),
     ...deriveClaimableBalanceDecisionPoints(accountState),
     ...deriveBulkClaimDecisionPoints(accountState),
@@ -277,6 +332,8 @@ export async function buildAccountPlan(
     }
     if (dp.id === defiPositionsDecisionId(source)) return !defiPositionsAcknowledged;
     if (dp.id === issuerSupplyDecisionId(source)) return !issuerSupplyAcknowledged;
+    const leaveContract = leaveContractById.get(dp.id);
+    if (leaveContract !== undefined) return !leftBehind.has(leaveContract);
     if (!dp.required) return false;
     if (dp.type === "claimable_balance") {
       return !answeredIds.has(dp.id) && !claimableBalanceSelections[String(dp.subject.balanceId)];

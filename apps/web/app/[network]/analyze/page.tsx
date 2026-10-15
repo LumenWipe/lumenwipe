@@ -16,13 +16,16 @@ import {
   defiPositionsAcknowledgementToDecisions,
   issuerSupplyAcknowledgementToDecisions,
   discoveredTokensToDecisions,
+  positionsLeftBehindToDecisions,
 } from "@/lib/api/close-decisions";
 import { loadServedRegistry } from "@/lib/exchange-registry";
 import {
   decisionPointsToClaimableBalances,
   decisionPointsToConversions,
+  decisionPointsToLeavablePositions,
   type AssetConvertibility,
   type ClaimableBalanceDecision,
+  type LeavablePosition,
 } from "@/lib/api/plan-adapters";
 import PlanView from "@/components/plan/PlanView";
 import StatusMessage from "@/components/a11y/StatusMessage";
@@ -43,6 +46,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     claimableBalanceSelections,
     defiPositionsAcknowledgedFor,
     issuerSupplyAcknowledgedFor,
+    positionsLeftBehind,
   } = useDemolishStore();
 
   const [account, setAccount] = useState<AccountState | null>(null);
@@ -50,6 +54,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   const [claimableBalanceDecisions, setClaimableBalanceDecisions] = useState<
     ClaimableBalanceDecision[]
   >([]);
+  const [leavablePositions, setLeavablePositions] = useState<LeavablePosition[]>([]);
   const [blockers, setBlockers] = useState<PlanBlocker[]>([]);
   const [loading, setLoading] = useState(true);
   // Kept apart from `loading`, which swaps the whole page for a spinner. Answering a claim
@@ -138,6 +143,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
                   issuerSupplyAcknowledgedFor,
                   effectiveSource
                 ),
+                ...positionsLeftBehindToDecisions(positionsLeftBehind, effectiveSource),
               ],
             },
             routeNetwork
@@ -173,6 +179,10 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       // decision itself is what clears it - so it must render regardless of blocker state, or
       // the user could never reach the card that resolves it.
       setClaimableBalanceDecisions(decisionPointsToClaimableBalances(plan));
+      // Like the claim cards, these answer a blocker, so they render whatever else blocks.
+      const leavable = decisionPointsToLeavablePositions(plan);
+      setLeavablePositions(leavable);
+      useDemolishStore.getState().prunePositionsLeftBehind(leavable.map((p) => p.decisionId));
       setStatus(firstLoad ? "Account analyzed" : "Plan updated");
     } catch {
       if (!isStale()) {
@@ -195,6 +205,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     answersKey,
     defiPositionsAcknowledgedFor,
     issuerSupplyAcknowledgedFor,
+    positionsLeftBehind,
   ]);
 
   useEffect(() => {
@@ -269,6 +280,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         account={account}
         conversions={conversions}
         claimableBalanceDecisions={claimableBalanceDecisions}
+        leavablePositions={leavablePositions}
         blockers={blockers}
         network={routeNetwork}
         onRefresh={fetchData}
