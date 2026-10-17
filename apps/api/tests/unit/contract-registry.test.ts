@@ -114,6 +114,15 @@ test("mainnet Blend and Phoenix pools listed by address all run a pool code alre
   }
 });
 
+test("every mainnet Phoenix pool's stake contract is listed, so a staked position in any of them can unbond", () => {
+  const phoenix = entriesForProtocol("mainnet", "phoenix");
+  const pools = phoenix.filter((e) => e.kind === "pool");
+  const stakes = phoenix.filter((e) => e.kind === "stake");
+  expect(stakes.length).toBe(pools.length);
+  expect(new Set(stakes.map((e) => e.address)).size).toBe(stakes.length);
+  for (const stake of stakes) expect(stake.label).toMatch(/stake_contract field/);
+});
+
 test("filters entries by network and protocol", () => {
   const blend = entriesForProtocol("testnet", "blend");
   expect(blend.length).toBeGreaterThan(0);

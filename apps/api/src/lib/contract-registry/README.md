@@ -92,7 +92,10 @@ tokens only through a contract this file names, and a Blend repay or a Phoenix w
 each live mainnet pool is listed by address. A Blend pool is added only when its instance runs the
 registered V1 or V2 pool hash and its factory's `is_pool` returns true (candidates: the V1
 backstop's reward zone, `blend-utils`, and the directory's `Blend Pool` entries); a Phoenix pool
-only when it is a directory `Phoenix Pool` running a registered pool hash.
+only when it is a directory `Phoenix Pool` running a registered pool hash, together with the stake
+contract its `CONFIG` names, since `unbond` runs there. Four of those stake contracts run an
+earlier build of the stake code, registered as its own hash after its interface and `BondingInfo`
+layout were confirmed to match.
 FxDAO's documented Vaults contract is the one mainnet exception: its live interface exposes only
 `evict`/`upgrade`, not `pay_debt` or any other vault-management entrypoint, so it is recorded
 `wasmHash: null, verifiedLive: false` rather than trusted - the same interface gap already found
