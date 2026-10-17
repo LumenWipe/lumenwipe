@@ -21,6 +21,7 @@ import { Asset, Keypair, Networks, StrKey } from "@stellar/stellar-sdk";
 import type { AccountState } from "@/types/account";
 import type { IntentOperation, TxIntent } from "@/types/close-api";
 import { assertCloseIntent, type CloseExpectation } from "@/lib/stellar/verify";
+import embeddedRegistry from "@registry/contract-registry.json";
 import { exitExpectations } from "@/lib/stellar/exit-expectations";
 import { isContractRegistryUsable } from "@/lib/contract-registry";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
@@ -485,6 +486,31 @@ describe("mainnet exits through every live pool the registry lists, not only its
       ],
     } as unknown as IntentOperation;
     expect(() => assertCloseIntent(exitOnly(withdraw), mainnetExpectation(account))).not.toThrow();
+  });
+
+  test("a Phoenix unbond passes on every stake contract the registry lists, and on no other", () => {
+    const account = mainnetAccount([
+      {
+        protocol: "phoenix",
+        positionType: "stake",
+        contractAddress: PHOENIX_XLM_USDC,
+        stakedAmount: "1",
+        stakedAtEpoch: "1700000000",
+        usdValue: null,
+      },
+    ] as AccountState["defiPositions"]["positions"]);
+    const stakes = embeddedRegistry.entries
+      .filter((e) => e.network === "mainnet" && e.protocol === "phoenix" && e.kind === "stake")
+      .map((e) => e.address);
+    expect(stakes).toHaveLength(11);
+    for (const stake of stakes) {
+      expect(() =>
+        assertCloseIntent(exitOnly(call(stake, "unbond")), mainnetExpectation(account))
+      ).not.toThrow();
+    }
+    expect(() =>
+      assertCloseIntent(exitOnly(call(UNLISTED_POOL, "unbond")), mainnetExpectation(account))
+    ).toThrow();
   });
 
   test("an Aquarius withdraw on an unlisted pool burns only its own share token, so it passes", () => {
