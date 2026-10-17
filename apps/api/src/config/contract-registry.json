@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-15",
+  "version": "2026-10-16",
   "lastVerified": "2026-10-10",
   "validUntil": "2027-01-08",
   "source": "manually verified per-entry against each protocol's official docs/GitHub (Blend: docs.blend.capital/mainnet-deployments + blend-capital/blend-utils mainnet.contracts.json; Soroswap: soroswap/core public/mainnet.contracts.json; Aquarius: docs.aqua.network addresses-and-networks + the router's own instance) and the live instance's executable hash over RPC on lastVerified; mainnet labels cross-checked against the stellar.expert directory where it names the contract",
@@ -406,7 +406,7 @@
       "address": "CB5QUVK5GS3IU23TMFZQ3P5J24YBBZP5PHUQAEJ2SP5K55PFTJRUQG2L",
       "wasmHash": "167ab414a226427de34c19947ef9c5cf38c6c0ed91ecf9392f7cef3278ff506c",
       "version": "v1",
-      "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - stands for the code 9 of the 10 directory-listed Phoenix pools share; positions come from OctoPos, not from this list",
+      "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - stands for the v1 pool code that 10 of the 11 listed Phoenix pools run; positions come from OctoPos, not from this list",
       "verifiedLive": true,
       "verifiedBy": "2026-09-26: stellar contract info hash over RPC (mainnet.sorobanrpc.com) against CB5QUVK5GS3IU23TMFZQ3P5J24YBBZP5PHUQAEJ2SP5K55PFTJRUQG2L, one of the stellar.expert directory's 'Phoenix Pool' entries (domain phoenix-hub.io); stellar contract info interface confirms it still exposes withdraw_liquidity"
     },
@@ -519,6 +519,105 @@
       "label": "Phoenix stake (mainnet) - the exit's unbond call target for the v1 pool family, read from that pool's own query_config stake_contract field; not listed under its own name in the stellar.expert directory",
       "verifiedLive": true,
       "verifiedBy": "2026-09-26: query_config simulated live against CB5QUVK5GS3IU23TMFZQ3P5J24YBBZP5PHUQAEJ2SP5K55PFTJRUQG2L returned this as stake_contract; stellar contract info hash over RPC (mainnet.sorobanrpc.com) confirmed the hash, and stellar contract info interface confirms it still exposes bond/unbond"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "stake",
+      "address": "CBRGNWGAC25CPLMOAMR7WBPOF5QTFA5RYXQH4DEJ4K65G2QFLTLMW7RO",
+      "wasmHash": "57ba0367fd7f5edd8e01a3a1c432a441d49440fdb229fb3dd835528dfc7a41fd",
+      "version": "v1",
+      "label": "Phoenix stake (mainnet) - the unbond call target for pool CBCZGGNOEUZG4CAAE7TGTQQHETZMKUT4OIPFHHPKEUX46U4KXBBZ3GLH, read from that pool's own CONFIG stake_contract field; an earlier build of the v1 stake code, same unbond signature and BondingInfo layout",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash; stellar contract info interface shows the same unbond(sender, stake_amount, stake_timestamp) and BondingInfo as the registered v1 stake code, and a staker's entry is keyed by the bare account address"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "stake",
+      "address": "CAF3UJ45ZQJP6USFUIMVMGOUETUTXEC35R2247VJYIVQBGKTKBZKNBJ3",
+      "wasmHash": "57ba0367fd7f5edd8e01a3a1c432a441d49440fdb229fb3dd835528dfc7a41fd",
+      "version": "v1",
+      "label": "Phoenix stake (mainnet) - the unbond call target for pool CBHCRSVX3ZZ7EGTSYMKPEFGZNWRVCSESQR3UABET4MIW52N4EVU6BIZX, read from that pool's own CONFIG stake_contract field; an earlier build of the v1 stake code, same unbond signature and BondingInfo layout",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash; stellar contract info interface shows the same unbond(sender, stake_amount, stake_timestamp) and BondingInfo as the registered v1 stake code, and a staker's entry is keyed by the bare account address"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "stake",
+      "address": "CDEQYRWFU3IHPRR6H6VOQRUU3JFS6DTUYUL4YAQSD3ALB5IPBTEOZUFM",
+      "wasmHash": "649715de2b14df3c34a560d9ffb01deeefe029404cd3e9ab184ba22702cbed79",
+      "version": "v1",
+      "label": "Phoenix stake (mainnet) - the unbond call target for pool CBISULYO5ZGS32WTNCBMEFCNKNSLFXCQ4Z3XHVDP4X4FLPSEALGSY3PS, read from that pool's own CONFIG stake_contract field",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "stake",
+      "address": "CCIWIW6ESCCCFMEI5QOSUHDKTMBEMRJ22F7GPYNRKM2UI2FH6WYUKOUU",
+      "wasmHash": "57ba0367fd7f5edd8e01a3a1c432a441d49440fdb229fb3dd835528dfc7a41fd",
+      "version": "v1",
+      "label": "Phoenix stake (mainnet) - the unbond call target for pool CBW5G5SO5SDYUGQVU7RMZ2KJ34POM3AMODOBIV2RQYG4KJDUUBVC3P2T, read from that pool's own CONFIG stake_contract field; an earlier build of the v1 stake code, same unbond signature and BondingInfo layout",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash; stellar contract info interface shows the same unbond(sender, stake_amount, stake_timestamp) and BondingInfo as the registered v1 stake code, and a staker's entry is keyed by the bare account address"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "stake",
+      "address": "CD2YKNPX3JPTGDANJRPEJS42MPQLEVUVVRZKJYLLUSPJKQJA7LUANBO4",
+      "wasmHash": "649715de2b14df3c34a560d9ffb01deeefe029404cd3e9ab184ba22702cbed79",
+      "version": "v1",
+      "label": "Phoenix stake (mainnet) - the unbond call target for pool CC6MJZN3HFOJKXN42ANTSCLRFOMHLFXHWPNAX64DQNUEBDMUYMPHASAV, read from that pool's own CONFIG stake_contract field",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "stake",
+      "address": "CDH6JILIADIC5SKE6OZJAYV3GM62RTR4O54OMVNP4ZOK4HH4J2JWJPVW",
+      "wasmHash": "649715de2b14df3c34a560d9ffb01deeefe029404cd3e9ab184ba22702cbed79",
+      "version": "v1",
+      "label": "Phoenix stake (mainnet) - the unbond call target for pool CCKOC2LJTPDBKDHTL3M5UO7HFZ2WFIHSOKCELMKQP3TLCIVUBKOQL4HB, read from that pool's own CONFIG stake_contract field",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "stake",
+      "address": "CBDCTYZSZIOWCK5IGCQZNFUOJ53KMPYG2MG7GMVGE3A2LEYCFTDYYZ3S",
+      "wasmHash": "649715de2b14df3c34a560d9ffb01deeefe029404cd3e9ab184ba22702cbed79",
+      "version": "v1",
+      "label": "Phoenix stake (mainnet) - the unbond call target for pool CCUCE5H5CKW3S7JBESGCES6ZGDMWLNRY3HOFET3OH33MXZWKXNJTKSM3, read from that pool's own CONFIG stake_contract field",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "stake",
+      "address": "CBULEXIMZ5C4CSUPZ4E5LXATWDZNS6MDM2A57DAUD5GXSUG4IWKLOSOC",
+      "wasmHash": "649715de2b14df3c34a560d9ffb01deeefe029404cd3e9ab184ba22702cbed79",
+      "version": "v1",
+      "label": "Phoenix stake (mainnet) - the unbond call target for pool CDMXKSLG5GITGFYERUW2MRYOBUQCMRT2QE5Y4PU3QZ53EBFWUXAXUTBC, read from that pool's own CONFIG stake_contract field",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "stake",
+      "address": "CCP653KENMYCAYQ3PHJDT6PITMG4XYKVWV3OEDDCOAOS6Z4GOMXGYH3Z",
+      "wasmHash": "57ba0367fd7f5edd8e01a3a1c432a441d49440fdb229fb3dd835528dfc7a41fd",
+      "version": "v1",
+      "label": "Phoenix stake (mainnet) - the unbond call target for pool CDQLKNH3725BUP4HPKQKMM7OO62FDVXVTO7RCYPID527MZHJG2F3QBJW, read from that pool's own CONFIG stake_contract field; an earlier build of the v1 stake code, same unbond signature and BondingInfo layout",
+      "verifiedLive": true,
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash; stellar contract info interface shows the same unbond(sender, stake_amount, stake_timestamp) and BondingInfo as the registered v1 stake code, and a staker's entry is keyed by the bare account address"
     },
     {
       "network": "mainnet",

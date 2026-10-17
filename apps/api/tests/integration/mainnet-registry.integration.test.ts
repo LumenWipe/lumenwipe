@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Contract, scValToNative } from "@stellar/stellar-sdk";
+import { Address, Contract, scValToNative, xdr } from "@stellar/stellar-sdk";
 import { entriesForNetwork, entriesForProtocol } from "@/lib/contract-registry";
 import { readLiveWasmHash } from "@/lib/stellar/contract-instance";
 import { getRpcServer } from "@/lib/stellar/rpc";
@@ -82,6 +82,37 @@ test.skipIf(!RUN_INTEGRATION)(
       };
       expect(hex(meta.pool_hash)).toBe(pool.wasmHash ?? "missing");
     }
+  },
+  120_000
+);
+
+test.skipIf(!RUN_INTEGRATION)(
+  "every listed mainnet Phoenix pool names, in its own CONFIG, a stake contract the registry lists",
+  async () => {
+    const rpc = getRpcServer("mainnet");
+    const phoenix = entriesForProtocol("mainnet", "phoenix");
+    const stakes = new Set(phoenix.filter((e) => e.kind === "stake").map((e) => e.address));
+    const named = new Set<string>();
+    const missing: string[] = [];
+    for (const pool of phoenix.filter((e) => e.kind === "pool")) {
+      const key = xdr.LedgerKey.contractData(
+        new xdr.LedgerKeyContractData({
+          contract: new Address(pool.address).toScAddress(),
+          key: xdr.ScVal.scvSymbol("CONFIG"),
+          durability: xdr.ContractDataDurability.persistent,
+        })
+      );
+      const data = (await rpc.getLedgerEntries(key)).entries[0]?.val;
+      const config =
+        data?.type === "contractData"
+          ? (scValToNative(data.contractData.val) as { stake_contract?: string })
+          : {};
+      const stake = config.stake_contract ?? "unreadable";
+      named.add(stake);
+      if (!stakes.has(stake)) missing.push(`${pool.address}: ${stake}`);
+    }
+    expect(missing).toEqual([]);
+    expect([...stakes].filter((s) => !named.has(s))).toEqual([]);
   },
   120_000
 );
