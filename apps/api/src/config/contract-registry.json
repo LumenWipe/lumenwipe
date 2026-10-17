@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-15",
+  "version": "2026-10-16",
   "lastVerified": "2026-10-10",
   "validUntil": "2027-01-08",
   "source": "manually verified per-entry against each protocol's official docs/GitHub (Blend: docs.blend.capital/mainnet-deployments + blend-capital/blend-utils mainnet.contracts.json; Soroswap: soroswap/core public/mainnet.contracts.json; Aquarius: docs.aqua.network addresses-and-networks + the router's own instance) and the live instance's executable hash over RPC on lastVerified; mainnet labels cross-checked against the stellar.expert directory where it names the contract",
@@ -406,7 +406,7 @@
       "address": "CB5QUVK5GS3IU23TMFZQ3P5J24YBBZP5PHUQAEJ2SP5K55PFTJRUQG2L",
       "wasmHash": "167ab414a226427de34c19947ef9c5cf38c6c0ed91ecf9392f7cef3278ff506c",
       "version": "v1",
-      "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - stands for the code 9 of the 10 directory-listed Phoenix pools share; positions come from OctoPos, not from this list",
+      "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - stands for the v1 pool code that 10 of the 11 listed Phoenix pools run; positions come from OctoPos, not from this list",
       "verifiedLive": true,
       "verifiedBy": "2026-09-26: stellar contract info hash over RPC (mainnet.sorobanrpc.com) against CB5QUVK5GS3IU23TMFZQ3P5J24YBBZP5PHUQAEJ2SP5K55PFTJRUQG2L, one of the stellar.expert directory's 'Phoenix Pool' entries (domain phoenix-hub.io); stellar contract info interface confirms it still exposes withdraw_liquidity"
     },
