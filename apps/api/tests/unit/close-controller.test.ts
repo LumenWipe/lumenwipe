@@ -785,7 +785,7 @@ describe("transactions", () => {
         source: SOURCE,
         destination: DEST,
         decisions,
-        snapshotLedger: 77,
+        sourceSequence: "77",
       }),
       status: "ready",
       transactions: TX,
