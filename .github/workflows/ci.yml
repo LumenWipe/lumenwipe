@@ -448,7 +448,8 @@ jobs:
   # sites are reported but never fail the job, since someone else's outage must not block a PR.
   docs:
     name: docs
-    runs-on: ubuntu-latest
+    # Pinned because the diagram check compares against SVGs rendered by this image's apt Graphviz.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
