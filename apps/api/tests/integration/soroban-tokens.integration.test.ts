@@ -16,6 +16,9 @@ const MAINNET_HOLDER = "GBZVDYLAYVGQW6GVBUXROVXZO3AQXC6ZQRJYCNHVXU7NG26BJTHKFSIK
 const DEJTRSY = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
 // A testnet account of ours that has traded on the Soroswap testnet AMM.
 const TESTNET_HOLDER = "GDGHXOVHOT5PWDAR3GZWZ6KUD2ZBFYCDWWJBUMMC4BEWGB3RD254NRKR";
+// Each test retries alone: the public RPCs time out at random, and two tests failing on different
+// attempts of the suite-level retry in CI would otherwise fail the run.
+const LIVE_RPC_OPTIONS = { timeout: 60_000, retry: 2 };
 
 /** Whether the explorer still lists the token for the holder; a third party moving its funds is
  *  not a failure of the code under test, so the mainnet case steps aside rather than fail. */
@@ -53,7 +56,7 @@ test.skipIf(!RUN_INTEGRATION)(
       result.eventsScanned!.toLedger - result.eventsScanned!.fromLedger
     ).toBeGreaterThanOrEqual(EVENTS_CHUNK_LEDGERS - 1);
   },
-  60_000
+  LIVE_RPC_OPTIONS
 );
 
 test.skipIf(!RUN_INTEGRATION)(
@@ -85,5 +88,5 @@ test.skipIf(!RUN_INTEGRATION)(
     expect(empty.tokens).toEqual([]);
     expect(empty.unreadable).toEqual([]);
   },
-  60_000
+  LIVE_RPC_OPTIONS
 );
