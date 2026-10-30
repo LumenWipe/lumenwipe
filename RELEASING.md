@@ -18,13 +18,18 @@ trigger.** Web and the API deploy themselves. If you take one thing from this do
 
 ## `apps/web`
 
-Vercel's own GitHub integration deploys on every push to `main` (production) and every PR (preview).
-There is no GitHub Actions workflow for this - Vercel watches the repo directly. `package.json`'s
-`version` field is not customer-facing and is not bumped as part of a release.
+Vercel's own GitHub integration deploys on every push to `main` (production). There is no GitHub
+Actions workflow for this - Vercel watches the repo directly. `package.json`'s `version` field is
+not customer-facing and is not bumped as part of a release.
 
-Each app's `vercel.json` runs `scripts/vercel-ignore.mjs`, which skips a build when nothing the app
-depends on changed since the last deployed commit (its path lists live in that script). It builds
-whenever the comparison cannot be made. A dashboard redeploy always builds.
+Other branches get no deployment: `git.deploymentEnabled` in each app's `vercel.json` allows only
+`main` and `preview/**`. To see a change on a preview URL, push it to a branch named
+`preview/<description>`. On any other branch a PR's checks are CI only.
+
+Each app's `vercel.json` also runs `scripts/vercel-ignore.mjs`, which skips a build when nothing the
+app depends on changed since the last deployed commit (its path lists live in that script). It
+builds whenever the comparison cannot be made. A dashboard redeploy always builds. A build skipped
+this way still counts as a deployment, which is why branch filtering lives in `deploymentEnabled`.
 
 **Rollback**: promote a previous deployment from the Vercel dashboard. No git revert or redeploy
 needed for an emergency rollback - it's already built.
