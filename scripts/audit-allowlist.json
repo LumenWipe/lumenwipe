@@ -1,10 +1,10 @@
 [
   {
-    "advisory": "GHSA-vfj7-8cjw-p6xm",
-    "package": "braces",
+    "advisory": "GHSA-mrhx-c7xc-m3w5",
+    "package": "zod",
     "severity": "high",
-    "reason": "No patched release exists (3.0.3 is the latest). Reached only through build and lint tooling (micromatch and chokidar, under tsc-alias for the API build and eslint-config-next) expanding glob patterns authored in this repository, never attacker-controlled input, and not present in any runtime bundle.",
-    "added": "2026-10-10",
-    "expires": "2027-01-08"
+    "reason": "The only affected copies left are zod 3.22.4 under @reown/appkit-wallet and 3.25.76 under @coinbase/cdp-sdk, pinned by the wallet kit. No 3.x release is patched, and forcing 4.x onto them risks the signing flow for a dependency that does not ship: next build output contains no zod in the client or server chunks, and the API does not depend on either copy.",
+    "added": "2026-10-30",
+    "expires": "2027-01-28"
   }
 ]

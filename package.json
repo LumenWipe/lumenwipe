@@ -44,7 +44,10 @@
     "qs": "^6.16.0",
     "fast-uri": "^4.2.2",
     "smol-toml": "^1.9.0",
-    "multer": "^2.4.0",
+    "multer": "^2.5.0",
+    "body-parser": "^2.4.0",
+    "follow-redirects": "^1.16.2",
+    "undici": "^8.12.3",
     "browserslist": "^4.28.8",
     "baseline-browser-mapping": "^2.11.20",
     "postcss-selector-parser": "^7.1.1",
@@ -56,5 +59,8 @@
     "@nestjs/swagger": {
       "js-yaml": "5.4.3"
     }
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
   }
 }

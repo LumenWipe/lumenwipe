@@ -13,7 +13,7 @@ icon: "clipboard-check"
 
 > **Status as of 2026-10-13, checked against commit `d1ab2cb`.** Sections 1 to 6 record the 2026-09-02 pass,
 > Section 7 the 2026-09-29 refresh and Section 8 the 2026-10-13 pass; findings, counts and versions are as of
-> those dates, not live. **Next refresh:** see Section 9.
+> those dates, not live. **Next refresh:** see Section 10.
 
 ## 1. Scope and method
 
@@ -261,10 +261,10 @@ workspace build and the SDK's API report pass after the change, and the API imag
 
 ## 8. Tooling pass (2026-10-13)
 
-The first pass run with `bun run security:scan` (Section 9). It ran on commit `d1ab2cb`, which is `main` at
+The first pass run with `bun run security:scan` (Section 10). It ran on commit `d1ab2cb`, which is `main` at
 `7f07aeb` plus the script itself, in the pull request that added it; the squash merge gives that change a
 different hash on `main`. The counts and every finding below come from that run's report; reports stay local
-(Section 9), so re-running the script on that commit reproduces it, apart from rule packs and advisories
+(Section 10), so re-running the script on that commit reproduces it, apart from rule packs and advisories
 published since.
 
 | Tool      | Version | Scope                                                                                                                                | Critical | High | Medium | Low |
@@ -296,7 +296,22 @@ through the optional NEAR wallet modules, absent from the production build.
 handling, the session layer, transaction construction, the two signing keys, the DeFi exit and conversion
 surfaces, or the integrator access layer. Its residual-risk table (Section 11) needs no change.
 
-## 9. How to refresh this plan
+## 9. Dependency refresh (2026-10-30)
+
+The audit gate reported 13 high or critical advisories published after Section 8. All but one are fixed by upgrading:
+`next` 16.4.3 (including two critical remote code execution advisories, GHSA-2464-fhr4-w9xw and GHSA-673q-mjm6-r5xr),
+`undici` 8.12.3, `multer` 2.5.0, `body-parser` 2.4.0, `follow-redirects` 1.16.2, `happy-dom` 21.0.4 and the top-level
+`zod` 4.6.7.
+
+`zod` GHSA-mrhx-c7xc-m3w5 is accepted for the two 3.x copies the wallet kit pins (3.22.4 under `@reown/appkit-wallet`,
+3.25.76 under `@coinbase/cdp-sdk`). No 3.x release is patched, a global override to 4.x would change a library inside the
+signing path's dependencies, and neither copy ships: `next build` output has no zod in its client or server chunks, and
+the API does not depend on them. It is allowlisted in `scripts/audit-allowlist.json` until 2027-01-28, which forces a
+re-check.
+
+`braces` GHSA-vfj7-8cjw-p6xm from Section 8 no longer appears in the audit, so its allowlist entry is gone.
+
+## 10. How to refresh this plan
 
 1. Install the two pinned tools, at the versions in `scripts/security-tools.json` (the same file CI reads):
    `pipx install semgrep==<version>`, and gitleaks `<version>` from its release page (Homebrew works only while
