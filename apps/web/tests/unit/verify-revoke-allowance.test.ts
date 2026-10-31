@@ -108,11 +108,15 @@ function buildRevokeXdr(
     fee: options.fee ?? "100",
     networkPassphrase: Networks.TESTNET,
   });
-  if (options.memo) raw.addMemo(options.memo);
   raw.addOperation(op);
   if (options.extraOp) raw.addOperation(op);
   raw.setTimeout(options.timeout ?? 30);
-  return raw.build().toEnvelope().toXdr("base64");
+  const envelope = raw.build().toEnvelope();
+  // The SDK refuses to build this, so it goes in by hand: a hostile API can still send it.
+  if (options.memo && "v1" in envelope) {
+    (envelope.v1.tx as { memo: xdr.Memo }).memo = options.memo.toXDRObject();
+  }
+  return envelope.toXdr("base64");
 }
 
 function expectation(over: Partial<{ owner: string; token: string; spender: string }> = {}) {

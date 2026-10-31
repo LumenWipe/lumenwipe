@@ -25,6 +25,12 @@
       "allowedVersions": "<6.1.0"
     },
     {
+      "description": "The docs job stays on its runner and Node: the diagram check compares against SVGs rendered by that image's Graphviz, and Mintlify refuses Node 25 and later.",
+      "matchFileNames": [".github/workflows/ci.yml"],
+      "matchDepNames": ["node", "ubuntu"],
+      "enabled": false
+    },
+    {
       "description": "Automerge disabled everywhere - this project closes accounts irreversibly, and CONTRIBUTING.md already asks for closer review on anything security-sensitive. A dependency bump is reviewed like any other change, never merged unattended.",
       "matchPackageNames": ["*"],
       "automerge": false
