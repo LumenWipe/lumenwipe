@@ -206,6 +206,7 @@ test("execution-wizard › a hash(x) signer among remainingSigners renders its e
 
   expect(await screen.findByText(/hash\(x\) signer/i)).toBeDefined();
   expect(screen.getByPlaceholderText(/hex-encoded preimage/i)).toBeDefined();
+  expect(screen.getByText(/publishes it on the ledger/i)).toBeDefined();
   // Not lumped into the generic "can't yet contribute automatically" line.
   expect(screen.queryByText(/can't yet contribute automatically/i)).toBeNull();
 });

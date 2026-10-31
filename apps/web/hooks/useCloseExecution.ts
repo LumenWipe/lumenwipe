@@ -28,6 +28,10 @@ import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { requiredSignatureWeight } from "@/lib/stellar/thresholds";
 import { verifyPreAuthTxHash } from "@/lib/stellar/pre-auth-tx";
 import {
+  assertMasterSignsSignerRemoval,
+  assertPreimageRemovesItsSigner,
+} from "@/lib/stellar/signing-guards";
+import {
   accumulatedWeight,
   applyConfirmedTransaction,
   evaluateSignatureContributions,
@@ -259,6 +263,7 @@ export function useCloseExecution() {
               if (!roundSignerState().signers.some((s) => s.key === signer.publicKey)) {
                 return { xdr, weight: preSignWeight };
               }
+              assertPreimageRemovesItsSigner(xdr, passphrase, sourceAddress, signer.publicKey);
               const signedXdr = await signer.sign(xdr, passphrase);
 
               // A connected wallet (WalletKitSigner) is a black box outside this app's trust
@@ -288,6 +293,7 @@ export function useCloseExecution() {
             },
             submit: async (tx: CloseTransaction, xdr: string) => {
               let finalXdr = xdr;
+              assertMasterSignsSignerRemoval(xdr, passphrase, sourceAddress);
 
               // A merge through the shared mediator is one atomic transaction: the user
               // signed the merge; the backend co-signs the mediator's forward payment. It

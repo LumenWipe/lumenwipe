@@ -321,7 +321,15 @@ test("useCloseExecution › a hash(x) signer's preimage completes the close by r
   const preimage = fromHex("deadbeef");
   const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
 
-  const mergeXdr = unsignedMergeXdr(sourceKeypair, destination);
+  const mergeXdr = new TransactionBuilder(new Account(source, "100"), {
+    fee: "100",
+    networkPassphrase: Networks.TESTNET,
+  })
+    .setTimeout(300)
+    .addOperation(Operation.setOptions({ signer: { sha256Hash: hash(preimage), weight: 0 } }))
+    .addOperation(Operation.accountMerge({ destination }))
+    .build()
+    .toXdr();
 
   useNetworkStore.setState({ network: "testnet" });
   useDemolishStore.setState({
