@@ -12,9 +12,9 @@ import graphviz
 
 g = graphviz.Digraph("system-architecture")
 g.attr(**base_graph_attr(
-    rankdir="TB",
+    rankdir="LR",
     splines="spline",
-    size="15,11",
+    size="15,12",
     label=hl(
         "LumenWipe - System Architecture",
         "Non-custodial Stellar account closure · the API builds transactions · the browser verifies and signs",
@@ -103,24 +103,25 @@ with g.subgraph(name="cluster_network") as n:
            fillcolor=F_EXTERNAL, color=B_EXTERNAL,
            shape="cylinder", penwidth="2")
 
+# Edges inside a layer, or against the flow, set constraint="false" so that each layer stays one column.
 # ── Client internal wiring ────────────────────────────────────────────────────
-g.edge("close",  "verify", label="unsigned XDR", color=B_CLIENT, fontcolor=B_CLIENT, penwidth="2", fontsize="9")
-g.edge("verify", "signer", label="only if intent matches", color=B_CLIENT, fontcolor=B_CLIENT, fontsize="9")
-g.edge("wallet", "signer")
-g.edge("sk",     "signer")
-g.edge("signer", "sess", label="saves step state", style="dashed")
+g.edge("close",  "verify", label="unsigned XDR", color=B_CLIENT, fontcolor=B_CLIENT, penwidth="2", fontsize="9", constraint="false")
+g.edge("verify", "signer", label="only if intent matches", color=B_CLIENT, fontcolor=B_CLIENT, fontsize="9", constraint="false")
+g.edge("wallet", "signer", constraint="false")
+g.edge("sk",     "signer", constraint="false")
+g.edge("signer", "sess", label="saves step state", style="dashed", constraint="false")
 
 # ── Client <-> API (through the proxy) ─────────────────────────────────────────
 g.edge("ui",     "proxy", label="fetch plan + tx", style="dashed", color=B_DEFAULT)
 g.edge("proxy",  "analysis", label="read + build\n(key injected)", color=B_ACCENT, fontcolor=B_ACCENT, penwidth="2", fontsize="9")
 g.edge("proxy",  "close")
-g.edge("signer", "proxy", label="signed XDR -> submit", color=B_CLIENT, fontcolor=B_CLIENT, penwidth="2", fontsize="9")
+g.edge("signer", "proxy", label="signed XDR -> submit", color=B_CLIENT, fontcolor=B_CLIENT, penwidth="2", fontsize="9", constraint="false")
 g.edge("proxy",  "med_be", label="mediator co-sign", style="dashed")
 
 # ── API internal ──────────────────────────────────────────────────────────────
-g.edge("close",    "analysis", style="dashed")
-g.edge("analysis", "defi")
-g.edge("analysis", "cache",   style="dashed")
+g.edge("close",    "analysis", style="dashed", constraint="false")
+g.edge("analysis", "defi", constraint="false")
+g.edge("analysis", "cache",   style="dashed", constraint="false")
 g.edge("med_be",   "rpc",     style="dashed")
 
 # ── API -> external ───────────────────────────────────────────────────────────
@@ -132,9 +133,9 @@ g.edge("route",    "soro_api")
 g.edge("route",    "idx",    label="SDEX paths fallback", style="dashed")
 
 # ── External -> ledger ─────────────────────────────────────────────────────────
-g.edge("rpc",      "ledger", penwidth="2")
-g.edge("idx",      "ledger")
-g.edge("soro_api", "ledger")
-g.edge("octopos",  "ledger")
+g.edge("rpc",      "ledger", penwidth="2", constraint="false")
+g.edge("idx",      "ledger", constraint="false")
+g.edge("soro_api", "ledger", constraint="false")
+g.edge("octopos",  "ledger", constraint="false")
 
 render(g, "01-system-architecture")

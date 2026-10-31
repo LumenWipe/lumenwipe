@@ -12,9 +12,9 @@ import graphviz
 
 g = graphviz.Digraph("data-flow")
 g.attr(**base_graph_attr(
-    rankdir="LR",
+    rankdir="TB",
     splines="polyline",
-    size="16,7",
+    size="14,14",
     label=hl(
         "LumenWipe - Data Acquisition &amp; Execution Flow",
         "Enumerate with indexer · re-read authoritative state over RPC · build plan (API) · verify · sign · submit via API",
