@@ -270,6 +270,20 @@ test("execution-wizard › normal (non-multisig) failure still shows the retry b
   expect(screen.queryByRole("button", { name: /add signature/i })).toBeNull();
 });
 
+test("execution-wizard › the failed state says under Retry that retrying is safe", async () => {
+  currentSignatureStatus = null;
+  useDemolishStore.setState({ phase: "STEP_FAILED", lastError: "The close failed." } as never);
+  runImpl = async () => {};
+
+  render(<ExecutionWizard network="testnet" />);
+
+  const retry = await screen.findByRole("button", { name: /retry/i });
+  const note = screen.getByText(
+    "Safe to retry. LumenWipe re-reads your account first, so a confirmed transaction is never sent twice."
+  );
+  expect(retry.nextElementSibling).toBe(note);
+});
+
 // #102: pre-auth-tx signer support.
 test("execution-wizard › a preauth_tx signer among remainingSigners renders its explanation, an XDR textarea, and the persistent warning", async () => {
   const preAuthKey = "TAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJRY"; // any-shaped preauth key for display purposes

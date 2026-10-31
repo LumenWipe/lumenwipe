@@ -419,6 +419,10 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               >
                 Retry
               </button>
+              <p className="text-xs text-fg-subtle">
+                Safe to retry. LumenWipe re-reads your account first, so a confirmed transaction is
+                never sent twice.
+              </p>
             </div>
           ) : (
             <>

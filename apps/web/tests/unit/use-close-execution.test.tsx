@@ -17,7 +17,7 @@ import { useNetworkStore } from "@/store/network";
 import * as closeClient from "@/lib/api/close-client";
 import * as submitViaApiModule from "@/lib/stellar/submit-via-api";
 import * as feeBumpSponsorModule from "@/lib/stellar/fee-bump-sponsor";
-import { ApiRequestError, toUserMessage } from "@/lib/utils/user-error";
+import { ApiRequestError, closeFailureMessage } from "@/lib/utils/user-error";
 import type { TransactionSigner } from "@/lib/stellar/signer";
 import { fromHex } from "@/lib/stellar/hex";
 
@@ -855,7 +855,9 @@ test("useCloseExecution › an API failure keeps its request id beside the uncha
   });
 
   const state = useDemolishStore.getState();
-  expect(state.lastError).toBe(toUserMessage(new ApiRequestError(503, ""), "execute"));
+  expect(state.lastError).toBe(
+    closeFailureMessage(new ApiRequestError(503, ""), "before-submit", state.executionPlan)
+  );
   expect(state.lastErrorReference).toBe(id);
 });
 
@@ -1227,4 +1229,161 @@ test("useCloseExecution › acknowledgements given for another account never rea
   expect(
     decisions.filter((d) => d.id.startsWith("defi_positions:") || d.id.startsWith("issuer_supply:"))
   ).toEqual([]);
+});
+
+function planStep(index: number, type: string, status: string): unknown {
+  return {
+    index,
+    type,
+    title: type,
+    description: "",
+    operationCount: 1,
+    estimatedFeeLumens: "0.0000100",
+    txXdr: null,
+    status,
+    txHash: status === "confirmed" ? `hash${index}` : null,
+    error: null,
+  };
+}
+
+/** Round one removes nothing but restates the thresholds; round two merges. */
+function twoRoundSetup(plan: unknown[]): { sourceKeypair: Keypair; rounds: () => number } {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  const account = {
+    signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+    thresholds: { low: 0, med: 1, high: 1 },
+  };
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    lastErrorReference: null,
+    accountState: account as never,
+    executionPlan: plan,
+  } as never);
+
+  let fetches = 0;
+  stubFetchCloseTransactions(async () => {
+    fetches++;
+    const confirmed = useDemolishStore
+      .getState()
+      .executionPlan.some((s) => s.type === "NORMALIZE_SIGNERS" && s.status === "confirmed");
+    return confirmed
+      ? {
+          planHash: "h",
+          status: "ready",
+          transactions: [
+            {
+              id: "t1",
+              order: 0,
+              xdr: unsignedMergeXdr(sourceKeypair, destination),
+              covers: ["MERGE"],
+            },
+          ],
+          remaining: { steps: 0, requiresAnotherCall: false },
+          sourceAccount: account,
+        }
+      : {
+          planHash: "h",
+          status: "ready",
+          transactions: [
+            {
+              id: "t0",
+              order: 0,
+              xdr: unsignedNormalizeXdr(sourceKeypair, [], "100"),
+              covers: ["NORMALIZE_SIGNERS"],
+            },
+          ],
+          remaining: { steps: 1, requiresAnotherCall: true },
+          sourceAccount: account,
+        };
+  });
+  return { sourceKeypair, rounds: () => fetches };
+}
+
+/** Signs the first `approvals` transactions, then declines like a wallet does. */
+function decliningAfter(keypair: Keypair, approvals: number): TransactionSigner {
+  const signer = realSigner(keypair);
+  let signed = 0;
+  return {
+    publicKey: signer.publicKey,
+    sign: async (xdr, networkPassphrase) => {
+      if (signed++ >= approvals) throw new Error("User declined access");
+      return signer.sign(xdr, networkPassphrase);
+    },
+  };
+}
+
+test("useCloseExecution › a wallet decline after a confirmed round states the confirmed steps, not that nothing was sent", async () => {
+  const { sourceKeypair, rounds } = twoRoundSetup([
+    planStep(0, "NORMALIZE_SIGNERS", "pending"),
+    planStep(1, "MERGE", "pending"),
+  ]);
+  stubSubmitViaApi(async () => ({ txHash: "round-one" }));
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(decliningAfter(sourceKeypair, 1));
+  });
+
+  const { lastError, phase } = useDemolishStore.getState();
+  expect(rounds()).toBe(2);
+  expect(phase).toBe("STEP_FAILED");
+  expect(lastError).toMatch(/declined the request in your wallet/);
+  expect(lastError).toMatch(/1 of 2 plan steps are already confirmed/);
+  expect(lastError).not.toMatch(/nothing was sent/i);
+});
+
+test("useCloseExecution › a step left submitted but unconfirmed by the failing round is not counted as confirmed", async () => {
+  const { sourceKeypair } = twoRoundSetup([
+    planStep(0, "CANCEL_OFFERS", "confirmed"),
+    planStep(1, "NORMALIZE_SIGNERS", "submitted"),
+    planStep(2, "MERGE", "pending"),
+  ]);
+  stubSubmitViaApi(async () => {
+    throw new ApiRequestError(504, "");
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+
+  const { lastError } = useDemolishStore.getState();
+  expect(lastError).toMatch(/1 of 3 plan steps are already confirmed/);
+  expect(lastError).toMatch(/could not be confirmed/);
+});
+
+test("useCloseExecution › after a failed submit and a retry, a later wallet decline reads as not sent, not as unconfirmed", async () => {
+  const { sourceKeypair } = twoRoundSetup([
+    planStep(0, "NORMALIZE_SIGNERS", "pending"),
+    planStep(1, "MERGE", "pending"),
+  ]);
+  let submits = 0;
+  stubSubmitViaApi(async () => {
+    submits++;
+    if (submits === 1) throw new ApiRequestError(504, "");
+    return { txHash: "round-one" };
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(useDemolishStore.getState().lastError).toMatch(/could not be confirmed/);
+
+  await act(async () => {
+    await result.current.run(decliningAfter(sourceKeypair, 1));
+  });
+
+  const { lastError } = useDemolishStore.getState();
+  expect(submits).toBe(2);
+  expect(lastError).toMatch(/This transaction was not signed or sent/);
+  expect(lastError).toMatch(/1 of 2 plan steps are already confirmed/);
+  expect(lastError).not.toMatch(/could not be confirmed/);
 });

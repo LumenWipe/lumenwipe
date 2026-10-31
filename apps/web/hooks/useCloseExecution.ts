@@ -38,7 +38,12 @@ import { submitViaApi } from "@/lib/stellar/submit-via-api";
 import { requestMediatorCosignature } from "@/lib/stellar/mediator";
 import { requestFeeBumpSponsorship } from "@/lib/stellar/fee-bump-sponsor";
 import { notifyStatsRefresh } from "@/lib/stats-events";
-import { requestIdOf, toUserMessage, UserFacingError } from "@/lib/utils/user-error";
+import {
+  closeFailureMessage,
+  requestIdOf,
+  UserFacingError,
+  type CloseFailureStage,
+} from "@/lib/utils/user-error";
 import { toHex } from "@/lib/stellar/hex";
 import type { TransactionSigner } from "@/lib/stellar/signer";
 import type { AccountSigner } from "@/types/account";
@@ -176,6 +181,7 @@ export function useCloseExecution() {
 
       setPhase("STEP_EXECUTING");
       setSignatureStatus(null);
+      let stage: CloseFailureStage = "before-submit";
       try {
         await runClose(
           {
@@ -360,6 +366,7 @@ export function useCloseExecution() {
               }
 
               setProgressStatus("Submitting to Stellar network…");
+              stage = "submitted";
               const { txHash } = await submitViaApi(finalXdr, network);
               return txHash;
             },
@@ -375,6 +382,7 @@ export function useCloseExecution() {
               if (tx.covers.includes("MERGE") || tx.covers.includes("CLOSE_ACCOUNT")) {
                 notifyStatsRefresh();
               }
+              stage = "before-submit";
             },
             onProgress: setProgressStatus,
           },
@@ -411,7 +419,10 @@ export function useCloseExecution() {
         // panel with no explanation of what went wrong.
         pendingRoundRef.current = null;
         setSignatureStatus(null);
-        setLastError(toUserMessage(err, "execute"), requestIdOf(err));
+        setLastError(
+          closeFailureMessage(err, stage, useDemolishStore.getState().executionPlan),
+          requestIdOf(err)
+        );
         setPhase("STEP_FAILED");
       } finally {
         setProgressStatus(null);
