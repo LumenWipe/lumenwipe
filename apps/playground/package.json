@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@lumenwipe/sdk": "workspace:*",
-    "@stellar/stellar-sdk": "17.2.1",
+    "@stellar/stellar-sdk": "17.4.0",
     "@upstash/redis": "^1.39.0",
     "lucide-react": "^1.55.0",
     "motion": "^14.1.0",
