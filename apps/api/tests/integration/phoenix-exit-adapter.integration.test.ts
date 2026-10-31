@@ -22,6 +22,8 @@ import {
 // like sponsorship.integration.test.ts and multisig-close.integration.test.ts.
 const RUN_INTEGRATION =
   !!process.env.LUMENWIPE_RUN_INTEGRATION && !!process.env.LUMENWIPE_INTEGRATION_FUNDED;
+// Set by CI from the event, never inferred from a missing secret: that must still fail below.
+const FORK_PR_WITHOUT_SECRETS = process.env.LUMENWIPE_FORK_PR === "true";
 
 const FRIENDBOT = "https://friendbot.stellar.org";
 const HORIZON_URL = "https://horizon-testnet.stellar.org";
@@ -32,7 +34,7 @@ async function fund(publicKey: string): Promise<void> {
   if (!res.ok) throw new Error(`friendbot funding failed for ${publicKey}: ${res.status}`);
 }
 
-test.skipIf(!RUN_INTEGRATION)(
+test.skipIf(!RUN_INTEGRATION || FORK_PR_WITHOUT_SECRETS)(
   "a self-provided, partially staked Phoenix LP position closes end to end through the real adapter",
   async () => {
     const tokenAdminSecret = process.env.PHOENIX_TESTNET_TOKEN_ADMIN_SECRET;

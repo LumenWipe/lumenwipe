@@ -113,6 +113,11 @@ jobs:
   # which have been gated behind this same flag since they were written but had no job that ever
   # set it. Slower than the read-only tier (real friendbot funding and confirmation waits across
   # several tests), so it stays its own job rather than folding into the fast one above.
+  #
+  # GitHub withholds secrets from fork PRs, so there the two tests that need an admin key skip on
+  # LUMENWIPE_FORK_PR and the rest of the tier still runs. The flag comes from the event rather than
+  # from a missing secret: a secret deleted or lost on any other run still fails the job, and both
+  # tests run on main once the fork's change lands.
   integration-funded:
     name: integration (funded)
     runs-on: ubuntu-latest
@@ -133,6 +138,7 @@ jobs:
       - name: Run funded integration tests
         env:
           LUMENWIPE_INTEGRATION_FUNDED: "1"
+          LUMENWIPE_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
           PHOENIX_TESTNET_TOKEN_ADMIN_SECRET: ${{ secrets.PHOENIX_TESTNET_TOKEN_ADMIN_SECRET }}
           FXDAO_TESTNET_ORACLE_ADMIN_SECRET: ${{ secrets.FXDAO_TESTNET_ORACLE_ADMIN_SECRET }}
           # Not a secret - the public Horizon-compatible endpoint sponsorship.integration.test.ts
