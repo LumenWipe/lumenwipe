@@ -15,6 +15,7 @@ import {
 } from "@/lib/close-api/decisions";
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { ledgerEntries } from "./fixtures/ledger-trustlines";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import * as rpcModule from "@/lib/stellar/rpc";
@@ -121,7 +122,7 @@ function rpcStub() {
   return {
     getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
     getLatestLedger: () => Promise.resolve({ sequence: 1000, closeTime: String(NOW) }),
-    getLedgerEntries: () => Promise.reject(new Error("unavailable")),
+    getLedgerEntries: ledgerEntries({}),
   };
 }
 

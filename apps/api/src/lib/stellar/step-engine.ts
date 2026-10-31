@@ -1,7 +1,7 @@
 import { Asset, xdr } from "@stellar/stellar-sdk";
 import type { getRpcServer } from "@/lib/stellar/rpc";
 import { stroopsToXlm } from "@/lib/utils/amounts";
-import { readLiveTrustline } from "@/lib/stellar/live-trustline";
+import { LiveReadError, readLiveTrustline } from "@/lib/stellar/live-trustline";
 import type { ClaimableBalance, Trustline } from "@lumenwipe/types";
 
 /**
@@ -26,11 +26,12 @@ export async function fetchLiveTrustlineBalance(
 /**
  * Re-reads a batch of claimable balances over RPC and returns only those that
  * still exist on-chain. This prevents a single already-claimed balance from
- * failing the entire atomic transaction for the remaining claimants.
+ * failing the entire atomic transaction for the remaining claimants. A failed
+ * read throws `LiveReadError` rather than assuming every balance still exists.
  */
 export async function filterExistingClaimableBalances(
   balances: ClaimableBalance[],
-  server: ReturnType<typeof getRpcServer>
+  server: Pick<ReturnType<typeof getRpcServer>, "getLedgerEntries">
 ): Promise<ClaimableBalance[]> {
   if (balances.length === 0) return [];
 
@@ -42,17 +43,17 @@ export async function filterExistingClaimableBalances(
     )
   );
 
+  let entries: Awaited<ReturnType<typeof server.getLedgerEntries>>["entries"];
   try {
-    const res = await server.getLedgerEntries(...keys);
-    const existingIds = new Set(
-      (res.entries ?? []).flatMap((e) =>
-        e.key.type === "claimableBalance" ? [e.key.claimableBalance.balanceId.toXdr("hex")] : []
-      )
-    );
-    return balances.filter((b) => existingIds.has(b.id));
+    entries = (await server.getLedgerEntries(...keys)).entries;
   } catch {
-    // If the re-read fails, proceed with the full batch and let the network
-    // surface per-operation errors via the standard error map.
-    return balances;
+    throw new LiveReadError("The claimable balances");
   }
+  if (!Array.isArray(entries)) throw new LiveReadError("The claimable balances");
+  const existingIds = new Set(
+    entries.flatMap((e) =>
+      e.key.type === "claimableBalance" ? [e.key.claimableBalance.balanceId.toXdr("hex")] : []
+    )
+  );
+  return balances.filter((b) => existingIds.has(b.id));
 }

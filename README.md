@@ -65,7 +65,7 @@ The system has three layers. The trust boundary is the browser: it verifies ever
 
 **Key design decisions:**
 
-- **No bespoke indexer.** Stellar RPC cannot enumerate unknown subentries, so enumeration comes from an existing provider set by configuration. LumenWipe re-reads exact on-chain state over RPC immediately before building each transaction, and never signs based on stale data.
+- **No bespoke indexer.** Stellar RPC cannot enumerate unknown subentries, so enumeration comes from an existing provider set by configuration. Before building each round, LumenWipe cross-checks that enumeration against the ledger over RPC and refuses to build on any difference, so it never signs based on stale data.
 - **Pluggable data sources.** Every read source (RPC provider, indexer, routing API, DeFi position API) is behind an adapter, so any compatible provider can be swapped in without touching the transaction logic.
 - **Soroban exits are simulated before signing.** Every `InvokeHostFunction` is run through `simulateTransaction` to fill in footprint, authorization, and resource fees. The user sees the simulation result before being asked to sign.
 
