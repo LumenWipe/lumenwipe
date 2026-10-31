@@ -52,6 +52,7 @@ export const ERROR_CODES = [
   "invalid_memo",
   "invalid_network",
   "invalid_owner",
+  "invalid_plan_hash",
   "invalid_rate_limit",
   "invalid_request",
   "invalid_signature",

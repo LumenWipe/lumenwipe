@@ -271,6 +271,10 @@ export function tokenContractsFromAnswers(answers: DecisionAnswer[]): string[] {
 /** Discovery reads at most this many candidates per analysis; answers beyond it name nothing. */
 export const MAX_TOKEN_ANSWERS = 50;
 
+/** The choice of an answer that only names a token the analysis discovered, so the read looks for
+ *  it. It decides nothing, so it never counts as answering the token's disposition. */
+export const TOKEN_DISCOVERED_CHOICE = "discovered";
+
 /** Raised when a token's convert answer carries no floor. Caught at the controller boundary. */
 export class MissingConversionFloorError extends Error {
   constructor(readonly contract: string) {

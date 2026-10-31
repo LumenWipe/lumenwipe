@@ -55,6 +55,7 @@ import {
   positionsLeftBehind,
   PRICE_SOURCE_UNAVAILABLE,
   ROUTE_LOOKUP_UNAVAILABLE_CODE,
+  TOKEN_DISCOVERED_CHOICE,
   type ClassicQuote,
 } from "@/lib/close-api/decisions";
 import { ARRIVING_ASSET_PROBE_AMOUNT, assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
@@ -335,7 +336,9 @@ export async function buildAccountPlan(
     ...deriveClaimableBalanceDecisionPoints(accountState),
     ...deriveBulkClaimDecisionPoints(accountState),
   ];
-  const answeredIds = new Set(decisions.map((d) => d.id));
+  const answeredIds = new Set(
+    decisions.filter((d) => d.choice !== TOKEN_DISCOVERED_CHOICE).map((d) => d.id)
+  );
   // The destination and DeFi-positions acknowledgements are judged on their choice, not
   // merely on having been answered. For every other decision the choice is re-validated
   // downstream against a known value set, so presence is a fair proxy; here the choice IS

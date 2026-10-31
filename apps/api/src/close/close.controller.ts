@@ -105,12 +105,13 @@ export class CloseController {
     "invalid_source",
     "invalid_destination",
     "invalid_decisions",
+    "invalid_plan_hash",
     "invalid_body",
   ])
   @ApiErrorResponse(404, "Source account not found.", ["account_not_found"])
   @ApiErrorResponse(
     409,
-    "The plan is stale: a conversion route drifted, or the account changed since it was read. Re-plan and retry.",
+    "The plan is stale: a conversion route drifted, or the account changed since it was read or since the plan the request names. Re-plan and retry.",
     ["quote_drifted", "state_changed"]
   )
   @ApiErrorResponse(

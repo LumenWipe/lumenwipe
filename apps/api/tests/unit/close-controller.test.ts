@@ -926,6 +926,108 @@ describe("transactions", () => {
   });
 });
 
+describe("transactions verifies the supplied plan hash", () => {
+  const decisions = [ACK];
+  const body = (over: Record<string, unknown> = {}) => ({
+    source: SOURCE,
+    destination: DEST,
+    decisions,
+    ...over,
+  });
+  const hashAt = (sourceSequence: string, answers: DecisionAnswer[] = decisions) =>
+    computePlanHash({ source: SOURCE, destination: DEST, decisions: answers, sourceSequence });
+
+  function counting(sequence: () => string) {
+    let builds = 0;
+    const fakes: Partial<Fakes> = {
+      readAccountState: async () => accountState({ sequence: sequence() }),
+      buildCloseTransactions: (async () => {
+        builds++;
+        return { transactions: TX, requiresAnotherCall: false, remainingSteps: 0 };
+      }) as unknown as Builder,
+    };
+    return { fakes, builds: () => builds };
+  }
+
+  test("a hash matching the account as it is now builds the round", async () => {
+    const { fakes, builds } = counting(() => "77");
+    const { controller } = await makeController(fakes);
+    const result = await controller.transactions("testnet", body({ planHash: hashAt("77") }));
+    expect(result.planHash).toBe(hashAt("77"));
+    expect(builds()).toBe(1);
+  });
+
+  test("a hash the account no longer matches is a 409 state_changed and nothing is built", async () => {
+    const { fakes, builds } = counting(() => "78");
+    const { controller } = await makeController(fakes);
+    await expectFail(
+      controller.transactions("testnet", body({ planHash: hashAt("77") })),
+      409,
+      "state_changed"
+    );
+    expect(builds()).toBe(0);
+  });
+
+  test("a request without a hash is built as before", async () => {
+    const { fakes, builds } = counting(() => "78");
+    const { controller } = await makeController(fakes);
+    const result = await controller.transactions("testnet", body());
+    expect(result.planHash).toBe(hashAt("78"));
+    expect(builds()).toBe(1);
+  });
+
+  test("a hash that is not a 64-character hex string is a 400", async () => {
+    const { controller } = await makeController();
+    for (const planHash of ["abc", 7, "C".repeat(64), null]) {
+      await expectFail(
+        controller.transactions("testnet", body({ planHash })),
+        400,
+        "invalid_plan_hash"
+      );
+    }
+  });
+
+  test("the hash ignores the order of the answers and of their fields", async () => {
+    const convert: DecisionAnswer = {
+      id: `asset:${USDC}`,
+      choice: "convert",
+      params: { provider: "soroswap", minAmountOut: "5" },
+    };
+    const reordered = [
+      { params: { minAmountOut: "5", provider: "soroswap" }, choice: "convert", id: convert.id },
+      ACK,
+    ] as DecisionAnswer[];
+    const { controller } = await makeController(counting(() => "77").fakes);
+    const result = await controller.transactions(
+      "testnet",
+      body({ decisions: reordered, planHash: hashAt("77", [ACK, convert]) })
+    );
+    expect(result.planHash).toBe(hashAt("77", [ACK, convert]));
+  });
+
+  test("a multi-round close: round two is hashed from its own state and a legitimate change between rounds is no 409", async () => {
+    let sequence = "77";
+    const { fakes, builds } = counting(() => sequence);
+    const { controller } = await makeController(fakes);
+    const planned = hashAt("77");
+
+    const first = await controller.transactions("testnet", body({ planHash: planned }));
+    expect(first.planHash).toBe(planned);
+
+    sequence = "78";
+    const second = await controller.transactions("testnet", body());
+    expect(second.planHash).toBe(hashAt("78"));
+    expect(second.planHash).not.toBe(planned);
+    expect(builds()).toBe(2);
+
+    await expectFail(
+      controller.transactions("testnet", body({ planHash: planned })),
+      409,
+      "state_changed"
+    );
+  });
+});
+
 describe("submit", () => {
   function signed(): string {
     const tx = new TransactionBuilder(new Account(SOURCE, "1"), {

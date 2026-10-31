@@ -59,6 +59,13 @@ export class CloseTransactionsRequestDto {
     example: "1234567890",
   })
   memo?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "The planHash of the plan the user reviewed, sent with the first call after it. If the account's sequence or the answers differ from those the plan was built from, the call answers 409 state_changed. Omit it once a transaction of the close has confirmed.",
+    pattern: "^[0-9a-f]{64}$",
+  })
+  planHash?: string;
 }
 
 export class SubmitRequestDto {

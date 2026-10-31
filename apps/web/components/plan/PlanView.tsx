@@ -21,6 +21,7 @@ import { fetchClosePlan } from "@/lib/api/close-client";
 import {
   claimableSelectionsToDecisions,
   classicFloorFromQuote,
+  closeDecisions,
   destinationAcknowledgementToDecisions,
   dispositionsToDecisions,
   discoveredTokensToDecisions,
@@ -340,34 +341,12 @@ export default function PlanView({
       // Request the final plan (for the execute sidebar) from the API with the destination
       // and the user's asset + claimable-balance decisions. Execution itself re-requests the
       // transactions.
-      const decisions = [
-        ...discoveredTokensToDecisions(
-          (account.sorobanTokens?.tokens ?? []).map((tk) => tk.contract)
-        ),
-        ...dispositionsToDecisions(
-          useDemolishStore.getState().assetDispositions,
-          useDemolishStore.getState().transferDestinations,
-          useDemolishStore.getState().tokenConversionFloors,
-          useDemolishStore.getState().classicConversionFloors
-        ),
-        ...claimableSelectionsToDecisions(useDemolishStore.getState().claimableBalanceSelections),
-        ...destinationAcknowledgementToDecisions(
-          useDemolishStore.getState().destinationAcknowledgedFor,
-          destination
-        ),
-        ...defiPositionsAcknowledgementToDecisions(
-          useDemolishStore.getState().defiPositionsAcknowledgedFor,
-          account.address
-        ),
-        ...issuerSupplyAcknowledgementToDecisions(
-          useDemolishStore.getState().issuerSupplyAcknowledgedFor,
-          account.address
-        ),
-        ...positionsLeftBehindToDecisions(
-          useDemolishStore.getState().positionsLeftBehind,
-          account.address
-        ),
-      ];
+      const decisions = closeDecisions(
+        useDemolishStore.getState(),
+        account.address,
+        destination,
+        (account.sorobanTokens?.tokens ?? []).map((tk) => tk.contract)
+      );
       const plan = await fetchClosePlan(
         { source: account.address, destination, decisions },
         network
@@ -408,7 +387,7 @@ export default function PlanView({
         return;
       }
 
-      setPlan(apiStepsToPlannedSteps(plan));
+      setPlan(apiStepsToPlannedSteps(plan), plan.planHash);
 
       // No session is persisted here: the review page's own confirmation is the only
       // caller allowed to write a resumable record, so an interruption on /review before

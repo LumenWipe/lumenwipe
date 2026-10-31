@@ -12,9 +12,18 @@ import type {
 import { isTokenContract } from "@/lib/close-api/decisions";
 import { splitCloseOps } from "@/lib/stellar/tx-builder/close-operations";
 
+function canonicalDecision(d: DecisionAnswer): DecisionAnswer {
+  if (d.params === undefined) return { id: d.id, choice: d.choice };
+  const params = Object.fromEntries(
+    Object.entries(d.params).sort(([a], [b]) => a.localeCompare(b))
+  ) as DecisionAnswer["params"];
+  return { id: d.id, choice: d.choice, params };
+}
+
 // Hash of everything that determines a plan: the source, destination, the resolved
-// decisions, and the source account's sequence. Decisions are sorted so ordering does not
-// change the hash. The sequence stays a string: account sequences are above 2^53, where
+// decisions, and the source account's sequence. Decisions are sorted, and each is rebuilt
+// with its fields in one order, so neither the order of the answers nor of their keys
+// changes the hash. The sequence stays a string: account sequences are above 2^53, where
 // Number() rounds neighbouring values to the same float and their hashes would collide.
 // The client passes this back to /transactions so a materially changed account is detected
 // (409 state_changed) before signing a plan it never reviewed.
@@ -27,7 +36,7 @@ export function computePlanHash(input: {
   const canonical = JSON.stringify({
     source: input.source,
     destination: input.destination,
-    decisions: [...input.decisions].sort((a, b) => a.id.localeCompare(b.id)),
+    decisions: input.decisions.map(canonicalDecision).sort((a, b) => a.id.localeCompare(b.id)),
     sourceSequence: input.sourceSequence,
   });
   return createHash("sha256").update(canonical).digest("hex");

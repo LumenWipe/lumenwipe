@@ -4,12 +4,13 @@ description: "The errors the SDK throws and how to handle them."
 icon: "triangle-exclamation"
 ---
 
-| Error                              | Thrown when                                                 | Properties                                                       |
-| ---------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------- |
-| `LumenWipeApiError`                | The API responds with a non-2xx status.                     | `status`, `code`, `details`, `retryAfterMs`, `requestId`, `body` |
-| `LumenWipeTimeoutError`            | A request exceeds the configured `timeout`.                 | `timeoutMs`                                                      |
-| `LumenWipeAbortError`              | The `signal` you passed aborts the request.                 | `reason`                                                         |
-| `InsufficientSignatureWeightError` | `runClose` finds a signature weight below what is required. | `pending`, for resuming                                          |
+| Error                              | Thrown when                                                      | Properties                                                       |
+| ---------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `LumenWipeApiError`                | The API responds with a non-2xx status.                          | `status`, `code`, `details`, `retryAfterMs`, `requestId`, `body` |
+| `LumenWipeTimeoutError`            | A request exceeds the configured `timeout`.                      | `timeoutMs`                                                      |
+| `LumenWipeAbortError`              | The `signal` you passed aborts the request.                      | `reason`                                                         |
+| `InsufficientSignatureWeightError` | `runClose` finds a signature weight below what is required.      | `pending`, for resuming                                          |
+| `CloseStateChangedError`           | The account changed under a round (`state_changed`). Plan again. | `apiError`, the refusal                                          |
 
 ```ts
 import {

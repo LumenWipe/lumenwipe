@@ -1434,3 +1434,57 @@ test("useCloseExecution › an account that kept changing discards the plan for 
   expect(state.planChangedNotice).toBe(PLAN_CHANGED_NOTICE);
   expect(result.current.signatureStatus).toBeNull();
 });
+
+test("useCloseExecution › the reviewed plan hash is sent until a transaction confirms, then cleared", async () => {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    destinationAcknowledgedFor: destination,
+    memo: null,
+    mediatorRequired: false,
+    executionPlan: [],
+    accountState: {
+      signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 1, med: 1, high: 1 },
+      nativeBalanceLumens: "10",
+    } as never,
+  } as never);
+  useDemolishStore.getState().setPlan([], "a".repeat(64));
+
+  const sent: Array<string | undefined> = [];
+  const rounds = [true, false];
+  spyOn(closeClient, "fetchCloseTransactions").mockImplementation((async (req: {
+    planHash?: string;
+  }) => {
+    sent.push(req.planHash);
+    const more = rounds.shift()!;
+    return {
+      planHash: "h",
+      status: "ready",
+      transactions: [
+        {
+          id: `tx-${sent.length}`,
+          order: 0,
+          dependsOn: [],
+          xdr: unsignedMergeXdr(sourceKeypair, destination),
+          networkPassphrase: Networks.TESTNET,
+          covers: ["MERGE"],
+        },
+      ],
+      remaining: { steps: more ? 1 : 0, requiresAnotherCall: more },
+    };
+  }) as unknown as typeof closeClient.fetchCloseTransactions);
+  stubSubmitViaApi(async () => "hash");
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+
+  expect(sent).toEqual(["a".repeat(64), undefined]);
+  expect(useDemolishStore.getState().planHash).toBeNull();
+});

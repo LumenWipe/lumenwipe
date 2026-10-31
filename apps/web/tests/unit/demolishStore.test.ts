@@ -717,7 +717,8 @@ test("a plan without the lookup blocker leaves return-to-issuer choices alone", 
 describe("discardPlan", () => {
   test("leaves nothing that /review or /execute could act on, and only a new plan clears the notice", () => {
     const store = useDemolishStore.getState();
-    store.setPlan([step(0), step(1)]);
+    store.setPlan([step(0), step(1)], "f".repeat(64));
+    expect(useDemolishStore.getState().planHash).toBe("f".repeat(64));
     store.setPhase("STEP_EXECUTING");
     store.setLastError("earlier failure");
 
@@ -727,6 +728,7 @@ describe("discardPlan", () => {
     expect(state.phase).toBe("IDLE");
     expect(state.lastError).toBeNull();
     expect(state.planChangedNotice).toBe("changed");
+    expect(state.planHash).toBeNull();
 
     useDemolishStore.getState().setPlan([step(0)]);
     state = useDemolishStore.getState();

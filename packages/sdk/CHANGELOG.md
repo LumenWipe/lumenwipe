@@ -19,6 +19,12 @@ release is cut.
   confirmed. `CloseEngineDeps.sleep` replaces the timer, for tests. If it is still refused, `runClose` throws the
   new `CloseStateChangedError`: nothing was submitted for that round, so plan again and run the
   close from the new plan.
+- `CloseTransactionsRequest.planHash` and `CloseEngineDeps.planHash`: the hash of the plan the
+  user reviewed. `close/transactions` answers `409 state_changed` when the account's sequence or
+  the answers differ from those the plan was built from, and `400 invalid_plan_hash` when it is not a 64-character hex string. `runClose`
+  sends it until the first transaction of the run confirms and never after, and does not fetch a
+  round again that was refused against it.
+- `getTransactions` now receives `{ planHash }`; a function that takes no argument still works.
 - `AccountState.snapshotLedger`: the latest ledger the account read reflects, when the provider
   reports one.
 

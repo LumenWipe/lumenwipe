@@ -72,7 +72,7 @@ A transaction the API builds is valid for 300 seconds. If the signing took longe
 
 ### The account changed while the close was being prepared
 
-`state_changed` means the account changed between the API's read and the build of a round, for example because another transaction landed in between, so nothing was built or submitted. Plan again: the new plan reflects the account as it is now. `runClose` asks for a round again on its own, a bounded number of times, before it stops with `CloseStateChangedError`.
+`state_changed` means the account changed between the API's read and the build of a round, for example because another transaction landed in between, so nothing was built or submitted. Plan again: the new plan reflects the account as it is now. `runClose` asks for a round again on its own, a bounded number of times, before it stops with `CloseStateChangedError`. When the request carried the reviewed plan's `planHash`, `state_changed` can also mean that the account's sequence number moved since that plan or that the answers differ from it; review a new plan before continuing.
 
 ### A co-signature or sponsored fee failed
 

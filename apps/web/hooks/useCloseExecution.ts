@@ -21,12 +21,7 @@ import {
   chosenTokenConversions,
   chosenTokenTransfers,
   chosenTransfers,
-  claimableSelectionsToDecisions,
-  defiPositionsAcknowledgementToDecisions,
-  destinationAcknowledgementToDecisions,
-  dispositionsToDecisions,
-  issuerSupplyAcknowledgementToDecisions,
-  positionsLeftBehindToDecisions,
+  closeDecisions,
 } from "@/lib/api/close-decisions";
 import { verifyCloseTransaction } from "@/lib/stellar/verify";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
@@ -84,6 +79,7 @@ export function useCloseExecution() {
   const setPhase = useDemolishStore((s) => s.setPhase);
   const setLastError = useDemolishStore((s) => s.setLastError);
   const discardPlan = useDemolishStore((s) => s.discardPlan);
+  const clearPlanHash = useDemolishStore((s) => s.clearPlanHash);
 
   const [progressStatus, setProgressStatus] = useState<string | null>(null);
   const [signatureStatus, setSignatureStatus] = useState<SignatureStatus | null>(null);
@@ -148,33 +144,12 @@ export function useCloseExecution() {
       // Read dispositions/selections live so a mid-flow re-decision is honored.
       const claimableBalanceSelections = useDemolishStore.getState().claimableBalanceSelections;
       const accountState = useDemolishStore.getState().accountState;
-      const decisions = [
-        ...dispositionsToDecisions(
-          useDemolishStore.getState().assetDispositions,
-          useDemolishStore.getState().transferDestinations,
-          useDemolishStore.getState().tokenConversionFloors,
-          useDemolishStore.getState().classicConversionFloors
-        ),
-        ...claimableSelectionsToDecisions(claimableBalanceSelections),
-        // Carried through to every build round: the API refuses to build a close into a
-        // destination it doesn't recognize until the user has confirmed they control it.
-        ...destinationAcknowledgementToDecisions(
-          useDemolishStore.getState().destinationAcknowledgedFor,
-          useDemolishStore.getState().destinationAddress
-        ),
-        ...defiPositionsAcknowledgementToDecisions(
-          useDemolishStore.getState().defiPositionsAcknowledgedFor,
-          sourceAddress
-        ),
-        ...issuerSupplyAcknowledgementToDecisions(
-          useDemolishStore.getState().issuerSupplyAcknowledgedFor,
-          sourceAddress
-        ),
-        ...positionsLeftBehindToDecisions(
-          useDemolishStore.getState().positionsLeftBehind,
-          useDemolishStore.getState().sourceAddress ?? ""
-        ),
-      ];
+      const decisions = closeDecisions(
+        useDemolishStore.getState(),
+        sourceAddress,
+        destinationAddress,
+        (accountState?.sorobanTokens?.tokens ?? []).map((tk) => tk.contract)
+      );
       // The set of assets the user themselves chose to add a trustline for, to claim an
       // otherwise-unreachable balance - verify()'s only basis for allowing a raised (non-
       // removal) change_trust op. Sourced from the user's own decisions, never the API.
@@ -194,13 +169,15 @@ export function useCloseExecution() {
       try {
         await runClose(
           {
-            getTransactions: async () => {
+            planHash: useDemolishStore.getState().planHash ?? undefined,
+            getTransactions: async ({ planHash }) => {
               const batch = await fetchCloseTransactions(
                 {
                   source: sourceAddress,
                   destination: destinationAddress,
                   decisions,
                   memo: memo ?? undefined,
+                  planHash,
                 },
                 network
               );
@@ -380,6 +357,7 @@ export function useCloseExecution() {
               return txHash;
             },
             onConfirmed: (tx, hash) => {
+              clearPlanHash();
               markCoveredConfirmed(tx.covers, hash, tx.needsSponsoredFee, tx.coversTargets);
               signerStateRef.current = applyConfirmedTransaction(
                 roundSignerState(),
@@ -455,6 +433,7 @@ export function useCloseExecution() {
       setPhase,
       setLastError,
       discardPlan,
+      clearPlanHash,
     ]
   );
 
@@ -534,6 +513,7 @@ export function useCloseExecution() {
       });
 
       await submitViaApi(xdr, network);
+      useDemolishStore.getState().clearPlanHash();
       if (signerStateRef.current && signerStateForRef.current === `${network}:${sourceAddress}`) {
         signerStateRef.current = applyConfirmedTransaction(
           signerStateRef.current,

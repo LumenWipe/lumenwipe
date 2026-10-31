@@ -27,6 +27,6 @@ const plan = await client.closePlan({
 - `decisionPoints`: choices the user must make. Call `closePlan` again with `decisions` filled in. Each carries a `default`, which is advisory: nothing is applied for an unanswered decision, and `closeTransactions` refuses it with `needs_decisions`. Non-convertible assets carry an empty default; a convertible asset still defaults to converting. No decision ever recommends returning an asset to its issuer, and a failed route lookup is reported as the retryable blocker `route_lookup_unavailable`, not as an asset with no route.
 - `estimate`: the fee in stroops and the reserve XLM freed.
 - `execution`: the estimated transaction count and a breakdown per transaction.
-- `planHash`: identifies the plan.
+- `planHash`: identifies the plan: a hash of the source, the destination, the answers and the account's sequence number. Pass it back as `planHash` on the first `closeTransactions` call after the user reviews this plan, with the same answers. If the sequence has moved or the answers differ, that call answers `409 state_changed` instead of building. A change by someone else that leaves the sequence alone, such as an incoming payment, a filled offer or a new claimable balance, does not change the hash; the round's own check of every entry against the ledger, and your `verify`, bound what such a change can do.
 
 The plan is a preview. `closeTransactions` re-reads live on-chain state and re-derives the work, so run it only after the user has reviewed the plan.

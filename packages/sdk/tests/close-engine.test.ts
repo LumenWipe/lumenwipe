@@ -442,3 +442,55 @@ test("runClose › a round that is not refused never waits", async () => {
   });
   expect(waits).toEqual([]);
 });
+
+test("runClose › sends the reviewed plan hash until a transaction confirms, then never again", async () => {
+  const rounds = [resp([tx(0)], true), resp([tx(1)], false)];
+  const sent: Array<string | undefined> = [];
+  await runClose({
+    ...engine(async () => rounds.shift()!),
+    getTransactions: async (request) => {
+      sent.push(request.planHash);
+      return rounds.shift()!;
+    },
+    planHash: "reviewed",
+  });
+  expect(sent).toEqual(["reviewed", undefined]);
+});
+
+test("runClose › a round refused as state_changed against the reviewed plan is not re-fetched", async () => {
+  const sent: Array<string | undefined> = [];
+  const err = await runClose({
+    ...engine(async () => resp([], false)),
+    getTransactions: async (request) => {
+      sent.push(request.planHash);
+      throw stateChanged;
+    },
+    planHash: "reviewed",
+  }).catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(CloseStateChangedError);
+  expect(sent).toEqual(["reviewed"]);
+});
+
+test("runClose › a resumed round never sends the plan hash", async () => {
+  const sent: Array<string | undefined> = [];
+  const pending = {
+    tx: tx(0),
+    xdr: "xdr-tx0",
+    requiredWeight: 1,
+    accumulatedWeight: 0,
+    queue: [],
+    requiresAnotherCall: true,
+  };
+  await runClose(
+    {
+      ...engine(async () => resp([], false)),
+      getTransactions: async (request) => {
+        sent.push(request.planHash);
+        return resp([tx(1)], false);
+      },
+      planHash: "reviewed",
+    },
+    pending
+  );
+  expect(sent).toEqual([undefined]);
+});

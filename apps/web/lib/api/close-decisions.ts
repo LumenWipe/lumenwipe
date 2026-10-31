@@ -125,11 +125,18 @@ export function issuerSupplyAcknowledgementToDecisions(
  * is told here. A token the analysis found through the event scan, and that no list knows about,
  * is therefore invisible to the plan unless it travels with the request: the page would show a
  * balance the plan had no step for, and say the plan "could not be loaded". The API reads these
- * ids back through `tokenContractsFromAnswers`, which wants the id and nothing else.
+ * ids back through `tokenContractsFromAnswers`, which reads the id alone. The choice is fixed and
+ * non-empty because the API refuses an empty one; it decides nothing about the token.
  */
 export function discoveredTokensToDecisions(contracts: readonly string[]): DecisionAnswer[] {
-  return contracts.map((contract) => ({ id: `token:${contract}`, choice: "" }));
+  return contracts.map((contract) => ({
+    id: `token:${contract}`,
+    choice: TOKEN_DISCOVERED_CHOICE,
+  }));
 }
+
+/** Must match the API's `TOKEN_DISCOVERED_CHOICE`. */
+export const TOKEN_DISCOVERED_CHOICE = "discovered";
 
 /** Must match the API's `TRANSFER_CHOICE`. */
 const TRANSFER_CHOICE = "transfer_to_account";
@@ -492,4 +499,42 @@ export function receiptAssetSummary(
   }
 
   return { handledAssets: [...handled.values()], removedTrustlines: [...removed.values()] };
+}
+
+export interface CloseAnswers {
+  assetDispositions: Record<string, AssetDisposition>;
+  transferDestinations: TransferDestinations;
+  tokenConversionFloors: Record<string, TokenConversionFloor>;
+  classicConversionFloors: Record<string, ClassicConversionFloor>;
+  claimableBalanceSelections: Record<string, ClaimableBalanceSelection>;
+  destinationAcknowledgedFor: string | null;
+  defiPositionsAcknowledgedFor: string | null;
+  issuerSupplyAcknowledgedFor: string | null;
+  positionsLeftBehind: readonly string[];
+}
+
+/**
+ * Every answer a close is planned and built with. The reviewed plan and each build round send
+ * this same list, because the plan hash the build is checked against covers the answers.
+ */
+export function closeDecisions(
+  answers: CloseAnswers,
+  source: string,
+  destination: string,
+  discoveredTokens: readonly string[]
+): DecisionAnswer[] {
+  return [
+    ...discoveredTokensToDecisions(discoveredTokens),
+    ...dispositionsToDecisions(
+      answers.assetDispositions,
+      answers.transferDestinations,
+      answers.tokenConversionFloors,
+      answers.classicConversionFloors
+    ),
+    ...claimableSelectionsToDecisions(answers.claimableBalanceSelections),
+    ...destinationAcknowledgementToDecisions(answers.destinationAcknowledgedFor, destination),
+    ...defiPositionsAcknowledgementToDecisions(answers.defiPositionsAcknowledgedFor, source),
+    ...issuerSupplyAcknowledgementToDecisions(answers.issuerSupplyAcknowledgedFor, source),
+    ...positionsLeftBehindToDecisions(answers.positionsLeftBehind, source),
+  ];
 }
