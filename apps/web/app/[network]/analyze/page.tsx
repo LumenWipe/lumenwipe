@@ -30,7 +30,7 @@ import {
 import PlanView from "@/components/plan/PlanView";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { useFocusOnMount } from "@/hooks/useFocusOnMount";
-import { apiErrorMessage } from "@/lib/api/error-body";
+import { apiErrorText } from "@/lib/utils/user-error";
 import { hardBlockersOf } from "@/lib/plan/resolvable-blockers";
 
 export default function AnalyzePage({ params }: { params: Promise<{ network: Network }> }) {
@@ -107,7 +107,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         fetchAccount: async () => {
           const res = await fetch(`/api/${routeNetwork}/account/${effectiveSource}`);
           if (!res.ok) {
-            accountError = apiErrorMessage(await res.json(), "Failed to fetch account data");
+            accountError = apiErrorText(await res.json(), "Failed to fetch account data");
             throw new Error(accountError);
           }
           return (await res.json()) as AccountState;

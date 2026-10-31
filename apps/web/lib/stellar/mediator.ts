@@ -1,6 +1,5 @@
 import type { Network } from "@/config/networks";
-import { ApiRequestError } from "@/lib/utils/user-error";
-import { apiErrorMessage, apiRequestId } from "@/lib/api/error-body";
+import { readApiError } from "@/lib/utils/user-error";
 
 /**
  * Asks the backend to co-sign the shared-mediator forward payment leg of the
@@ -21,8 +20,7 @@ export async function requestMediatorCosignature(
     body: JSON.stringify({ transaction: userSignedXdr }),
   });
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}) as { error?: string });
-    throw new ApiRequestError(res.status, apiErrorMessage(data, ""), apiRequestId(res, data));
+    throw await readApiError(res);
   }
   const { transaction } = (await res.json()) as { transaction: string };
   return transaction;

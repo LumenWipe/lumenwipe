@@ -1,6 +1,7 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { checkNamespacedRateLimit } from "@/lib/upstash-redis";
+import { rateLimitedResponse } from "@/lib/api/proxy-error";
 
 // Generous for a legitimate close flow (a close is a handful of requests), but caps how
 // much any single IP can pump through LumenWipe's shared API key in a day.
@@ -40,8 +41,5 @@ export async function rateLimitProxy(
     return null;
   }
   if (allowed) return null;
-  return NextResponse.json(
-    { error: "Too many requests. Please slow down and try again later." },
-    { status: 429 }
-  );
+  return rateLimitedResponse();
 }

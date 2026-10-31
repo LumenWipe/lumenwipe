@@ -10,8 +10,7 @@ import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
 import { cn } from "@/lib/utils/cn";
 import AddressInput from "./AddressInput";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
-import { apiErrorMessage } from "@/lib/api/error-body";
-import { ApiRequestError, toUserMessage } from "@/lib/utils/user-error";
+import { readApiError, toUserMessage } from "@/lib/utils/user-error";
 
 type EntryMode = "wallet" | "address";
 
@@ -39,10 +38,7 @@ export default function AccountEntryForm() {
       // Validate that source account exists before navigating
       const res = await fetch(`/api/${network}/account/${source}`);
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(
-          toUserMessage(new ApiRequestError(res.status, apiErrorMessage(data, "")), "analyze")
-        );
+        setError(toUserMessage(await readApiError(res), "analyze"));
         return;
       }
 

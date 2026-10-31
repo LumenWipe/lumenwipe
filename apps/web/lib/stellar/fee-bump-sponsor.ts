@@ -1,6 +1,5 @@
 import type { Network } from "@/config/networks";
-import { apiRequestId } from "@/lib/api/error-body";
-import { ApiRequestError, UserFacingError } from "@/lib/utils/user-error";
+import { readApiError, UserFacingError } from "@/lib/utils/user-error";
 
 /**
  * Asks the backend to wrap a wind-down transaction - built with its own fee already at zero,
@@ -20,19 +19,10 @@ export async function requestFeeBumpSponsorship(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ transaction: signedXdr }),
   });
-  const data = (await res.json().catch(() => ({}))) as {
-    transaction?: string;
-    error?: { message?: string } | string;
-  };
   if (!res.ok) {
-    const message =
-      typeof data.error === "object" && data.error?.message
-        ? data.error.message
-        : typeof data.error === "string"
-          ? data.error
-          : "Failed to obtain a sponsored fee for this transaction.";
-    throw new ApiRequestError(res.status, message, apiRequestId(res, data));
+    throw await readApiError(res, "Failed to obtain a sponsored fee for this transaction.");
   }
+  const data = (await res.json().catch(() => ({}))) as { transaction?: string };
   if (!data.transaction) {
     throw new UserFacingError("The sponsor endpoint returned no transaction.");
   }

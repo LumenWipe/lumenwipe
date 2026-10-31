@@ -1,5 +1,5 @@
 import { CloseDidNotConvergeError, LumenWipeApiError, LumenWipeTimeoutError } from "@lumenwipe/sdk";
-import { looksPlain } from "@/lib/api/error-body";
+import { apiRequestId } from "@/lib/api/error-body";
 import { InvalidPreAuthTxError } from "@/lib/stellar/pre-auth-tx";
 import { InvalidPreimageError } from "@/lib/stellar/hash-x";
 import { VerificationError } from "@/lib/stellar/verify";
@@ -60,6 +60,44 @@ const HTTP_MESSAGES: Record<number, string> = {
 };
 
 const UNAVAILABLE = "The service is temporarily unavailable. Please try again in a moment.";
+
+function looksPlain(message: string): boolean {
+  return (
+    message.length > 0 &&
+    message.length <= 240 &&
+    !/\b(tx|op)_[a-z_]+\b/.test(message) &&
+    !/\b\w*(Error|Exception)\b|\bat \S+ \(|undefined|\[object|[{}]|\(\d{3}\)/.test(message)
+  );
+}
+
+function envelopeMessage(body: unknown): string {
+  if (typeof body !== "object" || body === null) return "";
+  const error = (body as { error?: unknown }).error;
+  if (typeof error !== "object" || error === null) return "";
+  const message = (error as { message?: unknown }).message;
+  return typeof message === "string" ? message : "";
+}
+
+/**
+ * The plain-language message in an `{ error: { code, message } }` body, else the fallback. The
+ * body comes from `res.json()`, which is `any`, so its shape is checked here rather than trusted:
+ * anything else, including a flat `{ error: "..." }`, reads as the fallback.
+ */
+export function apiErrorText(body: unknown, fallback: string): string {
+  const message = envelopeMessage(body);
+  return looksPlain(message) ? message : fallback;
+}
+
+/** Reads a failed proxy response into an `ApiRequestError`, whose message `toUserMessage` alone
+ *  decides whether to show. */
+export async function readApiError(res: Response, fallback = ""): Promise<ApiRequestError> {
+  const body: unknown = await res.json().catch(() => ({}));
+  return new ApiRequestError(
+    res.status,
+    envelopeMessage(body) || fallback,
+    apiRequestId(res, body)
+  );
+}
 
 function rawMessage(err: unknown): string {
   if (typeof err === "string") return err;

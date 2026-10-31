@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { CloseDidNotConvergeError, LumenWipeApiError, LumenWipeTimeoutError } from "@lumenwipe/sdk";
-import { apiErrorMessage } from "@/lib/api/error-body";
+import { fetchCloseTransactions } from "@/lib/api/close-client";
 import { VerificationError } from "@/lib/stellar/verify";
 import { TxSubmitError } from "@/lib/utils/errors";
 import {
+  apiErrorText,
   ApiRequestError,
+  readApiError,
   toUserMessage,
   UserFacingError,
   type ErrorContext,
@@ -127,19 +129,65 @@ describe("toUserMessage", () => {
   });
 });
 
-describe("apiErrorMessage", () => {
+describe("apiErrorText", () => {
   test("keeps a plain message", () => {
-    expect(apiErrorMessage({ error: { message: "Account not found." } }, "x")).toBe(
+    expect(apiErrorText({ error: { code: "x", message: "Account not found." } }, "x")).toBe(
       "Account not found."
     );
   });
 
   test.each([
     { error: { message: "op_no_trust" } },
+    { error: "Account not found." },
     { error: "Error: boom at fn (a.ts:1:2)" },
     { message: "Request failed (502)" },
     { error: { message: "x".repeat(300) } },
-  ])("falls back for non-plain bodies %#", (body) => {
-    expect(apiErrorMessage(body, "fallback")).toBe("fallback");
+  ])("falls back for non-plain or non-envelope bodies %#", (body) => {
+    expect(apiErrorText(body, "fallback")).toBe("fallback");
+  });
+});
+
+describe("readApiError", () => {
+  function response(body: unknown, status: number): Response {
+    return new Response(JSON.stringify(body), { status });
+  }
+
+  test("carries the envelope message and status", async () => {
+    const err = await readApiError(
+      response({ error: { code: "bad_request", message: "Choose a destination first." } }, 422)
+    );
+    expect(err).toBeInstanceOf(ApiRequestError);
+    expect(err.status).toBe(422);
+    expect(toUserMessage(err, "review")).toBe("Choose a destination first.");
+  });
+
+  test("an old flat body reads as the generic fallback, never its raw text", async () => {
+    const raw = "Account not found here";
+    const err = await readApiError(response({ error: raw }, 422));
+    expect(err.message).toBe("");
+    expect(toUserMessage(err, "review")).not.toContain(raw);
+    expect(toUserMessage(err, "review")).toBe(
+      toUserMessage(new ApiRequestError(422, ""), "review")
+    );
+  });
+
+  test("the close client reads a flat body as the generic fallback", async () => {
+    const raw = "Account not found here";
+    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(response({ error: raw }, 422));
+    try {
+      const err = await fetchCloseTransactions({} as never, "testnet").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiRequestError);
+      expect(toUserMessage(err, "execute")).not.toContain(raw);
+      expect(toUserMessage(err, "execute")).toBe(
+        toUserMessage(new ApiRequestError(422, ""), "execute")
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  test("a missing message falls back to the caller's text", async () => {
+    const err = await readApiError(new Response("not json", { status: 500 }), "Failed.");
+    expect(err.message).toBe("Failed.");
   });
 });
