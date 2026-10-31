@@ -13,20 +13,22 @@ import { isTokenContract } from "@/lib/close-api/decisions";
 import { splitCloseOps } from "@/lib/stellar/tx-builder/close-operations";
 
 // Hash of everything that determines a plan: the source, destination, the resolved
-// decisions, and the snapshot ledger. Decisions are sorted so ordering does not change
-// the hash. The client passes this back to /transactions so a materially changed account
-// is detected (409 state_changed) before signing a plan it never reviewed.
+// decisions, and the source account's sequence. Decisions are sorted so ordering does not
+// change the hash. The sequence stays a string: account sequences are above 2^53, where
+// Number() rounds neighbouring values to the same float and their hashes would collide.
+// The client passes this back to /transactions so a materially changed account is detected
+// (409 state_changed) before signing a plan it never reviewed.
 export function computePlanHash(input: {
   source: string;
   destination: string | null;
   decisions: DecisionAnswer[];
-  snapshotLedger: number;
+  sourceSequence: string;
 }): string {
   const canonical = JSON.stringify({
     source: input.source,
     destination: input.destination,
     decisions: [...input.decisions].sort((a, b) => a.id.localeCompare(b.id)),
-    snapshotLedger: input.snapshotLedger,
+    sourceSequence: input.sourceSequence,
   });
   return createHash("sha256").update(canonical).digest("hex");
 }

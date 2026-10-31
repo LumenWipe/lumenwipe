@@ -412,7 +412,7 @@ export async function buildAccountPlan(
     source,
     destination,
     decisions,
-    snapshotLedger: Number(accountState.sequence),
+    sourceSequence: accountState.sequence,
   });
 
   const totalOps = buildResult.steps.reduce((n, s) => n + s.operationCount, 0);

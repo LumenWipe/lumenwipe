@@ -71,7 +71,7 @@ describe("parseDecisions accepts", () => {
         source: "S",
         destination: "D",
         decisions: decisions as Parameters<typeof computePlanHash>[0]["decisions"],
-        snapshotLedger: 7,
+        sourceSequence: "7",
       });
     expect(hashOf(parseDecisions(raw))).toBe(hashOf(raw));
   });

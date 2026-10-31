@@ -31,19 +31,30 @@ const decisionPoint: DecisionPoint = {
 };
 
 test("computePlanHash is stable for the same inputs and changes when any input changes", () => {
-  const base = { source: "GSRC", destination: "GDEST", decisions: [], snapshotLedger: 100 };
+  const base = { source: "GSRC", destination: "GDEST", decisions: [], sourceSequence: "100" };
   const h1 = computePlanHash(base);
   const h2 = computePlanHash({ ...base });
   expect(h1).toBe(h2);
   expect(computePlanHash({ ...base, destination: "GOTHER" })).not.toBe(h1);
-  expect(computePlanHash({ ...base, snapshotLedger: 101 })).not.toBe(h1);
+  expect(computePlanHash({ ...base, sourceSequence: "101" })).not.toBe(h1);
+});
+
+test("computePlanHash tells apart sequences above 2^53 that differ by one", () => {
+  // Both round to the same float, so hashing Number(sequence) made them collide.
+  const low = "9007199254740992";
+  const high = "9007199254740993";
+  expect(Number(low)).toBe(Number(high));
+  const base = { source: "GSRC", destination: "GDEST", decisions: [] };
+  expect(computePlanHash({ ...base, sourceSequence: high })).not.toBe(
+    computePlanHash({ ...base, sourceSequence: low })
+  );
 });
 
 test("computePlanHash ignores decision ordering", () => {
   const a = computePlanHash({
     source: "GSRC",
     destination: null,
-    snapshotLedger: 1,
+    sourceSequence: "1",
     decisions: [
       { id: "b", choice: "x" },
       { id: "a", choice: "y" },
@@ -52,7 +63,7 @@ test("computePlanHash ignores decision ordering", () => {
   const b = computePlanHash({
     source: "GSRC",
     destination: null,
-    snapshotLedger: 1,
+    sourceSequence: "1",
     decisions: [
       { id: "a", choice: "y" },
       { id: "b", choice: "x" },

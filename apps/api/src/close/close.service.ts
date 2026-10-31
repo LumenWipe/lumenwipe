@@ -321,7 +321,7 @@ export class CloseService {
         source,
         destination,
         decisions,
-        snapshotLedger: Number(accountState.sequence),
+        sourceSequence: accountState.sequence,
       });
 
       const response: TransactionsResponse = {
