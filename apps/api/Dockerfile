@@ -4,7 +4,7 @@
 # Runtime target = Google Cloud Run (listens on $PORT / 0.0.0.0, SIGTERM-aware).
 
 # ── Stage 1: builder - Bun on Debian/glibc (ABI-matches node:24-slim runtime) ──
-FROM oven/bun:1.3 AS builder
+FROM oven/bun:1.4 AS builder
 WORKDIR /app
 # bun install --frozen-lockfile needs EVERY workspace manifest present, even when
 # building a single app. Copy the root lockfile + all workspace package.json first
@@ -28,7 +28,7 @@ COPY apps/api/ apps/api/
 RUN bun run --filter '@lumenwipe/api' build
 
 # ── Stage 2: prod-deps - production-only dependencies (no devDependencies) ──
-FROM oven/bun:1.3 AS prod-deps
+FROM oven/bun:1.4 AS prod-deps
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY apps/api/package.json apps/api/
@@ -41,7 +41,7 @@ COPY packages/types/package.json packages/types/
 RUN bun install --frozen-lockfile --production --filter '@lumenwipe/api'
 
 # ── Stage 3: runtime - Node (matches start:prod), glibc slim, non-root ──
-FROM node:24-slim AS runtime
+FROM node:26-slim AS runtime
 ENV NODE_ENV=production
 # dumb-init as PID 1 forwards Cloud Run's SIGTERM to node so Nest's shutdown hooks
 # run within the grace window (can't pass `docker run --init` on Cloud Run).
