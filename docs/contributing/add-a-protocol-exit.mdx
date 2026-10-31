@@ -111,7 +111,7 @@ Write the tests with the code. The web and API test suites run on every pull req
 | `apps/web/tests/unit/verify.test.ts`, `verify-against-registry.test.ts`, `exit-expectations.test.ts` | The verifier accepts the real exit shape and refuses a changed contract, function or recipient.                                                                                |
 | `apps/api/tests/integration/<protocol>-exit-adapter.integration.test.ts`                             | The adapter on live testnet. Run with `bun run test:integration` from `apps/api`.                                                                                              |
 
-The integration tier needs a live position. A test that funds accounts or opens a position of its own is gated behind `LUMENWIPE_INTEGRATION_FUNDED`, and CI runs it in a dedicated job. Never use mainnet.
+The integration tier needs a live position. A test that funds accounts or opens a position of its own is gated behind `LUMENWIPE_INTEGRATION_FUNDED`, and CI runs it in a dedicated job. GitHub withholds secrets from fork PRs, so a test that needs one also skips on `LUMENWIPE_FORK_PR`, never on the secret being absent, and still throws when the secret is missing anywhere else. Never use mainnet.
 
 ### 8. Documentation
 
