@@ -65,7 +65,7 @@ import type {
 // Validate explicitly rather than casting to catch unknown types early.
 const HORIZON_SIGNER_TYPE_MAP: Record<string, AccountSigner["type"]> = {
   ed25519_public_key: "ed25519_public_key",
-  "hash(x)": "hash_x",
+  sha256_hash: "hash_x",
   preauth_tx: "preauth_tx",
   ed25519_signed_payload: "ed25519_signed_payload",
 };

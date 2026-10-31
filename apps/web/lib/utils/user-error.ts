@@ -33,6 +33,11 @@ export class ApiRequestError extends Error {
   }
 }
 
+/** The API refused a request because the account moved under its read; nothing was built. */
+export function isStateChanged(err: unknown): boolean {
+  return err instanceof ApiRequestError && err.code === "state_changed";
+}
+
 const FALLBACKS: Record<ErrorContext, string> = {
   analyze:
     "We couldn't analyze this account right now. Please check your connection and try again.",

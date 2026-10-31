@@ -75,7 +75,7 @@ These are transient. Retry with backoff, honoring `Retry-After`. While retrying,
 
 ## Reading accounts and routes
 
-A failed read is not an answer. `destination_read_failed` is never reported as a missing destination, `issuer_read_failed` is never reported as an account that issues nothing, and `account_read_failed`, `allowances_read_failed` and `path_lookup_failed` are safe to retry. `account_not_found` is a real answer: the account does not exist on that network, or it has already been merged. `account_too_large` means the account has more entries than one request can read.
+A failed read is not an answer. `destination_read_failed` is never reported as a missing destination, `issuer_read_failed` is never reported as an account that issues nothing, and `account_read_failed`, `allowances_read_failed` and `path_lookup_failed` are safe to retry. `account_not_found` is a real answer: the account does not exist on that network, or it has already been merged. `account_too_large` means the account has more entries than one request can read. `GET account/:address` can also answer `409 state_changed` when the account kept changing while it was being read: nothing was submitted, and reading it again is safe.
 
 | Code                         | Status | Retry | Meaning                                                              |
 | ---------------------------- | ------ | ----- | -------------------------------------------------------------------- |

@@ -58,6 +58,7 @@ import {
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { assetsResolved } from "@/lib/plan/asset-resolution";
 import { missingRequiredMemoError } from "@/lib/plan/memo-requirement";
+import { isStateChanged } from "@/lib/utils/user-error";
 
 interface PlanViewProps {
   account: AccountState;
@@ -393,7 +394,14 @@ export default function PlanView({
       // caller allowed to write a resumable record, so an interruption on /review before
       // the user clicks through leaves nothing behind to resume.
       goToReview(setPhase, router, network);
-    } catch {
+    } catch (err) {
+      if (isStateChanged(err)) {
+        setError(
+          "This account changed while the plan was being prepared. Nothing was sent. The plan is being refreshed - review it, then continue."
+        );
+        onRefresh();
+        return;
+      }
       setError("Failed to verify the destination. Please check your connection and try again.");
     } finally {
       setProceeding(false);
