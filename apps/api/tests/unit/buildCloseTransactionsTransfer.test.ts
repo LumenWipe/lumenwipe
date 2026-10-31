@@ -14,8 +14,13 @@ import { DestinationReadError } from "@/lib/close-api/merge-preflight";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
+import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 
-beforeEach(() => stubIssuance());
+beforeEach(() => {
+  stubIssuance();
+  stubLedgerConfirmation();
+  stubLedgerConfirmation();
+});
 
 // Wiring coverage for the transfer disposition (#111).
 //
@@ -217,6 +222,7 @@ const XLM = 10_000_000n;
 /** The source holds `live` of USDC on the ledger; the destination's line is `destination`. */
 function useLedger(live: bigint | null, destination: LineSpec | null): void {
   stubIssuance();
+  stubLedgerConfirmation();
   const lines: Record<string, LineSpec> = {};
   if (live !== null) lines[`${SOURCE}|${USDC}`] = { balance: live };
   if (destination) lines[`${TRANSFER_TO}|${USDC}`] = destination;

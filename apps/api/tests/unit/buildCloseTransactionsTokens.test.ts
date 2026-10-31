@@ -19,8 +19,13 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { rawSimulation } from "./fixtures/fake-exit-adapter";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
+import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 
-beforeEach(() => stubIssuance());
+beforeEach(() => {
+  stubIssuance();
+  stubLedgerConfirmation();
+  stubLedgerConfirmation();
+});
 
 // Wiring coverage for Soroban token dispositions (#161): the token round runs ahead of the classic
 // close, a trustline can never be "left", and the plan shows each token as its own step.

@@ -6,8 +6,13 @@ import { DEGRADED_SOURCE_CONFIRMED } from "@/lib/defi-positions/resolve-defi-pos
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { stubIssuance } from "./fixtures/issuance";
+import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 
-beforeEach(() => stubIssuance());
+beforeEach(() => {
+  stubIssuance();
+  stubLedgerConfirmation();
+  stubLedgerConfirmation();
+});
 
 // /close/transactions must refuse the same unconfirmed-positions states the plan blocks on: an
 // SDK caller never requests a plan, and a web session's plan may be minutes old. The gate runs

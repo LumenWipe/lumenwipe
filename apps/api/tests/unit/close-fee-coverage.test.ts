@@ -29,6 +29,7 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { rawSimulation } from "./fixtures/fake-exit-adapter";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
+import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -260,6 +261,7 @@ async function tokenTransferFee(): Promise<bigint> {
 
 beforeEach(() => {
   stubIssuance();
+  stubLedgerConfirmation();
   spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
     rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
 });
@@ -429,6 +431,7 @@ test("exchange cleanup › a conversion's destination minimum counts toward what
 
   mock.restore();
   stubIssuance();
+  stubLedgerConfirmation();
   spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
     rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   viaExchange();

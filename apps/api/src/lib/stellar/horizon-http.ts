@@ -28,6 +28,14 @@ export interface HorizonDeps {
   deadline?: Deadline;
   /** Retry and clock overrides, for tests. */
   client?: Pick<UpstreamOptions, "policy" | "random" | "sleep" | "now">;
+  /** Receives the ledger each response reflects (Horizon's `Latest-Ledger` header), when sent. */
+  onLedger?: (ledger: number) => void;
+}
+
+function ledgerHeader(headers: Pick<Headers, "get">): number | null {
+  const value = headers.get("Latest-Ledger");
+  if (value === null || !/^\d+$/.test(value.trim())) return null;
+  return Number(value.trim());
 }
 
 /**
@@ -43,6 +51,10 @@ export async function horizonGet<T>(path: string, deps: HorizonDeps): Promise<T 
     deadline: deps.deadline,
     notFoundIsNull: true,
     ...deps.client,
+    onHeaders: (headers) => {
+      const ledger = ledgerHeader(headers);
+      if (ledger !== null) deps.onLedger?.(ledger);
+    },
   });
 }
 

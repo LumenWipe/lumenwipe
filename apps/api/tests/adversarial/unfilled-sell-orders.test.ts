@@ -17,8 +17,13 @@ import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
 import { authorizationOf } from "../unit/fixtures/trustline";
 import { ledgerEntries } from "../unit/fixtures/ledger-trustlines";
 import { stubIssuance } from "../unit/fixtures/issuance";
+import { stubLedgerConfirmation } from "../unit/fixtures/ledger-confirmation";
 
-beforeEach(() => stubIssuance());
+beforeEach(() => {
+  stubIssuance();
+  stubLedgerConfirmation();
+  stubLedgerConfirmation();
+});
 afterEach(() => mock.restore());
 
 const SOURCE = Keypair.random().publicKey();

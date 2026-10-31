@@ -3,6 +3,7 @@ import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 import { UpstreamError } from "@/lib/stellar/upstream-client";
 import {
   AccountNotFoundError,
+  AccountStateChangedError,
   AssetRouteLostError,
   UnusableProviderResponseError,
 } from "@/lib/utils/errors";
@@ -47,6 +48,13 @@ const ACCOUNT_NOT_FOUND = entry(AccountNotFoundError, (e) => ({
 const ACCOUNT_TOO_LARGE = entry(TruncatedCollectionError, (e) => ({
   code: "account_too_large",
   status: 422,
+  message: e.message,
+}));
+
+/** Not a fault: the account moved under the read, and the caller plans again from a fresh one. */
+const STATE_CHANGED = entry(AccountStateChangedError, (e) => ({
+  code: "state_changed",
+  status: 409,
   message: e.message,
 }));
 
@@ -96,6 +104,7 @@ export const UPSTREAM_ERRORS: readonly DomainErrorEntry[] = [UPSTREAM_FAILED];
 export const PLAN_ERRORS: readonly DomainErrorEntry[] = [
   ACCOUNT_NOT_FOUND,
   ACCOUNT_TOO_LARGE,
+  STATE_CHANGED,
   PROVIDER_UNUSABLE,
   DESTINATION_READ_FAILED,
   ISSUER_READ_FAILED,
@@ -106,6 +115,7 @@ export const PLAN_ERRORS: readonly DomainErrorEntry[] = [
 /** What `close/transactions` recognises; anything else is a `transactions_failed`. */
 export const TRANSACTION_ERRORS: readonly DomainErrorEntry[] = [
   ACCOUNT_NOT_FOUND,
+  STATE_CHANGED,
   PROVIDER_UNUSABLE,
   DESTINATION_READ_FAILED,
   ISSUER_READ_FAILED,

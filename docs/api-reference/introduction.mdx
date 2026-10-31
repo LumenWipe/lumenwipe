@@ -54,6 +54,7 @@ Branch on `code`. The `message` is written for people and may be reworded, and `
 | 401    | `unauthorized`   | The API key is missing or invalid.                                                                                                       |
 | 404    | `not_found`      | The route does not exist. Specific codes such as `account_not_found` name a missing account.                                             |
 | 409    | `quote_drifted`  | A conversion route disappeared between planning and building. Plan again.                                                                |
+| 409    | `state_changed`  | The account changed between the API's read and its build. Nothing was submitted. Plan again.                                             |
 | 422    | specific code    | The request is valid but cannot be built, for example `destination_not_acknowledged` when an unrecognized destination was not confirmed. |
 | 429    | `rate_limited`   | Too many requests. Wait and retry.                                                                                                       |
 | 500    | `internal_error` | Something went wrong on the server. Retry.                                                                                               |
@@ -162,6 +163,7 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `source_sequence_too_far`                     | 422    | The account's sequence number is beyond what the network accepts for a merge; it cannot be closed until the ledger catches up. |
 | `sponsor_source_unusable`                     | 400    | The account to sponsor does not exist, or the transaction is not its next one.                                                 |
 | `sponsorship_budget_exhausted`                | 429    | The fee sponsor's daily budget for this request is used up.                                                                    |
+| `state_changed`                               | 409    | The account changed between reading and building. Nothing was submitted; plan again.                                           |
 | `stats_unavailable`                           | 503    | The stats store is unreachable. Retry.                                                                                         |
 | `submit_failed`                               | 502    | The transaction could not be submitted. Retry.                                                                                 |
 | `submit_rejected`                             | 502    | The network rejected the transaction.                                                                                          |

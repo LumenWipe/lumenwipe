@@ -7,6 +7,21 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-31
+
+### Added
+
+- Error code `state_changed` (409) from `close/transactions` and `close/plan`: the account changed
+  between the API's read and its build, so nothing was built. Plan again.
+- `runClose` fetches a round refused as `state_changed` again, at most `STATE_CHANGED_REFETCHES`
+  (2) times, each after waiting `STATE_CHANGED_REFETCH_DELAY_MS` (3000 ms, about one ledger
+  close), since each call re-reads the account and a read provider can lag a transaction that just
+  confirmed. `CloseEngineDeps.sleep` replaces the timer, for tests. If it is still refused, `runClose` throws the
+  new `CloseStateChangedError`: nothing was submitted for that round, so plan again and run the
+  close from the new plan.
+- `AccountState.snapshotLedger`: the latest ledger the account read reflects, when the provider
+  reports one.
+
 ## [0.12.1] - 2026-10-15
 
 ### Added

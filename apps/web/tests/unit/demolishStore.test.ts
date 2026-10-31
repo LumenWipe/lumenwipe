@@ -713,3 +713,24 @@ test("a plan without the lookup blocker leaves return-to-issuer choices alone", 
   useDemolishStore.getState().reconcileWithPlanBlockers([{ code: "plan_blocker" }]);
   expect(useDemolishStore.getState().assetDispositions).toEqual({ "NOSWAP:GISSUER": "issuer" });
 });
+
+describe("discardPlan", () => {
+  test("leaves nothing that /review or /execute could act on, and only a new plan clears the notice", () => {
+    const store = useDemolishStore.getState();
+    store.setPlan([step(0), step(1)]);
+    store.setPhase("STEP_EXECUTING");
+    store.setLastError("earlier failure");
+
+    useDemolishStore.getState().discardPlan("changed");
+    let state = useDemolishStore.getState();
+    expect(state.executionPlan).toEqual([]);
+    expect(state.phase).toBe("IDLE");
+    expect(state.lastError).toBeNull();
+    expect(state.planChangedNotice).toBe("changed");
+
+    useDemolishStore.getState().setPlan([step(0)]);
+    state = useDemolishStore.getState();
+    expect(state.planChangedNotice).toBeNull();
+    expect(state.executionPlan).toHaveLength(1);
+  });
+});

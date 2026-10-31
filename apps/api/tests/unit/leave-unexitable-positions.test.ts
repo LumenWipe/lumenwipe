@@ -31,6 +31,7 @@ import * as accountStateModule from "@/lib/stellar/account-state";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { stubIssuance } from "./fixtures/issuance";
+import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 
 const SOURCE = Keypair.random().publicKey();
 const OTHER_ACCOUNT = Keypair.random().publicKey();
@@ -90,7 +91,11 @@ const leave = (contract: string, account = SOURCE): DecisionAnswer => ({
   choice: LEAVE_POSITION_CHOICE,
 });
 
-beforeEach(() => stubIssuance());
+beforeEach(() => {
+  stubIssuance();
+  stubLedgerConfirmation();
+  stubLedgerConfirmation();
+});
 afterEach(() => mock.restore());
 
 describe("positionsLeftBehind", () => {

@@ -13,6 +13,7 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
 import { ledgerEntries } from "./fixtures/ledger-trustlines";
 import { stubIssuance } from "./fixtures/issuance";
+import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { EMPTY_MARKET, MAINNET_DUST_SHX, MAINNET_LIQUID_USDC } from "./fixtures/horizon-paths";
 
 const SOURCE = Keypair.random().publicKey();
@@ -24,6 +25,7 @@ const realFetch = globalThis.fetch;
 
 beforeEach(() => {
   stubIssuance();
+  stubLedgerConfirmation();
   PATH_ROUTING_API_URLS.testnet = "https://paths.example";
 });
 afterEach(() => {

@@ -116,6 +116,8 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   sponsor_source_unusable:
     "The account to sponsor does not exist, or the transaction is not its next one.",
   sponsorship_budget_exhausted: "The fee sponsor's daily budget for this request is used up.",
+  state_changed:
+    "The account changed between reading and building. Nothing was submitted; plan again.",
   stats_unavailable: "The stats store is unreachable. Retry.",
   submit_failed: "The transaction could not be submitted. Retry.",
   submit_rejected: "The network rejected the transaction.",

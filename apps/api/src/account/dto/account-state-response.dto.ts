@@ -411,6 +411,12 @@ export class AccountStateDto implements AccountState {
   })
   subEntryMismatch!: boolean;
 
+  @ApiPropertyOptional({
+    description:
+      "The latest ledger the enumeration read reflects, for debugging. Absent when the provider does not report one.",
+  })
+  snapshotLedger?: number;
+
   @ApiProperty({ type: DefiPositionsResultDto })
   defiPositions!: DefiPositionsResult;
 

@@ -47,6 +47,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     defiPositionsAcknowledgedFor,
     issuerSupplyAcknowledgedFor,
     positionsLeftBehind,
+    planChangedNotice,
   } = useDemolishStore();
 
   const [account, setAccount] = useState<AccountState | null>(null);
@@ -267,6 +268,15 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         </h1>
       </div>
 
+      {planChangedNotice && (
+        <div
+          role="status"
+          className="mkt-panel rounded-xl px-4 py-3 mb-4 flex items-center gap-2 text-sm text-muted-foreground"
+        >
+          <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
+          <span>{planChangedNotice}</span>
+        </div>
+      )}
       {error && (
         <div
           role="alert"

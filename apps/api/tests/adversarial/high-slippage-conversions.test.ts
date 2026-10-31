@@ -25,8 +25,13 @@ import { mirrorSnapshot } from "../unit/fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
 import { authorizationOf } from "../unit/fixtures/trustline";
 import { stubIssuance } from "../unit/fixtures/issuance";
+import { stubLedgerConfirmation } from "../unit/fixtures/ledger-confirmation";
 
-beforeEach(() => stubIssuance());
+beforeEach(() => {
+  stubIssuance();
+  stubLedgerConfirmation();
+  stubLedgerConfirmation();
+});
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();

@@ -334,3 +334,15 @@ export class AssetRouteLostError extends Error {
     this.name = "AssetRouteLostError";
   }
 }
+
+/** The account read and the live ledger disagree, so whatever was planned from the read is stale.
+ *  `reason` is for logs; the message is what the user sees. */
+export class AccountStateChangedError extends Error {
+  constructor(public readonly reason: string) {
+    super(
+      "Your account changed while the close was being prepared. Nothing was submitted; the " +
+        "plan will be refreshed."
+    );
+    this.name = "AccountStateChangedError";
+  }
+}

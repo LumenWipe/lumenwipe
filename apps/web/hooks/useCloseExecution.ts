@@ -9,7 +9,12 @@ import type { AssetDisposition } from "@/types/plan";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
-import { runClose, InsufficientSignatureWeightError, type PendingRound } from "@lumenwipe/sdk";
+import {
+  runClose,
+  CloseStateChangedError,
+  InsufficientSignatureWeightError,
+  type PendingRound,
+} from "@lumenwipe/sdk";
 import { fetchCloseTransactions } from "@/lib/api/close-client";
 import {
   chosenClassicConversions,
@@ -57,6 +62,9 @@ export interface SignatureStatus {
   remainingSigners: AccountSigner[];
 }
 
+export const PLAN_CHANGED_NOTICE =
+  "Your account changed while the close was being prepared, so nothing was submitted for that step. The plan below has been refreshed from your account as it is now: review it and confirm again to continue.";
+
 /**
  * Drives a full close against the API: the browser fetches unsigned transactions round by
  * round, VERIFIES each one against the user's own choices before signing (the trust anchor),
@@ -75,6 +83,7 @@ export function useCloseExecution() {
   const markCoveredConfirmed = useDemolishStore((s) => s.markCoveredConfirmed);
   const setPhase = useDemolishStore((s) => s.setPhase);
   const setLastError = useDemolishStore((s) => s.setLastError);
+  const discardPlan = useDemolishStore((s) => s.discardPlan);
 
   const [progressStatus, setProgressStatus] = useState<string | null>(null);
   const [signatureStatus, setSignatureStatus] = useState<SignatureStatus | null>(null);
@@ -412,6 +421,14 @@ export function useCloseExecution() {
           setPhase("STEP_FAILED");
           return;
         }
+        if (err instanceof CloseStateChangedError) {
+          pendingRoundRef.current = null;
+          signerStateRef.current = null;
+          signerStateForRef.current = null;
+          setSignatureStatus(null);
+          discardPlan(PLAN_CHANGED_NOTICE);
+          return;
+        }
         // A non-weight failure (network error, verify rejection) invalidates any resumable
         // state - retrying should start clean, not silently reuse a possibly-stale envelope.
         // Clearing signatureStatus too ensures the UI falls through to the "failed" branch
@@ -437,6 +454,7 @@ export function useCloseExecution() {
       markCoveredConfirmed,
       setPhase,
       setLastError,
+      discardPlan,
     ]
   );
 

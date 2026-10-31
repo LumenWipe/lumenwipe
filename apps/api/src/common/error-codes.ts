@@ -104,6 +104,7 @@ export const ERROR_CODES = [
   "source_sequence_too_far",
   "sponsor_source_unusable",
   "sponsorship_budget_exhausted",
+  "state_changed",
   "stats_unavailable",
   "submit_failed",
   "submit_rejected",

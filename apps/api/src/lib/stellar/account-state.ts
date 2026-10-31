@@ -1,5 +1,9 @@
 import { type Network, PATH_ROUTING_API_URLS, OCTOPOS_API_URL_MAINNET } from "@/config/networks";
-import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils/errors";
+import {
+  AccountNotFoundError,
+  AccountStateChangedError,
+  UnusableProviderResponseError,
+} from "@/lib/utils/errors";
 import { fetchOffersFromAdapter, fetchClaimableBalancesForClaimant } from "./horizon-adapter";
 import { detectSubEntryMismatch } from "./scan-fallback";
 import { horizonAssetToString } from "@/lib/utils/assets";
@@ -27,8 +31,10 @@ const logger = new Logger("account-state");
 import type {
   AccountState,
   AccountSigner,
+  ClaimableBalance,
   DataEntry,
   DefiPosition,
+  OpenOffer,
   Trustline,
   TrustlineAuthorization,
   PoolShareEntry,
@@ -227,6 +233,55 @@ export async function readLedgerCloseTime(network: Network): Promise<number | nu
   }
 }
 
+/**
+ * The most ledgers the reads behind one `AccountState` may span. The account body, its offers and
+ * its claimable balances come from separate, paginated requests; a provider that moved on between
+ * them can pair one ledger's sub-entry count with another's offers.
+ */
+export const MAX_SNAPSHOT_LEDGER_SPAN = 2;
+
+/** Within the span, or unknown: a provider that reports no ledger leaves the RPC cross-check at
+ *  build time as the guard. */
+function withinLedgerSpan(ledgers: number[]): boolean {
+  if (ledgers.length === 0) return true;
+  return Math.max(...ledgers) - Math.min(...ledgers) <= MAX_SNAPSHOT_LEDGER_SPAN;
+}
+
+async function readAccountBody(address: string, deps: HorizonDeps): Promise<ApiAccount> {
+  const account = await horizonGet<ApiAccount>(`/accounts/${address}`, deps);
+  if (!account) throw new AccountNotFoundError(address);
+  assertUsableAccountBody(account, address);
+  return account;
+}
+
+async function readCollections(
+  address: string,
+  deps: HorizonDeps
+): Promise<{
+  openOffers: OpenOffer[];
+  claimableRead: { balances: ClaimableBalance[]; more: boolean };
+}> {
+  const [openOffers, claimableRead] = await Promise.all([
+    fetchOffersFromAdapter(address, deps),
+    fetchClaimableBalancesForClaimant(address, deps),
+  ]);
+  return { openOffers, claimableRead };
+}
+
+/** Reads the Horizon part once more, and refuses when it still does not settle on one ledger. */
+async function rereadSnapshot(address: string, deps: HorizonDeps) {
+  const ledgers: number[] = [];
+  const recorded = { ...deps, onLedger: (ledger: number) => ledgers.push(ledger) };
+  const account = await readAccountBody(address, recorded);
+  const collections = await readCollections(address, recorded);
+  if (!withinLedgerSpan(ledgers)) {
+    throw new AccountStateChangedError(
+      `account reads spanned ledgers ${Math.min(...ledgers)} to ${Math.max(...ledgers)}`
+    );
+  }
+  return { account, ...collections, ledgers };
+}
+
 export async function readAccountStateFrom(
   address: string,
   network: Network,
@@ -234,9 +289,18 @@ export async function readAccountStateFrom(
   defiDeps: ResolveDefiPositionsDeps,
   options: AccountReadOptions = {}
 ): Promise<AccountState> {
-  const account = await horizonGet<ApiAccount>(`/accounts/${address}`, deps);
-  if (!account) throw new AccountNotFoundError(address);
-  assertUsableAccountBody(account, address);
+  const firstLedgers: number[] = [];
+  const first = { ...deps, onLedger: (ledger: number) => firstLedgers.push(ledger) };
+  const firstAccount = await readAccountBody(address, first);
+  const [firstCollections, detectedPositions, ledgerCloseTime] = await Promise.all([
+    readCollections(address, first),
+    resolveDefiPositions(address, network, defiDeps),
+    (options.ledgerCloseTime ?? (() => readLedgerCloseTime(network)))(),
+  ]);
+  const snapshot = withinLedgerSpan(firstLedgers)
+    ? { account: firstAccount, ...firstCollections, ledgers: firstLedgers }
+    : await rereadSnapshot(address, deps);
+  const { account, openOffers, claimableRead } = snapshot;
 
   const nativeBalance = account.balances.find((b) => b.asset_type === "native");
 
@@ -259,12 +323,6 @@ export async function readAccountStateFrom(
     })
     .filter((s): s is AccountSigner => s !== null);
 
-  const [openOffers, claimableRead, detectedPositions, ledgerCloseTime] = await Promise.all([
-    fetchOffersFromAdapter(address, deps),
-    fetchClaimableBalancesForClaimant(address, deps),
-    resolveDefiPositions(address, network, defiDeps),
-    (options.ledgerCloseTime ?? (() => readLedgerCloseTime(network)))(),
-  ]);
   const { balances: claimableBalances, more: claimableBalancesMore } = claimableRead;
   // The gate judges the detection result as returned, before the enrichment below spends time
   // on pool reads - otherwise a snapshot near the staleness threshold could age past it here.
@@ -351,6 +409,7 @@ export async function readAccountStateFrom(
     claimableBalances,
     ...(claimableBalancesMore ? { claimableBalancesMore } : {}),
     ...(ledgerCloseTime === null ? {} : { ledgerCloseTime }),
+    ...(snapshot.ledgers.length > 0 ? { snapshotLedger: Math.max(...snapshot.ledgers) } : {}),
     // Ground truth for completeness: numSubEntries is what the ledger says the account holds.
     // Enumerating fewer means the plan would leave entries behind and the merge would fail
     // with op_has_sub_entries, so a mismatch has to reach the caller as a blocker. There is no

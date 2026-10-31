@@ -477,6 +477,47 @@
               }
             }
           },
+          "409": {
+            "description": "The account changed while it was being read; plan again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "state_changed"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            }
+          },
           "413": {
             "description": "The request body is larger than 100 KB.",
             "content": {
@@ -1234,7 +1275,7 @@
             }
           },
           "409": {
-            "description": "A conversion route drifted; re-plan and retry.",
+            "description": "The plan is stale: a conversion route drifted, or the account changed since it was read. Re-plan and retry.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1251,7 +1292,8 @@
                             "code": {
                               "type": "string",
                               "enum": [
-                                "quote_drifted"
+                                "quote_drifted",
+                                "state_changed"
                               ]
                             }
                           }
@@ -6806,6 +6848,7 @@
               "source_sequence_too_far",
               "sponsor_source_unusable",
               "sponsorship_budget_exhausted",
+              "state_changed",
               "stats_unavailable",
               "submit_failed",
               "submit_rejected",
@@ -9460,6 +9503,10 @@
           "subEntryMismatch": {
             "type": "boolean",
             "description": "True when the enumerated subentry count is lower than numSubEntries from the ledger."
+          },
+          "snapshotLedger": {
+            "type": "number",
+            "description": "The latest ledger the enumeration read reflects, for debugging. Absent when the provider does not report one."
           },
           "defiPositions": {
             "$ref": "#/components/schemas/DefiPositionsResultDto"

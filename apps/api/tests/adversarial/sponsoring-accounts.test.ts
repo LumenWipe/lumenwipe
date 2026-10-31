@@ -26,8 +26,13 @@ import type { AccountState, SponsoredEntry, Trustline } from "@lumenwipe/types";
 import { mirrorSnapshot } from "../unit/fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
 import { stubIssuance } from "../unit/fixtures/issuance";
+import { stubLedgerConfirmation } from "../unit/fixtures/ledger-confirmation";
 
-beforeEach(() => stubIssuance());
+beforeEach(() => {
+  stubIssuance();
+  stubLedgerConfirmation();
+  stubLedgerConfirmation();
+});
 
 const SOURCE = Keypair.random().publicKey();
 const OWNER = Keypair.random().publicKey();

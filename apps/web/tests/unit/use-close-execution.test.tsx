@@ -11,7 +11,8 @@ import {
   TransactionBuilder,
   type Transaction,
 } from "@stellar/stellar-sdk";
-import { useCloseExecution } from "@/hooks/useCloseExecution";
+import { STATE_CHANGED_REFETCH_DELAY_MS } from "@lumenwipe/sdk";
+import { PLAN_CHANGED_NOTICE, useCloseExecution } from "@/hooks/useCloseExecution";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import * as closeClient from "@/lib/api/close-client";
@@ -1386,4 +1387,50 @@ test("useCloseExecution › after a failed submit and a retry, a later wallet de
   expect(lastError).toMatch(/This transaction was not signed or sent/);
   expect(lastError).toMatch(/1 of 2 plan steps are already confirmed/);
   expect(lastError).not.toMatch(/could not be confirmed/);
+});
+
+test("useCloseExecution › an account that kept changing discards the plan for a fresh review instead of failing", async () => {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: Keypair.random().publicKey(),
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    planChangedNotice: null,
+    phase: "STEP_EXECUTING",
+    executionPlan: [{ type: "MERGE", status: "pending", operationCount: 1 }] as never,
+    accountState: {
+      signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 1, med: 1, high: 1 },
+    } as never,
+  } as never);
+  let calls = 0;
+  stubFetchCloseTransactions(async () => {
+    calls++;
+    throw new ApiRequestError(409, "changed", undefined, "state_changed");
+  });
+  const waits: number[] = [];
+  spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void, ms?: number) => {
+    waits.push(ms ?? 0);
+    fn();
+    return 0;
+  }) as unknown as typeof setTimeout);
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+
+  const state = useDemolishStore.getState();
+  expect(calls).toBe(3);
+  expect(waits).toEqual([STATE_CHANGED_REFETCH_DELAY_MS, STATE_CHANGED_REFETCH_DELAY_MS]);
+  expect(state.phase).not.toBe("STEP_FAILED");
+  expect(state.phase).not.toBe("STEP_EXECUTING");
+  expect(state.executionPlan).toEqual([]);
+  expect(state.lastError).toBeNull();
+  expect(state.planChangedNotice).toBe(PLAN_CHANGED_NOTICE);
+  expect(result.current.signatureStatus).toBeNull();
 });

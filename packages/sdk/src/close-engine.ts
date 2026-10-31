@@ -27,6 +27,36 @@ export class InsufficientSignatureWeightError extends Error {
 
 export type CloseDidNotConvergeReason = "round_limit" | "empty_batch";
 
+/** How many times a round the API refused as `state_changed` is fetched again before the close
+ *  stops and asks for a new plan. */
+export const STATE_CHANGED_REFETCHES = 2;
+
+/** How long `runClose` waits before each of those re-fetches: about one ledger close, the time a
+ *  lagging read provider needs to catch up with a transaction that just confirmed. */
+export const STATE_CHANGED_REFETCH_DELAY_MS = 3000;
+
+const defaultSleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Thrown when the account kept changing while the API prepared a round (`state_changed`).
+ *  Nothing was submitted for that round; plan again and run the close from the new plan. */
+export class CloseStateChangedError extends Error {
+  constructor(public readonly apiError: unknown) {
+    super(
+      "Your account changed while the close was being prepared, so nothing was submitted. Plan the close again and review it before continuing."
+    );
+    this.name = "CloseStateChangedError";
+  }
+}
+
+function isStateChanged(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "state_changed"
+  );
+}
+
 const ROUND_MARGIN = 5;
 const HARD_MAX_ROUNDS = 200;
 
@@ -85,6 +115,8 @@ export interface CloseEngineDeps {
    * with a clear thrown error instead of looping indefinitely.
    */
   maxRounds?: number;
+  /** Waits `ms` milliseconds; defaults to a timer. Injected so tests need not wait. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 /**
@@ -106,7 +138,7 @@ export async function runClose(deps: CloseEngineDeps, resume?: PendingRound): Pr
 
   for (let round = 0; round < (deps.maxRounds ?? Math.max(bound, 1)); round++) {
     deps.onProgress?.("Preparing transactions…");
-    const batch = await deps.getTransactions();
+    const batch = await fetchRound(deps);
     const txs = [...batch.transactions].sort((a, b) => a.order - b.order);
     const { requiresAnotherCall, steps } = batch.remaining;
     if (requiresAnotherCall && txs.length === 0) {
@@ -122,6 +154,20 @@ export async function runClose(deps: CloseEngineDeps, resume?: PendingRound): Pr
     deps.maxRounds ?? bound,
     "round_limit"
   );
+}
+
+/** The API re-reads and re-plans on every call, so a round refused because the account moved
+ *  under the read is simply asked for again, a bounded number of times and after a pause. */
+async function fetchRound(deps: CloseEngineDeps): Promise<TransactionsResponse> {
+  for (let attempt = 0; ; attempt++) {
+    if (attempt > 0) await (deps.sleep ?? defaultSleep)(STATE_CHANGED_REFETCH_DELAY_MS);
+    try {
+      return await deps.getTransactions();
+    } catch (error) {
+      if (!isStateChanged(error)) throw error;
+      if (attempt === STATE_CHANGED_REFETCHES) throw new CloseStateChangedError(error);
+    }
+  }
 }
 
 async function processTxs(

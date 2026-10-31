@@ -21,6 +21,7 @@ import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 import { UpstreamError } from "@/lib/stellar/upstream-client";
 import {
   AccountNotFoundError,
+  AccountStateChangedError,
   AssetRouteLostError,
   UnusableProviderResponseError,
 } from "@/lib/utils/errors";
@@ -48,6 +49,13 @@ type Case = [string, Error, number, string, unknown];
 
 const PLAN_CASES: Case[] = [
   ["account not found", new AccountNotFoundError(ADDRESS), 404, "account_not_found", undefined],
+  [
+    "account changed",
+    new AccountStateChangedError("sequence moved"),
+    409,
+    "state_changed",
+    undefined,
+  ],
   [
     "truncated collection",
     new TruncatedCollectionError("too many offers"),
@@ -96,6 +104,13 @@ const PLAN_CASES: Case[] = [
 
 const TRANSACTION_CASES: Case[] = [
   ["account not found", new AccountNotFoundError(ADDRESS), 404, "account_not_found", undefined],
+  [
+    "account changed",
+    new AccountStateChangedError("sequence moved"),
+    409,
+    "state_changed",
+    undefined,
+  ],
   [
     "asset route lost",
     new AssetRouteLostError(`USDC:${ADDRESS}`, "USDC"),

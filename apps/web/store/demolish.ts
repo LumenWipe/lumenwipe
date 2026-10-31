@@ -82,6 +82,8 @@ interface DemolishState {
   // Error
   lastError: string | null;
   lastErrorReference: string | null;
+  /** Why the reviewed plan was discarded mid-close; shown on /analyze until a new plan is set. */
+  planChangedNotice: string | null;
 
   // Session
   sessionId: string | null;
@@ -104,6 +106,9 @@ interface DemolishState {
   setPhase: (phase: DemolishPhase) => void;
   setAccountState: (state: AccountState) => void;
   setPlan: (plan: PlannedStep[]) => void;
+  /** Drops a plan the account no longer matches, so neither /review nor /execute can act on it
+   *  again: the only way on is a fresh plan through the review gate. */
+  discardPlan: (notice: string) => void;
   setAssetDisposition: (asset: string, action: AssetDisposition) => void;
   /** Applies a freshly fetched plan's blockers to the stored answers: when the route lookup
    *  failed, every return-to-issuer choice is forgotten (the blocker names no asset) and convert
@@ -220,6 +225,7 @@ const initialState = {
   mediatorRequired: false,
   lastError: null,
   lastErrorReference: null,
+  planChangedNotice: null,
   sessionId: null,
 };
 
@@ -273,7 +279,17 @@ export const useDemolishStore = create<DemolishState>((set) => ({
   // Reset the step pointer whenever a new plan is installed: a prior run may have
   // advanced currentStepIndex, and a new (often shorter) plan must start at step 0
   // so executionPlan[currentStepIndex] never points past the end.
-  setPlan: (executionPlan) => set({ executionPlan, currentStepIndex: 0 }),
+  setPlan: (executionPlan) => set({ executionPlan, currentStepIndex: 0, planChangedNotice: null }),
+
+  discardPlan: (notice) =>
+    set({
+      executionPlan: [],
+      currentStepIndex: 0,
+      phase: "IDLE",
+      lastError: null,
+      lastErrorReference: null,
+      planChangedNotice: notice,
+    }),
 
   setAssetDisposition: (asset, action) =>
     set((s) => {
