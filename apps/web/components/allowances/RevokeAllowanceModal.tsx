@@ -8,8 +8,7 @@ import { NETWORK_PASSPHRASES } from "@/config/networks";
 import type { Allowance } from "@/types/allowance";
 import { PROTOCOL_LABELS } from "@/lib/plan/describe-position";
 import { formatTokenAmount } from "@/lib/utils/token-amounts";
-import { apiErrorMessage } from "@/lib/api/error-body";
-import { ApiRequestError, toUserMessage, UserFacingError } from "@/lib/utils/user-error";
+import { readApiError, toUserMessage, UserFacingError } from "@/lib/utils/user-error";
 import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
 import { ensureWalletKitInitialized } from "@/lib/wallet-kit/client";
 import { SecretKeySigner, WalletKitSigner, type TransactionSigner } from "@/lib/stellar/signer";
@@ -90,13 +89,8 @@ export default function RevokeAllowanceModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ owner, token: allowance.token, spender: allowance.spender }),
       });
-      const data = (await res.json().catch(() => ({}))) as {
-        transaction?: string;
-        error?: { message?: string } | string;
-      };
-      if (!res.ok) {
-        throw new ApiRequestError(res.status, apiErrorMessage(data, ""));
-      }
+      if (!res.ok) throw await readApiError(res);
+      const data = (await res.json().catch(() => ({}))) as { transaction?: string };
       if (!data.transaction)
         throw new UserFacingError("The server returned no transaction to sign.");
 

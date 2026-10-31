@@ -1,6 +1,5 @@
 import type { Network } from "@/config/networks";
-import { apiRequestId } from "@/lib/api/error-body";
-import { ApiRequestError, UserFacingError } from "@/lib/utils/user-error";
+import { readApiError, UserFacingError } from "@/lib/utils/user-error";
 
 export interface SubmitResult {
   txHash: string;
@@ -20,21 +19,9 @@ export async function submitViaApi(signedXdr: string, network: Network): Promise
     body: JSON.stringify({ signedXdr }),
   });
 
-  const data = (await res.json().catch(() => ({}))) as {
-    hash?: string;
-    ledger?: number;
-    error?: { message?: string } | string;
-  };
+  if (!res.ok) throw await readApiError(res, "Failed to submit the transaction.");
 
-  if (!res.ok) {
-    const message =
-      typeof data.error === "object" && data.error?.message
-        ? data.error.message
-        : typeof data.error === "string"
-          ? data.error
-          : "Failed to submit the transaction.";
-    throw new ApiRequestError(res.status, message, apiRequestId(res, data));
-  }
+  const data = (await res.json().catch(() => ({}))) as { hash?: string; ledger?: number };
 
   // A 2xx with no hash means the response contract drifted; fail loudly rather
   // than marking a step "confirmed" with an empty hash.

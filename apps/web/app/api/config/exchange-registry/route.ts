@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { errorEnvelope } from "@/lib/api/error-body";
 import { rateLimitProxy } from "@/lib/api/rate-limit";
 
 /**
@@ -19,7 +20,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const base = process.env.LUMENWIPE_API_URL;
   if (!base) {
-    return NextResponse.json({ error: "API URL is not configured." }, { status: 500 });
+    return NextResponse.json(errorEnvelope("api_unavailable", "API URL is not configured."), {
+      status: 500,
+    });
   }
   try {
     const res = await fetch(`${base}/config/exchange-registry`, {
@@ -31,10 +34,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       signal: AbortSignal.timeout(8_000),
     });
     if (!res.ok) {
-      return NextResponse.json({ error: "Registry unavailable." }, { status: res.status });
+      return NextResponse.json(errorEnvelope("registry_unavailable", "Registry unavailable."), {
+        status: res.status,
+      });
     }
     return NextResponse.json(await res.json());
   } catch {
-    return NextResponse.json({ error: "Registry unreachable." }, { status: 502 });
+    return NextResponse.json(errorEnvelope("registry_unreachable", "Registry unreachable."), {
+      status: 502,
+    });
   }
 }

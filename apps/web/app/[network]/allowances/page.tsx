@@ -10,7 +10,7 @@ import type { Network } from "@/config/networks";
 import type { Allowance, AllowancesResult } from "@/types/allowance";
 import { useDemolishStore } from "@/store/demolish";
 import { isValidGAddress } from "@/lib/utils/validation";
-import { apiErrorMessage } from "@/lib/api/error-body";
+import { apiErrorText } from "@/lib/utils/user-error";
 import AllowanceRow from "@/components/allowances/AllowanceRow";
 import RevokeAllowanceModal from "@/components/allowances/RevokeAllowanceModal";
 
@@ -60,7 +60,7 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
         const res = await fetch(`/api/${network}/allowances/${addr}`);
         const data = await res.json();
         if (!res.ok) {
-          setError(apiErrorMessage(data, "Failed to read allowances for this account."));
+          setError(apiErrorText(data, "Failed to read allowances for this account."));
           setResult(null);
           return;
         }

@@ -1,14 +1,19 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { CloseDidNotConvergeError, LumenWipeApiError, LumenWipeTimeoutError } from "@lumenwipe/sdk";
-import { apiErrorMessage } from "@/lib/api/error-body";
+import { fetchCloseTransactions } from "@/lib/api/close-client";
 import { VerificationError } from "@/lib/stellar/verify";
 import { TxSubmitError } from "@/lib/utils/errors";
 import {
+  apiErrorText,
   ApiRequestError,
+  closeFailureMessage,
+  readApiError,
   toUserMessage,
   UserFacingError,
+  type CloseFailureStage,
   type ErrorContext,
 } from "@/lib/utils/user-error";
+import type { PlannedStep, StepStatus, StepType } from "@/types/plan";
 
 const LEAKS = /\b(tx|op)_[a-z_]+\b|Error:|\bat \S+ \(|undefined|\[object|stack|\(\d{3}\)/i;
 
@@ -127,19 +132,156 @@ describe("toUserMessage", () => {
   });
 });
 
-describe("apiErrorMessage", () => {
+describe("apiErrorText", () => {
   test("keeps a plain message", () => {
-    expect(apiErrorMessage({ error: { message: "Account not found." } }, "x")).toBe(
+    expect(apiErrorText({ error: { code: "x", message: "Account not found." } }, "x")).toBe(
       "Account not found."
     );
   });
 
   test.each([
     { error: { message: "op_no_trust" } },
+    { error: "Account not found." },
     { error: "Error: boom at fn (a.ts:1:2)" },
     { message: "Request failed (502)" },
     { error: { message: "x".repeat(300) } },
-  ])("falls back for non-plain bodies %#", (body) => {
-    expect(apiErrorMessage(body, "fallback")).toBe("fallback");
+  ])("falls back for non-plain or non-envelope bodies %#", (body) => {
+    expect(apiErrorText(body, "fallback")).toBe("fallback");
+  });
+});
+
+describe("readApiError", () => {
+  function response(body: unknown, status: number): Response {
+    return new Response(JSON.stringify(body), { status });
+  }
+
+  test("carries the envelope message and status", async () => {
+    const err = await readApiError(
+      response({ error: { code: "bad_request", message: "Choose a destination first." } }, 422)
+    );
+    expect(err).toBeInstanceOf(ApiRequestError);
+    expect(err.status).toBe(422);
+    expect(toUserMessage(err, "review")).toBe("Choose a destination first.");
+  });
+
+  test("an old flat body reads as the generic fallback, never its raw text", async () => {
+    const raw = "Account not found here";
+    const err = await readApiError(response({ error: raw }, 422));
+    expect(err.message).toBe("");
+    expect(toUserMessage(err, "review")).not.toContain(raw);
+    expect(toUserMessage(err, "review")).toBe(
+      toUserMessage(new ApiRequestError(422, ""), "review")
+    );
+  });
+
+  test("the close client reads a flat body as the generic fallback", async () => {
+    const raw = "Account not found here";
+    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(response({ error: raw }, 422));
+    try {
+      const err = await fetchCloseTransactions({} as never, "testnet").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiRequestError);
+      expect(toUserMessage(err, "execute")).not.toContain(raw);
+      expect(toUserMessage(err, "execute")).toBe(
+        toUserMessage(new ApiRequestError(422, ""), "execute")
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  test("a missing message falls back to the caller's text", async () => {
+    const err = await readApiError(new Response("not json", { status: 500 }), "Failed.");
+    expect(err.message).toBe("Failed.");
+  });
+});
+
+function step(index: number, type: StepType, status: StepStatus): PlannedStep {
+  return {
+    index,
+    type,
+    title: type,
+    description: "",
+    operationCount: 1,
+    estimatedFeeLumens: "0.0000100",
+    txXdr: null,
+    status,
+    txHash: status === "confirmed" ? `hash${index}` : null,
+    error: null,
+  };
+}
+
+describe("closeFailureMessage", () => {
+  const roundOne = [step(0, "CANCEL_OFFERS", "pending"), step(1, "MERGE", "pending")];
+  const roundTwo = [step(0, "CANCEL_OFFERS", "confirmed"), step(1, "MERGE", "pending")];
+  const declined = new Error("User declined access");
+  const mismatch = new VerificationError("op 2 pays GABC to unexpected dest");
+
+  test("a wallet decline in round one speaks only for this transaction", () => {
+    const msg = closeFailureMessage(declined, "before-submit", roundOne);
+    expect(msg).toMatch(/declined the request in your wallet/);
+    expect(msg).toMatch(/This transaction was not signed or sent/);
+    expect(msg).not.toMatch(/plan steps|nothing was sent/i);
+  });
+
+  test("a wallet decline in round two states what is already confirmed", () => {
+    const msg = closeFailureMessage(declined, "before-submit", roundTwo);
+    expect(msg).toMatch(/This transaction was not signed or sent/);
+    expect(msg).toMatch(
+      /1 of 2 plan steps are already confirmed, so your account is partly closed and still open/
+    );
+    expect(msg).not.toMatch(/nothing was sent/i);
+  });
+
+  test("a verification failure in round one says once that this transaction was not signed or sent", () => {
+    const msg = closeFailureMessage(mismatch, "before-submit", roundOne);
+    expect(msg).toMatch(/doesn't match what you approved, so it was not signed or sent/);
+    expect(msg.match(/not signed/g)).toHaveLength(1);
+    expect(msg).not.toMatch(/plan steps|nothing was sent|GABC/i);
+  });
+
+  test("a verification failure in round two states what is already confirmed", () => {
+    const msg = closeFailureMessage(mismatch, "before-submit", roundTwo);
+    expect(msg).toMatch(/1 of 2 plan steps are already confirmed/);
+    expect(msg).not.toMatch(/nothing was sent/i);
+  });
+
+  test("a confirmed merge reads as a closed account, never as still open", () => {
+    const merged = [step(0, "CANCEL_OFFERS", "confirmed"), step(1, "MERGE", "confirmed")];
+    const msg = closeFailureMessage(new Error("boom"), "submitted", merged);
+    expect(msg).toMatch(/2 of 2 plan steps are already confirmed, so your account is closed/);
+    expect(msg).not.toMatch(/still open/);
+  });
+
+  test("the connect flow keeps its own decline copy", () => {
+    expect(toUserMessage(declined, "wallet")).toBe(
+      "You declined the request in your wallet. Nothing was sent - approve it when you're ready to continue."
+    );
+  });
+
+  const kinds: Array<[string, unknown, CloseFailureStage]> = [
+    ["wallet decline", declined, "before-submit"],
+    ["verification failure", mismatch, "before-submit"],
+    ["build failure", new ApiRequestError(503, ""), "before-submit"],
+    ["unknown before submit", new Error("boom"), "before-submit"],
+    ["submit-time service error", new ApiRequestError(500, ""), "submitted"],
+    ["submit-time timeout", new ApiRequestError(504, ""), "submitted"],
+    ["submit-time network error", new TypeError("Failed to fetch"), "submitted"],
+    ["unknown after submit", new Error("boom"), "submitted"],
+  ];
+
+  test.each(kinds)("%s states whether retrying is safe and what has happened", (_, err, stage) => {
+    for (const plan of [roundOne, roundTwo]) {
+      const msg = closeFailureMessage(err, stage, plan);
+      expect(msg).toMatch(/It is safe to retry\.|retrying is also safe/);
+      expect(msg).toMatch(/not signed or sent|No new transaction was sent|could not be confirmed/);
+      expect(msg.includes("plan steps are already confirmed")).toBe(plan === roundTwo);
+      expect(msg).not.toMatch(LEAKS);
+      if (stage === "submitted") {
+        expect(msg).not.toMatch(/nothing was sent|not sent/i);
+        expect(msg).toMatch(
+          /The last transaction could not be confirmed, so check it on the explorer; retrying is also safe, because LumenWipe re-reads your account first/
+        );
+      }
+    }
   });
 });

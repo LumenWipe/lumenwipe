@@ -40,11 +40,11 @@ test("requestFeeBumpSponsorship › surfaces the API's object-shaped error messa
   );
 });
 
-test("requestFeeBumpSponsorship › surfaces the API's string-shaped error", async () => {
+test("requestFeeBumpSponsorship › reads an old string-shaped error as the default message", async () => {
   globalThis.fetch = fakeFetch(500, { error: "internal error" });
 
   await expect(requestFeeBumpSponsorship("signed-xdr", "testnet")).rejects.toThrow(
-    "internal error"
+    "Failed to obtain a sponsored fee for this transaction."
   );
 });
 

@@ -5,29 +5,7 @@ import type {
   TransactionsResponse,
 } from "@lumenwipe/sdk";
 import type { Network } from "@/config/networks";
-import { apiRequestId } from "@/lib/api/error-body";
-import { ApiRequestError } from "@/lib/utils/user-error";
-
-/**
- * Reads the API's error message out of the proxy response.
- *
- * The API emits one envelope now - `{ error: { code, message } }` - so this no longer has to
- * guess. The string branch is kept only for a response that predates the unification (a cached
- * proxy response, an older deployed API during a rollout); it is a compatibility shim with an
- * expiry, not a second supported contract.
- */
-async function toError(res: Response): Promise<Error> {
-  const data = (await res.json().catch(() => ({}))) as {
-    error?: { message?: string } | string;
-  };
-  if (typeof data.error === "object" && data.error?.message) {
-    return new ApiRequestError(res.status, data.error.message, apiRequestId(res, data));
-  }
-  if (typeof data.error === "string") {
-    return new ApiRequestError(res.status, data.error, apiRequestId(res, data));
-  }
-  return new ApiRequestError(res.status, "", apiRequestId(res, data));
-}
+import { readApiError } from "@/lib/utils/user-error";
 
 /** Builds the deterministic close plan (decision points, estimate) via the proxy. */
 export async function fetchClosePlan(
@@ -39,7 +17,7 @@ export async function fetchClosePlan(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw await toError(res);
+  if (!res.ok) throw await readApiError(res);
   return (await res.json()) as PlanResponse;
 }
 
@@ -57,6 +35,6 @@ export async function fetchCloseTransactions(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw await toError(res);
+  if (!res.ok) throw await readApiError(res);
   return (await res.json()) as TransactionsResponse;
 }
