@@ -43,7 +43,11 @@ def render(g, name: str, out: str = "docs/diagrams/output") -> None:
     """Render graph to both SVG and PNG."""
     from pathlib import Path
     Path(out).mkdir(parents=True, exist_ok=True)
-    svg = g.pipe(format="svg")
+    # Graphviz 2.43 applies dpi to the SVG's content but not to its viewBox, which clips the
+    # drawing, so dpi only ever reaches the PNG.
+    svg_graph = g.copy()
+    svg_graph.attr(dpi="72")
+    svg = svg_graph.pipe(format="svg")
     png = g.pipe(format="png")
     Path(f"{out}/{name}.svg").write_bytes(svg)
     Path(f"{out}/{name}.png").write_bytes(png)
