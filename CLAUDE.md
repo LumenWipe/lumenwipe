@@ -10,7 +10,7 @@ The architecture is **API-first and single-channel**. The NestJS **API** is the 
 
 ## Repository layout
 
-Bun-workspaces monorepo. One exact `@stellar/stellar-sdk` (17.2.1) pinned identically in every workspace, used by the API (build, read, submit), by `apps/web` (parse XDR, verify, sign - never to build a transaction or read chain state) and by `apps/playground`.
+Bun-workspaces monorepo. One exact `@stellar/stellar-sdk` (17.4.0) pinned identically in every workspace, used by the API (build, read, submit), by `apps/web` (parse XDR, verify, sign - never to build a transaction or read chain state) and by `apps/playground`.
 
 - `apps/api` - NestJS service, the product. Controllers under `src/{account,close,mediator,health,fee-bump,stats,admin,integrator,config-api}`, plus `src/root.controller.ts`. Builds the minimal unsigned transaction set, co-signs the mediator forward payment, submits. Stateless across a multi-round close.
 - `apps/web` - Next.js thin client. Fetches unsigned XDR, verifies it, signs, submits - all through a server-side proxy. No closing logic.
@@ -106,7 +106,6 @@ CONTRIBUTING.md has the full rules. Essentials:
 - The **playground** was rebuilt as `apps/playground` (it previously lived inside `apps/web` and built transactions client-side, which is why it was removed). It never builds a close transaction itself: the demolish step goes through the real `apps/api` via `@lumenwipe/sdk`. Its own `lib/verify.ts` is a second, narrower trust anchor over the same operation shapes as `apps/web/lib/stellar/verify.ts` - a new close operation has to be added there too, or the playground rejects it.
 - **`.env.local` load order**: `config/networks.ts` reads `process.env` in top-level `const` initializers, which run at import time, before `ConfigModule.forRoot()`'s dotenv side effect (declared in `app.module.ts`) gets a chance to run, since `AppModule`'s own imports load first. `apps/api/src/main.ts` works around this with `import "./env"` as its literal first line; keep it first, or vars with no working default (like `PATH_ROUTING_API_URLS`) silently go missing from `.env.local`-only setups.
 
-- **`@blend-capital/blend-sdk` runs on its own `@stellar/stellar-sdk` 16.3.0** (it pins it exactly and still speaks the v16 XDR API), so the root has no `@stellar/stellar-sdk` override. Never pass its XDR objects into code that uses 17; cross the boundary as base64 strings (see `testnet-direct-read.ts`).
 - **TypeScript is split**: `typescript` is 6.x (the compiler API that typescript-eslint, `nest build`, Next and api-extractor load) and `@typescript/native` supplies the 7.x `tsc` binary that every `type-check` runs.
 
 ## Docs
