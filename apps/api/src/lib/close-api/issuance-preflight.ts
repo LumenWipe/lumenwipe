@@ -74,7 +74,9 @@ function summarize(records: AssetStats[]): IssuanceSummary | null {
  * as "issues nothing"; that case cannot be told apart from a real empty result. Any other
  * failure, including a 404, is an `IssuerReadError`. That is why this never fails over: an empty
  * answer opens the issuer gate, and moving to another provider after an outage would trade a
- * refusal for that. It reads the provider the account snapshot came from, or the primary.
+ * refusal for that. It reads the provider the account snapshot came from, or the primary, so a
+ * snapshot that failed over carries this read with it: every provider in a list needs asset stats,
+ * the same reliance a lone provider has always had.
  */
 export async function assessIssuance(
   address: string,
