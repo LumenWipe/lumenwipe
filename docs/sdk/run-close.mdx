@@ -35,7 +35,7 @@ await runClose({
 | `sleep`           | Optional. Waits the given milliseconds before a re-fetch. Defaults to a timer; inject one in tests.                                             |
 | `maxRounds`       | Optional. Overrides the round bound. By default the bound follows the API's `remaining.steps` (capped at 200).                                  |
 
-`verify` is where the security of your integration lives. `runClose` guarantees it runs before every signature, but only your implementation decides what it accepts. Two signing guards of the LumenWipe web app are not part of `runClose`, so your `sign` and `submit` need their own: never attach a hash(x) preimage to a transaction that does not remove that same signer, and never submit a transaction that removes signers without an `account_merge` unless the master key has signed it. See [Verification](/sdk/verification).
+`verify` is where the security of your integration lives. `runClose` guarantees it runs before every signature, but only your implementation decides what it accepts. Two signing guards of the LumenWipe web app are not part of `runClose`, so your `sign` and `submit` need their own: never attach a hash(x) preimage to a transaction that does not remove that same signer, and never submit a transaction that removes signers without an `account_merge` unless the master key has signed it and the same transaction lowers every threshold to 1 or below. See [Verification](/sdk/verification).
 
 ## Multisig and partial signing
 

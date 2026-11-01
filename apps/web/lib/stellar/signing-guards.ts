@@ -41,9 +41,10 @@ export function assertPreimageRemovesItsSigner(
 
 /**
  * Normalization leaves the master key as the account's only signer. Without the merge in the same
- * transaction, a close authorized by co-signers alone would confirm and leave an account nothing
- * the user holds can act on again. Only the signature on the envelope proves the master key is
- * held, and the key comes from the user's own account address, not from an API read.
+ * transaction, the account must still be usable by that key afterwards: the master key has signed,
+ * or nothing the user holds could act on the account again, and the same envelope lowers every
+ * threshold to 1 or below, or the master key alone could not reach them. Only the envelope proves
+ * either, and the key comes from the user's own account address, not from an API read.
  */
 export function assertMasterSignsSignerRemoval(
   xdr: string,
@@ -56,6 +57,22 @@ export function assertMasterSignsSignerRemoval(
   );
   const merges = operations.some((op) => op.type === "account_merge" && op.source === account);
   if (!removesSigner || merges) return;
+  const resetsThresholds = operations.some(
+    (op) =>
+      op.type === "set_options" &&
+      op.source === account &&
+      op.lowThreshold !== null &&
+      op.lowThreshold <= 1 &&
+      op.medThreshold !== null &&
+      op.medThreshold <= 1 &&
+      op.highThreshold !== null &&
+      op.highThreshold <= 1
+  );
+  if (!resetsThresholds) {
+    throw new UserFacingError(
+      "Nothing was submitted and your funds stay where they are. This step removes signers without resetting the account's thresholds, so the master key alone could not act on the account afterwards."
+    );
+  }
   const [master] = evaluateSignatureContributions(xdr, networkPassphrase, [
     { key: account, weight: 1, type: "ed25519_public_key" },
   ]);

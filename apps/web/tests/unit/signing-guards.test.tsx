@@ -203,6 +203,62 @@ test("a removal of signers with no merge, signed by co-signers alone, is not sub
   expect(useDemolishStore.getState().lastError).toContain("your funds stay where they are");
 });
 
+test("a removal with no merge and no threshold reset is not submitted, even signed by the master key", async () => {
+  const { submit, hook } = setup(
+    [REMOVE_COSIGNER],
+    [signerEntries.master!, signerEntries.cosigner!],
+    2
+  );
+
+  await runWith(hook, keySigner(master));
+  await runWith(hook, keySigner(cosigner));
+
+  expect(submit).not.toHaveBeenCalled();
+  expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
+  expect(useDemolishStore.getState().lastError).toContain(
+    "without resetting the account's thresholds"
+  );
+});
+
+test.each([
+  ["low", { lowThreshold: 2, medThreshold: 1, highThreshold: 1 }],
+  ["med", { lowThreshold: 0, medThreshold: 2, highThreshold: 1 }],
+  ["high", { lowThreshold: 0, medThreshold: 1, highThreshold: 2 }],
+  ["only part of", { lowThreshold: 0, medThreshold: 1 }],
+])("a reset leaving %s the thresholds out of reach is not accepted", async (_, thresholds) => {
+  const { submit, hook } = setup(
+    [REMOVE_COSIGNER, Operation.setOptions(thresholds)],
+    [signerEntries.master!, signerEntries.cosigner!],
+    2
+  );
+
+  await runWith(hook, keySigner(master));
+  await runWith(hook, keySigner(cosigner));
+
+  expect(submit).not.toHaveBeenCalled();
+});
+
+test("a threshold reset on another account's behalf does not count", async () => {
+  const { submit, hook } = setup(
+    [
+      REMOVE_COSIGNER,
+      Operation.setOptions({
+        source: DEST,
+        lowThreshold: 0,
+        medThreshold: 1,
+        highThreshold: 1,
+      }),
+    ],
+    [signerEntries.master!, signerEntries.cosigner!],
+    2
+  );
+
+  await runWith(hook, keySigner(master));
+  await runWith(hook, keySigner(cosigner));
+
+  expect(submit).not.toHaveBeenCalled();
+});
+
 test("the same removal is submitted once the master key has signed it", async () => {
   const { submit, hook } = setup(
     [REMOVE_COSIGNER, RESET],

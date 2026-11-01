@@ -20,7 +20,7 @@ When an account needs several signers to reach its threshold, connect wallets or
 
 When extra signers exist, the plan removes them early. That collapses the rest of the close to a single key and releases each signer's reserve.
 
-A transaction that removes signers and does not merge the account in the same transaction must carry the account's master key. Without it, the app submits nothing: the transaction would leave the master key as the only signer, with the merge still to come. A close that merges in the same transaction can be signed by the co-signers alone.
+A transaction that removes signers and does not merge the account in the same transaction must carry the account's master key and reset the thresholds. Without both, the app submits nothing: the transaction would leave the master key as the only signer, with the merge still to come. A close that merges in the same transaction can be signed by the co-signers alone.
 
 ## hash(x) signers
 
