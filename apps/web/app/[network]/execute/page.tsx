@@ -11,7 +11,7 @@ import ExecutionWizard from "@/components/execution/ExecutionWizard";
 export default function ExecutePage({ params }: { params: Promise<{ network: Network }> }) {
   const { network } = use(params);
   const router = useRouter();
-  const { executionPlan, sourceAddress, phase } = useDemolishStore();
+  const { executionPlan, sourceAddress, phase, planChangedNotice } = useDemolishStore();
 
   // Checked once at mount, not on every phase change: STEP_EXECUTING legitimately moves
   // through STEP_CONFIRMED/STEP_FAILED/COMPLETE while this page stays mounted during a
@@ -19,6 +19,10 @@ export default function ExecutePage({ params }: { params: Promise<{ network: Net
   // catches landing here directly (a stale bookmark, or forward-navigating past /review
   // without confirming), where phase is still whatever it was before the gate.
   useEffect(() => {
+    if (sourceAddress && executionPlan.length === 0 && planChangedNotice) {
+      router.replace(`/${network}/analyze`);
+      return;
+    }
     if (!sourceAddress || executionPlan.length === 0) {
       router.replace(`/${network}`);
       return;

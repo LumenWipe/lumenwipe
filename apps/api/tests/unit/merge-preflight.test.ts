@@ -20,6 +20,7 @@ import * as accountStateModule from "@/lib/stellar/account-state";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { stubIssuance } from "./fixtures/issuance";
+import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -306,7 +307,11 @@ describe("POST close/transactions", () => {
 });
 
 describe("POST close/plan", () => {
-  beforeEach(() => stubIssuance());
+  beforeEach(() => {
+    stubIssuance();
+    stubLedgerConfirmation();
+    stubLedgerConfirmation();
+  });
 
   function arrange(account: AccountState, exists: boolean): void {
     spyOn(readAccountModule, "readAccountState").mockResolvedValue(account);

@@ -433,8 +433,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 >
                   <p className="text-sm text-white/70">
                     This is a multisig account: completing the close needs a total signing weight of{" "}
-                    {multisigNotice.requiredWeight}. Signatures can come from any of its signers,
-                    one at a time - sign with the first, then sign with the next.
+                    {multisigNotice.requiredWeight}. Sign with one signer, then the next. A step
+                    that removes signers before the merge must include the account&apos;s master
+                    key, and a preimage is only used on a step that removes its own signer.
                   </p>
                   <ul className="space-y-1">
                     {multisigNotice.signers.map((s) => (

@@ -94,7 +94,7 @@ CONTRIBUTING.md has the full rules. Essentials:
 ## Hard invariants
 
 - The API's transaction builder is a **pure module** (state in, unsigned envelopes out, no network side effects) - keep it unit-testable and auditable.
-- Never build or sign from indexer data alone: the API re-reads exact on-chain state over RPC immediately before building.
+- Never build or sign from indexer data alone: sub-entry state comes from one Horizon-compatible provider and is cross-checked against RPC immediately before building.
 - A position or step that cannot be closed safely surfaces as a blocker with an explanation, never silently skipped.
 - User-facing errors are plain language; never surface raw SDK codes or stack traces.
 

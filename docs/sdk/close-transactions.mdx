@@ -15,12 +15,13 @@ const { transactions, remaining } = await client.closeTransactions({
 });
 ```
 
-| Field         | Required | Description                                                                                            |
-| ------------- | -------- | ------------------------------------------------------------------------------------------------------ |
-| `source`      | yes      | The account being closed.                                                                              |
-| `destination` | yes      | Where the remaining XLM is merged.                                                                     |
-| `decisions`   | no       | The same answers you gave to `closePlan`.                                                              |
-| `memo`        | no       | Deposit memo for an exchange destination that requires one. Its type comes from the exchange registry. |
+| Field         | Required | Description                                                                                                                                                                                                                             |
+| ------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `source`      | yes      | The account being closed.                                                                                                                                                                                                               |
+| `destination` | yes      | Where the remaining XLM is merged.                                                                                                                                                                                                      |
+| `decisions`   | no       | The same answers you gave to `closePlan`.                                                                                                                                                                                               |
+| `memo`        | no       | Deposit memo for an exchange destination that requires one. Its type comes from the exchange registry.                                                                                                                                  |
+| `planHash`    | no       | The `planHash` of the plan the user reviewed. Send it until the first transaction confirms, then omit it. If the account's sequence or the answers no longer match those the plan was built from, the call answers `409 state_changed`. |
 
 ## Working through a round
 
@@ -29,6 +30,6 @@ const { transactions, remaining } = await client.closeTransactions({
 3. Sign it, then [submit](/sdk/submit) it and wait for confirmation. If `needsSponsoredFee` is true, route the signed envelope through `feeBumpSponsor` first.
 4. If `remaining.requiresAnotherCall` is true, call `closeTransactions` again.
 
-The API is stateless. Each call re-reads live state and re-derives what remains, so an interrupted close resumes by simply calling again. Nothing needs to be reconciled.
+The API is stateless. Each call re-reads live state and re-derives what remains, so an interrupted close resumes by simply calling again. Nothing needs to be reconciled. Each response's `planHash` describes the state that round was built from; once a round's transactions confirm, the next call's state differs on purpose, so it carries no `planHash`.
 
 Each transaction carries `id`, `order`, `dependsOn`, `xdr`, `networkPassphrase`, `validUntilLedger`, and an `intent` summary. The `intent` is the API's description of the transaction. Treat it as a label for display, never as proof of what the XDR does.

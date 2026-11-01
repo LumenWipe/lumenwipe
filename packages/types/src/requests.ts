@@ -19,6 +19,13 @@ export interface CloseTransactionsRequest {
    * data entry is set (SEP-29). A blank memo counts as none.
    */
   memo?: string;
+  /**
+   * The `planHash` of the plan the user reviewed. Send it with the first call after that plan, and
+   * the API answers `409 state_changed` when the account's sequence or the answers differ from
+   * those the plan was built from. Leave it out once a transaction of the close has confirmed: the
+   * account has then changed on purpose.
+   */
+  planHash?: string;
 }
 
 /** Body for `POST /v1/:network/submit`. */

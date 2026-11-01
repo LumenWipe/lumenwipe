@@ -58,6 +58,7 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   invalid_memo: "The memo is not valid for its type.",
   invalid_network: "The network is not testnet or mainnet.",
   invalid_owner: "The owner is missing or empty.",
+  invalid_plan_hash: "The plan hash is not a 64-character hex string.",
   invalid_rate_limit: "The rate limit override is malformed.",
   invalid_request: "The request is missing a required field.",
   invalid_signature: "The signature does not match the transaction.",
@@ -116,6 +117,8 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   sponsor_source_unusable:
     "The account to sponsor does not exist, or the transaction is not its next one.",
   sponsorship_budget_exhausted: "The fee sponsor's daily budget for this request is used up.",
+  state_changed:
+    "The account changed between reading and building. Nothing was submitted; plan again.",
   stats_unavailable: "The stats store is unreachable. Retry.",
   submit_failed: "The transaction could not be submitted. Retry.",
   submit_rejected: "The network rejected the transaction.",

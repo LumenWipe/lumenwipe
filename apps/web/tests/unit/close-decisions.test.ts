@@ -13,6 +13,8 @@ import {
   destinationAcknowledgementToDecisions,
   dispositionsToDecisions,
   discoveredTokensToDecisions,
+  closeDecisions,
+  type CloseAnswers,
 } from "@/lib/api/close-decisions";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
@@ -595,9 +597,15 @@ describe("discoveredTokensToDecisions", () => {
     // plan only by travelling with the request. Without this the page showed a balance the plan
     // had no step for and told the user the plan "could not be loaded".
     expect(discoveredTokensToDecisions([TOKEN_A, TOKEN_B])).toEqual([
-      { id: `token:${TOKEN_A}`, choice: "" },
-      { id: `token:${TOKEN_B}`, choice: "" },
+      { id: `token:${TOKEN_A}`, choice: "discovered" },
+      { id: `token:${TOKEN_B}`, choice: "discovered" },
     ]);
+  });
+
+  test("every answer carries a non-empty choice, which the API requires", () => {
+    for (const answer of discoveredTokensToDecisions([TOKEN_A])) {
+      expect(answer.choice.length).toBeGreaterThan(0);
+    }
   });
 
   test("no tokens, nothing to say", () => {
@@ -740,4 +748,30 @@ test("dispositionsToDecisions › a classic convert answer carries the floor the
 test("classicFloorFromQuote › leaves 1% under the plan's quoted minimum, rounded down", () => {
   expect(classicFloorFromQuote("49750000")).toBe("49252500");
   expect(classicFloorFromQuote("99")).toBe("98");
+});
+
+describe("closeDecisions", () => {
+  const source = "GSOURCE";
+  const destination = "GDEST";
+  const answers: CloseAnswers = {
+    assetDispositions: { "USDC:GISSUER": "convert" },
+    transferDestinations: {},
+    tokenConversionFloors: {},
+    classicConversionFloors: {},
+    claimableBalanceSelections: { abc: "forfeit" },
+    destinationAcknowledgedFor: destination,
+    defiPositionsAcknowledgedFor: source,
+    issuerSupplyAcknowledgedFor: "GOTHER",
+    positionsLeftBehind: [],
+  };
+
+  test("is every answer the plan and each build round send, in one list", () => {
+    expect(closeDecisions(answers, source, destination, ["CTOKEN"])).toEqual([
+      ...discoveredTokensToDecisions(["CTOKEN"]),
+      ...dispositionsToDecisions(answers.assetDispositions),
+      ...claimableSelectionsToDecisions(answers.claimableBalanceSelections),
+      ...destinationAcknowledgementToDecisions(destination, destination),
+      ...defiPositionsAcknowledgementToDecisions(source, source),
+    ]);
+  });
 });

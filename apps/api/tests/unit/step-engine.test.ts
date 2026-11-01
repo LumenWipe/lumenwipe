@@ -1,10 +1,13 @@
 import { test, expect } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
-import { fetchLiveTrustlineBalance } from "@/lib/stellar/step-engine";
+import {
+  fetchLiveTrustlineBalance,
+  filterExistingClaimableBalances,
+} from "@/lib/stellar/step-engine";
 import { LiveReadError } from "@/lib/stellar/live-trustline";
 import { ledgerEntries } from "./fixtures/ledger-trustlines";
 import { getRpcServer } from "@/lib/stellar/rpc";
-import type { Trustline } from "@lumenwipe/types";
+import type { ClaimableBalance, Trustline } from "@lumenwipe/types";
 import { authorizationOf } from "./fixtures/trustline";
 
 type RpcServer = ReturnType<typeof getRpcServer>;
@@ -49,4 +52,26 @@ test("fetchLiveTrustlineBalance › a malformed response throws instead of readi
   await expect(fetchLiveTrustlineBalance(TL, ACCOUNT, server)).rejects.toBeInstanceOf(
     LiveReadError
   );
+});
+
+const BALANCE: ClaimableBalance = {
+  id: `00000000${"c".repeat(64)}`,
+  asset: `USDC:${ISSUER}`,
+  amount: "1.0000000",
+  sponsor: null,
+  claimants: [{ destination: ACCOUNT, predicate: { type: "unconditional" } }],
+};
+
+test("filterExistingClaimableBalances › a failed read throws instead of assuming every balance exists", async () => {
+  const server = stubServer(() => Promise.reject(new Error("rpc down")));
+  await expect(filterExistingClaimableBalances([BALANCE], server)).rejects.toBeInstanceOf(
+    LiveReadError
+  );
+});
+
+test("filterExistingClaimableBalances › keeps only the balances the ledger still holds", async () => {
+  const server = stubServer(ledgerEntries({}) as RpcServer["getLedgerEntries"]);
+  expect(await filterExistingClaimableBalances([BALANCE], server)).toEqual([BALANCE]);
+  const none = stubServer((async () => ({ latestLedger: 1, entries: [] })) as never);
+  expect(await filterExistingClaimableBalances([BALANCE], none)).toEqual([]);
 });

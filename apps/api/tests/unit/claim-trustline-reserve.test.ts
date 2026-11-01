@@ -5,10 +5,16 @@ import { trustlineReserveShortfallStroops } from "@/lib/stellar/claim-reserve";
 import { deriveClaimableBalanceDecisionPoints } from "@/lib/close-api/decisions";
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { ledgerEntries } from "./fixtures/ledger-trustlines";
 import { stubIssuance } from "./fixtures/issuance";
+import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import * as rpcModule from "@/lib/stellar/rpc";
 
-beforeEach(() => stubIssuance());
+beforeEach(() => {
+  stubIssuance();
+  stubLedgerConfirmation();
+  stubLedgerConfirmation();
+});
 afterEach(() => mock.restore());
 
 const SOURCE = Keypair.random().publicKey();
@@ -139,7 +145,7 @@ function rpcStub() {
   return {
     getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
     getLatestLedger: () => Promise.resolve({ sequence: 1000, closeTime: "1800000000" }),
-    getLedgerEntries: () => Promise.reject(new Error("unavailable")),
+    getLedgerEntries: ledgerEntries({}),
   };
 }
 

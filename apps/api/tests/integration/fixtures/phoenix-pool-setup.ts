@@ -14,6 +14,7 @@ import {
   TransactionBuilder,
   nativeToScVal,
   rpc as stellarRpc,
+  scValToNative,
   xdr,
 } from "@stellar/stellar-sdk";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
@@ -64,13 +65,37 @@ export async function mintPhoenixTokenA(
   await buildSignSubmit(tokenAdmin, op);
 }
 
-/** Deposits both sides at a 1:1 ratio (the pool's own first-deposit-friendly default) and returns
- *  the minted LP shares. */
+/** The pool's live reserves. Anyone can swap against this pool, so its ratio is never a constant. */
+async function readPhoenixReserves(): Promise<{ a: bigint; b: bigint }> {
+  const tx = new TransactionBuilder(new Account(Keypair.random().publicKey(), "0"), {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASES.testnet,
+  })
+    .addOperation(new Contract(PHOENIX_POOL).call("query_pool_info"))
+    .setTimeout(TX_TIMEOUT_SECONDS)
+    .build();
+  const simulation = await getRpcServer("testnet").simulateTransaction(tx);
+  if (!stellarRpc.Api.isSimulationSuccess(simulation) || !simulation.result) {
+    throw new Error(`phoenix pool read failed: ${JSON.stringify(simulation)}`);
+  }
+  const info = scValToNative(simulation.result.retval) as {
+    asset_a: { amount: bigint };
+    asset_b: { amount: bigint };
+  };
+  return { a: info.asset_a.amount, b: info.asset_b.amount };
+}
+
+/** Deposits at the pool's live ratio, spending up to `maxA` and `maxB`: the pool refuses a deposit
+ *  whose sides do not match its reserves. */
 export async function providePhoenixLiquidity(
   account: Keypair,
-  desiredA: bigint,
-  desiredB: bigint
+  maxA: bigint,
+  maxB: bigint
 ): Promise<void> {
+  const reserves = await readPhoenixReserves();
+  const aForMaxB = (maxB * reserves.a) / reserves.b;
+  const desiredA = aForMaxB <= maxA ? aForMaxB : maxA;
+  const desiredB = aForMaxB <= maxA ? maxB : (maxA * reserves.b) / reserves.a;
   const sender = new Address(account.publicKey()).toScVal();
   // An Option<T> argument is the bare value for Some, or scvVoid for None - not an enum wrapper
   // (confirmed the hard way against the CLI's own arg parser before writing this).

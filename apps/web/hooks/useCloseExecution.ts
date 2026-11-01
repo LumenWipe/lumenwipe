@@ -9,24 +9,28 @@ import type { AssetDisposition } from "@/types/plan";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
-import { runClose, InsufficientSignatureWeightError, type PendingRound } from "@lumenwipe/sdk";
+import {
+  runClose,
+  CloseStateChangedError,
+  InsufficientSignatureWeightError,
+  type PendingRound,
+} from "@lumenwipe/sdk";
 import { fetchCloseTransactions } from "@/lib/api/close-client";
 import {
   chosenClassicConversions,
   chosenTokenConversions,
   chosenTokenTransfers,
   chosenTransfers,
-  claimableSelectionsToDecisions,
-  defiPositionsAcknowledgementToDecisions,
-  destinationAcknowledgementToDecisions,
-  dispositionsToDecisions,
-  issuerSupplyAcknowledgementToDecisions,
-  positionsLeftBehindToDecisions,
+  closeDecisions,
 } from "@/lib/api/close-decisions";
 import { verifyCloseTransaction } from "@/lib/stellar/verify";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { requiredSignatureWeight } from "@/lib/stellar/thresholds";
 import { verifyPreAuthTxHash } from "@/lib/stellar/pre-auth-tx";
+import {
+  assertMasterSignsSignerRemoval,
+  assertPreimageRemovesItsSigner,
+} from "@/lib/stellar/signing-guards";
 import {
   accumulatedWeight,
   applyConfirmedTransaction,
@@ -57,6 +61,9 @@ export interface SignatureStatus {
   remainingSigners: AccountSigner[];
 }
 
+export const PLAN_CHANGED_NOTICE =
+  "Your account changed while the close was being prepared, so nothing was submitted for that step. The plan below has been refreshed from your account as it is now: review it and confirm again to continue.";
+
 /**
  * Drives a full close against the API: the browser fetches unsigned transactions round by
  * round, VERIFIES each one against the user's own choices before signing (the trust anchor),
@@ -75,6 +82,8 @@ export function useCloseExecution() {
   const markCoveredConfirmed = useDemolishStore((s) => s.markCoveredConfirmed);
   const setPhase = useDemolishStore((s) => s.setPhase);
   const setLastError = useDemolishStore((s) => s.setLastError);
+  const discardPlan = useDemolishStore((s) => s.discardPlan);
+  const clearPlanHash = useDemolishStore((s) => s.clearPlanHash);
 
   const [progressStatus, setProgressStatus] = useState<string | null>(null);
   const [signatureStatus, setSignatureStatus] = useState<SignatureStatus | null>(null);
@@ -139,33 +148,12 @@ export function useCloseExecution() {
       // Read dispositions/selections live so a mid-flow re-decision is honored.
       const claimableBalanceSelections = useDemolishStore.getState().claimableBalanceSelections;
       const accountState = useDemolishStore.getState().accountState;
-      const decisions = [
-        ...dispositionsToDecisions(
-          useDemolishStore.getState().assetDispositions,
-          useDemolishStore.getState().transferDestinations,
-          useDemolishStore.getState().tokenConversionFloors,
-          useDemolishStore.getState().classicConversionFloors
-        ),
-        ...claimableSelectionsToDecisions(claimableBalanceSelections),
-        // Carried through to every build round: the API refuses to build a close into a
-        // destination it doesn't recognize until the user has confirmed they control it.
-        ...destinationAcknowledgementToDecisions(
-          useDemolishStore.getState().destinationAcknowledgedFor,
-          useDemolishStore.getState().destinationAddress
-        ),
-        ...defiPositionsAcknowledgementToDecisions(
-          useDemolishStore.getState().defiPositionsAcknowledgedFor,
-          sourceAddress
-        ),
-        ...issuerSupplyAcknowledgementToDecisions(
-          useDemolishStore.getState().issuerSupplyAcknowledgedFor,
-          sourceAddress
-        ),
-        ...positionsLeftBehindToDecisions(
-          useDemolishStore.getState().positionsLeftBehind,
-          useDemolishStore.getState().sourceAddress ?? ""
-        ),
-      ];
+      const decisions = closeDecisions(
+        useDemolishStore.getState(),
+        sourceAddress,
+        destinationAddress,
+        (accountState?.sorobanTokens?.tokens ?? []).map((tk) => tk.contract)
+      );
       // The set of assets the user themselves chose to add a trustline for, to claim an
       // otherwise-unreachable balance - verify()'s only basis for allowing a raised (non-
       // removal) change_trust op. Sourced from the user's own decisions, never the API.
@@ -185,13 +173,15 @@ export function useCloseExecution() {
       try {
         await runClose(
           {
-            getTransactions: async () => {
+            planHash: useDemolishStore.getState().planHash ?? undefined,
+            getTransactions: async ({ planHash }) => {
               const batch = await fetchCloseTransactions(
                 {
                   source: sourceAddress,
                   destination: destinationAddress,
                   decisions,
                   memo: memo ?? undefined,
+                  planHash,
                 },
                 network
               );
@@ -273,6 +263,7 @@ export function useCloseExecution() {
               if (!roundSignerState().signers.some((s) => s.key === signer.publicKey)) {
                 return { xdr, weight: preSignWeight };
               }
+              assertPreimageRemovesItsSigner(xdr, passphrase, sourceAddress, signer.publicKey);
               const signedXdr = await signer.sign(xdr, passphrase);
 
               // A connected wallet (WalletKitSigner) is a black box outside this app's trust
@@ -302,6 +293,7 @@ export function useCloseExecution() {
             },
             submit: async (tx: CloseTransaction, xdr: string) => {
               let finalXdr = xdr;
+              assertMasterSignsSignerRemoval(xdr, passphrase, sourceAddress);
 
               // A merge through the shared mediator is one atomic transaction: the user
               // signed the merge; the backend co-signs the mediator's forward payment. It
@@ -371,6 +363,7 @@ export function useCloseExecution() {
               return txHash;
             },
             onConfirmed: (tx, hash) => {
+              clearPlanHash();
               markCoveredConfirmed(tx.covers, hash, tx.needsSponsoredFee, tx.coversTargets);
               signerStateRef.current = applyConfirmedTransaction(
                 roundSignerState(),
@@ -412,6 +405,14 @@ export function useCloseExecution() {
           setPhase("STEP_FAILED");
           return;
         }
+        if (err instanceof CloseStateChangedError) {
+          pendingRoundRef.current = null;
+          signerStateRef.current = null;
+          signerStateForRef.current = null;
+          setSignatureStatus(null);
+          discardPlan(PLAN_CHANGED_NOTICE);
+          return;
+        }
         // A non-weight failure (network error, verify rejection) invalidates any resumable
         // state - retrying should start clean, not silently reuse a possibly-stale envelope.
         // Clearing signatureStatus too ensures the UI falls through to the "failed" branch
@@ -437,6 +438,8 @@ export function useCloseExecution() {
       markCoveredConfirmed,
       setPhase,
       setLastError,
+      discardPlan,
+      clearPlanHash,
     ]
   );
 
@@ -516,6 +519,7 @@ export function useCloseExecution() {
       });
 
       await submitViaApi(xdr, network);
+      useDemolishStore.getState().clearPlanHash();
       if (signerStateRef.current && signerStateForRef.current === `${network}:${sourceAddress}`) {
         signerStateRef.current = applyConfirmedTransaction(
           signerStateRef.current,

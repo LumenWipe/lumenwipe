@@ -54,7 +54,7 @@ describe("isAllowedWindDownOperation", () => {
         }),
       ],
       ["manageData removal", Operation.manageData({ name: "x", value: null })],
-      ["setOptions no-op", Operation.setOptions({ masterWeight: 1 })],
+      ["setOptions no-op", Operation.setOptions({})],
       [
         "setOptions signer removal",
         Operation.setOptions({ signer: { ed25519PublicKey: SIGNER, weight: 0 } }),
@@ -146,10 +146,10 @@ describe("isAllowedWindDownOperation", () => {
       ).toBe(false);
     });
 
-    test("refuses disabling the master key", () => {
-      expect(
-        isAllowedWindDownOperation(operationOf(Operation.setOptions({ masterWeight: 0 })))
-      ).toBe(false);
+    test.each([0, 1, 2])("refuses setting the master key to weight %i", (masterWeight) => {
+      expect(isAllowedWindDownOperation(operationOf(Operation.setOptions({ masterWeight })))).toBe(
+        false
+      );
     });
 
     test("allows lowering thresholds to the normalized 0/1/1, refuses raising any above 1", () => {

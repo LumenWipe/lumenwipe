@@ -1,6 +1,14 @@
 import { test, expect, describe } from "bun:test";
-import { Keypair } from "@stellar/stellar-sdk";
+import { Keypair, StrKey } from "@stellar/stellar-sdk";
 import { readAccountStateFrom, readNativeBalance } from "@/lib/stellar/account-state";
+import { findStateDrift } from "@/lib/close-api/state-drift";
+import {
+  assessSignerNormalizationSafety,
+  computeNeedsSignerNormalization,
+} from "@/lib/stellar/tx-builder";
+import { signerNormalizationOps } from "@/lib/stellar/tx-builder/signers";
+import type { LiveLedger } from "@/lib/stellar/live-ledger";
+import type { AccountSigner } from "@lumenwipe/types";
 import { OFFLINE_SOROBAN_TOKENS, fakeSorobanDeps } from "./fixtures/fake-soroban-tokens";
 import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils/errors";
 import type { ResolveDefiPositionsDeps } from "@/lib/defi-positions/resolve-defi-positions";
@@ -421,4 +429,70 @@ test("the ledger close time the claim predicates are judged at is read once and 
     ledgerCloseTime: () => Promise.resolve(null),
   });
   expect("ledgerCloseTime" in unread).toBe(false);
+});
+
+describe("signer types as Horizon names them", () => {
+  const HASH_X = StrKey.encodeSha256Hash(Buffer.alloc(32, 7));
+  const PRE_AUTH = StrKey.encodePreAuthTx(Buffer.alloc(32, 8));
+  const SIGNED_PAYLOAD = StrKey.encodeSignedPayload(
+    Buffer.concat([Keypair.random().rawPublicKey(), Buffer.from([0, 0, 0, 4]), Buffer.from("abcd")])
+  );
+
+  function ledgerWith(signers: Array<{ key: string; weight: number }>): LiveLedger {
+    return {
+      account: {
+        sequence: "42",
+        numSubEntries: signers.length,
+        balance: 1_000_000_000n,
+        thresholds: { master: 1, low: 0, med: 1, high: 1 },
+        signers,
+      },
+      trustlines: new Map(),
+      offers: new Map(),
+      data: new Map(),
+    } as LiveLedger;
+  }
+
+  async function read(key: string, horizonType: string, high = 1) {
+    const { deps } = stubProvider(
+      accountBody({
+        subentry_count: 1,
+        thresholds: { low_threshold: 0, med_threshold: 1, high_threshold: high },
+        signers: [
+          { key: ADDRESS, weight: 1, type: "ed25519_public_key" },
+          { key, weight: 1, type: horizonType },
+        ],
+      })
+    );
+    return readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI, OFFLINE_SOROBAN_TOKENS);
+  }
+
+  async function expectKept(key: string, horizonType: string, type: string): Promise<void> {
+    const state = await read(key, horizonType);
+
+    expect(state.signers).toContainEqual({ key, weight: 1, type } as AccountSigner);
+    expect(state.subEntryMismatch).toBe(false);
+    expect(findStateDrift(state, ledgerWith([{ key, weight: 1 }]))).toBeNull();
+  }
+
+  test("a sha256_hash signer stays in the state and agrees with the ledger", async () => {
+    await expectKept(HASH_X, "sha256_hash", "hash_x");
+  });
+
+  test("a preauth_tx signer stays in the state and agrees with the ledger", async () => {
+    await expectKept(PRE_AUTH, "preauth_tx", "preauth_tx");
+  });
+
+  test("an ed25519_signed_payload signer stays in the state and agrees with the ledger", async () => {
+    await expectKept(SIGNED_PAYLOAD, "ed25519_signed_payload", "ed25519_signed_payload");
+  });
+
+  test("a sha256_hash signer is removed by normalization and its weight counts as satisfiable", async () => {
+    const state = await read(HASH_X, "sha256_hash", 2);
+
+    expect(computeNeedsSignerNormalization(state)).toBe(true);
+    expect(assessSignerNormalizationSafety(state)).toEqual([]);
+    const ops = signerNormalizationOps(state.signers, ADDRESS);
+    expect(ops).toHaveLength(2);
+  });
 });

@@ -35,7 +35,11 @@ import {
   buildRevokeAllowanceTransaction,
   RevokeAllowanceBlockedError,
 } from "@/lib/stellar/revoke-allowance";
-import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils/errors";
+import {
+  AccountNotFoundError,
+  AccountStateChangedError,
+  UnusableProviderResponseError,
+} from "@/lib/utils/errors";
 import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 import { fail } from "@/common/fail";
 import { PathResponseDto, RevokeAllowanceResponseDto } from "./dto/account-responses.dto";
@@ -57,6 +61,7 @@ export class AccountController {
     "invalid_tokens",
   ])
   @ApiErrorResponse(404, "Account not found.", ["account_not_found"])
+  @ApiErrorResponse(409, "The account changed while it was being read. Retry.", ["state_changed"])
   @ApiErrorResponse(422, "The account is too large to read in one request.", ["account_too_large"])
   @ApiErrorResponse(500, "The account could not be read.", ["account_read_failed"])
   @ApiErrorResponse(502, "The data provider returned an unusable response.", [
@@ -129,6 +134,13 @@ export class AccountController {
       // invariant.
       if (err instanceof TruncatedCollectionError) {
         fail("account_too_large", err.message, 422);
+      }
+      if (err instanceof AccountStateChangedError) {
+        fail(
+          "state_changed",
+          "This account changed while it was being read. Nothing was submitted. Please try again.",
+          409
+        );
       }
       // Same reasoning, pointed at the operator rather than the account holder: the configured
       // provider answered with a body no plan can be built from, and the message names the

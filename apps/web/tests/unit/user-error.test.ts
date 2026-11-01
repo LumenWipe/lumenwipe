@@ -161,7 +161,13 @@ describe("readApiError", () => {
     );
     expect(err).toBeInstanceOf(ApiRequestError);
     expect(err.status).toBe(422);
+    expect(err.code).toBe("bad_request");
     expect(toUserMessage(err, "review")).toBe("Choose a destination first.");
+  });
+
+  test("a body without a code carries none", async () => {
+    const err = await readApiError(response({ error: { message: "m" } }, 409));
+    expect(err.code).toBeUndefined();
   });
 
   test("an old flat body reads as the generic fallback, never its raw text", async () => {

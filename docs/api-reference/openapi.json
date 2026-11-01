@@ -477,6 +477,47 @@
               }
             }
           },
+          "409": {
+            "description": "The account changed while it was being read; plan again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "state_changed"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            }
+          },
           "413": {
             "description": "The request body is larger than 100 KB.",
             "content": {
@@ -1128,6 +1169,7 @@
                                 "invalid_source",
                                 "invalid_destination",
                                 "invalid_decisions",
+                                "invalid_plan_hash",
                                 "invalid_body"
                               ]
                             }
@@ -1234,7 +1276,7 @@
             }
           },
           "409": {
-            "description": "A conversion route drifted; re-plan and retry.",
+            "description": "The plan is stale: a conversion route drifted, or the account changed since it was read or since the plan the request names. Re-plan and retry.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1251,7 +1293,8 @@
                             "code": {
                               "type": "string",
                               "enum": [
-                                "quote_drifted"
+                                "quote_drifted",
+                                "state_changed"
                               ]
                             }
                           }
@@ -2809,6 +2852,47 @@
                               "type": "string",
                               "enum": [
                                 "account_not_found"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            }
+          },
+          "409": {
+            "description": "The account changed while it was being read. Retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "state_changed"
                               ]
                             }
                           }
@@ -6754,6 +6838,7 @@
               "invalid_memo",
               "invalid_network",
               "invalid_owner",
+              "invalid_plan_hash",
               "invalid_rate_limit",
               "invalid_request",
               "invalid_signature",
@@ -6806,6 +6891,7 @@
               "source_sequence_too_far",
               "sponsor_source_unusable",
               "sponsorship_budget_exhausted",
+              "state_changed",
               "stats_unavailable",
               "submit_failed",
               "submit_rejected",
@@ -7314,6 +7400,11 @@
             "type": "string",
             "description": "Deposit memo value for exchange destinations that require one. The memo type is taken from the exchange registry, not the client.",
             "example": "1234567890"
+          },
+          "planHash": {
+            "type": "string",
+            "description": "The planHash of the plan the user reviewed, sent with the first call after it. If the account's sequence or the answers differ from those the plan was built from, the call answers 409 state_changed. Omit it once a transaction of the close has confirmed.",
+            "pattern": "^[0-9a-f]{64}$"
           }
         },
         "required": [
@@ -9460,6 +9551,10 @@
           "subEntryMismatch": {
             "type": "boolean",
             "description": "True when the enumerated subentry count is lower than numSubEntries from the ledger."
+          },
+          "snapshotLedger": {
+            "type": "number",
+            "description": "The latest ledger the enumeration read reflects, for debugging. Absent when the provider does not report one."
           },
           "defiPositions": {
             "$ref": "#/components/schemas/DefiPositionsResultDto"

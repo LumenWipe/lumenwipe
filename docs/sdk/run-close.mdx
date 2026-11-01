@@ -10,7 +10,9 @@ icon: "rotate"
 import { runClose } from "@lumenwipe/sdk";
 
 await runClose({
-  getTransactions: () => client.closeTransactions({ source, destination, decisions }),
+  planHash: plan.planHash,
+  getTransactions: ({ planHash }) =>
+    client.closeTransactions({ source, destination, decisions, planHash }),
   verify: (tx) => verifyCloseTransaction(tx, { source, destination }),
   requiredWeight: () => 1,
   sign: async (tx, xdr) => ({ xdr: signWithMyKey(xdr), weight: 1 }),
@@ -20,18 +22,20 @@ await runClose({
 
 ## Dependencies
 
-| Dependency        | Description                                                                                                    |
-| ----------------- | -------------------------------------------------------------------------------------------------------------- |
-| `getTransactions` | Fetches the next round, usually `client.closeTransactions(...)`.                                               |
-| `verify`          | Checks one transaction against your own inputs. It must throw on any mismatch. It may be async.                |
-| `requiredWeight`  | The signing weight this transaction needs, from its operations and the account's real thresholds.              |
-| `sign`            | Signs the XDR, which may already carry signatures, and returns the new XDR with its accumulated weight.        |
-| `submit`          | Submits a transaction that meets its weight and resolves to the hash.                                          |
-| `onConfirmed`     | Optional. Called with the transaction and its hash after each confirmation.                                    |
-| `onProgress`      | Optional. Called with progress messages.                                                                       |
-| `maxRounds`       | Optional. Overrides the round bound. By default the bound follows the API's `remaining.steps` (capped at 200). |
+| Dependency        | Description                                                                                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getTransactions` | Fetches the next round, usually `client.closeTransactions(...)`. Pass on the `planHash` it is given.                                            |
+| `verify`          | Checks one transaction against your own inputs. It must throw on any mismatch. It may be async.                                                 |
+| `requiredWeight`  | The signing weight this transaction needs, from its operations and the account's real thresholds.                                               |
+| `sign`            | Signs the XDR, which may already carry signatures, and returns the new XDR with its accumulated weight.                                         |
+| `submit`          | Submits a transaction that meets its weight and resolves to the hash.                                                                           |
+| `onConfirmed`     | Optional. Called with the transaction and its hash after each confirmation.                                                                     |
+| `onProgress`      | Optional. Called with progress messages.                                                                                                        |
+| `planHash`        | Optional. The `planHash` of the plan the user reviewed. Sent with each fetch until the first transaction of the run confirms, then never again. |
+| `sleep`           | Optional. Waits the given milliseconds before a re-fetch. Defaults to a timer; inject one in tests.                                             |
+| `maxRounds`       | Optional. Overrides the round bound. By default the bound follows the API's `remaining.steps` (capped at 200).                                  |
 
-`verify` is where the security of your integration lives. `runClose` guarantees it runs before every signature, but only your implementation decides what it accepts. See [Verification](/sdk/verification).
+`verify` is where the security of your integration lives. `runClose` guarantees it runs before every signature, but only your implementation decides what it accepts. Two signing guards of the LumenWipe web app are not part of `runClose`, so your `sign` and `submit` need their own: never attach a hash(x) preimage to a transaction that does not remove that same signer, and never submit a transaction that removes signers without an `account_merge` unless the master key has signed it and the same transaction lowers every threshold to 1 or below. See [Verification](/sdk/verification).
 
 ## Multisig and partial signing
 
@@ -52,5 +56,7 @@ try {
   }
 }
 ```
+
+If the API refuses a round as `state_changed` (the account changed between its read and its build), `runClose` asks for that round again, at most `STATE_CHANGED_REFETCHES` (2) times and each time after waiting `STATE_CHANGED_REFETCH_DELAY_MS` (3 seconds, about one ledger close), because each call re-reads the account and a read provider can lag a transaction that just confirmed by a ledger or two. If the round is still refused, or it was refused against the reviewed `planHash` (the plan itself is stale, so it is not asked for again), it throws `CloseStateChangedError`. Nothing was submitted for that round: plan the close again, have the user review the new plan, and run the close from it.
 
 If a close does not finish within the round bound, or the API says another call is needed but returns no transactions, `runClose` throws `CloseDidNotConvergeError`. Its `rounds`, `bound` and `reason` (`round_limit` or `empty_batch`) say why, and its message is plain language. Nothing is lost: run the close again and it picks up where it stopped.

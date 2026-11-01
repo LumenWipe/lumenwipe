@@ -703,8 +703,8 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
       case "set_options":
         // Signer normalization may only remove signers, never add/empower one, and the signer
         // it touches must be one that actually exists on the account - otherwise the op has no
-        // legitimate purpose in a close and its presence is unexplained. Never disables the
-        // master key, and only lowers thresholds (normalization sets them to 0/1/1).
+        // legitimate purpose in a close and its presence is unexplained. Never changes the
+        // master key's weight, and only lowers thresholds (normalization sets them to 0/1/1).
         if (op.signer !== null) {
           const signer = op.signer;
           if (signer.weight !== 0) {
@@ -719,8 +719,8 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
             );
           }
         }
-        if (op.masterWeight === 0) {
-          throw new VerificationError("The master key would be disabled.");
+        if (op.masterWeight !== null) {
+          throw new VerificationError("The master key's weight would be changed.");
         }
         if (
           (op.lowThreshold ?? 0) > 1 ||

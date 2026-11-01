@@ -30,7 +30,7 @@ import {
 import PlanView from "@/components/plan/PlanView";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { useFocusOnMount } from "@/hooks/useFocusOnMount";
-import { apiErrorText } from "@/lib/utils/user-error";
+import { apiErrorText, isStateChanged } from "@/lib/utils/user-error";
 import { hardBlockersOf } from "@/lib/plan/resolvable-blockers";
 
 export default function AnalyzePage({ params }: { params: Promise<{ network: Network }> }) {
@@ -47,6 +47,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     defiPositionsAcknowledgedFor,
     issuerSupplyAcknowledgedFor,
     positionsLeftBehind,
+    planChangedNotice,
   } = useDemolishStore();
 
   const [account, setAccount] = useState<AccountState | null>(null);
@@ -184,11 +185,12 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       setLeavablePositions(leavable);
       useDemolishStore.getState().prunePositionsLeftBehind(leavable.map((p) => p.decisionId));
       setStatus(firstLoad ? "Account analyzed" : "Plan updated");
-    } catch {
+    } catch (err) {
       if (!isStale()) {
-        setError(
-          accountError ?? "Failed to analyze account. Please check your connection and try again."
-        );
+        const planError = isStateChanged(err)
+          ? "This account changed while the plan was being prepared. Nothing was sent. Refresh the plan to try again."
+          : "Failed to analyze account. Please check your connection and try again.";
+        setError(accountError ?? planError);
       }
     } finally {
       if (!isStale()) {
@@ -267,6 +269,15 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         </h1>
       </div>
 
+      {planChangedNotice && (
+        <div
+          role="status"
+          className="mkt-panel rounded-xl px-4 py-3 mb-4 flex items-center gap-2 text-sm text-muted-foreground"
+        >
+          <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
+          <span>{planChangedNotice}</span>
+        </div>
+      )}
       {error && (
         <div
           role="alert"

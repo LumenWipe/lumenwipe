@@ -11,7 +11,8 @@ import {
   TransactionBuilder,
   type Transaction,
 } from "@stellar/stellar-sdk";
-import { useCloseExecution } from "@/hooks/useCloseExecution";
+import { STATE_CHANGED_REFETCH_DELAY_MS } from "@lumenwipe/sdk";
+import { PLAN_CHANGED_NOTICE, useCloseExecution } from "@/hooks/useCloseExecution";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import * as closeClient from "@/lib/api/close-client";
@@ -320,7 +321,15 @@ test("useCloseExecution › a hash(x) signer's preimage completes the close by r
   const preimage = fromHex("deadbeef");
   const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
 
-  const mergeXdr = unsignedMergeXdr(sourceKeypair, destination);
+  const mergeXdr = new TransactionBuilder(new Account(source, "100"), {
+    fee: "100",
+    networkPassphrase: Networks.TESTNET,
+  })
+    .setTimeout(300)
+    .addOperation(Operation.setOptions({ signer: { sha256Hash: hash(preimage), weight: 0 } }))
+    .addOperation(Operation.accountMerge({ destination }))
+    .build()
+    .toXdr();
 
   useNetworkStore.setState({ network: "testnet" });
   useDemolishStore.setState({
@@ -1386,4 +1395,104 @@ test("useCloseExecution › after a failed submit and a retry, a later wallet de
   expect(lastError).toMatch(/This transaction was not signed or sent/);
   expect(lastError).toMatch(/1 of 2 plan steps are already confirmed/);
   expect(lastError).not.toMatch(/could not be confirmed/);
+});
+
+test("useCloseExecution › an account that kept changing discards the plan for a fresh review instead of failing", async () => {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: Keypair.random().publicKey(),
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    planChangedNotice: null,
+    phase: "STEP_EXECUTING",
+    executionPlan: [{ type: "MERGE", status: "pending", operationCount: 1 }] as never,
+    accountState: {
+      signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 1, med: 1, high: 1 },
+    } as never,
+  } as never);
+  let calls = 0;
+  stubFetchCloseTransactions(async () => {
+    calls++;
+    throw new ApiRequestError(409, "changed", undefined, "state_changed");
+  });
+  const waits: number[] = [];
+  spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void, ms?: number) => {
+    waits.push(ms ?? 0);
+    fn();
+    return 0;
+  }) as unknown as typeof setTimeout);
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+
+  const state = useDemolishStore.getState();
+  expect(calls).toBe(3);
+  expect(waits).toEqual([STATE_CHANGED_REFETCH_DELAY_MS, STATE_CHANGED_REFETCH_DELAY_MS]);
+  expect(state.phase).not.toBe("STEP_FAILED");
+  expect(state.phase).not.toBe("STEP_EXECUTING");
+  expect(state.executionPlan).toEqual([]);
+  expect(state.lastError).toBeNull();
+  expect(state.planChangedNotice).toBe(PLAN_CHANGED_NOTICE);
+  expect(result.current.signatureStatus).toBeNull();
+});
+
+test("useCloseExecution › the reviewed plan hash is sent until a transaction confirms, then cleared", async () => {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    destinationAcknowledgedFor: destination,
+    memo: null,
+    mediatorRequired: false,
+    executionPlan: [],
+    accountState: {
+      signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 1, med: 1, high: 1 },
+      nativeBalanceLumens: "10",
+    } as never,
+  } as never);
+  useDemolishStore.getState().setPlan([], "a".repeat(64));
+
+  const sent: Array<string | undefined> = [];
+  const rounds = [true, false];
+  spyOn(closeClient, "fetchCloseTransactions").mockImplementation((async (req: {
+    planHash?: string;
+  }) => {
+    sent.push(req.planHash);
+    const more = rounds.shift()!;
+    return {
+      planHash: "h",
+      status: "ready",
+      transactions: [
+        {
+          id: `tx-${sent.length}`,
+          order: 0,
+          dependsOn: [],
+          xdr: unsignedMergeXdr(sourceKeypair, destination),
+          networkPassphrase: Networks.TESTNET,
+          covers: ["MERGE"],
+        },
+      ],
+      remaining: { steps: more ? 1 : 0, requiresAnotherCall: more },
+    };
+  }) as unknown as typeof closeClient.fetchCloseTransactions);
+  stubSubmitViaApi(async () => "hash");
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+
+  expect(sent).toEqual(["a".repeat(64), undefined]);
+  expect(useDemolishStore.getState().planHash).toBeNull();
 });

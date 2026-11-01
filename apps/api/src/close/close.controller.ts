@@ -39,6 +39,9 @@ export class CloseController {
     "invalid_body",
   ])
   @ApiErrorResponse(404, "Source account not found.", ["account_not_found"])
+  @ApiErrorResponse(409, "The account changed while it was being read; plan again.", [
+    "state_changed",
+  ])
   @ApiErrorResponse(422, "The account is too large to plan in one request.", ["account_too_large"])
   @ApiErrorResponse(500, "The plan could not be built.", ["plan_failed"])
   @ApiErrorResponse(502, "The data provider returned an unusable response.", [
@@ -102,10 +105,15 @@ export class CloseController {
     "invalid_source",
     "invalid_destination",
     "invalid_decisions",
+    "invalid_plan_hash",
     "invalid_body",
   ])
   @ApiErrorResponse(404, "Source account not found.", ["account_not_found"])
-  @ApiErrorResponse(409, "A conversion route drifted; re-plan and retry.", ["quote_drifted"])
+  @ApiErrorResponse(
+    409,
+    "The plan is stale: a conversion route drifted, or the account changed since it was read or since the plan the request names. Re-plan and retry.",
+    ["quote_drifted", "state_changed"]
+  )
   @ApiErrorResponse(
     422,
     "Unprocessable: the close cannot be built as asked. The code names the reason.",

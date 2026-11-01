@@ -68,6 +68,7 @@ import {
  * upstream fan-out, and would fail a destination merely for holding more than 1000 offers.
  */
 const COUNT_CLOSE_TIMEOUT_MS = 5_000;
+const PLAN_HASH = /^[0-9a-f]{64}$/;
 
 @Injectable()
 export class CloseService {
@@ -152,6 +153,13 @@ export class CloseService {
       fail("invalid_destination", "A valid destination account (G...) is required.", 400);
     }
     const decisions = parseDecisions(body.decisions);
+    const suppliedPlanHash = body.planHash;
+    if (
+      suppliedPlanHash !== undefined &&
+      (typeof suppliedPlanHash !== "string" || !PLAN_HASH.test(suppliedPlanHash))
+    ) {
+      fail("invalid_plan_hash", "planHash must be the 64-character hex hash a plan returned.", 400);
+    }
     const normalized = normalizeRequestMemo(body.memo);
     if (!("memo" in normalized)) fail(normalized.code, normalized.message, 422);
     const { memo } = normalized;
@@ -204,6 +212,20 @@ export class CloseService {
         network,
         tokenContractsFromAnswers(decisions)
       );
+      const planHash = computePlanHash({
+        source,
+        destination,
+        decisions,
+        sourceSequence: accountState.sequence,
+      });
+      if (suppliedPlanHash !== undefined && suppliedPlanHash !== planHash) {
+        fail(
+          "state_changed",
+          "Your account or your answers changed since this plan was prepared. Nothing was " +
+            "submitted; the plan will be refreshed so you can review it again.",
+          409
+        );
+      }
 
       // Selections resolve first: which assets can carry a disposition answer depends on which
       // claims will run, so the claim answers shape the asset universe below.
@@ -316,13 +338,6 @@ export class CloseService {
         isDefiPositionsAcknowledged(decisions, source),
         { acknowledged: isIssuerSupplyAcknowledged(decisions, source) }
       );
-
-      const planHash = computePlanHash({
-        source,
-        destination,
-        decisions,
-        sourceSequence: accountState.sequence,
-      });
 
       const response: TransactionsResponse = {
         planHash,

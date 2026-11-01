@@ -47,9 +47,8 @@ test.skipIf(!RUN_INTEGRATION || FORK_PR_WITHOUT_SECRETS)(
 
     await mintPhoenixTokenA(tokenAdmin, account.publicKey(), DEPOSIT);
     await providePhoenixLiquidity(account, DEPOSIT, DEPOSIT);
-    // Stake roughly half the minted shares (99,999,000 after the pool's fixed 1,000-share
-    // minimum-liquidity lock), so the close loop has to walk both the unbond and the withdraw
-    // leg - not just whichever one a single-round test would happen to exercise.
+    // Stake part of the minted shares, so the close loop has to walk both the unbond and the
+    // withdraw leg - not just whichever one a single-round test would happen to exercise.
     await bondPhoenixShares(account, 40_000_000n);
 
     const horizon = new Horizon.Server(HORIZON_URL);

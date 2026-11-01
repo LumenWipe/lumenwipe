@@ -3,6 +3,9 @@ import {
   runClose,
   InsufficientSignatureWeightError,
   CloseDidNotConvergeError,
+  CloseStateChangedError,
+  STATE_CHANGED_REFETCHES,
+  STATE_CHANGED_REFETCH_DELAY_MS,
 } from "../src/close-engine";
 import type { CloseTransaction, TransactionsResponse } from "@lumenwipe/types";
 
@@ -342,4 +345,152 @@ test("runClose › an empty batch that asks for another call throws on the first
   expect(err).toBeInstanceOf(CloseDidNotConvergeError);
   expect(err).toMatchObject({ reason: "empty_batch", rounds: 1 });
   expect(calls).toBe(1);
+});
+
+const stateChanged = Object.assign(new Error("state_changed"), { code: "state_changed" });
+
+const noWait = async (): Promise<void> => {};
+
+function engine(getTransactions: () => Promise<TransactionsResponse>, submitted: number[] = []) {
+  return {
+    getTransactions,
+    sleep: noWait,
+    verify: () => {},
+    requiredWeight: () => 1,
+    sign: async (_t: CloseTransaction, xdr: string) => ({ xdr, weight: 1 }),
+    submit: async (t: CloseTransaction) => {
+      submitted.push(t.order);
+      return "h";
+    },
+  };
+}
+
+test("runClose › re-fetches a round the API refused as state_changed, at most twice", async () => {
+  expect(STATE_CHANGED_REFETCHES).toBe(2);
+  let calls = 0;
+  const submitted: number[] = [];
+  await runClose(
+    engine(async () => {
+      calls++;
+      if (calls <= STATE_CHANGED_REFETCHES) throw stateChanged;
+      return resp([tx(0)], false);
+    }, submitted)
+  );
+  expect(calls).toBe(STATE_CHANGED_REFETCHES + 1);
+  expect(submitted).toEqual([0]);
+});
+
+test("runClose › a round still refused as state_changed after the re-fetches asks for a new plan", async () => {
+  let calls = 0;
+  const submitted: number[] = [];
+  const err = await runClose(
+    engine(async () => {
+      calls++;
+      throw stateChanged;
+    }, submitted)
+  ).catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(CloseStateChangedError);
+  expect((err as CloseStateChangedError).apiError).toBe(stateChanged);
+  expect(calls).toBe(STATE_CHANGED_REFETCHES + 1);
+  expect(submitted).toEqual([]);
+});
+
+test("runClose › any other API error is not re-fetched", async () => {
+  let calls = 0;
+  const other = Object.assign(new Error("quote_drifted"), { code: "quote_drifted" });
+  const err = await runClose(
+    engine(async () => {
+      calls++;
+      throw other;
+    })
+  ).catch((e: unknown) => e);
+  expect(err).toBe(other);
+  expect(calls).toBe(1);
+});
+
+test("runClose › waits about one ledger close before each re-fetch, never before the first fetch", async () => {
+  expect(STATE_CHANGED_REFETCH_DELAY_MS).toBe(3000);
+  const events: string[] = [];
+  let calls = 0;
+  await runClose({
+    ...engine(async () => {
+      calls++;
+      events.push(`fetch ${calls}`);
+      if (calls <= STATE_CHANGED_REFETCHES) throw stateChanged;
+      return resp([tx(0)], false);
+    }),
+    sleep: async (ms) => {
+      events.push(`sleep ${ms}`);
+    },
+  });
+  expect(events).toEqual([
+    "fetch 1",
+    `sleep ${STATE_CHANGED_REFETCH_DELAY_MS}`,
+    "fetch 2",
+    `sleep ${STATE_CHANGED_REFETCH_DELAY_MS}`,
+    "fetch 3",
+  ]);
+});
+
+test("runClose › a round that is not refused never waits", async () => {
+  const waits: number[] = [];
+  await runClose({
+    ...engine(async () => resp([tx(0)], false)),
+    sleep: async (ms) => {
+      waits.push(ms);
+    },
+  });
+  expect(waits).toEqual([]);
+});
+
+test("runClose › sends the reviewed plan hash until a transaction confirms, then never again", async () => {
+  const rounds = [resp([tx(0)], true), resp([tx(1)], false)];
+  const sent: Array<string | undefined> = [];
+  await runClose({
+    ...engine(async () => rounds.shift()!),
+    getTransactions: async (request) => {
+      sent.push(request.planHash);
+      return rounds.shift()!;
+    },
+    planHash: "reviewed",
+  });
+  expect(sent).toEqual(["reviewed", undefined]);
+});
+
+test("runClose › a round refused as state_changed against the reviewed plan is not re-fetched", async () => {
+  const sent: Array<string | undefined> = [];
+  const err = await runClose({
+    ...engine(async () => resp([], false)),
+    getTransactions: async (request) => {
+      sent.push(request.planHash);
+      throw stateChanged;
+    },
+    planHash: "reviewed",
+  }).catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(CloseStateChangedError);
+  expect(sent).toEqual(["reviewed"]);
+});
+
+test("runClose › a resumed round never sends the plan hash", async () => {
+  const sent: Array<string | undefined> = [];
+  const pending = {
+    tx: tx(0),
+    xdr: "xdr-tx0",
+    requiredWeight: 1,
+    accumulatedWeight: 0,
+    queue: [],
+    requiresAnotherCall: true,
+  };
+  await runClose(
+    {
+      ...engine(async () => resp([], false)),
+      getTransactions: async (request) => {
+        sent.push(request.planHash);
+        return resp([tx(1)], false);
+      },
+      planHash: "reviewed",
+    },
+    pending
+  );
+  expect(sent).toEqual([undefined]);
 });

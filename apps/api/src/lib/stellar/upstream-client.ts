@@ -56,6 +56,8 @@ export interface UpstreamOptions {
   random?: () => number;
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   now?: () => number;
+  /** Sees the headers of the response whose body is returned. */
+  onHeaders?: (headers: Pick<Headers, "get">) => void;
 }
 
 const logger = new Logger("upstream");
@@ -219,7 +221,9 @@ export async function upstreamGetJson<T>(
         if (res.status === 404 && options.notFoundIsNull) return { ok: true, body: null };
         if (res.ok) {
           try {
-            return { ok: true, body: await res.json() };
+            const body: unknown = await res.json();
+            options.onHeaders?.(res.headers);
+            return { ok: true, body };
           } catch {
             if (signal.aborted) throw new DOMException("aborted", "AbortError");
             return { ok: false, retryable: false, kind: "bad_response" };

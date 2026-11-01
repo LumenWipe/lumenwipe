@@ -82,6 +82,11 @@ interface DemolishState {
   // Error
   lastError: string | null;
   lastErrorReference: string | null;
+  /** Why the reviewed plan was discarded mid-close; shown on /analyze until a new plan is set. */
+  planChangedNotice: string | null;
+  /** The hash of the plan the user reviewed, sent with the build until a transaction confirms.
+   *  Null once the account has changed on purpose, or when no reviewed plan is installed. */
+  planHash: string | null;
 
   // Session
   sessionId: string | null;
@@ -103,7 +108,13 @@ interface DemolishState {
   prunePositionsLeftBehind: (offered: string[]) => void;
   setPhase: (phase: DemolishPhase) => void;
   setAccountState: (state: AccountState) => void;
-  setPlan: (plan: PlannedStep[]) => void;
+  setPlan: (plan: PlannedStep[], planHash?: string) => void;
+  /** Called once a transaction of the close confirms: the account has changed on purpose, so the
+   *  reviewed plan's hash no longer describes it. */
+  clearPlanHash: () => void;
+  /** Drops a plan the account no longer matches, so neither /review nor /execute can act on it
+   *  again: the only way on is a fresh plan through the review gate. */
+  discardPlan: (notice: string) => void;
   setAssetDisposition: (asset: string, action: AssetDisposition) => void;
   /** Applies a freshly fetched plan's blockers to the stored answers: when the route lookup
    *  failed, every return-to-issuer choice is forgotten (the blocker names no asset) and convert
@@ -220,6 +231,8 @@ const initialState = {
   mediatorRequired: false,
   lastError: null,
   lastErrorReference: null,
+  planChangedNotice: null,
+  planHash: null,
   sessionId: null,
 };
 
@@ -273,7 +286,26 @@ export const useDemolishStore = create<DemolishState>((set) => ({
   // Reset the step pointer whenever a new plan is installed: a prior run may have
   // advanced currentStepIndex, and a new (often shorter) plan must start at step 0
   // so executionPlan[currentStepIndex] never points past the end.
-  setPlan: (executionPlan) => set({ executionPlan, currentStepIndex: 0 }),
+  setPlan: (executionPlan, planHash) =>
+    set({
+      executionPlan,
+      currentStepIndex: 0,
+      planChangedNotice: null,
+      planHash: planHash ?? null,
+    }),
+
+  clearPlanHash: () => set({ planHash: null }),
+
+  discardPlan: (notice) =>
+    set({
+      executionPlan: [],
+      currentStepIndex: 0,
+      phase: "IDLE",
+      lastError: null,
+      lastErrorReference: null,
+      planChangedNotice: notice,
+      planHash: null,
+    }),
 
   setAssetDisposition: (asset, action) =>
     set((s) => {

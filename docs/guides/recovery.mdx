@@ -70,6 +70,10 @@ A transaction the API builds is valid for 300 seconds. If the signing took longe
 
 `quote_drifted` means the route for an asset conversion changed between planning and building, and nothing was submitted. Plan again and choose again for that asset. If no route is available, you can choose a transfer or, as an explicit decision, a return to the issuer instead. Neither needs a route.
 
+### The account changed while the close was being prepared
+
+`state_changed` means the account changed between the API's read and the build of a round, for example because another transaction landed in between, so nothing was built or submitted. Plan again: the new plan reflects the account as it is now. `runClose` asks for a round again on its own, a bounded number of times, before it stops with `CloseStateChangedError`. When the request carried the reviewed plan's `planHash`, `state_changed` can also mean that the account's sequence number moved since that plan or that the answers differ from it; review a new plan before continuing.
+
 ### A co-signature or sponsored fee failed
 
 For an exchange destination, the API co-signs the relay account's payment before anything is submitted. If that call fails, or the sponsored fee wrap fails, nothing has reached the ledger and nothing has changed. Run the close again.

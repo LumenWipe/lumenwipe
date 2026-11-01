@@ -83,6 +83,7 @@ import {
   type TokenConversionRoundDeps,
 } from "@/lib/close-api/token-conversion-round";
 import { assessIssuanceBlockers } from "@/lib/close-api/issuance-blocker";
+import { confirmLedgerState } from "@/lib/close-api/state-drift";
 import { assessIssuance, type IssuanceDeps } from "@/lib/close-api/issuance-preflight";
 import { isConversionEnabled } from "@/lib/soroswap/conversion-quotes";
 import { isXBullEnabled } from "@/lib/xbull/conversion-quotes";
@@ -258,8 +259,8 @@ export async function buildCloseTransactions(
   }
 
   const server = getRpcServer(network);
-  const [liveAccount, latest, issuance] = await Promise.all([
-    server.getAccount(accountState.address),
+  const [sequence, latest, issuance] = await Promise.all([
+    confirmLedgerState(accountState, server),
     server.getLatestLedger(),
     assessIssuance(accountState.address, network, issuer.deps),
   ]);
@@ -267,7 +268,7 @@ export async function buildCloseTransactions(
   if (issuanceBlockers.length > 0) {
     throw new CloseBuildError(issuanceBlockers[0]!.code, issuanceBlockers[0]!.message, 422);
   }
-  const sdkAccount = new Account(accountState.address, liveAccount.sequenceNumber());
+  const sdkAccount = new Account(accountState.address, sequence);
   // Ledgers close roughly every 5s; surface an approximate ledger bound for the tx time bound.
   const validUntilLedger = latest.sequence + Math.ceil(TX_TIMEOUT_SECONDS / 5);
   const needsMediator = requiresMediatorForAddress(destinationAddress);

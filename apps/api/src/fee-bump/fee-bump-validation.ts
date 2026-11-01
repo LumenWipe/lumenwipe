@@ -61,7 +61,7 @@ export function isAllowedWindDownOperation(op: ParsedOperation): boolean {
 
 /**
  * Whether a `SetOptions` operation is signer normalization and nothing else: it may only lower
- * or remove a signer, never add or empower one; it never disables the master key; it never
+ * or remove a signer, never add or empower one; it never changes the master key's weight; it never
  * raises a threshold above the normalized 0/1/1; and it never touches flags, the home domain, or
  * the inflation destination. The same shape `verify()` holds the browser to (apps/web/lib/stellar/
  * verify.ts), minus the "signer must be one the client already knew about" check, which needs
@@ -73,7 +73,7 @@ function isSignerNormalizationOnly(op: Extract<ParsedOperation, { type: "setOpti
   // others (a real, observed inconsistency, not a documentation gap this comment is guessing
   // at) - `== null` catches both, so "not present" means the same thing everywhere below.
   if (op.signer != null && op.signer.weight !== 0) return false;
-  if (op.masterWeight === 0) return false;
+  if (op.masterWeight != null) return false;
   if ((op.lowThreshold ?? 0) > 1 || (op.medThreshold ?? 0) > 1 || (op.highThreshold ?? 0) > 1) {
     return false;
   }

@@ -27,6 +27,36 @@ export class InsufficientSignatureWeightError extends Error {
 
 export type CloseDidNotConvergeReason = "round_limit" | "empty_batch";
 
+/** How many times a round the API refused as `state_changed` is fetched again before the close
+ *  stops and asks for a new plan. */
+export const STATE_CHANGED_REFETCHES = 2;
+
+/** How long `runClose` waits before each of those re-fetches: about one ledger close, the time a
+ *  lagging read provider needs to catch up with a transaction that just confirmed. */
+export const STATE_CHANGED_REFETCH_DELAY_MS = 3000;
+
+const defaultSleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Thrown when the account kept changing while the API prepared a round (`state_changed`).
+ *  Nothing was submitted for that round; plan again and run the close from the new plan. */
+export class CloseStateChangedError extends Error {
+  constructor(public readonly apiError: unknown) {
+    super(
+      "Your account changed while the close was being prepared, so nothing was submitted. Plan the close again and review it before continuing."
+    );
+    this.name = "CloseStateChangedError";
+  }
+}
+
+function isStateChanged(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "state_changed"
+  );
+}
+
 const ROUND_MARGIN = 5;
 const HARD_MAX_ROUNDS = 200;
 
@@ -49,8 +79,16 @@ export class CloseDidNotConvergeError extends Error {
 }
 
 export interface CloseEngineDeps {
-  /** Fetches the next round of unsigned transactions from the API (via the proxy). */
-  getTransactions: () => Promise<TransactionsResponse>;
+  /** Fetches the next round of unsigned transactions from the API (via the proxy). Pass
+   *  `planHash` on to `closeTransactions` when it is set. */
+  getTransactions: (request: { planHash?: string }) => Promise<TransactionsResponse>;
+  /**
+   * The `planHash` of the plan the user reviewed. Sent with every fetch until the first
+   * transaction of this run confirms, and never after: from then on the account has changed on
+   * purpose. A round refused as `state_changed` while it was sent is not fetched again, since the
+   * reviewed plan itself is stale; `runClose` throws `CloseStateChangedError` at once.
+   */
+  planHash?: string;
   /**
    * Verifies one server-built transaction against what the client independently expects.
    * MUST throw on any mismatch. This is the trust anchor: the browser never signs a
@@ -85,6 +123,8 @@ export interface CloseEngineDeps {
    * with a clear thrown error instead of looping indefinitely.
    */
   maxRounds?: number;
+  /** Waits `ms` milliseconds; defaults to a timer. Injected so tests need not wait. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 /**
@@ -97,31 +137,56 @@ export interface CloseEngineDeps {
  */
 export async function runClose(deps: CloseEngineDeps, resume?: PendingRound): Promise<void> {
   let bound = 0;
+  let planHash = resume ? undefined : deps.planHash;
+  const run: CloseEngineDeps = {
+    ...deps,
+    onConfirmed: (tx, hash) => {
+      planHash = undefined;
+      deps.onConfirmed?.(tx, hash);
+    },
+  };
 
   if (resume) {
-    await signOrThrow(deps, resume.tx, resume.xdr, resume.queue, resume.requiresAnotherCall);
-    await processTxs(deps, resume.queue, resume.requiresAnotherCall);
+    await signOrThrow(run, resume.tx, resume.xdr, resume.queue, resume.requiresAnotherCall);
+    await processTxs(run, resume.queue, resume.requiresAnotherCall);
     if (!resume.requiresAnotherCall) return;
   }
 
-  for (let round = 0; round < (deps.maxRounds ?? Math.max(bound, 1)); round++) {
-    deps.onProgress?.("Preparing transactions…");
-    const batch = await deps.getTransactions();
+  for (let round = 0; round < (run.maxRounds ?? Math.max(bound, 1)); round++) {
+    run.onProgress?.("Preparing transactions…");
+    const batch = await fetchRound(run, planHash);
     const txs = [...batch.transactions].sort((a, b) => a.order - b.order);
     const { requiresAnotherCall, steps } = batch.remaining;
     if (requiresAnotherCall && txs.length === 0) {
-      throw new CloseDidNotConvergeError(round + 1, deps.maxRounds ?? bound, "empty_batch");
+      throw new CloseDidNotConvergeError(round + 1, run.maxRounds ?? bound, "empty_batch");
     }
-    await processTxs(deps, txs, requiresAnotherCall);
+    await processTxs(run, txs, requiresAnotherCall);
     if (!requiresAnotherCall) return;
     bound = Math.max(bound, Math.min(HARD_MAX_ROUNDS, round + 1 + steps + ROUND_MARGIN));
   }
 
-  throw new CloseDidNotConvergeError(
-    deps.maxRounds ?? bound,
-    deps.maxRounds ?? bound,
-    "round_limit"
-  );
+  throw new CloseDidNotConvergeError(run.maxRounds ?? bound, run.maxRounds ?? bound, "round_limit");
+}
+
+/** The API re-reads and re-plans on every call, so a round refused because the account moved
+ *  under the read is asked for again, a bounded number of times and after a pause. Not when it
+ *  was checked against the reviewed plan: that plan is what is stale, and only a new review
+ *  replaces it. */
+async function fetchRound(
+  deps: CloseEngineDeps,
+  planHash: string | undefined
+): Promise<TransactionsResponse> {
+  for (let attempt = 0; ; attempt++) {
+    if (attempt > 0) await (deps.sleep ?? defaultSleep)(STATE_CHANGED_REFETCH_DELAY_MS);
+    try {
+      return await deps.getTransactions(planHash === undefined ? {} : { planHash });
+    } catch (error) {
+      if (!isStateChanged(error)) throw error;
+      if (planHash !== undefined || attempt === STATE_CHANGED_REFETCHES) {
+        throw new CloseStateChangedError(error);
+      }
+    }
+  }
 }
 
 async function processTxs(

@@ -2,11 +2,14 @@
  * Soroban token decisions: every held token is asked about, leaving is explicit and only for a
  * token, and the contracts an answer names come back for the close rounds to re-read.
  */
-import { expect, test } from "bun:test";
+import { expect, mock, spyOn, test } from "bun:test";
 import { Address, Keypair } from "@stellar/stellar-sdk";
 import type { AccountState, SorobanTokenBalance } from "@lumenwipe/types";
 import {
+  DESTINATION_ACK_CHOICE,
   LEAVE_CHOICE,
+  TOKEN_DISCOVERED_CHOICE,
+  destinationDecisionId,
   TRANSFER_CHOICE,
   deriveTokenDecisionPoints,
   resolveDispositions,
@@ -18,6 +21,13 @@ import {
   UnrecognizedConversionProviderError,
   type TokenQuoteSummary,
 } from "@/lib/close-api/decisions";
+import { parseDecisions } from "@/lib/close-api/parse-decisions";
+import { buildAccountPlan } from "@/lib/close-api/account-plan";
+import * as readAccount from "@/lib/close-api/read-account";
+import * as rpcModule from "@/lib/stellar/rpc";
+import * as accountStateModule from "@/lib/stellar/account-state";
+import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { stubIssuance } from "./fixtures/issuance";
 
 const TOKEN_A = Address.contract(Buffer.alloc(32, 1)).toString();
 const TOKEN_B = Address.contract(Buffer.alloc(32, 2)).toString();
@@ -245,4 +255,75 @@ test("a present but unrecognized provider is refused rather than silently built 
       byId
     )
   ).toThrow(UnrecognizedConversionProviderError);
+});
+
+test("a discovered-token answer passes request validation, names its contract and decides nothing", () => {
+  const answers = parseDecisions([{ id: tokenDecisionId(TOKEN_A), choice: "discovered" }]);
+  expect(TOKEN_DISCOVERED_CHOICE).toBe("discovered");
+  expect(tokenContractsFromAnswers(answers)).toEqual([TOKEN_A]);
+  expect(resolveDispositions(answers, [{ id: tokenDecisionId(TOKEN_A), asset: TOKEN_A }])).toEqual(
+    {}
+  );
+});
+
+test("the plan still asks about a held token whose only answer is the discovery hint", async () => {
+  const source = Keypair.random().publicKey();
+  const destination = Keypair.random().publicKey();
+  spyOn(readAccount, "readAccountState").mockResolvedValue({
+    address: source,
+    network: "testnet",
+    sequence: "100",
+    nativeBalanceLumens: "50.0000000",
+    dataEntries: [],
+    signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+    thresholds: { low: 0, med: 0, high: 0 },
+    numSubEntries: 0,
+    numSponsoring: 0,
+    sponsoredBy: null,
+    authImmutable: false,
+    trustlines: [],
+    openOffers: [],
+    poolShares: [],
+    claimableBalances: [],
+    subEntryMismatch: false,
+    sponsoredEntries: [],
+    sponsorshipEnumerationIncomplete: false,
+    defiPositions: emptyDefiPositionsResult(source),
+    defiPositionsWarnings: [],
+    ...withTokens([held(TOKEN_A, "3")]),
+  });
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
+    getLatestLedger: () => Promise.resolve({ sequence: 1_000_000 }),
+  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(accountStateModule, "readTrustlinesOnly").mockResolvedValue({
+    address: destination,
+    trustlines: [],
+    memoRequired: false,
+  });
+  stubIssuance();
+  try {
+    const plan = await buildAccountPlan(
+      source,
+      destination,
+      [
+        { id: destinationDecisionId(destination), choice: DESTINATION_ACK_CHOICE },
+        { id: tokenDecisionId(TOKEN_A), choice: TOKEN_DISCOVERED_CHOICE },
+      ],
+      "testnet"
+    );
+    expect(plan.status).toBe("needs_decisions");
+    const answered = await buildAccountPlan(
+      source,
+      destination,
+      [
+        { id: destinationDecisionId(destination), choice: DESTINATION_ACK_CHOICE },
+        { id: tokenDecisionId(TOKEN_A), choice: TOKEN_DISCOVERED_CHOICE },
+        { id: tokenDecisionId(TOKEN_A), choice: LEAVE_CHOICE },
+      ],
+      "testnet"
+    );
+    expect(answered.status).toBe("ready");
+  } finally {
+    mock.restore();
+  }
 });

@@ -34,8 +34,13 @@ import { signerNormalizationOps } from "@/lib/stellar/tx-builder/signers";
 import type { AccountSigner, AccountState } from "@lumenwipe/types";
 import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
 import { stubIssuance } from "../unit/fixtures/issuance";
+import { stubLedgerConfirmation } from "../unit/fixtures/ledger-confirmation";
 
-beforeEach(() => stubIssuance());
+beforeEach(() => {
+  stubIssuance();
+  stubLedgerConfirmation();
+  stubLedgerConfirmation();
+});
 
 const MASTER = Keypair.random().publicKey();
 const CO_SIGNER_KP = Keypair.random();

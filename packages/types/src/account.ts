@@ -173,6 +173,9 @@ export interface AccountState {
   /** Close time of the latest ledger (epoch seconds) when the claim predicates were judged.
    *  Absent means it could not be read, and only unconditional claims count as claimable. */
   ledgerCloseTime?: number;
+  /** The latest ledger the enumeration's reads reflect, for debugging. Absent when the provider
+   *  reports none. */
+  snapshotLedger?: number;
   /** Detected DeFi positions (Blend, Aquarius, Soroswap, Phoenix, FxDAO), resolved via OctoPos on
    *  mainnet or a direct contract read on testnet / mainnet degraded mode - architecture.md §7.1.
    *  Never absent: an unconfigured deployment or provider outage still returns a result, stamped

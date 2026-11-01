@@ -24,11 +24,18 @@ export class ApiRequestError extends Error {
   constructor(
     readonly status: number,
     message: string,
-    readonly requestId?: string
+    readonly requestId?: string,
+    /** The envelope's `error.code`, which the close loop branches on; never shown. */
+    readonly code?: string
   ) {
     super(message);
     this.name = "ApiRequestError";
   }
+}
+
+/** The API refused a request because the account moved under its read; nothing was built. */
+export function isStateChanged(err: unknown): boolean {
+  return err instanceof ApiRequestError && err.code === "state_changed";
 }
 
 const FALLBACKS: Record<ErrorContext, string> = {
@@ -76,12 +83,16 @@ function looksPlain(message: string): boolean {
   );
 }
 
-function envelopeMessage(body: unknown): string {
+function envelopeField(body: unknown, field: "code" | "message"): string {
   if (typeof body !== "object" || body === null) return "";
   const error = (body as { error?: unknown }).error;
   if (typeof error !== "object" || error === null) return "";
-  const message = (error as { message?: unknown }).message;
-  return typeof message === "string" ? message : "";
+  const value = (error as Record<string, unknown>)[field];
+  return typeof value === "string" ? value : "";
+}
+
+function envelopeMessage(body: unknown): string {
+  return envelopeField(body, "message");
 }
 
 /**
@@ -101,7 +112,8 @@ export async function readApiError(res: Response, fallback = ""): Promise<ApiReq
   return new ApiRequestError(
     res.status,
     envelopeMessage(body) || fallback,
-    apiRequestId(res, body)
+    apiRequestId(res, body),
+    envelopeField(body, "code") || undefined
   );
 }
 

@@ -6,6 +6,7 @@ import * as readAccount from "@/lib/close-api/read-account";
 import * as rpcModule from "@/lib/stellar/rpc";
 import * as accountStateModule from "@/lib/stellar/account-state";
 import * as issuancePreflight from "@/lib/close-api/issuance-preflight";
+import * as stateDrift from "@/lib/close-api/state-drift";
 import { buildAccountPlan } from "@/lib/close-api/account-plan";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
 import {
@@ -23,6 +24,7 @@ import {
 } from "@/lib/close-api/issuance-preflight";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { stubIssuance } from "./fixtures/issuance";
+import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { authorizationOf } from "./fixtures/trustline";
 
 const SOURCE = Keypair.random().publicKey();
@@ -261,6 +263,7 @@ describe("plan and build refuse the same issuance state", () => {
 
     arrangePlan();
     stubIssuance(issuance);
+    stubLedgerConfirmation();
     const plan = await buildAccountPlan(SOURCE, DEST, answers, "testnet");
     const planCodes = plan.blockers.map((b) => b.code).filter((c) => c.startsWith("issuer_"));
     expect(planCodes).toEqual(expected ? [expected] : []);
@@ -268,6 +271,7 @@ describe("plan and build refuse the same issuance state", () => {
     mock.restore();
     arrangeBuild();
     stubIssuance(issuance);
+    stubLedgerConfirmation();
     const err = await buildCloseTransactions(
       state(),
       DEST,
@@ -294,6 +298,7 @@ describe("plan and build refuse the same issuance state", () => {
   test("the plan carries the acknowledgement decision and stays blocked until it is answered", async () => {
     arrangePlan();
     stubIssuance(ISSUING);
+    stubLedgerConfirmation();
     const plan = await buildAccountPlan(SOURCE, DEST, [], "testnet");
     expect(plan.status).toBe("blocked");
     const point = plan.decisionPoints.find((d) => d.id === issuerSupplyDecisionId(SOURCE));
@@ -320,11 +325,11 @@ describe("plan and build refuse the same issuance state", () => {
 
   test("the supply read starts together with the other live reads", async () => {
     const started: string[] = [];
+    spyOn(stateDrift, "confirmLedgerState").mockImplementation(async () => {
+      started.push("account");
+      return "100";
+    });
     spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-      getAccount: async () => {
-        started.push("account");
-        return { sequenceNumber: () => "100" };
-      },
       getLatestLedger: async () => {
         started.push("ledger");
         return { sequence: 1_000_000 };

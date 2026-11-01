@@ -20,9 +20,13 @@ When an account needs several signers to reach its threshold, connect wallets or
 
 When extra signers exist, the plan removes them early. That collapses the rest of the close to a single key and releases each signer's reserve.
 
+A transaction that removes signers and does not merge the account in the same transaction must carry the account's master key and reset the thresholds. Without both, the app submits nothing: the transaction would leave the master key as the only signer, with the merge still to come. A close that merges in the same transaction can be signed by the co-signers alone.
+
 ## hash(x) signers
 
 A hash(x) signer is a key that is the SHA-256 hash of a secret value. To satisfy one, enter the preimage as a hex string. LumenWipe checks that it hashes to the signer's key before using it, and rejects it otherwise.
+
+Entering the preimage publishes it. A hash(x) signature is the preimage itself, it is not bound to one transaction, and the signer stays on the account after it is used, so anyone who reads it can use that signer's weight until the signer is gone. The app therefore attaches a preimage only to a transaction that removes that same signer. Any other step needs another signer.
 
 ## Pre-authorized transaction signers
 

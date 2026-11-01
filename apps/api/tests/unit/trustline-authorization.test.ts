@@ -2,6 +2,7 @@ import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import type { AccountState, Trustline } from "@lumenwipe/types";
 import * as rpcModule from "@/lib/stellar/rpc";
+import * as stateDrift from "@/lib/close-api/state-drift";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
 import { deriveDecisionPoints } from "@/lib/close-api/decisions";
 import { readTrustlinesOnly } from "@/lib/stellar/account-state";
@@ -105,11 +106,11 @@ test.each(PARITY_CASES)(
     expect(planCodes).toEqual(expectedCode ? [expectedCode] : []);
 
     const liveRead = new Error("reached the live read");
+    spyOn(stateDrift, "confirmLedgerState").mockImplementation(async () => {
+      throw liveRead;
+    });
     spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-      getAccount: () => {
-        throw liveRead;
-      },
-      getLatestLedger: () => {
+      getLatestLedger: async () => {
         throw liveRead;
       },
     })) as unknown as typeof rpcModule.getRpcServer);

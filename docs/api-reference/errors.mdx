@@ -41,6 +41,7 @@ These mean the request itself is wrong or not allowed. Treat them as a fault in 
 | `invalid_addresses`                   | 400    | After fix | The addresses are missing or not valid Stellar accounts.                                        |
 | `invalid_body`                        | 400    | After fix | The request body is not valid JSON or not a JSON object.                                        |
 | `invalid_decisions`                   | 400    | After fix | The decisions in the request are malformed.                                                     |
+| `invalid_plan_hash`                   | 400    | After fix | The plan hash is not a 64-character hex string.                                                 |
 | `invalid_destination`                 | 400    | After fix | The destination is missing or not a valid address.                                              |
 | `invalid_network`                     | 400    | After fix | The network is not testnet or mainnet.                                                          |
 | `invalid_request`                     | 400    | After fix | The request is missing a required field.                                                        |
@@ -74,7 +75,7 @@ These are transient. Retry with backoff, honoring `Retry-After`. While retrying,
 
 ## Reading accounts and routes
 
-A failed read is not an answer. `destination_read_failed` is never reported as a missing destination, `issuer_read_failed` is never reported as an account that issues nothing, and `account_read_failed`, `allowances_read_failed` and `path_lookup_failed` are safe to retry. `account_not_found` is a real answer: the account does not exist on that network, or it has already been merged. `account_too_large` means the account has more entries than one request can read.
+A failed read is not an answer. `destination_read_failed` is never reported as a missing destination, `issuer_read_failed` is never reported as an account that issues nothing, and `account_read_failed`, `allowances_read_failed` and `path_lookup_failed` are safe to retry. `account_not_found` is a real answer: the account does not exist on that network, or it has already been merged. `account_too_large` means the account has more entries than one request can read. `GET account/:address` can also answer `409 state_changed` when the account kept changing while it was being read: nothing was submitted, and reading it again is safe.
 
 | Code                         | Status | Retry | Meaning                                                              |
 | ---------------------------- | ------ | ----- | -------------------------------------------------------------------- |
@@ -90,7 +91,7 @@ A failed read is not an answer. `destination_read_failed` is never reported as a
 
 ## Planning and building a close
 
-These come from `close/plan` and `close/transactions`. The `message` names the problem and usually what resolves it, so show it as written. Several carry `details`: `needs_decisions` lists the unanswered decisions in `details.missing`, a missing transfer destination or conversion floor names its `details.decisionId`, and `merge_destination_unusable` lists `details.problems`. `quote_drifted` means a conversion route changed between planning and building: plan again and let the user choose again, or pick a transfer, which needs no route. `source_sequence_too_far` cannot be fixed by the user or the API: the account can be closed only once the network's ledger count catches up.
+These come from `close/plan` and `close/transactions`. The `message` names the problem and usually what resolves it, so show it as written. Several carry `details`: `needs_decisions` lists the unanswered decisions in `details.missing`, a missing transfer destination or conversion floor names its `details.decisionId`, and `merge_destination_unusable` lists `details.problems`. `quote_drifted` means a conversion route changed between planning and building: plan again and let the user choose again, or pick a transfer, which needs no route. `state_changed` means the account changed between the API's read and its build, or while it was being read, or since the plan whose `planHash` the request carries, so nothing was built: plan again. `source_sequence_too_far` cannot be fixed by the user or the API: the account can be closed only once the network's ledger count catches up.
 
 | Code                                          | Status | Retry     | Meaning                                                                                                                        |
 | --------------------------------------------- | ------ | --------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -98,6 +99,7 @@ These come from `close/plan` and `close/transactions`. The `message` names the p
 | `transactions_failed`                         | 500    | Yes       | The transactions could not be built. Retry.                                                                                    |
 | `needs_decisions`                             | 422    | After fix | The plan has decisions that are still unanswered.                                                                              |
 | `quote_drifted`                               | 409    | After fix | A conversion route changed between planning and building. Plan again.                                                          |
+| `state_changed`                               | 409    | After fix | The account changed between reading and building. Nothing was submitted; plan again.                                           |
 | `conversion_floor_missing`                    | 422    | After fix | A conversion carries no destination minimum.                                                                                   |
 | `conversion_provider_unrecognized`            | 422    | After fix | A conversion names a provider the API does not recognize.                                                                      |
 | `transfer_destination_missing`                | 422    | After fix | A transfer carries no destination.                                                                                             |

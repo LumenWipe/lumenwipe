@@ -423,9 +423,9 @@ test("verifyCloseTransaction still approves a transaction whose only change is a
   expect(() => assertCloseIntent(signedIntent, expectation({ accountSigners }))).not.toThrow();
 });
 
-test("rejects a set_options that disables the master key", () => {
-  const i = intent({ operations: [setOptions({ masterWeight: 0 })] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/master key would be disabled/);
+test.each([0, 1, 2])("rejects a set_options that sets the master key to weight %i", (weight) => {
+  const i = intent({ operations: [setOptions({ signer: null, masterWeight: weight })] });
+  expect(() => assertCloseIntent(i, expectation())).toThrow(/master key's weight would be changed/);
 });
 
 test("rejects a set_options that raises the high threshold", () => {

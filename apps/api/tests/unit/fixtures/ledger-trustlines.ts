@@ -57,6 +57,10 @@ export function ledgerEntries(
   return async (...keys) => {
     const entries: unknown[] = [];
     for (const key of keys) {
+      if (key.type === "claimableBalance") {
+        entries.push({ key });
+        continue;
+      }
       if (key.type !== "trustline") throw new Error("not stubbed");
       const tl = key.trustLine;
       if (tl.accountId.type !== "publicKeyTypeEd25519") throw new Error("not stubbed");

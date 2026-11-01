@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle, Info, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle, Info, XCircle } from "lucide-react";
 import { HashXPreimageSigner, type TransactionSigner } from "@/lib/stellar/signer";
 import { verifyHashXPreimage, InvalidPreimageError } from "@/lib/stellar/hash-x";
 import { cn } from "@/lib/utils/cn";
@@ -51,6 +51,11 @@ export default function HashXPreimageInput({ signer, disabled, onApply }: Props)
         This is a hash(x) signer - its key is the hash of a secret value (a &quot;preimage&quot;),
         not a wallet address, so no connected wallet or secret key can sign for it. If you know the
         preimage, enter it below to contribute this signer&apos;s weight.
+      </p>
+      <p className="flex items-start gap-1.5 text-xs text-warning">
+        <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+        Entering the preimage publishes it on the ledger, where anyone can read it. It is only used
+        on a step that removes this signer.
       </p>
       <div className="flex items-center gap-2">
         <input
