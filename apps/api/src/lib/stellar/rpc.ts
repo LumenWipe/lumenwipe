@@ -181,9 +181,10 @@ function raceDeadline<T>(call: Promise<T>): Promise<T> {
   if (!deadline) return call;
   return new Promise<T>((resolve, reject) => {
     const expire = (): void => reject(new UpstreamError("timeout", "rpc"));
+    // Before the aborted check: a rejection nothing handles would end the process.
+    call.then(resolve, reject).finally(() => deadline.signal.removeEventListener("abort", expire));
     if (deadline.signal.aborted) return expire();
     deadline.signal.addEventListener("abort", expire, { once: true });
-    call.then(resolve, reject).finally(() => deadline.signal.removeEventListener("abort", expire));
   });
 }
 

@@ -7,7 +7,7 @@ import {
   PATH_ROUTING_API_HEADERS,
   PATH_ROUTING_API_URLS,
 } from "@/config/networks";
-import { assessIssuance, defaultIssuanceDeps } from "@/lib/close-api/issuance-preflight";
+import { assessIssuance, IssuerReadError } from "@/lib/close-api/issuance-preflight";
 import type { ResolveDefiPositionsDeps } from "@/lib/defi-positions/resolve-defi-positions";
 import {
   readAccountStateFrom,
@@ -18,6 +18,7 @@ import {
 import type { HorizonDeps } from "@/lib/stellar/horizon-http";
 import { fetchConversionPath } from "@/lib/stellar/path-finding";
 import {
+  horizonFallbacksFor,
   isRetryableProviderFailure,
   pinHorizonSource,
   pinnedHorizonSource,
@@ -100,12 +101,14 @@ function inRequest<T>(run: () => Promise<T>): Promise<T> {
   );
 }
 
+const realFetch = globalThis.fetch;
 const realPrimary = PATH_ROUTING_API_URLS.testnet;
 const realFallbacks = HORIZON_FALLBACKS.testnet;
 const realHeaders = PATH_ROUTING_API_HEADERS.testnet;
 
 beforeEach(() => resetProviderFailoverCount());
 afterEach(() => {
+  globalThis.fetch = realFetch;
   PATH_ROUTING_API_URLS.testnet = realPrimary;
   HORIZON_FALLBACKS.testnet = realFallbacks;
   PATH_ROUTING_API_HEADERS.testnet = realHeaders;
@@ -268,6 +271,20 @@ test("a primary's 404 is the answer and the next provider is never asked", async
   ).rejects.toBeInstanceOf(AccountNotFoundError);
   expect(await readTrustlinesOnly(ADDRESS, "testnet", deps[0]!, deps.slice(1))).toBeNull();
   expect(fake.callsOn("b")).toHaveLength(0);
+});
+
+test("the fallbacks are every provider after the first, in order, with their own headers", () => {
+  PATH_ROUTING_API_URLS.testnet = "https://a";
+  HORIZON_FALLBACKS.testnet = [
+    { url: "https://b", headers: { "x-other": "synthetic-b" } },
+    { url: "https://c", headers: {} },
+  ];
+  expect(horizonFallbacksFor("testnet")).toEqual([
+    { baseUrl: "https://b", headers: { "x-other": "synthetic-b" } },
+    { baseUrl: "https://c", headers: {} },
+  ]);
+  HORIZON_FALLBACKS.testnet = [];
+  expect(horizonFallbacksFor("testnet")).toEqual([]);
 });
 
 test("a lone provider's 404 is the answer", async () => {
@@ -560,33 +577,53 @@ test("budget: a short remainder is split, so the provider after a hung one still
   }
 });
 
-test("budget: the failover policy wins over the issuance read's own retries", async () => {
-  const clock = fakeClock(40_000);
-  const records = { _embedded: { records: [] } };
-  const fake = fakeProviders({
-    a: hang,
-    b: () => after(500, { body: records, ledger: 110 }),
-  });
+test("issuance never fails over: a primary outage with no pin refuses, and no fallback is asked", async () => {
+  const fake = fakeProviders({ a: down, b: () => ({ body: EMPTY_PAGE }) });
   PATH_ROUTING_API_URLS.testnet = "https://a";
   HORIZON_FALLBACKS.testnet = [{ url: "https://b", headers: {} }];
-  try {
-    const live = defaultIssuanceDeps();
-    const bound = (deps: HorizonDeps): HorizonDeps => ({
-      ...deps,
-      fetch: fake.fetch,
-      deadline: clock.deadline,
-    });
-    const summary = await assessIssuance(ADDRESS, "testnet", {
-      horizon: (network) => bound(live.horizon(network)),
-      fallbacks: (network) => live.fallbacks!(network).map(bound),
-    });
-    expect(summary).toBeNull();
-    expect(fake.callsOn("a")).toHaveLength(1);
-    expect(fake.callsOn("b")).toHaveLength(1);
-    expect(clock.elapsed()).toBeLessThanOrEqual(4_500);
-  } finally {
-    clock.restore();
-  }
+  globalThis.fetch = fake.fetch;
+  await expect(assessIssuance(ADDRESS, "testnet")).rejects.toBeInstanceOf(IssuerReadError);
+  expect(fake.callsOn("a")).toHaveLength(2);
+  expect(fake.callsOn("b")).toHaveLength(0);
+  expect(providerFailoverCount()).toBe(0);
+});
+
+test("issuance reads the snapshot's provider, on the issuance read's own policy", async () => {
+  const fake = fakeProviders({ a: down, b: () => ({ body: EMPTY_PAGE }) });
+  PATH_ROUTING_API_URLS.testnet = "https://a";
+  const summary = await inRequest(async () => {
+    pinHorizonSource("testnet", { baseUrl: "https://b", fetch: fake.fetch });
+    return (await Promise.all([assessIssuance(ADDRESS, "testnet")]))[0];
+  });
+  expect(summary).toBeNull();
+  expect(fake.callsOn("b").some((c) => c.path.startsWith("/assets"))).toBe(true);
+  expect(fake.callsOn("a").some((c) => c.path.startsWith("/assets"))).toBe(false);
+});
+
+test("an outage on the snapshot's provider refuses too, and the primary is not asked", async () => {
+  const fake = fakeProviders({ a: () => ({ body: EMPTY_PAGE }), b: down });
+  PATH_ROUTING_API_URLS.testnet = "https://a";
+  HORIZON_FALLBACKS.testnet = [{ url: "https://c", headers: {} }];
+  await inRequest(async () => {
+    pinHorizonSource("testnet", { baseUrl: "https://b", fetch: fake.fetch });
+    await expect(assessIssuance(ADDRESS, "testnet")).rejects.toBeInstanceOf(IssuerReadError);
+  });
+  expect(fake.callsOn("b")).toHaveLength(2);
+  expect(fake.callsOn("a")).toHaveLength(0);
+});
+
+test("a full read pins its winner, so the issuance read that follows lands on it", async () => {
+  const fake = fakeProviders({
+    a: down,
+    b: (path) => (path.startsWith("/assets") ? { body: EMPTY_PAGE } : healthy(110)(path)),
+  });
+  PATH_ROUTING_API_URLS.testnet = "https://a";
+  await inRequest(async () => {
+    await read(chain(fake.fetch, "a", "b"));
+    expect(await assessIssuance(ADDRESS, "testnet")).toBeNull();
+  });
+  expect(fake.callsOn("a")).toHaveLength(1);
+  expect(fake.callsOn("b").some((c) => c.path.startsWith("/assets"))).toBe(true);
 });
 
 test("conversion paths fail over too, with each provider's own headers", async () => {

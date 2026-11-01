@@ -2,7 +2,7 @@ import type { Network } from "@/config/networks";
 import { xlmToStroops } from "@/lib/utils/amounts";
 import { horizonDepsFor } from "@/lib/stellar/account-state";
 import { horizonPaginate, type HorizonDeps } from "@/lib/stellar/horizon-http";
-import { horizonFallbacksFor, withHorizonFailover } from "@/lib/stellar/provider-failover";
+import { pinnedHorizonSource } from "@/lib/stellar/provider-failover";
 
 const ISSUANCE_PAGE_LIMIT = 200;
 const ISSUANCE_MAX_ASSETS = 2_000;
@@ -25,17 +25,13 @@ export interface IssuanceSummary {
 
 export interface IssuanceDeps {
   horizon: (network: Network) => HorizonDeps;
-  fallbacks?: (network: Network) => HorizonDeps[];
 }
 
-const withIssuancePolicy = (deps: HorizonDeps): HorizonDeps => ({
-  ...deps,
-  client: { ...deps.client, policy: ISSUANCE_READ_POLICY },
-});
-
 export const defaultIssuanceDeps = (): IssuanceDeps => ({
-  horizon: (network) => withIssuancePolicy(horizonDepsFor(network)),
-  fallbacks: (network) => horizonFallbacksFor(network).map(withIssuancePolicy),
+  horizon: (network) => {
+    const base: HorizonDeps = pinnedHorizonSource(network) ?? horizonDepsFor(network);
+    return { ...base, client: { ...base.client, policy: ISSUANCE_READ_POLICY } };
+  },
 });
 
 interface AssetStats {
@@ -76,7 +72,9 @@ function summarize(records: AssetStats[]): IssuanceSummary | null {
  *
  * A provider running with asset statistics disabled answers 200 with no records, which reads
  * as "issues nothing"; that case cannot be told apart from a real empty result. Any other
- * failure, including a 404, is an `IssuerReadError`.
+ * failure, including a 404, is an `IssuerReadError`. That is why this never fails over: an empty
+ * answer opens the issuer gate, and moving to another provider after an outage would trade a
+ * refusal for that. It reads the provider the account snapshot came from, or the primary.
  */
 export async function assessIssuance(
   address: string,
@@ -84,17 +82,11 @@ export async function assessIssuance(
   deps: IssuanceDeps = defaultIssuanceDeps()
 ): Promise<IssuanceSummary | null> {
   try {
-    const records = await withHorizonFailover(
-      network,
+    const records = await horizonPaginate<AssetStats>(
+      `/assets?asset_issuer=${address}&limit=${ISSUANCE_PAGE_LIMIT}`,
       deps.horizon(network),
-      deps.fallbacks?.(network) ?? [],
-      (attempt) =>
-        horizonPaginate<AssetStats>(
-          `/assets?asset_issuer=${address}&limit=${ISSUANCE_PAGE_LIMIT}`,
-          attempt,
-          ISSUANCE_PAGE_LIMIT,
-          ISSUANCE_MAX_ASSETS
-        )
+      ISSUANCE_PAGE_LIMIT,
+      ISSUANCE_MAX_ASSETS
     );
     return summarize(records);
   } catch (e) {

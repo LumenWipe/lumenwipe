@@ -129,7 +129,8 @@ const pinKey = (network: Network): string => `horizon:${network}`;
 
 /** Remembers the provider the account snapshot came from, for reads that depend on it later. */
 export function pinHorizonSource(network: Network, source: HorizonSource): void {
-  currentProviderPins()?.set(pinKey(network), source);
+  const { baseUrl, headers, fetch } = source;
+  currentProviderPins()?.set(pinKey(network), { baseUrl, headers, fetch });
 }
 
 export function pinnedHorizonSource(network: Network): HorizonSource | undefined {

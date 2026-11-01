@@ -4,6 +4,8 @@ import type { AccountState } from "@lumenwipe/types";
 import { requestContextMiddleware } from "@/common/request-context";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { pinnedRpcProvider } from "@/lib/stellar/rpc";
+import { pinHorizonSource } from "@/lib/stellar/provider-failover";
+import * as issuance from "@/lib/close-api/issuance-preflight";
 import { buildCloseTransactions } from "@/lib/close-api/build-transactions";
 import { mapDomainError, TRANSACTION_ERRORS } from "@/lib/close-api/domain-errors";
 import { confirmLedgerState, findStateDrift } from "@/lib/close-api/state-drift";
@@ -395,6 +397,29 @@ describe("an RPC behind the snapshot, with more than one provider configured", (
     );
     latest.mockRestore();
     expect(pinned).toBe("https://rpc-b.test");
+  });
+
+  test("the round's issuance read, inside its Promise.all, sees the snapshot's pin", async () => {
+    spyOn(issuance, "assessIssuance").mockRestore();
+    const hosts: string[] = [];
+    const fetch = (async (input: string | URL | Request) => {
+      hosts.push(new URL(String(input)).hostname);
+      return new Response(JSON.stringify({ _embedded: { records: [] } }), { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+    const closeTime = String(Math.floor(Date.now() / 1000));
+    spyOn(rpc.Server.prototype, "getLatestLedger").mockResolvedValue({
+      sequence: 1000,
+      closeTime,
+    } as never);
+    useLedger(agreeing);
+    const res = { setHeader() {}, json() {}, on() {} };
+    await new Promise<void>((resolve, reject) =>
+      requestContextMiddleware()({ path: "/x" } as never, res as never, () => {
+        pinHorizonSource("testnet", { baseUrl: "https://snapshot-host.test", fetch });
+        buildFrom(snapshot).then(() => resolve(), reject);
+      })
+    );
+    expect(hosts).toEqual(["snapshot-host.test"]);
   });
 
   test("a lone RPC keeps the 409, however far behind", async () => {

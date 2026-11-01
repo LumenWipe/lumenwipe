@@ -68,10 +68,10 @@ const alive =
   (method) =>
     method === "getLatestLedger" ? latestLedger(sequence, ageSeconds) : { status: "healthy" };
 
-function inRequest<T>(run: () => Promise<T>): Promise<T> {
+function inRequest<T>(run: () => Promise<T>, deadlineMs?: number): Promise<T> {
   const res = { setHeader() {}, json() {}, on() {} };
   return new Promise<T>((resolve, reject) =>
-    requestContextMiddleware()({ path: "/x" } as never, res as never, () => {
+    requestContextMiddleware(deadlineMs)({ path: "/x" } as never, res as never, () => {
       run().then(resolve, reject);
     })
   );
@@ -245,6 +245,55 @@ test("the next provider wraps around from the last, and a lone list has none", a
   });
   RPC_FALLBACKS.testnet = [];
   expect(nextRpcServer("testnet")).toBeNull();
+});
+
+async function unhandledDuring(run: () => Promise<void>): Promise<unknown[]> {
+  const unhandled: unknown[] = [];
+  const listener = (reason: unknown): void => {
+    unhandled.push(reason);
+  };
+  process.on("unhandledRejection", listener);
+  try {
+    await run();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  } finally {
+    process.off("unhandledRejection", listener);
+  }
+  return unhandled;
+}
+
+const pastDeadline = async <T>(call: () => Promise<T>): Promise<unknown> =>
+  inRequest(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return call().catch((e: unknown) => e);
+  }, 1);
+
+test("a call rejecting after the deadline passed is a typed timeout, on a lone provider", async () => {
+  RPC_FALLBACKS.testnet = [];
+  const health = spyOn(rpc.Server.prototype, "getHealth").mockRejectedValue(new Error("down"));
+  try {
+    let failure: unknown;
+    const unhandled = await unhandledDuring(async () => {
+      failure = await pastDeadline(() => getRpcServer("testnet").getHealth());
+    });
+    expect(failure).toBeInstanceOf(UpstreamError);
+    expect(failure).toMatchObject({ kind: "timeout" });
+    expect(health).toHaveBeenCalledTimes(1);
+    expect(unhandled).toEqual([]);
+  } finally {
+    health.mockRestore();
+  }
+});
+
+test("a rejected pin after the deadline passed is a typed timeout, with a list", async () => {
+  fakeRpc({ [A]: dead, [B]: dead });
+  let failure: unknown;
+  const unhandled = await unhandledDuring(async () => {
+    failure = await pastDeadline(() => getRpcServer("testnet").getHealth());
+  });
+  expect(failure).toBeInstanceOf(UpstreamError);
+  expect(failure).toMatchObject({ kind: "timeout" });
+  expect(unhandled).toEqual([]);
 });
 
 const SOURCE = Keypair.random();
