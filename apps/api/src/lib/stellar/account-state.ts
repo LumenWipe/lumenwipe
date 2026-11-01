@@ -1,4 +1,9 @@
-import { type Network, PATH_ROUTING_API_URLS, OCTOPOS_API_URL_MAINNET } from "@/config/networks";
+import {
+  type Network,
+  OCTOPOS_API_URL_MAINNET,
+  PATH_ROUTING_API_HEADERS,
+  PATH_ROUTING_API_URLS,
+} from "@/config/networks";
 import {
   AccountNotFoundError,
   AccountStateChangedError,
@@ -9,6 +14,8 @@ import { detectSubEntryMismatch } from "./scan-fallback";
 import { horizonAssetToString } from "@/lib/utils/assets";
 import { enumerateSponsoredEntries } from "@/lib/stellar/sponsorship";
 import { horizonGet, type HorizonDeps } from "./horizon-http";
+import { horizonFallbacksFor, pinHorizonSource, withHorizonFailover } from "./provider-failover";
+import { UpstreamError } from "./upstream-client";
 import {
   defaultSorobanTokensDeps,
   discoverSorobanTokens,
@@ -21,7 +28,7 @@ import {
 import { enrichDefiPositions, knownTokensFor } from "@/lib/defi-positions/enrich";
 import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
 import { parseLedgerCloseTime } from "./claim-predicates";
-import { getRpcServer } from "./rpc";
+import { getRpcServer, pinRpcProvider, rpcReferenceLedger } from "./rpc";
 import { MEMO_REQUIRED_DATA_NAME } from "./memo-required";
 import { Logger } from "@nestjs/common";
 
@@ -200,7 +207,8 @@ export function horizonDepsFor(network: Network, fetchImpl?: typeof globalThis.f
   if (!baseUrl) {
     throw new Error(`PATH_ROUTING_API_${network.toUpperCase()} is not configured`);
   }
-  return { baseUrl, fetch: fetchImpl };
+  const headers = PATH_ROUTING_API_HEADERS[network];
+  return { baseUrl, fetch: fetchImpl, ...(Object.keys(headers).length > 0 && { headers }) };
 }
 
 /** Resolves the configured OctoPos provider. Unlike `horizonDepsFor`, never throws when
@@ -223,6 +231,10 @@ export interface AccountReadOptions {
   sorobanTokensDeps?: (positions: DefiPosition[]) => SorobanTokensDeps;
   /** Close time of the latest ledger in epoch seconds, null when it cannot be read. */
   ledgerCloseTime?: () => Promise<number | null>;
+  /** Further providers, in order. With any, a snapshot must also keep up with `referenceLedger`. */
+  fallbacks?: HorizonDeps[];
+  /** The ledger a snapshot is judged against; the pinned RPC's when absent. */
+  referenceLedger?: () => Promise<number>;
 }
 
 export async function readLedgerCloseTime(network: Network): Promise<number | null> {
@@ -268,18 +280,73 @@ async function readCollections(
   return { openOffers, claimableRead };
 }
 
-/** Reads the Horizon part once more, and refuses when it still does not settle on one ledger. */
-async function rereadSnapshot(address: string, deps: HorizonDeps) {
+interface LedgerRecord {
+  deps: HorizonDeps;
+  ledgers: number[];
+  isMissing: () => boolean;
+}
+
+function recordLedgers(deps: HorizonDeps): LedgerRecord {
   const ledgers: number[] = [];
-  const recorded = { ...deps, onLedger: (ledger: number) => ledgers.push(ledger) };
-  const account = await readAccountBody(address, recorded);
-  const collections = await readCollections(address, recorded);
+  let missing = false;
+  return {
+    ledgers,
+    isMissing: () => missing,
+    deps: {
+      ...deps,
+      onLedger: (ledger) => ledgers.push(ledger),
+      onLedgerMissing: () => {
+        missing = true;
+      },
+    },
+  };
+}
+
+/**
+ * Judged before the span check, and on the oldest read: a provider behind the network must end as
+ * an outage. Left to the checks after it, its old state would read as the account having changed.
+ */
+function assertKeepsUp(read: LedgerRecord, reference: number | null): void {
+  if (reference === null) return;
+  const behind =
+    read.isMissing() ||
+    read.ledgers.length === 0 ||
+    reference - Math.min(...read.ledgers) > MAX_SNAPSHOT_LEDGER_SPAN;
+  if (behind) throw new UpstreamError("unavailable", "horizon");
+}
+
+/** Reads the Horizon part once more, and refuses when it still does not settle on one ledger. */
+async function rereadSnapshot(address: string, deps: HorizonDeps, reference: number | null) {
+  const recorded = recordLedgers(deps);
+  const account = await readAccountBody(address, recorded.deps);
+  const collections = await readCollections(address, recorded.deps);
+  assertKeepsUp(recorded, reference);
+  const { ledgers } = recorded;
   if (!withinLedgerSpan(ledgers)) {
     throw new AccountStateChangedError(
       `account reads spanned ledgers ${Math.min(...ledgers)} to ${Math.max(...ledgers)}`
     );
   }
   return { account, ...collections, ledgers };
+}
+
+/** One provider's whole snapshot. The ledger record is per attempt: a span measured across two
+ *  providers would mean nothing. */
+async function readSnapshot(
+  address: string,
+  deps: HorizonDeps,
+  reference: number | null,
+  onBodyRead: () => void
+) {
+  const first = recordLedgers(deps);
+  const account = await readAccountBody(address, first.deps);
+  onBodyRead();
+  const collections = await readCollections(address, first.deps);
+  assertKeepsUp(first, reference);
+  const snapshot = withinLedgerSpan(first.ledgers)
+    ? { account, ...collections, ledgers: first.ledgers }
+    : await rereadSnapshot(address, deps, reference);
+  return { ...snapshot, source: deps };
 }
 
 export async function readAccountStateFrom(
@@ -289,17 +356,30 @@ export async function readAccountStateFrom(
   defiDeps: ResolveDefiPositionsDeps,
   options: AccountReadOptions = {}
 ): Promise<AccountState> {
-  const firstLedgers: number[] = [];
-  const first = { ...deps, onLedger: (ledger: number) => firstLedgers.push(ledger) };
-  const firstAccount = await readAccountBody(address, first);
-  const [firstCollections, detectedPositions, ledgerCloseTime] = await Promise.all([
-    readCollections(address, first),
-    resolveDefiPositions(address, network, defiDeps),
-    (options.ledgerCloseTime ?? (() => readLedgerCloseTime(network)))(),
+  const fallbacks = options.fallbacks ?? [];
+  const reference =
+    fallbacks.length > 0
+      ? await (options.referenceLedger ?? (() => rpcReferenceLedger(network)))()
+      : null;
+
+  // Not Horizon reads, so a restart must not repeat them; resolving twice is a no-op. Joined with
+  // the read in one Promise.all so a rejection on either side always has a handler.
+  let startDetection!: () => void;
+  const detection = new Promise<void>((resolve) => {
+    startDetection = resolve;
+  }).then(() =>
+    Promise.all([
+      resolveDefiPositions(address, network, defiDeps),
+      (options.ledgerCloseTime ?? (() => readLedgerCloseTime(network)))(),
+    ])
+  );
+  const [snapshot, [detectedPositions, ledgerCloseTime]] = await Promise.all([
+    withHorizonFailover(network, deps, fallbacks, (attempt) =>
+      readSnapshot(address, attempt, reference, startDetection)
+    ),
+    detection,
   ]);
-  const snapshot = withinLedgerSpan(firstLedgers)
-    ? { account: firstAccount, ...firstCollections, ledgers: firstLedgers }
-    : await rereadSnapshot(address, deps);
+  if (fallbacks.length > 0) pinHorizonSource(network, snapshot.source);
   const { account, openOffers, claimableRead } = snapshot;
 
   const nativeBalance = account.balances.find((b) => b.asset_type === "native");
@@ -343,6 +423,9 @@ export async function readAccountStateFrom(
           options.manualTokenCandidates ?? [],
           { budgetMs: options.sorobanTokensBudgetMs, scanEvents: options.scanTokenEvents }
         );
+  // The enrichers read the provider's URL synchronously, so the pin has to have settled. A pin that
+  // failed leaves them on the primary: they are presentation, and never fail the read.
+  await pinRpcProvider(network).catch(() => undefined);
   const [defiPositions, sorobanTokens] = await Promise.all([
     enrichDefiPositions(detectedPositions, {
       network,
@@ -379,7 +462,8 @@ export async function readAccountStateFrom(
     address,
     network,
     numSponsoring,
-    numSponsoringKnown
+    numSponsoringKnown,
+    snapshot.source
   );
 
   return {
@@ -412,9 +496,9 @@ export async function readAccountStateFrom(
     ...(snapshot.ledgers.length > 0 ? { snapshotLedger: Math.max(...snapshot.ledgers) } : {}),
     // Ground truth for completeness: numSubEntries is what the ledger says the account holds.
     // Enumerating fewer means the plan would leave entries behind and the merge would fail
-    // with op_has_sub_entries, so a mismatch has to reach the caller as a blocker. There is no
-    // second path to re-check against any more - with one zero-lag provider a mismatch is the
-    // answer, not a prompt to look again.
+    // with op_has_sub_entries, so a mismatch has to reach the caller as a blocker. It is the
+    // answer, not a prompt to look again: the snapshot is one provider's, and a later provider
+    // is only tried for an outage or a non-conforming response, never for a different count.
     subEntryMismatch: detectSubEntryMismatch({
       address,
       signers,
@@ -446,14 +530,21 @@ export async function readAccountStateFrom(
 export async function readTrustlinesOnly(
   address: string,
   network: Network = "testnet",
-  deps: HorizonDeps = horizonDepsFor(network)
+  deps: HorizonDeps = horizonDepsFor(network),
+  fallbacks: HorizonDeps[] = horizonFallbacksFor(network)
 ): Promise<{
   address: string;
   trustlines: Array<Trustline & { buyingLiabilities?: string }>;
   memoRequired: boolean;
 } | null> {
-  const account = await horizonGet<ApiAccount>(`/accounts/${address}`, deps);
-  if (!account) return null;
+  return withHorizonFailover(network, deps, fallbacks, async (attempt, isPrimary) => {
+    const account = await horizonGet<ApiAccount>(`/accounts/${address}`, attempt);
+    if (!account && !isPrimary) throw new AccountNotFoundError(address);
+    return account ? trustlinesOf(account, address) : null;
+  });
+}
+
+function trustlinesOf(account: ApiAccount, address: string) {
   if (!Array.isArray(account.balances)) {
     throw new Error(
       `Horizon returned an account body for ${address} with no balances; refusing to treat ` +
@@ -490,10 +581,17 @@ function dataValue(data: Record<string, string> | undefined, name: string): stri
 export async function readNativeBalance(
   address: string,
   network: Network,
-  deps: HorizonDeps = horizonDepsFor(network)
+  deps: HorizonDeps = horizonDepsFor(network),
+  fallbacks: HorizonDeps[] = horizonFallbacksFor(network)
 ): Promise<{ nativeBalanceLumens: string }> {
-  const account = await horizonGet<ApiAccount>(`/accounts/${address}`, deps);
-  if (!account) throw new AccountNotFoundError(address);
+  return withHorizonFailover(network, deps, fallbacks, async (attempt) => {
+    const account = await horizonGet<ApiAccount>(`/accounts/${address}`, attempt);
+    if (!account) throw new AccountNotFoundError(address);
+    return nativeBalanceOf(account, address);
+  });
+}
+
+function nativeBalanceOf(account: ApiAccount, address: string): { nativeBalanceLumens: string } {
   if (!Array.isArray(account.balances)) {
     throw new Error(
       `Horizon returned an account body for ${address} with no balances; refusing to treat ` +
@@ -510,11 +608,8 @@ export async function getAccountState(
   network: Network = "testnet",
   options: AccountReadOptions = {}
 ): Promise<AccountState> {
-  return readAccountStateFrom(
-    address,
-    network,
-    horizonDepsFor(network),
-    defiPositionsDepsFor(),
-    options
-  );
+  return readAccountStateFrom(address, network, horizonDepsFor(network), defiPositionsDepsFor(), {
+    fallbacks: horizonFallbacksFor(network),
+    ...options,
+  });
 }

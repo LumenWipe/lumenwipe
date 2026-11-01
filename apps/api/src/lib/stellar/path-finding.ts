@@ -1,8 +1,9 @@
 import type { Network } from "@/config/networks";
-import { PATH_ROUTING_API_URLS } from "@/config/networks";
+import { PATH_ROUTING_API_HEADERS, PATH_ROUTING_API_URLS } from "@/config/networks";
 import { SLIPPAGE_BPS } from "@/config/constants";
 import type { Deadline } from "@/common/deadline";
 import { UpstreamError, upstreamGetJson, type UpstreamOptions } from "./upstream-client";
+import { horizonFallbacksFor, withHorizonFailover } from "./provider-failover";
 import type { ConversionPath } from "@lumenwipe/types";
 import { isNativeAsset, parseAsset } from "@/lib/utils/assets";
 import { stroopsToXlm, xlmToStroops } from "@/lib/utils/amounts";
@@ -117,13 +118,26 @@ export async function fetchConversionPath(
 
   let records: PathRecord[];
   try {
-    records = recordsOf(
-      await upstreamGetJson<PathsResponse>(base, `/paths/strict-send?${query}`, {
-        target: "paths",
+    records = await withHorizonFailover(
+      network,
+      {
+        baseUrl: base,
+        headers: PATH_ROUTING_API_HEADERS[network],
         fetch: options.fetch,
         deadline: options.deadline,
-        ...options.client,
-      })
+        client: options.client,
+      },
+      horizonFallbacksFor(network, options.fetch),
+      async (attempt) =>
+        recordsOf(
+          await upstreamGetJson<PathsResponse>(attempt.baseUrl, `/paths/strict-send?${query}`, {
+            target: "paths",
+            fetch: attempt.fetch,
+            deadline: attempt.deadline,
+            headers: attempt.headers,
+            ...attempt.client,
+          })
+        )
     );
   } catch (error) {
     if (!(error instanceof UpstreamError)) throw error;

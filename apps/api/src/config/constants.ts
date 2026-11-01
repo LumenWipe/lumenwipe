@@ -16,6 +16,8 @@ export const HORIZON_TIMEOUT_MS = 10000; // 10 seconds
 // maxDuration is 55 s, so the API answers (with a typed error) before the proxy gives up.
 export const REQUEST_DEADLINE_MS = 40_000;
 export const RPC_READ_TIMEOUT_MS = 10_000;
+// About six ledgers: an RPC whose newest ledger is older than this has fallen behind the network.
+export const RPC_MAX_LEDGER_AGE_SECONDS = 30;
 export const RPC_SIMULATE_TIMEOUT_MS = 20_000;
 // OctoPos is an optional enhancement - fail fast into degraded mode rather than stall the
 // analyze call waiting on a third-party DeFi position provider. Combined with the 1-retry

@@ -2,6 +2,7 @@ import type { Network } from "@/config/networks";
 import { xlmToStroops } from "@/lib/utils/amounts";
 import { horizonDepsFor } from "@/lib/stellar/account-state";
 import { horizonPaginate, type HorizonDeps } from "@/lib/stellar/horizon-http";
+import { horizonFallbacksFor, withHorizonFailover } from "@/lib/stellar/provider-failover";
 
 const ISSUANCE_PAGE_LIMIT = 200;
 const ISSUANCE_MAX_ASSETS = 2_000;
@@ -24,13 +25,17 @@ export interface IssuanceSummary {
 
 export interface IssuanceDeps {
   horizon: (network: Network) => HorizonDeps;
+  fallbacks?: (network: Network) => HorizonDeps[];
 }
 
+const withIssuancePolicy = (deps: HorizonDeps): HorizonDeps => ({
+  ...deps,
+  client: { ...deps.client, policy: ISSUANCE_READ_POLICY },
+});
+
 export const defaultIssuanceDeps = (): IssuanceDeps => ({
-  horizon: (network) => {
-    const base = horizonDepsFor(network);
-    return { ...base, client: { ...base.client, policy: ISSUANCE_READ_POLICY } };
-  },
+  horizon: (network) => withIssuancePolicy(horizonDepsFor(network)),
+  fallbacks: (network) => horizonFallbacksFor(network).map(withIssuancePolicy),
 });
 
 interface AssetStats {
@@ -79,11 +84,17 @@ export async function assessIssuance(
   deps: IssuanceDeps = defaultIssuanceDeps()
 ): Promise<IssuanceSummary | null> {
   try {
-    const records = await horizonPaginate<AssetStats>(
-      `/assets?asset_issuer=${address}&limit=${ISSUANCE_PAGE_LIMIT}`,
+    const records = await withHorizonFailover(
+      network,
       deps.horizon(network),
-      ISSUANCE_PAGE_LIMIT,
-      ISSUANCE_MAX_ASSETS
+      deps.fallbacks?.(network) ?? [],
+      (attempt) =>
+        horizonPaginate<AssetStats>(
+          `/assets?asset_issuer=${address}&limit=${ISSUANCE_PAGE_LIMIT}`,
+          attempt,
+          ISSUANCE_PAGE_LIMIT,
+          ISSUANCE_MAX_ASSETS
+        )
     );
     return summarize(records);
   } catch (e) {

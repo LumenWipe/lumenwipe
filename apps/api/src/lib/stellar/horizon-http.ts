@@ -22,6 +22,8 @@ export { rateLimitHits, resetUpstreamCounters as resetRateLimitHits } from "./up
 
 export interface HorizonDeps {
   baseUrl: string;
+  /** Auth for this provider alone. */
+  headers?: Record<string, string>;
   /** Defaults to global fetch. Injected in tests to stub responses and count calls. */
   fetch?: typeof globalThis.fetch;
   /** The request's budget; read from the request context when absent. */
@@ -30,6 +32,8 @@ export interface HorizonDeps {
   client?: Pick<UpstreamOptions, "policy" | "random" | "sleep" | "now">;
   /** Receives the ledger each response reflects (Horizon's `Latest-Ledger` header), when sent. */
   onLedger?: (ledger: number) => void;
+  /** Told when a response with a body came without a usable `Latest-Ledger` header. */
+  onLedgerMissing?: () => void;
 }
 
 function ledgerHeader(headers: Pick<Headers, "get">): number | null {
@@ -49,11 +53,13 @@ export async function horizonGet<T>(path: string, deps: HorizonDeps): Promise<T 
     target: "horizon",
     fetch: deps.fetch,
     deadline: deps.deadline,
+    headers: deps.headers,
     notFoundIsNull: true,
     ...deps.client,
     onHeaders: (headers) => {
       const ledger = ledgerHeader(headers);
-      if (ledger !== null) deps.onLedger?.(ledger);
+      if (ledger === null) deps.onLedgerMissing?.();
+      else deps.onLedger?.(ledger);
     },
   });
 }

@@ -37,6 +37,8 @@ export interface LiveLedger {
   offers: Map<string, LiveOffer>;
   /** By data entry name, the value in base64 as the Horizon-compatible read reports it. */
   data: Map<string, string>;
+  /** The oldest ledger any of the reads reflects. */
+  latestLedger?: number;
 }
 
 export function poolShareKey(poolId: string): string {
@@ -49,7 +51,7 @@ type Target =
   | { kind: "offer"; id: string }
   | { kind: "data"; id: string };
 
-const LABEL = "The account's ledger entries";
+export const LIVE_LEDGER_LABEL = "The account's ledger entries";
 
 function assetString(asset: xdr.Asset): string {
   const decoded = Asset.fromOperation(asset);
@@ -116,7 +118,7 @@ function record(live: LiveLedger, target: Target, val: xdr.LedgerEntryData): voi
   } else if (target.kind === "data" && val.type === "data") {
     live.data.set(target.id, Buffer.from(val.data.dataValue.value).toString("base64"));
   } else {
-    throw new LiveReadError(LABEL);
+    throw new LiveReadError(LIVE_LEDGER_LABEL);
   }
 }
 
@@ -139,16 +141,18 @@ export async function readLiveLedger(
   };
   for (let i = 0; i < wanted.length; i += RPC_LEDGER_KEY_LIMIT) {
     const chunk = wanted.slice(i, i + RPC_LEDGER_KEY_LIMIT).map((w) => w.key);
-    let entries: Awaited<ReturnType<LedgerReader["getLedgerEntries"]>>["entries"];
+    let response: Awaited<ReturnType<LedgerReader["getLedgerEntries"]>>;
     try {
-      entries = (await server.getLedgerEntries(...chunk)).entries;
+      response = await server.getLedgerEntries(...chunk);
     } catch {
-      throw new LiveReadError(LABEL);
+      throw new LiveReadError(LIVE_LEDGER_LABEL);
     }
-    if (!Array.isArray(entries)) throw new LiveReadError(LABEL);
+    const { entries, latestLedger } = response;
+    if (!Array.isArray(entries)) throw new LiveReadError(LIVE_LEDGER_LABEL);
+    live.latestLedger = Math.min(live.latestLedger ?? latestLedger, latestLedger);
     for (const entry of entries) {
       const target = byKey.get(entry.key.toXDR("base64"));
-      if (!target) throw new LiveReadError(LABEL);
+      if (!target) throw new LiveReadError(LIVE_LEDGER_LABEL);
       record(live, target, entry.val);
     }
   }

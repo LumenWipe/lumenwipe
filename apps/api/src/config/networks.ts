@@ -32,18 +32,38 @@ export const NETWORK_PASSPHRASES: Record<Network, string> = {
   testnet: "Test SDF Network ; September 2015",
 };
 
+/** Splits a comma-separated endpoint setting. A value with no comma is returned untouched. */
+export function splitEndpointList(raw: string | undefined): string[] {
+  if (!raw) return [];
+  if (!raw.includes(",")) return [raw];
+  return raw
+    .split(",")
+    .map((url) => url.trim())
+    .filter((url) => url.length > 0);
+}
+
+const RPC_LISTS: Record<Network, string[]> = {
+  mainnet: splitEndpointList(readEnv("STELLAR_RPC_MAINNET", "NEXT_PUBLIC_STELLAR_RPC_MAINNET")),
+  testnet: splitEndpointList(readEnv("STELLAR_RPC_TESTNET", "NEXT_PUBLIC_STELLAR_RPC_TESTNET")),
+};
+
+const PATH_ROUTING_LISTS: Record<Network, string[]> = {
+  mainnet: splitEndpointList(
+    readEnv("PATH_ROUTING_API_MAINNET", "NEXT_PUBLIC_PATH_ROUTING_API_MAINNET")
+  ),
+  testnet: splitEndpointList(
+    readEnv("PATH_ROUTING_API_TESTNET", "NEXT_PUBLIC_PATH_ROUTING_API_TESTNET")
+  ),
+};
+
 export const RPC_URLS: Record<Network, string> = {
-  mainnet:
-    readEnv("STELLAR_RPC_MAINNET", "NEXT_PUBLIC_STELLAR_RPC_MAINNET") ||
-    "https://mainnet.sorobanrpc.com",
-  testnet:
-    readEnv("STELLAR_RPC_TESTNET", "NEXT_PUBLIC_STELLAR_RPC_TESTNET") ||
-    "https://soroban-testnet.stellar.org",
+  mainnet: RPC_LISTS.mainnet[0] || "https://mainnet.sorobanrpc.com",
+  testnet: RPC_LISTS.testnet[0] || "https://soroban-testnet.stellar.org",
 };
 
 export const PATH_ROUTING_API_URLS: Record<Network, string> = {
-  mainnet: readEnv("PATH_ROUTING_API_MAINNET", "NEXT_PUBLIC_PATH_ROUTING_API_MAINNET") || "",
-  testnet: readEnv("PATH_ROUTING_API_TESTNET", "NEXT_PUBLIC_PATH_ROUTING_API_TESTNET") || "",
+  mainnet: PATH_ROUTING_LISTS.mainnet[0] ?? "",
+  testnet: PATH_ROUTING_LISTS.testnet[0] ?? "",
 };
 
 /**
@@ -93,6 +113,16 @@ function buildRpcHeaders(name?: string, value?: string): Record<string, string> 
   return { [name]: value ?? "" };
 }
 
+/** The header variables of one list position; the first URL keeps the historical names. */
+export function endpointHeaderVars(
+  base: "STELLAR_RPC" | "PATH_ROUTING_API",
+  network: Network,
+  position: number
+): { name: string; value: string } {
+  const suffix = `${network.toUpperCase()}${position > 1 ? `_${position}` : ""}`;
+  return { name: `${base}_HEADER_NAME_${suffix}`, value: `${base}_HEADER_VALUE_${suffix}` };
+}
+
 export const RPC_HEADERS: Record<Network, Record<string, string>> = {
   mainnet: buildRpcHeaders(
     readEnv("STELLAR_RPC_HEADER_NAME_MAINNET", "NEXT_PUBLIC_STELLAR_RPC_HEADER_NAME_MAINNET"),
@@ -103,6 +133,80 @@ export const RPC_HEADERS: Record<Network, Record<string, string>> = {
     readEnv("STELLAR_RPC_HEADER_VALUE_TESTNET", "NEXT_PUBLIC_STELLAR_RPC_HEADER_VALUE_TESTNET")
   ),
 };
+
+export const PATH_ROUTING_API_HEADERS: Record<Network, Record<string, string>> = {
+  mainnet: positionHeaders("PATH_ROUTING_API", "mainnet", 1),
+  testnet: positionHeaders("PATH_ROUTING_API", "testnet", 1),
+};
+
+export interface ProviderEndpoint {
+  url: string;
+  /** Sent to this URL alone: a credential must never reach another provider's host. */
+  headers: Record<string, string>;
+}
+
+function positionHeaders(
+  base: "STELLAR_RPC" | "PATH_ROUTING_API",
+  network: Network,
+  position: number
+): Record<string, string> {
+  const vars = endpointHeaderVars(base, network, position);
+  return buildRpcHeaders(process.env[vars.name], process.env[vars.value]);
+}
+
+function fallbacksFrom(
+  urls: string[],
+  base: "STELLAR_RPC" | "PATH_ROUTING_API",
+  network: Network
+): ProviderEndpoint[] {
+  return urls.slice(1).map((url, i) => ({ url, headers: positionHeaders(base, network, i + 2) }));
+}
+
+export const RPC_FALLBACKS: Record<Network, ProviderEndpoint[]> = {
+  mainnet: fallbacksFrom(RPC_LISTS.mainnet, "STELLAR_RPC", "mainnet"),
+  testnet: fallbacksFrom(RPC_LISTS.testnet, "STELLAR_RPC", "testnet"),
+};
+
+export const HORIZON_FALLBACKS: Record<Network, ProviderEndpoint[]> = {
+  mainnet: fallbacksFrom(PATH_ROUTING_LISTS.mainnet, "PATH_ROUTING_API", "mainnet"),
+  testnet: fallbacksFrom(PATH_ROUTING_LISTS.testnet, "PATH_ROUTING_API", "testnet"),
+};
+
+/** The RPC providers of `network`, in failover order. */
+export function rpcProviders(network: Network): ProviderEndpoint[] {
+  return [{ url: RPC_URLS[network], headers: RPC_HEADERS[network] }, ...RPC_FALLBACKS[network]];
+}
+
+/** The Horizon-compatible providers of `network`, in failover order; empty when unconfigured. */
+export function horizonProviders(network: Network): ProviderEndpoint[] {
+  const url = PATH_ROUTING_API_URLS[network];
+  if (!url) return [];
+  return [{ url, headers: PATH_ROUTING_API_HEADERS[network] }, ...HORIZON_FALLBACKS[network]];
+}
+
+/** The hostname alone: a provider URL can carry a key in its path, query or user info. */
+export function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "invalid-url";
+  }
+}
+
+/** One line per list for the boot log, hostnames only. */
+export function effectiveEndpointHosts(): string[] {
+  return VALID_NETWORKS.flatMap((network) =>
+    (
+      [
+        ["rpc", rpcProviders(network)],
+        ["horizon", horizonProviders(network)],
+      ] as const
+    ).map(([label, providers]) => {
+      const hosts = providers.map((p) => hostnameOf(p.url)).join(", ");
+      return `${network} ${label} endpoints: ${hosts || "none"}`;
+    })
+  );
+}
 
 /**
  * Shared mediator (intermediary) account used to forward funds to exchange

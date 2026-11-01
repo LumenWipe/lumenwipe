@@ -13,6 +13,8 @@
  * currently intended state; refusing to boot over it would take testnet down with it.
  */
 
+import { endpointHeaderVars, splitEndpointList, type Network } from "./networks";
+
 export interface EnvProblem {
   variable: string;
   message: string;
@@ -76,6 +78,68 @@ const OPTIONAL: Array<{ name: string; consequence: string }> = [
   },
 ];
 
+const ENDPOINT_LISTS: ReadonlyArray<{
+  base: "STELLAR_RPC" | "PATH_ROUTING_API";
+  network: Network;
+  ifUnset: string;
+}> = [
+  {
+    base: "STELLAR_RPC",
+    network: "mainnet",
+    ifUnset: "mainnet reads and submissions use the compiled-in public endpoint",
+  },
+  { base: "STELLAR_RPC", network: "testnet", ifUnset: "" },
+  {
+    base: "PATH_ROUTING_API",
+    network: "mainnet",
+    ifUnset: "mainnet account reads are unavailable",
+  },
+  { base: "PATH_ROUTING_API", network: "testnet", ifUnset: "" },
+];
+
+/** The new name wins whenever present, even empty, exactly as `readEnv` in networks.ts decides. */
+function effectiveEnv(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  return name in env ? env[name] : env[`NEXT_PUBLIC_${name}`];
+}
+
+function sameEndpointKey(url: URL): string {
+  return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, "")}${url.search}`;
+}
+
+/** Messages name positions, never values: a provider URL can carry a key. */
+function endpointListProblems(
+  variable: string,
+  urls: string[],
+  env: NodeJS.ProcessEnv,
+  list: (typeof ENDPOINT_LISTS)[number]
+): EnvProblem[] {
+  const problems: EnvProblem[] = [];
+  const seen = new Set<string>();
+  urls.forEach((raw, i) => {
+    const position = i + 1;
+    const report = (issue: string): void => {
+      problems.push({ variable, message: `${variable} entry ${position} ${issue}.` });
+    };
+    let url: URL | undefined;
+    try {
+      url = new URL(raw);
+    } catch {
+      report("is not a valid URL");
+    }
+    if (url) {
+      if (url.protocol !== "https:") report("must use https");
+      const key = sameEndpointKey(url);
+      if (seen.has(key)) report("duplicates an earlier entry");
+      seen.add(key);
+    }
+    const vars = endpointHeaderVars(list.base, list.network, position);
+    const hasName = Boolean(effectiveEnv(env, vars.name));
+    const hasValue = Boolean(effectiveEnv(env, vars.value));
+    if (hasName !== hasValue) report(`needs both ${vars.name} and ${vars.value}, or neither`);
+  });
+  return problems;
+}
+
 /**
  * Checks the environment. Returns the fatal problems; `warnings` are for logging.
  *
@@ -115,6 +179,23 @@ export function checkEnv(env: NodeJS.ProcessEnv = process.env): {
   for (const { name, consequence } of OPTIONAL) {
     if (!env[name] || env[name]!.trim() === "") {
       warnings.push({ variable: name, message: `${name} is not set - ${consequence}.` });
+    }
+  }
+
+  for (const list of ENDPOINT_LISTS) {
+    const variable = `${list.base}_${list.network.toUpperCase()}`;
+    const urls = splitEndpointList(effectiveEnv(env, variable)?.trim());
+    // A list only becomes fatal once it is one: a lone URL boots exactly as it always has.
+    if (urls.length > 1) problems.push(...endpointListProblems(variable, urls, env, list));
+    if (list.network !== "mainnet" || urls.length > 0) continue;
+    const message = `${variable} is not set - ${list.ifUnset}.`;
+    if (env.REQUIRE_EXPLICIT_MAINNET_ENDPOINTS === "true") {
+      problems.push({
+        variable,
+        message: `${message} REQUIRE_EXPLICIT_MAINNET_ENDPOINTS=true requires an explicit value.`,
+      });
+    } else if (env.NODE_ENV === "production") {
+      warnings.push({ variable, message });
     }
   }
 

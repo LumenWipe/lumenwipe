@@ -1,4 +1,4 @@
-import { PATH_ROUTING_API_URLS } from "@/config/networks";
+import { PATH_ROUTING_API_HEADERS, PATH_ROUTING_API_URLS } from "@/config/networks";
 import type { Network } from "@/config/networks";
 import { SPONSORSHIP_MAX_OPERATIONS_SCANNED } from "@/config/constants";
 import type { Deadline } from "@/common/deadline";
@@ -10,6 +10,7 @@ import {
 } from "@/lib/stellar/upstream-client";
 import { horizonAssetToString } from "@/lib/utils/assets";
 import { parseClaimPredicate } from "@/lib/stellar/horizon-adapter";
+import { pinnedHorizonSource, type HorizonSource } from "@/lib/stellar/provider-failover";
 import {
   reconcileSponsoredEntries,
   type SponsorshipCandidate,
@@ -33,12 +34,30 @@ const OWNER_FETCH_CONCURRENCY = 10;
 const OWNER_FETCH_CONCURRENCY_RATE_LIMITED = 2;
 
 function getJson<T>(
-  base: string,
+  source: HorizonSource,
   path: string,
   deadline: Deadline,
   notFoundIsNull = false
 ): Promise<T | null> {
-  return upstreamGetJson<T>(base, path, { target: "sponsorship", deadline, notFoundIsNull });
+  return upstreamGetJson<T>(source.baseUrl, path, {
+    target: "sponsorship",
+    deadline,
+    notFoundIsNull,
+    fetch: source.fetch,
+    headers: source.headers,
+  });
+}
+
+/** The provider the account snapshot came from when there is one, the primary otherwise: these
+ *  reads complete that snapshot, so they never move to another provider on their own. */
+function sourceFor(network: Network, explicit?: HorizonSource): HorizonSource {
+  return (
+    explicit ??
+    pinnedHorizonSource(network) ?? {
+      baseUrl: PATH_ROUTING_API_URLS[network],
+      headers: PATH_ROUTING_API_HEADERS[network],
+    }
+  );
 }
 
 const seg = encodeURIComponent;
@@ -74,11 +93,10 @@ interface HorizonOperationsPage {
 // for why that's fine.
 async function discoverSponsorshipCandidates(
   address: string,
-  network: Network,
+  source: HorizonSource,
   deadline: Deadline
 ): Promise<{ candidates: SponsorshipCandidate[]; incomplete: boolean }> {
-  const base = PATH_ROUTING_API_URLS[network];
-  if (!base) return { candidates: [], incomplete: true };
+  if (!source.baseUrl) return { candidates: [], incomplete: true };
 
   const candidates: SponsorshipCandidate[] = [];
   let scanned = 0;
@@ -100,7 +118,7 @@ async function discoverSponsorshipCandidates(
     let nextHref: string | undefined;
     try {
       const page: HorizonOperationsPage | null = await getJson<HorizonOperationsPage>(
-        base,
+        source,
         nextPath,
         deadline
       );
@@ -168,7 +186,7 @@ async function discoverSponsorshipCandidates(
 
     nextPath =
       nextHref && recordCount === OPERATIONS_PAGE_LIMIT
-        ? pathOnBase(nextHref, base, "sponsorship")
+        ? pathOnBase(nextHref, source.baseUrl, "sponsorship")
         : null;
   }
 
@@ -217,9 +235,10 @@ interface HorizonOffersPage {
 export async function fetchOwnerLiveState(
   owner: string,
   network: Network,
-  deadline: Deadline = resolveDeadline()
+  deadline: Deadline = resolveDeadline(),
+  explicitSource?: HorizonSource
 ): Promise<OwnerLiveState> {
-  const base = PATH_ROUTING_API_URLS[network];
+  const source = sourceFor(network, explicitSource);
   const empty: OwnerLiveState = {
     accountSponsor: null,
     trustlineSponsors: {},
@@ -229,11 +248,11 @@ export async function fetchOwnerLiveState(
     fetchFailed: true,
     reserve: null,
   };
-  if (!base) return empty;
+  if (!source.baseUrl) return empty;
 
   try {
     const account = await getJson<HorizonAccountForSponsorship>(
-      base,
+      source,
       `/accounts/${seg(owner)}`,
       deadline,
       true
@@ -273,7 +292,7 @@ export async function fetchOwnerLiveState(
         // etc. - encode, or such a name silently truncates the path and queries a
         // different key entirely (a wrong-inclusion risk, not just a missed one).
         const data = await getJson<{ sponsor?: string }>(
-          base,
+          source,
           `/accounts/${seg(owner)}/data/${seg(key)}`,
           deadline,
           true
@@ -304,7 +323,7 @@ export async function fetchOwnerLiveState(
       while (nextPath) {
         let page: HorizonOffersPage | null;
         try {
-          page = await getJson<HorizonOffersPage>(base, nextPath, deadline);
+          page = await getJson<HorizonOffersPage>(source, nextPath, deadline);
         } catch {
           offersFetchFailed = true;
           break;
@@ -314,7 +333,9 @@ export async function fetchOwnerLiveState(
         const nextHref: string | undefined = page?._links?.next?.href;
         try {
           nextPath =
-            nextHref && records.length === 200 ? pathOnBase(nextHref, base, "sponsorship") : null;
+            nextHref && records.length === 200
+              ? pathOnBase(nextHref, source.baseUrl, "sponsorship")
+              : null;
         } catch {
           offersFetchFailed = true;
           break;
@@ -359,7 +380,8 @@ export async function fetchOwnerLiveState(
  */
 export async function fetchOwnerLiveStatesBounded(
   owners: string[],
-  network: Network
+  network: Network,
+  source?: HorizonSource
 ): Promise<Map<string, OwnerLiveState>> {
   const liveStateEntries: Array<[string, OwnerLiveState]> = [];
   const deadline = resolveDeadline();
@@ -375,7 +397,7 @@ export async function fetchOwnerLiveStatesBounded(
     const batchResults = await Promise.all(
       batch.map(async (owner): Promise<[string, OwnerLiveState]> => [
         owner,
-        await fetchOwnerLiveState(owner, network, deadline),
+        await fetchOwnerLiveState(owner, network, deadline, source),
       ])
     );
     liveStateEntries.push(...batchResults);
@@ -399,16 +421,15 @@ interface HorizonClaimableBalancesPage {
 
 async function fetchClaimableBalancesBySponsor(
   address: string,
-  network: Network,
+  source: HorizonSource,
   deadline: Deadline
 ): Promise<{
   entries: SponsoredEntry[];
   claimantCounts: Map<string, number>;
   incomplete: boolean;
 }> {
-  const base = PATH_ROUTING_API_URLS[network];
   const claimantCounts = new Map<string, number>();
-  if (!base) return { entries: [], claimantCounts, incomplete: true };
+  if (!source.baseUrl) return { entries: [], claimantCounts, incomplete: true };
 
   const entries: SponsoredEntry[] = [];
   let incomplete = false;
@@ -422,7 +443,7 @@ async function fetchClaimableBalancesBySponsor(
     let nextHref: string | undefined;
     try {
       const page: HorizonClaimableBalancesPage | null = await getJson<HorizonClaimableBalancesPage>(
-        base,
+        source,
         nextPath,
         deadline
       );
@@ -447,7 +468,9 @@ async function fetchClaimableBalancesBySponsor(
     }
 
     nextPath =
-      nextHref && recordCount === CB_PAGE_LIMIT ? pathOnBase(nextHref, base, "sponsorship") : null;
+      nextHref && recordCount === CB_PAGE_LIMIT
+        ? pathOnBase(nextHref, source.baseUrl, "sponsorship")
+        : null;
   }
   if (nextPath) incomplete = true; // hit CB_MAX_TOTAL with more pages remaining
 
@@ -465,7 +488,8 @@ export async function enumerateSponsoredEntries(
   address: string,
   network: Network,
   numSponsoring: number,
-  numSponsoringKnown: boolean
+  numSponsoringKnown: boolean,
+  source?: HorizonSource
 ): Promise<{ sponsoredEntries: SponsoredEntry[]; sponsorshipEnumerationIncomplete: boolean }> {
   // A trustworthy zero is a complete answer on its own, and it covers the large majority
   // of real accounts. Skipping the I/O here keeps every close-flow endpoint that reads
@@ -480,7 +504,8 @@ export async function enumerateSponsoredEntries(
       address,
       network,
       numSponsoring,
-      numSponsoringKnown
+      numSponsoringKnown,
+      sourceFor(network, source)
     );
   } catch (err) {
     // Last-resort backstop: this module is embedded in the account read that every close
@@ -501,18 +526,19 @@ async function enumerateSponsoredEntriesUnguarded(
   address: string,
   network: Network,
   numSponsoring: number,
-  numSponsoringKnown: boolean
+  numSponsoringKnown: boolean,
+  source: HorizonSource
 ): Promise<{ sponsoredEntries: SponsoredEntry[]; sponsorshipEnumerationIncomplete: boolean }> {
   const deadline = resolveDeadline();
   const [{ candidates, incomplete: discoveryIncomplete }, cbResult] = await Promise.all([
-    discoverSponsorshipCandidates(address, network, deadline),
-    fetchClaimableBalancesBySponsor(address, network, deadline),
+    discoverSponsorshipCandidates(address, source, deadline),
+    fetchClaimableBalancesBySponsor(address, source, deadline),
   ]);
 
   const owners = new Set<string>();
   for (const c of candidates) owners.add(c.owner);
 
-  const liveStateByOwner = await fetchOwnerLiveStatesBounded(Array.from(owners), network);
+  const liveStateByOwner = await fetchOwnerLiveStatesBounded(Array.from(owners), network, source);
 
   const reconciled = reconcileSponsoredEntries(
     address,

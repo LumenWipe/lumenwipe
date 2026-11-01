@@ -149,3 +149,118 @@ test("several comma-separated pairs are accepted", () => {
   const { problems } = checkEnv({ API_KEYS: "a=1,b=2" } as NodeJS.ProcessEnv);
   expect(problems).toEqual([]);
 });
+
+const MAINNET_SET = {
+  STELLAR_RPC_MAINNET: "https://rpc.test",
+  PATH_ROUTING_API_MAINNET: "https://h.test",
+};
+
+function endpointCheck(env: Record<string, string>) {
+  return checkEnv({ ...OK, ...env } as NodeJS.ProcessEnv);
+}
+
+test("in production an unset mainnet endpoint warns and boots", () => {
+  const { problems, warnings } = endpointCheck({ NODE_ENV: "production" });
+  expect(problems).toEqual([]);
+  expect(warnings.map((w) => w.variable)).toEqual([
+    "STELLAR_RPC_MAINNET",
+    "PATH_ROUTING_API_MAINNET",
+  ]);
+});
+
+test("outside production an unset mainnet endpoint is not worth a warning", () => {
+  expect(endpointCheck({ NODE_ENV: "development" }).warnings).toEqual([]);
+});
+
+test("REQUIRE_EXPLICIT_MAINNET_ENDPOINTS=true refuses an unset mainnet endpoint, naming it", () => {
+  const { problems, warnings } = endpointCheck({
+    NODE_ENV: "production",
+    REQUIRE_EXPLICIT_MAINNET_ENDPOINTS: "true",
+    PATH_ROUTING_API_MAINNET: "https://h.test",
+  });
+  expect(warnings).toEqual([]);
+  expect(problems.map((p) => p.variable)).toEqual(["STELLAR_RPC_MAINNET"]);
+  expect(formatEnvFailure(problems)).toContain("REQUIRE_EXPLICIT_MAINNET_ENDPOINTS=true");
+});
+
+test("only the literal true turns the refusal on", () => {
+  const { problems } = endpointCheck({ REQUIRE_EXPLICIT_MAINNET_ENDPOINTS: "false" });
+  expect(problems).toEqual([]);
+});
+
+test("a legacy name counts as explicit, and an empty new name overrides it", () => {
+  const strict = { NODE_ENV: "production", REQUIRE_EXPLICIT_MAINNET_ENDPOINTS: "true" };
+  const legacy = {
+    NEXT_PUBLIC_STELLAR_RPC_MAINNET: "https://rpc.test",
+    NEXT_PUBLIC_PATH_ROUTING_API_MAINNET: "https://h.test",
+  };
+  expect(endpointCheck({ ...strict, ...legacy }).problems).toEqual([]);
+  const cleared = endpointCheck({ ...strict, ...legacy, STELLAR_RPC_MAINNET: "" });
+  expect(cleared.problems.map((p) => p.variable)).toEqual(["STELLAR_RPC_MAINNET"]);
+});
+
+test("an unset testnet endpoint is never a finding", () => {
+  const { problems, warnings } = endpointCheck({
+    ...MAINNET_SET,
+    NODE_ENV: "production",
+    REQUIRE_EXPLICIT_MAINNET_ENDPOINTS: "true",
+  });
+  expect(problems).toEqual([]);
+  expect(warnings).toEqual([]);
+});
+
+test("a lone URL is not held to the list rules", () => {
+  const { problems } = endpointCheck({
+    STELLAR_RPC_TESTNET: "http://localhost:8000",
+    STELLAR_RPC_HEADER_NAME_TESTNET: "x-key",
+  });
+  expect(problems).toEqual([]);
+});
+
+test("a list refuses a non-https entry, naming its position and not its value", () => {
+  const { problems } = endpointCheck({
+    STELLAR_RPC_TESTNET: "https://a.test,http://b.test/secret-path",
+  });
+  expect(problems.map((p) => p.message)).toEqual(["STELLAR_RPC_TESTNET entry 2 must use https."]);
+});
+
+test("a list refuses an entry that is not a URL", () => {
+  const { problems } = endpointCheck({ PATH_ROUTING_API_TESTNET: "https://a.test,nonsense" });
+  expect(problems.map((p) => p.message)).toEqual([
+    "PATH_ROUTING_API_TESTNET entry 2 is not a valid URL.",
+  ]);
+});
+
+test("a list refuses a duplicate, however the same URL is spelled", () => {
+  const { problems } = endpointCheck({
+    STELLAR_RPC_TESTNET: "https://A.test/rpc/, https://a.test/rpc",
+  });
+  expect(problems.map((p) => p.message)).toEqual([
+    "STELLAR_RPC_TESTNET entry 2 duplicates an earlier entry.",
+  ]);
+});
+
+test("two paths on one host are two providers", () => {
+  const { problems } = endpointCheck({ STELLAR_RPC_TESTNET: "https://a.test/x,https://a.test/y" });
+  expect(problems).toEqual([]);
+});
+
+test("a list refuses a header name without its value at any position", () => {
+  const { problems } = endpointCheck({
+    STELLAR_RPC_TESTNET: "https://a.test,https://b.test",
+    STELLAR_RPC_HEADER_NAME_TESTNET_2: "x-key",
+  });
+  expect(problems.map((p) => p.message)).toEqual([
+    "STELLAR_RPC_TESTNET entry 2 needs both STELLAR_RPC_HEADER_NAME_TESTNET_2 and " +
+      "STELLAR_RPC_HEADER_VALUE_TESTNET_2, or neither.",
+  ]);
+});
+
+test("a list's first position may pair a legacy header name with a legacy value", () => {
+  const { problems } = endpointCheck({
+    STELLAR_RPC_TESTNET: "https://a.test,https://b.test",
+    NEXT_PUBLIC_STELLAR_RPC_HEADER_NAME_TESTNET: "x-key",
+    NEXT_PUBLIC_STELLAR_RPC_HEADER_VALUE_TESTNET: "synthetic",
+  });
+  expect(problems).toEqual([]);
+});

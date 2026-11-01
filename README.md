@@ -204,13 +204,14 @@ The web and the API each read their own `.env.local` (copy from each app's `.env
 
 **`apps/api/.env.local`** - the API:
 
-| Variable                                   | Description                                                                   |
-| ------------------------------------------ | ----------------------------------------------------------------------------- |
-| `API_KEYS`                                 | Accepted API keys as `label=key` (the web's key must be listed here)          |
-| `STELLAR_RPC_TESTNET` / `_MAINNET`         | Stellar RPC endpoints                                                         |
-| `PATH_ROUTING_API_TESTNET` / `_MAINNET`    | Horizon-compatible endpoints for offers, full account state, and path finding |
-| `MEDIATOR_PUBLIC_*` / `MEDIATOR_SECRET_*`  | Shared mediator keys (operator-only; enables exchange closes)                 |
-| `ADMIN_API_TOKEN` / `FIRESTORE_PROJECT_ID` | Optional; enables self-serve API key management (`/admin/api-keys`, #289)     |
+| Variable                                   | Description                                                                 |
+| ------------------------------------------ | --------------------------------------------------------------------------- |
+| `API_KEYS`                                 | Accepted API keys as `label=key` (the web's key must be listed here)        |
+| `STELLAR_RPC_TESTNET` / `_MAINNET`         | Stellar RPC endpoints; one URL or a comma-separated failover list           |
+| `PATH_ROUTING_API_TESTNET` / `_MAINNET`    | Horizon-compatible endpoints for account state and paths; one URL or a list |
+| `REQUIRE_EXPLICIT_MAINNET_ENDPOINTS`       | Set to `true` to refuse to start while a mainnet endpoint is unset          |
+| `MEDIATOR_PUBLIC_*` / `MEDIATOR_SECRET_*`  | Shared mediator keys (operator-only; enables exchange closes)               |
+| `ADMIN_API_TOKEN` / `FIRESTORE_PROJECT_ID` | Optional; enables self-serve API key management (`/admin/api-keys`, #289)   |
 
 **`apps/web/.env.local`** - the web:
 

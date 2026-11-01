@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { Asset, Keypair, LiquidityPoolId } from "@stellar/stellar-sdk";
+import { Asset, Keypair, LiquidityPoolId, rpc, type xdr } from "@stellar/stellar-sdk";
 import type { AccountState } from "@lumenwipe/types";
+import { requestContextMiddleware } from "@/common/request-context";
 import * as rpcModule from "@/lib/stellar/rpc";
+import { pinnedRpcProvider } from "@/lib/stellar/rpc";
 import { buildCloseTransactions } from "@/lib/close-api/build-transactions";
 import { mapDomainError, TRANSACTION_ERRORS } from "@/lib/close-api/domain-errors";
-import { findStateDrift } from "@/lib/close-api/state-drift";
+import { confirmLedgerState, findStateDrift } from "@/lib/close-api/state-drift";
+import { RPC_FALLBACKS, RPC_URLS } from "@/config/networks";
 import { readLiveLedger, RPC_LEDGER_KEY_LIMIT } from "@/lib/stellar/live-ledger";
 import { LiveReadError } from "@/lib/stellar/live-trustline";
 import { AccountStateChangedError } from "@/lib/utils/errors";
@@ -309,5 +312,94 @@ describe("the build round confirms the enumerated account over RPC", () => {
       getLatestLedger: async () => ({ sequence: 1000 }),
     })) as unknown as typeof rpcModule.getRpcServer);
     await expect(build()).rejects.toBeInstanceOf(LiveReadError);
+  });
+});
+
+describe("an RPC behind the snapshot, with more than one provider configured", () => {
+  const realFallbacks = RPC_FALLBACKS.testnet;
+  const realPrimary = RPC_URLS.testnet;
+  const SNAPSHOT = 1000;
+
+  beforeEach(() => {
+    stubIssuance();
+    RPC_URLS.testnet = "https://rpc-a.test";
+    RPC_FALLBACKS.testnet = [{ url: "https://rpc-b.test", headers: {} }];
+  });
+  afterEach(() => {
+    RPC_URLS.testnet = realPrimary;
+    RPC_FALLBACKS.testnet = realFallbacks;
+  });
+
+  function atLedger(latestLedger: number) {
+    const held = ledgerServer(() => [
+      accountLedgerEntry(SOURCE, { ...agreeing, numSubEntries: 1 }),
+    ]);
+    const server = {
+      ...held,
+      getLedgerEntries: async (...keys: xdr.LedgerKey[]) => ({
+        ...(await held.getLedgerEntries(...keys)),
+        latestLedger,
+      }),
+    };
+    spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
+      ...server,
+      getLatestLedger: async () => ({ sequence: latestLedger }),
+    })) as unknown as typeof rpcModule.getRpcServer);
+    return server;
+  }
+
+  const snapshot = state({ snapshotLedger: SNAPSHOT });
+  const buildFrom = (from: AccountState) => buildCloseTransactions(from, DEST, {}, "testnet");
+
+  test("a drift the RPC has not reached yet is a 503, not a change of state", async () => {
+    atLedger(SNAPSHOT - 1);
+    const failure = await buildFrom(snapshot).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(LiveReadError);
+    expect(mapDomainError(TRANSACTION_ERRORS, failure)).toMatchObject({ status: 503 });
+  });
+
+  test("a drift from an RPC level with the snapshot stays a 409", async () => {
+    atLedger(SNAPSHOT);
+    const failure = await buildFrom(snapshot).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(AccountStateChangedError);
+    expect(mapDomainError(TRANSACTION_ERRORS, failure)).toMatchObject({ status: 409 });
+  });
+
+  test("a drift from an RPC ahead of the snapshot stays a 409", async () => {
+    await expect(confirmLedgerState(snapshot, atLedger(SNAPSHOT + 5), true)).rejects.toBeInstanceOf(
+      AccountStateChangedError
+    );
+  });
+
+  test("agreement passes even from an RPC behind the snapshot", async () => {
+    const server = ledgerServer(() => [accountLedgerEntry(SOURCE, agreeing)]);
+    expect(await confirmLedgerState(state({ snapshotLedger: 2000 }), server, true)).toBe(SEQUENCE);
+  });
+
+  test("the round settles its provider before building, so the Blend SDK can read it", async () => {
+    const latest = spyOn(rpc.Server.prototype, "getLatestLedger").mockImplementation(function (
+      this: rpc.Server
+    ) {
+      if (this.serverURL.toString().includes("rpc-a")) return Promise.reject(new Error("down"));
+      const closeTime = String(Math.floor(Date.now() / 1000));
+      return Promise.resolve({ sequence: 1000, closeTime } as never);
+    });
+    useLedger(agreeing);
+    const res = { setHeader() {}, json() {}, on() {} };
+    const pinned = await new Promise<string>((resolve, reject) =>
+      requestContextMiddleware()({ path: "/x" } as never, res as never, () => {
+        buildFrom(snapshot)
+          .then(() => resolve(pinnedRpcProvider("testnet").url))
+          .catch(reject);
+      })
+    );
+    latest.mockRestore();
+    expect(pinned).toBe("https://rpc-b.test");
+  });
+
+  test("a lone RPC keeps the 409, however far behind", async () => {
+    RPC_FALLBACKS.testnet = [];
+    atLedger(SNAPSHOT - 1);
+    await expect(buildFrom(snapshot)).rejects.toBeInstanceOf(AccountStateChangedError);
   });
 });

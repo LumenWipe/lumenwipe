@@ -8,7 +8,7 @@ import { JsonLogger } from "./common/json-logger";
 import { configureApp } from "./configure-app";
 import { createOpenApiDocument } from "./openapi";
 import { checkEnv, formatEnvFailure } from "./config/validate-env";
-import { deprecatedEnvWarnings } from "./config/networks";
+import { deprecatedEnvWarnings, effectiveEndpointHosts } from "./config/networks";
 import { registryExpiryWarning } from "./lib/exchange-registry";
 
 async function bootstrap(): Promise<void> {
@@ -27,6 +27,7 @@ async function bootstrap(): Promise<void> {
   // should learn it here rather than from a user hitting the disabled path.
   for (const w of warnings) bootLogger.warn(w.message);
   for (const w of deprecatedEnvWarnings) bootLogger.warn(w);
+  for (const hosts of effectiveEndpointHosts()) bootLogger.log(hosts);
   const registryWarning = registryExpiryWarning();
   if (registryWarning) bootLogger.warn(registryWarning);
   configureApp(app);
