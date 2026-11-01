@@ -2,9 +2,11 @@ import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { renderHook, act } from "@testing-library/react";
 import {
   Account,
+  Asset,
   FeeBumpTransaction,
   hash,
   Keypair,
+  Memo,
   Networks,
   Operation,
   StrKey,
@@ -18,6 +20,8 @@ import { useNetworkStore } from "@/store/network";
 import * as closeClient from "@/lib/api/close-client";
 import * as submitViaApiModule from "@/lib/stellar/submit-via-api";
 import * as feeBumpSponsorModule from "@/lib/stellar/fee-bump-sponsor";
+import * as mediatorModule from "@/lib/stellar/mediator";
+import { activeRegistry, setRegistry } from "@/lib/exchange-registry";
 import { ApiRequestError, closeFailureMessage } from "@/lib/utils/user-error";
 import type { TransactionSigner } from "@/lib/stellar/signer";
 import { fromHex } from "@/lib/stellar/hex";
@@ -1495,4 +1499,135 @@ test("useCloseExecution › the reviewed plan hash is sent until a transaction c
 
   expect(sent).toEqual(["a".repeat(64), undefined]);
   expect(useDemolishStore.getState().planHash).toBeNull();
+});
+
+test("useCloseExecution › aborts before submit when the mediator co-sign returns a changed body", async () => {
+  const originalRegistry = activeRegistry();
+  setRegistry({ ...originalRegistry, validUntil: "2999-12-31" });
+  try {
+    const sourceKeypair = Keypair.random();
+    const mediatorKeypair = Keypair.random();
+    const source = sourceKeypair.publicKey();
+    const exchange = originalRegistry.entries.find((entry) => entry.requiresMediator)!.address;
+    const mediatedMergeAt = (sequence: string): Transaction =>
+      new TransactionBuilder(new Account(source, sequence), {
+        fee: "200",
+        networkPassphrase: Networks.TESTNET,
+        memo: Memo.text("123"),
+      })
+        .setTimeout(300)
+        .addOperation(Operation.accountMerge({ destination: mediatorKeypair.publicKey() }))
+        .addOperation(
+          Operation.payment({
+            source: mediatorKeypair.publicKey(),
+            destination: exchange,
+            asset: Asset.native(),
+            amount: "50",
+          })
+        )
+        .build();
+
+    useNetworkStore.setState({ network: "testnet" });
+    useDemolishStore.setState({
+      sourceAddress: source,
+      destinationAddress: exchange,
+      memo: "123",
+      mediatorRequired: true,
+      lastError: null,
+      accountState: {
+        nativeBalanceLumens: "50",
+        signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+        thresholds: { low: 1, med: 1, high: 1 },
+      } as never,
+    } as never);
+    stubFetchCloseTransactions(async () => ({
+      planHash: "h",
+      status: "ready",
+      transactions: [{ id: "t", order: 0, xdr: mediatedMergeAt("100").toXdr(), covers: ["MERGE"] }],
+      remaining: { steps: 0, requiresAnotherCall: false },
+    }));
+    let submitCalls = 0;
+    stubSubmitViaApi(async () => {
+      submitCalls++;
+      return { txHash: "final-hash" };
+    });
+    // Signed by both parties, so only the hash check stands between this body and submit.
+    const changedBody = mediatedMergeAt("200");
+    changedBody.sign(sourceKeypair, mediatorKeypair);
+    const cosign = spyOn(mediatorModule, "requestMediatorCosignature").mockImplementation(
+      async () => changedBody.toXdr()
+    );
+
+    const { result } = renderHook(() => useCloseExecution());
+    await act(async () => {
+      await result.current.run(realSigner(sourceKeypair));
+    });
+
+    expect(cosign).toHaveBeenCalledTimes(1);
+    expect(useDemolishStore.getState().lastError).toMatch(
+      /co-signed transaction does not match what you approved/i
+    );
+    expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
+    expect(submitCalls).toBe(0);
+  } finally {
+    setRegistry(originalRegistry);
+  }
+});
+
+test("useCloseExecution › aborts before submit when a wallet returns a changed body", async () => {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  const mergeAt = (sequence: string): Transaction =>
+    new TransactionBuilder(new Account(source, sequence), {
+      fee: "100",
+      networkPassphrase: Networks.TESTNET,
+    })
+      .setTimeout(300)
+      .addOperation(Operation.accountMerge({ destination }))
+      .build();
+
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    accountState: {
+      nativeBalanceLumens: "50",
+      signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 1, med: 1, high: 1 },
+    } as never,
+  } as never);
+  stubFetchCloseTransactions(async () => ({
+    planHash: "h",
+    status: "ready",
+    transactions: [{ id: "t", order: 0, xdr: mergeAt("100").toXdr(), covers: ["MERGE"] }],
+    remaining: { steps: 0, requiresAnotherCall: false },
+  }));
+  let submitCalls = 0;
+  stubSubmitViaApi(async () => {
+    submitCalls++;
+    return { txHash: "final-hash" };
+  });
+  const wallet: TransactionSigner = {
+    publicKey: source,
+    sign: async () => {
+      const changedBody = mergeAt("200");
+      changedBody.sign(sourceKeypair);
+      return changedBody.toXdr();
+    },
+  };
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(wallet);
+  });
+
+  expect(useDemolishStore.getState().lastError).toMatch(
+    /signed transaction does not match what you approved/i
+  );
+  expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
+  expect(submitCalls).toBe(0);
 });
