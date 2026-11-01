@@ -1,6 +1,12 @@
 import type { AccountState, TrustlineAuthorization } from "@lumenwipe/types";
 import type { getRpcServer } from "@/lib/stellar/rpc";
-import { poolShareKey, readLiveLedger, type LiveLedger } from "@/lib/stellar/live-ledger";
+import {
+  LIVE_LEDGER_LABEL,
+  poolShareKey,
+  readLiveLedger,
+  type LiveLedger,
+} from "@/lib/stellar/live-ledger";
+import { LiveReadError } from "@/lib/stellar/live-trustline";
 import { xlmToStroops } from "@/lib/utils/amounts";
 import { AccountStateChangedError } from "@/lib/utils/errors";
 
@@ -96,13 +102,26 @@ export function findStateDrift(state: AccountState, live: LiveLedger): string | 
 /**
  * Confirms the enumerated state against the ledger over RPC and returns the sequence to build on.
  * Throws `AccountStateChangedError` on any disagreement and `LiveReadError` when the read fails.
+ * With `gateLateRpc`, a disagreement from an RPC still behind the snapshot is that same failed
+ * read: the provider has not reached the state, which says nothing about the account.
  */
 export async function confirmLedgerState(
   state: AccountState,
-  server: Pick<ReturnType<typeof getRpcServer>, "getLedgerEntries">
+  server: Pick<ReturnType<typeof getRpcServer>, "getLedgerEntries">,
+  gateLateRpc = false
 ): Promise<string> {
   const live = await readLiveLedger(server, state);
   const drift = findStateDrift(state, live);
-  if (drift !== null) throw new AccountStateChangedError(drift);
-  return state.sequence;
+  if (drift === null) return state.sequence;
+  const { latestLedger } = live;
+  const { snapshotLedger } = state;
+  if (
+    gateLateRpc &&
+    latestLedger !== undefined &&
+    snapshotLedger !== undefined &&
+    latestLedger < snapshotLedger
+  ) {
+    throw new LiveReadError(LIVE_LEDGER_LABEL);
+  }
+  throw new AccountStateChangedError(drift);
 }

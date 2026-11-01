@@ -13,6 +13,7 @@ interface RequestContext {
   requestId: string;
   sensitive: Set<string>;
   deadline: Deadline;
+  providerPins: Map<string, unknown>;
 }
 
 const storage = new AsyncLocalStorage<RequestContext>();
@@ -28,6 +29,11 @@ export function currentSensitiveLiterals(): Iterable<string> {
 /** Aborts once the request has used its whole upstream budget; absent outside a request. */
 export function currentDeadline(): Deadline | undefined {
   return storage.getStore()?.deadline;
+}
+
+/** What each read settled on, so one request stays on one provider; absent outside a request. */
+export function currentProviderPins(): Map<string, unknown> | undefined {
+  return storage.getStore()?.providerPins;
 }
 
 /** Marks a value the current request carried (a deposit memo) as never to be logged. */
@@ -82,7 +88,15 @@ export function requestContextMiddleware(deadlineMs: number = REQUEST_DEADLINE_M
       });
     });
 
-    storage.run({ requestId, sensitive: new Set(), deadline: createDeadline(deadlineMs) }, next);
+    storage.run(
+      {
+        requestId,
+        sensitive: new Set(),
+        deadline: createDeadline(deadlineMs),
+        providerPins: new Map(),
+      },
+      next
+    );
   };
 }
 

@@ -2,6 +2,7 @@ import type { Network } from "@/config/networks";
 import { xlmToStroops } from "@/lib/utils/amounts";
 import { horizonDepsFor } from "@/lib/stellar/account-state";
 import { horizonPaginate, type HorizonDeps } from "@/lib/stellar/horizon-http";
+import { pinnedHorizonSource } from "@/lib/stellar/provider-failover";
 
 const ISSUANCE_PAGE_LIMIT = 200;
 const ISSUANCE_MAX_ASSETS = 2_000;
@@ -28,7 +29,7 @@ export interface IssuanceDeps {
 
 export const defaultIssuanceDeps = (): IssuanceDeps => ({
   horizon: (network) => {
-    const base = horizonDepsFor(network);
+    const base: HorizonDeps = pinnedHorizonSource(network) ?? horizonDepsFor(network);
     return { ...base, client: { ...base.client, policy: ISSUANCE_READ_POLICY } };
   },
 });
@@ -71,7 +72,11 @@ function summarize(records: AssetStats[]): IssuanceSummary | null {
  *
  * A provider running with asset statistics disabled answers 200 with no records, which reads
  * as "issues nothing"; that case cannot be told apart from a real empty result. Any other
- * failure, including a 404, is an `IssuerReadError`.
+ * failure, including a 404, is an `IssuerReadError`. That is why this never fails over: an empty
+ * answer opens the issuer gate, and moving to another provider after an outage would trade a
+ * refusal for that. It reads the provider the account snapshot came from, or the primary, so a
+ * snapshot that failed over carries this read with it: every provider in a list needs asset stats,
+ * the same reliance a lone provider has always had.
  */
 export async function assessIssuance(
   address: string,

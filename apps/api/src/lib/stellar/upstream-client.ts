@@ -56,6 +56,8 @@ export interface UpstreamOptions {
   random?: () => number;
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   now?: () => number;
+  /** Sent with every attempt. Belongs to `baseUrl`: never shared across providers. */
+  headers?: Record<string, string>;
   /** Sees the headers of the response whose body is returned. */
   onHeaders?: (headers: Pick<Headers, "get">) => void;
 }
@@ -214,7 +216,7 @@ export async function upstreamGetJson<T>(
     const outcome = await (async (): Promise<Outcome> => {
       try {
         const res = await doFetch(url, {
-          headers: { Accept: "application/json" },
+          headers: { Accept: "application/json", ...options.headers },
           cache: "no-store",
           signal,
         });

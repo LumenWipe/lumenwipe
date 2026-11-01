@@ -45,10 +45,12 @@ import { readAccountState } from "@/lib/close-api/read-account";
 import { buildAccountPlan } from "@/lib/close-api/account-plan";
 import { assessMergePreflight } from "@/lib/close-api/merge-preflight";
 import { validateTransferDestinations } from "@/lib/close-api/transfer-destinations";
-import { readTrustlinesOnly } from "@/lib/stellar/account-state";
+import { readAccountStateFrom, readTrustlinesOnly } from "@/lib/stellar/account-state";
 import { submitAndWait } from "@/lib/stellar/submit";
 import { computePlanHash } from "@/lib/close-api/plan-response";
+import { mapDomainError, TRANSACTION_ERRORS } from "@/lib/close-api/domain-errors";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { OFFLINE_SOROBAN_TOKENS } from "./fixtures/fake-soroban-tokens";
 import { authorizationOf } from "./fixtures/trustline";
 
 const SOURCE = Keypair.random().publicKey();
@@ -1025,6 +1027,53 @@ describe("transactions verifies the supplied plan hash", () => {
       409,
       "state_changed"
     );
+  });
+
+  test("a stale round from lagging providers is a 503 even against a newer plan hash", async () => {
+    const lagging = (url: string | URL | Request): Response => {
+      const path = String(url);
+      const collection = path.includes("/offers") || path.includes("/claimable_balances");
+      const account = {
+        sequence: "76",
+        subentry_count: 0,
+        thresholds: { low_threshold: 0, med_threshold: 1, high_threshold: 1 },
+        signers: [{ key: SOURCE, weight: 1, type: "ed25519_public_key" }],
+        balances: [{ asset_type: "native", balance: "5.0000000" }],
+        data: {},
+        flags: { auth_immutable: false },
+        num_sponsoring: 0,
+      };
+      return new Response(JSON.stringify(collection ? { _embedded: { records: [] } } : account), {
+        status: 200,
+        headers: { "Latest-Ledger": "100" },
+      });
+    };
+    const fetch = (async (url: string) => lagging(url)) as unknown as typeof globalThis.fetch;
+    const { fakes, builds } = counting(() => "77");
+    const { controller } = await makeController({
+      ...fakes,
+      readAccountState: () =>
+        readAccountStateFrom(
+          SOURCE,
+          "testnet",
+          { baseUrl: "https://horizon-a.test", fetch },
+          { octopos: { baseUrl: "" }, directRead: { registryEntries: [] } },
+          {
+            ...OFFLINE_SOROBAN_TOKENS,
+            fallbacks: [{ baseUrl: "https://horizon-b.test", fetch }],
+            referenceLedger: async () => 200,
+            ledgerCloseTime: async () => null,
+          }
+        ),
+    });
+    const failure = await controller
+      .transactions("testnet", body({ planHash: hashAt("77") }))
+      .catch((e: unknown) => e);
+    expect(mapDomainError(TRANSACTION_ERRORS, failure)).toMatchObject({
+      code: "service_unavailable",
+      status: 503,
+    });
+    expect(builds()).toBe(0);
   });
 });
 

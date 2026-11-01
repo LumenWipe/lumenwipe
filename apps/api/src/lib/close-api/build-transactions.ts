@@ -6,7 +6,12 @@ import {
   ExitRoundBlockedError,
   type ExitRoundDeps,
 } from "@/lib/defi-exits/exit-round";
-import { NETWORK_PASSPHRASES, getMediatorPublicKey, type Network } from "@/config/networks";
+import {
+  NETWORK_PASSPHRASES,
+  getMediatorPublicKey,
+  rpcProviders,
+  type Network,
+} from "@/config/networks";
 import { BASE_FEE_STROOPS, CLAIM_ROUND_BATCH_SIZE, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import { TOO_MANY_CLAIMABLE_BALANCES_MESSAGE } from "@/lib/stellar/tx-builder/claimable-balances";
 import {
@@ -30,7 +35,7 @@ import {
   parseLedgerCloseTime,
 } from "@/lib/stellar/claim-predicates";
 import { stroopsToFixedXlm, xlmToStroops } from "@/lib/utils/amounts";
-import { getRpcServer } from "@/lib/stellar/rpc";
+import { getRpcServer, pinRpcProvider } from "@/lib/stellar/rpc";
 import {
   assessDefiPositionsGate,
   isNonTrappingDefiBlocker,
@@ -258,9 +263,11 @@ export async function buildCloseTransactions(
     );
   }
 
+  // Settled here because `blendSdkNetwork` reads the pin synchronously during the exit round.
+  await pinRpcProvider(network);
   const server = getRpcServer(network);
   const [sequence, latest, issuance] = await Promise.all([
-    confirmLedgerState(accountState, server),
+    confirmLedgerState(accountState, server, rpcProviders(network).length > 1),
     server.getLatestLedger(),
     assessIssuance(accountState.address, network, issuer.deps),
   ]);

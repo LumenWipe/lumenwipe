@@ -1,5 +1,5 @@
 import { TransactionBuilder, type rpc, xdr } from "@stellar/stellar-sdk";
-import { getRpcServer } from "./rpc";
+import { getRpcServer, nextRpcServer } from "./rpc";
 import {
   translateRpcError,
   TxTimeoutError,
@@ -26,7 +26,8 @@ export async function submitAndWait(
   signedXdr: string,
   network: Network,
   onStatus?: (status: string) => void,
-  serverFor: (network: Network) => rpc.Server = getRpcServer
+  serverFor: (network: Network) => rpc.Server = getRpcServer,
+  nextServerFor: (network: Network) => rpc.Server | null = nextRpcServer
 ): Promise<SubmitResult> {
   const server = serverFor(network);
   const passphrase = NETWORK_PASSPHRASES[network];
@@ -65,7 +66,8 @@ export async function submitAndWait(
     try {
       sendResult = await server.sendTransaction(tx);
     } catch (e) {
-      throw e instanceof Error ? e : new Error(String(e));
+      const failure = e instanceof Error ? e : new Error(String(e));
+      return await settleAmbiguousSend(txHash, nextServerFor(network), failure);
     }
 
     if (sendResult.status !== "TRY_AGAIN_LATER") break;
@@ -95,10 +97,7 @@ export async function submitAndWait(
     sleepStrategy: () => POLL_INTERVAL_MS,
   });
 
-  if (result.status === "FAILED") {
-    const raw = serializeResultXdr(result.resultXdr);
-    throw new TxSubmitError(translateRpcError("FAILED", raw), extractResultCode(raw));
-  }
+  if (result.status === "FAILED") throw rejectedBy(result.resultXdr);
 
   if (result.status === "NOT_FOUND") {
     // Exhausted all polling attempts without a definitive response
@@ -107,6 +106,33 @@ export async function submitAndWait(
 
   // SUCCESS
   return { txHash, ledger: result.ledger ?? 0 };
+}
+
+function rejectedBy(resultXdr: unknown): TxSubmitError {
+  const raw = serializeResultXdr(resultXdr);
+  return new TxSubmitError(translateRpcError("FAILED", raw), extractResultCode(raw));
+}
+
+/**
+ * A failed send may still have reached the network, and sending again elsewhere is how a
+ * transaction lands twice or a stale sequence hides a success. So the only follow-up is one
+ * by-hash look at another provider; anything short of a verdict leaves the original error.
+ */
+async function settleAmbiguousSend(
+  txHash: string,
+  server: rpc.Server | null,
+  failure: Error
+): Promise<SubmitResult> {
+  if (!server) throw failure;
+  let seen: rpc.Api.GetTransactionResponse;
+  try {
+    seen = await server.getTransaction(txHash);
+  } catch {
+    throw failure;
+  }
+  if (seen.status === "SUCCESS") return { txHash, ledger: seen.ledger };
+  if (seen.status === "FAILED") throw rejectedBy(seen.resultXdr);
+  throw failure;
 }
 
 function serializeResultXdr(resultXdr: unknown): string {
