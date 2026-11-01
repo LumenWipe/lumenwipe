@@ -1,10 +1,12 @@
-import { test, expect } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import {
   Account,
+  Address,
   Asset,
   hash,
   Keypair,
   Memo,
+  nativeToScVal,
   Networks,
   Operation,
   StrKey,
@@ -20,8 +22,11 @@ import {
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import type { IntentOperation, TxIntent } from "@/types/close-api";
 import type { AccountSigner } from "@/types/account";
-import { fromHex } from "@/lib/stellar/hex";
+import { fromHex, toHex } from "@/lib/stellar/hex";
 import { activeRegistry, setRegistry } from "@/lib/exchange-registry";
+import { exitExpectations } from "@/lib/stellar/exit-expectations";
+import type { AccountState } from "@/types/account";
+import { REAL_EXIT_ENVELOPES, type RealExitEnvelope } from "./fixtures/real-exit-envelopes";
 
 const SRC = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -2287,3 +2292,221 @@ test("a swap may authorize only paying in the token it sells, from this account,
     )
   ).toThrow(/other than paying in the token/);
 });
+
+type ExitExpected = Parameters<typeof verifyCloseTransaction>[0]["expected"];
+
+const MAX_EXIT_FEE_STROOPS = 10_000_000;
+const OUTSIDER_CONTRACT = StrKey.encodeContract(hash(Buffer.from("outsider contract")));
+
+function realExitExpectation(fixture: RealExitEnvelope, account = fixture.account): ExitExpected {
+  return {
+    source: account.address,
+    destination: DEST,
+    mediatorRequired: false,
+    nativeBalance: account.nativeBalanceLumens,
+    memo: null,
+    claimTrustlineAssets: [],
+    accountSigners: account.signers,
+    accountThresholds: account.thresholds,
+    transfers: {},
+    tokenTransfers: {},
+    classicConversions: {},
+    tokenConversions: {},
+    ...exitExpectations(account, "testnet"),
+  };
+}
+
+type Writable<T> = { -readonly [K in keyof T]: T[K] };
+type MutableCall = Omit<Writable<xdr.InvokeContractArgs>, "functionName"> & {
+  functionName: xdr.InvokeContractArgs["functionName"] | string;
+};
+
+/** The real envelope, with `change` applied to its decoded body. Signatures stay out of it: the
+ *  fixtures are unsigned. */
+function mutatedEnvelope(
+  fixture: RealExitEnvelope,
+  change: (tx: Writable<xdr.Transaction>, op: xdr.InvokeHostFunctionOp) => void
+): string {
+  const envelope = xdr.TransactionEnvelope.fromXdr(fixture.xdr, "base64");
+  if (envelope.type !== "envelopeTypeTx") throw new Error("not a v1 envelope");
+  const { tx } = envelope.v1;
+  const { body } = tx.operations[0]!;
+  if (body.type !== "invokeHostFunction") throw new Error("not a contract call");
+  change(tx, body.invokeHostFunctionOp);
+  return envelope.toXdr("base64");
+}
+
+function contractCall(node: xdr.SorobanAuthorizedInvocation): MutableCall {
+  if (node.function.type !== "sorobanAuthorizedFunctionTypeContractFn") {
+    throw new Error("not a contract call");
+  }
+  return node.function.contractFn;
+}
+
+/** The operation's call and the root of its authorization: an altered call has to change both,
+ *  or the verdict would come from the two disagreeing. */
+function rootCalls(op: xdr.InvokeHostFunctionOp): MutableCall[] {
+  if (op.hostFunction.type !== "hostFunctionTypeInvokeContract") {
+    throw new Error("not a contract call");
+  }
+  return [op.hostFunction.invokeContract, contractCall(op.auth[0]!.rootInvocation)];
+}
+
+function tokenCall(op: xdr.InvokeHostFunctionOp): MutableCall {
+  return contractCall(op.auth[0]!.rootInvocation.subInvocations[0]!);
+}
+
+const redirectTokenCallTo = (fixture: RealExitEnvelope, recipient: string): string =>
+  mutatedEnvelope(fixture, (_tx, op) => {
+    const call = tokenCall(op);
+    call.functionName = "transfer";
+    call.args = [
+      new Address(fixture.expected.source).toScVal(),
+      new Address(recipient).toScVal(),
+      nativeToScVal(BigInt(1), { type: "i128" }),
+    ];
+  });
+
+function verifyReal(
+  fixture: RealExitEnvelope,
+  unsignedXdr: string,
+  expected = realExitExpectation(fixture)
+): void {
+  verifyCloseTransaction({ unsignedXdr, network: "testnet", expected });
+}
+
+for (const fixture of REAL_EXIT_ENVELOPES) {
+  describe(`real exit envelope: ${fixture.name}`, () => {
+    // verify() reads the clock for the expiry, and the bundled registries expire: pinned to the
+    // moment each envelope was built, these tests pass on any later date.
+    beforeEach(() => {
+      setSystemTime(new Date((Number(fixture.expected.maxTime) - 300) * 1000));
+    });
+    afterEach(() => {
+      setSystemTime();
+    });
+
+    test("decodes to the fields recorded with it", () => {
+      const { expected } = fixture;
+      const transaction = TransactionBuilder.fromXdr(fixture.xdr, Networks.TESTNET);
+      expect(toHex(transaction.hash())).toBe(expected.hash);
+
+      const decoded = intentFromXdr(fixture.xdr, Networks.TESTNET);
+      expect(decoded).toMatchObject({
+        source: expected.source,
+        fee: expected.fee,
+        maxTime: expected.maxTime,
+      });
+      expect(decoded.operations).toHaveLength(1);
+      const [op] = decoded.operations;
+      if (op?.type !== "invoke_host_function") throw new Error("not a contract call");
+      expect(op.contract).toBe(expected.contract);
+      expect(op.function).toBe(expected.function);
+      expect(op.subInvocations.map((sub) => [sub.contract, sub.function])).toEqual([
+        [expected.tokenCall.contract, expected.tokenCall.function],
+      ]);
+    });
+
+    test("is accepted against the expectation derived from its account read", () => {
+      expect(() => verifyReal(fixture, fixture.xdr)).not.toThrow();
+    });
+
+    test("is accepted at the fee cap", () => {
+      const atCap = mutatedEnvelope(fixture, (tx) => {
+        tx.fee = MAX_EXIT_FEE_STROOPS;
+      });
+      expect(() => verifyReal(fixture, atCap)).not.toThrow();
+    });
+
+    test("rejects a changed root contract", () => {
+      const altered = mutatedEnvelope(fixture, (_tx, op) => {
+        const outsider = new Address(OUTSIDER_CONTRACT).toScAddress();
+        for (const call of rootCalls(op)) call.contractAddress = outsider;
+      });
+      expect(() => verifyReal(fixture, altered)).toThrow(/not one of this account's detected/);
+    });
+
+    test("rejects a changed root function", () => {
+      const altered = mutatedEnvelope(fixture, (_tx, op) => {
+        for (const call of rootCalls(op)) call.functionName = "upgrade";
+      });
+      expect(() => verifyReal(fixture, altered)).toThrow(/does not use to leave this protocol/);
+    });
+
+    test("rejects a token call paying a third-party account", () => {
+      expect(() => verifyReal(fixture, redirectTokenCallTo(fixture, ATTACKER))).toThrow(
+        /would send funds to, or act for, an account other than the one being closed/
+      );
+    });
+
+    test("rejects a token call paying a contract the exit may name but not pay", () => {
+      const { xlmContract } = realExitExpectation(fixture);
+      expect(() => verifyReal(fixture, redirectTokenCallTo(fixture, xlmContract))).toThrow(
+        /move a token balance to an address other than this account or the protocol/
+      );
+    });
+
+    test("rejects a token call paying a contract outside the account read", () => {
+      expect(() => verifyReal(fixture, redirectTokenCallTo(fixture, OUTSIDER_CONTRACT))).toThrow(
+        /has no position, balance, or pool token in/
+      );
+    });
+
+    test("rejects a changed sub-invocation function", () => {
+      const altered = mutatedEnvelope(fixture, (_tx, op) => {
+        tokenCall(op).functionName = "mint";
+      });
+      expect(() => verifyReal(fixture, altered)).toThrow(/function on a token/);
+    });
+
+    test("rejects a sub-invocation function its arguments do not fit", () => {
+      const altered = mutatedEnvelope(fixture, (_tx, op) => {
+        tokenCall(op).functionName = "approve";
+      });
+      expect(() => verifyReal(fixture, altered)).toThrow(/does not match its real signature/);
+    });
+
+    test("rejects an extra operation", () => {
+      const altered = mutatedEnvelope(fixture, (tx) => {
+        const extra = Operation.payment({
+          destination: ATTACKER,
+          asset: Asset.native(),
+          amount: "1",
+        });
+        tx.operations = [...tx.operations, extra];
+      });
+      expect(() => verifyReal(fixture, altered)).toThrow(/must be the only operation/);
+    });
+
+    test("rejects a fee over the cap", () => {
+      const altered = mutatedEnvelope(fixture, (tx) => {
+        tx.fee = MAX_EXIT_FEE_STROOPS + 1;
+      });
+      expect(() => verifyReal(fixture, altered)).toThrow(/network fee far above/);
+    });
+
+    test("rejects the envelope once its token leaves the account read", () => {
+      const account = {
+        ...fixture.account,
+        sorobanTokens: { ...fixture.account.sorobanTokens, tokens: [] },
+      } as AccountState;
+      expect(() => verifyReal(fixture, fixture.xdr, realExitExpectation(fixture, account))).toThrow(
+        /has no position, balance, or pool token in/
+      );
+    });
+
+    // Characterizes a limit, it does not endorse it: the client does not know a protocol's ABI,
+    // so verify() checks structure and an exit's amount is the residual in architecture.md
+    // section 13. A failure here means that section needs updating.
+    test("accepts a changed amount: the residual documented in architecture.md section 13", () => {
+      const { rootAmountArg, tokenCall: token } = fixture.expected;
+      const changed = nativeToScVal(BigInt(1), { type: "i128" });
+      const altered = mutatedEnvelope(fixture, (_tx, op) => {
+        for (const call of rootCalls(op)) call.args[rootAmountArg] = changed;
+        tokenCall(op).args[token.amountArg] = changed;
+      });
+      expect(altered).not.toBe(fixture.xdr);
+      expect(() => verifyReal(fixture, altered)).not.toThrow();
+    });
+  });
+}
