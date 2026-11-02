@@ -54,6 +54,7 @@ import { notifyStatsRefresh } from "@/lib/stats-events";
 import {
   closeFailureMessage,
   closeRetryIsSafe,
+  HASH_NOT_KEPT,
   NO_MERGE_CONFIRMED,
   requestIdOf,
   UserFacingError,
@@ -72,18 +73,32 @@ export interface SignatureStatus {
   remainingSigners: AccountSigner[];
 }
 
-/** Remembers an unsettled transaction in the store and across a refresh. A failed save never
- *  stops a close: the record in memory still answers for this tab. */
-async function recordSubmission(submission: UnresolvedSubmission | null): Promise<void> {
-  const { sessionId, sourceAddress, setUnconfirmedSubmission } = useDemolishStore.getState();
-  setUnconfirmedSubmission(submission);
+async function keepDurably(sessionId: string | null, submission: UnresolvedSubmission) {
+  if (!sessionId) return false;
   try {
-    if (submission && sessionId) await saveUnconfirmed(sessionId, submission);
-    if (!submission && sourceAddress) {
-      await clearUnconfirmedFor(useNetworkStore.getState().network, sourceAddress);
-    }
+    return await saveUnconfirmed(sessionId, submission);
   } catch (err) {
     console.error("[session] could not keep the unconfirmed hash:", err);
+    return false;
+  }
+}
+
+/** Remembers an unsettled transaction across a refresh, before it is sent: with the hash only in
+ *  memory a refresh would walk around the hold, so a failed save stops the send. Clearing never
+ *  stops anything: the transaction settled, and a stale record costs one extra lookup. */
+async function recordSubmission(submission: UnresolvedSubmission | null): Promise<void> {
+  const { sessionId, sourceAddress, setUnconfirmedSubmission } = useDemolishStore.getState();
+  if (submission) {
+    if (!(await keepDurably(sessionId, submission))) throw new UserFacingError(HASH_NOT_KEPT);
+    setUnconfirmedSubmission(submission);
+    return;
+  }
+  setUnconfirmedSubmission(null);
+  if (!sourceAddress) return;
+  try {
+    await clearUnconfirmedFor(useNetworkStore.getState().network, sourceAddress);
+  } catch (err) {
+    console.error("[session] could not clear the unconfirmed hash:", err);
   }
 }
 

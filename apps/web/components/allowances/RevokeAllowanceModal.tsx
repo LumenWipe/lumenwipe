@@ -8,11 +8,12 @@ import { NETWORK_PASSPHRASES } from "@/config/networks";
 import type { Allowance } from "@/types/allowance";
 import { PROTOCOL_LABELS } from "@/lib/plan/describe-position";
 import { formatTokenAmount } from "@/lib/utils/token-amounts";
-import { readApiError, toUserMessage, UserFacingError } from "@/lib/utils/user-error";
+import { OUTCOME_HELD, readApiError, toUserMessage, UserFacingError } from "@/lib/utils/user-error";
 import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
 import { ensureWalletKitInitialized } from "@/lib/wallet-kit/client";
 import { SecretKeySigner, WalletKitSigner, type TransactionSigner } from "@/lib/stellar/signer";
 import { verifyRevokeAllowanceTransaction } from "@/lib/stellar/verify-revoke-allowance";
+import { findUnresolved } from "@/lib/session/recovery";
 import { submitViaApi } from "@/lib/stellar/submit-via-api";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import SecretKeyInput from "@/components/account-entry/SecretKeyInput";
@@ -67,6 +68,8 @@ export default function RevokeAllowanceModal({
     setError(null);
     setStep("signing");
     try {
+      if (await findUnresolved(network, owner)) throw new UserFacingError(OUTCOME_HELD);
+
       let signer: TransactionSigner;
       if (mode === "wallet") {
         if (!walletConnection.address || !walletMatches) {

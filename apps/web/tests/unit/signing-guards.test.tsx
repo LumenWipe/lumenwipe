@@ -13,6 +13,7 @@ import {
 import { useCloseExecution } from "@/hooks/useCloseExecution";
 import * as closeClient from "@/lib/api/close-client";
 import { HashXPreimageSigner, type TransactionSigner } from "@/lib/stellar/signer";
+import * as sessionStore from "@/lib/session/store";
 import { submissionHash } from "@/lib/stellar/submission";
 import * as submitViaApiModule from "@/lib/stellar/submit-via-api";
 import * as verifyModule from "@/lib/stellar/verify";
@@ -106,7 +107,9 @@ async function runWith(
 
 beforeEach(() => {
   spyOn(verifyModule, "verifyCloseTransaction").mockImplementation(() => {});
+  spyOn(sessionStore, "saveUnconfirmed").mockImplementation(async () => true);
   useDemolishStore.getState().reset();
+  useDemolishStore.setState({ sessionId: "session" });
   useNetworkStore.setState({ network: "testnet" });
   useDemolishStore.setState({
     sourceAddress: SOURCE,

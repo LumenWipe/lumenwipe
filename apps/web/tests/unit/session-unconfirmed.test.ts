@@ -38,10 +38,36 @@ test("settling removes the record", async () => {
   expect(puts[0]).not.toHaveProperty("unconfirmed");
 });
 
-test("a session that no longer exists is left alone", async () => {
+test("a session that no longer exists is left alone and reported", async () => {
   const puts = fakeDb(undefined);
-  await sessionStore.saveUnconfirmed("s", null);
+  expect(await sessionStore.saveUnconfirmed("s", null)).toBe(false);
   expect(puts).toEqual([]);
+});
+
+function fakeTxDb(held: boolean) {
+  const deleted: string[] = [];
+  spyOn(sessionStore, "getDb").mockImplementation((async () => ({
+    transaction: () => ({
+      store: {
+        get: async () => ({ ...RECORD, ...(held && { unconfirmed: { hash: "a" } }) }),
+        delete: async (id: string) => deleted.push(id),
+      },
+      done: Promise.resolve(),
+    }),
+  })) as never);
+  return deleted;
+}
+
+test("a session that picked up a hash after it was loaded is not deleted", async () => {
+  const deleted = fakeTxDb(true);
+  expect(await sessionStore.deleteSettledSession("s")).toBe(false);
+  expect(deleted).toEqual([]);
+});
+
+test("a settled session is deleted", async () => {
+  const deleted = fakeTxDb(false);
+  expect(await sessionStore.deleteSettledSession("s")).toBe(true);
+  expect(deleted).toEqual(["s"]);
 });
 
 const HELD = { hash: "a", covers: [], validUntil: 5 };

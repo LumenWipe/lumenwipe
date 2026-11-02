@@ -7,7 +7,7 @@ import { ShieldCheck, Zap, GitMerge, AlertOctagon, RotateCcw, ShieldOff, X } fro
 import type { Network } from "@/config/networks";
 import AccountEntryForm from "@/components/account-entry/AccountEntryForm";
 import { useSessionRecovery } from "@/hooks/useSessionRecovery";
-import { deleteSession } from "@/lib/session/store";
+import { deleteSettledSession } from "@/lib/session/store";
 import { settleRecorded } from "@/lib/session/settle-unconfirmed";
 import {
   CHECK_FAILED_NOTICE,
@@ -27,7 +27,7 @@ const RECORDED_NOTICES = {
 export default function HomePage({ params }: { params: Promise<{ network: Network }> }) {
   const { network } = use(params);
   const router = useRouter();
-  const { session, checked, clearSession } = useSessionRecovery(network);
+  const { session, checked, clearSession, reload } = useSessionRecovery(network);
   const { setAddresses, setMediatorRequired, restoreSession } = useDemolishStore();
   const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
@@ -73,8 +73,8 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
 
   async function handleDismiss() {
     if (!session || unconfirmed) return;
-    await deleteSession(session.id);
-    clearSession();
+    if (await deleteSettledSession(session.id)) clearSession();
+    else await reload();
   }
 
   return (

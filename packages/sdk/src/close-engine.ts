@@ -187,7 +187,8 @@ export interface CloseReconciliation {
   /** Looks a hash up on the network, through `client.getTransaction` or a proxy of it. */
   lookup: (hash: string) => Promise<TransactionLookupResponse>;
   /** Told when a submission opens, before it is sent, and with null when it settles: persist it
-   *  and an interrupted close still knows what to look up. */
+   *  and an interrupted close still knows what to look up. Rejecting the first call stops the
+   *  transaction unsent, which is what a caller that could not persist it should do. */
   onSubmission?: (submission: UnresolvedSubmission | null) => void | Promise<void>;
   /** A submission left over from an earlier run, settled first, by lookup only. */
   unresolved?: UnresolvedSubmission;

@@ -32,14 +32,15 @@ export async function saveSession(record: SessionRecord): Promise<void> {
   });
 }
 
-/** Keeps a session's unconfirmed hash across a refresh, or drops it once settled. */
+/** Keeps a session's unconfirmed hash across a refresh, or drops it once settled. False when the
+ *  session is gone, so a caller about to send knows nothing was kept. */
 export async function saveUnconfirmed(
   id: string,
   submission: UnresolvedSubmission | null
-): Promise<void> {
+): Promise<boolean> {
   const db = await getDb();
   const record = (await db.get(STORE_NAME, id)) as SessionRecord | undefined;
-  if (!record) return;
+  if (!record) return false;
   const { unconfirmed: _dropped, ...rest } = record;
   const kept = submission
     ? {
@@ -51,6 +52,22 @@ export async function saveUnconfirmed(
       }
     : {};
   await db.put(STORE_NAME, { ...rest, ...kept, updatedAt: new Date().toISOString() });
+  return true;
+}
+
+/** Deletes a session unless it holds an unconfirmed hash, read in the same transaction, so a hash
+ *  another tab saved after this one loaded is never discarded. True when it was deleted. */
+export async function deleteSettledSession(id: string): Promise<boolean> {
+  const db = await getDb();
+  const tx = db.transaction(STORE_NAME, "readwrite");
+  const record = (await tx.store.get(id)) as SessionRecord | undefined;
+  if (record?.unconfirmed) {
+    await tx.done;
+    return false;
+  }
+  await tx.store.delete(id);
+  await tx.done;
+  return true;
 }
 
 /** Drops the unconfirmed hash of every session of this account: it is settled, whoever kept it. */

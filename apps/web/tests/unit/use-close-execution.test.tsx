@@ -31,11 +31,13 @@ import { activeRegistry, setRegistry } from "@/lib/exchange-registry";
 import {
   ApiRequestError,
   closeFailureMessage,
+  HASH_NOT_KEPT,
   NO_MERGE_CONFIRMED,
   PREIMAGE_EXPOSED,
 } from "@/lib/utils/user-error";
 import { receiptState } from "@/lib/close-state";
 import * as recovery from "@/lib/session/recovery";
+import * as sessionStore from "@/lib/session/store";
 import type { TransactionSigner } from "@/lib/stellar/signer";
 import { fromHex } from "@/lib/stellar/hex";
 
@@ -67,7 +69,8 @@ function stubFeeBumpSponsor(impl: (...args: unknown[]) => Promise<unknown>): voi
 // reliably. Without a per-test override, fetching transactions rejects with a benign error, so a
 // test that only exercises the signer guard never reaches a real fetch().
 beforeEach(() => {
-  useDemolishStore.setState({ unconfirmedSubmission: null });
+  useDemolishStore.setState({ unconfirmedSubmission: null, sessionId: "session" });
+  spyOn(sessionStore, "saveUnconfirmed").mockImplementation(async () => true);
   stubFetchCloseTransactions(async () => {
     throw new Error("not mocked in this test");
   });
@@ -1658,6 +1661,44 @@ test("useCloseExecution › an envelope with no upper time bound is never sent",
   expect(sent).toBe(0);
   expect(useDemolishStore.getState().unconfirmedSubmission).toBeNull();
   expect(useDemolishStore.getState().lastError).toMatch(/no time limit/);
+});
+
+test.each([
+  ["a failed write", () => Promise.reject(new Error("quota")), "session"],
+  ["a missing record", () => Promise.resolve(false), "session"],
+  ["no session", () => Promise.resolve(true), null],
+] as const)("useCloseExecution › %s stops before anything is sent", async (_, write, sessionId) => {
+  const { sourceKeypair } = mergeSetup();
+  useDemolishStore.setState({ sessionId });
+  spyOn(sessionStore, "saveUnconfirmed").mockImplementation(write);
+  let sent = 0;
+  stubSubmitViaApi(async () => {
+    sent++;
+    return {};
+  });
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  const state = useDemolishStore.getState();
+  expect(sent).toBe(0);
+  expect(state.phase).toBe("STEP_FAILED");
+  expect(state.unconfirmedSubmission).toBeNull();
+  expect(state.lastError).toContain(HASH_NOT_KEPT);
+  expect(state.lastError).toContain("No new transaction was sent.");
+});
+
+test("useCloseExecution › a failed clear after settling never stops the close", async () => {
+  const { sourceKeypair } = mergeSetup();
+  spyOn(sessionStore, "clearUnconfirmedFor").mockImplementation(async () => {
+    throw new Error("quota");
+  });
+  stubSubmitViaApi(async () => ({}));
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
 });
 
 test("useCloseExecution › past the give-up deadline a merged account stays plain language, never complete", async () => {

@@ -32,6 +32,7 @@ beforeEach(() => {
     session: SESSION,
     checked: true,
     clearSession,
+    reload: async () => {},
   }));
   spyOn(sessionStore, "deleteSession").mockImplementation(async () => {});
   spyOn(sessionStore, "clearUnconfirmedFor").mockImplementation(async () => {});
@@ -83,4 +84,22 @@ test("a lookup that fails stays unconfirmed", async () => {
   expect(screen.getByRole("status").textContent).toBe(STILL_UNCONFIRMED_NOTICE);
   expect(screen.getByRole("button", { name: "Check again" })).toBeDefined();
   expect(clearSession).not.toHaveBeenCalled();
+});
+
+test("a hash that appeared after the banner loaded stops the dismiss and is read back", async () => {
+  const reload = mock(async () => {});
+  spyOn(sessionRecovery, "useSessionRecovery").mockImplementation(() => ({
+    session: { ...SESSION, unconfirmed: undefined },
+    checked: true,
+    clearSession,
+    reload,
+  }));
+  spyOn(sessionStore, "deleteSettledSession").mockImplementation(async () => false);
+  await renderHome();
+  const resume = screen.getByRole("button", { name: "Resume" });
+  await act(async () => {
+    fireEvent.click(resume.nextElementSibling!);
+  });
+  expect(clearSession).not.toHaveBeenCalled();
+  expect(reload).toHaveBeenCalledTimes(1);
 });

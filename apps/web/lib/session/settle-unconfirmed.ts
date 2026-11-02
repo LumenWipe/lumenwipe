@@ -18,7 +18,9 @@ export async function settleRecorded(
   );
   if (outcome === "unknown") return "unknown";
   useDemolishStore.getState().setUnconfirmedSubmission(null);
-  await clearUnconfirmedFor(network, session.sourceAddress);
+  await clearUnconfirmedFor(network, session.sourceAddress).catch((err: unknown) => {
+    console.error("[session] could not clear the unconfirmed hash:", err);
+  });
   if (outcome === "failed") return "failed";
   if (outcome === "confirmed" && submissionClosesAccount(session.unconfirmed)) {
     await deleteSession(session.id);

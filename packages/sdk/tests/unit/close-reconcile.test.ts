@@ -155,6 +155,16 @@ describe("resending", () => {
     expect(order).toEqual(["record", "send"]);
   });
 
+  test("a submission that could not be recorded is never sent", async () => {
+    const { deps, events } = harness({});
+    const refusal = new Error("not recorded");
+    deps.reconcile!.onSubmission = async () => {
+      throw refusal;
+    };
+    await expect(runClose(deps)).rejects.toBe(refusal);
+    expect(events.sent).toEqual([]);
+  });
+
   test("a refusal on the first attempt is surfaced and closes the record", async () => {
     const refusal = new LumenWipeApiError(422, {
       error: { code: "submit_rejected", message: "x" },
