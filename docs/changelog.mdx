@@ -14,6 +14,8 @@ As of 2026-10-10, the mediator flow (exchange closes) and sponsored fees are ava
 
 ### 2026-11-02
 
+- **Web:** Analyzing an account reads it once. Answering a claimable-balance card or acknowledging a position updates the plan without reading the account again, and an unknown account now reports on the analyze page.
+- **Web:** The `paths` proxy route is no longer cached. `docs/architecture.md` lists every cached route with its time to live.
 - **API:** `submit_rejected` is now `422` instead of `502`, so a transaction the network refused no longer reads as an API outage. `502` and `504` stay reserved for upstream faults. Anything branching on the status has to move to the code or the new status.
 - **API:** `mediator_key_misconfiguration` is now `503` with `Retry-After` and a neutral message instead of `500`.
 - **API:** `submit` reads by hash before it reports a failure and answers within 35 seconds. When no verdict arrives, `confirmation_timeout` carries `details.status` set to `pending` and `details.hash`.
