@@ -22,7 +22,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "Service is up: `{ \"status\": \"ok\", \"upstreamRateLimitHits\": n, \"defiDegradedFallbackCount\": n, \"octoposConfigured\": bool }`. The first counter is how many upstream account-state requests the provider refused with 429 since this process started - a rising value is the signal to point PATH_ROUTING_API_* at a provider with more headroom. The second is how many DeFi-position reads fell back to a direct on-chain sweep because OctoPos was unavailable, unrecognizable, or not tracking the address. `octoposConfigured` is a plain deploy-time fact - false means OCTOPOS_API_URL_MAINNET was never set on this revision, so every mainnet DeFi read is degrading by design, not because OctoPos is having an outage. All three are weeks-early operational signals, not something discovered from a user's screenshot."
+            "description": "Service is up: `{ \"status\": \"ok\", \"upstreamRateLimitHits\": n, \"defiDegradedFallbackCount\": n, \"octoposConfigured\": bool }`. The first counter is how many upstream account-state requests the provider refused with 429 since this process started - a rising value is the signal to point PATH_ROUTING_API_* at a provider with more headroom. The second is how many DeFi-position reads fell back to a direct on-chain sweep because OctoPos was unavailable, unrecognizable, or not tracking the address. `octoposConfigured` is a plain deploy-time fact - false means OCTOPOS_API_URL_MAINNET was never set on this revision, so every mainnet DeFi read is degrading by design, not because OctoPos is having an outage. All three are weeks-early operational signals, not something discovered from a user's screenshot. Both counters are since-start values for this process: they reset on every cold start, and the durable per-upstream counts live in Firestore."
           }
         },
         "summary": "Liveness check (public, no API key).",
@@ -263,6 +263,32 @@
           }
         },
         "summary": "Deep check (public, no API key): is Stellar RPC reachable on every network.",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/dependencies": {
+      "get": {
+        "operationId": "HealthController_dependencies",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "One row per upstream and network: `upstream`, `network`, `state` (`up`, `degraded` when only some of a provider list answered, `down`, `unconfigured`), `latencyMs`, `lastSuccessAt` and `lastErrorClass` (`rate_limited`, `timeout`, `unavailable`, `bad_response`). Probes are cached and coalesced per row, so this answers 200 whatever the state. `lastSuccessAt` and `lastErrorClass` are since-start values for this process.",
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            }
+          }
+        },
+        "summary": "Dependency view (public, no API key): each upstream's last probed state.",
         "tags": [
           "health"
         ]

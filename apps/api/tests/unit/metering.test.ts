@@ -64,12 +64,17 @@ describe("MeteringService", () => {
     const store: UsageStore = {
       increment: () => Promise.reject(new Error("firestore down")),
       daily: async () => [],
+      addUpstreamCounts: async () => {},
     };
     await expect(service(store).metering.record(OWNER, "r")).resolves.toBeUndefined();
   });
 
   test("a hung store write gives up after the timeout", async () => {
-    const store: UsageStore = { increment: () => new Promise(() => {}), daily: async () => [] };
+    const store: UsageStore = {
+      increment: () => new Promise(() => {}),
+      daily: async () => [],
+      addUpstreamCounts: async () => {},
+    };
     const started = Date.now();
     await service(store).metering.record(OWNER, "r");
     expect(Date.now() - started).toBeLessThan(RECORD_TIMEOUT_MS + 500);
@@ -79,6 +84,7 @@ describe("MeteringService", () => {
     const store: UsageStore = {
       increment: async () => {},
       daily: () => Promise.reject(new Error("firestore down")),
+      addUpstreamCounts: async () => {},
     };
     expect(await service(store).metering.usage(OWNER)).toBeNull();
   });
@@ -93,6 +99,7 @@ describe("MeteringInterceptor", () => {
         order.push("recorded");
       },
       daily: async () => [],
+      addUpstreamCounts: async () => {},
     };
     const body = await intercept(service(store).metering, request(), { ok: true });
     order.push("emitted");
@@ -104,6 +111,7 @@ describe("MeteringInterceptor", () => {
     const store: UsageStore = {
       increment: () => Promise.reject(new Error("firestore down")),
       daily: async () => [],
+      addUpstreamCounts: async () => {},
     };
     expect(await intercept(service(store).metering, request(), { ok: true })).toEqual({
       ok: true,

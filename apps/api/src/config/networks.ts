@@ -102,6 +102,15 @@ export const NETWORK_LABELS: Record<Network, string> = {
   testnet: "Testnet",
 };
 
+/**
+ * Circle's USDC issuer on each network, for checks that need a real asset. Public, and never a
+ * user's account.
+ */
+export const WELL_KNOWN_ISSUERS: Record<Network, string> = {
+  mainnet: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  testnet: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+};
+
 export const VALID_NETWORKS: Network[] = ["mainnet", "testnet"];
 
 export function isValidNetwork(value: string): value is Network {

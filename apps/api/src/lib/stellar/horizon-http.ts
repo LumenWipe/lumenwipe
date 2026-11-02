@@ -10,6 +10,7 @@
  */
 
 import type { Deadline } from "@/common/deadline";
+import type { Network } from "@/config/networks";
 import {
   pathOnBase,
   resolveDeadline,
@@ -22,6 +23,8 @@ export { rateLimitHits, resetUpstreamCounters as resetRateLimitHits } from "./up
 
 export interface HorizonDeps {
   baseUrl: string;
+  /** Which network's counters these reads land in. */
+  network?: Network;
   /** Auth for this provider alone. */
   headers?: Record<string, string>;
   /** Defaults to global fetch. Injected in tests to stub responses and count calls. */
@@ -51,6 +54,7 @@ function ledgerHeader(headers: Pick<Headers, "get">): number | null {
 export async function horizonGet<T>(path: string, deps: HorizonDeps): Promise<T | null> {
   return upstreamGetJson<T>(deps.baseUrl, path, {
     target: "horizon",
+    network: deps.network,
     fetch: deps.fetch,
     deadline: deps.deadline,
     headers: deps.headers,

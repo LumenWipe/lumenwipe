@@ -221,6 +221,7 @@ flow (it is not drawn in the diagram, since it never builds or signs a transacti
 | Integrator session token (address, expiry, HMAC)                                               | API, after verifying the signed challenge | The key panel's component state in the browser, or the integrator's own client; never in browser storage      | 3 → 2 → 1, then 1 → 2 → 3 as a bearer header, or integrator ↔ 3 |
 | Integrator auth secret (`INTEGRATOR_AUTH_SECRET`)                                              | Operator                                  | API environment                                                                                               | Never leaves boundary 3                                         |
 | Integrator usage (successful keyed requests per owner, per UTC day and route)                  | API, on each successful keyed request     | Firestore, one tree per owner                                                                                 | Stays in boundary 3; owners read their own                      |
+| Upstream counts (requests and failure classes per upstream and network, per UTC day)           | API, batched at most once a minute        | Firestore, one document per day                                                                               | Stays in boundary 3; no address, host or key                    |
 | Proxy rate-limit counters (IPs only as one-way hashes)                                         | Web                                       | Upstash Redis                                                                                                 | Stays in boundary 2                                             |
 
 The [threat model](/threat-model) takes boundaries 1 and 3 surface by surface: key handling and the session
@@ -280,7 +281,9 @@ The web never calls the API directly from the browser; it goes through a server-
 | `GET /v1/:network/mediator/check/:destination` | Whether a destination needs the mediator flow and a memo, and whether the shared mediator is available                                                     |
 | `POST /v1/:network/mediator/sign`              | Co-signs the atomic merge-and-forward transaction with the shared mediator key, after validating the exact shape (Section 11)                              |
 | `GET /v1/routing/convert`                      | Best conversion route for an asset pair and amount, with estimated and minimum receive amounts                                                             |
-| `GET /health`                                  | Component status for the API and its read dependencies                                                                                                     |
+| `GET /health`                                  | Liveness, with no upstream dependency                                                                                                                      |
+| `GET /health/deep`                             | Whether Stellar RPC is reachable on every network                                                                                                          |
+| `GET /health/dependencies`                     | Each upstream's last probed state, cached per upstream and network                                                                                         |
 
 Requests are authenticated with an API key and rate-limited per key, or per client IP when no valid key is sent; the web's proxy holds the key server-side and applies its own per-IP limit on top, so the shared key can never be turned into an anonymous amplifier.
 
