@@ -1999,7 +1999,7 @@
             }
           },
           "504": {
-            "description": "The transaction did not confirm in time.",
+            "description": "Submitted and not confirmed yet: `error.details` carries `status: pending` and the hash.",
             "content": {
               "application/json": {
                 "schema": {

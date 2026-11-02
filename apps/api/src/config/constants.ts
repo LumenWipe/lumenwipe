@@ -9,7 +9,12 @@ export const CLAIM_PREDICATE_MARGIN_SECONDS = TX_TIMEOUT_SECONDS + 60;
 export const CLAIMABLE_BALANCE_READ_CEILING = 1500;
 export const CLAIM_ROUND_BATCH_SIZE = 100;
 export const POLL_INTERVAL_MS = 3000; // 3 seconds between polls
-export const POLL_MAX_ATTEMPTS = 30; // 90 seconds total
+// The whole of one submit, by-hash reads and sends included. It stays under the SDK timeout in
+// apps/web/lib/api/server-client.ts, which stays under the route's maxDuration, which stays under
+// the browser's timeout in submit-via-api.ts, so the API always gets to name the outcome.
+export const SUBMIT_BUDGET_MS = 35_000;
+// About two ledgers: long enough for a node behind the network to stop being the only witness.
+export const SETTLE_WINDOW_MS = 10_000;
 export const SLIPPAGE_BPS = 50; // 0.5% default slippage for path payments
 export const HORIZON_TIMEOUT_MS = 10000; // 10 seconds
 // One inbound request's budget for every upstream read it makes together; the web proxy's

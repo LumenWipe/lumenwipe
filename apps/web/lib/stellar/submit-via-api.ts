@@ -1,6 +1,9 @@
 import type { Network } from "@/config/networks";
 import { readApiError, UserFacingError } from "@/lib/utils/user-error";
 
+// Past the route's maxDuration, so the server always gets to answer first.
+const SUBMIT_TIMEOUT_MS = 60_000;
+
 export interface SubmitResult {
   txHash: string;
   ledger: number;
@@ -17,6 +20,7 @@ export async function submitViaApi(signedXdr: string, network: Network): Promise
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ signedXdr }),
+    signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
   });
 
   if (!res.ok) throw await readApiError(res, "Failed to submit the transaction.");

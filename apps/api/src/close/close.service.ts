@@ -38,13 +38,18 @@ import {
   selectionFitsStatus,
 } from "@/lib/stellar/claim-predicates";
 import { InvalidSignatureError } from "@/lib/stellar/signature";
-import { InvalidXdrError, TxTimeoutError, TxSubmitError } from "@/lib/utils/errors";
+import {
+  InvalidXdrError,
+  TxPendingError,
+  TxSubmitError,
+  TxUnsettledError,
+} from "@/lib/utils/errors";
 import { fail } from "@/common/fail";
 import { mapDomainError, PLAN_ERRORS, TRANSACTION_ERRORS } from "@/lib/close-api/domain-errors";
 import { withTimeout } from "@/lib/utils/with-timeout";
 import { StatsService } from "@/stats/stats.service";
 import { builtCloseHashes, signedXdrHasAccountMerge } from "@/stats/merge-verification";
-import type { TransactionsResponse, Trustline } from "@lumenwipe/types";
+import type { SubmitPendingDetails, TransactionsResponse, Trustline } from "@lumenwipe/types";
 import {
   CLOCK,
   CLOSE_BUILDER,
@@ -374,8 +379,13 @@ export class CloseService {
       if (e instanceof InvalidSignatureError) {
         fail("invalid_signature", "The transaction is missing a valid signature.", 400);
       }
-      if (e instanceof TxTimeoutError) {
-        fail("confirmation_timeout", "The transaction did not confirm in time.", 504);
+      if (e instanceof TxPendingError) {
+        fail(
+          "confirmation_timeout",
+          "The transaction was submitted and is not confirmed yet. Look it up by hash before doing anything else.",
+          504,
+          { status: "pending", hash: e.txHash } satisfies SubmitPendingDetails
+        );
       }
       // Surface the network's plain-language rejection reason (insufficient
       // balance, bad sequence, no destination, ...) instead of a generic error,
@@ -392,7 +402,12 @@ export class CloseService {
         fail("invalid_signed_xdr", "The transaction envelope could not be decoded.", 400);
       }
       this.logger.error("submit failed", e instanceof Error ? e.stack : String(e));
-      fail("submit_failed", "Failed to submit the transaction.", 502);
+      fail(
+        "submit_failed",
+        "Failed to submit the transaction.",
+        502,
+        e instanceof TxUnsettledError ? { hash: e.txHash } : undefined
+      );
     }
   }
 

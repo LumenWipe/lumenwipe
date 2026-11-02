@@ -214,7 +214,11 @@ export class CloseController {
     "submit_rejected",
     "submit_failed",
   ])
-  @ApiErrorResponse(504, "The transaction did not confirm in time.", ["confirmation_timeout"])
+  @ApiErrorResponse(
+    504,
+    "Submitted and not confirmed yet: `error.details` carries `status: pending` and the hash.",
+    ["confirmation_timeout"]
+  )
   @ApiBodyErrorResponses()
   @Post("submit")
   @HttpCode(200)
