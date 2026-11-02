@@ -14,6 +14,7 @@ interface RequestContext {
   sensitive: Set<string>;
   deadline: Deadline;
   providerPins: Map<string, unknown>;
+  upstreamCalls: Map<string, number>;
 }
 
 const storage = new AsyncLocalStorage<RequestContext>();
@@ -34,6 +35,11 @@ export function currentDeadline(): Deadline | undefined {
 /** What each read settled on, so one request stays on one provider; absent outside a request. */
 export function currentProviderPins(): Map<string, unknown> | undefined {
   return storage.getStore()?.providerPins;
+}
+
+/** Upstream attempts this request has made, by upstream; absent outside a request. */
+export function currentUpstreamCalls(): Map<string, number> | undefined {
+  return storage.getStore()?.upstreamCalls;
 }
 
 /** Marks a value the current request carried (a deposit memo) as never to be logged. */
@@ -70,6 +76,7 @@ export function requestContextMiddleware(deadlineMs: number = REQUEST_DEADLINE_M
     const startedAt = process.hrtime.bigint();
     res.setHeader(REQUEST_ID_HEADER, requestId);
     res.setHeader("Cache-Control", "no-store");
+    const upstreamCalls = new Map<string, number>();
 
     const json = res.json.bind(res);
     res.json = ((body?: unknown) =>
@@ -85,6 +92,7 @@ export function requestContextMiddleware(deadlineMs: number = REQUEST_DEADLINE_M
         latencyMs: Math.round(Number(process.hrtime.bigint() - startedAt) / 1e6),
         keyLabel: (req as AuthedRequest).apiKeyLabel,
         network: params?.network,
+        ...(upstreamCalls.size > 0 && { upstreamCalls: Object.fromEntries(upstreamCalls) }),
       });
     });
 
@@ -94,6 +102,7 @@ export function requestContextMiddleware(deadlineMs: number = REQUEST_DEADLINE_M
         sensitive: new Set(),
         deadline: createDeadline(deadlineMs),
         providerPins: new Map(),
+        upstreamCalls,
       },
       next
     );

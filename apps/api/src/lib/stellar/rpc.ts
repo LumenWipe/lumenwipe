@@ -10,6 +10,7 @@ import { currentDeadline, currentProviderPins } from "@/common/request-context";
 import { parseLedgerCloseTime } from "./claim-predicates";
 import { recordProviderFailover } from "./provider-failover";
 import { UpstreamError } from "./upstream-client";
+import { recordUpstream } from "./upstream-metrics";
 
 // Memoized per-network singletons. A switch rather than a map keyed by the caller's string, so a
 // value that is not one of the two networks can never name a property.
@@ -79,8 +80,14 @@ function serversFor(network: Network, provider: ProviderEndpoint): ProviderServe
   let servers = providerServers.get(key);
   if (!servers) {
     servers = {
-      reads: buildRpcServer(network, { timeout: RPC_READ_TIMEOUT_MS, provider }),
-      simulation: buildRpcServer(network, { timeout: RPC_SIMULATE_TIMEOUT_MS, provider }),
+      reads: countedRpcServer(
+        network,
+        buildRpcServer(network, { timeout: RPC_READ_TIMEOUT_MS, provider })
+      ),
+      simulation: countedRpcServer(
+        network,
+        buildRpcServer(network, { timeout: RPC_SIMULATE_TIMEOUT_MS, provider })
+      ),
     };
     providerServers.set(key, servers);
   }
@@ -121,6 +128,7 @@ async function probeProviders(network: Network, providers: ProviderEndpoint[]): 
       if (next) recordProviderFailover("rpc", network, endpoint.url, next.url, "probe_failed");
     }
   }
+  recordUpstream(network, "rpc", "unavailable");
   throw new UpstreamError("unavailable", "rpc");
 }
 
@@ -176,6 +184,46 @@ export function nextRpcServer(network: Network): rpc.Server | null {
   return serversFor(network, providers[(index + 1) % providers.length]!).reads;
 }
 
+/** A JSON-RPC error carries a numeric code and is an answer, so it is not a failure class here. */
+function recordRpcFailure(network: Network, error: unknown): void {
+  const { response, code, message } = (error ?? {}) as {
+    response?: { status?: unknown };
+    code?: unknown;
+    message?: unknown;
+  };
+  const status = response?.status;
+  if (status === 429) recordUpstream(network, "rpc", "rate_limited");
+  else if (typeof status === "number" && status >= 500) {
+    recordUpstream(network, "rpc", "server_errors");
+  } else if (code === "ECONNABORTED" || /timeout|aborted/i.test(String(message))) {
+    recordUpstream(network, "rpc", "timeouts");
+  } else if (status === undefined && typeof code !== "number") {
+    recordUpstream(network, "rpc", "unavailable");
+  }
+}
+
+/**
+ * Counts the calls made on `server` and observes their failures. It only watches the promise a
+ * method returned: the caller gets that same promise, so a send is still called once and is
+ * still never retried or abandoned here.
+ */
+export function countedRpcServer(network: Network, server: rpc.Server): rpc.Server {
+  return new Proxy(server, {
+    get(target, prop) {
+      const value: unknown = Reflect.get(target, prop, target);
+      if (typeof value !== "function") return value;
+      return (...args: unknown[]): unknown => {
+        const result: unknown = (value as (...a: unknown[]) => unknown).apply(target, args);
+        if (result instanceof Promise) {
+          recordUpstream(network, "rpc", "requests");
+          void result.then(undefined, (error: unknown) => recordRpcFailure(network, error));
+        }
+        return result;
+      };
+    },
+  });
+}
+
 function raceDeadline<T>(call: Promise<T>): Promise<T> {
   const deadline = currentDeadline();
   if (!deadline) return call;
@@ -207,8 +255,14 @@ function callPinned(network: Network, prop: PropertyKey, args: unknown[]): Promi
  * its callers.
  */
 function withRequestDeadline(network: Network): rpc.Server {
-  const reads = buildRpcServer(network, { timeout: RPC_READ_TIMEOUT_MS });
-  const simulation = buildRpcServer(network, { timeout: RPC_SIMULATE_TIMEOUT_MS });
+  const reads = countedRpcServer(
+    network,
+    buildRpcServer(network, { timeout: RPC_READ_TIMEOUT_MS })
+  );
+  const simulation = countedRpcServer(
+    network,
+    buildRpcServer(network, { timeout: RPC_SIMULATE_TIMEOUT_MS })
+  );
   return new Proxy(reads, {
     get(target, prop) {
       const owner = SIMULATION_METHODS.has(prop) ? simulation : target;

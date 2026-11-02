@@ -136,6 +136,32 @@ balance finding posts once, then gets a daily comment on the issue, so the chann
 clean daily run closes the issue and posts the recovery. A finding the webhook cannot deliver fails the run
 itself, so a missing or revoked webhook shows up as red rather than as silence.
 
+### Upstream metrics and dependency health
+
+The API counts `requests`, `rate_limited`, `timeouts`, `server_errors`, `failovers` and `unavailable` for each
+upstream (`rpc`, `horizon`, `paths`, `defi`, `explorer`) on each network. Every HTTP attempt counts, retries
+included, because each one spends quota. Soroswap and xBull quotes are not counted.
+
+The counts are buffered in memory and written to Firestore at most once a minute while requests arrive, and once
+on SIGTERM, so they survive a restart and scale-to-zero. A crash loses at most the last minute. The write runs
+inside a request rather than on a timer, because Cloud Run throttles CPU between requests; `/health*` never
+triggers one. To read them, open `upstreamUsage/{YYYY-MM-DD}` in the `lumenwipe-api` Firestore database:
+`counts.<network>.<upstream>.<metric>` is that UTC day's total. There is no API route for them. Without
+`FIRESTORE_PROJECT_ID` they stay in memory, like usage metering.
+
+`upstreamRateLimitHits` and `defiDegradedFallbackCount` on `/health` are since-start values for one process:
+they reset on every cold start, and exist for compatibility.
+
+`GET /health/dependencies` reports `state`, `latencyMs`, `lastSuccessAt` and `lastErrorClass` per upstream. Each
+row is a separate cached and coalesced probe: 60 seconds for RPC and Horizon, 300 seconds for path finding and the
+DeFi position provider, which spend third-party quota. Probes run only when the route is called. With a provider
+list, `degraded` means some of its providers answered. The body holds fixed values only, never a hostname, key or
+balance. Do not point a startup or liveness probe at it: `/health` stays dependency-free, and `/health/deep` stays
+the cheap RPC check. The explorer is counted but not probed.
+
+Every access log line carries `upstreamCalls`, the attempts that request made per upstream, so the cost of an
+analyze and of each build round can be read from the logs.
+
 ## 5. What happens when an alert fires?
 
 | Monitor ID              | Severity | Response                                                                                                                                    | Owner       | Status                                | Last reviewed |

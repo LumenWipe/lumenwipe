@@ -14,6 +14,7 @@ import { horizonProviders, hostnameOf, type Network } from "@/config/networks";
 import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils/errors";
 import type { HorizonDeps } from "./horizon-http";
 import { DEFAULT_UPSTREAM_POLICY, resolveDeadline, UpstreamError } from "./upstream-client";
+import { recordUpstream } from "./upstream-metrics";
 
 const logger = new Logger("provider-failover");
 
@@ -37,6 +38,7 @@ export function recordProviderFailover(
   reason: string
 ): void {
   failoverCount++;
+  recordUpstream(network, kind, "failovers");
   logger.warn({
     message: "provider failover",
     kind,
@@ -90,10 +92,12 @@ export async function withHorizonFailover<T>(
 
   const deadline = resolveDeadline(primary.deadline);
   const chain = [primary, ...fallbacks];
+  let last: unknown;
   for (const [i, provider] of chain.entries()) {
     try {
       return await read(boundAttempt(provider, deadline, chain.length - i), i === 0);
     } catch (error) {
+      last = error;
       const failure =
         i > 0 && error instanceof AccountNotFoundError
           ? new UpstreamError("unavailable", "horizon")
@@ -110,6 +114,10 @@ export async function withHorizonFailover<T>(
       );
     }
   }
+  // The client already counted a last provider that itself ended as unavailable.
+  if (!(last instanceof UpstreamError && last.kind === "unavailable")) {
+    recordUpstream(network, "horizon", "unavailable");
+  }
   throw new UpstreamError("unavailable", "horizon");
 }
 
@@ -120,17 +128,17 @@ export function horizonFallbacksFor(
 ): HorizonDeps[] {
   return horizonProviders(network)
     .slice(1)
-    .map(({ url, headers }) => ({ baseUrl: url, headers, fetch: fetchImpl }));
+    .map(({ url, headers }) => ({ baseUrl: url, network, headers, fetch: fetchImpl }));
 }
 
-export type HorizonSource = Pick<HorizonDeps, "baseUrl" | "headers" | "fetch">;
+export type HorizonSource = Pick<HorizonDeps, "baseUrl" | "network" | "headers" | "fetch">;
 
 const pinKey = (network: Network): string => `horizon:${network}`;
 
 /** Remembers the provider the account snapshot came from, for reads that depend on it later. */
 export function pinHorizonSource(network: Network, source: HorizonSource): void {
   const { baseUrl, headers, fetch } = source;
-  currentProviderPins()?.set(pinKey(network), { baseUrl, headers, fetch });
+  currentProviderPins()?.set(pinKey(network), { baseUrl, network, headers, fetch });
 }
 
 export function pinnedHorizonSource(network: Network): HorizonSource | undefined {

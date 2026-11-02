@@ -7,6 +7,7 @@ import {
   type HealthIndicatorResult,
 } from "@nestjs/terminus";
 import { Public } from "../auth/public.decorator";
+import { DependencyProbes, liveDependencyProbes, type DependencyStatus } from "./dependency-probes";
 import { registryDaysRemaining } from "@/lib/exchange-registry";
 import { rateLimitHits } from "@/lib/stellar/horizon-http";
 import { degradedFallbackCount } from "@/lib/defi-positions/resolve-defi-positions";
@@ -47,6 +48,7 @@ export class HealthController {
     result: ReturnType<HealthCheckService["check"]>;
     expiresAt: number;
   } | null = null;
+  private readonly dependencyProbes = new DependencyProbes(liveDependencyProbes());
 
   constructor(
     private readonly health: HealthCheckService,
@@ -68,7 +70,8 @@ export class HealthController {
       "deploy-time fact - false means OCTOPOS_API_URL_MAINNET was never set on this revision, " +
       "so every mainnet DeFi read is degrading by design, not because OctoPos is having an " +
       "outage. All three are weeks-early operational signals, not something discovered from a " +
-      "user's screenshot.",
+      "user's screenshot. Both counters are since-start values for this process: they reset on " +
+      "every cold start, and the durable per-upstream counts live in Firestore.",
   })
   check(): {
     status: string;
@@ -128,6 +131,26 @@ export class HealthController {
     ]);
     this.cachedDeepCheck = { result, expiresAt: now + DEEP_CHECK_CACHE_MS };
     return result;
+  }
+
+  // Its own route so /health stays dependency-free and /health/deep stays the cheap RPC check.
+  // Never point a startup or liveness probe here: it spends third-party quota.
+  @Public()
+  @Get("dependencies")
+  @ApiOperation({
+    summary: "Dependency view (public, no API key): each upstream's last probed state.",
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      "One row per upstream and network: `upstream`, `network`, `state` (`up`, `degraded` when " +
+      "only some of a provider list answered, `down`, `unconfigured`), `latencyMs`, " +
+      "`lastSuccessAt` and `lastErrorClass` (`rate_limited`, `timeout`, `unavailable`, " +
+      "`bad_response`). Probes are cached and coalesced per row, so this answers 200 whatever " +
+      "the state. `lastSuccessAt` and `lastErrorClass` are since-start values for this process.",
+  })
+  async dependencies(): Promise<{ dependencies: DependencyStatus[] }> {
+    return { dependencies: await this.dependencyProbes.statuses() };
   }
 
   private checkRegistry(): HealthIndicatorResult {

@@ -18,6 +18,7 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 import { NETWORK_PASSPHRASES, STELLAR_EXPERT_API_URL } from "@/config/networks";
+import { countedFetch } from "./upstream-metrics";
 import bundledLists from "@/config/soroban-token-lists.json";
 import { mapConcurrent } from "@/lib/utils/concurrency";
 import { describeError } from "@/lib/utils/errors";
@@ -118,7 +119,7 @@ export function defaultSorobanTokensDeps(
 ): SorobanTokensDeps {
   return {
     rpc: getRpcServer(network),
-    fetch: globalThis.fetch,
+    fetch: countedFetch("explorer", network, globalThis.fetch),
     explorerBaseUrl: STELLAR_EXPERT_API_URL,
     listCandidates: bundledListCandidates(network),
     manualCandidates,

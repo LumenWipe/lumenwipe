@@ -4,6 +4,7 @@ import { SLIPPAGE_BPS } from "@/config/constants";
 import type { Deadline } from "@/common/deadline";
 import { UpstreamError, upstreamGetJson, type UpstreamOptions } from "./upstream-client";
 import { horizonFallbacksFor, withHorizonFailover } from "./provider-failover";
+import { recordUpstream } from "./upstream-metrics";
 import type { ConversionPath } from "@lumenwipe/types";
 import { isNativeAsset, parseAsset } from "@/lib/utils/assets";
 import { stroopsToXlm, xlmToStroops } from "@/lib/utils/amounts";
@@ -100,7 +101,10 @@ export async function fetchConversionPath(
   options: PathFindingOptions = {}
 ): Promise<PathResult> {
   const base = PATH_ROUTING_API_URLS[network];
-  if (!base) return { kind: "unavailable", error: new UpstreamError("unavailable", "paths") };
+  if (!base) {
+    recordUpstream(network, "paths", "unavailable");
+    return { kind: "unavailable", error: new UpstreamError("unavailable", "paths") };
+  }
   if (isNativeAsset(fromAsset) || !(parseFloat(amount) > 0)) {
     return { kind: "none", reason: "no_market" };
   }
@@ -122,6 +126,7 @@ export async function fetchConversionPath(
       network,
       {
         baseUrl: base,
+        network,
         headers: PATH_ROUTING_API_HEADERS[network],
         fetch: options.fetch,
         deadline: options.deadline,
@@ -132,6 +137,7 @@ export async function fetchConversionPath(
         recordsOf(
           await upstreamGetJson<PathsResponse>(attempt.baseUrl, `/paths/strict-send?${query}`, {
             target: "paths",
+            network: attempt.network,
             fetch: attempt.fetch,
             deadline: attempt.deadline,
             headers: attempt.headers,
