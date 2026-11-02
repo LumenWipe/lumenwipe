@@ -3,6 +3,7 @@
 import { Clock } from "lucide-react";
 import { STILL_UNCONFIRMED_NOTICE, UNCONFIRMED_NOTICE } from "@/lib/utils/user-error";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 
 interface UnconfirmedPanelProps {
   hash: string;
@@ -18,13 +19,9 @@ export default function UnconfirmedPanel({
 }: UnconfirmedPanelProps) {
   return (
     <div className="flex flex-col gap-3" data-testid="unconfirmed-panel">
-      <div
-        role="status"
-        className="flex items-start gap-2.5 rounded-lg border border-warning/25 bg-warning/10 px-3 py-2.5 text-sm text-white/70"
-      >
-        <Clock className="h-4 w-4 shrink-0 mt-0.5 text-warning" />
-        <span>{stillUnconfirmed ? STILL_UNCONFIRMED_NOTICE : UNCONFIRMED_NOTICE}</span>
-      </div>
+      <Callout tone="warning" announce="status" icon={<Clock className="h-4 w-4" />}>
+        {stillUnconfirmed ? STILL_UNCONFIRMED_NOTICE : UNCONFIRMED_NOTICE}
+      </Callout>
       <p className="text-xs text-fg-subtle">
         Transaction hash: <span className="font-mono break-all text-white/70">{hash}</span>
       </p>

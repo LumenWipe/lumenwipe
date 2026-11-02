@@ -3,6 +3,7 @@ import type { AccountState } from "@/types/account";
 import { formatXlm, calcRecoverableReserve } from "@/lib/utils/amounts";
 import { defiVerificationLabel } from "@/lib/plan/defi-verification-source";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface AccountSummaryCardProps {
   account: AccountState;
@@ -65,13 +66,13 @@ export default function AccountSummaryCard({
   const lastRowStart = stats.length - (stats.length % 3 || 3);
 
   return (
-    <div className="mkt-panel rounded-2xl overflow-hidden">
-      <div className="border-b border-white/10 px-4 py-3 flex items-center justify-between">
-        <h2 className="mkt-eyebrow text-fg-subtle">Account summary</h2>
+    <Card className="overflow-hidden">
+      <CardHeader className="flex items-center justify-between">
+        <CardTitle>Account summary</CardTitle>
         <span className="font-mono-address text-fg-muted text-xs truncate max-w-[200px]">
           {account.address.slice(0, 8)}...{account.address.slice(-8)}
         </span>
-      </div>
+      </CardHeader>
 
       {/* Every cell above the last row draws its own bottom border: `divide-y` only draws between
           rows, so when the cell count is not a multiple of three the last full row was left open
@@ -111,6 +112,6 @@ export default function AccountSummaryCard({
           <span className="text-fg-muted">to be entered</span>
         )}
       </div>
-    </div>
+    </Card>
   );
 }

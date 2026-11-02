@@ -12,6 +12,7 @@ import AddressInput from "./AddressInput";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import { findUnresolved } from "@/lib/session/recovery";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 
 type EntryMode = "wallet" | "address";
 
@@ -98,13 +99,9 @@ export default function AccountEntryForm() {
       </div>
 
       {error && (
-        <div
-          role="alert"
-          className="flex items-start gap-2 text-sm text-danger-fg bg-danger/10 border border-danger/20 rounded-lg p-3"
-        >
-          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+        <Callout tone="danger" icon={<AlertTriangle className="h-4 w-4" />}>
           {error}
-        </div>
+        </Callout>
       )}
 
       <Button

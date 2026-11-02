@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Search, AlertCircle } from "lucide-react";
+import { Callout } from "@/components/ui/callout";
 
 function isValidStellarAddress(addr: string): boolean {
   return /^G[A-Z2-7]{55}$/.test(addr);
@@ -61,10 +62,13 @@ export default function HeroAccountInput() {
       </form>
 
       {error ? (
-        <p className="mt-2.5 flex items-center gap-1.5 text-xs text-danger-fg">
-          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+        <Callout
+          tone="danger"
+          icon={<AlertCircle className="h-3.5 w-3.5" />}
+          className="mt-2.5 p-2.5 text-xs"
+        >
           {error}
-        </p>
+        </Callout>
       ) : (
         <p className="mt-2.5 text-center text-xs text-fg-subtle">
           Analyzes on mainnet · read-only until you sign · no account needed

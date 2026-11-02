@@ -9,6 +9,7 @@ import {
   isRegistryUsable,
 } from "@/lib/exchange-registry";
 import AddressInput from "./AddressInput";
+import { Callout } from "@/components/ui/callout";
 
 interface DestinationInputProps {
   destination: string;
@@ -73,7 +74,7 @@ export default function DestinationInput({
         </label>
         {memoReq?.requiresMemo ? (
           <>
-            <p className="text-xs text-amber-500">
+            <p className="text-xs text-warning">
               {memoReq.exchangeName} requires a {memoType === "id" ? "numeric" : "text"} memo for
               all deposits.
             </p>
@@ -113,36 +114,37 @@ export default function DestinationInput({
       </div>
 
       {needsAcknowledgement && (
-        <div className="space-y-2 rounded-lg border border-warning/20 bg-warning/10 p-3">
-          <div className="flex items-start gap-2 text-sm text-warning">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>We don&apos;t recognize this address as an exchange deposit address.</span>
+        <Callout
+          tone="warning"
+          icon={<AlertTriangle className="h-4 w-4" />}
+          title={<>We don&apos;t recognize this address as an exchange deposit address.</>}
+        >
+          <div className="space-y-2">
+            <p className="text-xs text-white/60">
+              That doesn&apos;t mean it isn&apos;t one. Closing directly into an exchange or
+              custodial account loses the funds: exchanges credit deposits from payments carrying a
+              memo, and cannot credit a closed account. LumenWipe sends to the exchanges it
+              recognizes through a shared relay account, but it cannot do that for an address it
+              does not know. If this one belongs to an exchange, close to a personal wallet you
+              control and send it from there, including the exchange&apos;s deposit memo.
+            </p>
+            <label className="flex cursor-pointer items-start gap-2 text-xs text-white/80">
+              <input
+                type="checkbox"
+                checked={acknowledged}
+                onChange={(e) => onAcknowledgedChange(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-stellar"
+              />
+              This is a wallet I control, not an exchange or custodial account.
+            </label>
           </div>
-          <p className="text-xs text-white/60">
-            That doesn&apos;t mean it isn&apos;t one. Closing directly into an exchange or custodial
-            account loses the funds: exchanges credit deposits from payments carrying a memo, and
-            cannot credit a closed account. LumenWipe sends to the exchanges it recognizes through a
-            shared relay account, but it cannot do that for an address it does not know. If this one
-            belongs to an exchange, close to a personal wallet you control and send it from there,
-            including the exchange&apos;s deposit memo.
-          </p>
-          <label className="flex cursor-pointer items-start gap-2 text-xs text-white/80">
-            <input
-              type="checkbox"
-              checked={acknowledged}
-              onChange={(e) => onAcknowledgedChange(e.target.checked)}
-              className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-stellar"
-            />
-            This is a wallet I control, not an exchange or custodial account.
-          </label>
-        </div>
+        </Callout>
       )}
 
       {source && destination && source === destination && (
-        <div className="flex items-start gap-2 text-sm text-warning bg-warning/10 border border-warning/20 rounded-lg p-3">
-          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+        <Callout tone="warning" icon={<AlertTriangle className="h-4 w-4" />}>
           Source and destination are the same address.
-        </div>
+        </Callout>
       )}
     </div>
   );
