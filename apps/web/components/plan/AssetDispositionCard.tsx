@@ -1,10 +1,11 @@
 "use client";
 
-import { AlertCircle, ArrowRightLeft, AlertTriangle, CheckCircle2, Send } from "lucide-react";
+import { ArrowRightLeft, AlertTriangle, CheckCircle2, Send } from "lucide-react";
 import { formatStroops, type AssetConvertibility } from "@/lib/api/plan-adapters";
 import { classicFloorFromQuote } from "@/lib/api/close-decisions";
 import type { AssetDisposition } from "@/types/plan";
-import { isValidGAddress } from "@/lib/utils/validation";
+import { AddressField } from "@/components/ui/address-field";
+import { addressErrorMessage, isValidGAddress } from "@/lib/utils/validation";
 import { cn } from "@/lib/utils/cn";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -62,10 +63,6 @@ export default function AssetDispositionCard({
   /** "my 410.25 AQUA" once it is there, "my AQUA" while it is still inside the position. */
   const holding = item.arrivesFromExit ? `my ${item.code}` : `my ${item.balance} ${item.code}`;
 
-  const showAddressError = !!transferDestination && !isValidGAddress(transferDestination);
-  const errorId = `transfer-error-${item.asset}`;
-  const helpId = `transfer-help-${item.asset}`;
-
   const clawbackNote = item.clawbackEnabled ? (
     <p className="mt-2 pl-7 text-xs leading-relaxed text-fg-muted">
       The issuer of {item.code} can reclaim this balance at any time, including before the close
@@ -95,38 +92,20 @@ export default function AssetDispositionCard({
 
       {isTransfer && (
         <div className="mt-2 space-y-1.5">
-          <input
-            type="text"
+          <AddressField
+            label={`Destination account for ${item.code}`}
+            hideLabel
             value={transferDestination ?? ""}
-            // Trimmed on the way in: an address copied out of a wallet or a terminal often
-            // carries a trailing space or newline, which is invisible on screen and would
-            // otherwise fail validation with no way for the user to see why.
-            onChange={(e) => onSetTransferDestination(item.asset, e.target.value.trim() || null)}
+            onChange={(next) => onSetTransferDestination(item.asset, next || null)}
+            error={transferDestination ? addressErrorMessage(transferDestination) : null}
             placeholder={`G... (an account that already holds ${item.code})`}
-            spellCheck={false}
-            autoComplete="off"
-            aria-label={`Destination account for ${item.code}`}
-            aria-invalid={showAddressError}
-            aria-describedby={showAddressError ? errorId : helpId}
-            className={cn(
-              "w-full rounded-md border bg-black/30 px-2.5 py-1.5 font-mono text-xs text-white",
-              "placeholder:font-sans placeholder:text-fg-subtle",
-              showAddressError ? "border-danger/50 focus:border-danger" : "border-white/10"
-            )}
+            helper={
+              <>
+                That account must already hold a {item.code} trustline - LumenWipe cannot add one
+                for it, and the whole close fails if it cannot receive the balance.
+              </>
+            }
           />
-          {/* A colour change is not an error message: it says nothing to a screen reader and
-              nothing to a user who cannot distinguish the border. Without this the flow simply
-              stops - "Begin execution" never appears - with no statement of why. */}
-          {showAddressError && (
-            <p
-              id={errorId}
-              role="alert"
-              className="flex items-center gap-1 text-[0.7rem] text-danger-fg"
-            >
-              <AlertCircle className="h-3 w-3 shrink-0" />
-              Not a valid Stellar address (must start with G)
-            </p>
-          )}
           {/* A shortcut, not a constraint: the API takes any address per asset, and hiding that
               behind a single fixed destination would make the UI narrower than the contract. */}
           {mergeDestination && transferDestination !== mergeDestination && (
@@ -138,10 +117,6 @@ export default function AssetDispositionCard({
               Use the same account I&apos;m merging into
             </button>
           )}
-          <p id={helpId} className="text-[0.7rem] leading-relaxed text-fg-subtle">
-            That account must already hold a {item.code} trustline - LumenWipe cannot add one for
-            it, and the whole close fails if it cannot receive the balance.
-          </p>
         </div>
       )}
     </div>

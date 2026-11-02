@@ -1,10 +1,10 @@
 "use client";
 
-import { AlertCircle, AlertTriangle, ArrowRightLeft, CheckCircle2, Send } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, CheckCircle2, Send } from "lucide-react";
 import { formatStroops, type AssetConvertibility } from "@/lib/api/plan-adapters";
 import type { AssetDisposition } from "@/types/plan";
-import { isValidGAddress } from "@/lib/utils/validation";
-import { cn } from "@/lib/utils/cn";
+import { AddressField } from "@/components/ui/address-field";
+import { addressErrorMessage, isValidGAddress } from "@/lib/utils/validation";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 
@@ -45,9 +45,6 @@ export default function TokenDispositionCard({
   const transferReady = isTransfer && !!transferDestination && isValidGAddress(transferDestination);
   const resolved = isConvert || isLeave || transferReady;
 
-  const showAddressError = !!transferDestination && !isValidGAddress(transferDestination);
-  const errorId = `token-transfer-error-${token.contract}`;
-  const helpId = `token-transfer-help-${token.contract}`;
   const unknownUnits = token.decimals === null;
 
   const headline = isTransfer
@@ -143,32 +140,15 @@ export default function TokenDispositionCard({
         </label>
         {isTransfer && (
           <div className="space-y-1.5 pl-5">
-            <input
-              type="text"
+            <AddressField
+              label={`Destination account for ${item.code}`}
+              hideLabel
               value={transferDestination ?? ""}
-              onChange={(e) => onSetTransferDestination(item.asset, e.target.value.trim() || null)}
+              onChange={(next) => onSetTransferDestination(item.asset, next || null)}
+              error={transferDestination ? addressErrorMessage(transferDestination) : null}
               placeholder="G... (an account that exists)"
-              spellCheck={false}
-              autoComplete="off"
-              aria-label={`Destination account for ${item.code}`}
-              aria-invalid={showAddressError}
-              aria-describedby={showAddressError ? errorId : helpId}
-              className={cn(
-                "w-full rounded-md border bg-black/30 px-2.5 py-1.5 font-mono text-xs text-white",
-                "placeholder:font-sans placeholder:text-fg-subtle",
-                showAddressError ? "border-danger/50 focus:border-danger" : "border-white/10"
-              )}
+              helper="Not an exchange deposit address: a token transfer carries no deposit memo, so an exchange could not credit it."
             />
-            {showAddressError && (
-              <p
-                id={errorId}
-                role="alert"
-                className="flex items-center gap-1 text-[0.7rem] text-danger-fg"
-              >
-                <AlertCircle className="h-3 w-3 shrink-0" />
-                Not a valid Stellar address (must start with G)
-              </p>
-            )}
             {mergeDestination && transferDestination !== mergeDestination && (
               <button
                 type="button"
@@ -178,10 +158,6 @@ export default function TokenDispositionCard({
                 Use the same account I&apos;m merging into
               </button>
             )}
-            <p id={helpId} className="text-[0.7rem] leading-relaxed text-fg-subtle">
-              Not an exchange deposit address: a token transfer carries no deposit memo, so an
-              exchange could not credit it.
-            </p>
           </div>
         )}
         <label className="flex cursor-pointer items-start gap-2 text-xs text-white/70">
