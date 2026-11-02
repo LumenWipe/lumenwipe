@@ -1,6 +1,8 @@
 import type { PlanResponse } from "@lumenwipe/sdk";
+import type { Network } from "@/config/networks";
 import type { AccountState } from "@/types/account";
 import type { ClaimableBalanceSelection } from "@/types/plan";
+import { readApiError, UserFacingError } from "@/lib/utils/user-error";
 
 /** The claim answers the analysis carries, keyed by claimable-balance id. */
 export type ClaimAnswers = Record<string, ClaimableBalanceSelection>;
@@ -23,6 +25,15 @@ export interface AnalysisDeps {
 export interface Analysis {
   account: AccountState;
   plan: PlanResponse;
+}
+
+/** The one account read of an analysis. A rejection is shown through `toUserMessage`. */
+export async function readAccount(network: Network, source: string): Promise<AccountState> {
+  const res = await fetch(`/api/${network}/account/${source}`).catch(() => {
+    throw new UserFacingError("Failed to connect to the Stellar network. Please try again.");
+  });
+  if (!res.ok) throw await readApiError(res);
+  return (await res.json()) as AccountState;
 }
 
 /**

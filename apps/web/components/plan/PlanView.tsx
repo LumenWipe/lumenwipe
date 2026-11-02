@@ -11,7 +11,6 @@ import type {
   ClaimableBalanceDecision,
   LeavablePosition,
 } from "@/lib/api/plan-adapters";
-import type { MediatorCheckResult } from "@/types/account";
 import {
   useDemolishStore,
   type ClassicConversionFloor,
@@ -57,7 +56,7 @@ import {
 } from "@/lib/api/close-decisions";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { assetsResolved } from "@/lib/plan/asset-resolution";
-import { missingRequiredMemoError } from "@/lib/plan/memo-requirement";
+import { destinationRefusal } from "@/lib/plan/destination-check";
 import { isStateChanged } from "@/lib/utils/user-error";
 
 interface PlanViewProps {
@@ -263,7 +262,7 @@ export default function PlanView({
 
   // Preview: derive mediator requirement from the registry synchronously so the
   // plan accordion shows the correct step titles before the user clicks proceed.
-  // The authoritative check happens in handleProceed via the mediator/check API.
+  // The authoritative check happens in handleProceed.
   const previewMediatorRequired =
     isValidGAddress(destination) && requiresMediatorForAddress(destination);
 
@@ -302,33 +301,9 @@ export default function PlanView({
     setError(null);
 
     try {
-      const res = await fetch(`/api/${network}/mediator/check/${destination}`);
-      if (!res.ok) throw new Error(`Relay check failed with status ${res.status}`);
-      const mediatorData: MediatorCheckResult = await res.json();
-      const needsMediator = mediatorData.requiresMediator ?? false;
-
-      // The browser decides the hand-off from its own bundled registry; an answer that disagrees
-      // stops here rather than at signing.
-      if (needsMediator !== mediatorAllowedFor(destination)) {
-        setError(
-          "The rules for this destination could not be confirmed. Refresh the page and try again. If it keeps happening, close to a personal Stellar wallet you control and send to the exchange from there."
-        );
-        return;
-      }
-
-      // Exchange destinations go through the shared mediator. If the API can't co-sign it
-      // (no mediator configured), stop here - before the user enters a key or signs -
-      // rather than failing at execution time.
-      if (needsMediator && mediatorData.available === false) {
-        setError(
-          "Sending your balance straight to this exchange isn't available right now. Instead, merge to a personal Stellar wallet you control, then send it to the exchange from there - remember to include the exchange's deposit memo, or it won't be credited."
-        );
-        return;
-      }
-
-      const memoError = missingRequiredMemoError(mediatorData, memo);
-      if (memoError !== null) {
-        setError(memoError);
+      const refusal = await destinationRefusal(network, destination, memo);
+      if (refusal !== null) {
+        setError(refusal);
         return;
       }
 
@@ -337,7 +312,7 @@ export default function PlanView({
 
       const effectiveMemoType = memoRequired ? memoTypeForDest : undefined;
       setAddresses(account.address, destination, memo.trim() || undefined, effectiveMemoType);
-      setMediatorRequired(needsMediator);
+      setMediatorRequired(mediatorAllowedFor(destination));
 
       // Request the final plan (for the execute sidebar) from the API with the destination
       // and the user's asset + claimable-balance decisions. Execution itself re-requests the

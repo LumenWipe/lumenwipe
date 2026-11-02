@@ -328,7 +328,15 @@ The adapter uses the authenticated tier where an API key is configured and the p
 
 ### 7.2 Caching
 
-Read data is cached with short TTLs, keyed by address: positions for tens of seconds, routing for a few seconds (routing is time sensitive), analysis for a few seconds with explicit refresh on user request. The cache holds public, read-only data. It holds no keys and no user identity.
+The API keeps no read cache for account state, positions or routes: every plan and every build reads live. Caching happens in the web's proxy, on three routes, and holds public read-only data with no keys and no user identity. A cached response never becomes an input to a signed or verified value; `apps/web/tests/unit/cached-response-boundary.test.ts` and `apps/web/tests/unit/cached-routes.test.ts` enforce that and this table.
+
+| Route                                     | Time to live                 | Why it cannot affect a signed value                                                                                                                                                                                                                                                                             |
+| ----------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/[network]/mediator/check/[address]` | 30 s, then up to 120 s stale | Read only by `destinationRefusal`, which returns refusal text and no value, so it can stop a close and never shape one. The hand-off comes from the bundled registry, a stale `requiresMemo` is read again live when the API builds, and a stale `available` fails at co-signing, before anything is submitted. |
+| `/api/stats`                              | 5 s                          | Public counters for display. Nothing in the close flow reads them.                                                                                                                                                                                                                                              |
+| `/api/stats/feed`                         | 30 s                         | Public feed for display. Nothing in the close flow reads it.                                                                                                                                                                                                                                                    |
+
+Every other route is `no-store`. That includes `/api/[network]/paths`, whose amount may be a user's balance, and the routes that do feed `verify()` by design: `close/plan` for conversion floors and `account` for the balance, signers and thresholds. Those are read fresh and carry the trust limits described in Section 13. The exchange registry is also uncached, and it can only tighten what the bundled copy allows.
 
 ### 7.3 Integration surfaces: API and SDK
 

@@ -229,9 +229,13 @@ export function claimableSelectionsToDecisions(
  * changed. A dependency on it made the analyze page's fetch retrigger itself - fetch ->
  * setAccountState -> new reference -> new callback -> effect -> fetch - until the rate limiter
  * stopped it. Sorted so key order cannot make two equal answer sets look different.
+ *
+ * "claim" is left out because the API plans an unanswered balance exactly as a claimed one, so
+ * seeding that default must not ask for the same plan twice.
  */
 export function claimAnswersKey(selections: Record<string, ClaimableBalanceSelection>): string {
   return Object.entries(selections)
+    .filter(([, choice]) => choice !== "claim")
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([id, choice]) => `${id}:${choice}`)
     .join("|");

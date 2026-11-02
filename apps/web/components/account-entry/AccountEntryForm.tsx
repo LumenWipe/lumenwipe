@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils/cn";
 import AddressInput from "./AddressInput";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import { findUnresolved } from "@/lib/session/recovery";
-import { readApiError, toUserMessage } from "@/lib/utils/user-error";
 
 type EntryMode = "wallet" | "address";
 
@@ -37,21 +36,10 @@ export default function AccountEntryForm() {
 
     try {
       // The account may be gone with its merge unconfirmed: the gate on /analyze settles that.
-      if (await findUnresolved(network, source)) {
-        router.push(`/${network}/analyze?source=${source}`);
-        return;
+      if (!(await findUnresolved(network, source))) {
+        initSession();
+        setPhase("ANALYZING");
       }
-
-      // Validate that source account exists before navigating
-      const res = await fetch(`/api/${network}/account/${source}`);
-      if (!res.ok) {
-        setError(toUserMessage(await readApiError(res), "analyze"));
-        return;
-      }
-
-      initSession();
-      setPhase("ANALYZING");
-
       router.push(`/${network}/analyze?source=${source}`);
     } catch {
       setError("Failed to connect to the Stellar network. Please try again.");
