@@ -144,7 +144,7 @@ async function driveToExecute(
   await expect(beginButton).toBeVisible({ timeout: 30_000 });
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(opts.destination);
   await confirmDestinationControl(page);
-  await expect(beginButton).toBeEnabled();
+  await expect(beginButton).toBeEnabled({ timeout: TESTNET_STEP_TIMEOUT });
   await beginButton.click();
 
   await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });

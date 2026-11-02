@@ -195,6 +195,22 @@ export async function seedBlendSupply(owner: Keypair, stroops: bigint): Promise<
   );
 }
 
+/**
+ * Whether the pool's oracle prices every reserve. The testnet oracle is a third party's and can
+ * list a reserve it no longer prices; every pool read then fails and the API rightly refuses the
+ * exit, which says nothing about this code. `from` must be a funded account.
+ */
+export async function blendOraclePricesEveryReserve(from: string): Promise<boolean> {
+  const { oracle } = (await readOnly(from, BLEND_POOL, "get_config")) as { oracle: string };
+  const reserves = (await readOnly(from, BLEND_POOL, "get_reserve_list")) as string[];
+  for (const reserve of reserves) {
+    const asset = xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("Stellar"), addr(reserve)]);
+    const price = await readOnlyRaw(from, oracle, "lastprice", asset);
+    if (price.type === "scvVoid") return false;
+  }
+  return true;
+}
+
 /** Whether the pool still records any supply, collateral, or debt for `owner`. */
 export async function blendPositionExists(owner: string): Promise<boolean> {
   const key = xdr.LedgerKey.contractData(

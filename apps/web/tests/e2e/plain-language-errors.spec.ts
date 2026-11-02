@@ -42,18 +42,24 @@ function failWith(status: number, rawMessage: string) {
     });
 }
 
-/** The visible alerts, minus Next's route announcer, which only repeats the page title. */
-async function alertTexts(page: Page): Promise<string[]> {
+/** The visible alerts and status messages, minus Next's route announcer, which only repeats the
+ *  page title. */
+async function messageTexts(page: Page): Promise<string[]> {
   return page
-    .locator('[role="alert"]:not(next-route-announcer *)')
+    .locator(':is([role="alert"], [role="status"]):not(next-route-announcer *)')
     .allInnerTexts()
     .then((texts) => texts.map((t) => t.trim()).filter(Boolean));
 }
 
-async function expectPlainCopy(page: Page, expected: RegExp, raw: string): Promise<void> {
-  const alert = page.locator('[role="alert"]').filter({ hasText: expected });
-  await expect(alert.first()).toBeVisible({ timeout: TESTNET_STEP_TIMEOUT });
-  for (const text of await alertTexts(page)) {
+async function expectPlainCopy(
+  page: Page,
+  expected: RegExp,
+  raw: string,
+  role: "alert" | "status" = "alert"
+): Promise<void> {
+  const message = page.locator(`[role="${role}"]`).filter({ hasText: expected });
+  await expect(message.first()).toBeVisible({ timeout: TESTNET_STEP_TIMEOUT });
+  for (const text of await messageTexts(page)) {
     expect(text).not.toMatch(RAW_LEAK);
     expect(text).not.toContain(raw);
   }
@@ -177,6 +183,7 @@ test.describe("execute with a secret key", () => {
     status: number;
     raw: string;
     copy: RegExp;
+    role?: "status";
   }> = [
     {
       name: "simulation failure",
@@ -211,7 +218,8 @@ test.describe("execute with a secret key", () => {
       endpoint: "**/api/v1/testnet/submit",
       status: 500,
       raw: "tx_internal_error: submission failed (500)",
-      copy: /temporarily unavailable/,
+      copy: /not confirmed yet/,
+      role: "status",
     },
     {
       name: "unmapped status falls back instead of leaking",
@@ -228,7 +236,7 @@ test.describe("execute with a secret key", () => {
       await toSigning(page);
       await page.route(c.endpoint, failWith(c.status, c.raw));
       await sign(page);
-      await expectPlainCopy(page, c.copy, c.raw);
+      await expectPlainCopy(page, c.copy, c.raw, c.role);
     });
   }
 
@@ -275,7 +283,7 @@ test.describe("execute with a wallet", () => {
       .getByRole("button", { name: /Connect wallet/i })
       .last()
       .click();
-    await page.getByText("Freighter", { exact: true }).click();
+    await page.getByText("Varial", { exact: true }).click();
     await expect(page.getByText(/Connected:/)).toBeVisible({ timeout: TESTNET_STEP_TIMEOUT });
 
     await page.getByRole("checkbox").check();

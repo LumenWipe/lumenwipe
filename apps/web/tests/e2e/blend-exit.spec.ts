@@ -14,6 +14,7 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 import { contractDataVal } from "./fixtures/ledger-entry";
+import { blendOraclePricesEveryReserve } from "./fixtures/defi-seeds";
 
 // E2E for the DeFi exit round, against live TESTNET, API-only (plan -> transactions -> sign ->
 // submit, repeated until done). It seeds a real Blend position first - 10 XLM supplied to the
@@ -133,6 +134,10 @@ test("close API: a Blend supply position is exited, then the account is merged",
   const destination = Keypair.random();
   await fund(source.publicKey());
   await fund(destination.publicKey());
+  test.skip(
+    !(await blendOraclePricesEveryReserve(source.publicKey())),
+    "the Blend testnet oracle lists a reserve it does not price, so no Blend exit can be built on this run"
+  );
   await seedBlendSupply(source);
   expect(await poolPositionExists(source.publicKey())).toBe(true);
 
