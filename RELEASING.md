@@ -62,12 +62,21 @@ revisions around; nothing needs to be rebuilt.
 `packages/sdk` is the only component with a real external dependency graph - someone's
 `package.json` names an exact version - so it's the only one with real semver and a real gate.
 
+### Between releases
+
+A PR that changes what the SDK does never touches its version. It adds a line under
+`## [Unreleased]` in `packages/sdk/CHANGELOG.md` (Keep a Changelog: `Added`, `Changed`, `Fixed`,
+`Removed`), written from the consumer's point of view. That keeps `package.json` equal to the
+latest version on npm, and the bump is decided once per release by reading the whole section.
+
 ### The checklist
 
-1. Decide the version bump (semver: breaking / feature / fix).
-2. Bump `packages/sdk/package.json`'s `"version"` and `SDK_VERSION` in `packages/sdk/src/version.ts` (a test fails if they differ).
-3. Add an entry to `packages/sdk/CHANGELOG.md` (Keep a Changelog format - see the file for the
-   pattern) describing what changed, from the consumer's point of view.
+1. Read `## [Unreleased]` and decide the bump (semver: breaking / feature / fix; before 1.0, a
+   breaking change is a minor bump).
+2. Set `packages/sdk/package.json`'s `"version"` and `SDK_VERSION` in `packages/sdk/src/version.ts`
+   (a test fails if they differ).
+3. Rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and open a new, empty `## [Unreleased]`
+   above it.
 4. Open a PR with just those file changes (`chore(sdk): release vX.Y.Z`). Get it merged to
    `main` like any other PR - CI runs the same `sdk` matrix entry every other PR gets.
 5. Once merged, tag the exact commit on `main` and push the tag:
@@ -85,13 +94,13 @@ If a tagged run fails after the checks pass but before `npm publish` completes (
 say), re-run it with `workflow_dispatch` and the same tag - `dist-tag`s are still whatever they
 were, nothing is left half-published.
 
-### What forces a version bump
+### What needs a changelog entry
 
-Any change to `packages/sdk/src/**` needs at least a patch bump before it reaches consumers -
-nothing publishes it otherwise. Because the SDK's build step
+Any change to `packages/sdk/src/**` reaches consumers on the next release, so it needs an
+`[Unreleased]` entry. Because the SDK's build step
 (`tsup` + `api-extractor`, see `packages/sdk/package.json`'s `build` script) rolls up
 `@lumenwipe/types` into the SDK's own bundled `.d.ts`, a `packages/types/src/**` change that
-alters a type the SDK re-exports needs a bump too, even though `packages/sdk/src/**` itself didn't
+alters a type the SDK re-exports needs one too, even though `packages/sdk/src/**` itself didn't
 change.
 
 ### The gap this replaces
@@ -110,12 +119,10 @@ way they'd ask about a migration or a breaking change.
 
 ### CI guardrail
 
-`.github/workflows/ci.yml`'s `sdk-version-bump` check fails a PR that touches
-`packages/sdk/src/**` or `packages/types/src/**` without also changing
-`packages/sdk/package.json`'s `version` field. It does **not** publish anything itself - bumping
-the version just satisfies the check; the actual publish still needs the tag-push step above. This
-catches "forgot entirely," not "bumped the wrong amount" - semver correctness is still a human
-judgment call.
+`.github/workflows/ci.yml`'s `sdk-changelog` check fails a PR that touches `packages/sdk/src/**`,
+or changes the content of `packages/sdk/etc/sdk.api.md`, without changing the
+`## [Unreleased]` section of `packages/sdk/CHANGELOG.md`. It publishes nothing and says nothing
+about when to release; that stays a maintainer's call.
 
 ### The other direction: the live API outrunning an already-published SDK
 
