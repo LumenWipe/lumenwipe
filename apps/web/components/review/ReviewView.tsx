@@ -43,7 +43,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
     if (!sourceAddress || !destinationAddress) return;
     setConfirming(true);
 
-    await saveCloseSession(network);
+    await saveCloseSession({ network, source: sourceAddress });
 
     setPhase("STEP_EXECUTING");
     router.push(`/${network}/execute`);

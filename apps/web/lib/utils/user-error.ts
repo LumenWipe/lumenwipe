@@ -199,6 +199,8 @@ export const STILL_UNCONFIRMED_NOTICE =
 export const CLOSE_FINISHED_NOTICE =
   "This close is finished: the merge you signed is confirmed on the network.";
 
+export const CLOSE_INTERRUPTED =
+  "This close was interrupted because another account was started in this tab, so nothing more was sent for it.";
 export const HASH_NOT_KEPT =
   "This browser could not save the details needed to check this transaction if the page is lost, so it was held back. Allow this site to store data, then try again.";
 export const OUTCOME_HELD =

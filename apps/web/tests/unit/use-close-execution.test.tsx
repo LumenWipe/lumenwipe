@@ -1770,6 +1770,159 @@ test("useCloseExecution › a record dismissed between transactions is put back 
   expect(useDemolishStore.getState().lastError).toBeNull();
 });
 
+function moveToAnotherAccount(): string {
+  const other = Keypair.random().publicKey();
+  useDemolishStore.getState().setAddresses(other, Keypair.random().publicKey());
+  useDemolishStore.setState({
+    phase: "STEP_EXECUTING",
+    executionPlan: [planStep(0, "MERGE", "pending")] as never,
+  });
+  return other;
+}
+
+test("useCloseExecution › another account taking the tab stops the next send and writes nothing", async () => {
+  const { sourceKeypair } = twoRoundSetup([
+    planStep(0, "NORMALIZE_SIGNERS", "pending"),
+    planStep(1, "MERGE", "pending"),
+  ]);
+  const saved = spyOn(sessionStore, "saveSession").mockImplementation(async () => {});
+  const written = spyOn(sessionStore, "saveUnconfirmed").mockImplementation(async () => true);
+  let sent = 0;
+  let other = "";
+  stubSubmitViaApi(async () => {
+    sent++;
+    other = moveToAnotherAccount();
+    return {};
+  });
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  const state = useDemolishStore.getState();
+  expect(sent).toBe(1);
+  expect(saved).not.toHaveBeenCalled();
+  expect(written.mock.calls.filter(([, sub]) => sub !== null)).toHaveLength(1);
+  expect(state.sourceAddress).toBe(other);
+  expect(state.sessionId).toBeNull();
+  expect(state.phase).toBe("STEP_EXECUTING");
+  expect(state.lastError).toBeNull();
+  expect(state.unconfirmedSubmission).toBeNull();
+});
+
+test("useCloseExecution › a late confirmation of one account never touches the next", async () => {
+  const { sourceKeypair } = mergeSetup();
+  const clear = spyOn(sessionStore, "clearUnconfirmedFor").mockImplementation(async () => {});
+  stubSubmitViaApi(async () => {
+    moveToAnotherAccount();
+    return {};
+  });
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  const state = useDemolishStore.getState();
+  expect(state.phase).toBe("STEP_EXECUTING");
+  expect(state.executionPlan[0]?.status).toBe("pending");
+  expect(state.lastError).toBeNull();
+  expect(clear).toHaveBeenCalledWith("testnet", sourceKeypair.publicKey());
+});
+
+test("useCloseExecution › a late unknown outcome of one account leaves the next alone and the hold in place", async () => {
+  const { sourceKeypair } = mergeSetup();
+  skipResendWaits();
+  const clear = spyOn(sessionStore, "clearUnconfirmedFor").mockImplementation(async () => {});
+  stubSubmitViaApi(async () => {
+    moveToAnotherAccount();
+    throw new ApiRequestError(504, "");
+  });
+  stubLookup(async (hash) => ({ status: "not_found", hash, searched: SEARCHED }));
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  const state = useDemolishStore.getState();
+  expect(state.phase).toBe("STEP_EXECUTING");
+  expect(state.unconfirmedSubmission).toBeNull();
+  expect(clear).not.toHaveBeenCalled();
+});
+
+test("useCloseExecution › another account arriving while a round is fetched stops before signing", async () => {
+  const { sourceKeypair, mergeXdr } = mergeSetup();
+  stubFetchCloseTransactions(async () => {
+    moveToAnotherAccount();
+    return {
+      planHash: "h",
+      status: "ready",
+      transactions: [{ id: "t", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+      remaining: { steps: 0, requiresAnotherCall: false },
+    };
+  });
+  const signer = realSigner(sourceKeypair);
+  const sign = spyOn(signer, "sign");
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(signer);
+  });
+  expect(sign).not.toHaveBeenCalled();
+  expect(useDemolishStore.getState().phase).toBe("STEP_EXECUTING");
+});
+
+test("useCloseExecution › another account arriving while the hash is written stops the send", async () => {
+  const { sourceKeypair } = mergeSetup();
+  skipResendWaits();
+  spyOn(sessionStore, "saveUnconfirmed").mockImplementation(async (_id, sub) => {
+    if (sub) moveToAnotherAccount();
+    return true;
+  });
+  stubLookup(async (hash) => ({ status: "not_found", hash, searched: SEARCHED }));
+  let sent = 0;
+  stubSubmitViaApi(async () => {
+    sent++;
+    return {};
+  });
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(sent).toBe(0);
+  expect(useDemolishStore.getState().phase).toBe("STEP_EXECUTING");
+});
+
+test("useCloseExecution › another account arriving while the session is read writes no hash", async () => {
+  const { sourceKeypair } = mergeSetup();
+  let reads = 0;
+  spyOn(sessionStore, "loadSession").mockImplementation(async (id) => {
+    if (++reads === 2) moveToAnotherAccount();
+    return { id } as never;
+  });
+  const written = spyOn(sessionStore, "saveUnconfirmed").mockImplementation(async () => true);
+  stubSubmitViaApi(async () => ({}));
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(written.mock.calls.filter(([, sub]) => sub !== null)).toHaveLength(0);
+});
+
+test("useCloseExecution › a left-over confirmed after another account arrived marks nothing", async () => {
+  const { sourceKeypair } = mergeSetup();
+  useDemolishStore.setState({
+    unconfirmedSubmission: { hash: "a".repeat(64), covers: ["MERGE"], validUntil: 2_000_000_000 },
+  });
+  spyOn(sessionStore, "clearUnconfirmedFor").mockImplementation(async () => {});
+  stubLookup(async (hash) => {
+    moveToAnotherAccount();
+    return { status: "confirmed", hash, ledger: 1 };
+  });
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  const state = useDemolishStore.getState();
+  expect(state.executionPlan[0]?.status).toBe("pending");
+  expect(state.phase).toBe("STEP_EXECUTING");
+});
+
 test("useCloseExecution › a failed clear after settling never stops the close", async () => {
   const { sourceKeypair } = mergeSetup();
   spyOn(sessionStore, "clearUnconfirmedFor").mockImplementation(async () => {
