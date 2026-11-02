@@ -7,6 +7,14 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-11-02
+
+### Fixed
+
+- Every client method that takes a network rejects with the new `LumenWipeInvalidNetworkError`,
+  with no request made, when the network is not `"mainnet"` or `"testnet"`. This includes a
+  `network` client option and an empty string, which used to fall back to the default network.
+
 ## [0.13.0] - 2026-10-31
 
 ### Added

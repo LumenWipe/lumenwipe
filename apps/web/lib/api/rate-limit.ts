@@ -1,6 +1,8 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
+import { isValidNetwork } from "@/config/networks";
 import { checkNamespacedRateLimit } from "@/lib/upstash-redis";
+import { invalidNetworkResponse } from "@/lib/api/network-segment";
 import { rateLimitedResponse } from "@/lib/api/proxy-error";
 
 // Generous for a legitimate close flow (a close is a handful of requests), but caps how
@@ -23,12 +25,16 @@ function clientIp(req: NextRequest): string {
  * routes with no API key, so without this a single client could turn the proxy into an
  * anonymous amplifier against the shared server-side key. Returns a 429 response when the
  * caller is over the limit, or null to proceed. Fails open (an Upstash Redis outage allows the request)
- * so infrastructure trouble never blocks a legitimate, irreversible close.
+ * so infrastructure trouble never blocks a legitimate, irreversible close. A route with a
+ * `[network]` param passes `params`, so an unknown network gets its 400 without counting.
  */
 export async function rateLimitProxy(
   req: NextRequest,
-  namespace: string
+  namespace: string,
+  params?: Promise<{ network: string }>
 ): Promise<NextResponse | null> {
+  if (params && !isValidNetwork((await params).network)) return invalidNetworkResponse();
+
   let allowed = true;
   try {
     allowed = await checkNamespacedRateLimit(
