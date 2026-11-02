@@ -27,7 +27,7 @@ import {
   AccountNotFoundError,
   InvalidXdrError,
   TxSubmitError,
-  TxTimeoutError,
+  TxPendingError,
 } from "@/lib/utils/errors";
 import { InvalidSignatureError } from "@/lib/stellar/signature";
 import { LiveReadError } from "@/lib/stellar/live-trustline";
@@ -1126,12 +1126,16 @@ describe("submit", () => {
     );
   });
 
-  test("U4 a confirmation timeout is a 504", async () => {
+  test("U4 a confirmation timeout is a 504 naming the hash as pending", async () => {
+    const details = await submitFailing(new TxPendingError(HASH)).catch(
+      (e: HttpException) => (e.getResponse() as { error: { details: unknown } }).error.details
+    );
+    expect(details).toEqual({ status: "pending", hash: HASH });
     await expectFail(
-      submitFailing(new TxTimeoutError()),
+      submitFailing(new TxPendingError(HASH)),
       504,
       "confirmation_timeout",
-      "The transaction did not confirm in time."
+      "The transaction was submitted and is not confirmed yet. Look it up by hash before doing anything else."
     );
   });
 

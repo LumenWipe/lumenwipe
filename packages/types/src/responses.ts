@@ -7,6 +7,16 @@ export interface SubmitResponse {
   ledger: number;
 }
 
+/**
+ * `error.details` of a `confirmation_timeout` from `POST /v1/:network/submit`. It is an error, not
+ * a 2xx, because a client that reads `hash` from a success would count the transaction confirmed.
+ * Compute the hash from the envelope you signed rather than taking this one on trust.
+ */
+export interface SubmitPendingDetails {
+  status: "pending";
+  hash: string;
+}
+
 /** Response from `GET /:network/paths`. */
 export interface PathResponse {
   path: ConversionPath | null;

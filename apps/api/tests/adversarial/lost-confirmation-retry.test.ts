@@ -42,7 +42,6 @@ function signedXdr(): string {
 function rpcServerStub(overrides: Partial<ReturnType<typeof rpcModule.getRpcServer>>) {
   return {
     sendTransaction: () => Promise.reject(new Error("sendTransaction should not be called")),
-    pollTransaction: () => Promise.reject(new Error("pollTransaction should not be called")),
     getTransaction: () => Promise.reject(new Error("not stubbed")),
     ...overrides,
   } as unknown as ReturnType<typeof rpcModule.getRpcServer>;
@@ -74,19 +73,20 @@ test("a transaction the network has never seen proceeds through the normal send-
       ReturnType<ReturnType<typeof rpcModule.getRpcServer>["sendTransaction"]>
     >)
   );
+  let reads = 0;
   spyOn(rpcModule, "getRpcServer").mockReturnValue(
     rpcServerStub({
       getTransaction: () =>
-        Promise.resolve({ status: "NOT_FOUND" } as unknown as Awaited<
-          ReturnType<ReturnType<typeof rpcModule.getRpcServer>["getTransaction"]>
-        >),
+        Promise.resolve(
+          (reads++ === 0
+            ? { status: "NOT_FOUND" }
+            : { status: "SUCCESS", ledger: 7 }) as unknown as Awaited<
+            ReturnType<ReturnType<typeof rpcModule.getRpcServer>["getTransaction"]>
+          >
+        ),
       sendTransaction: sendTransactionSpy as unknown as ReturnType<
         typeof rpcModule.getRpcServer
       >["sendTransaction"],
-      pollTransaction: () =>
-        Promise.resolve({ status: "SUCCESS", ledger: 7 } as unknown as Awaited<
-          ReturnType<ReturnType<typeof rpcModule.getRpcServer>["pollTransaction"]>
-        >),
     })
   );
 

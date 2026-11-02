@@ -307,10 +307,22 @@ export class InvalidXdrError extends Error {
   }
 }
 
-export class TxTimeoutError extends Error {
-  constructor() {
-    super("Transaction confirmation timed out. It is safe to retry.");
-    this.name = "TxTimeoutError";
+/** The network accepted the transaction and the budget ended with no verdict on it. */
+export class TxPendingError extends Error {
+  constructor(readonly txHash: string) {
+    super("The transaction was submitted and is not confirmed yet.");
+    this.name = "TxPendingError";
+  }
+}
+
+/** The send failed in a way that leaves open whether the transaction reached the network. */
+export class TxUnsettledError extends Error {
+  constructor(
+    readonly txHash: string,
+    message: string
+  ) {
+    super(message);
+    this.name = "TxUnsettledError";
   }
 }
 

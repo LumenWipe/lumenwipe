@@ -84,7 +84,7 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `claimable_balance_reserve_short`             | 422    | The XLM headroom is too small to add the trustlines needed to claim the balances.                                              |
 | `claimable_balances_too_many`                 | 422    | The account holds more claimable balances than one read returns and the unclaimed ones fill it.                                |
 | `close_fee_balance_short`                     | 422    | The account lacks the XLM above its reserve to pay the fees of the steps no sponsor can cover.                                 |
-| `confirmation_timeout`                        | 504    | The transaction did not confirm in time. Check its status before retrying.                                                     |
+| `confirmation_timeout`                        | 504    | The transaction was submitted and is not confirmed yet. Look it up by hash before retrying.                                    |
 | `conversion_floor_missing`                    | 422    | A conversion carries no destination minimum.                                                                                   |
 | `conversion_provider_unrecognized`            | 422    | A conversion names a provider the API does not recognize.                                                                      |
 | `defi_exit_blocked`                           | 422    | A DeFi position could not be exited safely.                                                                                    |
