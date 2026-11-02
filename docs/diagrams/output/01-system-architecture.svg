@@ -56,7 +56,7 @@
 <path fill="#eff6ff" stroke="#3b82f6" stroke-width="1.6" d="M374.78,-501.5C374.78,-501.5 104.78,-501.5 104.78,-501.5 98.78,-501.5 92.78,-495.5 92.78,-489.5 92.78,-489.5 92.78,-466.5 92.78,-466.5 92.78,-460.5 98.78,-454.5 104.78,-454.5 104.78,-454.5 374.78,-454.5 374.78,-454.5 380.78,-454.5 386.78,-460.5 386.78,-466.5 386.78,-466.5 386.78,-489.5 386.78,-489.5 386.78,-495.5 380.78,-501.5 374.78,-501.5"/>
 <text text-anchor="start" x="193.28" y="-484.7" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00" fill="#1e293b">Wallet Adapter</text>
 <text text-anchor="start" x="180.78" y="-475.3" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">stellar&#45;wallets&#45;kit (SEP&#45;43)</text>
-<text text-anchor="start" x="108.78" y="-466.3" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Freighter · Albedo · LOBSTR · Hana · WalletConnect · more</text>
+<text text-anchor="start" x="108.78" y="-466.3" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Varial · Albedo · LOBSTR · Hana · WalletConnect · more</text>
 </g>
 <!-- signer -->
 <g id="node5" class="node">

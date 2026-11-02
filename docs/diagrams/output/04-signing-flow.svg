@@ -78,7 +78,7 @@
 <path fill="#eff6ff" stroke="#3b82f6" stroke-width="1.6" d="M298,-714C298,-714 28,-714 28,-714 22,-714 16,-708 16,-702 16,-702 16,-679 16,-679 16,-673 22,-667 28,-667 28,-667 298,-667 298,-667 304,-667 310,-673 310,-679 310,-679 310,-702 310,-702 310,-708 304,-714 298,-714"/>
 <text text-anchor="start" x="107.5" y="-697.2" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00" fill="#1e293b">stellar&#45;wallets&#45;kit</text>
 <text text-anchor="start" x="100.5" y="-687.8" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">signTransaction (all wallets)</text>
-<text text-anchor="start" x="32" y="-678.8" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">signAuthEntry (Freighter · Hana · WalletConnect · Ledger)</text>
+<text text-anchor="start" x="32" y="-678.8" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">signAuthEntry (Varial · Hana · WalletConnect · Ledger)</text>
 </g>
 <!-- choice&#45;&gt;kit -->
 <g id="edge4" class="edge">

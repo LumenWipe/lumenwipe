@@ -69,11 +69,11 @@ const ITEMS: Item[] = [
     a: (
       <>
         Any SEP-43 wallet through{" "}
-        <span className="mkt-mono text-white/80">stellar-wallets-kit</span>: Freighter, xBull,
-        Albedo, LOBSTR, Hana, WalletConnect and more. Power users can also use an advanced
-        secret-key mode where the key is held in memory only for the duration of the close, never
-        persisted and never sent to a server, and cleared when you finish, abort, navigate away, or
-        click &quot;Forget key&quot;.
+        <span className="mkt-mono text-white/80">stellar-wallets-kit</span>: Varial (formerly
+        Freighter), xBull, Albedo, LOBSTR, Hana, WalletConnect and more. Power users can also use an
+        advanced secret-key mode where the key is held in memory only for the duration of the close,
+        never persisted and never sent to a server, and cleared when you finish, abort, navigate
+        away, or click &quot;Forget key&quot;.
       </>
     ),
   },

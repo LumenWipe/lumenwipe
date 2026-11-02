@@ -37,7 +37,7 @@ with g.subgraph(name="cluster_browser") as b:
     )
     b.node("ui",      hl("Guided UI", "Analyze -> Execute -> Complete", "Plan preview · per-step confirmations · irreversibility warnings"),
            fillcolor=F_CLIENT, color=B_CLIENT)
-    b.node("wallet",  hl("Wallet Adapter", "stellar-wallets-kit (SEP-43)", "Freighter · Albedo · LOBSTR · Hana · WalletConnect · more"),
+    b.node("wallet",  hl("Wallet Adapter", "stellar-wallets-kit (SEP-43)", "Varial · Albedo · LOBSTR · Hana · WalletConnect · more"),
            fillcolor=F_CLIENT, color=B_CLIENT)
     b.node("sk",      hl("Secret-Key Mode", "In-memory only · never persisted", "Wiped on completion, abort, or navigation away"),
            fillcolor=F_CLIENT, color=B_CLIENT)
