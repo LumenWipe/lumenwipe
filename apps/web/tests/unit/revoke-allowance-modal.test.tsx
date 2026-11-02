@@ -334,7 +334,7 @@ test("RevokeAllowanceModal › the result step closes with Done", async () => {
   expect(onClose).toHaveBeenCalledTimes(1);
 });
 
-test("RevokeAllowanceModal › Escape stays with the wallet picker while it is open", () => {
+test("RevokeAllowanceModal › while the wallet picker is open the dialog hands over the keyboard", () => {
   spyOn(walletKit, "useWalletKitConnection").mockImplementation(
     () =>
       ({
@@ -356,7 +356,13 @@ test("RevokeAllowanceModal › Escape stays with the wallet picker while it is o
       onRevoked={() => {}}
     />
   );
-  pressEscape();
+  const dialog = screen.getByRole("dialog", { hidden: true });
+  expect(dialog.hasAttribute("inert")).toBe(true);
+  const close = dialog.querySelector('button[aria-label="Close"]') as HTMLElement;
+  expect(close.closest("[inert]")).toBe(dialog);
+  expect(fireEvent.keyDown(document.body, { key: "Tab" })).toBe(true);
+  expect(dialog.contains(document.activeElement) && document.activeElement !== dialog).toBe(false);
+  fireEvent.keyDown(document.body, { key: "Escape" });
   clickScrim();
   expect(onClose).not.toHaveBeenCalled();
 });

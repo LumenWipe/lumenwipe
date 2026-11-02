@@ -132,7 +132,7 @@ export default function RevokeAllowanceModal({
   const busy = step === "signing";
 
   return (
-    <Dialog dismissible={!busy && !walletConnection.connecting} onClose={onClose}>
+    <Dialog dismissible={!busy} suspended={walletConnection.connecting} onClose={onClose}>
       <div className="flex items-start gap-3 border-b border-white/10 px-5 py-4">
         <div
           className={cn(

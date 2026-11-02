@@ -240,6 +240,84 @@ test("Dialog › keys pressed in another overlay on the page are left alone", ()
   expect(document.activeElement).toBe(overlay);
 });
 
+test("Dialog › while suspended it is inert and leaves Tab and Escape alone", () => {
+  const onClose = mock(() => {});
+  const view = (suspended: boolean) => (
+    <Dialog suspended={suspended} onClose={onClose}>
+      <Content />
+    </Dialog>
+  );
+  const { rerender } = render(view(true));
+  const dialog = document.querySelector("dialog") as HTMLElement;
+  expect(dialog.hasAttribute("inert")).toBe(true);
+
+  (document.activeElement as HTMLElement).blur();
+  expect(fireEvent.keyDown(document.body, { key: "Tab" })).toBe(true);
+  expect(document.activeElement).toBe(document.body);
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  fireEvent.click(scrim());
+  expect(onClose).not.toHaveBeenCalled();
+
+  rerender(view(false));
+  expect(dialog.hasAttribute("inert")).toBe(false);
+  fireEvent.keyDown(document.body, { key: "Tab" });
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "First" }));
+  fireEvent.click(scrim());
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+function TwoDialogs({ open }: { open: { a: boolean; b: boolean } }) {
+  return (
+    <>
+      <div id="app-root" />
+      {open.a && (
+        <Dialog>
+          <Content />
+        </Dialog>
+      )}
+      {open.b && (
+        <Dialog>
+          <Content />
+        </Dialog>
+      )}
+    </>
+  );
+}
+
+test("Dialog › background and page stay held until the last dialog closes, first-open out first", () => {
+  document.documentElement.style.overflow = "scroll";
+  const { rerender } = render(<TwoDialogs open={{ a: true, b: false }} />);
+  rerender(<TwoDialogs open={{ a: true, b: true }} />);
+  const root = document.getElementById("app-root") as HTMLElement;
+  const html = document.documentElement;
+
+  rerender(<TwoDialogs open={{ a: false, b: true }} />);
+  expect(root.hasAttribute("inert")).toBe(true);
+  expect(html.style.overflow).toBe("hidden");
+
+  rerender(<TwoDialogs open={{ a: false, b: false }} />);
+  expect(root.hasAttribute("inert")).toBe(false);
+  expect(html.style.overflow).toBe("scroll");
+  expect(html.style.scrollbarGutter).toBe("");
+});
+
+test("Dialog › background and page stay held until the last dialog closes, last-open out first", () => {
+  document.documentElement.style.overflow = "scroll";
+  const { rerender } = render(<TwoDialogs open={{ a: true, b: false }} />);
+  rerender(<TwoDialogs open={{ a: true, b: true }} />);
+  const root = document.getElementById("app-root") as HTMLElement;
+  const html = document.documentElement;
+
+  rerender(<TwoDialogs open={{ a: true, b: false }} />);
+  expect(root.hasAttribute("inert")).toBe(true);
+  expect(html.style.overflow).toBe("hidden");
+
+  rerender(<TwoDialogs open={{ a: false, b: false }} />);
+  expect(root.hasAttribute("inert")).toBe(false);
+  expect(html.style.overflow).toBe("scroll");
+  expect(html.style.scrollbarGutter).toBe("");
+});
+
 test("Dialog › focus returns to the trigger after the background is live again", () => {
   const trigger = openHost();
   const root = document.getElementById("app-root") as HTMLElement;

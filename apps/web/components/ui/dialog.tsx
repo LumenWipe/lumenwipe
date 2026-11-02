@@ -62,11 +62,35 @@ function containTab(event: KeyboardEvent, dialog: HTMLElement): void {
   }
 }
 
+let openDialogs = 0;
+let releaseBackground: (() => void) | null = null;
+
+function holdBackground(): () => void {
+  const background = document.getElementById("app-root");
+  const root = document.documentElement;
+  const { overflow, scrollbarGutter } = root.style;
+
+  background?.setAttribute("inert", "");
+  root.style.overflow = "hidden";
+  root.style.scrollbarGutter = "stable";
+
+  return () => {
+    root.style.overflow = overflow;
+    root.style.scrollbarGutter = scrollbarGutter;
+    background?.removeAttribute("inert");
+  };
+}
+
 interface DialogProps {
   children: ReactNode;
   onClose?: () => void;
   /** When false, Escape and the scrim do nothing. */
   dismissible?: boolean;
+  /**
+   * Hands the keyboard to an overlay outside the dialog: the dialog goes inert, and neither the
+   * Tab trap nor Escape act, so Tab can reach that overlay. Nothing here can close it meanwhile.
+   */
+  suspended?: boolean;
   /** Receives focus on open. Defaults to the dialog itself. */
   initialFocusRef?: RefObject<HTMLElement | null>;
   side?: "center" | "right";
@@ -83,6 +107,7 @@ export function Dialog({
   children,
   onClose,
   dismissible = true,
+  suspended = false,
   initialFocusRef,
   side = "center",
   className,
@@ -93,21 +118,16 @@ export function Dialog({
   const ids = useMemo(() => ({ titleId, descriptionId }), [titleId, descriptionId]);
 
   useLayoutEffect(() => {
-    const background = document.getElementById("app-root");
-    const root = document.documentElement;
     const trigger = document.activeElement as HTMLElement | null;
-    const { overflow, scrollbarGutter } = root.style;
 
-    background?.setAttribute("inert", "");
-    root.style.overflow = "hidden";
-    root.style.scrollbarGutter = "stable";
+    if (openDialogs === 0) releaseBackground = holdBackground();
+    openDialogs += 1;
     (initialFocusRef?.current ?? dialogRef.current)?.focus({ preventScroll: true });
 
     return () => {
-      root.style.overflow = overflow;
-      root.style.scrollbarGutter = scrollbarGutter;
+      openDialogs -= 1;
       // An inert element refuses focus, so the background has to come back first.
-      background?.removeAttribute("inert");
+      if (openDialogs === 0) releaseBackground?.();
       trigger?.focus({ preventScroll: true });
     };
     // Only the opening focus target is read: a later ref change must not re-run the open.
@@ -118,14 +138,14 @@ export function Dialog({
     function onKeyDown(event: KeyboardEvent): void {
       const dialog = dialogRef.current;
       const target = event.target as Node;
-      if (!dialog || (target !== document.body && !dialog.contains(target))) return;
+      if (suspended || !dialog || (target !== document.body && !dialog.contains(target))) return;
       if (event.key === "Tab") containTab(event, dialog);
       else if (event.key === "Escape" && dismissible) onClose?.();
     }
 
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [dismissible, onClose]);
+  }, [dismissible, onClose, suspended]);
 
   return createPortal(
     <div
@@ -141,7 +161,7 @@ export function Dialog({
           "absolute inset-0 backdrop-blur-xs",
           side === "right" ? "bg-black/40" : "bg-black/70"
         )}
-        onClick={dismissible ? onClose : undefined}
+        onClick={dismissible && !suspended ? onClose : undefined}
       />
       <dialog
         ref={dialogRef}
@@ -151,6 +171,7 @@ export function Dialog({
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         tabIndex={-1}
+        inert={suspended}
         className={cn(
           "relative m-0 flex w-full flex-col bg-surface p-0 text-fg shadow-2xl",
           side === "right"
