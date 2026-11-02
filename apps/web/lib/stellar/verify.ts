@@ -337,6 +337,15 @@ function assertBlendSubmitArguments(args: string[], source: string): void {
   }
 }
 
+/** `remove_liquidity(token_a, token_b, liquidity, amount_a_min, amount_b_min, to, deadline)`. */
+function assertSoroswapRemovalArguments(args: string[], source: string): void {
+  if (args.length !== 7 || args[5] !== source) {
+    throw new VerificationError(
+      "A DeFi exit would act for, or pay, an address other than the account being closed."
+    );
+  }
+}
+
 interface SwapArgs {
   /** The token being spent. */
   token: string;
@@ -1070,6 +1079,9 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         // moves value to this account or to the contract at the root of this exact invocation -
         // never a third party (issue #208).
         if (op.function === "submit") assertBlendSubmitArguments(op.args, expected.source);
+        if (op.function === "remove_liquidity") {
+          assertSoroswapRemovalArguments(op.args, expected.source);
+        }
         // Blend's `claim(from, ids, to)` and Aquarius's `claim(user)` both pay their last argument.
         if (
           op.function === "claim" &&
@@ -1119,15 +1131,23 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         }
         for (const sub of op.subInvocations) {
           // An LP share lives in the Soroswap pair's own contract, which has no exit call of its
-          // own, and the router pays it into that pair.
-          const paysShareIntoPair =
-            op.function === "remove_liquidity" &&
-            expected.exitFunctions[sub.contract]?.length === 0 &&
-            sub.function === "transfer" &&
-            sub.args.length === 3 &&
-            sub.args[0] === expected.source &&
-            sub.args[1] === sub.contract;
-          if (paysShareIntoPair) continue;
+          // own. The router pays exactly the removed amount into that pair, and authorizes nothing else.
+          if (op.function === "remove_liquidity") {
+            const paysShareIntoPair =
+              op.subInvocations.length === 1 &&
+              expected.exitFunctions[sub.contract]?.length === 0 &&
+              sub.function === "transfer" &&
+              sub.args.length === 3 &&
+              sub.args[0] === expected.source &&
+              sub.args[1] === sub.contract &&
+              sub.args[2] === op.args[2];
+            if (!paysShareIntoPair) {
+              throw new VerificationError(
+                "A DeFi exit would authorize something other than paying its liquidity share into its pair."
+              );
+            }
+            continue;
+          }
           const isToken =
             expected.heldTokenContracts.includes(sub.contract) ||
             expected.positionTokenContracts.includes(sub.contract);

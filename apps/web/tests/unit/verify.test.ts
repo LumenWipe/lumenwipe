@@ -1173,6 +1173,7 @@ test("an AMM withdrawal may invoke the protocol's router and name the pair's tok
   const op = exit({
     contract: ROUTER,
     function: "remove_liquidity",
+    args: [TOKEN, XLM_SAC, "100", "1", "1", SRC, "1788846802"],
     contractsReferenced: [POOL, ROUTER, TOKEN, XLM_SAC],
   });
   const functions = { [POOL]: [], [ROUTER]: ["remove_liquidity"] };
@@ -1359,6 +1360,7 @@ test("rejects a Soroswap router exit whose remove_liquidity call hides a transfe
   const op = exit({
     contract: ROUTER,
     function: "remove_liquidity",
+    args: [TOKEN, XLM_SAC, "100", "1", "1", SRC, "1788846802"],
     contractsReferenced: [POOL, ROUTER, TOKEN, XLM_SAC],
     subInvocations: [{ contract: TOKEN, function: "transfer", args: [SRC, ATTACKER, "100"] }],
   });
@@ -1368,7 +1370,7 @@ test("rejects a Soroswap router exit whose remove_liquidity call hides a transfe
     exitFunctions: { [POOL]: [], [ROUTER]: ["remove_liquidity"] },
   });
   expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
-    /other than this account or the protocol/
+    /something other than paying its liquidity share into its pair/
   );
 });
 
@@ -1486,16 +1488,17 @@ describe("Soroswap's router may move the LP share into its pair", () => {
     exitContracts: [PAIR, SOROSWAP_ROUTER, POOL],
     exitFunctions: { [PAIR]: [], [SOROSWAP_ROUTER]: ["remove_liquidity"] },
   });
+  const removalArgs = [TOKEN, OTHER_TOKEN, "100", "1", "1", SRC, "1788846802"];
   const removal = (sub: { contract: string; function: string; args: string[] }) =>
     exit({
       contract: SOROSWAP_ROUTER,
       function: "remove_liquidity",
-      args: [],
+      args: removalArgs,
       contractsReferenced: [SOROSWAP_ROUTER],
       subInvocations: [sub],
     });
   const share = { contract: PAIR, function: "transfer", args: [SRC, PAIR, "100"] };
-  const REFUSED = /a contract that is not one of this account's tokens/;
+  const REFUSED = /something other than paying its liquidity share into its pair/;
 
   test("as a transfer from the account to the pair itself", () => {
     expect(() => assertCloseIntent(exitOnly(removal(share)), expected)).not.toThrow();
@@ -1521,10 +1524,47 @@ describe("Soroswap's router may move the LP share into its pair", () => {
     });
   }
 
+  test("for the amount the removal names", () => {
+    const op = removal({ ...share, args: [SRC, PAIR, "101"] });
+    expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(REFUSED);
+  });
+
+  test("and nothing beside it", () => {
+    const heldToken = expectation({ ...expected, heldTokenContracts: [TOKEN] });
+    for (const other of [share, { contract: TOKEN, function: "burn", args: [SRC, "1"] }]) {
+      const op = { ...removal(share), subInvocations: [share, other] } as IntentOperation;
+      expect(() => assertCloseIntent(exitOnly(op), heldToken)).toThrow(REFUSED);
+    }
+    const tokenAlone = removal({
+      contract: TOKEN,
+      function: "transfer",
+      args: [SRC, SOROSWAP_ROUTER, "100"],
+    });
+    expect(() => assertCloseIntent(exitOnly(tokenAlone), heldToken)).toThrow(REFUSED);
+  });
+
+  for (const [name, args] of [
+    ["too few arguments", removalArgs.slice(0, 6)],
+    ["too many arguments", [...removalArgs, "1"]],
+    [
+      "another contract as the recipient",
+      [TOKEN, OTHER_TOKEN, "100", "1", "1", PAIR, "1788846802"],
+    ],
+  ] as const) {
+    test(`and a removal with ${name} is refused`, () => {
+      const op = { ...removal(share), args: [...args] } as IntentOperation;
+      expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
+        /an address other than the account being closed/
+      );
+    });
+  }
+
   test("only through remove_liquidity", () => {
     const op = { ...removal(share), function: "withdraw" } as IntentOperation;
     const other = { ...expected, exitFunctions: { [SOROSWAP_ROUTER]: ["withdraw"], [PAIR]: [] } };
-    expect(() => assertCloseIntent(exitOnly(op), other)).toThrow(REFUSED);
+    expect(() => assertCloseIntent(exitOnly(op), other)).toThrow(
+      /not one of this account's tokens/
+    );
   });
 });
 
@@ -2524,7 +2564,8 @@ describe("at a registry contract, XLM and classic assets move only as a repay in
     ["a Blend backstop", "withdraw"],
   ] as const) {
     test(`${protocol}'s ${fn} may not authorize one`, () => {
-      const op = paying(transfer, { function: fn, args: [] });
+      const args = fn === "remove_liquidity" ? [POOL, TOKEN, "1", "1", "1", SRC, "1"] : [];
+      const op = paying(transfer, { function: fn, args });
       const expected = { ...repay, exitFunctions: { [POOL]: [fn] } };
       const withoutDebt = { ...expected, repayTokensByPool: {} };
       expect(() => assertCloseIntent(exitOnly(op), withoutDebt)).toThrow(REFUSED);
@@ -3089,34 +3130,90 @@ describe("a Blend exit as the decoder reads it", () => {
     });
   });
 
-  test("a Soroswap removal passes with the pair's share paid into the pair, and not elsewhere", () => {
+  describe("a Soroswap removal", () => {
     const ROUTER = "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD";
     const PAIR = "CDH4NEG6TAII2AXGJY52WSMMOGCPMFIQBBH245ATW2TIZ7MBYM23YOAR";
+    const OUTSIDE = StrKey.encodeContract(Buffer.alloc(32, 23));
     const read = accountRead([]);
-    read.defiPositions.positions.push({
-      protocol: "soroswap",
-      positionType: "lp",
-      contractAddress: PAIR,
-      shareAmount: "1",
-      tokens: [TESTNET_XLM, USDC_SAC],
-      usdValue: null,
-    } as AccountState["defiPositions"]["positions"][number]);
+    for (const [protocol, contractAddress, tokens] of [
+      ["soroswap", PAIR, [TESTNET_XLM, USDC_SAC]],
+      ["soroswap", OUTSIDE, []],
+    ] as const) {
+      read.defiPositions.positions.push({
+        protocol,
+        positionType: "lp",
+        contractAddress,
+        shareAmount: "1",
+        tokens: [...tokens],
+        usdValue: null,
+      } as unknown as AccountState["defiPositions"]["positions"][number]);
+    }
     const i128 = (value: number): xdr.ScVal => nativeToScVal(BigInt(value), { type: "i128" });
-    const args = [
+    const argsFor = (to: xdr.ScVal, liquidity = 1000): xdr.ScVal[] => [
       new Address(TESTNET_XLM).toScVal(),
       new Address(USDC_SAC).toScVal(),
-      i128(1000),
+      i128(liquidity),
       i128(1),
       i128(1),
-      PARTY,
+      to,
       nativeToScVal(BigInt(NOW), { type: "u64" }),
     ];
-    const removal = (to: string): string =>
-      envelopeOf(ROUTER, "remove_liquidity", args, [
-        authorized(ROUTER, "remove_liquidity", args, [transferCall(PAIR, to)]),
+    const OTHER = /something other than paying its liquidity share into its pair/;
+
+    function removal(
+      args: xdr.ScVal[],
+      subs: xdr.SorobanAuthorizedInvocation[],
+      free: xdr.SorobanAuthorizedInvocation[] = []
+    ): string {
+      return envelopeOf(ROUTER, "remove_liquidity", args, [
+        authorized(ROUTER, "remove_liquidity", args, subs),
+        ...free,
       ]);
-    expect(() => verify(removal(PAIR), read)).not.toThrow();
-    expect(() => verify(removal(ROUTER), read)).toThrow(/not one of this account's tokens/);
+    }
+
+    test("passes with the share paid into the pair", () => {
+      const xdrString = removal(argsFor(PARTY), [transferCall(PAIR, PAIR)]);
+      expect(() => verify(xdrString, read)).not.toThrow();
+    });
+
+    test("refuses the share paid anywhere else", () => {
+      const xdrString = removal(argsFor(PARTY), [transferCall(PAIR, ROUTER)]);
+      expect(() => verify(xdrString, read)).toThrow(OTHER);
+    });
+
+    test("refuses another recipient of the tokens", () => {
+      const xdrString = removal(argsFor(new Address(OUTSIDE).toScVal()), [
+        transferCall(PAIR, PAIR),
+      ]);
+      expect(() => verify(xdrString, read)).toThrow(/an address other than the account/);
+    });
+
+    test("refuses a second transfer", () => {
+      const xdrString = removal(argsFor(PARTY), [
+        transferCall(PAIR, PAIR),
+        transferCall(PAIR, PAIR),
+      ]);
+      expect(() => verify(xdrString, read)).toThrow(OTHER);
+    });
+
+    test("refuses a transfer for another amount", () => {
+      const xdrString = removal(argsFor(PARTY, 1), [transferCall(PAIR, PAIR)]);
+      expect(() => verify(xdrString, read)).toThrow(OTHER);
+    });
+
+    test("refuses a separate authorization for another amount", () => {
+      const xdrString = removal(argsFor(PARTY, 1), [], [transferCall(PAIR, PAIR)]);
+      expect(() => verify(xdrString, read)).toThrow(OTHER);
+    });
+
+    test("refuses a separate authorization beside the transfer", () => {
+      const xdrString = removal(
+        argsFor(PARTY),
+        [transferCall(PAIR, PAIR)],
+        [transferCall(PAIR, PAIR)]
+      );
+      expect(() => verify(xdrString, read)).toThrow(OTHER);
+    });
   });
 
   test("a claim pays the account, and a contract in the to position is refused", () => {

@@ -233,7 +233,13 @@ describe("an exit the registry vouches for passes the anchor", () => {
 
     expect(() =>
       assertCloseIntent(
-        exitOnly(call(SOROSWAP_ROUTER, "remove_liquidity", [SOROSWAP_PAIR, XTAR, XLM_SAC])),
+        exitOnly({
+          ...call(SOROSWAP_ROUTER, "remove_liquidity", [SOROSWAP_PAIR, XTAR, XLM_SAC]),
+          args: [XTAR, XLM_SAC, "1000", "1", "1", SRC, "1800000300"],
+          subInvocations: [
+            { contract: SOROSWAP_PAIR, function: "transfer", args: [SRC, SOROSWAP_PAIR, "1000"] },
+          ],
+        } as IntentOperation),
         expected
       )
     ).not.toThrow();
