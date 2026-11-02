@@ -29,9 +29,9 @@ export const RPC_SIMULATE_TIMEOUT_MS = 20_000;
 // budget in octopos-http.ts, worst case is 2 * 2500ms + one 300ms backoff ~= 5.3s, leaving
 // headroom under the web proxy's maxDuration for the direct-read fallback that can follow.
 export const OCTOPOS_TIMEOUT_MS = 2500; // 2.5 seconds
-// architecture.md §7.2 caches DeFi positions for "tens of seconds," and OctoPos's own Position
-// Tracker refreshes every 60s (per its architecture docs) - double that, tight enough to catch a
-// genuinely stalled feed, generous enough not to block a plan on ordinary refresh latency.
+// OctoPos's own Position Tracker refreshes every 60s (per its architecture docs) - double that,
+// tight enough to catch a genuinely stalled feed, generous enough not to block a plan on ordinary
+// refresh latency.
 export const DEFI_POSITIONS_STALENESS_THRESHOLD_SECONDS = 120;
 
 // Sponsorship enumeration: how many of the sponsor's own operations we'll page through
