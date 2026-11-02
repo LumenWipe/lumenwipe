@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { StatsModule } from "@/stats/stats.module";
 import { CloseController } from "./close.controller";
 import { CloseService } from "./close.service";
+import { TransactionsController } from "./transactions.controller";
 import {
   CLOCK,
   CLOSE_BUILDER,
@@ -20,7 +21,7 @@ import {
 
 @Module({
   imports: [StatsModule],
-  controllers: [CloseController],
+  controllers: [CloseController, TransactionsController],
   providers: [
     CloseService,
     { provide: CLOSE_READER, useValue: defaultCloseReader },

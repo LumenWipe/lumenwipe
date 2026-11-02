@@ -2,6 +2,17 @@ import { NextResponse } from "next/server";
 import { LumenWipeApiError, LumenWipeTimeoutError } from "@lumenwipe/sdk";
 import { errorEnvelope, requestIdHeaders } from "@/lib/api/error-body";
 
+/** The server has no API URL or key: an operator's fault, which a retry can outlast. */
+export class ApiNotConfiguredError extends Error {
+  constructor(variable: string) {
+    super(`${variable} is not configured.`);
+    this.name = "ApiNotConfiguredError";
+  }
+}
+
+/** Headers for a 503: an operator's fault, so the caller learns when to look again. */
+export const NOT_CONFIGURED_HEADERS = { "Retry-After": "30" };
+
 /**
  * The response for a failed proxied call: the upstream API's own error body and status relayed
  * verbatim, or, for a failure the proxy hits itself, the API's `{ error: { code, message } }`
@@ -25,7 +36,14 @@ export function proxyErrorResponse(e: unknown): NextResponse {
       status: 504,
     });
   }
-  // Missing LUMENWIPE_API_* config, or the API is unreachable.
+  if (e instanceof ApiNotConfiguredError) {
+    console.error("API proxy error:", e);
+    return NextResponse.json(
+      errorEnvelope("service_unavailable", "The service is temporarily unavailable."),
+      { status: 503, headers: NOT_CONFIGURED_HEADERS }
+    );
+  }
+  // The API is unreachable.
   console.error("API proxy error:", e);
   return NextResponse.json(errorEnvelope("api_unavailable", "The API is currently unavailable."), {
     status: 502,

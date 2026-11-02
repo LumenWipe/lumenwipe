@@ -659,10 +659,20 @@ The tool never leaves the user guessing. Every failure is either retryable with 
 | Partial position data                                 | Affected positions are flagged; the tool builds no exit from incomplete data                                                           |
 | Step fails on submission                              | The step is marked failed with a plain-language reason; the user retries the same step; later steps stay locked                        |
 | Confirmation response lost                            | On retry the tool checks `getTransaction`; if the transaction already confirmed, the step is marked complete rather than resubmitted   |
+| Submit outcome unknown                                | The API reads by hash before it reports a failure, and answers pending with the hash when its 35-second budget ends without a verdict  |
 | Sequence or fee issue                                 | The tool rebuilds with the current sequence number and a higher fee within the disclosed tolerance, then re-presents for signing       |
 | Browser closed mid-flow, after review confirmation    | The session restores from IndexedDB and reconciles against on-chain state; completed steps are skipped                                 |
 | Soroban entry archived                                | A long-dormant account may have archived contract entries; the tool detects this and inserts a `RestoreFootprint` step before the exit |
 | Undercollateralized vault or unknown contract version | Surfaced as a blocker with an explanation; independent steps in the plan can still proceed                                             |
+
+### Following a close from outside
+
+A platform closing many accounts needs to see outcomes without holding a connection open, and the API keeps nothing per close. Two options were weighed.
+
+- **Polling, chosen.** `GET /v1/{network}/transactions/{hash}` resolves one transaction, and `GET /v1/{network}/close/status?source=` reports a phase and the remaining work from live state. Both re-read the chain on every call, so they cannot drift from it, and an outage loses nothing: the next call answers.
+- **Webhooks, declined.** A webhook needs a durable record of who wants which close, a delivery queue with retries, and a signing secret per subscriber. That is server-side progress per close, which the API deliberately does not have, and a missed delivery would still need the polling route to recover from. There is no follow-up issue: a platform that wants a push can poll and fan out on its own side.
+
+`close/status` is informational. A close is complete only when the hash of the merge the client signed is confirmed by hash.
 
 ## 23. Open questions and known risks
 

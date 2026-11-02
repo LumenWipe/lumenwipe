@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { errorEnvelope } from "@/lib/api/error-body";
+import { NOT_CONFIGURED_HEADERS } from "@/lib/api/proxy-error";
 import { rateLimitProxy } from "@/lib/api/rate-limit";
 
 /**
@@ -20,9 +21,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const base = process.env.LUMENWIPE_API_URL;
   if (!base) {
-    return NextResponse.json(errorEnvelope("api_unavailable", "API URL is not configured."), {
-      status: 500,
-    });
+    console.error("API proxy error: LUMENWIPE_API_URL is not configured.");
+    return NextResponse.json(
+      errorEnvelope("service_unavailable", "The service is temporarily unavailable."),
+      { status: 503, headers: NOT_CONFIGURED_HEADERS }
+    );
   }
   try {
     const res = await fetch(`${base}/config/exchange-registry`, {

@@ -10,6 +10,16 @@ The web app has no version number, so entries are dated by the day they were mer
 
 As of 2026-10-10, the mediator flow (exchange closes) and sponsored fees are available on testnet. Mainnet availability follows the deployment status in the [monitoring plan](/monitoring-plan). FxDAO exits are testnet only. See [Supported](/reference/supported) for the full matrix.
 
+## 2026-11
+
+### 2026-11-02
+
+- **API:** `submit_rejected` is now `422` instead of `502`, so a transaction the network refused no longer reads as an API outage. `502` and `504` stay reserved for upstream faults. Anything branching on the status has to move to the code or the new status.
+- **API:** `mediator_key_misconfiguration` is now `503` with `Retry-After` and a neutral message instead of `500`.
+- **API:** `submit` reads by hash before it reports a failure and answers within 35 seconds. When no verdict arrives, `confirmation_timeout` carries `details.status` set to `pending` and `details.hash`.
+- **API:** `GET /v1/{network}/transactions/{hash}` looks a transaction up without submitting anything, and `GET /v1/{network}/close/status` reports a close's phase and remaining work from live state.
+- **Web:** a proxy with no API configuration answers `503` with `Retry-After` instead of `500` or `502`.
+
 ## 2026-10
 
 ### 2026-10-11

@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { LumenWipeApiError, LumenWipeTimeoutError } from "@lumenwipe/sdk";
-import { proxyErrorResponse, rateLimitedResponse } from "@/lib/api/proxy-error";
+import {
+  ApiNotConfiguredError,
+  proxyErrorResponse,
+  rateLimitedResponse,
+} from "@/lib/api/proxy-error";
 
 let errorSpy: ReturnType<typeof spyOn>;
 beforeEach(() => {
@@ -32,11 +36,11 @@ describe("proxy error paths speak the API's envelope", () => {
     await expectEnvelope(proxyErrorResponse(new TypeError("fetch failed")), 502);
   });
 
-  test("config missing", async () => {
-    await expectEnvelope(
-      proxyErrorResponse(new Error("LUMENWIPE_API_URL is not configured.")),
-      502
-    );
+  test("config missing is a retryable 503 that names no variable", async () => {
+    const res = proxyErrorResponse(new ApiNotConfiguredError("LUMENWIPE_API_URL"));
+    await expectEnvelope(res.clone(), 503);
+    expect(res.headers.get("Retry-After")).toBe("30");
+    expect(await res.text()).not.toContain("LUMENWIPE");
   });
 
   test("rate limited", async () => {

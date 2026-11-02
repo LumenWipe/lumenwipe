@@ -1142,7 +1142,7 @@ describe("submit", () => {
   test("U5 a network rejection surfaces its reason and result code", async () => {
     await expectFail(
       submitFailing(new TxSubmitError("Insufficient balance.", "tx_insufficient_balance")),
-      502,
+      422,
       "submit_rejected",
       "Insufficient balance.",
       { resultCode: "tx_insufficient_balance" }

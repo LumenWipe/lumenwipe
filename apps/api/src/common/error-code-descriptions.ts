@@ -73,7 +73,7 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   issuer_supply_not_acknowledged:
     "The account issues assets that are still held and the close was not acknowledged.",
   key_limit_reached: "The wallet already has the maximum number of active keys.",
-  mediator_key_misconfiguration: "The mediator key on this server is misconfigured.",
+  mediator_key_misconfiguration: "The exchange flow is temporarily unavailable. Retry.",
   mediator_not_configured: "The exchange (mediator) flow is not configured on this server.",
   memo_required: "The destination requires a memo.",
   merge_destination_unusable:
@@ -120,7 +120,7 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   state_changed:
     "The account changed between reading and building. Nothing was submitted; plan again.",
   stats_unavailable: "The stats store is unreachable. Retry.",
-  submit_failed: "The transaction could not be submitted. Retry.",
+  submit_failed: "The outcome is unknown. Look the transaction up by hash before retrying.",
   submit_rejected: "The network rejected the transaction.",
   time_bounds_required: "The transaction must expire within a short window to be signed.",
   too_many_addresses: "More addresses than a batch accepts.",

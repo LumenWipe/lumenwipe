@@ -43,14 +43,14 @@ try {
 
 Retries are off by default. Enable them with `retry: { attempts, baseDelayMs }` on the client. Waits use `Retry-After` when present (capped at 30 seconds), otherwise exponential backoff with jitter, and a `signal` abort cuts a wait short. A timeout or a caller abort is never retried.
 
-| Method                                                                | Retried on                        |
-| --------------------------------------------------------------------- | --------------------------------- |
-| `health`, `getAccount`, `getPaths`, `mediatorCheck`, `getAllowances`  | Network error, 429, 502, 503, 504 |
-| `closePlan`, `closeTransactions`, `feeBumpSponsor`, `revokeAllowance` | 429, 503 only                     |
-| `submit`, `mediatorSign`                                              | Never                             |
+| Method                                                                                                | Retried on                        |
+| ----------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `health`, `getAccount`, `getPaths`, `mediatorCheck`, `getAllowances`, `getTransaction`, `closeStatus` | Network error, 429, 502, 503, 504 |
+| `closePlan`, `closeTransactions`, `feeBumpSponsor`, `revokeAllowance`                                 | 429, 503 only                     |
+| `submit`, `mediatorSign`                                                                              | Never                             |
 
-`submit` is never retried because a repeated submit can land twice or hide that the first one succeeded; check whether the transaction landed before resubmitting. `mediatorSign` is never retried because it co-signs with the relay account's key.
+`submit` is never retried because a repeated submit can land twice or hide that the first one succeeded; call `getTransaction` with the hash of the envelope you signed before resubmitting. `mediatorSign` is never retried because it co-signs with the relay account's key.
 
-The API is stateless and re-reads live state each round, so calling `closeTransactions` again after a failure is always safe. Before resubmitting a transaction after a timeout, check whether it already landed. A signed transaction is valid until its `validUntilLedger`.
+The API is stateless and re-reads live state each round, so calling `closeTransactions` again after a failure is always safe. Before resubmitting a transaction after a timeout, look it up with `getTransaction`. A signed transaction is valid until its `validUntilLedger`.
 
 Show users the plain-language `message` from blockers and error bodies, not raw status codes or stack traces.

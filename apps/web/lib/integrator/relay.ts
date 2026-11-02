@@ -1,5 +1,6 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
+import { NOT_CONFIGURED_HEADERS } from "@/lib/api/proxy-error";
 import { rateLimitProxy } from "@/lib/api/rate-limit";
 import { buildUpstreamRequest } from "./upstream";
 
@@ -19,7 +20,10 @@ export async function relayIntegrator(
   const baseUrl = process.env.LUMENWIPE_API_URL;
   if (!baseUrl) {
     console.error("Integrator proxy error: LUMENWIPE_API_URL is not configured.");
-    return NextResponse.json({ error: "The API is currently unavailable." }, { status: 502 });
+    return NextResponse.json(
+      { error: "The API is currently unavailable." },
+      { status: 503, headers: NOT_CONFIGURED_HEADERS }
+    );
   }
 
   const bodyText = method === "POST" ? await req.text() : "";

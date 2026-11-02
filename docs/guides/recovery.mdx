@@ -40,11 +40,11 @@ Every confirmed step stays confirmed. To continue, resume the close in the app, 
 
 ### A submission did not confirm in time
 
-`confirmation_timeout` means the API waited about 90 seconds for the transaction to appear in a ledger and did not see it. The transaction may still land.
+`confirmation_timeout` means the network accepted the transaction and the API waited about 35 seconds without seeing it in a ledger. The transaction may still land, so the response carries `details.status` set to `pending` and `details.hash`. An integration resolves it with `GET /v1/{network}/transactions/{hash}`, using the hash it computed from the envelope it signed, or by anyone looking the hash up on an explorer:
 
 1. Copy the transaction hash if you have it, and look it up on a public explorer.
 2. If it is there and succeeded, that step is done. Run the close again to continue.
-3. If it is not there, running the close again is safe. If the first transaction is still waiting to be included, the new one carries the same sequence number, so only one of the two can confirm.
+3. A lookup that answers `not_found` only means this provider has not seen it. Once the transaction's time bounds have passed, it can no longer land. Until then, running the close again is safe. If the first transaction is still waiting to be included, the new one carries the same sequence number, so only one of the two can confirm.
 
 If you submit the identical signed transaction a second time, the API first checks whether it already confirmed and, if so, reports the success instead of sending it again.
 
@@ -64,7 +64,7 @@ A transaction the API builds is valid for 300 seconds. If the signing took longe
 
 ### The network was too busy
 
-`submit_failed` means the API could not tell whether the transaction was accepted, for example because the network stayed congested through its retries. Treat it like a timeout: look the hash up first, then run the close again.
+`submit_failed` means the API could not tell whether the transaction was accepted, for example because the network stayed congested through its retries. When the API got as far as sending, `details.hash` carries the hash. Treat it like a timeout: look the hash up first, then run the close again.
 
 ### A conversion route changed
 

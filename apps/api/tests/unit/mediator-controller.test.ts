@@ -155,13 +155,13 @@ describe("sign: configuration gates", () => {
     );
   });
 
-  test("S2 a configured public key that differs from the secret's is refused with 500", async () => {
+  test("S2 a configured public key that differs from the secret's is a 503 naming nothing internal", async () => {
     const { controller } = await makeController({ configuredPublic: Keypair.random().publicKey() });
     await expectFail(
       controller.sign("testnet", { transaction: buildXdr() }),
-      500,
+      503,
       "mediator_key_misconfiguration",
-      "Mediator key misconfiguration"
+      "The exchange flow is temporarily unavailable."
     );
   });
 

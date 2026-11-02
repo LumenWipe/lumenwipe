@@ -41,11 +41,10 @@ export class MediatorController {
     "unsupported_memo_type",
     "invalid_memo",
   ])
-  @ApiErrorResponse(500, "The mediator key is misconfigured.", ["mediator_key_misconfiguration"])
   @ApiErrorResponse(
     503,
-    "Mediator flow not configured on this server, or the destination could not be read.",
-    ["mediator_not_configured", "service_unavailable"]
+    "Mediator flow not available on this server, or the destination could not be read.",
+    ["mediator_not_configured", "mediator_key_misconfiguration", "service_unavailable"]
   )
   @ApiBodyErrorResponses()
   @Post("sign")

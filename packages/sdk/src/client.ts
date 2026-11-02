@@ -2,6 +2,7 @@ import type {
   AccountState,
   AllowancesResult,
   ClosePlanRequest,
+  CloseStatusResponse,
   CloseTransactionsRequest,
   FeeBumpSponsorResponse,
   HealthResponse,
@@ -12,6 +13,7 @@ import type {
   PlanResponse,
   RevokeAllowanceResponse,
   SubmitResponse,
+  TransactionLookupResponse,
   TransactionsResponse,
 } from "@lumenwipe/types";
 import { HttpTransport } from "./http";
@@ -141,6 +143,37 @@ export class LumenWipeClient {
       `/v1/${this.resolveNetwork(network)}/submit`,
       { signedXdr },
       { ...options, retry: "never" }
+    );
+  }
+
+  /** Looks a transaction up by hash and sends nothing. `not_found` is not "did not land": the
+   *  transaction may be queued, or older than the window the response names. */
+  getTransaction(
+    hash: string,
+    network?: Network,
+    options?: RequestOptions
+  ): Promise<TransactionLookupResponse> {
+    return this.http.request<TransactionLookupResponse>(
+      "GET",
+      `/v1/${this.resolveNetwork(network)}/transactions/${encodeURIComponent(hash)}`,
+      undefined,
+      { ...options, retry: "transient" }
+    );
+  }
+
+  /** A close's phase and remaining work, from live state. Informational: a close is finished only
+   *  when the hash of the merge you signed is confirmed by `getTransaction`. */
+  closeStatus(
+    source: string,
+    network?: Network,
+    options?: RequestOptions
+  ): Promise<CloseStatusResponse> {
+    const query = new URLSearchParams({ source });
+    return this.http.request<CloseStatusResponse>(
+      "GET",
+      `/v1/${this.resolveNetwork(network)}/close/status?${query.toString()}`,
+      undefined,
+      { ...options, retry: "transient" }
     );
   }
 
