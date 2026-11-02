@@ -1080,7 +1080,8 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
           );
         }
         // A position's contract comes from the account read. A contract the bundled registry does
-        // not name may touch only that position's own tokens, and never XLM or a classic asset.
+        // not name may touch only that position's own tokens, and never XLM or a classic asset the
+        // read lists.
         if (!expected.registryContracts.includes(op.contract)) {
           const own = expected.ownTokensByContract[op.contract] ?? [];
           for (const sub of op.subInvocations) {
@@ -1117,10 +1118,24 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
           }
         }
         for (const sub of op.subInvocations) {
+          // An LP share lives in the Soroswap pair's own contract, which has no exit call of its
+          // own, and the router pays it into that pair.
+          const paysShareIntoPair =
+            op.function === "remove_liquidity" &&
+            expected.exitFunctions[sub.contract]?.length === 0 &&
+            sub.function === "transfer" &&
+            sub.args.length === 3 &&
+            sub.args[0] === expected.source &&
+            sub.args[1] === sub.contract;
+          if (paysShareIntoPair) continue;
           const isToken =
             expected.heldTokenContracts.includes(sub.contract) ||
             expected.positionTokenContracts.includes(sub.contract);
-          if (!isToken) continue;
+          if (!isToken) {
+            throw new VerificationError(
+              "A DeFi exit would authorize a call on a contract that is not one of this account's tokens."
+            );
+          }
           const shape = TOKEN_SUB_INVOCATION_FUNCTIONS[sub.function];
           if (shape === undefined) {
             throw new VerificationError(

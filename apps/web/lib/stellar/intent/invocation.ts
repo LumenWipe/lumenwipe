@@ -43,6 +43,10 @@ function collectFromValue(value: xdr.ScVal, into: Referenced): void {
   }
 }
 
+function sameValues(a: xdr.ScVal[], b: xdr.ScVal[]): boolean {
+  return a.length === b.length && a.every((v, i) => v.toXdr("base64") === b[i]!.toXdr("base64"));
+}
+
 /**
  * Walks an authorized invocation tree: what the signature will let the contract do on the
  * signer's behalf, including every nested call. Returns false when the tree contains anything
@@ -56,16 +60,16 @@ function collectFromValue(value: xdr.ScVal, into: Referenced): void {
  * top-level call untouched and add a second, independent entry rooted directly at, say, a held
  * token's `transfer` - that root would never reach `subInvocations` if every entry's root were
  * unconditionally treated as "the same call already described elsewhere." So `isEntryRoot` alone
- * is not enough: only a root that also matches `topLevel`'s own contract and function is the
- * genuine top-level call; any other entry's root is a sub-invocation just like a nested call,
- * and only a node's own direct entry-root position - never a deeper descendant - is even a
+ * is not enough: only a root that also matches `topLevel`'s own contract, function and arguments
+ * is the genuine top-level call; any other entry's root is a sub-invocation just like a nested
+ * call, and only a node's own direct entry-root position - never a deeper descendant - is even a
  * candidate for that exemption.
  */
 function collectFromInvocation(
   node: xdr.SorobanAuthorizedInvocation,
   into: Referenced,
   subInvocations: SubInvocationCall[],
-  topLevel: { contract: string; function: string },
+  topLevel: { contract: string; function: string; args: xdr.ScVal[] },
   isEntryRoot: boolean
 ): boolean {
   const fn = node.function;
@@ -78,7 +82,10 @@ function collectFromInvocation(
   collectAddress(call.contractAddress, into);
   for (const arg of call.args) collectFromValue(arg, into);
   const isTopLevelCall =
-    isEntryRoot && contract === topLevel.contract && functionName === topLevel.function;
+    isEntryRoot &&
+    contract === topLevel.contract &&
+    functionName === topLevel.function &&
+    sameValues(call.args, topLevel.args);
   if (!isTopLevelCall) {
     subInvocations.push({ contract, function: functionName, args: call.args.map(render) });
   }
@@ -132,6 +139,7 @@ export function describeInvocation(op: Operation.InvokeHostFunction): IntentOper
   const topLevel = {
     contract: Address.fromScAddress(invocation.contractAddress).toString(),
     function: invocation.functionName.toString(),
+    args,
   };
 
   let authorizesBeyondSelf = false;
