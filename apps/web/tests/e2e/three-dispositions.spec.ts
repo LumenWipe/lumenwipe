@@ -215,7 +215,7 @@ test("one close swaps one asset, transfers another, and returns a third to its i
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination.publicKey());
   await confirmDestinationControl(page);
 
-  await expect(beginButton).toBeEnabled();
+  await expect(beginButton).toBeEnabled({ timeout: TESTNET_STEP_TIMEOUT });
   await beginButton.click();
 
   await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });

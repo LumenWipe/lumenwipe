@@ -12,6 +12,7 @@ import {
   SOROSWAP_ROUTER,
   XLM_SAC,
   accountExists,
+  blendOraclePricesEveryReserve,
   blendPositionExists,
   fund,
   ingested,
@@ -62,6 +63,10 @@ test("close API: Blend, Soroswap, and Aquarius positions on one account are all 
     fund(destination.publicKey()),
   ]);
   await Promise.all([issuer, source].map((k) => ingested(k.publicKey())));
+  test.skip(
+    !(await blendOraclePricesEveryReserve(source.publicKey())),
+    "the Blend testnet oracle lists a reserve it does not price, so no Blend exit can be built on this run"
+  );
   const asset = new Asset("LWTEST", issuer.publicKey());
 
   // Seeds run one after another: every step spends the account's own sequence number.

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Keypair } from "@stellar/stellar-sdk";
-import { enterSourceAddress, openTestnetHome } from "./helpers/flow";
+import { enterSourceAddress, openTestnetHome, TESTNET_STEP_TIMEOUT } from "./helpers/flow";
 
 // Regression coverage for issue #115: the exchange registry used to fail open. An address it
 // did not recognize was treated as a personal wallet, so the close built a direct
@@ -83,7 +83,7 @@ test("an unrecognized destination blocks execution until control is confirmed", 
   await expect(beginButton).toBeDisabled();
 
   await confirmationCheckbox(page).check();
-  await expect(beginButton).toBeEnabled();
+  await expect(beginButton).toBeEnabled({ timeout: TESTNET_STEP_TIMEOUT });
 });
 
 // The confirmation is recorded against the address it was given for, not as a boolean, so it
@@ -107,7 +107,7 @@ test("editing the destination revokes a confirmation given for the previous addr
 
   await destinationInput.fill(first.publicKey());
   await confirmationCheckbox(page).check();
-  await expect(beginButton).toBeEnabled();
+  await expect(beginButton).toBeEnabled({ timeout: TESTNET_STEP_TIMEOUT });
 
   await destinationInput.fill(second.publicKey());
 

@@ -143,7 +143,7 @@ async function driveFusedClose(
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(opts.destination);
   await confirmDestinationControl(page);
 
-  await expect(beginButton).toBeEnabled();
+  await expect(beginButton).toBeEnabled({ timeout: TESTNET_STEP_TIMEOUT });
   await beginButton.click();
 
   // Whole-plan review gate: the user must explicitly confirm before anything is built.
