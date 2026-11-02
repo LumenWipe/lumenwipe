@@ -280,7 +280,10 @@ export default function PlanView({
   // would be a self-inflicted outage rather than a safeguard.
   const registryBlocksExchange = isCexAddress(destination) && !isRegistryUsable();
 
+  // A re-plan in flight (a claim answer just changed) still owes this view its conversions and
+  // their floors; a plan requested before they land is hashed without them and refused at build.
   const canProceed =
+    !loading &&
     destinationStepReady &&
     isValidGAddress(destination) &&
     destination !== account.address &&
