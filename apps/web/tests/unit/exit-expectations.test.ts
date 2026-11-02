@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { Asset, Networks } from "@stellar/stellar-sdk";
 import type { AccountState } from "@/types/account";
 import { exitExpectations } from "@/lib/stellar/exit-expectations";
@@ -48,6 +48,7 @@ test("no account read vouches for nothing", () => {
     protectedTokenContracts: [Asset.native().contractId(Networks.TESTNET)],
     xbullAssets: {},
     ownTokensByContract: {},
+    repayTokensByPool: {},
   });
 });
 
@@ -227,4 +228,44 @@ test("a Soroban token balance the analysis confirmed is a held token contract an
   } as unknown as AccountState;
   expect(exitExpectations(withTokens, "testnet").heldTokenContracts).toContain(TOKEN);
   expect(exitExpectations(state([]), "testnet").heldTokenContracts).not.toContain(TOKEN);
+});
+
+describe("repayTokensByPool", () => {
+  const OTHER_POOL = "CCCCIQSDILITHMM7PBSLVDT5MISSY7R26MNZXCX4H7J5JQ5FPIYOGYFS";
+  const blend = (positionType: string, contractAddress: string, assetAddress: string) => ({
+    protocol: "blend",
+    positionType,
+    contractAddress,
+    assetAddress,
+    usdValue: null,
+  });
+  const read = (...positions: object[]) =>
+    exitExpectations(state(positions as AccountState["defiPositions"]["positions"]), "testnet")
+      .repayTokensByPool;
+
+  test("lists each borrow under the pool that position names", () => {
+    expect(
+      read(
+        blend("borrow", BLEND_POOL, TOKEN_0),
+        blend("borrow", BLEND_POOL, TOKEN_1),
+        blend("borrow", OTHER_POOL, TOKEN_1)
+      )
+    ).toEqual({ [BLEND_POOL]: [TOKEN_0, TOKEN_1], [OTHER_POOL]: [TOKEN_1] });
+  });
+
+  test("a supply, or a position of another protocol, opens nothing", () => {
+    expect(
+      read(
+        blend("supply", BLEND_POOL, TOKEN_0),
+        { ...blend("borrow", PAIR, TOKEN_0), protocol: "fxdao" },
+        { protocol: "soroswap", positionType: "lp", contractAddress: PAIR, tokens: [TOKEN_0] }
+      )
+    ).toEqual({});
+  });
+
+  test("a pool named after an object property stays a plain key", () => {
+    const repay = read(blend("borrow", "__proto__", TOKEN_0));
+    expect(Object.keys(repay)).toEqual(["__proto__"]);
+    expect(repay[BLEND_POOL]).toBeUndefined();
+  });
 });

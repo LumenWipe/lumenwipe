@@ -86,6 +86,9 @@ function exitOnly(op: IntentOperation): TxIntent {
   };
 }
 
+/** `submit(from, spender, to, requests)` as the decoder renders it. */
+const submitArgs = (...requests: object[]): string[] => [SRC, SRC, SRC, JSON.stringify(requests)];
+
 function call(contract: string, fn: string, referenced: string[] = []): IntentOperation {
   return {
     source: SRC,
@@ -120,7 +123,13 @@ describe("an exit the registry vouches for passes the anchor", () => {
     ] as AccountState["defiPositions"]["positions"]);
 
     expect(() =>
-      assertCloseIntent(exitOnly(call(BLEND_POOL, "submit", [XLM_SAC])), expectationFor(account))
+      assertCloseIntent(
+        exitOnly({
+          ...call(BLEND_POOL, "submit", [XLM_SAC]),
+          args: submitArgs({ address: XLM_SAC, amount: "1", request_type: 1 }),
+        } as IntentOperation),
+        expectationFor(account)
+      )
     ).not.toThrow();
   });
 
@@ -434,6 +443,10 @@ describe("mainnet exits through every live pool the registry lists, not only its
   function repayAndWithdraw(pool: string, repaid: string): IntentOperation {
     return {
       ...call(pool, "submit", [repaid, XLM]),
+      args: submitArgs(
+        { address: repaid, amount: "1000", request_type: 5 },
+        { address: XLM, amount: "1", request_type: 3 }
+      ),
       subInvocations: [{ contract: repaid, function: "transfer", args: [SRC, pool, "1000"] }],
     } as unknown as IntentOperation;
   }
@@ -450,6 +463,17 @@ describe("mainnet exits through every live pool the registry lists, not only its
     expect(() =>
       assertCloseIntent(exitOnly(repayAndWithdraw(YIELDBLOX_V1, XLM)), mainnetExpectation(account))
     ).not.toThrow();
+  });
+
+  test("a repay into a pool the read shows no debt in asks for a fresh analysis", () => {
+    const account = mainnetAccount(blendBorrow(YIELDBLOX_V2, USDC));
+    expect(() =>
+      assertCloseIntent(exitOnly(repayAndWithdraw(YIELDBLOX_V1, USDC)), {
+        ...mainnetExpectation(account),
+        exitContracts: [YIELDBLOX_V1, YIELDBLOX_V2],
+        exitFunctions: { [YIELDBLOX_V1]: ["submit"], [YIELDBLOX_V2]: ["submit"] },
+      })
+    ).toThrow(/run the analysis again/);
   });
 
   test("the same repay into a pool the registry does not list is still refused", () => {

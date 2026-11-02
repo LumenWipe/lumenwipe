@@ -117,6 +117,9 @@ export interface CloseExpectation {
   /** Per position contract, the tokens the account read names as that position's own. Through a
    *  contract outside the registry, an exit may touch only these, and never a protected token. */
   ownTokensByContract: Record<string, string[]>;
+  /** Per Blend pool, the tokens the account read shows a debt in. At a registry contract, the only
+   *  XLM or classic asset an exit may authorize spending, and only as a repay into that pool. */
+  repayTokensByPool: Record<string, string[]>;
   /** XLM's own contract on this network, derived client-side from the network passphrase. The one
    *  asset a conversion may buy: without pinning it, the minimum above would be compared against a
    *  figure denominated in whatever the transaction claims to be buying. */
@@ -296,6 +299,43 @@ const TOKEN_SUB_INVOCATION_FUNCTIONS: Record<string, { argCount: number; recipie
   burn: { argCount: 2, recipientArg: -1 }, // burn(from, amount)
   burn_from: { argCount: 3, recipientArg: -1 }, // burn_from(spender, from, amount)
 };
+
+/** Blend's RequestType values for leaving a pool: Withdraw, WithdrawCollateral and Repay. */
+const BLEND_EXIT_REQUEST_TYPES = [1, 3, 5];
+
+function isBlendExitRequest(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const { address, amount, request_type: type } = value as Record<string, unknown>;
+  return (
+    Object.keys(value).length === 3 &&
+    typeof address === "string" &&
+    CONTRACT_ID.test(address) &&
+    typeof amount === "string" &&
+    /^[1-9]\d*$/.test(amount) &&
+    typeof type === "number" &&
+    BLEND_EXIT_REQUEST_TYPES.includes(type)
+  );
+}
+
+/** `submit(from, spender, to, requests)`: the account on every side, and only exit requests. */
+function assertBlendSubmitArguments(args: string[], source: string): void {
+  if (args.length !== 4 || args.slice(0, 3).some((party) => party !== source)) {
+    throw new VerificationError(
+      "A DeFi exit would act for, or pay, an address other than the account being closed."
+    );
+  }
+  let requests: unknown;
+  try {
+    requests = JSON.parse(args[3]!);
+  } catch {
+    requests = null;
+  }
+  if (!Array.isArray(requests) || requests.length === 0 || !requests.every(isBlendExitRequest)) {
+    throw new VerificationError(
+      "A DeFi exit would make a request of a lending pool that LumenWipe does not use to leave it."
+    );
+  }
+}
 
 interface SwapArgs {
   /** The token being spent. */
@@ -1029,6 +1069,16 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         // this account holds or has a position in is pinned here to a function that only ever
         // moves value to this account or to the contract at the root of this exact invocation -
         // never a third party (issue #208).
+        if (op.function === "submit") assertBlendSubmitArguments(op.args, expected.source);
+        // Blend's `claim(from, ids, to)` and Aquarius's `claim(user)` both pay their last argument.
+        if (
+          op.function === "claim" &&
+          (op.args[0] !== expected.source || op.args[op.args.length - 1] !== expected.source)
+        ) {
+          throw new VerificationError(
+            "A DeFi exit would act for, or pay, an address other than the account being closed."
+          );
+        }
         // A position's contract comes from the account read. A contract the bundled registry does
         // not name may touch only that position's own tokens, and never XLM or a classic asset.
         if (!expected.registryContracts.includes(op.contract)) {
@@ -1045,6 +1095,23 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
               throw new VerificationError(
                 "A DeFi exit would spend your XLM, a classic asset or another token through a " +
                   "contract LumenWipe has not verified."
+              );
+            }
+          }
+        } else {
+          const repayable = expected.repayTokensByPool[op.contract] ?? [];
+          for (const sub of op.subInvocations) {
+            if (!expected.protectedTokenContracts.includes(sub.contract)) continue;
+            const repaysThisPool =
+              repayable.includes(sub.contract) &&
+              sub.function === "transfer" &&
+              sub.args.length === 3 &&
+              sub.args[0] === expected.source &&
+              sub.args[1] === op.contract;
+            if (!repaysThisPool) {
+              throw new VerificationError(
+                "This exit would spend your XLM or a classic asset other than to repay a debt in " +
+                  "your analysis. If this position changed since, run the analysis again."
               );
             }
           }
@@ -1194,6 +1261,7 @@ export function verifyCloseTransaction(opts: {
     protectedTokenContracts: string[];
     xbullAssets: Record<string, string>;
     ownTokensByContract: Record<string, string[]>;
+    repayTokensByPool: Record<string, string[]>;
   };
 }): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);
