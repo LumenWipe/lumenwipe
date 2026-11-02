@@ -1,5 +1,6 @@
 import "server-only";
 import { LumenWipeClient } from "@lumenwipe/sdk";
+import { ApiNotConfiguredError } from "@/lib/api/proxy-error";
 
 /**
  * Server-only accessor for the LumenWipe API client.
@@ -17,8 +18,8 @@ export function getApiClient(): LumenWipeClient {
 
   const baseUrl = process.env.LUMENWIPE_API_URL;
   const apiKey = process.env.LUMENWIPE_API_KEY;
-  if (!baseUrl) throw new Error("LUMENWIPE_API_URL is not configured.");
-  if (!apiKey) throw new Error("LUMENWIPE_API_KEY is not configured.");
+  if (!baseUrl) throw new ApiNotConfiguredError("LUMENWIPE_API_URL");
+  if (!apiKey) throw new ApiNotConfiguredError("LUMENWIPE_API_KEY");
 
   // The default (30s) was already tight against the account/close endpoints' own worst-case
   // DeFi-detection budget (OctoPos plus a direct on-chain fallback sweep of hundreds of mainnet

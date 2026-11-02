@@ -7,6 +7,26 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-02
+
+### Added
+
+- `client.getTransaction(hash)` looks a transaction up by hash without sending anything, and
+  `client.closeStatus(source)` reports a close's phase and remaining work from live state. Both
+  are retried like every other read. `closed` from `closeStatus` is informational: it never proves
+  that a given close finished.
+- The types `SubmitPendingDetails`, `TransactionLookupResponse`, `CloseStatusResponse` and
+  `CloseStatusRemaining` are exported.
+
+### Changed
+
+- `submit_rejected` is `422` instead of `502`, and `mediator_key_misconfiguration` is `503` instead
+  of `500`. `isApiErrorCode` is unaffected; anything branching on the status is not.
+- `confirmation_timeout` arrives within about 35 seconds rather than 90 and carries `details` with
+  `status: "pending"` and the `hash`. It stays an error on purpose: a client that reads `hash` from
+  a success must never count a pending transaction as confirmed.
+- `submit_failed` carries `details.hash` once the API has tried to send.
+
 ## [0.13.1] - 2026-11-02
 
 ### Fixed

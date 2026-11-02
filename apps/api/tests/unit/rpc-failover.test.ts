@@ -12,7 +12,7 @@ import {
   rpcReferenceLedger,
 } from "@/lib/stellar/rpc";
 import { providerFailoverCount, resetProviderFailoverCount } from "@/lib/stellar/provider-failover";
-import { submitAndWait } from "@/lib/stellar/submit";
+import { submitAndWait, type SubmitClock } from "@/lib/stellar/submit";
 import { UpstreamError } from "@/lib/stellar/upstream-client";
 import { TxSubmitError } from "@/lib/utils/errors";
 
@@ -338,15 +338,28 @@ function submitSpies(afterSend: () => unknown) {
   };
 }
 
+const instantClock = (): SubmitClock => {
+  let now = 0;
+  return {
+    now: () => now,
+    sleep: async (ms) => {
+      now += ms;
+    },
+  };
+};
+
 test("a failed send is never replayed: one send anywhere, one by-hash look at the next provider", async () => {
   fakeRpc({ [A]: alive(100), [B]: alive(100) });
   const spies = submitSpies(() => ({ status: "NOT_FOUND" }));
   try {
-    await expect(inRequest(() => submitAndWait(signedXdr(), "testnet"))).rejects.toThrow(
-      "socket hang up"
-    );
+    await expect(
+      inRequest(() =>
+        submitAndWait(signedXdr(), "testnet", undefined, undefined, undefined, instantClock())
+      )
+    ).rejects.toThrow("socket hang up");
     expect(spies.sends).toEqual([`${A}/`]);
-    expect(spies.lookups).toEqual([`${A}/`, `${B}/`]);
+    expect(spies.lookups.filter((url) => url === `${B}/`)).toHaveLength(1);
+    expect(spies.lookups.at(-1)).toBe(`${B}/`);
   } finally {
     spies.restore();
   }
@@ -395,18 +408,20 @@ test("a by-hash look that itself fails leaves the original error", async () => {
       "testnet",
       undefined,
       () => server,
-      () => failing
+      () => failing,
+      instantClock()
     )
   ).rejects.toThrow("socket hang up");
 });
 
-test("a one-entry list keeps the plain rethrow, with no second look", async () => {
+test("a one-entry list reads the only provider by hash and never replays the send", async () => {
   RPC_FALLBACKS.testnet = [];
   const spies = submitSpies(() => ({ status: "SUCCESS", ledger: 1 }));
   try {
-    await expect(submitAndWait(signedXdr(), "testnet")).rejects.toThrow("socket hang up");
+    const result = await submitAndWait(signedXdr(), "testnet");
+    expect(result.ledger).toBe(1);
     expect(spies.sends).toHaveLength(1);
-    expect(spies.lookups).toHaveLength(1);
+    expect(spies.lookups).toHaveLength(2);
   } finally {
     spies.restore();
   }

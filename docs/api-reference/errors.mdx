@@ -14,7 +14,7 @@ This page lists every code in the API's error registry. If a close fails halfway
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Yes         | The same request can succeed later with no change. Wait for `Retry-After` when the response carries it, then send the request again.        |
 | After fix   | Something has to change first: the request, the account, the plan, or a period the message names. The identical request fails the same way. |
-| Check first | The outcome may be unknown. Look the transaction up on a ledger explorer before sending anything again.                                     |
+| Check first | The outcome may be unknown. Look the transaction up with `GET /v1/{network}/transactions/{hash}` before sending anything again.             |
 | No          | Retrying does not help. The cause is the account itself, a protocol's state, or how the server is set up.                                   |
 
 Three rules that apply to every row:
@@ -159,15 +159,15 @@ These refuse a conversion or transfer of a Soroban token that cannot be done saf
 
 ## Submitting a transaction
 
-`submit` waits up to 90 seconds for confirmation. `submit_rejected` carries the network's own reason in `details.resultCode`, for example `tx_too_late` for an expired transaction or `tx_bad_seq` for a stale sequence number. Build and sign a fresh transaction rather than resending the old one. `confirmation_timeout` and `submit_failed` do not tell you whether the transaction landed. Look the hash up on an explorer before doing anything else. Resubmitting the identical signed transaction is safe, because the API reports an already confirmed transaction as a success. Never rebuild and sign a second transaction while the first may still confirm. See [Recovery](/guides/recovery).
+`submit` waits up to 35 seconds for confirmation, then answers `confirmation_timeout` with `details.status` set to `pending` and `details.hash`. That answer is an error, not a 2xx, so a client that reads `hash` from a success can never count a pending transaction as confirmed. `submit_rejected` carries the network's own reason in `details.resultCode`, for example `tx_too_late` for an expired transaction or `tx_bad_seq` for a stale sequence number. Build and sign a fresh transaction rather than resending the old one. `confirmation_timeout` and `submit_failed` do not tell you whether the transaction landed. Look the hash up with `GET /v1/{network}/transactions/{hash}` before doing anything else. Resubmitting the identical signed transaction is safe, because the API reports an already confirmed transaction as a success. Never rebuild and sign a second transaction while the first may still confirm. See [Recovery](/guides/recovery).
 
-| Code                   | Status | Retry       | Meaning                                                                    |
-| ---------------------- | ------ | ----------- | -------------------------------------------------------------------------- |
-| `invalid_signed_xdr`   | 400    | After fix   | The signed transaction is missing or cannot be decoded.                    |
-| `invalid_signature`    | 400    | After fix   | The signature does not match the transaction.                              |
-| `submit_rejected`      | 502    | After fix   | The network rejected the transaction.                                      |
-| `submit_failed`        | 502    | Check first | The transaction could not be submitted. Retry.                             |
-| `confirmation_timeout` | 504    | Check first | The transaction did not confirm in time. Check its status before retrying. |
+| Code                   | Status | Retry       | Meaning                                                                                     |
+| ---------------------- | ------ | ----------- | ------------------------------------------------------------------------------------------- |
+| `invalid_signed_xdr`   | 400    | After fix   | The signed transaction is missing or cannot be decoded.                                     |
+| `invalid_signature`    | 400    | After fix   | The signature does not match the transaction.                                               |
+| `submit_rejected`      | 422    | After fix   | The network rejected the transaction.                                                       |
+| `submit_failed`        | 502    | Check first | The outcome is unknown. Look the transaction up by hash before retrying.                    |
+| `confirmation_timeout` | 504    | Check first | The transaction was submitted and is not confirmed yet. Look it up by hash before retrying. |
 
 ## Exchange relay, sponsored fees and the registry
 
@@ -176,7 +176,7 @@ A refusal here happens before anything is submitted, so nothing has changed on t
 | Code                                | Status | Retry       | Meaning                                                                        |
 | ----------------------------------- | ------ | ----------- | ------------------------------------------------------------------------------ |
 | `mediator_not_configured`           | 503    | No          | The exchange (mediator) flow is not configured on this server.                 |
-| `mediator_key_misconfiguration`     | 500    | No          | The mediator key on this server is misconfigured.                              |
+| `mediator_key_misconfiguration`     | 503    | Yes         | The exchange flow is temporarily unavailable. Retry.                           |
 | `forward_amount_exceeds_balance`    | 400    | After fix   | The mediator forward is larger than the balance being merged.                  |
 | `merged_account_not_found`          | 400    | Check first | The account being merged does not exist.                                       |
 | `transaction_structure_not_allowed` | 400    | After fix   | The transaction is not a shape this endpoint may sign.                         |

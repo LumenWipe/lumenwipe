@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import { Transaction } from "@stellar/stellar-sdk";
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
@@ -28,6 +28,8 @@ import {
 
 @Injectable()
 export class MediatorSigningService {
+  private readonly logger = new Logger(MediatorSigningService.name);
+
   constructor(
     @Inject(MEDIATOR_KEY_PROVIDER) private readonly keys: MediatorKeyProvider,
     @Inject(EXCHANGE_REGISTRY) private readonly registry: ExchangeRegistryPort,
@@ -53,7 +55,8 @@ export class MediatorSigningService {
 
     const configuredPublic = this.keys.configuredPublicKey(network);
     if (configuredPublic && configuredPublic !== mediator) {
-      fail("mediator_key_misconfiguration", "Mediator key misconfiguration", 500);
+      this.logger.error("the mediator key does not match its configured public key");
+      fail("mediator_key_misconfiguration", "The exchange flow is temporarily unavailable.", 503);
     }
 
     if (!body?.transaction) fail("missing_transaction", "Missing transaction", 400);

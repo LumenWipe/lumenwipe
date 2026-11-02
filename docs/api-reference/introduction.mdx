@@ -84,7 +84,7 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `claimable_balance_reserve_short`             | 422    | The XLM headroom is too small to add the trustlines needed to claim the balances.                                              |
 | `claimable_balances_too_many`                 | 422    | The account holds more claimable balances than one read returns and the unclaimed ones fill it.                                |
 | `close_fee_balance_short`                     | 422    | The account lacks the XLM above its reserve to pay the fees of the steps no sponsor can cover.                                 |
-| `confirmation_timeout`                        | 504    | The transaction did not confirm in time. Check its status before retrying.                                                     |
+| `confirmation_timeout`                        | 504    | The transaction was submitted and is not confirmed yet. Look it up by hash before retrying.                                    |
 | `conversion_floor_missing`                    | 422    | A conversion carries no destination minimum.                                                                                   |
 | `conversion_provider_unrecognized`            | 422    | A conversion names a provider the API does not recognize.                                                                      |
 | `defi_exit_blocked`                           | 422    | A DeFi position could not be exited safely.                                                                                    |
@@ -125,7 +125,7 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `issuer_read_failed`                          | 503    | The assets issued by the account could not be read. Retry.                                                                     |
 | `issuer_supply_not_acknowledged`              | 422    | The account issues assets that are still held and the close was not acknowledged.                                              |
 | `key_limit_reached`                           | 409    | The wallet already has the maximum number of active keys.                                                                      |
-| `mediator_key_misconfiguration`               | 500    | The mediator key on this server is misconfigured.                                                                              |
+| `mediator_key_misconfiguration`               | 503    | The exchange flow is temporarily unavailable. Retry.                                                                           |
 | `mediator_not_configured`                     | 503    | The exchange (mediator) flow is not configured on this server.                                                                 |
 | `memo_required`                               | 422    | The destination requires a memo.                                                                                               |
 | `merge_destination_unusable`                  | 422    | The destination cannot receive the merge: it is the closing account, a LumenWipe service account, or does not exist.           |
@@ -166,8 +166,8 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `sponsorship_budget_exhausted`                | 429    | The fee sponsor's daily budget for this request is used up.                                                                    |
 | `state_changed`                               | 409    | The account changed between reading and building. Nothing was submitted; plan again.                                           |
 | `stats_unavailable`                           | 503    | The stats store is unreachable. Retry.                                                                                         |
-| `submit_failed`                               | 502    | The transaction could not be submitted. Retry.                                                                                 |
-| `submit_rejected`                             | 502    | The network rejected the transaction.                                                                                          |
+| `submit_failed`                               | 502    | The outcome is unknown. Look the transaction up by hash before retrying.                                                       |
+| `submit_rejected`                             | 422    | The network rejected the transaction.                                                                                          |
 | `time_bounds_required`                        | 400    | The transaction must expire within a short window to be signed.                                                                |
 | `too_many_addresses`                          | 400    | More addresses than a batch accepts.                                                                                           |
 | `transaction_expired`                         | 400    | The transaction has already expired.                                                                                           |
@@ -209,13 +209,44 @@ Exceeding the limit returns `429 rate_limited`. The legacy `X-RateLimit-Limit`, 
 
 A single `runClose` over a multi-round account shares this budget with any polling you do, so size your concurrency from `RateLimit-Remaining` rather than guessing.
 
+## Retrying each endpoint
+
+A `504` from `submit` means the outcome is unknown, not that the transaction failed. Compute the hash from the envelope you signed, then call `GET /v1/{network}/transactions/{hash}`. Honor `Retry-After` wherever it is sent.
+
+| Endpoint                                                        | Safe to retry                           | Retry after                                                                                               | Never retry                                                                                        |
+| --------------------------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `GET` reads, including `transactions/{hash}` and `close/status` | Network error, 429, 502, 503, 504       | `Retry-After`, else a few seconds                                                                         | A `400`                                                                                            |
+| `POST close/plan`, `close/batch-plan`, `close/transactions`     | Network error, 429, 503                 | `Retry-After`. Each call re-reads the account                                                             | A `4xx` before the cause is fixed                                                                  |
+| `POST submit`, same signed envelope                             | Only after a lookup by hash, or a `429` | About one ledger. The API checks the hash first, so a confirmed envelope answers `200` with the same body | `invalid_*` and `422 submit_rejected`: the network refused it, so build and sign a new transaction |
+| `POST {network}/mediator/sign`                                  | Network error, 429, 503                 | `Retry-After`                                                                                             | A `4xx`. Co-signing a replaced transaction spends the relay account's sequence                     |
+| `POST {network}/fee-bump/sponsor`                               | 429, 503                                | `Retry-After`                                                                                             | `sponsorship_budget_exhausted` before the next UTC day                                             |
+
+`POST submit` for an envelope that already confirmed answers `200` with the same `hash` and `ledger`, however many times it is sent. The check is by hash through RPC, so it holds for as long as the RPC provider retains the transaction.
+
+## Following a close
+
+Use polling. `GET /v1/{network}/close/status?source=` reads live state and keeps nothing between calls, so it needs no session. It answers one of four phases.
+
+| Phase            | Meaning                                                                                               |
+| ---------------- | ----------------------------------------------------------------------------------------------------- |
+| `open`           | The account is on the ledger with sub-entries or sponsorships. `remaining` counts them.               |
+| `ready_to_merge` | The account is on the ledger and the ledger counts nothing left on it.                                |
+| `closed`         | The account is absent and the last operation in its history is a merge.                               |
+| `unknown`        | The account is absent and no merge is in the history this provider serves. It may never have existed. |
+
+`remaining` does not cover claimable balances or DeFi positions, which the ledger does not count on the account. A full plan covers those. `closed` is informational: it does not say which transaction merged the account, so confirm a close by the hash of the merge you signed, never by this phase.
+
+Each call costs one request against your key's rate limit, and upstream one RPC read, plus one Horizon read when the account is absent. Poll an account no more often than every 15 seconds: a ledger closes about every 5 seconds, and nothing changes faster than your own transactions. At the default 120 requests per minute that follows about 30 accounts at once, with the rest of the budget spent by `RateLimit-Remaining` on the close itself.
+
+There are no webhooks. Delivering one needs subscriptions, delivery state and signing secrets kept per close, and the API keeps nothing per close. See [the design note](https://github.com/LumenWipe/lumenwipe/blob/main/docs/architecture.md#following-a-close-from-outside).
+
 ## The close loop
 
 A close is a sequence of calls. The API keeps no state between them, so a close can resume after an interruption.
 
 1. `POST /v1/{network}/close/plan` returns the full plan and any decisions you must answer.
 2. `POST /v1/{network}/close/transactions` returns the next unsigned transactions. Verify and sign them.
-3. `POST /v1/{network}/submit` submits the signed transaction.
+3. `POST /v1/{network}/submit` submits the signed transaction. If the outcome is unknown, resolve it with `GET /v1/{network}/transactions/{hash}`.
 4. Repeat from step 2 while the response says another call is required.
 
 For exchange destinations, `POST /{network}/mediator/sign` co-signs the mediator's forward payment. To plan several accounts at once, use `POST /v1/{network}/close/batch-plan`. See [how a close works](/guides/how-closing-works) for the flow from a user's side.

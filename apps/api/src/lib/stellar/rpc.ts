@@ -38,9 +38,8 @@ function withLegacyAuth(prop: PropertyKey, args: unknown[]): unknown[] {
 }
 
 // Allowlist, not denylist: a method added to the SDK later is passed through untouched until
-// someone decides it is safe to race. Submission and its confirmation polling are deliberately
-// absent - abandoning a submit mid-flight would leave a transaction that may still land with
-// no one watching it, and polling legitimately outlives the request deadline.
+// someone decides it is safe to race. Submission is deliberately absent: abandoning a submit
+// mid-flight would leave a transaction that may still land with no one watching it.
 const READ_METHODS = new Set<PropertyKey>([
   "getAccount",
   "getAccountEntry",
@@ -54,6 +53,7 @@ const READ_METHODS = new Set<PropertyKey>([
   "getLedgerEntries",
   "getLedgerEntry",
   "getNetwork",
+  "getTransaction",
   "getTrustline",
 ]);
 

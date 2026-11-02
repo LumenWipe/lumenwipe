@@ -208,6 +208,8 @@ const NETWORK_CALLS: [string, (client: LumenWipeClient, network: Network) => Pro
   ["closePlan", (c, n) => c.closePlan({} as ClosePlanRequest, n)],
   ["closeTransactions", (c, n) => c.closeTransactions({} as CloseTransactionsRequest, n)],
   ["submit", (c, n) => c.submit("xdr", n)],
+  ["getTransaction", (c, n) => c.getTransaction("a", n)],
+  ["closeStatus", (c, n) => c.closeStatus("G", n)],
   ["mediatorCheck", (c, n) => c.mediatorCheck("G", n)],
   ["mediatorSign", (c, n) => c.mediatorSign("xdr", n)],
   ["feeBumpSponsor", (c, n) => c.feeBumpSponsor("xdr", n)],
@@ -247,4 +249,30 @@ test("an unknown network in the client options is rejected with no request", asy
   });
   await expect(client.getAccount("G")).rejects.toBeInstanceOf(LumenWipeInvalidNetworkError);
   expect(calls).toHaveLength(0);
+});
+
+test("getTransaction reads by hash and closeStatus by source, with GET and nothing sent", async () => {
+  const { fetch, calls } = mockFetch(200, {});
+  const client = new LumenWipeClient({ baseUrl: "https://api.example.com", apiKey: "k", fetch });
+  await client.getTransaction("ab", "testnet");
+  await client.closeStatus("GABC", "mainnet");
+  expect(calls.map((c) => [c.init?.method, c.url])).toEqual([
+    ["GET", "https://api.example.com/v1/testnet/transactions/ab"],
+    ["GET", "https://api.example.com/v1/mainnet/close/status?source=GABC"],
+  ]);
+  expect(calls.every((c) => c.init?.body === undefined)).toBe(true);
+});
+
+test("getTransaction retries a 503 like every other read", async () => {
+  let calls = 0;
+  const fetch: FetchLike = () =>
+    Promise.resolve(new Response("{}", { status: ++calls === 1 ? 503 : 200 }));
+  const client = new LumenWipeClient({
+    baseUrl: "https://api.example.com",
+    apiKey: "k",
+    fetch,
+    retry: { attempts: 2, baseDelayMs: 0 },
+  });
+  await client.getTransaction("ab", "testnet");
+  expect(calls).toBe(2);
 });
