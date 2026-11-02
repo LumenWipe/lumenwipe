@@ -1,3 +1,4 @@
+import type { UnresolvedSubmission } from "@lumenwipe/sdk";
 import type { Network } from "@/config/networks";
 
 export interface CompletedStepRecord {
@@ -6,6 +7,10 @@ export interface CompletedStepRecord {
   txHash: string;
   confirmedAt: string; // ISO timestamp
 }
+
+/** What a refresh keeps of a transaction whose outcome is unknown, enough to look it up. Never the
+ *  envelope: a signed transaction is not stored, and a restored session never sends anything. */
+export type UnconfirmedRecord = Pick<UnresolvedSubmission, "hash" | "covers" | "validUntil">;
 
 export interface SessionRecord {
   id: string;
@@ -21,6 +26,7 @@ export interface SessionRecord {
   completedSteps: CompletedStepRecord[];
   currentStepIndex: number;
   status: "in_progress" | "completed";
+  unconfirmed?: UnconfirmedRecord;
   createdAt: string;
   updatedAt: string;
 }

@@ -1,8 +1,10 @@
+import type { TransactionLookupResponse } from "@lumenwipe/sdk";
 import type { Network } from "@/config/networks";
 import { readApiError, UserFacingError } from "@/lib/utils/user-error";
 
 // Past the route's maxDuration, so the server always gets to answer first.
 const SUBMIT_TIMEOUT_MS = 60_000;
+const LOOKUP_TIMEOUT_MS = 60_000;
 
 export interface SubmitResult {
   txHash: string;
@@ -36,4 +38,17 @@ export async function submitViaApi(signedXdr: string, network: Network): Promise
   }
 
   return { txHash: data.hash, ledger: data.ledger ?? 0 };
+}
+
+/** Looks a transaction up by hash through the proxy. Sends nothing. A thrown error here says
+ *  nothing about the transaction. */
+export async function lookupViaApi(
+  hash: string,
+  network: Network
+): Promise<TransactionLookupResponse> {
+  const res = await fetch(`/api/v1/${network}/transactions/${hash}`, {
+    signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
+  });
+  if (!res.ok) throw await readApiError(res);
+  return (await res.json()) as TransactionLookupResponse;
 }

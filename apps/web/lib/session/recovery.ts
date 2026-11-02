@@ -8,7 +8,23 @@ export async function findResumableSession(network: Network): Promise<SessionRec
     const matching = sessions
       .filter((s) => s.network === network && s.status === "in_progress")
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-    return matching[0] ?? null;
+    return matching.find((s) => s.unconfirmed) ?? matching[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** A session of this account holding a hash whose outcome is unknown, however old it is. */
+export async function findUnresolved(
+  network: Network,
+  source: string
+): Promise<SessionRecord | null> {
+  try {
+    const sessions = await listSessions();
+    return (
+      sessions.find((s) => s.network === network && s.sourceAddress === source && s.unconfirmed) ??
+      null
+    );
   } catch {
     return null;
   }

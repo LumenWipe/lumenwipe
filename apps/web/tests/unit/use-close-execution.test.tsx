@@ -13,16 +13,29 @@ import {
   TransactionBuilder,
   type Transaction,
 } from "@stellar/stellar-sdk";
-import { STATE_CHANGED_REFETCH_DELAY_MS } from "@lumenwipe/sdk";
+import {
+  STATE_CHANGED_REFETCH_DELAY_MS,
+  SUBMIT_RESEND_ATTEMPTS,
+  SUBMIT_RESEND_DELAY_MS,
+} from "@lumenwipe/sdk";
 import { PLAN_CHANGED_NOTICE, useCloseExecution } from "@/hooks/useCloseExecution";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import * as closeClient from "@/lib/api/close-client";
 import * as submitViaApiModule from "@/lib/stellar/submit-via-api";
+import { submissionHash } from "@/lib/stellar/submission";
+import * as verifyModule from "@/lib/stellar/verify";
 import * as feeBumpSponsorModule from "@/lib/stellar/fee-bump-sponsor";
 import * as mediatorModule from "@/lib/stellar/mediator";
 import { activeRegistry, setRegistry } from "@/lib/exchange-registry";
-import { ApiRequestError, closeFailureMessage } from "@/lib/utils/user-error";
+import {
+  ApiRequestError,
+  closeFailureMessage,
+  NO_MERGE_CONFIRMED,
+  PREIMAGE_EXPOSED,
+} from "@/lib/utils/user-error";
+import { receiptState } from "@/lib/close-state";
+import * as recovery from "@/lib/session/recovery";
 import type { TransactionSigner } from "@/lib/stellar/signer";
 import { fromHex } from "@/lib/stellar/hex";
 
@@ -32,10 +45,15 @@ function stubFetchCloseTransactions(impl: () => Promise<unknown>): void {
     impl as unknown as typeof closeClient.fetchCloseTransactions
   );
 }
+/** Answers with the hash of what was actually sent, unless a test names `wrongHash`. */
 function stubSubmitViaApi(impl: (...args: unknown[]) => Promise<unknown>): void {
-  spyOn(submitViaApiModule, "submitViaApi").mockImplementation(
-    impl as unknown as typeof submitViaApiModule.submitViaApi
-  );
+  spyOn(submitViaApiModule, "submitViaApi").mockImplementation((async (...args: unknown[]) => {
+    const answer = (await impl(...args)) as { wrongHash?: string; ledger?: number };
+    return {
+      ledger: answer?.ledger ?? 0,
+      txHash: answer?.wrongHash ?? submissionHash(args[0] as string, Networks.TESTNET),
+    };
+  }) as unknown as typeof submitViaApiModule.submitViaApi);
 }
 function stubFeeBumpSponsor(impl: (...args: unknown[]) => Promise<unknown>): void {
   spyOn(feeBumpSponsorModule, "requestFeeBumpSponsorship").mockImplementation(
@@ -49,6 +67,7 @@ function stubFeeBumpSponsor(impl: (...args: unknown[]) => Promise<unknown>): voi
 // reliably. Without a per-test override, fetching transactions rejects with a benign error, so a
 // test that only exercises the signer guard never reaches a real fetch().
 beforeEach(() => {
+  useDemolishStore.setState({ unconfirmedSubmission: null });
   stubFetchCloseTransactions(async () => {
     throw new Error("not mocked in this test");
   });
@@ -1352,14 +1371,111 @@ test("useCloseExecution › a wallet decline after a confirmed round states the 
   expect(lastError).not.toMatch(/nothing was sent/i);
 });
 
-test("useCloseExecution › a step left submitted but unconfirmed by the failing round is not counted as confirmed", async () => {
+function mergeSetup(): { sourceKeypair: Keypair; mergeXdr: string } {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  const mergeXdr = unsignedMergeXdr(sourceKeypair, destination);
+  const account = {
+    signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+    thresholds: { low: 0, med: 1, high: 1 },
+  };
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    lastErrorReference: null,
+    accountState: account as never,
+    executionPlan: [planStep(0, "MERGE", "pending")],
+  } as never);
+  stubFetchCloseTransactions(async () => ({
+    planHash: "h",
+    status: "ready",
+    transactions: [{ id: "t", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+    remaining: { steps: 0, requiresAnotherCall: false },
+    sourceAccount: account,
+  }));
+  return { sourceKeypair, mergeXdr };
+}
+
+/** The resend waits run at once; every other timer keeps its real delay. */
+function skipResendWaits(): void {
+  const real = globalThis.setTimeout;
+  spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void, ms?: number) =>
+    real(fn, ms === SUBMIT_RESEND_DELAY_MS ? 0 : ms)) as unknown as typeof setTimeout);
+}
+
+function stubLookup(impl: (hash: string) => Promise<unknown>): void {
+  spyOn(submitViaApiModule, "lookupViaApi").mockImplementation(
+    impl as unknown as typeof submitViaApiModule.lookupViaApi
+  );
+}
+
+const SEARCHED = {
+  oldestLedger: 1,
+  oldestLedgerCloseTime: 1,
+  latestLedger: 2,
+  latestLedgerCloseTime: 2_000_000_000,
+};
+
+test("useCloseExecution › an unknown outcome ends unconfirmed with the client's hash, never failed", async () => {
   const { sourceKeypair } = twoRoundSetup([
     planStep(0, "CANCEL_OFFERS", "confirmed"),
     planStep(1, "NORMALIZE_SIGNERS", "submitted"),
     planStep(2, "MERGE", "pending"),
   ]);
-  stubSubmitViaApi(async () => {
+  skipResendWaits();
+  const sent: string[] = [];
+  stubSubmitViaApi(async (xdr) => {
+    sent.push(xdr as string);
     throw new ApiRequestError(504, "");
+  });
+  stubLookup(async (hash) => ({ status: "not_found", hash, searched: SEARCHED }));
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+
+  const state = useDemolishStore.getState();
+  expect(state.phase).toBe("STEP_UNCONFIRMED");
+  expect(state.lastError).toBeNull();
+  expect(state.unconfirmedSubmission?.hash).toBe(submissionHash(sent[0]!, Networks.TESTNET));
+  expect(sent).toHaveLength(1 + SUBMIT_RESEND_ATTEMPTS);
+  expect(new Set(sent).size).toBe(1);
+});
+
+test("useCloseExecution › a failed lookup or a 503 while reconciling stays unconfirmed", async () => {
+  const { sourceKeypair } = twoRoundSetup([planStep(0, "MERGE", "pending")]);
+  skipResendWaits();
+  stubSubmitViaApi(async () => {
+    throw new ApiRequestError(503, "");
+  });
+  stubLookup(async () => {
+    throw new ApiRequestError(503, "");
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(useDemolishStore.getState().phase).toBe("STEP_UNCONFIRMED");
+
+  await act(async () => {
+    await result.current.checkUnconfirmed();
+  });
+  expect(useDemolishStore.getState().phase).toBe("STEP_UNCONFIRMED");
+  expect(useDemolishStore.getState().lastError).toBeNull();
+  expect(result.current.stillUnconfirmed).toBe(true);
+});
+
+test("useCloseExecution › a refused submit clears the record and reads as not having taken effect", async () => {
+  const { sourceKeypair } = twoRoundSetup([planStep(0, "MERGE", "pending")]);
+  stubSubmitViaApi(async () => {
+    throw new ApiRequestError(422, "The network rejected it.", undefined, "submit_rejected");
   });
 
   const { result } = renderHook(() => useCloseExecution());
@@ -1367,29 +1483,221 @@ test("useCloseExecution › a step left submitted but unconfirmed by the failing
     await result.current.run(realSigner(sourceKeypair));
   });
 
-  const { lastError } = useDemolishStore.getState();
-  expect(lastError).toMatch(/1 of 3 plan steps are already confirmed/);
-  expect(lastError).toMatch(/could not be confirmed/);
+  const state = useDemolishStore.getState();
+  expect(state.phase).toBe("STEP_FAILED");
+  expect(state.unconfirmedSubmission).toBeNull();
+  expect(state.lastError).toMatch(/safe to retry/);
+  expect(result.current.retrySafe).toBe(true);
 });
 
-test("useCloseExecution › after a failed submit and a retry, a later wallet decline reads as not sent, not as unconfirmed", async () => {
+test("useCloseExecution › a refused transaction that carried a preimage never reads as safe", async () => {
+  const preimage = new Uint8Array(32).fill(7);
+  const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
+  const { sourceKeypair } = twoRoundSetup([planStep(0, "MERGE", "pending")]);
+  const source = sourceKeypair.publicKey();
+  useDemolishStore.setState({
+    accountState: {
+      signers: [
+        { key: source, weight: 1, type: "ed25519_public_key" },
+        { key: hashXKey, weight: 1, type: "hash_x" },
+      ],
+      thresholds: { low: 1, med: 1, high: 1 },
+    } as never,
+  } as never);
+  const dest = Keypair.random().publicKey();
+  const xdr = new TransactionBuilder(new Account(source, "100"), {
+    fee: "100",
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(Operation.setOptions({ signer: { sha256Hash: hash(preimage), weight: 0 } }))
+    .addOperation(Operation.accountMerge({ destination: dest }))
+    .setTimeout(300)
+    .build()
+    .toXdr();
+  spyOn(verifyModule, "verifyCloseTransaction").mockImplementation(() => undefined as never);
+  stubFetchCloseTransactions(async () => ({
+    transactions: [{ id: "t", order: 1, xdr, covers: ["MERGE"] }],
+    remaining: { requiresAnotherCall: false, steps: 0 },
+  }));
+  stubSubmitViaApi(async () => {
+    throw new ApiRequestError(422, "The network rejected it.", undefined, "submit_rejected");
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realHashXSigner(preimage));
+  });
+
+  const { lastError } = useDemolishStore.getState();
+  expect(lastError).toContain(PREIMAGE_EXPOSED);
+  expect(lastError).not.toMatch(/safe to retry/i);
+  expect(result.current.retrySafe).toBe(false);
+});
+
+test("useCloseExecution › a merge confirmed by the client's hash after an unknown outcome completes", async () => {
+  const { sourceKeypair, mergeXdr } = mergeSetup();
+  skipResendWaits();
+  stubSubmitViaApi(async () => {
+    throw new ApiRequestError(504, "");
+  });
+  stubLookup(async (hash) => ({ status: "not_found", hash, searched: SEARCHED }));
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(useDemolishStore.getState().phase).toBe("STEP_UNCONFIRMED");
+  expect(useDemolishStore.getState().unconfirmedSubmission?.covers).toContain("MERGE");
+
+  const fetched: unknown[] = [];
+  stubFetchCloseTransactions(async () => {
+    fetched.push(mergeXdr);
+    throw new ApiRequestError(404, "gone", undefined, "account_not_found");
+  });
+  stubLookup(async (hash) => ({ status: "confirmed", hash, ledger: 9 }));
+  await act(async () => {
+    await result.current.checkUnconfirmed();
+  });
+
+  const state = useDemolishStore.getState();
+  expect(state.phase).toBe("COMPLETE");
+  expect(state.unconfirmedSubmission).toBeNull();
+  expect(state.executionPlan.find((s) => s.type === "MERGE")?.status).toBe("confirmed");
+  expect(fetched).toHaveLength(0);
+});
+
+test("useCloseExecution › an API answering with another transaction's hash never completes", async () => {
+  const { sourceKeypair } = mergeSetup();
+  skipResendWaits();
+  stubSubmitViaApi(async () => ({ wrongHash: "f".repeat(64) }));
+  stubLookup(async () => ({ status: "confirmed", hash: "f".repeat(64), ledger: 9 }));
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(useDemolishStore.getState().phase).toBe("STEP_UNCONFIRMED");
+  expect(useDemolishStore.getState().executionPlan[0]?.status).not.toBe("confirmed");
+});
+
+test("useCloseExecution › covers claiming a merge on a transaction with none never closes the account", async () => {
+  const { sourceKeypair } = mergeSetup();
+  const removal = new TransactionBuilder(new Account(sourceKeypair.publicKey(), "100"), {
+    fee: "100",
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(Operation.manageData({ name: "a", value: null }))
+    .setTimeout(300)
+    .build()
+    .toXdr();
+  stubFetchCloseTransactions(async () => ({
+    planHash: "h",
+    status: "ready",
+    transactions: [{ id: "t", order: 0, xdr: removal, covers: ["MERGE"] }],
+    remaining: { steps: 0, requiresAnotherCall: false },
+  }));
+  spyOn(verifyModule, "verifyCloseTransaction").mockImplementation(() => undefined as never);
+  stubSubmitViaApi(async () => ({}));
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+
+  const state = useDemolishStore.getState();
+  expect(state.phase).toBe("STEP_FAILED");
+  expect(state.lastError).toBe(NO_MERGE_CONFIRMED);
+  expect(receiptState(state.executionPlan)).toBe("incomplete");
+  expect(state.executionPlan[0]?.status).not.toBe("confirmed");
+});
+
+test("useCloseExecution › a hash saved before a refresh stops run from signing anything", async () => {
+  const { sourceKeypair } = mergeSetup();
+  spyOn(recovery, "findUnresolved").mockImplementation(
+    async () =>
+      ({
+        unconfirmed: { hash: "a".repeat(64), covers: ["MERGE"], validUntil: 2_000_000_000 },
+      }) as never
+  );
+  stubLookup(async (hash) => ({ status: "not_found", hash, searched: SEARCHED }));
+  const signer = realSigner(sourceKeypair);
+  const sign = spyOn(signer, "sign");
+  const fetched = spyOn(closeClient, "fetchCloseTransactions");
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(signer);
+  });
+  expect(useDemolishStore.getState().phase).toBe("STEP_UNCONFIRMED");
+  expect(sign).not.toHaveBeenCalled();
+  expect(fetched).not.toHaveBeenCalled();
+});
+
+test("useCloseExecution › an envelope with no upper time bound is never sent", async () => {
+  const { sourceKeypair } = mergeSetup();
+  const unbounded = new TransactionBuilder(new Account(sourceKeypair.publicKey(), "100"), {
+    fee: "100",
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(Operation.accountMerge({ destination: Keypair.random().publicKey() }))
+    .setTimeout(0)
+    .build()
+    .toXdr();
+  spyOn(verifyModule, "verifyCloseTransaction").mockImplementation(() => undefined as never);
+  stubFetchCloseTransactions(async () => ({
+    planHash: "h",
+    status: "ready",
+    transactions: [{ id: "t", order: 0, xdr: unbounded, covers: ["MERGE"] }],
+    remaining: { steps: 0, requiresAnotherCall: false },
+  }));
+  let sent = 0;
+  stubSubmitViaApi(async () => {
+    sent++;
+    return {};
+  });
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(sent).toBe(0);
+  expect(useDemolishStore.getState().unconfirmedSubmission).toBeNull();
+  expect(useDemolishStore.getState().lastError).toMatch(/no time limit/);
+});
+
+test("useCloseExecution › past the give-up deadline a merged account stays plain language, never complete", async () => {
+  const { sourceKeypair } = mergeSetup();
+  useDemolishStore.setState({
+    unconfirmedSubmission: { hash: "a".repeat(64), covers: ["MERGE"], validUntil: 1000 },
+  });
+  stubLookup(async (hash) => ({
+    status: "not_found",
+    hash,
+    searched: { ...SEARCHED, latestLedgerCloseTime: 2_000_000_000 },
+  }));
+  stubFetchCloseTransactions(async () => {
+    throw new ApiRequestError(404, "gone", undefined, "account_not_found");
+  });
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  const state = useDemolishStore.getState();
+  expect(state.phase).toBe("STEP_FAILED");
+  expect(state.lastError).toMatch(/no longer on the network/);
+  expect(state.lastError).not.toMatch(/safe to retry/i);
+  expect(result.current.retrySafe).toBe(false);
+});
+
+test("useCloseExecution › after a settled unknown outcome, a later wallet decline reads as not sent", async () => {
   const { sourceKeypair } = twoRoundSetup([
     planStep(0, "NORMALIZE_SIGNERS", "pending"),
     planStep(1, "MERGE", "pending"),
   ]);
+  skipResendWaits();
   let submits = 0;
   stubSubmitViaApi(async () => {
     submits++;
     if (submits === 1) throw new ApiRequestError(504, "");
-    return { txHash: "round-one" };
+    return {};
   });
 
   const { result } = renderHook(() => useCloseExecution());
-  await act(async () => {
-    await result.current.run(realSigner(sourceKeypair));
-  });
-  expect(useDemolishStore.getState().lastError).toMatch(/could not be confirmed/);
-
   await act(async () => {
     await result.current.run(decliningAfter(sourceKeypair, 1));
   });

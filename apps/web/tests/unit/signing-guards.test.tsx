@@ -13,9 +13,11 @@ import {
 import { useCloseExecution } from "@/hooks/useCloseExecution";
 import * as closeClient from "@/lib/api/close-client";
 import { HashXPreimageSigner, type TransactionSigner } from "@/lib/stellar/signer";
+import { submissionHash } from "@/lib/stellar/submission";
 import * as submitViaApiModule from "@/lib/stellar/submit-via-api";
 import * as verifyModule from "@/lib/stellar/verify";
 import { fromHex } from "@/lib/stellar/hex";
+import { NO_MERGE_CONFIRMED } from "@/lib/utils/user-error";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { AccountSigner } from "@/types/account";
@@ -76,8 +78,10 @@ function setup(
   high: number,
   covers = ["NORMALIZE_SIGNERS"]
 ) {
-  const submit = spyOn(submitViaApiModule, "submitViaApi").mockImplementation((async () => ({
-    txHash: "h",
+  const submit = spyOn(submitViaApiModule, "submitViaApi").mockImplementation((async (
+    xdr: string
+  ) => ({
+    txHash: submissionHash(xdr, Networks.TESTNET),
   })) as unknown as typeof submitViaApiModule.submitViaApi);
   spyOn(closeClient, "fetchCloseTransactions").mockImplementation((async () => ({
     planHash: "h",
@@ -185,7 +189,7 @@ test("a preimage is accepted on the normalization that removes its own signer", 
 
   expect(signed()).toBe(true);
   expect(submit).toHaveBeenCalledTimes(1);
-  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+  expect(useDemolishStore.getState().lastError).toBe(NO_MERGE_CONFIRMED);
 });
 
 test("a removal of signers with no merge, signed by co-signers alone, is not submitted", async () => {
@@ -271,7 +275,7 @@ test("the same removal is submitted once the master key has signed it", async ()
   await runWith(hook, keySigner(cosigner));
 
   expect(submit).toHaveBeenCalledTimes(1);
-  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+  expect(useDemolishStore.getState().lastError).toBe(NO_MERGE_CONFIRMED);
 });
 
 test("a close that merges in the same transaction still works with co-signers alone", async () => {
@@ -296,7 +300,7 @@ test("a round that removes no signer needs no master key", async () => {
   await runWith(hook, keySigner(cosigner));
 
   expect(submit).toHaveBeenCalledTimes(1);
-  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+  expect(useDemolishStore.getState().lastError).toBe(NO_MERGE_CONFIRMED);
 });
 
 test("a multisig round short of its weight stays resumable, and no check fires before it is met", async () => {
@@ -316,5 +320,5 @@ test("a multisig round short of its weight stays resumable, and no check fires b
 
   expect(closeClient.fetchCloseTransactions).toHaveBeenCalledTimes(1);
   expect(submit).toHaveBeenCalledTimes(1);
-  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+  expect(useDemolishStore.getState().lastError).toBe(NO_MERGE_CONFIRMED);
 });

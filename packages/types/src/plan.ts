@@ -73,6 +73,7 @@ export type DemolishPhase =
   | "STEP_EXECUTING"
   | "STEP_CONFIRMED"
   | "STEP_FAILED"
+  | "STEP_UNCONFIRMED"
   | "COMPLETE"
   | "ABORTED";
 

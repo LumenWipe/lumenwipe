@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { CloseDidNotConvergeError, LumenWipeApiError, LumenWipeTimeoutError } from "@lumenwipe/sdk";
+import {
+  CloseDidNotConvergeError,
+  CloseTransactionFailedError,
+  LumenWipeApiError,
+  LumenWipeTimeoutError,
+} from "@lumenwipe/sdk";
 import { fetchCloseTransactions } from "@/lib/api/close-client";
 import { VerificationError } from "@/lib/stellar/verify";
 import { TxSubmitError } from "@/lib/utils/errors";
@@ -7,6 +12,10 @@ import {
   apiErrorText,
   ApiRequestError,
   closeFailureMessage,
+  closeRetryIsSafe,
+  PREIMAGE_EXPOSED,
+  STILL_UNCONFIRMED_NOTICE,
+  UNCONFIRMED_NOTICE,
   readApiError,
   toUserMessage,
   UserFacingError,
@@ -215,6 +224,53 @@ function step(index: number, type: StepType, status: StepStatus): PlannedStep {
     error: null,
   };
 }
+
+describe("closeFailureMessage truthfulness", () => {
+  const plan: PlannedStep[] = [];
+  const gone = new ApiRequestError(404, "gone", undefined, "account_not_found");
+
+  test("a refused transaction says it did not take effect", () => {
+    const msg = closeFailureMessage(new ApiRequestError(422, "Not enough XLM."), "refused", plan);
+    expect(msg).toContain("Not enough XLM.");
+    expect(msg).toMatch(/did not take effect/);
+    expect(closeRetryIsSafe(new Error("x"), "refused")).toBe(true);
+  });
+
+  test("a refused transaction that carried a preimage never reads as safe", () => {
+    const msg = closeFailureMessage(new ApiRequestError(422, "No."), "refused", plan, true);
+    expect(msg).toContain(PREIMAGE_EXPOSED);
+    expect(msg).not.toMatch(/safe to retry/i);
+    expect(closeRetryIsSafe(new Error("x"), "refused", true)).toBe(false);
+  });
+
+  test("a preimage changes nothing before anything was sent", () => {
+    expect(closeRetryIsSafe(new Error("x"), "before-submit", true)).toBe(true);
+  });
+
+  test("an account gone without a confirmed merge claims neither completion nor safety", () => {
+    for (const stage of ["before-submit", "submitted", "refused"] as const) {
+      const msg = closeFailureMessage(gone, stage, plan);
+      expect(msg).toMatch(/could not confirm/);
+      expect(msg).not.toMatch(/safe to retry|is closed|finished/i);
+      expect(closeRetryIsSafe(gone, stage)).toBe(false);
+    }
+  });
+
+  test("a failed transaction's own message passes only when plain", () => {
+    const submission = { hash: "a", covers: [], validUntil: null };
+    expect(
+      toUserMessage(new CloseTransactionFailedError(submission, "Not enough XLM."), "execute")
+    ).toBe("Not enough XLM.");
+    expect(
+      toUserMessage(new CloseTransactionFailedError(submission, "tx_bad_auth raw"), "execute")
+    ).not.toContain("tx_bad_auth");
+  });
+
+  test("the unknown-outcome copy claims neither failure nor success", () => {
+    expect(UNCONFIRMED_NOTICE).not.toMatch(/failed|safe to retry/i);
+    expect(STILL_UNCONFIRMED_NOTICE).not.toMatch(/failed|safe to retry/i);
+  });
+});
 
 describe("closeFailureMessage", () => {
   const roundOne = [step(0, "CANCEL_OFFERS", "pending"), step(1, "MERGE", "pending")];
