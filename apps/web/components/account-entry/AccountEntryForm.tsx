@@ -8,7 +8,7 @@ import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
 import { cn } from "@/lib/utils/cn";
-import AddressInput from "./AddressInput";
+import { AddressField } from "@/components/ui/address-field";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import { findUnresolved } from "@/lib/session/recovery";
 import { Button } from "@/components/ui/button";
@@ -53,10 +53,12 @@ export default function AccountEntryForm() {
   return (
     <div className="space-y-6">
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-white">
+        <p className="text-sm font-medium text-white">
           Account to close
-          <span className="text-danger-fg ml-1">*</span>
-        </label>
+          <span aria-hidden="true" className="text-danger-fg ml-1">
+            *
+          </span>
+        </p>
 
         <div className="flex gap-2 rounded-lg bg-white/[0.03] p-1">
           <button
@@ -84,8 +86,10 @@ export default function AccountEntryForm() {
         {mode === "wallet" ? (
           <WalletConnectPanel connection={walletConnection} disabled={analyzing} />
         ) : (
-          <AddressInput
-            label=""
+          <AddressField
+            label="Account to close"
+            hideLabel
+            required
             value={pastedSource}
             onChange={setPastedSource}
             placeholder="G... (the account to merge)"

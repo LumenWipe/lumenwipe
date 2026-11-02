@@ -1,7 +1,7 @@
 import { afterEach, expect, spyOn, test, mock } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
 import * as navigation from "next/navigation";
-import AddressInput from "@/components/account-entry/AddressInput";
+import { AddressField } from "@/components/ui/address-field";
 import HeroAccountInput from "@/components/marketing/HeroAccountInput";
 
 afterEach(() => {
@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 test("the address field leaves the browser outline to the global focus rule", () => {
-  const { container } = render(<AddressInput label="Account" value="" onChange={() => {}} />);
+  const { container } = render(<AddressField label="Account" value="" onChange={() => {}} />);
   const input = container.querySelector("input") as HTMLInputElement;
   expect(input.className).not.toContain("outline-none");
   expect(input.className).not.toMatch(/focus:ring/);
