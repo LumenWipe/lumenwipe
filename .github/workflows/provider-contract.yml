@@ -1,0 +1,195 @@
+name: provider contract
+
+# Checks that each configured Horizon-compatible provider still serves the routes, fields and
+# headers the API reads. GET only: it never signs, submits or writes. Scheduled, because a
+# provider can change without anyone opening a pull request.
+#
+# The PATH_ROUTING_API_* secrets mirror the API's configuration and are optional: without them
+# the public endpoints are checked and the run says so. Output names a provider by network and
+# list position only, because this repository's logs and issues are public.
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: provider-contract
+  cancel-in-progress: false
+
+# Nothing by default; each job asks for what it needs, and only `report` writes.
+permissions: {}
+
+jobs:
+  testnet:
+    name: testnet providers hold the contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.4"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Say which list is being checked
+        env:
+          CONFIGURED: ${{ secrets.PATH_ROUTING_API_TESTNET != '' }}
+        run: |
+          if [ "$CONFIGURED" != "true" ]; then
+            echo "::warning::The configured testnet provider list was not set; the public endpoints were used."
+          fi
+
+      - name: Check every provider
+        working-directory: apps/api
+        env:
+          PATH_ROUTING_API_TESTNET: ${{ secrets.PATH_ROUTING_API_TESTNET || 'https://horizon-testnet.stellar.org' }}
+          PATH_ROUTING_API_HEADER_NAME_TESTNET: ${{ secrets.PATH_ROUTING_API_HEADER_NAME_TESTNET }}
+          PATH_ROUTING_API_HEADER_VALUE_TESTNET: ${{ secrets.PATH_ROUTING_API_HEADER_VALUE_TESTNET }}
+          PATH_ROUTING_API_HEADER_NAME_TESTNET_2: ${{ secrets.PATH_ROUTING_API_HEADER_NAME_TESTNET_2 }}
+          PATH_ROUTING_API_HEADER_VALUE_TESTNET_2: ${{ secrets.PATH_ROUTING_API_HEADER_VALUE_TESTNET_2 }}
+          PATH_ROUTING_API_HEADER_NAME_TESTNET_3: ${{ secrets.PATH_ROUTING_API_HEADER_NAME_TESTNET_3 }}
+          PATH_ROUTING_API_HEADER_VALUE_TESTNET_3: ${{ secrets.PATH_ROUTING_API_HEADER_VALUE_TESTNET_3 }}
+        run: bun run scripts/monitors/provider-contract.ts testnet
+
+  mainnet:
+    name: mainnet providers hold the contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.4"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Say which list is being checked
+        env:
+          CONFIGURED: ${{ secrets.PATH_ROUTING_API_MAINNET != '' }}
+        run: |
+          if [ "$CONFIGURED" != "true" ]; then
+            echo "::warning::The configured mainnet provider list was not set; the public endpoints were used."
+          fi
+
+      - name: Check every provider
+        working-directory: apps/api
+        env:
+          PATH_ROUTING_API_MAINNET: ${{ secrets.PATH_ROUTING_API_MAINNET || 'https://horizon.stellar.org' }}
+          PATH_ROUTING_API_HEADER_NAME_MAINNET: ${{ secrets.PATH_ROUTING_API_HEADER_NAME_MAINNET }}
+          PATH_ROUTING_API_HEADER_VALUE_MAINNET: ${{ secrets.PATH_ROUTING_API_HEADER_VALUE_MAINNET }}
+          PATH_ROUTING_API_HEADER_NAME_MAINNET_2: ${{ secrets.PATH_ROUTING_API_HEADER_NAME_MAINNET_2 }}
+          PATH_ROUTING_API_HEADER_VALUE_MAINNET_2: ${{ secrets.PATH_ROUTING_API_HEADER_VALUE_MAINNET_2 }}
+          PATH_ROUTING_API_HEADER_NAME_MAINNET_3: ${{ secrets.PATH_ROUTING_API_HEADER_NAME_MAINNET_3 }}
+          PATH_ROUTING_API_HEADER_VALUE_MAINNET_3: ${{ secrets.PATH_ROUTING_API_HEADER_VALUE_MAINNET_3 }}
+        run: bun run scripts/monitors/provider-contract.ts mainnet
+
+  report:
+    name: open an issue and alert on failure
+    needs: [testnet, mainnet]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open or close the tracking issue
+        id: issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TESTNET: ${{ needs.testnet.result }}
+          MAINNET: ${{ needs.mainnet.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE="A provider no longer holds the API contract"
+
+          # Exact title match, not `--search ... in:title`: that qualifier tokenizes and lags, so
+          # it can comment on or close an unrelated issue. See e2e-nightly.yml.
+          EXISTING=$(gh issue list --repo "$REPO" --state open --limit 200 --json number,title 2>/dev/null \
+            | jq -r --arg t "$TITLE" 'map(select(.title == $t)) | .[0].number // empty' || true)
+
+          STATUS=$(printf '%s\n' \
+            "- testnet providers hold the contract: $TESTNET" \
+            "- mainnet providers hold the contract: $MAINNET")
+
+          # `cancelled` and `skipped` are a superseded run or a human stopping a job: not findings.
+          if [ "$TESTNET" != "failure" ] && [ "$MAINNET" != "failure" ]; then
+            if [ "$TESTNET" = "success" ] && [ "$MAINNET" = "success" ] && [ -n "$EXISTING" ]; then
+              gh issue comment "$EXISTING" --repo "$REPO" --body "Every provider holds the contract again: $RUN_URL"
+              gh issue close "$EXISTING" --repo "$REPO" --reason completed
+              echo "alert=recovered" >> "$GITHUB_OUTPUT"
+              echo "issue=$EXISTING" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          BODY=$(printf '%s\n' \
+            "The provider contract check failed. The diff is in the run's summary: $RUN_URL" \
+            "" \
+            "$STATUS" \
+            "" \
+            "What this means, and what to do:" \
+            "https://docs.lumenwipe.com/monitoring-plan#provider-contract-check" \
+            "(docs/monitoring-plan.md)." \
+            "" \
+            "A line that says \"no answer\" is an outage or a rate limit: re-run the check before" \
+            "treating it as drift. Any other line is a route, field or header the API reads that" \
+            "has changed, and closes built on it will fail or be refused until it is fixed." \
+            "" \
+            "This issue closes itself on the next clean run, including a manual one from the" \
+            "Actions tab.")
+
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --repo "$REPO" --body "Still reporting: $RUN_URL"
+            echo "issue=$EXISTING" >> "$GITHUB_OUTPUT"
+          else
+            NEW=$(gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY" \
+              --label bug --assignee miguelnietoa)
+            echo "alert=finding" >> "$GITHUB_OUTPUT"
+            echo "issue=${NEW##*/}" >> "$GITHUB_OUTPUT"
+          fi
+          {
+            echo "status<<EOF"
+            echo "$STATUS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Alert the maintainers' channel
+        if: steps.issue.outputs.alert != ''
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_MONITORS_WEBHOOK_URL }}
+          ALERT: ${{ steps.issue.outputs.alert }}
+          STATUS: ${{ steps.issue.outputs.status }}
+          ISSUE_URL: ${{ github.server_url }}/${{ github.repository }}/issues/${{ steps.issue.outputs.issue }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # A finding with nowhere to go is itself a finding: the issue above still exists, but
+          # the run must show that nobody was told.
+          if [ -z "$WEBHOOK" ]; then
+            echo "::error::DISCORD_MONITORS_WEBHOOK_URL is not set; the alert was not delivered."
+            exit 1
+          fi
+
+          if [ "$ALERT" = "recovered" ]; then
+            CONTENT=$(printf '%s\n' "Every provider holds the contract again." "Run: $RUN_URL")
+          else
+            CONTENT=$(printf '%s\n' "A provider no longer holds the API contract." "$STATUS" \
+              "Issue: $ISSUE_URL" "Run: $RUN_URL")
+          fi
+
+          code=$(jq -n --arg c "$CONTENT" '{content: $c, allowed_mentions: {parse: []}}' \
+            | curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d @- "$WEBHOOK")
+          if [ "$code" != "200" ] && [ "$code" != "204" ]; then
+            echo "::error::Discord returned $code; the alert was not delivered."
+            exit 1
+          fi
