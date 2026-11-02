@@ -80,7 +80,7 @@ beforeAll(() => {
     process.env[key] = value;
   }
   fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (input: unknown) => {
-    const pipeline = String(input).startsWith(LIMITER);
+    const pipeline = new URL(String(input)).origin === LIMITER;
     return Response.json(pipeline ? [{ result: 1 }, { result: 1 }] : {});
   }) as unknown as typeof globalThis.fetch);
 });
