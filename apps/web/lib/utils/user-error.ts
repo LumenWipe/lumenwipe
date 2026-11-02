@@ -1,4 +1,10 @@
-import { CloseDidNotConvergeError, LumenWipeApiError, LumenWipeTimeoutError } from "@lumenwipe/sdk";
+import {
+  CloseDidNotConvergeError,
+  CloseOutcomeUnknownError,
+  CloseTransactionFailedError,
+  LumenWipeApiError,
+  LumenWipeTimeoutError,
+} from "@lumenwipe/sdk";
 import { apiRequestId } from "@/lib/api/error-body";
 import { InvalidPreAuthTxError } from "@/lib/stellar/pre-auth-tx";
 import { InvalidPreimageError } from "@/lib/stellar/hash-x";
@@ -149,6 +155,7 @@ export function toUserMessage(err: unknown, context: ErrorContext = "generic"): 
   if (
     err instanceof UserFacingError ||
     err instanceof CloseDidNotConvergeError ||
+    err instanceof CloseOutcomeUnknownError ||
     err instanceof InvalidPreAuthTxError ||
     err instanceof InvalidPreimageError ||
     err instanceof RevokeAllowanceVerificationError ||
@@ -158,6 +165,9 @@ export function toUserMessage(err: unknown, context: ErrorContext = "generic"): 
     return err.message;
   }
   if (err instanceof VerificationError) return VERIFICATION_FAILED;
+  if (err instanceof CloseTransactionFailedError) {
+    return looksPlain(err.message) ? err.message : FALLBACKS[context];
+  }
   if (err instanceof ApiRequestError) return fromStatus(err.status, err.message, context);
   if (err instanceof LumenWipeApiError) return fromStatus(err.status, "", context);
   if (err instanceof LumenWipeTimeoutError) return UNAVAILABLE;
@@ -179,7 +189,36 @@ export function toUserMessage(err: unknown, context: ErrorContext = "generic"): 
 }
 
 /** Whether the transaction in flight when a close failed had already been handed to the network. */
-export type CloseFailureStage = "before-submit" | "submitted";
+export type CloseFailureStage = "before-submit" | "submitted" | "refused";
+
+/** Shown while a transaction's outcome is unknown. Claims neither a failure nor a success. */
+export const UNCONFIRMED_NOTICE =
+  "This transaction is not confirmed yet, and your account may already be closed. Check again before doing anything else.";
+export const STILL_UNCONFIRMED_NOTICE =
+  "Still not confirmed. The network has no answer for this transaction yet, so check again in a moment.";
+export const CLOSE_FINISHED_NOTICE =
+  "This close is finished: the merge you signed is confirmed on the network.";
+
+export const CLOSE_INTERRUPTED =
+  "This close was interrupted because another account was started in this tab, so nothing more was sent for it.";
+export const HASH_NOT_KEPT =
+  "This browser could not save the details needed to check this transaction if the page is lost, so it was held back. Allow this site to store data, then try again.";
+export const OUTCOME_HELD =
+  "This account has a transaction whose outcome is unknown, and a revoke would use the same sequence number, so nothing was signed or sent. Open the close page on this network and choose Check again first.";
+export const NO_MERGE_CONFIRMED =
+  "The service reported this close as finished, but no confirmed transaction merged this account, so it is not closed. Look the account up on an explorer, then try again.";
+export const CHECK_FAILED_NOTICE =
+  "That transaction failed on the network. Look at your account on an explorer, then resume the close.";
+
+export const PREIMAGE_EXPOSED =
+  "That transaction carried your preimage, so treat it as public: anyone who read it holds that signer's weight until the signer is removed. Do not assume this is harmless. Removing the signer is the next thing to do.";
+const REFUSED = "Its operations did not take effect, so it is safe to retry.";
+const ACCOUNT_GONE =
+  "This account is no longer on the network, and this close could not confirm that it was what removed it. Look the account up on an explorer to see what happened.";
+
+function isAccountGone(err: unknown): boolean {
+  return err instanceof ApiRequestError && err.code === "account_not_found";
+}
 
 const UNCONFIRMED =
   "The last transaction could not be confirmed, so check it on the explorer; retrying is also safe, because LumenWipe re-reads your account first and never sends a confirmed transaction twice.";
@@ -201,13 +240,27 @@ function progressSentence(plan: readonly PlannedStep[]): string | null {
 export function closeFailureMessage(
   err: unknown,
   stage: CloseFailureStage,
-  plan: readonly PlannedStep[]
+  plan: readonly PlannedStep[],
+  carriedPreimage = false
 ): string {
+  if (isAccountGone(err)) return ACCOUNT_GONE;
   const base = toUserMessage(err, "execute");
   const progress = progressSentence(plan);
+  if (stage === "refused") {
+    return [base, progress, carriedPreimage ? PREIMAGE_EXPOSED : REFUSED].filter(Boolean).join(" ");
+  }
   if (stage === "submitted") return [base, progress, UNCONFIRMED].filter(Boolean).join(" ");
   const scoped = base === DECLINED_TRANSACTION || base === VERIFICATION_FAILED;
   return [base, scoped ? null : "No new transaction was sent.", progress, "It is safe to retry."]
     .filter(Boolean)
     .join(" ");
+}
+
+/** Whether the note under Retry may say so. Goes with `closeFailureMessage`, same arguments. */
+export function closeRetryIsSafe(
+  err: unknown,
+  stage: CloseFailureStage,
+  carriedPreimage = false
+): boolean {
+  return !isAccountGone(err) && !(stage === "refused" && carriedPreimage);
 }

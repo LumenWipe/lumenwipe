@@ -245,6 +245,8 @@ export interface CloseEngineDeps {
     // (undocumented)
     onProgress?: (message: string) => void;
     planHash?: string;
+    prepare?: (tx: CloseTransaction, xdr: string) => Promise<string>;
+    reconcile?: CloseReconciliation;
     requiredWeight: (tx: CloseTransaction) => number;
     sign: (tx: CloseTransaction, xdr: string) => Promise<{
         xdr: string;
@@ -256,6 +258,13 @@ export interface CloseEngineDeps {
 }
 
 // @public
+export class CloseOutcomeUnknownError extends Error {
+    constructor(submission: UnresolvedSubmission);
+    // (undocumented)
+    readonly submission: UnresolvedSubmission;
+}
+
+// @public
 export interface ClosePlanRequest {
     // (undocumented)
     decisions?: DecisionAnswer[];
@@ -263,6 +272,24 @@ export interface ClosePlanRequest {
     destination?: string;
     // (undocumented)
     source: string;
+}
+
+// @public
+export interface CloseReconciliation {
+    closesAccount: (signedXdr: string) => boolean;
+    hashOf: (signedXdr: string) => string;
+    lookup: (hash: string) => Promise<TransactionLookupResponse>;
+    now?: () => number;
+    onResolved?: (submission: UnresolvedSubmission) => void;
+    onSubmission?: (submission: UnresolvedSubmission | null) => void | Promise<void>;
+    unresolved?: UnresolvedSubmission;
+    validUntil: (signedXdr: string) => number | null;
+}
+
+// @public
+export interface CloseRunResult {
+    // (undocumented)
+    mergeConfirmed: boolean;
 }
 
 // @public
@@ -313,6 +340,13 @@ export interface CloseTransaction {
     validUntilLedger: number;
     // (undocumented)
     xdr: string;
+}
+
+// @public
+export class CloseTransactionFailedError extends Error {
+    constructor(submission: UnresolvedSubmission, message: string);
+    // (undocumented)
+    readonly submission: UnresolvedSubmission;
 }
 
 // @public
@@ -493,7 +527,7 @@ export interface DefiRpcPolicy {
 }
 
 // @public (undocumented)
-export type DemolishPhase = "IDLE" | "ANALYZING" | "PREFLIGHT_COMPLETE" | "SIGNER_SETUP" | "STEP_EXECUTING" | "STEP_CONFIRMED" | "STEP_FAILED" | "COMPLETE" | "ABORTED";
+export type DemolishPhase = "IDLE" | "ANALYZING" | "PREFLIGHT_COMPLETE" | "SIGNER_SETUP" | "STEP_EXECUTING" | "STEP_CONFIRMED" | "STEP_FAILED" | "STEP_UNCONFIRMED" | "COMPLETE" | "ABORTED";
 
 // @public
 export type ErrorCode = "account_not_found" | "account_read_failed" | "account_too_large" | "admin_api_not_configured" | "allowances_read_failed" | "api_key_not_found" | "aquarius_trustline_missing" | "backstop_emissions_unclaimed" | "backstop_token_unconvertible" | "backstop_withdrawal_cooling_down" | "backstop_withdrawal_not_queued" | "bad_request" | "blend_emissions_trustline_missing" | "blend_repay_asset_balance_unknown" | "blend_repay_asset_missing" | "claimable_balance_not_claimable_now" | "claimable_balance_reserve_short" | "claimable_balances_too_many" | "close_fee_balance_short" | "confirmation_timeout" | "conversion_floor_missing" | "conversion_provider_unrecognized" | "defi_exit_blocked" | "defi_exit_unsupported" | "defi_position_unrecognized" | "defi_positions_blocked" | "defi_positions_stale" | "defi_positions_unavailable" | "destination_not_acknowledged" | "destination_read_failed" | "fee_bump_exceeds_cap" | "fee_bump_not_configured" | "forbidden" | "forward_amount_exceeds_balance" | "inner_fee_not_zero" | "integrator_api_not_configured" | "internal_error" | "invalid_address" | "invalid_addresses" | "invalid_body" | "invalid_challenge" | "invalid_decisions" | "invalid_destination" | "invalid_memo" | "invalid_network" | "invalid_owner" | "invalid_plan_hash" | "invalid_rate_limit" | "invalid_request" | "invalid_signature" | "invalid_signed_xdr" | "invalid_source" | "invalid_spender" | "invalid_token" | "invalid_tokens" | "invalid_transaction_xdr" | "invalid_tx_hash" | "issuer_read_failed" | "issuer_supply_not_acknowledged" | "key_limit_reached" | "mediator_key_misconfiguration" | "mediator_not_configured" | "memo_required" | "merge_destination_unusable" | "merged_account_not_found" | "missing_parameters" | "missing_transaction" | "needs_decisions" | "not_found" | "operation_not_sponsorable" | "owner_not_found" | "path_lookup_failed" | "payload_too_large" | "phoenix_trustline_missing" | "plan_failed" | "provider_response_unusable" | "quote_drifted" | "rate_limited" | "registry_expired" | "request_failed" | "revoke_build_failed" | "revoke_needs_restore" | "revoke_simulation_failed" | "revoke_unsafe" | "route_lookup_unavailable" | "service_unavailable" | "signer_normalization_unsafe" | "soroban_token_conversion_failed" | "soroban_token_conversion_unavailable" | "soroban_token_conversion_unsafe" | "soroban_token_needs_restore" | "soroban_token_route_lost" | "soroban_token_transfer_failed" | "soroban_token_transfer_unsafe" | "soroban_token_unreadable" | "soroswap_trustline_missing" | "source_sequence_too_far" | "sponsor_source_unusable" | "sponsorship_budget_exhausted" | "state_changed" | "stats_unavailable" | "submit_failed" | "submit_rejected" | "time_bounds_required" | "too_many_addresses" | "transaction_expired" | "transaction_structure_not_allowed" | "transactions_failed" | "transfer_destination_missing" | "transfer_destination_unusable" | "trustline_cannot_be_left" | "trustline_deauthorized_with_balance" | "trustline_maintain_liabilities_with_balance" | "tx_not_verified" | "unauthorized" | "unprocessable_entity" | "unsupported_media_type" | "unsupported_memo_type" | "vault_undercollateralized" | "withdraw_before_repay";
@@ -613,6 +647,9 @@ export type IntentOperationBody = {
 export function isApiErrorCode<C extends ApiErrorCode>(error: unknown, code: C): error is LumenWipeApiError & {
     code: C;
 };
+
+// @public
+export function isSubmitRefused(error: unknown): boolean;
 
 // @public
 export class LumenWipeAbortError extends Error {
@@ -883,6 +920,9 @@ export interface RequestOptions {
     signal?: AbortSignal;
 }
 
+// @public
+export function resolveSubmission(submission: UnresolvedSubmission, lookup: (hash: string) => Promise<TransactionLookupResponse>, now?: () => number): Promise<SubmissionOutcome>;
+
 // @public (undocumented)
 export interface RetryOptions {
     attempts: number;
@@ -896,7 +936,7 @@ export interface RevokeAllowanceResponse {
 }
 
 // @public
-export function runClose(deps: CloseEngineDeps, resume?: PendingRound): Promise<void>;
+export function runClose(deps: CloseEngineDeps, resume?: PendingRound): Promise<CloseRunResult>;
 
 // @public
 export interface SorobanTokenBalance {
@@ -1024,6 +1064,30 @@ export interface SubInvocationCall {
 }
 
 // @public
+export const SUBMISSION_GIVE_UP_MARGIN_SECONDS = 120;
+
+// @public
+export const submissionClosesAccount: (submission: UnresolvedSubmission) => boolean;
+
+// @public (undocumented)
+export type SubmissionOutcome = {
+    outcome: "confirmed";
+} | {
+    outcome: "failed";
+    message: string;
+} | {
+    outcome: "expired";
+} | {
+    outcome: "unknown";
+};
+
+// @public
+export const SUBMIT_RESEND_ATTEMPTS = 2;
+
+// @public
+export const SUBMIT_RESEND_DELAY_MS = 5000;
+
+// @public
 export interface SubmitPendingDetails {
     // (undocumented)
     hash: string;
@@ -1139,6 +1203,18 @@ export interface UnrecognizedDefiPosition {
     rawType: string;
     // (undocumented)
     reason: string;
+}
+
+// @public
+export interface UnresolvedSubmission {
+    // (undocumented)
+    covers: CloseTransaction["covers"];
+    // (undocumented)
+    coversTargets?: string[];
+    hash: string;
+    // (undocumented)
+    needsSponsoredFee?: boolean;
+    validUntil: number | null;
 }
 
 // (No @packageDocumentation comment for this package)

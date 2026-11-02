@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils/cn";
 import SecretKeyInput from "@/components/account-entry/SecretKeyInput";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import PlanSidebar from "./PlanSidebar";
+import UnconfirmedPanel from "./UnconfirmedPanel";
 import ProgressIndicator from "./ProgressIndicator";
 import SigningProgress from "./SigningProgress";
 import StatusMessage from "@/components/a11y/StatusMessage";
@@ -35,8 +36,17 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const lastError = useDemolishStore((s) => s.lastError);
   const lastErrorReference = useDemolishStore((s) => s.lastErrorReference);
   const accountState = useDemolishStore((s) => s.accountState);
+  const unconfirmedSubmission = useDemolishStore((s) => s.unconfirmedSubmission);
 
-  const { run, progressStatus, signatureStatus, submitPreAuthTransaction } = useCloseExecution();
+  const {
+    run,
+    progressStatus,
+    signatureStatus,
+    submitPreAuthTransaction,
+    checkUnconfirmed,
+    retrySafe,
+    stillUnconfirmed,
+  } = useCloseExecution();
   const walletConnection = useWalletKitConnection(network);
   const [mode, setMode] = useState<SignMode>("wallet");
   const [keyEntered, setKeyEntered] = useState(false);
@@ -193,7 +203,16 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const busy = running || progressStatus !== null;
   const pendingMoreSignatures = phase === "STEP_FAILED" && !running && signatureStatus !== null;
   const failed = phase === "STEP_FAILED" && !running && !changingSigner && !pendingMoreSignatures;
-  const view = busy ? "busy" : pendingMoreSignatures ? "signatures" : failed ? "failed" : "setup";
+  const unconfirmed = phase === "STEP_UNCONFIRMED" && unconfirmedSubmission !== null;
+  const view = busy
+    ? "busy"
+    : unconfirmed
+      ? "unconfirmed"
+      : pendingMoreSignatures
+        ? "signatures"
+        : failed
+          ? "failed"
+          : "setup";
 
   const headingRef = useRef<HTMLHeadingElement>(null);
   const alertRef = useRef<HTMLDivElement>(null);
@@ -369,6 +388,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
           {busy ? (
             <ProgressIndicator status={progressStatus ?? "Working…"} />
+          ) : unconfirmed ? (
+            <UnconfirmedPanel
+              hash={unconfirmedSubmission.hash}
+              stillUnconfirmed={stillUnconfirmed}
+              onCheck={() => void checkUnconfirmed()}
+            />
           ) : pendingMoreSignatures ? (
             <div className="flex flex-col gap-4">
               <SigningProgress
@@ -419,10 +444,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               >
                 Retry
               </button>
-              <p className="text-xs text-fg-subtle">
-                Safe to retry. LumenWipe re-reads your account first, so a confirmed transaction is
-                never sent twice.
-              </p>
+              {retrySafe !== false && (
+                <p className="text-xs text-fg-subtle">
+                  Safe to retry. LumenWipe re-reads your account first, so a confirmed transaction
+                  is never sent twice.
+                </p>
+              )}
             </div>
           ) : (
             <>

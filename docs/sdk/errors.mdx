@@ -39,6 +39,10 @@ try {
 
 `code` is one of the API's documented error codes, or `"upstream_error"` when a proxy or CDN in front of the API returned a non-JSON failure. `retryAfterMs` is `undefined` when the response has no `Retry-After`. `requestId` is the value of the `X-Request-Id` response header, the same id the error body carries as `error.requestId`; it is `undefined` only when the failure came from something in front of the API. Quote it when reporting a problem.
 
+## Unknown outcomes
+
+`confirmation_timeout` carries `details` with `status: "pending"` and the `hash`, and `submit_failed` carries the `hash` once the API has tried to send. Both mean the outcome is unknown. Resolve either with `getTransaction`, using the hash you computed from the envelope you signed, or let `runClose` do it with [`reconcile`](/sdk/run-close#unknown-outcomes). `submit_rejected` is `422`: the network refused the transaction.
+
 ## Retrying safely
 
 Retries are off by default. Enable them with `retry: { attempts, baseDelayMs }` on the client. Waits use `Retry-After` when present (capped at 30 seconds), otherwise exponential backoff with jitter, and a `signal` abort cuts a wait short. A timeout or a caller abort is never retried.

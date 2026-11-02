@@ -11,9 +11,15 @@ import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import {
   runClose,
+  isSubmitRefused,
+  resolveSubmission,
+  submissionClosesAccount,
+  CloseOutcomeUnknownError,
   CloseStateChangedError,
+  CloseTransactionFailedError,
   InsufficientSignatureWeightError,
   type PendingRound,
+  type UnresolvedSubmission,
 } from "@lumenwipe/sdk";
 import { fetchCloseTransactions } from "@/lib/api/close-client";
 import {
@@ -38,12 +44,20 @@ import {
   parseRoundSignerState,
   type SignerState,
 } from "@/lib/stellar/signature-weight";
-import { submitViaApi } from "@/lib/stellar/submit-via-api";
+import { lookupViaApi, submitViaApi } from "@/lib/stellar/submit-via-api";
+import { mergesAccount, submissionHash, submissionValidUntil } from "@/lib/stellar/submission";
+import { ensureCloseSession, ownsStore, type CloseOwner } from "@/lib/session/close-record";
+import { findUnresolved } from "@/lib/session/recovery";
+import { clearUnconfirmedFor, saveUnconfirmed } from "@/lib/session/store";
 import { requestMediatorCosignature } from "@/lib/stellar/mediator";
 import { requestFeeBumpSponsorship } from "@/lib/stellar/fee-bump-sponsor";
 import { notifyStatsRefresh } from "@/lib/stats-events";
 import {
   closeFailureMessage,
+  closeRetryIsSafe,
+  CLOSE_INTERRUPTED,
+  HASH_NOT_KEPT,
+  NO_MERGE_CONFIRMED,
   requestIdOf,
   UserFacingError,
   type CloseFailureStage,
@@ -59,6 +73,42 @@ export interface SignatureStatus {
   requiredWeight: number;
   accumulatedWeight: number;
   remainingSigners: AccountSigner[];
+}
+
+async function keepDurably(owner: CloseOwner, submission: UnresolvedSubmission): Promise<boolean> {
+  try {
+    const sessionId = await ensureCloseSession(owner);
+    return sessionId !== null && ownsStore(owner) && (await saveUnconfirmed(sessionId, submission));
+  } catch (err) {
+    console.error("[session] could not keep the unconfirmed hash:", err);
+    return false;
+  }
+}
+
+function assertStillOwns(owner: CloseOwner): void {
+  if (!ownsStore(owner)) throw new UserFacingError(CLOSE_INTERRUPTED);
+}
+
+/** Remembers an unsettled transaction across a refresh, before it is sent: with the hash only in
+ *  memory a refresh would walk around the hold, so a failed save stops the send. Clearing never
+ *  stops anything: the transaction settled, and a stale record costs one extra lookup. Every write
+ *  is for `owner`, and the store is touched only while it still holds that close. */
+async function recordSubmission(
+  owner: CloseOwner,
+  submission: UnresolvedSubmission | null
+): Promise<void> {
+  const { setUnconfirmedSubmission } = useDemolishStore.getState();
+  if (submission) {
+    if (!(await keepDurably(owner, submission))) throw new UserFacingError(HASH_NOT_KEPT);
+    setUnconfirmedSubmission(submission);
+    return;
+  }
+  if (ownsStore(owner)) setUnconfirmedSubmission(null);
+  try {
+    await clearUnconfirmedFor(owner.network, owner.source);
+  } catch (err) {
+    console.error("[session] could not clear the unconfirmed hash:", err);
+  }
 }
 
 export const PLAN_CHANGED_NOTICE =
@@ -87,6 +137,10 @@ export function useCloseExecution() {
 
   const [progressStatus, setProgressStatus] = useState<string | null>(null);
   const [signatureStatus, setSignatureStatus] = useState<SignatureStatus | null>(null);
+  const [retrySafe, setRetrySafe] = useState(true);
+  const [stillUnconfirmed, setStillUnconfirmed] = useState(false);
+  // Whether the transaction in flight carries a preimage: refused or failed, it was still sent.
+  const carriedPreimageRef = useRef(false);
   // Survives across separate run() calls on the same hook instance (unlike state, a ref
   // update doesn't itself trigger a re-render) so a second signer resumes onto the exact
   // partially-signed envelope the first signer left behind, instead of re-fetching and
@@ -169,9 +223,22 @@ export function useCloseExecution() {
 
       setPhase("STEP_EXECUTING");
       setSignatureStatus(null);
-      let stage: CloseFailureStage = "before-submit";
+      setRetrySafe(true);
+      setStillUnconfirmed(false);
+      carriedPreimageRef.current = false;
+      const flight = { stage: "before-submit" as CloseFailureStage };
+      const owner: CloseOwner = { network, source: sourceAddress };
+      // Saved by an earlier page load: until it settles, this account signs nothing new.
+      const recorded = await findUnresolved(network, sourceAddress);
+      if (recorded?.unconfirmed && !useDemolishStore.getState().unconfirmedSubmission) {
+        useDemolishStore.getState().setUnconfirmedSubmission(recorded.unconfirmed);
+      }
       try {
-        await runClose(
+        // Found here, before a signature or a sponsorship is spent on a send that could not start.
+        await ensureCloseSession(owner).catch(() => {
+          throw new UserFacingError(HASH_NOT_KEPT);
+        });
+        const { mergeConfirmed } = await runClose(
           {
             planHash: useDemolishStore.getState().planHash ?? undefined,
             getTransactions: async ({ planHash }) => {
@@ -240,6 +307,7 @@ export function useCloseExecution() {
                 )
               ),
             sign: async (tx: CloseTransaction, xdr: string) => {
+              assertStillOwns(owner);
               setProgressStatus("Signing transaction…");
               // Computed from the exact XDR verify() approved, before any signer touches it -
               // the anchor for both checks below. The hash covers only the transaction body
@@ -291,8 +359,13 @@ export function useCloseExecution() {
               }
               return { xdr: signedXdr, weight };
             },
-            submit: async (tx: CloseTransaction, xdr: string) => {
+            prepare: async (tx: CloseTransaction, xdr: string) => {
               let finalXdr = xdr;
+              carriedPreimageRef.current = evaluateSignatureContributions(
+                xdr,
+                passphrase,
+                roundSignerState().signers
+              ).some((c) => c.contributed && c.signer.type === "hash_x");
               assertMasterSignsSignerRemoval(xdr, passphrase, sourceAddress);
 
               // A merge through the shared mediator is one atomic transaction: the user
@@ -357,12 +430,42 @@ export function useCloseExecution() {
                 finalXdr = sponsoredXdr;
               }
 
+              // A transaction with no end could land at any time, so it could never be given up on.
+              if (submissionValidUntil(finalXdr, passphrase) === null) {
+                throw new UserFacingError(
+                  "This transaction has no time limit, so it was not sent. Nothing changed."
+                );
+              }
+              return finalXdr;
+            },
+            submit: async (_tx: CloseTransaction, xdr: string) => {
+              assertStillOwns(owner);
               setProgressStatus("Submitting to Stellar network…");
-              stage = "submitted";
-              const { txHash } = await submitViaApi(finalXdr, network);
+              flight.stage = "submitted";
+              const { txHash } = await submitViaApi(xdr, network);
               return txHash;
             },
+            reconcile: {
+              hashOf: (xdr) => submissionHash(xdr, passphrase),
+              closesAccount: (xdr) => mergesAccount(xdr, passphrase, sourceAddress),
+              validUntil: (xdr) => submissionValidUntil(xdr, passphrase),
+              lookup: (hash) => lookupViaApi(hash, network),
+              onSubmission: (submission) => recordSubmission(owner, submission),
+              unresolved: useDemolishStore.getState().unconfirmedSubmission ?? undefined,
+              onResolved: (submission) => {
+                if (!ownsStore(owner)) return;
+                clearPlanHash();
+                markCoveredConfirmed(
+                  submission.covers,
+                  submission.hash,
+                  submission.needsSponsoredFee,
+                  submission.coversTargets
+                );
+              },
+            },
             onConfirmed: (tx, hash) => {
+              if (!ownsStore(owner)) return;
+              carriedPreimageRef.current = false;
               clearPlanHash();
               markCoveredConfirmed(tx.covers, hash, tx.needsSponsoredFee, tx.coversTargets);
               signerStateRef.current = applyConfirmedTransaction(
@@ -375,17 +478,25 @@ export function useCloseExecution() {
               if (tx.covers.includes("MERGE") || tx.covers.includes("CLOSE_ACCOUNT")) {
                 notifyStatsRefresh();
               }
-              stage = "before-submit";
+              flight.stage = "before-submit";
             },
             onProgress: setProgressStatus,
           },
           pendingRoundRef.current ?? undefined
         );
+        if (!ownsStore(owner)) return;
         pendingRoundRef.current = null; // full success - nothing left to resume
         signerStateRef.current = null;
         signerStateForRef.current = null;
-        setPhase("COMPLETE");
+        if (mergeConfirmed) {
+          setPhase("COMPLETE");
+        } else {
+          setLastError(NO_MERGE_CONFIRMED);
+          setPhase("STEP_FAILED");
+        }
       } catch (err) {
+        // The store holds another account now: nothing of this run belongs on its screen.
+        if (!ownsStore(owner)) return;
         if (err instanceof InsufficientSignatureWeightError) {
           pendingRoundRef.current = err.pending;
           setSignatureStatus({
@@ -405,6 +516,16 @@ export function useCloseExecution() {
           setPhase("STEP_FAILED");
           return;
         }
+        if (
+          err instanceof CloseOutcomeUnknownError ||
+          useDemolishStore.getState().unconfirmedSubmission
+        ) {
+          pendingRoundRef.current = null;
+          setSignatureStatus(null);
+          setLastError(null);
+          setPhase("STEP_UNCONFIRMED");
+          return;
+        }
         if (err instanceof CloseStateChangedError) {
           pendingRoundRef.current = null;
           signerStateRef.current = null;
@@ -420,8 +541,15 @@ export function useCloseExecution() {
         // panel with no explanation of what went wrong.
         pendingRoundRef.current = null;
         setSignatureStatus(null);
+        const failedAt: CloseFailureStage =
+          err instanceof CloseTransactionFailedError ||
+          (flight.stage === "submitted" && isSubmitRefused(err))
+            ? "refused"
+            : flight.stage;
+        const carried = carriedPreimageRef.current;
+        setRetrySafe(closeRetryIsSafe(err, failedAt, carried));
         setLastError(
-          closeFailureMessage(err, stage, useDemolishStore.getState().executionPlan),
+          closeFailureMessage(err, failedAt, useDemolishStore.getState().executionPlan, carried),
           requestIdOf(err)
         );
         setPhase("STEP_FAILED");
@@ -442,6 +570,52 @@ export function useCloseExecution() {
       clearPlanHash,
     ]
   );
+
+  // Settles the unknown transaction by its hash alone: nothing is signed or sent, so a check can
+  // never change what happens on the ledger.
+  const checkUnconfirmed = useCallback(async (): Promise<void> => {
+    const submission = useDemolishStore.getState().unconfirmedSubmission;
+    const source = useDemolishStore.getState().sourceAddress;
+    if (!submission || !source) return;
+    const owner: CloseOwner = { network, source };
+    setProgressStatus("Checking the network…");
+    setStillUnconfirmed(false);
+    const settled = await resolveSubmission(submission, (hash) => lookupViaApi(hash, network));
+    setProgressStatus(null);
+    if (settled.outcome === "unknown") {
+      setStillUnconfirmed(ownsStore(owner));
+      return;
+    }
+    await recordSubmission(owner, null);
+    if (!ownsStore(owner)) return;
+    if (settled.outcome === "expired") {
+      setPhase("STEP_EXECUTING");
+      return;
+    }
+    if (settled.outcome === "failed") {
+      const carried = carriedPreimageRef.current;
+      const failure = new CloseTransactionFailedError(submission, settled.message);
+      setRetrySafe(closeRetryIsSafe(failure, "refused", carried));
+      setLastError(
+        closeFailureMessage(failure, "refused", useDemolishStore.getState().executionPlan, carried)
+      );
+      setPhase("STEP_FAILED");
+      return;
+    }
+    clearPlanHash();
+    markCoveredConfirmed(
+      submission.covers,
+      submission.hash,
+      submission.needsSponsoredFee,
+      submission.coversTargets
+    );
+    if (submissionClosesAccount(submission)) {
+      notifyStatsRefresh();
+      setPhase("COMPLETE");
+    } else {
+      setPhase("STEP_EXECUTING");
+    }
+  }, [network, markCoveredConfirmed, setPhase, setLastError, clearPlanHash]);
 
   // Satisfies a pre-auth-tx signer: unlike every other signing path, the transaction here was
   // never built by the API - it's the user's own, already-fully-authorized transaction, whose
@@ -518,7 +692,14 @@ export function useCloseExecution() {
         },
       });
 
-      await submitViaApi(xdr, network);
+      try {
+        await submitViaApi(xdr, network);
+      } catch (err) {
+        if (isSubmitRefused(err)) throw err;
+        throw new UserFacingError(
+          `This transaction may already be on the network. Look up ${submissionHash(xdr, passphrase)} on an explorer before trying again.`
+        );
+      }
       useDemolishStore.getState().clearPlanHash();
       if (signerStateRef.current && signerStateForRef.current === `${network}:${sourceAddress}`) {
         signerStateRef.current = applyConfirmedTransaction(
@@ -533,5 +714,13 @@ export function useCloseExecution() {
     [network, sourceAddress, destinationAddress, memo, mediatorRequired]
   );
 
-  return { run, progressStatus, signatureStatus, submitPreAuthTransaction };
+  return {
+    run,
+    progressStatus,
+    signatureStatus,
+    submitPreAuthTransaction,
+    checkUnconfirmed,
+    retrySafe,
+    stillUnconfirmed,
+  };
 }

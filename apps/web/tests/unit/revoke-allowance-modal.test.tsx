@@ -11,6 +11,7 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 import * as walletKit from "@/hooks/useWalletKitConnection";
+import * as recovery from "@/lib/session/recovery";
 import RevokeAllowanceModal from "@/components/allowances/RevokeAllowanceModal";
 import type { Allowance } from "@/types/allowance";
 
@@ -229,4 +230,34 @@ test("RevokeAllowanceModal › a connected wallet that doesn't match the owner s
   expect(
     (screen.getByRole("button", { name: /revoke allowance/i }) as HTMLButtonElement).disabled
   ).toBe(true);
+});
+
+test("RevokeAllowanceModal › an unresolved hash for the owner stops the revoke before anything is built", async () => {
+  stubWalletKit();
+  spyOn(recovery, "findUnresolved").mockImplementation(async () => ({ id: "s" }) as never);
+  let fetched = 0;
+  globalThis.fetch = (async () => {
+    fetched++;
+    return new Response("{}", { status: 200 });
+  }) as unknown as typeof fetch;
+  const onRevoked = mock((_a: Allowance) => {});
+  render(
+    <RevokeAllowanceModal
+      network="testnet"
+      owner={OWNER}
+      allowance={allowance()}
+      onClose={() => {}}
+      onRevoked={onRevoked}
+    />
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: /secret key/i }));
+  fireEvent.change(screen.getByPlaceholderText("S..."), {
+    target: { value: OWNER_KP.secret() },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /revoke allowance/i }));
+
+  await waitFor(() => expect(screen.getByText(/choose Check again/i)).toBeTruthy());
+  expect(fetched).toBe(0);
+  expect(onRevoked).not.toHaveBeenCalled();
 });

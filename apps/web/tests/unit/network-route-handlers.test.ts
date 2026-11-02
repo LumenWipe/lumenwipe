@@ -63,7 +63,7 @@ async function call(file: string, network: string, query = ""): Promise<NextResp
     method,
     body: method === "POST" ? "{}" : undefined,
   });
-  return handler(req, { params: Promise.resolve({ network, address: "G" }) });
+  return handler(req, { params: Promise.resolve({ network, address: "G", hash: "a".repeat(64) }) });
 }
 
 async function expectRefused(res: Response): Promise<void> {

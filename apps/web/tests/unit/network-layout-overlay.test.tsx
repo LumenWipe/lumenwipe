@@ -8,6 +8,7 @@ const STATS = { testnet: 12, mainnet: 3, mainnetXlmStroops: "1000000000" };
 
 function renderLayout(network: string, pathname: string): ReturnType<typeof render> {
   spyOn(navigation, "usePathname").mockReturnValue(pathname);
+  spyOn(navigation, "useSearchParams").mockReturnValue(new URLSearchParams() as never);
   spyOn(statsHook, "useStats").mockReturnValue({
     stats: STATS,
     stale: false,

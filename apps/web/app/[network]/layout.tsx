@@ -1,14 +1,30 @@
 "use client";
 
-import { use, useEffect } from "react";
-import { notFound, usePathname } from "next/navigation";
-import { isValidNetwork } from "@/config/networks";
+import { Suspense, use, useEffect } from "react";
+import { notFound, usePathname, useSearchParams } from "next/navigation";
+import { isValidNetwork, type Network } from "@/config/networks";
 import { useNetworkStore } from "@/store/network";
 import { useDemolishStore } from "@/store/demolish";
 import NavBar from "@/components/layout/NavBar";
 import NetworkStats from "@/components/stats/NetworkStats";
 import { isSigningRoute } from "@/lib/utils/signing-route";
 import RiskDisclaimerModal from "@/components/RiskDisclaimerModal";
+import UnresolvedGate from "@/components/execution/UnresolvedGate";
+
+const CLOSE_PAGES = /\/(analyze|review|execute)$/;
+
+/** Every page that can lead to a signature for the account it names. */
+function CloseGate({ network, children }: { network: Network; children: React.ReactNode }) {
+  const pathname = usePathname();
+  const querySource = useSearchParams().get("source");
+  const storedSource = useDemolishStore((s) => s.sourceAddress);
+  if (!CLOSE_PAGES.test(pathname)) return children;
+  return (
+    <UnresolvedGate network={network} source={querySource ?? storedSource}>
+      {children}
+    </UnresolvedGate>
+  );
+}
 
 export default function NetworkLayout({
   children,
@@ -43,7 +59,11 @@ export default function NetworkLayout({
       </div>
       <div className="relative z-10 flex min-h-screen flex-col">
         <NavBar network={network as "mainnet" | "testnet"} />
-        <main className={showStats ? "flex-1 pb-16 xl:pb-0" : "flex-1"}>{children}</main>
+        <main className={showStats ? "flex-1 pb-16 xl:pb-0" : "flex-1"}>
+          <Suspense fallback={null}>
+            <CloseGate network={network}>{children}</CloseGate>
+          </Suspense>
+        </main>
       </div>
       {showStats && <NetworkStats />}
       <RiskDisclaimerModal />

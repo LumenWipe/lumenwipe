@@ -7,6 +7,25 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-02
+
+### Added
+
+- `runClose` takes an opt-in `reconcile` and a `prepare` step. With them, an unknown submit outcome
+  is settled by the hash the client computed: the same bytes are sent again at most
+  `SUBMIT_RESEND_ATTEMPTS` (2) times, then the hash is looked up, then `CloseOutcomeUnknownError`
+  carries a submission to pass back as `reconcile.unresolved`. `CloseTransactionFailedError` reports
+  a failure on the ledger. `resolveSubmission`, `isSubmitRefused` and `submissionClosesAccount` are
+  exported. Without `reconcile`, nothing is sent twice. `client.submit` is still never retried.
+- `DemolishPhase` gains `STEP_UNCONFIRMED`.
+
+### Changed
+
+- `runClose` resolves with `{ mergeConfirmed }` instead of `undefined`. It is true only with
+  `reconcile`, for a transaction the client parsed as a merge and saw confirmed under its own hash.
+  Without `reconcile` it is always false: a caller must establish the merge itself, because `covers`
+  is API metadata.
+
 ## [0.14.0] - 2026-11-02
 
 ### Added

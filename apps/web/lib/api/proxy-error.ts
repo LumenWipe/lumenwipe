@@ -24,6 +24,12 @@ export const NOT_CONFIGURED_HEADERS = { "Retry-After": "30" };
  * envelope, so the browser reads one shape whichever side failed.
  */
 export function proxyErrorResponse(e: unknown): NextResponse {
+  const response = errorResponseFor(e);
+  response.headers.set("Cache-Control", "no-store");
+  return response;
+}
+
+function errorResponseFor(e: unknown): NextResponse {
   if (e instanceof LumenWipeInvalidNetworkError) return invalidNetworkResponse();
   if (e instanceof LumenWipeApiError) {
     const body =

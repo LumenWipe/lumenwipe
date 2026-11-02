@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { UnresolvedSubmission } from "@lumenwipe/sdk";
 import { v4 as uuidv4 } from "uuid";
 import { hasRouteLookupBlocker } from "@/lib/plan/resolvable-blockers";
 import type { AccountState } from "@/types/account";
@@ -80,6 +81,8 @@ interface DemolishState {
   mediatorRequired: boolean;
 
   // Error
+  /** A transaction handed to the network whose outcome is not settled yet. */
+  unconfirmedSubmission: UnresolvedSubmission | null;
   lastError: string | null;
   lastErrorReference: string | null;
   /** Why the reviewed plan was discarded mid-close; shown on /analyze until a new plan is set. */
@@ -107,6 +110,7 @@ interface DemolishState {
   /** Drops every leave choice the latest plan no longer offers, so none outlives its card. */
   prunePositionsLeftBehind: (offered: string[]) => void;
   setPhase: (phase: DemolishPhase) => void;
+  setUnconfirmedSubmission: (submission: UnresolvedSubmission | null) => void;
   setAccountState: (state: AccountState) => void;
   setPlan: (plan: PlannedStep[], planHash?: string) => void;
   /** Called once a transaction of the close confirms: the account has changed on purpose, so the
@@ -229,6 +233,7 @@ const initialState = {
   classicConversionFloors: {},
   claimableBalanceSelections: {},
   mediatorRequired: false,
+  unconfirmedSubmission: null,
   lastError: null,
   lastErrorReference: null,
   planChangedNotice: null,
@@ -240,12 +245,15 @@ export const useDemolishStore = create<DemolishState>((set) => ({
   ...initialState,
 
   setAddresses: (source, dest, memo, memoType) =>
-    set({
+    set((state) => ({
       sourceAddress: source,
       destinationAddress: dest,
       memo: memo ?? null,
       memoType: memoType ?? null,
-    }),
+      // An unsettled hash belongs to the account it was sent for: carried over, its confirmation
+      // would complete this other account's close. Its session stays saved under its own id.
+      ...(state.sourceAddress !== source && { unconfirmedSubmission: null, sessionId: null }),
+    })),
 
   acknowledgeDestination: (address) => set({ destinationAcknowledgedFor: address }),
 
@@ -263,6 +271,7 @@ export const useDemolishStore = create<DemolishState>((set) => ({
     }),
 
   setPhase: (phase) => set({ phase }),
+  setUnconfirmedSubmission: (unconfirmedSubmission) => set({ unconfirmedSubmission }),
 
   setAccountState: (accountState) =>
     set((s) => ({
