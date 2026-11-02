@@ -5,6 +5,7 @@ import { formatStroops, type AssetConvertibility } from "@/lib/api/plan-adapters
 import type { AssetDisposition } from "@/types/plan";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { cn } from "@/lib/utils/cn";
+import { Badge } from "@/components/ui/badge";
 
 interface TokenDispositionCardProps {
   item: AssetConvertibility;
@@ -99,18 +100,12 @@ export default function TokenDispositionCard({
             </p>
           )}
         </div>
-        <span
-          className={cn(
-            "shrink-0 rounded-full border px-2 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide",
-            isConvert
-              ? "border-success/30 bg-success/10 text-success"
-              : resolved
-                ? "border-white/20 bg-white/5 text-white/70"
-                : "border-amber-500/30 bg-amber-500/10 text-amber-300"
-          )}
+        <Badge
+          tone={isConvert ? "success" : resolved ? "neutral" : "warning"}
+          className="shrink-0 uppercase tracking-wide"
         >
           {isConvert ? "Swap" : isTransfer ? "Send" : isLeave ? "Stays" : "Decide"}
-        </span>
+        </Badge>
       </div>
 
       <div className="mt-3 space-y-2 pl-7">

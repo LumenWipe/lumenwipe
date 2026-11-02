@@ -4,7 +4,7 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import StatusMessage from "@/components/a11y/StatusMessage";
-import { AlertTriangle, ArrowLeft, Loader2, ShieldCheck, Search } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ShieldCheck, Search } from "lucide-react";
 import { coverageNote, unconfirmedSources } from "@/lib/allowances/empty-result";
 import type { Network } from "@/config/networks";
 import type { Allowance, AllowancesResult } from "@/types/allowance";
@@ -13,6 +13,7 @@ import { isValidGAddress } from "@/lib/utils/validation";
 import { apiErrorText } from "@/lib/utils/user-error";
 import AllowanceRow from "@/components/allowances/AllowanceRow";
 import RevokeAllowanceModal from "@/components/allowances/RevokeAllowanceModal";
+import { Button } from "@/components/ui/button";
 
 /**
  * The allowance inspector (#163, architecture.md §12): a standalone security utility, reachable
@@ -128,18 +129,14 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
             autoComplete="off"
             className="w-full flex-1 font-mono-address bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 text-sm placeholder:text-fg-subtle"
           />
-          <button
+          <Button
             type="submit"
             disabled={loading}
-            className="flex items-center justify-center gap-1.5 bg-stellar text-black font-semibold py-2.5 px-4 rounded-lg hover:bg-stellar/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            loading={loading}
+            icon={<Search className="h-4 w-4" />}
           >
-            {loading ? (
-              <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
-            ) : (
-              <Search className="h-4 w-4" />
-            )}
             Inspect
-          </button>
+          </Button>
         </form>
       </div>
 

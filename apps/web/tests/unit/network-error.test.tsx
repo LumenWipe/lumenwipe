@@ -95,6 +95,18 @@ test.each(LATER)("%s offers resume and explorer instead of reassurance", (phase)
   );
 });
 
+test("Try again stays below Resume the close when a transaction may have been sent", () => {
+  useDemolishStore.setState({ phase: "STEP_FAILED", executionPlan: PENDING_PLAN });
+  renderBoundary();
+
+  const retry = screen.getByRole("button", { name: /Try again/ }).className.split(" ");
+  expect(retry).toContain("text-fg-muted");
+  expect(retry).not.toContain("bg-accent");
+  expect(retry).not.toContain("border-line-strong");
+  const resume = screen.getByRole("link", { name: "Resume the close" }).className.split(" ");
+  expect(resume).toContain("bg-accent");
+});
+
 test("a confirmed step in a pre-signing phase still may have been sent", () => {
   useDemolishStore.setState({ phase: "PREFLIGHT_COMPLETE", executionPlan: CONFIRMED_PLAN });
   renderBoundary();
