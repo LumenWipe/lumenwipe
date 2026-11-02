@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { refuseUnknownNetwork } from "@/lib/api/network-segment";
 
 // The kit's WalletConnect module (@reown/appkit/core + @walletconnect/sign-client)
 // talks to these hosts directly - verified against its source, not guessed:
@@ -17,6 +18,11 @@ const UMAMI_HOSTS = "https://gateway.umami.is";
 const POLLAR_HOSTS = "https://sdk.api.pollar.xyz https://server.api.pollar.xyz";
 
 export function proxy(request: NextRequest): NextResponse {
+  const { pathname } = request.nextUrl;
+  const refused = refuseUnknownNetwork(pathname);
+  if (refused) return refused;
+  if (pathname.startsWith("/api/")) return NextResponse.next();
+
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   // Next.js's dev-mode webpack build wraps every client module in eval() for fast
   // source maps - script-src needs 'unsafe-eval' only in development. The
@@ -52,8 +58,9 @@ export function proxy(request: NextRequest): NextResponse {
 
 export const config = {
   matcher: [
-    // Skip static assets, image optimization, and the JSON API routes (which
-    // carry no HTML/inline scripts and don't need a nonce or CSP header).
+    // Skip static assets and image optimization. The JSON API routes carry no HTML/inline
+    // scripts, so they get no nonce or CSP header: they match only for the network check.
     "/((?!_next/static|_next/image|favicon|api/).*)",
+    "/api/:path*",
   ],
 };
