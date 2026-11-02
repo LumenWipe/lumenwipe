@@ -143,7 +143,8 @@ export async function fetchConversionPath(
             headers: attempt.headers,
             ...attempt.client,
           })
-        )
+        ),
+      "paths"
     );
   } catch (error) {
     if (!(error instanceof UpstreamError)) throw error;

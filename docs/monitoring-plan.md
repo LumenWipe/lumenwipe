@@ -162,7 +162,9 @@ run on that warning says nothing about the deployed list.
 
 The API counts `requests`, `rate_limited`, `timeouts`, `server_errors`, `failovers` and `unavailable` for each
 upstream (`rpc`, `horizon`, `paths`, `defi`, `explorer`) on each network. Every HTTP attempt counts, retries
-included, because each one spends quota. Soroswap and xBull quotes are not counted.
+included, because each one spends quota. Soroswap and xBull quotes are not counted. Over RPC,
+`unavailable` is counted per attempt and again when a whole provider list is exhausted, so it is not comparable
+with the Horizon figure. An explorer connection failure with no status counts as a request only.
 
 The counts are buffered in memory and written to Firestore at most once a minute while requests arrive, and once
 on SIGTERM, so they survive a restart and scale-to-zero. A crash loses at most the last minute. The write runs

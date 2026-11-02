@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { Keypair, rpc } from "@stellar/stellar-sdk";
+import { Keypair } from "@stellar/stellar-sdk";
 import { Logger, type CallHandler, type ExecutionContext } from "@nestjs/common";
 import { firstValueFrom, of, throwError } from "rxjs";
 import { currentUpstreamCalls, requestContextMiddleware } from "@/common/request-context";
@@ -12,7 +12,7 @@ import {
   recordProviderFailover,
   withHorizonFailover,
 } from "@/lib/stellar/provider-failover";
-import { countedRpcServer, getRpcServer } from "@/lib/stellar/rpc";
+import { buildRpcServer, getRpcServer } from "@/lib/stellar/rpc";
 import { UpstreamError, upstreamGetJson } from "@/lib/stellar/upstream-client";
 import {
   countedFetch,
@@ -147,6 +147,39 @@ describe("counting", () => {
     }
   });
 
+  test("a path failover and an exhausted list land on paths, and log that kind", async () => {
+    const realUrl = PATH_ROUTING_API_URLS.testnet;
+    const realFallbacks = HORIZON_FALLBACKS.testnet;
+    PATH_ROUTING_API_URLS.testnet = BASE;
+    HORIZON_FALLBACKS.testnet = [{ url: "https://b.example", headers: {} }];
+    const logged: unknown[] = [];
+    const warn = spyOn(Logger.prototype, "warn").mockImplementation((line: unknown) => {
+      logged.push(line);
+    });
+    try {
+      const result = await fetchConversionPath(
+        `USDC:${Keypair.random().publicKey()}`,
+        "1",
+        "testnet",
+        "native",
+        { fetch: respondWith(429), client: { policy: { maxRetries: 0 } } }
+      );
+      expect(result.kind).toBe("unavailable");
+      const seen = counts();
+      expect(seen["testnet/paths/failovers"]).toBe(1);
+      expect(seen["testnet/paths/unavailable"]).toBe(1);
+      expect(seen["testnet/horizon/failovers"]).toBeUndefined();
+      expect(seen["testnet/horizon/unavailable"]).toBeUndefined();
+      expect(logged).toContainEqual(
+        expect.objectContaining({ message: "provider failover", kind: "paths" })
+      );
+    } finally {
+      warn.mockRestore();
+      PATH_ROUTING_API_URLS.testnet = realUrl;
+      HORIZON_FALLBACKS.testnet = realFallbacks;
+    }
+  });
+
   test("OctoPos counts per attempt and its typed unavailable once", async () => {
     const result = await fetchOctoPosPortfolio("GADDR", {
       baseUrl: BASE,
@@ -180,47 +213,96 @@ describe("counting", () => {
 });
 
 describe("rpc", () => {
-  function rpcFailing(error: unknown): rpc.Server {
-    return countedRpcServer("testnet", {
-      getHealth: () => Promise.reject(error),
-    } as unknown as rpc.Server);
-  }
+  const realFetch = globalThis.fetch;
+  const ADDRESS = Keypair.random().publicKey();
 
-  test.each([
-    [{ response: { status: 429 } }, "rate_limited"],
-    [{ response: { status: 502 } }, "server_errors"],
-    [new Error("timeout of 3000ms exceeded"), "timeouts"],
-    [new Error("socket hang up"), "unavailable"],
-  ])("failure %#: %p counts as its class", async (error, metric) => {
-    await rpcFailing(error)
+  /** The RPC's HTTP layer: one answer per request, the last one repeating. */
+  function serve(...answers: Array<() => Response | Promise<never>>): { calls: () => number } {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      const answer = answers[Math.min(calls, answers.length - 1)]!;
+      calls++;
+      return answer();
+    }) as unknown as typeof globalThis.fetch;
+    return { calls: () => calls };
+  }
+  const result = (value: unknown) => () =>
+    new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: value }), { status: 200 });
+  const notFound = result({ status: "NOT_FOUND", latestLedger: 7, oldestLedger: 1 });
+  const server = () => buildRpcServer("testnet", { timeout: 1000 });
+  const health = async (): Promise<void> => {
+    await server()
       .getHealth()
       .catch(() => undefined);
     await Promise.resolve();
-    expect(counts()).toEqual({
-      "testnet/rpc/requests": 1,
-      [`testnet/rpc/${metric}`]: 1,
-    });
+  };
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  test.each([
+    [429, "rate_limited"],
+    [502, "server_errors"],
+  ])("a %d counts its class and is not unavailable", async (status, metric) => {
+    serve(() => new Response("{}", { status }));
+    await health();
+    expect(counts()).toEqual({ "testnet/rpc/requests": 1, [`testnet/rpc/${metric}`]: 1 });
+  });
+
+  test("a timeout counts as a timeout", async () => {
+    serve(() => Promise.reject(Object.assign(new Error("late"), { name: "TimeoutError" })));
+    await health();
+    expect(counts()).toEqual({ "testnet/rpc/requests": 1, "testnet/rpc/timeouts": 1 });
+  });
+
+  test("a transport failure is unavailable, with or without a string code", async () => {
+    serve(
+      () => Promise.reject(new TypeError("fetch failed")),
+      () => Promise.reject(Object.assign(new Error("refused"), { code: "ECONNREFUSED" }))
+    );
+    await health();
+    await health();
+    expect(counts()).toEqual({ "testnet/rpc/requests": 2, "testnet/rpc/unavailable": 2 });
   });
 
   test("a JSON-RPC error is an answer, not a failure class", async () => {
-    await rpcFailing({ code: -32602, message: "invalid params" })
-      .getHealth()
-      .catch(() => undefined);
+    serve(
+      () =>
+        new Response(
+          JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32602, message: "bad" } }),
+          { status: 200 }
+        )
+    );
+    await health();
+    expect(counts()).toEqual({ "testnet/rpc/requests": 1 });
+  });
+
+  test("a missing account is the provider's answer, not an outage", async () => {
+    serve(result({ entries: [], latestLedger: 7 }));
+    await expect(server().getAccount(ADDRESS)).rejects.toThrow("Account not found");
     await Promise.resolve();
     expect(counts()).toEqual({ "testnet/rpc/requests": 1 });
   });
 
-  test("a send is counted, called once, and rejects with the original error", async () => {
-    const boom = new Error("rpc down");
-    const send = spyOn(rpc.Server.prototype, "sendTransaction").mockRejectedValue(boom);
-    try {
-      await expect(getRpcServer("testnet").sendTransaction({} as never)).rejects.toBe(boom);
-      await Promise.resolve();
-      expect(send).toHaveBeenCalledTimes(1);
-      expect(counts()["testnet/rpc/requests"]).toBe(1);
-    } finally {
-      send.mockRestore();
-    }
+  test("a poll counts every attempt, not the one method call", async () => {
+    const { calls } = serve(notFound);
+    const polled = await server().pollTransaction("00".repeat(32), {
+      attempts: 3,
+      sleepStrategy: () => 0,
+    });
+    expect(String(polled.status)).toBe("NOT_FOUND");
+    expect(calls()).toBeGreaterThanOrEqual(3);
+    expect(counts()).toEqual({ "testnet/rpc/requests": calls() });
+  });
+
+  test("a send is one request, and a failure is the original error", async () => {
+    const { calls } = serve(() => Promise.reject(new TypeError("boom")));
+    const envelope = { toXdr: () => "AAAA" } as never;
+    await expect(getRpcServer("testnet").sendTransaction(envelope)).rejects.toThrow("boom");
+    await Promise.resolve();
+    expect(calls()).toBe(1);
+    expect(counts()).toEqual({ "testnet/rpc/requests": 1, "testnet/rpc/unavailable": 1 });
   });
 });
 

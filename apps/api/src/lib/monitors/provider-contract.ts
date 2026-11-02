@@ -47,6 +47,7 @@ const CLAIMABLE_BALANCE: Shape = {
   asset: "string",
   amount: "string",
   claimants: "array",
+  "claimants.0.destination": "string",
 };
 const PATH: Shape = { destination_amount: "string", path: "array" };
 const ASSET_STATS: Shape = {
@@ -128,12 +129,16 @@ class Check {
     if (ledger) this.ledgerHeader(route, response);
   }
 
-  /** The first record, held to `shape`. Path finding alone is unpaged, and may have no route. */
+  /**
+   * The first record, held to `shape`. Only a discovery route may fail for being empty: anything
+   * derived from a record can lose it between requests, when an offer is cancelled or a balance
+   * claimed, so an empty page there is still held to the page's own contract.
+   */
   async collection(
     route: string,
     path: string,
     shape: Shape,
-    options: { ledger?: boolean; unpagedMayBeEmpty?: boolean } = {}
+    options: { ledger?: boolean; discovery?: boolean; unpaged?: boolean } = {}
   ): Promise<unknown> {
     const response = await this.read(route, path);
     if (!response) return undefined;
@@ -143,18 +148,23 @@ class Check {
       this.problems.push(`${route}: missing _embedded.records (expected array)`);
       return undefined;
     }
+    if (!options.unpaged && typeOf(fieldAt(response.body, "_links.next.href")) !== "string") {
+      this.problems.push(`${route}: missing _links.next.href (expected string)`);
+    }
     if (records.length === 0) {
-      if (!options.unpagedMayBeEmpty) this.problems.push(`${route}: no record to check against`);
+      if (options.discovery) this.problems.push(`${route}: no record to check against`);
       return undefined;
     }
     this.fields(route, records[0], shape);
-    if (
-      !options.unpagedMayBeEmpty &&
-      typeOf(fieldAt(response.body, "_links.next.href")) !== "string"
-    ) {
-      this.problems.push(`${route}: missing _links.next.href (expected string)`);
-    }
     return records[0];
+  }
+
+  /** A provider-supplied address, safe to put in a path; a claimant is always a G address. */
+  address(route: string, field: string, value: unknown): string | undefined {
+    if (typeof value !== "string") return undefined;
+    if (StrKey.isValidEd25519PublicKey(value)) return value;
+    this.problems.push(`${route}: ${field} is not a valid account address`);
+    return undefined;
   }
 
   async notFound(route: string, path: string): Promise<void> {
@@ -172,9 +182,11 @@ export async function checkProviderContract(network: Network, get: ContractGet):
   const check = new Check(get);
   const issuer = WELL_KNOWN_ISSUERS[network];
 
-  const offer = await check.collection("/offers", "/offers?limit=1&order=desc", OFFER);
-  const seller = fieldAt(offer, "seller");
-  if (typeof seller === "string") {
+  const offer = await check.collection("/offers", "/offers?limit=1&order=desc", OFFER, {
+    discovery: true,
+  });
+  const seller = check.address("/offers", "seller", fieldAt(offer, "seller"));
+  if (seller) {
     await check.record("/accounts/{id}", `/accounts/${seller}`, ACCOUNT, true);
     await check.collection("/accounts/{id}/offers", `/accounts/${seller}/offers?limit=1`, OFFER, {
       ledger: true,
@@ -189,21 +201,26 @@ export async function checkProviderContract(network: Network, get: ContractGet):
   const balance = await check.collection(
     "/claimable_balances",
     "/claimable_balances?limit=1&order=desc",
-    CLAIMABLE_BALANCE
+    CLAIMABLE_BALANCE,
+    { discovery: true }
   );
-  const claimant = fieldAt(balance, "claimants.0.destination");
-  if (typeof claimant === "string") {
+  const claimant = check.address(
+    "/claimable_balances",
+    "claimants.0.destination",
+    fieldAt(balance, "claimants.0.destination")
+  );
+  if (claimant) {
     await check.collection(
       "/claimable_balances?claimant",
       `/claimable_balances?claimant=${claimant}&limit=1`,
       CLAIMABLE_BALANCE,
       { ledger: true }
     );
-  } else if (balance !== undefined) {
-    check.problems.push("/claimable_balances: missing claimants.0.destination (expected string)");
   }
-  const sponsor = fieldAt(balance, "sponsor");
-  if (typeof sponsor === "string") {
+  // A balance need not have a sponsor, and the page is the contract here: any account will do.
+  const sponsor =
+    check.address("/claimable_balances", "sponsor", fieldAt(balance, "sponsor")) ?? claimant;
+  if (sponsor) {
     await check.collection(
       "/claimable_balances?sponsor",
       `/claimable_balances?sponsor=${sponsor}&limit=1`,
@@ -214,14 +231,15 @@ export async function checkProviderContract(network: Network, get: ContractGet):
   await check.collection(
     "/assets?asset_issuer",
     `/assets?asset_issuer=${issuer}&limit=1`,
-    ASSET_STATS
+    ASSET_STATS,
+    { discovery: true }
   );
   await check.collection(
     "/paths/strict-send",
     "/paths/strict-send?source_asset_type=credit_alphanum4&source_asset_code=USDC" +
       `&source_asset_issuer=${issuer}&source_amount=1&destination_assets=native`,
     PATH,
-    { unpagedMayBeEmpty: true }
+    { unpaged: true }
   );
   await check.notFound(
     "/accounts/{unknown}",
