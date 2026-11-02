@@ -11,6 +11,7 @@ import { formatAsset } from "@/lib/utils/assets";
 import AssetDispositionCard from "./AssetDispositionCard";
 import TokenDispositionCard from "./TokenDispositionCard";
 import ClaimableBalanceCard from "./ClaimableBalanceCard";
+import { Card } from "@/components/ui/card";
 
 interface PlanAccordionProps {
   account: AccountState;
@@ -208,7 +209,7 @@ export default function PlanAccordion({
           {unrecognizedPositions.length > 0 && (
             <ul className="space-y-1">
               {unrecognizedPositions.map((u: UnrecognizedDefiPosition, i) => (
-                <li key={i} className="text-xs text-amber-400/80">
+                <li key={i} className="text-xs text-warning">
                   {PROTOCOL_LABELS[u.protocol]} position could not be read ({u.reason}) - verify
                   manually.
                 </li>
@@ -218,7 +219,7 @@ export default function PlanAccordion({
           {defiWarnings.length > 0 && (
             <ul className="space-y-1">
               {defiWarnings.map((w, i) => (
-                <li key={i} className="text-xs text-amber-400/80">
+                <li key={i} className="text-xs text-warning">
                   {w.message}
                 </li>
               ))}
@@ -316,7 +317,7 @@ export default function PlanAccordion({
   });
 
   return (
-    <div className="divide-y divide-white/8 overflow-hidden rounded-2xl border border-white/10 bg-surface/60">
+    <Card className="divide-y divide-white/8 overflow-hidden">
       {groups.map((g) => {
         const isOpen = open === g.type;
         return (
@@ -364,6 +365,6 @@ export default function PlanAccordion({
           </div>
         );
       })}
-    </div>
+    </Card>
   );
 }

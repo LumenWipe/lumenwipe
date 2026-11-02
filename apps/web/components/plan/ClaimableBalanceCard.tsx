@@ -5,6 +5,7 @@ import type { ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
 import type { ClaimableBalanceSelection } from "@/types/plan";
 import { describeClaimPredicate } from "@/lib/stellar/claim-predicates";
 import { cn } from "@/lib/utils/cn";
+import { Card } from "@/components/ui/card";
 
 interface ClaimableBalanceCardProps {
   item: ClaimableBalanceDecision;
@@ -29,12 +30,7 @@ export default function ClaimableBalanceCard({
   if (item.currentlyClaimable) {
     const forfeited = selection === "forfeit";
     return (
-      <div
-        className={cn(
-          "flex items-center gap-3 rounded-lg border p-3",
-          forfeited ? "border-white/15 bg-white/[0.03]" : "border-success/20 bg-success/5"
-        )}
-      >
+      <Card tone={forfeited ? "neutral" : "success"} className="flex items-center gap-3 p-3">
         <Target className={cn("h-4 w-4 shrink-0", forfeited ? "text-fg-subtle" : "text-success")} />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-white">
@@ -55,29 +51,24 @@ export default function ClaimableBalanceCard({
           />
           Claim
         </label>
-      </div>
+      </Card>
     );
   }
 
   const resolved = selection === "add_trustline_then_claim" || selection === "forfeit";
 
   return (
-    <div
-      className={cn(
-        "rounded-lg border p-3 transition-colors",
-        resolved ? "border-white/15 bg-white/[0.03]" : "border-amber-500/30 bg-amber-500/[0.06]"
-      )}
-    >
+    <Card tone={resolved ? "neutral" : "warning"} className="p-3 transition-colors">
       <div className="flex items-start gap-3">
         {resolved ? (
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
         ) : (
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
         )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-white">
             {item.amount} {item.code} <span className="text-fg-subtle">·</span>{" "}
-            <span className="text-amber-300/90">no trustline for this asset</span>
+            <span className="text-warning">no trustline for this asset</span>
           </p>
           <p className="mt-1 text-xs leading-relaxed text-fg-muted">
             This account is a claimant for this balance but holds no {item.code} trustline. Add one
@@ -118,6 +109,6 @@ export default function ClaimableBalanceCard({
           </span>
         </label>
       </div>
-    </div>
+    </Card>
   );
 }

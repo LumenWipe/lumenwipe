@@ -6,6 +6,7 @@ import type { AssetDisposition } from "@/types/plan";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { cn } from "@/lib/utils/cn";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 
 interface TokenDispositionCardProps {
   item: AssetConvertibility;
@@ -58,15 +59,9 @@ export default function TokenDispositionCard({
         : "needs a decision";
 
   return (
-    <div
-      className={cn(
-        "rounded-lg border p-3 transition-colors",
-        resolved
-          ? isLeave
-            ? "border-white/15 bg-white/[0.03]"
-            : "border-success/20 bg-success/5"
-          : "border-amber-500/30 bg-amber-500/[0.06]"
-      )}
+    <Card
+      tone={resolved ? (isLeave ? "neutral" : "success") : "warning"}
+      className="p-3 transition-colors"
       data-testid={`token-card-${token.contract}`}
     >
       <div className="flex items-start gap-3">
@@ -77,7 +72,7 @@ export default function TokenDispositionCard({
         ) : isLeave ? (
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
         ) : (
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
         )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-white">
@@ -199,13 +194,13 @@ export default function TokenDispositionCard({
           />
           <span>
             Leave my {item.balance} {item.code} with this address.{" "}
-            <span className="text-amber-300/80">
+            <span className="text-warning">
               The account closes anyway; these tokens stay out of reach unless this address is
               funded again.
             </span>
           </span>
         </label>
       </div>
-    </div>
+    </Card>
   );
 }

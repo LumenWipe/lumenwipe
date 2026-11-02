@@ -33,11 +33,13 @@ function toRgb(hsl: string): [number, number, number] {
   return [f(0), f(8), f(4)];
 }
 
-function luminance(hsl: string): number {
-  const [r, g, b] = toRgb(hsl).map((c) =>
-    c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
-  );
+function relativeLuminance(rgb: [number, number, number]): number {
+  const [r, g, b] = rgb.map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function luminance(hsl: string): number {
+  return relativeLuminance(toRgb(hsl));
 }
 
 function ratio(fg: string, bg: string): number {
@@ -107,6 +109,18 @@ describe("WCAG contrast of every token pair", () => {
   for (const row of rows) {
     test(`${row.foreground} on ${row.background} is at least ${row.minimum}:1`, () => {
       expect(row.ratio).toBeGreaterThanOrEqual(row.minimum);
+    });
+  }
+});
+
+describe("callout text over its tint", () => {
+  for (const surface of ["bg", "surface", "surface-raised"]) {
+    test(`danger-fg stays at 7:1 on the danger tint over ${surface}`, () => {
+      const fill = toRgb(token("danger"));
+      const base = toRgb(token(surface));
+      const tint = fill.map((c, i) => c * 0.1 + base[i] * 0.9) as [number, number, number];
+      const text = luminance(token("danger-fg"));
+      expect((text + 0.05) / (relativeLuminance(tint) + 0.05)).toBeGreaterThanOrEqual(7);
     });
   }
 });

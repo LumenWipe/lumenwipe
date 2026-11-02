@@ -10,6 +10,8 @@ import { formatXlm } from "@/lib/utils/amounts";
 import PlanStepAccordion from "@/components/review/PlanStepAccordion";
 import AccountSummaryCard from "@/components/plan/AccountSummaryCard";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface ReviewViewProps {
   network: Network;
@@ -60,10 +62,10 @@ export default function ReviewView({ network }: ReviewViewProps) {
         />
       )}
 
-      <div className="mkt-panel rounded-2xl">
-        <div className="border-b border-white/10 px-4 py-3">
-          <h2 className="mkt-eyebrow text-fg-subtle">Full plan</h2>
-        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Full plan</CardTitle>
+        </CardHeader>
         <div className="p-3">
           <PlanStepAccordion
             steps={executionPlan}
@@ -71,7 +73,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
             mediatorRequired={mediatorRequired}
           />
         </div>
-      </div>
+      </Card>
 
       <div className="flex items-start gap-2.5 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2.5 text-sm text-white/60">
         <ShieldCheck className="h-4 w-4 shrink-0 mt-0.5 text-stellar" />
@@ -81,22 +83,24 @@ export default function ReviewView({ network }: ReviewViewProps) {
         </span>
       </div>
 
-      <div className="bg-danger/10 border border-danger/30 rounded-lg p-4 text-sm">
-        <p className="font-semibold text-danger-fg mb-1">
-          This plan is permanent and irreversible.
-        </p>
-        <p className="text-white/60">
+      <Callout
+        tone="danger"
+        announce={false}
+        title="This plan is permanent and irreversible."
+        className="p-4"
+      >
+        <p>
           The account will be removed from the Stellar ledger and its balance sent to{" "}
           <span className="font-mono text-white/80 break-all">{destinationAddress}</span>
           {mediatorRequired ? " through the exchange relay account." : "."}
         </p>
         {memo && (
-          <p className="text-white/60 mt-1">
+          <p className="mt-1">
             Memo: <span className="font-mono text-white/80">{memo}</span>
             {memoType ? ` (${memoType})` : ""}
           </p>
         )}
-      </div>
+      </Callout>
 
       <label className="flex items-start gap-3 cursor-pointer select-none">
         <input
