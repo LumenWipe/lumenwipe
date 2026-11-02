@@ -22,7 +22,7 @@ import { confirmDestinationControl } from "./destination";
 export async function dismissRiskModal(page: Page): Promise<void> {
   const notice = page.getByRole("heading", { name: /Beta Software/i });
 
-  // Absence is legitimate: the notice mounts from an effect keyed on sessionStorage, so a
+  // Absence is legitimate: the notice is decided from sessionStorage after hydration, so a
   // second navigation inside the same test never shows it. Only this wait is allowed to fail
   // quietly.
   await notice.waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});

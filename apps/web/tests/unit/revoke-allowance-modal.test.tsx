@@ -261,3 +261,152 @@ test("RevokeAllowanceModal › an unresolved hash for the owner stops the revoke
   expect(fetched).toBe(0);
   expect(onRevoked).not.toHaveBeenCalled();
 });
+
+function renderSecretKeyModal(onClose: () => void, onRevoked: () => void = () => {}): void {
+  render(
+    <RevokeAllowanceModal
+      network="testnet"
+      owner={OWNER}
+      allowance={allowance()}
+      onClose={onClose}
+      onRevoked={onRevoked}
+    />
+  );
+  fireEvent.click(screen.getByRole("button", { name: /secret key/i }));
+  fireEvent.change(screen.getByPlaceholderText("S..."), {
+    target: { value: OWNER_KP.secret() },
+  });
+}
+
+function pressEscape(): void {
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+}
+
+function clickScrim(): void {
+  fireEvent.click(document.querySelector("[data-dialog-scrim]") as Element);
+}
+
+function holdFetch(): (response: Response) => void {
+  let release: (response: Response) => void = () => {};
+  globalThis.fetch = (() =>
+    new Promise<Response>((resolve) => {
+      release = resolve;
+    })) as unknown as typeof fetch;
+  return (response) => release(response);
+}
+
+test("RevokeAllowanceModal › while a revoke is in flight nothing closes it, and a failure can", async () => {
+  stubWalletKit();
+  const release = holdFetch();
+  const onClose = mock(() => {});
+  renderSecretKeyModal(onClose);
+
+  fireEvent.click(screen.getByRole("button", { name: /revoke allowance/i }));
+  await waitFor(() => expect(screen.getByRole("button", { name: /revoking/i })).toBeTruthy());
+
+  pressEscape();
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  clickScrim();
+  expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+  expect(onClose).not.toHaveBeenCalled();
+
+  release(new Response(JSON.stringify({ message: "nope" }), { status: 500 }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Close" })).toBeTruthy());
+  pressEscape();
+  expect(onClose).toHaveBeenCalledTimes(1);
+  clickScrim();
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  expect(onClose).toHaveBeenCalledTimes(3);
+});
+
+test("RevokeAllowanceModal › the result step closes with Done", async () => {
+  stubWalletKit();
+  mockFetchSequence([
+    { status: 200, body: { transaction: realRevokeXdr() } },
+    { status: 200, body: { hash: "abc123", ledger: 42 } },
+  ]);
+  const onClose = mock(() => {});
+  renderSecretKeyModal(onClose);
+  fireEvent.click(screen.getByRole("button", { name: /revoke allowance/i }));
+
+  await waitFor(() => expect(screen.getByRole("button", { name: "Done" })).toBeTruthy());
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+test("RevokeAllowanceModal › while the wallet picker is open the dialog hands over the keyboard", () => {
+  spyOn(walletKit, "useWalletKitConnection").mockImplementation(
+    () =>
+      ({
+        address: null,
+        connecting: true,
+        error: null,
+        networkMismatch: false,
+        connect: async () => {},
+        disconnect: async () => {},
+      }) as unknown as ReturnType<typeof walletKit.useWalletKitConnection>
+  );
+  const onClose = mock(() => {});
+  render(
+    <RevokeAllowanceModal
+      network="testnet"
+      owner={OWNER}
+      allowance={allowance()}
+      onClose={onClose}
+      onRevoked={() => {}}
+    />
+  );
+  const dialog = screen.getByRole("dialog", { hidden: true });
+  expect(dialog.hasAttribute("inert")).toBe(true);
+  const close = dialog.querySelector('button[aria-label="Close"]') as HTMLElement;
+  expect(close.closest("[inert]")).toBe(dialog);
+  expect(fireEvent.keyDown(document.body, { key: "Tab" })).toBe(true);
+  expect(dialog.contains(document.activeElement) && document.activeElement !== dialog).toBe(false);
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  clickScrim();
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+test("RevokeAllowanceModal › Escape closes it when idle", () => {
+  stubWalletKit();
+  const onClose = mock(() => {});
+  renderSecretKeyModal(onClose);
+  pressEscape();
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+test("RevokeAllowanceModal › the key is not in the markup and a new mount starts empty", () => {
+  stubWalletKit();
+  const { unmount } = render(
+    <RevokeAllowanceModal
+      network="testnet"
+      owner={OWNER}
+      allowance={allowance()}
+      onClose={() => {}}
+      onRevoked={() => {}}
+    />
+  );
+  fireEvent.click(screen.getByRole("button", { name: /secret key/i }));
+  fireEvent.change(screen.getByPlaceholderText("S..."), {
+    target: { value: OWNER_KP.secret() },
+  });
+  expect(document.documentElement.outerHTML).not.toContain(OWNER_KP.secret());
+
+  unmount();
+  expect(document.querySelector("dialog")).toBeNull();
+
+  render(
+    <RevokeAllowanceModal
+      network="testnet"
+      owner={OWNER}
+      allowance={allowance()}
+      onClose={() => {}}
+      onRevoked={() => {}}
+    />
+  );
+  fireEvent.click(screen.getByRole("button", { name: /secret key/i }));
+  expect((screen.getByPlaceholderText("S...") as HTMLInputElement).value).toBe("");
+  expect(
+    (screen.getByRole("button", { name: /revoke allowance/i }) as HTMLButtonElement).disabled
+  ).toBe(true);
+});

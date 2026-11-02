@@ -102,7 +102,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         )}
       </head>
       <body className={`${siteFontVars} font-body`}>
-        {children}
+        <div id="app-root" className="contents">
+          {children}
+        </div>
         <Analytics />
         <Toaster position="bottom-right" theme="dark" richColors />
       </body>
