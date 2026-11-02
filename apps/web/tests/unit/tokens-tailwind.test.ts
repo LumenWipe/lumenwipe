@@ -16,35 +16,48 @@ function flatten(value: unknown): string[] {
 describe("tailwind token registration", () => {
   const colors = extend.colors as Record<string, Record<string, string> | string>;
 
-  test("new color roles support opacity modifiers", () => {
-    const flat = (v: unknown): string[] => flatten(v);
-    for (const key of ["canvas", "surface", "line", "fg", "success", "danger", "focus"]) {
-      for (const value of flat(colors[key])) expect(value).toContain("<alpha-value>");
-    }
-    expect(flat(colors.accent)).toContain("hsl(var(--accent-solid) / <alpha-value>)");
-    expect(flat(colors.accent)).toContain("hsl(var(--accent-solid-fg) / <alpha-value>)");
-    expect(flat(colors.value)).toContain("hsl(var(--value-foreground) / <alpha-value>)");
-    expect(flat(colors.warning)).toContain("hsl(var(--warning-fg) / <alpha-value>)");
+  test("every color role supports opacity modifiers", () => {
+    const values = flatten(colors);
+    expect(values.length).toBeGreaterThan(0);
+    for (const value of values) expect(value).toContain("<alpha-value>");
+  });
+
+  test("color role keys are the token layer and nothing else", () => {
+    expect(Object.keys(colors).sort()).toEqual(
+      [
+        "accent",
+        "canvas",
+        "danger",
+        "edge",
+        "fg",
+        "focus",
+        "line",
+        "stellar",
+        "success",
+        "surface",
+        "value",
+        "warning",
+      ].sort()
+    );
+  });
+
+  test("stellar is an alias of accent, not a second value", () => {
+    expect(colors.stellar).toBe("hsl(var(--accent) / <alpha-value>)");
   });
 
   test("danger registers the fill and the text pair", () => {
     expect(colors.danger).toEqual({
       DEFAULT: "hsl(var(--danger) / <alpha-value>)",
       fg: "hsl(var(--danger-fg) / <alpha-value>)",
+      "on-fill": "hsl(var(--danger-on-fill) / <alpha-value>)",
     });
   });
 
-  test("legacy color keys keep their values", () => {
-    expect(colors.accent).toMatchObject({ foreground: "hsl(var(--accent-foreground))" });
-    expect(colors.warning).toMatchObject({
-      DEFAULT: "hsl(var(--warning))",
-      foreground: "hsl(var(--warning-foreground))",
-    });
-    expect(colors.destructive).toEqual({
-      DEFAULT: "hsl(var(--destructive))",
-      foreground: "hsl(var(--destructive-foreground))",
-    });
-    expect(colors.background).toBe("hsl(var(--background))");
+  test("the product is dark only", () => {
+    expect(config.darkMode).toBeUndefined();
+  });
+
+  test("radius keys keep their values", () => {
     expect(extend.borderRadius).toMatchObject({
       lg: "var(--radius)",
       md: "calc(var(--radius) - 2px)",

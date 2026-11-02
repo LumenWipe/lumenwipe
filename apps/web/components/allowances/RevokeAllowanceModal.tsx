@@ -18,6 +18,7 @@ import { submitViaApi } from "@/lib/stellar/submit-via-api";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import SecretKeyInput from "@/components/account-entry/SecretKeyInput";
 import { cn } from "@/lib/utils/cn";
+import { Button } from "@/components/ui/button";
 
 interface RevokeAllowanceModalProps {
   network: Network;
@@ -130,7 +131,7 @@ export default function RevokeAllowanceModal({
         onClick={busy ? undefined : onClose}
       />
 
-      <div className="relative w-full max-w-md rounded-2xl border border-white/15 bg-card shadow-2xl">
+      <div className="relative w-full max-w-md rounded-2xl border border-white/15 bg-surface shadow-2xl">
         <div className="flex items-start gap-3 border-b border-white/10 px-5 py-4">
           <div
             className={cn(
@@ -254,20 +255,19 @@ export default function RevokeAllowanceModal({
 
         <div className="border-t border-white/10 px-5 py-4">
           {step === "done" ? (
-            <button
-              onClick={onClose}
-              className="w-full rounded-xl bg-stellar py-2.5 text-sm font-semibold text-black transition-all hover:bg-stellar/90"
-            >
+            <Button onClick={onClose} className="w-full">
               Done
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
+              variant="warning"
               onClick={handleConfirm}
               disabled={!signerReady || busy}
-              className="w-full rounded-xl bg-warning py-2.5 text-sm font-semibold text-black transition-all hover:bg-warning/90 disabled:opacity-40 disabled:cursor-not-allowed"
+              loading={busy}
+              className="w-full"
             >
               {busy ? "Revoking…" : "Revoke allowance"}
-            </button>
+            </Button>
           )}
         </div>
       </div>

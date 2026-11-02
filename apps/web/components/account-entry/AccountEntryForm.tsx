@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Loader2, AlertTriangle } from "lucide-react";
+import { ArrowRight, AlertTriangle } from "lucide-react";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils/cn";
 import AddressInput from "./AddressInput";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import { findUnresolved } from "@/lib/session/recovery";
+import { Button } from "@/components/ui/button";
 
 type EntryMode = "wallet" | "address";
 
@@ -90,7 +91,7 @@ export default function AccountEntryForm() {
           />
         )}
 
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-fg-muted">
           We&apos;ll analyze this account&apos;s state so you can review and decide what happens to
           each balance before choosing a destination.
         </p>
@@ -99,30 +100,22 @@ export default function AccountEntryForm() {
       {error && (
         <div
           role="alert"
-          className="flex items-start gap-2 text-sm text-danger-fg bg-destructive/10 border border-destructive/20 rounded-lg p-3"
+          className="flex items-start gap-2 text-sm text-danger-fg bg-danger/10 border border-danger/20 rounded-lg p-3"
         >
           <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
           {error}
         </div>
       )}
 
-      <button
+      <Button
         onClick={handleAnalyze}
         disabled={!canProceed || analyzing}
-        className="w-full flex items-center justify-center gap-2 bg-stellar text-black font-semibold py-3 px-4 rounded-xl hover:bg-stellar/90 hover:shadow-[0_0_28px_-6px_hsl(var(--stellar)/0.7)] disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition-all"
+        loading={analyzing}
+        className="w-full"
+        iconEnd={<ArrowRight className="h-4 w-4" />}
       >
-        {analyzing ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Analyzing account...
-          </>
-        ) : (
-          <>
-            Analyze account
-            <ArrowRight className="h-4 w-4" />
-          </>
-        )}
-      </button>
+        {analyzing ? "Analyzing account..." : "Analyze account"}
+      </Button>
     </div>
   );
 }

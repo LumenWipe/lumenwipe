@@ -93,3 +93,11 @@ test("a fused confirmed close-account step shows the success banner", () => {
 
   expect(screen.getByText("Account successfully merged")).toBeTruthy();
 });
+
+test("the explorer link on an unfinished close spans the receipt", () => {
+  seed([step(0, "REMOVE_TRUSTLINES", "confirmed"), step(1, "CLOSE_ACCOUNT", "failed")]);
+  render(<CompletionReceipt network="testnet" />);
+
+  const link = screen.getByRole("link", { name: /View the account on Stellar Expert/ });
+  expect(link.className.split(" ")).toContain("w-full");
+});

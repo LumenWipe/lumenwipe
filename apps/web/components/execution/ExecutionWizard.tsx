@@ -17,6 +17,7 @@ import SigningProgress from "./SigningProgress";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { SecretKeySigner, WalletKitSigner, type TransactionSigner } from "@/lib/stellar/signer";
 import { ensureWalletKitInitialized } from "@/lib/wallet-kit/client";
+import { Button } from "@/components/ui/button";
 
 interface ExecutionWizardProps {
   network: Network;
@@ -373,7 +374,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           </div>
 
           {/* Irreversible warning */}
-          <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-sm">
+          <div className="bg-danger/10 border border-danger/30 rounded-lg p-4 text-sm">
             <p className="font-semibold text-danger-fg mb-1">
               This action is permanent and irreversible.
             </p>
@@ -403,13 +404,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 disabled={running}
               />
               {renderSignerPicker()}
-              <button
-                onClick={execute}
-                disabled={!signerReady}
-                className="w-full py-3 px-4 rounded-xl font-semibold text-sm bg-stellar text-black hover:bg-stellar/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-              >
+              <Button onClick={execute} disabled={!signerReady} className="w-full">
                 Add signature
-              </button>
+              </Button>
             </div>
           ) : failed ? (
             <div className="flex flex-col gap-3">
@@ -417,7 +414,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 ref={alertRef}
                 tabIndex={-1}
                 role="alert"
-                className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-white/70 outline-none"
+                className="flex items-start gap-2.5 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2.5 text-sm text-white/70 outline-none"
               >
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-danger-fg" />
                 <span>
@@ -436,14 +433,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               >
                 Change wallet or key
               </button>
-              <button
-                ref={retryRef}
-                onClick={execute}
-                disabled={!signerReady}
-                className="w-full py-3 px-4 rounded-xl font-semibold text-sm bg-stellar text-black hover:bg-stellar/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-              >
+              <Button ref={retryRef} onClick={execute} disabled={!signerReady} className="w-full">
                 Retry
-              </button>
+              </Button>
               {retrySafe !== false && (
                 <p className="text-xs text-fg-subtle">
                   Safe to retry. LumenWipe re-reads your account first, so a confirmed transaction
@@ -489,18 +481,14 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 </span>
               </label>
 
-              <button
+              <Button
+                variant="danger"
                 onClick={execute}
                 disabled={!signerReady || !confirmed}
-                className={cn(
-                  "w-full py-3 px-4 rounded-xl font-semibold text-sm transition-all",
-                  "flex items-center justify-center gap-2",
-                  "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-                  "disabled:opacity-40 disabled:cursor-not-allowed"
-                )}
+                className="w-full"
               >
                 Sign &amp; execute close
-              </button>
+              </Button>
             </>
           )}
         </div>

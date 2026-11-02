@@ -86,7 +86,7 @@ export default function HeroConsole() {
             {scanning && (
               <div
                 aria-hidden
-                className="pointer-events-none absolute inset-x-0 top-0 h-11 rounded-r-md border-l-2 border-l-[hsl(var(--stellar))] bg-white/[0.04] transition-transform duration-300 ease-out"
+                className="pointer-events-none absolute inset-x-0 top-0 h-11 rounded-r-md border-l-2 border-l-[hsl(var(--accent))] bg-white/[0.04] transition-transform duration-300 ease-out"
                 style={{ transform: `translateY(${active * ROW_HEIGHT_PX}px)` }}
               />
             )}

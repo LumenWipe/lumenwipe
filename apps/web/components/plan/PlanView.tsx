@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
+import { ArrowRight, AlertTriangle, RefreshCw } from "lucide-react";
 import type { AccountState } from "@/types/account";
 import type { AssetDisposition, ClaimableBalanceSelection, PlanBlocker } from "@/types/plan";
 import type { Network } from "@/config/networks";
@@ -58,6 +58,7 @@ import StatusMessage from "@/components/a11y/StatusMessage";
 import { assetsResolved } from "@/lib/plan/asset-resolution";
 import { destinationRefusal } from "@/lib/plan/destination-check";
 import { isStateChanged } from "@/lib/utils/user-error";
+import { Button } from "@/components/ui/button";
 
 interface PlanViewProps {
   account: AccountState;
@@ -488,30 +489,22 @@ export default function PlanView({
           {error && (
             <div
               role="alert"
-              className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-danger-fg"
+              className="flex items-start gap-2 rounded-lg border border-danger/20 bg-danger/10 p-3 text-sm text-danger-fg"
             >
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               {error}
             </div>
           )}
 
-          <button
+          <Button
             onClick={handleProceed}
             disabled={!canProceed || proceeding}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-stellar px-4 py-3 font-semibold text-black transition-all hover:bg-stellar/90 hover:shadow-[0_0_28px_-6px_hsl(var(--stellar)/0.7)] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+            loading={proceeding}
+            className="w-full"
+            iconEnd={<ArrowRight className="h-4 w-4" />}
           >
-            {proceeding ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Preparing transaction...
-              </>
-            ) : (
-              <>
-                Begin execution
-                <ArrowRight className="h-4 w-4" />
-              </>
-            )}
-          </button>
+            {proceeding ? "Preparing transaction..." : "Begin execution"}
+          </Button>
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@ import { Coins, Database, ArrowUpDown, Link2, Users, TrendingUp, Layers } from "
 import type { AccountState } from "@/types/account";
 import { formatXlm, calcRecoverableReserve } from "@/lib/utils/amounts";
 import { defiVerificationLabel } from "@/lib/plan/defi-verification-source";
+import { Badge } from "@/components/ui/badge";
 
 interface AccountSummaryCardProps {
   account: AccountState;
@@ -87,13 +88,9 @@ export default function AccountSummaryCard({
             </div>
             <p className="text-sm font-semibold text-white">{value}</p>
             {badge && (
-              <span
-                className={`mt-1 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-                  badge === "octopos" ? "bg-stellar/15 text-stellar" : "bg-white/10 text-white/60"
-                }`}
-              >
+              <Badge tone={badge === "octopos" ? "accent" : "neutral"} className="mt-1">
                 {badge === "octopos" ? "Verified with OctoPos" : "Verified by LumenWipe"}
-              </span>
+              </Badge>
             )}
           </div>
         ))}

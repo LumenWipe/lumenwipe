@@ -49,7 +49,7 @@ export default function AddressInput({
             "placeholder:text-fg-subtle",
             "disabled:opacity-50 disabled:cursor-not-allowed",
             "transition-colors",
-            showError ? "border-destructive" : "border-white/10",
+            showError ? "border-danger" : "border-white/10",
             isValid && touched ? "border-success/50" : ""
           )}
         />
@@ -69,7 +69,7 @@ export default function AddressInput({
           Not a valid Stellar address (must start with G)
         </p>
       )}
-      {helpText && !showError && <p className="text-xs text-muted-foreground">{helpText}</p>}
+      {helpText && !showError && <p className="text-xs text-fg-muted">{helpText}</p>}
     </div>
   );
 }

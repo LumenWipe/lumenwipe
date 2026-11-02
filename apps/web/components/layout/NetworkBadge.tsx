@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils/cn";
 import type { Network } from "@/config/networks";
+import { Badge } from "@/components/ui/badge";
 
 interface NetworkBadgeProps {
   network: Network;
@@ -8,16 +9,11 @@ interface NetworkBadgeProps {
 
 export default function NetworkBadge({ network, className }: NetworkBadgeProps) {
   return (
-    <span
-      className={cn(
-        "text-xs px-1.5 py-0.5 rounded font-mono font-medium",
-        network === "testnet"
-          ? "bg-warning/20 text-warning border border-warning/30"
-          : "bg-stellar/10 text-stellar border border-stellar/20",
-        className
-      )}
+    <Badge
+      tone={network === "testnet" ? "warning" : "accent"}
+      className={cn("font-mono", className)}
     >
       {network === "testnet" ? "TESTNET" : "MAINNET"}
-    </span>
+    </Badge>
   );
 }

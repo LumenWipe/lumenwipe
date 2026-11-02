@@ -40,7 +40,7 @@ export default function ExecutePage({ params }: { params: Promise<{ network: Net
       <div className="flex items-center gap-2 mb-6">
         <Link
           href={`/${network}/analyze`}
-          className="text-muted-foreground hover:text-foreground transition-colors"
+          className="text-fg-muted hover:text-fg transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
         </Link>

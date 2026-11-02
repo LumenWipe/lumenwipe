@@ -49,7 +49,7 @@ export default function NetworkLayout({
   }, [network, currentNetwork, setNetwork, reset]);
 
   return (
-    <div className="relative min-h-screen overflow-x-clip bg-[hsl(var(--mkt-bg))]">
+    <div className="relative min-h-screen overflow-x-clip bg-canvas">
       {/* calm instrument backdrop: grain + faint top hairline, matching the marketing surface.
           Absolute (not fixed) so the mix-blend-overlay grain blends against the dark
           wrapper rather than the white compositor canvas (which would grey the ink). */}

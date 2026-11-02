@@ -16,6 +16,7 @@ import { StepTypeIcon } from "@/lib/utils/stepIcons";
 import { buildTxLedger, labelForTx } from "@/lib/utils/txLedger";
 import { receiptAssetSummary, receiptTokenSummary } from "@/lib/api/close-decisions";
 import { describeDefiPosition, positionContracts } from "@/lib/plan/describe-position";
+import { Button } from "@/components/ui/button";
 
 interface CompletionReceiptProps {
   network: Network;
@@ -376,12 +377,9 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
             {confirmedStepCount(executionPlan)} of {executionPlan.length} transactions confirmed.
             The account still exists. Resume the close to finish it.
           </p>
-          <Link
-            href={`/${network}`}
-            className="mt-4 inline-flex items-center justify-center rounded-xl bg-stellar px-4 py-2.5 text-sm font-semibold text-black transition-colors hover:bg-stellar/90"
-          >
-            Resume
-          </Link>
+          <Button asChild className="mt-4">
+            <Link href={`/${network}`}>Resume</Link>
+          </Button>
         </div>
       )}
 
@@ -486,43 +484,43 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       )}
 
       {!closed && sourceAddress && (
-        <Link
-          href={`${explorerBase}/account/${sourceAddress}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl border border-white/15 text-sm font-medium text-white/85 hover:border-white/30 hover:text-white transition-colors"
-        >
-          View the account on Stellar Expert
-          <ExternalLink className="h-3.5 w-3.5" />
-        </Link>
+        <Button asChild variant="secondary" className="w-full">
+          <Link
+            href={`${explorerBase}/account/${sourceAddress}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View the account on Stellar Expert
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Link>
+        </Button>
       )}
 
       {closed && (
         <div className="flex gap-3">
-          <button
-            onClick={reset}
-            className="flex-1 py-2.5 px-4 rounded-xl border border-white/15 text-sm font-medium text-white/85 hover:border-white/30 hover:text-white transition-colors"
-          >
+          <Button variant="secondary" onClick={reset} className="flex-1">
             Merge another account
-          </button>
-          <Link
-            href={`${explorerBase}/account/${destinationAddress}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-stellar text-black text-sm font-semibold hover:bg-stellar/90 transition-colors"
-          >
-            Stellar Expert
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Link>
-          <Link
-            href={`${svExplorerBase}/account/${destinationAddress}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-stellar text-black text-sm font-semibold hover:bg-stellar/90 transition-colors"
-          >
-            StellarView
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Link>
+          </Button>
+          <Button asChild className="flex-1">
+            <Link
+              href={`${explorerBase}/account/${destinationAddress}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Stellar Expert
+              <ExternalLink className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+          <Button asChild variant="secondary" className="flex-1">
+            <Link
+              href={`${svExplorerBase}/account/${destinationAddress}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              StellarView
+              <ExternalLink className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
         </div>
       )}
     </div>

@@ -22,7 +22,7 @@ const STATS = [
 
 export default function NotFound() {
   return (
-    <div className="mkt relative min-h-screen overflow-x-clip bg-[hsl(var(--mkt-bg))] flex flex-col">
+    <div className="mkt relative min-h-screen overflow-x-clip bg-canvas flex flex-col">
       {/* ambient: grain + faint top hairline, matching the ink system (no grid, no glow) */}
       <div aria-hidden className="pointer-events-none absolute inset-0 z-0">
         <div className="absolute inset-0 mkt-grain" />
@@ -45,7 +45,7 @@ export default function NotFound() {
           <p className="mkt-eyebrow mb-7 text-stellar/50">ledger lookup · error_code: 404</p>
 
           {/* terminal panel */}
-          <div className="mb-9 overflow-hidden rounded-2xl border border-white/[0.09] bg-[hsl(var(--card)/0.8)] backdrop-blur-xs">
+          <div className="mb-9 overflow-hidden rounded-2xl border border-white/[0.09] bg-surface/80 backdrop-blur-xs">
             {/* title bar */}
             <div className="flex items-center gap-1.5 border-b border-white/[0.07] bg-white/[0.02] px-4 py-3">
               <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]/70" />
@@ -122,7 +122,7 @@ export default function NotFound() {
           <div className="flex flex-wrap gap-3">
             <Link
               href="/"
-              className="inline-flex items-center gap-2 rounded-xl bg-value px-5 py-2.5 text-sm font-semibold text-[hsl(var(--value-foreground))] transition-all hover:bg-value/90 hover:shadow-[0_0_24px_-4px_hsl(var(--value)/0.5)]"
+              className="inline-flex items-center gap-2 rounded-xl bg-value px-5 py-2.5 text-sm font-semibold text-value-fg transition-all hover:bg-value/90 hover:shadow-[0_0_24px_-4px_hsl(var(--value)/0.5)]"
             >
               <Home className="h-4 w-4" />
               Back to home

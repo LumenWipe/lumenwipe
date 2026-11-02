@@ -6,6 +6,7 @@ import { classicFloorFromQuote } from "@/lib/api/close-decisions";
 import type { AssetDisposition } from "@/types/plan";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { cn } from "@/lib/utils/cn";
+import { Badge } from "@/components/ui/badge";
 
 interface AssetDispositionCardProps {
   item: AssetConvertibility;
@@ -109,9 +110,7 @@ export default function AssetDispositionCard({
             className={cn(
               "w-full rounded-md border bg-black/30 px-2.5 py-1.5 font-mono text-xs text-white",
               "placeholder:font-sans placeholder:text-fg-subtle",
-              showAddressError
-                ? "border-destructive/50 focus:border-destructive"
-                : "border-white/10"
+              showAddressError ? "border-danger/50 focus:border-danger" : "border-white/10"
             )}
           />
           {/* A colour change is not an error message: it says nothing to a screen reader and
@@ -177,16 +176,12 @@ export default function AssetDispositionCard({
                       : "")}
             </p>
           </div>
-          <span
-            className={cn(
-              "shrink-0 rounded-full border px-2 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide",
-              isTransfer || isIssuer
-                ? "border-white/20 bg-white/5 text-white/70"
-                : "border-success/30 bg-success/10 text-success"
-            )}
+          <Badge
+            tone={isTransfer || isIssuer ? "neutral" : "success"}
+            className="shrink-0 uppercase tracking-wide"
           >
             {isTransfer ? "Send" : isIssuer ? "Return" : "Swap"}
-          </span>
+          </Badge>
         </div>
         {clawbackNote}
         {transferPanel}

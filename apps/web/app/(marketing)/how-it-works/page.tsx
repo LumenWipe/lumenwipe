@@ -125,7 +125,7 @@ export default function HowItWorksPage() {
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link
               href="/mainnet"
-              className="group inline-flex items-center gap-2 rounded-xl bg-value px-5 py-3 text-sm font-semibold text-[hsl(var(--value-foreground))] transition-all hover:bg-value/90 hover:shadow-[0_0_32px_-6px_hsl(var(--value)/0.7)]"
+              className="group inline-flex items-center gap-2 rounded-xl bg-value px-5 py-3 text-sm font-semibold text-value-fg transition-all hover:bg-value/90 hover:shadow-[0_0_32px_-6px_hsl(var(--value)/0.7)]"
             >
               Open the app
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -157,7 +157,7 @@ export default function HowItWorksPage() {
           <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {LOOP.map((s, i) => (
               <Reveal key={s.label} delay={i * 60}>
-                <div className="relative flex h-full flex-col items-start rounded-xl border border-white/10 bg-[hsl(var(--card)/0.7)] p-4">
+                <div className="relative flex h-full flex-col items-start rounded-xl border border-white/10 bg-surface/70 p-4">
                   <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-stellar/10 text-stellar">
                     <s.icon className="h-4 w-4" />
                   </span>
@@ -372,11 +372,11 @@ export default function HowItWorksPage() {
         <div className="mt-10">
           <Faq />
         </div>
-        <div className="mt-12 flex flex-col items-center gap-4 rounded-2xl border border-white/10 bg-card p-8 text-center">
+        <div className="mt-12 flex flex-col items-center gap-4 rounded-2xl border border-white/10 bg-surface p-8 text-center">
           <h3 className="mkt-display text-xl font-bold text-white">Ready when you are.</h3>
           <Link
             href="/public"
-            className="group inline-flex items-center gap-2 rounded-xl bg-value px-5 py-3 text-sm font-semibold text-[hsl(var(--value-foreground))] transition-all hover:bg-value/90 hover:shadow-[0_0_32px_-6px_hsl(var(--value)/0.7)]"
+            className="group inline-flex items-center gap-2 rounded-xl bg-value px-5 py-3 text-sm font-semibold text-value-fg transition-all hover:bg-value/90 hover:shadow-[0_0_32px_-6px_hsl(var(--value)/0.7)]"
           >
             Open the app
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />

@@ -35,9 +35,7 @@ export default function PlanSidebar({ steps, currentIndex }: PlanSidebarProps) {
               {(step.status === "signing" || step.status === "submitted") && (
                 <Loader2 className="h-3.5 w-3.5 text-stellar animate-spin" />
               )}
-              {step.status === "pending" && (
-                <Clock className="h-3.5 w-3.5 text-muted-foreground/50" />
-              )}
+              {step.status === "pending" && <Clock className="h-3.5 w-3.5 text-fg-muted/50" />}
             </div>
 
             <span className="flex-1 truncate text-xs flex items-center gap-1.5">

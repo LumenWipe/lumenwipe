@@ -40,7 +40,7 @@ const entryCss = [
   '@config "./tailwind.config.ts";',
 ].join("\n");
 
-async function emittedSelectors(classes: string[]): Promise<Set<string>> {
+async function compiledCss(classes: string[]): Promise<string> {
   const compiler = await compile(entryCss, {
     base: root,
     async loadStylesheet(id, base) {
@@ -55,8 +55,12 @@ async function emittedSelectors(classes: string[]): Promise<Set<string>> {
       return { path: file, base: path.dirname(file), module: mod.default };
     },
   });
+  return compiler.build(classes);
+}
+
+async function emittedSelectors(classes: string[]): Promise<Set<string>> {
   const emitted = new Set<string>();
-  postcss.parse(compiler.build(classes)).walkRules((rule) => {
+  postcss.parse(await compiledCss(classes)).walkRules((rule) => {
     for (const m of rule.selector.matchAll(/\.((?:\\.|[^\s.:>+~,[\]()])+)/g)) {
       emitted.add(m[1].replace(/\\(.)/g, "$1"));
     }
@@ -93,6 +97,34 @@ describe("color utility classes", () => {
     const emitted = await emittedSelectors([...used.keys()]);
     const unknown = [...used].filter(([c]) => !emitted.has(c)).map(([c, rel]) => `${rel}: ${c}`);
     expect(unknown).toEqual([]);
+  });
+
+  test("every registered color emits a utility with an opacity modifier", async () => {
+    const names = (prefix: string, value: unknown): string[] =>
+      typeof value === "string"
+        ? [prefix]
+        : Object.entries(value as Record<string, unknown>).flatMap(([key, nested]) =>
+            names(key === "DEFAULT" ? prefix : `${prefix}-${key}`, nested)
+          );
+    const colors = (config.theme?.extend as { colors: Record<string, unknown> }).colors;
+    const classes = Object.entries(colors).flatMap(([key, value]) =>
+      names(key, value).map((name) => `bg-${name}/40`)
+    );
+    expect(classes.length).toBeGreaterThan(12);
+    const rules = new Map<string, string>();
+    postcss.parse(await compiledCss(classes)).walkRules((rule) => {
+      rules.set(rule.selector.replace(/\\(.)/g, "$1"), rule.toString());
+    });
+    for (const c of classes) expect(rules.get(`.${c}`)).toContain("40%");
+  });
+
+  test("no marketing or shadcn color variable is referenced from source", () => {
+    const offenders = files.flatMap(({ rel, src }) =>
+      [...src.matchAll(/hsl\(var\(--(?:mkt-|card|background|muted|border)/g)].map(
+        (m) => `${rel}: ${m[0]}`
+      )
+    );
+    expect(offenders).toEqual([]);
   });
 
   test("danger and success are registered so their utilities generate CSS", async () => {

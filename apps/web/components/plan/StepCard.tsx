@@ -20,7 +20,7 @@ export default function StepCard({ step, isActive, onClick }: StepCardProps) {
           : step.status === "confirmed"
             ? "border-success/20 bg-success/5"
             : step.status === "failed"
-              ? "border-destructive/30 bg-destructive/5"
+              ? "border-danger/30 bg-danger/5"
               : "border-white/10 bg-white/[0.02] hover:bg-white/[0.05]",
         onClick && "cursor-pointer"
       )}
@@ -32,7 +32,7 @@ export default function StepCard({ step, isActive, onClick }: StepCardProps) {
         {(step.status === "signing" || step.status === "submitted") && (
           <Loader2 className="h-4 w-4 text-stellar animate-spin" />
         )}
-        {step.status === "pending" && <Clock className="h-4 w-4 text-muted-foreground" />}
+        {step.status === "pending" && <Clock className="h-4 w-4 text-fg-muted" />}
       </div>
 
       {/* Content */}
@@ -48,9 +48,9 @@ export default function StepCard({ step, isActive, onClick }: StepCardProps) {
             {step.title}
           </p>
         </div>
-        <p className="text-xs text-muted-foreground line-clamp-2">{step.description}</p>
+        <p className="text-xs text-fg-muted line-clamp-2">{step.description}</p>
         <div className="flex items-center gap-3 mt-1.5">
-          <span className="text-xs text-muted-foreground/70">
+          <span className="text-xs text-fg-muted/70">
             {step.operationCount} op{step.operationCount !== 1 ? "s" : ""} ·{" "}
             {step.estimatedFeeLumens} XLM fee
           </span>

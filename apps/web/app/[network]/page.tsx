@@ -92,7 +92,7 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
         <div className="flex items-center justify-between gap-3 bg-stellar/10 border border-stellar/30 rounded-lg px-4 py-3 mb-6 text-sm">
           <div className="flex items-center gap-2 min-w-0">
             <RotateCcw className="h-4 w-4 text-stellar shrink-0" />
-            <span className="text-muted-foreground truncate">
+            <span className="text-fg-muted truncate">
               In-progress account merge found for{" "}
               <span className="font-mono text-xs">{session.sourceAddress.slice(0, 8)}…</span>
             </span>
@@ -114,7 +114,7 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
             {!unconfirmed && (
               <button
                 onClick={handleDismiss}
-                className="text-muted-foreground hover:text-foreground transition-colors"
+                className="text-fg-muted hover:text-fg transition-colors"
               >
                 <X className="h-4 w-4" />
               </button>

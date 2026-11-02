@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { SE_EXPLORER_BASE, type Network } from "@/config/networks";
 import { submissionClaim } from "@/lib/close-state";
 import { useDemolishStore } from "@/store/demolish";
+import { Button } from "@/components/ui/button";
 
 interface ErrorProps {
   error: Error & { digest?: string };
@@ -42,17 +43,13 @@ export default function NetworkError({ error, reset }: ErrorProps) {
   }
 
   const tryAgain = (
-    <button
+    <Button
+      variant={mayBeSent ? "ghost" : "primary"}
       onClick={reset}
-      className={
-        mayBeSent
-          ? "inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-white/60 transition-colors hover:border-white/20 hover:text-white"
-          : "inline-flex items-center gap-2 rounded-xl bg-stellar px-4 py-2 text-sm font-semibold text-black transition-all hover:bg-stellar/90"
-      }
+      icon={<RotateCcw className="h-3.5 w-3.5" />}
     >
-      <RotateCcw className="h-3.5 w-3.5" />
       Try again
-    </button>
+    </Button>
   );
 
   return (
@@ -87,31 +84,28 @@ export default function NetworkError({ error, reset }: ErrorProps) {
         <div className="flex flex-wrap justify-center gap-3">
           {!mayBeSent && tryAgain}
           {mayBeSent && (
-            <Link
-              href={home}
-              className="inline-flex items-center gap-2 rounded-xl bg-stellar px-4 py-2 text-sm font-semibold text-black transition-all hover:bg-stellar/90"
-            >
-              Resume the close
-            </Link>
+            <Button asChild>
+              <Link href={home}>Resume the close</Link>
+            </Button>
           )}
           {mayBeSent && sourceAddress && (
-            <a
-              href={`${SE_EXPLORER_BASE[network]}/account/${sourceAddress}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-white/80 transition-colors hover:border-white/20 hover:text-white"
-            >
-              View the account
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
+            <Button asChild variant="secondary">
+              <a
+                href={`${SE_EXPLORER_BASE[network]}/account/${sourceAddress}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View the account
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </Button>
           )}
-          <Link
-            href={home}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-white/60 transition-colors hover:border-white/20 hover:text-white"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Go home
-          </Link>
+          <Button asChild variant="secondary">
+            <Link href={home}>
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Go home
+            </Link>
+          </Button>
           {mayBeSent && tryAgain}
         </div>
       </div>

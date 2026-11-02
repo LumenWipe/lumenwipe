@@ -15,7 +15,7 @@ export default function BlockersPanel({ blockers, blocking }: BlockersPanelProps
 
   const theme = blocking
     ? {
-        container: "bg-destructive/10 border-destructive/30",
+        container: "bg-danger/10 border-danger/30",
         icon: <AlertOctagon className="h-4 w-4 text-danger-fg shrink-0" />,
         heading: "text-danger-fg",
         headingText: "Cannot proceed - blockers found",
@@ -37,7 +37,7 @@ export default function BlockersPanel({ blockers, blocking }: BlockersPanelProps
       </div>
       <ul className="space-y-2">
         {blockers.map((b, i) => (
-          <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+          <li key={i} className="flex items-start gap-2 text-sm text-fg-muted">
             <span className={`${theme.bullet} mt-0.5`}>•</span>
             <span>
               {b.message}
