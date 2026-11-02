@@ -42,10 +42,16 @@ test("length, prefix and checksum each get their own message", () => {
   const prefix = addressErrorMessage("X" + VALID.slice(1));
   const checksum = addressErrorMessage(flipLast(VALID));
   expect(length).toContain("56 characters");
-  expect(length).toContain("40");
   expect(prefix).toContain("starts with G");
   expect(checksum).toContain("checksum");
   expect(new Set([length, prefix, checksum]).size).toBe(3);
+});
+
+test("the length message does not vary with the input, so an alert stays quiet while typing", () => {
+  const messages = [1, 2, 40, 55, 57, 80].map((length) =>
+    addressErrorMessage(VALID.repeat(2).slice(0, length))
+  );
+  expect(new Set(messages).size).toBe(1);
 });
 
 test("a pasted S-prefixed value is refused without being echoed", () => {
