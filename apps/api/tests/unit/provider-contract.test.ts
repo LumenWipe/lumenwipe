@@ -134,6 +134,88 @@ test("an empty collection is a finding, never a skip", async () => {
   ]);
 });
 
+test.each([
+  ["/accounts/{id}/offers", `/accounts/${SELLER}/offers`],
+  ["/claimable_balances?claimant", "/claimable_balances?claimant="],
+  ["/claimable_balances?sponsor", "/claimable_balances?sponsor="],
+])("%s may be emptied by live data between requests", async (_, prefix) => {
+  const emptied = provider((path) =>
+    path.startsWith(prefix) ? { body: page(), hasLatestLedger: true } : undefined
+  );
+  expect(await checkProviderContract("mainnet", emptied.get)).toEqual([]);
+});
+
+test("an emptied derived route still answers for its paging link and records array", async () => {
+  const lostLink = provider((path) =>
+    path.startsWith(`/accounts/${SELLER}/offers`)
+      ? { body: { _embedded: { records: [] } }, hasLatestLedger: true }
+      : undefined
+  );
+  expect(await checkProviderContract("mainnet", lostLink.get)).toEqual([
+    "/accounts/{id}/offers: missing _links.next.href (expected string)",
+  ]);
+
+  const lostRecords = provider((path) =>
+    path.startsWith("/claimable_balances?sponsor=")
+      ? { body: { _links: LINKS }, hasLatestLedger: true }
+      : undefined
+  );
+  expect(await checkProviderContract("mainnet", lostRecords.get)).toEqual([
+    "/claimable_balances?sponsor: missing _embedded.records (expected array)",
+  ]);
+});
+
+test("an emptied derived route still needs Latest-Ledger where a snapshot reads it", async () => {
+  const broken = provider((path) =>
+    path.startsWith("/claimable_balances?claimant=")
+      ? { body: page(), hasLatestLedger: false }
+      : undefined
+  );
+  expect(await checkProviderContract("mainnet", broken.get)).toEqual([
+    "/claimable_balances?claimant: missing Latest-Ledger header",
+  ]);
+});
+
+test("the sponsor route runs on the sponsor, or on the claimant when there is none", async () => {
+  const sponsored = provider();
+  await checkProviderContract("mainnet", sponsored.get);
+  expect(sponsored.paths).toContain(`/claimable_balances?sponsor=${SPONSOR}&limit=1`);
+
+  const unsponsored: Partial<typeof BALANCE> = { ...BALANCE };
+  delete unsponsored.sponsor;
+  const plain = provider((path) =>
+    path.startsWith("/claimable_balances")
+      ? { body: page(unsponsored), hasLatestLedger: true }
+      : undefined
+  );
+  expect(await checkProviderContract("mainnet", plain.get)).toEqual([]);
+  expect(plain.paths).toContain(`/claimable_balances?sponsor=${CLAIMANT}&limit=1`);
+});
+
+test.each([
+  ["seller", "../../admin"],
+  ["seller", `${SELLER}?x=1`],
+  ["claimant", "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA"],
+  ["sponsor", "not-an-address"],
+])("a discovered %s of %s is refused, never requested or echoed", async (field, value) => {
+  const record =
+    field === "seller"
+      ? { ...OFFER, seller: value }
+      : field === "claimant"
+        ? { ...BALANCE, claimants: [{ destination: value }] }
+        : { ...BALANCE, sponsor: value };
+  const collection = field === "seller" ? "/offers" : "/claimable_balances";
+  const broken = provider((path) =>
+    path.startsWith(`${collection}?limit`)
+      ? { body: page(record), hasLatestLedger: true }
+      : undefined
+  );
+  const lines = await checkProviderContract("mainnet", broken.get);
+  expect(lines.join("\n")).toContain("is not a valid account address");
+  expect(lines.join("\n")).not.toContain(value);
+  expect(broken.paths.some((path) => path.includes(value))).toBe(false);
+});
+
 test("asset stats switched off, an answer of 200 with no records, is a finding", async () => {
   const broken = provider((path) =>
     path.startsWith("/assets") ? { body: page(), hasLatestLedger: true } : undefined

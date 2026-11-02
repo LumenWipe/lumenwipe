@@ -31,7 +31,7 @@ export function resetProviderFailoverCount(): void {
 }
 
 export function recordProviderFailover(
-  kind: "rpc" | "horizon",
+  kind: "rpc" | "horizon" | "paths",
   network: Network,
   from: string,
   to: string,
@@ -86,7 +86,8 @@ export async function withHorizonFailover<T>(
   network: Network,
   primary: HorizonDeps,
   fallbacks: HorizonDeps[],
-  read: (attempt: HorizonDeps, isPrimary: boolean) => Promise<T>
+  read: (attempt: HorizonDeps, isPrimary: boolean) => Promise<T>,
+  upstream: "horizon" | "paths" = "horizon"
 ): Promise<T> {
   if (fallbacks.length === 0) return read(primary, true);
 
@@ -100,13 +101,13 @@ export async function withHorizonFailover<T>(
       last = error;
       const failure =
         i > 0 && error instanceof AccountNotFoundError
-          ? new UpstreamError("unavailable", "horizon")
+          ? new UpstreamError("unavailable", upstream)
           : error;
       if (!isRetryableProviderFailure(failure)) throw failure;
       const next = chain[i + 1];
       if (!next || deadline.signal.aborted) break;
       recordProviderFailover(
-        "horizon",
+        upstream,
         network,
         provider.baseUrl,
         next.baseUrl,
@@ -116,9 +117,9 @@ export async function withHorizonFailover<T>(
   }
   // The client already counted a last provider that itself ended as unavailable.
   if (!(last instanceof UpstreamError && last.kind === "unavailable")) {
-    recordUpstream(network, "horizon", "unavailable");
+    recordUpstream(network, upstream, "unavailable");
   }
-  throw new UpstreamError("unavailable", "horizon");
+  throw new UpstreamError("unavailable", upstream);
 }
 
 /** Everything after the first provider, ready for `withHorizonFailover`. */

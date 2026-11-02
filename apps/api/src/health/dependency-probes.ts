@@ -16,7 +16,7 @@ import {
 } from "@/config/networks";
 import { fetchOctoPosPortfolio } from "@/lib/defi-positions/octopos-http";
 import { defiPositionsDepsFor } from "@/lib/stellar/account-state";
-import { buildRpcServer, countedRpcServer } from "@/lib/stellar/rpc";
+import { buildRpcServer } from "@/lib/stellar/rpc";
 import {
   UpstreamError,
   upstreamGetJson,
@@ -64,7 +64,7 @@ function rpcProbe(network: Network): ProbeRun {
       rpcProviders(network).map(async (provider) => {
         const startedAt = Date.now();
         const server = buildRpcServer(network, { timeout: PROBE_TIMEOUT_MS, provider });
-        const failure = await outcome(countedRpcServer(network, server).getHealth());
+        const failure = await outcome(server.getHealth());
         if (failure === null) return null;
         return Date.now() - startedAt >= PROBE_TIMEOUT_MS ? "timeout" : failure;
       })

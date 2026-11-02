@@ -80,14 +80,8 @@ function serversFor(network: Network, provider: ProviderEndpoint): ProviderServe
   let servers = providerServers.get(key);
   if (!servers) {
     servers = {
-      reads: countedRpcServer(
-        network,
-        buildRpcServer(network, { timeout: RPC_READ_TIMEOUT_MS, provider })
-      ),
-      simulation: countedRpcServer(
-        network,
-        buildRpcServer(network, { timeout: RPC_SIMULATE_TIMEOUT_MS, provider })
-      ),
+      reads: buildRpcServer(network, { timeout: RPC_READ_TIMEOUT_MS, provider }),
+      simulation: buildRpcServer(network, { timeout: RPC_SIMULATE_TIMEOUT_MS, provider }),
     };
     providerServers.set(key, servers);
   }
@@ -184,46 +178,6 @@ export function nextRpcServer(network: Network): rpc.Server | null {
   return serversFor(network, providers[(index + 1) % providers.length]!).reads;
 }
 
-/** A JSON-RPC error carries a numeric code and is an answer, so it is not a failure class here. */
-function recordRpcFailure(network: Network, error: unknown): void {
-  const { response, code, message } = (error ?? {}) as {
-    response?: { status?: unknown };
-    code?: unknown;
-    message?: unknown;
-  };
-  const status = response?.status;
-  if (status === 429) recordUpstream(network, "rpc", "rate_limited");
-  else if (typeof status === "number" && status >= 500) {
-    recordUpstream(network, "rpc", "server_errors");
-  } else if (code === "ECONNABORTED" || /timeout|aborted/i.test(String(message))) {
-    recordUpstream(network, "rpc", "timeouts");
-  } else if (status === undefined && typeof code !== "number") {
-    recordUpstream(network, "rpc", "unavailable");
-  }
-}
-
-/**
- * Counts the calls made on `server` and observes their failures. It only watches the promise a
- * method returned: the caller gets that same promise, so a send is still called once and is
- * still never retried or abandoned here.
- */
-export function countedRpcServer(network: Network, server: rpc.Server): rpc.Server {
-  return new Proxy(server, {
-    get(target, prop) {
-      const value: unknown = Reflect.get(target, prop, target);
-      if (typeof value !== "function") return value;
-      return (...args: unknown[]): unknown => {
-        const result: unknown = (value as (...a: unknown[]) => unknown).apply(target, args);
-        if (result instanceof Promise) {
-          recordUpstream(network, "rpc", "requests");
-          void result.then(undefined, (error: unknown) => recordRpcFailure(network, error));
-        }
-        return result;
-      };
-    },
-  });
-}
-
 function raceDeadline<T>(call: Promise<T>): Promise<T> {
   const deadline = currentDeadline();
   if (!deadline) return call;
@@ -255,14 +209,8 @@ function callPinned(network: Network, prop: PropertyKey, args: unknown[]): Promi
  * its callers.
  */
 function withRequestDeadline(network: Network): rpc.Server {
-  const reads = countedRpcServer(
-    network,
-    buildRpcServer(network, { timeout: RPC_READ_TIMEOUT_MS })
-  );
-  const simulation = countedRpcServer(
-    network,
-    buildRpcServer(network, { timeout: RPC_SIMULATE_TIMEOUT_MS })
-  );
+  const reads = buildRpcServer(network, { timeout: RPC_READ_TIMEOUT_MS });
+  const simulation = buildRpcServer(network, { timeout: RPC_SIMULATE_TIMEOUT_MS });
   return new Proxy(reads, {
     get(target, prop) {
       const owner = SIMULATION_METHODS.has(prop) ? simulation : target;
@@ -277,6 +225,38 @@ function withRequestDeadline(network: Network): rpc.Server {
         raceDeadline(bound(...withLegacyAuth(prop, args)) as Promise<unknown>);
     },
   });
+}
+
+function recordRpcFailure(network: Network, error: unknown): void {
+  const { response, message } = (error ?? {}) as {
+    response?: { status?: unknown };
+    message?: unknown;
+  };
+  const status = response?.status;
+  if (status === 429) recordUpstream(network, "rpc", "rate_limited");
+  else if (typeof status === "number") {
+    if (status >= 500) recordUpstream(network, "rpc", "server_errors");
+  } else if (/timeout|aborted/i.test(String(message))) {
+    recordUpstream(network, "rpc", "timeouts");
+  } else recordUpstream(network, "rpc", "unavailable");
+}
+
+/**
+ * Counts below the SDK's methods, on its HTTP client: `pollTransaction` is many requests behind
+ * one method, while a missing account or a JSON-RPC error is a successful response that a method
+ * turns into a throw. A rejection here is a transport failure or an error status, never an
+ * answer. The caller gets the same promise, so a send is still one call and is never retried.
+ */
+function countRequests(network: Network, server: rpc.Server): rpc.Server {
+  const client = server.httpClient;
+  const post = client.post.bind(client) as (...args: unknown[]) => Promise<unknown>;
+  client.post = ((...args: unknown[]) => {
+    recordUpstream(network, "rpc", "requests");
+    const response = post(...args);
+    void response.then(undefined, (error: unknown) => recordRpcFailure(network, error));
+    return response;
+  }) as typeof client.post;
+  return server;
 }
 
 /**
@@ -295,9 +275,12 @@ export function buildRpcServer(
     url: RPC_URLS[network],
     headers: RPC_HEADERS[network],
   };
-  return new rpc.Server(url, {
-    allowHttp: false,
-    ...(Object.keys(headers).length > 0 && { headers }),
-    ...(opts.timeout !== undefined && { timeout: opts.timeout }),
-  });
+  return countRequests(
+    network,
+    new rpc.Server(url, {
+      allowHttp: false,
+      ...(Object.keys(headers).length > 0 && { headers }),
+      ...(opts.timeout !== undefined && { timeout: opts.timeout }),
+    })
+  );
 }
