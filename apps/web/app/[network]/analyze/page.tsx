@@ -4,12 +4,13 @@ import { use, useEffect, useRef, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, AlertTriangle, ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import type { PlanResponse } from "@lumenwipe/sdk";
 import type { Network } from "@/config/networks";
 import type { AccountState } from "@/types/account";
 import type { PlanBlocker } from "@/types/plan";
 import { useDemolishStore } from "@/store/demolish";
 import { fetchClosePlan } from "@/lib/api/close-client";
-import { loadAnalysis } from "@/lib/api/analyze-client";
+import { loadAnalysis, readAccount, type ClaimAnswers } from "@/lib/api/analyze-client";
 import {
   claimAnswersKey,
   claimableSelectionsToDecisions,
@@ -30,8 +31,24 @@ import {
 import PlanView from "@/components/plan/PlanView";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { useFocusOnMount } from "@/hooks/useFocusOnMount";
-import { apiErrorText, isStateChanged } from "@/lib/utils/user-error";
+import { isStateChanged, toUserMessage } from "@/lib/utils/user-error";
 import { hardBlockersOf } from "@/lib/plan/resolvable-blockers";
+
+/** Everything a plan request is answering. A change re-plans; the account is not read again. */
+function planAnswersKey(state: ReturnType<typeof useDemolishStore.getState>): string {
+  return [
+    claimAnswersKey(state.claimableBalanceSelections),
+    state.defiPositionsAcknowledgedFor,
+    state.issuerSupplyAcknowledgedFor,
+    state.positionsLeftBehind.join(","),
+  ].join("#");
+}
+
+function planFailureText(err: unknown): string {
+  return isStateChanged(err)
+    ? "This account changed while the plan was being prepared. Nothing was sent. Refresh the plan to try again."
+    : "Failed to analyze account. Please check your connection and try again.";
+}
 
 export default function AnalyzePage({ params }: { params: Promise<{ network: Network }> }) {
   const { network: routeNetwork } = use(params);
@@ -40,15 +57,8 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
 
   const source = searchParams.get("source");
 
-  const {
-    setAccountState,
-    sourceAddress,
-    claimableBalanceSelections,
-    defiPositionsAcknowledgedFor,
-    issuerSupplyAcknowledgedFor,
-    positionsLeftBehind,
-    planChangedNotice,
-  } = useDemolishStore();
+  const { setAccountState, sourceAddress, planChangedNotice } = useDemolishStore();
+  const answersKey = useDemolishStore(planAnswersKey);
 
   const [account, setAccount] = useState<AccountState | null>(null);
   const [conversions, setConversions] = useState<AssetConvertibility[]>([]);
@@ -79,40 +89,95 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   // newest request may write state.
   const fetchSeq = useRef(0);
 
-  // Keyed on the answers' CONTENT, never their object identity - see claimAnswersKey for why a
-  // dependency on the object itself made this fetch retrigger in a loop.
-  const answersKey = claimAnswersKey(claimableBalanceSelections);
+  // Apart from fetchSeq: a re-plan replaces the plan a refresh was fetching, not its account.
+  const accountSeq = useRef(0);
+  // Null until an account is on screen: a failed first read has nothing to re-plan.
+  const knownTokens = useRef<string[] | null>(null);
+  const plannedAnswers = useRef<string | null>(null);
+  const readTarget = useRef<string | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const requestPlan = useCallback(
+    (answers: ClaimAnswers, tokens: readonly string[] = []): Promise<PlanResponse> => {
+      const state = useDemolishStore.getState();
+      plannedAnswers.current = planAnswersKey(state);
+      const planSource = effectiveSource as string;
+      return fetchClosePlan(
+        {
+          source: planSource,
+          decisions: [
+            ...discoveredTokensToDecisions(tokens),
+            ...claimableSelectionsToDecisions(answers),
+            ...defiPositionsAcknowledgementToDecisions(
+              state.defiPositionsAcknowledgedFor,
+              planSource
+            ),
+            ...issuerSupplyAcknowledgementToDecisions(
+              state.issuerSupplyAcknowledgedFor,
+              planSource
+            ),
+            ...positionsLeftBehindToDecisions(state.positionsLeftBehind, planSource),
+          ],
+        },
+        routeNetwork
+      );
+    },
+    [effectiveSource, routeNetwork]
+  );
+
+  const showPlan = useCallback((plan: PlanResponse): void => {
+    useDemolishStore.getState().reconcileWithPlanBlockers(plan.blockers);
+    setBlockers(
+      plan.blockers.map((b) => ({ message: b.message, helpUrl: b.helpUrl, code: b.code }))
+    );
+    // Hard blockers only. A blocker the user can answer right here must not hide the cards
+    // that answer it - and it must not hide the ASSET cards either, which is what a bare
+    // `blockers.length === 0` did: one unresolved claimable balance emptied the list of every
+    // balance-bearing asset, and `conversions.every(...)` on an empty array then reported them
+    // all resolved. That combination let a real account reach "Begin execution" and be refused
+    // for decisions it had never been shown.
+    setConversions(
+      hardBlockersOf(plan.blockers).length === 0 ? decisionPointsToConversions(plan) : []
+    );
+    // Unlike other blockers, an unresolved claimable balance is resolvable right here - the
+    // decision itself is what clears it - so it must render regardless of blocker state, or
+    // the user could never reach the card that resolves it.
+    setClaimableBalanceDecisions(decisionPointsToClaimableBalances(plan));
+    // Like the claim cards, these answer a blocker, so they render whatever else blocks.
+    const leavable = decisionPointsToLeavablePositions(plan);
+    setLeavablePositions(leavable);
+    useDemolishStore.getState().prunePositionsLeftBehind(leavable.map((p) => p.decisionId));
+  }, []);
+
+  const reload = useCallback(async () => {
     if (!effectiveSource) {
       router.push(`/${routeNetwork}`);
       return;
     }
 
     const firstLoad = loadedSource.current !== effectiveSource;
-    if (firstLoad) setLoading(true);
-    else {
+    if (firstLoad) {
+      knownTokens.current = null;
+      setLoading(true);
+    } else {
       setReplanning(true);
       setStatus("Updating plan");
     }
     setError(null);
     const seq = ++fetchSeq.current;
     const isStale = () => fetchSeq.current !== seq;
+    const reading = ++accountSeq.current;
 
     // Set when the account read itself failed, so its own message survives the catch below
     // instead of being flattened into the generic one.
     let accountError: string | null = null;
 
     try {
-      const analysis = await loadAnalysis({
-        fetchAccount: async () => {
-          const res = await fetch(`/api/${routeNetwork}/account/${effectiveSource}`);
-          if (!res.ok) {
-            accountError = apiErrorText(await res.json(), "Failed to fetch account data");
-            throw new Error(accountError);
-          }
-          return (await res.json()) as AccountState;
-        },
+      const { plan } = await loadAnalysis({
+        fetchAccount: () =>
+          readAccount(routeNetwork, effectiveSource).catch((err: unknown) => {
+            accountError = toUserMessage(err, "analyze");
+            throw err;
+          }),
         // The API derives blockers and per-asset convertibility (via server-side path
         // finding) from a plan built with no destination yet. The final plan is requested
         // with the destination + decisions at the "Begin execution" step.
@@ -129,26 +194,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         // `tokens` is empty on the first call - it runs alongside the account read, so nothing
         // is known yet - and carries what the account turned out to hold on the re-plan
         // loadAnalysis makes when the first plan could not have known about them.
-        fetchPlan: (answers, tokens = []) =>
-          fetchClosePlan(
-            {
-              source: effectiveSource,
-              decisions: [
-                ...discoveredTokensToDecisions(tokens),
-                ...claimableSelectionsToDecisions(answers),
-                ...defiPositionsAcknowledgementToDecisions(
-                  defiPositionsAcknowledgedFor,
-                  effectiveSource
-                ),
-                ...issuerSupplyAcknowledgementToDecisions(
-                  issuerSupplyAcknowledgedFor,
-                  effectiveSource
-                ),
-                ...positionsLeftBehindToDecisions(positionsLeftBehind, effectiveSource),
-              ],
-            },
-            routeNetwork
-          ),
+        fetchPlan: requestPlan,
         // Loaded here, not at signing time: verify() is synchronous and runs immediately before
         // the signature, so it cannot await a fetch at that moment. A failure leaves the bundled
         // floor in place; whether that floor may be relied on is decided separately by its own
@@ -156,41 +202,18 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         loadRegistry: loadServedRegistry,
         readAnswers: () => useDemolishStore.getState().claimableBalanceSelections,
         applyAccount: (accountData) => {
-          if (isStale()) return;
+          if (accountSeq.current !== reading) return;
+          knownTokens.current = (accountData.sorobanTokens?.tokens ?? []).map((t) => t.contract);
           setAccount(accountData);
           setAccountState(accountData);
         },
       });
       if (isStale()) return;
-      const { plan } = analysis;
-      useDemolishStore.getState().reconcileWithPlanBlockers(plan.blockers);
-      setBlockers(
-        plan.blockers.map((b) => ({ message: b.message, helpUrl: b.helpUrl, code: b.code }))
-      );
-      // Hard blockers only. A blocker the user can answer right here must not hide the cards
-      // that answer it - and it must not hide the ASSET cards either, which is what a bare
-      // `blockers.length === 0` did: one unresolved claimable balance emptied the list of every
-      // balance-bearing asset, and `conversions.every(...)` on an empty array then reported them
-      // all resolved. That combination let a real account reach "Begin execution" and be refused
-      // for decisions it had never been shown.
-      setConversions(
-        hardBlockersOf(plan.blockers).length === 0 ? decisionPointsToConversions(plan) : []
-      );
-      // Unlike other blockers, an unresolved claimable balance is resolvable right here - the
-      // decision itself is what clears it - so it must render regardless of blocker state, or
-      // the user could never reach the card that resolves it.
-      setClaimableBalanceDecisions(decisionPointsToClaimableBalances(plan));
-      // Like the claim cards, these answer a blocker, so they render whatever else blocks.
-      const leavable = decisionPointsToLeavablePositions(plan);
-      setLeavablePositions(leavable);
-      useDemolishStore.getState().prunePositionsLeftBehind(leavable.map((p) => p.decisionId));
+      showPlan(plan);
       setStatus(firstLoad ? "Account analyzed" : "Plan updated");
     } catch (err) {
       if (!isStale()) {
-        const planError = isStateChanged(err)
-          ? "This account changed while the plan was being prepared. Nothing was sent. Refresh the plan to try again."
-          : "Failed to analyze account. Please check your connection and try again.";
-        setError(accountError ?? planError);
+        setError(accountError ?? planFailureText(err));
       }
     } finally {
       if (!isStale()) {
@@ -199,20 +222,47 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         loadedSource.current = effectiveSource;
       }
     }
-  }, [
-    effectiveSource,
-    routeNetwork,
-    router,
-    setAccountState,
-    answersKey,
-    defiPositionsAcknowledgedFor,
-    issuerSupplyAcknowledgedFor,
-    positionsLeftBehind,
-  ]);
+  }, [effectiveSource, routeNetwork, router, setAccountState, requestPlan, showPlan]);
+
+  const replan = useCallback(
+    async (tokens: readonly string[]) => {
+      setReplanning(true);
+      setStatus("Updating plan");
+      setError(null);
+      const seq = ++fetchSeq.current;
+      const isStale = () => fetchSeq.current !== seq;
+      try {
+        const plan = await requestPlan(
+          useDemolishStore.getState().claimableBalanceSelections,
+          tokens
+        );
+        if (isStale()) return;
+        showPlan(plan);
+        setStatus("Plan updated");
+      } catch (err) {
+        if (isStale()) return;
+        setError(planFailureText(err));
+      } finally {
+        if (!isStale()) setReplanning(false);
+      }
+    },
+    [requestPlan, showPlan]
+  );
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    // Strict Mode runs this twice on mount, and that second run is a second full account read.
+    const target = `${routeNetwork}:${effectiveSource}`;
+    if (readTarget.current === target) return;
+    readTarget.current = target;
+    void reload();
+  }, [effectiveSource, routeNetwork, reload]);
+
+  useEffect(() => {
+    const tokens = knownTokens.current;
+    if (tokens === null || loadedSource.current !== effectiveSource) return;
+    if (plannedAnswers.current === answersKey) return;
+    void replan(tokens);
+  }, [answersKey, effectiveSource, replan]);
 
   if (loading) {
     return (
@@ -294,7 +344,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         leavablePositions={leavablePositions}
         blockers={blockers}
         network={routeNetwork}
-        onRefresh={fetchData}
+        onRefresh={reload}
         loading={replanning}
         statusMessage={status}
       />

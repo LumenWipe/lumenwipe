@@ -183,6 +183,11 @@ test("claimAnswersKey › a changed answer changes the key", () => {
   expect(after).not.toBe(before);
 });
 
+test("claimAnswersKey › the seeded claim default keys the same as no answer", () => {
+  expect(claimAnswersKey({ cb1: "claim" })).toBe(claimAnswersKey({}));
+  expect(claimAnswersKey({ cb1: "forfeit" })).not.toBe(claimAnswersKey({ cb1: "claim" }));
+});
+
 test("claimAnswersKey › a new answer changes the key", () => {
   expect(claimAnswersKey({ cb1: "claim", cb2: "forfeit" })).not.toBe(
     claimAnswersKey({ cb1: "claim" })
