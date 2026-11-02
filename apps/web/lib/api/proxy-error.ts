@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
-import { LumenWipeApiError, LumenWipeTimeoutError } from "@lumenwipe/sdk";
+import {
+  LumenWipeApiError,
+  LumenWipeInvalidNetworkError,
+  LumenWipeTimeoutError,
+} from "@lumenwipe/sdk";
 import { errorEnvelope, requestIdHeaders } from "@/lib/api/error-body";
+import { invalidNetworkResponse } from "@/lib/api/network-segment";
 
 /**
  * The response for a failed proxied call: the upstream API's own error body and status relayed
@@ -8,6 +13,7 @@ import { errorEnvelope, requestIdHeaders } from "@/lib/api/error-body";
  * envelope, so the browser reads one shape whichever side failed.
  */
 export function proxyErrorResponse(e: unknown): NextResponse {
+  if (e instanceof LumenWipeInvalidNetworkError) return invalidNetworkResponse();
   if (e instanceof LumenWipeApiError) {
     const body =
       typeof e.body === "object" && e.body !== null

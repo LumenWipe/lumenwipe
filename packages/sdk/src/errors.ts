@@ -65,6 +65,14 @@ export class LumenWipeTimeoutError extends Error {
   }
 }
 
+/** Thrown before any request when `network` is not `"mainnet"` or `"testnet"`. */
+export class LumenWipeInvalidNetworkError extends Error {
+  constructor() {
+    super('LumenWipe network must be "mainnet" or "testnet"');
+    this.name = "LumenWipeInvalidNetworkError";
+  }
+}
+
 /** Thrown when the caller's `signal` aborts a request. Distinct from a timeout. */
 export class LumenWipeAbortError extends Error {
   constructor(readonly reason?: unknown) {

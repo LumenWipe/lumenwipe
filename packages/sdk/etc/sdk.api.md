@@ -661,6 +661,11 @@ export interface LumenWipeClientOptions {
 }
 
 // @public
+export class LumenWipeInvalidNetworkError extends Error {
+    constructor();
+}
+
+// @public
 export class LumenWipeTimeoutError extends Error {
     constructor(timeoutMs: number);
     // (undocumented)

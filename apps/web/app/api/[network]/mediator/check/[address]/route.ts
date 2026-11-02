@@ -8,7 +8,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ network: string; address: string }> }
 ) {
-  const limited = await rateLimitProxy(req, "mediator-check");
+  const limited = await rateLimitProxy(req, "mediator-check", params);
   if (limited) return limited;
   const { network, address } = await params;
   return proxy(

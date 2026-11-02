@@ -2,8 +2,12 @@ import { expect, test } from "bun:test";
 import {
   LumenWipeApiError,
   LumenWipeClient,
+  LumenWipeInvalidNetworkError,
   LumenWipeTimeoutError,
+  type ClosePlanRequest,
+  type CloseTransactionsRequest,
   type FetchLike,
+  type Network,
 } from "../../src/index";
 
 interface Call {
@@ -196,4 +200,51 @@ test("a request that exceeds the timeout throws LumenWipeTimeoutError", async ()
   }
   expect(error).toBeInstanceOf(LumenWipeTimeoutError);
   expect((error as LumenWipeTimeoutError).timeoutMs).toBe(10);
+});
+
+const NETWORK_CALLS: [string, (client: LumenWipeClient, network: Network) => Promise<unknown>][] = [
+  ["getAccount", (c, n) => c.getAccount("G", n)],
+  ["getPaths", (c, n) => c.getPaths({ fromAsset: "a", amount: "1" }, n)],
+  ["closePlan", (c, n) => c.closePlan({} as ClosePlanRequest, n)],
+  ["closeTransactions", (c, n) => c.closeTransactions({} as CloseTransactionsRequest, n)],
+  ["submit", (c, n) => c.submit("xdr", n)],
+  ["mediatorCheck", (c, n) => c.mediatorCheck("G", n)],
+  ["mediatorSign", (c, n) => c.mediatorSign("xdr", n)],
+  ["feeBumpSponsor", (c, n) => c.feeBumpSponsor("xdr", n)],
+  ["getAllowances", (c, n) => c.getAllowances("G", n)],
+  ["revokeAllowance", (c, n) => c.revokeAllowance({ owner: "G", token: "C", spender: "G" }, n)],
+];
+
+const UNKNOWN_NETWORKS = ["../admin", "testnet/../admin", "testnet?x=1#", "..", "", "TESTNET"];
+
+test.each(NETWORK_CALLS)("%s rejects an unknown network with no request", async (_, call) => {
+  const { fetch, calls } = mockFetch(200, {});
+  const client = new LumenWipeClient({ baseUrl: "https://api.example.com", apiKey: "k", fetch });
+  for (const network of [...UNKNOWN_NETWORKS, 1, {}, ["testnet"]]) {
+    await expect(call(client, network as Network)).rejects.toBeInstanceOf(
+      LumenWipeInvalidNetworkError
+    );
+  }
+  expect(calls).toHaveLength(0);
+});
+
+test.each(NETWORK_CALLS)("%s accepts mainnet and testnet", async (_, call) => {
+  const { fetch, calls } = mockFetch(200, {});
+  const client = new LumenWipeClient({ baseUrl: "https://api.example.com", apiKey: "k", fetch });
+  await call(client, "mainnet");
+  await call(client, "testnet");
+  expect(calls[0]?.url).toContain("/mainnet/");
+  expect(calls[1]?.url).toContain("/testnet/");
+});
+
+test("an unknown network in the client options is rejected with no request", async () => {
+  const { fetch, calls } = mockFetch(200, {});
+  const client = new LumenWipeClient({
+    baseUrl: "https://api.example.com",
+    apiKey: "k",
+    fetch,
+    network: "../admin" as Network,
+  });
+  await expect(client.getAccount("G")).rejects.toBeInstanceOf(LumenWipeInvalidNetworkError);
+  expect(calls).toHaveLength(0);
 });

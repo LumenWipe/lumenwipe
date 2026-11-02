@@ -12,6 +12,13 @@ function decodeSegment(segment: string): string {
   }
 }
 
+export function invalidNetworkResponse(): NextResponse {
+  return NextResponse.json(errorEnvelope("invalid_network", "Unknown network."), {
+    status: 400,
+    headers: { "Cache-Control": "no-store" },
+  });
+}
+
 /**
  * The 400 for a path under `/api/[network]` or `/api/v1/[network]` whose network segment is not a
  * known network, or null to proceed. `pathname` is the raw request path, so each segment is
@@ -24,8 +31,5 @@ export function refuseUnknownNetwork(pathname: string): NextResponse | null {
   const network = first === "v1" ? second : first;
   if (network !== undefined && isValidNetwork(network)) return null;
 
-  return NextResponse.json(errorEnvelope("invalid_network", "Unknown network."), {
-    status: 400,
-    headers: { "Cache-Control": "no-store" },
-  });
+  return invalidNetworkResponse();
 }

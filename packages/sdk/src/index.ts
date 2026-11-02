@@ -2,6 +2,7 @@ export { LumenWipeClient } from "./client";
 export {
   LumenWipeAbortError,
   LumenWipeApiError,
+  LumenWipeInvalidNetworkError,
   LumenWipeTimeoutError,
   isApiErrorCode,
   type ApiErrorCode,

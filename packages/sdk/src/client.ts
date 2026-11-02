@@ -14,8 +14,11 @@ import type {
   SubmitResponse,
   TransactionsResponse,
 } from "@lumenwipe/types";
+import { LumenWipeInvalidNetworkError } from "./errors";
 import { HttpTransport } from "./http";
 import type { LumenWipeClientOptions, RequestOptions } from "./options";
+
+const NETWORKS: readonly unknown[] = ["mainnet", "testnet"] satisfies Network[];
 
 function isPlaintextRemote(baseUrl: string): boolean {
   try {
@@ -61,15 +64,18 @@ export class LumenWipeClient {
   }
 
   private resolveNetwork(network: Network | undefined): Network {
-    if (network) return network;
-    if (this.defaultNetwork) return this.defaultNetwork;
-    if (!this.warnedDefaultNetwork) {
-      this.warnedDefaultNetwork = true;
-      this.log(
-        'LumenWipe: no network given, defaulting to "testnet". Pass `network` to the client or the call to silence this.'
-      );
+    const resolved = network ?? this.defaultNetwork;
+    if (resolved === undefined) {
+      if (!this.warnedDefaultNetwork) {
+        this.warnedDefaultNetwork = true;
+        this.log(
+          'LumenWipe: no network given, defaulting to "testnet". Pass `network` to the client or the call to silence this.'
+        );
+      }
+      return "testnet";
     }
-    return "testnet";
+    if (!NETWORKS.includes(resolved)) throw new LumenWipeInvalidNetworkError();
+    return resolved;
   }
 
   health(options?: RequestOptions): Promise<HealthResponse> {
@@ -79,7 +85,11 @@ export class LumenWipeClient {
     });
   }
 
-  getAccount(address: string, network?: Network, options?: RequestOptions): Promise<AccountState> {
+  async getAccount(
+    address: string,
+    network?: Network,
+    options?: RequestOptions
+  ): Promise<AccountState> {
     return this.http.request<AccountState>(
       "GET",
       `/${this.resolveNetwork(network)}/account/${encodeURIComponent(address)}`,
@@ -88,7 +98,7 @@ export class LumenWipeClient {
     );
   }
 
-  getPaths(
+  async getPaths(
     params: { fromAsset: string; amount: string },
     network?: Network,
     options?: RequestOptions
@@ -102,7 +112,7 @@ export class LumenWipeClient {
     );
   }
 
-  closePlan(
+  async closePlan(
     body: ClosePlanRequest,
     network?: Network,
     options?: RequestOptions
@@ -122,7 +132,7 @@ export class LumenWipeClient {
    * submit the returned transactions in `order`, wait for confirmation, then call this
    * again until `requiresAnotherCall` is false.
    */
-  closeTransactions(
+  async closeTransactions(
     body: CloseTransactionsRequest,
     network?: Network,
     options?: RequestOptions
@@ -135,7 +145,11 @@ export class LumenWipeClient {
     );
   }
 
-  submit(signedXdr: string, network?: Network, options?: RequestOptions): Promise<SubmitResponse> {
+  async submit(
+    signedXdr: string,
+    network?: Network,
+    options?: RequestOptions
+  ): Promise<SubmitResponse> {
     return this.http.request<SubmitResponse>(
       "POST",
       `/v1/${this.resolveNetwork(network)}/submit`,
@@ -144,7 +158,7 @@ export class LumenWipeClient {
     );
   }
 
-  mediatorCheck(
+  async mediatorCheck(
     address: string,
     network?: Network,
     options?: RequestOptions
@@ -157,7 +171,7 @@ export class LumenWipeClient {
     );
   }
 
-  mediatorSign(
+  async mediatorSign(
     transaction: string,
     network?: Network,
     options?: RequestOptions
@@ -175,7 +189,7 @@ export class LumenWipeClient {
   /** Wraps a wind-down transaction (its own fee already zero) in a signed CAP-15 fee-bump
    *  envelope for an account that cannot pay its own fee (architecture.md §8.1). The caller
    *  submits the returned XDR through `submit()`, exactly like any other close transaction. */
-  feeBumpSponsor(
+  async feeBumpSponsor(
     transaction: string,
     network?: Network,
     options?: RequestOptions
@@ -192,7 +206,7 @@ export class LumenWipeClient {
 
   /** Every live SEP-41 allowance the account has granted (architecture.md §12). Independent of
    *  closing an account - a standalone security utility. */
-  getAllowances(
+  async getAllowances(
     address: string,
     network?: Network,
     options?: RequestOptions
@@ -207,7 +221,7 @@ export class LumenWipeClient {
 
   /** Builds the unsigned `approve(owner, spender, 0, 0)` transaction that revokes one allowance.
    *  The caller signs and submits it through `submit()`, like any other transaction here. */
-  revokeAllowance(
+  async revokeAllowance(
     params: { owner: string; token: string; spender: string },
     network?: Network,
     options?: RequestOptions
