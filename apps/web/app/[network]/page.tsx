@@ -17,6 +17,9 @@ import {
 } from "@/lib/utils/user-error";
 import { useDemolishStore } from "@/store/demolish";
 import { getMemoRequirement } from "@/lib/exchange-registry";
+import { Callout } from "@/components/ui/callout";
+import { Card, CardTitle, cardVariants } from "@/components/ui/card";
+import { cn } from "@/lib/utils/cn";
 
 const RECORDED_NOTICES = {
   closed: CLOSE_FINISHED_NOTICE,
@@ -139,20 +142,24 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
       </div>
 
       {/* Form */}
-      <div className="mkt-panel rounded-2xl p-6 mb-6">
-        <h2 className="mkt-eyebrow text-fg-subtle mb-5">Account details</h2>
+      <Card className="mb-6 p-6">
+        <CardTitle className="mb-5">Account details</CardTitle>
         <AccountEntryForm />
-      </div>
+      </Card>
 
       {/* Warning */}
-      <div className="flex items-start gap-2.5 bg-warning/10 border border-warning/25 rounded-xl p-3.5 mb-8 text-sm">
-        <AlertOctagon className="h-4 w-4 text-warning mt-0.5 shrink-0" />
-        <p className="text-white/60">
+      <Callout
+        tone="warning"
+        announce={false}
+        icon={<AlertOctagon className="h-4 w-4" />}
+        className="mb-8"
+      >
+        <p className="text-fg-muted">
           <span className="text-warning font-medium">Irreversible action.</span> An Account Merge
           transfers the XLM balance to the destination and removes the source account from the
           Stellar ledger. Make sure you have a working destination address before proceeding.
         </p>
-      </div>
+      </Callout>
 
       {/* Features row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -161,16 +168,16 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
           { icon: ShieldCheck, label: "Non-custodial", desc: "Keys never leave your browser" },
           { icon: GitMerge, label: "Exchange-friendly", desc: "Relay account support" },
         ].map(({ icon: Icon, label, desc }) => (
-          <div key={label} className="mkt-panel rounded-xl p-3.5 text-center">
+          <Card key={label} className="p-3.5 text-center">
             <Icon className="h-5 w-5 text-stellar mx-auto mb-1.5" />
             <p className="text-xs font-medium text-white">{label}</p>
             <p className="text-xs text-fg-subtle">{desc}</p>
-          </div>
+          </Card>
         ))}
       </div>
 
       {/* Receive-as row - XLM active; USDC coming soon */}
-      <div className="mt-3 flex items-center gap-3 mkt-panel rounded-xl px-4 py-3">
+      <Card className="mt-3 flex items-center gap-3 px-4 py-3">
         <span className="text-xs text-fg-subtle shrink-0">Receive as</span>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 rounded-lg border border-stellar/40 bg-stellar/10 px-3 py-1.5 text-xs font-medium text-stellar">
@@ -184,12 +191,15 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
             </span>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Standalone security utility, independent of closing an account. */}
       <Link
         href={`/${network}/allowances`}
-        className="mt-3 flex items-center justify-between gap-3 mkt-panel rounded-xl px-4 py-3 text-sm transition-colors hover:bg-white/[0.04]"
+        className={cn(
+          cardVariants(),
+          "mt-3 flex items-center justify-between gap-3 px-4 py-3 text-sm transition-colors hover:bg-white/[0.04]"
+        )}
       >
         <span className="flex items-center gap-2.5 min-w-0">
           <ShieldOff className="h-4 w-4 text-stellar shrink-0" />

@@ -7,6 +7,7 @@ import type { AssetDisposition } from "@/types/plan";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { cn } from "@/lib/utils/cn";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 
 interface AssetDispositionCardProps {
   item: AssetConvertibility;
@@ -148,12 +149,7 @@ export default function AssetDispositionCard({
 
   if (item.convertible) {
     return (
-      <div
-        className={cn(
-          "rounded-lg border p-3 transition-colors",
-          resolved ? "border-success/20 bg-success/5" : "border-amber-500/30 bg-amber-500/[0.06]"
-        )}
-      >
+      <Card tone={resolved ? "success" : "warning"} className="p-3 transition-colors">
         <div className="flex items-center gap-3">
           {isTransfer || isIssuer ? (
             <Send className="h-4 w-4 shrink-0 text-fg-muted" />
@@ -185,27 +181,22 @@ export default function AssetDispositionCard({
         </div>
         {clawbackNote}
         {transferPanel}
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div
-      className={cn(
-        "rounded-lg border p-3 transition-colors",
-        resolved ? "border-white/15 bg-white/[0.03]" : "border-amber-500/30 bg-amber-500/[0.06]"
-      )}
-    >
+    <Card tone={resolved ? "neutral" : "warning"} className="p-3 transition-colors">
       <div className="flex items-start gap-3">
         {resolved ? (
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
         ) : (
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
         )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-white">
             {item.code} <span className="text-fg-subtle">·</span>{" "}
-            <span className="text-amber-300/90">
+            <span className="text-warning">
               {item.dust ? "too small to swap" : "no swap route on the DEX"}
             </span>
           </p>
@@ -237,6 +228,6 @@ export default function AssetDispositionCard({
         </label>
       </div>
       {transferPanel}
-    </div>
+    </Card>
   );
 }

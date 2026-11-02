@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils/cn";
 import { toUserMessage } from "@/lib/utils/user-error";
 import type { AccountSigner } from "@/types/account";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 
 function shortAddr(addr: string): string {
   return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
@@ -57,14 +58,16 @@ export default function PreAuthTxInput({ signer, disabled, onSubmit }: Props) {
         submitted, not by signing anything now. If you already hold a transaction you pre-authorized
         for this close, paste it below.
       </p>
-      <div className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-200/90">
-        <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-400" />
-        <span>
-          This transaction was not built or verified by LumenWipe the way the rest of this
-          flow&apos;s transactions are. You are responsible for having reviewed its contents
-          yourself before submitting it here.
-        </span>
-      </div>
+      <Callout
+        tone="warning"
+        announce={false}
+        icon={<AlertTriangle className="h-3.5 w-3.5" />}
+        className="gap-1.5 p-2.5 text-xs"
+      >
+        This transaction was not built or verified by LumenWipe the way the rest of this flow&apos;s
+        transactions are. You are responsible for having reviewed its contents yourself before
+        submitting it here.
+      </Callout>
       <textarea
         value={value}
         onChange={(e) => {

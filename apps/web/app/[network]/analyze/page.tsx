@@ -33,6 +33,7 @@ import StatusMessage from "@/components/a11y/StatusMessage";
 import { useFocusOnMount } from "@/hooks/useFocusOnMount";
 import { isStateChanged, toUserMessage } from "@/lib/utils/user-error";
 import { hardBlockersOf } from "@/lib/plan/resolvable-blockers";
+import { Callout } from "@/components/ui/callout";
 
 /** Everything a plan request is answering. A change re-plans; the account is not read again. */
 function planAnswersKey(state: ReturnType<typeof useDemolishStore.getState>): string {
@@ -280,19 +281,22 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   if (error && !account) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12">
-        <div className="mkt-panel border-danger/30 rounded-2xl p-6 text-center space-y-4">
-          <AlertTriangle className="h-8 w-8 text-danger-fg mx-auto" />
-          <p className="font-medium text-white">Analysis failed</p>
-          <p role="alert" className="text-sm text-fg-muted">
-            {error}
-          </p>
-          <Link
-            href={`/${routeNetwork}`}
-            className="inline-flex items-center gap-1.5 text-sm text-stellar hover:underline"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" /> Go back
-          </Link>
-        </div>
+        <Callout
+          tone="danger"
+          icon={<AlertTriangle className="h-8 w-8" />}
+          title="Analysis failed"
+          className="flex-col items-center p-6 text-center"
+          action={
+            <Link
+              href={`/${routeNetwork}`}
+              className="inline-flex items-center gap-1.5 text-sm text-stellar hover:underline"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" /> Go back
+            </Link>
+          }
+        >
+          {error}
+        </Callout>
       </div>
     );
   }
@@ -315,22 +319,19 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       </div>
 
       {planChangedNotice && (
-        <div
-          role="status"
-          className="mkt-panel rounded-xl px-4 py-3 mb-4 flex items-center gap-2 text-sm text-fg-muted"
+        <Callout
+          tone="warning"
+          announce="status"
+          icon={<AlertTriangle className="h-4 w-4" />}
+          className="mb-4"
         >
-          <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
-          <span>{planChangedNotice}</span>
-        </div>
+          {planChangedNotice}
+        </Callout>
       )}
       {error && (
-        <div
-          role="alert"
-          className="mkt-panel border-danger/30 rounded-xl px-4 py-3 mb-4 flex items-center gap-2 text-sm text-fg-muted"
-        >
-          <AlertTriangle className="h-4 w-4 shrink-0 text-danger-fg" />
-          <span>{error}</span>
-        </div>
+        <Callout tone="danger" icon={<AlertTriangle className="h-4 w-4" />} className="mb-4">
+          {error}
+        </Callout>
       )}
       <PlanView
         account={account}
