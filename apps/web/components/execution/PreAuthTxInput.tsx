@@ -80,7 +80,7 @@ export default function PreAuthTxInput({ signer, disabled, onSubmit }: Props) {
           "w-full font-mono-address bg-black/30 border rounded-lg px-3 py-2 text-xs",
           "placeholder:text-fg-subtle",
           "disabled:opacity-50 disabled:cursor-not-allowed",
-          error ? "border-destructive" : "border-white/10"
+          error ? "border-danger" : "border-white/10"
         )}
       />
       <button

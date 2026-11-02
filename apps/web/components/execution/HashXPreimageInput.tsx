@@ -75,7 +75,7 @@ export default function HashXPreimageInput({ signer, disabled, onApply }: Props)
             "flex-1 font-mono-address bg-black/30 border rounded-lg px-3 py-2 text-sm",
             "placeholder:text-fg-subtle",
             "disabled:opacity-50 disabled:cursor-not-allowed",
-            error ? "border-destructive" : "border-white/10"
+            error ? "border-danger" : "border-white/10"
           )}
         />
         <button

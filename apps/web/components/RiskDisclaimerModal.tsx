@@ -45,7 +45,7 @@ export default function RiskDisclaimerModal() {
       <div className="absolute inset-0 bg-black/70 backdrop-blur-xs" />
 
       {/* Panel */}
-      <div className="relative w-full max-w-md rounded-2xl border border-white/15 bg-card shadow-2xl">
+      <div className="relative w-full max-w-md rounded-2xl border border-white/15 bg-surface shadow-2xl">
         {/* Header */}
         <div className="flex items-start gap-3 border-b border-white/10 px-5 py-4">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400">
@@ -97,7 +97,7 @@ export default function RiskDisclaimerModal() {
         <div className="border-t border-white/10 px-5 py-4">
           <button
             onClick={handleAccept}
-            className="w-full rounded-xl bg-stellar py-2.5 text-sm font-semibold text-black transition-all hover:bg-stellar/90 hover:shadow-[0_0_24px_-4px_hsl(var(--stellar)/0.6)]"
+            className="w-full rounded-xl bg-stellar py-2.5 text-sm font-semibold text-black transition-all hover:bg-stellar/90 hover:shadow-[0_0_24px_-4px_hsl(var(--accent)/0.6)]"
           >
             I understand, continue
           </button>

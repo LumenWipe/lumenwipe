@@ -33,7 +33,7 @@ export default function PlanStepAccordion({
   const baseId = useId();
 
   return (
-    <div className="divide-y divide-white/8 overflow-hidden rounded-2xl border border-white/10 bg-[hsl(var(--card)/0.6)]">
+    <div className="divide-y divide-white/8 overflow-hidden rounded-2xl border border-white/10 bg-surface/60">
       {groups.map((g) => {
         const isOpen = open === g.type;
         const totalOps = g.steps.reduce((sum, s) => sum + s.operationCount, 0);

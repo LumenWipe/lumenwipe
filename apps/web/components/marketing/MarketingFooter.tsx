@@ -47,7 +47,7 @@ const COLS: { title: string; links: { label: string; href: string; external?: bo
 
 export default function MarketingFooter() {
   return (
-    <footer className="relative border-t border-white/10 bg-[hsl(var(--mkt-bg))]">
+    <footer className="relative border-t border-white/10 bg-canvas">
       <div className="mx-auto max-w-6xl px-5 py-14 lg:px-8">
         <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div>

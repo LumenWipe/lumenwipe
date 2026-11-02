@@ -33,7 +33,7 @@ export default function ReviewPage({ params }: { params: Promise<{ network: Netw
           type="button"
           aria-label="Back to analyze"
           onClick={() => goBackToAnalyze(setPhase, router, network)}
-          className="text-muted-foreground hover:text-foreground transition-colors"
+          className="text-fg-muted hover:text-fg transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
         </button>

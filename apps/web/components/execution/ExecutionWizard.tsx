@@ -373,7 +373,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           </div>
 
           {/* Irreversible warning */}
-          <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-sm">
+          <div className="bg-danger/10 border border-danger/30 rounded-lg p-4 text-sm">
             <p className="font-semibold text-danger-fg mb-1">
               This action is permanent and irreversible.
             </p>
@@ -417,7 +417,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 ref={alertRef}
                 tabIndex={-1}
                 role="alert"
-                className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-white/70 outline-none"
+                className="flex items-start gap-2.5 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2.5 text-sm text-white/70 outline-none"
               >
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-danger-fg" />
                 <span>
@@ -495,7 +495,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 className={cn(
                   "w-full py-3 px-4 rounded-xl font-semibold text-sm transition-all",
                   "flex items-center justify-center gap-2",
-                  "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+                  "bg-danger text-danger-on-fill hover:bg-danger/90",
                   "disabled:opacity-40 disabled:cursor-not-allowed"
                 )}
               >

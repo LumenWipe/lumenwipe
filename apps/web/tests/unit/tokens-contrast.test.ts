@@ -57,16 +57,17 @@ const pairs: Pair[] = [];
 const onSurfaces = (fg: string, min: number): void => {
   for (const bg of SURFACES) pairs.push({ fg, bg, min });
 };
-for (const t of ["fg", "fg-muted", "fg-subtle", "accent-solid", "value", "success", "warning"]) {
+for (const t of ["fg", "fg-muted", "fg-subtle", "accent", "value", "success", "warning"]) {
   onSurfaces(t, 4.5);
 }
 onSurfaces("fg-disabled", 3);
 onSurfaces("danger-fg", 7);
 onSurfaces("line-strong", 3);
+onSurfaces("edge", 3);
 onSurfaces("focus", 3);
 pairs.push(
-  { fg: "accent-solid-fg", bg: "accent-solid", min: 4.5 },
-  { fg: "value-foreground", bg: "value", min: 4.5 },
+  { fg: "accent-fg", bg: "accent", min: 4.5 },
+  { fg: "value-fg", bg: "value", min: 4.5 },
   { fg: "warning-fg", bg: "warning", min: 4.5 },
   { fg: "danger-on-fill", bg: "danger", min: 4.5 }
 );
@@ -77,16 +78,16 @@ describe("contrast calculator", () => {
     expect(ratio("0 0% 50%", "0 0% 50%")).toBeCloseTo(1, 5);
   });
 
-  test("measures the legacy destructive fill as unreadable text on the page background", () => {
-    expect(ratio(token("destructive"), token("background"))).toBeLessThan(2.1);
+  test("measures the danger fill as unreadable text on the page background", () => {
+    expect(ratio(token("danger"), token("bg"))).toBeLessThan(2.1);
   });
 });
 
 describe("token surfaces", () => {
   test("bg, surface and surface-raised are the colors users actually see", () => {
-    expect(token("bg")).toBe(token("background"));
-    expect(token("surface")).toBe(token("card"));
-    expect(token("surface-raised")).toBe(token("mkt-panel"));
+    expect(token("bg")).toBe("197 30% 4.5%");
+    expect(token("surface")).toBe("200 18% 8%");
+    expect(token("surface-raised")).toBe("198 17% 10.5%");
   });
 });
 
@@ -118,14 +119,15 @@ describe("token set completeness", () => {
     "surface-sunken",
     "line",
     "line-strong",
+    "edge",
     "fg",
     "fg-muted",
     "fg-subtle",
     "fg-disabled",
-    "accent-solid",
-    "accent-solid-fg",
+    "accent",
+    "accent-fg",
     "value",
-    "value-foreground",
+    "value-fg",
     "success",
     "warning",
     "warning-fg",
@@ -176,43 +178,34 @@ describe("token set completeness", () => {
   });
 });
 
-describe("legacy variables are unchanged", () => {
-  const legacy: Record<string, string> = {
-    background: "197 30% 4.5%",
-    foreground: "0 0% 98%",
-    card: "200 18% 8%",
-    "card-foreground": "0 0% 98%",
-    popover: "200 18% 8%",
-    "popover-foreground": "0 0% 98%",
-    primary: "0 0% 98%",
-    "primary-foreground": "200 12% 10%",
-    secondary: "205 10% 15.9%",
-    "secondary-foreground": "0 0% 98%",
-    muted: "205 10% 15.9%",
-    "muted-foreground": "205 8% 64.9%",
-    accent: "205 10% 15.9%",
-    "accent-foreground": "0 0% 98%",
-    destructive: "0 62.8% 30.6%",
-    "destructive-foreground": "0 0% 98%",
-    border: "205 12% 16%",
-    input: "205 12% 16%",
-    ring: "205 12% 83.9%",
-    radius: "0.5rem",
-    stellar: "196 100% 47%",
-    "stellar-foreground": "0 0% 100%",
-    warning: "38 92% 50%",
-    "warning-foreground": "0 0% 100%",
-    value: "41 96% 56%",
-    "value-foreground": "38 60% 8%",
-    "mkt-bg": "197 30% 4.5%",
-    "mkt-panel": "198 17% 10.5%",
-    "mkt-panel-2": "200 16% 13%",
-    "mkt-line": "190 30% 84%",
-  };
+describe("one token layer", () => {
+  const removed = [
+    "background",
+    "foreground",
+    "card",
+    "popover",
+    "primary",
+    "secondary",
+    "muted",
+    "destructive",
+    "border",
+    "input",
+    "ring",
+    "stellar",
+    "accent-solid",
+    "value-foreground",
+  ];
 
-  for (const [name, value] of Object.entries(legacy)) {
-    test(`--${name} is ${value}`, () => {
-      expect(token(name)).toBe(value);
-    });
-  }
+  test("no shadcn or marketing variable remains", () => {
+    expect(Object.keys(vars).filter((n) => removed.includes(n) || /-foreground$/.test(n))).toEqual(
+      []
+    );
+    expect(Object.keys(vars).filter((n) => n.startsWith("mkt-"))).toEqual([]);
+  });
+
+  test("no surface, line or text value is defined twice", () => {
+    const roles = Object.keys(vars).filter((n) => /^(bg|surface|line|edge|fg|accent$)/.test(n));
+    const values = roles.map((n) => vars[n]);
+    expect(new Set(values).size).toBe(values.length);
+  });
 });

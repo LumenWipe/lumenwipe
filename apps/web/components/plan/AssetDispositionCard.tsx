@@ -109,9 +109,7 @@ export default function AssetDispositionCard({
             className={cn(
               "w-full rounded-md border bg-black/30 px-2.5 py-1.5 font-mono text-xs text-white",
               "placeholder:font-sans placeholder:text-fg-subtle",
-              showAddressError
-                ? "border-destructive/50 focus:border-destructive"
-                : "border-white/10"
+              showAddressError ? "border-danger/50 focus:border-danger" : "border-white/10"
             )}
           />
           {/* A colour change is not an error message: it says nothing to a screen reader and

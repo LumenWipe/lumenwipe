@@ -130,7 +130,7 @@ export default function RevokeAllowanceModal({
         onClick={busy ? undefined : onClose}
       />
 
-      <div className="relative w-full max-w-md rounded-2xl border border-white/15 bg-card shadow-2xl">
+      <div className="relative w-full max-w-md rounded-2xl border border-white/15 bg-surface shadow-2xl">
         <div className="flex items-start gap-3 border-b border-white/10 px-5 py-4">
           <div
             className={cn(

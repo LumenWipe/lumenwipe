@@ -80,7 +80,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
         </span>
       </div>
 
-      <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-sm">
+      <div className="bg-danger/10 border border-danger/30 rounded-lg p-4 text-sm">
         <p className="font-semibold text-danger-fg mb-1">
           This plan is permanent and irreversible.
         </p>
@@ -112,7 +112,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
       <button
         onClick={handleConfirm}
         disabled={confirming || executionPlan.length === 0 || !acknowledged}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-stellar px-4 py-3 font-semibold text-black transition-all hover:bg-stellar/90 hover:shadow-[0_0_28px_-6px_hsl(var(--stellar)/0.7)] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-stellar px-4 py-3 font-semibold text-black transition-all hover:bg-stellar/90 hover:shadow-[0_0_28px_-6px_hsl(var(--accent)/0.7)] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
       >
         {confirming ? (
           <>

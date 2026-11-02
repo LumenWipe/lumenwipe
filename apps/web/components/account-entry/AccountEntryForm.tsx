@@ -90,7 +90,7 @@ export default function AccountEntryForm() {
           />
         )}
 
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-fg-muted">
           We&apos;ll analyze this account&apos;s state so you can review and decide what happens to
           each balance before choosing a destination.
         </p>
@@ -99,7 +99,7 @@ export default function AccountEntryForm() {
       {error && (
         <div
           role="alert"
-          className="flex items-start gap-2 text-sm text-danger-fg bg-destructive/10 border border-destructive/20 rounded-lg p-3"
+          className="flex items-start gap-2 text-sm text-danger-fg bg-danger/10 border border-danger/20 rounded-lg p-3"
         >
           <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
           {error}
@@ -109,7 +109,7 @@ export default function AccountEntryForm() {
       <button
         onClick={handleAnalyze}
         disabled={!canProceed || analyzing}
-        className="w-full flex items-center justify-center gap-2 bg-stellar text-black font-semibold py-3 px-4 rounded-xl hover:bg-stellar/90 hover:shadow-[0_0_28px_-6px_hsl(var(--stellar)/0.7)] disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition-all"
+        className="w-full flex items-center justify-center gap-2 bg-stellar text-black font-semibold py-3 px-4 rounded-xl hover:bg-stellar/90 hover:shadow-[0_0_28px_-6px_hsl(var(--accent)/0.7)] disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition-all"
       >
         {analyzing ? (
           <>

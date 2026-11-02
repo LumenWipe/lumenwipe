@@ -101,10 +101,7 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
       <div className="flex items-center gap-2 mb-6">
-        <Link
-          href={`/${network}`}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
+        <Link href={`/${network}`} className="text-fg-muted hover:text-fg transition-colors">
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <h1 className="mkt-display text-xl font-bold text-white">Allowance inspector</h1>
@@ -151,7 +148,7 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
       {error && (
         <div
           role="alert"
-          className="mkt-panel border-destructive/30 rounded-xl px-4 py-3 mb-4 flex items-center gap-2 text-sm text-muted-foreground"
+          className="mkt-panel border-danger/30 rounded-xl px-4 py-3 mb-4 flex items-center gap-2 text-sm text-fg-muted"
         >
           <AlertTriangle className="h-4 w-4 shrink-0 text-danger-fg" />
           <span>{error}</span>

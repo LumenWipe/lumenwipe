@@ -68,7 +68,7 @@ export default function DestinationInput({
           {memoRequired ? (
             <span className="text-danger-fg ml-0.5">*</span>
           ) : (
-            <span className="text-muted-foreground font-normal">(optional)</span>
+            <span className="text-fg-muted font-normal">(optional)</span>
           )}
         </label>
         {memoReq?.requiresMemo ? (

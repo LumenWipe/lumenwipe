@@ -105,7 +105,7 @@ export default function Faq() {
   const baseId = useId();
 
   return (
-    <div className="divide-y divide-white/8 overflow-hidden rounded-2xl border border-white/10 bg-[hsl(var(--card)/0.6)]">
+    <div className="divide-y divide-white/8 overflow-hidden rounded-2xl border border-white/10 bg-surface/60">
       {ITEMS.map((item, i) => {
         const isOpen = open === i;
         return (

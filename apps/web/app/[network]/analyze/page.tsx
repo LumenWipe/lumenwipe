@@ -268,10 +268,8 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     return (
       <div role="status" className="max-w-2xl mx-auto px-4 py-20 flex flex-col items-center gap-4">
         <Loader2 aria-hidden="true" className="h-8 w-8 animate-spin text-stellar" />
-        <p className="text-muted-foreground text-sm">Analyzing account...</p>
-        <p className="text-xs text-muted-foreground/60 font-mono truncate max-w-xs">
-          {effectiveSource}
-        </p>
+        <p className="text-fg-muted text-sm">Analyzing account...</p>
+        <p className="text-xs text-fg-muted/60 font-mono truncate max-w-xs">{effectiveSource}</p>
       </div>
     );
   }
@@ -282,10 +280,10 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   if (error && !account) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12">
-        <div className="mkt-panel border-destructive/30 rounded-2xl p-6 text-center space-y-4">
+        <div className="mkt-panel border-danger/30 rounded-2xl p-6 text-center space-y-4">
           <AlertTriangle className="h-8 w-8 text-danger-fg mx-auto" />
           <p className="font-medium text-white">Analysis failed</p>
-          <p role="alert" className="text-sm text-muted-foreground">
+          <p role="alert" className="text-sm text-fg-muted">
             {error}
           </p>
           <Link
@@ -304,10 +302,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
       <div className="flex items-center gap-2 mb-6">
-        <Link
-          href={`/${routeNetwork}`}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
+        <Link href={`/${routeNetwork}`} className="text-fg-muted hover:text-fg transition-colors">
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <h1
@@ -322,7 +317,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       {planChangedNotice && (
         <div
           role="status"
-          className="mkt-panel rounded-xl px-4 py-3 mb-4 flex items-center gap-2 text-sm text-muted-foreground"
+          className="mkt-panel rounded-xl px-4 py-3 mb-4 flex items-center gap-2 text-sm text-fg-muted"
         >
           <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
           <span>{planChangedNotice}</span>
@@ -331,7 +326,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       {error && (
         <div
           role="alert"
-          className="mkt-panel border-destructive/30 rounded-xl px-4 py-3 mb-4 flex items-center gap-2 text-sm text-muted-foreground"
+          className="mkt-panel border-danger/30 rounded-xl px-4 py-3 mb-4 flex items-center gap-2 text-sm text-fg-muted"
         >
           <AlertTriangle className="h-4 w-4 shrink-0 text-danger-fg" />
           <span>{error}</span>
