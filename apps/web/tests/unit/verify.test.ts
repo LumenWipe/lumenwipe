@@ -67,6 +67,7 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
     protectedTokenContracts: [],
     xbullAssets: { "0": XLM_CONTRACT, "1": CONVERT_TOKEN, "2": OTHER_TOKEN },
     ownTokensByContract: {},
+    repayTokensByPool: {},
     ...over,
   };
 }
@@ -791,6 +792,7 @@ test("verifyCloseTransaction passes a mediated close to a memo-requiring exchang
         protectedTokenContracts: [],
         xbullAssets: {},
         ownTokensByContract: {},
+        repayTokensByPool: {},
       },
     })
   ).not.toThrow();
@@ -834,6 +836,7 @@ test("verifyCloseTransaction rejects a mediated close to a memo-requiring exchan
         protectedTokenContracts: [],
         xbullAssets: {},
         ownTokensByContract: {},
+        repayTokensByPool: {},
       },
     })
   ).toThrow(/requires a deposit memo/);
@@ -868,6 +871,7 @@ test("verifyCloseTransaction passes a direct close to a destination the registry
         protectedTokenContracts: [],
         xbullAssets: {},
         ownTokensByContract: {},
+        repayTokensByPool: {},
       },
     })
   ).not.toThrow();
@@ -1076,12 +1080,17 @@ const OTHER_POOL = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 // The registry's mainnet Soroswap router: the one contract a conversion may be entered through.
 const SOROSWAP_ROUTER = "CAG5LRYQ5JVEUI5TEID72EYOVX44TTUJT5BQR2J6J77FH65PCCFAJDDH";
 type ExitOp = Extract<IntentOperation, { type: "invoke_host_function" }>;
+/** `submit(from, spender, to, requests)` as the decoder renders it. */
+const blendSubmitArgs = (
+  requests: unknown[] = [{ address: XLM_CONTRACT, amount: "1000", request_type: 1 }],
+  [from, spender, to]: string[] = [SRC, SRC, SRC]
+): string[] => [from!, spender!, to!, JSON.stringify(requests)];
 const exit = (over: Partial<ExitOp> = {}): IntentOperation => ({
   source: SRC,
   type: "invoke_host_function",
   contract: POOL,
   function: "submit",
-  args: [],
+  args: blendSubmitArgs(),
   accountsReferenced: [SRC],
   contractsReferenced: [POOL],
   unsupportedAddressCount: 0,
@@ -1164,6 +1173,7 @@ test("an AMM withdrawal may invoke the protocol's router and name the pair's tok
   const op = exit({
     contract: ROUTER,
     function: "remove_liquidity",
+    args: [TOKEN, XLM_SAC, "100", "1", "1", SRC, "1788846802"],
     contractsReferenced: [POOL, ROUTER, TOKEN, XLM_SAC],
   });
   const functions = { [POOL]: [], [ROUTER]: ["remove_liquidity"] };
@@ -1223,7 +1233,11 @@ test("a Blend exit may claim emissions on its pool and withdraw a queued deposit
     exitContracts: [POOL, BACKSTOP],
     exitFunctions: { [POOL]: ["submit", "claim"], [BACKSTOP]: ["withdraw"] },
   });
-  const claim = exit({ function: "claim", contractsReferenced: [POOL] });
+  const claim = exit({
+    function: "claim",
+    args: [SRC, "[1,3]", SRC],
+    contractsReferenced: [POOL],
+  });
   expect(() => assertCloseIntent(exitOnly(claim), expected)).not.toThrow();
   // The backstop call names the pool it backs among its arguments.
   const withdraw = exit({
@@ -1286,7 +1300,7 @@ test("an Aquarius exit may call withdraw or claim on its pool, and the share tok
     contractsReferenced: [POOL, SHARE_TOKEN, XLM_SAC],
   });
   expect(() => assertCloseIntent(exitOnly(withdraw), expected)).not.toThrow();
-  const claim = exit({ function: "claim", contractsReferenced: [POOL] });
+  const claim = exit({ function: "claim", args: [SRC], contractsReferenced: [POOL] });
   expect(() => assertCloseIntent(exitOnly(claim), expected)).not.toThrow();
   expect(() => assertCloseIntent(exitOnly(exit({ function: "deposit" })), expected)).toThrow(
     /function LumenWipe does not use/
@@ -1346,6 +1360,7 @@ test("rejects a Soroswap router exit whose remove_liquidity call hides a transfe
   const op = exit({
     contract: ROUTER,
     function: "remove_liquidity",
+    args: [TOKEN, XLM_SAC, "100", "1", "1", SRC, "1788846802"],
     contractsReferenced: [POOL, ROUTER, TOKEN, XLM_SAC],
     subInvocations: [{ contract: TOKEN, function: "transfer", args: [SRC, ATTACKER, "100"] }],
   });
@@ -1355,7 +1370,7 @@ test("rejects a Soroswap router exit whose remove_liquidity call hides a transfe
     exitFunctions: { [POOL]: [], [ROUTER]: ["remove_liquidity"] },
   });
   expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
-    /other than this account or the protocol/
+    /something other than paying its liquidity share into its pair/
   );
 });
 
@@ -1442,17 +1457,115 @@ test("rejects a transfer-shaped sub-invocation whose argument count does not mat
   ).toThrow(/argument count/);
 });
 
-test("a sub-invocation on a contract that is not a held or position token is unaffected by this rule", () => {
-  // A pool calling another already-pinned exit contract (e.g. an oracle or a router leg) is
-  // covered by the existing contractsReferenced allow-list, not this token-specific rule.
-  const OTHER_EXIT_CONTRACT = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
-  const op = exit({
-    contractsReferenced: [POOL, OTHER_EXIT_CONTRACT],
-    subInvocations: [{ contract: OTHER_EXIT_CONTRACT, function: "anything_at_all", args: [] }],
+test("a sub-invocation on a contract outside the account's tokens is refused, whatever it calls", () => {
+  for (const fn of ["get_price", "transfer", "submit", "claim"]) {
+    const op = exit({
+      contractsReferenced: [POOL, OTHER_POOL],
+      subInvocations: [{ contract: OTHER_POOL, function: fn, args: [] }],
+    });
+    expect(() =>
+      assertCloseIntent(exitOnly(op), expectation({ exitContracts: [POOL, OTHER_POOL] }))
+    ).toThrow(/a contract that is not one of this account's tokens/);
+  }
+});
+
+test("submit and claim are refused on a token too", () => {
+  const expected = expectation({ heldTokenContracts: [TOKEN] });
+  for (const fn of ["submit", "claim"]) {
+    const op = exit({
+      contractsReferenced: [POOL, TOKEN],
+      subInvocations: [{ contract: TOKEN, function: fn, args: [SRC, SRC, SRC, "[]"] }],
+    });
+    expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
+      /a function on a token that LumenWipe does not use/
+    );
+  }
+});
+
+describe("Soroswap's router may move the LP share into its pair", () => {
+  const PAIR = OTHER_POOL;
+  const expected = expectation({
+    exitContracts: [PAIR, SOROSWAP_ROUTER, POOL],
+    exitFunctions: { [PAIR]: [], [SOROSWAP_ROUTER]: ["remove_liquidity"] },
   });
-  expect(() =>
-    assertCloseIntent(exitOnly(op), expectation({ exitContracts: [POOL, OTHER_EXIT_CONTRACT] }))
-  ).not.toThrow();
+  const removalArgs = [TOKEN, OTHER_TOKEN, "100", "1", "1", SRC, "1788846802"];
+  const removal = (sub: { contract: string; function: string; args: string[] }) =>
+    exit({
+      contract: SOROSWAP_ROUTER,
+      function: "remove_liquidity",
+      args: removalArgs,
+      contractsReferenced: [SOROSWAP_ROUTER],
+      subInvocations: [sub],
+    });
+  const share = { contract: PAIR, function: "transfer", args: [SRC, PAIR, "100"] };
+  const REFUSED = /something other than paying its liquidity share into its pair/;
+
+  test("as a transfer from the account to the pair itself", () => {
+    expect(() => assertCloseIntent(exitOnly(removal(share)), expected)).not.toThrow();
+  });
+
+  for (const [name, sub] of [
+    ["to another contract", { ...share, args: [SRC, SOROSWAP_ROUTER, "100"] }],
+    ["from another contract", { ...share, args: [SOROSWAP_ROUTER, PAIR, "100"] }],
+    ["with another function", { ...share, function: "burn" }],
+    ["with another argument count", { ...share, args: [SRC, PAIR, "100", "1"] }],
+    [
+      "on a contract with exit calls of its own",
+      { contract: SOROSWAP_ROUTER, function: "transfer", args: [SRC, SOROSWAP_ROUTER, "100"] },
+    ],
+    [
+      "on a contract that is not an exit contract",
+      { contract: POOL, function: "transfer", args: [SRC, POOL, "100"] },
+    ],
+  ] as const) {
+    test(`and not ${name}`, () => {
+      const call = { ...sub, args: [...sub.args] };
+      expect(() => assertCloseIntent(exitOnly(removal(call)), expected)).toThrow(REFUSED);
+    });
+  }
+
+  test("for the amount the removal names", () => {
+    const op = removal({ ...share, args: [SRC, PAIR, "101"] });
+    expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(REFUSED);
+  });
+
+  test("and nothing beside it", () => {
+    const heldToken = expectation({ ...expected, heldTokenContracts: [TOKEN] });
+    for (const other of [share, { contract: TOKEN, function: "burn", args: [SRC, "1"] }]) {
+      const op = { ...removal(share), subInvocations: [share, other] } as IntentOperation;
+      expect(() => assertCloseIntent(exitOnly(op), heldToken)).toThrow(REFUSED);
+    }
+    const tokenAlone = removal({
+      contract: TOKEN,
+      function: "transfer",
+      args: [SRC, SOROSWAP_ROUTER, "100"],
+    });
+    expect(() => assertCloseIntent(exitOnly(tokenAlone), heldToken)).toThrow(REFUSED);
+  });
+
+  for (const [name, args] of [
+    ["too few arguments", removalArgs.slice(0, 6)],
+    ["too many arguments", [...removalArgs, "1"]],
+    [
+      "another contract as the recipient",
+      [TOKEN, OTHER_TOKEN, "100", "1", "1", PAIR, "1788846802"],
+    ],
+  ] as const) {
+    test(`and a removal with ${name} is refused`, () => {
+      const op = { ...removal(share), args: [...args] } as IntentOperation;
+      expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
+        /an address other than the account being closed/
+      );
+    });
+  }
+
+  test("only through remove_liquidity", () => {
+    const op = { ...removal(share), function: "withdraw" } as IntentOperation;
+    const other = { ...expected, exitFunctions: { [SOROSWAP_ROUTER]: ["withdraw"], [PAIR]: [] } };
+    expect(() => assertCloseIntent(exitOnly(op), other)).toThrow(
+      /not one of this account's tokens/
+    );
+  });
 });
 
 // ─── Soroban token transfers (#161) ──────────────────────────────────────────
@@ -2223,9 +2336,6 @@ test("an exit through a contract outside the bundled registry may not touch XLM 
   ]) {
     const op = exit({ contractsReferenced: [POOL, XLM_SAC], subInvocations: [sub] });
     expect(() => assertCloseIntent(exitOnly(op), unregistered)).toThrow(/has not verified/);
-    expect(() =>
-      assertCloseIntent(exitOnly(op), { ...unregistered, registryContracts: [POOL] })
-    ).not.toThrow();
   }
   const shareBack = exit({
     contractsReferenced: [POOL, SHARE],
@@ -2247,6 +2357,220 @@ test("an exit through a contract outside the bundled registry may not touch XLM 
       ownTokensByContract: { [POOL]: [] },
     })
   ).toThrow(/has not verified/);
+});
+
+// ─── What an exit may authorize at a contract the registry names ─────────────
+
+describe("a Blend submit allows only withdraw and repay requests", () => {
+  const request = (type: unknown, over: object = {}) => ({
+    address: XLM_SAC,
+    amount: "1000",
+    request_type: type,
+    ...over,
+  });
+  const submit = (...requests: unknown[]) => exit({ args: blendSubmitArgs(requests) });
+  const REFUSED = /request of a lending pool that LumenWipe does not use/;
+  const OTHER_PARTY = /an address other than the account being closed/;
+
+  for (const type of [1, 3, 5]) {
+    test(`request type ${type} passes`, () => {
+      expect(() => assertCloseIntent(exitOnly(submit(request(type))), expectation())).not.toThrow();
+    });
+  }
+
+  for (const type of [0, 2, 4, 6, 7, 8, 9, 10]) {
+    test(`request type ${type} is refused, alone or beside an allowed one`, () => {
+      const expected = expectation();
+      expect(() => assertCloseIntent(exitOnly(submit(request(type))), expected)).toThrow(REFUSED);
+      expect(() =>
+        assertCloseIntent(exitOnly(submit(request(1), request(type))), expected)
+      ).toThrow(REFUSED);
+    });
+  }
+
+  test("every request in one submit may be an exit request", () => {
+    expect(() =>
+      assertCloseIntent(exitOnly(submit(request(5), request(3), request(1))), expectation())
+    ).not.toThrow();
+  });
+
+  const fine = JSON.stringify([request(1)]);
+  for (const [name, args, refusal] of [
+    ["no requests", [SRC, SRC, SRC, "[]"], REFUSED],
+    ["requests that are not a list", [SRC, SRC, SRC, JSON.stringify(request(1))], REFUSED],
+    ["requests that are not JSON", [SRC, SRC, SRC, "AAAA"], REFUSED],
+    ["a null request", [SRC, SRC, SRC, "[null]"], REFUSED],
+    ["a null list", [SRC, SRC, SRC, "null"], REFUSED],
+    ["too few arguments", [SRC, SRC, fine], OTHER_PARTY],
+    ["too many arguments", [SRC, SRC, SRC, fine, SRC], OTHER_PARTY],
+  ] as const) {
+    test(`${name} is refused`, () => {
+      expect(() => assertCloseIntent(exitOnly(exit({ args: [...args] })), expectation())).toThrow(
+        refusal
+      );
+    });
+  }
+
+  for (const [name, bad] of [
+    ["a type that is not a u32", request("1")],
+    ["a missing type", { address: XLM_SAC, amount: "1000" }],
+    ["a missing amount", { address: XLM_SAC, request_type: 1 }],
+    ["a missing address", { amount: "1000", request_type: 1 }],
+    ["an extra field", request(1, { extra: 1 })],
+    ["an address that is not a contract", request(1, { address: SRC })],
+    ["an address inside a list", request(1, { address: [XLM_SAC] })],
+    ["an amount of zero", request(1, { amount: "0" })],
+    ["an amount with trailing text", request(1, { amount: "1x" })],
+    ["a negative amount", request(1, { amount: "-1" })],
+    ["an amount that is not a string", request(1, { amount: 1 })],
+  ] as const) {
+    test(`a request with ${name} is refused`, () => {
+      expect(() => assertCloseIntent(exitOnly(submit(bad)), expectation())).toThrow(REFUSED);
+    });
+  }
+
+  for (const [position, party] of ["from", "spender", "to"].entries()) {
+    test(`${party} must be the account being closed, even when it names an allowed contract`, () => {
+      const parties = [SRC, SRC, SRC];
+      parties[position] = OTHER_POOL;
+      const op = exit({
+        args: blendSubmitArgs(undefined, parties),
+        contractsReferenced: [POOL, OTHER_POOL],
+      });
+      expect(() =>
+        assertCloseIntent(exitOnly(op), expectation({ exitContracts: [POOL, OTHER_POOL] }))
+      ).toThrow(/an address other than the account being closed/);
+    });
+  }
+
+  test("the same rule holds at a pool the registry does not name", () => {
+    expect(() =>
+      assertCloseIntent(
+        exitOnly(submit(request(0))),
+        expectation({ registryContracts: [], ownTokensByContract: { [POOL]: [XLM_SAC] } })
+      )
+    ).toThrow(REFUSED);
+  });
+});
+
+describe("a claim pays the account being closed", () => {
+  const expected = expectation({
+    exitContracts: [POOL, OTHER_POOL],
+    exitFunctions: { [POOL]: ["claim"] },
+  });
+  const claim = (args: string[]) =>
+    exit({ function: "claim", args, contractsReferenced: [POOL, OTHER_POOL] });
+
+  test("from the pool, in either protocol's shape", () => {
+    expect(() => assertCloseIntent(exitOnly(claim([SRC, "[1]", SRC])), expected)).not.toThrow();
+    expect(() => assertCloseIntent(exitOnly(claim([SRC])), expected)).not.toThrow();
+  });
+
+  test("and names no contract on either side", () => {
+    for (const args of [[SRC, "[1]", OTHER_POOL], [OTHER_POOL, "[1]", SRC], [OTHER_POOL], []]) {
+      expect(() => assertCloseIntent(exitOnly(claim(args)), expected)).toThrow(
+        /an address other than the account being closed/
+      );
+    }
+  });
+});
+
+describe("at a registry contract, XLM and classic assets move only as a repay into that pool", () => {
+  const REFUSED = /run the analysis again/;
+  const repay = expectation({
+    exitContracts: [POOL, OTHER_POOL],
+    exitFunctions: { [POOL]: ["submit"], [OTHER_POOL]: ["submit", "withdraw_liquidity"] },
+    heldTokenContracts: [XLM_SAC, TOKEN],
+    protectedTokenContracts: [XLM_SAC],
+    repayTokensByPool: { [POOL]: [XLM_SAC] },
+  });
+  const paying = (
+    sub: { contract: string; function: string; args: string[] },
+    over: Partial<ExitOp> = {}
+  ) =>
+    exit({
+      args: blendSubmitArgs([{ address: sub.contract, amount: "100", request_type: 5 }]),
+      contractsReferenced: [POOL, OTHER_POOL, XLM_SAC, TOKEN],
+      subInvocations: [sub],
+      ...over,
+    });
+  const transfer = { contract: XLM_SAC, function: "transfer", args: [SRC, POOL, "100"] };
+
+  test("a transfer from the account into the pool holding the debt passes", () => {
+    expect(() => assertCloseIntent(exitOnly(paying(transfer)), repay)).not.toThrow();
+  });
+
+  test("a token outside the protected set is not held to the repay list", () => {
+    const sub = { ...transfer, contract: TOKEN };
+    expect(() => assertCloseIntent(exitOnly(paying(sub)), repay)).not.toThrow();
+  });
+
+  test("with no debt in the read, the refusal says to run the analysis again", () => {
+    const stale = { ...repay, repayTokensByPool: {} };
+    const check = () => assertCloseIntent(exitOnly(paying(transfer)), stale);
+    expect(check).toThrow(VerificationError);
+    expect(check).toThrow(
+      "This exit would spend your XLM or a classic asset other than to repay a debt in your " +
+        "analysis. If this position changed since, run the analysis again."
+    );
+  });
+
+  test("a debt in one token does not open another", () => {
+    const usdcDebt = { ...repay, repayTokensByPool: { [POOL]: [TOKEN] } };
+    expect(() => assertCloseIntent(exitOnly(paying(transfer)), usdcDebt)).toThrow(REFUSED);
+  });
+
+  test("a debt in one pool does not open another", () => {
+    const elsewhere = {
+      contract: XLM_SAC,
+      function: "transfer",
+      args: [SRC, OTHER_POOL, "100"],
+    };
+    const op = paying(elsewhere, { contract: OTHER_POOL });
+    expect(() => assertCloseIntent(exitOnly(op), repay)).toThrow(REFUSED);
+  });
+
+  test("the transfer pays the pool that is being called, whatever the read lists", () => {
+    const toListedPool = paying(transfer, { contract: OTHER_POOL });
+    expect(() => assertCloseIntent(exitOnly(toListedPool), repay)).toThrow(REFUSED);
+    const bothListed = {
+      ...repay,
+      repayTokensByPool: { [POOL]: [XLM_SAC], [OTHER_POOL]: [XLM_SAC] },
+    };
+    expect(() => assertCloseIntent(exitOnly(toListedPool), bothListed)).toThrow(REFUSED);
+  });
+
+  for (const [name, sub] of [
+    ["an approval", { function: "approve", args: [SRC, POOL, "100", "1000"] }],
+    ["a burn", { function: "burn", args: [SRC, "100"] }],
+    ["a burn from an allowance", { function: "burn_from", args: [SRC, POOL, "100"] }],
+    ["a spend of an allowance", { function: "transfer_from", args: [POOL, SRC, POOL, "100"] }],
+    ["a transfer to the account itself", { function: "transfer", args: [SRC, SRC, "100"] }],
+    ["a transfer from elsewhere", { function: "transfer", args: [OTHER_POOL, POOL, "100"] }],
+    ["a transfer into another contract", { function: "transfer", args: [SRC, OTHER_POOL, "100"] }],
+    ["a transfer of the wrong shape", { function: "transfer", args: [SRC, POOL, "100", "1"] }],
+  ] as const) {
+    test(`${name} of a token with a debt is refused`, () => {
+      const op = paying({ contract: XLM_SAC, function: sub.function, args: [...sub.args] });
+      expect(() => assertCloseIntent(exitOnly(op), repay)).toThrow(REFUSED);
+    });
+  }
+
+  for (const [protocol, fn] of [
+    ["Phoenix", "withdraw_liquidity"],
+    ["Aquarius", "withdraw"],
+    ["Soroswap", "remove_liquidity"],
+    ["FxDAO", "pay_debt"],
+    ["a Blend backstop", "withdraw"],
+  ] as const) {
+    test(`${protocol}'s ${fn} may not authorize one`, () => {
+      const args = fn === "remove_liquidity" ? [POOL, TOKEN, "1", "1", "1", SRC, "1"] : [];
+      const op = paying(transfer, { function: fn, args });
+      const expected = { ...repay, exitFunctions: { [POOL]: [fn] } };
+      const withoutDebt = { ...expected, repayTokensByPool: {} };
+      expect(() => assertCloseIntent(exitOnly(op), withoutDebt)).toThrow(REFUSED);
+    });
+  }
 });
 
 test("a swap may authorize only paying in the token it sells, from this account, up to the amount it sells", () => {
@@ -2367,6 +2691,8 @@ const redirectTokenCallTo = (fixture: RealExitEnvelope, recipient: string): stri
     ];
   });
 
+const TESTNET_XLM = Asset.native().contractId(Networks.TESTNET);
+
 function verifyReal(
   fixture: RealExitEnvelope,
   unsignedXdr: string,
@@ -2459,6 +2785,13 @@ for (const fixture of REAL_EXIT_ENVELOPES) {
       expect(() => verifyReal(fixture, altered)).toThrow(/function on a token/);
     });
 
+    test("rejects its token call moved onto XLM", () => {
+      const altered = mutatedEnvelope(fixture, (_tx, op) => {
+        tokenCall(op).contractAddress = new Address(TESTNET_XLM).toScAddress();
+      });
+      expect(() => verifyReal(fixture, altered)).toThrow(/run the analysis again/);
+    });
+
     test("rejects a sub-invocation function its arguments do not fit", () => {
       const altered = mutatedEnvelope(fixture, (_tx, op) => {
         tokenCall(op).functionName = "approve";
@@ -2510,3 +2843,385 @@ for (const fixture of REAL_EXIT_ENVELOPES) {
     });
   });
 }
+
+/**
+ * A Blend exit in the bytes the API builds, read by the decoder production uses: `submit` and
+ * `claim` as the SDK encodes them, with the authorization tree mainnet pools record for a repay.
+ */
+describe("a Blend exit as the decoder reads it", () => {
+  const ACCOUNT = Keypair.random().publicKey();
+  const USDC_ISSUER = Keypair.random().publicKey();
+  const USDC_SAC = new Asset("USDC", USDC_ISSUER).contractId(Networks.TESTNET);
+  const PARTY = new Address(ACCOUNT).toScVal();
+  const accountRead = (positions: object[]): AccountState =>
+    ({
+      address: ACCOUNT,
+      nativeBalanceLumens: "100.0000000",
+      signers: [{ key: ACCOUNT, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 0, med: 0, high: 0 },
+      trustlines: [
+        {
+          asset: `USDC:${USDC_ISSUER}`,
+          code: "USDC",
+          issuer: USDC_ISSUER,
+          balance: "5",
+          isAuthorized: true,
+          isAuthorizedToMaintainLiabilities: false,
+        },
+      ],
+      defiPositions: {
+        positions: positions.map((p) => ({ protocol: "blend", contractAddress: POOL, ...p })),
+      },
+    }) as unknown as AccountState;
+  const supply = { positionType: "supply", assetAddress: TESTNET_XLM, bTokenAmount: "1" };
+  const borrow = (asset: string) => ({
+    positionType: "borrow",
+    assetAddress: asset,
+    dTokenAmount: "1",
+  });
+
+  const field = (key: string, val: xdr.ScVal): xdr.ScMapEntry =>
+    new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol(key), val });
+  const requestEntries = (asset: string, type: number): xdr.ScMapEntry[] => [
+    field("address", new Address(asset).toScVal()),
+    field("amount", nativeToScVal(BigInt(1000), { type: "i128" })),
+    field("request_type", nativeToScVal(type, { type: "u32" })),
+  ];
+  const requests = (...entries: xdr.ScMapEntry[][]): xdr.ScVal =>
+    xdr.ScVal.scvVec(entries.map((entry) => xdr.ScVal.scvMap(entry)));
+
+  const authorized = (
+    contract: string,
+    name: string,
+    args: xdr.ScVal[],
+    subInvocations: xdr.SorobanAuthorizedInvocation[] = []
+  ): xdr.SorobanAuthorizedInvocation =>
+    new xdr.SorobanAuthorizedInvocation({
+      function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
+        new xdr.InvokeContractArgs({
+          contractAddress: new Address(contract).toScAddress(),
+          functionName: name,
+          args,
+        })
+      ),
+      subInvocations,
+    });
+  const transferCall = (token: string, to: string): xdr.SorobanAuthorizedInvocation =>
+    authorized(token, "transfer", [
+      PARTY,
+      new Address(to).toScVal(),
+      nativeToScVal(BigInt(1000), { type: "i128" }),
+    ]);
+
+  function envelopeOf(
+    contract: string,
+    fn: string,
+    args: xdr.ScVal[],
+    roots: xdr.SorobanAuthorizedInvocation[]
+  ): string {
+    const op = Operation.invokeContractFunction({
+      contract,
+      function: fn,
+      args,
+      auth: roots.map(
+        (rootInvocation) =>
+          new xdr.SorobanAuthorizationEntry({
+            credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
+            rootInvocation,
+          })
+      ),
+    });
+    return new TransactionBuilder(new Account(ACCOUNT, "1"), {
+      fee: "1000",
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(op)
+      .setTimeout(300)
+      .build()
+      .toXDR();
+  }
+
+  const envelope = (
+    fn: string,
+    args: xdr.ScVal[],
+    transfers: { token: string; to?: string }[] = []
+  ): string =>
+    envelopeOf(POOL, fn, args, [
+      authorized(
+        POOL,
+        fn,
+        args,
+        transfers.map(({ token, to = POOL }) => transferCall(token, to))
+      ),
+    ]);
+
+  const submit = (...entries: xdr.ScMapEntry[][]): xdr.ScVal[] => [
+    PARTY,
+    PARTY,
+    PARTY,
+    requests(...entries),
+  ];
+  const verify = (unsignedXdr: string, read: AccountState): void =>
+    verifyCloseTransaction({
+      unsignedXdr,
+      network: "testnet",
+      expected: {
+        source: ACCOUNT,
+        destination: DEST,
+        mediatorRequired: false,
+        nativeBalance: read.nativeBalanceLumens,
+        memo: null,
+        claimTrustlineAssets: [],
+        accountSigners: read.signers,
+        accountThresholds: read.thresholds,
+        transfers: {},
+        tokenTransfers: {},
+        classicConversions: {},
+        tokenConversions: {},
+        ...exitExpectations(read, "testnet"),
+      },
+    });
+
+  test("a withdrawal of supply or collateral passes", () => {
+    const read = accountRead([supply]);
+    for (const type of [1, 3]) {
+      const xdrString = envelope("submit", submit(requestEntries(TESTNET_XLM, type)));
+      expect(() => verify(xdrString, read)).not.toThrow();
+    }
+  });
+
+  test("a repay of XLM or a classic asset the read shows a debt in passes", () => {
+    for (const token of [TESTNET_XLM, USDC_SAC]) {
+      const repay = envelope("submit", submit(requestEntries(token, 5)), [{ token }]);
+      expect(() => verify(repay, accountRead([supply, borrow(token)]))).not.toThrow();
+    }
+  });
+
+  test("a repay and a withdrawal may share one submit", () => {
+    const both = envelope(
+      "submit",
+      submit(requestEntries(USDC_SAC, 5), requestEntries(TESTNET_XLM, 3)),
+      [{ token: USDC_SAC }]
+    );
+    expect(() => verify(both, accountRead([supply, borrow(USDC_SAC)]))).not.toThrow();
+  });
+
+  test("a repay the read shows no debt for asks for a fresh analysis, before anything is signed", () => {
+    const repay = envelope("submit", submit(requestEntries(TESTNET_XLM, 5)), [
+      { token: TESTNET_XLM },
+    ]);
+    expect(() => verify(repay, accountRead([supply]))).toThrow(VerificationError);
+    expect(() => verify(repay, accountRead([supply]))).toThrow(/run the analysis again/);
+  });
+
+  test("a request type outside the exit set is refused", () => {
+    for (const type of [0, 2]) {
+      const xdrString = envelope("submit", submit(requestEntries(TESTNET_XLM, type)), [
+        { token: TESTNET_XLM },
+      ]);
+      expect(() => verify(xdrString, accountRead([supply, borrow(TESTNET_XLM)]))).toThrow(
+        /request of a lending pool/
+      );
+    }
+  });
+
+  test("a request type of another integer width is refused", () => {
+    const [address, amount] = requestEntries(TESTNET_XLM, 1);
+    const wide = field("request_type", nativeToScVal(BigInt(1), { type: "u64" }));
+    const xdrString = envelope("submit", submit([address!, amount!, wide]));
+    expect(() => verify(xdrString, accountRead([supply]))).toThrow(/request of a lending pool/);
+  });
+
+  test("a contract in the to position is refused", () => {
+    const [from, spender, , list] = submit(requestEntries(TESTNET_XLM, 1));
+    const xdrString = envelope("submit", [from!, spender!, new Address(POOL).toScVal(), list!]);
+    expect(() => verify(xdrString, accountRead([supply]))).toThrow(
+      /an address other than the account being closed/
+    );
+  });
+
+  describe("below the root, only token calls", () => {
+    const OUTSIDE = StrKey.encodeContract(Buffer.alloc(32, 21));
+    const OUTSIDE_SHARE = StrKey.encodeContract(Buffer.alloc(32, 22));
+    const withOutside = accountRead([supply]);
+    withOutside.defiPositions.positions.push({
+      protocol: "aquarius",
+      positionType: "lp",
+      contractAddress: OUTSIDE,
+      shareAmount: "1",
+      shareToken: OUTSIDE_SHARE,
+      usdValue: null,
+    } as AccountState["defiPositions"]["positions"][number]);
+    const root = [PARTY, nativeToScVal(BigInt(1), { type: "u128" }), xdr.ScVal.scvVec([])];
+    const poolCall = (fn: string, args: xdr.ScVal[]) => authorized(POOL, fn, args);
+    const toOutside = new Address(OUTSIDE).toScVal();
+    const ids = xdr.ScVal.scvVec([nativeToScVal(1, { type: "u32" })]);
+    const REFUSED = /a contract that is not one of this account's tokens/;
+
+    for (const [name, inner] of [
+      [
+        "a pool's submit paying elsewhere",
+        poolCall("submit", [PARTY, PARTY, toOutside, requests(requestEntries(TESTNET_XLM, 1))]),
+      ],
+      ["a pool's submit taking a debt", poolCall("submit", submit(requestEntries(TESTNET_XLM, 4)))],
+      ["a pool's claim paying elsewhere", poolCall("claim", [PARTY, ids, toOutside])],
+      ["a pool's own exit, in order", poolCall("submit", submit(requestEntries(TESTNET_XLM, 1)))],
+    ] as const) {
+      test(`${name} is refused one level down`, () => {
+        const xdrString = envelopeOf(OUTSIDE, "withdraw", root, [
+          authorized(OUTSIDE, "withdraw", root, [inner]),
+        ]);
+        expect(() => verify(xdrString, withOutside)).toThrow(REFUSED);
+      });
+
+      test(`${name} is refused two levels down`, () => {
+        const xdrString = envelopeOf(OUTSIDE, "withdraw", root, [
+          authorized(OUTSIDE, "withdraw", root, [
+            authorized(
+              OUTSIDE_SHARE,
+              "burn",
+              [PARTY, nativeToScVal(BigInt(1), { type: "i128" })],
+              [inner]
+            ),
+          ]),
+        ]);
+        expect(() => verify(xdrString, withOutside)).toThrow(REFUSED);
+      });
+
+      test(`${name} is refused as a second authorization`, () => {
+        const xdrString = envelopeOf(OUTSIDE, "withdraw", root, [
+          authorized(OUTSIDE, "withdraw", root),
+          inner,
+        ]);
+        expect(() => verify(xdrString, withOutside)).toThrow(REFUSED);
+      });
+    }
+
+    test("a second authorization of the root call with other arguments is refused", () => {
+      const args = submit(requestEntries(TESTNET_XLM, 1));
+      const other = [PARTY, PARTY, toOutside, requests(requestEntries(TESTNET_XLM, 1))];
+      const xdrString = envelopeOf(POOL, "submit", args, [
+        authorized(POOL, "submit", args),
+        authorized(POOL, "submit", other),
+      ]);
+      expect(() => verify(xdrString, withOutside)).toThrow(REFUSED);
+    });
+
+    test("only the root call itself stands apart from what it authorizes", () => {
+      const args = submit(requestEntries(TESTNET_XLM, 1));
+      for (const roots of [
+        [authorized(POOL, "submit", args, [authorized(POOL, "submit", args)])],
+        [authorized(POOL, "submit", args), authorized(OUTSIDE, "submit", args)],
+        [authorized(POOL, "submit", args), authorized(POOL, "claim", args)],
+        [authorized(POOL, "submit", args), authorized(POOL, "submit", args.slice(0, 3))],
+      ]) {
+        const xdrString = envelopeOf(POOL, "submit", args, roots);
+        expect(() => verify(xdrString, withOutside)).toThrow(REFUSED);
+      }
+    });
+
+    test("a second authorization repeating the root call is not a new call", () => {
+      const args = submit(requestEntries(TESTNET_XLM, 1));
+      const xdrString = envelopeOf(POOL, "submit", args, [
+        authorized(POOL, "submit", args),
+        authorized(POOL, "submit", args),
+      ]);
+      expect(() => verify(xdrString, withOutside)).not.toThrow();
+    });
+  });
+
+  describe("a Soroswap removal", () => {
+    const ROUTER = "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD";
+    const PAIR = "CDH4NEG6TAII2AXGJY52WSMMOGCPMFIQBBH245ATW2TIZ7MBYM23YOAR";
+    const OUTSIDE = StrKey.encodeContract(Buffer.alloc(32, 23));
+    const read = accountRead([]);
+    for (const [protocol, contractAddress, tokens] of [
+      ["soroswap", PAIR, [TESTNET_XLM, USDC_SAC]],
+      ["soroswap", OUTSIDE, []],
+    ] as const) {
+      read.defiPositions.positions.push({
+        protocol,
+        positionType: "lp",
+        contractAddress,
+        shareAmount: "1",
+        tokens: [...tokens],
+        usdValue: null,
+      } as unknown as AccountState["defiPositions"]["positions"][number]);
+    }
+    const i128 = (value: number): xdr.ScVal => nativeToScVal(BigInt(value), { type: "i128" });
+    const argsFor = (to: xdr.ScVal, liquidity = 1000): xdr.ScVal[] => [
+      new Address(TESTNET_XLM).toScVal(),
+      new Address(USDC_SAC).toScVal(),
+      i128(liquidity),
+      i128(1),
+      i128(1),
+      to,
+      nativeToScVal(BigInt(NOW), { type: "u64" }),
+    ];
+    const OTHER = /something other than paying its liquidity share into its pair/;
+
+    function removal(
+      args: xdr.ScVal[],
+      subs: xdr.SorobanAuthorizedInvocation[],
+      free: xdr.SorobanAuthorizedInvocation[] = []
+    ): string {
+      return envelopeOf(ROUTER, "remove_liquidity", args, [
+        authorized(ROUTER, "remove_liquidity", args, subs),
+        ...free,
+      ]);
+    }
+
+    test("passes with the share paid into the pair", () => {
+      const xdrString = removal(argsFor(PARTY), [transferCall(PAIR, PAIR)]);
+      expect(() => verify(xdrString, read)).not.toThrow();
+    });
+
+    test("refuses the share paid anywhere else", () => {
+      const xdrString = removal(argsFor(PARTY), [transferCall(PAIR, ROUTER)]);
+      expect(() => verify(xdrString, read)).toThrow(OTHER);
+    });
+
+    test("refuses another recipient of the tokens", () => {
+      const xdrString = removal(argsFor(new Address(OUTSIDE).toScVal()), [
+        transferCall(PAIR, PAIR),
+      ]);
+      expect(() => verify(xdrString, read)).toThrow(/an address other than the account/);
+    });
+
+    test("refuses a second transfer", () => {
+      const xdrString = removal(argsFor(PARTY), [
+        transferCall(PAIR, PAIR),
+        transferCall(PAIR, PAIR),
+      ]);
+      expect(() => verify(xdrString, read)).toThrow(OTHER);
+    });
+
+    test("refuses a transfer for another amount", () => {
+      const xdrString = removal(argsFor(PARTY, 1), [transferCall(PAIR, PAIR)]);
+      expect(() => verify(xdrString, read)).toThrow(OTHER);
+    });
+
+    test("refuses a separate authorization for another amount", () => {
+      const xdrString = removal(argsFor(PARTY, 1), [], [transferCall(PAIR, PAIR)]);
+      expect(() => verify(xdrString, read)).toThrow(OTHER);
+    });
+
+    test("refuses a separate authorization beside the transfer", () => {
+      const xdrString = removal(
+        argsFor(PARTY),
+        [transferCall(PAIR, PAIR)],
+        [transferCall(PAIR, PAIR)]
+      );
+      expect(() => verify(xdrString, read)).toThrow(OTHER);
+    });
+  });
+
+  test("a claim pays the account, and a contract in the to position is refused", () => {
+    const ids = xdr.ScVal.scvVec([nativeToScVal(1, { type: "u32" })]);
+    const claim = (to: xdr.ScVal) => envelope("claim", [PARTY, ids, to]);
+    expect(() => verify(claim(PARTY), accountRead([supply]))).not.toThrow();
+    expect(() => verify(claim(new Address(POOL).toScVal()), accountRead([supply]))).toThrow(
+      /an address other than the account being closed/
+    );
+  });
+});

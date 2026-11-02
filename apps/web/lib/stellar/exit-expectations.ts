@@ -49,6 +49,8 @@ export interface ExitExpectations {
   xbullAssets: Record<string, string>;
   /** Per position contract, the tokens the account read names as that position's own. */
   ownTokensByContract: Record<string, string[]>;
+  /** Per Blend pool, the tokens of the account read's `borrow` positions in that pool. */
+  repayTokensByPool: Record<string, string[]>;
 }
 
 function xbullAssetsFor(network: Network): Record<string, string> {
@@ -71,6 +73,7 @@ export function exitExpectations(
       protectedTokenContracts: [Asset.native().contractId(NETWORK_PASSPHRASES[network])],
       xbullAssets: xbullAssetsFor(network),
       ownTokensByContract: {},
+      repayTokensByPool: {},
     };
   }
   const passphrase = NETWORK_PASSPHRASES[network];
@@ -121,6 +124,7 @@ export function exitExpectations(
         .map((t) => t.contract),
     ]),
   ];
+  const borrows = positions.filter((p) => p.protocol === "blend" && p.positionType === "borrow");
   return {
     exitContracts,
     heldTokenContracts,
@@ -143,6 +147,12 @@ export function exitExpectations(
           ...("tokens" in p && p.tokens ? p.tokens : []),
           ...("shareToken" in p && p.shareToken ? [p.shareToken] : []),
         ],
+      ])
+    ),
+    repayTokensByPool: Object.fromEntries(
+      borrows.map(({ contractAddress: pool }) => [
+        pool,
+        borrows.filter((b) => b.contractAddress === pool).map((b) => b.assetAddress),
       ])
     ),
   };
