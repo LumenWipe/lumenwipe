@@ -54,7 +54,7 @@ with g.subgraph(name="cluster_wallet") as w:
            fontname=FONT, fontsize="10", penwidth="1.2")
     w.node("kit",
            hl("stellar-wallets-kit", "signTransaction (all wallets)",
-              "signAuthEntry (Freighter · Hana · WalletConnect · Ledger)"),
+              "signAuthEntry (Varial · Hana · WalletConnect · Ledger)"),
            fillcolor=F_CLIENT, color=B_CLIENT)
 
 # ── Secret-key path ───────────────────────────────────────────────────────────

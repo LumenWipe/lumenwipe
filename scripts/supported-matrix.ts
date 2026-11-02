@@ -77,7 +77,7 @@ const PROTOCOLS: Record<string, ProtocolFacts> = {
 };
 
 const WALLETS: Record<string, string> = {
-  Freighter: "Freighter",
+  Freighter: "Varial (formerly Freighter)",
   xBull: "xBull",
   Albedo: "Albedo",
   Rabet: "Rabet",

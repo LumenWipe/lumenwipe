@@ -53,10 +53,10 @@
 <!-- wallet -->
 <g id="node2" class="node">
 <title>wallet</title>
-<path fill="#eff6ff" stroke="#3b82f6" stroke-width="1.6" d="M374.78,-501.5C374.78,-501.5 104.78,-501.5 104.78,-501.5 98.78,-501.5 92.78,-495.5 92.78,-489.5 92.78,-489.5 92.78,-466.5 92.78,-466.5 92.78,-460.5 98.78,-454.5 104.78,-454.5 104.78,-454.5 374.78,-454.5 374.78,-454.5 380.78,-454.5 386.78,-460.5 386.78,-466.5 386.78,-466.5 386.78,-489.5 386.78,-489.5 386.78,-495.5 380.78,-501.5 374.78,-501.5"/>
+<path fill="#eff6ff" stroke="#3b82f6" stroke-width="1.6" d="M366.78,-501.5C366.78,-501.5 112.78,-501.5 112.78,-501.5 106.78,-501.5 100.78,-495.5 100.78,-489.5 100.78,-489.5 100.78,-466.5 100.78,-466.5 100.78,-460.5 106.78,-454.5 112.78,-454.5 112.78,-454.5 366.78,-454.5 366.78,-454.5 372.78,-454.5 378.78,-460.5 378.78,-466.5 378.78,-466.5 378.78,-489.5 378.78,-489.5 378.78,-495.5 372.78,-501.5 366.78,-501.5"/>
 <text text-anchor="start" x="193.28" y="-484.7" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00" fill="#1e293b">Wallet Adapter</text>
 <text text-anchor="start" x="180.78" y="-475.3" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">stellar&#45;wallets&#45;kit (SEP&#45;43)</text>
-<text text-anchor="start" x="108.78" y="-466.3" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Freighter · Albedo · LOBSTR · Hana · WalletConnect · more</text>
+<text text-anchor="start" x="116.78" y="-466.3" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Varial · Albedo · LOBSTR · Hana · WalletConnect · more</text>
 </g>
 <!-- signer -->
 <g id="node5" class="node">
@@ -69,7 +69,7 @@
 <!-- wallet&#45;&gt;signer -->
 <g id="edge3" class="edge">
 <title>wallet&#45;&gt;signer</title>
-<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M92.52,-476.28C56.57,-467.29 25.14,-449.01 13.78,-414 -4.59,-357.35 -4.59,-336.65 13.78,-280 17.17,-269.56 19.6,-266.72 28.28,-260 60.76,-234.86 101.81,-216.44 139.08,-203.43"/>
+<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M100.66,-478.15C61.39,-469.93 25.99,-451.63 13.78,-414 -4.59,-357.35 -4.59,-336.65 13.78,-280 17.17,-269.56 19.6,-266.72 28.28,-260 60.76,-234.86 101.81,-216.44 139.08,-203.43"/>
 <polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="140.38,-206.13 147.47,-200.57 138.46,-200.5 140.38,-206.13"/>
 </g>
 <!-- sk -->
