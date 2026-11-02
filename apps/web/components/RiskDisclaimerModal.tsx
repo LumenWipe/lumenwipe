@@ -11,6 +11,7 @@ import {
   KeyRound,
   Unlink,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 const STORAGE_KEY = "lumenwipe_risk_accepted";
 
@@ -48,7 +49,7 @@ export default function RiskDisclaimerModal() {
       <div className="relative w-full max-w-md rounded-2xl border border-white/15 bg-surface shadow-2xl">
         {/* Header */}
         <div className="flex items-start gap-3 border-b border-white/10 px-5 py-4">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning">
             <AlertTriangle className="h-5 w-5" />
           </div>
           <div>
@@ -95,12 +96,9 @@ export default function RiskDisclaimerModal() {
 
         {/* Footer */}
         <div className="border-t border-white/10 px-5 py-4">
-          <button
-            onClick={handleAccept}
-            className="w-full rounded-xl bg-stellar py-2.5 text-sm font-semibold text-black transition-all hover:bg-stellar/90 hover:shadow-[0_0_24px_-4px_hsl(var(--accent)/0.6)]"
-          >
+          <Button onClick={handleAccept} className="w-full">
             I understand, continue
-          </button>
+          </Button>
           <p className="mt-2.5 text-center text-[0.68rem] text-fg-subtle">
             This notice appears once per browser session.
           </p>

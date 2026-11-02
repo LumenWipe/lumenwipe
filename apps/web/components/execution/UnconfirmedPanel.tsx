@@ -2,6 +2,7 @@
 
 import { Clock } from "lucide-react";
 import { STILL_UNCONFIRMED_NOTICE, UNCONFIRMED_NOTICE } from "@/lib/utils/user-error";
+import { Button } from "@/components/ui/button";
 
 interface UnconfirmedPanelProps {
   hash: string;
@@ -27,12 +28,9 @@ export default function UnconfirmedPanel({
       <p className="text-xs text-fg-subtle">
         Transaction hash: <span className="font-mono break-all text-white/70">{hash}</span>
       </p>
-      <button
-        onClick={onCheck}
-        className="w-full py-3 px-4 rounded-xl font-semibold text-sm bg-stellar text-black hover:bg-stellar/90 transition-all"
-      >
+      <Button onClick={onCheck} className="w-full">
         Check again
-      </button>
+      </Button>
     </div>
   );
 }

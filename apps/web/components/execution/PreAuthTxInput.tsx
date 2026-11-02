@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle, Info, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { toUserMessage } from "@/lib/utils/user-error";
 import type { AccountSigner } from "@/types/account";
+import { Button } from "@/components/ui/button";
 
 function shortAddr(addr: string): string {
   return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
@@ -83,14 +84,16 @@ export default function PreAuthTxInput({ signer, disabled, onSubmit }: Props) {
           error ? "border-danger" : "border-white/10"
         )}
       />
-      <button
+      <Button
+        size="sm"
         type="button"
         onClick={submit}
         disabled={disabled || submitting || submitted || value.trim().length === 0}
-        className="self-start shrink-0 rounded-lg bg-stellar text-black text-xs font-semibold px-3 py-2 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-stellar/90 transition-colors"
+        loading={submitting}
+        className="self-start shrink-0"
       >
         {submitting ? "Submitting…" : "Submit pre-authorized transaction"}
-      </button>
+      </Button>
       {error && (
         <p className="flex items-center gap-1.5 text-xs text-danger-fg">
           <XCircle className="h-3.5 w-3.5 shrink-0" />

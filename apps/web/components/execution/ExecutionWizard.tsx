@@ -17,6 +17,7 @@ import SigningProgress from "./SigningProgress";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { SecretKeySigner, WalletKitSigner, type TransactionSigner } from "@/lib/stellar/signer";
 import { ensureWalletKitInitialized } from "@/lib/wallet-kit/client";
+import { Button } from "@/components/ui/button";
 
 interface ExecutionWizardProps {
   network: Network;
@@ -403,13 +404,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 disabled={running}
               />
               {renderSignerPicker()}
-              <button
-                onClick={execute}
-                disabled={!signerReady}
-                className="w-full py-3 px-4 rounded-xl font-semibold text-sm bg-stellar text-black hover:bg-stellar/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-              >
+              <Button onClick={execute} disabled={!signerReady} className="w-full">
                 Add signature
-              </button>
+              </Button>
             </div>
           ) : failed ? (
             <div className="flex flex-col gap-3">
@@ -436,14 +433,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               >
                 Change wallet or key
               </button>
-              <button
-                ref={retryRef}
-                onClick={execute}
-                disabled={!signerReady}
-                className="w-full py-3 px-4 rounded-xl font-semibold text-sm bg-stellar text-black hover:bg-stellar/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-              >
+              <Button ref={retryRef} onClick={execute} disabled={!signerReady} className="w-full">
                 Retry
-              </button>
+              </Button>
               {retrySafe !== false && (
                 <p className="text-xs text-fg-subtle">
                   Safe to retry. LumenWipe re-reads your account first, so a confirmed transaction
@@ -489,18 +481,14 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 </span>
               </label>
 
-              <button
+              <Button
+                variant="danger"
                 onClick={execute}
                 disabled={!signerReady || !confirmed}
-                className={cn(
-                  "w-full py-3 px-4 rounded-xl font-semibold text-sm transition-all",
-                  "flex items-center justify-center gap-2",
-                  "bg-danger text-danger-on-fill hover:bg-danger/90",
-                  "disabled:opacity-40 disabled:cursor-not-allowed"
-                )}
+                className="w-full"
               >
                 Sign &amp; execute close
-              </button>
+              </Button>
             </>
           )}
         </div>

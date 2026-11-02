@@ -6,6 +6,7 @@ import { HashXPreimageSigner, type TransactionSigner } from "@/lib/stellar/signe
 import { verifyHashXPreimage, InvalidPreimageError } from "@/lib/stellar/hash-x";
 import { cn } from "@/lib/utils/cn";
 import type { AccountSigner } from "@/types/account";
+import { Button } from "@/components/ui/button";
 
 function shortAddr(addr: string): string {
   return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
@@ -78,14 +79,15 @@ export default function HashXPreimageInput({ signer, disabled, onApply }: Props)
             error ? "border-danger" : "border-white/10"
           )}
         />
-        <button
+        <Button
+          size="sm"
           type="button"
           onClick={submit}
           disabled={disabled || applied || value.trim().length === 0}
-          className="shrink-0 rounded-lg bg-stellar text-black text-xs font-semibold px-3 py-2 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-stellar/90 transition-colors"
+          className="shrink-0"
         >
           Apply preimage
-        </button>
+        </Button>
       </div>
       {error && (
         <p className="flex items-center gap-1.5 text-xs text-danger-fg">
