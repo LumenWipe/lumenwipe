@@ -207,7 +207,7 @@ function rejectedBy(resultXdr: unknown): TxSubmitError {
   return new TxSubmitError(translateRpcError("FAILED", raw), extractResultCode(raw));
 }
 
-function serializeResultXdr(resultXdr: unknown): string {
+export function serializeResultXdr(resultXdr: unknown): string {
   if (!resultXdr) return "";
   if (typeof resultXdr === "string") return resultXdr;
   try {

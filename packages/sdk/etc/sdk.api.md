@@ -272,6 +272,25 @@ export class CloseStateChangedError extends Error {
     readonly apiError: unknown;
 }
 
+// @public
+export interface CloseStatusRemaining {
+    // (undocumented)
+    sponsored: number;
+    // (undocumented)
+    sponsoring: number;
+    // (undocumented)
+    subentries: number;
+}
+
+// @public
+export interface CloseStatusResponse {
+    // (undocumented)
+    phase: "open" | "ready_to_merge" | "closed" | "unknown";
+    remaining?: CloseStatusRemaining;
+    // (undocumented)
+    source: string;
+}
+
 // @public (undocumented)
 export interface CloseTransaction {
     // (undocumented)
@@ -624,6 +643,7 @@ export class LumenWipeClient {
     constructor(options: LumenWipeClientOptions);
     // (undocumented)
     closePlan(body: ClosePlanRequest, network?: Network, options?: RequestOptions): Promise<PlanResponse>;
+    closeStatus(source: string, network?: Network, options?: RequestOptions): Promise<CloseStatusResponse>;
     closeTransactions(body: CloseTransactionsRequest, network?: Network, options?: RequestOptions): Promise<TransactionsResponse>;
     feeBumpSponsor(transaction: string, network?: Network, options?: RequestOptions): Promise<FeeBumpSponsorResponse>;
     // (undocumented)
@@ -634,6 +654,7 @@ export class LumenWipeClient {
         fromAsset: string;
         amount: string;
     }, network?: Network, options?: RequestOptions): Promise<PathResponse>;
+    getTransaction(hash: string, network?: Network, options?: RequestOptions): Promise<TransactionLookupResponse>;
     // (undocumented)
     health(options?: RequestOptions): Promise<HealthResponse>;
     // (undocumented)
@@ -1003,6 +1024,14 @@ export interface SubInvocationCall {
 }
 
 // @public
+export interface SubmitPendingDetails {
+    // (undocumented)
+    hash: string;
+    // (undocumented)
+    status: "pending";
+}
+
+// @public
 export interface SubmitRequest {
     // (undocumented)
     signedXdr: string;
@@ -1017,6 +1046,28 @@ export interface SubmitResponse {
     // (undocumented)
     status: "success";
 }
+
+// @public
+export type TransactionLookupResponse = {
+    status: "confirmed";
+    hash: string;
+    ledger: number;
+} | {
+    status: "failed";
+    hash: string;
+    ledger: number;
+    message: string;
+    resultCode?: string;
+} | {
+    status: "not_found";
+    hash: string;
+    searched: {
+        oldestLedger: number;
+        oldestLedgerCloseTime: number;
+        latestLedger: number;
+        latestLedgerCloseTime: number;
+    };
+};
 
 // @public (undocumented)
 export interface TransactionsResponse {

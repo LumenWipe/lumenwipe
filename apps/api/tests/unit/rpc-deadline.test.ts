@@ -89,12 +89,25 @@ test("a deadline that expires during a submit neither rejects the wrapper nor ab
 });
 
 test("a method outside the allowlist passes through untouched, even past the deadline", async () => {
+  const hash = spyOn(rpc.Server.prototype, "pollTransaction").mockImplementation(() =>
+    later({ status: "SUCCESS" } as never, 120)
+  );
+  try {
+    const result = await inRequest(30, () => getRpcServer("testnet").pollTransaction("h"));
+    expect(result).toEqual({ status: "SUCCESS" } as never);
+  } finally {
+    hash.mockRestore();
+  }
+});
+
+test("a by-hash read stops waiting at the deadline", async () => {
   const hash = spyOn(rpc.Server.prototype, "getTransaction").mockImplementation(() =>
     later({ status: "SUCCESS" } as never, 120)
   );
   try {
-    const result = await inRequest(30, () => getRpcServer("testnet").getTransaction("h"));
-    expect(result).toEqual({ status: "SUCCESS" } as never);
+    await expect(
+      inRequest(30, () => getRpcServer("testnet").getTransaction("h"))
+    ).rejects.toBeInstanceOf(UpstreamError);
   } finally {
     hash.mockRestore();
   }

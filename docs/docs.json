@@ -106,7 +106,9 @@
               "POST /v1/{network}/close/plan",
               "POST /v1/{network}/close/batch-plan",
               "POST /v1/{network}/close/transactions",
-              "POST /v1/{network}/submit"
+              "POST /v1/{network}/submit",
+              "GET /v1/{network}/transactions/{hash}",
+              "GET /v1/{network}/close/status"
             ]
           },
           {

@@ -394,7 +394,7 @@ export class CloseService {
         fail(
           "submit_rejected",
           e.message,
-          502,
+          422,
           e.resultCode ? { resultCode: e.resultCode } : undefined
         );
       }

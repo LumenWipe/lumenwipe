@@ -1912,6 +1912,47 @@
               }
             }
           },
+          "422": {
+            "description": "The network rejected the transaction. Nothing in it took effect.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "submit_rejected"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            }
+          },
           "429": {
             "description": "Rate limit exceeded for this key.",
             "content": {
@@ -1957,7 +1998,7 @@
             }
           },
           "502": {
-            "description": "The network rejected the transaction.",
+            "description": "The outcome is unknown: look the transaction up before retrying.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1974,7 +2015,6 @@
                             "code": {
                               "type": "string",
                               "enum": [
-                                "submit_rejected",
                                 "submit_failed"
                               ]
                             }
@@ -2046,6 +2086,467 @@
           }
         ],
         "summary": "Submit a client-signed transaction and wait for confirmation.",
+        "tags": [
+          "close"
+        ]
+      }
+    },
+    "/v1/{network}/transactions/{hash}": {
+      "get": {
+        "description": "`not_found` means this RPC provider has no record of the hash in the ledger window named by `searched`. It does not mean the transaction did not land or will not land: it may still be queued, or be older than the window. Only a transaction whose time bounds ended before `searched.latestLedgerCloseTime` can no longer land.",
+        "operationId": "TransactionsController_transaction",
+        "parameters": [
+          {
+            "name": "hash",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "network",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "testnet",
+                "mainnet"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The outcome: confirmed, failed or not_found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionLookupResponseDto"
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid network or transaction hash.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "invalid_network",
+                                "invalid_tx_hash"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "unauthorized"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded for this key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "rate_limited"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/Retry-After"
+              }
+            }
+          },
+          "503": {
+            "description": "The network could not be read. Retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "service_unavailable"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/Retry-After"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api-key": []
+          }
+        ],
+        "summary": "Look a transaction up by hash, without submitting anything.",
+        "tags": [
+          "close"
+        ]
+      }
+    },
+    "/v1/{network}/close/status": {
+      "get": {
+        "description": "Stateless: nothing about a close is kept between calls. `remaining` covers what the ledger counts on the account, not claimable balances or DeFi positions. `closed` is informational and never proves that a particular close finished: confirm that by the transaction's hash.",
+        "operationId": "TransactionsController_status",
+        "parameters": [
+          {
+            "name": "source",
+            "required": true,
+            "in": "query",
+            "description": "The account being closed.",
+            "schema": {}
+          },
+          {
+            "name": "network",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "testnet",
+                "mainnet"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The phase, and the remaining work for an account still on the ledger.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloseStatusResponseDto"
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid network or source account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "invalid_network",
+                                "invalid_source"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "unauthorized"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded for this key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "rate_limited"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/Retry-After"
+              }
+            }
+          },
+          "503": {
+            "description": "The account could not be read. Retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "service_unavailable"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/Retry-After"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api-key": []
+          }
+        ],
+        "summary": "Read how far an account is from closed, from live state.",
         "tags": [
           "close"
         ]
@@ -4398,49 +4899,8 @@
               }
             }
           },
-          "500": {
-            "description": "The mediator key is misconfigured.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/ErrorResponseDto"
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "error": {
-                          "type": "object",
-                          "properties": {
-                            "code": {
-                              "type": "string",
-                              "enum": [
-                                "mediator_key_misconfiguration"
-                              ]
-                            }
-                          }
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            "headers": {
-              "RateLimit-Limit": {
-                "$ref": "#/components/headers/RateLimit-Limit"
-              },
-              "RateLimit-Remaining": {
-                "$ref": "#/components/headers/RateLimit-Remaining"
-              },
-              "RateLimit-Reset": {
-                "$ref": "#/components/headers/RateLimit-Reset"
-              }
-            }
-          },
           "503": {
-            "description": "Mediator flow not configured on this server, or the destination could not be read.",
+            "description": "Mediator flow not available on this server, or the destination could not be read.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4458,6 +4918,7 @@
                               "type": "string",
                               "enum": [
                                 "mediator_not_configured",
+                                "mediator_key_misconfiguration",
                                 "service_unavailable"
                               ]
                             }
@@ -8215,6 +8676,132 @@
           "status",
           "hash",
           "ledger"
+        ]
+      },
+      "LookupSearchedDto": {
+        "type": "object",
+        "properties": {
+          "oldestLedger": {
+            "type": "number",
+            "example": 5395712
+          },
+          "oldestLedgerCloseTime": {
+            "type": "number",
+            "description": "Unix seconds.",
+            "example": 1793002147
+          },
+          "latestLedger": {
+            "type": "number",
+            "example": 5516671
+          },
+          "latestLedgerCloseTime": {
+            "type": "number",
+            "description": "Unix seconds.",
+            "example": 1793606995
+          }
+        },
+        "required": [
+          "oldestLedger",
+          "oldestLedgerCloseTime",
+          "latestLedger",
+          "latestLedgerCloseTime"
+        ]
+      },
+      "TransactionLookupResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "failed",
+              "not_found"
+            ],
+            "example": "confirmed"
+          },
+          "hash": {
+            "type": "string",
+            "description": "The hash that was looked up, lowercase.",
+            "example": "a1b2c3...d4e5f6"
+          },
+          "ledger": {
+            "type": "number",
+            "description": "Set when confirmed or failed.",
+            "example": 123456
+          },
+          "message": {
+            "type": "string",
+            "description": "Set when failed: why, in plain language."
+          },
+          "resultCode": {
+            "type": "string",
+            "description": "Set when failed, if it could be decoded."
+          },
+          "searched": {
+            "description": "Set when not_found: the ledger window this provider searched.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LookupSearchedDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "hash"
+        ]
+      },
+      "CloseStatusRemainingDto": {
+        "type": "object",
+        "properties": {
+          "subentries": {
+            "type": "number",
+            "example": 3
+          },
+          "sponsoring": {
+            "type": "number",
+            "example": 0
+          },
+          "sponsored": {
+            "type": "number",
+            "example": 0
+          }
+        },
+        "required": [
+          "subentries",
+          "sponsoring",
+          "sponsored"
+        ]
+      },
+      "CloseStatusResponseDto": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "The account asked about."
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "open",
+              "ready_to_merge",
+              "closed",
+              "unknown"
+            ],
+            "example": "open"
+          },
+          "remaining": {
+            "description": "Present while the account is on the ledger.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CloseStatusRemainingDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "source",
+          "phase"
         ]
       },
       "StatsTotalsDto": {

@@ -48,6 +48,8 @@ Every method takes an optional trailing `network` that overrides the client defa
 | `mediatorSign(transaction)`                          | Co-signs the mediator forward payment for an exchange close.                                    |
 | `feeBumpSponsor(transaction)`                        | Wraps a zero-fee transaction in a fee-bump envelope for an account that cannot pay its own fee. |
 | `getAllowances(address)`                             | Every live SEP-41 allowance the account has granted.                                            |
+| `getTransaction(hash)`                               | Looks a transaction up by hash: `confirmed`, `failed` or `not_found`. Sends nothing.            |
+| `closeStatus(source)`                                | The phase of a close and its remaining work, from live state. Informational.                    |
 | `revokeAllowance({ owner, token, spender })`         | Builds the unsigned transaction that revokes one allowance.                                     |
 
 `runClose` is a standalone function, not a client method. See [runClose](/sdk/run-close).

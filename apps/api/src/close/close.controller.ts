@@ -210,8 +210,10 @@ export class CloseController {
     "Invalid network, or invalid or unsigned/undecodable transaction envelope.",
     ["invalid_network", "invalid_signed_xdr", "invalid_signature", "invalid_body"]
   )
-  @ApiErrorResponse(502, "The network rejected the transaction.", [
+  @ApiErrorResponse(422, "The network rejected the transaction. Nothing in it took effect.", [
     "submit_rejected",
+  ])
+  @ApiErrorResponse(502, "The outcome is unknown: look the transaction up before retrying.", [
     "submit_failed",
   ])
   @ApiErrorResponse(
