@@ -71,6 +71,7 @@ function stubFeeBumpSponsor(impl: (...args: unknown[]) => Promise<unknown>): voi
 beforeEach(() => {
   useDemolishStore.setState({ unconfirmedSubmission: null, sessionId: "session" });
   spyOn(sessionStore, "saveUnconfirmed").mockImplementation(async () => true);
+  spyOn(sessionStore, "loadSession").mockImplementation(async () => ({ id: "session" }) as never);
   stubFetchCloseTransactions(async () => {
     throw new Error("not mocked in this test");
   });
@@ -1663,14 +1664,11 @@ test("useCloseExecution › an envelope with no upper time bound is never sent",
   expect(useDemolishStore.getState().lastError).toMatch(/no time limit/);
 });
 
-test.each([
-  ["a failed write", () => Promise.reject(new Error("quota")), "session"],
-  ["a missing record", () => Promise.resolve(false), "session"],
-  ["no session", () => Promise.resolve(true), null],
-] as const)("useCloseExecution › %s stops before anything is sent", async (_, write, sessionId) => {
+test("useCloseExecution › a failed write of the hash stops before anything is sent", async () => {
   const { sourceKeypair } = mergeSetup();
-  useDemolishStore.setState({ sessionId });
-  spyOn(sessionStore, "saveUnconfirmed").mockImplementation(write);
+  spyOn(sessionStore, "saveUnconfirmed").mockImplementation(() =>
+    Promise.reject(new Error("quota"))
+  );
   let sent = 0;
   stubSubmitViaApi(async () => {
     sent++;
@@ -1686,6 +1684,90 @@ test.each([
   expect(state.unconfirmedSubmission).toBeNull();
   expect(state.lastError).toContain(HASH_NOT_KEPT);
   expect(state.lastError).toContain("No new transaction was sent.");
+});
+
+test("useCloseExecution › a session that cannot be put back stops before anything is signed", async () => {
+  const { sourceKeypair } = mergeSetup();
+  spyOn(sessionStore, "loadSession").mockImplementation(async () => null);
+  spyOn(sessionStore, "saveSession").mockImplementation(() => Promise.reject(new Error("quota")));
+  const signer = realSigner(sourceKeypair);
+  const sign = spyOn(signer, "sign");
+  let sent = 0;
+  stubSubmitViaApi(async () => {
+    sent++;
+    return {};
+  });
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(signer);
+  });
+  expect(sign).not.toHaveBeenCalled();
+  expect(sent).toBe(0);
+  expect(useDemolishStore.getState().lastError).toContain(HASH_NOT_KEPT);
+});
+
+test.each([
+  ["a session id", "session"],
+  ["no session id", null],
+] as const)(
+  "useCloseExecution › a record dismissed before the first transaction is put back, with %s",
+  async (_, sessionId) => {
+    const { sourceKeypair } = mergeSetup();
+    useDemolishStore.setState({ sessionId });
+    const held = new Set<string>();
+    spyOn(sessionStore, "loadSession").mockImplementation(
+      async (id) => (held.has(id) ? { id } : null) as never
+    );
+    const saved = spyOn(sessionStore, "saveSession").mockImplementation(async (record) => {
+      held.add(record.id);
+    });
+    const written = spyOn(sessionStore, "saveUnconfirmed").mockImplementation(async (id, sub) =>
+      sub ? held.has(id) : true
+    );
+    stubSubmitViaApi(async () => ({}));
+    const { result } = renderHook(() => useCloseExecution());
+    await act(async () => {
+      await result.current.run(realSigner(sourceKeypair));
+    });
+    expect(saved).toHaveBeenCalledTimes(1);
+    expect(saved.mock.calls[0]?.[0].sourceAddress).toBe(sourceKeypair.publicKey());
+    expect(written.mock.calls.some(([, sub]) => sub !== null)).toBe(true);
+    expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+  }
+);
+
+test("useCloseExecution › a record dismissed between transactions is put back and the close ends", async () => {
+  const { sourceKeypair } = twoRoundSetup([
+    planStep(0, "NORMALIZE_SIGNERS", "pending"),
+    planStep(1, "MERGE", "pending"),
+  ]);
+  useDemolishStore.setState({ sessionId: "session" });
+  let present = true;
+  spyOn(sessionStore, "loadSession").mockImplementation(
+    async (id) => (present ? { id } : null) as never
+  );
+  const saved = spyOn(sessionStore, "saveSession").mockImplementation(async () => {
+    present = true;
+  });
+  const hashes: string[] = [];
+  spyOn(sessionStore, "saveUnconfirmed").mockImplementation(async (_id, sub) => {
+    if (!sub) return true;
+    if (!present) return false;
+    hashes.push(sub.hash);
+    return true;
+  });
+  stubSubmitViaApi(async () => {
+    present = false;
+    return {};
+  });
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(saved).toHaveBeenCalledTimes(1);
+  expect(hashes).toHaveLength(2);
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+  expect(useDemolishStore.getState().lastError).toBeNull();
 });
 
 test("useCloseExecution › a failed clear after settling never stops the close", async () => {

@@ -108,6 +108,7 @@ async function runWith(
 beforeEach(() => {
   spyOn(verifyModule, "verifyCloseTransaction").mockImplementation(() => {});
   spyOn(sessionStore, "saveUnconfirmed").mockImplementation(async () => true);
+  spyOn(sessionStore, "loadSession").mockImplementation(async () => ({ id: "session" }) as never);
   useDemolishStore.getState().reset();
   useDemolishStore.setState({ sessionId: "session" });
   useNetworkStore.setState({ network: "testnet" });

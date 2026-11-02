@@ -46,6 +46,7 @@ import {
 } from "@/lib/stellar/signature-weight";
 import { lookupViaApi, submitViaApi } from "@/lib/stellar/submit-via-api";
 import { mergesAccount, submissionHash, submissionValidUntil } from "@/lib/stellar/submission";
+import { ensureCloseSession } from "@/lib/session/close-record";
 import { findUnresolved } from "@/lib/session/recovery";
 import { clearUnconfirmedFor, saveUnconfirmed } from "@/lib/session/store";
 import { requestMediatorCosignature } from "@/lib/stellar/mediator";
@@ -73,10 +74,11 @@ export interface SignatureStatus {
   remainingSigners: AccountSigner[];
 }
 
-async function keepDurably(sessionId: string | null, submission: UnresolvedSubmission) {
-  if (!sessionId) return false;
+async function keepDurably(submission: UnresolvedSubmission): Promise<boolean> {
   try {
-    return await saveUnconfirmed(sessionId, submission);
+    await ensureCloseSession(useNetworkStore.getState().network);
+    const { sessionId } = useDemolishStore.getState();
+    return sessionId !== null && (await saveUnconfirmed(sessionId, submission));
   } catch (err) {
     console.error("[session] could not keep the unconfirmed hash:", err);
     return false;
@@ -87,9 +89,9 @@ async function keepDurably(sessionId: string | null, submission: UnresolvedSubmi
  *  memory a refresh would walk around the hold, so a failed save stops the send. Clearing never
  *  stops anything: the transaction settled, and a stale record costs one extra lookup. */
 async function recordSubmission(submission: UnresolvedSubmission | null): Promise<void> {
-  const { sessionId, sourceAddress, setUnconfirmedSubmission } = useDemolishStore.getState();
+  const { sourceAddress, setUnconfirmedSubmission } = useDemolishStore.getState();
   if (submission) {
-    if (!(await keepDurably(sessionId, submission))) throw new UserFacingError(HASH_NOT_KEPT);
+    if (!(await keepDurably(submission))) throw new UserFacingError(HASH_NOT_KEPT);
     setUnconfirmedSubmission(submission);
     return;
   }
@@ -224,6 +226,10 @@ export function useCloseExecution() {
         useDemolishStore.getState().setUnconfirmedSubmission(recorded.unconfirmed);
       }
       try {
+        // Found here, before a signature or a sponsorship is spent on a send that could not start.
+        await ensureCloseSession(network).catch(() => {
+          throw new UserFacingError(HASH_NOT_KEPT);
+        });
         const { mergeConfirmed } = await runClose(
           {
             planHash: useDemolishStore.getState().planHash ?? undefined,

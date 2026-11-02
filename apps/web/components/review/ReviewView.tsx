@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ShieldCheck, AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
 import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
-import { saveSession } from "@/lib/session/store";
+import { saveCloseSession } from "@/lib/session/close-record";
 import { formatXlm } from "@/lib/utils/amounts";
 import PlanStepAccordion from "@/components/review/PlanStepAccordion";
 import AccountSummaryCard from "@/components/plan/AccountSummaryCard";
@@ -43,25 +43,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
     if (!sourceAddress || !destinationAddress) return;
     setConfirming(true);
 
-    if (!sessionId) initSession();
-    const id = useDemolishStore.getState().sessionId;
-    if (id) {
-      const now = new Date().toISOString();
-      await saveSession({
-        id,
-        network,
-        sourceAddress,
-        destinationAddress,
-        memo,
-        memoType,
-        mediatorRequired,
-        completedSteps: [],
-        currentStepIndex: 0,
-        status: "in_progress",
-        createdAt: now,
-        updatedAt: now,
-      });
-    }
+    await saveCloseSession(network);
 
     setPhase("STEP_EXECUTING");
     router.push(`/${network}/execute`);
