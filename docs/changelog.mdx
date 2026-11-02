@@ -18,6 +18,7 @@ As of 2026-10-10, the mediator flow (exchange closes) and sponsored fees are ava
 - **API:** `mediator_key_misconfiguration` is now `503` with `Retry-After` and a neutral message instead of `500`.
 - **API:** `submit` reads by hash before it reports a failure and answers within 35 seconds. When no verdict arrives, `confirmation_timeout` carries `details.status` set to `pending` and `details.hash`.
 - **API:** `GET /v1/{network}/transactions/{hash}` looks a transaction up without submitting anything, and `GET /v1/{network}/close/status` reports a close's phase and remaining work from live state.
+- **Web:** a timed-out or interrupted submit no longer shows an error. The app sends the same signed transaction again a bounded number of times, then shows the hash and a check action, and a close counts as finished only when the hash computed from the signed merge is confirmed.
 - **Web:** a proxy with no API configuration answers `503` with `Retry-After` instead of `500` or `502`.
 
 ## 2026-10

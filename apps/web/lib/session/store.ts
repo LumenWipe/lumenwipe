@@ -1,4 +1,5 @@
 import { openDB } from "idb";
+import type { UnresolvedSubmission } from "@lumenwipe/sdk";
 import type { SessionRecord } from "@/types/session";
 
 const DB_NAME = "lumenwipe";
@@ -22,6 +23,27 @@ export async function getDb() {
 export async function saveSession(record: SessionRecord): Promise<void> {
   const db = await getDb();
   await db.put(STORE_NAME, { ...record, updatedAt: new Date().toISOString() });
+}
+
+/** Keeps a session's unconfirmed hash across a refresh, or drops it once settled. */
+export async function saveUnconfirmed(
+  id: string,
+  submission: UnresolvedSubmission | null
+): Promise<void> {
+  const db = await getDb();
+  const record = (await db.get(STORE_NAME, id)) as SessionRecord | undefined;
+  if (!record) return;
+  const { unconfirmed: _dropped, ...rest } = record;
+  const kept = submission
+    ? {
+        unconfirmed: {
+          hash: submission.hash,
+          covers: submission.covers,
+          validUntil: submission.validUntil,
+        },
+      }
+    : {};
+  await db.put(STORE_NAME, { ...rest, ...kept, updatedAt: new Date().toISOString() });
 }
 
 export async function loadSession(id: string): Promise<SessionRecord | null> {

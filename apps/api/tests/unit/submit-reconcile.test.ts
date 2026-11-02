@@ -8,7 +8,14 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 import type { rpc } from "@stellar/stellar-sdk";
-import { POLL_INTERVAL_MS, SETTLE_WINDOW_MS, SUBMIT_BUDGET_MS } from "@/config/constants";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import {
+  POLL_INTERVAL_MS,
+  RPC_READ_TIMEOUT_MS,
+  SETTLE_WINDOW_MS,
+  SUBMIT_BUDGET_MS,
+} from "@/config/constants";
 import { submitAndWait, type SubmitClock } from "@/lib/stellar/submit";
 import { TxPendingError, TxSubmitError, TxUnsettledError } from "@/lib/utils/errors";
 
@@ -294,5 +301,26 @@ describe("the budget", () => {
       )
     ).rejects.toBeInstanceOf(TxUnsettledError);
     expect(counts.sends).toBe(1);
+  });
+});
+
+describe("the budgets nest", () => {
+  const web = resolve(import.meta.dir, "../../../web");
+  const read = (path: string) => readFileSync(resolve(web, path), "utf8");
+
+  test("API budget < SDK timeout < route maxDuration < browser timeout", () => {
+    const route = read("app/api/v1/[network]/submit/route.ts");
+    const maxDuration = Number(/export const maxDuration = (\d+)/.exec(route)?.[1]) * 1000;
+    const sdkTimeout = Number(
+      /timeout: ([\d_]+)/.exec(read("lib/api/server-client.ts"))?.[1]?.replace("_", "")
+    );
+    const browser = Number(
+      /SUBMIT_TIMEOUT_MS = ([\d_]+)/
+        .exec(read("lib/stellar/submit-via-api.ts"))?.[1]
+        ?.replace("_", "")
+    );
+    expect(SUBMIT_BUDGET_MS + RPC_READ_TIMEOUT_MS).toBeLessThanOrEqual(sdkTimeout);
+    expect(sdkTimeout).toBeLessThan(maxDuration);
+    expect(maxDuration).toBeLessThan(browser);
   });
 });

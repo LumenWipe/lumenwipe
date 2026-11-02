@@ -37,6 +37,31 @@ await runClose({
 
 `verify` is where the security of your integration lives. `runClose` guarantees it runs before every signature, but only your implementation decides what it accepts. Two signing guards of the LumenWipe web app are not part of `runClose`, so your `sign` and `submit` need their own: never attach a hash(x) preimage to a transaction that does not remove that same signer, and never submit a transaction that removes signers without an `account_merge` unless the master key has signed it and the same transaction lowers every threshold to 1 or below. See [Verification](/sdk/verification).
 
+## Unknown outcomes
+
+Without `reconcile`, a failed `submit` is thrown as it is. Pass `reconcile` and `runClose` settles an unknown outcome by hash instead:
+
+```ts
+await runClose({
+  ...deps,
+  prepare: async (tx, xdr) => addCoSignatureOrSponsorship(tx, xdr),
+  reconcile: {
+    hashOf: (xdr) => TransactionBuilder.fromXDR(xdr, passphrase).hash().toString("hex"),
+    closesAccount: (xdr) => envelopeMergesAccount(xdr, source),
+    validUntil: (xdr) => envelopeMaxTime(xdr),
+    lookup: (hash) => client.getTransaction(hash),
+    onSubmission: (submission) => saveSomewhereDurable(submission),
+    unresolved: loadFromSomewhereDurable(),
+  },
+});
+```
+
+`hashOf` must run on your side, on the exact final envelope, with your own network passphrase. The SDK has no Stellar dependency, so it never computes a hash, and it never takes one from the API: an answer naming any other hash leaves the outcome unknown.
+
+Everything but a `4xx` from `submit` counts as unknown. `runClose` then sends the same bytes again, at most `SUBMIT_RESEND_ATTEMPTS` (2) times, `SUBMIT_RESEND_DELAY_MS` (5 seconds) apart. `prepare` runs once per transaction, so a resend never repeats a co-signature or a sponsorship. If that settles nothing it looks the hash up, then throws `CloseOutcomeUnknownError` with a `submission` to pass back as `unresolved`, or `CloseTransactionFailedError` if the transaction failed on the ledger.
+
+An `unresolved` submission is looked up, never sent. A confirmed merge ends the close, and `account_not_found` alone never does: it counts only when the merge's own hash is confirmed. `not_found` stays unknown until `validUntil` plus `SUBMISSION_GIVE_UP_MARGIN_SECONDS` (120) has passed by both your clock and the ledger close time in the lookup, and then the close returns to a fresh round. Persist only what `UnresolvedSubmission` holds, never the signed envelope.
+
 ## Multisig and partial signing
 
 A round can change the account's signers and thresholds: signer normalization removes extra signers and lowers the thresholds. Judge `requiredWeight` and `sign` against the response's `sourceAccount`, the read the round was built from, with each confirmed `SetOptions` applied on top as its transaction lands. Against an earlier read, a later transaction asks for weight the account no longer needs, or for a signature from a key it no longer has, which the network refuses.

@@ -9,6 +9,7 @@ import * as closeExecution from "@/hooks/useCloseExecution";
 import * as walletKit from "@/hooks/useWalletKitConnection";
 import * as sessionStore from "@/lib/session/store";
 import { fromHex } from "@/lib/stellar/hex";
+import { UNCONFIRMED_NOTICE } from "@/lib/utils/user-error";
 
 // ExecutionWizard calls useRouter() (to navigate to /complete on success) - outside of a
 // real Next.js app router tree that throws "invariant expected app router to be mounted".
@@ -44,10 +45,16 @@ function stubCloseExecution(): void {
           signer: { key: string; weight: number; type: string },
           xdr: string
         ) => submitPreAuthTxImpl(signer, xdr),
+        checkUnconfirmed: () => checkImpl(),
+        retrySafe: currentRetrySafe,
+        stillUnconfirmed: currentStillUnconfirmed,
       }) as unknown as ReturnType<typeof closeExecution.useCloseExecution>
   );
 }
 
+let checkImpl: () => Promise<void> = async () => {};
+let currentRetrySafe = true;
+let currentStillUnconfirmed = false;
 let currentProgressStatus: string | null = null;
 let currentSignatureStatus: {
   requiredWeight: number;
@@ -286,6 +293,40 @@ test("execution-wizard › the failed state says under Retry that retrying is sa
 });
 
 // #102: pre-auth-tx signer support.
+test("execution-wizard › a retry that is not safe drops the note under Retry", async () => {
+  currentRetrySafe = false;
+  useDemolishStore.setState({ phase: "STEP_FAILED", lastError: "It carried a preimage." } as never);
+  runImpl = async () => {};
+
+  render(<ExecutionWizard network="testnet" />);
+
+  await screen.findByRole("button", { name: /retry/i });
+  expect(screen.queryByText(/Safe to retry/)).toBeNull();
+  currentRetrySafe = true;
+});
+
+test("execution-wizard › an unknown outcome shows the hash and a check, never failed or a retry", async () => {
+  const hash = "a".repeat(64);
+  const check = mock(async () => {});
+  checkImpl = check;
+  useDemolishStore.setState({
+    phase: "STEP_UNCONFIRMED",
+    lastError: null,
+    unconfirmedSubmission: { hash, covers: ["MERGE"], validUntil: null },
+  });
+  render(<ExecutionWizard network="testnet" />);
+
+  expect(screen.getByTestId("unconfirmed-panel").textContent).toContain(hash);
+  expect(document.body.textContent).toContain(UNCONFIRMED_NOTICE);
+  expect(document.body.textContent).not.toMatch(/failed|safe to retry/i);
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+  });
+  expect(check).toHaveBeenCalledTimes(1);
+  useDemolishStore.setState({ unconfirmedSubmission: null, phase: "STEP_EXECUTING" });
+});
+
 test("execution-wizard › a preauth_tx signer among remainingSigners renders its explanation, an XDR textarea, and the persistent warning", async () => {
   const preAuthKey = "TAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJRY"; // any-shaped preauth key for display purposes
   currentSignatureStatus = {

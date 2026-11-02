@@ -7,6 +7,32 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-02
+
+### Added
+
+- `client.getTransaction(hash)` looks a transaction up by hash without sending anything, and
+  `client.closeStatus(source)` reports a close's phase and remaining work from live state. Both
+  are retried like every other read. `closed` from `closeStatus` is informational: it never proves
+  that a given close finished.
+- `runClose` takes an opt-in `reconcile` and a `prepare` step. With them, an unknown submit outcome
+  is settled by the hash the client computed: the same bytes are sent again at most
+  `SUBMIT_RESEND_ATTEMPTS` (2) times, then the hash is looked up, then `CloseOutcomeUnknownError`
+  carries a submission to pass back as `reconcile.unresolved`. `CloseTransactionFailedError` reports
+  a failure on the ledger. `resolveSubmission`, `isSubmitRefused` and `submissionClosesAccount` are
+  exported. Without `reconcile`, `runClose` behaves as before. `client.submit` is still never retried.
+- `DemolishPhase` gains `STEP_UNCONFIRMED`, and the types `SubmitPendingDetails`,
+  `TransactionLookupResponse`, `CloseStatusResponse` and `CloseStatusRemaining` are exported.
+
+### Changed
+
+- `submit_rejected` is `422` instead of `502`, and `mediator_key_misconfiguration` is `503` instead
+  of `500`. `isApiErrorCode` is unaffected; anything branching on the status is not.
+- `confirmation_timeout` arrives within about 35 seconds rather than 90 and carries `details` with
+  `status: "pending"` and the `hash`. It stays an error on purpose: a client that reads `hash` from
+  a success must never count a pending transaction as confirmed.
+- `submit_failed` carries `details.hash` once the API has tried to send.
+
 ## [0.13.0] - 2026-10-31
 
 ### Added

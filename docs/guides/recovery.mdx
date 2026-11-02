@@ -48,7 +48,9 @@ Every confirmed step stays confirmed. To continue, resume the close in the app, 
 
 If you submit the identical signed transaction a second time, the API first checks whether it already confirmed and, if so, reports the success instead of sending it again.
 
-The SDK never retries `submit` for you, so an integration has to make this check itself. See [Retrying safely](/sdk/errors#retrying-safely).
+The app does this for you. When a response is lost, it sends the same signed transaction again a bounded number of times, and if the answer is still unknown it shows the hash and a check action rather than an error. It asks for no new signature, and after a refresh it only looks the hash up. The app treats the close as finished only when the hash it computed from the merge you signed is confirmed. What it shows comes from the API, so an explorer is the independent check.
+
+`client.submit` never retries on its own, so an integration has to make this check itself, or pass `reconcile` to `runClose`. See [Retrying safely](/sdk/errors#retrying-safely).
 
 ### You lost the connection after signing
 

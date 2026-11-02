@@ -1,21 +1,56 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ShieldCheck, Zap, GitMerge, AlertOctagon, RotateCcw, ShieldOff, X } from "lucide-react";
 import type { Network } from "@/config/networks";
 import AccountEntryForm from "@/components/account-entry/AccountEntryForm";
 import { useSessionRecovery } from "@/hooks/useSessionRecovery";
-import { deleteSession } from "@/lib/session/store";
+import { deleteSession, saveUnconfirmed } from "@/lib/session/store";
+import { lookupViaApi } from "@/lib/stellar/submit-via-api";
+import {
+  CHECK_FAILED_NOTICE,
+  CLOSE_FINISHED_NOTICE,
+  STILL_UNCONFIRMED_NOTICE,
+  UNCONFIRMED_NOTICE,
+} from "@/lib/utils/user-error";
 import { useDemolishStore } from "@/store/demolish";
 import { getMemoRequirement } from "@/lib/exchange-registry";
+import { resolveSubmission, submissionClosesAccount } from "@lumenwipe/sdk";
 
 export default function HomePage({ params }: { params: Promise<{ network: Network }> }) {
   const { network } = use(params);
   const router = useRouter();
   const { session, checked, clearSession } = useSessionRecovery(network);
   const { setAddresses, setMediatorRequired, restoreSession } = useDemolishStore();
+  const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [settled, setSettled] = useState(false);
+  const unconfirmed = session && !settled ? session.unconfirmed : undefined;
+
+  // A restored session only ever looks the hash up. Its envelope was never stored, so nothing can
+  // be sent again from here, and the account may be gone, so nothing else can be read first.
+  async function handleCheck() {
+    if (!session || !unconfirmed) return;
+    setChecking(true);
+    const { outcome } = await resolveSubmission(unconfirmed, (hash) => lookupViaApi(hash, network));
+    setChecking(false);
+    if (outcome === "unknown") {
+      setRecoveryNotice(STILL_UNCONFIRMED_NOTICE);
+      return;
+    }
+    if (outcome === "failed") setRecoveryNotice(CHECK_FAILED_NOTICE);
+    if (outcome === "confirmed" && submissionClosesAccount(unconfirmed)) {
+      await deleteSession(session.id);
+      clearSession();
+      setRecoveryNotice(CLOSE_FINISHED_NOTICE);
+      return;
+    }
+    await saveUnconfirmed(session.id, null);
+    setSettled(true);
+    if (outcome !== "failed") setRecoveryNotice(null);
+  }
 
   function handleResume() {
     if (!session) return;
@@ -52,6 +87,14 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
       {/* Session recovery banner */}
+      {recoveryNotice && (
+        <p role="status" className="mb-6 text-sm text-white/70">
+          {recoveryNotice}
+        </p>
+      )}
+      {checked && session && unconfirmed && !recoveryNotice && (
+        <p className="mb-2 text-sm text-white/70">{UNCONFIRMED_NOTICE}</p>
+      )}
       {checked && session && (
         <div className="flex items-center justify-between gap-3 bg-stellar/10 border border-stellar/30 rounded-lg px-4 py-3 mb-6 text-sm">
           <div className="flex items-center gap-2 min-w-0">
@@ -62,9 +105,19 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
             </span>
           </div>
           <div className="flex items-center gap-3 shrink-0">
-            <button onClick={handleResume} className="text-stellar font-medium hover:underline">
-              Resume
-            </button>
+            {unconfirmed ? (
+              <button
+                onClick={() => void handleCheck()}
+                disabled={checking}
+                className="text-stellar font-medium hover:underline disabled:opacity-50"
+              >
+                Check again
+              </button>
+            ) : (
+              <button onClick={handleResume} className="text-stellar font-medium hover:underline">
+                Resume
+              </button>
+            )}
             <button
               onClick={handleDismiss}
               className="text-muted-foreground hover:text-foreground transition-colors"

@@ -4,6 +4,10 @@ import { getApiClient } from "@/lib/api/server-client";
 import { proxy } from "@/lib/api/proxy";
 import { rateLimitProxy } from "@/lib/api/rate-limit";
 
+// Above the SDK timeout in server-client.ts, which is above the API's submit budget, so the API
+// names the outcome rather than the platform cutting it off.
+export const maxDuration = 55;
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ network: string }> }) {
   const { network } = await params;
 

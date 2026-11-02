@@ -736,3 +736,23 @@ describe("discardPlan", () => {
     expect(state.executionPlan).toHaveLength(1);
   });
 });
+
+describe("an unsettled submission belongs to its account", () => {
+  const submission = { hash: "a".repeat(64), covers: ["MERGE" as const], validUntil: 1 };
+
+  test("moving to another account drops it from memory and leaves its saved session alone", () => {
+    useDemolishStore.getState().setAddresses("GFIRST", "GDEST");
+    useDemolishStore.setState({ unconfirmedSubmission: submission, sessionId: "first" });
+    useDemolishStore.getState().setAddresses("GSECOND", "GDEST");
+    expect(useDemolishStore.getState().unconfirmedSubmission).toBeNull();
+    expect(useDemolishStore.getState().sessionId).toBeNull();
+  });
+
+  test("a new destination for the same account keeps it", () => {
+    useDemolishStore.getState().setAddresses("GFIRST", "GDEST");
+    useDemolishStore.setState({ unconfirmedSubmission: submission, sessionId: "first" });
+    useDemolishStore.getState().setAddresses("GFIRST", "GOTHER");
+    expect(useDemolishStore.getState().unconfirmedSubmission).toEqual(submission);
+    expect(useDemolishStore.getState().sessionId).toBe("first");
+  });
+});

@@ -13,6 +13,7 @@ import {
 import { useCloseExecution } from "@/hooks/useCloseExecution";
 import * as closeClient from "@/lib/api/close-client";
 import { HashXPreimageSigner, type TransactionSigner } from "@/lib/stellar/signer";
+import { submissionHash } from "@/lib/stellar/submission";
 import * as submitViaApiModule from "@/lib/stellar/submit-via-api";
 import * as verifyModule from "@/lib/stellar/verify";
 import { fromHex } from "@/lib/stellar/hex";
@@ -76,8 +77,10 @@ function setup(
   high: number,
   covers = ["NORMALIZE_SIGNERS"]
 ) {
-  const submit = spyOn(submitViaApiModule, "submitViaApi").mockImplementation((async () => ({
-    txHash: "h",
+  const submit = spyOn(submitViaApiModule, "submitViaApi").mockImplementation((async (
+    xdr: string
+  ) => ({
+    txHash: submissionHash(xdr, Networks.TESTNET),
   })) as unknown as typeof submitViaApiModule.submitViaApi);
   spyOn(closeClient, "fetchCloseTransactions").mockImplementation((async () => ({
     planHash: "h",
