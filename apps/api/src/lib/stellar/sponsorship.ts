@@ -41,6 +41,7 @@ function getJson<T>(
 ): Promise<T | null> {
   return upstreamGetJson<T>(source.baseUrl, path, {
     target: "sponsorship",
+    network: source.network,
     deadline,
     notFoundIsNull,
     fetch: source.fetch,
@@ -55,6 +56,7 @@ function sourceFor(network: Network, explicit?: HorizonSource): HorizonSource {
     explicit ??
     pinnedHorizonSource(network) ?? {
       baseUrl: PATH_ROUTING_API_URLS[network],
+      network,
       headers: PATH_ROUTING_API_HEADERS[network],
     }
   );

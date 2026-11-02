@@ -136,6 +136,56 @@ balance finding posts once, then gets a daily comment on the issue, so the chann
 clean daily run closes the issue and posts the recovery. A finding the webhook cannot deliver fails the run
 itself, so a missing or revoked webhook shows up as red rather than as silence.
 
+### Provider contract check
+
+`.github/workflows/provider-contract.yml` runs daily at 05:00 UTC and on demand from the Actions tab. For each
+provider in the configured Horizon-compatible list, on testnet and on mainnet, it asserts the routes, fields and
+headers the API reads: the account (`subentry_count`, `flags`, signers, thresholds, sequence, balances, data and
+sponsorship counts), offers, claimable balances by claimant and by sponsor, account operations, strict-send paths
+and asset statistics by issuer, that an unknown account answers 404, and `Latest-Ledger` on the three routes a
+snapshot is judged by. The account, offer and claimable-balance records come from what each network currently
+holds, not from pinned fixtures, so a testnet reset cannot break it. Mainnet is read as a read-only fixture. The
+check sends GET requests only: it never signs, submits or writes.
+
+A failure opens one issue, assigned to the maintainer, posts once to the private channel, and comments on later
+runs. The next clean run closes it and posts the recovery. A line saying `no answer` is an outage or a rate limit,
+so re-run before treating it as drift. Any other line is a change the API has to absorb: update the read and its
+conformance check, or move that provider out of the list.
+
+Findings name a provider by network and list position (`testnet provider 1 of 2`), never by URL or hostname,
+because these logs and issues are public and a hostname can name a vendor or carry a key. The check reads the list
+from the `PATH_ROUTING_API_*` repository secrets, which mirror the API's configuration, header variables included
+for up to three positions. Without them it checks the public endpoints and the run carries a warning, so a green
+run on that warning says nothing about the deployed list.
+
+### Upstream metrics and dependency health
+
+The API counts `requests`, `rate_limited`, `timeouts`, `server_errors`, `failovers` and `unavailable` for each
+upstream (`rpc`, `horizon`, `paths`, `defi`, `explorer`) on each network. Every HTTP attempt counts, retries
+included, because each one spends quota. Soroswap and xBull quotes are not counted. Over RPC,
+`unavailable` is counted per attempt and again when a whole provider list is exhausted, so it is not comparable
+with the Horizon figure. An explorer connection failure with no status counts as a request only.
+
+The counts are buffered in memory and written to Firestore at most once a minute while requests arrive, and once
+on SIGTERM, so they survive a restart and scale-to-zero. A crash loses at most the last minute. The write runs
+inside a request rather than on a timer, because Cloud Run throttles CPU between requests; `/health*` never
+triggers one. To read them, open `upstreamUsage/{YYYY-MM-DD}` in the `lumenwipe-api` Firestore database:
+`counts.<network>.<upstream>.<metric>` is that UTC day's total. There is no API route for them. Without
+`FIRESTORE_PROJECT_ID` they stay in memory, like usage metering.
+
+`upstreamRateLimitHits` and `defiDegradedFallbackCount` on `/health` are since-start values for one process:
+they reset on every cold start, and exist for compatibility.
+
+`GET /health/dependencies` reports `state`, `latencyMs`, `lastSuccessAt` and `lastErrorClass` per upstream. Each
+row is a separate cached and coalesced probe: 60 seconds for RPC and Horizon, 300 seconds for path finding and the
+DeFi position provider, which spend third-party quota. Probes run only when the route is called. With a provider
+list, `degraded` means some of its providers answered. The body holds fixed values only, never a hostname, key or
+balance. Do not point a startup or liveness probe at it: `/health` stays dependency-free, and `/health/deep` stays
+the cheap RPC check. The explorer is counted but not probed.
+
+Every access log line carries `upstreamCalls`, the attempts that request made per upstream, so the cost of an
+analyze and of each build round can be read from the logs.
+
 ## 5. What happens when an alert fires?
 
 | Monitor ID              | Severity | Response                                                                                                                                    | Owner       | Status                                | Last reviewed |

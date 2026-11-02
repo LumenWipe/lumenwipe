@@ -14,6 +14,7 @@ import { horizonProviders, hostnameOf, type Network } from "@/config/networks";
 import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils/errors";
 import type { HorizonDeps } from "./horizon-http";
 import { DEFAULT_UPSTREAM_POLICY, resolveDeadline, UpstreamError } from "./upstream-client";
+import { recordUpstream } from "./upstream-metrics";
 
 const logger = new Logger("provider-failover");
 
@@ -30,13 +31,14 @@ export function resetProviderFailoverCount(): void {
 }
 
 export function recordProviderFailover(
-  kind: "rpc" | "horizon",
+  kind: "rpc" | "horizon" | "paths",
   network: Network,
   from: string,
   to: string,
   reason: string
 ): void {
   failoverCount++;
+  recordUpstream(network, kind, "failovers");
   logger.warn({
     message: "provider failover",
     kind,
@@ -84,25 +86,28 @@ export async function withHorizonFailover<T>(
   network: Network,
   primary: HorizonDeps,
   fallbacks: HorizonDeps[],
-  read: (attempt: HorizonDeps, isPrimary: boolean) => Promise<T>
+  read: (attempt: HorizonDeps, isPrimary: boolean) => Promise<T>,
+  upstream: "horizon" | "paths" = "horizon"
 ): Promise<T> {
   if (fallbacks.length === 0) return read(primary, true);
 
   const deadline = resolveDeadline(primary.deadline);
   const chain = [primary, ...fallbacks];
+  let last: unknown;
   for (const [i, provider] of chain.entries()) {
     try {
       return await read(boundAttempt(provider, deadline, chain.length - i), i === 0);
     } catch (error) {
+      last = error;
       const failure =
         i > 0 && error instanceof AccountNotFoundError
-          ? new UpstreamError("unavailable", "horizon")
+          ? new UpstreamError("unavailable", upstream)
           : error;
       if (!isRetryableProviderFailure(failure)) throw failure;
       const next = chain[i + 1];
       if (!next || deadline.signal.aborted) break;
       recordProviderFailover(
-        "horizon",
+        upstream,
         network,
         provider.baseUrl,
         next.baseUrl,
@@ -110,7 +115,11 @@ export async function withHorizonFailover<T>(
       );
     }
   }
-  throw new UpstreamError("unavailable", "horizon");
+  // The client already counted a last provider that itself ended as unavailable.
+  if (!(last instanceof UpstreamError && last.kind === "unavailable")) {
+    recordUpstream(network, upstream, "unavailable");
+  }
+  throw new UpstreamError("unavailable", upstream);
 }
 
 /** Everything after the first provider, ready for `withHorizonFailover`. */
@@ -120,17 +129,17 @@ export function horizonFallbacksFor(
 ): HorizonDeps[] {
   return horizonProviders(network)
     .slice(1)
-    .map(({ url, headers }) => ({ baseUrl: url, headers, fetch: fetchImpl }));
+    .map(({ url, headers }) => ({ baseUrl: url, network, headers, fetch: fetchImpl }));
 }
 
-export type HorizonSource = Pick<HorizonDeps, "baseUrl" | "headers" | "fetch">;
+export type HorizonSource = Pick<HorizonDeps, "baseUrl" | "network" | "headers" | "fetch">;
 
 const pinKey = (network: Network): string => `horizon:${network}`;
 
 /** Remembers the provider the account snapshot came from, for reads that depend on it later. */
 export function pinHorizonSource(network: Network, source: HorizonSource): void {
   const { baseUrl, headers, fetch } = source;
-  currentProviderPins()?.set(pinKey(network), { baseUrl, headers, fetch });
+  currentProviderPins()?.set(pinKey(network), { baseUrl, network, headers, fetch });
 }
 
 export function pinnedHorizonSource(network: Network): HorizonSource | undefined {

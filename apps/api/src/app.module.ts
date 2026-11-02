@@ -17,6 +17,7 @@ import { ApiKeyGuard } from "./auth/api-key.guard";
 import { RateLimiter } from "./auth/rate-limiter";
 import { MeteringModule } from "./metering/metering.module";
 import { MeteringInterceptor } from "./metering/metering.interceptor";
+import { UpstreamFlushInterceptor } from "./metering/upstream-flush.interceptor";
 
 /** Reads a positive integer from env, falling back on missing/invalid values. */
 function positiveIntEnv(name: string, fallback: number): number {
@@ -50,6 +51,7 @@ function positiveIntEnv(name: string, fallback: number): number {
     RateLimiter,
     { provide: APP_GUARD, useClass: ApiKeyGuard },
     { provide: APP_INTERCEPTOR, useClass: MeteringInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: UpstreamFlushInterceptor },
   ],
 })
 export class AppModule {}

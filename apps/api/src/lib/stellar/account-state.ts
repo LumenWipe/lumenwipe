@@ -208,7 +208,12 @@ export function horizonDepsFor(network: Network, fetchImpl?: typeof globalThis.f
     throw new Error(`PATH_ROUTING_API_${network.toUpperCase()} is not configured`);
   }
   const headers = PATH_ROUTING_API_HEADERS[network];
-  return { baseUrl, fetch: fetchImpl, ...(Object.keys(headers).length > 0 && { headers }) };
+  return {
+    baseUrl,
+    network,
+    fetch: fetchImpl,
+    ...(Object.keys(headers).length > 0 && { headers }),
+  };
 }
 
 /** Resolves the configured OctoPos provider. Unlike `horizonDepsFor`, never throws when

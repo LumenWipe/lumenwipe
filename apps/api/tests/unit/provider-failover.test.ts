@@ -280,8 +280,8 @@ test("the fallbacks are every provider after the first, in order, with their own
     { url: "https://c", headers: {} },
   ];
   expect(horizonFallbacksFor("testnet")).toEqual([
-    { baseUrl: "https://b", headers: { "x-other": "synthetic-b" } },
-    { baseUrl: "https://c", headers: {} },
+    { baseUrl: "https://b", network: "testnet", headers: { "x-other": "synthetic-b" } },
+    { baseUrl: "https://c", network: "testnet", headers: {} },
   ]);
   HORIZON_FALLBACKS.testnet = [];
   expect(horizonFallbacksFor("testnet")).toEqual([]);
@@ -360,7 +360,7 @@ test("the snapshot's provider is remembered per network and per request", async 
       pinHorizonSource("testnet", source);
       return [pinnedHorizonSource("testnet"), pinnedHorizonSource("mainnet")];
     })
-  ).toEqual([source, undefined]);
+  ).toEqual([{ ...source, network: "testnet" }, undefined]);
   expect(pinnedHorizonSource("testnet")).toBeUndefined();
 });
 

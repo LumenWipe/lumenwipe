@@ -10,6 +10,7 @@
  */
 
 import { OCTOPOS_TIMEOUT_MS } from "@/config/constants";
+import { countedFetch, recordUpstream } from "@/lib/stellar/upstream-metrics";
 
 export interface OctoPosDeps {
   /** Empty string means "not configured" - the caller intentionally opted out of DeFi detection. */
@@ -44,6 +45,14 @@ export async function fetchOctoPosPortfolio(
   address: string,
   deps: OctoPosDeps
 ): Promise<OctoPosResult> {
+  const result = await readPortfolio(address, deps);
+  if (!result.ok && result.reason === "unavailable") {
+    recordUpstream("mainnet", "defi", "unavailable");
+  }
+  return result;
+}
+
+async function readPortfolio(address: string, deps: OctoPosDeps): Promise<OctoPosResult> {
   if (!deps.baseUrl) {
     return {
       ok: false,
@@ -52,7 +61,7 @@ export async function fetchOctoPosPortfolio(
     };
   }
 
-  const doFetch = deps.fetch ?? globalThis.fetch;
+  const doFetch = countedFetch("defi", "mainnet", deps.fetch ?? globalThis.fetch);
   const url = `${normalizeBase(deps.baseUrl)}/v1/positions/${address}`;
   const headers: Record<string, string> = { Accept: "application/json" };
   if (deps.apiKey) headers["x-api-key"] = deps.apiKey;

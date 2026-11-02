@@ -10,6 +10,7 @@ import { currentDeadline, currentProviderPins } from "@/common/request-context";
 import { parseLedgerCloseTime } from "./claim-predicates";
 import { recordProviderFailover } from "./provider-failover";
 import { UpstreamError } from "./upstream-client";
+import { recordUpstream } from "./upstream-metrics";
 
 // Memoized per-network singletons. A switch rather than a map keyed by the caller's string, so a
 // value that is not one of the two networks can never name a property.
@@ -121,6 +122,7 @@ async function probeProviders(network: Network, providers: ProviderEndpoint[]): 
       if (next) recordProviderFailover("rpc", network, endpoint.url, next.url, "probe_failed");
     }
   }
+  recordUpstream(network, "rpc", "unavailable");
   throw new UpstreamError("unavailable", "rpc");
 }
 
@@ -225,6 +227,38 @@ function withRequestDeadline(network: Network): rpc.Server {
   });
 }
 
+function recordRpcFailure(network: Network, error: unknown): void {
+  const { response, message } = (error ?? {}) as {
+    response?: { status?: unknown };
+    message?: unknown;
+  };
+  const status = response?.status;
+  if (status === 429) recordUpstream(network, "rpc", "rate_limited");
+  else if (typeof status === "number") {
+    if (status >= 500) recordUpstream(network, "rpc", "server_errors");
+  } else if (/timeout|aborted/i.test(String(message))) {
+    recordUpstream(network, "rpc", "timeouts");
+  } else recordUpstream(network, "rpc", "unavailable");
+}
+
+/**
+ * Counts below the SDK's methods, on its HTTP client: `pollTransaction` is many requests behind
+ * one method, while a missing account or a JSON-RPC error is a successful response that a method
+ * turns into a throw. A rejection here is a transport failure or an error status, never an
+ * answer. The caller gets the same promise, so a send is still one call and is never retried.
+ */
+function countRequests(network: Network, server: rpc.Server): rpc.Server {
+  const client = server.httpClient;
+  const post = client.post.bind(client) as (...args: unknown[]) => Promise<unknown>;
+  client.post = ((...args: unknown[]) => {
+    recordUpstream(network, "rpc", "requests");
+    const response = post(...args);
+    void response.then(undefined, (error: unknown) => recordRpcFailure(network, error));
+    return response;
+  }) as typeof client.post;
+  return server;
+}
+
 /**
  * A fresh, non-memoized server for a call that must not share the transaction-building
  * singleton's lifetime or defaults - a health check, specifically, which wants a short
@@ -241,9 +275,12 @@ export function buildRpcServer(
     url: RPC_URLS[network],
     headers: RPC_HEADERS[network],
   };
-  return new rpc.Server(url, {
-    allowHttp: false,
-    ...(Object.keys(headers).length > 0 && { headers }),
-    ...(opts.timeout !== undefined && { timeout: opts.timeout }),
-  });
+  return countRequests(
+    network,
+    new rpc.Server(url, {
+      allowHttp: false,
+      ...(Object.keys(headers).length > 0 && { headers }),
+      ...(opts.timeout !== undefined && { timeout: opts.timeout }),
+    })
+  );
 }

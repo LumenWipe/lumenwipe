@@ -10,6 +10,8 @@ import { Logger } from "@nestjs/common";
 import { HORIZON_TIMEOUT_MS, REQUEST_DEADLINE_MS } from "@/config/constants";
 import { createDeadline, type Deadline } from "@/common/deadline";
 import { currentDeadline } from "@/common/request-context";
+import type { Network } from "@/config/networks";
+import { countedFetch, recordUpstream, type Upstream } from "./upstream-metrics";
 
 export type UpstreamErrorKind = "rate_limited" | "timeout" | "unavailable" | "bad_response";
 
@@ -48,6 +50,8 @@ export const DEFAULT_UPSTREAM_POLICY: UpstreamPolicy = {
 export interface UpstreamOptions {
   /** A short label for logs and errors; never a URL. */
   target: string;
+  /** Which network's counters this read lands in. */
+  network?: Network;
   fetch?: typeof globalThis.fetch;
   deadline?: Deadline;
   policy?: Partial<UpstreamPolicy>;
@@ -177,8 +181,9 @@ type Outcome =
   | { ok: false; retryable: true; kind: UpstreamErrorKind; retryAfterMs: number | null }
   | { ok: false; retryable: false; kind: UpstreamErrorKind };
 
-function failWith(error: UpstreamError): never {
+function failWith(error: UpstreamError, upstream: Upstream, network?: Network): never {
   errorCount++;
+  if (error.kind === "unavailable") recordUpstream(network ?? "unknown", upstream, "unavailable");
   logger.warn({ message: "upstream read failed", target: error.target, kind: error.kind });
   throw error;
 }
@@ -196,18 +201,21 @@ export async function upstreamGetJson<T>(
   options: UpstreamOptions
 ): Promise<T | null> {
   const policy = { ...DEFAULT_UPSTREAM_POLICY, ...options.policy };
-  const doFetch = options.fetch ?? globalThis.fetch;
+  const { target, network } = options;
+  const upstream: Upstream = target === "paths" ? "paths" : "horizon";
+  const doFetch = countedFetch(upstream, network ?? "unknown", options.fetch ?? globalThis.fetch);
   const deadline = resolveDeadline(options.deadline);
   const random = options.random ?? Math.random;
   const sleep = options.sleep ?? defaultSleep;
   const now = options.now ?? Date.now;
-  const { target } = options;
+  const fail: (kind: UpstreamErrorKind) => never = (kind) =>
+    failWith(new UpstreamError(kind, target), upstream, network);
   const url = resolveUpstreamUrl(baseUrl, path, target).href;
   let lastKind: UpstreamErrorKind = "unavailable";
 
   for (let attempt = 0; attempt <= policy.maxRetries; attempt++) {
     const remaining = deadline.remainingMs();
-    if (deadline.signal.aborted || remaining <= 0) failWith(new UpstreamError("timeout", target));
+    if (deadline.signal.aborted || remaining <= 0) fail("timeout");
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), Math.min(policy.perAttemptMs, remaining));
@@ -261,15 +269,15 @@ export async function upstreamGetJson<T>(
     })();
 
     if (outcome.ok) return outcome.body as T | null;
-    if (deadline.signal.aborted) failWith(new UpstreamError("timeout", target));
-    if (!outcome.retryable) failWith(new UpstreamError(outcome.kind, target));
+    if (deadline.signal.aborted) fail("timeout");
+    if (!outcome.retryable) fail(outcome.kind);
     lastKind = outcome.kind;
     if (attempt === policy.maxRetries) break;
 
     const wait = outcome.retryAfterMs ?? Math.floor(random() * policy.baseBackoffMs * 2 ** attempt);
-    if (wait >= deadline.remainingMs()) failWith(new UpstreamError("timeout", target));
+    if (wait >= deadline.remainingMs()) fail("timeout");
     await sleep(wait, deadline.signal);
   }
 
-  return failWith(new UpstreamError(lastKind, target));
+  return fail(lastKind);
 }

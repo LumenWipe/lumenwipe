@@ -146,7 +146,7 @@
           {
             "group": "Health",
             "openapi": "api-reference/openapi.json",
-            "pages": ["GET /health", "GET /health/deep"]
+            "pages": ["GET /health", "GET /health/deep", "GET /health/dependencies"]
           },
           {
             "group": "Service",
