@@ -219,7 +219,7 @@ test("redesigned flow: convertible asset shows a swap label and merges in one tx
 // remove the trustline, and merge in one signed transaction.
 //
 // The analyze gate behaves correctly (the no-route card renders and the per-asset
-// "return to issuer" checkbox unlocks the destination step), and the fused close
+// "return to issuer" option unlocks the destination step), and the fused close
 // returns the balance to the issuer, removes the trustline, and merges in one
 // signed transaction. This test previously failed because the analyze-page
 // refresh re-ran setAccountState, which wiped the user's "return to issuer"
@@ -264,9 +264,9 @@ test("redesigned flow: non-convertible asset is returned to issuer, then merged 
   // Until the user confirms returning the balance, the destination step is gated.
   await expect(page.getByRole("button", { name: /Begin execution/i })).toHaveCount(0);
 
-  // Confirm "return to issuer" via the per-asset card checkbox.
-  const returnCheckbox = page.getByRole("checkbox", { name: /Return my .*NOSWAP to the issuer/ });
-  await returnCheckbox.check();
+  // Confirm "return to issuer" via the per-asset card option.
+  const returnOption = page.getByRole("radio", { name: /Return my .*NOSWAP to the issuer/ });
+  await returnOption.check();
 
   // With every asset resolved, the late destination step appears.
   await enterDestinationAndBegin(page, destination.publicKey());
