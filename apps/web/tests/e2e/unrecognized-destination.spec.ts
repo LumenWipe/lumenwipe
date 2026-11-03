@@ -46,9 +46,9 @@ async function reachDestinationStep(page: Page, source: Keypair): Promise<void> 
   const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
   await expect(analyzeButton).toBeEnabled();
   await analyzeButton.click();
-  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: TESTNET_STEP_TIMEOUT });
   await expect(page.getByRole("button", { name: /Begin execution/i })).toBeVisible({
-    timeout: 30_000,
+    timeout: TESTNET_STEP_TIMEOUT,
   });
 }
 

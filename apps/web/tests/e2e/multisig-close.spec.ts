@@ -113,7 +113,9 @@ test("multisig close: a 2-of-3 account signs with two keys in sequence and merge
 
   // The signing-progress panel appears instead of completion - this account needs a
   // second signer (SigningProgress.tsx L52-55: "needs N more signing weight").
-  await expect(page.getByText(/more signing weight/i)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/more signing weight/i)).toBeVisible({
+    timeout: TESTNET_STEP_TIMEOUT,
+  });
 
   // Round 2: swap to the second co-signer via the secret-key tab's "Forget key" control,
   // then add its signature. Reselecting the already-active tab is a no-op, so the shared
@@ -138,10 +140,10 @@ async function driveToExecute(
   const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
   await expect(analyzeButton).toBeEnabled();
   await analyzeButton.click();
-  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: TESTNET_STEP_TIMEOUT });
 
   const beginButton = page.getByRole("button", { name: /Begin execution/i });
-  await expect(beginButton).toBeVisible({ timeout: 30_000 });
+  await expect(beginButton).toBeVisible({ timeout: TESTNET_STEP_TIMEOUT });
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(opts.destination);
   await confirmDestinationControl(page);
   await expect(beginButton).toBeEnabled({ timeout: TESTNET_STEP_TIMEOUT });

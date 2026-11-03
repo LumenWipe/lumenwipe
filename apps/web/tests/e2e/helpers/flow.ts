@@ -65,8 +65,11 @@ export async function openTestnetHome(page: Page): Promise<void> {
  * did nothing" while the page still read "Preparing transaction..." - the work was in flight,
  * not broken. Assertions on already-rendered DOM keep the short default on purpose, so a
  * genuine hang still fails fast rather than hiding behind a blanket timeout.
+ *
+ * Kept above the API's 40s request deadline, so a slow step surfaces the API's own answer
+ * instead of the test giving up first.
  */
-export const TESTNET_STEP_TIMEOUT = 30_000;
+export const TESTNET_STEP_TIMEOUT = 60_000;
 
 /**
  * Reveals the secret-key field and fills it.
@@ -110,14 +113,14 @@ export async function enterSourceAndAnalyze(page: Page, source: string): Promise
 
   // The analyze page does the account read after this navigation, and that read hits
   // stellar.expert + RPC (and Horizon for open offers), which can take a while on testnet.
-  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: TESTNET_STEP_TIMEOUT });
   await expect(page.getByText("Analyzing account...")).toHaveCount(0, { timeout: 60_000 });
 }
 
 // Late-destination step: fills the destination, then "Begin execution" -> /review -> /execute.
 export async function enterDestinationAndBegin(page: Page, destination: string): Promise<void> {
   const beginButton = page.getByRole("button", { name: /Begin execution/i });
-  await expect(beginButton).toBeVisible({ timeout: 30_000 });
+  await expect(beginButton).toBeVisible({ timeout: TESTNET_STEP_TIMEOUT });
 
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination);
   await confirmDestinationControl(page);

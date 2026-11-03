@@ -8,6 +8,8 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
+  // Above TESTNET_STEP_TIMEOUT, so one slow testnet step fails as that step, not as the test.
+  timeout: 120_000,
   // The github reporter only emits inline annotations - it writes no playwright-report/
   // directory. On its own it left the nightly's uploaded artifact empty, while the failure
   // issue told whoever triaged it to go read that artifact. Pair it with the html reporter so

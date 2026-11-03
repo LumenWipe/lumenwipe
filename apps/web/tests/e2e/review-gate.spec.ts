@@ -96,10 +96,10 @@ async function reachReviewWithoutConfirming(
   const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
   await expect(analyzeButton).toBeEnabled();
   await analyzeButton.click();
-  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: TESTNET_STEP_TIMEOUT });
 
   const beginButton = page.getByRole("button", { name: /Begin execution/i });
-  await expect(beginButton).toBeVisible({ timeout: 30_000 });
+  await expect(beginButton).toBeVisible({ timeout: TESTNET_STEP_TIMEOUT });
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination);
   await confirmDestinationControl(page);
   await expect(beginButton).toBeEnabled({ timeout: TESTNET_STEP_TIMEOUT });
@@ -168,7 +168,7 @@ test("back to analyze preserves the entered destination without discarding it", 
   // /analyze re-runs the account analysis on mount, so give it the same headroom the other
   // specs give the initial visit before asserting the pre-filled destination.
   const destinationInput = page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/);
-  await expect(destinationInput).toBeVisible({ timeout: 30_000 });
+  await expect(destinationInput).toBeVisible({ timeout: TESTNET_STEP_TIMEOUT });
   await expect(destinationInput).toHaveValue(destination.publicKey());
 });
 

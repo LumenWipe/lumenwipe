@@ -26,11 +26,11 @@ async function analyzeFreshAccountToDestinationStep(page: Page): Promise<string>
   await expect(analyzeButton).toBeEnabled();
   await analyzeButton.click();
 
-  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: TESTNET_STEP_TIMEOUT });
 
   // The destination step is present once assets are resolved.
   await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
-    timeout: 30_000,
+    timeout: TESTNET_STEP_TIMEOUT,
   });
 
   return source.publicKey();
