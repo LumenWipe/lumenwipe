@@ -160,6 +160,10 @@
       {
         "group": "Contributing",
         "pages": ["contributing/add-a-protocol-exit"]
+      },
+      {
+        "group": "Design",
+        "pages": ["design/tokens"]
       }
     ]
   },
