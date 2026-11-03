@@ -1,3 +1,5 @@
+"use client";
+
 import { useId, type ReactElement, type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -23,6 +25,8 @@ export const DECISION_TAGS = {
   recommended: { label: "Recommended", tone: "success" },
   keep: { label: "You keep the tokens", tone: "neutral" },
   giveUp: { label: "You give up the tokens", tone: "warning" },
+  keepBalance: { label: "You keep the balance", tone: "neutral" },
+  giveUpBalance: { label: "You give up the balance", tone: "warning" },
 } as const satisfies Record<string, NonNullable<DecisionOption<string>["tag"]>>;
 
 interface DecisionCardProps<V extends string> {
@@ -60,7 +64,7 @@ export function DecisionCard<V extends string>({
                 className={cn(
                   "flex min-h-11 cursor-pointer items-start gap-2.5 rounded-md border px-2.5 py-2 text-xs transition-colors",
                   selected
-                    ? "border-stellar/60 bg-stellar/10 text-white"
+                    ? "border-accent/60 bg-accent/10 text-white"
                     : "border-white/10 text-white/70 hover:border-white/20"
                 )}
               >
@@ -70,7 +74,7 @@ export function DecisionCard<V extends string>({
                   value={option.value}
                   checked={selected}
                   onChange={() => onValueChange(option.value)}
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-stellar"
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-accent"
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block">{option.label}</span>

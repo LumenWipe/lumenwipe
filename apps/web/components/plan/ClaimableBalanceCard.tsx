@@ -31,7 +31,7 @@ export default function ClaimableBalanceCard({
   const forfeitOption: DecisionOption<ClaimableBalanceSelection> = {
     value: "forfeit",
     label: "Forfeit it.",
-    tag: DECISION_TAGS.giveUp,
+    tag: DECISION_TAGS.giveUpBalance,
     detail: "Inaccessible after the account is merged.",
   };
 
@@ -81,7 +81,7 @@ export default function ClaimableBalanceCard({
         {
           value: "add_trustline_then_claim",
           label: `Add a ${item.code} trustline and claim it.`,
-          tag: DECISION_TAGS.keep,
+          tag: DECISION_TAGS.keepBalance,
           detail: `Recovers the ${item.amount} ${item.code}.`,
         },
         forfeitOption,
