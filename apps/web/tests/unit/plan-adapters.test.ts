@@ -127,6 +127,7 @@ import {
   decisionPointsToConversions,
   formatStroops,
   formatTokenBalance,
+  planFeeStroopsOf,
 } from "@/lib/api/plan-adapters";
 
 const TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
@@ -450,4 +451,15 @@ test("decisionPointsToConversions › a convertible classic asset carries its qu
   expect(good!.quote).toEqual({ estimatedReceive: "50000000", minAmountOut: "49750000" });
   expect(zero!.quote).toBeUndefined();
   expect(missing!.quote).toBeUndefined();
+});
+
+test("planFeeStroopsOf › reads the plan's fee and refuses one that is not whole stroops", () => {
+  const withFee = (feeStroops: unknown): PlanResponse =>
+    ({ ...plan([]), estimate: { feeStroops, freedReserveXlm: "0" } }) as unknown as PlanResponse;
+  expect(planFeeStroopsOf(withFee("700"))).toBe("700");
+  expect(planFeeStroopsOf(withFee("0.5"))).toBeNull();
+  expect(planFeeStroopsOf(withFee(700))).toBeNull();
+  expect(
+    planFeeStroopsOf({ ...plan([]), estimate: undefined } as unknown as PlanResponse)
+  ).toBeNull();
 });

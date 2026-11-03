@@ -97,6 +97,12 @@ function tokenQuoteOf(raw: unknown): TokenQuote | undefined {
   };
 }
 
+/** The plan's estimated fee in stroops, or null when the response carries none that is usable. */
+export function planFeeStroopsOf(plan: PlanResponse): string | null {
+  const fee: unknown = plan.estimate?.feeStroops;
+  return typeof fee === "string" && /^\d+$/.test(fee) ? fee : null;
+}
+
 /** Stroops rendered as XLM with the trailing zeros dropped. */
 export function formatStroops(stroops: string): string {
   return formatTokenBalance(stroops, 7);

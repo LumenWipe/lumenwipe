@@ -1,6 +1,9 @@
-import { test, expect } from "bun:test";
-import { render, screen } from "@testing-library/react";
+import { afterEach, test, expect } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { cleanup, render, screen } from "@testing-library/react";
 import AccountSummaryCard from "@/components/plan/AccountSummaryCard";
+import { expectedReceive, type ExpectedReceive } from "@/lib/plan/expected-receive";
 import type { AccountState } from "@/types/account";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
@@ -32,11 +35,92 @@ function baseAccount(over: Partial<AccountState> = {}): AccountState {
   };
 }
 
-function renderCard(account: AccountState) {
+afterEach(cleanup);
+
+const DESTINATION = "GDEST0000000000000000000000000000000000000000000000000ZZ";
+
+function expectedFor(account: AccountState, over: Partial<ExpectedReceive> = {}): ExpectedReceive {
+  return {
+    ...expectedReceive({
+      account,
+      planFeeStroops: "100",
+      relayForwardUncounted: false,
+      conversions: [],
+      dispositions: {},
+      claims: [],
+      claimSelections: {},
+    }),
+    ...over,
+  };
+}
+
+function renderCard(
+  account: AccountState,
+  expected: ExpectedReceive | null = expectedFor(account),
+  destination: string | null = null
+) {
   return render(
-    <AccountSummaryCard account={account} destinationAddress={null} totalFee="0.0000100" />
+    <AccountSummaryCard account={account} destinationAddress={destination} expected={expected} />
   );
 }
+
+test("the summary leads with what the close is expected to deliver, as an estimate", () => {
+  const account = baseAccount();
+  renderCard(account, expectedFor(account), DESTINATION);
+  const lead = screen.getByTestId("expected-receive");
+  const body = lead.parentElement!.children;
+  expect(body[1]).toBe(lead);
+  expect(lead.textContent).toContain("You will receive about 9.99999 XLM at GDES T000");
+  expect(lead.textContent).toContain("An estimate, after network fees.");
+  expect(lead.textContent).not.toMatch(/guarantee|exactly/i);
+  expect(screen.getByText("- 0.00001 XLM")).toBeTruthy();
+  expect(screen.getByText("of which locked in reserves")).toBeTruthy();
+  expect(screen.getByText("1 XLM")).toBeTruthy();
+});
+
+test("with a swap or a claim the note says the figure counts swap minimums", () => {
+  const account = baseAccount();
+  renderCard(account, expectedFor(account, { estimated: true, swapStroops: "5" }));
+  expect(screen.getByText(/counts the least each chosen swap may deliver/)).toBeTruthy();
+  expect(screen.getByText("+ 0.0000005 XLM")).toBeTruthy();
+});
+
+test("what the figure leaves out is said under it", () => {
+  const account = baseAccount();
+  renderCard(
+    account,
+    expectedFor(account, { leavesOutDefiExits: true, unquotedSwaps: 2, tokenSwaps: 1 })
+  );
+  expect(screen.getByText(/leaves out 2 swaps that have no estimate/)).toBeTruthy();
+  expect(screen.getByText(/leaves out the Soroban resource fee each token swap pays/)).toBeTruthy();
+  expect(
+    screen.getByText(/leaves out any XLM that exiting your DeFi positions pays out/)
+  ).toBeTruthy();
+});
+
+test("without a plan estimate the counts still render and no figure is shown", () => {
+  renderCard(baseAccount(), null);
+  expect(screen.queryByTestId("expected-receive")).toBeNull();
+  expect(screen.getByText("Trustlines")).toBeTruthy();
+});
+
+test("the counts sit in two columns below 640px and cannot overflow at 320px", () => {
+  renderCard(baseAccount());
+  const list = screen.getByText("Trustlines").closest("ul")!;
+  expect(list.className).toMatch(/(^| )grid-cols-2( |$)/);
+  expect(list.className).toContain("sm:grid-cols-3");
+  for (const item of Array.from(list.children)) {
+    expect(item.className).toContain("min-w-0");
+  }
+});
+
+test("the card computes no amount with floats", () => {
+  const source = readFileSync(
+    join(import.meta.dir, "../../components/plan/AccountSummaryCard.tsx"),
+    "utf8"
+  );
+  expect(source).not.toMatch(/parseFloat|Number\(|toFixed/);
+});
 
 test("a real OctoPos snapshot shows the octopos verification badge", () => {
   renderCard(

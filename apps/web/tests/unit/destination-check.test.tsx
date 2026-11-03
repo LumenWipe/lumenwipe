@@ -78,6 +78,7 @@ async function proceedWith(answer: unknown): Promise<{ store: string; planBody: 
         conversions={[]}
         claimableBalanceDecisions={[]}
         blockers={[]}
+        planFeeStroops={null}
         network="testnet"
         onRefresh={() => {}}
         loading={false}

@@ -43,6 +43,7 @@ async function beginButtonWhile(loading: boolean): Promise<HTMLElement> {
         conversions={[]}
         claimableBalanceDecisions={[]}
         blockers={[]}
+        planFeeStroops={null}
         network="testnet"
         onRefresh={() => {}}
         loading={loading}

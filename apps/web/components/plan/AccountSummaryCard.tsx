@@ -1,6 +1,7 @@
-import { Coins, Database, ArrowUpDown, Link2, Users, TrendingUp, Layers } from "lucide-react";
+import { Database, ArrowUpDown, Link2, Users, Layers } from "lucide-react";
 import type { AccountState } from "@/types/account";
-import { formatXlm, calcRecoverableReserve } from "@/lib/utils/amounts";
+import type { ExpectedReceive } from "@/lib/plan/expected-receive";
+import { formatStroops } from "@/lib/api/plan-adapters";
 import { defiVerificationLabel } from "@/lib/plan/defi-verification-source";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,52 +9,50 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 interface AccountSummaryCardProps {
   account: AccountState;
   destinationAddress: string | null;
-  totalFee: string;
+  /** Null when no plan estimate is at hand; the counts still render. */
+  expected: ExpectedReceive | null;
+}
+
+function groupAddress(address: string): string {
+  return address.match(/.{1,4}/g)?.join(" ") ?? address;
+}
+
+function estimateNote(expected: ExpectedReceive): string {
+  const parts = ["An estimate, after network fees."];
+  if (expected.estimated) parts.push("It counts the least each chosen swap may deliver.");
+  if (expected.unquotedSwaps > 0) {
+    parts.push(
+      expected.unquotedSwaps === 1
+        ? "It leaves out one swap that has no estimate."
+        : `It leaves out ${expected.unquotedSwaps} swaps that have no estimate.`
+    );
+  }
+  if (expected.tokenSwaps > 0) {
+    parts.push("It leaves out the Soroban resource fee each token swap pays.");
+  }
+  if (expected.leavesOutDefiExits) {
+    parts.push(
+      "It leaves out any XLM that exiting your DeFi positions pays out, and the fees those exits pay."
+    );
+  }
+  return parts.join(" ");
 }
 
 export default function AccountSummaryCard({
   account,
   destinationAddress,
-  totalFee,
+  expected,
 }: AccountSummaryCardProps) {
-  const recoverableXlm = calcRecoverableReserve(account.numSubEntries);
   const defiLabel = defiVerificationLabel(account.defiPositions.source);
-  // Whether direct or via the shared mediator, the user recovers the full
-  // balance minus network fees (the mediator's own reserve is operator-funded).
-  const estimatedFinal = (parseFloat(account.nativeBalanceLumens) - parseFloat(totalFee)).toFixed(
-    7
-  );
 
   const stats = [
-    {
-      icon: Coins,
-      label: "XLM balance",
-      value: formatXlm(account.nativeBalanceLumens),
-    },
-    {
-      icon: Database,
-      label: "Data entries",
-      value: account.dataEntries.length,
-    },
-    {
-      icon: ArrowUpDown,
-      label: "Open offers",
-      value: account.openOffers.length,
-    },
-    {
-      icon: Link2,
-      label: "Trustlines",
-      value: account.trustlines.length,
-    },
+    { icon: Link2, label: "Trustlines", value: account.trustlines.length },
+    { icon: ArrowUpDown, label: "Open offers", value: account.openOffers.length },
+    { icon: Database, label: "Data entries", value: account.dataEntries.length },
     {
       icon: Users,
       label: "Extra signers",
       value: account.signers.filter((s) => s.key !== account.address).length,
-    },
-    {
-      icon: TrendingUp,
-      label: "Recoverable reserve",
-      value: formatXlm(recoverableXlm),
     },
     {
       icon: Layers,
@@ -63,7 +62,23 @@ export default function AccountSummaryCard({
     },
   ];
 
-  const lastRowStart = stats.length - (stats.length % 3 || 3);
+  const breakdown = expected
+    ? [
+        { label: "XLM balance", value: `${formatStroops(expected.balanceStroops)} XLM` },
+        { label: "Network fees", value: `- ${formatStroops(expected.feeStroops)} XLM` },
+        ...(expected.swapStroops !== "0"
+          ? [
+              {
+                label: "Swaps to XLM, at least",
+                value: `+ ${formatStroops(expected.swapStroops)} XLM`,
+              },
+            ]
+          : []),
+        ...(expected.claimStroops !== "0"
+          ? [{ label: "XLM claimed", value: `+ ${formatStroops(expected.claimStroops)} XLM` }]
+          : []),
+      ]
+    : [];
 
   return (
     <Card className="overflow-hidden">
@@ -74,44 +89,58 @@ export default function AccountSummaryCard({
         </span>
       </CardHeader>
 
-      {/* Every cell above the last row draws its own bottom border: `divide-y` only draws between
-          rows, so when the cell count is not a multiple of three the last full row was left open
-          beside the short final row. The footer's top border closes the grid. */}
-      <div className="grid grid-cols-3 divide-x divide-white/[0.08]">
-        {stats.map(({ icon: Icon, label, value, badge }, i) => (
-          <div
-            key={label}
-            className={`p-3 ${i < lastRowStart ? "border-b border-white/[0.08]" : ""}`}
-          >
-            <div className="flex items-center gap-1.5 text-fg-subtle mb-1">
-              <Icon className="h-3.5 w-3.5 text-accent/70" />
-              <span className="text-xs">{label}</span>
+      {expected && (
+        <div className="px-4 pb-4" data-testid="expected-receive">
+          <p className="text-sm text-fg-muted">
+            You will receive about{" "}
+            <span className="mkt-display block text-3xl font-bold text-value">
+              {formatStroops(expected.totalStroops)} XLM
+            </span>{" "}
+            {destinationAddress ? (
+              <>
+                at{" "}
+                <span className="font-mono-address break-all text-white/70">
+                  {groupAddress(destinationAddress)}
+                </span>
+              </>
+            ) : (
+              "at the destination you enter below"
+            )}
+          </p>
+          <p className="mt-1 text-xs text-fg-subtle">{estimateNote(expected)}</p>
+          <dl className="mt-3 space-y-1 text-xs">
+            {breakdown.map(({ label, value }) => (
+              <div key={label} className="flex justify-between gap-3">
+                <dt className="text-fg-muted">{label}</dt>
+                <dd className="mkt-mono text-white/80">{value}</dd>
+              </div>
+            ))}
+            <div className="flex justify-between gap-3 pl-3">
+              <dt className="text-fg-subtle">of which locked in reserves</dt>
+              <dd className="mkt-mono text-fg-subtle">
+                {formatStroops(expected.reserveStroops)} XLM
+              </dd>
             </div>
-            <p className="text-sm font-semibold text-white">{value}</p>
+          </dl>
+        </div>
+      )}
+
+      <ul className="grid grid-cols-2 gap-x-4 gap-y-2 border-t border-white/10 px-4 py-3 sm:grid-cols-3">
+        {stats.map(({ icon: Icon, label, value, badge }) => (
+          <li key={label} className="min-w-0 text-xs text-fg-subtle">
+            <span className="flex items-center gap-1.5">
+              <Icon className="h-3.5 w-3.5 shrink-0 text-accent/70" aria-hidden />
+              <span className="truncate">{label}</span>
+              <span className="ml-auto font-semibold text-white/80">{value}</span>
+            </span>
             {badge && (
               <Badge tone={badge === "octopos" ? "accent" : "neutral"} className="mt-1">
                 {badge === "octopos" ? "Verified with OctoPos" : "Verified by LumenWipe"}
               </Badge>
             )}
-          </div>
+          </li>
         ))}
-      </div>
-
-      <div className="border-t border-white/10 px-4 py-3 flex items-center justify-between text-sm">
-        <span className="text-fg-muted">Estimated received at destination</span>
-        <span className="mkt-display font-bold text-value">{formatXlm(estimatedFinal)}</span>
-      </div>
-
-      <div className="border-t border-white/10 px-4 py-2 text-xs text-fg-subtle">
-        Destination:{" "}
-        {destinationAddress ? (
-          <span className="font-mono-address text-white/60">
-            {destinationAddress.slice(0, 12)}...{destinationAddress.slice(-8)}
-          </span>
-        ) : (
-          <span className="text-fg-muted">to be entered</span>
-        )}
-      </div>
+      </ul>
     </Card>
   );
 }

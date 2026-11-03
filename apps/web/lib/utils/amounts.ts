@@ -25,8 +25,3 @@ export function estimateFeeLumens(operationCount: number): string {
   const stroops = operationCount * 100;
   return stroopsToXlm(stroops);
 }
-
-export function calcRecoverableReserve(numSubEntries: number): string {
-  // Each subentry releases 0.5 XLM when removed
-  return (numSubEntries * 0.5).toFixed(7);
-}

@@ -12,6 +12,7 @@ import type {
   StepType,
 } from "@/types/plan";
 import type { CompletedStepRecord } from "@/types/session";
+import type { ExpectedReceive } from "@/lib/plan/expected-receive";
 
 /** What a "convert" disposition is pinned to: the floor the plan quoted, which provider quoted
  *  it, and - only for an xBull-routed token - the live route `verify()` needs to hold its
@@ -99,6 +100,9 @@ interface DemolishState {
   /** The hash of the plan the user reviewed, sent with the build until a transaction confirms.
    *  Null once the account has changed on purpose, or when no reviewed plan is installed. */
   planHash: string | null;
+  /** What the reviewed plan is expected to deliver, kept for the screens after /analyze. Display
+   *  only: never sent to the API and never part of verify(). */
+  expectedReceive: ExpectedReceive | null;
   /** Why the inputs were restored or reset after a reload, for the next page to show once. */
   reloadNotice: string | null;
   /** The execute page lost its plan to a reload and sent the user to the start page. */
@@ -138,6 +142,7 @@ interface DemolishState {
   setSigningRun: (running: boolean) => void;
   setAccountState: (state: AccountState) => void;
   setPlan: (plan: PlannedStep[], planHash?: string) => void;
+  setExpectedReceive: (expected: ExpectedReceive | null) => void;
   /** Called once a transaction of the close confirms: the account has changed on purpose, so the
    *  reviewed plan's hash no longer describes it. */
   clearPlanHash: () => void;
@@ -274,6 +279,7 @@ const initialState = {
   lastErrorReference: null,
   planChangedNotice: null,
   planHash: null,
+  expectedReceive: null,
   reloadNotice: null,
   executeInterrupted: false,
   resumedClose: null,
@@ -352,6 +358,8 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       planHash: planHash ?? null,
     }),
 
+  setExpectedReceive: (expectedReceive) => set({ expectedReceive }),
+
   clearPlanHash: () => set({ planHash: null }),
 
   discardPlan: (notice) =>
@@ -363,6 +371,7 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       lastErrorReference: null,
       planChangedNotice: notice,
       planHash: null,
+      expectedReceive: null,
     }),
 
   setAssetDisposition: (asset, action) =>

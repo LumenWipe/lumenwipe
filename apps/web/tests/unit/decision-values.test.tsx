@@ -125,6 +125,7 @@ async function mount(
         conversions={conversions}
         claimableBalanceDecisions={claims}
         blockers={[]}
+        planFeeStroops={null}
         network="testnet"
         onRefresh={() => {}}
         loading={false}

@@ -85,6 +85,7 @@ async function proceed(plan: () => Response): Promise<{ refreshes: () => number 
         conversions={[]}
         claimableBalanceDecisions={[]}
         blockers={[]}
+        planFeeStroops={null}
         network="testnet"
         onRefresh={() => refreshes++}
         loading={false}

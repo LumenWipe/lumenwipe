@@ -24,6 +24,7 @@ import { loadServedRegistry } from "@/lib/exchange-registry";
 import {
   decisionPointsToClaimableBalances,
   decisionPointsToConversions,
+  planFeeStroopsOf,
   decisionPointsToLeavablePositions,
   type AssetConvertibility,
   type ClaimableBalanceDecision,
@@ -98,6 +99,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   >([]);
   const [leavablePositions, setLeavablePositions] = useState<LeavablePosition[]>([]);
   const [blockers, setBlockers] = useState<PlanBlocker[]>([]);
+  const [planFeeStroops, setPlanFeeStroops] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   // Kept apart from `loading`, which swaps the whole page for a spinner. Answering a claim
   // re-plans, and blanking the page under someone who just clicked a radio button loses their
@@ -181,6 +183,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     setConversions(
       hardBlockersOf(plan.blockers).length === 0 ? decisionPointsToConversions(plan) : []
     );
+    setPlanFeeStroops(planFeeStroopsOf(plan));
     // Unlike other blockers, an unresolved claimable balance is resolvable right here - the
     // decision itself is what clears it - so it must render regardless of blocker state, or
     // the user could never reach the card that resolves it.
@@ -456,6 +459,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         claimableBalanceDecisions={claimableBalanceDecisions}
         leavablePositions={leavablePositions}
         blockers={blockers}
+        planFeeStroops={planFeeStroops}
         network={routeNetwork}
         onRefresh={reload}
         loading={replanning}
