@@ -46,7 +46,14 @@ export function AddressField({
   const confirmed = touched && !!value && !addressErrorMessage(value);
 
   return (
-    <Field label={label} hideLabel={hideLabel} required={required} helper={helper} error={shown}>
+    <Field
+      label={label}
+      hideLabel={hideLabel}
+      required={required}
+      helper={helper}
+      error={shown}
+      status={confirmed ? "Valid address" : undefined}
+    >
       <div className={cn("relative flex items-center gap-2", groupClassName)}>
         {leading}
         <Input

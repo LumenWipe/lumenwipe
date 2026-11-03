@@ -132,3 +132,26 @@ test("Input stays usable outside a Field", () => {
   render(<Input aria-label="alone" id="own" />);
   expect(screen.getByLabelText("alone").id).toBe("own");
 });
+
+test("a status is a hidden description the control points at", () => {
+  render(
+    <Field label="Memo" helper="Help" status="Looks right">
+      <Input />
+    </Field>
+  );
+  const described = describedByElements(screen.getByRole("textbox", { name: "Memo" }));
+  expect(described.map((el) => el?.textContent)).toEqual(["Looks right", "Help"]);
+  expect(described[0]?.className).toContain("sr-only");
+  expect(described[0]?.getAttribute("role")).toBeNull();
+});
+
+test("an error replaces the status rather than joining it", () => {
+  render(
+    <Field label="Memo" error="Wrong" status="Looks right">
+      <Input />
+    </Field>
+  );
+  const described = describedByElements(screen.getByRole("textbox", { name: "Memo" }));
+  expect(described.map((el) => el?.textContent)).toEqual(["Wrong"]);
+  expect(screen.queryByText("Looks right")).toBeNull();
+});

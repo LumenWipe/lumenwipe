@@ -149,6 +149,45 @@ jobs:
           bun run --filter '@lumenwipe/api' test:integration ||
             bun run --filter '@lumenwipe/api' test:integration
 
+  # axe (WCAG 2.2 A and AA) on every app route at phone, tablet and desktop widths, plus Tab
+  # reachability on entry and analyze. Every /api call is answered by fixtures in the browser, so
+  # it needs no API, no secret and no testnet, and runs against the production build. A serious
+  # or critical violation fails it. See CONTRIBUTING.md, "Accessibility gate".
+  a11y:
+    name: web accessibility (axe)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: bunx playwright install --with-deps chromium
+        working-directory: apps/web
+
+      - name: Run the accessibility specs
+        run: bun run --filter '@lumenwipe/web' test:a11y
+
+      - name: Upload the report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: a11y-report
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          retention-days: 14
+          if-no-files-found: warn
+
   # Formatting is its own required status check (kept separate from the `check` matrix so a
   # style-only failure doesn't get lost inside a package's own type-check/lint/test group).
   prettier:
@@ -565,6 +604,7 @@ jobs:
     needs:
       [
         check,
+        a11y,
         integration,
         integration-funded,
         docker,
@@ -584,6 +624,10 @@ jobs:
         run: |
           if [ "${{ needs.check.result }}" != "success" ]; then
             echo "One or more package checks failed."
+            exit 1
+          fi
+          if [ "${{ needs.a11y.result }}" != "success" ]; then
+            echo "The accessibility specs found a serious or critical axe violation or an unreachable control."
             exit 1
           fi
           if [ "${{ needs.integration.result }}" != "success" ]; then

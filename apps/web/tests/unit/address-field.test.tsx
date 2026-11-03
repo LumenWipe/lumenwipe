@@ -143,3 +143,40 @@ test("the placeholder and the input protections are carried through", () => {
   expect(input.getAttribute("spellcheck")).toBe("false");
   expect(input.className).toContain("font-mono");
 });
+
+function describedText(input: HTMLElement): string {
+  return (input.getAttribute("aria-describedby") ?? "")
+    .split(" ")
+    .map((id) => document.getElementById(id)?.textContent ?? "")
+    .join(" ");
+}
+
+test("a valid address left behind is described as valid, and its icon is hidden", () => {
+  const { container } = render(<Harness emitted={[]} />);
+  const input = screen.getByRole("textbox", { name: "Account" });
+
+  paste(input, VALID);
+
+  expect(describedText(input)).toContain("Valid address");
+  const icons = container.querySelectorAll("svg");
+  expect(icons.length).toBeGreaterThan(0);
+  for (const icon of Array.from(icons)) expect(icon.getAttribute("aria-hidden")).toBe("true");
+});
+
+test("an invalid address is described by its error alone, and its icon is hidden", () => {
+  const { container } = render(<Harness emitted={[]} />);
+  const input = screen.getByRole("textbox", { name: "Account" });
+
+  paste(input, flipLast(VALID));
+
+  expect(describedText(input)).toContain("checksum");
+  expect(describedText(input)).not.toContain("Valid address");
+  for (const icon of Array.from(container.querySelectorAll("svg"))) {
+    expect(icon.getAttribute("aria-hidden")).toBe("true");
+  }
+});
+
+test("an untouched field claims no validity", () => {
+  render(<Harness emitted={[]} />);
+  expect(screen.queryByText("Valid address")).toBeNull();
+});

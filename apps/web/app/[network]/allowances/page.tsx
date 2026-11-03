@@ -104,9 +104,11 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
       <div className="flex items-center gap-2 mb-6">
-        <Link href={`/${network}`} className="text-fg-muted hover:text-fg transition-colors">
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <Button asChild variant="ghost" size="icon">
+          <Link href={`/${network}`} aria-label="Back to account entry">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Button>
         <h1 className="mkt-display text-xl font-bold text-white">Allowance inspector</h1>
       </div>
 

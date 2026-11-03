@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Keypair } from "@stellar/stellar-sdk";
 import * as navigation from "next/navigation";
@@ -296,4 +296,35 @@ test("the memo is named, described, and passes its value through untouched", () 
 
   fireEvent.change(input, { target: { value: " 12 " } });
   expect(seen).toEqual([" 12 "]);
+});
+
+test("each entry field reports a valid address as text", () => {
+  render(<HeroAccountInput />);
+  const hero = screen.getByRole("textbox", { name: "Stellar account address" });
+  fireEvent.change(hero, { target: { value: VALID } });
+  fireEvent.blur(hero);
+  expect(describedText(hero)).toContain("Valid address");
+});
+
+test("the destination reports a valid address as text alongside its helper", () => {
+  function Controlled(): ReactElement {
+    const [destination, setDestination] = useState("");
+    return (
+      <DestinationInput
+        destination={destination}
+        onDestinationChange={setDestination}
+        memo=""
+        onMemoChange={() => {}}
+        source=""
+        acknowledged={false}
+        onAcknowledgedChange={() => {}}
+      />
+    );
+  }
+  render(<Controlled />);
+  const input = screen.getByRole("textbox", { name: "Destination address" });
+  fireEvent.change(input, { target: { value: VALID } });
+  fireEvent.blur(input);
+  expect(describedText(input)).toContain("Valid address");
+  expect(describedText(input)).toContain("All XLM from the merged account");
 });

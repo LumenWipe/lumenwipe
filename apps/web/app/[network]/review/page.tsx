@@ -7,6 +7,7 @@ import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { goBackToAnalyze } from "@/lib/plan/confirm-plan";
 import ReviewView from "@/components/review/ReviewView";
+import { Button } from "@/components/ui/button";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { useFocusOnMount } from "@/hooks/useFocusOnMount";
 
@@ -29,14 +30,14 @@ export default function ReviewPage({ params }: { params: Promise<{ network: Netw
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <div className="flex items-center gap-2 mb-6">
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon"
           aria-label="Back to analyze"
           onClick={() => goBackToAnalyze(setPhase, router, network)}
-          className="text-fg-muted hover:text-fg transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
+          icon={<ArrowLeft className="h-4 w-4" />}
+        />
         <h1
           ref={headingRef}
           tabIndex={-1}

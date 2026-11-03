@@ -2,6 +2,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  // The accessibility specs answer every API call from fixtures and run per PR under their own
+  // config (playwright.a11y.config.ts), against the production build.
+  testIgnore: "a11y/**",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

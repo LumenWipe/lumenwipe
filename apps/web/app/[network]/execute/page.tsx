@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import ExecutionWizard from "@/components/execution/ExecutionWizard";
+import { Button } from "@/components/ui/button";
 
 export default function ExecutePage({ params }: { params: Promise<{ network: Network }> }) {
   const { network } = use(params);
@@ -38,12 +39,11 @@ export default function ExecutePage({ params }: { params: Promise<{ network: Net
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <div className="flex items-center gap-2 mb-6">
-        <Link
-          href={`/${network}/analyze`}
-          className="text-fg-muted hover:text-fg transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <Button asChild variant="ghost" size="icon">
+          <Link href={`/${network}/analyze`} aria-label="Back to analyze">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Button>
         <h1 className="mkt-display text-xl font-bold text-white">Executing plan</h1>
         <span className="text-xs text-fg-subtle ml-auto mkt-mono">
           {sourceAddress.slice(0, 8)}...{sourceAddress.slice(-8)}
