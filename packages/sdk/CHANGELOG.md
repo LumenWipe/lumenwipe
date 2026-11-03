@@ -7,8 +7,6 @@ release is cut.
 
 ## [Unreleased]
 
-## [0.15.0] - 2026-11-02
-
 ### Added
 
 - `runClose` takes an opt-in `reconcile` and a `prepare` step. With them, an unknown submit outcome
@@ -18,46 +16,12 @@ release is cut.
   a failure on the ledger. `resolveSubmission`, `isSubmitRefused` and `submissionClosesAccount` are
   exported. Without `reconcile`, nothing is sent twice. `client.submit` is still never retried.
 - `DemolishPhase` gains `STEP_UNCONFIRMED`.
-
-### Changed
-
-- `runClose` resolves with `{ mergeConfirmed }` instead of `undefined`. It is true only with
-  `reconcile`, for a transaction the client parsed as a merge and saw confirmed under its own hash.
-  Without `reconcile` it is always false: a caller must establish the merge itself, because `covers`
-  is API metadata.
-
-## [0.14.0] - 2026-11-02
-
-### Added
-
 - `client.getTransaction(hash)` looks a transaction up by hash without sending anything, and
   `client.closeStatus(source)` reports a close's phase and remaining work from live state. Both
   are retried like every other read. `closed` from `closeStatus` is informational: it never proves
   that a given close finished.
 - The types `SubmitPendingDetails`, `TransactionLookupResponse`, `CloseStatusResponse` and
   `CloseStatusRemaining` are exported.
-
-### Changed
-
-- `submit_rejected` is `422` instead of `502`, and `mediator_key_misconfiguration` is `503` instead
-  of `500`. `isApiErrorCode` is unaffected; anything branching on the status is not.
-- `confirmation_timeout` arrives within about 35 seconds rather than 90 and carries `details` with
-  `status: "pending"` and the `hash`. It stays an error on purpose: a client that reads `hash` from
-  a success must never count a pending transaction as confirmed.
-- `submit_failed` carries `details.hash` once the API has tried to send.
-
-## [0.13.1] - 2026-11-02
-
-### Fixed
-
-- Every client method that takes a network rejects with the new `LumenWipeInvalidNetworkError`,
-  with no request made, when the network is not `"mainnet"` or `"testnet"`. This includes a
-  `network` client option and an empty string, which used to fall back to the default network.
-
-## [0.13.0] - 2026-10-31
-
-### Added
-
 - Error code `state_changed` (409) from `close/transactions` and `close/plan`: the account changed
   between the API's read and its build, so nothing was built. Plan again.
 - `runClose` fetches a round refused as `state_changed` again, at most `STATE_CHANGED_REFETCHES`
@@ -74,80 +38,23 @@ release is cut.
 - `getTransactions` now receives `{ planHash }`; a function that takes no argument still works.
 - `AccountState.snapshotLedger`: the latest ledger the account read reflects, when the provider
   reports one.
-
-## [0.12.1] - 2026-10-15
-
-### Added
-
 - `ErrorCode` gains `time_bounds_required` and `transaction_expired`, returned by the mediator
   co-sign and the fee sponsor for an envelope with no expiry, too long a validity or one that has
   expired; `sponsor_source_unusable`, returned by the fee sponsor when the inner transaction is
   not the next one of an existing account; and `sponsorship_budget_exhausted` (429), returned by
   the fee sponsor once a daily budget is spent.
-
-### Changed
-
-- `mediatorSign` and `feeBumpSponsor` now refuse an envelope that does not expire within 330
-  seconds. Envelopes from `close/transactions` already do; an integration that builds its own
-  must set a time bound.
-
-## [0.12.0] - 2026-10-15
-
-### Added
-
 - `TransactionsResponse.sourceAccount`: the closing account's signers and thresholds as read at
   the start of that round, the read its transactions were built from. A transaction can remove
   signers and lower thresholds, so judge signing weight against it, with each confirmed
   `SetOptions` of the round applied on top, rather than against an earlier read.
-
-## [0.11.0] - 2026-10-15
-
-### Added
-
 - Error code `close_fee_balance_short` (422) and the same plan blocker: the account lacks the XLM
   above its reserve to pay the fees of the steps no sponsor can cover (Soroban rounds, the exchange
   merge, and any transaction the sponsor would not accept or when no sponsor is configured). It is
   raised before such a round is built, and the message states how much XLM to add.
 - `AccountState.numSponsored`: the reserves another account pays for this one. It lowers the
   minimum balance used to judge fees.
-
-### Changed
-
-- Fee affordability counts the XLM held by open offers selling XLM as unavailable, as the network
-  does, so a transaction that would otherwise be rejected for insufficient balance is flagged
-  `needsSponsoredFee` instead.
-- A transaction is flagged `needsSponsoredFee` only when the fee sponsor is configured and would
-  accept its operations; otherwise the build is refused with `close_fee_balance_short`.
-- The trustline reserve shortfall for a claim counts the claim round's fees as the account's own,
-  since no sponsor pays for a round that opens a trustline.
-
-## [0.10.1] - 2026-10-12
-
-### Changed
-
-- Declarations are now emitted by the TypeScript 6 compiler, so an optional parameter typed
-  `unknown` (the `reason` of `CloseDidNotConvergeError`) is written `unknown` instead of
-  `unknown | undefined`. The two are the same type, and no runtime code changed.
-
-## [0.10.0] - 2026-10-12
-
-### Added
-
 - `CloseDidNotConvergeError`, thrown by `runClose` instead of a bare `Error` when a close cannot
   finish. It carries `rounds`, `bound` and `reason` (`round_limit` or `empty_batch`).
-
-### Changed
-
-- `runClose` derives its round bound from the API's `remaining.steps` (rounds done, plus steps
-  left, plus a margin of 5), recomputed every round and capped at 200, instead of a fixed 25. An
-  explicit `maxRounds` still overrides it. A close with many claimable balances or token transfers
-  no longer stops early.
-- `runClose` stops on the first response that asks for another call but carries no transactions.
-
-## [0.9.0] - 2026-10-12
-
-### Added
-
 - Error code `claimable_balance_not_claimable_now` (422): a balance answered `claim` or
   `add_trustline_then_claim` can no longer be claimed in this close because its claim window has
   closed or has not opened. Plan again.
@@ -167,6 +74,34 @@ release is cut.
 
 ### Changed
 
+- `runClose` resolves with `{ mergeConfirmed }` instead of `undefined`. It is true only with
+  `reconcile`, for a transaction the client parsed as a merge and saw confirmed under its own hash.
+  Without `reconcile` it is always false: a caller must establish the merge itself, because `covers`
+  is API metadata.
+- `submit_rejected` is `422` instead of `502`, and `mediator_key_misconfiguration` is `503` instead
+  of `500`. `isApiErrorCode` is unaffected; anything branching on the status is not.
+- `confirmation_timeout` arrives within about 35 seconds rather than 90 and carries `details` with
+  `status: "pending"` and the `hash`. It stays an error on purpose: a client that reads `hash` from
+  a success must never count a pending transaction as confirmed.
+- `submit_failed` carries `details.hash` once the API has tried to send.
+- `mediatorSign` and `feeBumpSponsor` now refuse an envelope that does not expire within 330
+  seconds. Envelopes from `close/transactions` already do; an integration that builds its own
+  must set a time bound.
+- Fee affordability counts the XLM held by open offers selling XLM as unavailable, as the network
+  does, so a transaction that would otherwise be rejected for insufficient balance is flagged
+  `needsSponsoredFee` instead.
+- A transaction is flagged `needsSponsoredFee` only when the fee sponsor is configured and would
+  accept its operations; otherwise the build is refused with `close_fee_balance_short`.
+- The trustline reserve shortfall for a claim counts the claim round's fees as the account's own,
+  since no sponsor pays for a round that opens a trustline.
+- Declarations are now emitted by the TypeScript 6 compiler, so an optional parameter typed
+  `unknown` (the `reason` of `CloseDidNotConvergeError`) is written `unknown` instead of
+  `unknown | undefined`. The two are the same type, and no runtime code changed.
+- `runClose` derives its round bound from the API's `remaining.steps` (rounds done, plus steps
+  left, plus a margin of 5), recomputed every round and capped at 200, instead of a fixed 25. An
+  explicit `maxRounds` still overrides it. A close with many claimable balances or token transfers
+  no longer stops early.
+- `runClose` stops on the first response that asks for another call but carries no transactions.
 - `close/transactions` refuses (422 `claimable_balance_not_claimable_now`) instead of building the
   merge when a claimable balance still on-chain is neither answered `forfeit` nor part of the claim
   round: an answer that does not fit what the account can do with it (`claim` for a balance that
@@ -185,6 +120,12 @@ release is cut.
   claimable, and it is left out of the claim round. A predicate that is about to expire within the
   transaction window counts as closed. If the ledger time cannot be read, only unconditional
   claims count as claimable.
+
+### Fixed
+
+- Every client method that takes a network rejects with the new `LumenWipeInvalidNetworkError`,
+  with no request made, when the network is not `"mainnet"` or `"testnet"`. This includes a
+  `network` client option and an empty string, which used to fall back to the default network.
 
 ## [0.8.0] - 2026-10-12
 

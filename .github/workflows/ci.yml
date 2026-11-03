@@ -218,19 +218,11 @@ jobs:
           docker logs api-smoke
           exit 1
 
-  # RELEASING.md's guardrail against the SDK silently drifting behind what's on npm: a PR that
-  # touches packages/sdk/src/ (any change there reaches consumers as new behavior, whether or not
-  # it changes a type) or actually changes the SDK's public surface (packages/sdk/etc/sdk.api.md -
-  # the sdk matrix's check-api step already forces this file to be accurate for any real
-  # packages/types/src/ surface change) must also move packages/sdk/package.json's version. A
-  # packages/types/src/ change that doesn't touch sdk.api.md (a comment, an internal-only type)
-  # is deliberately not enough on its own - the report, not the raw path, is the precise signal.
-  # This does not publish anything - bumping the version just satisfies the check; the actual npm
-  # publish still needs the sdk-vX.Y.Z tag push (publish-sdk.yml). Only meaningful on a PR (a diff
-  # against its base); skipped on push, which is why the aggregate gate below treats "skipped" as
-  # passing here.
-  sdk-version-bump:
-    name: sdk version bump
+  # The version only moves in a release PR (RELEASING.md), so an SDK change records itself under
+  # [Unreleased] instead. sdk.api.md is compared by content: it reflects packages/types surface
+  # changes too. Skipped on push, which the aggregate gate treats as passing.
+  sdk-changelog:
+    name: sdk changelog
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -241,39 +233,32 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Require a version bump when the SDK's source or public surface changed
+      - name: Require an Unreleased changelog entry when the SDK's source or public surface changed
         run: |
           BASE="origin/${{ github.base_ref }}"
-          NEEDS_BUMP=no
           REASON=""
 
           if git diff --name-only "$BASE"...HEAD | grep -qE '^packages/sdk/src/'; then
-            NEEDS_BUMP=yes
             REASON="packages/sdk/src/"
           fi
-
-          # Compared by content, not by path: sdk.api.md not existing on the base branch (this
-          # PR establishing the baseline for the first time) is not itself a surface change, and
-          # a path-only check can't tell that apart from a real addition/removal/retype.
-          if git cat-file -e "$BASE:packages/sdk/etc/sdk.api.md" 2>/dev/null; then
-            if ! git diff --quiet "$BASE"...HEAD -- packages/sdk/etc/sdk.api.md; then
-              NEEDS_BUMP=yes
-              REASON="${REASON:+$REASON, }packages/sdk/etc/sdk.api.md"
-            fi
+          if git cat-file -e "$BASE:packages/sdk/etc/sdk.api.md" 2>/dev/null &&
+            ! git diff --quiet "$BASE"...HEAD -- packages/sdk/etc/sdk.api.md; then
+            REASON="${REASON:+$REASON, }packages/sdk/etc/sdk.api.md"
           fi
 
-          if [ "$NEEDS_BUMP" = yes ]; then
-            git show "$BASE:packages/sdk/package.json" > /tmp/old-sdk-package.json
-            OLD_VERSION=$(node -p "require('/tmp/old-sdk-package.json').version")
-            NEW_VERSION=$(node -p "require('./packages/sdk/package.json').version")
-            if [ "$OLD_VERSION" = "$NEW_VERSION" ]; then
-              echo "::error::$REASON changed, but packages/sdk/package.json's version is still $NEW_VERSION. Bump it - see RELEASING.md's SDK checklist. This check only catches a forgotten bump, not whether it's the right size."
-              exit 1
-            fi
-            echo "Version bumped: $OLD_VERSION -> $NEW_VERSION"
-          else
-            echo "No packages/sdk/src change and no packages/sdk/etc/sdk.api.md content change in this PR - nothing to check."
+          if [ -z "$REASON" ]; then
+            echo "No packages/sdk/src change and no packages/sdk/etc/sdk.api.md content change - nothing to check."
+            exit 0
           fi
+
+          unreleased() { awk '/^## \[Unreleased\]/ { f = 1; next } /^## \[/ { f = 0 } f'; }
+          BEFORE=$(git show "$BASE:packages/sdk/CHANGELOG.md" | unreleased)
+          AFTER=$(unreleased < packages/sdk/CHANGELOG.md)
+          if [ "$BEFORE" = "$AFTER" ]; then
+            echo "::error::$REASON changed, but packages/sdk/CHANGELOG.md has no new entry under [Unreleased]. Add one - see RELEASING.md."
+            exit 1
+          fi
+          echo "[Unreleased] entry added for: $REASON"
 
   # Findings go to the Security tab and do not fail the job. The repo's CodeQL default setup
   # must stay off, or GitHub rejects this upload as a conflicting configuration.
@@ -584,7 +569,7 @@ jobs:
         integration-funded,
         docker,
         prettier,
-        sdk-version-bump,
+        sdk-changelog,
         codeql,
         semgrep,
         gitleaks,
@@ -647,8 +632,8 @@ jobs:
             exit 1
           fi
           # skipped (not run on a push event) counts as passing - only a real failure blocks.
-          if [ "${{ needs.sdk-version-bump.result }}" != "success" ] && [ "${{ needs.sdk-version-bump.result }}" != "skipped" ]; then
-            echo "SDK changed without a version bump - see RELEASING.md."
+          if [ "${{ needs.sdk-changelog.result }}" != "success" ] && [ "${{ needs.sdk-changelog.result }}" != "skipped" ]; then
+            echo "SDK changed without an [Unreleased] changelog entry - see RELEASING.md."
             exit 1
           fi
           echo "All package checks passed."
