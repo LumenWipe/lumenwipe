@@ -1,5 +1,6 @@
 import type { Network } from "@/config/networks";
 import { loadSession, saveSession } from "@/lib/session/store";
+import { SESSION_RECORD_VERSION } from "@/types/session";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 
@@ -8,12 +9,21 @@ import { useNetworkStore } from "@/store/network";
 export interface CloseOwner {
   network: Network;
   source: string;
+  /** The store's reset count when the run started: leaving the close ends the run's hold. */
+  epoch: number;
+}
+
+/** The owner of the close the store holds now, for this account. */
+export function closeOwner(network: Network, source: string): CloseOwner {
+  return { network, source, epoch: useDemolishStore.getState().closeEpoch };
 }
 
 export function ownsStore(owner: CloseOwner): boolean {
+  const state = useDemolishStore.getState();
   return (
     useNetworkStore.getState().network === owner.network &&
-    useDemolishStore.getState().sourceAddress === owner.source
+    state.sourceAddress === owner.source &&
+    state.closeEpoch === owner.epoch
   );
 }
 
@@ -28,6 +38,7 @@ export async function saveCloseSession(owner: CloseOwner): Promise<string | null
   if (!sessionId || !destinationAddress) return null;
   const now = new Date().toISOString();
   await saveSession({
+    version: SESSION_RECORD_VERSION,
     id: sessionId,
     network: owner.network,
     sourceAddress: owner.source,

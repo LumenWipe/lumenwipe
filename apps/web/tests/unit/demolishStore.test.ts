@@ -319,6 +319,7 @@ import { authorizationOf } from "./fixtures/trustline";
 
 function makeSession(over: Partial<SessionRecord> = {}): SessionRecord {
   return {
+    version: 1,
     id: "s1",
     network: "testnet",
     sourceAddress: "GSOURCE",

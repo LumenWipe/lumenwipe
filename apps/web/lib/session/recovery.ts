@@ -1,12 +1,17 @@
-import { listSessions, deleteSession } from "./store";
+import { deleteSession, expireSessions, isExpired, listSessions } from "./store";
 import type { SessionRecord } from "@/types/session";
 import type { Network } from "@/config/networks";
 
+/** The saved close to offer for resuming on this network. Expired records are deleted first, and
+ *  left out even when that delete fails. */
 export async function findResumableSession(network: Network): Promise<SessionRecord | null> {
   try {
+    await expireSessions().catch((err: unknown) => {
+      console.error("[session] could not delete expired sessions:", err);
+    });
     const sessions = await listSessions();
     const matching = sessions
-      .filter((s) => s.network === network && s.status === "in_progress")
+      .filter((s) => s.network === network && s.status === "in_progress" && !isExpired(s))
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
     return matching.find((s) => s.unconfirmed) ?? matching[0] ?? null;
   } catch {

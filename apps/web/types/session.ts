@@ -1,8 +1,14 @@
 import type { UnresolvedSubmission } from "@lumenwipe/sdk";
 import type { Network } from "@/config/networks";
 
+/** The shape of a saved close record. A record without one predates the field and is read with
+ *  defaults for whatever it lacks. */
+export const SESSION_RECORD_VERSION = 1;
+
+/** One confirmed transaction of the close, in the order it was confirmed. */
 export interface CompletedStepRecord {
   index: number;
+  /** The step the transaction was for: the merge when it carries one. */
   type: string;
   txHash: string;
   confirmedAt: string; // ISO timestamp
@@ -13,6 +19,7 @@ export interface CompletedStepRecord {
 export type UnconfirmedRecord = Pick<UnresolvedSubmission, "hash" | "covers" | "validUntil">;
 
 export interface SessionRecord {
+  version: number;
   id: string;
   network: Network;
   sourceAddress: string;

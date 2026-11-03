@@ -76,6 +76,7 @@ test("resuming the saved close record re-plans from /analyze, never the discarde
   const calls = stubRouter();
   useDemolishStore.getState().discardPlan("changed");
   const record: SessionRecord = {
+    version: 1,
     id: "session-1",
     network: "testnet",
     sourceAddress: SOURCE,

@@ -1,7 +1,7 @@
 "use client";
 
-import { Suspense, use, useEffect } from "react";
-import { notFound, usePathname, useSearchParams } from "next/navigation";
+import { Suspense, use, useEffect, useRef } from "react";
+import { notFound, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { isValidNetwork, type Network } from "@/config/networks";
 import { useNetworkStore } from "@/store/network";
 import { useDemolishStore } from "@/store/demolish";
@@ -10,6 +10,7 @@ import NetworkStats from "@/components/stats/NetworkStats";
 import { isSigningRoute } from "@/lib/utils/signing-route";
 import RiskDisclaimerModal from "@/components/RiskDisclaimerModal";
 import UnresolvedGate from "@/components/execution/UnresolvedGate";
+import { LeaveGuardProvider, useLeaveGuard } from "@/components/layout/LeaveGuard";
 
 const CLOSE_PAGES = /\/(analyze|review|execute)$/;
 
@@ -26,6 +27,57 @@ function CloseGate({ network, children }: { network: Network; children: React.Re
   );
 }
 
+/** Keeps the store on the route's network. Reached mid-close, as by the browser's back button, a
+ *  change of network asks first: nothing of the other network shows meanwhile, and staying goes
+ *  back without clearing the close. */
+function NetworkSync({ network, children }: { network: Network; children: React.ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const query = useSearchParams().toString();
+  const setNetwork = useNetworkStore((s) => s.setNetwork);
+  const currentNetwork = useNetworkStore((s) => s.network);
+  const reset = useDemolishStore((s) => s.reset);
+  const { rule, requestLeave } = useLeaveGuard();
+  const changed = currentNetwork !== network;
+  const asking = changed && rule.leave === "confirm";
+  const askedFor = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!changed) {
+      askedFor.current = null;
+      setNetwork(network);
+      return;
+    }
+    if (rule.leave === "confirm") {
+      if (askedFor.current === network) return;
+      askedFor.current = network;
+      requestLeave({
+        leave: () => setNetwork(network),
+        stay: () =>
+          router.replace(
+            `/${currentNetwork}${pathname.slice(network.length + 1)}${query ? `?${query}` : ""}`
+          ),
+      });
+      return;
+    }
+    reset();
+    setNetwork(network);
+  }, [
+    changed,
+    network,
+    currentNetwork,
+    pathname,
+    query,
+    rule.leave,
+    requestLeave,
+    router,
+    setNetwork,
+    reset,
+  ]);
+
+  return asking ? null : children;
+}
+
 export default function NetworkLayout({
   children,
   params,
@@ -34,19 +86,9 @@ export default function NetworkLayout({
   params: Promise<{ network: string }>;
 }) {
   const { network } = use(params);
-  const setNetwork = useNetworkStore((s) => s.setNetwork);
-  const currentNetwork = useNetworkStore((s) => s.network);
-  const reset = useDemolishStore((s) => s.reset);
   const showStats = !isSigningRoute(usePathname());
 
   if (!isValidNetwork(network)) notFound();
-
-  useEffect(() => {
-    if (currentNetwork !== network) {
-      reset(); // Clear state when switching networks
-    }
-    setNetwork(network as "mainnet" | "testnet");
-  }, [network, currentNetwork, setNetwork, reset]);
 
   return (
     <RiskDisclaimerModal>
@@ -58,14 +100,18 @@ export default function NetworkLayout({
           <div className="absolute inset-0 mkt-grain" />
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/30 to-transparent" />
         </div>
-        <div className="relative z-10 flex min-h-screen flex-col">
-          <NavBar network={network as "mainnet" | "testnet"} />
-          <main className={showStats ? "flex-1 pb-16 xl:pb-0" : "flex-1"}>
-            <Suspense fallback={null}>
-              <CloseGate network={network}>{children}</CloseGate>
-            </Suspense>
-          </main>
-        </div>
+        <LeaveGuardProvider>
+          <div className="relative z-10 flex min-h-screen flex-col">
+            <NavBar network={network} />
+            <main className={showStats ? "flex-1 pb-16 xl:pb-0" : "flex-1"}>
+              <Suspense fallback={null}>
+                <NetworkSync network={network}>
+                  <CloseGate network={network}>{children}</CloseGate>
+                </NetworkSync>
+              </Suspense>
+            </main>
+          </div>
+        </LeaveGuardProvider>
         {showStats && <NetworkStats />}
       </div>
     </RiskDisclaimerModal>

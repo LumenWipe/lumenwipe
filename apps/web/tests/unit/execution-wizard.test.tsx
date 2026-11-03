@@ -9,7 +9,7 @@ import * as closeExecution from "@/hooks/useCloseExecution";
 import * as walletKit from "@/hooks/useWalletKitConnection";
 import * as sessionStore from "@/lib/session/store";
 import { fromHex } from "@/lib/stellar/hex";
-import { UNCONFIRMED_NOTICE } from "@/lib/utils/user-error";
+import { PROGRESS_NOT_SAVED, UNCONFIRMED_NOTICE } from "@/lib/utils/user-error";
 
 // ExecutionWizard calls useRouter() (to navigate to /complete on success) - outside of a
 // real Next.js app router tree that throws "invariant expected app router to be mounted".
@@ -302,6 +302,30 @@ test("execution-wizard › a failure whose retry safety is unknown makes no safe
   await screen.findByRole("button", { name: /retry/i });
   expect(screen.queryByText(/Safe to retry/)).toBeNull();
   currentRetrySafe = true;
+});
+
+test("execution-wizard › progress that could not be saved shows a notice beside the signing", async () => {
+  useDemolishStore.setState({ progressNotSaved: true });
+  runImpl = async () => {};
+
+  render(<ExecutionWizard network="testnet" />);
+
+  expect(screen.getByText(PROGRESS_NOT_SAVED)).toBeDefined();
+  expect(screen.getByRole("tablist")).toBeDefined();
+  useDemolishStore.setState({ progressNotSaved: false });
+});
+
+test("execution-wizard › a run this mount did not start shows as busy, with no way to start another", async () => {
+  useDemolishStore.setState({ signingRun: true });
+  runImpl = async () => {};
+  try {
+    render(<ExecutionWizard network="testnet" />);
+
+    expect(screen.getAllByText("Working…").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("tablist")).toBeNull();
+  } finally {
+    useDemolishStore.setState({ signingRun: false });
+  }
 });
 
 // #102: pre-auth-tx signer support.

@@ -46,9 +46,19 @@ import {
 } from "@/lib/stellar/signature-weight";
 import { lookupViaApi, submitViaApi } from "@/lib/stellar/submit-via-api";
 import { mergesAccount, submissionHash, submissionValidUntil } from "@/lib/stellar/submission";
-import { ensureCloseSession, ownsStore, type CloseOwner } from "@/lib/session/close-record";
+import {
+  closeOwner,
+  ensureCloseSession,
+  ownsStore,
+  type CloseOwner,
+} from "@/lib/session/close-record";
 import { findUnresolved } from "@/lib/session/recovery";
-import { clearUnconfirmedFor, saveUnconfirmed } from "@/lib/session/store";
+import {
+  clearUnconfirmedFor,
+  confirmationOf,
+  recordConfirmed,
+  saveUnconfirmed,
+} from "@/lib/session/store";
 import { requestMediatorCosignature } from "@/lib/stellar/mediator";
 import { requestFeeBumpSponsorship } from "@/lib/stellar/fee-bump-sponsor";
 import { notifyStatsRefresh } from "@/lib/stats-events";
@@ -111,6 +121,33 @@ async function recordSubmission(
   }
 }
 
+/** Records a confirmed transaction in the saved close the run started with, never another one.
+ *  It never stops the close: a failed write, or a record another tab dismissed, only shows a
+ *  notice. Called after the store marked the transaction's steps. */
+function recordProgress(
+  owner: CloseOwner,
+  recordId: string | null,
+  covers: readonly string[],
+  txHash: string
+): void {
+  const plan = ownsStore(owner) ? useDemolishStore.getState().executionPlan : null;
+  const open = plan?.findIndex((s) => s.status !== "confirmed") ?? -1;
+  const confirmation = confirmationOf(
+    covers,
+    txHash,
+    plan ? (open === -1 ? plan.length : open) : null
+  );
+  const written = recordId ? recordConfirmed(recordId, confirmation) : Promise.resolve(false);
+  void written
+    .catch((err: unknown) => {
+      console.error("[session] could not record the confirmed transaction:", err);
+      return false;
+    })
+    .then((saved) => {
+      if (!saved && ownsStore(owner)) useDemolishStore.getState().setProgressNotSaved(true);
+    });
+}
+
 export const PLAN_CHANGED_NOTICE =
   "Your account changed while the close was being prepared, so nothing was submitted for that step. The plan below has been refreshed from your account as it is now: review it and confirm again to continue.";
 
@@ -154,6 +191,8 @@ export function useCloseExecution() {
 
   const run = useCallback(
     async (signer: TransactionSigner): Promise<void> => {
+      // One run per close: a page remounted mid-run has lost its own record of the first.
+      if (useDemolishStore.getState().signingRun) return;
       if (!sourceAddress || !destinationAddress) {
         // Both guards below run before the try/catch that normally clears this pending
         // state on an unrelated failure - without clearing it here too, a paused
@@ -221,13 +260,15 @@ export function useCloseExecution() {
         })
         .filter((asset): asset is string => asset !== null);
 
+      // Set with the check above, before any await, so a leave during the reads below clears it.
+      useDemolishStore.getState().setSigningRun(true);
       setPhase("STEP_EXECUTING");
       setSignatureStatus(null);
       setRetrySafe(true);
       setStillUnconfirmed(false);
       carriedPreimageRef.current = false;
       const flight = { stage: "before-submit" as CloseFailureStage };
-      const owner: CloseOwner = { network, source: sourceAddress };
+      const owner = closeOwner(network, sourceAddress);
       // Saved by an earlier page load: until it settles, this account signs nothing new.
       const recorded = await findUnresolved(network, sourceAddress);
       if (recorded?.unconfirmed && !useDemolishStore.getState().unconfirmedSubmission) {
@@ -235,7 +276,7 @@ export function useCloseExecution() {
       }
       try {
         // Found here, before a signature or a sponsorship is spent on a send that could not start.
-        await ensureCloseSession(owner).catch(() => {
+        const recordId = await ensureCloseSession(owner).catch(() => {
           throw new UserFacingError(HASH_NOT_KEPT);
         });
         const { mergeConfirmed } = await runClose(
@@ -453,32 +494,36 @@ export function useCloseExecution() {
               onSubmission: (submission) => recordSubmission(owner, submission),
               unresolved: useDemolishStore.getState().unconfirmedSubmission ?? undefined,
               onResolved: (submission) => {
-                if (!ownsStore(owner)) return;
-                clearPlanHash();
-                markCoveredConfirmed(
-                  submission.covers,
-                  submission.hash,
-                  submission.needsSponsoredFee,
-                  submission.coversTargets
-                );
+                if (ownsStore(owner)) {
+                  clearPlanHash();
+                  markCoveredConfirmed(
+                    submission.covers,
+                    submission.hash,
+                    submission.needsSponsoredFee,
+                    submission.coversTargets
+                  );
+                }
+                recordProgress(owner, recordId, submission.covers, submission.hash);
               },
             },
             onConfirmed: (tx, hash) => {
-              if (!ownsStore(owner)) return;
-              carriedPreimageRef.current = false;
-              clearPlanHash();
-              markCoveredConfirmed(tx.covers, hash, tx.needsSponsoredFee, tx.coversTargets);
-              signerStateRef.current = applyConfirmedTransaction(
-                roundSignerState(),
-                tx.xdr,
-                passphrase,
-                intentFromXdr(tx.xdr, passphrase).operations,
-                sourceAddress
-              );
-              if (tx.covers.includes("MERGE") || tx.covers.includes("CLOSE_ACCOUNT")) {
-                notifyStatsRefresh();
+              if (ownsStore(owner)) {
+                carriedPreimageRef.current = false;
+                clearPlanHash();
+                markCoveredConfirmed(tx.covers, hash, tx.needsSponsoredFee, tx.coversTargets);
+                signerStateRef.current = applyConfirmedTransaction(
+                  roundSignerState(),
+                  tx.xdr,
+                  passphrase,
+                  intentFromXdr(tx.xdr, passphrase).operations,
+                  sourceAddress
+                );
+                if (tx.covers.includes("MERGE") || tx.covers.includes("CLOSE_ACCOUNT")) {
+                  notifyStatsRefresh();
+                }
+                flight.stage = "before-submit";
               }
-              flight.stage = "before-submit";
+              recordProgress(owner, recordId, tx.covers, hash);
             },
             onProgress: setProgressStatus,
           },
@@ -555,6 +600,7 @@ export function useCloseExecution() {
         setPhase("STEP_FAILED");
       } finally {
         setProgressStatus(null);
+        if (ownsStore(owner)) useDemolishStore.getState().setSigningRun(false);
       }
     },
     [
@@ -574,10 +620,13 @@ export function useCloseExecution() {
   // Settles the unknown transaction by its hash alone: nothing is signed or sent, so a check can
   // never change what happens on the ledger.
   const checkUnconfirmed = useCallback(async (): Promise<void> => {
-    const submission = useDemolishStore.getState().unconfirmedSubmission;
-    const source = useDemolishStore.getState().sourceAddress;
+    const {
+      unconfirmedSubmission: submission,
+      sourceAddress: source,
+      sessionId,
+    } = useDemolishStore.getState();
     if (!submission || !source) return;
-    const owner: CloseOwner = { network, source };
+    const owner = closeOwner(network, source);
     setProgressStatus("Checking the network…");
     setStillUnconfirmed(false);
     const settled = await resolveSubmission(submission, (hash) => lookupViaApi(hash, network));
@@ -609,6 +658,7 @@ export function useCloseExecution() {
       submission.needsSponsoredFee,
       submission.coversTargets
     );
+    recordProgress(owner, sessionId, submission.covers, submission.hash);
     if (submissionClosesAccount(submission)) {
       notifyStatsRefresh();
       setPhase("COMPLETE");

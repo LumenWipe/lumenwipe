@@ -154,6 +154,7 @@ test("RiskDisclaimerModal › a throwing setItem does not trap the user", () => 
 });
 
 test("NetworkLayout › with a throwing sessionStorage the layout renders and the gate shows", async () => {
+  spyOn(navigation, "useRouter").mockReturnValue({ push: () => {}, replace: () => {} } as never);
   spyOn(navigation, "usePathname").mockReturnValue("/testnet");
   spyOn(navigation, "useSearchParams").mockReturnValue(new URLSearchParams() as never);
   spyOn(statsHook, "useStats").mockReturnValue({ data: null } as never);
