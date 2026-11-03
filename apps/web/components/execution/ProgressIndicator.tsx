@@ -1,4 +1,6 @@
-import { Loader2 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
+import { stepperSurface } from "@/components/ui/stepper";
+import { cn } from "@/lib/utils/cn";
 
 interface ProgressIndicatorProps {
   status: string;
@@ -6,9 +8,10 @@ interface ProgressIndicatorProps {
 
 export default function ProgressIndicator({ status }: ProgressIndicatorProps) {
   return (
-    <div className="flex items-center gap-2.5 text-sm text-white/60 bg-white/[0.03] border border-white/10 rounded-xl px-3 py-2.5">
-      <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin text-stellar shrink-0" />
-      {status}
+    <div className={cn(stepperSurface, "flex items-center gap-2.5 text-sm text-white/60")}>
+      <Spinner label="In progress" className="shrink-0" />
+      {/* The wizard's status region already carries this text for assistive technology. */}
+      <span aria-hidden="true">{status}</span>
     </div>
   );
 }

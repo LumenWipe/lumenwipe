@@ -7,14 +7,19 @@ import { isValidGAddress } from "@/lib/utils/validation";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
-import { cn } from "@/lib/utils/cn";
 import { AddressField } from "@/components/ui/address-field";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import { findUnresolved } from "@/lib/session/recovery";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
+import { Tabs, type TabItem } from "@/components/ui/tabs";
 
 type EntryMode = "wallet" | "address";
+
+const ENTRY_MODES: readonly TabItem<EntryMode>[] = [
+  { value: "wallet", label: "Connect wallet" },
+  { value: "address", label: "Paste address" },
+];
 
 export default function AccountEntryForm() {
   const router = useRouter();
@@ -60,41 +65,25 @@ export default function AccountEntryForm() {
           </span>
         </p>
 
-        <div className="flex gap-2 rounded-lg bg-white/[0.03] p-1">
-          <button
-            type="button"
-            onClick={() => setMode("wallet")}
-            className={cn(
-              "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
-              mode === "wallet" ? "bg-white/10 text-white" : "text-fg-muted hover:text-white/80"
-            )}
-          >
-            Connect wallet
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("address")}
-            className={cn(
-              "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
-              mode === "address" ? "bg-white/10 text-white" : "text-fg-muted hover:text-white/80"
-            )}
-          >
-            Paste address
-          </button>
-        </div>
-
-        {mode === "wallet" ? (
-          <WalletConnectPanel connection={walletConnection} disabled={analyzing} />
-        ) : (
-          <AddressField
-            label="Account to close"
-            hideLabel
-            required
-            value={pastedSource}
-            onChange={setPastedSource}
-            placeholder="G... (the account to merge)"
-          />
-        )}
+        <Tabs
+          label="How to choose the account"
+          items={ENTRY_MODES}
+          value={mode}
+          onValueChange={setMode}
+        >
+          {mode === "wallet" ? (
+            <WalletConnectPanel connection={walletConnection} disabled={analyzing} />
+          ) : (
+            <AddressField
+              label="Account to close"
+              hideLabel
+              required
+              value={pastedSource}
+              onChange={setPastedSource}
+              placeholder="G... (the account to merge)"
+            />
+          )}
+        </Tabs>
 
         <p className="text-xs text-fg-muted">
           We&apos;ll analyze this account&apos;s state so you can review and decide what happens to
