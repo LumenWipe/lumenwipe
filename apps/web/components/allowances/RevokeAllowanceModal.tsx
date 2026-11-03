@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, KeyRound, ShieldOff, Wallet, X } from "lucide-react";
 import { TransactionBuilder } from "@stellar/stellar-sdk";
 import type { Network } from "@/config/networks";
@@ -72,6 +72,17 @@ export default function RevokeAllowanceModal({
 
   const walletMatches = walletConnection.address === owner;
   const signerReady = mode === "wallet" ? walletMatches : keyValid;
+  const pickerShown = step === "confirm" || step === "signing" || step === "failed";
+  const keyFieldShown = pickerShown && mode === "secret-key";
+
+  // The field mounts empty, so the key and its validity go with it whenever it leaves.
+  useEffect(() => {
+    if (!keyFieldShown) return;
+    return () => {
+      secretKeyRef.current = "";
+      setKeyValid(false);
+    };
+  }, [keyFieldShown]);
 
   async function handleConfirm() {
     setError(null);
@@ -187,7 +198,7 @@ export default function RevokeAllowanceModal({
           </div>
         )}
 
-        {step === "confirm" || step === "signing" || step === "failed" ? (
+        {pickerShown ? (
           <>
             <p className="leading-relaxed text-white/65">
               This sets the allowance to zero. The spender will no longer be able to move any of
@@ -214,7 +225,13 @@ export default function RevokeAllowanceModal({
               value={mode}
               onValueChange={setMode}
             >
-              {mode === "wallet" ? (
+              {keyFieldShown ? (
+                <SecretKeyInput
+                  secretKeyRef={secretKeyRef}
+                  onValidityChange={setKeyValid}
+                  disabled={busy}
+                />
+              ) : (
                 <WalletConnectPanel
                   connection={walletConnection}
                   disabled={busy}
@@ -223,12 +240,6 @@ export default function RevokeAllowanceModal({
                       ? `Connected wallet doesn't match this account (${shortAddress(owner)}).`
                       : undefined
                   }
-                />
-              ) : (
-                <SecretKeyInput
-                  secretKeyRef={secretKeyRef}
-                  onValidityChange={setKeyValid}
-                  disabled={busy}
                 />
               )}
             </Tabs>
