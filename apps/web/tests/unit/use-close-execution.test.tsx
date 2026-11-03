@@ -2215,3 +2215,8 @@ test("useCloseExecution › aborts before submit when a wallet returns a changed
   expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
   expect(submitCalls).toBe(0);
 });
+
+test("a freshly mounted close claims nothing about whether a retry is safe", () => {
+  const { result } = renderHook(() => useCloseExecution());
+  expect(result.current.retrySafe).toBeNull();
+});

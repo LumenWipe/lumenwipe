@@ -1,5 +1,5 @@
 import { afterEach, expect, spyOn, test, mock } from "bun:test";
-import { findResumableSession, findUnresolved } from "@/lib/session/recovery";
+import { findResumableSession, findUnresolved, readUnresolved } from "@/lib/session/recovery";
 import * as sessionStore from "@/lib/session/store";
 import type { SessionRecord } from "@/types/session";
 
@@ -9,10 +9,13 @@ afterEach(() => mock.restore());
 
 function fakeDb(start: SessionRecord | undefined, all: SessionRecord[] = []) {
   const puts: SessionRecord[] = [];
+  const get = async (id: string) => all.find((s) => s.id === id) ?? start;
+  const put = async (record: SessionRecord) => puts.push(record);
   spyOn(sessionStore, "getDb").mockImplementation((async () => ({
-    get: async (_store: string, id: string) => all.find((s) => s.id === id) ?? start,
+    get: async (_store: string, id: string) => get(id),
     getAll: async () => all,
-    put: async (_store: string, record: SessionRecord) => puts.push(record),
+    put: async (_store: string, record: SessionRecord) => put(record),
+    transaction: () => ({ store: { get, put }, done: Promise.resolve() }),
   })) as never);
   return puts;
 }
@@ -85,6 +88,40 @@ test("confirming the review again keeps an unresolved hash on the same session",
   const puts = fakeDb({ ...RECORD, unconfirmed: HELD });
   await sessionStore.saveSession(RECORD);
   expect(puts[0]?.unconfirmed).toEqual(HELD);
+});
+
+test("a confirm reads and writes the session in one readwrite transaction", async () => {
+  const modes: string[] = [];
+  const puts: SessionRecord[] = [];
+  spyOn(sessionStore, "getDb").mockImplementation((async () => ({
+    get: async () => {
+      throw new Error("read outside the transaction");
+    },
+    put: async () => {
+      throw new Error("write outside the transaction");
+    },
+    transaction: (_store: string, mode: string) => {
+      modes.push(mode);
+      return {
+        store: {
+          get: async () => ({ ...RECORD, unconfirmed: HELD }),
+          put: async (record: SessionRecord) => puts.push(record),
+        },
+        done: Promise.resolve(),
+      };
+    },
+  })) as never);
+  await sessionStore.saveSession(RECORD);
+  expect(modes).toEqual(["readwrite"]);
+  expect(puts[0]?.unconfirmed).toEqual(HELD);
+});
+
+test("reading the hold rethrows a failed read, which finding it takes as no hold", async () => {
+  spyOn(sessionStore, "getDb").mockImplementation((async () => {
+    throw new Error("storage unavailable");
+  }) as never);
+  await expect(readUnresolved("testnet", "GA")).rejects.toThrow("storage unavailable");
+  expect(await findUnresolved("testnet", "GA")).toBeNull();
 });
 
 test("recovery finds the unresolved session even when a newer one exists", async () => {

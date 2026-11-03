@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { goBackToAnalyze } from "@/lib/plan/confirm-plan";
+import { routeForPhase } from "@/lib/plan/route-for-phase";
 import ReviewView from "@/components/review/ReviewView";
 import { Button } from "@/components/ui/button";
 import StatusMessage from "@/components/a11y/StatusMessage";
@@ -14,18 +15,19 @@ import { useFocusOnMount } from "@/hooks/useFocusOnMount";
 export default function ReviewPage({ params }: { params: Promise<{ network: Network }> }) {
   const { network } = use(params);
   const router = useRouter();
-  const { executionPlan, sourceAddress, setPhase } = useDemolishStore();
+  const { executionPlan, sourceAddress, phase, setPhase } = useDemolishStore();
 
   const hasPlan = Boolean(sourceAddress) && executionPlan.length > 0;
-  const headingRef = useFocusOnMount<HTMLHeadingElement>(hasPlan);
+  const route = hasPlan ? routeForPhase(phase) : "analyze";
+  const headingRef = useFocusOnMount<HTMLHeadingElement>(route === "review");
 
+  // Back from /execute lands here with steps already signed: only a close still waiting for its
+  // confirmation may be reviewed, so a confirmed one can never be confirmed and planned again.
   useEffect(() => {
-    if (!sourceAddress || executionPlan.length === 0) {
-      router.replace(`/${network}/analyze`);
-    }
-  }, [sourceAddress, executionPlan.length, network, router]);
+    if (route !== "review") router.replace(`/${network}/${route}`);
+  }, [route, network, router]);
 
-  if (!sourceAddress || executionPlan.length === 0) return null;
+  if (!sourceAddress || route !== "review") return null;
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">

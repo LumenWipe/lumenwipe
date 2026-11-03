@@ -137,7 +137,7 @@ export function useCloseExecution() {
 
   const [progressStatus, setProgressStatus] = useState<string | null>(null);
   const [signatureStatus, setSignatureStatus] = useState<SignatureStatus | null>(null);
-  const [retrySafe, setRetrySafe] = useState(true);
+  const [retrySafe, setRetrySafe] = useState<boolean | null>(null);
   const [stillUnconfirmed, setStillUnconfirmed] = useState(false);
   // Whether the transaction in flight carries a preimage: refused or failed, it was still sent.
   const carriedPreimageRef = useRef(false);

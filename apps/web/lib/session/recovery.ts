@@ -14,17 +14,26 @@ export async function findResumableSession(network: Network): Promise<SessionRec
   }
 }
 
-/** A session of this account holding a hash whose outcome is unknown, however old it is. */
+/** A session of this account holding a hash whose outcome is unknown, however old it is. Throws
+ *  when the saved sessions cannot be read, for a caller that must not take that as no hold. */
+export async function readUnresolved(
+  network: Network,
+  source: string
+): Promise<SessionRecord | null> {
+  const sessions = await listSessions();
+  return (
+    sessions.find((s) => s.network === network && s.sourceAddress === source && s.unconfirmed) ??
+    null
+  );
+}
+
+/** As readUnresolved, with a failed read taken as no hold. */
 export async function findUnresolved(
   network: Network,
   source: string
 ): Promise<SessionRecord | null> {
   try {
-    const sessions = await listSessions();
-    return (
-      sessions.find((s) => s.network === network && s.sourceAddress === source && s.unconfirmed) ??
-      null
-    );
+    return await readUnresolved(network, source);
   } catch {
     return null;
   }

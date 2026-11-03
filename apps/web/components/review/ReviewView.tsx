@@ -6,6 +6,8 @@ import { ShieldCheck, AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
 import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { saveCloseSession } from "@/lib/session/close-record";
+import { readUnresolved } from "@/lib/session/recovery";
+import { CONFIRM_HELD, CONFIRM_UNCHECKED } from "@/lib/utils/user-error";
 import { formatXlm } from "@/lib/utils/amounts";
 import PlanStepAccordion from "@/components/review/PlanStepAccordion";
 import AccountSummaryCard from "@/components/plan/AccountSummaryCard";
@@ -27,13 +29,12 @@ export default function ReviewView({ network }: ReviewViewProps) {
     sourceAddress,
     memo,
     memoType,
-    sessionId,
-    initSession,
     setPhase,
   } = useDemolishStore();
 
   const [confirming, setConfirming] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [held, setHeld] = useState<string | null>(null);
 
   const totalFee = executionPlan
     .reduce((sum, step) => sum + parseFloat(step.estimatedFeeLumens), 0)
@@ -41,10 +42,22 @@ export default function ReviewView({ network }: ReviewViewProps) {
 
   // The only caller allowed to transition PREFLIGHT_COMPLETE -> STEP_EXECUTING. Nothing
   // is persisted until this fires, so leaving this page without confirming (closing the
-  // tab, navigating away) never leaves a resumable session behind.
+  // tab, navigating away) never leaves a resumable session behind. A transaction of this
+  // account with an unknown outcome, or a saved state that cannot be read, holds it.
   async function handleConfirm() {
     if (!sourceAddress || !destinationAddress) return;
     setConfirming(true);
+    setHeld(null);
+
+    const hold = await readUnresolved(network, sourceAddress).then(
+      (found) => (found || useDemolishStore.getState().unconfirmedSubmission ? CONFIRM_HELD : null),
+      () => CONFIRM_UNCHECKED
+    );
+    if (hold) {
+      setHeld(hold);
+      setConfirming(false);
+      return;
+    }
 
     await saveCloseSession({ network, source: sourceAddress });
 
@@ -120,6 +133,12 @@ export default function ReviewView({ network }: ReviewViewProps) {
       >
         {confirming ? "Preparing..." : "I understand this plan and want to proceed"}
       </Button>
+
+      {held && (
+        <Callout tone="danger" icon={<AlertTriangle className="h-4 w-4" />}>
+          {held}
+        </Callout>
+      )}
 
       {!accountState && (
         <p className="flex items-center gap-1.5 text-xs text-fg-subtle">
