@@ -73,7 +73,7 @@ const FEATURES = [
   {
     icon: RefreshCw,
     title: "Resumable sessions",
-    body: "An explicit state machine in IndexedDB. Close the tab mid-flow and resume exactly where you left off, reconciled on-chain.",
+    body: "Close the tab mid-flow and resume in the same browser: the account is re-read and a fresh plan covers only what is left, so confirmed work is not repeated.",
     status: "Live",
   },
   {
