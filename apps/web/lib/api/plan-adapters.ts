@@ -1,6 +1,7 @@
 import type { PlanResponse } from "@lumenwipe/sdk";
 import type { PlannedStep } from "@/types/plan";
 import type { ClaimPredicate } from "@/types/account";
+import type { ClassicConversionQuote } from "@/types/close-api";
 
 /**
  * Per-asset convertibility consumed by the analyze UI. Relocated here from the old
@@ -22,7 +23,7 @@ export interface AssetConvertibility {
   clawbackEnabled?: boolean;
   /** For a convertible classic asset priced at the balance it will move: the XLM the plan
    *  quoted and the least the conversion may deliver, in stroops. */
-  quote?: { estimatedReceive: string; minAmountOut: string };
+  quote?: ClassicConversionQuote;
   /** Present for a Soroban token: its contract and the raw balance verify() holds a transfer to.
    *  `arrivesFromExit`: the balance is what a position's exit will pay out, not what is held now. */
   token?: {
@@ -53,9 +54,7 @@ export interface TokenQuote {
   resolvedPath?: string[];
 }
 
-function classicQuoteOf(
-  raw: unknown
-): { estimatedReceive: string; minAmountOut: string } | undefined {
+function classicQuoteOf(raw: unknown): ClassicConversionQuote | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const q = raw as Record<string, unknown>;
   if (typeof q.estimatedReceive !== "string" || typeof q.minAmountOut !== "string")

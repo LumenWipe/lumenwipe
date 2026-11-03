@@ -10,6 +10,19 @@ export interface QuoteInfo {
   expiresAtLedger: number;
 }
 
+/**
+ * The swap quote on a convertible classic asset's `asset_disposition` subject (`subject.quote`),
+ * in stroops of XLM. Display data: the build re-quotes, and a convert answer carries its own floor
+ * in `params.minAmountOut`. Absent when the asset has no route, or when its balance is what a
+ * position's exit will pay in and is not known yet.
+ */
+export interface ClassicConversionQuote {
+  /** The XLM the route is expected to deliver for the balance the step will move. */
+  estimatedReceive: string;
+  /** The least XLM the route may deliver once slippage is applied. */
+  minAmountOut: string;
+}
+
 export interface DecisionOption {
   id: string; // e.g. "convert_to_xlm" | "return_to_issuer" | "transfer_to_account" | "acknowledged"
   recommended?: boolean;
@@ -20,6 +33,8 @@ export interface DecisionOption {
 export interface DecisionPoint {
   id: string; // stable, e.g. "asset:USDC-GISSUER..."
   type: "asset_disposition" | "confirmation" | "choice" | "claimable_balance";
+  /** Shape depends on `type`. A convertible classic asset's subject carries a
+   *  `quote: ClassicConversionQuote`. */
   subject: Record<string, unknown>;
   options: DecisionOption[];
   /**

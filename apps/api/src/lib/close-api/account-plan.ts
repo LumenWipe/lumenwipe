@@ -56,7 +56,6 @@ import {
   PRICE_SOURCE_UNAVAILABLE,
   ROUTE_LOOKUP_UNAVAILABLE_CODE,
   TOKEN_DISCOVERED_CHOICE,
-  type ClassicQuote,
 } from "@/lib/close-api/decisions";
 import { ARRIVING_ASSET_PROBE_AMOUNT, assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
 import { DEFI_POSITIONS_UNAVAILABLE_CODE } from "@/lib/defi-positions/positions-gate";
@@ -68,7 +67,13 @@ import {
 } from "@/lib/defi-exits/plan-exits";
 import { assemblePlanResponse, computePlanHash } from "@/lib/close-api/plan-response";
 import { BASE_FEE_STROOPS } from "@/config/constants";
-import type { DecisionAnswer, DecisionPoint, PlanResponse, Trustline } from "@lumenwipe/types";
+import type {
+  ClassicConversionQuote,
+  DecisionAnswer,
+  DecisionPoint,
+  PlanResponse,
+  Trustline,
+} from "@lumenwipe/types";
 
 /** Quotes per plan are bounded like discovery candidates; a token past this is offered no swap. */
 const MAX_TOKEN_QUOTES = 20;
@@ -77,6 +82,7 @@ export const EXIT_PREFLIGHT_TIMEOUT_MS = 10_000;
 
 export interface AccountPlanDeps {
   preflightExits?: typeof preflightExitTargets;
+  fetchConversionPath?: typeof fetchConversionPath;
 }
 
 /**
@@ -196,10 +202,11 @@ export async function buildAccountPlan(
   const dustAssets = new Set<string>();
   // The quote shown for a held or claimed balance becomes the floor the convert answer carries.
   // An asset priced at the exit probe amount gets none: its real amount is unknown until it lands.
-  const classicQuotes: Record<string, ClassicQuote> = {};
+  const classicQuotes: Record<string, ClassicConversionQuote> = {};
+  const findPath = deps.fetchConversionPath ?? fetchConversionPath;
   const convertibilityPromise = Promise.all(
     pricedAssets.map(async ({ asset, amount, probe }) => {
-      const result = await fetchConversionPath(asset, amount, network);
+      const result = await findPath(asset, amount, network);
       if (result.kind === "unavailable") priceSourceUnavailable.add(asset);
       else {
         convertibility[asset] = result.kind === "route";
