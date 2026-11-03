@@ -51,6 +51,7 @@ export default function SecretKeyInput({
       label={label}
       required
       error={showError ? "Not a valid Stellar secret key (must start with S)" : undefined}
+      status={touched && hasValue && isValid ? "Valid secret key" : undefined}
       helper={
         <span className="flex items-start gap-1.5">
           <ShieldAlert className="h-3.5 w-3.5 mt-0.5 shrink-0 text-warning" />
@@ -83,9 +84,10 @@ export default function SecretKeyInput({
             ))}
           <button
             type="button"
+            aria-label="Show secret key"
+            aria-pressed={showKey}
             onClick={() => setShowKey((v) => !v)}
-            className="text-fg-muted hover:text-white transition-colors p-0.5"
-            tabIndex={-1}
+            className="text-fg-muted hover:text-white transition-colors p-1"
           >
             {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>

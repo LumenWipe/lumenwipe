@@ -423,16 +423,16 @@ test("RevokeAllowanceModal › Tab stays inside with the key panel open and conf
   renderModal();
   const secret = screen.getByRole("tab", { name: /secret key/i });
   fireEvent.click(secret);
-  const input = screen.getByPlaceholderText("S...");
+  const reveal = screen.getByRole("button", { name: "Show secret key" });
   const close = screen.getByRole("button", { name: "Close" });
   expect(confirmButton().disabled).toBe(true);
 
-  input.focus();
-  fireEvent.keyDown(input, { key: "Tab" });
+  reveal.focus();
+  fireEvent.keyDown(reveal, { key: "Tab" });
   expect(document.activeElement).toBe(close);
 
   fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
-  expect(document.activeElement).toBe(input);
+  expect(document.activeElement).toBe(reveal);
 });
 
 function pressEscape(): void {
