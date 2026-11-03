@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, expect, jest, mock, spyOn, test } from "bun:test";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Keypair } from "@stellar/stellar-sdk";
 import * as navigation from "next/navigation";
-import ReviewView from "@/components/review/ReviewView";
+import ReviewView, { CONFIRM_SAVE_TIMEOUT_MS } from "@/components/review/ReviewView";
 import * as closeRecord from "@/lib/session/close-record";
 import * as recovery from "@/lib/session/recovery";
 import * as sessionStore from "@/lib/session/store";
@@ -35,6 +35,7 @@ const STEP: PlannedStep = {
 };
 
 const PROGRESS: SessionRecord = {
+  version: 1,
   id: "s",
   network: "testnet",
   sourceAddress: SOURCE,
@@ -204,5 +205,48 @@ test("a save that throws releases the button and does not advance", async () => 
 
   expect(screen.getByRole("alert").textContent).toContain(CONFIRM_SAVE_FAILED);
   expect(screen.queryByText("Preparing...")).toBeNull();
+  expect(screen.getByRole("button", { name: /want to proceed/i })).not.toHaveProperty(
+    "disabled",
+    true
+  );
+  expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
   expectNotStarted(rows, [], calls);
+});
+
+test("a save that never answers gives up, releases the button and does not advance", async () => {
+  const rows = fakeDb([]);
+  const calls = stubRouter();
+  spyOn(closeRecord, "saveCloseSession").mockImplementation(() => new Promise(() => {}));
+  jest.useFakeTimers();
+  try {
+    await confirm();
+    expect(screen.getByText("Preparing...")).toBeDefined();
+    await act(async () => {
+      jest.advanceTimersByTime(CONFIRM_SAVE_TIMEOUT_MS);
+    });
+  } finally {
+    jest.useRealTimers();
+  }
+
+  expect(screen.getByRole("alert").textContent).toContain(CONFIRM_SAVE_FAILED);
+  expect(screen.queryByText("Preparing...")).toBeNull();
+  expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
+  expectNotStarted(rows, [], calls);
+});
+
+test("trying again after a failed save starts the close once the save works", async () => {
+  fakeDb([]);
+  const calls = stubRouter();
+  const save = spyOn(closeRecord, "saveCloseSession").mockRejectedValueOnce(new Error("quota"));
+  save.mockResolvedValueOnce("s");
+
+  await confirm();
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  });
+
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(useDemolishStore.getState().phase).toBe("STEP_EXECUTING");
+  expect(calls).toEqual(["push /testnet/execute"]);
 });

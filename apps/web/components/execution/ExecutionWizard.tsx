@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card } from "@/components/ui/card";
 import { Tabs, type TabItem } from "@/components/ui/tabs";
+import { PROGRESS_NOT_SAVED } from "@/lib/utils/user-error";
 
 interface ExecutionWizardProps {
   network: Network;
@@ -49,6 +50,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const lastErrorReference = useDemolishStore((s) => s.lastErrorReference);
   const accountState = useDemolishStore((s) => s.accountState);
   const unconfirmedSubmission = useDemolishStore((s) => s.unconfirmedSubmission);
+  const progressNotSaved = useDemolishStore((s) => s.progressNotSaved);
 
   const {
     run,
@@ -377,6 +379,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               {mediatorRequired ? " through the exchange relay account." : "."} Verify it carefully.
             </p>
           </Callout>
+
+          {progressNotSaved && (
+            <Callout tone="warning" icon={<AlertCircle className="h-4 w-4" />}>
+              {PROGRESS_NOT_SAVED}
+            </Callout>
+          )}
 
           <StatusMessage message={statusMessage} />
 

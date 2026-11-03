@@ -21,6 +21,17 @@ import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 
+/** How long the confirm waits for the close to be saved: a blocked database never answers. */
+export const CONFIRM_SAVE_TIMEOUT_MS = 5000;
+
+function withinSaveTime<T>(pending: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("save timed out")), CONFIRM_SAVE_TIMEOUT_MS);
+  });
+  return Promise.race([pending, limit]).finally(() => clearTimeout(timer));
+}
+
 interface ReviewViewProps {
   network: Network;
 }
@@ -61,7 +72,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
           found || journeyOf(useDemolishStore.getState()).mayBeInFlight ? CONFIRM_HELD : null,
         () => CONFIRM_UNCHECKED
       )) ??
-      (await saveCloseSession({ network, source: sourceAddress }).then(
+      (await withinSaveTime(saveCloseSession({ network, source: sourceAddress })).then(
         (id) => (id ? null : CONFIRM_NOT_SAVED),
         () => CONFIRM_SAVE_FAILED
       ));
@@ -147,7 +158,18 @@ export default function ReviewView({ network }: ReviewViewProps) {
 
       {held && (
         <Callout tone="danger" icon={<AlertTriangle className="h-4 w-4" />}>
-          {held}
+          <p>{held}</p>
+          {held === CONFIRM_SAVE_FAILED && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-2"
+              onClick={() => void handleConfirm()}
+              disabled={confirming}
+            >
+              Try again
+            </Button>
+          )}
         </Callout>
       )}
 

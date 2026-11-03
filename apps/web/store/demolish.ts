@@ -93,6 +93,8 @@ interface DemolishState {
 
   // Session
   sessionId: string | null;
+  /** A confirmed transaction of this close could not be recorded in its saved record. */
+  progressNotSaved: boolean;
 
   // Actions
   setAddresses: (
@@ -111,6 +113,7 @@ interface DemolishState {
   prunePositionsLeftBehind: (offered: string[]) => void;
   setPhase: (phase: DemolishPhase) => void;
   setUnconfirmedSubmission: (submission: UnresolvedSubmission | null) => void;
+  setProgressNotSaved: (notSaved: boolean) => void;
   setAccountState: (state: AccountState) => void;
   setPlan: (plan: PlannedStep[], planHash?: string) => void;
   /** Called once a transaction of the close confirms: the account has changed on purpose, so the
@@ -239,6 +242,7 @@ const initialState = {
   planChangedNotice: null,
   planHash: null,
   sessionId: null,
+  progressNotSaved: false,
 };
 
 export const useDemolishStore = create<DemolishState>((set) => ({
@@ -252,7 +256,11 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       memoType: memoType ?? null,
       // An unsettled hash belongs to the account it was sent for: carried over, its confirmation
       // would complete this other account's close. Its session stays saved under its own id.
-      ...(state.sourceAddress !== source && { unconfirmedSubmission: null, sessionId: null }),
+      ...(state.sourceAddress !== source && {
+        unconfirmedSubmission: null,
+        sessionId: null,
+        progressNotSaved: false,
+      }),
     })),
 
   acknowledgeDestination: (address) => set({ destinationAcknowledgedFor: address }),
@@ -272,6 +280,7 @@ export const useDemolishStore = create<DemolishState>((set) => ({
 
   setPhase: (phase) => set({ phase }),
   setUnconfirmedSubmission: (unconfirmedSubmission) => set({ unconfirmedSubmission }),
+  setProgressNotSaved: (progressNotSaved) => set({ progressNotSaved }),
 
   setAccountState: (accountState) =>
     set((s) => ({

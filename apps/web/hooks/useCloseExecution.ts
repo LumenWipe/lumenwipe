@@ -48,7 +48,12 @@ import { lookupViaApi, submitViaApi } from "@/lib/stellar/submit-via-api";
 import { mergesAccount, submissionHash, submissionValidUntil } from "@/lib/stellar/submission";
 import { ensureCloseSession, ownsStore, type CloseOwner } from "@/lib/session/close-record";
 import { findUnresolved } from "@/lib/session/recovery";
-import { clearUnconfirmedFor, saveUnconfirmed } from "@/lib/session/store";
+import {
+  clearUnconfirmedFor,
+  confirmationOf,
+  recordConfirmed,
+  saveUnconfirmed,
+} from "@/lib/session/store";
 import { requestMediatorCosignature } from "@/lib/stellar/mediator";
 import { requestFeeBumpSponsorship } from "@/lib/stellar/fee-bump-sponsor";
 import { notifyStatsRefresh } from "@/lib/stats-events";
@@ -109,6 +114,33 @@ async function recordSubmission(
   } catch (err) {
     console.error("[session] could not clear the unconfirmed hash:", err);
   }
+}
+
+/** Records a confirmed transaction in the saved close the run started with, never another one.
+ *  It never stops the close: a failed write, or a record another tab dismissed, only shows a
+ *  notice. Called after the store marked the transaction's steps. */
+function recordProgress(
+  owner: CloseOwner,
+  recordId: string | null,
+  covers: readonly string[],
+  txHash: string
+): void {
+  const plan = ownsStore(owner) ? useDemolishStore.getState().executionPlan : null;
+  const open = plan?.findIndex((s) => s.status !== "confirmed") ?? -1;
+  const confirmation = confirmationOf(
+    covers,
+    txHash,
+    plan ? (open === -1 ? plan.length : open) : null
+  );
+  const written = recordId ? recordConfirmed(recordId, confirmation) : Promise.resolve(false);
+  void written
+    .catch((err: unknown) => {
+      console.error("[session] could not record the confirmed transaction:", err);
+      return false;
+    })
+    .then((saved) => {
+      if (!saved && ownsStore(owner)) useDemolishStore.getState().setProgressNotSaved(true);
+    });
 }
 
 export const PLAN_CHANGED_NOTICE =
@@ -235,7 +267,7 @@ export function useCloseExecution() {
       }
       try {
         // Found here, before a signature or a sponsorship is spent on a send that could not start.
-        await ensureCloseSession(owner).catch(() => {
+        const recordId = await ensureCloseSession(owner).catch(() => {
           throw new UserFacingError(HASH_NOT_KEPT);
         });
         const { mergeConfirmed } = await runClose(
@@ -453,32 +485,36 @@ export function useCloseExecution() {
               onSubmission: (submission) => recordSubmission(owner, submission),
               unresolved: useDemolishStore.getState().unconfirmedSubmission ?? undefined,
               onResolved: (submission) => {
-                if (!ownsStore(owner)) return;
-                clearPlanHash();
-                markCoveredConfirmed(
-                  submission.covers,
-                  submission.hash,
-                  submission.needsSponsoredFee,
-                  submission.coversTargets
-                );
+                if (ownsStore(owner)) {
+                  clearPlanHash();
+                  markCoveredConfirmed(
+                    submission.covers,
+                    submission.hash,
+                    submission.needsSponsoredFee,
+                    submission.coversTargets
+                  );
+                }
+                recordProgress(owner, recordId, submission.covers, submission.hash);
               },
             },
             onConfirmed: (tx, hash) => {
-              if (!ownsStore(owner)) return;
-              carriedPreimageRef.current = false;
-              clearPlanHash();
-              markCoveredConfirmed(tx.covers, hash, tx.needsSponsoredFee, tx.coversTargets);
-              signerStateRef.current = applyConfirmedTransaction(
-                roundSignerState(),
-                tx.xdr,
-                passphrase,
-                intentFromXdr(tx.xdr, passphrase).operations,
-                sourceAddress
-              );
-              if (tx.covers.includes("MERGE") || tx.covers.includes("CLOSE_ACCOUNT")) {
-                notifyStatsRefresh();
+              if (ownsStore(owner)) {
+                carriedPreimageRef.current = false;
+                clearPlanHash();
+                markCoveredConfirmed(tx.covers, hash, tx.needsSponsoredFee, tx.coversTargets);
+                signerStateRef.current = applyConfirmedTransaction(
+                  roundSignerState(),
+                  tx.xdr,
+                  passphrase,
+                  intentFromXdr(tx.xdr, passphrase).operations,
+                  sourceAddress
+                );
+                if (tx.covers.includes("MERGE") || tx.covers.includes("CLOSE_ACCOUNT")) {
+                  notifyStatsRefresh();
+                }
+                flight.stage = "before-submit";
               }
-              flight.stage = "before-submit";
+              recordProgress(owner, recordId, tx.covers, hash);
             },
             onProgress: setProgressStatus,
           },
@@ -574,8 +610,11 @@ export function useCloseExecution() {
   // Settles the unknown transaction by its hash alone: nothing is signed or sent, so a check can
   // never change what happens on the ledger.
   const checkUnconfirmed = useCallback(async (): Promise<void> => {
-    const submission = useDemolishStore.getState().unconfirmedSubmission;
-    const source = useDemolishStore.getState().sourceAddress;
+    const {
+      unconfirmedSubmission: submission,
+      sourceAddress: source,
+      sessionId,
+    } = useDemolishStore.getState();
     if (!submission || !source) return;
     const owner: CloseOwner = { network, source };
     setProgressStatus("Checking the network…");
@@ -609,6 +648,7 @@ export function useCloseExecution() {
       submission.needsSponsoredFee,
       submission.coversTargets
     );
+    recordProgress(owner, sessionId, submission.covers, submission.hash);
     if (submissionClosesAccount(submission)) {
       notifyStatsRefresh();
       setPhase("COMPLETE");

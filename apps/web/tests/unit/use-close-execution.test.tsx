@@ -71,6 +71,7 @@ function stubFeeBumpSponsor(impl: (...args: unknown[]) => Promise<unknown>): voi
 beforeEach(() => {
   useDemolishStore.setState({ unconfirmedSubmission: null, sessionId: "session" });
   spyOn(sessionStore, "saveUnconfirmed").mockImplementation(async () => true);
+  spyOn(sessionStore, "recordConfirmed").mockImplementation(async () => true);
   spyOn(sessionStore, "loadSession").mockImplementation(async () => ({ id: "session" }) as never);
   stubFetchCloseTransactions(async () => {
     throw new Error("not mocked in this test");
@@ -1777,6 +1778,82 @@ test("useCloseExecution › a record dismissed between transactions is put back 
   expect(useDemolishStore.getState().lastError).toBeNull();
 });
 
+test("useCloseExecution › each confirmation is recorded with its hash in the run's saved close", async () => {
+  const { sourceKeypair } = twoRoundSetup([
+    planStep(0, "NORMALIZE_SIGNERS", "pending"),
+    planStep(1, "MERGE", "pending"),
+  ]);
+  useDemolishStore.setState({ sessionId: "session" });
+  const recorded = spyOn(sessionStore, "recordConfirmed").mockImplementation(async () => true);
+  const sent: string[] = [];
+  stubSubmitViaApi(async (xdr) => {
+    sent.push(xdr as string);
+    return {};
+  });
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+  expect(recorded.mock.calls).toEqual([
+    [
+      "session",
+      {
+        txHash: submissionHash(sent[0]!, Networks.TESTNET),
+        type: "NORMALIZE_SIGNERS",
+        closesAccount: false,
+        currentStepIndex: 1,
+      },
+    ],
+    [
+      "session",
+      {
+        txHash: submissionHash(sent[1]!, Networks.TESTNET),
+        type: "MERGE",
+        closesAccount: true,
+        currentStepIndex: 2,
+      },
+    ],
+  ]);
+  const written = JSON.stringify(recorded.mock.calls);
+  for (const xdr of sent) expect(written).not.toContain(xdr);
+  expect(written).not.toContain(sourceKeypair.secret());
+  expect(useDemolishStore.getState().progressNotSaved).toBe(false);
+});
+
+test("useCloseExecution › a failed progress write never fails the close and shows a notice", async () => {
+  const { sourceKeypair } = twoRoundSetup([
+    planStep(0, "NORMALIZE_SIGNERS", "pending"),
+    planStep(1, "MERGE", "pending"),
+  ]);
+  spyOn(sessionStore, "recordConfirmed").mockRejectedValue(new Error("QuotaExceededError"));
+  spyOn(console, "error").mockImplementation(() => {});
+  stubSubmitViaApi(async () => ({}));
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  const state = useDemolishStore.getState();
+  expect(state.phase).toBe("COMPLETE");
+  expect(state.lastError).toBeNull();
+  expect(state.progressNotSaved).toBe(true);
+});
+
+test("useCloseExecution › a record gone when a confirmation lands is not recreated and shows a notice", async () => {
+  const { sourceKeypair } = mergeSetup();
+  useDemolishStore.setState({ sessionId: "session" });
+  spyOn(sessionStore, "recordConfirmed").mockImplementation(async () => false);
+  const saved = spyOn(sessionStore, "saveSession").mockImplementation(async () => {});
+  stubSubmitViaApi(async () => ({}));
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+  expect(saved).not.toHaveBeenCalled();
+  expect(useDemolishStore.getState().progressNotSaved).toBe(true);
+});
+
 function moveToAnotherAccount(): string {
   const other = Keypair.random().publicKey();
   useDemolishStore.getState().setAddresses(other, Keypair.random().publicKey());
@@ -1818,7 +1895,9 @@ test("useCloseExecution › another account taking the tab stops the next send a
 
 test("useCloseExecution › a late confirmation of one account never touches the next", async () => {
   const { sourceKeypair } = mergeSetup();
+  useDemolishStore.setState({ sessionId: "session" });
   const clear = spyOn(sessionStore, "clearUnconfirmedFor").mockImplementation(async () => {});
+  const recorded = spyOn(sessionStore, "recordConfirmed").mockImplementation(async () => false);
   stubSubmitViaApi(async () => {
     moveToAnotherAccount();
     return {};
@@ -1832,6 +1911,10 @@ test("useCloseExecution › a late confirmation of one account never touches the
   expect(state.executionPlan[0]?.status).toBe("pending");
   expect(state.lastError).toBeNull();
   expect(clear).toHaveBeenCalledWith("testnet", sourceKeypair.publicKey());
+  expect(recorded.mock.calls.map(([id, c]) => [id, c.currentStepIndex])).toEqual([
+    ["session", null],
+  ]);
+  expect(state.progressNotSaved).toBe(false);
 });
 
 test("useCloseExecution › a late unknown outcome of one account leaves the next alone and the hold in place", async () => {

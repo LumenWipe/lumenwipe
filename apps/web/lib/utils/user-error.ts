@@ -212,7 +212,9 @@ export const CONFIRM_UNCHECKED =
 export const CONFIRM_NOT_SAVED =
   "This close is no longer the one open in this tab, so it was not saved and this confirm did not start it. Review the plan again before you continue.";
 export const CONFIRM_SAVE_FAILED =
-  "This browser could not save the close, so this confirm did not start it. Allow this site to store data, then try again.";
+  "This browser could not save the close, so this confirm did not start it. A close needs this browser's storage to keep track of any transaction whose outcome is not known yet. Allow this site to store data, then try again.";
+export const PROGRESS_NOT_SAVED =
+  "This browser could not save the progress of this close. Signing goes on, but if this page is lost the start page may not show how far the close got.";
 export const NO_MERGE_CONFIRMED =
   "The service reported this close as finished, but no confirmed transaction merged this account, so it is not closed. Look the account up on an explorer, then try again.";
 export const CHECK_FAILED_NOTICE =
