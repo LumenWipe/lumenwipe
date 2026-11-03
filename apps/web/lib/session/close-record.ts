@@ -9,12 +9,21 @@ import { useNetworkStore } from "@/store/network";
 export interface CloseOwner {
   network: Network;
   source: string;
+  /** The store's reset count when the run started: leaving the close ends the run's hold. */
+  epoch: number;
+}
+
+/** The owner of the close the store holds now, for this account. */
+export function closeOwner(network: Network, source: string): CloseOwner {
+  return { network, source, epoch: useDemolishStore.getState().closeEpoch };
 }
 
 export function ownsStore(owner: CloseOwner): boolean {
+  const state = useDemolishStore.getState();
   return (
     useNetworkStore.getState().network === owner.network &&
-    useDemolishStore.getState().sourceAddress === owner.source
+    state.sourceAddress === owner.source &&
+    state.closeEpoch === owner.epoch
   );
 }
 

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ShieldCheck, AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
 import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
-import { saveCloseSession } from "@/lib/session/close-record";
+import { closeOwner, saveCloseSession } from "@/lib/session/close-record";
 import { readUnresolved } from "@/lib/session/recovery";
 import { journeyOf } from "@/lib/journey/journey-state";
 import {
@@ -72,7 +72,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
           found || journeyOf(useDemolishStore.getState()).mayBeInFlight ? CONFIRM_HELD : null,
         () => CONFIRM_UNCHECKED
       )) ??
-      (await withinSaveTime(saveCloseSession({ network, source: sourceAddress })).then(
+      (await withinSaveTime(saveCloseSession(closeOwner(network, sourceAddress))).then(
         (id) => (id ? null : CONFIRM_NOT_SAVED),
         () => CONFIRM_SAVE_FAILED
       ));

@@ -46,7 +46,12 @@ import {
 } from "@/lib/stellar/signature-weight";
 import { lookupViaApi, submitViaApi } from "@/lib/stellar/submit-via-api";
 import { mergesAccount, submissionHash, submissionValidUntil } from "@/lib/stellar/submission";
-import { ensureCloseSession, ownsStore, type CloseOwner } from "@/lib/session/close-record";
+import {
+  closeOwner,
+  ensureCloseSession,
+  ownsStore,
+  type CloseOwner,
+} from "@/lib/session/close-record";
 import { findUnresolved } from "@/lib/session/recovery";
 import {
   clearUnconfirmedFor,
@@ -259,12 +264,13 @@ export function useCloseExecution() {
       setStillUnconfirmed(false);
       carriedPreimageRef.current = false;
       const flight = { stage: "before-submit" as CloseFailureStage };
-      const owner: CloseOwner = { network, source: sourceAddress };
+      const owner = closeOwner(network, sourceAddress);
       // Saved by an earlier page load: until it settles, this account signs nothing new.
       const recorded = await findUnresolved(network, sourceAddress);
       if (recorded?.unconfirmed && !useDemolishStore.getState().unconfirmedSubmission) {
         useDemolishStore.getState().setUnconfirmedSubmission(recorded.unconfirmed);
       }
+      useDemolishStore.getState().setSigningRun(true);
       try {
         // Found here, before a signature or a sponsorship is spent on a send that could not start.
         const recordId = await ensureCloseSession(owner).catch(() => {
@@ -591,6 +597,7 @@ export function useCloseExecution() {
         setPhase("STEP_FAILED");
       } finally {
         setProgressStatus(null);
+        if (ownsStore(owner)) useDemolishStore.getState().setSigningRun(false);
       }
     },
     [
@@ -616,7 +623,7 @@ export function useCloseExecution() {
       sessionId,
     } = useDemolishStore.getState();
     if (!submission || !source) return;
-    const owner: CloseOwner = { network, source };
+    const owner = closeOwner(network, source);
     setProgressStatus("Checking the network…");
     setStillUnconfirmed(false);
     const settled = await resolveSubmission(submission, (hash) => lookupViaApi(hash, network));

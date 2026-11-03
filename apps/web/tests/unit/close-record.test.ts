@@ -1,16 +1,17 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
-import { ensureCloseSession, saveCloseSession } from "@/lib/session/close-record";
+import { closeOwner, ensureCloseSession, saveCloseSession } from "@/lib/session/close-record";
 import * as sessionStore from "@/lib/session/store";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 
-const A = { network: "testnet", source: "GA" } as const;
+let A = closeOwner("testnet", "GA");
 
 let saved: ReturnType<typeof spyOn>;
 
 beforeEach(() => {
   useNetworkStore.setState({ network: "testnet" });
   useDemolishStore.setState({ sourceAddress: "GB", destinationAddress: "GD", sessionId: "b" });
+  A = closeOwner("testnet", "GA");
   saved = spyOn(sessionStore, "saveSession").mockImplementation(async () => {});
   spyOn(sessionStore, "loadSession").mockImplementation(async () => null);
 });

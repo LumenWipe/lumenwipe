@@ -6,9 +6,12 @@ import { join, relative } from "node:path";
 import { Keypair } from "@stellar/stellar-sdk";
 import * as navigation from "next/navigation";
 import NetworkError from "@/app/[network]/error";
+import ExecutePage from "@/app/[network]/execute/page";
 import HomePage from "@/app/[network]/page";
 import CompletionReceipt from "@/components/complete/CompletionReceipt";
 import ExecutionWizard from "@/components/execution/ExecutionWizard";
+import { LeaveGuardProvider } from "@/components/layout/LeaveGuard";
+import NavBar from "@/components/layout/NavBar";
 import ReviewView from "@/components/review/ReviewView";
 import * as closeExecution from "@/hooks/useCloseExecution";
 import * as sessionRecovery from "@/hooks/useSessionRecovery";
@@ -296,6 +299,48 @@ function resumeBanner(record: Partial<SessionRecord>, required: ClaimKey[]): Cel
   };
 }
 
+/** The confirm a mid-close exit asks for, opened from the logo. */
+function leaveDialog(state: "signing" | "partial", store: Store, required: ClaimKey[]): Cell {
+  return {
+    state,
+    required,
+    show: async () => {
+      seed({ ...STORE[state], ...store });
+      const journey = storeJourney();
+      await show(
+        <LeaveGuardProvider>
+          <NavBar network="testnet" />
+        </LeaveGuardProvider>
+      );
+      fireEvent.click(screen.getByRole("link", { name: "LumenWipe home" }));
+      return journey;
+    },
+  };
+}
+
+function leaveControl(store: Store): Cell {
+  return {
+    state: "partial",
+    required: ["can-resume"],
+    show: async () => {
+      seed({ ...STORE.partial, ...store });
+      stubExecution();
+      const params = Object.assign(Promise.resolve({ network: "testnet" as const }), {
+        status: "fulfilled",
+        value: { network: "testnet" as const },
+      });
+      await show(
+        <LeaveGuardProvider>
+          <ExecutePage params={params} />
+        </LeaveGuardProvider>
+      );
+      return storeJourney();
+    },
+  };
+}
+
+const IN_FLIGHT: Store = { phase: "STEP_UNCONFIRMED", unconfirmedSubmission: SUBMISSION as never };
+
 const declined = new Error("User declined access");
 const mismatch = new VerificationError("op 2 pays to an unexpected destination");
 const unavailable = new ApiRequestError(503, "");
@@ -370,6 +415,19 @@ const MATRIX: Surface[] = [
   {
     name: "receipt banner",
     cells: [receipt("partial", ["still-open"]), receipt("complete", ["account-closed"])],
+  },
+  {
+    name: "leave dialog",
+    cells: [
+      leaveDialog("signing", {}, ["can-resume"]),
+      leaveDialog("partial", {}, ["can-resume"]),
+      leaveDialog("signing", IN_FLIGHT, []),
+      leaveDialog("partial", IN_FLIGHT, []),
+    ],
+  },
+  {
+    name: "leave and resume control",
+    cells: [leaveControl({})],
   },
   {
     name: "resume banner",
@@ -459,6 +517,12 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
   "components/complete/CompletionReceipt.tsx": {
     "account-closed": { count: 5, shownBy: "receipt banner" },
     "still-open": { count: 1, shownBy: "receipt banner" },
+  },
+  "app/[network]/execute/page.tsx": {
+    "can-resume": { count: 1, shownBy: "leave and resume control" },
+  },
+  "components/layout/LeaveGuard.tsx": {
+    "can-resume": { count: 1, shownBy: "leave dialog" },
   },
   "components/execution/ExecutionWizard.tsx": {
     "each-tx-checked": { count: 1, shownBy: "execute trust note" },

@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { cn } from "@/lib/utils/cn";
 import type { Network } from "@/config/networks";
+import { LeaveLink } from "./LeaveGuard";
 
 interface NetworkSwitcherProps {
   currentNetwork: Network;
@@ -12,7 +12,7 @@ export default function NetworkSwitcher({ currentNetwork }: NetworkSwitcherProps
   return (
     <div className="flex items-center gap-0.5 rounded-lg border border-white/10 bg-white/[0.03] p-0.5 text-xs">
       {(["mainnet", "testnet"] as Network[]).map((net) => (
-        <Link
+        <LeaveLink
           key={net}
           href={`/${net}`}
           aria-current={currentNetwork === net ? "true" : undefined}
@@ -22,7 +22,7 @@ export default function NetworkSwitcher({ currentNetwork }: NetworkSwitcherProps
           )}
         >
           {net === "mainnet" ? "Mainnet" : "Testnet"}
-        </Link>
+        </LeaveLink>
       ))}
     </div>
   );

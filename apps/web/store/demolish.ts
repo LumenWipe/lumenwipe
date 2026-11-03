@@ -95,6 +95,11 @@ interface DemolishState {
   sessionId: string | null;
   /** A confirmed transaction of this close could not be recorded in its saved record. */
   progressNotSaved: boolean;
+  /** A run of the close loop is signing or sending for this close. */
+  signingRun: boolean;
+  /** Counts resets: a run started before one belongs to a close this tab has left, even when the
+   *  same account is loaded again. */
+  closeEpoch: number;
 
   // Actions
   setAddresses: (
@@ -114,6 +119,7 @@ interface DemolishState {
   setPhase: (phase: DemolishPhase) => void;
   setUnconfirmedSubmission: (submission: UnresolvedSubmission | null) => void;
   setProgressNotSaved: (notSaved: boolean) => void;
+  setSigningRun: (running: boolean) => void;
   setAccountState: (state: AccountState) => void;
   setPlan: (plan: PlannedStep[], planHash?: string) => void;
   /** Called once a transaction of the close confirms: the account has changed on purpose, so the
@@ -243,10 +249,12 @@ const initialState = {
   planHash: null,
   sessionId: null,
   progressNotSaved: false,
+  signingRun: false,
 };
 
 export const useDemolishStore = create<DemolishState>((set) => ({
   ...initialState,
+  closeEpoch: 0,
 
   setAddresses: (source, dest, memo, memoType) =>
     set((state) => ({
@@ -281,6 +289,7 @@ export const useDemolishStore = create<DemolishState>((set) => ({
   setPhase: (phase) => set({ phase }),
   setUnconfirmedSubmission: (unconfirmedSubmission) => set({ unconfirmedSubmission }),
   setProgressNotSaved: (progressNotSaved) => set({ progressNotSaved }),
+  setSigningRun: (signingRun) => set({ signingRun }),
 
   setAccountState: (accountState) =>
     set((s) => ({
@@ -432,5 +441,5 @@ export const useDemolishStore = create<DemolishState>((set) => ({
   // record rather than creating an orphan that remains "in_progress" forever.
   restoreSession: (id) => set({ sessionId: id }),
 
-  reset: () => set(initialState),
+  reset: () => set((s) => ({ ...initialState, closeEpoch: s.closeEpoch + 1 })),
 }));

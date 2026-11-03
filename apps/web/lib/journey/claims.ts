@@ -13,7 +13,8 @@ export type ClaimKey =
   | "safe-to-retry"
   | "each-tx-checked"
   | "funds-safe"
-  | "nothing-lost";
+  | "nothing-lost"
+  | "can-resume";
 
 const DURING_SIGNING: readonly ClaimKey[] = [
   "each-tx-checked",
@@ -29,10 +30,11 @@ export const ALLOWED_CLAIMS: Record<JourneyStateName, readonly ClaimKey[]> = {
   untouched: ["nothing-sent", "account-unchanged", "each-tx-checked"],
   planned: ["nothing-sent", "account-unchanged", "each-tx-checked"],
   reviewed: ["nothing-sent", "account-unchanged", "each-tx-checked", "confirm-not-started"],
-  signing: DURING_SIGNING,
-  partial: [...DURING_SIGNING, "still-open"],
+  // Past the review confirm a close always has a saved record: run() sends nothing without one.
+  signing: [...DURING_SIGNING, "can-resume"],
+  partial: [...DURING_SIGNING, "still-open", "can-resume"],
   complete: ["each-tx-checked", "account-closed", "no-new-sent", "may-be-sent"],
-  unknown: ["each-tx-checked", "confirm-not-started", "may-be-sent"],
+  unknown: ["each-tx-checked", "confirm-not-started", "may-be-sent", "can-resume"],
 };
 
 /** A transaction that may be in flight can still land, so none of these is true while one is. */
@@ -68,6 +70,7 @@ export const CLAIM_PATTERNS: Record<ClaimKey, RegExp> = {
     /before you sign each transaction|every transaction (?:above )?is verified|each transaction is (?:checked|verified)/i,
   "funds-safe": /funds are safe|funds stay safe/i,
   "nothing-lost": /nothing is lost|resume exactly where|step (?:already completed )?is skipped/i,
+  "can-resume": /resume(?:d)? (?:it |this close )?later/i,
 };
 
 export function permittedClaims(journey: Journey): ClaimKey[] {

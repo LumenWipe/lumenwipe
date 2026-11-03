@@ -8,12 +8,14 @@ import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { routeForPhase } from "@/lib/journey/route-for-phase";
 import ExecutionWizard from "@/components/execution/ExecutionWizard";
+import { useLeaveGuard } from "@/components/layout/LeaveGuard";
 import { Button } from "@/components/ui/button";
 
 export default function ExecutePage({ params }: { params: Promise<{ network: Network }> }) {
   const { network } = use(params);
   const router = useRouter();
   const { executionPlan, sourceAddress, phase, planChangedNotice } = useDemolishStore();
+  const { rule, requestLeaveTo } = useLeaveGuard();
 
   // Checked once at mount, not on every phase change: STEP_EXECUTING legitimately moves
   // through STEP_CONFIRMED/STEP_FAILED/COMPLETE while this page stays mounted during a
@@ -39,11 +41,25 @@ export default function ExecutePage({ params }: { params: Promise<{ network: Net
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <div className="flex items-center gap-2 mb-6">
-        <Button asChild variant="ghost" size="icon">
-          <Link href={`/${network}/analyze`} aria-label="Back to analyze">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
+        {rule.back === "leave" ? (
+          <Button variant="ghost" size="sm" onClick={() => requestLeaveTo(`/${network}`)}>
+            Leave and resume later
+          </Button>
+        ) : rule.back === "disabled" ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            disabled
+            aria-label="Back to analyze"
+            icon={<ArrowLeft className="h-4 w-4" />}
+          />
+        ) : (
+          <Button asChild variant="ghost" size="icon">
+            <Link href={`/${network}/analyze`} aria-label="Back to analyze">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+        )}
         <h1 className="mkt-display text-xl font-bold text-white">Executing plan</h1>
         <span className="text-xs text-fg-subtle ml-auto mkt-mono">
           {sourceAddress.slice(0, 8)}...{sourceAddress.slice(-8)}

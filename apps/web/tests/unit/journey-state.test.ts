@@ -145,7 +145,14 @@ describe("allowance table", () => {
     untouched: ["nothing-sent", "account-unchanged", "each-tx-checked"],
     planned: ["nothing-sent", "account-unchanged", "each-tx-checked"],
     reviewed: ["nothing-sent", "account-unchanged", "each-tx-checked", "confirm-not-started"],
-    signing: ["each-tx-checked", "this-tx-not-sent", "no-new-sent", "may-be-sent", "safe-to-retry"],
+    signing: [
+      "each-tx-checked",
+      "this-tx-not-sent",
+      "no-new-sent",
+      "may-be-sent",
+      "safe-to-retry",
+      "can-resume",
+    ],
     partial: [
       "each-tx-checked",
       "this-tx-not-sent",
@@ -153,9 +160,10 @@ describe("allowance table", () => {
       "may-be-sent",
       "safe-to-retry",
       "still-open",
+      "can-resume",
     ],
     complete: ["each-tx-checked", "account-closed", "no-new-sent", "may-be-sent"],
-    unknown: ["each-tx-checked", "confirm-not-started", "may-be-sent"],
+    unknown: ["each-tx-checked", "confirm-not-started", "may-be-sent", "can-resume"],
   };
 
   test.each(Object.keys(EXACT) as JourneyStateName[])("%s permits exactly its claims", (state) => {

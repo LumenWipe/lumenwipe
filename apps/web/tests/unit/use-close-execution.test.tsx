@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, fireEvent, render, screen } from "@testing-library/react";
+import * as navigation from "next/navigation";
 import {
   Account,
   Asset,
@@ -19,6 +20,8 @@ import {
   SUBMIT_RESEND_DELAY_MS,
 } from "@lumenwipe/sdk";
 import { PLAN_CHANGED_NOTICE, useCloseExecution } from "@/hooks/useCloseExecution";
+import { LeaveGuardProvider } from "@/components/layout/LeaveGuard";
+import NavBar from "@/components/layout/NavBar";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import * as closeClient from "@/lib/api/close-client";
@@ -1852,6 +1855,173 @@ test("useCloseExecution › a record gone when a confirmation lands is not recre
   expect(useDemolishStore.getState().phase).toBe("COMPLETE");
   expect(saved).not.toHaveBeenCalled();
   expect(useDemolishStore.getState().progressNotSaved).toBe(true);
+});
+
+/** Leaves the close the way a person does mid-run: the logo, then Leave in the confirm. */
+async function leaveFromDialog(): Promise<void> {
+  const router = { push: () => {}, replace: () => {} };
+  spyOn(navigation, "useRouter").mockImplementation(() => router as never);
+  await act(async () => {
+    render(
+      <LeaveGuardProvider>
+        <NavBar network="testnet" />
+      </LeaveGuardProvider>
+    );
+  });
+  fireEvent.click(screen.getByRole("link", { name: "LumenWipe home" }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+  });
+  expect(useDemolishStore.getState().sourceAddress).toBeNull();
+}
+
+async function until(done: () => boolean): Promise<void> {
+  while (!done()) await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function counting(signer: TransactionSigner): TransactionSigner & { signs: () => number } {
+  let signs = 0;
+  return {
+    publicKey: signer.publicKey,
+    sign: async (xdr, passphrase) => {
+      signs++;
+      return signer.sign(xdr, passphrase);
+    },
+    signs: () => signs,
+  };
+}
+
+test("useCloseExecution › leaving from the confirm while a round is fetched signs and sends nothing", async () => {
+  const { sourceKeypair, mergeXdr } = mergeSetup();
+  useDemolishStore.setState({ phase: "STEP_EXECUTING", sessionId: "session" });
+  let release!: () => void;
+  const fetched = new Promise<void>((resolve) => (release = resolve));
+  let fetches = 0;
+  stubFetchCloseTransactions(async () => {
+    fetches++;
+    await fetched;
+    return {
+      planHash: "h",
+      status: "ready",
+      transactions: [{ id: "t", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+      remaining: { steps: 0, requiresAnotherCall: false },
+      sourceAccount: {
+        signers: [{ key: sourceKeypair.publicKey(), weight: 1, type: "ed25519_public_key" }],
+        thresholds: { low: 0, med: 1, high: 1 },
+      },
+    };
+  });
+  let sent = 0;
+  stubSubmitViaApi(async () => {
+    sent++;
+    return {};
+  });
+  const signer = counting(realSigner(sourceKeypair));
+  const { result } = renderHook(() => useCloseExecution());
+  let running!: Promise<void>;
+  await act(async () => {
+    running = result.current.run(signer);
+    await until(() => fetches === 1);
+  });
+
+  await leaveFromDialog();
+  await act(async () => {
+    release();
+    await running;
+  });
+
+  expect(signer.signs()).toBe(0);
+  expect(sent).toBe(0);
+});
+
+test("useCloseExecution › a wallet prompt approved after leaving sends nothing, even with the same account loaded again", async () => {
+  const { sourceKeypair } = mergeSetup();
+  useDemolishStore.setState({ phase: "STEP_EXECUTING", sessionId: "session" });
+  const reload = { ...useDemolishStore.getState() };
+  let approve!: () => void;
+  const approved = new Promise<void>((resolve) => (approve = resolve));
+  let prompted = false;
+  const signer = realSigner(sourceKeypair);
+  let sent = 0;
+  stubSubmitViaApi(async () => {
+    sent++;
+    return {};
+  });
+  const { result } = renderHook(() => useCloseExecution());
+  let running!: Promise<void>;
+  await act(async () => {
+    running = result.current.run({
+      publicKey: signer.publicKey,
+      sign: async (xdr, passphrase) => {
+        prompted = true;
+        await approved;
+        return signer.sign(xdr, passphrase);
+      },
+    });
+    await until(() => prompted);
+  });
+
+  await leaveFromDialog();
+  useDemolishStore.setState({
+    sourceAddress: reload.sourceAddress,
+    destinationAddress: reload.destinationAddress,
+    accountState: reload.accountState,
+    executionPlan: reload.executionPlan,
+    phase: "STEP_EXECUTING",
+    sessionId: "session",
+  });
+  spyOn(sessionStore, "saveSession").mockImplementation(async () => {});
+  await act(async () => {
+    approve();
+    await running;
+  });
+
+  expect(sent).toBe(0);
+});
+
+test("useCloseExecution › a confirmation landing after the person left is still recorded, and nothing more is signed", async () => {
+  const { sourceKeypair } = twoRoundSetup([
+    planStep(0, "NORMALIZE_SIGNERS", "pending"),
+    planStep(1, "MERGE", "pending"),
+  ]);
+  useDemolishStore.setState({ phase: "STEP_EXECUTING", sessionId: "session" });
+  const recorded = spyOn(sessionStore, "recordConfirmed").mockImplementation(async () => true);
+  let release!: () => void;
+  const landed = new Promise<void>((resolve) => (release = resolve));
+  const sent: string[] = [];
+  stubSubmitViaApi(async (xdr) => {
+    sent.push(xdr as string);
+    await landed;
+    return {};
+  });
+  const signer = counting(realSigner(sourceKeypair));
+  const { result } = renderHook(() => useCloseExecution());
+  let running!: Promise<void>;
+  await act(async () => {
+    running = result.current.run(signer);
+    await until(() => sent.length === 1);
+  });
+
+  await leaveFromDialog();
+  await act(async () => {
+    release();
+    await running;
+  });
+
+  expect(signer.signs()).toBe(1);
+  expect(sent).toHaveLength(1);
+  expect(recorded.mock.calls).toEqual([
+    [
+      "session",
+      {
+        txHash: submissionHash(sent[0]!, Networks.TESTNET),
+        type: "NORMALIZE_SIGNERS",
+        closesAccount: false,
+        currentStepIndex: null,
+      },
+    ],
+  ]);
+  expect(useDemolishStore.getState().signingRun).toBe(false);
 });
 
 function moveToAnotherAccount(): string {
