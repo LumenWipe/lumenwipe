@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Plus } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import type { PlannedStep, StepType } from "@/types/plan";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
 import { groupStepsByType } from "@/lib/plan/group-steps";
@@ -65,9 +65,9 @@ export default function PlanStepAccordion({
                   </span>
                 </span>
               </span>
-              <Plus
+              <ChevronDown
                 className={`h-4 w-4 shrink-0 text-accent transition-transform duration-300 ${
-                  isOpen ? "rotate-45" : ""
+                  isOpen ? "rotate-180" : ""
                 }`}
               />
             </button>

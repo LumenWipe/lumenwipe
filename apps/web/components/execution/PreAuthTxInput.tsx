@@ -7,6 +7,7 @@ import { toUserMessage } from "@/lib/utils/user-error";
 import type { AccountSigner } from "@/types/account";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
+import { Card } from "@/components/ui/card";
 
 function shortAddr(addr: string): string {
   return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
@@ -47,7 +48,7 @@ export default function PreAuthTxInput({ signer, disabled, onSubmit }: Props) {
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+    <Card className="flex flex-col gap-2 p-3">
       <p className="font-mono-address text-xs text-fg-muted">
         {shortAddr(signer.key)} <span className="text-fg-subtle">· weight {signer.weight}</span>
       </p>
@@ -109,6 +110,6 @@ export default function PreAuthTxInput({ signer, disabled, onSubmit }: Props) {
           Pre-authorized transaction submitted.
         </p>
       )}
-    </div>
+    </Card>
   );
 }

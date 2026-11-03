@@ -107,12 +107,12 @@ export default function NotFound() {
           </div>
 
           {/* headline */}
-          <h1 className="mkt-display mb-3 text-[2.6rem] font-bold leading-[1] text-white">
+          <h1 className="mkt-display mb-3 text-display font-bold leading-[1] text-white">
             This page has
             <br />
             been closed.
           </h1>
-          <p className="mb-8 text-[0.95rem] leading-relaxed text-fg-subtle">
+          <p className="mb-8 text-body leading-relaxed text-fg-subtle">
             No trustlines. No balance. No subentries.
             <br />
             Looks like this route was already merged out.

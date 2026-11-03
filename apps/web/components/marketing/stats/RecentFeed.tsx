@@ -42,17 +42,17 @@ export default function RecentFeed({ feed }: { feed: FeedData | null }) {
       <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="h-1.5 w-1.5 rounded-full bg-accent mkt-pulse" />
-          <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-fg-muted">
+          <span className="mkt-mono text-caption uppercase tracking-wider text-fg-muted">
             Recent closes
           </span>
         </div>
-        <span className="mkt-mono text-[0.62rem] text-fg-subtle">mainnet · verified on-chain</span>
+        <span className="mkt-mono text-caption text-fg-subtle">mainnet · verified on-chain</span>
       </div>
 
       {/* column labels */}
       <div className="grid grid-cols-[90px_80px_1fr_28px] gap-x-2 border-b border-white/5 px-4 py-2">
         {["When", "XLM", "TX hash", ""].map((h) => (
-          <span key={h} className="mkt-mono text-[0.6rem] uppercase tracking-wider text-fg-subtle">
+          <span key={h} className="mkt-mono text-caption uppercase tracking-wider text-fg-subtle">
             {h}
           </span>
         ))}
@@ -78,17 +78,15 @@ export default function RecentFeed({ feed }: { feed: FeedData | null }) {
                 key={r.txHash}
                 className="grid grid-cols-[90px_80px_1fr_28px] items-center gap-x-2 border-b border-white/[0.04] px-4 py-2.5 transition-colors hover:bg-white/[0.03]"
               >
-                <span className="mkt-mono text-[0.68rem] text-fg-subtle">
-                  {timeAgo(r.timestamp)}
-                </span>
+                <span className="mkt-mono text-caption text-fg-subtle">{timeAgo(r.timestamp)}</span>
                 <span
-                  className={`mkt-mono text-[0.78rem] font-medium tabular-nums ${
+                  className={`mkt-mono text-label leading-normal font-medium tabular-nums ${
                     isLarge ? "text-value" : "text-white/85"
                   }`}
                 >
                   {xlm}
                 </span>
-                <span className="mkt-mono text-[0.68rem] text-fg-subtle">{hash}</span>
+                <span className="mkt-mono text-caption text-fg-subtle">{hash}</span>
                 <a
                   href={link}
                   target="_blank"
@@ -107,7 +105,7 @@ export default function RecentFeed({ feed }: { feed: FeedData | null }) {
       {/* footer */}
       {feed && items.length > 0 && (
         <div className="border-t border-white/5 px-4 py-2.5">
-          <span className="mkt-mono text-[0.62rem] text-fg-subtle">
+          <span className="mkt-mono text-caption text-fg-subtle">
             Showing last {items.length} closes · each row links to the Stellar blockchain
           </span>
         </div>

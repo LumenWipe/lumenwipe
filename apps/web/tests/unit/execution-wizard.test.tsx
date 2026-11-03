@@ -535,3 +535,29 @@ test("execution-wizard › a view swap never steals focus from a field being typ
   expect(document.activeElement).toBe(field);
   field.remove();
 });
+
+test("execution-wizard › the signer picker is a tablist that arrow keys switch", () => {
+  render(<ExecutionWizard network="testnet" />);
+  screen.getByRole("tablist", { name: "How to sign" });
+  const wallet = screen.getByRole("tab", { name: "Connect wallet" });
+  expect(wallet.getAttribute("aria-selected")).toBe("true");
+  expect(screen.queryByPlaceholderText("S...")).toBeNull();
+
+  fireEvent.keyDown(wallet, { key: "ArrowRight" });
+  const secret = screen.getByRole("tab", { name: "Use secret key (advanced)" });
+  expect(secret.getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByPlaceholderText("S...")).toBeDefined();
+
+  fireEvent.keyDown(secret, { key: "ArrowLeft" });
+  expect(screen.getByRole("tab", { name: "Connect wallet" }).getAttribute("aria-selected")).toBe(
+    "true"
+  );
+  expect(screen.queryByPlaceholderText("S...")).toBeNull();
+});
+
+test("execution-wizard › the signer tabs are not rendered while the close is running", () => {
+  currentProgressStatus = "Submitting transaction";
+  render(<ExecutionWizard network="testnet" />);
+  expect(screen.queryByRole("tablist")).toBeNull();
+  expect(screen.queryByRole("tab")).toBeNull();
+});

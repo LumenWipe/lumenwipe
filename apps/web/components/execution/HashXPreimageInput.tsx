@@ -7,6 +7,7 @@ import { verifyHashXPreimage, InvalidPreimageError } from "@/lib/stellar/hash-x"
 import { cn } from "@/lib/utils/cn";
 import type { AccountSigner } from "@/types/account";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 
 function shortAddr(addr: string): string {
   return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
@@ -43,7 +44,7 @@ export default function HashXPreimageInput({ signer, disabled, onApply }: Props)
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+    <Card className="flex flex-col gap-2 p-3">
       <p className="font-mono-address text-xs text-fg-muted">
         {shortAddr(signer.key)} <span className="text-fg-subtle">· weight {signer.weight}</span>
       </p>
@@ -101,6 +102,6 @@ export default function HashXPreimageInput({ signer, disabled, onApply }: Props)
           Preimage matches - contributing this signer&apos;s weight.
         </p>
       )}
-    </div>
+    </Card>
   );
 }

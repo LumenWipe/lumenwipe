@@ -84,7 +84,7 @@ export default function DestinationInput({
                     outside world that changes without telling us, and this is the last screen
                     before something irreversible - so the user can see how old the thing they are
                     relying on is, and whether it came from the API or from the bundled floor. */}
-                <p className="text-[0.7rem] text-fg-subtle">
+                <p className="text-label text-fg-subtle">
                   Deposit rules last verified {activeRegistry().lastVerified}
                   {activeRegistry().served ? "" : " (offline copy)"}.
                 </p>

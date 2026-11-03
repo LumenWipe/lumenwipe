@@ -76,7 +76,7 @@ export const TESTNET_STEP_TIMEOUT = 30_000;
  * directly stopped finding it. These specs sign with a throwaway testnet key, never a wallet.
  */
 export async function enterSecretKey(page: Page, secret: string): Promise<void> {
-  const useSecretKey = page.getByRole("button", { name: /Use secret key \(advanced\)/i });
+  const useSecretKey = page.getByRole("tab", { name: /Use secret key \(advanced\)/i });
   await expect(useSecretKey).toBeVisible({ timeout: TESTNET_STEP_TIMEOUT });
   await useSecretKey.click();
   await page.getByPlaceholder("S...").fill(secret);
@@ -92,7 +92,7 @@ export async function enterSecretKey(page: Page, secret: string): Promise<void> 
  * on the page that means what every call site here assumes.
  */
 export async function expectSigningPanel(page: Page): Promise<void> {
-  await expect(page.getByRole("button", { name: /Use secret key \(advanced\)/i })).toBeVisible({
+  await expect(page.getByRole("tab", { name: /Use secret key \(advanced\)/i })).toBeVisible({
     timeout: TESTNET_STEP_TIMEOUT,
   });
 }

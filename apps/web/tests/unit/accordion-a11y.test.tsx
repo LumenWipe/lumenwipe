@@ -145,3 +145,18 @@ test("faq › every header controls a labelled region that is inert only when cl
   expectWired(container);
   expect(second?.getAttribute("aria-expanded")).toBe("true");
 });
+
+test("every expanding group shows a chevron that turns over, not a plus that becomes a cross", () => {
+  for (const renderGroup of [renderPlan, renderSteps, () => render(<Faq />)]) {
+    const { container } = renderGroup();
+    for (const header of Array.from(container.querySelectorAll("button[aria-expanded]"))) {
+      const icon = header.querySelector(".lucide-chevron-down");
+      expect(icon).not.toBeNull();
+      expect(icon?.classList.contains("rotate-180")).toBe(
+        header.getAttribute("aria-expanded") === "true"
+      );
+      expect(header.querySelector(".lucide-plus")).toBeNull();
+    }
+    cleanup();
+  }
+});

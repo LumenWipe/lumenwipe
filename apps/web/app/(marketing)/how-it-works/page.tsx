@@ -113,10 +113,10 @@ export default function HowItWorksPage() {
       <section className="mx-auto max-w-4xl px-5 pb-14 pt-16 text-center lg:px-8 lg:pt-24">
         <Reveal>
           <Eyebrow>How it works</Eyebrow>
-          <h1 className="mkt-display mx-auto mt-5 max-w-3xl text-[2.4rem] font-extrabold leading-[1.02] text-white sm:text-6xl">
+          <h1 className="mkt-display mx-auto mt-5 max-w-3xl text-display font-extrabold leading-[1.02] text-white sm:text-6xl">
             A deterministic plan for an irreversible action.
           </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-[1.05rem] leading-relaxed text-white/85">
+          <p className="mx-auto mt-6 max-w-2xl text-body leading-relaxed text-white/85">
             Closing an account is several sequential transactions in the right order. LumenWipe
             shows the whole plan up front, then executes it one confirmed step at a time, re-reading
             live state and simulating before every signature, so nothing is ever signed on stale
@@ -162,7 +162,7 @@ export default function HowItWorksPage() {
                     <s.icon className="h-4 w-4" />
                   </span>
                   <h3 className="mt-3 text-sm font-semibold text-white">{s.label}</h3>
-                  <p className="mt-0.5 mkt-mono text-[0.66rem] text-fg-muted">{s.note}</p>
+                  <p className="mt-0.5 mkt-mono text-caption text-fg-muted">{s.note}</p>
                 </div>
               </Reveal>
             ))}
@@ -178,7 +178,7 @@ export default function HowItWorksPage() {
       <section className="mx-auto max-w-4xl px-5 py-20 lg:px-8 lg:py-28">
         <Reveal className="max-w-2xl">
           <Eyebrow>The plan</Eyebrow>
-          <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-[2.6rem] sm:leading-[1.05]">
+          <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-display sm:leading-[1.05]">
             Eight ordered steps, every reserve accounted for.
           </h2>
         </Reveal>
@@ -203,7 +203,7 @@ export default function HowItWorksPage() {
                     <h3 className="text-base font-semibold text-white">{s.title}</h3>
                   </div>
                   <p className="mt-2 text-sm leading-relaxed text-white/85">{s.body}</p>
-                  <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-white/8 bg-black/30 px-2.5 py-1 mkt-mono text-[0.68rem] text-white/65">
+                  <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-white/8 bg-black/30 px-2.5 py-1 mkt-mono text-caption text-white/65">
                     <span className="text-accent/70">op</span>
                     {s.op}
                   </div>
@@ -219,7 +219,7 @@ export default function HowItWorksPage() {
         <div className="mx-auto max-w-5xl px-5 py-20 lg:px-8 lg:py-28">
           <Reveal className="max-w-2xl">
             <Eyebrow>Exchange destinations</Eyebrow>
-            <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-[2.6rem] sm:leading-[1.05]">
+            <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-display sm:leading-[1.05]">
               The CEX relay flow.
             </h2>
             <p className="mt-5 leading-relaxed text-white/85">
@@ -251,7 +251,7 @@ export default function HowItWorksPage() {
                     >
                       <ArrowRight className="hidden h-4 w-4 sm:block" />
                       <ArrowDown className="h-4 w-4 sm:hidden" />
-                      <span className="mkt-mono text-[0.62rem] uppercase tracking-wider text-accent/70">
+                      <span className="mkt-mono text-caption uppercase tracking-wider text-accent/70">
                         {node.op}
                       </span>
                     </div>
@@ -267,7 +267,7 @@ export default function HowItWorksPage() {
                       }`}
                     >
                       <div className="text-sm font-semibold text-white">{node.label}</div>
-                      <div className="mt-1 text-[0.72rem] text-fg-muted">{node.sub}</div>
+                      <div className="mt-1 text-caption text-fg-muted">{node.sub}</div>
                     </div>
                   )
                 )}
@@ -345,10 +345,10 @@ export default function HowItWorksPage() {
                 >
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-white">{row.l}</div>
-                    <div className="truncate mkt-mono text-[0.66rem] text-fg-muted">{row.s}</div>
+                    <div className="truncate mkt-mono text-caption text-fg-muted">{row.s}</div>
                   </div>
                   <span
-                    className={`shrink-0 mkt-mono text-[0.58rem] uppercase tracking-wider ${
+                    className={`shrink-0 mkt-mono text-caption uppercase tracking-wider ${
                       row.tone ? "text-value" : "text-fg-muted"
                     }`}
                   >

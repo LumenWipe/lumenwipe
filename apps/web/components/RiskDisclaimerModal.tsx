@@ -129,7 +129,7 @@ export default function RiskDisclaimerModal({ children }: { children: ReactNode 
             <Button onClick={handleAccept} className="w-full">
               I understand, continue
             </Button>
-            <p className="mt-2.5 text-center text-[0.68rem] text-fg-subtle">
+            <p className="mt-2.5 text-center text-caption text-fg-subtle">
               This notice appears once per browser session.
             </p>
           </DialogFooter>

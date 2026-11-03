@@ -75,13 +75,10 @@ export default function ReviewView({ network }: ReviewViewProps) {
         </div>
       </Card>
 
-      <div className="flex items-start gap-2.5 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2.5 text-sm text-white/60">
-        <ShieldCheck className="h-4 w-4 shrink-0 mt-0.5 text-accent" />
-        <span>
-          Every transaction above is verified against your own choices before it is signed. Once you
-          proceed, you&apos;ll sign each step on the next screen.
-        </span>
-      </div>
+      <Callout tone="info" icon={<ShieldCheck className="h-4 w-4" />}>
+        Every transaction above is verified against your own choices before it is signed. Once you
+        proceed, you&apos;ll sign each step on the next screen.
+      </Callout>
 
       <Callout
         tone="danger"

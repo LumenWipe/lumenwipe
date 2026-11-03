@@ -172,7 +172,7 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
                 <p className="mt-1 text-xs text-fg-subtle">
                   This account has not approved any spender that is currently live.
                 </p>
-                {note && <p className="mt-2 text-[11px] text-fg-subtle">{note}.</p>}
+                {note && <p className="mt-2 text-caption text-fg-subtle">{note}.</p>}
               </Card>
             )
           ) : (

@@ -27,14 +27,14 @@ export default function StatsClient() {
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/65">
               Every transaction on this page is an{" "}
-              <code className="rounded bg-white/5 px-1 py-0.5 mkt-mono text-[0.78rem] text-white/75">
+              <code className="rounded bg-white/5 px-1 py-0.5 mkt-mono text-label text-white/75">
                 ACCOUNT_MERGE
               </code>{" "}
               operation recorded on the Stellar blockchain. Click any hash to verify.
             </p>
           </div>
           {stale && (
-            <span className="mkt-mono rounded-full border border-warning/30 bg-warning/5 px-3 py-1 text-[0.65rem] text-warning/70">
+            <span className="mkt-mono rounded-full border border-warning/30 bg-warning/5 px-3 py-1 text-caption text-warning/70">
               Data may be stale
             </span>
           )}
@@ -71,10 +71,10 @@ export default function StatsClient() {
             <ExternalLink className="h-4 w-4 text-accent" />
           </div>
           <div className="flex-1">
-            <p className="text-[0.82rem] leading-relaxed text-fg-muted">
+            <p className="text-body-sm leading-relaxed text-fg-muted">
               Each close counted here was completed through LumenWipe. Before being recorded, the
               backend confirms the transaction hash is a successful{" "}
-              <code className="mkt-mono text-[0.75rem] text-white/70">ACCOUNT_MERGE</code> on the
+              <code className="mkt-mono text-label text-white/70">ACCOUNT_MERGE</code> on the
               Stellar blockchain - merges done outside LumenWipe are not included. Every row in the
               feed links directly to stellar.expert so you can verify each one independently.
             </p>
@@ -83,7 +83,7 @@ export default function StatsClient() {
             href="https://stellar.expert/explorer/public"
             target="_blank"
             rel="noopener noreferrer"
-            className="shrink-0 mkt-mono rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[0.68rem] text-fg-muted transition-colors hover:border-accent/30 hover:text-accent"
+            className="shrink-0 mkt-mono rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-caption text-fg-muted transition-colors hover:border-accent/30 hover:text-accent"
           >
             stellar.expert ↗
           </a>

@@ -10,7 +10,6 @@ const root = process.cwd();
 const SCAN_DIRS = ["app", "components"];
 const COLOR_PREFIXES =
   "text|bg|border|ring|ring-offset|outline|fill|stroke|from|via|to|divide|decoration|placeholder|caret|accent";
-const NON_CLOSE_FLOW = [/^components\/blog\//];
 
 function walk(dir: string): string[] {
   return fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((entry) => {
@@ -78,16 +77,14 @@ describe("color utility classes", () => {
     expect(offenders).toEqual([]);
   });
 
-  test("close-flow files use semantic color tokens instead of raw red or emerald palette classes", () => {
-    const offenders = files
-      .filter(({ rel }) => !NON_CLOSE_FLOW.some((re) => re.test(rel)))
-      .flatMap(({ rel, src }) =>
-        [
-          ...src.matchAll(
-            /(?<![\w-])(?:[a-z-]+:)*(?:text|bg|border|ring)-(?:red|emerald)-\d+(?:\/\d+)?/g
-          ),
-        ].map((m) => `${rel}: ${m[0]}`)
-      );
+  test("source files use semantic color tokens instead of raw red or emerald palette classes", () => {
+    const offenders = files.flatMap(({ rel, src }) =>
+      [
+        ...src.matchAll(
+          /(?<![\w-])(?:[a-z-]+:)*(?:text|bg|border|ring)-(?:red|emerald)-\d+(?:\/\d+)?/g
+        ),
+      ].map((m) => `${rel}: ${m[0]}`)
+    );
     expect(offenders).toEqual([]);
   });
 

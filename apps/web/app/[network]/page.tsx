@@ -128,7 +128,7 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
 
       {/* Hero */}
       <div className="text-center mb-6">
-        <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 mkt-mono text-[0.66rem] uppercase tracking-wider text-white/65 mb-3">
+        <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 mkt-mono text-caption uppercase tracking-wide text-white/65 mb-3">
           <ShieldCheck className="h-3.5 w-3.5 text-accent" />
           Non-custodial · Client-side signing only
         </div>
@@ -186,7 +186,7 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
           </div>
           <div className="flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-fg-disabled opacity-50 select-none">
             USDC
-            <span className="rounded-full border border-white/15 px-1.5 py-0.5 text-[0.55rem] uppercase tracking-wide text-fg-disabled">
+            <span className="rounded-full border border-white/15 px-1.5 py-0.5 text-caption uppercase tracking-wide text-fg-disabled">
               Soon
             </span>
           </div>

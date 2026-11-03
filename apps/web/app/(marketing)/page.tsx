@@ -106,17 +106,17 @@ export default function LandingPage() {
         {/* Label - typographic, not a status pill */}
         <div className="mb-8 flex items-center justify-center gap-4">
           <span className="h-px w-12 bg-white/15" />
-          <span className="mkt-mono text-[0.65rem] uppercase tracking-[0.2em] text-fg-subtle">
+          <span className="mkt-mono text-caption uppercase tracking-[0.18em] text-fg-subtle">
             Stellar Account Closer
           </span>
           <span className="h-px w-12 bg-white/15" />
         </div>
 
-        <h1 className="mkt-display mx-auto max-w-[15ch] text-[2.7rem] font-extrabold leading-[0.95] text-white sm:text-6xl lg:text-[4.2rem]">
+        <h1 className="mkt-display mx-auto max-w-[15ch] text-display font-extrabold leading-[0.95] text-white sm:text-6xl lg:text-hero">
           Close the account. Keep the <span className="text-value">lumens.</span>
         </h1>
 
-        <p className="mx-auto mt-6 max-w-xl text-[1.05rem] leading-relaxed text-white/70">
+        <p className="mx-auto mt-6 max-w-xl text-body leading-relaxed text-white/70">
           Unwind every trustline, offer, data entry, signer and Soroban position, convert the
           leftovers, and merge out. Signed entirely in your browser.
         </p>
@@ -151,7 +151,7 @@ export default function LandingPage() {
               className={`px-4 py-6 ${i >= 2 ? "border-t border-white/[0.07] lg:border-t-0" : ""}`}
             >
               <div className="mkt-display text-2xl font-bold text-value sm:text-3xl">{s.n}</div>
-              <div className="mt-1 text-[0.78rem] leading-snug text-fg-muted">{s.l}</div>
+              <div className="mt-1 text-label leading-snug text-fg-muted">{s.l}</div>
             </div>
           ))}
         </div>
@@ -161,10 +161,10 @@ export default function LandingPage() {
       <section className="mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-24">
         <Reveal>
           <Eyebrow>The problem</Eyebrow>
-          <h2 className="mkt-display mt-4 max-w-2xl text-3xl font-bold text-white sm:text-[2.4rem] sm:leading-[1.05]">
+          <h2 className="mkt-display mt-4 max-w-2xl text-3xl font-bold text-white sm:text-display sm:leading-[1.05]">
             Your lumens are locked, and the exit is a maze.
           </h2>
-          <p className="mt-5 max-w-2xl text-[1.02rem] leading-relaxed text-white/70">
+          <p className="mt-5 max-w-2xl text-body leading-relaxed text-white/70">
             Every Stellar account holds XLM in reserve: 1 XLM for the account, plus 0.5 for every
             trustline, offer, data entry and signer. That reserve is only recoverable by closing the
             account, and closing one cleanly is harder than it sounds.
@@ -208,7 +208,7 @@ export default function LandingPage() {
                   <t.icon className="h-5 w-5" />
                 </span>
                 <div>
-                  <h3 className="text-[0.98rem] font-semibold text-white">{t.title}</h3>
+                  <h3 className="text-body font-semibold text-white">{t.title}</h3>
                   <p className="mt-1.5 text-sm leading-relaxed text-white/70">{t.body}</p>
                 </div>
               </Reveal>
@@ -221,7 +221,7 @@ export default function LandingPage() {
       <section className="mx-auto max-w-6xl border-t border-white/[0.07] px-5 py-20 lg:px-8 lg:py-24">
         <Reveal className="max-w-2xl">
           <Eyebrow>What you get</Eyebrow>
-          <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-[2.4rem] sm:leading-[1.05]">
+          <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-display sm:leading-[1.05]">
             Built for the messy reality of real accounts.
           </h2>
         </Reveal>
@@ -233,7 +233,7 @@ export default function LandingPage() {
                 <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-value/30 bg-value/10 text-value">
                   <Layers className="h-5 w-5" />
                 </span>
-                <span className="rounded-full border border-value/40 px-2.5 py-1 mkt-mono text-[0.62rem] uppercase tracking-wider text-value">
+                <span className="rounded-full border border-value/40 px-2.5 py-1 mkt-mono text-caption uppercase tracking-wider text-value">
                   Classic live · Soroban on the way
                 </span>
               </div>
@@ -270,7 +270,7 @@ export default function LandingPage() {
                     <f.icon className="h-5 w-5" />
                   </span>
                   <span
-                    className={`mkt-mono rounded-full border px-2.5 py-1 text-[0.62rem] uppercase tracking-wider ${
+                    className={`mkt-mono rounded-full border px-2.5 py-1 text-caption uppercase tracking-wider ${
                       f.status === "Live"
                         ? "border-accent/40 text-accent"
                         : "border-value/40 text-value"
@@ -279,7 +279,7 @@ export default function LandingPage() {
                     {f.status}
                   </span>
                 </div>
-                <h3 className="mt-4 text-[0.98rem] font-semibold text-white">{f.title}</h3>
+                <h3 className="mt-4 text-body font-semibold text-white">{f.title}</h3>
                 <p className="mt-1.5 text-sm leading-relaxed text-white/70">{f.body}</p>
               </div>
             </Reveal>
@@ -294,7 +294,7 @@ export default function LandingPage() {
       >
         <Reveal className="text-center">
           <Eyebrow>FAQ</Eyebrow>
-          <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-[2.4rem]">
+          <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-display">
             Questions, answered.
           </h2>
           <p className="mt-4 text-white/70">
@@ -325,7 +325,7 @@ export default function LandingPage() {
             <h2 className="mkt-display mx-auto max-w-2xl text-3xl font-bold leading-[1.05] text-white sm:text-5xl">
               Reclaim the XLM that&apos;s been sitting locked.
             </h2>
-            <p className="mx-auto mt-5 max-w-lg text-[1.02rem] text-white/70">
+            <p className="mx-auto mt-5 max-w-lg text-body text-white/70">
               Try the entire flow on testnet with no funds at risk, then switch to mainnet for the
               real close.
             </p>
@@ -338,7 +338,7 @@ export default function LandingPage() {
                 Try on testnet
               </Link>
             </div>
-            <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mkt-mono text-[0.7rem] text-fg-muted">
+            <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mkt-mono text-caption text-fg-muted">
               <span className="inline-flex items-center gap-1.5">
                 <Check className="h-3.5 w-3.5 text-accent" /> No signup
               </span>

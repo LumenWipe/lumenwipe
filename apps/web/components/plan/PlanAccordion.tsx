@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Plus } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import type { AccountState, UnrecognizedDefiPosition } from "@/types/account";
 import { PROTOCOL_LABELS, describeDefiPosition } from "@/lib/plan/describe-position";
 import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
@@ -343,9 +343,9 @@ export default function PlanAccordion({
                   <span className="block truncate text-xs text-fg-subtle">{g.summary}</span>
                 </span>
               </span>
-              <Plus
+              <ChevronDown
                 className={`h-4 w-4 shrink-0 text-accent transition-transform duration-300 ${
-                  isOpen ? "rotate-45" : ""
+                  isOpen ? "rotate-180" : ""
                 }`}
               />
             </button>

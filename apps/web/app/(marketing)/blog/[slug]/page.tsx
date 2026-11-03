@@ -157,7 +157,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
               <div className="mb-4">
                 <CategoryBadge category={post.category} />
               </div>
-              <h1 className="mkt-display text-3xl md:text-[2.6rem] font-extrabold text-white leading-[1.05] mb-4 tracking-tight">
+              <h1 className="mkt-display text-3xl md:text-display font-extrabold text-white leading-[1.05] mb-4 tracking-tight">
                 {post.title}
               </h1>
               <p className="text-white/85 text-base leading-relaxed mb-5">{post.description}</p>

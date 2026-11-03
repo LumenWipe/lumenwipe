@@ -120,24 +120,20 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
       onMouseLeave={() => setHovered(null)}
     >
       <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
-        <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-fg-muted">
+        <span className="mkt-mono text-caption uppercase tracking-wide text-fg-muted">
           Activity - last 12 months
         </span>
         <div className="flex items-center gap-4">
           {feed && (
             <>
-              <span className="mkt-mono text-[0.62rem] text-fg-subtle">
-                {totalDays} active days
-              </span>
+              <span className="mkt-mono text-caption text-fg-subtle">{totalDays} active days</span>
               {maxStreak > 1 && (
-                <span className="mkt-mono text-[0.62rem] text-fg-subtle">
-                  {maxStreak}-day streak
-                </span>
+                <span className="mkt-mono text-caption text-fg-subtle">{maxStreak}-day streak</span>
               )}
             </>
           )}
           <div className="flex items-center gap-1">
-            <span className="mkt-mono text-[0.58rem] text-fg-subtle">Less</span>
+            <span className="mkt-mono text-caption text-fg-subtle">Less</span>
             {([0, 1, 2, 3, 4] as const).map((l) => (
               <div
                 key={l}
@@ -145,7 +141,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
                 style={{ backgroundColor: LEVEL_BG[l] }}
               />
             ))}
-            <span className="mkt-mono text-[0.58rem] text-fg-subtle">More</span>
+            <span className="mkt-mono text-caption text-fg-subtle">More</span>
           </div>
         </div>
       </div>
@@ -157,7 +153,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
             {monthLabels.map((m) => (
               <div
                 key={m.label + m.col}
-                className="mkt-mono text-[0.6rem] text-fg-subtle"
+                className="mkt-mono text-caption text-fg-subtle"
                 style={{ position: "absolute", left: 24 + m.col * 14 }}
               >
                 {m.label}
@@ -171,7 +167,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
               {Array.from({ length: 7 }).map((_, i) => (
                 <div
                   key={i}
-                  className="mkt-mono text-[0.55rem] text-fg-subtle"
+                  className="mkt-mono text-caption text-fg-subtle"
                   style={{ height: 12, lineHeight: "12px" }}
                 >
                   {i === 0 ? "Mon" : i === 2 ? "Wed" : i === 4 ? "Fri" : ""}
@@ -237,7 +233,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
         {hovered ? (
           <div className="flex items-start gap-4">
             <div className="shrink-0">
-              <span className="mkt-mono text-[0.68rem] text-fg-subtle">
+              <span className="mkt-mono text-caption text-fg-subtle">
                 {new Date(hovered.date + "T00:00:00Z").toLocaleDateString("en-US", {
                   month: "long",
                   day: "numeric",
@@ -245,7 +241,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
                   timeZone: "UTC",
                 })}
               </span>
-              <p className="mt-0.5 mkt-mono text-[0.72rem] text-white/75">
+              <p className="mt-0.5 mkt-mono text-caption text-white/75">
                 {hovered.count === 0
                   ? "No closes"
                   : `${hovered.count} account${hovered.count !== 1 ? "s" : ""} closed`}
@@ -259,13 +255,13 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
                     href={`https://stellar.expert/explorer/public/tx/${r.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="mkt-mono rounded-md border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[0.62rem] text-fg-subtle transition-colors hover:border-accent/40 hover:text-accent"
+                    className="mkt-mono rounded-md border border-white/10 bg-white/[0.03] px-2 py-0.5 text-caption text-fg-subtle transition-colors hover:border-accent/40 hover:text-accent"
                   >
                     {r.txHash.slice(0, 8)}… ↗
                   </a>
                 ))}
                 {hovered.closes.length > 5 && (
-                  <span className="mkt-mono text-[0.62rem] text-fg-subtle">
+                  <span className="mkt-mono text-caption text-fg-subtle">
                     +{hovered.closes.length - 5} more
                   </span>
                 )}
@@ -273,7 +269,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
             )}
           </div>
         ) : (
-          <p className="mkt-mono text-[0.6rem] text-fg-subtle">Hover a day to inspect</p>
+          <p className="mkt-mono text-caption text-fg-subtle">Hover a day to inspect</p>
         )}
       </div>
 

@@ -66,7 +66,7 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 
 function LangBadge({ lang }: { lang: "EN" | "ES" }) {
   return (
-    <span className="mkt-mono rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[0.62rem] uppercase tracking-wider text-fg-subtle">
+    <span className="mkt-mono rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-caption uppercase tracking-wider text-fg-subtle">
       {lang}
     </span>
   );
@@ -74,7 +74,7 @@ function LangBadge({ lang }: { lang: "EN" | "ES" }) {
 
 function DurationBadge({ duration }: { duration: string }) {
   return (
-    <span className="mkt-mono inline-flex items-center gap-1 text-[0.68rem] text-fg-subtle">
+    <span className="mkt-mono inline-flex items-center gap-1 text-caption text-fg-subtle">
       <Play className="h-2.5 w-2.5" />
       {duration}
     </span>
@@ -121,10 +121,10 @@ export default function ContentPage() {
                   <LangBadge lang={v.lang} />
                   <DurationBadge duration={v.duration} />
                 </div>
-                <h3 className="mkt-display text-[0.95rem] font-semibold leading-snug text-white">
+                <h3 className="mkt-display text-body font-semibold leading-snug text-white">
                   {v.title}
                 </h3>
-                <p className="text-[0.82rem] leading-relaxed text-fg-muted">{v.description}</p>
+                <p className="text-body-sm leading-relaxed text-fg-muted">{v.description}</p>
               </div>
             </div>
           ))}

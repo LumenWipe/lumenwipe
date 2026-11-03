@@ -47,9 +47,7 @@ interface StatCardProps {
 function StatCard({ label, value, sub, accent = "accent" }: StatCardProps) {
   return (
     <div className="flex flex-col gap-1.5 rounded-2xl border border-white/8 bg-white/[0.025] px-6 py-5">
-      <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-fg-subtle">
-        {label}
-      </span>
+      <span className="mkt-mono text-caption uppercase tracking-wider text-fg-subtle">{label}</span>
       <div className="mkt-display text-4xl font-bold leading-none text-white sm:text-5xl">
         {value === null ? (
           <Skeleton />
@@ -57,7 +55,7 @@ function StatCard({ label, value, sub, accent = "accent" }: StatCardProps) {
           <span className={accent === "value" ? "text-value" : "text-white"}>{value}</span>
         )}
       </div>
-      {sub && <span className="mkt-mono text-[0.7rem] text-fg-subtle">{sub}</span>}
+      {sub && <span className="mkt-mono text-caption text-fg-subtle">{sub}</span>}
     </div>
   );
 }

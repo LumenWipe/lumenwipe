@@ -95,7 +95,7 @@ export default function AssetDispositionCard({
           <button
             type="button"
             onClick={() => onSetTransferDestination(item.asset, mergeDestination)}
-            className="text-[0.7rem] text-accent/90 underline-offset-2 hover:underline"
+            className="text-label text-accent/90 underline-offset-2 hover:underline"
           >
             Use the same account I&apos;m merging into
           </button>
