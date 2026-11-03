@@ -5,6 +5,8 @@ import { AlertTriangle, CheckCircle, Info, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { toUserMessage } from "@/lib/utils/user-error";
 import type { AccountSigner } from "@/types/account";
+import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 
 function shortAddr(addr: string): string {
   return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
@@ -56,14 +58,16 @@ export default function PreAuthTxInput({ signer, disabled, onSubmit }: Props) {
         submitted, not by signing anything now. If you already hold a transaction you pre-authorized
         for this close, paste it below.
       </p>
-      <div className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-200/90">
-        <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-400" />
-        <span>
-          This transaction was not built or verified by LumenWipe the way the rest of this
-          flow&apos;s transactions are. You are responsible for having reviewed its contents
-          yourself before submitting it here.
-        </span>
-      </div>
+      <Callout
+        tone="warning"
+        announce={false}
+        icon={<AlertTriangle className="h-3.5 w-3.5" />}
+        className="gap-1.5 p-2.5 text-xs"
+      >
+        This transaction was not built or verified by LumenWipe the way the rest of this flow&apos;s
+        transactions are. You are responsible for having reviewed its contents yourself before
+        submitting it here.
+      </Callout>
       <textarea
         value={value}
         onChange={(e) => {
@@ -80,17 +84,19 @@ export default function PreAuthTxInput({ signer, disabled, onSubmit }: Props) {
           "w-full font-mono-address bg-black/30 border rounded-lg px-3 py-2 text-xs",
           "placeholder:text-fg-subtle",
           "disabled:opacity-50 disabled:cursor-not-allowed",
-          error ? "border-destructive" : "border-white/10"
+          error ? "border-danger" : "border-white/10"
         )}
       />
-      <button
+      <Button
+        size="sm"
         type="button"
         onClick={submit}
         disabled={disabled || submitting || submitted || value.trim().length === 0}
-        className="self-start shrink-0 rounded-lg bg-stellar text-black text-xs font-semibold px-3 py-2 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-stellar/90 transition-colors"
+        loading={submitting}
+        className="self-start shrink-0"
       >
         {submitting ? "Submitting…" : "Submit pre-authorized transaction"}
-      </button>
+      </Button>
       {error && (
         <p className="flex items-center gap-1.5 text-xs text-danger-fg">
           <XCircle className="h-3.5 w-3.5 shrink-0" />

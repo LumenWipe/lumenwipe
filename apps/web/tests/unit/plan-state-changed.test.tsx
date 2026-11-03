@@ -92,14 +92,19 @@ async function proceed(plan: () => Response): Promise<{ refreshes: () => number 
     );
   });
   fireEvent.click(screen.getByRole("button", { name: /begin execution/i }));
-  await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+  await waitFor(() => expect(screen.getAllByRole("alert").length).toBe(2));
   return { refreshes: () => refreshes };
+}
+
+/** The unrecognized-destination warning is the other alert on this screen. */
+function refusal(): string | null | undefined {
+  return screen.getAllByRole("alert").at(-1)?.textContent;
 }
 
 test("a state_changed from the final plan says so and refreshes, the same as needs_decisions", async () => {
   const { refreshes } = await proceed(() => refused("state_changed", 409));
 
-  const alert = screen.getByRole("alert").textContent;
+  const alert = refusal();
   expect(alert).toContain("This account changed while the plan was being prepared");
   expect(alert).not.toContain(STALE);
   expect(refreshes()).toBe(1);
@@ -109,7 +114,7 @@ test("a state_changed from the final plan says so and refreshes, the same as nee
 test("any other refusal of the final plan keeps its own message and does not refresh", async () => {
   const { refreshes } = await proceed(() => refused("internal_error", 500));
 
-  expect(screen.getByRole("alert").textContent).toContain(STALE);
+  expect(refusal()).toContain(STALE);
   expect(refreshes()).toBe(0);
 });
 

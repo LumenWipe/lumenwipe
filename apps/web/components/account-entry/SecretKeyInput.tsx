@@ -1,30 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Eye, EyeOff, CheckCircle, XCircle, ShieldAlert } from "lucide-react";
 import { isValidSecretKey } from "@/lib/utils/validation";
-import { cn } from "@/lib/utils/cn";
-
-interface SecretKeyInputProps {
-  label?: string;
-  onKeyChange?: (isValid: boolean) => void;
-  getKey: () => string;
-  setKeyRef: (ref: React.RefObject<string | null>) => void;
-  disabled?: boolean;
-  placeholder?: string;
-}
-
-// External ref pattern: caller passes a ref that this component populates
-interface SecretKeyRef {
-  ref: React.RefObject<string | null>;
-}
-
-// Simpler controlled pattern: caller manages the ref
-export interface SecretKeyHandle {
-  getSecretKey: () => string;
-  clearKey: () => void;
-  isValid: () => boolean;
-}
+import { Field, Input } from "@/components/ui/field";
 
 interface Props {
   label?: string;
@@ -33,37 +12,57 @@ interface Props {
   disabled?: boolean;
 }
 
+/**
+ * Uncontrolled on purpose: React copies a controlled input's `value` into the DOM `value`
+ * attribute, password type included, which would put the key in the page's markup. The key lives
+ * only in the input's own value and in `secretKeyRef`, and state holds nothing derived from it
+ * beyond two booleans.
+ */
 export default function SecretKeyInput({
   label = "Secret key",
   secretKeyRef,
   onValidityChange,
   disabled,
 }: Props) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const [showKey, setShowKey] = useState(false);
-  const [displayValue, setDisplayValue] = useState("");
+  const [hasValue, setHasValue] = useState(false);
+  const [isValid, setIsValid] = useState(false);
   const [touched, setTouched] = useState(false);
+
+  // A browser's form restoration would otherwise refill the field behind `hasValue`.
+  useLayoutEffect(() => {
+    if (inputRef.current) inputRef.current.value = "";
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    setDisplayValue(val);
+    const valid = isValidSecretKey(val);
+    setHasValue(val !== "");
+    setIsValid(valid);
     secretKeyRef.current = val;
-    onValidityChange?.(isValidSecretKey(val));
+    onValidityChange?.(valid);
   };
 
-  const isValid = displayValue ? isValidSecretKey(displayValue) : null;
-  const showError = touched && displayValue && !isValid;
+  const showError = touched && hasValue && !isValid;
 
   return (
-    <div className="space-y-1.5">
-      <label className="text-sm font-medium text-white">
-        {label}
-        <span className="text-danger-fg ml-1">*</span>
-      </label>
-
+    <Field
+      label={label}
+      required
+      error={showError ? "Not a valid Stellar secret key (must start with S)" : undefined}
+      helper={
+        <span className="flex items-start gap-1.5">
+          <ShieldAlert className="h-3.5 w-3.5 mt-0.5 shrink-0 text-warning" />
+          Your secret key never leaves your browser. It is held in memory only, never persisted, and
+          cleared when you finish, leave, or click Forget key.
+        </span>
+      }
+    >
       <div className="relative">
-        <input
+        <Input
+          ref={inputRef}
           type={showKey ? "text" : "password"}
-          value={displayValue}
           onChange={handleChange}
           onBlur={() => setTouched(true)}
           placeholder="S..."
@@ -71,17 +70,12 @@ export default function SecretKeyInput({
           spellCheck={false}
           autoComplete="off"
           autoCorrect="off"
-          className={cn(
-            "w-full font-mono-address bg-black/30 border rounded-lg px-3 py-2.5 pr-16 text-sm",
-            "placeholder:text-fg-subtle",
-            "disabled:opacity-50 disabled:cursor-not-allowed",
-            showError ? "border-destructive" : "border-white/10",
-            isValid && touched ? "border-success/50" : ""
-          )}
+          autoCapitalize="none"
+          className="pr-16 font-mono"
         />
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
           {touched &&
-            displayValue &&
+            hasValue &&
             (isValid ? (
               <CheckCircle className="h-4 w-4 text-success" />
             ) : (
@@ -97,16 +91,6 @@ export default function SecretKeyInput({
           </button>
         </div>
       </div>
-
-      {showError && (
-        <p className="text-xs text-danger-fg">Not a valid Stellar secret key (must start with S)</p>
-      )}
-
-      <p className="flex items-start gap-1.5 text-xs text-fg-muted">
-        <ShieldAlert className="h-3.5 w-3.5 mt-0.5 shrink-0 text-warning" />
-        Your secret key never leaves your browser. It is held in memory only, never persisted, and
-        cleared when you finish, leave, or click Forget key.
-      </p>
-    </div>
+    </Field>
   );
 }

@@ -92,7 +92,7 @@ export default function MarketingNav() {
     <header
       className={`sticky top-0 z-50 transition-colors duration-300 ${
         scrolled
-          ? "border-b border-white/10 bg-[hsl(var(--mkt-bg)/0.8)] backdrop-blur-xl"
+          ? "border-b border-white/10 bg-canvas/80 backdrop-blur-xl"
           : "border-b border-transparent"
       }`}
     >
@@ -120,7 +120,7 @@ export default function MarketingNav() {
                   <ArrowUpRight className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-60" />
                 )}
                 <span
-                  className={`pointer-events-none absolute -bottom-0.5 left-0 h-px w-full origin-left rounded-full bg-stellar shadow-[0_0_8px_hsl(var(--stellar)/0.7)] transition-transform duration-300 ${
+                  className={`pointer-events-none absolute -bottom-0.5 left-0 h-px w-full origin-left rounded-full bg-stellar shadow-[0_0_8px_hsl(var(--accent)/0.7)] transition-transform duration-300 ${
                     active
                       ? "scale-x-100"
                       : "scale-x-0 group-hover:scale-x-50 group-hover:bg-white/40 group-hover:shadow-none"
@@ -152,7 +152,7 @@ export default function MarketingNav() {
           </a>
           <Link
             href={APP}
-            className="hidden items-center gap-1.5 rounded-lg bg-value px-4 py-2 text-sm font-semibold text-[hsl(var(--value-foreground))] transition-all hover:bg-value/90 hover:shadow-[0_0_24px_-4px_hsl(var(--value)/0.6)] sm:inline-flex"
+            className="hidden items-center gap-1.5 rounded-lg bg-value px-4 py-2 text-sm font-semibold text-value-fg transition-all hover:bg-value/90 hover:shadow-[0_0_24px_-4px_hsl(var(--value)/0.6)] sm:inline-flex"
           >
             Open the app
           </Link>
@@ -168,7 +168,7 @@ export default function MarketingNav() {
 
       {/* mobile sheet */}
       {open && (
-        <div className="border-t border-white/10 bg-[hsl(var(--mkt-bg)/0.95)] backdrop-blur-xl lg:hidden">
+        <div className="border-t border-white/10 bg-canvas/95 backdrop-blur-xl lg:hidden">
           <div className="mx-auto flex max-w-6xl flex-col gap-1 px-5 py-4">
             {MOBILE_LINKS.map((l) => {
               const active = isActive(l);
@@ -197,7 +197,7 @@ export default function MarketingNav() {
             <Link
               href={APP}
               onClick={() => setOpen(false)}
-              className="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-value px-4 py-2.5 text-sm font-semibold text-[hsl(var(--value-foreground))]"
+              className="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-value px-4 py-2.5 text-sm font-semibold text-value-fg"
             >
               Open the app
             </Link>

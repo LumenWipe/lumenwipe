@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import type { PlannedStep, StepType } from "@/types/plan";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
 import { groupStepsByType } from "@/lib/plan/group-steps";
+import { Card } from "@/components/ui/card";
 
 interface PlanStepAccordionProps {
   steps: PlannedStep[];
@@ -33,7 +34,7 @@ export default function PlanStepAccordion({
   const baseId = useId();
 
   return (
-    <div className="divide-y divide-white/8 overflow-hidden rounded-2xl border border-white/10 bg-[hsl(var(--card)/0.6)]">
+    <Card className="divide-y divide-white/8 overflow-hidden">
       {groups.map((g) => {
         const isOpen = open === g.type;
         const totalOps = g.steps.reduce((sum, s) => sum + s.operationCount, 0);
@@ -102,6 +103,6 @@ export default function PlanStepAccordion({
           </div>
         );
       })}
-    </div>
+    </Card>
   );
 }

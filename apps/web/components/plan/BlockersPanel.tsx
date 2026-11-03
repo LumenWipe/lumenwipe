@@ -1,5 +1,6 @@
 import { AlertOctagon, AlertTriangle, ExternalLink } from "lucide-react";
 import type { PlanBlocker } from "@/types/plan";
+import { Callout } from "@/components/ui/callout";
 
 interface BlockersPanelProps {
   blockers: PlanBlocker[];
@@ -13,32 +14,26 @@ interface BlockersPanelProps {
 export default function BlockersPanel({ blockers, blocking }: BlockersPanelProps) {
   if (blockers.length === 0) return null;
 
-  const theme = blocking
-    ? {
-        container: "bg-destructive/10 border-destructive/30",
-        icon: <AlertOctagon className="h-4 w-4 text-danger-fg shrink-0" />,
-        heading: "text-danger-fg",
-        headingText: "Cannot proceed - blockers found",
-        bullet: "text-danger-fg",
-      }
-    : {
-        container: "bg-amber-500/[0.06] border-amber-500/30",
-        icon: <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />,
-        heading: "text-amber-300",
-        headingText: "Needs verification",
-        bullet: "text-amber-400",
-      };
+  const Icon = blocking ? AlertOctagon : AlertTriangle;
+  const tone = blocking ? "danger" : "warning";
+  const bullet = blocking ? "text-danger-fg" : "text-warning";
 
   return (
-    <div className={`border rounded-xl p-4 ${theme.container}`}>
-      <div className="flex items-center gap-2 mb-3">
-        {theme.icon}
-        <h2 className={`text-sm font-semibold ${theme.heading}`}>{theme.headingText}</h2>
-      </div>
+    <Callout
+      tone={tone}
+      announce={false}
+      icon={<Icon className="h-4 w-4" />}
+      title={
+        <h2 className="text-sm font-semibold">
+          {blocking ? "Cannot proceed - blockers found" : "Needs verification"}
+        </h2>
+      }
+      className="p-4"
+    >
       <ul className="space-y-2">
         {blockers.map((b, i) => (
-          <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
-            <span className={`${theme.bullet} mt-0.5`}>•</span>
+          <li key={i} className="flex items-start gap-2 text-sm text-fg-muted">
+            <span className={`${bullet} mt-0.5`}>•</span>
             <span>
               {b.message}
               {b.helpUrl && (
@@ -55,6 +50,6 @@ export default function BlockersPanel({ blockers, blocking }: BlockersPanelProps
           </li>
         ))}
       </ul>
-    </div>
+    </Callout>
   );
 }

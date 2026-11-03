@@ -17,6 +17,9 @@ import SigningProgress from "./SigningProgress";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { SecretKeySigner, WalletKitSigner, type TransactionSigner } from "@/lib/stellar/signer";
 import { ensureWalletKitInitialized } from "@/lib/wallet-kit/client";
+import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
+import { Card } from "@/components/ui/card";
 
 interface ExecutionWizardProps {
   network: Network;
@@ -348,7 +351,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
       {/* Main panel */}
       <div className="flex-1 min-w-0">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 flex flex-col gap-5">
+        <Card className="flex flex-col gap-5 p-6">
           <div>
             <h2
               ref={headingRef}
@@ -373,16 +376,18 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           </div>
 
           {/* Irreversible warning */}
-          <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-sm">
-            <p className="font-semibold text-danger-fg mb-1">
-              This action is permanent and irreversible.
-            </p>
-            <p className="text-white/60">
+          <Callout
+            tone="danger"
+            announce={false}
+            title="This action is permanent and irreversible."
+            className="p-4"
+          >
+            <p>
               The account will be removed from the Stellar ledger and its balance sent to{" "}
               <span className="font-mono text-white/80 break-all">{destinationAddress}</span>
               {mediatorRequired ? " through the exchange relay account." : "."} Verify it carefully.
             </p>
-          </div>
+          </Callout>
 
           <StatusMessage message={statusMessage} />
 
@@ -403,32 +408,26 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 disabled={running}
               />
               {renderSignerPicker()}
-              <button
-                onClick={execute}
-                disabled={!signerReady}
-                className="w-full py-3 px-4 rounded-xl font-semibold text-sm bg-stellar text-black hover:bg-stellar/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-              >
+              <Button onClick={execute} disabled={!signerReady} className="w-full">
                 Add signature
-              </button>
+              </Button>
             </div>
           ) : failed ? (
             <div className="flex flex-col gap-3">
-              <div
+              <Callout
                 ref={alertRef}
                 tabIndex={-1}
-                role="alert"
-                className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-white/70 outline-none"
+                tone="danger"
+                className="outline-none"
+                icon={<AlertCircle className="h-4 w-4" />}
               >
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-danger-fg" />
-                <span>
-                  {lastError ?? "The close could not be completed."}
-                  {lastErrorReference && (
-                    <span className="mt-1 block text-xs text-fg-subtle">
-                      Reference: {lastErrorReference}
-                    </span>
-                  )}
-                </span>
-              </div>
+                {lastError ?? "The close could not be completed."}
+                {lastErrorReference && (
+                  <span className="mt-1 block text-xs text-fg-subtle">
+                    Reference: {lastErrorReference}
+                  </span>
+                )}
+              </Callout>
               <button
                 type="button"
                 onClick={() => setChangingSigner(true)}
@@ -436,14 +435,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               >
                 Change wallet or key
               </button>
-              <button
-                ref={retryRef}
-                onClick={execute}
-                disabled={!signerReady}
-                className="w-full py-3 px-4 rounded-xl font-semibold text-sm bg-stellar text-black hover:bg-stellar/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-              >
+              <Button ref={retryRef} onClick={execute} disabled={!signerReady} className="w-full">
                 Retry
-              </button>
+              </Button>
               {retrySafe !== false && (
                 <p className="text-xs text-fg-subtle">
                   Safe to retry. LumenWipe re-reads your account first, so a confirmed transaction
@@ -489,21 +483,17 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 </span>
               </label>
 
-              <button
+              <Button
+                variant="danger"
                 onClick={execute}
                 disabled={!signerReady || !confirmed}
-                className={cn(
-                  "w-full py-3 px-4 rounded-xl font-semibold text-sm transition-all",
-                  "flex items-center justify-center gap-2",
-                  "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-                  "disabled:opacity-40 disabled:cursor-not-allowed"
-                )}
+                className="w-full"
               >
                 Sign &amp; execute close
-              </button>
+              </Button>
             </>
           )}
-        </div>
+        </Card>
 
         {/* Mobile step list */}
         <div className="md:hidden mt-5">

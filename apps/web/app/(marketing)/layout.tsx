@@ -5,9 +5,7 @@ import { marketingFontVars } from "./fonts";
 
 export default function MarketingLayout({ children }: { children: ReactNode }) {
   return (
-    <div
-      className={`${marketingFontVars} mkt relative min-h-screen overflow-x-clip bg-[hsl(var(--mkt-bg))]`}
-    >
+    <div className={`${marketingFontVars} mkt relative min-h-screen overflow-x-clip bg-canvas`}>
       {/* atmosphere: film grain + faint top hairline. No grid, no colour aura.
           Absolute (not fixed): a fixed mix-blend-overlay layer blends against the
           white compositor canvas and greys the ink bg; absolute blends against the

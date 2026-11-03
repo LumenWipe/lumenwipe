@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, KeyRound, ShieldOff, Wallet, X } from "lucide-react";
 import { TransactionBuilder } from "@stellar/stellar-sdk";
 import type { Network } from "@/config/networks";
@@ -18,6 +18,15 @@ import { submitViaApi } from "@/lib/stellar/submit-via-api";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import SecretKeyInput from "@/components/account-entry/SecretKeyInput";
 import { cn } from "@/lib/utils/cn";
+import { Button } from "@/components/ui/button";
+import { Tabs } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogBody,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface RevokeAllowanceModalProps {
   network: Network;
@@ -63,6 +72,17 @@ export default function RevokeAllowanceModal({
 
   const walletMatches = walletConnection.address === owner;
   const signerReady = mode === "wallet" ? walletMatches : keyValid;
+  const pickerShown = step === "confirm" || step === "signing" || step === "failed";
+  const keyFieldShown = pickerShown && mode === "secret-key";
+
+  // The field mounts empty, so the key and its validity go with it whenever it leaves.
+  useEffect(() => {
+    if (!keyFieldShown) return;
+    return () => {
+      secretKeyRef.current = "";
+      setKeyValid(false);
+    };
+  }, [keyFieldShown]);
 
   async function handleConfirm() {
     setError(null);
@@ -124,103 +144,94 @@ export default function RevokeAllowanceModal({
   const busy = step === "signing";
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-xs"
-        onClick={busy ? undefined : onClose}
-      />
-
-      <div className="relative w-full max-w-md rounded-2xl border border-white/15 bg-card shadow-2xl">
-        <div className="flex items-start gap-3 border-b border-white/10 px-5 py-4">
-          <div
-            className={cn(
-              "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-              step === "done" ? "bg-success/15 text-success" : "bg-warning/15 text-warning"
-            )}
-          >
-            {step === "done" ? (
-              <CheckCircle2 className="h-5 w-5" />
-            ) : (
-              <ShieldOff className="h-5 w-5" />
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <h2 className="text-base font-semibold text-white">
-              {step === "done" ? "Allowance revoked" : "Revoke this allowance"}
-            </h2>
-            <p className="mt-0.5 text-xs text-fg-subtle">
-              {tokenLabel} · {amountLabel}
-            </p>
-          </div>
-          {!busy && (
-            <button
-              onClick={onClose}
-              className="text-fg-subtle hover:text-white transition-colors"
-              aria-label="Close"
-            >
-              <X className="h-4 w-4" />
-            </button>
+    <Dialog dismissible={!busy} suspended={walletConnection.connecting} onClose={onClose}>
+      <div className="flex items-start gap-3 border-b border-white/10 px-5 py-4">
+        <div
+          className={cn(
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+            step === "done" ? "bg-success/15 text-success" : "bg-warning/15 text-warning"
+          )}
+        >
+          {step === "done" ? (
+            <CheckCircle2 className="h-5 w-5" />
+          ) : (
+            <ShieldOff className="h-5 w-5" />
           )}
         </div>
+        <div className="min-w-0 flex-1">
+          <DialogTitle className="text-base font-semibold text-white">
+            {step === "done" ? "Allowance revoked" : "Revoke this allowance"}
+          </DialogTitle>
+          <DialogDescription className="mt-0.5 text-xs text-fg-subtle">
+            {tokenLabel} · {amountLabel}
+          </DialogDescription>
+        </div>
+        {!busy && (
+          <button
+            onClick={onClose}
+            className="text-fg-subtle hover:text-white transition-colors"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
 
-        <div className="px-5 py-4 space-y-4 text-sm">
-          {step !== "done" && (
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 space-y-1.5 text-xs">
-              <div className="flex justify-between gap-3">
-                <span className="text-fg-subtle">Token</span>
-                <span className="font-mono-address text-white/80">{tokenLabel}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-fg-subtle">Spender</span>
-                <span className="font-mono-address text-white/80">
-                  {shortAddress(allowance.spender)}
-                  {spenderLabel && <span className="ml-1 text-fg-muted">({spenderLabel})</span>}
-                </span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-fg-subtle">Amount</span>
-                <span className="text-white/80">{amountLabel}</span>
-              </div>
+      <DialogBody className="px-5 py-4 space-y-4 text-sm">
+        {step !== "done" && (
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 space-y-1.5 text-xs">
+            <div className="flex justify-between gap-3">
+              <span className="text-fg-subtle">Token</span>
+              <span className="font-mono-address text-white/80">{tokenLabel}</span>
             </div>
-          )}
+            <div className="flex justify-between gap-3">
+              <span className="text-fg-subtle">Spender</span>
+              <span className="font-mono-address text-white/80">
+                {shortAddress(allowance.spender)}
+                {spenderLabel && <span className="ml-1 text-fg-muted">({spenderLabel})</span>}
+              </span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-fg-subtle">Amount</span>
+              <span className="text-white/80">{amountLabel}</span>
+            </div>
+          </div>
+        )}
 
-          {step === "confirm" || step === "signing" || step === "failed" ? (
-            <>
-              <p className="leading-relaxed text-white/65">
-                This sets the allowance to zero. The spender will no longer be able to move any of
-                your {tokenLabel} - this does not affect your balance.
-              </p>
+        {pickerShown ? (
+          <>
+            <p className="leading-relaxed text-white/65">
+              This sets the allowance to zero. The spender will no longer be able to move any of
+              your {tokenLabel} - this does not affect your balance.
+            </p>
 
-              <div className="flex gap-2 rounded-lg border border-white/10 bg-black/20 p-1 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setMode("wallet")}
+            <Tabs
+              label="How to sign"
+              size="sm"
+              items={[
+                {
+                  value: "wallet",
+                  label: "Wallet",
+                  icon: <Wallet className="h-3.5 w-3.5" />,
+                  disabled: busy,
+                },
+                {
+                  value: "secret-key",
+                  label: "Secret key",
+                  icon: <KeyRound className="h-3.5 w-3.5" />,
+                  disabled: busy,
+                },
+              ]}
+              value={mode}
+              onValueChange={setMode}
+            >
+              {keyFieldShown ? (
+                <SecretKeyInput
+                  secretKeyRef={secretKeyRef}
+                  onValidityChange={setKeyValid}
                   disabled={busy}
-                  className={cn(
-                    "flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 transition-colors",
-                    mode === "wallet"
-                      ? "bg-white/10 text-white"
-                      : "text-fg-muted hover:text-white/80"
-                  )}
-                >
-                  <Wallet className="h-3.5 w-3.5" /> Wallet
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode("secret-key")}
-                  disabled={busy}
-                  className={cn(
-                    "flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 transition-colors",
-                    mode === "secret-key"
-                      ? "bg-white/10 text-white"
-                      : "text-fg-muted hover:text-white/80"
-                  )}
-                >
-                  <KeyRound className="h-3.5 w-3.5" /> Secret key
-                </button>
-              </div>
-
-              {mode === "wallet" ? (
+                />
+              ) : (
                 <WalletConnectPanel
                   connection={walletConnection}
                   disabled={busy}
@@ -230,47 +241,40 @@ export default function RevokeAllowanceModal({
                       : undefined
                   }
                 />
-              ) : (
-                <SecretKeyInput
-                  secretKeyRef={secretKeyRef}
-                  onValidityChange={setKeyValid}
-                  disabled={busy}
-                />
               )}
+            </Tabs>
 
-              {error && (
-                <p className="flex items-start gap-1.5 text-xs text-danger-fg">
-                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                  {error}
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="text-white/65">
-              The allowance for {shortAddress(allowance.spender)} on {tokenLabel} is gone.
-            </p>
-          )}
-        </div>
+            {error && (
+              <p className="flex items-start gap-1.5 text-xs text-danger-fg">
+                <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                {error}
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-white/65">
+            The allowance for {shortAddress(allowance.spender)} on {tokenLabel} is gone.
+          </p>
+        )}
+      </DialogBody>
 
-        <div className="border-t border-white/10 px-5 py-4">
-          {step === "done" ? (
-            <button
-              onClick={onClose}
-              className="w-full rounded-xl bg-stellar py-2.5 text-sm font-semibold text-black transition-all hover:bg-stellar/90"
-            >
-              Done
-            </button>
-          ) : (
-            <button
-              onClick={handleConfirm}
-              disabled={!signerReady || busy}
-              className="w-full rounded-xl bg-warning py-2.5 text-sm font-semibold text-black transition-all hover:bg-warning/90 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {busy ? "Revoking…" : "Revoke allowance"}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+      <DialogFooter className="border-t border-white/10 px-5 py-4">
+        {step === "done" ? (
+          <Button onClick={onClose} className="w-full">
+            Done
+          </Button>
+        ) : (
+          <Button
+            variant="warning"
+            onClick={handleConfirm}
+            disabled={!signerReady || busy}
+            loading={busy}
+            className="w-full"
+          >
+            {busy ? "Revoking…" : "Revoke allowance"}
+          </Button>
+        )}
+      </DialogFooter>
+    </Dialog>
   );
 }

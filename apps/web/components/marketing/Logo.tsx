@@ -17,7 +17,7 @@ export default function Logo({ className = "h-7 w-auto", showWord = true }: Logo
           width="30"
           height="30"
           rx="8"
-          stroke="hsl(var(--stellar))"
+          stroke="hsl(var(--accent))"
           strokeOpacity="0.35"
           strokeWidth="1.25"
         />
@@ -32,7 +32,7 @@ export default function Logo({ className = "h-7 w-auto", showWord = true }: Logo
         {/* four-point spark */}
         <path
           d="M16 6.5c.7 4.2 2.3 5.8 6.5 6.5-4.2.7-5.8 2.3-6.5 6.5-.7-4.2-2.3-5.8-6.5-6.5 4.2-.7 5.8-2.3 6.5-6.5Z"
-          fill="hsl(var(--stellar))"
+          fill="hsl(var(--accent))"
         />
       </svg>
       {showWord && (

@@ -16,6 +16,9 @@ import { StepTypeIcon } from "@/lib/utils/stepIcons";
 import { buildTxLedger, labelForTx } from "@/lib/utils/txLedger";
 import { receiptAssetSummary, receiptTokenSummary } from "@/lib/api/close-decisions";
 import { describeDefiPosition, positionContracts } from "@/lib/plan/describe-position";
+import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface CompletionReceiptProps {
   network: Network;
@@ -342,54 +345,53 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
   return (
     <div className="space-y-6">
       {closed ? (
-        <div
-          role="status"
-          className="bg-success/10 border border-success/30 rounded-2xl p-6 text-center"
+        <Callout
+          tone="success"
+          icon={<CheckCircle className="h-12 w-12" />}
+          title={
+            <h1
+              ref={headingRef}
+              tabIndex={-1}
+              className="mkt-display text-2xl font-bold text-white outline-none"
+            >
+              Account successfully merged
+            </h1>
+          }
+          className="flex-col items-center gap-3 p-6 text-center"
         >
-          <CheckCircle className="h-12 w-12 text-success mx-auto mb-3" />
-          <h1
-            ref={headingRef}
-            tabIndex={-1}
-            className="mkt-display text-2xl font-bold mb-1 text-white outline-none"
-          >
-            Account successfully merged
-          </h1>
-          <p className="text-sm text-fg-muted">
-            All assets have been transferred and the account has been removed from the Stellar
-            ledger.
-          </p>
-        </div>
+          All assets have been transferred and the account has been removed from the Stellar ledger.
+        </Callout>
       ) : (
-        <div
-          role="status"
-          className="bg-warning/10 border border-warning/30 rounded-2xl p-6 text-center"
+        <Callout
+          tone="warning"
+          announce="status"
+          icon={<AlertTriangle className="h-12 w-12" />}
+          title={
+            <h1
+              ref={headingRef}
+              tabIndex={-1}
+              className="mkt-display text-2xl font-bold text-white outline-none"
+            >
+              Close not finished
+            </h1>
+          }
+          className="flex-col items-center gap-3 p-6 text-center"
+          action={
+            <Button asChild>
+              <Link href={`/${network}`}>Resume</Link>
+            </Button>
+          }
         >
-          <AlertTriangle className="h-12 w-12 text-warning mx-auto mb-3" />
-          <h1
-            ref={headingRef}
-            tabIndex={-1}
-            className="mkt-display text-2xl font-bold mb-1 text-white outline-none"
-          >
-            Close not finished
-          </h1>
-          <p className="text-sm text-fg-muted">
-            {confirmedStepCount(executionPlan)} of {executionPlan.length} transactions confirmed.
-            The account still exists. Resume the close to finish it.
-          </p>
-          <Link
-            href={`/${network}`}
-            className="mt-4 inline-flex items-center justify-center rounded-xl bg-stellar px-4 py-2.5 text-sm font-semibold text-black transition-colors hover:bg-stellar/90"
-          >
-            Resume
-          </Link>
-        </div>
+          {confirmedStepCount(executionPlan)} of {executionPlan.length} transactions confirmed. The
+          account still exists. Resume the close to finish it.
+        </Callout>
       )}
 
       {/* Grouped summary */}
-      <div className="mkt-panel rounded-2xl overflow-hidden">
-        <div className="border-b border-white/10 px-4 py-3">
-          <h2 className="mkt-eyebrow text-fg-subtle">What was done</h2>
-        </div>
+      <Card className="overflow-hidden">
+        <CardHeader>
+          <CardTitle>What was done</CardTitle>
+        </CardHeader>
         <div className="divide-y divide-white/8">
           {groups.map((g) => (
             <div key={g.type} className="px-4 py-3.5">
@@ -406,16 +408,16 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
             </div>
           ))}
         </div>
-      </div>
+      </Card>
 
       {/* Transaction ledger */}
       {ledger.length > 0 && (
-        <div className="mkt-panel rounded-2xl overflow-hidden">
-          <div className="border-b border-white/10 px-4 py-3">
-            <h2 className="mkt-eyebrow text-fg-subtle">
+        <Card className="overflow-hidden">
+          <CardHeader>
+            <CardTitle>
               {ledger.length === 1 ? "Transaction" : `Transactions · ${ledger.length}`}
-            </h2>
-          </div>
+            </CardTitle>
+          </CardHeader>
           <div className="divide-y divide-white/8">
             {ledger.map((tx) => (
               <div key={tx.txHash} className="flex items-center justify-between gap-4 px-4 py-3.5">
@@ -454,11 +456,11 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Summary */}
-      <div className="mkt-panel rounded-2xl p-4 space-y-3">
+      <Card className="space-y-3 p-4">
         <div className="flex justify-between text-sm">
           <span className="text-fg-muted">Source account</span>
           <span className="font-mono-address text-xs text-white/70">
@@ -475,54 +477,53 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
           <span className="text-fg-muted">Total fees paid</span>
           <span className="text-xs mkt-mono text-white/70">{formatXlm(totalFee)}</span>
         </div>
-      </div>
+      </Card>
 
       {closed && (
-        <div className="flex items-start gap-2.5 bg-white/[0.03] border border-white/10 rounded-xl p-3 text-xs text-fg-muted">
-          <History className="h-4 w-4 shrink-0 mt-0.5 text-stellar" />
+        <Callout tone="info" icon={<History className="h-4 w-4" />} className="p-3 text-xs">
           Receipt saved to local history. You can review past merges anytime from the history icon
           in the navigation bar.
-        </div>
+        </Callout>
       )}
 
       {!closed && sourceAddress && (
-        <Link
-          href={`${explorerBase}/account/${sourceAddress}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl border border-white/15 text-sm font-medium text-white/85 hover:border-white/30 hover:text-white transition-colors"
-        >
-          View the account on Stellar Expert
-          <ExternalLink className="h-3.5 w-3.5" />
-        </Link>
+        <Button asChild variant="secondary" className="w-full">
+          <Link
+            href={`${explorerBase}/account/${sourceAddress}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View the account on Stellar Expert
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Link>
+        </Button>
       )}
 
       {closed && (
         <div className="flex gap-3">
-          <button
-            onClick={reset}
-            className="flex-1 py-2.5 px-4 rounded-xl border border-white/15 text-sm font-medium text-white/85 hover:border-white/30 hover:text-white transition-colors"
-          >
+          <Button variant="secondary" onClick={reset} className="flex-1">
             Merge another account
-          </button>
-          <Link
-            href={`${explorerBase}/account/${destinationAddress}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-stellar text-black text-sm font-semibold hover:bg-stellar/90 transition-colors"
-          >
-            Stellar Expert
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Link>
-          <Link
-            href={`${svExplorerBase}/account/${destinationAddress}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-stellar text-black text-sm font-semibold hover:bg-stellar/90 transition-colors"
-          >
-            StellarView
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Link>
+          </Button>
+          <Button asChild className="flex-1">
+            <Link
+              href={`${explorerBase}/account/${destinationAddress}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Stellar Expert
+              <ExternalLink className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+          <Button asChild variant="secondary" className="flex-1">
+            <Link
+              href={`${svExplorerBase}/account/${destinationAddress}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              StellarView
+              <ExternalLink className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
         </div>
       )}
     </div>

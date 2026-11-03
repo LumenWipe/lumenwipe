@@ -2,17 +2,24 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Loader2, AlertTriangle } from "lucide-react";
+import { ArrowRight, AlertTriangle } from "lucide-react";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
-import { cn } from "@/lib/utils/cn";
-import AddressInput from "./AddressInput";
+import { AddressField } from "@/components/ui/address-field";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import { findUnresolved } from "@/lib/session/recovery";
+import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
+import { Tabs, type TabItem } from "@/components/ui/tabs";
 
 type EntryMode = "wallet" | "address";
+
+const ENTRY_MODES: readonly TabItem<EntryMode>[] = [
+  { value: "wallet", label: "Connect wallet" },
+  { value: "address", label: "Paste address" },
+];
 
 export default function AccountEntryForm() {
   const router = useRouter();
@@ -51,78 +58,54 @@ export default function AccountEntryForm() {
   return (
     <div className="space-y-6">
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-white">
+        <p className="text-sm font-medium text-white">
           Account to close
-          <span className="text-danger-fg ml-1">*</span>
-        </label>
+          <span aria-hidden="true" className="text-danger-fg ml-1">
+            *
+          </span>
+        </p>
 
-        <div className="flex gap-2 rounded-lg bg-white/[0.03] p-1">
-          <button
-            type="button"
-            onClick={() => setMode("wallet")}
-            className={cn(
-              "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
-              mode === "wallet" ? "bg-white/10 text-white" : "text-fg-muted hover:text-white/80"
-            )}
-          >
-            Connect wallet
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("address")}
-            className={cn(
-              "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
-              mode === "address" ? "bg-white/10 text-white" : "text-fg-muted hover:text-white/80"
-            )}
-          >
-            Paste address
-          </button>
-        </div>
+        <Tabs
+          label="How to choose the account"
+          items={ENTRY_MODES}
+          value={mode}
+          onValueChange={setMode}
+        >
+          {mode === "wallet" ? (
+            <WalletConnectPanel connection={walletConnection} disabled={analyzing} />
+          ) : (
+            <AddressField
+              label="Account to close"
+              hideLabel
+              required
+              value={pastedSource}
+              onChange={setPastedSource}
+              placeholder="G... (the account to merge)"
+            />
+          )}
+        </Tabs>
 
-        {mode === "wallet" ? (
-          <WalletConnectPanel connection={walletConnection} disabled={analyzing} />
-        ) : (
-          <AddressInput
-            label=""
-            value={pastedSource}
-            onChange={setPastedSource}
-            placeholder="G... (the account to merge)"
-          />
-        )}
-
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-fg-muted">
           We&apos;ll analyze this account&apos;s state so you can review and decide what happens to
           each balance before choosing a destination.
         </p>
       </div>
 
       {error && (
-        <div
-          role="alert"
-          className="flex items-start gap-2 text-sm text-danger-fg bg-destructive/10 border border-destructive/20 rounded-lg p-3"
-        >
-          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+        <Callout tone="danger" icon={<AlertTriangle className="h-4 w-4" />}>
           {error}
-        </div>
+        </Callout>
       )}
 
-      <button
+      <Button
         onClick={handleAnalyze}
         disabled={!canProceed || analyzing}
-        className="w-full flex items-center justify-center gap-2 bg-stellar text-black font-semibold py-3 px-4 rounded-xl hover:bg-stellar/90 hover:shadow-[0_0_28px_-6px_hsl(var(--stellar)/0.7)] disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition-all"
+        loading={analyzing}
+        className="w-full"
+        iconEnd={<ArrowRight className="h-4 w-4" />}
       >
-        {analyzing ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Analyzing account...
-          </>
-        ) : (
-          <>
-            Analyze account
-            <ArrowRight className="h-4 w-4" />
-          </>
-        )}
-      </button>
+        {analyzing ? "Analyzing account..." : "Analyze account"}
+      </Button>
     </div>
   );
 }

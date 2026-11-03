@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 };
 
 const btnGold =
-  "inline-flex items-center gap-2 rounded-xl bg-value px-5 py-3 text-sm font-semibold text-[hsl(var(--value-foreground))] transition-all hover:bg-value/90 hover:shadow-[0_12px_30px_-14px_hsl(var(--value)/0.7)]";
+  "inline-flex items-center gap-2 rounded-xl bg-value px-5 py-3 text-sm font-semibold text-value-fg transition-all hover:bg-value/90 hover:shadow-[0_12px_30px_-14px_hsl(var(--value)/0.7)]";
 
 export default function PlaygroundPage() {
   return (

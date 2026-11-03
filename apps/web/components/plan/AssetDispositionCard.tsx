@@ -1,11 +1,13 @@
 "use client";
 
-import { AlertCircle, ArrowRightLeft, AlertTriangle, CheckCircle2, Send } from "lucide-react";
+import { ArrowRightLeft, AlertTriangle, CheckCircle2, Send } from "lucide-react";
 import { formatStroops, type AssetConvertibility } from "@/lib/api/plan-adapters";
 import { classicFloorFromQuote } from "@/lib/api/close-decisions";
 import type { AssetDisposition } from "@/types/plan";
-import { isValidGAddress } from "@/lib/utils/validation";
-import { cn } from "@/lib/utils/cn";
+import { AddressField } from "@/components/ui/address-field";
+import { addressErrorMessage, isValidGAddress } from "@/lib/utils/validation";
+import { Badge } from "@/components/ui/badge";
+import { DECISION_TAGS, DecisionCard, type DecisionOption } from "@/components/ui/decision-card";
 
 interface AssetDispositionCardProps {
   item: AssetConvertibility;
@@ -60,10 +62,6 @@ export default function AssetDispositionCard({
   /** "my 410.25 AQUA" once it is there, "my AQUA" while it is still inside the position. */
   const holding = item.arrivesFromExit ? `my ${item.code}` : `my ${item.balance} ${item.code}`;
 
-  const showAddressError = !!transferDestination && !isValidGAddress(transferDestination);
-  const errorId = `transfer-error-${item.asset}`;
-  const helpId = `transfer-help-${item.asset}`;
-
   const clawbackNote = item.clawbackEnabled ? (
     <p className="mt-2 pl-7 text-xs leading-relaxed text-fg-muted">
       The issuer of {item.code} can reclaim this balance at any time, including before the close
@@ -71,89 +69,63 @@ export default function AssetDispositionCard({
     </p>
   ) : null;
 
-  const transferPanel = (
-    <div className="mt-3 pl-7">
-      <label className="flex cursor-pointer items-start gap-2 text-xs text-white/70">
-        <input
-          type="checkbox"
-          checked={isTransfer}
-          onChange={(e) =>
-            // Leaving the transfer option returns the asset to its default: the swap when one
-            // exists, otherwise unresolved, so a non-convertible asset cannot silently fall
-            // back to being burned.
-            onSetDisposition(item.asset, e.target.checked ? "transfer" : "convert")
-          }
-          className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-stellar"
+  const transferOption: DecisionOption<AssetDisposition> = {
+    value: "transfer",
+    label: `Send ${holding} to another account instead.`,
+    tag: DECISION_TAGS.keep,
+    notice: (
+      <>
+        The receiving account must already hold a {item.code} trustline. LumenWipe cannot add one
+        for it, and the whole close fails if it cannot receive the balance.
+      </>
+    ),
+    children: (
+      <div className="space-y-1.5">
+        <AddressField
+          label={`Destination account for ${item.code}`}
+          hideLabel
+          value={transferDestination ?? ""}
+          onChange={(next) => onSetTransferDestination(item.asset, next || null)}
+          error={transferDestination ? addressErrorMessage(transferDestination) : null}
+          placeholder={`G... (an account that already holds ${item.code})`}
         />
-        <span>
-          Send {holding} to another account instead.{" "}
-          <span className="text-fg-subtle">You keep the tokens.</span>
-        </span>
-      </label>
-
-      {isTransfer && (
-        <div className="mt-2 space-y-1.5">
-          <input
-            type="text"
-            value={transferDestination ?? ""}
-            // Trimmed on the way in: an address copied out of a wallet or a terminal often
-            // carries a trailing space or newline, which is invisible on screen and would
-            // otherwise fail validation with no way for the user to see why.
-            onChange={(e) => onSetTransferDestination(item.asset, e.target.value.trim() || null)}
-            placeholder={`G... (an account that already holds ${item.code})`}
-            spellCheck={false}
-            autoComplete="off"
-            aria-label={`Destination account for ${item.code}`}
-            aria-invalid={showAddressError}
-            aria-describedby={showAddressError ? errorId : helpId}
-            className={cn(
-              "w-full rounded-md border bg-black/30 px-2.5 py-1.5 font-mono text-xs text-white",
-              "placeholder:font-sans placeholder:text-fg-subtle",
-              showAddressError
-                ? "border-destructive/50 focus:border-destructive"
-                : "border-white/10"
-            )}
-          />
-          {/* A colour change is not an error message: it says nothing to a screen reader and
-              nothing to a user who cannot distinguish the border. Without this the flow simply
-              stops - "Begin execution" never appears - with no statement of why. */}
-          {showAddressError && (
-            <p
-              id={errorId}
-              role="alert"
-              className="flex items-center gap-1 text-[0.7rem] text-danger-fg"
-            >
-              <AlertCircle className="h-3 w-3 shrink-0" />
-              Not a valid Stellar address (must start with G)
-            </p>
-          )}
-          {/* A shortcut, not a constraint: the API takes any address per asset, and hiding that
-              behind a single fixed destination would make the UI narrower than the contract. */}
-          {mergeDestination && transferDestination !== mergeDestination && (
-            <button
-              type="button"
-              onClick={() => onSetTransferDestination(item.asset, mergeDestination)}
-              className="text-[0.7rem] text-stellar/90 underline-offset-2 hover:underline"
-            >
-              Use the same account I&apos;m merging into
-            </button>
-          )}
-          <p id={helpId} className="text-[0.7rem] leading-relaxed text-fg-subtle">
-            That account must already hold a {item.code} trustline - LumenWipe cannot add one for
-            it, and the whole close fails if it cannot receive the balance.
-          </p>
-        </div>
-      )}
-    </div>
-  );
+        {/* A shortcut, not a constraint: the API takes any address per asset, and hiding that
+            behind a single fixed destination would make the UI narrower than the contract. */}
+        {mergeDestination && transferDestination !== mergeDestination && (
+          <button
+            type="button"
+            onClick={() => onSetTransferDestination(item.asset, mergeDestination)}
+            className="text-[0.7rem] text-stellar/90 underline-offset-2 hover:underline"
+          >
+            Use the same account I&apos;m merging into
+          </button>
+        )}
+      </div>
+    ),
+  };
+  const issuerOption: DecisionOption<AssetDisposition> = {
+    value: "issuer",
+    label: `Return ${holding} to the issuer.`,
+    tag: DECISION_TAGS.giveUp,
+  };
+  const legend = `What happens to ${item.code}`;
+  const choose = (next: AssetDisposition): void => onSetDisposition(item.asset, next);
 
   if (item.convertible) {
+    const swapOption: DecisionOption<AssetDisposition> = {
+      value: "convert",
+      label: `Swap ${holding} to XLM on the DEX.`,
+      tag: DECISION_TAGS.recommended,
+    };
     return (
-      <div
-        className={cn(
-          "rounded-lg border p-3 transition-colors",
-          resolved ? "border-success/20 bg-success/5" : "border-amber-500/30 bg-amber-500/[0.06]"
-        )}
+      <DecisionCard
+        legend={legend}
+        options={
+          isIssuer ? [swapOption, transferOption, issuerOption] : [swapOption, transferOption]
+        }
+        value={disposition}
+        onValueChange={choose}
+        tone={resolved ? "success" : "warning"}
       >
         <div className="flex items-center gap-3">
           {isTransfer || isIssuer ? (
@@ -177,40 +149,36 @@ export default function AssetDispositionCard({
                       : "")}
             </p>
           </div>
-          <span
-            className={cn(
-              "shrink-0 rounded-full border px-2 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide",
-              isTransfer || isIssuer
-                ? "border-white/20 bg-white/5 text-white/70"
-                : "border-success/30 bg-success/10 text-success"
-            )}
+          <Badge
+            tone={isTransfer || isIssuer ? "neutral" : "success"}
+            className="shrink-0 uppercase tracking-wide"
           >
             {isTransfer ? "Send" : isIssuer ? "Return" : "Swap"}
-          </span>
+          </Badge>
         </div>
         {clawbackNote}
-        {transferPanel}
-      </div>
+      </DecisionCard>
     );
   }
 
   return (
-    <div
-      className={cn(
-        "rounded-lg border p-3 transition-colors",
-        resolved ? "border-white/15 bg-white/[0.03]" : "border-amber-500/30 bg-amber-500/[0.06]"
-      )}
+    <DecisionCard
+      legend={legend}
+      options={[issuerOption, transferOption]}
+      value={disposition}
+      onValueChange={choose}
+      tone={resolved ? "neutral" : "warning"}
     >
       <div className="flex items-start gap-3">
         {resolved ? (
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
         ) : (
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
         )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-white">
             {item.code} <span className="text-fg-subtle">·</span>{" "}
-            <span className="text-amber-300/90">
+            <span className="text-warning">
               {item.dust ? "too small to swap" : "no swap route on the DEX"}
             </span>
           </p>
@@ -224,24 +192,7 @@ export default function AssetDispositionCard({
           </p>
         </div>
       </div>
-
       {clawbackNote}
-      <div className="mt-3 pl-7">
-        <label className="flex cursor-pointer items-start gap-2 text-xs text-white/70">
-          <input
-            type="checkbox"
-            checked={isIssuer}
-            onChange={(e) => onSetDisposition(item.asset, e.target.checked ? "issuer" : "convert")}
-            disabled={isTransfer}
-            className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-stellar disabled:opacity-40"
-          />
-          <span className={cn(isTransfer && "text-fg-disabled")}>
-            Return {holding} to the issuer.{" "}
-            <span className="text-fg-subtle">You give up these tokens.</span>
-          </span>
-        </label>
-      </div>
-      {transferPanel}
-    </div>
+    </DecisionCard>
   );
 }

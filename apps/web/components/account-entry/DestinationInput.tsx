@@ -8,7 +8,9 @@ import {
   isCexAddress,
   isRegistryUsable,
 } from "@/lib/exchange-registry";
-import AddressInput from "./AddressInput";
+import { AddressField } from "@/components/ui/address-field";
+import { Field, Input } from "@/components/ui/field";
+import { Callout } from "@/components/ui/callout";
 
 interface DestinationInputProps {
   destination: string;
@@ -53,96 +55,100 @@ export default function DestinationInput({
 
   return (
     <div className="space-y-4">
-      <AddressInput
+      <AddressField
         label="Destination address"
         value={destination}
         onChange={onDestinationChange}
         placeholder="G... (where to send your XLM)"
-        helpText="All XLM from the merged account will be transferred here. This can be an exchange address."
+        helper="All XLM from the merged account will be transferred here. This can be an exchange address."
         required
       />
 
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium flex items-center gap-1">
-          Payment memo
-          {memoRequired ? (
-            <span className="text-danger-fg ml-0.5">*</span>
-          ) : (
-            <span className="text-muted-foreground font-normal">(optional)</span>
-          )}
-        </label>
-        {memoReq?.requiresMemo ? (
+      <Field
+        label={
           <>
-            <p className="text-xs text-amber-500">
-              {memoReq.exchangeName} requires a {memoType === "id" ? "numeric" : "text"} memo for
-              all deposits.
-            </p>
-            {/* The age of the rule, next to the rule. A memo requirement is data about the
-                outside world that changes without telling us, and this is the last screen
-                before something irreversible - so the user can see how old the thing they are
-                relying on is, and whether it came from the API or from the bundled floor. */}
-            <p className="text-[0.7rem] text-fg-subtle">
-              Deposit rules last verified {activeRegistry().lastVerified}
-              {activeRegistry().served ? "" : " (offline copy)"}.
-            </p>
+            Payment memo
+            {!memoRequired && <span className="ml-1 font-normal text-fg-muted">(optional)</span>}
           </>
-        ) : (
-          <p className="text-xs text-fg-subtle">
-            Required by most exchanges to credit your deposit. Leave empty if not needed.
-          </p>
-        )}
-        {/* Outside the memo branch on purpose. Keyed on "is this a listed exchange", the same
-            condition that disables the button - nesting it under requiresMemo meant a listed
-            exchange with no memo requirement produced a disabled button and no message
-            anywhere on the page. */}
-        {isCexAddress(destination) && !isRegistryUsable() && (
-          <p role="alert" className="text-xs text-danger-fg">
-            These deposit rules expired on {activeRegistry().validUntil} and have not been
-            re-checked. Closing into an exchange on unverified rules can send the funds somewhere
-            nobody can credit them, so this is blocked until they are refreshed.
-          </p>
-        )}
-        <input
+        }
+        required={memoRequired}
+        helper={
+          <div className="space-y-1.5">
+            {memoReq?.requiresMemo ? (
+              <>
+                <p className="text-xs text-warning">
+                  {memoReq.exchangeName} requires a {memoType === "id" ? "numeric" : "text"} memo
+                  for all deposits.
+                </p>
+                {/* The age of the rule, next to the rule. A memo requirement is data about the
+                    outside world that changes without telling us, and this is the last screen
+                    before something irreversible - so the user can see how old the thing they are
+                    relying on is, and whether it came from the API or from the bundled floor. */}
+                <p className="text-[0.7rem] text-fg-subtle">
+                  Deposit rules last verified {activeRegistry().lastVerified}
+                  {activeRegistry().served ? "" : " (offline copy)"}.
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-fg-subtle">
+                Required by most exchanges to credit your deposit. Leave empty if not needed.
+              </p>
+            )}
+            {/* Outside the memo branch on purpose. Keyed on "is this a listed exchange", the same
+                condition that disables the button - nesting it under requiresMemo meant a listed
+                exchange with no memo requirement produced a disabled button and no message
+                anywhere on the page. */}
+            {isCexAddress(destination) && !isRegistryUsable() && (
+              <p role="alert" className="text-xs text-danger-fg">
+                These deposit rules expired on {activeRegistry().validUntil} and have not been
+                re-checked. Closing into an exchange on unverified rules can send the funds
+                somewhere nobody can credit them, so this is blocked until they are refreshed.
+              </p>
+            )}
+          </div>
+        }
+      >
+        <Input
           type={memoType === "id" ? "number" : "text"}
           value={memo}
           onChange={(e) => onMemoChange(e.target.value)}
           placeholder={memoType === "id" ? "Enter numeric ID" : "Enter memo text (max 28 bytes)"}
           maxLength={memoType === "text" ? 28 : undefined}
-          className="w-full text-sm bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 placeholder:text-fg-subtle"
         />
-      </div>
+      </Field>
 
       {needsAcknowledgement && (
-        <div className="space-y-2 rounded-lg border border-warning/20 bg-warning/10 p-3">
-          <div className="flex items-start gap-2 text-sm text-warning">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>We don&apos;t recognize this address as an exchange deposit address.</span>
+        <Callout
+          tone="warning"
+          icon={<AlertTriangle className="h-4 w-4" />}
+          title={<>We don&apos;t recognize this address as an exchange deposit address.</>}
+        >
+          <div className="space-y-2">
+            <p className="text-xs text-white/60">
+              That doesn&apos;t mean it isn&apos;t one. Closing directly into an exchange or
+              custodial account loses the funds: exchanges credit deposits from payments carrying a
+              memo, and cannot credit a closed account. LumenWipe sends to the exchanges it
+              recognizes through a shared relay account, but it cannot do that for an address it
+              does not know. If this one belongs to an exchange, close to a personal wallet you
+              control and send it from there, including the exchange&apos;s deposit memo.
+            </p>
+            <label className="flex cursor-pointer items-start gap-2 text-xs text-white/80">
+              <input
+                type="checkbox"
+                checked={acknowledged}
+                onChange={(e) => onAcknowledgedChange(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-stellar"
+              />
+              This is a wallet I control, not an exchange or custodial account.
+            </label>
           </div>
-          <p className="text-xs text-white/60">
-            That doesn&apos;t mean it isn&apos;t one. Closing directly into an exchange or custodial
-            account loses the funds: exchanges credit deposits from payments carrying a memo, and
-            cannot credit a closed account. LumenWipe sends to the exchanges it recognizes through a
-            shared relay account, but it cannot do that for an address it does not know. If this one
-            belongs to an exchange, close to a personal wallet you control and send it from there,
-            including the exchange&apos;s deposit memo.
-          </p>
-          <label className="flex cursor-pointer items-start gap-2 text-xs text-white/80">
-            <input
-              type="checkbox"
-              checked={acknowledged}
-              onChange={(e) => onAcknowledgedChange(e.target.checked)}
-              className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-stellar"
-            />
-            This is a wallet I control, not an exchange or custodial account.
-          </label>
-        </div>
+        </Callout>
       )}
 
       {source && destination && source === destination && (
-        <div className="flex items-start gap-2 text-sm text-warning bg-warning/10 border border-warning/20 rounded-lg p-3">
-          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+        <Callout tone="warning" icon={<AlertTriangle className="h-4 w-4" />}>
           Source and destination are the same address.
-        </div>
+        </Callout>
       )}
     </div>
   );

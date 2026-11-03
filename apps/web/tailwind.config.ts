@@ -9,7 +9,6 @@ import typography from "@tailwindcss/typography";
 const token = (name: string): string => `hsl(var(--${name}) / <alpha-value>)`;
 
 const config: Config = {
-  darkMode: "class",
   content: ["./app/**/*.{js,ts,jsx,tsx,mdx}", "./components/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
     extend: {
@@ -19,11 +18,7 @@ const config: Config = {
         mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "monospace"],
       },
       colors: {
-        value: {
-          DEFAULT: "hsl(var(--value))",
-          foreground: "hsl(var(--value-foreground))",
-          fg: token("value-foreground"),
-        },
+        value: { DEFAULT: token("value"), fg: token("value-fg") },
         canvas: token("bg"),
         surface: {
           DEFAULT: token("surface"),
@@ -31,6 +26,7 @@ const config: Config = {
           sunken: token("surface-sunken"),
         },
         line: { DEFAULT: token("line"), strong: token("line-strong") },
+        edge: token("edge"),
         fg: {
           DEFAULT: token("fg"),
           muted: token("fg-muted"),
@@ -38,58 +34,16 @@ const config: Config = {
           disabled: token("fg-disabled"),
         },
         success: token("success"),
-        danger: { DEFAULT: token("danger"), fg: token("danger-fg") },
+        danger: {
+          DEFAULT: token("danger"),
+          fg: token("danger-fg"),
+          "on-fill": token("danger-on-fill"),
+        },
         focus: token("focus"),
-        // stellar/warning were previously only hand-written bare utilities in globals.css
-        // (.text-stellar, .bg-warning, etc.) with no entry here - that covers the plain class,
-        // but Tailwind can only generate the `/NN` opacity-modifier variants (bg-warning/10,
-        // border-stellar/40, ...) for colors it actually knows about. Every such modified usage
-        // across the app - including a brand-new "Revoke" button that came out with invisible
-        // black-on-nothing text - silently produced no CSS at all. Registering them the same way
-        // `value` already is fixes every existing `/NN` usage app-wide, not just new ones.
-        stellar: {
-          DEFAULT: "hsl(var(--stellar))",
-          foreground: "hsl(var(--stellar-foreground))",
-        },
-        warning: {
-          DEFAULT: "hsl(var(--warning))",
-          foreground: "hsl(var(--warning-foreground))",
-          fg: token("warning-fg"),
-        },
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
-        primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
-        },
-        secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
-        },
-        destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
-        },
-        muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
-        },
-        accent: {
-          DEFAULT: token("accent-solid"),
-          fg: token("accent-solid-fg"),
-          foreground: "hsl(var(--accent-foreground))",
-        },
-        popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
-        },
-        card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
-        },
+        warning: { DEFAULT: token("warning"), fg: token("warning-fg") },
+        accent: { DEFAULT: token("accent"), fg: token("accent-fg") },
+        // Transitional alias of accent; new code uses accent.
+        stellar: token("accent"),
       },
       opacity: { "6": "0.06", "8": "0.08", "12": "0.12" },
       spacing: {

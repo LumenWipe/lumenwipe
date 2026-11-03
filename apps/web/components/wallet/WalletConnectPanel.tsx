@@ -3,6 +3,7 @@
 import type { JSX } from "react";
 import { AlertTriangle, CheckCircle } from "lucide-react";
 import type { WalletKitConnection } from "@/hooks/useWalletKitConnection";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   connection: WalletKitConnection;
@@ -55,14 +56,15 @@ export default function WalletConnectPanel({
 
   return (
     <div className="space-y-1.5">
-      <button
+      <Button
         type="button"
         onClick={connect}
         disabled={disabled || connecting}
-        className="w-full py-2.5 px-4 rounded-lg font-semibold text-sm bg-stellar text-black hover:bg-stellar/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+        loading={connecting}
+        className="w-full"
       >
         {connecting ? "Connecting…" : "Connect wallet"}
-      </button>
+      </Button>
       {error && (
         <p role="alert" className="text-xs text-danger-fg">
           {error}

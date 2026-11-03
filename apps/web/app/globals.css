@@ -11,64 +11,31 @@
 @layer base {
   :root {
     color-scheme: dark;
-    /* Dark UI surfaces, teal-ink tinted to match the marketing redesign
-       (same lightness as the prior navy values, hue shifted 240 -> ~200). */
-    --background: 197 30% 4.5%;
-    --foreground: 0 0% 98%;
-    --card: 200 18% 8%;
-    --card-foreground: 0 0% 98%;
-    --popover: 200 18% 8%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 200 12% 10%;
-    --secondary: 205 10% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 205 10% 15.9%;
-    --muted-foreground: 205 8% 64.9%;
-    --accent: 205 10% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 205 12% 16%;
-    --input: 205 12% 16%;
-    --ring: 205 12% 83.9%;
-    --radius: 0.5rem;
-    /* Stellar brand color */
-    --stellar: 196 100% 47%;
-    --stellar-foreground: 0 0% 100%;
-    /* Warning */
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
-    /* Recovered value (XLM) accent */
-    --value: 41 96% 56%;
-    --value-foreground: 38 60% 8%;
-    /* Marketing redesign: obsidian-ink surface system (teal-tinted, not navy) */
-    --mkt-bg: 197 30% 4.5%;
-    --mkt-panel: 198 17% 10.5%;
-    --mkt-panel-2: 200 16% 13%;
-    --mkt-line: 190 30% 84%;
-
-    /* Semantic tokens (#361). Additive: the shadcn and --mkt-* variables above are
-       untouched until #360 collapses them. Measured by tests/unit/tokens-contrast.test.ts. */
+    /* Measured by tests/unit/tokens-contrast.test.ts. */
     --bg: 197 30% 4.5%;
     --surface: 200 18% 8%;
     --surface-raised: 198 17% 10.5%;
     --surface-sunken: 197 30% 3%;
     --line: 205 12% 16%;
     --line-strong: 205 10% 42%;
+    --edge: 190 30% 84%;
     --fg: 0 0% 98%;
     --fg-muted: 205 8% 66%;
     --fg-subtle: 205 8% 58%;
     --fg-disabled: 205 8% 45%;
-    --accent-solid: 196 100% 47%;
-    --accent-solid-fg: 200 12% 10%;
+    --accent: 196 100% 47%;
+    --accent-fg: 200 12% 10%;
+    --value: 41 96% 56%;
+    --value-fg: 38 60% 8%;
     --success: 152 55% 50%;
+    --warning: 38 92% 50%;
     --warning-fg: 38 60% 8%;
     --danger: 0 62.8% 30.6%;
     --danger-on-fill: 0 0% 98%;
     --danger-fg: 0 90% 76%;
     --focus: 196 100% 55%;
 
+    --radius: 0.5rem;
     --space-1: 0.25rem;
     --space-2: 0.5rem;
     --space-3: 0.75rem;
@@ -101,14 +68,14 @@
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-line;
   }
   :focus-visible {
     outline: 2px solid hsl(var(--focus));
     outline-offset: 2px;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-canvas text-fg;
     font-feature-settings:
       "rlig" 1,
       "calt" 1;
@@ -117,13 +84,13 @@
 
 @layer utilities {
   .text-stellar {
-    color: hsl(var(--stellar));
+    color: hsl(var(--accent));
   }
   .bg-stellar {
-    background-color: hsl(var(--stellar));
+    background-color: hsl(var(--accent));
   }
   .border-stellar {
-    border-color: hsl(var(--stellar));
+    border-color: hsl(var(--accent));
   }
   .font-mono-address {
     font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
@@ -184,11 +151,11 @@
 
 /* Redesign: crisp, flat card - depth from edge-light + tight shadow, no glow halo. */
 .mkt-card {
-  background: hsl(var(--mkt-panel));
-  border: 1px solid hsl(var(--mkt-line) / 0.1);
+  background: hsl(var(--surface-raised));
+  border: 1px solid hsl(var(--edge) / 0.1);
   border-radius: 14px;
   box-shadow:
-    inset 0 1px 0 hsl(var(--mkt-line) / 0.12),
+    inset 0 1px 0 hsl(var(--edge) / 0.12),
     0 18px 40px -26px rgba(0, 0, 0, 0.85);
 }
 
@@ -207,9 +174,9 @@
   width: 28px;
   height: 28px;
   border-radius: 9999px;
-  border: 1px solid hsl(var(--stellar) / 0.45);
-  background: hsl(var(--mkt-panel));
-  color: hsl(var(--stellar));
+  border: 1px solid hsl(var(--accent) / 0.45);
+  background: hsl(var(--surface-raised));
+  color: hsl(var(--accent));
 }
 .mkt-node-fin {
   border-color: hsl(var(--value) / 0.6);
@@ -313,17 +280,17 @@
     --tw-prose-headings: hsl(0 0% 98%);
     --tw-prose-links: hsl(196 100% 47%);
     --tw-prose-bold: hsl(0 0% 98%);
-    --tw-prose-counters: hsl(240 5% 64.9%);
-    --tw-prose-bullets: hsl(240 5% 40%);
-    --tw-prose-hr: hsl(240 3.7% 15.9%);
+    --tw-prose-counters: hsl(205 8% 64.9%);
+    --tw-prose-bullets: hsl(205 8% 40%);
+    --tw-prose-hr: hsl(205 12% 15.9%);
     --tw-prose-quotes: hsl(0 0% 85%);
     --tw-prose-quote-borders: hsl(196 100% 47% / 0.4);
-    --tw-prose-captions: hsl(240 5% 64.9%);
+    --tw-prose-captions: hsl(205 8% 64.9%);
     --tw-prose-code: hsl(196 100% 70%);
     --tw-prose-pre-code: hsl(0 0% 85%);
-    --tw-prose-pre-bg: hsl(240 10% 8%);
-    --tw-prose-th-borders: hsl(240 3.7% 20%);
-    --tw-prose-td-borders: hsl(240 3.7% 15.9%);
+    --tw-prose-pre-bg: hsl(200 18% 8%);
+    --tw-prose-th-borders: hsl(205 12% 20%);
+    --tw-prose-td-borders: hsl(205 12% 15.9%);
   }
 
   .prose a {
@@ -337,13 +304,13 @@
   }
 
   .prose pre {
-    border: 1px solid hsl(240 3.7% 15.9%);
+    border: 1px solid hsl(205 12% 15.9%);
     border-radius: 0.5rem;
   }
 
   .prose code:not(pre code) {
-    background: hsl(240 10% 8%);
-    border: 1px solid hsl(240 3.7% 18%);
+    background: hsl(200 18% 8%);
+    border: 1px solid hsl(205 12% 18%);
     padding: 0.15em 0.35em;
     border-radius: 0.25rem;
     font-size: 0.85em;
@@ -357,7 +324,7 @@
     border-collapse: collapse;
   }
   .prose thead {
-    border-bottom: 1px solid hsl(240 3.7% 20%);
+    border-bottom: 1px solid hsl(205 12% 20%);
   }
   .prose thead th {
     color: hsl(0 0% 98%);
@@ -366,7 +333,7 @@
   }
   .prose tbody td {
     padding: 0.5rem 1rem;
-    border-bottom: 1px solid hsl(240 3.7% 12%);
+    border-bottom: 1px solid hsl(205 12% 12%);
   }
   .prose tbody tr:last-child td {
     border-bottom: none;

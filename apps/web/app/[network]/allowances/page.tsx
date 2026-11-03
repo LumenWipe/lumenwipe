@@ -4,7 +4,7 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import StatusMessage from "@/components/a11y/StatusMessage";
-import { AlertTriangle, ArrowLeft, Loader2, ShieldCheck, Search } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ShieldCheck, Search } from "lucide-react";
 import { coverageNote, unconfirmedSources } from "@/lib/allowances/empty-result";
 import type { Network } from "@/config/networks";
 import type { Allowance, AllowancesResult } from "@/types/allowance";
@@ -13,6 +13,9 @@ import { isValidGAddress } from "@/lib/utils/validation";
 import { apiErrorText } from "@/lib/utils/user-error";
 import AllowanceRow from "@/components/allowances/AllowanceRow";
 import RevokeAllowanceModal from "@/components/allowances/RevokeAllowanceModal";
+import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
+import { Card } from "@/components/ui/card";
 
 /**
  * The allowance inspector (#163, architecture.md §12): a standalone security utility, reachable
@@ -101,16 +104,13 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
       <div className="flex items-center gap-2 mb-6">
-        <Link
-          href={`/${network}`}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
+        <Link href={`/${network}`} className="text-fg-muted hover:text-fg transition-colors">
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <h1 className="mkt-display text-xl font-bold text-white">Allowance inspector</h1>
       </div>
 
-      <div className="mkt-panel rounded-2xl p-5 mb-6">
+      <Card className="mb-6 p-5">
         <p className="text-sm text-white/60 leading-relaxed mb-4">
           Every live token approval a Stellar account has granted to a contract - a DeFi protocol,
           or anywhere else. Nothing here is part of closing an account; revoking an allowance only
@@ -131,31 +131,23 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
             autoComplete="off"
             className="w-full flex-1 font-mono-address bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 text-sm placeholder:text-fg-subtle"
           />
-          <button
+          <Button
             type="submit"
             disabled={loading}
-            className="flex items-center justify-center gap-1.5 bg-stellar text-black font-semibold py-2.5 px-4 rounded-lg hover:bg-stellar/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            loading={loading}
+            icon={<Search className="h-4 w-4" />}
           >
-            {loading ? (
-              <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
-            ) : (
-              <Search className="h-4 w-4" />
-            )}
             Inspect
-          </button>
+          </Button>
         </form>
-      </div>
+      </Card>
 
       <StatusMessage message={status} />
 
       {error && (
-        <div
-          role="alert"
-          className="mkt-panel border-destructive/30 rounded-xl px-4 py-3 mb-4 flex items-center gap-2 text-sm text-muted-foreground"
-        >
-          <AlertTriangle className="h-4 w-4 shrink-0 text-danger-fg" />
-          <span>{error}</span>
-        </div>
+        <Callout tone="danger" icon={<AlertTriangle className="h-4 w-4" />} className="mb-4">
+          {error}
+        </Callout>
       )}
 
       {result && address && (
@@ -165,23 +157,23 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
               // An empty list only means "none" when every source ran to completion. A scan that
               // failed, was skipped, or stopped short also returns nothing, and rendering that as
               // the green shield would be this page making a safety claim it did not verify.
-              <div className="mkt-panel rounded-2xl p-8 text-center">
+              <Card className="p-8 text-center">
                 <AlertTriangle className="h-8 w-8 text-warning mx-auto mb-2" />
                 <p className="text-sm font-medium text-white">Could not confirm this account</p>
                 <p className="mt-1 text-xs text-fg-subtle">
                   Nothing outstanding was found, but {unconfirmed.join(" and ")} did not cover
                   everything it looks at. This is not a confirmation that the account is clear.
                 </p>
-              </div>
+              </Card>
             ) : (
-              <div className="mkt-panel rounded-2xl p-8 text-center">
+              <Card className="p-8 text-center">
                 <ShieldCheck className="h-8 w-8 text-success mx-auto mb-2" />
                 <p className="text-sm font-medium text-white">No outstanding allowances</p>
                 <p className="mt-1 text-xs text-fg-subtle">
                   This account has not approved any spender that is currently live.
                 </p>
                 {note && <p className="mt-2 text-[11px] text-fg-subtle">{note}.</p>}
-              </div>
+              </Card>
             )
           ) : (
             result.allowances.map((a) => (

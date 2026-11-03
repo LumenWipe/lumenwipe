@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
+import { ArrowRight, AlertTriangle, RefreshCw } from "lucide-react";
 import type { AccountState } from "@/types/account";
 import type { AssetDisposition, ClaimableBalanceSelection, PlanBlocker } from "@/types/plan";
 import type { Network } from "@/config/networks";
@@ -58,6 +58,9 @@ import StatusMessage from "@/components/a11y/StatusMessage";
 import { assetsResolved } from "@/lib/plan/asset-resolution";
 import { destinationRefusal } from "@/lib/plan/destination-check";
 import { isStateChanged } from "@/lib/utils/user-error";
+import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface PlanViewProps {
   account: AccountState;
@@ -173,8 +176,8 @@ export default function PlanView({
   }, [claimableBalanceDecisions]);
 
   function handleSetDisposition(asset: string, disposition: AssetDisposition) {
-    // "convert" doubles as the unresolved sentinel for a non-convertible asset - the store has
-    // no delete, and allAssetsResolved never treats it as resolved for one.
+    // A non-convertible asset can still hold "convert", seeded by a trustline claim below or kept
+    // from a plan that had a route; allAssetsResolved never treats it as resolved for one.
     setAssetDisposition(asset, disposition);
   }
 
@@ -424,9 +427,9 @@ export default function PlanView({
         />
       ))}
 
-      <div className="mkt-panel rounded-2xl">
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <h2 className="mkt-eyebrow text-fg-subtle">What this close will do</h2>
+      <Card>
+        <CardHeader className="flex items-center justify-between">
+          <CardTitle>What this close will do</CardTitle>
           <button
             onClick={onRefresh}
             disabled={loading}
@@ -434,7 +437,7 @@ export default function PlanView({
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           </button>
-        </div>
+        </CardHeader>
         <div className="p-3">
           <PlanAccordion
             account={account}
@@ -451,7 +454,7 @@ export default function PlanView({
             mediatorRequired={previewMediatorRequired}
           />
         </div>
-      </div>
+      </Card>
 
       {!destinationStepReady && (
         <p className="text-center text-xs text-fg-subtle">
@@ -467,9 +470,9 @@ export default function PlanView({
       )}
 
       {destinationStepReady && (
-        <div className="mkt-panel rounded-2xl p-5 space-y-4">
+        <Card className="space-y-4 p-5">
           <div>
-            <h2 className="mkt-eyebrow text-fg-subtle mb-1">Destination</h2>
+            <CardTitle className="mb-1">Destination</CardTitle>
             <p className="text-xs text-fg-subtle">
               Every asset is resolved. Enter where the recovered XLM should go.
             </p>
@@ -486,33 +489,21 @@ export default function PlanView({
           />
 
           {error && (
-            <div
-              role="alert"
-              className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-danger-fg"
-            >
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <Callout tone="danger" icon={<AlertTriangle className="h-4 w-4" />}>
               {error}
-            </div>
+            </Callout>
           )}
 
-          <button
+          <Button
             onClick={handleProceed}
             disabled={!canProceed || proceeding}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-stellar px-4 py-3 font-semibold text-black transition-all hover:bg-stellar/90 hover:shadow-[0_0_28px_-6px_hsl(var(--stellar)/0.7)] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+            loading={proceeding}
+            className="w-full"
+            iconEnd={<ArrowRight className="h-4 w-4" />}
           >
-            {proceeding ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Preparing transaction...
-              </>
-            ) : (
-              <>
-                Begin execution
-                <ArrowRight className="h-4 w-4" />
-              </>
-            )}
-          </button>
-        </div>
+            {proceeding ? "Preparing transaction..." : "Begin execution"}
+          </Button>
+        </Card>
       )}
     </div>
   );

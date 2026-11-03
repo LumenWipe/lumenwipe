@@ -196,8 +196,8 @@ test("one close swaps one asset, transfers another, and returns a third to its i
   // pick differently, which is what this test exists to prove. This has to happen BEFORE the
   // destination step exists: the late-destination panel and "Begin execution" only render once
   // every asset is resolved, which is exactly the gate an unresolved transfer must not pass.
-  await page.getByRole("checkbox", { name: /Send my .*KEEP to another account/i }).check();
-  await page.getByRole("checkbox", { name: /Return my .*BURN to the issuer/i }).check();
+  await page.getByRole("radio", { name: /Send my .*KEEP to another account/i }).check();
+  await page.getByRole("radio", { name: /Return my .*BURN to the issuer/i }).check();
 
   // Choosing "transfer" is not the same as resolving it. With BURN answered and KEEP marked
   // for transfer but nameless, the flow must still be blocked - otherwise the user proceeds

@@ -22,7 +22,7 @@ import { confirmDestinationControl } from "./destination";
 export async function dismissRiskModal(page: Page): Promise<void> {
   const notice = page.getByRole("heading", { name: /Beta Software/i });
 
-  // Absence is legitimate: the notice mounts from an effect keyed on sessionStorage, so a
+  // Absence is legitimate: the notice is decided from sessionStorage after hydration, so a
   // second navigation inside the same test never shows it. Only this wait is allowed to fail
   // quietly.
   await notice.waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
@@ -44,7 +44,7 @@ export async function dismissRiskModal(page: Page): Promise<void> {
  * These specs drive an address only - they never connect a wallet.
  */
 export async function enterSourceAddress(page: Page, address: string): Promise<void> {
-  const pasteAddress = page.getByRole("button", { name: /Paste address/i });
+  const pasteAddress = page.getByRole("tab", { name: /Paste address/i });
   await expect(pasteAddress).toBeVisible({ timeout: 15_000 });
   await pasteAddress.click();
   await page.getByPlaceholder(/G\.\.\. \(the account to merge\)/).fill(address);
