@@ -99,8 +99,9 @@ export default function ReviewView({ network }: ReviewViewProps) {
       </Card>
 
       <Callout tone="info" icon={<ShieldCheck className="h-4 w-4" />}>
-        Every transaction above is verified against your own choices before it is signed. Once you
-        proceed, you&apos;ll sign each step on the next screen.
+        Before you sign each transaction, your browser checks its destination, memo and what it does
+        with each asset against what you chose, and does not sign it if anything does not match.
+        Once you proceed, you&apos;ll sign each step on the next screen.
       </Callout>
 
       <Callout

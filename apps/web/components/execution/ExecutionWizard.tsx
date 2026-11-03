@@ -359,8 +359,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           </div>
 
           <Callout tone="info" icon={<ShieldCheck className="h-4 w-4" />}>
-            Every transaction is verified against your own choices - destination, asset decisions,
-            and memo - before it is signed. Anything unexpected is rejected.
+            Before you sign each transaction, your browser checks its destination, memo and what it
+            does with each asset against what you chose, and does not sign it if anything does not
+            match.
           </Callout>
 
           {/* Irreversible warning */}

@@ -48,7 +48,7 @@ function planAnswersKey(state: ReturnType<typeof useDemolishStore.getState>): st
 
 function planFailureText(err: unknown): string {
   return isStateChanged(err)
-    ? "This account changed while the plan was being prepared. Nothing was sent. Refresh the plan to try again."
+    ? "This account changed while the plan was being prepared, so that plan was not used. Refresh the plan to try again."
     : "Failed to analyze account. Please check your connection and try again.";
 }
 

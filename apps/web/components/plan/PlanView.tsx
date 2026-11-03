@@ -378,7 +378,7 @@ export default function PlanView({
     } catch (err) {
       if (isStateChanged(err)) {
         setError(
-          "This account changed while the plan was being prepared. Nothing was sent. The plan is being refreshed - review it, then continue."
+          "This account changed while the plan was being prepared, so that plan was not used. The plan is being refreshed - review it, then continue."
         );
         onRefresh();
         return;

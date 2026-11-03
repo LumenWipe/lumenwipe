@@ -134,7 +134,9 @@ test("a preimage is never attached to a claim round, whatever the round says it 
   expect(submit).not.toHaveBeenCalled();
   expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
   expect(useDemolishStore.getState().lastError).toContain("This preimage can't be used");
-  expect(useDemolishStore.getState().lastError).toContain("Nothing was signed or sent");
+  expect(useDemolishStore.getState().lastError).toContain(
+    "This transaction was not signed or sent"
+  );
 });
 
 test("a paused exit round refuses the preimage and stops instead of carrying it", async () => {

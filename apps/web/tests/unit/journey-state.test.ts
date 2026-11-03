@@ -142,13 +142,20 @@ describe("deriveJourneyState", () => {
 
 describe("allowance table", () => {
   const EXACT: Record<JourneyStateName, ClaimKey[]> = {
-    untouched: ["nothing-sent", "account-unchanged"],
-    planned: ["nothing-sent", "account-unchanged"],
-    reviewed: ["nothing-sent", "account-unchanged", "confirm-not-started"],
-    signing: ["this-tx-not-sent", "no-new-sent", "may-be-sent", "safe-to-retry"],
-    partial: ["this-tx-not-sent", "no-new-sent", "may-be-sent", "safe-to-retry", "still-open"],
-    complete: ["account-closed", "no-new-sent"],
-    unknown: ["confirm-not-started", "may-be-sent"],
+    untouched: ["nothing-sent", "account-unchanged", "each-tx-checked"],
+    planned: ["nothing-sent", "account-unchanged", "each-tx-checked"],
+    reviewed: ["nothing-sent", "account-unchanged", "each-tx-checked", "confirm-not-started"],
+    signing: ["each-tx-checked", "this-tx-not-sent", "no-new-sent", "may-be-sent", "safe-to-retry"],
+    partial: [
+      "each-tx-checked",
+      "this-tx-not-sent",
+      "no-new-sent",
+      "may-be-sent",
+      "safe-to-retry",
+      "still-open",
+    ],
+    complete: ["each-tx-checked", "account-closed", "no-new-sent", "may-be-sent"],
+    unknown: ["each-tx-checked", "confirm-not-started", "may-be-sent"],
   };
 
   test.each(Object.keys(EXACT) as JourneyStateName[])("%s permits exactly its claims", (state) => {
