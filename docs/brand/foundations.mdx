@@ -1,0 +1,32 @@
+---
+title: "Foundations"
+description: "The name, the promise and the three proofs that every LumenWipe surface rests on."
+---
+
+The brand book is the written rule set for how LumenWipe looks and sounds. It describes the product as it is today. Where the product breaks a rule, the [do and do not](/brand/do-and-do-not) page names the screen, so the rule and the deviation are both on record. The tokens behind every color and size are in the [design token reference](/design/tokens).
+
+## The name
+
+The name is **LumenWipe**: one word, capital L, capital W, no space and no hyphen. It is not abbreviated.
+
+| Write     | Do not write                                     |
+| --------- | ------------------------------------------------ |
+| LumenWipe | Lumenwipe, LUMENWIPE, Lumen Wipe, Lumen-Wipe, LW |
+
+In code, package names and URLs it is lowercase (`@lumenwipe/sdk`, lumenwipe.com), because those contexts are lowercase by convention. That is not a second spelling of the name.
+
+## The promise
+
+> LumenWipe closes a Stellar account completely and sends what it held to the wallet or exchange you choose.
+
+Every page, screen and announcement supports this sentence. If a piece of copy does not, it does not belong.
+
+## The three proofs
+
+The promise is only credible with its proofs. Each one names the mechanism that makes it true, so a reader can check it.
+
+1. **Non-custodial.** Your secret key never reaches LumenWipe's servers. You sign in your wallet or, if you paste a key, in your browser tab. The API builds unsigned transactions; the browser decodes each one and checks that it does only what you asked before it is signed. LumenWipe never holds your key. For an exchange close, the balance passes through the relay account inside the same transaction that pays the exchange address you typed, so it is never left there. See [architecture](/architecture) and the [invariant register](/invariants).
+2. **Open source.** All of the code is public in the [LumenWipe/lumenwipe](https://github.com/LumenWipe/lumenwipe) repository under the Apache License 2.0, including the transaction builder and the check that runs before you sign.
+3. **You approve every step.** Before anything is built or signed, the review screen shows the whole plan. Each transaction is then shown, checked and signed by you, one at a time. Nothing is submitted without your signature.
+
+When copy mentions one proof, it states it in these terms. It does not stretch them: LumenWipe is not "trustless", and it does not "guarantee" an outcome. A close is irreversible, and the copy says so.

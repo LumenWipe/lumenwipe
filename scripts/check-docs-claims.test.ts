@@ -607,4 +607,13 @@ describe("the design token reference", () => {
       "docs/design/tokens.mdx: the token reference is missing",
     ]);
   });
+
+  test("a brand page citing a missing token or path is reported", () => {
+    const brand =
+      "Use `--accent` and `--gold`, see `apps/web/lib/verify.ts` and `apps/web/gone.tsx`, not `bg-value/10`.\n";
+    expect(messages({ "docs/brand/color.mdx": brand })).toEqual([
+      "docs/brand/color.mdx: cites --gold, which globals.css does not define",
+      "docs/brand/color.mdx: names apps/web/gone.tsx, which does not exist",
+    ]);
+  });
 });

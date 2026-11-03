@@ -1,0 +1,52 @@
+---
+title: "Color meaning"
+description: "Five colors, one meaning each, with a do and a do not from the current product for every rule."
+---
+
+Each color carries one meaning, everywhere. A reader who has learned that gold means money and red means "this cannot be undone" can read any screen without a legend. That only works if no screen spends a color on something else.
+
+Values, classes and measured contrast are in the [design token reference](/design/tokens). Neutrals (`--fg`, `--line` and the surfaces) carry no meaning and are used for everything else.
+
+| Color | Token                     | Meaning                                                                                     | Never for                                     |
+| ----- | ------------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| Cyan  | `--accent`                | Interactive: something the user can press, follow or select, and the focus ring (`--focus`) | Decoration, status or emphasis on static text |
+| Gold  | `--value`                 | Recovered value: XLM amounts and totals the user gets back                                  | Buttons, links, status dots or decoration     |
+| Red   | `--danger`, `--danger-fg` | Irreversible actions and errors                                                             | Caution that can still be changed             |
+| Amber | `--warning`               | Caution: read this before going on, it can still be changed                                 | Irreversible actions, errors or progress      |
+| Green | `--success`               | Confirmed: on the ledger or finished                                                        | Something planned, pending or merely possible |
+
+The examples below are taken from the current product. Each "do not" is a place where the product breaks the rule today, kept here so the deviation is on record until it is fixed.
+
+## Cyan is interactive
+
+**Do.** The primary variant of `Button` is a solid cyan fill with `--accent-fg` text (`apps/web/components/ui/button.tsx`). Links and the focus ring are cyan for the same reason: they can be acted on.
+
+**Do not.** The marketing pages draw a short cyan rule before each section label, a decorative line next to static text that cannot be pressed (`apps/web/app/(marketing)/page.tsx`, the `Eyebrow` component). A decorative line uses `--line-strong` or `--fg-subtle`.
+
+## Gold is recovered value only
+
+**Do.** On the plan screen, the amount under "Estimated received at destination" is gold, because it is the XLM the user gets back (`apps/web/components/plan/AccountSummaryCard.tsx`). On the landing page headline, "Close the account. Keep the lumens.", only the word "lumens." is gold, because it names the value (`apps/web/app/(marketing)/page.tsx`).
+
+**Do not.** The landing hero shows two solid gold buttons, "Analyze account" in the address field and "Open the app" below it (`apps/web/components/marketing/HeroAccountInput.tsx`, `apps/web/app/(marketing)/page.tsx`), and on wider screens the marketing navigation bar above them adds a third, also "Open the app" (`apps/web/components/marketing/MarketingNav.tsx`). The same solid gold button appears on the FAQ, security, how it works, playground and not found pages. A button is interactive, so it is cyan, and only one per screen is solid.
+
+## Red is irreversible or error
+
+**Do.** On the execution screen, the button that signs and submits the close, "Sign & execute close", uses the danger variant, a red fill, because the merge cannot be undone (`apps/web/components/execution/ExecutionWizard.tsx`). Error callouts use `--danger-fg` text on the red tint.
+
+**Do not.** On the account entry screen ("Close your Stellar account"), the notice that begins "Irreversible action." explains that a merge removes the account from the ledger, yet it is an amber warning callout with amber text (`apps/web/app/[network]/page.tsx`). A statement that something cannot be undone is red.
+
+## Amber is caution
+
+**Do.** On the plan screen, when LumenWipe cannot exit a DeFi position, the notice that says so and asks the user to acknowledge leaving it behind is an amber warning callout (`apps/web/components/plan/LeavePositionAcknowledgement.tsx`). The user can still change course, so it is caution.
+
+**Do not.** In the allowance revoke dialog, the icon in the header is amber in every state except the final one: while the user confirms, while signing, and also after the revoke has failed (`apps/web/components/allowances/RevokeAllowanceModal.tsx`). Progress uses neutral or cyan, and a failure is red.
+
+## Green is confirmed
+
+**Do.** In the execution sidebar, a step turns green with a check mark only once its transaction is confirmed (`apps/web/components/execution/PlanSidebar.tsx`).
+
+**Do not.** On the plan screen, an asset set to be swapped to XLM shows its swap arrow in green, before anything has been signed or submitted (`apps/web/components/plan/AssetDispositionCard.tsx`). A planned conversion is neutral until it is confirmed.
+
+## The logo is not a color example
+
+The mark uses cyan and gold together. It is a fixed asset and is never recolored or used as a source of meaning; see [logo usage](/brand/logo).

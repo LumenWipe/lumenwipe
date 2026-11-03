@@ -1,0 +1,57 @@
+---
+title: "Voice and tone"
+description: "How LumenWipe writes: calm, exact and honest about irreversibility, with a tone set for each moment of a close."
+---
+
+## Voice
+
+The voice does not change between screens. Three qualities define it.
+
+- **Calm.** Closing an account moves all of its funds, once. The copy never hurries the reader, never uses exclamation marks and never manufactures urgency.
+- **Exact.** Name the asset, the amount, the address and the operation. Prefer "removes 3 trustlines and sends 41.2 XLM to G...4XQ" to "cleans up your account".
+- **Honest about irreversibility.** A merge cannot be undone. Say it plainly where it matters, once, in the place the user decides, and do not soften it.
+
+## Tone by moment
+
+The voice stays the same; the tone adjusts to what the reader is doing.
+
+| Moment             | What the reader needs                                             | Tone                                    | Example from the product                                                                           |
+| ------------------ | ----------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Landing            | To know what this does and whether to trust it                    | Direct, short, concrete                 | "Close the account. Keep the lumens."                                                              |
+| Review and signing | To understand exactly what will happen before it happens          | Slow, explicit, one decision at a time  | "I understand this permanently closes the account and sends its balance to the destination above." |
+| Errors             | To know what went wrong, whether funds moved, and what to do next | Plain, specific, no blame, no raw codes | State what failed, what state the account is in, and the next step                                 |
+| Success            | To confirm the result and keep a record                           | Quiet and factual                       | State the amount received, the destination and the transaction link                                |
+
+Errors never show a raw SDK code or a stack trace. The API's error codes map to plain sentences; the [error reference](/api-reference/errors) lists them.
+
+## Words
+
+### Define jargon on first use
+
+Stellar has its own vocabulary. On a page or screen where a reader may meet a term for the first time, define it in the same sentence or link it to the [glossary](/reference/glossary). Keep protocol terms (trustline, subentry, base reserve, claimable balance) instead of inventing friendlier ones, because they are what a reader will see in a wallet or block explorer, and add a short gloss.
+
+> A trustline (the entry that lets an account hold an asset) costs 0.5 XLM of reserve.
+
+### One word for each thing
+
+The same act gets the same word on every screen. These terms come from the copy glossary in `apps/web/lib/glossary.ts`, and `apps/web/tests/unit/user-facing-copy.test.ts` fails when a banned word appears in user-facing strings under `apps/web/app` and `apps/web/components`.
+
+| Concept                                             | Use           | Do not use             |
+| --------------------------------------------------- | ------------- | ---------------------- |
+| Ending an account, the whole act                    | close         | wind-down, demolish    |
+| The tool that closes accounts                       | closer        | demolisher             |
+| Clearing key material from memory                   | clear         | wipe                   |
+| The shared account an exchange close passes through | relay account | mediator, intermediary |
+| What the wallet asks the user to approve            | transaction   |                        |
+
+**Merge** is reserved for the final on-chain `ACCOUNT_MERGE` operation, the last step of a close. It is not a name for the whole act: the user closes an account, and the close ends with a merge. The API and the technical docs call the relay account the mediator; user-facing text does not.
+
+### Numbers and security claims carry their source
+
+Every number and every security claim names its mechanism or its source, and its date when the number can change.
+
+- "Your secret key never reaches our servers: you sign in your wallet or in this tab" names the mechanism. "Bank-grade security" names nothing.
+- "[count] accounts closed, counted from on-chain merges, as of [date]" can be checked. "Thousands of happy users" cannot.
+- A reserve amount names the network rule behind it: "0.5 XLM per subentry, the Stellar base reserve".
+
+Amounts are written with their asset code and shown in tabular numerals, so they line up and do not shift while they update.

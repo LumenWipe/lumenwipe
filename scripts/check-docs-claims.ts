@@ -468,6 +468,7 @@ const TOKEN_CSS = "apps/web/app/globals.css";
 const TAILWIND_CONFIG = "apps/web/tailwind.config.ts";
 export const TOKEN_PAGE = "docs/design/tokens.mdx";
 const TYPE_SCALE = "docs/snippets/type-scale.mdx";
+const BRAND_DIR = "docs/brand";
 export const CONTRAST_START = "{/* contrast:start */}";
 export const CONTRAST_END = "{/* contrast:end */}";
 const CITED_PATH = /^(apps|packages|scripts|docs|diagrams|\.github)\//;
@@ -526,11 +527,19 @@ function tokenRows(text: string): { name: string; cells: string[] }[] {
     });
 }
 
+function brandPages(root: string): string[] {
+  const dir = join(root, BRAND_DIR);
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((name) => name.endsWith(".mdx"))
+    .map((name) => `${BRAND_DIR}/${name}`);
+}
+
 /**
  * The token page lists every `:root` token of the web's globals.css once, with its value, and
  * nothing else; type rows carry the line height Tailwind gives that step; the contrast region is
- * exactly what the contrast test measures. Every token and repository path the
- * design pages cite must exist.
+ * exactly what the contrast test measures. Every token and repository path a design or brand page
+ * cites must exist.
  */
 export function checkDesignTokens(root: string): Problem[] {
   const vars = tokenVars(root);
@@ -595,7 +604,7 @@ export function checkDesignTokens(root: string): Problem[] {
       message: "the contrast tables differ from the measured ratios; run `bun run docs:tokens`",
     });
   }
-  for (const source of [TOKEN_PAGE, TYPE_SCALE]) {
+  for (const source of [TOKEN_PAGE, TYPE_SCALE, ...brandPages(root)]) {
     const text = read(root, source) ?? "";
     for (const span of codeSpans(text)) {
       const token = /^--([a-z0-9-]+)$/.exec(span)?.[1];
