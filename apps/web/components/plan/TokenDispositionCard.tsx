@@ -6,6 +6,7 @@ import type { AssetDisposition } from "@/types/plan";
 import { AddressField } from "@/components/ui/address-field";
 import { addressErrorMessage, isValidGAddress } from "@/lib/utils/validation";
 import { Badge } from "@/components/ui/badge";
+import { ShortAddress } from "@/components/ui/short-address";
 import { DECISION_TAGS, DecisionCard, type DecisionOption } from "@/components/ui/decision-card";
 
 interface TokenDispositionCardProps {
@@ -15,10 +16,6 @@ interface TokenDispositionCardProps {
   mergeDestination: string | null;
   onSetDisposition: (asset: string, disposition: AssetDisposition) => void;
   onSetTransferDestination: (asset: string, destination: string | null) => void;
-}
-
-function shortContract(contract: string): string {
-  return `${contract.slice(0, 4)}…${contract.slice(-4)}`;
 }
 
 /**
@@ -143,7 +140,11 @@ export default function TokenDispositionCard({
             {token.arrivesFromExit
               ? "Paid out when a position is exited"
               : `${item.balance} ${item.code}`}
-            <span className="text-fg-subtle"> · Soroban token {shortContract(token.contract)}</span>
+            <span className="text-fg-subtle">
+              {" "}
+              · Soroban token{" "}
+              <ShortAddress value={token.contract} label={`${item.code} contract address`} />
+            </span>
           </p>
           {!item.convertible && !isTransfer && !isLeave && (
             <p className="mt-1 text-xs leading-relaxed text-fg-muted">

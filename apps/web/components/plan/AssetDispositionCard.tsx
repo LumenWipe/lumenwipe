@@ -7,6 +7,7 @@ import type { AssetDisposition } from "@/types/plan";
 import { AddressField } from "@/components/ui/address-field";
 import { addressErrorMessage, isValidGAddress } from "@/lib/utils/validation";
 import { Badge } from "@/components/ui/badge";
+import { ShortAddress } from "@/components/ui/short-address";
 import { DECISION_TAGS, DecisionCard, type DecisionOption } from "@/components/ui/decision-card";
 
 interface AssetDispositionCardProps {
@@ -61,6 +62,13 @@ export default function AssetDispositionCard({
       : `${item.balance} ${item.code} will be ${outcome}.`;
   /** "my 410.25 AQUA" once it is there, "my AQUA" while it is still inside the position. */
   const holding = item.arrivesFromExit ? `my ${item.code}` : `my ${item.balance} ${item.code}`;
+
+  // Two trustlines can share a code, so the issuer is what tells a real asset from a look-alike.
+  const issuerLine = item.issuer ? (
+    <p className="text-xs text-fg-subtle">
+      Issued by <ShortAddress value={item.issuer} label={`${item.code} issuer address`} />
+    </p>
+  ) : null;
 
   const clawbackNote = item.clawbackEnabled ? (
     <p className="mt-2 pl-7 text-xs leading-relaxed text-fg-muted">
@@ -146,8 +154,9 @@ export default function AssetDispositionCard({
                   : amountPhrase("swapped to XLM on the DEX") +
                     (item.quote
                       ? ` About ${formatStroops(item.quote.estimatedReceive)} XLM, at least ${formatStroops(classicFloorFromQuote(item.quote.minAmountOut))} XLM.`
-                      : "")}
+                      : " Estimate unavailable.")}
             </p>
+            {issuerLine}
           </div>
           <Badge
             tone={isTransfer || isIssuer ? "neutral" : "success"}
@@ -182,6 +191,7 @@ export default function AssetDispositionCard({
               {item.dust ? "too small to swap" : "no swap route on the DEX"}
             </span>
           </p>
+          {issuerLine}
           <p className="mt-1 text-xs leading-relaxed text-fg-muted">
             {item.dust
               ? `${holding.replace(/^my /, "")} is below the smallest amount the market will swap to XLM.`

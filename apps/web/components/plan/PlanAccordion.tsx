@@ -12,6 +12,7 @@ import AssetDispositionCard from "./AssetDispositionCard";
 import TokenDispositionCard from "./TokenDispositionCard";
 import ClaimableBalanceCard from "./ClaimableBalanceCard";
 import { Card } from "@/components/ui/card";
+import { ShortAddress } from "@/components/ui/short-address";
 
 interface PlanAccordionProps {
   account: AccountState;
@@ -275,6 +276,12 @@ export default function PlanAccordion({
           {account.trustlines.map((tl) => (
             <li key={tl.asset} className="text-xs text-fg-muted">
               {tl.code} <span className="text-fg-subtle">· balance {tl.balance}</span>
+              {tl.issuer && (
+                <span className="text-fg-subtle">
+                  {" "}
+                  · issued by <ShortAddress value={tl.issuer} label={`${tl.code} issuer address`} />
+                </span>
+              )}
             </li>
           ))}
         </ul>

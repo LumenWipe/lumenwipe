@@ -11,6 +11,8 @@ export interface AssetConvertibility {
   /** The classic asset (`CODE:ISSUER`) or, for a Soroban token, its contract id. */
   asset: string;
   code: string;
+  /** The issuer of a classic asset: the part of `asset` after the code. */
+  issuer?: string;
   /** Human-readable balance: decimal for a classic asset or a token with known decimals. */
   balance: string;
   convertible: boolean;
@@ -148,9 +150,11 @@ export function decisionPointsToConversions(plan: PlanResponse): AssetConvertibi
         };
       }
       const asset = String(dp.subject.asset ?? "");
+      const [code, issuer] = asset.split(":");
       return {
         asset,
-        code: asset.includes(":") ? asset.split(":")[0] : asset,
+        code,
+        ...(issuer ? { issuer } : {}),
         balance: String(dp.subject.balance ?? "0"),
         convertible,
         ...(dp.subject.reason === "dust_below_minimum" ? { dust: true } : {}),

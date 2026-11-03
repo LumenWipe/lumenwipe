@@ -176,6 +176,7 @@ test("decisionPointsToConversions › a Soroban token point becomes a token item
     {
       asset: "USDC:GISSUER",
       code: "USDC",
+      issuer: "GISSUER",
       balance: "12.5000000",
       convertible: true,
       arrivesFromExit: false,
