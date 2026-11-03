@@ -19,6 +19,7 @@ import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import SecretKeyInput from "@/components/account-entry/SecretKeyInput";
 import { cn } from "@/lib/utils/cn";
 import { Button } from "@/components/ui/button";
+import { Tabs } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogBody,
@@ -193,50 +194,44 @@ export default function RevokeAllowanceModal({
               your {tokenLabel} - this does not affect your balance.
             </p>
 
-            <div className="flex gap-2 rounded-lg border border-white/10 bg-black/20 p-1 text-xs">
-              <button
-                type="button"
-                onClick={() => setMode("wallet")}
-                disabled={busy}
-                className={cn(
-                  "flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 transition-colors",
-                  mode === "wallet" ? "bg-white/10 text-white" : "text-fg-muted hover:text-white/80"
-                )}
-              >
-                <Wallet className="h-3.5 w-3.5" /> Wallet
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("secret-key")}
-                disabled={busy}
-                className={cn(
-                  "flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 transition-colors",
-                  mode === "secret-key"
-                    ? "bg-white/10 text-white"
-                    : "text-fg-muted hover:text-white/80"
-                )}
-              >
-                <KeyRound className="h-3.5 w-3.5" /> Secret key
-              </button>
-            </div>
-
-            {mode === "wallet" ? (
-              <WalletConnectPanel
-                connection={walletConnection}
-                disabled={busy}
-                mismatchWarning={
-                  walletConnection.address && !walletMatches
-                    ? `Connected wallet doesn't match this account (${shortAddress(owner)}).`
-                    : undefined
-                }
-              />
-            ) : (
-              <SecretKeyInput
-                secretKeyRef={secretKeyRef}
-                onValidityChange={setKeyValid}
-                disabled={busy}
-              />
-            )}
+            <Tabs
+              label="How to sign"
+              size="sm"
+              items={[
+                {
+                  value: "wallet",
+                  label: "Wallet",
+                  icon: <Wallet className="h-3.5 w-3.5" />,
+                  disabled: busy,
+                },
+                {
+                  value: "secret-key",
+                  label: "Secret key",
+                  icon: <KeyRound className="h-3.5 w-3.5" />,
+                  disabled: busy,
+                },
+              ]}
+              value={mode}
+              onValueChange={setMode}
+            >
+              {mode === "wallet" ? (
+                <WalletConnectPanel
+                  connection={walletConnection}
+                  disabled={busy}
+                  mismatchWarning={
+                    walletConnection.address && !walletMatches
+                      ? `Connected wallet doesn't match this account (${shortAddress(owner)}).`
+                      : undefined
+                  }
+                />
+              ) : (
+                <SecretKeyInput
+                  secretKeyRef={secretKeyRef}
+                  onValidityChange={setKeyValid}
+                  disabled={busy}
+                />
+              )}
+            </Tabs>
 
             {error && (
               <p className="flex items-start gap-1.5 text-xs text-danger-fg">

@@ -9,7 +9,9 @@ import HeroAccountInput from "@/components/marketing/HeroAccountInput";
 import AssetDispositionCard from "@/components/plan/AssetDispositionCard";
 import TokenDispositionCard from "@/components/plan/TokenDispositionCard";
 import * as walletKit from "@/hooks/useWalletKitConnection";
+import * as recovery from "@/lib/session/recovery";
 import { useDemolishStore } from "@/store/demolish";
+import { useNetworkStore } from "@/store/network";
 import type { AssetConvertibility } from "@/lib/api/plan-adapters";
 
 const VALID = Keypair.random().publicKey();
@@ -167,7 +169,7 @@ test("the paste-an-address entry is named and keeps its placeholder", () => {
     networkMismatch: false,
   } as never);
   render(<AccountEntryForm />);
-  fireEvent.click(screen.getByRole("button", { name: "Paste address" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Paste address" }));
 
   const input = screen.getByRole("textbox", { name: "Account to close" });
   expect(input.getAttribute("placeholder")).toBe("G... (the account to merge)");
@@ -177,6 +179,76 @@ test("the paste-an-address entry is named and keeps its placeholder", () => {
   expect(
     (screen.getByRole("button", { name: "Analyze account" }) as HTMLButtonElement).disabled
   ).toBe(false);
+});
+
+function renderEntryForm(address: string | null = null): ReturnType<typeof mock> {
+  const connect = mock(async () => {});
+  useNetworkStore.setState({ network: "testnet" });
+  spyOn(walletKit, "useWalletKitConnection").mockReturnValue({
+    address,
+    networkMismatch: false,
+    connect,
+    disconnect: async () => {},
+  } as never);
+  render(<AccountEntryForm />);
+  return connect;
+}
+
+async function analyze(): Promise<void> {
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Analyze account" }));
+  });
+}
+
+test("the entry switch sends the connected wallet to analysis, the default mode", async () => {
+  spyOn(recovery, "findUnresolved").mockResolvedValue(null as never);
+  const wallet = Keypair.random().publicKey();
+  renderEntryForm(wallet);
+  expect(screen.getByRole("tab", { name: "Connect wallet" }).getAttribute("aria-selected")).toBe(
+    "true"
+  );
+  await analyze();
+  expect(push.mock.calls).toEqual([[`/testnet/analyze?source=${wallet}`]]);
+});
+
+test("the entry switch sends the pasted address, not the wallet, in address mode", async () => {
+  spyOn(recovery, "findUnresolved").mockResolvedValue(null as never);
+  renderEntryForm(Keypair.random().publicKey());
+  fireEvent.keyDown(screen.getByRole("tab", { name: "Connect wallet" }), { key: "ArrowRight" });
+  fireEvent.change(screen.getByRole("textbox", { name: "Account to close" }), {
+    target: { value: VALID },
+  });
+  await analyze();
+  expect(push.mock.calls).toEqual([[`/testnet/analyze?source=${VALID}`]]);
+});
+
+test("a pasted address survives leaving and returning to address mode", () => {
+  renderEntryForm();
+  const pasteTab = screen.getByRole("tab", { name: "Paste address" });
+  fireEvent.click(pasteTab);
+  fireEvent.change(screen.getByRole("textbox", { name: "Account to close" }), {
+    target: { value: VALID },
+  });
+  fireEvent.keyDown(pasteTab, { key: "ArrowLeft" });
+  expect(screen.queryByRole("textbox", { name: "Account to close" })).toBeNull();
+  fireEvent.click(pasteTab);
+  expect(
+    (screen.getByRole("textbox", { name: "Account to close" }) as HTMLInputElement).value
+  ).toBe(VALID);
+});
+
+test("reselecting the active entry mode changes nothing", () => {
+  const connect = renderEntryForm();
+  fireEvent.click(screen.getByRole("tab", { name: "Paste address" }));
+  const input = screen.getByRole("textbox", { name: "Account to close" });
+  fireEvent.change(input, { target: { value: VALID } });
+
+  fireEvent.click(screen.getByRole("tab", { name: "Paste address" }));
+
+  expect(screen.getByRole("textbox", { name: "Account to close" })).toBe(input);
+  expect((input as HTMLInputElement).value).toBe(VALID);
+  expect(connect).not.toHaveBeenCalled();
+  expect(push).not.toHaveBeenCalled();
 });
 
 function destinationInput(onDestinationChange: (value: string) => void = () => {}): ReactElement {

@@ -39,7 +39,7 @@ function useDialogIds(): DialogIds {
 
 function focusableIn(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-    (el) => !el.closest("[hidden],[inert]")
+    (el) => el.tabIndex >= 0 && !el.closest("[hidden],[inert]")
   );
 }
 

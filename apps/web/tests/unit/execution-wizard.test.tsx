@@ -470,6 +470,11 @@ test("execution-wizard › announces progress through one status region and hide
   expect(statuses).toHaveLength(1);
   expect(statuses[0].textContent).toBe("Waiting for your wallet");
   expect(container.querySelector("svg.animate-spin")?.getAttribute("aria-hidden")).toBe("true");
+
+  const exposed = Array.from(screen.getAllByText("Waiting for your wallet")).filter(
+    (el) => !el.closest("[aria-hidden='true']")
+  );
+  expect(exposed).toEqual([statuses[0]]);
 });
 
 test("execution-wizard › announces that more signatures are needed", () => {

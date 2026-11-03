@@ -15,6 +15,7 @@ export default function NetworkSwitcher({ currentNetwork }: NetworkSwitcherProps
         <Link
           key={net}
           href={`/${net}`}
+          aria-current={currentNetwork === net ? "true" : undefined}
           className={cn(
             "rounded-md px-2.5 py-1 font-medium transition-colors",
             currentNetwork === net ? "bg-white/10 text-white" : "text-fg-muted hover:text-white"

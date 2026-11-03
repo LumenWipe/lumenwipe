@@ -44,7 +44,7 @@ export async function dismissRiskModal(page: Page): Promise<void> {
  * These specs drive an address only - they never connect a wallet.
  */
 export async function enterSourceAddress(page: Page, address: string): Promise<void> {
-  const pasteAddress = page.getByRole("button", { name: /Paste address/i });
+  const pasteAddress = page.getByRole("tab", { name: /Paste address/i });
   await expect(pasteAddress).toBeVisible({ timeout: 15_000 });
   await pasteAddress.click();
   await page.getByPlaceholder(/G\.\.\. \(the account to merge\)/).fill(address);

@@ -1,5 +1,5 @@
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import {
   Account,
   Address,
@@ -136,7 +136,7 @@ test("RevokeAllowanceModal › the confirm button is disabled until a valid secr
     />
   );
 
-  fireEvent.click(screen.getByRole("button", { name: /secret key/i }));
+  fireEvent.click(screen.getByRole("tab", { name: /secret key/i }));
   const confirmButton = screen.getByRole("button", {
     name: /revoke allowance/i,
   }) as HTMLButtonElement;
@@ -166,7 +166,7 @@ test("RevokeAllowanceModal › the full build-verify-sign-submit flow completes 
     />
   );
 
-  fireEvent.click(screen.getByRole("button", { name: /secret key/i }));
+  fireEvent.click(screen.getByRole("tab", { name: /secret key/i }));
   fireEvent.change(screen.getByPlaceholderText("S..."), {
     target: { value: OWNER_KP.secret() },
   });
@@ -202,7 +202,7 @@ test("RevokeAllowanceModal › a response that revokes a different spender is re
     />
   );
 
-  fireEvent.click(screen.getByRole("button", { name: /secret key/i }));
+  fireEvent.click(screen.getByRole("tab", { name: /secret key/i }));
   fireEvent.change(screen.getByPlaceholderText("S..."), {
     target: { value: OWNER_KP.secret() },
   });
@@ -251,7 +251,7 @@ test("RevokeAllowanceModal › an unresolved hash for the owner stops the revoke
     />
   );
 
-  fireEvent.click(screen.getByRole("button", { name: /secret key/i }));
+  fireEvent.click(screen.getByRole("tab", { name: /secret key/i }));
   fireEvent.change(screen.getByPlaceholderText("S..."), {
     target: { value: OWNER_KP.secret() },
   });
@@ -272,11 +272,145 @@ function renderSecretKeyModal(onClose: () => void, onRevoked: () => void = () =>
       onRevoked={onRevoked}
     />
   );
-  fireEvent.click(screen.getByRole("button", { name: /secret key/i }));
+  fireEvent.click(screen.getByRole("tab", { name: /secret key/i }));
   fireEvent.change(screen.getByPlaceholderText("S..."), {
     target: { value: OWNER_KP.secret() },
   });
 }
+
+function renderModal(): void {
+  render(
+    <RevokeAllowanceModal
+      network="testnet"
+      owner={OWNER}
+      allowance={allowance()}
+      onClose={() => {}}
+      onRevoked={() => {}}
+    />
+  );
+}
+
+function confirmButton(): HTMLButtonElement {
+  return screen.getByRole("button", { name: /revoke allowance/i }) as HTMLButtonElement;
+}
+
+test("RevokeAllowanceModal › arrow keys switch the signer inside the dialog, and only they do", () => {
+  stubWalletKit();
+  renderModal();
+  const wallet = screen.getByRole("tab", { name: /wallet/i });
+  const secret = screen.getByRole("tab", { name: /secret key/i });
+  wallet.focus();
+
+  fireEvent.keyDown(wallet, { key: "ArrowRight" });
+  expect(secret.getAttribute("aria-selected")).toBe("true");
+  expect(document.activeElement).toBe(secret);
+  expect(screen.getByPlaceholderText("S...")).toBeTruthy();
+
+  fireEvent.keyDown(secret, { key: "Home" });
+  expect(wallet.getAttribute("aria-selected")).toBe("true");
+  expect(document.activeElement).toBe(wallet);
+  expect(screen.queryByPlaceholderText("S...")).toBeNull();
+});
+
+test("RevokeAllowanceModal › Escape on a tab still reaches the dialog", () => {
+  stubWalletKit();
+  const onClose = mock(() => {});
+  render(
+    <RevokeAllowanceModal
+      network="testnet"
+      owner={OWNER}
+      allowance={allowance()}
+      onClose={onClose}
+      onRevoked={() => {}}
+    />
+  );
+  const wallet = screen.getByRole("tab", { name: /wallet/i });
+  wallet.focus();
+  fireEvent.keyDown(wallet, { key: "Escape" });
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+test("RevokeAllowanceModal › both tabs are disabled while signing", async () => {
+  stubWalletKit();
+  spyOn(recovery, "findUnresolved").mockResolvedValue(undefined as never);
+  holdFetch();
+  renderSecretKeyModal(() => {});
+
+  await act(async () => {
+    fireEvent.click(confirmButton());
+  });
+
+  const tabs = screen.getAllByRole("tab") as HTMLButtonElement[];
+  expect(tabs.map((el) => el.disabled)).toEqual([true, true]);
+  expect(tabs.map((el) => el.getAttribute("tabindex"))).toEqual(["-1", "-1"]);
+  expect(tabs[1].getAttribute("aria-selected")).toBe("true");
+  fireEvent.click(tabs[0]);
+  fireEvent.keyDown(tabs[1], { key: "ArrowLeft" });
+  expect(tabs[1].getAttribute("aria-selected")).toBe("true");
+});
+
+test("RevokeAllowanceModal › the tablist goes inert with the dialog while the wallet connects", () => {
+  spyOn(walletKit, "useWalletKitConnection").mockImplementation(
+    () =>
+      ({
+        address: null,
+        connecting: true,
+        error: null,
+        networkMismatch: false,
+        connect: async () => {},
+        disconnect: async () => {},
+      }) as unknown as ReturnType<typeof walletKit.useWalletKitConnection>
+  );
+  renderModal();
+  const dialog = document.querySelector("dialog") as HTMLDialogElement;
+  expect(dialog.hasAttribute("inert")).toBe(true);
+  expect(dialog.contains(document.querySelector("[role='tablist']"))).toBe(true);
+  expect(document.activeElement).not.toBe(screen.getAllByRole("tab", { hidden: true })[0]);
+});
+
+test("RevokeAllowanceModal › reselecting the secret key tab keeps the field, the key and confirm", () => {
+  stubWalletKit();
+  renderSecretKeyModal(() => {});
+  const input = screen.getByPlaceholderText("S...") as HTMLInputElement;
+  expect(confirmButton().disabled).toBe(false);
+
+  fireEvent.click(screen.getByRole("tab", { name: /secret key/i }));
+
+  expect(screen.getByPlaceholderText("S...")).toBe(input);
+  expect(input.value).toBe(OWNER_KP.secret());
+  expect(confirmButton().disabled).toBe(false);
+});
+
+test("RevokeAllowanceModal › the tabs write no key to the markup or storage", () => {
+  stubWalletKit();
+  renderSecretKeyModal(() => {});
+  const secret = OWNER_KP.secret();
+  const secretTab = screen.getByRole("tab", { name: /secret key/i });
+
+  fireEvent.keyDown(secretTab, { key: "ArrowLeft" });
+  fireEvent.keyDown(screen.getByRole("tab", { name: /wallet/i }), { key: "ArrowRight" });
+
+  expect(document.documentElement.outerHTML).not.toContain(secret);
+  expect((screen.getByPlaceholderText("S...") as HTMLInputElement).value).toBe("");
+  expect(JSON.stringify({ ...sessionStorage, ...localStorage })).not.toContain(secret);
+});
+
+test("RevokeAllowanceModal › Tab stays inside with the key panel open and confirm disabled", () => {
+  stubWalletKit();
+  renderModal();
+  const secret = screen.getByRole("tab", { name: /secret key/i });
+  fireEvent.click(secret);
+  const input = screen.getByPlaceholderText("S...");
+  const close = screen.getByRole("button", { name: "Close" });
+  expect(confirmButton().disabled).toBe(true);
+
+  input.focus();
+  fireEvent.keyDown(input, { key: "Tab" });
+  expect(document.activeElement).toBe(close);
+
+  fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+  expect(document.activeElement).toBe(input);
+});
 
 function pressEscape(): void {
   fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
@@ -386,7 +520,7 @@ test("RevokeAllowanceModal › the key is not in the markup and a new mount star
       onRevoked={() => {}}
     />
   );
-  fireEvent.click(screen.getByRole("button", { name: /secret key/i }));
+  fireEvent.click(screen.getByRole("tab", { name: /secret key/i }));
   fireEvent.change(screen.getByPlaceholderText("S..."), {
     target: { value: OWNER_KP.secret() },
   });
@@ -404,7 +538,7 @@ test("RevokeAllowanceModal › the key is not in the markup and a new mount star
       onRevoked={() => {}}
     />
   );
-  fireEvent.click(screen.getByRole("button", { name: /secret key/i }));
+  fireEvent.click(screen.getByRole("tab", { name: /secret key/i }));
   expect((screen.getByPlaceholderText("S...") as HTMLInputElement).value).toBe("");
   expect(
     (screen.getByRole("button", { name: /revoke allowance/i }) as HTMLButtonElement).disabled
