@@ -57,8 +57,8 @@ const VIDEOS: Video[] = [
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <span className="mkt-eyebrow inline-flex items-center gap-2 text-stellar/90">
-      <span className="h-px w-6 bg-stellar/50" />
+    <span className="mkt-eyebrow inline-flex items-center gap-2 text-accent/90">
+      <span className="h-px w-6 bg-accent/50" />
       {children}
     </span>
   );

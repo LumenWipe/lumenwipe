@@ -41,10 +41,10 @@ interface StatCardProps {
   label: string;
   value: string | null;
   sub?: string;
-  accent?: "stellar" | "value";
+  accent?: "accent" | "value";
 }
 
-function StatCard({ label, value, sub, accent = "stellar" }: StatCardProps) {
+function StatCard({ label, value, sub, accent = "accent" }: StatCardProps) {
   return (
     <div className="flex flex-col gap-1.5 rounded-2xl border border-white/8 bg-white/[0.025] px-6 py-5">
       <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-fg-subtle">

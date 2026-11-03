@@ -278,7 +278,7 @@ export default function ConstellationChart({ feed }: { feed: FeedData | null }) 
                 href={`${SE_EXPLORER_BASE[tooltip.record.network]}/tx/${tooltip.record.txHash}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="pointer-events-auto mkt-mono text-[0.65rem] text-stellar hover:underline"
+                className="pointer-events-auto mkt-mono text-[0.65rem] text-accent hover:underline"
               >
                 {tooltip.record.txHash.slice(0, 12)}… ↗
               </a>

@@ -137,7 +137,7 @@ export default function DestinationInput({
                 type="checkbox"
                 checked={acknowledged}
                 onChange={(e) => onAcknowledgedChange(e.target.checked)}
-                className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-stellar"
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-accent"
               />
               This is a wallet I control, not an exchange or custodial account.
             </label>

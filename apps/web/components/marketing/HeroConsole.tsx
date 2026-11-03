@@ -74,8 +74,8 @@ export default function HeroConsole() {
     <div className="mkt-card mx-auto max-w-4xl overflow-hidden text-left">
       <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3.5 mkt-mono text-[0.7rem] uppercase tracking-wider text-fg-subtle">
         <span>account · GABC…WXYZ</span>
-        <span className="inline-flex items-center gap-2 text-stellar">
-          <span className="h-1.5 w-1.5 rounded-full bg-stellar mkt-pulse" />
+        <span className="inline-flex items-center gap-2 text-accent">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent mkt-pulse" />
           {scanning ? "scanning" : "complete"}
         </span>
       </div>
@@ -102,7 +102,7 @@ export default function HeroConsole() {
                 >
                   <span className="mkt-mono w-5 text-[0.72rem] text-fg-subtle">{r.n}</span>
                   <span>{r.label}</span>
-                  {done && <Check className="h-3.5 w-3.5 text-stellar" />}
+                  {done && <Check className="h-3.5 w-3.5 text-accent" />}
                   <span
                     className={`mkt-mono ml-auto tabular-nums transition-colors duration-500 ${
                       done ? "text-white/60" : "text-fg-subtle"
@@ -124,7 +124,7 @@ export default function HeroConsole() {
           </div>
           <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
             <span
-              className="block h-full rounded-full bg-stellar transition-[width] duration-500 ease-out"
+              className="block h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
               style={{ width: `${pct}%` }}
             />
           </div>

@@ -36,13 +36,13 @@ export default function NetworkStats() {
           <div className="space-y-1 text-xs">
             <div className="flex items-baseline justify-between gap-6">
               <span className="text-fg-subtle">Testnet closed</span>
-              <span className="tabular-nums font-semibold text-stellar">
+              <span className="tabular-nums font-semibold text-accent">
                 {stats.testnet.toLocaleString()}
               </span>
             </div>
             <div className="flex items-baseline justify-between gap-6">
               <span className="text-fg-subtle">Mainnet closed</span>
-              <span className="tabular-nums font-semibold text-stellar">
+              <span className="tabular-nums font-semibold text-accent">
                 {stats.mainnet.toLocaleString()}
               </span>
             </div>
@@ -61,12 +61,12 @@ export default function NetworkStats() {
           className="inline-flex max-w-full items-center justify-center gap-x-1.5 overflow-hidden whitespace-nowrap rounded-full border border-white/10 bg-surface/95 px-4 py-1.5 text-[0.7rem] shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
         >
           <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
-          <span className="tabular-nums font-semibold text-stellar">
+          <span className="tabular-nums font-semibold text-accent">
             {stats.testnet.toLocaleString()}
           </span>
           <span className="text-fg-subtle">testnet</span>
           <span className="text-fg-disabled">·</span>
-          <span className="tabular-nums font-semibold text-stellar">
+          <span className="tabular-nums font-semibold text-accent">
             {stats.mainnet.toLocaleString()}
           </span>
           <span className="text-fg-subtle">mainnet</span>

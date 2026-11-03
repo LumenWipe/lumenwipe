@@ -1,7 +1,7 @@
 import type { Category } from "@/lib/blog";
 
 const styles: Record<Category, string> = {
-  Technical: "bg-stellar/10 text-stellar border-stellar/20",
+  Technical: "bg-accent/10 text-accent border-accent/20",
   Updates: "bg-amber-400/10 text-amber-400 border-amber-400/20",
   Guides: "bg-emerald-400/10 text-emerald-400 border-emerald-400/20",
 };

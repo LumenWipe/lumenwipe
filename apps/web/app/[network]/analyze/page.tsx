@@ -268,7 +268,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   if (loading) {
     return (
       <div role="status" className="max-w-2xl mx-auto px-4 py-20 flex flex-col items-center gap-4">
-        <Loader2 aria-hidden="true" className="h-8 w-8 animate-spin text-stellar" />
+        <Loader2 aria-hidden="true" className="h-8 w-8 animate-spin text-accent" />
         <p className="text-fg-muted text-sm">Analyzing account...</p>
         <p className="text-xs text-fg-muted/60 font-mono truncate max-w-xs">{effectiveSource}</p>
       </div>
@@ -289,7 +289,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
           action={
             <Link
               href={`/${routeNetwork}`}
-              className="inline-flex items-center gap-1.5 text-sm text-stellar hover:underline"
+              className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline"
             >
               <ArrowLeft className="h-3.5 w-3.5" /> Go back
             </Link>

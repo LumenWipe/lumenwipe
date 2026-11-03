@@ -41,7 +41,7 @@ export default function RecentFeed({ feed }: { feed: FeedData | null }) {
       {/* header */}
       <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
         <div className="flex items-center gap-2">
-          <span className="h-1.5 w-1.5 rounded-full bg-stellar mkt-pulse" />
+          <span className="h-1.5 w-1.5 rounded-full bg-accent mkt-pulse" />
           <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-fg-muted">
             Recent closes
           </span>
@@ -94,7 +94,7 @@ export default function RecentFeed({ feed }: { feed: FeedData | null }) {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="Verify on stellar.expert"
-                  className="flex items-center justify-center text-fg-subtle transition-colors hover:text-stellar"
+                  className="flex items-center justify-center text-fg-subtle transition-colors hover:text-accent"
                 >
                   <ExternalLink className="h-3 w-3" />
                 </a>

@@ -32,17 +32,12 @@ describe("tailwind token registration", () => {
         "fg",
         "focus",
         "line",
-        "stellar",
         "success",
         "surface",
         "value",
         "warning",
       ].sort()
     );
-  });
-
-  test("stellar is an alias of accent, not a second value", () => {
-    expect(colors.stellar).toBe("hsl(var(--accent) / <alpha-value>)");
   });
 
   test("danger registers the fill and the text pair", () => {

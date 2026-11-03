@@ -198,7 +198,7 @@ export default function DistributionStrip({ feed }: { feed: FeedData | null }) {
                 href={`${SE_EXPLORER_BASE[hovered.record.network]}/tx/${hovered.record.txHash}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="pointer-events-auto mkt-mono text-[0.65rem] text-stellar hover:underline"
+                className="pointer-events-auto mkt-mono text-[0.65rem] text-accent hover:underline"
               >
                 {hovered.record.txHash.slice(0, 12)}… ↗
               </a>

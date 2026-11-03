@@ -30,8 +30,8 @@ export const metadata: Metadata = {
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <span className="mkt-eyebrow inline-flex items-center gap-2 text-stellar/90">
-      <span className="h-px w-6 bg-stellar/50" />
+    <span className="mkt-eyebrow inline-flex items-center gap-2 text-accent/90">
+      <span className="h-px w-6 bg-accent/50" />
       {children}
     </span>
   );
@@ -158,7 +158,7 @@ export default function HowItWorksPage() {
             {LOOP.map((s, i) => (
               <Reveal key={s.label} delay={i * 60}>
                 <div className="relative flex h-full flex-col items-start rounded-xl border border-white/10 bg-surface/70 p-4">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-stellar/10 text-stellar">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/10 text-accent">
                     <s.icon className="h-4 w-4" />
                   </span>
                   <h3 className="mt-3 text-sm font-semibold text-white">{s.label}</h3>
@@ -168,7 +168,7 @@ export default function HowItWorksPage() {
             ))}
           </div>
           <p className="mt-5 inline-flex items-center gap-2 mkt-mono text-xs text-fg-muted">
-            <Repeat className="h-3.5 w-3.5 text-stellar" />
+            <Repeat className="h-3.5 w-3.5 text-accent" />
             repeats for every step in the plan
           </p>
         </div>
@@ -186,9 +186,9 @@ export default function HowItWorksPage() {
         <ol className="mt-12 space-y-3">
           {STEPS.map((s, i) => (
             <Reveal as="li" key={s.title} delay={i * 40}>
-              <div className="group relative flex gap-5 rounded-2xl border border-white/10 bg-white/[0.02] p-5 transition-colors hover:border-stellar/30 sm:p-6">
+              <div className="group relative flex gap-5 rounded-2xl border border-white/10 bg-white/[0.02] p-5 transition-colors hover:border-accent/30 sm:p-6">
                 <div className="flex flex-col items-center">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-stellar/10 text-stellar">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
                     <s.icon className="h-5 w-5" />
                   </span>
                   {i < STEPS.length - 1 && (
@@ -204,7 +204,7 @@ export default function HowItWorksPage() {
                   </div>
                   <p className="mt-2 text-sm leading-relaxed text-white/85">{s.body}</p>
                   <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-white/8 bg-black/30 px-2.5 py-1 mkt-mono text-[0.68rem] text-white/65">
-                    <span className="text-stellar/70">op</span>
+                    <span className="text-accent/70">op</span>
                     {s.op}
                   </div>
                 </div>
@@ -239,7 +239,7 @@ export default function HowItWorksPage() {
                   {
                     label: "Relay account",
                     sub: "single-use · generated in browser",
-                    tone: "stellar",
+                    tone: "accent",
                   },
                   { op: "Payment + memo" },
                   { label: "Exchange deposit", sub: "validated address & memo", tone: "value" },
@@ -251,7 +251,7 @@ export default function HowItWorksPage() {
                     >
                       <ArrowRight className="hidden h-4 w-4 sm:block" />
                       <ArrowDown className="h-4 w-4 sm:hidden" />
-                      <span className="mkt-mono text-[0.62rem] uppercase tracking-wider text-stellar/70">
+                      <span className="mkt-mono text-[0.62rem] uppercase tracking-wider text-accent/70">
                         {node.op}
                       </span>
                     </div>
@@ -259,8 +259,8 @@ export default function HowItWorksPage() {
                     <div
                       key={i}
                       className={`flex-1 rounded-xl border p-4 text-center ${
-                        node.tone === "stellar"
-                          ? "border-stellar/40 bg-stellar/[0.06]"
+                        node.tone === "accent"
+                          ? "border-accent/40 bg-accent/[0.06]"
                           : node.tone === "value"
                             ? "border-value/30 bg-value/[0.05]"
                             : "border-white/12 bg-white/[0.03]"

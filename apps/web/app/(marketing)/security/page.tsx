@@ -68,7 +68,7 @@ export default function SecurityPage() {
     <section className="mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-24">
       <div className="max-w-2xl">
         <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
-          <span className="h-px w-5 bg-stellar/60" />
+          <span className="h-px w-5 bg-accent/60" />
           Trust model
         </span>
         <h1 className="mkt-display mt-4 text-4xl font-bold text-white sm:text-5xl">
@@ -107,7 +107,7 @@ export default function SecurityPage() {
             </div>
           ))}
           <p className="mkt-mono flex items-center gap-2 pt-2 text-[0.72rem] text-fg-subtle">
-            <ShieldCheck className="h-3.5 w-3.5 text-stellar" />0 servers can move your funds
+            <ShieldCheck className="h-3.5 w-3.5 text-accent" />0 servers can move your funds
           </p>
         </div>
 
@@ -117,7 +117,7 @@ export default function SecurityPage() {
               key={row.title}
               className="flex gap-3.5 border-t border-white/[0.06] bg-white/[0.02] p-4 first:border-t-0"
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-stellar">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-accent">
                 <row.icon className="h-4 w-4" />
               </span>
               <div>

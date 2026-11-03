@@ -87,7 +87,7 @@ const FEATURES = [
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
     <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
-      <span className="h-px w-5 bg-stellar/60" />
+      <span className="h-px w-5 bg-accent/60" />
       {children}
     </span>
   );
@@ -204,7 +204,7 @@ export default function LandingPage() {
           <div className="grid gap-5">
             {TRUTHS.map((t) => (
               <Reveal key={t.title} className="mkt-card flex gap-4 p-5">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-stellar">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-accent">
                   <t.icon className="h-5 w-5" />
                 </span>
                 <div>
@@ -263,7 +263,7 @@ export default function LandingPage() {
                   <span
                     className={`flex h-10 w-10 items-center justify-center rounded-lg border ${
                       f.status === "Live"
-                        ? "border-white/10 bg-white/[0.03] text-stellar"
+                        ? "border-white/10 bg-white/[0.03] text-accent"
                         : "border-value/30 bg-value/10 text-value"
                     }`}
                   >
@@ -272,7 +272,7 @@ export default function LandingPage() {
                   <span
                     className={`mkt-mono rounded-full border px-2.5 py-1 text-[0.62rem] uppercase tracking-wider ${
                       f.status === "Live"
-                        ? "border-stellar/40 text-stellar"
+                        ? "border-accent/40 text-accent"
                         : "border-value/40 text-value"
                     }`}
                   >
@@ -340,13 +340,13 @@ export default function LandingPage() {
             </div>
             <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mkt-mono text-[0.7rem] text-fg-muted">
               <span className="inline-flex items-center gap-1.5">
-                <Check className="h-3.5 w-3.5 text-stellar" /> No signup
+                <Check className="h-3.5 w-3.5 text-accent" /> No signup
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Check className="h-3.5 w-3.5 text-stellar" /> No custody
+                <Check className="h-3.5 w-3.5 text-accent" /> No custody
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Check className="h-3.5 w-3.5 text-stellar" /> Open source
+                <Check className="h-3.5 w-3.5 text-accent" /> Open source
               </span>
             </div>
           </div>

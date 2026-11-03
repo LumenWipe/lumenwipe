@@ -54,7 +54,7 @@ export default function SigningProgress({
           {accumulatedWeight} of {requiredWeight} collected).
         </p>
         <div className="mt-2 h-1.5 w-full rounded-full bg-white/10">
-          <div className="h-1.5 rounded-full bg-stellar" style={{ width: `${pct}%` }} />
+          <div className="h-1.5 rounded-full bg-accent" style={{ width: `${pct}%` }} />
         </div>
       </div>
       {satisfiable.length > 0 && (

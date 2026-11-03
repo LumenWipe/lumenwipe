@@ -18,8 +18,8 @@ export default function StatsClient() {
       <Reveal>
         <div className="flex items-center justify-between">
           <div>
-            <span className="mkt-eyebrow inline-flex items-center gap-2 text-stellar/90">
-              <span className="h-px w-6 bg-stellar/50" />
+            <span className="mkt-eyebrow inline-flex items-center gap-2 text-accent/90">
+              <span className="h-px w-6 bg-accent/50" />
               On-chain activity
             </span>
             <h1 className="mkt-display mt-3 text-3xl font-bold text-white sm:text-4xl">
@@ -68,7 +68,7 @@ export default function StatsClient() {
       <Reveal delay={200}>
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-white/6 bg-white/[0.015] px-6 py-5 text-center sm:flex-row sm:text-left">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/8 bg-white/[0.03]">
-            <ExternalLink className="h-4 w-4 text-stellar" />
+            <ExternalLink className="h-4 w-4 text-accent" />
           </div>
           <div className="flex-1">
             <p className="text-[0.82rem] leading-relaxed text-fg-muted">
@@ -83,7 +83,7 @@ export default function StatsClient() {
             href="https://stellar.expert/explorer/public"
             target="_blank"
             rel="noopener noreferrer"
-            className="shrink-0 mkt-mono rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[0.68rem] text-fg-muted transition-colors hover:border-stellar/30 hover:text-stellar"
+            className="shrink-0 mkt-mono rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[0.68rem] text-fg-muted transition-colors hover:border-accent/30 hover:text-accent"
           >
             stellar.expert ↗
           </a>

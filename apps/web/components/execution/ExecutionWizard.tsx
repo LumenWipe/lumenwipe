@@ -368,7 +368,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
           {/* Trust note */}
           <div className="flex items-start gap-2.5 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2.5 text-sm text-white/60">
-            <ShieldCheck className="h-4 w-4 shrink-0 mt-0.5 text-stellar" />
+            <ShieldCheck className="h-4 w-4 shrink-0 mt-0.5 text-accent" />
             <span>
               Every transaction is verified against your own choices - destination, asset decisions,
               and memo - before it is signed. Anything unexpected is rejected.
@@ -475,7 +475,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                   type="checkbox"
                   checked={confirmed}
                   onChange={(e) => setConfirmed(e.target.checked)}
-                  className="mt-0.5 accent-stellar"
+                  className="mt-0.5 accent-accent"
                 />
                 <span className="text-sm text-white/60">
                   I understand this permanently closes the account and sends its balance to the

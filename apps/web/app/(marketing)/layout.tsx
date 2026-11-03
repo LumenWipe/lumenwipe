@@ -12,7 +12,7 @@ export default function MarketingLayout({ children }: { children: ReactNode }) {
           dark wrapper, keeping the exact ink colour. */}
       <div aria-hidden className="pointer-events-none absolute inset-0 z-0">
         <div className="absolute inset-0 mkt-grain" />
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-stellar/30 to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/30 to-transparent" />
       </div>
 
       <div className="relative z-10 flex min-h-screen flex-col">

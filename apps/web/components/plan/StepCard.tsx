@@ -16,7 +16,7 @@ export default function StepCard({ step, isActive, onClick }: StepCardProps) {
       className={cn(
         "flex items-start gap-3 p-3 rounded-lg border transition-colors",
         isActive
-          ? "border-stellar/50 bg-stellar/5"
+          ? "border-accent/50 bg-accent/5"
           : step.status === "confirmed"
             ? "border-success/20 bg-success/5"
             : step.status === "failed"
@@ -30,7 +30,7 @@ export default function StepCard({ step, isActive, onClick }: StepCardProps) {
         {step.status === "confirmed" && <CheckCircle className="h-4 w-4 text-success" />}
         {step.status === "failed" && <AlertCircle className="h-4 w-4 text-danger-fg" />}
         {(step.status === "signing" || step.status === "submitted") && (
-          <Loader2 className="h-4 w-4 text-stellar animate-spin" />
+          <Loader2 className="h-4 w-4 text-accent animate-spin" />
         )}
         {step.status === "pending" && <Clock className="h-4 w-4 text-fg-muted" />}
       </div>
@@ -38,7 +38,7 @@ export default function StepCard({ step, isActive, onClick }: StepCardProps) {
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 mb-0.5">
-          <StepTypeIcon type={step.type} className="h-3.5 w-3.5 text-stellar/70 shrink-0" />
+          <StepTypeIcon type={step.type} className="h-3.5 w-3.5 text-accent/70 shrink-0" />
           <p
             className={cn(
               "text-sm font-medium truncate",
@@ -63,7 +63,7 @@ export default function StepCard({ step, isActive, onClick }: StepCardProps) {
         </div>
       </div>
 
-      {isActive && <ChevronRight className="h-4 w-4 text-stellar shrink-0 mt-0.5" />}
+      {isActive && <ChevronRight className="h-4 w-4 text-accent shrink-0 mt-0.5" />}
     </div>
   );
 }

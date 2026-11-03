@@ -126,7 +126,7 @@ export default function Faq() {
                 {item.q}
               </span>
               <Plus
-                className={`h-4 w-4 shrink-0 text-stellar transition-transform duration-300 ${
+                className={`h-4 w-4 shrink-0 text-accent transition-transform duration-300 ${
                   isOpen ? "rotate-45" : ""
                 }`}
               />

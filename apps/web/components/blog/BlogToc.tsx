@@ -63,7 +63,7 @@ export default function BlogToc({ toc }: { toc: TocEntry[] }) {
                       entry.level === 3 ? "pl-6" : "pl-3"
                     } ${
                       isActive
-                        ? "border-stellar text-stellar"
+                        ? "border-accent text-accent"
                         : "border-transparent text-fg-subtle hover:text-white/80"
                     }`}
                   >

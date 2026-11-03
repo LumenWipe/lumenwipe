@@ -107,7 +107,7 @@ export default function RiskDisclaimerModal({ children }: { children: ReactNode 
               <ul className="space-y-2">
                 {CONFIRMED_FEATURES.map(({ icon: Icon, label }) => (
                   <li key={label} className="flex items-center gap-2.5">
-                    <Icon className="h-4 w-4 text-stellar shrink-0" />
+                    <Icon className="h-4 w-4 text-accent shrink-0" />
                     <span className="text-white/75">{label}</span>
                   </li>
                 ))}
