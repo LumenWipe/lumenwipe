@@ -72,10 +72,10 @@ export default function HeroConsole() {
 
   return (
     <div className="mkt-card mx-auto max-w-4xl overflow-hidden text-left">
-      <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3.5 mkt-mono text-[0.7rem] uppercase tracking-wider text-fg-subtle">
+      <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3.5 mkt-mono text-caption uppercase tracking-wider text-fg-subtle">
         <span>account · GABC…WXYZ</span>
-        <span className="inline-flex items-center gap-2 text-stellar">
-          <span className="h-1.5 w-1.5 rounded-full bg-stellar mkt-pulse" />
+        <span className="inline-flex items-center gap-2 text-accent">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent mkt-pulse" />
           {scanning ? "scanning" : "complete"}
         </span>
       </div>
@@ -96,13 +96,13 @@ export default function HeroConsole() {
               return (
                 <div
                   key={r.n}
-                  className={`relative z-10 flex h-11 items-center gap-3 border-t border-t-white/[0.06] px-3 text-[0.85rem] transition-colors duration-500 first:border-t-0 ${
+                  className={`relative z-10 flex h-11 items-center gap-3 border-t border-t-white/[0.06] px-3 text-body-sm transition-colors duration-500 first:border-t-0 ${
                     running || done ? "text-white" : "text-white/70"
                   }`}
                 >
-                  <span className="mkt-mono w-5 text-[0.72rem] text-fg-subtle">{r.n}</span>
+                  <span className="mkt-mono w-5 text-caption text-fg-subtle">{r.n}</span>
                   <span>{r.label}</span>
-                  {done && <Check className="h-3.5 w-3.5 text-stellar" />}
+                  {done && <Check className="h-3.5 w-3.5 text-accent" />}
                   <span
                     className={`mkt-mono ml-auto tabular-nums transition-colors duration-500 ${
                       done ? "text-white/60" : "text-fg-subtle"
@@ -116,7 +116,7 @@ export default function HeroConsole() {
           </div>
         </div>
         <div className="flex flex-col justify-center p-5">
-          <span className="mkt-mono text-[0.62rem] uppercase tracking-wider text-fg-subtle">
+          <span className="mkt-mono text-caption uppercase tracking-wider text-fg-subtle">
             Recoverable reserve
           </span>
           <div className="mkt-display mt-2 text-4xl font-extrabold text-value tabular-nums">
@@ -124,11 +124,11 @@ export default function HeroConsole() {
           </div>
           <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
             <span
-              className="block h-full rounded-full bg-stellar transition-[width] duration-500 ease-out"
+              className="block h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
               style={{ width: `${pct}%` }}
             />
           </div>
-          <p className="mt-3 text-[0.74rem] text-fg-subtle">
+          <p className="mt-3 text-label leading-normal text-fg-subtle">
             {active} of {ROWS.length} steps · {TOTAL.toFixed(2)} XLM total · 0 servers can move
             funds
           </p>

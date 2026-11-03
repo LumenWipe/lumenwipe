@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Plus } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import type { PlannedStep, StepType } from "@/types/plan";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
 import { groupStepsByType } from "@/lib/plan/group-steps";
@@ -50,7 +50,7 @@ export default function PlanStepAccordion({
               className="flex w-full items-center justify-between gap-4 px-4 py-3.5 text-left transition-colors hover:bg-white/[0.02] focus-visible:-outline-offset-2"
             >
               <span className="flex min-w-0 items-center gap-2.5">
-                <StepTypeIcon type={g.type} className="h-4 w-4 shrink-0 text-stellar/70" />
+                <StepTypeIcon type={g.type} className="h-4 w-4 shrink-0 text-accent/70" />
                 <span className="min-w-0">
                   <span
                     className={`block text-sm font-medium transition-colors ${
@@ -65,9 +65,9 @@ export default function PlanStepAccordion({
                   </span>
                 </span>
               </span>
-              <Plus
-                className={`h-4 w-4 shrink-0 text-stellar transition-transform duration-300 ${
-                  isOpen ? "rotate-45" : ""
+              <ChevronDown
+                className={`h-4 w-4 shrink-0 text-accent transition-transform duration-300 ${
+                  isOpen ? "rotate-180" : ""
                 }`}
               />
             </button>

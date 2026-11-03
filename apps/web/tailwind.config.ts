@@ -42,8 +42,6 @@ const config: Config = {
         focus: token("focus"),
         warning: { DEFAULT: token("warning"), fg: token("warning-fg") },
         accent: { DEFAULT: token("accent"), fg: token("accent-fg") },
-        // Transitional alias of accent; new code uses accent.
-        stellar: token("accent"),
       },
       opacity: { "6": "0.06", "8": "0.08", "12": "0.12" },
       spacing: {

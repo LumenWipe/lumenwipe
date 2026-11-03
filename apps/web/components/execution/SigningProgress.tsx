@@ -3,6 +3,7 @@ import type { TransactionSigner } from "@/lib/stellar/signer";
 import type { AccountSigner } from "@/types/account";
 import HashXPreimageInput from "./HashXPreimageInput";
 import PreAuthTxInput from "./PreAuthTxInput";
+import { Card } from "@/components/ui/card";
 
 function shortAddr(addr: string): string {
   return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
@@ -47,14 +48,14 @@ export default function SigningProgress({
   const blockedByUnsatisfiable = satisfiableWeight < remaining;
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-white/10 bg-white/[0.02] p-4">
+    <Card className="flex flex-col gap-3 p-4">
       <div>
         <p className="text-sm text-white/70">
           This account needs {remaining} more signing weight before it can be submitted (
           {accumulatedWeight} of {requiredWeight} collected).
         </p>
         <div className="mt-2 h-1.5 w-full rounded-full bg-white/10">
-          <div className="h-1.5 rounded-full bg-stellar" style={{ width: `${pct}%` }} />
+          <div className="h-1.5 rounded-full bg-accent" style={{ width: `${pct}%` }} />
         </div>
       </div>
       {satisfiable.length > 0 && (
@@ -103,6 +104,6 @@ export default function SigningProgress({
             : "."}
         </p>
       )}
-    </div>
+    </Card>
   );
 }

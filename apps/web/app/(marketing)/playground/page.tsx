@@ -14,7 +14,7 @@ const btnGold =
 export default function PlaygroundPage() {
   return (
     <section className="mx-auto w-full max-w-2xl px-4 pb-24 pt-24 text-center sm:px-6">
-      <p className="mkt-eyebrow mb-3 text-stellar">Testnet playground</p>
+      <p className="mkt-eyebrow mb-3 text-accent">Testnet playground</p>
       <h1 className="mkt-display text-4xl text-white sm:text-5xl">
         Try the exact same close, risk-free
       </h1>
@@ -35,7 +35,7 @@ export default function PlaygroundPage() {
       <div className="mt-6">
         <Link
           href="/testnet"
-          className="inline-block text-sm text-stellar underline-offset-2 hover:underline"
+          className="inline-block text-sm text-accent underline-offset-2 hover:underline"
         >
           Or close your own testnet account →
         </Link>

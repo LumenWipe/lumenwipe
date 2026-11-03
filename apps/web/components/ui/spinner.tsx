@@ -11,7 +11,7 @@ interface SpinnerProps {
 export function Spinner({ label, className }: SpinnerProps): ReactElement {
   return (
     <>
-      <Loader2 aria-hidden="true" className={cn("h-4 w-4 animate-spin text-stellar", className)} />
+      <Loader2 aria-hidden="true" className={cn("h-4 w-4 animate-spin text-accent", className)} />
       <span className="sr-only">{label}</span>
     </>
   );

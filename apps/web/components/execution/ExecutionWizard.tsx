@@ -7,7 +7,6 @@ import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { useCloseExecution } from "@/hooks/useCloseExecution";
 import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
-import { cn } from "@/lib/utils/cn";
 import SecretKeyInput from "@/components/account-entry/SecretKeyInput";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import PlanSidebar from "./PlanSidebar";
@@ -20,12 +19,18 @@ import { ensureWalletKitInitialized } from "@/lib/wallet-kit/client";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card } from "@/components/ui/card";
+import { Tabs, type TabItem } from "@/components/ui/tabs";
 
 interface ExecutionWizardProps {
   network: Network;
 }
 
 type SignMode = "wallet" | "secret-key";
+
+const SIGN_MODES: readonly TabItem<SignMode>[] = [
+  { value: "wallet", label: "Connect wallet" },
+  { value: "secret-key", label: "Use secret key (advanced)" },
+];
 
 export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const router = useRouter();
@@ -279,36 +284,18 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   // WalletConnectPanel/SecretKeyInput UI as the first, so the two call sites must never
   // drift apart into two implementations of the same picker.
   const renderSignerPicker = () => (
-    <>
-      <div className="flex gap-2 rounded-lg bg-white/[0.03] p-1">
-        <button
-          type="button"
-          onClick={() => {
-            setMode("wallet");
-            // Explicitly re-engaging the wallet tab re-arms the reactive
-            // sync effect above, so an already-connected, matching wallet
-            // is picked back up without requiring another "Connect" click.
-            setWalletDismissed(false);
-          }}
-          className={cn(
-            "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
-            mode === "wallet" ? "bg-white/10 text-white" : "text-fg-muted hover:text-white/80"
-          )}
-        >
-          Connect wallet
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("secret-key")}
-          className={cn(
-            "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
-            mode === "secret-key" ? "bg-white/10 text-white" : "text-fg-muted hover:text-white/80"
-          )}
-        >
-          Use secret key (advanced)
-        </button>
-      </div>
-
+    <Tabs
+      label="How to sign"
+      items={SIGN_MODES}
+      value={mode}
+      onValueChange={(next) => {
+        setMode(next);
+        // Explicitly re-engaging the wallet tab re-arms the reactive
+        // sync effect above, so an already-connected, matching wallet
+        // is picked back up without requiring another "Connect" click.
+        if (next === "wallet") setWalletDismissed(false);
+      }}
+    >
       {mode === "wallet" ? (
         <WalletConnectPanel
           connection={walletConnection}
@@ -316,19 +303,19 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           mismatchWarning={walletMismatchWarning}
         />
       ) : keyEntered ? (
-        <div className="flex items-center justify-between gap-3 bg-success/10 border border-success/20 rounded-lg px-3 py-2.5">
-          <span className="flex items-center gap-2 text-sm text-success">
-            <CheckCircle className="h-4 w-4 shrink-0" />
+        <Callout
+          tone="success"
+          announce={false}
+          icon={<CheckCircle className="h-4 w-4" />}
+          className="items-center py-2"
+        >
+          <div className="flex items-center justify-between gap-3">
             Secret key loaded for this session
-          </span>
-          <button
-            type="button"
-            onClick={forgetKey}
-            className="text-xs text-white/60 hover:text-white underline-offset-2 hover:underline transition-colors"
-          >
-            Forget key
-          </button>
-        </div>
+            <Button type="button" variant="ghost" size="sm" onClick={forgetKey}>
+              Forget key
+            </Button>
+          </div>
+        </Callout>
       ) : (
         <SecretKeyInput
           secretKeyRef={secretKeyRef}
@@ -336,7 +323,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           disabled={running}
         />
       )}
-    </>
+    </Tabs>
   );
 
   return (
@@ -366,14 +353,10 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
             </p>
           </div>
 
-          {/* Trust note */}
-          <div className="flex items-start gap-2.5 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2.5 text-sm text-white/60">
-            <ShieldCheck className="h-4 w-4 shrink-0 mt-0.5 text-stellar" />
-            <span>
-              Every transaction is verified against your own choices - destination, asset decisions,
-              and memo - before it is signed. Anything unexpected is rejected.
-            </span>
-          </div>
+          <Callout tone="info" icon={<ShieldCheck className="h-4 w-4" />}>
+            Every transaction is verified against your own choices - destination, asset decisions,
+            and memo - before it is signed. Anything unexpected is rejected.
+          </Callout>
 
           {/* Irreversible warning */}
           <Callout
@@ -428,13 +411,15 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                   </span>
                 )}
               </Callout>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => setChangingSigner(true)}
-                className="self-start text-xs text-white/60 hover:text-white underline-offset-2 hover:underline transition-colors"
+                className="self-start"
               >
                 Change wallet or key
-              </button>
+              </Button>
               <Button ref={retryRef} onClick={execute} disabled={!signerReady} className="w-full">
                 Retry
               </Button>
@@ -448,10 +433,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           ) : (
             <>
               {multisigNotice && (
-                <div
-                  data-testid="multisig-notice"
-                  className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-4"
-                >
+                <Card data-testid="multisig-notice" className="flex flex-col gap-2 p-4">
                   <p className="text-sm text-white/70">
                     This is a multisig account: completing the close needs a total signing weight of{" "}
                     {multisigNotice.requiredWeight}. Sign with one signer, then the next. A step
@@ -466,7 +448,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                       </li>
                     ))}
                   </ul>
-                </div>
+                </Card>
               )}
               {renderSignerPicker()}
 
@@ -475,7 +457,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                   type="checkbox"
                   checked={confirmed}
                   onChange={(e) => setConfirmed(e.target.checked)}
-                  className="mt-0.5 accent-stellar"
+                  className="mt-0.5 accent-accent"
                 />
                 <span className="text-sm text-white/60">
                   I understand this permanently closes the account and sends its balance to the

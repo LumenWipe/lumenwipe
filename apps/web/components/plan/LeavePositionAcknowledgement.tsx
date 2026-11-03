@@ -39,7 +39,7 @@ export default function LeavePositionAcknowledgement({
             type="checkbox"
             checked={leftBehind}
             onChange={(e) => onLeftBehindChange(e.target.checked)}
-            className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-stellar"
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-accent"
           />
           {position.note}
         </label>

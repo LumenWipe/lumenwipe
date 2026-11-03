@@ -48,10 +48,10 @@ export default function DistributionStrip({ feed }: { feed: FeedData | null }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-white/8 bg-white/[0.02]">
       <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
-        <span className="mkt-mono text-[0.68rem] uppercase tracking-wider text-fg-muted">
+        <span className="mkt-mono text-caption uppercase tracking-wider text-fg-muted">
           XLM distribution · each dot is one close
         </span>
-        <span className="mkt-mono text-[0.62rem] text-fg-subtle">log scale · hover to verify</span>
+        <span className="mkt-mono text-caption text-fg-subtle">log scale · hover to verify</span>
       </div>
 
       <div className="relative">
@@ -187,7 +187,7 @@ export default function DistributionStrip({ feed }: { feed: FeedData | null }) {
             }}
           >
             <div className="flex flex-col gap-1 rounded-xl border border-white/15 bg-surface/95 px-3 py-2 shadow-xl backdrop-blur">
-              <span className="mkt-mono text-[0.75rem] text-white">
+              <span className="mkt-mono text-label text-white">
                 {hovered.xlm.toLocaleString("en-US", {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
@@ -198,7 +198,7 @@ export default function DistributionStrip({ feed }: { feed: FeedData | null }) {
                 href={`${SE_EXPLORER_BASE[hovered.record.network]}/tx/${hovered.record.txHash}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="pointer-events-auto mkt-mono text-[0.65rem] text-stellar hover:underline"
+                className="pointer-events-auto mkt-mono text-caption text-accent hover:underline"
               >
                 {hovered.record.txHash.slice(0, 12)}… ↗
               </a>

@@ -14,7 +14,7 @@ export default function FaqPage() {
     <section className="mx-auto max-w-3xl px-5 py-20 lg:px-8 lg:py-24">
       <div className="text-center">
         <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
-          <span className="h-px w-5 bg-stellar/60" />
+          <span className="h-px w-5 bg-accent/60" />
           FAQ
         </span>
         <h1 className="mkt-display mt-4 text-4xl font-bold text-white sm:text-5xl">

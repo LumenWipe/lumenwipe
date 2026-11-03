@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Plus } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 type Item = { q: string; a: React.ReactNode };
 
@@ -119,15 +119,15 @@ export default function Faq() {
               className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-white/[0.02] focus-visible:-outline-offset-2 sm:px-6 sm:py-5"
             >
               <span
-                className={`text-[0.98rem] font-medium transition-colors ${
+                className={`text-body font-medium transition-colors ${
                   isOpen ? "text-white" : "text-white/80"
                 }`}
               >
                 {item.q}
               </span>
-              <Plus
-                className={`h-4 w-4 shrink-0 text-stellar transition-transform duration-300 ${
-                  isOpen ? "rotate-45" : ""
+              <ChevronDown
+                className={`h-4 w-4 shrink-0 text-accent transition-transform duration-300 ${
+                  isOpen ? "rotate-180" : ""
                 }`}
               />
             </button>

@@ -36,8 +36,8 @@ export default function Logo({ className = "h-7 w-auto", showWord = true }: Logo
         />
       </svg>
       {showWord && (
-        <span className="mkt-display text-[1.05rem] font-bold tracking-tight text-white">
-          Lumen<span className="text-stellar">Wipe</span>
+        <span className="mkt-display text-body font-bold tracking-tight text-white">
+          Lumen<span className="text-accent">Wipe</span>
         </span>
       )}
     </span>

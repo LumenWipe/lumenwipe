@@ -41,7 +41,7 @@ export default function BlockersPanel({ blockers, blocking }: BlockersPanelProps
                   href={b.helpUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="ml-1 inline-flex items-center gap-0.5 text-stellar hover:underline"
+                  className="ml-1 inline-flex items-center gap-0.5 text-accent hover:underline"
                 >
                   Learn more <ExternalLink className="h-3 w-3" />
                 </a>
