@@ -33,6 +33,7 @@ function CloseGate({ network, children }: { network: Network; children: React.Re
 function NetworkSync({ network, children }: { network: Network; children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const query = useSearchParams().toString();
   const setNetwork = useNetworkStore((s) => s.setNetwork);
   const currentNetwork = useNetworkStore((s) => s.network);
   const reset = useDemolishStore((s) => s.reset);
@@ -52,7 +53,10 @@ function NetworkSync({ network, children }: { network: Network; children: React.
       askedFor.current = network;
       requestLeave({
         leave: () => setNetwork(network),
-        stay: () => router.replace(`/${currentNetwork}${pathname.slice(network.length + 1)}`),
+        stay: () =>
+          router.replace(
+            `/${currentNetwork}${pathname.slice(network.length + 1)}${query ? `?${query}` : ""}`
+          ),
       });
       return;
     }
@@ -63,6 +67,7 @@ function NetworkSync({ network, children }: { network: Network; children: React.
     network,
     currentNetwork,
     pathname,
+    query,
     rule.leave,
     requestLeave,
     router,
@@ -99,11 +104,11 @@ export default function NetworkLayout({
           <div className="relative z-10 flex min-h-screen flex-col">
             <NavBar network={network} />
             <main className={showStats ? "flex-1 pb-16 xl:pb-0" : "flex-1"}>
-              <NetworkSync network={network}>
-                <Suspense fallback={null}>
+              <Suspense fallback={null}>
+                <NetworkSync network={network}>
                   <CloseGate network={network}>{children}</CloseGate>
-                </Suspense>
-              </NetworkSync>
+                </NetworkSync>
+              </Suspense>
             </main>
           </div>
         </LeaveGuardProvider>

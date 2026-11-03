@@ -72,7 +72,11 @@ function stubFeeBumpSponsor(impl: (...args: unknown[]) => Promise<unknown>): voi
 // reliably. Without a per-test override, fetching transactions rejects with a benign error, so a
 // test that only exercises the signer guard never reaches a real fetch().
 beforeEach(() => {
-  useDemolishStore.setState({ unconfirmedSubmission: null, sessionId: "session" });
+  useDemolishStore.setState({
+    unconfirmedSubmission: null,
+    sessionId: "session",
+    signingRun: false,
+  });
   spyOn(sessionStore, "saveUnconfirmed").mockImplementation(async () => true);
   spyOn(sessionStore, "recordConfirmed").mockImplementation(async () => true);
   spyOn(sessionStore, "loadSession").mockImplementation(async () => ({ id: "session" }) as never);
@@ -1932,6 +1936,80 @@ test("useCloseExecution › leaving from the confirm while a round is fetched si
 
   expect(signer.signs()).toBe(0);
   expect(sent).toBe(0);
+});
+
+test("useCloseExecution › a page remounted during a live run cannot start a second one", async () => {
+  const { sourceKeypair, mergeXdr } = mergeSetup();
+  useDemolishStore.setState({ phase: "STEP_EXECUTING", sessionId: "session" });
+  let release!: () => void;
+  const fetched = new Promise<void>((resolve) => (release = resolve));
+  let fetches = 0;
+  stubFetchCloseTransactions(async () => {
+    fetches++;
+    await fetched;
+    return {
+      planHash: "h",
+      status: "ready",
+      transactions: [{ id: "t", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+      remaining: { steps: 0, requiresAnotherCall: false },
+      sourceAccount: {
+        signers: [{ key: sourceKeypair.publicKey(), weight: 1, type: "ed25519_public_key" }],
+        thresholds: { low: 0, med: 1, high: 1 },
+      },
+    };
+  });
+  let sent = 0;
+  stubSubmitViaApi(async () => {
+    sent++;
+    return {};
+  });
+  const first = renderHook(() => useCloseExecution());
+  let running!: Promise<void>;
+  await act(async () => {
+    running = first.result.current.run(realSigner(sourceKeypair));
+    await until(() => fetches === 1);
+  });
+
+  const remounted = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await remounted.result.current.run(realSigner(sourceKeypair));
+  });
+  expect(fetches).toBe(1);
+  expect(useDemolishStore.getState().signingRun).toBe(true);
+
+  await act(async () => {
+    release();
+    await running;
+  });
+  expect(sent).toBe(1);
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+  expect(useDemolishStore.getState().signingRun).toBe(false);
+});
+
+test("useCloseExecution › leaving during the saved-hash read leaves no run marked live", async () => {
+  const { sourceKeypair } = mergeSetup();
+  useDemolishStore.setState({ phase: "STEP_EXECUTING", sessionId: "session" });
+  let release!: () => void;
+  const read = new Promise<null>((resolve) => (release = () => resolve(null)));
+  let reading = false;
+  spyOn(recovery, "findUnresolved").mockImplementation(async () => {
+    reading = true;
+    return read;
+  });
+  const { result } = renderHook(() => useCloseExecution());
+  let running!: Promise<void>;
+  await act(async () => {
+    running = result.current.run(realSigner(sourceKeypair));
+    await until(() => reading);
+  });
+
+  await leaveFromDialog();
+  await act(async () => {
+    release();
+    await running;
+  });
+
+  expect(useDemolishStore.getState().signingRun).toBe(false);
 });
 
 test("useCloseExecution › a wallet prompt approved after leaving sends nothing, even with the same account loaded again", async () => {

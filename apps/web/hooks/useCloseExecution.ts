@@ -191,6 +191,8 @@ export function useCloseExecution() {
 
   const run = useCallback(
     async (signer: TransactionSigner): Promise<void> => {
+      // One run per close: a page remounted mid-run has lost its own record of the first.
+      if (useDemolishStore.getState().signingRun) return;
       if (!sourceAddress || !destinationAddress) {
         // Both guards below run before the try/catch that normally clears this pending
         // state on an unrelated failure - without clearing it here too, a paused
@@ -258,6 +260,8 @@ export function useCloseExecution() {
         })
         .filter((asset): asset is string => asset !== null);
 
+      // Set with the check above, before any await, so a leave during the reads below clears it.
+      useDemolishStore.getState().setSigningRun(true);
       setPhase("STEP_EXECUTING");
       setSignatureStatus(null);
       setRetrySafe(true);
@@ -270,7 +274,6 @@ export function useCloseExecution() {
       if (recorded?.unconfirmed && !useDemolishStore.getState().unconfirmedSubmission) {
         useDemolishStore.getState().setUnconfirmedSubmission(recorded.unconfirmed);
       }
-      useDemolishStore.getState().setSigningRun(true);
       try {
         // Found here, before a signature or a sponsorship is spent on a send that could not start.
         const recordId = await ensureCloseSession(owner).catch(() => {

@@ -159,6 +159,23 @@ describe("in-app exits mid-close", () => {
     expect(calls.at(-1)).toBe("push /");
   });
 
+  test("a click that opens a new tab or window does not ask", async () => {
+    seedClose({ signingRun: false });
+    await mountExecute();
+    const logo = screen.getByRole("link", { name: "LumenWipe home" });
+    for (const modifier of [
+      { metaKey: true },
+      { ctrlKey: true },
+      { shiftKey: true },
+      { altKey: true },
+      { button: 1 },
+    ]) {
+      fireEvent.click(logo, modifier);
+      expect(screen.queryByRole("dialog")).toBeNull();
+    }
+    expect(useDemolishStore.getState().sourceAddress).toBe(SOURCE);
+  });
+
   test("before the review confirm the logo stays a plain link", async () => {
     seedClose({ phase: "PREFLIGHT_COMPLETE", sessionId: null, signingRun: false });
     await act(async () => {
@@ -316,6 +333,16 @@ describe("a network change reached mid-close", () => {
     expect(calls).toEqual(["replace /testnet/execute"]);
     expect(useNetworkStore.getState().network).toBe("testnet");
     expect(useDemolishStore.getState().sourceAddress).toBe(SOURCE);
+  });
+
+  test("staying keeps the query string of the page it goes back to", async () => {
+    seedClose({ signingRun: false });
+    spyOn(navigation, "useSearchParams").mockReturnValue(
+      new URLSearchParams({ source: SOURCE }) as never
+    );
+    await act(async () => renderLayout("mainnet", "/mainnet/analyze"));
+    fireEvent.click(screen.getByRole("button", { name: "Stay" }));
+    expect(calls).toEqual([`replace /testnet/analyze?source=${SOURCE}`]);
   });
 
   test("leaving clears the close and moves to the other network", async () => {

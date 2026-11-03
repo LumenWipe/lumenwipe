@@ -315,6 +315,19 @@ test("execution-wizard › progress that could not be saved shows a notice besid
   useDemolishStore.setState({ progressNotSaved: false });
 });
 
+test("execution-wizard › a run this mount did not start shows as busy, with no way to start another", async () => {
+  useDemolishStore.setState({ signingRun: true });
+  runImpl = async () => {};
+  try {
+    render(<ExecutionWizard network="testnet" />);
+
+    expect(screen.getAllByText("Working…").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("tablist")).toBeNull();
+  } finally {
+    useDemolishStore.setState({ signingRun: false });
+  }
+});
+
 // #102: pre-auth-tx signer support.
 test("execution-wizard › a retry that is not safe drops the note under Retry", async () => {
   currentRetrySafe = false;

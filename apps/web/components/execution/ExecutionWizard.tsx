@@ -51,6 +51,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const accountState = useDemolishStore((s) => s.accountState);
   const unconfirmedSubmission = useDemolishStore((s) => s.unconfirmedSubmission);
   const progressNotSaved = useDemolishStore((s) => s.progressNotSaved);
+  const signingRun = useDemolishStore((s) => s.signingRun);
 
   const {
     run,
@@ -214,8 +215,10 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     [execute]
   );
 
-  const busy = running || progressStatus !== null;
-  const halted = running ? null : journey.halted;
+  // A run this mount did not start, as after a remount mid-run, still holds the close.
+  const inRun = running || signingRun;
+  const busy = inRun || progressStatus !== null;
+  const halted = inRun ? null : journey.halted;
   const pendingMoreSignatures = halted === "failed" && signatureStatus !== null;
   const failed = halted === "failed" && !changingSigner && !pendingMoreSignatures;
   const unconfirmed = journey.halted === "unconfirmed" && unconfirmedSubmission !== null;

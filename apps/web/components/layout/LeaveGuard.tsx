@@ -147,6 +147,9 @@ export function LeaveLink({
       onClick={(event) => {
         onClick?.(event);
         if (rule.leave === "free" || event.defaultPrevented) return;
+        // A new tab or window leaves this one where it is.
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        if (event.button !== 0) return;
         event.preventDefault();
         requestLeaveTo(href);
       }}
