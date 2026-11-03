@@ -6,7 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { goBackToAnalyze } from "@/lib/plan/confirm-plan";
-import { routeForPhase } from "@/lib/plan/route-for-phase";
+import { routeForPhase } from "@/lib/journey/route-for-phase";
 import ReviewView from "@/components/review/ReviewView";
 import { Button } from "@/components/ui/button";
 import StatusMessage from "@/components/a11y/StatusMessage";

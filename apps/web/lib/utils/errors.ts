@@ -19,13 +19,6 @@ export class AccountNotFoundError extends Error {
   }
 }
 
-export class TxTimeoutError extends Error {
-  constructor() {
-    super("Transaction confirmation timed out. It is safe to retry.");
-    this.name = "TxTimeoutError";
-  }
-}
-
 export class NoConversionPathError extends Error {
   constructor(asset: string) {
     super(

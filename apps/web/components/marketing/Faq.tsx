@@ -81,9 +81,13 @@ const ITEMS: Item[] = [
     q: "What if I close the tab in the middle?",
     a: (
       <>
-        Nothing is lost. The close is an explicit state machine persisted in IndexedDB (never your
-        keys). When you return, the session is reconciled against on-chain state and any step
-        already completed is skipped, so nothing double-executes.
+        Anything already confirmed on the network stays done. Once you confirm the plan, this
+        browser keeps a small record of the close: the account, the destination, the memo and the
+        hash of any transaction still waiting, never your keys. When you come back in the same
+        browser, the home page offers to resume: LumenWipe re-reads the account and builds a fresh
+        plan for what is left, which you review and sign again, so confirmed work is not repeated.
+        If a transaction was still waiting for the network, you check its outcome first. Your
+        per-asset choices are not kept, so you make them again.
       </>
     ),
   },

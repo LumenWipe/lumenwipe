@@ -10,7 +10,8 @@ import type { AssetDisposition } from "@/types/plan";
 import { useDemolishStore } from "@/store/demolish";
 import { cleanupSession } from "@/lib/session/recovery";
 import { saveHistory } from "@/lib/session/history";
-import { confirmedStepCount, receiptState } from "@/lib/close-state";
+import { allows } from "@/lib/journey/claims";
+import { useJourneyState } from "@/lib/journey/use-journey-state";
 import { formatXlm } from "@/lib/utils/amounts";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
 import { buildTxLedger, labelForTx } from "@/lib/utils/txLedger";
@@ -70,7 +71,8 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
   const svExplorerBase = SV_EXPLORER_BASE[network];
 
   const confirmedSteps = executionPlan.filter((s) => s.status === "confirmed" && s.txHash);
-  const closed = receiptState(executionPlan) === "closed";
+  const journey = useJourneyState();
+  const closed = allows(journey, "account-closed");
 
   // A sponsored round's `actualFeeLumens` is exactly "0" - a dedicated sponsor account paid the
   // network fee, not this one. Any step not yet confirmed (this page can still be reached mid-
@@ -382,8 +384,8 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
             </Button>
           }
         >
-          {confirmedStepCount(executionPlan)} of {executionPlan.length} transactions confirmed. The
-          account still exists. Resume the close to finish it.
+          {journey.confirmed} of {journey.total} transactions confirmed. The account still exists.
+          Resume the close to finish it.
         </Callout>
       )}
 

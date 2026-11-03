@@ -3,11 +3,17 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Keypair } from "@stellar/stellar-sdk";
 import * as navigation from "next/navigation";
 import ReviewView from "@/components/review/ReviewView";
+import * as closeRecord from "@/lib/session/close-record";
 import * as recovery from "@/lib/session/recovery";
 import * as sessionStore from "@/lib/session/store";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
-import { CONFIRM_HELD, CONFIRM_UNCHECKED } from "@/lib/utils/user-error";
+import {
+  CONFIRM_HELD,
+  CONFIRM_NOT_SAVED,
+  CONFIRM_SAVE_FAILED,
+  CONFIRM_UNCHECKED,
+} from "@/lib/utils/user-error";
 import type { PlannedStep } from "@/types/plan";
 import type { SessionRecord, UnconfirmedRecord } from "@/types/session";
 
@@ -176,4 +182,27 @@ test("a saved state that cannot be read holds the confirm instead of counting as
   expect(screen.getByRole("alert").textContent).toContain(CONFIRM_UNCHECKED);
   expectNotStarted(rows, [], calls);
   expect(useDemolishStore.getState().sessionId).toBeNull();
+});
+
+test("a confirm the store no longer owns is not saved and does not advance", async () => {
+  const rows = fakeDb([]);
+  const calls = stubRouter();
+  spyOn(closeRecord, "saveCloseSession").mockResolvedValue(null);
+
+  await confirm();
+
+  expect(screen.getByRole("alert").textContent).toContain(CONFIRM_NOT_SAVED);
+  expectNotStarted(rows, [], calls);
+});
+
+test("a save that throws releases the button and does not advance", async () => {
+  const rows = fakeDb([]);
+  const calls = stubRouter();
+  spyOn(closeRecord, "saveCloseSession").mockRejectedValue(new Error("QuotaExceededError"));
+
+  await confirm();
+
+  expect(screen.getByRole("alert").textContent).toContain(CONFIRM_SAVE_FAILED);
+  expect(screen.queryByText("Preparing...")).toBeNull();
+  expectNotStarted(rows, [], calls);
 });

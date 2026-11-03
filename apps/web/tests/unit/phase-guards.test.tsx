@@ -4,7 +4,7 @@ import { Keypair } from "@stellar/stellar-sdk";
 import * as navigation from "next/navigation";
 import ExecutePage from "@/app/[network]/execute/page";
 import ReviewPage from "@/app/[network]/review/page";
-import { routeForPhase, type CloseRoute } from "@/lib/plan/route-for-phase";
+import { routeForPhase, type CloseRoute } from "@/lib/journey/route-for-phase";
 import * as sessionStore from "@/lib/session/store";
 import { useDemolishStore } from "@/store/demolish";
 import type { DemolishPhase, PlannedStep } from "@/types/plan";

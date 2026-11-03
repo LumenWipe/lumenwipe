@@ -291,9 +291,10 @@ export default function HowItWorksPage() {
               Close the tab. Pick up where you left off.
             </h2>
             <p className="mt-4 leading-relaxed text-white/85">
-              The entire close is an explicit state machine, persisted in IndexedDB, never your
-              keys. On return, the session is reconciled against on-chain state, and any completed
-              step is skipped, so nothing double-executes.
+              The close moves through these phases in your browser. Once you confirm the plan, the
+              browser keeps a small record of the close, never your keys. On return, LumenWipe
+              re-reads the account and builds a fresh plan for what is left, which you review and
+              sign again, so confirmed work is not repeated.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-2">
               {MACHINE.map((s, i) => (
