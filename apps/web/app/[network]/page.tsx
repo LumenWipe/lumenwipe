@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ShieldCheck, Zap, GitMerge, AlertOctagon, RotateCcw, ShieldOff, X } from "lucide-react";
@@ -9,6 +9,7 @@ import AccountEntryForm from "@/components/account-entry/AccountEntryForm";
 import { useSessionRecovery } from "@/hooks/useSessionRecovery";
 import { deleteSettledSession } from "@/lib/session/store";
 import { settleRecorded } from "@/lib/session/settle-unconfirmed";
+import { interruptedCloseNotice } from "@/lib/session/recorded-progress";
 import {
   CHECK_FAILED_NOTICE,
   CLOSE_FINISHED_NOTICE,
@@ -36,6 +37,13 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
   const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [settled, setSettled] = useState(false);
+  // Read once and cleared, so each is shown on the visit it was raised for and not again.
+  const [interrupted] = useState(() => useDemolishStore.getState().executeInterrupted);
+  const [reloadNotice] = useState(() => useDemolishStore.getState().reloadNotice);
+  useEffect(() => {
+    useDemolishStore.getState().setExecuteInterrupted(false);
+    useDemolishStore.getState().setReloadNotice(null);
+  }, []);
   const unconfirmed = session && !settled ? session.unconfirmed : undefined;
 
   async function handleCheck() {
@@ -83,6 +91,16 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      {reloadNotice && (
+        <p role="status" className="mb-6 text-sm text-white/70">
+          {reloadNotice}
+        </p>
+      )}
+      {checked && session && interrupted && (
+        <p role="status" className="mb-2 text-sm text-white/70">
+          {interruptedCloseNotice(session)}
+        </p>
+      )}
       {/* Session recovery banner */}
       {recoveryNotice && (
         <p role="status" className="mb-6 text-sm text-white/70">

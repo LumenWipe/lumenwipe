@@ -206,6 +206,8 @@ describe("leaving while a transaction may be in flight", () => {
       mediatorRequired: false,
       completedSteps: [],
       currentStepIndex: 0,
+      stepCount: null,
+      stepBase: 0,
       status: "in_progress",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

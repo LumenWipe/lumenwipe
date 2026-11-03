@@ -31,8 +31,10 @@ import { VerificationError } from "@/lib/stellar/verify";
 import {
   ApiRequestError,
   closeFailureMessage,
+  reviewResetNotice,
   type CloseFailureStage,
 } from "@/lib/utils/user-error";
+import { NOTHING_SAVED } from "@/lib/session/decision-snapshot";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { PlannedStep, StepStatus, StepType } from "@/types/plan";
@@ -46,6 +48,12 @@ const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
 const HASH = "c".repeat(64);
 const SUBMISSION = { hash: HASH, covers: ["MERGE"], validUntil: 5 };
+const CONFIRMED_TX = {
+  index: 0,
+  type: "CANCEL_OFFERS",
+  txHash: "d".repeat(64),
+  confirmedAt: "2026-10-01T00:05:00.000Z",
+};
 
 function step(index: number, type: StepType, status: StepStatus): PlannedStep {
   return {
@@ -257,7 +265,11 @@ function receipt(state: "partial" | "complete", required: ClaimKey[]): Cell {
   };
 }
 
-function resumeBanner(record: Partial<SessionRecord>, required: ClaimKey[]): Cell {
+function resumeBanner(
+  record: Partial<SessionRecord>,
+  required: ClaimKey[],
+  store: Store = {}
+): Cell {
   const session = {
     id: "s",
     network: "testnet",
@@ -268,6 +280,8 @@ function resumeBanner(record: Partial<SessionRecord>, required: ClaimKey[]): Cel
     mediatorRequired: false,
     completedSteps: [],
     currentStepIndex: 0,
+    stepCount: 3,
+    stepBase: 0,
     status: "in_progress",
     createdAt: "2026-10-01T00:00:00.000Z",
     updatedAt: "2026-10-01T00:00:00.000Z",
@@ -278,6 +292,7 @@ function resumeBanner(record: Partial<SessionRecord>, required: ClaimKey[]): Cel
     required,
     show: async () => {
       useDemolishStore.getState().reset();
+      useDemolishStore.setState(store);
       spyOn(sessionRecovery, "useSessionRecovery").mockImplementation(() => ({
         session,
         checked: true,
@@ -335,6 +350,30 @@ function leaveControl(store: Store): Cell {
         </LeaveGuardProvider>
       );
       return storeJourney();
+    },
+  };
+}
+
+/** The start page with no saved close, after a reload of /review found nothing to restore. */
+function reloadReset(): Cell {
+  return {
+    state: "untouched",
+    required: [],
+    show: async () => {
+      useDemolishStore.getState().reset();
+      useDemolishStore.setState({ reloadNotice: reviewResetNotice(NOTHING_SAVED) });
+      spyOn(sessionRecovery, "useSessionRecovery").mockImplementation(() => ({
+        session: null,
+        checked: true,
+        clearSession: () => {},
+        reload: async () => {},
+      }));
+      await show(
+        <Suspense fallback={null}>
+          <HomePage params={Promise.resolve({ network: "testnet" })} />
+        </Suspense>
+      );
+      return deriveJourneyState({ phase: "IDLE", plan: [], inFlight: false, saved: false });
     },
   };
 }
@@ -438,6 +477,25 @@ const MATRIX: Surface[] = [
       ]),
     ],
   },
+  {
+    name: "interrupted execute notice",
+    cells: [
+      resumeBanner({}, ["may-be-sent", "recorded-progress"], { executeInterrupted: true }),
+      resumeBanner({ currentStepIndex: 2 }, ["recorded-progress"], { executeInterrupted: true }),
+      resumeBanner({ stepCount: null, completedSteps: [CONFIRMED_TX] }, ["recorded-progress"], {
+        executeInterrupted: true,
+      }),
+      resumeBanner(
+        { unconfirmed: { hash: HASH, covers: ["MERGE"], validUntil: 5 } },
+        ["may-be-sent", "recorded-progress"],
+        { executeInterrupted: true }
+      ),
+    ],
+  },
+  {
+    name: "reload reset notice",
+    cells: [reloadReset()],
+  },
 ];
 
 beforeEach(() => {
@@ -536,6 +594,10 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
   },
   "hooks/useCloseExecution.ts": {
     "may-be-sent": { count: 1, shownBy: "execute failure panel" },
+  },
+  "lib/session/recorded-progress.ts": {
+    "may-be-sent": { count: 1, shownBy: "interrupted execute notice" },
+    "recorded-progress": { count: 3, shownBy: "interrupted execute notice" },
   },
   "lib/stellar/signing-guards.ts": {
     "this-tx-not-sent": { count: 1, shownBy: "execute failure panel" },

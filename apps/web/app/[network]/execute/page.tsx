@@ -28,6 +28,8 @@ export default function ExecutePage({ params }: { params: Promise<{ network: Net
       return;
     }
     if (!sourceAddress || executionPlan.length === 0) {
+      // No account at all is a store a reload emptied: the start page explains it from the record.
+      if (!sourceAddress) useDemolishStore.getState().setExecuteInterrupted(true);
       router.replace(`/${network}`);
       return;
     }

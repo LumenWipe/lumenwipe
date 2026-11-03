@@ -152,6 +152,7 @@ describe("allowance table", () => {
       "may-be-sent",
       "safe-to-retry",
       "can-resume",
+      "recorded-progress",
     ],
     partial: [
       "each-tx-checked",
@@ -161,9 +162,16 @@ describe("allowance table", () => {
       "safe-to-retry",
       "still-open",
       "can-resume",
+      "recorded-progress",
     ],
     complete: ["each-tx-checked", "account-closed", "no-new-sent", "may-be-sent"],
-    unknown: ["each-tx-checked", "confirm-not-started", "may-be-sent", "can-resume"],
+    unknown: [
+      "each-tx-checked",
+      "confirm-not-started",
+      "may-be-sent",
+      "can-resume",
+      "recorded-progress",
+    ],
   };
 
   test.each(Object.keys(EXACT) as JourneyStateName[])("%s permits exactly its claims", (state) => {

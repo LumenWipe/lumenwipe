@@ -199,6 +199,24 @@ export const STILL_UNCONFIRMED_NOTICE =
 export const CLOSE_FINISHED_NOTICE =
   "This close is finished: the merge you signed is confirmed on the network.";
 
+/** Shown on /analyze after a reload of /review handed this tab's saved choices back to it. */
+export const REVIEW_RESTORED =
+  "The page was reloaded, so the plan is being built again from your account as it is now. Your choices for this account were kept in this tab: check them, then continue to review.";
+export const CHOICES_RESTORED =
+  "Your earlier choices for this account were kept in this tab. Check them before you continue.";
+
+export function reviewResetNotice(reason: string): string {
+  return `Your review was reset because the page was reloaded: ${reason}. Make your choices again, then continue to review.`;
+}
+
+export function choicesResetNotice(reason: string): string {
+  return `Your choices were reset because ${reason}. Make them again before you continue.`;
+}
+
+export function changedAssetsNotice(assets: readonly string[]): string {
+  return `These assets changed since you chose what to do with them, so they need an answer again: ${assets.join(", ")}.`;
+}
+
 export const CLOSE_INTERRUPTED =
   "This close was interrupted because another account was started in this tab, so nothing more was sent for it.";
 export const HASH_NOT_KEPT =

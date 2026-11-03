@@ -11,6 +11,7 @@ import ReviewPage from "@/app/[network]/review/page";
 import * as sessionRecovery from "@/hooks/useSessionRecovery";
 import * as analyzeClient from "@/lib/api/analyze-client";
 import { useDemolishStore } from "@/store/demolish";
+import { useNetworkStore } from "@/store/network";
 import type { AccountState } from "@/types/account";
 import type { PlannedStep } from "@/types/plan";
 import type { SessionRecord } from "@/types/session";
@@ -94,6 +95,7 @@ function expectIconControl(control: HTMLElement): void {
 
 beforeEach(() => {
   useDemolishStore.getState().reset();
+  useNetworkStore.setState({ network: "testnet" });
   stubNavigation();
   spyOn(globalThis, "fetch").mockImplementation(
     (() => new Promise<Response>(() => {})) as unknown as typeof fetch

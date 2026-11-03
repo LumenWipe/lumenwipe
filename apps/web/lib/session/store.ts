@@ -36,13 +36,16 @@ export function normaliseSession(raw: SessionRecord): SessionRecord {
     mediatorRequired: legacy.mediatorRequired ?? false,
     completedSteps: legacy.completedSteps ?? [],
     currentStepIndex: legacy.currentStepIndex ?? 0,
+    stepCount: legacy.stepCount ?? null,
+    stepBase: legacy.stepBase ?? 0,
     status: legacy.status ?? "in_progress",
     createdAt: legacy.createdAt ?? legacy.updatedAt ?? new Date(0).toISOString(),
     updatedAt: legacy.updatedAt ?? legacy.createdAt ?? new Date(0).toISOString(),
   };
 }
 
-/** Saves a new session, or updates only the terms of an existing one: its destination and memo.
+/** Saves a new session, or updates only the terms of an existing one: its destination, memo and
+ *  the plan just confirmed, whose `stepCount` steps are counted after those already confirmed.
  *  Progress, creation time, status and an unconfirmed hash are never overwritten, and they are
  *  read in the same transaction, so a hash another tab saved a moment ago is kept. */
 export async function saveSession(record: SessionRecord): Promise<void> {
@@ -50,18 +53,21 @@ export async function saveSession(record: SessionRecord): Promise<void> {
   const tx = db.transaction(STORE_NAME, "readwrite");
   const prior = (await tx.store.get(record.id)) as SessionRecord | undefined;
   const updatedAt = new Date().toISOString();
-  const { destinationAddress, memo, memoType, mediatorRequired } = record;
+  const { destinationAddress, memo, memoType, mediatorRequired, stepCount } = record;
+  const kept = prior ? normaliseSession(prior) : null;
   await tx.store.put(
-    prior
+    kept
       ? {
-          ...normaliseSession(prior),
+          ...kept,
           destinationAddress,
           memo,
           memoType,
           mediatorRequired,
+          stepBase: kept.currentStepIndex,
+          stepCount: stepCount === null ? kept.stepCount : kept.currentStepIndex + stepCount,
           updatedAt,
         }
-      : { ...record, version: SESSION_RECORD_VERSION, updatedAt }
+      : { ...record, version: SESSION_RECORD_VERSION, stepBase: 0, updatedAt }
   );
   await tx.done;
 }
@@ -147,7 +153,10 @@ export async function recordConfirmed(id: string, confirmation: Confirmation): P
             confirmedAt: now,
           },
         ],
-    currentStepIndex: confirmation.currentStepIndex ?? record.currentStepIndex,
+    currentStepIndex:
+      confirmation.currentStepIndex === null
+        ? record.currentStepIndex
+        : record.stepBase + confirmation.currentStepIndex,
     status: confirmation.closesAccount ? "completed" : record.status,
     updatedAt: now,
   });

@@ -36,6 +36,8 @@ function record(over: Partial<SessionRecord> = {}): SessionRecord {
     mediatorRequired: false,
     completedSteps: [],
     currentStepIndex: 0,
+    stepCount: 3,
+    stepBase: 0,
     status: "in_progress",
     createdAt: NOW.toISOString(),
     updatedAt: NOW.toISOString(),
@@ -151,6 +153,8 @@ test("the written record holds no envelope, signature or key", async () => {
       "network",
       "sourceAddress",
       "status",
+      "stepBase",
+      "stepCount",
       "unconfirmed",
       "updatedAt",
       "version",
@@ -183,11 +187,64 @@ test("a version 2 database written by an older build opens and reads with defaul
     mediatorRequired: false,
     completedSteps: [],
     currentStepIndex: 0,
+    stepCount: null,
+    stepBase: 0,
     status: "in_progress",
     createdAt: NOW.toISOString(),
     updatedAt: NOW.toISOString(),
   });
   expect((await findResumableSession("testnet"))?.id).toBe("legacy");
+});
+
+test("a version 1 record reads with no step count, so its progress is shown as transactions", async () => {
+  const {
+    stepCount: _count,
+    stepBase: _base,
+    ...v1
+  } = record({
+    version: 1,
+    currentStepIndex: 2,
+    completedSteps: [
+      { index: 0, type: "CANCEL_OFFERS", txHash: "a".repeat(64), confirmedAt: NOW.toISOString() },
+    ],
+  });
+  await seedLegacyDatabase([v1]);
+  const saved = await loadSession("s");
+  expect(saved?.version).toBe(SESSION_RECORD_VERSION);
+  expect(saved?.stepCount).toBeNull();
+  expect(saved?.stepBase).toBe(0);
+  expect(saved?.currentStepIndex).toBe(2);
+});
+
+test("a confirmation counts its plan's steps after those confirmed before that plan", async () => {
+  await saveSession(record());
+  await recordConfirmed("s", confirmationOf(["REMOVE_TRUSTLINES"], "a".repeat(64), 1));
+  expect((await loadSession("s"))?.currentStepIndex).toBe(1);
+
+  await saveSession(record({ stepCount: 3 }));
+  await recordConfirmed("s", confirmationOf(["CANCEL_OFFERS"], "b".repeat(64), 2));
+  expect((await loadSession("s"))?.currentStepIndex).toBe(3);
+});
+
+test("the step count stays the whole close across a resume and a second review confirm", async () => {
+  // First review: a plan of four steps, two of them confirmed before the page was lost.
+  await saveSession(record({ stepCount: 4 }));
+  await recordConfirmed("s", confirmationOf(["CANCEL_OFFERS"], "a".repeat(64), 1));
+  await recordConfirmed("s", confirmationOf(["REMOVE_TRUSTLINES"], "b".repeat(64), 2));
+  let saved = await loadSession("s");
+  expect([saved?.currentStepIndex, saved?.stepCount]).toEqual([2, 4]);
+
+  // Resumed: the fresh plan lists only the two steps left, and is confirmed on review again.
+  await saveSession(record({ stepCount: 2 }));
+  saved = await loadSession("s");
+  expect([saved?.stepBase, saved?.currentStepIndex, saved?.stepCount]).toEqual([2, 2, 4]);
+
+  await recordConfirmed("s", confirmationOf(["REMOVE_DATA_ENTRIES"], "c".repeat(64), 1));
+  saved = await loadSession("s");
+  expect([saved?.currentStepIndex, saved?.stepCount]).toEqual([3, 4]);
+  await recordConfirmed("s", confirmationOf(["MERGE"], "d".repeat(64), 2));
+  saved = await loadSession("s");
+  expect([saved?.currentStepIndex, saved?.stepCount, saved?.status]).toEqual([4, 4, "completed"]);
 });
 
 test("a record untouched for more than seven days is not offered and is deleted", async () => {

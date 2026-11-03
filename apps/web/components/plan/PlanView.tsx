@@ -57,6 +57,7 @@ import {
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { assetsResolved } from "@/lib/plan/asset-resolution";
 import { destinationRefusal } from "@/lib/plan/destination-check";
+import { keepDestinationDraft } from "@/lib/session/restore-decisions";
 import { isStateChanged } from "@/lib/utils/user-error";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
@@ -116,6 +117,10 @@ export default function PlanView({
   const [memo, setMemo] = useState(storedMemo ?? "");
   const [proceeding, setProceeding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    keepDestinationDraft(network, account.address, destination, memo);
+  }, [network, account.address, destination, memo]);
 
   // Auto-set convertible assets to "convert" so they feed the builder without user action -
   // but only when the user has not answered yet.

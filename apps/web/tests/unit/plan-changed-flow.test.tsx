@@ -86,6 +86,8 @@ test("resuming the saved close record re-plans from /analyze, never the discarde
     mediatorRequired: false,
     completedSteps: [],
     currentStepIndex: 0,
+    stepCount: null,
+    stepBase: 0,
     status: "in_progress",
     createdAt: "2026-10-31T00:00:00.000Z",
     updatedAt: "2026-10-31T00:00:00.000Z",
