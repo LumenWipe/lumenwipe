@@ -17,6 +17,7 @@ import {
 } from "@/lib/utils/user-error";
 import { useDemolishStore } from "@/store/demolish";
 import { getMemoRequirement } from "@/lib/exchange-registry";
+import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card, CardTitle, cardVariants } from "@/components/ui/card";
 import { cn } from "@/lib/utils/cn";
@@ -115,12 +116,14 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
               </button>
             )}
             {!unconfirmed && (
-              <button
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Dismiss the in-progress close"
                 onClick={handleDismiss}
-                className="text-fg-muted hover:text-fg transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
+                icon={<X className="h-4 w-4" />}
+              />
             )}
           </div>
         </div>

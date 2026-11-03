@@ -33,6 +33,7 @@ import StatusMessage from "@/components/a11y/StatusMessage";
 import { useFocusOnMount } from "@/hooks/useFocusOnMount";
 import { isStateChanged, toUserMessage } from "@/lib/utils/user-error";
 import { hardBlockersOf } from "@/lib/plan/resolvable-blockers";
+import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 
 /** Everything a plan request is answering. A change re-plans; the account is not read again. */
@@ -306,9 +307,11 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
       <div className="flex items-center gap-2 mb-6">
-        <Link href={`/${routeNetwork}`} className="text-fg-muted hover:text-fg transition-colors">
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <Button asChild variant="ghost" size="icon">
+          <Link href={`/${routeNetwork}`} aria-label="Back to account entry">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Button>
         <h1
           ref={headingRef}
           tabIndex={-1}

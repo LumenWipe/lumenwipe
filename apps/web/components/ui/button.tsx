@@ -36,6 +36,7 @@ export const buttonVariants = cva(
       size: {
         sm: "min-h-control px-3 text-xs md:min-h-9",
         md: "min-h-control px-4 text-sm md:min-h-9",
+        icon: "size-6 shrink-0",
       },
     },
     defaultVariants: { variant: "primary", size: "md" },
