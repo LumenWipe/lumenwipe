@@ -395,6 +395,23 @@ test("RevokeAllowanceModal › the tabs write no key to the markup or storage", 
   expect(JSON.stringify({ ...sessionStorage, ...localStorage })).not.toContain(secret);
 });
 
+test("RevokeAllowanceModal › Tab stays inside with the key panel open and confirm disabled", () => {
+  stubWalletKit();
+  renderModal();
+  const secret = screen.getByRole("tab", { name: /secret key/i });
+  fireEvent.click(secret);
+  const input = screen.getByPlaceholderText("S...");
+  const close = screen.getByRole("button", { name: "Close" });
+  expect(confirmButton().disabled).toBe(true);
+
+  input.focus();
+  fireEvent.keyDown(input, { key: "Tab" });
+  expect(document.activeElement).toBe(close);
+
+  fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+  expect(document.activeElement).toBe(input);
+});
+
 function pressEscape(): void {
   fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
 }

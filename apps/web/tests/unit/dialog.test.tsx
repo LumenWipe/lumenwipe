@@ -110,6 +110,33 @@ test("Dialog › Shift+Tab from the first control wraps to the last", () => {
   expect(document.activeElement).toBe(screen.getByRole("button", { name: "Last" }));
 });
 
+function renderWithUntabbableEnds(): void {
+  render(
+    <Dialog>
+      <DialogTitle>Title</DialogTitle>
+      <DialogDescription>Description</DialogDescription>
+      <button tabIndex={-1}>Skipped start</button>
+      <button>First</button>
+      <button>Last</button>
+      <button tabIndex={-1}>Skipped end</button>
+    </Dialog>
+  );
+}
+
+test("Dialog › Tab from the last tabbable control wraps past a tabindex -1 button", () => {
+  renderWithUntabbableEnds();
+  screen.getByRole("button", { name: "Last" }).focus();
+  press("Tab");
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "First" }));
+});
+
+test("Dialog › Shift+Tab from the first tabbable control wraps past a tabindex -1 button", () => {
+  renderWithUntabbableEnds();
+  screen.getByRole("button", { name: "First" }).focus();
+  press("Tab", { shiftKey: true });
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Last" }));
+});
+
 test("Dialog › Tab from the dialog itself enters at either end", () => {
   openHost();
   press("Tab");
