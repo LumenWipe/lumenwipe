@@ -3,9 +3,10 @@
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ShieldCheck, Zap, GitMerge, AlertOctagon, RotateCcw, ShieldOff, X } from "lucide-react";
+import { ShieldCheck, Zap, GitMerge, AlertOctagon, ShieldOff } from "lucide-react";
 import type { Network } from "@/config/networks";
 import AccountEntryForm from "@/components/account-entry/AccountEntryForm";
+import ResumeBanner from "@/components/execution/ResumeBanner";
 import { useSessionRecovery } from "@/hooks/useSessionRecovery";
 import { deleteSettledSession } from "@/lib/session/store";
 import { settleRecorded } from "@/lib/session/settle-unconfirmed";
@@ -18,7 +19,6 @@ import {
 } from "@/lib/utils/user-error";
 import { useDemolishStore } from "@/store/demolish";
 import { getMemoRequirement } from "@/lib/exchange-registry";
-import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card, CardTitle, cardVariants } from "@/components/ui/card";
 import { cn } from "@/lib/utils/cn";
@@ -33,7 +33,7 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
   const { network } = use(params);
   const router = useRouter();
   const { session, checked, clearSession, reload } = useSessionRecovery(network);
-  const { setAddresses, setMediatorRequired, restoreSession } = useDemolishStore();
+  const { setAddresses, setMediatorRequired, restoreSession, setResumedClose } = useDemolishStore();
   const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [settled, setSettled] = useState(false);
@@ -77,6 +77,13 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
     // Reuse the existing ID: subsequent saves overwrite the same record instead
     // of creating a second "in_progress" entry that is never cleaned up.
     restoreSession(session.id);
+    // Only what the analyze and review pages say about the close: no phase and no plan, so the
+    // close goes through a fresh analysis and its review again.
+    setResumedClose({
+      source: session.sourceAddress,
+      startedAt: session.createdAt,
+      completedSteps: session.completedSteps,
+    });
     // Navigate to analyze so a fresh plan is built from current on-chain state.
     // /execute requires an executionPlan in the store, which only exists after the
     // user confirms the plan in the analyze → PlanView step.
@@ -111,40 +118,15 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
         <p className="mb-2 text-sm text-white/70">{UNCONFIRMED_NOTICE}</p>
       )}
       {checked && session && (
-        <div className="flex items-center justify-between gap-3 bg-accent/10 border border-accent/30 rounded-lg px-4 py-3 mb-6 text-sm">
-          <div className="flex items-center gap-2 min-w-0">
-            <RotateCcw className="h-4 w-4 text-accent shrink-0" />
-            <span className="text-fg-muted truncate">
-              In-progress account merge found for{" "}
-              <span className="font-mono text-xs">{session.sourceAddress.slice(0, 8)}…</span>
-            </span>
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            {unconfirmed ? (
-              <button
-                onClick={() => void handleCheck()}
-                disabled={checking}
-                className="text-accent font-medium hover:underline disabled:opacity-50"
-              >
-                Check again
-              </button>
-            ) : (
-              <button onClick={handleResume} className="text-accent font-medium hover:underline">
-                Resume
-              </button>
-            )}
-            {!unconfirmed && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="Dismiss the in-progress close"
-                onClick={handleDismiss}
-                icon={<X className="h-4 w-4" />}
-              />
-            )}
-          </div>
-        </div>
+        <ResumeBanner
+          session={session}
+          network={network}
+          unconfirmed={Boolean(unconfirmed)}
+          checking={checking}
+          onCheck={() => void handleCheck()}
+          onResume={handleResume}
+          onDiscard={() => void handleDismiss()}
+        />
       )}
 
       {/* Hero */}

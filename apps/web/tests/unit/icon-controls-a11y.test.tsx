@@ -168,7 +168,7 @@ test("the review back button keeps its name and gains a 24px target", async () =
   expectIconControl(back);
 });
 
-test("the resume banner dismiss button is named", async () => {
+test("the resume banner's buttons say what they do", async () => {
   spyOn(sessionRecovery, "useSessionRecovery").mockImplementation(() => ({
     session: {
       id: "s",
@@ -176,14 +176,21 @@ test("the resume banner dismiss button is named", async () => {
       sourceAddress: ADDRESS,
       destinationAddress: ADDRESS,
       memo: null,
+      completedSteps: [],
+      currentStepIndex: 0,
+      stepCount: 2,
+      stepBase: 0,
+      createdAt: "2026-10-01T00:00:00.000Z",
     } as unknown as SessionRecord,
     checked: true,
     clearSession: () => {},
     reload: async () => {},
   }));
   await renderPage(<HomePage params={params} />);
-  await waitFor(() => screen.getByRole("button", { name: "Resume" }));
-  const dismiss = screen.getByRole("button", { name: "Dismiss the in-progress close" });
-  expect(dismiss.getAttribute("type")).toBe("button");
-  expectIconControl(dismiss);
+  await waitFor(() => screen.getByRole("button", { name: "Resume this close" }));
+  const discard = screen.getByRole("button", { name: "Discard this record" });
+  expect(discard.getAttribute("type")).toBe("button");
+  expect(screen.getByRole("button", { name: "Resume this close" }).getAttribute("type")).toBe(
+    "button"
+  );
 });

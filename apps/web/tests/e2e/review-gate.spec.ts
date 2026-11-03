@@ -228,5 +228,5 @@ test("no resumable session is persisted while sitting on the review gate", async
   // resumable-session recovery banner actually renders (not on /analyze).
   await page.goto("/testnet");
 
-  await expect(page.getByText(/In-progress account merge found/i)).toHaveCount(0);
+  await expect(page.getByText(/A close you started is saved/i)).toHaveCount(0);
 });

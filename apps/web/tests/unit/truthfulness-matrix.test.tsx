@@ -7,6 +7,7 @@ import { Keypair } from "@stellar/stellar-sdk";
 import * as navigation from "next/navigation";
 import NetworkError from "@/app/[network]/error";
 import ExecutePage from "@/app/[network]/execute/page";
+import AnalyzePage from "@/app/[network]/analyze/page";
 import HomePage from "@/app/[network]/page";
 import CompletionReceipt from "@/components/complete/CompletionReceipt";
 import ExecutionWizard from "@/components/execution/ExecutionWizard";
@@ -31,6 +32,7 @@ import { VerificationError } from "@/lib/stellar/verify";
 import {
   ApiRequestError,
   closeFailureMessage,
+  REVIEW_RESTORED,
   reviewResetNotice,
   type CloseFailureStage,
 } from "@/lib/utils/user-error";
@@ -39,6 +41,8 @@ import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { PlannedStep, StepStatus, StepType } from "@/types/plan";
 import type { SessionRecord } from "@/types/session";
+import type { ResumedClose } from "@/store/demolish";
+import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 // Every reassurance or success sentence the app can show, rendered on every screen that shows it
 // in every journey state that screen can be reached in. A sentence matching a registered claim
@@ -210,12 +214,14 @@ function executeSetup(state: "signing" | "partial", store: Store, required: Clai
   };
 }
 
-function review(state: "reviewed" | "unknown", hold?: () => void): Cell {
+function review(state: "reviewed" | "unknown", hold?: () => void, resumed?: ResumedClose): Cell {
   return {
     state,
     required: hold ? ["each-tx-checked", "confirm-not-started"] : ["each-tx-checked"],
     show: async () => {
-      seed(state === "reviewed" ? STORE.reviewed : RESUMED_REVIEW);
+      seed(
+        state === "reviewed" ? STORE.reviewed : { ...RESUMED_REVIEW, resumedClose: resumed ?? null }
+      );
       spyOn(recovery, "readUnresolved").mockResolvedValue(null);
       spyOn(closeRecord, "saveCloseSession").mockResolvedValue("s");
       hold?.();
@@ -354,6 +360,73 @@ function leaveControl(store: Store): Cell {
   };
 }
 
+const RESUMED: ResumedClose = {
+  source: SOURCE,
+  startedAt: "2026-10-01T00:00:00.000Z",
+  completedSteps: [CONFIRMED_TX],
+};
+
+function analyzedAccount() {
+  return {
+    address: SOURCE,
+    network: "testnet",
+    sequence: "1",
+    nativeBalanceLumens: "10.0000000",
+    dataEntries: [],
+    signers: [],
+    thresholds: { low: 0, med: 0, high: 0 },
+    numSubEntries: 0,
+    numSponsoring: 0,
+    sponsoredEntries: [],
+    sponsorshipEnumerationIncomplete: false,
+    sponsoredBy: null,
+    authImmutable: false,
+    trustlines: [],
+    openOffers: [],
+    poolShares: [],
+    claimableBalances: [],
+    subEntryMismatch: false,
+    defiPositions: emptyDefiPositionsResult(SOURCE),
+    defiPositionsWarnings: [],
+  };
+}
+
+/** The analyze page of a resumed close, read fresh: or, for `gone`, read as no account at all. */
+function analyzePage(store: Store, required: ClaimKey[], gone = false): Cell {
+  return {
+    state: "unknown",
+    required,
+    show: async () => {
+      seed({ ...STORE.unknown, ...store });
+      spyOn(recovery, "clearRecordsOfGoneAccount").mockResolvedValue(1);
+      spyOn(globalThis, "fetch").mockImplementation((async (input: unknown) => {
+        const url = String(input);
+        if (gone && url.includes("/account/")) {
+          return Response.json(
+            { error: { code: "account_not_found", message: "raw" } },
+            { status: 404 }
+          );
+        }
+        if (url.includes("/account/")) return Response.json(analyzedAccount());
+        if (url.includes("/close/plan")) {
+          return Response.json({ status: "ready", blockers: [], steps: [], decisionPoints: [] });
+        }
+        return Response.json({});
+      }) as unknown as typeof fetch);
+      const journey = storeJourney();
+      const params = Object.assign(Promise.resolve({ network: "testnet" as const }), {
+        status: "fulfilled",
+        value: { network: "testnet" as const },
+      });
+      await show(<AnalyzePage params={params} />);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      return journey;
+    },
+  };
+}
+
 /** The start page with no saved close, after a reload of /review found nothing to restore. */
 function reloadReset(): Cell {
   return {
@@ -471,11 +544,29 @@ const MATRIX: Surface[] = [
   {
     name: "resume banner",
     cells: [
-      resumeBanner({}, []),
+      resumeBanner({}, ["recorded-progress"]),
+      resumeBanner({ currentStepIndex: 2, completedSteps: [CONFIRMED_TX] }, ["recorded-progress"]),
+      resumeBanner({ stepCount: null, completedSteps: [CONFIRMED_TX] }, ["recorded-progress"]),
       resumeBanner({ unconfirmed: { hash: HASH, covers: ["MERGE"], validUntil: 5 } }, [
         "may-be-sent",
+        "recorded-progress",
       ]),
     ],
+  },
+  {
+    name: "resumed analyze notice",
+    cells: [
+      analyzePage({ resumedClose: RESUMED, reloadNotice: REVIEW_RESTORED }, ["recorded-progress"]),
+      analyzePage({ resumedClose: { ...RESUMED, completedSteps: [] } }, ["recorded-progress"]),
+    ],
+  },
+  {
+    name: "resumed review line",
+    cells: [review("unknown", undefined, RESUMED)],
+  },
+  {
+    name: "account gone notice",
+    cells: [analyzePage({ resumedClose: RESUMED }, [], true)],
   },
   {
     name: "interrupted execute notice",
@@ -597,7 +688,10 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
   },
   "lib/session/recorded-progress.ts": {
     "may-be-sent": { count: 1, shownBy: "interrupted execute notice" },
-    "recorded-progress": { count: 3, shownBy: "interrupted execute notice" },
+    "recorded-progress": { count: 3, shownBy: "interrupted execute notice; resume banner" },
+  },
+  "components/plan/ResumedCloseNotice.tsx": {
+    "recorded-progress": { count: 2, shownBy: "resumed analyze notice" },
   },
   "lib/stellar/signing-guards.ts": {
     "this-tx-not-sent": { count: 1, shownBy: "execute failure panel" },

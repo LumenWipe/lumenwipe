@@ -30,6 +30,8 @@ import {
   type LeavablePosition,
 } from "@/lib/api/plan-adapters";
 import PlanView from "@/components/plan/PlanView";
+import ResumedCloseNotice from "@/components/plan/ResumedCloseNotice";
+import { clearRecordsOfGoneAccount } from "@/lib/session/recovery";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { useFocusOnMount } from "@/hooks/useFocusOnMount";
 import { useKeepDecisions } from "@/hooks/useKeepDecisions";
@@ -43,6 +45,8 @@ import {
   CHOICES_RESTORED,
   changedAssetsNotice,
   choicesResetNotice,
+  GONE_RECORD_CLEARED,
+  isAccountGone,
   isStateChanged,
   toUserMessage,
 } from "@/lib/utils/user-error";
@@ -80,7 +84,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
 
   const source = searchParams.get("source");
 
-  const { setAccountState, sourceAddress, planChangedNotice } = useDemolishStore();
+  const { setAccountState, sourceAddress, planChangedNotice, resumedClose } = useDemolishStore();
   // A reload starts on the default network until the layout syncs it, and that sync resets the
   // store: restoring before it would be undone.
   const networkReady = useNetworkStore((s) => s.network) === routeNetwork;
@@ -101,6 +105,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [changedAssets, setChangedAssets] = useState<string[]>([]);
+  const [goneRecordCleared, setGoneRecordCleared] = useState(false);
   // Taken from the store once and cleared there, so it belongs to this visit and is not shown
   // again on the next page.
   const [reloadNotice, setReloadNotice] = useState(() => useDemolishStore.getState().reloadNotice);
@@ -257,6 +262,21 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       if (!isStale()) {
         setError(accountError ?? planFailureText(err));
       }
+      // The close of an account the network no longer has cannot go on: its saved record goes,
+      // but only for this network and account, and never one still waiting on a hash.
+      if (isAccountGone(err)) {
+        clearRecordsOfGoneAccount(routeNetwork, effectiveSource)
+          .then((cleared) => {
+            if (cleared === 0) return;
+            if (useDemolishStore.getState().resumedClose?.source === effectiveSource) {
+              useDemolishStore.getState().setResumedClose(null);
+            }
+            if (!isStale()) setGoneRecordCleared(true);
+          })
+          .catch((cause: unknown) => {
+            console.error("[session] could not remove the saved close:", cause);
+          });
+      }
     } finally {
       if (!isStale()) {
         setLoading(false);
@@ -360,6 +380,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
           }
         >
           {error}
+          {goneRecordCleared && <p className="mt-2">{GONE_RECORD_CLEARED}</p>}
         </Callout>
       </div>
     );
@@ -384,6 +405,9 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         </h1>
       </div>
 
+      {resumedClose?.source === effectiveSource && (
+        <ResumedCloseNotice resumed={resumedClose} network={routeNetwork} />
+      )}
       {reloadNotice && (
         <Callout tone="info" announce="status" className="mb-4">
           {reloadNotice}

@@ -96,7 +96,7 @@ test("resuming the saved close record re-plans from /analyze, never the discarde
   await act(async () => {
     render(<HomePage params={settled({ network: "testnet" as const })} />);
   });
-  fireEvent.click(await screen.findByRole("button", { name: "Resume" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Resume this close" }));
 
   expect(calls).toEqual([`push /testnet/analyze?source=${encodeURIComponent(SOURCE)}`]);
   const state = useDemolishStore.getState();

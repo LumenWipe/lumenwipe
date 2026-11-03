@@ -47,6 +47,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
     memo,
     memoType,
     setPhase,
+    resumedClose,
   } = useDemolishStore();
 
   const [confirming, setConfirming] = useState(false);
@@ -88,6 +89,12 @@ export default function ReviewView({ network }: ReviewViewProps) {
 
   return (
     <div className="space-y-5">
+      {resumedClose?.source === sourceAddress && (
+        <p className="text-sm text-fg-muted">
+          You are continuing a close you started earlier, so this plan lists only what is left on
+          the account now.
+        </p>
+      )}
       {accountState && (
         <AccountSummaryCard
           account={accountState}

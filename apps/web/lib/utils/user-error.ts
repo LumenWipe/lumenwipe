@@ -217,6 +217,11 @@ export function changedAssetsNotice(assets: readonly string[]): string {
   return `These assets changed since you chose what to do with them, so they need an answer again: ${assets.join(", ")}.`;
 }
 
+/** Shown on /analyze when the account read found no account and a saved close of it was removed.
+ *  It does not say the close finished: a missing account is not proof of that. */
+export const GONE_RECORD_CLEARED =
+  "This account no longer exists on the network, so this browser's saved record of a close for it was removed. Look the account up on an explorer to see what happened to it.";
+
 export const CLOSE_INTERRUPTED =
   "This close was interrupted because another account was started in this tab, so nothing more was sent for it.";
 export const HASH_NOT_KEPT =
@@ -244,7 +249,7 @@ const REFUSED = "Its operations did not take effect";
 const ACCOUNT_GONE =
   "This account is no longer on the network, and this close could not confirm that it was what removed it. Look the account up on an explorer to see what happened.";
 
-function isAccountGone(err: unknown): boolean {
+export function isAccountGone(err: unknown): boolean {
   return err instanceof ApiRequestError && err.code === "account_not_found";
 }
 

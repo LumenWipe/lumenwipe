@@ -11,6 +11,7 @@ import type {
   ClaimableBalanceSelection,
   StepType,
 } from "@/types/plan";
+import type { CompletedStepRecord } from "@/types/session";
 
 /** What a "convert" disposition is pinned to: the floor the plan quoted, which provider quoted
  *  it, and - only for an xBull-routed token - the live route `verify()` needs to hold its
@@ -27,6 +28,13 @@ export interface TokenConversionFloor {
  *  an asset only an exit pays in, which has no amount to quote until it lands. */
 export interface ClassicConversionFloor {
   minAmountOut: string | null;
+}
+
+/** A saved close the user chose to resume, as this browser recorded it. */
+export interface ResumedClose {
+  source: string;
+  startedAt: string;
+  completedSteps: CompletedStepRecord[];
 }
 
 interface DemolishState {
@@ -95,6 +103,9 @@ interface DemolishState {
   reloadNotice: string | null;
   /** The execute page lost its plan to a reload and sent the user to the start page. */
   executeInterrupted: boolean;
+  /** Set only by the resume banner, for what analyze and review say about the close being
+   *  continued. It never sets a phase or a plan. */
+  resumedClose: ResumedClose | null;
 
   // Session
   sessionId: string | null;
@@ -164,6 +175,7 @@ interface DemolishState {
   setLastError: (error: string | null, reference?: string) => void;
   setReloadNotice: (notice: string | null) => void;
   setExecuteInterrupted: (interrupted: boolean) => void;
+  setResumedClose: (resumed: ResumedClose | null) => void;
   initSession: () => void;
   restoreSession: (id: string) => void;
   reset: () => void;
@@ -264,6 +276,7 @@ const initialState = {
   planHash: null,
   reloadNotice: null,
   executeInterrupted: false,
+  resumedClose: null,
   sessionId: null,
   progressNotSaved: false,
   signingRun: false,
@@ -285,6 +298,7 @@ export const useDemolishStore = create<DemolishState>((set) => ({
         unconfirmedSubmission: null,
         sessionId: null,
         progressNotSaved: false,
+        resumedClose: null,
       }),
     })),
 
@@ -452,6 +466,7 @@ export const useDemolishStore = create<DemolishState>((set) => ({
   setLastError: (lastError, reference) => set({ lastError, lastErrorReference: reference ?? null }),
   setReloadNotice: (reloadNotice) => set({ reloadNotice }),
   setExecuteInterrupted: (executeInterrupted) => set({ executeInterrupted }),
+  setResumedClose: (resumedClose) => set({ resumedClose }),
 
   initSession: () => set({ sessionId: uuidv4() }),
 
