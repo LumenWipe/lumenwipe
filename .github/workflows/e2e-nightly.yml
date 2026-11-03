@@ -47,7 +47,9 @@ jobs:
           # Public testnet endpoints. No secret is needed for the paths under test: the
           # exchange/mediator flow requires a server-side mediator key and is exercised
           # manually, so nothing here signs on behalf of an operator-held account.
-          STELLAR_RPC_TESTNET: https://soroban-testnet.stellar.org
+          # Gateway first: SDF's endpoint stalls for seconds on a share of calls, which an
+          # analyze of ~40 reads cannot absorb. SDF stays as the failover.
+          STELLAR_RPC_TESTNET: https://soroban-rpc.testnet.stellar.gateway.fm,https://soroban-testnet.stellar.org
           PATH_ROUTING_API_TESTNET: https://horizon-testnet.stellar.org
           # API_KEYS is a label=key map, so the key the API accepts is everything after the
           # first `=`. Both sides must therefore carry the same string, not the same shape.
