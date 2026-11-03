@@ -6,6 +6,7 @@ import { ShieldCheck, AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
 import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { closeOwner, saveCloseSession } from "@/lib/session/close-record";
+import { forgetDecisions } from "@/lib/session/decision-snapshot";
 import { readUnresolved } from "@/lib/session/recovery";
 import { journeyOf } from "@/lib/journey/journey-state";
 import {
@@ -47,6 +48,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
     memo,
     memoType,
     setPhase,
+    resumedClose,
   } = useDemolishStore();
 
   const [confirming, setConfirming] = useState(false);
@@ -82,12 +84,21 @@ export default function ReviewView({ network }: ReviewViewProps) {
       return;
     }
 
+    // The choices were consented to just now: none of them outlives this confirm, so a resume
+    // after it asks for them again.
+    forgetDecisions();
     setPhase("STEP_EXECUTING");
     router.push(`/${network}/execute`);
   }
 
   return (
     <div className="space-y-5">
+      {resumedClose?.source === sourceAddress && (
+        <p className="text-sm text-fg-muted">
+          You are continuing a close you started earlier, so this plan lists only what is left on
+          the account now.
+        </p>
+      )}
       {accountState && (
         <AccountSummaryCard
           account={accountState}

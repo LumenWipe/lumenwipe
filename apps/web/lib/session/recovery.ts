@@ -1,4 +1,10 @@
-import { deleteSession, expireSessions, isExpired, listSessions } from "./store";
+import {
+  deleteSession,
+  deleteSettledSession,
+  expireSessions,
+  isExpired,
+  listSessions,
+} from "./store";
 import type { SessionRecord } from "@/types/session";
 import type { Network } from "@/config/networks";
 
@@ -42,6 +48,17 @@ export async function findUnresolved(
   } catch {
     return null;
   }
+}
+
+/** Deletes the saved closes of an account the network no longer has, and counts them. One holding
+ *  an unconfirmed hash is left to its own check by hash, which is the only path that settles it. */
+export async function clearRecordsOfGoneAccount(network: Network, source: string): Promise<number> {
+  const sessions = await listSessions();
+  const settled = sessions.filter(
+    (s) => s.network === network && s.sourceAddress === source && !s.unconfirmed
+  );
+  const deleted = await Promise.all(settled.map((s) => deleteSettledSession(s.id)));
+  return deleted.filter(Boolean).length;
 }
 
 export async function cleanupSession(id: string): Promise<void> {

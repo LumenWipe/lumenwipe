@@ -14,7 +14,8 @@ export type ClaimKey =
   | "each-tx-checked"
   | "funds-safe"
   | "nothing-lost"
-  | "can-resume";
+  | "can-resume"
+  | "recorded-progress";
 
 const DURING_SIGNING: readonly ClaimKey[] = [
   "each-tx-checked",
@@ -31,10 +32,16 @@ export const ALLOWED_CLAIMS: Record<JourneyStateName, readonly ClaimKey[]> = {
   planned: ["nothing-sent", "account-unchanged", "each-tx-checked"],
   reviewed: ["nothing-sent", "account-unchanged", "each-tx-checked", "confirm-not-started"],
   // Past the review confirm a close always has a saved record: run() sends nothing without one.
-  signing: [...DURING_SIGNING, "can-resume"],
-  partial: [...DURING_SIGNING, "still-open", "can-resume"],
+  signing: [...DURING_SIGNING, "can-resume", "recorded-progress"],
+  partial: [...DURING_SIGNING, "still-open", "can-resume", "recorded-progress"],
   complete: ["each-tx-checked", "account-closed", "no-new-sent", "may-be-sent"],
-  unknown: ["each-tx-checked", "confirm-not-started", "may-be-sent", "can-resume"],
+  unknown: [
+    "each-tx-checked",
+    "confirm-not-started",
+    "may-be-sent",
+    "can-resume",
+    "recorded-progress",
+  ],
 };
 
 /** A transaction that may be in flight can still land, so none of these is true while one is. */
@@ -71,6 +78,8 @@ export const CLAIM_PATTERNS: Record<ClaimKey, RegExp> = {
   "funds-safe": /funds are safe|funds stay safe/i,
   "nothing-lost": /nothing is lost|resume exactly where|step (?:already completed )?is skipped/i,
   "can-resume": /resume(?:d)? (?:it |this close )?later/i,
+  // How far a saved close got is only ever what this browser recorded, never the account's state.
+  "recorded-progress": /recorded in this browser|this browser recorded/i,
 };
 
 export function permittedClaims(journey: Journey): ClaimKey[] {

@@ -33,7 +33,7 @@ export async function saveCloseSession(owner: CloseOwner): Promise<string | null
   if (!ownsStore(owner)) return null;
   const state = useDemolishStore.getState();
   if (!state.sessionId) state.initSession();
-  const { sessionId, destinationAddress, memo, memoType, mediatorRequired } =
+  const { sessionId, destinationAddress, memo, memoType, mediatorRequired, executionPlan } =
     useDemolishStore.getState();
   if (!sessionId || !destinationAddress) return null;
   const now = new Date().toISOString();
@@ -48,6 +48,8 @@ export async function saveCloseSession(owner: CloseOwner): Promise<string | null
     mediatorRequired,
     completedSteps: [],
     currentStepIndex: 0,
+    stepCount: executionPlan.length,
+    stepBase: 0,
     status: "in_progress",
     createdAt: now,
     updatedAt: now,

@@ -32,11 +32,11 @@ Look up your source address on a public explorer such as [stellar.expert](https:
 
 ## Nothing has happened yet
 
-Analyzing, planning and reviewing only read the ledger. Nothing is built, signed or saved until you confirm on the review page. If anything failed before that point, close the page or start again. Nothing needs checking.
+Analyzing, planning and reviewing only read the ledger. Nothing is built or signed, and nothing is saved for resuming, until you confirm on the review page. Your choices are kept in the open tab only, so a reload shows them again. If anything failed before that point, close the page or start again. Nothing needs checking.
 
 ## The close stopped partway
 
-Every confirmed step stays confirmed. To continue, resume the close in the app, or start a new close with the same account and destination. The API rebuilds only what is still open, and steps that already confirmed are skipped. The browser keeps a resumable session after you confirm the review, in your browser's own storage and never with your keys. The start page offers it as a "Resume" banner.
+Every confirmed step stays confirmed. To continue, resume the close in the app, or start a new close with the same account and destination. The API rebuilds only what is still open: work that already confirmed is no longer on the account, so it is not in the new plan. After you confirm the review, the browser keeps a small record of the close in its own storage, never with your keys. The start page shows it with the account, the destination, when the close started and how many steps this browser recorded as confirmed, and offers "Resume this close". Resuming reads the account again and goes through analyze and review again before anything is signed.
 
 ### A submission did not confirm in time
 

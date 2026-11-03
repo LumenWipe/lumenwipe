@@ -172,6 +172,45 @@ test("back to analyze preserves the entered destination without discarding it", 
   await expect(destinationInput).toHaveValue(destination.publicKey());
 });
 
+test("a reload on the review gate rebuilds the plan through analyze with the choices kept", async ({
+  page,
+}) => {
+  test.setTimeout(150_000);
+
+  const source = Keypair.random();
+  const destination = Keypair.random();
+  await fund(source.publicKey());
+  await fund(destination.publicKey());
+  await waitUntilIndexed(source.publicKey());
+  await submitOps(source, [Operation.manageData({ name: "lw-e2e-review-reload", value: "1" })]);
+  await waitUntilDataEntryIndexed(source.publicKey(), "lw-e2e-review-reload");
+
+  await reachReviewWithoutConfirming(page, source, destination.publicKey());
+  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
+
+  await page.reload();
+
+  await expect(page).toHaveURL(new RegExp(`/testnet/analyze\\?source=${source.publicKey()}`), {
+    timeout: 30_000,
+  });
+  await expect(page.getByText(/Your choices for this account were kept in this tab/)).toBeVisible({
+    timeout: 30_000,
+  });
+  const destinationInput = page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/);
+  await expect(destinationInput).toHaveValue(destination.publicKey(), { timeout: 30_000 });
+
+  // The restored acknowledgement is for this very destination, so the plan can be reviewed again
+  // without asking for it twice - and only through the review gate.
+  const beginButton = page.getByRole("button", { name: /Begin execution/i });
+  await expect(beginButton).toBeEnabled({ timeout: TESTNET_STEP_TIMEOUT });
+  await beginButton.click();
+  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
+  await expect(page.getByRole("heading", { name: /Review the full plan/i })).toBeVisible({
+    timeout: TESTNET_STEP_TIMEOUT,
+  });
+  expect(await accountExists(source.publicKey())).toBe(true);
+});
+
 test("no resumable session is persisted while sitting on the review gate", async ({ page }) => {
   test.setTimeout(120_000);
 
@@ -189,5 +228,5 @@ test("no resumable session is persisted while sitting on the review gate", async
   // resumable-session recovery banner actually renders (not on /analyze).
   await page.goto("/testnet");
 
-  await expect(page.getByText(/In-progress account merge found/i)).toHaveCount(0);
+  await expect(page.getByText(/A close you started is saved/i)).toHaveCount(0);
 });

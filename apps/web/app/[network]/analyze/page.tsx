@@ -9,6 +9,7 @@ import type { Network } from "@/config/networks";
 import type { AccountState } from "@/types/account";
 import type { PlanBlocker } from "@/types/plan";
 import { useDemolishStore } from "@/store/demolish";
+import { useNetworkStore } from "@/store/network";
 import { fetchClosePlan } from "@/lib/api/close-client";
 import { loadAnalysis, readAccount, type ClaimAnswers } from "@/lib/api/analyze-client";
 import {
@@ -29,9 +30,27 @@ import {
   type LeavablePosition,
 } from "@/lib/api/plan-adapters";
 import PlanView from "@/components/plan/PlanView";
+import ResumedCloseNotice from "@/components/plan/ResumedCloseNotice";
+import { clearRecordsOfGoneAccount } from "@/lib/session/recovery";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { useFocusOnMount } from "@/hooks/useFocusOnMount";
-import { isStateChanged, toUserMessage } from "@/lib/utils/user-error";
+import { useKeepDecisions } from "@/hooks/useKeepDecisions";
+import { readDecisions, type DecisionSnapshot } from "@/lib/session/decision-snapshot";
+import {
+  holdsNoDecisions,
+  restoreAssetDecisions,
+  restoreInputs,
+} from "@/lib/session/restore-decisions";
+import {
+  CHOICES_RESTORED,
+  CONFIRMATIONS_ASKED_AGAIN,
+  changedAssetsNotice,
+  choicesResetNotice,
+  GONE_RECORD_CLEARED,
+  isAccountGone,
+  isStateChanged,
+  toUserMessage,
+} from "@/lib/utils/user-error";
 import { hardBlockersOf } from "@/lib/plan/resolvable-blockers";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
@@ -52,6 +71,13 @@ function planFailureText(err: unknown): string {
     : "Failed to analyze account. Please check your connection and try again.";
 }
 
+/** How an asset is named in a notice: its code, or a token's symbol. */
+function assetName(account: AccountState, asset: string): string {
+  const token = account.sorobanTokens?.tokens.find((t) => t.contract === asset);
+  if (token) return token.symbol ?? `${asset.slice(0, 4)}...${asset.slice(-4)}`;
+  return asset.split(":")[0] ?? asset;
+}
+
 export default function AnalyzePage({ params }: { params: Promise<{ network: Network }> }) {
   const { network: routeNetwork } = use(params);
   const router = useRouter();
@@ -59,7 +85,10 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
 
   const source = searchParams.get("source");
 
-  const { setAccountState, sourceAddress, planChangedNotice } = useDemolishStore();
+  const { setAccountState, sourceAddress, planChangedNotice, resumedClose } = useDemolishStore();
+  // A reload starts on the default network until the layout syncs it, and that sync resets the
+  // store: restoring before it would be undone.
+  const networkReady = useNetworkStore((s) => s.network) === routeNetwork;
   const answersKey = useDemolishStore(planAnswersKey);
 
   const [account, setAccount] = useState<AccountState | null>(null);
@@ -76,6 +105,18 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   const [replanning, setReplanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState("");
+  const [changedAssets, setChangedAssets] = useState<string[]>([]);
+  const [goneRecordCleared, setGoneRecordCleared] = useState(false);
+  const [askedAgain, setAskedAgain] = useState(false);
+  // Taken from the store once and cleared there, so it belongs to this visit and is not shown
+  // again on the next page.
+  const [reloadNotice, setReloadNotice] = useState(() => useDemolishStore.getState().reloadNotice);
+  useEffect(() => {
+    useDemolishStore.getState().setReloadNotice(null);
+  }, []);
+  const [keeping, setKeeping] = useState(false);
+  // Asset answers wait for the fresh read: one is put back only for an asset it still describes.
+  const pendingRestore = useRef<DecisionSnapshot | null>(null);
   // Only the first load of a source moves focus; a re-plan must not pull it off the control
   // the user just answered.
   const headingRef = useFocusOnMount<HTMLHeadingElement>(!loading && account !== null);
@@ -208,6 +249,17 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
           knownTokens.current = (accountData.sorobanTokens?.tokens ?? []).map((t) => t.contract);
           setAccount(accountData);
           setAccountState(accountData);
+          const restoring = pendingRestore.current;
+          if (restoring?.source === accountData.address) {
+            pendingRestore.current = null;
+            const changed = restoreAssetDecisions(restoring, accountData);
+            setChangedAssets(changed.map((asset) => assetName(accountData, asset)));
+            const returnsToIssuer = Object.values(
+              useDemolishStore.getState().assetDispositions
+            ).includes("issuer");
+            const hasPositions = (accountData.defiPositions?.positions.length ?? 0) > 0;
+            setAskedAgain(returnsToIssuer || hasPositions);
+          }
         },
       });
       if (isStale()) return;
@@ -216,6 +268,21 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     } catch (err) {
       if (!isStale()) {
         setError(accountError ?? planFailureText(err));
+      }
+      // The close of an account the network no longer has cannot go on: its saved record goes,
+      // but only for this network and account, and never one still waiting on a hash.
+      if (isAccountGone(err)) {
+        clearRecordsOfGoneAccount(routeNetwork, effectiveSource)
+          .then((cleared) => {
+            if (cleared === 0) return;
+            if (useDemolishStore.getState().resumedClose?.source === effectiveSource) {
+              useDemolishStore.getState().setResumedClose(null);
+            }
+            if (!isStale()) setGoneRecordCleared(true);
+          })
+          .catch((cause: unknown) => {
+            console.error("[session] could not remove the saved close:", cause);
+          });
       }
     } finally {
       if (!isStale()) {
@@ -251,13 +318,36 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     [requestPlan, showPlan]
   );
 
+  // This tab's saved inputs for the account go back in before the plan is requested, so the first
+  // plan already answers them. Only a store holding no answer is restored into.
+  const restore = useCallback(
+    (target: string) => {
+      const state = useDemolishStore.getState();
+      if (!holdsNoDecisions(state, target)) return;
+      const read = readDecisions(routeNetwork, target);
+      if (read.kind === "restored") {
+        restoreInputs(read.snapshot);
+        pendingRestore.current = read.snapshot;
+        setReloadNotice((shown) => shown ?? CHOICES_RESTORED);
+      } else if (read.kind === "failed") {
+        setReloadNotice((shown) => shown ?? choicesResetNotice(read.reason));
+      }
+    },
+    [routeNetwork]
+  );
+
   useEffect(() => {
+    if (!networkReady) return;
     // Strict Mode runs this twice on mount, and that second run is a second full account read.
     const target = `${routeNetwork}:${effectiveSource}`;
     if (readTarget.current === target) return;
     readTarget.current = target;
+    if (effectiveSource) restore(effectiveSource);
+    setKeeping(true);
     void reload();
-  }, [effectiveSource, routeNetwork, reload]);
+  }, [effectiveSource, routeNetwork, reload, restore, networkReady]);
+
+  useKeepDecisions(routeNetwork, effectiveSource, keeping);
 
   useEffect(() => {
     const tokens = knownTokens.current;
@@ -297,6 +387,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
           }
         >
           {error}
+          {goneRecordCleared && <p className="mt-2">{GONE_RECORD_CLEARED}</p>}
         </Callout>
       </div>
     );
@@ -321,6 +412,29 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         </h1>
       </div>
 
+      {resumedClose?.source === effectiveSource && (
+        <ResumedCloseNotice resumed={resumedClose} network={routeNetwork} />
+      )}
+      {reloadNotice && (
+        <Callout tone="info" announce="status" className="mb-4">
+          {reloadNotice}
+        </Callout>
+      )}
+      {askedAgain && (
+        <Callout tone="info" announce="status" className="mb-4">
+          {CONFIRMATIONS_ASKED_AGAIN}
+        </Callout>
+      )}
+      {changedAssets.length > 0 && (
+        <Callout
+          tone="warning"
+          announce="status"
+          icon={<AlertTriangle className="h-4 w-4" />}
+          className="mb-4"
+        >
+          {changedAssetsNotice(changedAssets)}
+        </Callout>
+      )}
       {planChangedNotice && (
         <Callout
           tone="warning"

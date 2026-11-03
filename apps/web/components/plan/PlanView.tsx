@@ -57,6 +57,7 @@ import {
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { assetsResolved } from "@/lib/plan/asset-resolution";
 import { destinationRefusal } from "@/lib/plan/destination-check";
+import { keepDestinationDraft } from "@/lib/session/restore-decisions";
 import { isStateChanged } from "@/lib/utils/user-error";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
@@ -262,6 +263,11 @@ export default function PlanView({
   const memoTypeForDest = memoReq?.memoType ?? "text";
   const memoValid =
     !memoRequired || (memo.trim().length > 0 && isValidMemo(memo.trim(), memoTypeForDest));
+  const draftMemoType = memoRequired ? memoTypeForDest : null;
+
+  useEffect(() => {
+    keepDestinationDraft(network, account.address, destination, memo.trim(), draftMemoType);
+  }, [network, account.address, destination, memo, draftMemoType]);
 
   // Preview: derive mediator requirement from the registry synchronously so the
   // plan accordion shows the correct step titles before the user clicks proceed.

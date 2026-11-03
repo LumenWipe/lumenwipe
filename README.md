@@ -95,7 +95,7 @@ Liquidity pool shares are not unwound by LumenWipe: an account that holds them i
 
 ### Session state machine
 
-The entire wind-down is held as an explicit state machine persisted to IndexedDB. A resumable session exists only after the user confirms on the review page; the full rule is in [how closing works](docs/guides/how-closing-works.mdx#interruptions-are-safe).
+The close moves through an explicit state machine held in memory only. After the user confirms on the review page, IndexedDB keeps a small close record (`SessionRecord` in `apps/web/types/session.ts`): the account, destination, memo, relay flag, status, how many steps confirmed with their transaction hashes, and the hash of any submission still unconfirmed, never keys, signatures or the plan. Before that confirmation, the per-asset choices, destination and memo are kept in the tab's `sessionStorage` only, so a reload of analyze or review shows them again to check, and the plan is always built again from the account. On resume the account is re-read and a fresh plan is built for what remains, which the user reviews and signs again: confirmed work is not repeated because it is no longer on the account, and a submission that may still be pending is checked by hash first. The full rule is in [how closing works](docs/guides/how-closing-works.mdx#interruptions-are-safe).
 
 ![Demolish flow state machine](docs/diagrams/output/03-state-machine.svg)
 

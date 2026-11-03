@@ -58,6 +58,8 @@ const PROGRESS: SessionRecord = {
     },
   ],
   currentStepIndex: 2,
+  stepCount: null,
+  stepBase: 0,
   status: "in_progress",
   createdAt: "2026-10-01T00:00:00.000Z",
   updatedAt: "2026-10-01T00:01:00.000Z",

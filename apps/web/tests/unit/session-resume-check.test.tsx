@@ -16,6 +16,11 @@ const SESSION = {
   sourceAddress: "GAAAAAAAAAAAAAAAA",
   destinationAddress: "GBBBBBBBBBBBBBBBB",
   memo: null,
+  completedSteps: [],
+  currentStepIndex: 0,
+  stepCount: 2,
+  stepBase: 0,
+  createdAt: "2026-10-01T00:00:00.000Z",
   unconfirmed: { hash: HASH, covers: ["MERGE"], validUntil: 1000 },
 } as unknown as SessionRecord;
 
@@ -55,7 +60,8 @@ test("a restored session with an unconfirmed hash offers a check, no resume and 
   await renderHome();
   const banner = screen.getByRole("button", { name: "Check again" }).parentElement!;
   expect(banner.querySelectorAll("button")).toHaveLength(1);
-  expect(screen.queryByRole("button", { name: "Resume" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Resume this close" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Discard this record" })).toBeNull();
 });
 
 test("a confirmed merge finishes the session by lookup and sends nothing", async () => {
@@ -96,9 +102,9 @@ test("a hash that appeared after the banner loaded stops the dismiss and is read
   }));
   spyOn(sessionStore, "deleteSettledSession").mockImplementation(async () => false);
   await renderHome();
-  const resume = screen.getByRole("button", { name: "Resume" });
+  fireEvent.click(screen.getByRole("button", { name: "Discard this record" }));
   await act(async () => {
-    fireEvent.click(resume.nextElementSibling!);
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
   });
   expect(clearSession).not.toHaveBeenCalled();
   expect(reload).toHaveBeenCalledTimes(1);

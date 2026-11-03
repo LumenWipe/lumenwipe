@@ -87,7 +87,8 @@ const ITEMS: Item[] = [
         browser, the home page offers to resume: LumenWipe re-reads the account and builds a fresh
         plan for what is left, which you review and sign again, so confirmed work is not repeated.
         If a transaction was still waiting for the network, you check its outcome first. Your
-        per-asset choices are not kept, so you make them again.
+        per-asset choices are kept only in this tab, so a reload shows them again for you to check;
+        in another tab, or once this one is closed, you make them again.
       </>
     ),
   },
