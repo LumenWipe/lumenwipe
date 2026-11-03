@@ -5,7 +5,8 @@ import { AlertTriangle, ArrowLeft, Copy, ExternalLink, RotateCcw } from "lucide-
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { SE_EXPLORER_BASE, type Network } from "@/config/networks";
-import { submissionClaim } from "@/lib/close-state";
+import { allows } from "@/lib/journey/claims";
+import { useJourneyState } from "@/lib/journey/use-journey-state";
 import { useDemolishStore } from "@/store/demolish";
 import { Button } from "@/components/ui/button";
 
@@ -21,8 +22,7 @@ function toNetwork(value: string | string[] | undefined): Network {
 export default function NetworkError({ error, reset }: ErrorProps) {
   const params = useParams<{ network?: string }>();
   const network = toNetwork(params?.network);
-  const phase = useDemolishStore((s) => s.phase);
-  const executionPlan = useDemolishStore((s) => s.executionPlan);
+  const journey = useJourneyState();
   const sourceAddress = useDemolishStore((s) => s.sourceAddress);
   const [copied, setCopied] = useState(false);
 
@@ -30,7 +30,7 @@ export default function NetworkError({ error, reset }: ErrorProps) {
     console.error("[network] unhandled error:", error);
   }, [error]);
 
-  const mayBeSent = submissionClaim(phase, executionPlan) === "may-be-sent";
+  const mayBeSent = !allows(journey, "nothing-sent");
   const home = `/${network}`;
 
   async function copyRef(): Promise<void> {

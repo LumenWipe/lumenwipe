@@ -7,7 +7,13 @@ import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { saveCloseSession } from "@/lib/session/close-record";
 import { readUnresolved } from "@/lib/session/recovery";
-import { CONFIRM_HELD, CONFIRM_UNCHECKED } from "@/lib/utils/user-error";
+import { journeyOf } from "@/lib/journey/journey-state";
+import {
+  CONFIRM_HELD,
+  CONFIRM_NOT_SAVED,
+  CONFIRM_SAVE_FAILED,
+  CONFIRM_UNCHECKED,
+} from "@/lib/utils/user-error";
 import { formatXlm } from "@/lib/utils/amounts";
 import PlanStepAccordion from "@/components/review/PlanStepAccordion";
 import AccountSummaryCard from "@/components/plan/AccountSummaryCard";
@@ -43,23 +49,27 @@ export default function ReviewView({ network }: ReviewViewProps) {
   // The only caller allowed to transition PREFLIGHT_COMPLETE -> STEP_EXECUTING. Nothing
   // is persisted until this fires, so leaving this page without confirming (closing the
   // tab, navigating away) never leaves a resumable session behind. A transaction of this
-  // account with an unknown outcome, or a saved state that cannot be read, holds it.
+  // account with an unknown outcome, or a saved state that cannot be read or written, holds it.
   async function handleConfirm() {
     if (!sourceAddress || !destinationAddress) return;
     setConfirming(true);
     setHeld(null);
 
-    const hold = await readUnresolved(network, sourceAddress).then(
-      (found) => (found || useDemolishStore.getState().unconfirmedSubmission ? CONFIRM_HELD : null),
-      () => CONFIRM_UNCHECKED
-    );
+    const hold =
+      (await readUnresolved(network, sourceAddress).then(
+        (found) =>
+          found || journeyOf(useDemolishStore.getState()).mayBeInFlight ? CONFIRM_HELD : null,
+        () => CONFIRM_UNCHECKED
+      )) ??
+      (await saveCloseSession({ network, source: sourceAddress }).then(
+        (id) => (id ? null : CONFIRM_NOT_SAVED),
+        () => CONFIRM_SAVE_FAILED
+      ));
     if (hold) {
       setHeld(hold);
       setConfirming(false);
       return;
     }
-
-    await saveCloseSession({ network, source: sourceAddress });
 
     setPhase("STEP_EXECUTING");
     router.push(`/${network}/execute`);

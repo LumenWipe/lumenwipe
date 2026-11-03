@@ -35,7 +35,7 @@ import {
   NO_MERGE_CONFIRMED,
   PREIMAGE_EXPOSED,
 } from "@/lib/utils/user-error";
-import { receiptState } from "@/lib/close-state";
+import { deriveJourneyState } from "@/lib/journey/journey-state";
 import * as recovery from "@/lib/session/recovery";
 import * as sessionStore from "@/lib/session/store";
 import type { TransactionSigner } from "@/lib/stellar/signer";
@@ -1608,7 +1608,14 @@ test("useCloseExecution › covers claiming a merge on a transaction with none n
   const state = useDemolishStore.getState();
   expect(state.phase).toBe("STEP_FAILED");
   expect(state.lastError).toBe(NO_MERGE_CONFIRMED);
-  expect(receiptState(state.executionPlan)).toBe("incomplete");
+  expect(
+    deriveJourneyState({
+      phase: state.phase,
+      plan: state.executionPlan,
+      inFlight: false,
+      saved: true,
+    }).mergeConfirmed
+  ).toBe(false);
   expect(state.executionPlan[0]?.status).not.toBe("confirmed");
 });
 
