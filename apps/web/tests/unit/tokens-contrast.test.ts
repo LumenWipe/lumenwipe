@@ -1,78 +1,25 @@
 import { describe, expect, test } from "bun:test";
 import fs from "fs";
 import path from "path";
+import {
+  PAIRS,
+  TINT_MINIMUM,
+  TINT_SURFACES,
+  measure,
+  measureDangerTint,
+  ratio,
+  rootVars,
+} from "../design-tokens";
 
 const css = fs.readFileSync(path.join(process.cwd(), "app/globals.css"), "utf8");
 
-function rootVars(): Record<string, string> {
-  const start = css.indexOf(":root {");
-  const end = css.indexOf("\n  }\n", start);
-  const block = css.slice(start, end).replace(/\/\*[\s\S]*?\*\//g, "");
-  const vars: Record<string, string> = {};
-  for (const m of block.matchAll(/--([a-z0-9-]+):\s*([^;]+);/g)) vars[m[1]] = m[2].trim();
-  return vars;
-}
-
-const vars = rootVars();
+const vars = rootVars(css);
 
 function token(name: string): string {
   const value = vars[name];
   if (value === undefined) throw new Error(`token --${name} is missing from globals.css`);
   return value;
 }
-
-function toRgb(hsl: string): [number, number, number] {
-  const m = hsl.match(/^(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%$/);
-  if (!m) throw new Error(`not an "H S% L%" triple: ${hsl}`);
-  const h = Number(m[1]);
-  const s = Number(m[2]) / 100;
-  const l = Number(m[3]) / 100;
-  const k = (n: number): number => (n + h / 30) % 12;
-  const a = s * Math.min(l, 1 - l);
-  const f = (n: number): number => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
-  return [f(0), f(8), f(4)];
-}
-
-function relativeLuminance(rgb: [number, number, number]): number {
-  const [r, g, b] = rgb.map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-function luminance(hsl: string): number {
-  return relativeLuminance(toRgb(hsl));
-}
-
-function ratio(fg: string, bg: string): number {
-  const [a, b] = [luminance(fg), luminance(bg)].sort((x, y) => y - x);
-  return (a + 0.05) / (b + 0.05);
-}
-
-const SURFACES = ["bg", "surface", "surface-raised", "surface-sunken"] as const;
-
-interface Pair {
-  fg: string;
-  bg: string;
-  min: number;
-}
-
-const pairs: Pair[] = [];
-const onSurfaces = (fg: string, min: number): void => {
-  for (const bg of SURFACES) pairs.push({ fg, bg, min });
-};
-for (const t of ["fg", "fg-muted", "fg-subtle", "accent", "value", "success", "warning"]) {
-  onSurfaces(t, 4.5);
-}
-onSurfaces("fg-disabled", 3);
-onSurfaces("danger-fg", 7);
-onSurfaces("line-strong", 3);
-onSurfaces("edge", 3);
-onSurfaces("focus", 3);
-pairs.push(
-  { fg: "accent-fg", bg: "accent", min: 4.5 },
-  { fg: "value-fg", bg: "value", min: 4.5 },
-  { fg: "warning-fg", bg: "warning", min: 4.5 },
-  { fg: "danger-on-fill", bg: "danger", min: 4.5 }
-);
 
 describe("contrast calculator", () => {
   test("matches known WCAG values", () => {
@@ -94,16 +41,16 @@ describe("token surfaces", () => {
 });
 
 describe("WCAG contrast of every token pair", () => {
-  const rows = pairs.map((p) => ({
+  const rows = PAIRS.map((p) => ({
     foreground: p.fg,
     background: p.bg,
-    ratio: Number(ratio(token(p.fg), token(p.bg)).toFixed(2)),
+    ratio: measure(vars, p.fg, p.bg),
     minimum: p.min,
   }));
 
   test("prints the measured ratios", () => {
     console.table(rows);
-    expect(rows.length).toBe(pairs.length);
+    expect(rows.length).toBe(PAIRS.length);
   });
 
   for (const row of rows) {
@@ -114,13 +61,9 @@ describe("WCAG contrast of every token pair", () => {
 });
 
 describe("callout text over its tint", () => {
-  for (const surface of ["bg", "surface", "surface-raised"]) {
+  for (const surface of TINT_SURFACES) {
     test(`danger-fg stays at 7:1 on the danger tint over ${surface}`, () => {
-      const fill = toRgb(token("danger"));
-      const base = toRgb(token(surface));
-      const tint = fill.map((c, i) => c * 0.1 + base[i] * 0.9) as [number, number, number];
-      const text = luminance(token("danger-fg"));
-      expect((text + 0.05) / (relativeLuminance(tint) + 0.05)).toBeGreaterThanOrEqual(7);
+      expect(measureDangerTint(vars, surface)).toBeGreaterThanOrEqual(TINT_MINIMUM);
     });
   }
 });

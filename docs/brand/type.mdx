@@ -1,0 +1,28 @@
+---
+title: "Type"
+description: "The three typefaces and the type scale LumenWipe uses."
+---
+
+import TypeScale from "/snippets/type-scale.mdx";
+
+## Typefaces
+
+Three typefaces, loaded in `apps/web/app/fonts.ts`. The docs site uses the first two for headings and body text.
+
+| Typeface            | Role    | Use                                                                                                   |
+| ------------------- | ------- | ----------------------------------------------------------------------------------------------------- |
+| Bricolage Grotesque | Display | Headlines and the wordmark. Never for running text.                                                   |
+| Manrope             | Body    | Everything a user reads: paragraphs, labels, buttons and errors.                                      |
+| JetBrains Mono      | Data    | Addresses, transaction hashes, amounts and plan steps, where every character must be distinguishable. |
+
+## Scale
+
+The web app uses only the sizes below. An arbitrary text size such as `text-[13px]` fails lint outside `apps/web/components/ui`. This table is the same one the [design token reference](/design/tokens) publishes, so the two cannot disagree.
+
+<TypeScale />
+
+## Rules
+
+- **One hero per page.** `text-hero` is used once on a page, for its main headline. Section headings stop at `text-display`.
+- **Amounts in tabular numerals.** Every amount uses `tabular-nums`, so digits line up across rows and a changing value does not shift its neighbors.
+- **Nothing below 11px.** `text-caption` is the floor; the contrast test fails if any type step is smaller.

@@ -1,0 +1,164 @@
+---
+title: "Design tokens"
+description: "Every color, spacing, radius, elevation, motion and type token the web app defines, with its value, its use and its measured contrast."
+---
+
+import TypeScale from "/snippets/type-scale.mdx";
+
+The tokens live in `apps/web/app/globals.css` as CSS custom properties on `:root`, and `apps/web/tailwind.config.ts` maps them to Tailwind classes. This page is the written reference for that file. `bun run check:docs` fails when a token is added, removed or changed in the CSS without the same change here, and when a contrast ratio below no longer matches what the contrast test measures.
+
+The web app has one dark theme. There is no light theme, so every ratio below is measured against the dark surfaces.
+
+## Rules
+
+These apply in `apps/web/app` and `apps/web/components`, everywhere except the primitives in `apps/web/components/ui`, which are the only place allowed to compose raw styling.
+
+Enforced by lint (`apps/web/eslint.config.mjs`), so `bun run lint` fails on a violation:
+
+- No raw palette colors. A class such as `text-red-400`, `bg-emerald-500` or `border-amber-300` bypasses the tokens. Use the semantic role: `danger`, `warning`, `success`, `accent` or `value`, and `fg`, `line` or `surface` for neutrals.
+- No `text-black`. Text on a filled background uses the fill's pair token: `text-accent-fg` on `bg-accent`, `text-value-fg` on `bg-value`, `text-warning-fg` on `bg-warning`, `text-danger-on-fill` on `bg-danger`.
+- No arbitrary text sizes such as `text-[13px]` or `text-[clamp(...)]`. Use a step of the type scale below.
+- No `text-destructive`. Error text and icons use `text-danger-fg`; `danger` is a fill.
+- No `stellar` color class. It was an alias of `accent` and is gone.
+- No readable text in white at 55% opacity or less, in `apps/web/components/ui` too. Use `text-fg`, `text-fg-muted` or `text-fg-subtle`, and `text-fg-disabled` for disabled or decorative text.
+
+Checked in review only, because no tool enforces them yet:
+
+- At most one solid accent button per screen. Every other action is the secondary or ghost variant of `Button`.
+- Every amount uses tabular numerals (`tabular-nums`), so digits line up across rows and do not shift while a value updates.
+
+## Color
+
+Values are `H S% L%` triples, used as `hsl(var(--token))`. Each Tailwind color class accepts an opacity modifier, for example `bg-accent/10`.
+
+### Surfaces and lines
+
+| Token              | Value           | Class                | Use                                                                                                                   |
+| ------------------ | --------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `--bg`             | `197 30% 4.5%`  | `bg-canvas`          | The page background.                                                                                                  |
+| `--surface`        | `200 18% 8%`    | `bg-surface`         | Cards, panels and dialogs.                                                                                            |
+| `--surface-raised` | `198 17% 10.5%` | `bg-surface-raised`  | A surface on top of a surface, and the hover state of secondary and ghost buttons.                                    |
+| `--surface-sunken` | `197 30% 3%`    | `bg-surface-sunken`  | Areas set below the page level, such as an inset well.                                                                |
+| `--line`           | `205 12% 16%`   | `border-line`        | The default border. Every element gets it unless it sets another.                                                     |
+| `--line-strong`    | `205 10% 42%`   | `border-line-strong` | Borders that must be seen as a boundary: inputs, secondary buttons and badges. Measured at 3:1 against every surface. |
+| `--edge`           | `190 30% 84%`   | `edge`               | The one-pixel top highlight on cards, used at low opacity.                                                            |
+
+### Text
+
+| Token           | Value        | Class              | Use                                                                             |
+| --------------- | ------------ | ------------------ | ------------------------------------------------------------------------------- |
+| `--fg`          | `0 0% 98%`   | `text-fg`          | Primary text.                                                                   |
+| `--fg-muted`    | `205 8% 66%` | `text-fg-muted`    | Secondary text and descriptions.                                                |
+| `--fg-subtle`   | `205 8% 58%` | `text-fg-subtle`   | Hints, metadata and placeholder text. Still at 4.5:1 or better.                 |
+| `--fg-disabled` | `205 8% 45%` | `text-fg-disabled` | Disabled controls and decorative icons only. Never for text the user must read. |
+
+### Roles
+
+| Token              | Value           | Class                        | Use                                                                                                                                |
+| ------------------ | --------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `--accent`         | `196 100% 47%`  | `bg-accent`, `text-accent`   | Interactive elements: the primary button, links and selected states.                                                               |
+| `--accent-fg`      | `200 12% 10%`   | `text-accent-fg`             | Text and icons on an accent fill.                                                                                                  |
+| `--value`          | `41 96% 56%`    | `text-value`                 | Recovered value: XLM amounts and totals. Never a button.                                                                           |
+| `--value-fg`       | `38 60% 8%`     | `text-value-fg`              | Text on a value fill.                                                                                                              |
+| `--success`        | `152 55% 50%`   | `text-success`               | Confirmed: a submitted transaction, a completed step.                                                                              |
+| `--warning`        | `38 92% 50%`    | `text-warning`, `bg-warning` | Caution: something to read before going on, which can still be changed.                                                            |
+| `--warning-fg`     | `38 60% 8%`     | `text-warning-fg`            | Text on a warning fill.                                                                                                            |
+| `--danger`         | `0 62.8% 30.6%` | `bg-danger`                  | The fill for irreversible actions and errors. Too dark to read as text on the page (under 2.1:1), which the contrast test asserts. |
+| `--danger-on-fill` | `0 0% 98%`      | `text-danger-on-fill`        | Text on a danger fill.                                                                                                             |
+| `--danger-fg`      | `0 90% 76%`     | `text-danger-fg`             | Error text and icons, at 7:1 or better on every surface and on the danger callout tint.                                            |
+| `--focus`          | `196 100% 55%`  | `outline-focus`              | The focus ring. `globals.css` draws it on every `:focus-visible` element as a 2px outline with a 2px offset.                       |
+
+### Measured contrast
+
+Ratios follow WCAG 2 relative luminance and are measured by `apps/web/tests/unit/tokens-contrast.test.ts`, which fails when any pair drops below its minimum. The tables are generated from the same code by `bun run docs:tokens`; do not edit them by hand.
+
+{/* contrast:start */}
+
+Foreground tokens on each surface:
+
+| Foreground    | `bg`    | `surface` | `surface-raised` | `surface-sunken` | Minimum |
+| ------------- | ------- | --------- | ---------------- | ---------------- | ------- |
+| `fg`          | 18.71:1 | 17.50:1   | 16.39:1          | 19.17:1          | 4.5:1   |
+| `fg-muted`    | 8.24:1  | 7.71:1    | 7.22:1           | 8.44:1           | 4.5:1   |
+| `fg-subtle`   | 6.43:1  | 6.01:1    | 5.63:1           | 6.59:1           | 4.5:1   |
+| `accent`      | 7.86:1  | 7.36:1    | 6.89:1           | 8.05:1           | 4.5:1   |
+| `value`       | 11.00:1 | 10.29:1   | 9.64:1           | 11.27:1          | 4.5:1   |
+| `success`     | 8.89:1  | 8.32:1    | 7.79:1           | 9.11:1           | 4.5:1   |
+| `warning`     | 9.14:1  | 8.55:1    | 8.01:1           | 9.37:1           | 4.5:1   |
+| `fg-disabled` | 4.10:1  | 3.84:1    | 3.59:1           | 4.20:1           | 3:1     |
+| `danger-fg`   | 8.44:1  | 7.90:1    | 7.40:1           | 8.65:1           | 7:1     |
+| `line-strong` | 3.67:1  | 3.43:1    | 3.22:1           | 3.76:1           | 3:1     |
+| `edge`        | 14.05:1 | 13.15:1   | 12.31:1          | 14.40:1          | 3:1     |
+| `focus`       | 9.48:1  | 8.87:1    | 8.30:1           | 9.71:1           | 3:1     |
+
+Text on a filled background:
+
+| Foreground       | Fill      | Ratio  | Minimum |
+| ---------------- | --------- | ------ | ------- |
+| `accent-fg`      | `accent`  | 7.01:1 | 4.5:1   |
+| `value-fg`       | `value`   | 9.89:1 | 4.5:1   |
+| `warning-fg`     | `warning` | 8.22:1 | 4.5:1   |
+| `danger-on-fill` | `danger`  | 9.59:1 | 4.5:1   |
+
+`danger-fg` on the danger callout tint (`danger` at 10% over the surface):
+
+| Surface          | Ratio  | Minimum |
+| ---------------- | ------ | ------- |
+| `bg`             | 8.22:1 | 7:1     |
+| `surface`        | 7.69:1 | 7:1     |
+| `surface-raised` | 7.22:1 | 7:1     |
+
+{/* contrast:end */}
+
+## Spacing and layout
+
+The spacing steps follow Tailwind's 4px grid. They are defined as tokens so the layout aliases below can refer to them.
+
+| Token             | Value     | Use                                                  |
+| ----------------- | --------- | ---------------------------------------------------- |
+| `--space-1`       | `0.25rem` | 4px. Icon to label.                                  |
+| `--space-2`       | `0.5rem`  | 8px. Items in a tight group.                         |
+| `--space-3`       | `0.75rem` | 12px. Rows in a list.                                |
+| `--space-4`       | `1rem`    | 16px. The page gutter on small screens.              |
+| `--space-5`       | `1.25rem` | 20px. Card padding.                                  |
+| `--space-6`       | `1.5rem`  | 24px. Between cards.                                 |
+| `--space-8`       | `2rem`    | 32px. Between page sections.                         |
+| `--space-control` | `2.75rem` | 44px. The minimum height of any interactive element. |
+
+Layout rules:
+
+- **Gutter**: `px-gutter` is `--space-4`, the horizontal padding of the page on small screens.
+- **Card padding**: `p-card` is `--space-5`.
+- **Gaps**: `--space-2` inside a control group, `--space-3` between rows, `--space-6` between cards, `--space-8` between sections.
+- **Interactive height**: `min-h-control` is `--space-control`, 44px. The contrast test asserts the value. `Field` uses it at every width. `Button` uses it on small screens and drops to 36px from the `md` breakpoint.
+
+## Radius
+
+| Token         | Value     | Class                                    | Use                                                                                                                                                        |
+| ------------- | --------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--radius-sm` | `0.25rem` | `rounded-badge`                          | Badges.                                                                                                                                                    |
+| `--radius-md` | `0.5rem`  | `rounded-control`                        | Buttons and fields.                                                                                                                                        |
+| `--radius-lg` | `0.75rem` | `rounded-card`                           | Cards and callouts.                                                                                                                                        |
+| `--radius-xl` | `1rem`    | `rounded-dialog`                         | Dialogs.                                                                                                                                                   |
+| `--radius`    | `0.5rem`  | `rounded-lg`, `rounded-md`, `rounded-sm` | The base that Tailwind's `rounded-lg` (equal), `rounded-md` (2px less) and `rounded-sm` (4px less) are computed from. New code uses the named radii above. |
+
+## Elevation
+
+There is no shadow token. Elevation is the surface ladder: `--surface-sunken` below the page, `--bg` for the page, `--surface` for cards and `--surface-raised` for anything on a card. Every level has one border weight, `--line`. Two shadows exist in the primitives: `Card` draws a one-pixel inset highlight in `--edge` at 8% opacity along its top edge, and `Dialog` uses Tailwind's `shadow-2xl` over a dimmed, lightly blurred scrim.
+
+## Motion
+
+| Token             | Value                        | Class           | Use                                         |
+| ----------------- | ---------------------------- | --------------- | ------------------------------------------- |
+| `--duration-fast` | `120ms`                      | `duration-fast` | Hover, press and focus changes on controls. |
+| `--duration-base` | `200ms`                      | `duration-base` | Expanding and collapsing content.           |
+| `--duration-slow` | `320ms`                      | `duration-slow` | Elements entering or leaving the screen.    |
+| `--ease-standard` | `cubic-bezier(0.2, 0, 0, 1)` | `ease-standard` | The easing for all of the above.            |
+
+Motion only explains a change of state. When the operating system asks for reduced motion, `globals.css` cuts every animation and transition to 0.01ms.
+
+## Type
+
+Three fonts, loaded in `apps/web/app/fonts.ts`: Bricolage Grotesque for display headings, Manrope for body text and JetBrains Mono for addresses, amounts and plan steps. Sizes come from this scale only.
+
+<TypeScale />

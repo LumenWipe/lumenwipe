@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
+import { renderContrastTables, rootVars } from "../apps/web/tests/design-tokens";
 
 export interface Problem {
   source: string;
@@ -463,6 +464,163 @@ export function checkSecurityScope(root: string): Problem[] {
     .map((message) => ({ source: SECURITY_SCOPE, message }));
 }
 
+const TOKEN_CSS = "apps/web/app/globals.css";
+const TAILWIND_CONFIG = "apps/web/tailwind.config.ts";
+export const TOKEN_PAGE = "docs/design/tokens.mdx";
+const TYPE_SCALE = "docs/snippets/type-scale.mdx";
+const BRAND_DIR = "docs/brand";
+export const CONTRAST_START = "{/* contrast:start */}";
+export const CONTRAST_END = "{/* contrast:end */}";
+const CITED_PATH = /^(apps|packages|scripts|docs|diagrams|\.github)\//;
+
+export function tokenVars(root: string): Record<string, string> | null {
+  const css = read(root, TOKEN_CSS);
+  return css === null ? null : rootVars(css);
+}
+
+/** The text between the contrast markers of the token page, or null when a marker is missing. */
+export function contrastRegion(page: string): { start: number; end: number } | null {
+  const open = page.indexOf(CONTRAST_START);
+  const close = page.indexOf(CONTRAST_END);
+  if (open === -1 || close < open) return null;
+  return { start: open + CONTRAST_START.length, end: close };
+}
+
+/** Table cells trimmed and separator rows reduced, so Prettier's column padding never counts. */
+export function normalizeTables(text: string): string {
+  return text
+    .trim()
+    .split("\n")
+    .map((line) => {
+      if (!line.startsWith("|")) return line.trim();
+      const cells = line
+        .split("|")
+        .slice(1, -1)
+        .map((cell) => cell.trim());
+      return cells.every((cell) => /^:?-+:?$/.test(cell))
+        ? cells.map(() => "---").join("|")
+        : cells.join("|");
+    })
+    .join("\n");
+}
+
+function lineHeights(config: string): Map<string, string> {
+  const heights = new Map<string, string>();
+  const entry = /\[\s*"var\(--(text-[\w-]+)\)"\s*,\s*\{\s*lineHeight:\s*"([^"]+)"/g;
+  for (const m of config.matchAll(entry)) heights.set(m[1]!, m[2]!);
+  return heights;
+}
+
+function tokenRows(text: string): { name: string; cells: string[] }[] {
+  return text
+    .split("\n")
+    .filter((line) => line.startsWith("|"))
+    .map((line) =>
+      line
+        .split("|")
+        .slice(1, -1)
+        .map((cell) => cell.trim())
+    )
+    .flatMap((cells) => {
+      const name = /^`--([a-z0-9-]+)`$/.exec(cells[0] ?? "")?.[1];
+      return name === undefined ? [] : [{ name, cells }];
+    });
+}
+
+function brandPages(root: string): string[] {
+  const dir = join(root, BRAND_DIR);
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((name) => name.endsWith(".mdx"))
+    .map((name) => `${BRAND_DIR}/${name}`);
+}
+
+/**
+ * The token page lists every `:root` token of the web's globals.css once, with its value, and
+ * nothing else; type rows carry the line height Tailwind gives that step; the contrast region is
+ * exactly what the contrast test measures. Every token and repository path a design or brand page
+ * cites must exist.
+ */
+export function checkDesignTokens(root: string): Problem[] {
+  const vars = tokenVars(root);
+  if (vars === null) return [{ source: TOKEN_CSS, message: "is missing" }];
+  const page = read(root, TOKEN_PAGE);
+  if (page === null) return [{ source: TOKEN_PAGE, message: "the token reference is missing" }];
+  const scale = read(root, TYPE_SCALE);
+  if (scale === null) return [{ source: TYPE_SCALE, message: "the type scale is missing" }];
+  const heights = lineHeights(read(root, TAILWIND_CONFIG) ?? "");
+  const problems: Problem[] = [];
+  const seen = new Map<string, number>();
+  for (const [source, text] of [
+    [TOKEN_PAGE, page],
+    [TYPE_SCALE, scale],
+  ] as const) {
+    for (const { name, cells } of tokenRows(text)) {
+      seen.set(name, (seen.get(name) ?? 0) + 1);
+      const value = vars[name];
+      if (value === undefined) {
+        problems.push({
+          source,
+          message: `documents --${name}, which globals.css does not define`,
+        });
+        continue;
+      }
+      if (codeSpans(cells[1] ?? "")[0] !== value) {
+        problems.push({ source, message: `--${name} is ${value} in globals.css` });
+      }
+      if (name.startsWith("text-") && codeSpans(cells[2] ?? "")[0] !== heights.get(name)) {
+        problems.push({
+          source,
+          message: `--${name} has line height ${heights.get(name) ?? "none"} in ${TAILWIND_CONFIG}`,
+        });
+      }
+    }
+  }
+  for (const name of Object.keys(vars)) {
+    const count = seen.get(name) ?? 0;
+    if (count !== 1) {
+      problems.push({
+        source: TOKEN_PAGE,
+        message:
+          count === 0 ? `--${name} is not documented` : `--${name} is documented ${count} times`,
+      });
+    }
+  }
+  const region = contrastRegion(page);
+  let measured: string | null = null;
+  try {
+    measured = renderContrastTables(vars);
+  } catch (error) {
+    problems.push({ source: TOKEN_CSS, message: (error as Error).message });
+  }
+  if (region === null) {
+    problems.push({ source: TOKEN_PAGE, message: "the contrast markers were not found" });
+  } else if (
+    measured !== null &&
+    normalizeTables(page.slice(region.start, region.end)) !== normalizeTables(measured)
+  ) {
+    problems.push({
+      source: TOKEN_PAGE,
+      message: "the contrast tables differ from the measured ratios; run `bun run docs:tokens`",
+    });
+  }
+  for (const source of [TOKEN_PAGE, TYPE_SCALE, ...brandPages(root)]) {
+    const text = read(root, source) ?? "";
+    for (const span of codeSpans(text)) {
+      const token = /^--([a-z0-9-]+)$/.exec(span)?.[1];
+      if (token !== undefined) {
+        if (vars[token] === undefined && !seen.has(token)) {
+          problems.push({ source, message: `cites --${token}, which globals.css does not define` });
+        }
+      } else if (CITED_PATH.test(span)) {
+        const problem = scopePathProblem(root, span);
+        if (problem) problems.push({ source, message: problem });
+      }
+    }
+  }
+  return problems;
+}
+
 export function checkAll(root: string): Problem[] {
   return [
     ...checkRegister(root),
@@ -473,6 +631,7 @@ export function checkAll(root: string): Problem[] {
     ...checkSdkDoesNotBundleStellarSdk(root),
     ...checkThreatModelCoverage(root),
     ...checkSecurityScope(root),
+    ...checkDesignTokens(root),
   ].map((problem) => ({ ...problem, source: toPosix(problem.source) }));
 }
 

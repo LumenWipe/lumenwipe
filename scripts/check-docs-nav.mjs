@@ -33,7 +33,11 @@ function listPages(dir, out) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (path === join(docsDir, "diagrams") || path === join(docsDir, "logo")) continue;
+      if (
+        [join(docsDir, "diagrams"), join(docsDir, "logo"), join(docsDir, "snippets")].includes(path)
+      ) {
+        continue;
+      }
       listPages(path, out);
     } else if (pageExt.test(entry.name)) {
       out.add(relative(docsDir, path).replace(pageExt, ""));

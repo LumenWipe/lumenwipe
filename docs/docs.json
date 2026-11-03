@@ -160,6 +160,21 @@
       {
         "group": "Contributing",
         "pages": ["contributing/add-a-protocol-exit"]
+      },
+      {
+        "group": "Design",
+        "pages": ["design/tokens"]
+      },
+      {
+        "group": "Brand",
+        "pages": [
+          "brand/foundations",
+          "brand/voice-and-tone",
+          "brand/color",
+          "brand/logo",
+          "brand/type",
+          "brand/do-and-do-not"
+        ]
       }
     ]
   },

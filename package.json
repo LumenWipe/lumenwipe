@@ -29,6 +29,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check:docs": "bun scripts/check-docs-claims.ts",
+    "docs:tokens": "bun scripts/render-token-docs.ts",
     "security:scan": "bun scripts/security-scan.ts"
   },
   "devDependencies": {

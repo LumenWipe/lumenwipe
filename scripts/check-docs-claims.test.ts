@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import {
   checkAll,
   checkControllerList,
+  checkDesignTokens,
   checkFormatCommand,
   checkPlaygroundImports,
   checkRegister,
@@ -18,6 +19,7 @@ import {
   hasTest,
   stripComments,
 } from "./check-docs-claims";
+import { renderContrastTables, rootVars } from "../apps/web/tests/design-tokens";
 
 const roots: string[] = [];
 const SCRIPT = join(import.meta.dir, "check-docs-claims.ts");
@@ -39,6 +41,55 @@ const WORKFLOW = [
 const ROW =
   '| INV-01 | x | `apps/web/lib/verify.ts#assertCloseIntent` | `apps/web/tests/unit/verify.test.ts#"rejects an unknown operation"`, `.github/workflows/ci.yml#docs-claims` | Enforced |';
 
+const COLORS = [
+  "bg",
+  "surface",
+  "surface-raised",
+  "surface-sunken",
+  "fg",
+  "fg-muted",
+  "fg-subtle",
+  "fg-disabled",
+  "accent",
+  "accent-fg",
+  "value",
+  "value-fg",
+  "success",
+  "warning",
+  "warning-fg",
+  "danger",
+  "danger-on-fill",
+  "danger-fg",
+  "line-strong",
+  "edge",
+  "focus",
+];
+const TOKENS: Record<string, string> = {
+  ...Object.fromEntries(COLORS.map((name, i) => [name, `0 0% ${i * 4}%`])),
+  "text-body": "1rem",
+};
+const CSS = `@layer base {\n  :root {\n${Object.entries(TOKENS)
+  .map(([name, value]) => `    --${name}: ${value};`)
+  .join("\n")}\n  }\n}\n`;
+const TAILWIND = 'fontSize: { body: ["var(--text-body)", { lineHeight: "1.5rem" }] },\n';
+const TYPE_SCALE =
+  "| Token | Size | Line height |\n| --- | --- | --- |\n| `--text-body` | `1rem` | `1.5rem` |\n";
+
+function tokenPage(rows: string[], contrast = renderContrastTables(rootVars(CSS))): string {
+  return [
+    "| Token | Value |",
+    "| --- | --- |",
+    ...rows,
+    "",
+    "{/* contrast:start */}",
+    contrast,
+    "{/* contrast:end */}",
+    "",
+  ].join("\n");
+}
+
+const TOKEN_ROWS = COLORS.map((name) => `| \`--${name}\` | \`${TOKENS[name]}\` |`);
+
 function register(...rows: string[]): string {
   return [
     "| Id | Invariant | Enforced by | Proved by | Status |",
@@ -51,6 +102,10 @@ function fixture(files: Record<string, string | null>): string {
   const root = mkdtempSync(join(tmpdir(), "docs-claims-"));
   roots.push(root);
   const base: Record<string, string | null> = {
+    "apps/web/app/globals.css": CSS,
+    "apps/web/tailwind.config.ts": TAILWIND,
+    "docs/design/tokens.mdx": tokenPage(TOKEN_ROWS),
+    "docs/snippets/type-scale.mdx": TYPE_SCALE,
     "CLAUDE.md": CLAUDE_MD,
     ".github/workflows/ci.yml": WORKFLOW,
     "apps/api/src/root.controller.ts": "export class RootController {}\n",
@@ -475,5 +530,90 @@ describe("the security scope", () => {
     expect(checkSecurityScope(fixture({ "docs/security-scope.md": null }))[0]?.message).toBe(
       "the security scope is missing"
     );
+  });
+});
+
+describe("the design token reference", () => {
+  const messages = (files: Record<string, string | null>): string[] =>
+    checkDesignTokens(fixture(files)).map((p) => `${p.source}: ${p.message}`);
+
+  test("a token the page does not list is reported", () => {
+    expect(messages({ "docs/design/tokens.mdx": tokenPage(TOKEN_ROWS.slice(1)) })).toEqual([
+      "docs/design/tokens.mdx: --bg is not documented",
+    ]);
+  });
+
+  test("a row for a token the CSS does not define is reported", () => {
+    const page = tokenPage([...TOKEN_ROWS, "| `--stellar` | `196 100% 47%` |"]);
+    expect(messages({ "docs/design/tokens.mdx": page })).toEqual([
+      "docs/design/tokens.mdx: documents --stellar, which globals.css does not define",
+    ]);
+  });
+
+  test("a token listed twice is reported", () => {
+    const page = tokenPage([...TOKEN_ROWS, TOKEN_ROWS[0]!]);
+    expect(messages({ "docs/design/tokens.mdx": page })).toEqual([
+      "docs/design/tokens.mdx: --bg is documented 2 times",
+    ]);
+  });
+
+  test("a value that differs from the CSS is reported", () => {
+    const rows = [...TOKEN_ROWS.slice(1), "| `--bg` | `0 0% 1%` |"];
+    expect(messages({ "docs/design/tokens.mdx": tokenPage(rows) })).toEqual([
+      "docs/design/tokens.mdx: --bg is 0 0% 0% in globals.css",
+    ]);
+  });
+
+  test("a type step whose line height differs from Tailwind is reported", () => {
+    const scale = TYPE_SCALE.replace("`1.5rem` |", "`1.25rem` |");
+    expect(messages({ "docs/snippets/type-scale.mdx": scale })).toEqual([
+      "docs/snippets/type-scale.mdx: --text-body has line height 1.5rem in apps/web/tailwind.config.ts",
+    ]);
+  });
+
+  test("an edited ratio is reported, while Prettier's column padding is not", () => {
+    const measured = renderContrastTables(rootVars(CSS));
+    const edited = measured.replace(/\d+\.\d{2}:1/, "99.99:1");
+    expect(messages({ "docs/design/tokens.mdx": tokenPage(TOKEN_ROWS, edited) })).toEqual([
+      "docs/design/tokens.mdx: the contrast tables differ from the measured ratios; run `bun run docs:tokens`",
+    ]);
+    const padded = measured.replace(/\| /g, "|   ").replace(/---/g, "------");
+    expect(messages({ "docs/design/tokens.mdx": tokenPage(TOKEN_ROWS, padded) })).toEqual([]);
+  });
+
+  test("a design page citing a missing token or path is reported", () => {
+    const scale = `${TYPE_SCALE}\nSee \`--gold\` and \`apps/web/gone.tsx\`, not \`bg-value/10\`.\n`;
+    expect(messages({ "docs/snippets/type-scale.mdx": scale })).toEqual([
+      "docs/snippets/type-scale.mdx: cites --gold, which globals.css does not define",
+      "docs/snippets/type-scale.mdx: names apps/web/gone.tsx, which does not exist",
+    ]);
+  });
+
+  test("missing markers, a missing contrast token and a missing page are reported", () => {
+    expect(messages({ "docs/design/tokens.mdx": TOKEN_ROWS.join("\n") })).toEqual([
+      "docs/design/tokens.mdx: the contrast markers were not found",
+    ]);
+    const css = CSS.replace("    --focus: 0 0% 80%;\n", "");
+    expect(
+      messages({
+        "apps/web/app/globals.css": css,
+        "docs/design/tokens.mdx": tokenPage(
+          TOKEN_ROWS.filter((r) => !r.includes("--focus")),
+          ""
+        ),
+      })
+    ).toEqual(["apps/web/app/globals.css: token --focus is missing from globals.css"]);
+    expect(messages({ "docs/design/tokens.mdx": null })).toEqual([
+      "docs/design/tokens.mdx: the token reference is missing",
+    ]);
+  });
+
+  test("a brand page citing a missing token or path is reported", () => {
+    const brand =
+      "Use `--accent` and `--gold`, see `apps/web/lib/verify.ts` and `apps/web/gone.tsx`, not `bg-value/10`.\n";
+    expect(messages({ "docs/brand/color.mdx": brand })).toEqual([
+      "docs/brand/color.mdx: cites --gold, which globals.css does not define",
+      "docs/brand/color.mdx: names apps/web/gone.tsx, which does not exist",
+    ]);
   });
 });
