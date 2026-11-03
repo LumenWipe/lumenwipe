@@ -6,9 +6,8 @@ import { classicFloorFromQuote } from "@/lib/api/close-decisions";
 import type { AssetDisposition } from "@/types/plan";
 import { AddressField } from "@/components/ui/address-field";
 import { addressErrorMessage, isValidGAddress } from "@/lib/utils/validation";
-import { cn } from "@/lib/utils/cn";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
+import { DECISION_TAGS, DecisionCard, type DecisionOption } from "@/components/ui/decision-card";
 
 interface AssetDispositionCardProps {
   item: AssetConvertibility;
@@ -70,61 +69,64 @@ export default function AssetDispositionCard({
     </p>
   ) : null;
 
-  const transferPanel = (
-    <div className="mt-3 pl-7">
-      <label className="flex cursor-pointer items-start gap-2 text-xs text-white/70">
-        <input
-          type="checkbox"
-          checked={isTransfer}
-          onChange={(e) =>
-            // Leaving the transfer option returns the asset to its default: the swap when one
-            // exists, otherwise unresolved, so a non-convertible asset cannot silently fall
-            // back to being burned.
-            onSetDisposition(item.asset, e.target.checked ? "transfer" : "convert")
-          }
-          className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-stellar"
+  const transferOption: DecisionOption<AssetDisposition> = {
+    value: "transfer",
+    label: `Send ${holding} to another account instead.`,
+    tag: DECISION_TAGS.keep,
+    notice: (
+      <>
+        The receiving account must already hold a {item.code} trustline. LumenWipe cannot add one
+        for it, and the whole close fails if it cannot receive the balance.
+      </>
+    ),
+    children: (
+      <div className="space-y-1.5">
+        <AddressField
+          label={`Destination account for ${item.code}`}
+          hideLabel
+          value={transferDestination ?? ""}
+          onChange={(next) => onSetTransferDestination(item.asset, next || null)}
+          error={transferDestination ? addressErrorMessage(transferDestination) : null}
+          placeholder={`G... (an account that already holds ${item.code})`}
         />
-        <span>
-          Send {holding} to another account instead.{" "}
-          <span className="text-fg-subtle">You keep the tokens.</span>
-        </span>
-      </label>
-
-      {isTransfer && (
-        <div className="mt-2 space-y-1.5">
-          <AddressField
-            label={`Destination account for ${item.code}`}
-            hideLabel
-            value={transferDestination ?? ""}
-            onChange={(next) => onSetTransferDestination(item.asset, next || null)}
-            error={transferDestination ? addressErrorMessage(transferDestination) : null}
-            placeholder={`G... (an account that already holds ${item.code})`}
-            helper={
-              <>
-                That account must already hold a {item.code} trustline - LumenWipe cannot add one
-                for it, and the whole close fails if it cannot receive the balance.
-              </>
-            }
-          />
-          {/* A shortcut, not a constraint: the API takes any address per asset, and hiding that
-              behind a single fixed destination would make the UI narrower than the contract. */}
-          {mergeDestination && transferDestination !== mergeDestination && (
-            <button
-              type="button"
-              onClick={() => onSetTransferDestination(item.asset, mergeDestination)}
-              className="text-[0.7rem] text-stellar/90 underline-offset-2 hover:underline"
-            >
-              Use the same account I&apos;m merging into
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
+        {/* A shortcut, not a constraint: the API takes any address per asset, and hiding that
+            behind a single fixed destination would make the UI narrower than the contract. */}
+        {mergeDestination && transferDestination !== mergeDestination && (
+          <button
+            type="button"
+            onClick={() => onSetTransferDestination(item.asset, mergeDestination)}
+            className="text-[0.7rem] text-stellar/90 underline-offset-2 hover:underline"
+          >
+            Use the same account I&apos;m merging into
+          </button>
+        )}
+      </div>
+    ),
+  };
+  const issuerOption: DecisionOption<AssetDisposition> = {
+    value: "issuer",
+    label: `Return ${holding} to the issuer.`,
+    tag: DECISION_TAGS.giveUp,
+  };
+  const legend = `What happens to ${item.code}`;
+  const choose = (next: AssetDisposition): void => onSetDisposition(item.asset, next);
 
   if (item.convertible) {
+    const swapOption: DecisionOption<AssetDisposition> = {
+      value: "convert",
+      label: `Swap ${holding} to XLM on the DEX.`,
+      tag: DECISION_TAGS.recommended,
+    };
     return (
-      <Card tone={resolved ? "success" : "warning"} className="p-3 transition-colors">
+      <DecisionCard
+        legend={legend}
+        options={
+          isIssuer ? [swapOption, transferOption, issuerOption] : [swapOption, transferOption]
+        }
+        value={disposition}
+        onValueChange={choose}
+        tone={resolved ? "success" : "warning"}
+      >
         <div className="flex items-center gap-3">
           {isTransfer || isIssuer ? (
             <Send className="h-4 w-4 shrink-0 text-fg-muted" />
@@ -155,13 +157,18 @@ export default function AssetDispositionCard({
           </Badge>
         </div>
         {clawbackNote}
-        {transferPanel}
-      </Card>
+      </DecisionCard>
     );
   }
 
   return (
-    <Card tone={resolved ? "neutral" : "warning"} className="p-3 transition-colors">
+    <DecisionCard
+      legend={legend}
+      options={[issuerOption, transferOption]}
+      value={disposition}
+      onValueChange={choose}
+      tone={resolved ? "neutral" : "warning"}
+    >
       <div className="flex items-start gap-3">
         {resolved ? (
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
@@ -185,24 +192,7 @@ export default function AssetDispositionCard({
           </p>
         </div>
       </div>
-
       {clawbackNote}
-      <div className="mt-3 pl-7">
-        <label className="flex cursor-pointer items-start gap-2 text-xs text-white/70">
-          <input
-            type="checkbox"
-            checked={isIssuer}
-            onChange={(e) => onSetDisposition(item.asset, e.target.checked ? "issuer" : "convert")}
-            disabled={isTransfer}
-            className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-stellar disabled:opacity-40"
-          />
-          <span className={cn(isTransfer && "text-fg-disabled")}>
-            Return {holding} to the issuer.{" "}
-            <span className="text-fg-subtle">You give up these tokens.</span>
-          </span>
-        </label>
-      </div>
-      {transferPanel}
-    </Card>
+    </DecisionCard>
   );
 }

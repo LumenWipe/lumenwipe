@@ -176,8 +176,8 @@ export default function PlanView({
   }, [claimableBalanceDecisions]);
 
   function handleSetDisposition(asset: string, disposition: AssetDisposition) {
-    // "convert" doubles as the unresolved sentinel for a non-convertible asset - the store has
-    // no delete, and allAssetsResolved never treats it as resolved for one.
+    // A non-convertible asset can still hold "convert", seeded by a trustline claim below or kept
+    // from a plan that had a route; allAssetsResolved never treats it as resolved for one.
     setAssetDisposition(asset, disposition);
   }
 

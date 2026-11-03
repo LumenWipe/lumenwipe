@@ -6,7 +6,7 @@ import type { AssetDisposition } from "@/types/plan";
 import { AddressField } from "@/components/ui/address-field";
 import { addressErrorMessage, isValidGAddress } from "@/lib/utils/validation";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
+import { DECISION_TAGS, DecisionCard, type DecisionOption } from "@/components/ui/decision-card";
 
 interface TokenDispositionCardProps {
   item: AssetConvertibility;
@@ -55,10 +55,74 @@ export default function TokenDispositionCard({
         ? "XLM"
         : "needs a decision";
 
+  const options: DecisionOption<AssetDisposition>[] = [
+    ...(item.convertible
+      ? [
+          {
+            value: "convert" as const,
+            label: `Exchange my ${item.balance} ${item.code} for XLM.`,
+            tag: DECISION_TAGS.recommended,
+            detail: token.quote ? (
+              <>
+                About {formatStroops(token.quote.amountOut)} XLM, at least{" "}
+                {formatStroops(token.quote.minAmountOut)} XLM, through{" "}
+                {token.quote.provider === "xbull" ? "xBull" : "Soroswap"}
+                {token.quote.route.length > 0 ? ` (${token.quote.route.join(", ")})` : ""}.
+              </>
+            ) : (
+              "Through the best available route."
+            ),
+          },
+        ]
+      : []),
+    {
+      value: "transfer",
+      label: `Send my ${item.balance} ${item.code} to another account.`,
+      tag: DECISION_TAGS.keep,
+      detail: "No trustline is needed.",
+      children: (
+        <div className="space-y-1.5">
+          <AddressField
+            label={`Destination account for ${item.code}`}
+            hideLabel
+            value={transferDestination ?? ""}
+            onChange={(next) => onSetTransferDestination(item.asset, next || null)}
+            error={transferDestination ? addressErrorMessage(transferDestination) : null}
+            placeholder="G... (an account that exists)"
+            helper="Not an exchange deposit address: a token transfer carries no deposit memo, so an exchange could not credit it."
+          />
+          {mergeDestination && transferDestination !== mergeDestination && (
+            <button
+              type="button"
+              onClick={() => onSetTransferDestination(item.asset, mergeDestination)}
+              className="text-[0.7rem] text-stellar/90 underline-offset-2 hover:underline"
+            >
+              Use the same account I&apos;m merging into
+            </button>
+          )}
+        </div>
+      ),
+    },
+    {
+      value: "leave",
+      label: `Leave my ${item.balance} ${item.code} with this address.`,
+      tag: DECISION_TAGS.giveUp,
+      detail: (
+        <span className="text-warning">
+          The account closes anyway; these tokens stay out of reach unless this address is funded
+          again.
+        </span>
+      ),
+    },
+  ];
+
   return (
-    <Card
+    <DecisionCard
+      legend={`What happens to ${item.code}`}
+      options={options}
+      value={disposition}
+      onValueChange={(next) => onSetDisposition(item.asset, next)}
       tone={resolved ? (isLeave ? "neutral" : "success") : "warning"}
-      className="p-3 transition-colors"
       data-testid={`token-card-${token.contract}`}
     >
       <div className="flex items-start gap-3">
@@ -99,84 +163,6 @@ export default function TokenDispositionCard({
           {isConvert ? "Swap" : isTransfer ? "Send" : isLeave ? "Stays" : "Decide"}
         </Badge>
       </div>
-
-      <div className="mt-3 space-y-2 pl-7">
-        {item.convertible && (
-          <label className="flex cursor-pointer items-start gap-2 text-xs text-white/70">
-            <input
-              type="radio"
-              name={`token-${token.contract}`}
-              checked={isConvert}
-              onChange={() => onSetDisposition(item.asset, "convert")}
-              className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-stellar"
-            />
-            <span>
-              Exchange my {item.balance} {item.code} for XLM.{" "}
-              {token.quote ? (
-                <span className="text-fg-subtle">
-                  About {formatStroops(token.quote.amountOut)} XLM, at least{" "}
-                  {formatStroops(token.quote.minAmountOut)} XLM, through{" "}
-                  {token.quote.provider === "xbull" ? "xBull" : "Soroswap"}
-                  {token.quote.route.length > 0 ? ` (${token.quote.route.join(", ")})` : ""}.
-                </span>
-              ) : (
-                <span className="text-fg-subtle">Through the best available route.</span>
-              )}
-            </span>
-          </label>
-        )}
-        <label className="flex cursor-pointer items-start gap-2 text-xs text-white/70">
-          <input
-            type="radio"
-            name={`token-${token.contract}`}
-            checked={isTransfer}
-            onChange={() => onSetDisposition(item.asset, "transfer")}
-            className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-stellar"
-          />
-          <span>
-            Send my {item.balance} {item.code} to another account.{" "}
-            <span className="text-fg-subtle">You keep the tokens. No trustline is needed.</span>
-          </span>
-        </label>
-        {isTransfer && (
-          <div className="space-y-1.5 pl-5">
-            <AddressField
-              label={`Destination account for ${item.code}`}
-              hideLabel
-              value={transferDestination ?? ""}
-              onChange={(next) => onSetTransferDestination(item.asset, next || null)}
-              error={transferDestination ? addressErrorMessage(transferDestination) : null}
-              placeholder="G... (an account that exists)"
-              helper="Not an exchange deposit address: a token transfer carries no deposit memo, so an exchange could not credit it."
-            />
-            {mergeDestination && transferDestination !== mergeDestination && (
-              <button
-                type="button"
-                onClick={() => onSetTransferDestination(item.asset, mergeDestination)}
-                className="text-[0.7rem] text-stellar/90 underline-offset-2 hover:underline"
-              >
-                Use the same account I&apos;m merging into
-              </button>
-            )}
-          </div>
-        )}
-        <label className="flex cursor-pointer items-start gap-2 text-xs text-white/70">
-          <input
-            type="radio"
-            name={`token-${token.contract}`}
-            checked={isLeave}
-            onChange={() => onSetDisposition(item.asset, "leave")}
-            className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-stellar"
-          />
-          <span>
-            Leave my {item.balance} {item.code} with this address.{" "}
-            <span className="text-warning">
-              The account closes anyway; these tokens stay out of reach unless this address is
-              funded again.
-            </span>
-          </span>
-        </label>
-      </div>
-    </Card>
+    </DecisionCard>
   );
 }

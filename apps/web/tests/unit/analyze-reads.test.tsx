@@ -105,6 +105,10 @@ function stubFetch(
 const notFound = (): Response =>
   Response.json({ error: { code: "account_not_found", message: "raw" } }, { status: 404 });
 
+const FORFEIT = { name: /^Forfeit it/ };
+const forfeitOption = (): HTMLElement => screen.getByRole("radio", FORFEIT);
+const findForfeitOption = (): Promise<HTMLElement> => screen.findByRole("radio", FORFEIT);
+
 async function mountPage(): Promise<void> {
   await act(async () => {
     render(<AnalyzePage params={params} />);
@@ -130,7 +134,7 @@ afterEach(() => {
 test("an account with a claimable balance is read once and planned once", async () => {
   const seen = stubFetch();
   await mountPage();
-  await waitFor(() => expect(screen.getByRole("checkbox")).toBeTruthy());
+  await waitFor(() => expect(forfeitOption()).toBeTruthy());
   await act(async () => {});
   expect(useDemolishStore.getState().claimableBalanceSelections[BALANCE]).toBe("claim");
   expect(seen).toEqual({ account: 1, plan: [expect.any(String)] });
@@ -145,7 +149,7 @@ test("Strict Mode's double mount still reads and plans once", async () => {
       </StrictMode>
     );
   });
-  await screen.findByRole("checkbox");
+  await findForfeitOption();
   await act(async () => {});
   expect(seen).toEqual({ account: 1, plan: [expect.any(String)] });
 });
@@ -153,7 +157,7 @@ test("Strict Mode's double mount still reads and plans once", async () => {
 test("answering a claim card asks for one plan and no account read", async () => {
   const seen = stubFetch();
   await mountPage();
-  const box = await screen.findByRole("checkbox");
+  const box = await findForfeitOption();
   await act(async () => {
     fireEvent.click(box);
   });
@@ -162,16 +166,36 @@ test("answering a claim card asks for one plan and no account read", async () =>
   expect(seen.plan[1]).toContain("forfeit");
 
   await act(async () => {
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("radio", { name: /^Claim it/ }));
   });
   await waitFor(() => expect(seen.plan.length).toBe(3));
   expect(seen.account).toBe(1);
 });
 
+test("the chosen claim option keeps its node and focus through the re-plan it starts", async () => {
+  const seen = stubFetch();
+  await mountPage();
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /Claim balances/ }));
+  });
+  const forfeit = await findForfeitOption();
+  forfeit.focus();
+  await act(async () => {
+    fireEvent.click(forfeit);
+  });
+  await waitFor(() => expect(seen.plan.length).toBe(2));
+  await screen.findByText("Plan updated");
+
+  expect(forfeitOption()).toBe(forfeit);
+  expect(forfeit.isConnected).toBe(true);
+  expect((forfeit as HTMLInputElement).checked).toBe(true);
+  expect(document.activeElement).toBe(forfeit);
+});
+
 test("a DeFi acknowledgement re-plans with no account read", async () => {
   const seen = stubFetch();
   await mountPage();
-  await screen.findByRole("checkbox");
+  await findForfeitOption();
   await act(async () => {
     useDemolishStore.getState().acknowledgeDefiPositions(SOURCE);
   });
@@ -182,7 +206,7 @@ test("a DeFi acknowledgement re-plans with no account read", async () => {
 test("the refresh button still reads the account again", async () => {
   const seen = stubFetch();
   await mountPage();
-  await screen.findByRole("checkbox");
+  await findForfeitOption();
   const refresh = document.querySelector("svg.lucide-refresh-cw")?.closest("button");
   await act(async () => {
     fireEvent.click(refresh as HTMLButtonElement);
@@ -209,7 +233,7 @@ test("a re-plan carries the tokens the account read found, in one request", asyn
       }),
   });
   await mountPage();
-  const box = await screen.findByRole("checkbox");
+  const box = await findForfeitOption();
   await act(async () => {
     fireEvent.click(box);
   });
