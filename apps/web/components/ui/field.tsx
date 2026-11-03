@@ -114,6 +114,9 @@ interface FieldProps {
   required?: boolean;
   helper?: ReactNode;
   error?: ReactNode;
+  /** Read to assistive technology only, in place of a visual-only valid state. Ignored while
+   *  `error` is set. */
+  status?: ReactNode;
   className?: string;
   children: ReactNode;
 }
@@ -126,6 +129,7 @@ export function Field({
   required = false,
   helper,
   error,
+  status,
   className,
   children,
 }: FieldProps): ReactElement {
@@ -133,7 +137,11 @@ export function Field({
   const invalid = !!error;
   const helperId = `${id}-helper`;
   const errorId = `${id}-error`;
-  const described = [invalid && errorId, helper && helperId].filter(Boolean).join(" ");
+  const statusId = `${id}-status`;
+  const settled = !invalid && !!status;
+  const described = [invalid && errorId, settled && statusId, helper && helperId]
+    .filter(Boolean)
+    .join(" ");
   const context: FieldContextValue = {
     controlId: `${id}-control`,
     helperId,
@@ -151,6 +159,11 @@ export function Field({
         </Label>
         {children}
         {invalid && <FieldError>{error}</FieldError>}
+        {settled && (
+          <span id={statusId} className="sr-only">
+            {status}
+          </span>
+        )}
         {helper && <HelperText>{helper}</HelperText>}
       </div>
     </FieldContext.Provider>
