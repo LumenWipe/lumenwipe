@@ -395,6 +395,29 @@ test("RevokeAllowanceModal › the tabs write no key to the markup or storage", 
   expect(JSON.stringify({ ...sessionStorage, ...localStorage })).not.toContain(secret);
 });
 
+test("RevokeAllowanceModal › leaving the key tab forgets the key, so coming back cannot revoke", async () => {
+  stubWalletKit();
+  spyOn(recovery, "findUnresolved").mockResolvedValue(undefined as never);
+  let fetched = 0;
+  globalThis.fetch = (async () => {
+    fetched++;
+    return new Response("{}", { status: 200 });
+  }) as unknown as typeof fetch;
+  renderSecretKeyModal(() => {});
+  expect(confirmButton().disabled).toBe(false);
+
+  fireEvent.click(screen.getByRole("tab", { name: /wallet/i }));
+  fireEvent.click(screen.getByRole("tab", { name: /secret key/i }));
+
+  expect((screen.getByPlaceholderText("S...") as HTMLInputElement).value).toBe("");
+  expect(confirmButton().disabled).toBe(true);
+  await act(async () => {
+    fireEvent.click(confirmButton());
+  });
+  expect(fetched).toBe(0);
+  expect(screen.queryByRole("button", { name: /revoking/i })).toBeNull();
+});
+
 test("RevokeAllowanceModal › Tab stays inside with the key panel open and confirm disabled", () => {
   stubWalletKit();
   renderModal();
