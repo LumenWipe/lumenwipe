@@ -1,6 +1,8 @@
 import type { Network } from "@/config/networks";
+import { journeyOf, type JourneyStateName } from "@/lib/journey/journey-state";
 import { useDemolishStore } from "@/store/demolish";
 import type { AccountState } from "@/types/account";
+import { isValidGAddress } from "@/lib/utils/validation";
 import {
   DECISIONS_VERSION,
   assetFingerprint,
@@ -25,8 +27,10 @@ export function holdsNoDecisions(state: State, source: string): boolean {
   );
 }
 
-/** The inputs this tab keeps for `source`. Before the account is read, the asset answers and what
- *  they were given for are carried over from the last snapshot rather than emptied. */
+/** The inputs this tab keeps for `source`. The destination and memo are the last ones the user
+ *  typed, which the snapshot already holds once there is one, an emptied field included. Before
+ *  the account is read, the asset answers and what they were given for are carried over from the
+ *  last snapshot rather than emptied. */
 export function snapshotOf(
   network: Network,
   source: string,
@@ -45,13 +49,10 @@ export function snapshotOf(
     v: DECISIONS_VERSION,
     network,
     source,
-    destination: previous?.destination ?? state.destinationAddress,
-    memo: previous?.memo ?? state.memo,
-    memoType: state.memoType ?? previous?.memoType ?? null,
+    destination: previous ? previous.destination : state.destinationAddress,
+    memo: previous ? previous.memo : state.memo,
+    memoType: previous ? previous.memoType : state.memoType,
     destinationAcknowledgedFor: state.destinationAcknowledgedFor,
-    defiPositionsAcknowledgedFor: state.defiPositionsAcknowledgedFor,
-    issuerSupplyAcknowledgedFor: state.issuerSupplyAcknowledgedFor,
-    positionsLeftBehind: state.positionsLeftBehind,
     claimableBalanceSelections: state.claimableBalanceSelections,
     assetDispositions: account ? state.assetDispositions : (previous?.assetDispositions ?? {}),
     transferDestinations: account
@@ -59,6 +60,17 @@ export function snapshotOf(
       : (previous?.transferDestinations ?? {}),
     seen: account ? seen : (previous?.seen ?? {}),
   };
+}
+
+const BEFORE_CONSENT: readonly JourneyStateName[] = ["untouched", "planned", "reviewed", "unknown"];
+
+/** Whether the store's close is still before its review confirm, the only time inputs are kept:
+ *  none outlives the consent given on review. */
+function keepable(state: State, source: string): boolean {
+  return (
+    (state.sourceAddress === null || state.sourceAddress === source) &&
+    BEFORE_CONSENT.includes(journeyOf(state).state)
+  );
 }
 
 function previousOf(network: Network, source: string): DecisionSnapshot | null {
@@ -69,26 +81,34 @@ function previousOf(network: Network, source: string): DecisionSnapshot | null {
 /** Saves the store's inputs for `source` as they are now. */
 export function keepDecisions(network: Network, source: string): void {
   const state = useDemolishStore.getState();
-  if (state.sourceAddress !== null && state.sourceAddress !== source) return;
+  if (!keepable(state, source)) return;
   writeDecisions(snapshotOf(network, source, state, previousOf(network, source)));
 }
 
-/** Saves what the destination and memo fields show, which the store learns only on proceeding. */
+/** Saves what the destination and memo fields show, which the store learns only on proceeding.
+ *  A destination that is not a valid address yet is kept as none, so it never makes the rest
+ *  of the snapshot unreadable. */
 export function keepDestinationDraft(
   network: Network,
   source: string,
   destination: string,
-  memo: string
+  memo: string,
+  memoType: DecisionSnapshot["memoType"]
 ): void {
   const state = useDemolishStore.getState();
-  if (state.sourceAddress !== null && state.sourceAddress !== source) return;
+  if (!keepable(state, source)) return;
   const snapshot = snapshotOf(network, source, state, previousOf(network, source));
-  writeDecisions({ ...snapshot, destination: destination || null, memo: memo || null });
+  writeDecisions({
+    ...snapshot,
+    destination: isValidGAddress(destination) ? destination : null,
+    memo: memo || null,
+    memoType: memo ? memoType : null,
+  });
 }
 
-/** Puts back the inputs that do not depend on what the account holds, before it is read. Each
- *  acknowledgement is restored only for the very value it was given for: the destination now in
- *  the store (a resumed close's) or the restored one, and the account itself. */
+/** Puts back the inputs that do not depend on what the account holds, before it is read. The
+ *  destination acknowledgement is restored only for the very address it was given for: the
+ *  destination now in the store (a resumed close's) or the restored one. */
 export function restoreInputs(snapshot: DecisionSnapshot): void {
   const state = useDemolishStore.getState();
   const { source } = snapshot;
@@ -103,11 +123,6 @@ export function restoreInputs(snapshot: DecisionSnapshot): void {
   const destination = useDemolishStore.getState().destinationAddress;
   if (destination !== null && snapshot.destinationAcknowledgedFor === destination) {
     state.acknowledgeDestination(destination);
-  }
-  if (snapshot.defiPositionsAcknowledgedFor === source) state.acknowledgeDefiPositions(source);
-  if (snapshot.issuerSupplyAcknowledgedFor === source) state.acknowledgeIssuerSupply(source);
-  for (const id of snapshot.positionsLeftBehind) {
-    if (id.startsWith(`defi_leave:${source}:`)) state.setPositionLeftBehind(id, true);
   }
   for (const [balanceId, selection] of Object.entries(snapshot.claimableBalanceSelections)) {
     state.setClaimableBalanceSelection(balanceId, selection);

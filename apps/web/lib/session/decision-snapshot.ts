@@ -9,7 +9,9 @@ export const DECISIONS_VERSION = 1;
 const PREFIX = "lumenwipe:decisions:";
 
 /** What this tab keeps of a close's inputs across a reload: the user's own answers, never a key,
- *  a signature, a transaction, the plan or anything the close sent. */
+ *  a signature, a transaction, the plan or anything the close sent. Consent to leave a DeFi
+ *  position behind or to the account's own checks is not kept: it is bound to no amount, so it is
+ *  always asked again. */
 export interface DecisionSnapshot {
   v: number;
   network: Network;
@@ -18,9 +20,6 @@ export interface DecisionSnapshot {
   memo: string | null;
   memoType: "text" | "id" | "hash" | null;
   destinationAcknowledgedFor: string | null;
-  defiPositionsAcknowledgedFor: string | null;
-  issuerSupplyAcknowledgedFor: string | null;
-  positionsLeftBehind: string[];
   assetDispositions: Record<string, AssetDisposition>;
   transferDestinations: Record<string, string>;
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection>;
@@ -94,10 +93,6 @@ function parse(raw: unknown, network: Network, source: string): SnapshotRead {
     isNullableString(s.memo) &&
     MEMO_TYPES.includes(s.memoType) &&
     isNullableString(s.destinationAcknowledgedFor) &&
-    isNullableString(s.defiPositionsAcknowledgedFor) &&
-    isNullableString(s.issuerSupplyAcknowledgedFor) &&
-    Array.isArray(s.positionsLeftBehind) &&
-    s.positionsLeftBehind.every((id) => typeof id === "string") &&
     isRecordOf(s.assetDispositions, (v) => DISPOSITIONS.includes(v as string)) &&
     isRecordOf(s.transferDestinations, (v) => typeof v === "string" && isValidGAddress(v)) &&
     isRecordOf(s.claimableBalanceSelections, (v) => SELECTIONS.includes(v as string)) &&
@@ -113,9 +108,6 @@ function parse(raw: unknown, network: Network, source: string): SnapshotRead {
       memo: s.memo as string | null,
       memoType: s.memoType as DecisionSnapshot["memoType"],
       destinationAcknowledgedFor: s.destinationAcknowledgedFor as string | null,
-      defiPositionsAcknowledgedFor: s.defiPositionsAcknowledgedFor as string | null,
-      issuerSupplyAcknowledgedFor: s.issuerSupplyAcknowledgedFor as string | null,
-      positionsLeftBehind: s.positionsLeftBehind as string[],
       assetDispositions: s.assetDispositions as Record<string, AssetDisposition>,
       transferDestinations: s.transferDestinations as Record<string, string>,
       claimableBalanceSelections: s.claimableBalanceSelections as Record<

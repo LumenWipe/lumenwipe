@@ -118,10 +118,6 @@ export default function PlanView({
   const [proceeding, setProceeding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    keepDestinationDraft(network, account.address, destination, memo);
-  }, [network, account.address, destination, memo]);
-
   // Auto-set convertible assets to "convert" so they feed the builder without user action -
   // but only when the user has not answered yet.
   //
@@ -267,6 +263,11 @@ export default function PlanView({
   const memoTypeForDest = memoReq?.memoType ?? "text";
   const memoValid =
     !memoRequired || (memo.trim().length > 0 && isValidMemo(memo.trim(), memoTypeForDest));
+  const draftMemoType = memoRequired ? memoTypeForDest : null;
+
+  useEffect(() => {
+    keepDestinationDraft(network, account.address, destination, memo.trim(), draftMemoType);
+  }, [network, account.address, destination, memo, draftMemoType]);
 
   // Preview: derive mediator requirement from the registry synchronously so the
   // plan accordion shows the correct step titles before the user clicks proceed.

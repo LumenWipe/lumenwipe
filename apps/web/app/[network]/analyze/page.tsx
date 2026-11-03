@@ -43,6 +43,7 @@ import {
 } from "@/lib/session/restore-decisions";
 import {
   CHOICES_RESTORED,
+  CONFIRMATIONS_ASKED_AGAIN,
   changedAssetsNotice,
   choicesResetNotice,
   GONE_RECORD_CLEARED,
@@ -106,6 +107,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   const [status, setStatus] = useState("");
   const [changedAssets, setChangedAssets] = useState<string[]>([]);
   const [goneRecordCleared, setGoneRecordCleared] = useState(false);
+  const [askedAgain, setAskedAgain] = useState(false);
   // Taken from the store once and cleared there, so it belongs to this visit and is not shown
   // again on the next page.
   const [reloadNotice, setReloadNotice] = useState(() => useDemolishStore.getState().reloadNotice);
@@ -252,6 +254,11 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
             pendingRestore.current = null;
             const changed = restoreAssetDecisions(restoring, accountData);
             setChangedAssets(changed.map((asset) => assetName(accountData, asset)));
+            const returnsToIssuer = Object.values(
+              useDemolishStore.getState().assetDispositions
+            ).includes("issuer");
+            const hasPositions = (accountData.defiPositions?.positions.length ?? 0) > 0;
+            setAskedAgain(returnsToIssuer || hasPositions);
           }
         },
       });
@@ -411,6 +418,11 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       {reloadNotice && (
         <Callout tone="info" announce="status" className="mb-4">
           {reloadNotice}
+        </Callout>
+      )}
+      {askedAgain && (
+        <Callout tone="info" announce="status" className="mb-4">
+          {CONFIRMATIONS_ASKED_AGAIN}
         </Callout>
       )}
       {changedAssets.length > 0 && (

@@ -213,6 +213,11 @@ export function choicesResetNotice(reason: string): string {
   return `Your choices were reset because ${reason}. Make them again before you continue.`;
 }
 
+/** Shown when restored choices meet a return to an issuer or DeFi positions: the confirmations
+ *  that give value up are never restored. */
+export const CONFIRMATIONS_ASKED_AGAIN =
+  "Confirmations that give value up are not kept across a reload: any return to an issuer and any DeFi position check or position left behind is asked again below.";
+
 export function changedAssetsNotice(assets: readonly string[]): string {
   return `These assets changed since you chose what to do with them, so they need an answer again: ${assets.join(", ")}.`;
 }

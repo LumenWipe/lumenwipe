@@ -18,6 +18,10 @@ import {
   type DecisionSnapshot,
 } from "@/lib/session/decision-snapshot";
 import { useDemolishStore } from "@/store/demolish";
+import ReviewView from "@/components/review/ReviewView";
+import * as closeRecord from "@/lib/session/close-record";
+import * as recovery from "@/lib/session/recovery";
+import { keepDecisions, keepDestinationDraft } from "@/lib/session/restore-decisions";
 import { useNetworkStore } from "@/store/network";
 import type { AccountState } from "@/types/account";
 import type { PlannedStep } from "@/types/plan";
@@ -81,9 +85,6 @@ function snapshot(over: Partial<DecisionSnapshot> = {}): DecisionSnapshot {
     memo: null,
     memoType: null,
     destinationAcknowledgedFor: DEST,
-    defiPositionsAcknowledgedFor: SOURCE,
-    issuerSupplyAcknowledgedFor: null,
-    positionsLeftBehind: [],
     assetDispositions: { [USDC]: "transfer", [AQUA]: "issuer", [GONE]: "convert" },
     transferDestinations: { [USDC]: PAYEE },
     claimableBalanceSelections: { [BALANCE]: "forfeit" },
@@ -221,14 +222,11 @@ describe("a reload keeps the user's choices", () => {
       [
         "assetDispositions",
         "claimableBalanceSelections",
-        "defiPositionsAcknowledgedFor",
         "destination",
         "destinationAcknowledgedFor",
-        "issuerSupplyAcknowledgedFor",
         "memo",
         "memoType",
         "network",
-        "positionsLeftBehind",
         "seen",
         "source",
         "transferDestinations",
@@ -284,7 +282,6 @@ describe("what is restored is checked against what it was given for", () => {
     const state = useDemolishStore.getState();
     expect(state.destinationAddress).toBe(OTHER_DEST);
     expect(state.destinationAcknowledgedFor).toBeNull();
-    expect(state.defiPositionsAcknowledgedFor).toBe(SOURCE);
     await act(async () => land(Response.json(account())));
   });
 
@@ -297,23 +294,37 @@ describe("what is restored is checked against what it was given for", () => {
     expect(state.destinationAcknowledgedFor).toBeNull();
   });
 
-  test("an acknowledgement for another account is never restored", async () => {
-    const other = Keypair.random().publicKey();
+  test("consent to leave positions or to the account's own checks is never restored", async () => {
     window.sessionStorage.setItem(
       KEY,
-      JSON.stringify(
-        snapshot({
-          defiPositionsAcknowledgedFor: other,
-          issuerSupplyAcknowledgedFor: other,
-          positionsLeftBehind: [`defi_leave:${other}:C1`],
-        })
-      )
+      JSON.stringify({
+        ...snapshot(),
+        defiPositionsAcknowledgedFor: SOURCE,
+        issuerSupplyAcknowledgedFor: SOURCE,
+        positionsLeftBehind: [`defi_leave:${SOURCE}:C1`],
+      })
     );
     await analyzed();
     const state = useDemolishStore.getState();
     expect(state.defiPositionsAcknowledgedFor).toBeNull();
     expect(state.issuerSupplyAcknowledgedFor).toBeNull();
     expect(state.positionsLeftBehind).toEqual([]);
+    expect(state.assetDispositions[AQUA]).toBe("issuer");
+    expect(screen.getByText(/Confirmations that give value up are not kept/)).toBeTruthy();
+  });
+
+  test("the saved value never carries that consent", async () => {
+    await analyzed();
+    act(() => {
+      const store = useDemolishStore.getState();
+      store.acknowledgeDefiPositions(SOURCE);
+      store.acknowledgeIssuerSupply(SOURCE);
+      store.setPositionLeftBehind(`defi_leave:${SOURCE}:C1`, true);
+    });
+    const raw = window.sessionStorage.getItem(KEY) ?? "";
+    expect(raw).not.toContain("defi_leave");
+    expect(Object.keys(JSON.parse(raw))).not.toContain("defiPositionsAcknowledgedFor");
+    expect(Object.keys(JSON.parse(raw))).not.toContain("issuerSupplyAcknowledgedFor");
   });
 
   test("an asset whose balance changed is asked again, and one that is gone is dropped", async () => {
@@ -328,6 +339,107 @@ describe("what is restored is checked against what it was given for", () => {
         "These assets changed since you chose what to do with them, so they need an answer again: USDC."
       )
     ).toBeTruthy();
+  });
+});
+
+describe("the destination and memo kept are the last ones the user gave", () => {
+  const saved = (): DecisionSnapshot => JSON.parse(window.sessionStorage.getItem(KEY) ?? "null");
+
+  test("a memo cleared after proceeding stays cleared across a reload", async () => {
+    useDemolishStore.getState().setAddresses(SOURCE, DEST, "1234", "id");
+    keepDecisions("testnet", SOURCE);
+    expect(saved().memo).toBe("1234");
+    keepDestinationDraft("testnet", SOURCE, DEST, "", null);
+    act(() => useDemolishStore.getState().setAssetDisposition(USDC, "convert"));
+    keepDecisions("testnet", SOURCE);
+    expect(saved().memo).toBeNull();
+    expect(saved().memoType).toBeNull();
+
+    reload();
+    await analyzed();
+    expect(useDemolishStore.getState().memo).toBeNull();
+  });
+
+  test("a destination typed after proceeding wins, and the one proceeded with wins on review", async () => {
+    useDemolishStore.getState().setAddresses(SOURCE, DEST);
+    keepDecisions("testnet", SOURCE);
+    keepDestinationDraft("testnet", SOURCE, OTHER_DEST, "", null);
+    keepDecisions("testnet", SOURCE);
+    expect(saved().destination).toBe(OTHER_DEST);
+
+    reload();
+    await analyzed();
+    expect(useDemolishStore.getState().destinationAddress).toBe(OTHER_DEST);
+
+    act(() => {
+      useDemolishStore.getState().setAddresses(SOURCE, OTHER_DEST);
+      useDemolishStore.setState({ phase: "PREFLIGHT_COMPLETE" });
+    });
+    reload();
+    await mount(<ReviewPage params={params} />);
+    expect(replace).toHaveBeenCalledWith(`/testnet/analyze?source=${encodeURIComponent(SOURCE)}`);
+    cleanup();
+    await analyzed();
+    expect(useDemolishStore.getState().destinationAddress).toBe(OTHER_DEST);
+  });
+
+  test("a half-typed destination is kept as none and every other choice still restores", async () => {
+    window.sessionStorage.setItem(KEY, JSON.stringify(snapshot()));
+    await analyzed();
+    keepDestinationDraft("testnet", SOURCE, "GABC", "", null);
+    expect(saved().destination).toBeNull();
+
+    reload();
+    await analyzed();
+    const state = useDemolishStore.getState();
+    expect(state.destinationAddress).toBeNull();
+    expect(state.assetDispositions[AQUA]).toBe("issuer");
+    expect(state.claimableBalanceSelections).toEqual({ [BALANCE]: "forfeit" });
+  });
+});
+
+describe("the review confirm ends what is kept", () => {
+  const step: PlannedStep = {
+    index: 0,
+    type: "MERGE",
+    title: "MERGE",
+    description: "",
+    operationCount: 1,
+    estimatedFeeLumens: "0.0000100",
+    txXdr: null,
+    status: "pending",
+    txHash: null,
+    error: null,
+  };
+
+  async function confirmReview(): Promise<void> {
+    spyOn(recovery, "readUnresolved").mockResolvedValue(null);
+    spyOn(closeRecord, "saveCloseSession").mockResolvedValue("s");
+    useDemolishStore.getState().setAddresses(SOURCE, DEST);
+    useDemolishStore.setState({ phase: "PREFLIGHT_COMPLETE", executionPlan: [step] });
+    window.sessionStorage.setItem(KEY, JSON.stringify(snapshot()));
+    await mount(<ReviewView network="testnet" />);
+    fireEvent.click(screen.getByRole("checkbox"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /want to proceed/i }));
+    });
+  }
+
+  test("a successful confirm forgets the choices, and signing writes none back", async () => {
+    await confirmReview();
+    expect(useDemolishStore.getState().phase).toBe("STEP_EXECUTING");
+    expect(window.sessionStorage.getItem(KEY)).toBeNull();
+    act(() => useDemolishStore.getState().setAssetDisposition(USDC, "convert"));
+    keepDecisions("testnet", SOURCE);
+    expect(window.sessionStorage.getItem(KEY)).toBeNull();
+  });
+
+  test("a review reload right after the confirm goes to the start page, not to a second plan", async () => {
+    await confirmReview();
+    reload();
+    await mount(<ReviewPage params={params} />);
+    expect(replace).toHaveBeenCalledWith("/testnet");
+    expect(replace).not.toHaveBeenCalledWith(expect.stringContaining("/analyze"));
   });
 });
 
