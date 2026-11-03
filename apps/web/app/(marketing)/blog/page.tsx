@@ -25,8 +25,8 @@ export default function BlogPage() {
   return (
     <div className="max-w-5xl mx-auto px-5 lg:px-8 py-14 lg:py-20">
       <div className="mb-12">
-        <span className="mkt-eyebrow inline-flex items-center gap-2 text-stellar/90">
-          <span className="h-px w-6 bg-stellar/50" />
+        <span className="mkt-eyebrow inline-flex items-center gap-2 text-accent/90">
+          <span className="h-px w-6 bg-accent/50" />
           Blog
         </span>
         <h1 className="mkt-display text-4xl font-extrabold text-white mt-4 mb-3 tracking-tight">

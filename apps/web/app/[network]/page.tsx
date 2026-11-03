@@ -92,9 +92,9 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
         <p className="mb-2 text-sm text-white/70">{UNCONFIRMED_NOTICE}</p>
       )}
       {checked && session && (
-        <div className="flex items-center justify-between gap-3 bg-stellar/10 border border-stellar/30 rounded-lg px-4 py-3 mb-6 text-sm">
+        <div className="flex items-center justify-between gap-3 bg-accent/10 border border-accent/30 rounded-lg px-4 py-3 mb-6 text-sm">
           <div className="flex items-center gap-2 min-w-0">
-            <RotateCcw className="h-4 w-4 text-stellar shrink-0" />
+            <RotateCcw className="h-4 w-4 text-accent shrink-0" />
             <span className="text-fg-muted truncate">
               In-progress account merge found for{" "}
               <span className="font-mono text-xs">{session.sourceAddress.slice(0, 8)}…</span>
@@ -105,12 +105,12 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
               <button
                 onClick={() => void handleCheck()}
                 disabled={checking}
-                className="text-stellar font-medium hover:underline disabled:opacity-50"
+                className="text-accent font-medium hover:underline disabled:opacity-50"
               >
                 Check again
               </button>
             ) : (
-              <button onClick={handleResume} className="text-stellar font-medium hover:underline">
+              <button onClick={handleResume} className="text-accent font-medium hover:underline">
                 Resume
               </button>
             )}
@@ -128,8 +128,8 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
 
       {/* Hero */}
       <div className="text-center mb-6">
-        <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 mkt-mono text-[0.66rem] uppercase tracking-wider text-white/65 mb-3">
-          <ShieldCheck className="h-3.5 w-3.5 text-stellar" />
+        <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 mkt-mono text-caption uppercase tracking-wide text-white/65 mb-3">
+          <ShieldCheck className="h-3.5 w-3.5 text-accent" />
           Non-custodial · Client-side signing only
         </div>
         <h1 className="mkt-display text-3xl sm:text-4xl font-extrabold tracking-tight mb-2 text-white">
@@ -169,7 +169,7 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
           { icon: GitMerge, label: "Exchange-friendly", desc: "Relay account support" },
         ].map(({ icon: Icon, label, desc }) => (
           <Card key={label} className="p-3.5 text-center">
-            <Icon className="h-5 w-5 text-stellar mx-auto mb-1.5" />
+            <Icon className="h-5 w-5 text-accent mx-auto mb-1.5" />
             <p className="text-xs font-medium text-white">{label}</p>
             <p className="text-xs text-fg-subtle">{desc}</p>
           </Card>
@@ -180,13 +180,13 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
       <Card className="mt-3 flex items-center gap-3 px-4 py-3">
         <span className="text-xs text-fg-subtle shrink-0">Receive as</span>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-lg border border-stellar/40 bg-stellar/10 px-3 py-1.5 text-xs font-medium text-stellar">
+          <div className="flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent">
             XLM
-            <span className="h-1.5 w-1.5 rounded-full bg-stellar" />
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           </div>
           <div className="flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-fg-disabled opacity-50 select-none">
             USDC
-            <span className="rounded-full border border-white/15 px-1.5 py-0.5 text-[0.55rem] uppercase tracking-wide text-fg-disabled">
+            <span className="rounded-full border border-white/15 px-1.5 py-0.5 text-caption uppercase tracking-wide text-fg-disabled">
               Soon
             </span>
           </div>
@@ -202,7 +202,7 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
         )}
       >
         <span className="flex items-center gap-2.5 min-w-0">
-          <ShieldOff className="h-4 w-4 text-stellar shrink-0" />
+          <ShieldOff className="h-4 w-4 text-accent shrink-0" />
           <span className="min-w-0">
             <span className="block font-medium text-white">Allowance inspector</span>
             <span className="block text-xs text-fg-subtle">

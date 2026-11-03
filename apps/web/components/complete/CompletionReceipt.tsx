@@ -397,7 +397,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
             <div key={g.type} className="px-4 py-3.5">
               <div className="flex items-start justify-between gap-4">
                 <span className="flex min-w-0 items-start gap-2.5">
-                  <StepTypeIcon type={g.type} className="h-4 w-4 mt-0.5 shrink-0 text-stellar/70" />
+                  <StepTypeIcon type={g.type} className="h-4 w-4 mt-0.5 shrink-0 text-accent/70" />
                   <span className="min-w-0">
                     <span className="block text-sm font-medium text-white/85">{g.title}</span>
                     <span className="block truncate text-xs text-fg-subtle">{g.summary}</span>
@@ -422,7 +422,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
             {ledger.map((tx) => (
               <div key={tx.txHash} className="flex items-center justify-between gap-4 px-4 py-3.5">
                 <span className="flex min-w-0 items-center gap-2.5">
-                  <Link2 className="h-4 w-4 shrink-0 text-stellar/70" />
+                  <Link2 className="h-4 w-4 shrink-0 text-accent/70" />
                   <span className="min-w-0">
                     <span
                       className="block truncate text-sm font-medium text-white/85"
@@ -440,7 +440,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
                     href={`${explorerBase}/tx/${tx.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs text-stellar hover:underline"
+                    className="flex items-center gap-1 text-xs text-accent hover:underline"
                   >
                     SE <ExternalLink className="h-3 w-3" />
                   </a>
@@ -448,7 +448,7 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
                     href={`${svExplorerBase}/tx/${tx.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs text-stellar hover:underline"
+                    className="flex items-center gap-1 text-xs text-accent hover:underline"
                   >
                     SV <ExternalLink className="h-3 w-3" />
                   </a>

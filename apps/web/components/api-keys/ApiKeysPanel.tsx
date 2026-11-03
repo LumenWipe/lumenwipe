@@ -17,7 +17,7 @@ import {
 
 const BUTTON =
   "inline-flex items-center gap-2 rounded-lg border border-white/10 px-4 py-2 text-sm text-white/85 transition-colors hover:border-white/25 hover:text-white disabled:cursor-not-allowed disabled:opacity-50";
-const PRIMARY = `${BUTTON} border-stellar/40 bg-stellar/10`;
+const PRIMARY = `${BUTTON} border-accent/40 bg-accent/10`;
 
 function message(error: unknown): string {
   return error instanceof IntegratorRequestError
@@ -188,7 +188,7 @@ export default function ApiKeysPanel() {
       )}
 
       {revealed && (
-        <div role="status" className="rounded-2xl border border-stellar/30 bg-stellar/5 p-5">
+        <div role="status" className="rounded-2xl border border-accent/30 bg-accent/5 p-5">
           <p className="text-sm font-medium text-white">
             Copy your key now. You will not be able to see it again.
           </p>

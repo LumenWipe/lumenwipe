@@ -26,7 +26,7 @@ export default function NotFound() {
       {/* ambient: grain + faint top hairline, matching the ink system (no grid, no glow) */}
       <div aria-hidden className="pointer-events-none absolute inset-0 z-0">
         <div className="absolute inset-0 mkt-grain" />
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-stellar/30 to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/30 to-transparent" />
       </div>
 
       {/* minimal header */}
@@ -42,7 +42,7 @@ export default function NotFound() {
       <main className="relative z-10 flex flex-1 items-center justify-center px-5 py-20">
         <div className="w-full max-w-md">
           {/* eyebrow */}
-          <p className="mkt-eyebrow mb-7 text-stellar/50">ledger lookup · error_code: 404</p>
+          <p className="mkt-eyebrow mb-7 text-accent/50">ledger lookup · error_code: 404</p>
 
           {/* terminal panel */}
           <div className="mb-9 overflow-hidden rounded-2xl border border-white/[0.09] bg-surface/80 backdrop-blur-xs">
@@ -60,7 +60,7 @@ export default function NotFound() {
             <div className="space-y-4 px-5 py-5">
               {/* command */}
               <div className="mkt-mono text-sm">
-                <span className="text-stellar/40">$ </span>
+                <span className="text-accent/40">$ </span>
                 <span className="text-fg-muted">lw analyze --network mainnet </span>
                 <span className="text-value/70">this-page</span>
               </div>
@@ -69,7 +69,7 @@ export default function NotFound() {
               <ul className="mkt-mono space-y-2 text-sm">
                 {STEPS.map((s) => (
                   <li key={s.label} className="flex items-center gap-3">
-                    <span className={s.ok ? "text-stellar" : "text-danger-fg"}>
+                    <span className={s.ok ? "text-accent" : "text-danger-fg"}>
                       {s.ok ? "✓" : "✗"}
                     </span>
                     <span className={s.ok ? "text-fg-subtle" : "text-danger-fg/75"}>
@@ -87,7 +87,7 @@ export default function NotFound() {
                     <div key={s.label}>
                       <div
                         className={`mkt-mono text-base font-semibold ${
-                          s.label === "Status" ? "text-stellar/40" : "text-fg-subtle"
+                          s.label === "Status" ? "text-accent/40" : "text-fg-subtle"
                         }`}
                       >
                         {s.value}
@@ -99,20 +99,20 @@ export default function NotFound() {
               </div>
 
               {/* result line */}
-              <div className="mkt-mono rounded-lg border border-stellar/10 bg-stellar/[0.04] px-3 py-2.5 text-xs text-stellar/50">
-                <span className="text-stellar/30">info </span>
+              <div className="mkt-mono rounded-lg border border-accent/10 bg-accent/[0.04] px-3 py-2.5 text-xs text-accent/50">
+                <span className="text-accent/30">info </span>
                 This account was merged out. Nothing remains on the ledger.
               </div>
             </div>
           </div>
 
           {/* headline */}
-          <h1 className="mkt-display mb-3 text-[2.6rem] font-bold leading-[1] text-white">
+          <h1 className="mkt-display mb-3 text-display font-bold leading-[1] text-white">
             This page has
             <br />
             been closed.
           </h1>
-          <p className="mb-8 text-[0.95rem] leading-relaxed text-fg-subtle">
+          <p className="mb-8 text-body leading-relaxed text-fg-subtle">
             No trustlines. No balance. No subentries.
             <br />
             Looks like this route was already merged out.

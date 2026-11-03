@@ -33,7 +33,7 @@ export default function AllowanceRow({ allowance, onRevoke }: AllowanceRowProps)
             {shortAddress(allowance.spender)}
           </span>
           {protocolLabel && (
-            <span className="rounded-full border border-stellar/30 bg-stellar/10 px-2 py-0.5 text-[0.65rem] font-medium text-stellar">
+            <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-caption font-medium text-accent">
               {protocolLabel}
             </span>
           )}

@@ -67,7 +67,7 @@ export default function NetworkError({ error, reset }: ErrorProps) {
               : "An unexpected error occurred. Nothing has been signed or sent."}
           </p>
           {error.digest && (
-            <p className="mkt-mono flex items-center justify-center gap-1.5 pt-1 text-[0.7rem] text-white/60">
+            <p className="mkt-mono flex items-center justify-center gap-1.5 pt-1 text-caption text-white/60">
               ref: {error.digest}
               <button
                 onClick={copyRef}

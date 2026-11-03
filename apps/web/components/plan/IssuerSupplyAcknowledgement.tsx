@@ -33,7 +33,7 @@ export default function IssuerSupplyAcknowledgement({
             type="checkbox"
             checked={acknowledged}
             onChange={(e) => onAcknowledgedChange(e.target.checked)}
-            className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-stellar"
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-accent"
           />
           I understand that merging this account leaves the holders of its assets unable to redeem
           them.

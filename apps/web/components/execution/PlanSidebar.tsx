@@ -20,7 +20,7 @@ export default function PlanSidebar({ steps, currentIndex }: PlanSidebarProps) {
             className={cn(
               "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors",
               isActive
-                ? "bg-stellar/10 border border-stellar/30 text-white"
+                ? "bg-accent/10 border border-accent/30 text-white"
                 : step.status === "confirmed"
                   ? "text-success/70"
                   : step.status === "failed"
@@ -33,7 +33,7 @@ export default function PlanSidebar({ steps, currentIndex }: PlanSidebarProps) {
               {step.status === "confirmed" && <CheckCircle className="h-3.5 w-3.5 text-success" />}
               {step.status === "failed" && <AlertCircle className="h-3.5 w-3.5 text-danger-fg" />}
               {(step.status === "signing" || step.status === "submitted") && (
-                <Loader2 className="h-3.5 w-3.5 text-stellar animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 text-accent animate-spin" />
               )}
               {step.status === "pending" && <Clock className="h-3.5 w-3.5 text-fg-muted/50" />}
             </div>
@@ -43,7 +43,7 @@ export default function PlanSidebar({ steps, currentIndex }: PlanSidebarProps) {
               {step.title}
             </span>
 
-            {isActive && <ChevronRight className="h-3.5 w-3.5 text-stellar shrink-0" />}
+            {isActive && <ChevronRight className="h-3.5 w-3.5 text-accent shrink-0" />}
           </div>
         );
       })}

@@ -83,15 +83,6 @@
 }
 
 @layer utilities {
-  .text-stellar {
-    color: hsl(var(--accent));
-  }
-  .bg-stellar {
-    background-color: hsl(var(--accent));
-  }
-  .border-stellar {
-    border-color: hsl(var(--accent));
-  }
   .font-mono-address {
     font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
     font-size: 0.8rem;

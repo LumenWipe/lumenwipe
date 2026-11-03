@@ -91,20 +91,20 @@ export default function ExecutionPlanDemo() {
       {/* header */}
       <div className="flex items-center justify-between gap-3 pb-3.5 border-b border-white/8">
         <div className="flex items-center gap-2">
-          <span className="mkt-eyebrow text-stellar/90">Execution plan</span>
+          <span className="mkt-eyebrow text-accent/90">Execution plan</span>
         </div>
         <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-2.5 py-1">
           <span
-            className={`h-1.5 w-1.5 rounded-full ${done ? "bg-value" : "bg-stellar mkt-pulse"}`}
+            className={`h-1.5 w-1.5 rounded-full ${done ? "bg-value" : "bg-accent mkt-pulse"}`}
           />
-          <span className="mkt-mono text-[0.65rem] uppercase tracking-wider text-white/70">
+          <span className="mkt-mono text-caption uppercase tracking-wider text-white/70">
             {done ? "complete" : "mainnet"}
           </span>
         </div>
       </div>
 
       {/* account line */}
-      <div className="flex items-center gap-2 py-3 text-[0.7rem] mkt-mono text-white/65">
+      <div className="flex items-center gap-2 py-3 text-caption mkt-mono text-white/65">
         <span className="text-white/80">GDEMO…X4F2</span>
         <svg width="22" height="8" viewBox="0 0 22 8" fill="none" aria-hidden="true">
           <path
@@ -129,22 +129,22 @@ export default function ExecutionPlanDemo() {
             <li
               key={step.label}
               className={`relative flex items-center gap-3 overflow-hidden rounded-lg px-2.5 py-2 transition-colors duration-300 ${
-                isActive ? "bg-stellar/10" : ""
+                isActive ? "bg-accent/10" : ""
               }`}
             >
               {isActive && (
-                <span className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-stellar/10 to-transparent mkt-sweep" />
+                <span className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-accent/10 to-transparent mkt-sweep" />
               )}
 
               {/* status glyph */}
               <span className="relative z-10 flex h-5 w-5 shrink-0 items-center justify-center">
                 {isDone ? (
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-stellar/15 text-stellar">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/15 text-accent">
                     <Check className="h-3 w-3" strokeWidth={3} />
                   </span>
                 ) : isActive ? (
                   <span className="flex h-5 w-5 items-center justify-center">
-                    <span className="h-2.5 w-2.5 rounded-full border-2 border-stellar border-t-transparent animate-spin" />
+                    <span className="h-2.5 w-2.5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
                   </span>
                 ) : (
                   <span className="h-1.5 w-1.5 rounded-full bg-white/20" />
@@ -154,25 +154,25 @@ export default function ExecutionPlanDemo() {
               {/* label */}
               <span className="relative z-10 min-w-0 flex-1">
                 <span
-                  className={`block truncate text-[0.82rem] font-medium transition-colors ${
+                  className={`block truncate text-body-sm font-medium transition-colors ${
                     isDone || isActive ? "text-white" : "text-fg-muted"
                   }`}
                 >
                   {step.label}
                   {step.tag && (
-                    <span className="ml-2 align-middle rounded border border-stellar/30 bg-stellar/10 px-1 py-px text-[0.6rem] mkt-mono uppercase tracking-wide text-stellar/90">
+                    <span className="ml-2 align-middle rounded border border-accent/30 bg-accent/10 px-1 py-px text-caption mkt-mono uppercase tracking-wide text-accent/90">
                       {step.tag}
                     </span>
                   )}
                 </span>
-                <span className="block truncate text-[0.68rem] mkt-mono text-fg-muted">
+                <span className="block truncate text-caption mkt-mono text-fg-muted">
                   {step.note}
                 </span>
               </span>
 
               {/* delta */}
               <span
-                className={`relative z-10 shrink-0 mkt-mono text-[0.72rem] tabular-nums transition-colors ${
+                className={`relative z-10 shrink-0 mkt-mono text-caption tabular-nums transition-colors ${
                   isDone ? "text-value" : "text-fg-subtle"
                 }`}
               >
@@ -187,7 +187,7 @@ export default function ExecutionPlanDemo() {
       <div className="mt-3.5 rounded-xl border border-white/8 bg-black/30 p-3.5">
         <div className="flex items-center justify-between">
           <span className="mkt-eyebrow text-fg-muted">Recovered</span>
-          <span className="mkt-mono text-[0.65rem] text-fg-muted tabular-nums">
+          <span className="mkt-mono text-caption text-fg-muted tabular-nums">
             {completed}/{TOTAL} steps
           </span>
         </div>
@@ -203,11 +203,11 @@ export default function ExecutionPlanDemo() {
         </div>
         <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-white/8">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-stellar to-value transition-[width] duration-700 ease-out"
+            className="h-full rounded-full bg-gradient-to-r from-accent to-value transition-[width] duration-700 ease-out"
             style={{ width: `${pct}%` }}
           />
         </div>
-        <p className="mt-2 text-[0.68rem] text-fg-muted">
+        <p className="mt-2 text-caption text-fg-muted">
           {done ? (
             <span className="text-value/90">Account closed and removed from the ledger.</span>
           ) : (

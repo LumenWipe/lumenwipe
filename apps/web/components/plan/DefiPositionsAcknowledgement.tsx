@@ -37,7 +37,7 @@ export default function DefiPositionsAcknowledgement({
             type="checkbox"
             checked={acknowledged}
             onChange={(e) => onAcknowledgedChange(e.target.checked)}
-            className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-stellar"
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-accent"
           />
           I checked this account&apos;s trustlines myself and confirmed they are for other assets,
           not open DeFi positions.

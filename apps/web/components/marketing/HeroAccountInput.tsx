@@ -32,7 +32,7 @@ export default function HeroAccountInput() {
           error={error}
           placeholder="Paste a Stellar account address - G…"
           groupClassName="rounded-2xl border border-line-strong bg-white/[0.04] p-2 transition-colors has-[input[aria-invalid=true]]:border-danger has-[input:focus-visible]:outline has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-focus"
-          inputClassName="border-0 bg-transparent px-0 pr-2 text-[0.8rem] text-white focus-visible:outline-none"
+          inputClassName="border-0 bg-transparent px-0 pr-2 text-label text-white focus-visible:outline-none"
           leading={<Search className="ml-2 h-4 w-4 shrink-0 text-fg-disabled" />}
           trailing={
             <button

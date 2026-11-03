@@ -23,7 +23,7 @@ export default function LiveStats() {
 
   return (
     <div
-      className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 rounded-full border border-white/10 bg-white/[0.03] px-4 py-1.5 mkt-mono text-[0.72rem] text-white/65"
+      className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 rounded-full border border-white/10 bg-white/[0.03] px-4 py-1.5 mkt-mono text-caption text-white/65"
       style={{ visibility: hasData ? "visible" : "hidden" }}
       aria-hidden={!hasData}
     >

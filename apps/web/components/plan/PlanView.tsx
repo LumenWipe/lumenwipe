@@ -430,13 +430,15 @@ export default function PlanView({
       <Card>
         <CardHeader className="flex items-center justify-between">
           <CardTitle>What this close will do</CardTitle>
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={onRefresh}
             disabled={loading}
-            className="text-fg-muted transition-colors hover:text-white disabled:opacity-40"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          </button>
+            aria-label="Refresh the plan"
+            className="-my-3.5 px-2"
+            icon={<RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />}
+          />
         </CardHeader>
         <div className="p-3">
           <PlanAccordion

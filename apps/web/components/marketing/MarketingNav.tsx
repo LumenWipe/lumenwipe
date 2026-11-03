@@ -120,7 +120,7 @@ export default function MarketingNav() {
                   <ArrowUpRight className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-60" />
                 )}
                 <span
-                  className={`pointer-events-none absolute -bottom-0.5 left-0 h-px w-full origin-left rounded-full bg-stellar shadow-[0_0_8px_hsl(var(--accent)/0.7)] transition-transform duration-300 ${
+                  className={`pointer-events-none absolute -bottom-0.5 left-0 h-px w-full origin-left rounded-full bg-accent shadow-[0_0_8px_hsl(var(--accent)/0.7)] transition-transform duration-300 ${
                     active
                       ? "scale-x-100"
                       : "scale-x-0 group-hover:scale-x-50 group-hover:bg-white/40 group-hover:shadow-none"
@@ -187,7 +187,7 @@ export default function MarketingNav() {
                   }`}
                 >
                   <span className="inline-flex items-center gap-2">
-                    {active && <span className="h-1.5 w-1.5 rounded-full bg-stellar" />}
+                    {active && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
                     {l.label}
                   </span>
                   {l.external && <ArrowUpRight className="h-3.5 w-3.5 opacity-50" />}

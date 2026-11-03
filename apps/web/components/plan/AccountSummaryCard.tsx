@@ -84,7 +84,7 @@ export default function AccountSummaryCard({
             className={`p-3 ${i < lastRowStart ? "border-b border-white/[0.08]" : ""}`}
           >
             <div className="flex items-center gap-1.5 text-fg-subtle mb-1">
-              <Icon className="h-3.5 w-3.5 text-stellar/70" />
+              <Icon className="h-3.5 w-3.5 text-accent/70" />
               <span className="text-xs">{label}</span>
             </div>
             <p className="text-sm font-semibold text-white">{value}</p>

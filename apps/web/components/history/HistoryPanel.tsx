@@ -39,7 +39,7 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
     <Dialog side="right" onClose={onClose} initialFocusRef={closeRef}>
       <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
         <div className="flex items-center gap-2">
-          <History className="h-4 w-4 text-stellar" />
+          <History className="h-4 w-4 text-accent" />
           <DialogTitle className="mkt-display font-bold text-base text-white">
             Merge history
           </DialogTitle>
@@ -127,7 +127,7 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
                           href={`${explorerBase}/tx/${receipt.txHash}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-stellar hover:underline"
+                          className="flex items-center gap-1 text-accent hover:underline"
                         >
                           SE <ExternalLink className="h-3 w-3" />
                         </a>
@@ -135,7 +135,7 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
                           href={`${svExplorerBase}/tx/${receipt.txHash}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-stellar hover:underline"
+                          className="flex items-center gap-1 text-accent hover:underline"
                         >
                           SV <ExternalLink className="h-3 w-3" />
                         </a>
