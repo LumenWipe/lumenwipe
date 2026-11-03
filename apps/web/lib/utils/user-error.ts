@@ -10,7 +10,7 @@ import { InvalidPreAuthTxError } from "@/lib/stellar/pre-auth-tx";
 import { InvalidPreimageError } from "@/lib/stellar/hash-x";
 import { VerificationError } from "@/lib/stellar/verify";
 import { RevokeAllowanceVerificationError } from "@/lib/stellar/verify-revoke-allowance";
-import { TxSubmitError, TxTimeoutError } from "@/lib/utils/errors";
+import { TxSubmitError } from "@/lib/utils/errors";
 import { allows } from "@/lib/journey/claims";
 import { deriveJourneyState, type Journey } from "@/lib/journey/journey-state";
 import type { PlannedStep } from "@/types/plan";
@@ -57,7 +57,7 @@ const FALLBACKS: Record<ErrorContext, string> = {
 
 const DECLINED = /declin|reject|den(y|ied)|cancel|dismiss|user closed|closed the/i;
 const DECLINED_CONNECTION =
-  "You declined the request in your wallet. Nothing was sent - approve it when you're ready to continue.";
+  "You declined the connection request in your wallet, so it was not connected. Approve it when you're ready to continue.";
 const DECLINED_TRANSACTION =
   "You declined the request in your wallet. This transaction was not signed or sent - approve it when you're ready to continue.";
 const VERIFICATION_FAILED =
@@ -160,8 +160,7 @@ export function toUserMessage(err: unknown, context: ErrorContext = "generic"): 
     err instanceof InvalidPreAuthTxError ||
     err instanceof InvalidPreimageError ||
     err instanceof RevokeAllowanceVerificationError ||
-    err instanceof TxSubmitError ||
-    err instanceof TxTimeoutError
+    err instanceof TxSubmitError
   ) {
     return err.message;
   }
@@ -245,6 +244,9 @@ function progressSentence(journey: Journey): string | null {
  * The message for a close that stopped part way. Every claim is scoped to the one transaction
  * in flight, because earlier rounds may already be on the ledger; what is confirmed is read only
  * from the plan's confirmed steps, and retrying is called safe only where the journey allows it.
+ * Its journey is built with inFlight false and saved true, because each stage describes a
+ * transaction that is not, or no longer, the one in flight; the submitted stage's retry sentence is
+ * unchanged from before.
  */
 export function closeFailureMessage(
   err: unknown,

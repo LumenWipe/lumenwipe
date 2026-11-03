@@ -445,8 +445,6 @@ const OUTSIDE = {
   marketing: "marketing copy describing the product, not a close in progress",
   allowances: "the allowance revoke flow, which is not a close",
   lookup: "the home page reporting the outcome a hash lookup just returned",
-  connect: "a wallet connection request, which signs nothing",
-  unused: "an error class nothing throws",
   notFound: "the 404 page, which plays on the close as a metaphor",
 } as const;
 
@@ -478,11 +476,8 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
   "lib/stellar/signing-guards.ts": {
     "this-tx-not-sent": { count: 1, shownBy: "execute failure panel" },
   },
-  "lib/utils/errors.ts": {
-    "safe-to-retry": { count: 1, shownBy: OUTSIDE.unused },
-  },
   "lib/utils/user-error.ts": {
-    "nothing-sent": { count: 2, shownBy: `${OUTSIDE.connect}; ${OUTSIDE.allowances}` },
+    "nothing-sent": { count: 1, shownBy: OUTSIDE.allowances },
     "this-tx-not-sent": { count: 2, shownBy: "wallet decline" },
     "may-be-sent": { count: 1, shownBy: "unconfirmed panel" },
     "account-closed": { count: 2, shownBy: `execute failure panel; ${OUTSIDE.lookup}` },

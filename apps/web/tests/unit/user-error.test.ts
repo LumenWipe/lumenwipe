@@ -316,7 +316,7 @@ describe("closeFailureMessage", () => {
 
   test("the connect flow keeps its own decline copy", () => {
     expect(toUserMessage(declined, "wallet")).toBe(
-      "You declined the request in your wallet. Nothing was sent - approve it when you're ready to continue."
+      "You declined the connection request in your wallet, so it was not connected. Approve it when you're ready to continue."
     );
   });
 
