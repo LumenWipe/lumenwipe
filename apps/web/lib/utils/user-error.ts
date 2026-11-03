@@ -205,6 +205,10 @@ export const HASH_NOT_KEPT =
   "This browser could not save the details needed to check this transaction if the page is lost, so it was held back. Allow this site to store data, then try again.";
 export const OUTCOME_HELD =
   "This account has a transaction whose outcome is unknown, and a revoke would use the same sequence number, so nothing was signed or sent. Open the close page on this network and choose Check again first.";
+export const CONFIRM_HELD =
+  "This account has a transaction whose outcome is unknown, so this plan was not started and nothing was signed. Open the start page on this network and choose Check again first.";
+export const CONFIRM_UNCHECKED =
+  "The saved state of this close could not be checked, so this plan was not started and nothing was signed. Try again.";
 export const NO_MERGE_CONFIRMED =
   "The service reported this close as finished, but no confirmed transaction merged this account, so it is not closed. Look the account up on an explorer, then try again.";
 export const CHECK_FAILED_NOTICE =

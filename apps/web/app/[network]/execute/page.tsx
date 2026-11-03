@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
+import { routeForPhase } from "@/lib/plan/route-for-phase";
 import ExecutionWizard from "@/components/execution/ExecutionWizard";
 import { Button } from "@/components/ui/button";
 
@@ -16,9 +17,9 @@ export default function ExecutePage({ params }: { params: Promise<{ network: Net
 
   // Checked once at mount, not on every phase change: STEP_EXECUTING legitimately moves
   // through STEP_CONFIRMED/STEP_FAILED/COMPLETE while this page stays mounted during a
-  // real close, and that must never bounce the user back to /review mid-flow. This only
-  // catches landing here directly (a stale bookmark, or forward-navigating past /review
-  // without confirming), where phase is still whatever it was before the gate.
+  // real close, and that must never bounce the user away mid-flow. This only catches landing
+  // here directly (a stale bookmark, or forward-navigating past /review without confirming),
+  // and sends the close to the page its phase belongs on.
   useEffect(() => {
     if (sourceAddress && executionPlan.length === 0 && planChangedNotice) {
       router.replace(`/${network}/analyze`);
@@ -28,9 +29,8 @@ export default function ExecutePage({ params }: { params: Promise<{ network: Net
       router.replace(`/${network}`);
       return;
     }
-    if (phase !== "STEP_EXECUTING") {
-      router.replace(`/${network}/review`);
-    }
+    const route = routeForPhase(phase);
+    if (route !== "execute") router.replace(`/${network}/${route}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceAddress, executionPlan.length, network, router]);
 

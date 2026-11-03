@@ -21,15 +21,21 @@ export async function getDb() {
   });
 }
 
+/** Saves a new session, or updates only the terms of an existing one: its destination and memo.
+ *  Progress, creation time, status and an unconfirmed hash are never overwritten, and they are
+ *  read in the same transaction, so a hash another tab saved a moment ago is kept. */
 export async function saveSession(record: SessionRecord): Promise<void> {
   const db = await getDb();
-  const prior = (await db.get(STORE_NAME, record.id)) as SessionRecord | undefined;
-  const unconfirmed = record.unconfirmed ?? prior?.unconfirmed;
-  await db.put(STORE_NAME, {
-    ...record,
-    ...(unconfirmed && { unconfirmed }),
-    updatedAt: new Date().toISOString(),
-  });
+  const tx = db.transaction(STORE_NAME, "readwrite");
+  const prior = (await tx.store.get(record.id)) as SessionRecord | undefined;
+  const updatedAt = new Date().toISOString();
+  const { destinationAddress, memo, memoType, mediatorRequired } = record;
+  await tx.store.put(
+    prior
+      ? { ...prior, destinationAddress, memo, memoType, mediatorRequired, updatedAt }
+      : { ...record, updatedAt }
+  );
+  await tx.done;
 }
 
 /** Keeps a session's unconfirmed hash across a refresh, or drops it once settled. False when the

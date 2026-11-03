@@ -53,7 +53,7 @@ function stubCloseExecution(): void {
 }
 
 let checkImpl: () => Promise<void> = async () => {};
-let currentRetrySafe = true;
+let currentRetrySafe: boolean | null = true;
 let currentStillUnconfirmed = false;
 let currentProgressStatus: string | null = null;
 let currentSignatureStatus: {
@@ -290,6 +290,18 @@ test("execution-wizard › the failed state says under Retry that retrying is sa
     "Safe to retry. LumenWipe re-reads your account first, so a confirmed transaction is never sent twice."
   );
   expect(retry.nextElementSibling).toBe(note);
+});
+
+test("execution-wizard › a failure whose retry safety is unknown makes no safe-to-retry claim", async () => {
+  currentRetrySafe = null;
+  useDemolishStore.setState({ phase: "STEP_FAILED", lastError: "The close failed." } as never);
+  runImpl = async () => {};
+
+  render(<ExecutionWizard network="testnet" />);
+
+  await screen.findByRole("button", { name: /retry/i });
+  expect(screen.queryByText(/Safe to retry/)).toBeNull();
+  currentRetrySafe = true;
 });
 
 // #102: pre-auth-tx signer support.
