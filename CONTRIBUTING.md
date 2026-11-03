@@ -223,13 +223,26 @@ bun run --filter '@lumenwipe/web' test:e2e
 
 Playwright starts both the API and the web app itself, so no second terminal is needed - but both still read their own `.env.local`, which is gitignored and therefore absent from a fresh clone (see [Development setup](#3-development-setup)). Without `API_KEYS` on the API and `LUMENWIPE_API_URL` / `LUMENWIPE_API_KEY` on the web, every proxied call is rejected and the whole suite fails at the first analyze.
 
-**When it runs, and who looks.** These specs hit live testnet and take ten-plus minutes, so they are deliberately not part of the per-PR checks - `ci.yml` runs `type-check lint test` only. They run on a schedule instead, at 07:00 UTC daily (`.github/workflows/e2e-nightly.yml`), and can be triggered by hand from the Actions tab. **A failing night opens a GitHub issue assigned to the maintainer (@miguelnietoa), and the next green run - including a manual one - closes it.** That is the mechanism, and the assignment is the point: a red run in the Actions tab is the same as no signal at all if nobody is looking, and so is an unassigned issue in the backlog. It is exactly how five specs stayed broken for days after a UI change (#95, #119).
+**When it runs, and who looks.** These specs hit live testnet and take ten-plus minutes, so they are deliberately not part of the per-PR checks. The only Playwright run on a PR is the accessibility gate below, which never touches testnet. They run on a schedule instead, at 07:00 UTC daily (`.github/workflows/e2e-nightly.yml`), and can be triggered by hand from the Actions tab. **A failing night opens a GitHub issue assigned to the maintainer (@miguelnietoa), and the next green run - including a manual one - closes it.** That is the mechanism, and the assignment is the point: a red run in the Actions tab is the same as no signal at all if nobody is looking, and so is an unassigned issue in the backlog. It is exactly how five specs stayed broken for days after a UI change (#95, #119).
 
 Three consequences worth knowing:
 
 - **A UI change can break these without any check going red on your PR.** If you move or rename something the flows drive - the account-address field, the risk notice, a button label - update `tests/e2e/helpers/` in the same change. The shared steps live there so it is one edit rather than one per spec.
 - **A nightly failure means the irreversible close path is unverified until it is fixed.** Testnet is occasionally flaky, so download the `playwright-report` artifact from the run before concluding the tests are simply wrong.
 - **Green does not always mean "everything ran".** Three specs call `test.skip()` when live testnet has no USDC liquidity or no strict-send route, and a skip does not fail the job. The report artifact is uploaded on every run, not just failures, so the skip count is there when a result looks suspiciously easy.
+
+### Accessibility gate (`tests/e2e/a11y/`)
+
+Every PR runs axe through Playwright on the home, entry, analyze, review, execute and complete screens, the allowance inspector, the history panel, and the error and not-found pages, at 360, 768 and 1280 px wide. It also checks that Tab reaches every control on the entry and analyze screens and that each one shows the focus ring. The CI job is `web accessibility (axe)`, and it feeds the required `type-check · lint · test` check.
+
+```bash
+bun run --filter '@lumenwipe/web' test:a11y
+```
+
+- **Ruleset.** WCAG 2.2 A and AA (`wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa`). A serious or critical violation fails the run. Moderate and minor findings are attached to the test report as annotations.
+- **No network.** `tests/e2e/a11y/fixtures.ts` answers every `/api/**` call in the browser, so only the web is started, from its production build. The close flow signs a fixture merge with a `Keypair.random()` key and hands it to a stand-in submit, so nothing is sent. A call no fixture answers fails the test, so a new endpoint needs a fixture in the same change.
+- **Reduced motion.** The specs run with `prefers-reduced-motion: reduce`, so axe reads each element in its final state rather than halfway through a fade.
+- **Suppressions.** Disabling a rule or excluding a node needs an inline comment with the reason and a link to an open issue, and the PR description lists it. There are none today.
 
 ### What to test for a new protocol exit
 

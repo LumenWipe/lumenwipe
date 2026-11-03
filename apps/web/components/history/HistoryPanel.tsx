@@ -61,7 +61,7 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
           <div className="text-center py-12 px-4">
             <History className="h-8 w-8 text-fg-muted/40 mx-auto mb-3" />
             <p className="text-sm text-fg-muted">No merges recorded yet.</p>
-            <p className="text-xs text-fg-muted/60 mt-1">
+            <p className="text-xs text-fg-subtle mt-1">
               Completed account merges will appear here.
             </p>
           </div>

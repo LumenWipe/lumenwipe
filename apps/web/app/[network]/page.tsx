@@ -187,9 +187,9 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
             XLM
             <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           </div>
-          <div className="flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-fg-disabled opacity-50 select-none">
+          <div className="flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-fg-subtle select-none">
             USDC
-            <span className="rounded-full border border-white/15 px-1.5 py-0.5 text-caption uppercase tracking-wide text-fg-disabled">
+            <span className="rounded-full border border-white/15 px-1.5 py-0.5 text-caption uppercase tracking-wide text-fg-subtle">
               Soon
             </span>
           </div>
