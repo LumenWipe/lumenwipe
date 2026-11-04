@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { UnresolvedSubmission } from "@lumenwipe/sdk";
 import { v4 as uuidv4 } from "uuid";
 import { hasRouteLookupBlocker } from "@/lib/plan/resolvable-blockers";
+import { forgetDecisions } from "@/lib/session/decision-snapshot";
 import type { AccountState } from "@/types/account";
 import type {
   PlannedStep,
@@ -10,6 +11,7 @@ import type {
   ClaimableBalanceSelection,
   StepType,
 } from "@/types/plan";
+import type { CompletedStepRecord } from "@/types/session";
 
 /** What a "convert" disposition is pinned to: the floor the plan quoted, which provider quoted
  *  it, and - only for an xBull-routed token - the live route `verify()` needs to hold its
@@ -26,6 +28,13 @@ export interface TokenConversionFloor {
  *  an asset only an exit pays in, which has no amount to quote until it lands. */
 export interface ClassicConversionFloor {
   minAmountOut: string | null;
+}
+
+/** A saved close the user chose to resume, as this browser recorded it. */
+export interface ResumedClose {
+  source: string;
+  startedAt: string;
+  completedSteps: CompletedStepRecord[];
 }
 
 interface DemolishState {
@@ -90,9 +99,23 @@ interface DemolishState {
   /** The hash of the plan the user reviewed, sent with the build until a transaction confirms.
    *  Null once the account has changed on purpose, or when no reviewed plan is installed. */
   planHash: string | null;
+  /** Why the inputs were restored or reset after a reload, for the next page to show once. */
+  reloadNotice: string | null;
+  /** The execute page lost its plan to a reload and sent the user to the start page. */
+  executeInterrupted: boolean;
+  /** Set only by the resume banner, for what analyze and review say about the close being
+   *  continued. It never sets a phase or a plan. */
+  resumedClose: ResumedClose | null;
 
   // Session
   sessionId: string | null;
+  /** A confirmed transaction of this close could not be recorded in its saved record. */
+  progressNotSaved: boolean;
+  /** A run of the close loop is signing or sending for this close. */
+  signingRun: boolean;
+  /** Counts resets: a run started before one belongs to a close this tab has left, even when the
+   *  same account is loaded again. */
+  closeEpoch: number;
 
   // Actions
   setAddresses: (
@@ -111,6 +134,8 @@ interface DemolishState {
   prunePositionsLeftBehind: (offered: string[]) => void;
   setPhase: (phase: DemolishPhase) => void;
   setUnconfirmedSubmission: (submission: UnresolvedSubmission | null) => void;
+  setProgressNotSaved: (notSaved: boolean) => void;
+  setSigningRun: (running: boolean) => void;
   setAccountState: (state: AccountState) => void;
   setPlan: (plan: PlannedStep[], planHash?: string) => void;
   /** Called once a transaction of the close confirms: the account has changed on purpose, so the
@@ -148,6 +173,9 @@ interface DemolishState {
   ) => void;
   markStepFailed: (index: number, error: string) => void;
   setLastError: (error: string | null, reference?: string) => void;
+  setReloadNotice: (notice: string | null) => void;
+  setExecuteInterrupted: (interrupted: boolean) => void;
+  setResumedClose: (resumed: ResumedClose | null) => void;
   initSession: () => void;
   restoreSession: (id: string) => void;
   reset: () => void;
@@ -214,6 +242,14 @@ function pruneClaimableSelections(
   return next;
 }
 
+/** A confirmed merge ends the close, so nothing of its inputs is kept to restore. */
+function forgetIfClosed(plan: PlannedStep[]): void {
+  const closed = plan.some(
+    (s) => (s.type === "MERGE" || s.type === "CLOSE_ACCOUNT") && s.status === "confirmed"
+  );
+  if (closed) forgetDecisions();
+}
+
 const initialState = {
   sourceAddress: null,
   destinationAddress: null,
@@ -238,11 +274,17 @@ const initialState = {
   lastErrorReference: null,
   planChangedNotice: null,
   planHash: null,
+  reloadNotice: null,
+  executeInterrupted: false,
+  resumedClose: null,
   sessionId: null,
+  progressNotSaved: false,
+  signingRun: false,
 };
 
 export const useDemolishStore = create<DemolishState>((set) => ({
   ...initialState,
+  closeEpoch: 0,
 
   setAddresses: (source, dest, memo, memoType) =>
     set((state) => ({
@@ -252,7 +294,12 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       memoType: memoType ?? null,
       // An unsettled hash belongs to the account it was sent for: carried over, its confirmation
       // would complete this other account's close. Its session stays saved under its own id.
-      ...(state.sourceAddress !== source && { unconfirmedSubmission: null, sessionId: null }),
+      ...(state.sourceAddress !== source && {
+        unconfirmedSubmission: null,
+        sessionId: null,
+        progressNotSaved: false,
+        resumedClose: null,
+      }),
     })),
 
   acknowledgeDestination: (address) => set({ destinationAcknowledgedFor: address }),
@@ -272,6 +319,8 @@ export const useDemolishStore = create<DemolishState>((set) => ({
 
   setPhase: (phase) => set({ phase }),
   setUnconfirmedSubmission: (unconfirmedSubmission) => set({ unconfirmedSubmission }),
+  setProgressNotSaved: (progressNotSaved) => set({ progressNotSaved }),
+  setSigningRun: (signingRun) => set({ signingRun }),
 
   setAccountState: (accountState) =>
     set((s) => ({
@@ -369,12 +418,13 @@ export const useDemolishStore = create<DemolishState>((set) => ({
     })),
 
   markStepConfirmed: (index, txHash) =>
-    set((state) => ({
-      executionPlan: state.executionPlan.map((s) =>
-        s.index === index ? { ...s, status: "confirmed", txHash } : s
-      ),
-      phase: "STEP_CONFIRMED",
-    })),
+    set((state) => {
+      const executionPlan = state.executionPlan.map((s) =>
+        s.index === index ? { ...s, status: "confirmed" as const, txHash } : s
+      );
+      forgetIfClosed(executionPlan);
+      return { executionPlan, phase: "STEP_CONFIRMED" };
+    }),
 
   markCoveredConfirmed: (coveredTypes, txHash, sponsoredFee, coversTargets) =>
     set((state) => {
@@ -390,19 +440,18 @@ export const useDemolishStore = create<DemolishState>((set) => ({
         const identity = step.affectedContract ?? step.affectedAsset;
         return identity !== undefined && targets.has(identity);
       };
-      return {
-        executionPlan: state.executionPlan.map((s) =>
-          isFor(s) && s.status !== "confirmed"
-            ? {
-                ...s,
-                status: "confirmed",
-                txHash,
-                actualFeeLumens: sponsoredFee ? "0" : s.estimatedFeeLumens,
-              }
-            : s
-        ),
-        phase: "STEP_CONFIRMED",
-      };
+      const executionPlan = state.executionPlan.map((s) =>
+        isFor(s) && s.status !== "confirmed"
+          ? {
+              ...s,
+              status: "confirmed" as const,
+              txHash,
+              actualFeeLumens: sponsoredFee ? "0" : s.estimatedFeeLumens,
+            }
+          : s
+      );
+      forgetIfClosed(executionPlan);
+      return { executionPlan, phase: "STEP_CONFIRMED" };
     }),
 
   markStepFailed: (index, error) =>
@@ -415,6 +464,9 @@ export const useDemolishStore = create<DemolishState>((set) => ({
     })),
 
   setLastError: (lastError, reference) => set({ lastError, lastErrorReference: reference ?? null }),
+  setReloadNotice: (reloadNotice) => set({ reloadNotice }),
+  setExecuteInterrupted: (executeInterrupted) => set({ executeInterrupted }),
+  setResumedClose: (resumedClose) => set({ resumedClose }),
 
   initSession: () => set({ sessionId: uuidv4() }),
 
@@ -423,5 +475,11 @@ export const useDemolishStore = create<DemolishState>((set) => ({
   // record rather than creating an orphan that remains "in_progress" forever.
   restoreSession: (id) => set({ sessionId: id }),
 
-  reset: () => set(initialState),
+  // A store holding no account is one a reload just emptied: its saved inputs are what a restore
+  // is about to read, so only leaving a close the store holds forgets them.
+  reset: () =>
+    set((s) => {
+      if (s.sourceAddress !== null || s.accountState !== null) forgetDecisions();
+      return { ...initialState, closeEpoch: s.closeEpoch + 1 };
+    }),
 }));

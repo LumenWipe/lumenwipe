@@ -35,7 +35,7 @@ export function assertPreimageRemovesItsSigner(
   );
   if (removed) return;
   throw new UserFacingError(
-    "Nothing was signed or sent. This preimage can't be used for this step: the step doesn't remove its signer, so the preimage would stay valid on the account once it is published. This step needs another signer."
+    "This transaction was not signed or sent. This preimage can't be used for this step: the step doesn't remove its signer, so the preimage would stay valid on the account once it is published. This step needs another signer."
   );
 }
 

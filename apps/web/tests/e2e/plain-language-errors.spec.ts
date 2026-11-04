@@ -1,5 +1,14 @@
 import { test, expect, type Page, type Route } from "@playwright/test";
-import { Keypair } from "@stellar/stellar-sdk";
+import {
+  Account,
+  Asset,
+  Claimant,
+  Keypair,
+  Networks,
+  Operation,
+  TransactionBuilder,
+  type xdr,
+} from "@stellar/stellar-sdk";
 import {
   enterDestinationAndBegin,
   enterSecretKey,
@@ -49,6 +58,34 @@ async function messageTexts(page: Page): Promise<string[]> {
     .locator(':is([role="alert"], [role="status"]):not(next-route-announcer *)')
     .allInnerTexts()
     .then((texts) => texts.map((t) => t.trim()).filter(Boolean));
+}
+
+// The claims no screen may make once a transaction of the close could have landed, as the
+// registry in lib/journey/claims.ts reads them.
+const FALSE_ONCE_SIGNING =
+  /nothing (?:has been|was|is) (?:signed or )?sent|no transaction (?:has been|was) sent|account is unchanged|account is closed|account (?:successfully )?merged/i;
+
+async function expectNoFalseClaim(page: Page): Promise<void> {
+  expect(await page.locator("main").innerText()).not.toMatch(FALSE_ONCE_SIGNING);
+}
+
+async function submitOps(kp: Keypair, ops: xdr.Operation[]): Promise<void> {
+  const account = (await (await fetch(`${HORIZON}/accounts/${kp.publicKey()}`)).json()) as {
+    sequence: string;
+  };
+  const builder = new TransactionBuilder(new Account(kp.publicKey(), account.sequence), {
+    fee: "1000",
+    networkPassphrase: Networks.TESTNET,
+  }).setTimeout(120);
+  ops.forEach((op) => builder.addOperation(op));
+  const tx = builder.build();
+  tx.sign(kp);
+  const res = await fetch(`${HORIZON}/transactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ tx: tx.toEnvelope().toXdr("base64") }),
+  });
+  if (!res.ok) throw new Error(`setup transaction failed: ${await res.text()}`);
 }
 
 async function expectPlainCopy(
@@ -237,6 +274,7 @@ test.describe("execute with a secret key", () => {
       await page.route(c.endpoint, failWith(c.status, c.raw));
       await sign(page);
       await expectPlainCopy(page, c.copy, c.raw, c.role);
+      await expectNoFalseClaim(page);
     });
   }
 
@@ -290,5 +328,56 @@ test.describe("execute with a wallet", () => {
     await page.getByRole("button", { name: /Sign & execute close/i }).click();
 
     await expectPlainCopy(page, /declined the request in your wallet/, "The user rejected");
+  });
+});
+
+test.describe("a close stopped part way", () => {
+  test("a failure after a confirmed round states what is done and claims nothing false", async ({
+    page,
+  }) => {
+    test.setTimeout(300_000);
+    // A claimable balance of a throwaway asset forces a claim round before the merge round. The
+    // claim round is really confirmed; the merge round's build is then refused at the proxy.
+    const owner = Keypair.random();
+    const issuer = Keypair.random();
+    const receiver = Keypair.random();
+    await Promise.all([fund(owner.publicKey()), fund(issuer.publicKey())]);
+    await fund(receiver.publicKey());
+    const asset = new Asset("PART", issuer.publicKey());
+    await submitOps(issuer, [
+      Operation.createClaimableBalance({
+        asset,
+        amount: "5",
+        claimants: [new Claimant(owner.publicKey())],
+      }),
+    ]);
+
+    await enterSourceAndAnalyze(page, owner.publicKey());
+    await page.getByText("Claim balances", { exact: true }).click();
+    await page.getByRole("radio", { name: /Add a PART trustline and claim it/ }).check();
+    // The claim answer re-plans, and only the new plan asks what happens to the claimed PART.
+    const giveBack = page.getByRole("radio", { name: /Return my .*PART to the issuer/ });
+    await page.getByText("Handle assets", { exact: true }).click();
+    await giveBack.check({ timeout: TESTNET_STEP_TIMEOUT });
+    await enterDestinationAndBegin(page, receiver.publicKey());
+    await expectSigningPanel(page);
+    await enterSecretKey(page, owner.secret());
+    await page.getByRole("checkbox").check();
+
+    let builds = 0;
+    const raw = "upstream request timed out after 30000ms";
+    await page.route("**/api/v1/testnet/close/transactions", (route) =>
+      ++builds === 1 ? route.continue() : failWith(503, raw)(route)
+    );
+    await page.getByRole("button", { name: /Sign & execute close/i }).click();
+
+    await expectPlainCopy(
+      page,
+      /\d+ of \d+ plan steps are already confirmed, so your account is partly closed and still open/,
+      raw
+    );
+    await expect(page.getByText(/No new transaction was sent/)).toBeVisible();
+    await expectNoFalseClaim(page);
+    expect(builds).toBe(2);
   });
 });

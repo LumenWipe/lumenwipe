@@ -5,13 +5,33 @@ import { useRouter } from "next/navigation";
 import { ShieldCheck, AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
 import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
-import { saveCloseSession } from "@/lib/session/close-record";
+import { closeOwner, saveCloseSession } from "@/lib/session/close-record";
+import { forgetDecisions } from "@/lib/session/decision-snapshot";
+import { readUnresolved } from "@/lib/session/recovery";
+import { journeyOf } from "@/lib/journey/journey-state";
+import {
+  CONFIRM_HELD,
+  CONFIRM_NOT_SAVED,
+  CONFIRM_SAVE_FAILED,
+  CONFIRM_UNCHECKED,
+} from "@/lib/utils/user-error";
 import { formatXlm } from "@/lib/utils/amounts";
 import PlanStepAccordion from "@/components/review/PlanStepAccordion";
 import AccountSummaryCard from "@/components/plan/AccountSummaryCard";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+
+/** How long the confirm waits for the close to be saved: a blocked database never answers. */
+export const CONFIRM_SAVE_TIMEOUT_MS = 5000;
+
+function withinSaveTime<T>(pending: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("save timed out")), CONFIRM_SAVE_TIMEOUT_MS);
+  });
+  return Promise.race([pending, limit]).finally(() => clearTimeout(timer));
+}
 
 interface ReviewViewProps {
   network: Network;
@@ -27,13 +47,13 @@ export default function ReviewView({ network }: ReviewViewProps) {
     sourceAddress,
     memo,
     memoType,
-    sessionId,
-    initSession,
     setPhase,
+    resumedClose,
   } = useDemolishStore();
 
   const [confirming, setConfirming] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [held, setHeld] = useState<string | null>(null);
 
   const totalFee = executionPlan
     .reduce((sum, step) => sum + parseFloat(step.estimatedFeeLumens), 0)
@@ -41,19 +61,44 @@ export default function ReviewView({ network }: ReviewViewProps) {
 
   // The only caller allowed to transition PREFLIGHT_COMPLETE -> STEP_EXECUTING. Nothing
   // is persisted until this fires, so leaving this page without confirming (closing the
-  // tab, navigating away) never leaves a resumable session behind.
+  // tab, navigating away) never leaves a resumable session behind. A transaction of this
+  // account with an unknown outcome, or a saved state that cannot be read or written, holds it.
   async function handleConfirm() {
     if (!sourceAddress || !destinationAddress) return;
     setConfirming(true);
+    setHeld(null);
 
-    await saveCloseSession({ network, source: sourceAddress });
+    const hold =
+      (await readUnresolved(network, sourceAddress).then(
+        (found) =>
+          found || journeyOf(useDemolishStore.getState()).mayBeInFlight ? CONFIRM_HELD : null,
+        () => CONFIRM_UNCHECKED
+      )) ??
+      (await withinSaveTime(saveCloseSession(closeOwner(network, sourceAddress))).then(
+        (id) => (id ? null : CONFIRM_NOT_SAVED),
+        () => CONFIRM_SAVE_FAILED
+      ));
+    if (hold) {
+      setHeld(hold);
+      setConfirming(false);
+      return;
+    }
 
+    // The choices were consented to just now: none of them outlives this confirm, so a resume
+    // after it asks for them again.
+    forgetDecisions();
     setPhase("STEP_EXECUTING");
     router.push(`/${network}/execute`);
   }
 
   return (
     <div className="space-y-5">
+      {resumedClose?.source === sourceAddress && (
+        <p className="text-sm text-fg-muted">
+          You are continuing a close you started earlier, so this plan lists only what is left on
+          the account now.
+        </p>
+      )}
       {accountState && (
         <AccountSummaryCard
           account={accountState}
@@ -76,8 +121,9 @@ export default function ReviewView({ network }: ReviewViewProps) {
       </Card>
 
       <Callout tone="info" icon={<ShieldCheck className="h-4 w-4" />}>
-        Every transaction above is verified against your own choices before it is signed. Once you
-        proceed, you&apos;ll sign each step on the next screen.
+        Before you sign each transaction, your browser checks its destination, memo and what it does
+        with each asset against what you chose, and does not sign it if anything does not match.
+        Once you proceed, you&apos;ll sign each step on the next screen.
       </Callout>
 
       <Callout
@@ -120,6 +166,23 @@ export default function ReviewView({ network }: ReviewViewProps) {
       >
         {confirming ? "Preparing..." : "I understand this plan and want to proceed"}
       </Button>
+
+      {held && (
+        <Callout tone="danger" icon={<AlertTriangle className="h-4 w-4" />}>
+          <p>{held}</p>
+          {held === CONFIRM_SAVE_FAILED && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-2"
+              onClick={() => void handleConfirm()}
+              disabled={confirming}
+            >
+              Try again
+            </Button>
+          )}
+        </Callout>
+      )}
 
       {!accountState && (
         <p className="flex items-center gap-1.5 text-xs text-fg-subtle">

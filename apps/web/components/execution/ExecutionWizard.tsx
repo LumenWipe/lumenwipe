@@ -7,6 +7,9 @@ import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { useCloseExecution } from "@/hooks/useCloseExecution";
 import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
+import { allows } from "@/lib/journey/claims";
+import { routeForPhase } from "@/lib/journey/route-for-phase";
+import { useJourneyState } from "@/lib/journey/use-journey-state";
 import SecretKeyInput from "@/components/account-entry/SecretKeyInput";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import PlanSidebar from "./PlanSidebar";
@@ -20,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card } from "@/components/ui/card";
 import { Tabs, type TabItem } from "@/components/ui/tabs";
+import { PROGRESS_NOT_SAVED } from "@/lib/utils/user-error";
 
 interface ExecutionWizardProps {
   network: Network;
@@ -41,10 +45,13 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const destinationAddress = useDemolishStore((s) => s.destinationAddress);
   const mediatorRequired = useDemolishStore((s) => s.mediatorRequired);
   const phase = useDemolishStore((s) => s.phase);
+  const journey = useJourneyState();
   const lastError = useDemolishStore((s) => s.lastError);
   const lastErrorReference = useDemolishStore((s) => s.lastErrorReference);
   const accountState = useDemolishStore((s) => s.accountState);
   const unconfirmedSubmission = useDemolishStore((s) => s.unconfirmedSubmission);
+  const progressNotSaved = useDemolishStore((s) => s.progressNotSaved);
+  const signingRun = useDemolishStore((s) => s.signingRun);
 
   const {
     run,
@@ -150,7 +157,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
   // On success, wipe signing material and advance to the completion screen.
   useEffect(() => {
-    if (phase === "COMPLETE") {
+    if (routeForPhase(phase) === "complete") {
       clearSigner();
       router.push(`/${network}/complete`);
     }
@@ -208,10 +215,13 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     [execute]
   );
 
-  const busy = running || progressStatus !== null;
-  const pendingMoreSignatures = phase === "STEP_FAILED" && !running && signatureStatus !== null;
-  const failed = phase === "STEP_FAILED" && !running && !changingSigner && !pendingMoreSignatures;
-  const unconfirmed = phase === "STEP_UNCONFIRMED" && unconfirmedSubmission !== null;
+  // A run this mount did not start, as after a remount mid-run, still holds the close.
+  const inRun = running || signingRun;
+  const busy = inRun || progressStatus !== null;
+  const halted = inRun ? null : journey.halted;
+  const pendingMoreSignatures = halted === "failed" && signatureStatus !== null;
+  const failed = halted === "failed" && !changingSigner && !pendingMoreSignatures;
+  const unconfirmed = journey.halted === "unconfirmed" && unconfirmedSubmission !== null;
   const view = busy
     ? "busy"
     : unconfirmed
@@ -354,8 +364,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           </div>
 
           <Callout tone="info" icon={<ShieldCheck className="h-4 w-4" />}>
-            Every transaction is verified against your own choices - destination, asset decisions,
-            and memo - before it is signed. Anything unexpected is rejected.
+            Before you sign each transaction, your browser checks its destination, memo and what it
+            does with each asset against what you chose, and does not sign it if anything does not
+            match.
           </Callout>
 
           {/* Irreversible warning */}
@@ -371,6 +382,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               {mediatorRequired ? " through the exchange relay account." : "."} Verify it carefully.
             </p>
           </Callout>
+
+          {progressNotSaved && (
+            <Callout tone="warning" icon={<AlertCircle className="h-4 w-4" />}>
+              {PROGRESS_NOT_SAVED}
+            </Callout>
+          )}
 
           <StatusMessage message={statusMessage} />
 
@@ -423,7 +440,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               <Button ref={retryRef} onClick={execute} disabled={!signerReady} className="w-full">
                 Retry
               </Button>
-              {retrySafe !== false && (
+              {retrySafe === true && allows(journey, "safe-to-retry") && (
                 <p className="text-xs text-fg-subtle">
                   Safe to retry. LumenWipe re-reads your account first, so a confirmed transaction
                   is never sent twice.

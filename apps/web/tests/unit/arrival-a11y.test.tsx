@@ -9,6 +9,7 @@ import ReviewPage from "@/app/[network]/review/page";
 import AnalyzePage from "@/app/[network]/analyze/page";
 import AllowancesPage from "@/app/[network]/allowances/page";
 import { useDemolishStore } from "@/store/demolish";
+import { useNetworkStore } from "@/store/network";
 import * as history from "@/lib/session/history";
 import * as recovery from "@/lib/session/recovery";
 import * as analyzeClient from "@/lib/api/analyze-client";
@@ -95,6 +96,7 @@ async function renderPage(ui: ReactElement): Promise<void> {
 
 beforeEach(() => {
   useDemolishStore.getState().reset();
+  useNetworkStore.setState({ network: "testnet" });
   spyOn(history, "saveHistory").mockResolvedValue(undefined);
   spyOn(recovery, "cleanupSession").mockResolvedValue(undefined);
   stubNavigation();

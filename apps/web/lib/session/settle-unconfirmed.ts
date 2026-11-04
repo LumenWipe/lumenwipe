@@ -1,6 +1,11 @@
 import { resolveSubmission, submissionClosesAccount } from "@lumenwipe/sdk";
 import type { Network } from "@/config/networks";
-import { clearUnconfirmedFor, deleteSession } from "@/lib/session/store";
+import {
+  clearUnconfirmedFor,
+  confirmationOf,
+  deleteSession,
+  recordConfirmed,
+} from "@/lib/session/store";
 import { lookupViaApi } from "@/lib/stellar/submit-via-api";
 import { useDemolishStore } from "@/store/demolish";
 import type { SessionRecord } from "@/types/session";
@@ -26,6 +31,12 @@ export async function settleRecorded(
   if (outcome === "confirmed" && submissionClosesAccount(session.unconfirmed)) {
     await deleteSession(session.id);
     return "closed";
+  }
+  if (outcome === "confirmed") {
+    const { covers, hash } = session.unconfirmed;
+    await recordConfirmed(session.id, confirmationOf(covers, hash, null)).catch((err: unknown) => {
+      console.error("[session] could not record the confirmed transaction:", err);
+    });
   }
   return "released";
 }

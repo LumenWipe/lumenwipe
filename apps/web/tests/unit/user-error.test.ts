@@ -316,7 +316,7 @@ describe("closeFailureMessage", () => {
 
   test("the connect flow keeps its own decline copy", () => {
     expect(toUserMessage(declined, "wallet")).toBe(
-      "You declined the request in your wallet. Nothing was sent - approve it when you're ready to continue."
+      "You declined the connection request in your wallet, so it was not connected. Approve it when you're ready to continue."
     );
   });
 
@@ -346,4 +346,18 @@ describe("closeFailureMessage", () => {
       }
     }
   });
+});
+
+describe("closeFailureMessage after a confirmed merge", () => {
+  const merged = [step(0, "CANCEL_OFFERS", "confirmed"), step(1, "MERGE", "confirmed")];
+
+  test.each<CloseFailureStage>(["before-submit", "submitted", "refused"])(
+    "%s never calls a closed account safe to retry",
+    (stage) => {
+      const msg = closeFailureMessage(new Error("boom"), stage, merged);
+      expect(msg).toMatch(/2 of 2 plan steps are already confirmed, so your account is closed\./);
+      expect(msg).not.toMatch(/safe to retry|retrying is also safe/i);
+      expect(msg).not.toMatch(/still open/);
+    }
+  );
 });

@@ -319,6 +319,7 @@ import { authorizationOf } from "./fixtures/trustline";
 
 function makeSession(over: Partial<SessionRecord> = {}): SessionRecord {
   return {
+    version: 1,
     id: "s1",
     network: "testnet",
     sourceAddress: "GSOURCE",
@@ -328,6 +329,8 @@ function makeSession(over: Partial<SessionRecord> = {}): SessionRecord {
     mediatorRequired: false,
     completedSteps: [],
     currentStepIndex: 0,
+    stepCount: null,
+    stepBase: 0,
     status: "in_progress",
     createdAt: "2025-01-01T00:00:00.000Z",
     updatedAt: "2025-01-01T00:00:00.000Z",
