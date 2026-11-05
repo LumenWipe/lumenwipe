@@ -218,6 +218,12 @@ export type ClaimPredicate = {
     deadlineEpoch: string;
 };
 
+// @public
+export interface ClassicConversionQuote {
+    estimatedReceive: string;
+    minAmountOut: string;
+}
+
 // @public (undocumented)
 export type CloseApiStatus = "ready" | "needs_decisions" | "blocked" | "complete";
 
@@ -426,7 +432,6 @@ export interface DecisionPoint {
     options: DecisionOption[];
     // (undocumented)
     required: boolean;
-    // (undocumented)
     subject: Record<string, unknown>;
     // (undocumented)
     type: "asset_disposition" | "confirmation" | "choice" | "claimable_balance";

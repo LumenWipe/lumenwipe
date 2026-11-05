@@ -49,6 +49,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
     memoType,
     setPhase,
     resumedClose,
+    expectedReceive,
   } = useDemolishStore();
 
   const [confirming, setConfirming] = useState(false);
@@ -103,7 +104,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
         <AccountSummaryCard
           account={accountState}
           destinationAddress={destinationAddress}
-          totalFee={totalFee}
+          expected={expectedReceive}
         />
       )}
 

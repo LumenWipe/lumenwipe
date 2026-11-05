@@ -2,7 +2,7 @@ import type { StepType } from "@/types/plan";
 // Re-exported, not copied. This file still duplicates most of the package's close-api types
 // (#68), but DecisionAnswer is where the transfer destination lives, so a divergent local copy
 // would silently drop the field the API refuses the build without.
-export type { DecisionAnswer } from "@lumenwipe/types";
+export type { ClassicConversionQuote, DecisionAnswer } from "@lumenwipe/types";
 import type { AccountSigner } from "@/types/account";
 
 export type CloseApiStatus = "ready" | "needs_decisions" | "blocked" | "complete";

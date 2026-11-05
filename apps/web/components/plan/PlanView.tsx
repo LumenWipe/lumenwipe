@@ -25,7 +25,11 @@ import {
   dispositionsToDecisions,
   discoveredTokensToDecisions,
 } from "@/lib/api/close-decisions";
-import { apiStepsToPlannedSteps, decisionPointsToLeavablePositions } from "@/lib/api/plan-adapters";
+import {
+  apiStepsToPlannedSteps,
+  decisionPointsToLeavablePositions,
+  planFeeStroopsOf,
+} from "@/lib/api/plan-adapters";
 import { goToReview } from "@/lib/plan/confirm-plan";
 import { isValidGAddress, isValidMemo } from "@/lib/utils/validation";
 import {
@@ -56,6 +60,7 @@ import {
 } from "@/lib/api/close-decisions";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { assetsResolved } from "@/lib/plan/asset-resolution";
+import { expectedReceive, type ExpectedReceive } from "@/lib/plan/expected-receive";
 import { destinationRefusal } from "@/lib/plan/destination-check";
 import { keepDestinationDraft } from "@/lib/session/restore-decisions";
 import { isStateChanged } from "@/lib/utils/user-error";
@@ -69,6 +74,8 @@ interface PlanViewProps {
   claimableBalanceDecisions: ClaimableBalanceDecision[];
   leavablePositions?: LeavablePosition[];
   blockers: PlanBlocker[];
+  /** The fee the latest plan estimated, in stroops; null until a plan is in. */
+  planFeeStroops: string | null;
   network: Network;
   onRefresh: () => void;
   loading: boolean;
@@ -81,6 +88,7 @@ export default function PlanView({
   claimableBalanceDecisions,
   leavablePositions = [],
   blockers,
+  planFeeStroops,
   network,
   onRefresh,
   loading,
@@ -95,6 +103,7 @@ export default function PlanView({
     setAddresses,
     setMediatorRequired,
     setPlan,
+    setExpectedReceive,
     setPhase,
     destinationAddress: storedDest,
     memo: storedMemo,
@@ -300,12 +309,20 @@ export default function PlanView({
     memoValid &&
     destinationAcknowledged;
 
-  const totalSubentries =
-    account.trustlines.length +
-    account.openOffers.length +
-    account.dataEntries.length +
-    account.signers.filter((s) => s.key !== account.address).length;
-  const previewFee = (totalSubentries * 0.00001).toFixed(7);
+  const expectedFrom = (feeStroops: string, relayForwardUncounted: boolean): ExpectedReceive =>
+    expectedReceive({
+      account,
+      planFeeStroops: feeStroops,
+      relayForwardUncounted,
+      conversions,
+      dispositions: assetDispositions,
+      claims: claimableBalanceDecisions,
+      claimSelections: claimableBalanceSelections,
+    });
+  // The plan on screen was asked for without a destination, so it never counts the relay's
+  // forward payment; the plan fetched on proceed does.
+  const expected =
+    planFeeStroops === null ? null : expectedFrom(planFeeStroops, previewMediatorRequired);
 
   async function handleProceed() {
     if (!canProceed) return;
@@ -376,6 +393,8 @@ export default function PlanView({
       }
 
       setPlan(apiStepsToPlannedSteps(plan), plan.planHash);
+      const finalFee = planFeeStroopsOf(plan);
+      setExpectedReceive(finalFee === null ? null : expectedFrom(finalFee, false));
 
       // No session is persisted here: the review page's own confirmation is the only
       // caller allowed to write a resumable record, so an interruption on /review before
@@ -401,7 +420,7 @@ export default function PlanView({
       <AccountSummaryCard
         account={account}
         destinationAddress={isValidGAddress(destination) ? destination : null}
-        totalFee={previewFee}
+        expected={expected}
       />
 
       {/* Claimable-balance blockers are already fully conveyed live by the cards below (an

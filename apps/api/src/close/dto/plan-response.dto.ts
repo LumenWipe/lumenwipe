@@ -1,7 +1,8 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiExtraModels, ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import type {
   BatchPlanResponse,
   BatchPlanResult,
+  ClassicConversionQuote,
   CloseApiStatus,
   DecisionOption,
   DecisionPoint,
@@ -138,6 +139,22 @@ export class DecisionOptionDto implements DecisionOption {
   note?: string;
 }
 
+export class ClassicConversionQuoteDto implements ClassicConversionQuote {
+  @ApiProperty({
+    description:
+      "Stroops of XLM the route is expected to deliver for the balance the step will move.",
+    example: "425000000",
+  })
+  estimatedReceive!: string;
+
+  @ApiProperty({
+    description: "The least XLM, in stroops, the route may deliver once slippage is applied.",
+    example: "422875000",
+  })
+  minAmountOut!: string;
+}
+
+@ApiExtraModels(ClassicConversionQuoteDto)
 export class DecisionPointDto implements DecisionPoint {
   @ApiProperty({ description: 'Stable id, e.g. "asset:USDC-GISSUER...".' })
   id!: string;
@@ -149,7 +166,9 @@ export class DecisionPointDto implements DecisionPoint {
     description:
       "The subject of this decision - shape depends on `type` (e.g. an asset code/issuer/balance " +
       "for asset_disposition, a claimable balance id for claimable_balance). Freeform by design: " +
-      "there is one decision-point contract per `type`, not one global shape.",
+      "there is one decision-point contract per `type`, not one global shape. A convertible " +
+      "classic asset's subject carries `quote` (ClassicConversionQuoteDto): display data, absent " +
+      "when no route exists or the balance is one a position's exit has yet to pay in.",
     type: "object",
     additionalProperties: true,
   })

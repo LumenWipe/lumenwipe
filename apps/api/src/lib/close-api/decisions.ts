@@ -2,6 +2,7 @@ import type {
   AccountState,
   AssetDisposition,
   ClaimableBalanceSelection,
+  ClassicConversionQuote,
   DecisionAnswer,
   DecisionPoint,
   TransferDestinations,
@@ -412,13 +413,6 @@ export function tokenAssetsById(
  * convert option is not offered. A token whose symbol or decimals could not be read is not
  * offered conversion either - a swap amount nobody can read is not a decision anyone can make.
  */
-/** What the plan shows for a convertible classic asset, in stroops: the quoted XLM and the floor
- *  the conversion must clear. */
-export interface ClassicQuote {
-  estimatedReceive: string;
-  minAmountOut: string;
-}
-
 /** What the plan shows for a convertible token: the quoted XLM and the floor the swap must clear. */
 export interface TokenQuoteSummary {
   amountOut: string;
@@ -553,7 +547,7 @@ export function deriveDecisionPoints(
   /** Assets with a market whose balance would receive nothing once slippage is applied. */
   dustAssets: ReadonlySet<string> = new Set(),
   /** The quote for each convertible asset priced at the amount it will actually move. */
-  classicQuotes: Readonly<Record<string, ClassicQuote>> = {}
+  classicQuotes: Readonly<Record<string, ClassicConversionQuote>> = {}
 ): DecisionPoint[] {
   // The same dead-end, reached from the other direction: an exit pays an asset into a trustline
   // that is empty today, so neither the balance rule nor the claim rule asks about it, and the

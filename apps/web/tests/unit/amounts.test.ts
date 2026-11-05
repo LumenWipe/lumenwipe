@@ -1,10 +1,5 @@
 import { test, expect } from "bun:test";
-import {
-  stroopsToXlm,
-  xlmToStroops,
-  estimateFeeLumens,
-  calcRecoverableReserve,
-} from "@/lib/utils/amounts";
+import { stroopsToXlm, xlmToStroops, estimateFeeLumens } from "@/lib/utils/amounts";
 
 test("stroopsToXlm › 10_000_000 stroops = 1 XLM", () => {
   expect(stroopsToXlm(10_000_000)).toBe("1");
@@ -52,16 +47,4 @@ test("estimateFeeLumens › 100 ops = 0.001 XLM", () => {
 
 test("estimateFeeLumens › 0 ops = 0 XLM", () => {
   expect(estimateFeeLumens(0)).toBe("0");
-});
-
-test("calcRecoverableReserve › 4 subentries = 2 XLM", () => {
-  expect(calcRecoverableReserve(4)).toBe("2.0000000");
-});
-
-test("calcRecoverableReserve › 0 subentries = 0 XLM", () => {
-  expect(calcRecoverableReserve(0)).toBe("0.0000000");
-});
-
-test("calcRecoverableReserve › 1 subentry = 0.5 XLM", () => {
-  expect(calcRecoverableReserve(1)).toBe("0.5000000");
 });

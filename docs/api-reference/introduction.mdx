@@ -249,4 +249,13 @@ A close is a sequence of calls. The API keeps no state between them, so a close 
 3. `POST /v1/{network}/submit` submits the signed transaction. If the outcome is unknown, resolve it with `GET /v1/{network}/transactions/{hash}`.
 4. Repeat from step 2 while the response says another call is required.
 
+Each entry of the plan's `decisionPoints` carries a `subject` whose shape depends on its `type`. For an `asset_disposition` on a convertible classic asset, `subject.quote` is the swap quote, in stroops of XLM, priced at the balance the step will move:
+
+| Field              | Meaning                                                       |
+| ------------------ | ------------------------------------------------------------- |
+| `estimatedReceive` | The XLM the route is expected to deliver.                     |
+| `minAmountOut`     | The least XLM the route may deliver once slippage is applied. |
+
+The quote is display data. To hold the conversion to a figure the user saw, send it as the convert answer's `params.minAmountOut`; `close/transactions` refuses a route that no longer clears it with `quote_drifted`. `quote` is absent when no route exists, and for a balance a position's exit has yet to pay in.
+
 For exchange destinations, `POST /{network}/mediator/sign` co-signs the mediator's forward payment. To plan several accounts at once, use `POST /v1/{network}/close/batch-plan`. See [how a close works](/guides/how-closing-works) for the flow from a user's side.

@@ -9,6 +9,9 @@ release is cut.
 
 ### Added
 
+- The type `ClassicConversionQuote` is exported: the `quote` a convertible classic asset's
+  `asset_disposition` subject already carries (`estimatedReceive` and `minAmountOut`, in stroops).
+  Types only; no runtime change.
 - `runClose` takes an opt-in `reconcile` and a `prepare` step. With them, an unknown submit outcome
   is settled by the hash the client computed: the same bytes are sent again at most
   `SUBMIT_RESEND_ATTEMPTS` (2) times, then the hash is looked up, then `CloseOutcomeUnknownError`
