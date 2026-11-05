@@ -27,6 +27,12 @@ export function holdsNoDecisions(state: State, source: string): boolean {
   );
 }
 
+/** The transfer destinations that are account addresses, the same rule the read side applies,
+ *  so a half-typed or mistaken field value is never written and never makes the rest unreadable. */
+function wellFormed(destinations: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(destinations).filter(([, d]) => isValidGAddress(d)));
+}
+
 /** The inputs this tab keeps for `source`. The destination and memo are the last ones the user
  *  typed, which the snapshot already holds once there is one, an emptied field included. Before
  *  the account is read, the asset answers and what they were given for are carried over from the
@@ -55,9 +61,9 @@ export function snapshotOf(
     destinationAcknowledgedFor: state.destinationAcknowledgedFor,
     claimableBalanceSelections: state.claimableBalanceSelections,
     assetDispositions: account ? state.assetDispositions : (previous?.assetDispositions ?? {}),
-    transferDestinations: account
-      ? state.transferDestinations
-      : (previous?.transferDestinations ?? {}),
+    transferDestinations: wellFormed(
+      account ? state.transferDestinations : (previous?.transferDestinations ?? {})
+    ),
     seen: account ? seen : (previous?.seen ?? {}),
   };
 }
