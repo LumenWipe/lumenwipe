@@ -22,17 +22,23 @@ const LIVE_RPC_OPTIONS = { timeout: 60_000, retry: 2 };
 
 /** Whether the explorer still lists the token for the holder; a third party moving its funds is
  *  not a failure of the code under test, so the mainnet case steps aside rather than fail. */
-async function explorerStillLists(holder: string, contract: string): Promise<boolean> {
+async function explorerListing(
+  holder: string,
+  contract: string
+): Promise<"listed" | "not_listed" | "unavailable"> {
   const res = await fetch(`${STELLAR_EXPERT_API_URL}/explorer/public/account/${holder}/value`);
-  if (!res.ok) return true; // unknown: run the test and let it speak
+  if (!res.ok) return "unavailable";
   const body = (await res.json()) as { balances?: Array<{ asset?: string; balance?: string }> };
-  return (body.balances ?? []).some((b) => b.asset === contract && b.balance !== "0");
+  return (body.balances ?? []).some((b) => b.asset === contract && b.balance !== "0")
+    ? "listed"
+    : "not_listed";
 }
 
 test.skipIf(!RUN_INTEGRATION)(
   "mainnet: a real Soroban-native holding is found through the live sources and confirmed on the ledger",
   async () => {
-    if (!(await explorerStillLists(MAINNET_HOLDER, DEJTRSY))) {
+    const listing = await explorerListing(MAINNET_HOLDER, DEJTRSY);
+    if (listing === "not_listed") {
       console.warn("mainnet holder no longer holds deJTRSY per the explorer; pick another holder");
       return;
     }
@@ -49,8 +55,18 @@ test.skipIf(!RUN_INTEGRATION)(
     expect(found!.symbol).toBe("deJTRSY");
     // The explorer proposed it and the ledger confirmed it; the event scan covered a real window
     // (the public mainnet RPC's processing cap may stop it early, which is reported, not hidden).
-    expect(found!.sources).toContain("explorer");
-    expect(result.coverage.find((c) => c.source === "explorer")?.status).toBe("ok");
+    // An explorer that refuses the read (a non-ok answer) must show as a failed source, not vanish.
+    if (listing === "listed") {
+      expect(found!.sources).toContain("explorer");
+      expect(result.coverage.find((c) => c.source === "explorer")?.status).toBe("ok");
+    } else {
+      expect(found!.sources.length).toBeGreaterThan(0);
+      expect(found!.sources).not.toContain("explorer");
+      expect(result.coverage.find((c) => c.source === "explorer")).toMatchObject({
+        source: "explorer",
+        status: "failed",
+      });
+    }
     expect(result.eventsScanned).not.toBeNull();
     expect(
       result.eventsScanned!.toLedger - result.eventsScanned!.fromLedger

@@ -388,6 +388,7 @@ test("the account read carries the Soroban token balances discovery confirmed, a
   const { deps } = stubProvider(accountBody());
   const TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
   const state = await readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI, {
+    ...OFFLINE_SOROBAN_TOKENS,
     sorobanTokensDeps: (positions) => {
       expect(positions).toEqual([]);
       return fakeSorobanDeps({
@@ -408,6 +409,7 @@ test("the account read carries the Soroban token balances discovery confirmed, a
 test("a discovery that throws leaves the read intact with a warning instead of failing the analysis", async () => {
   const { deps } = stubProvider(accountBody());
   const state = await readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI, {
+    ...OFFLINE_SOROBAN_TOKENS,
     sorobanTokensDeps: () => {
       throw new Error("no deps today");
     },

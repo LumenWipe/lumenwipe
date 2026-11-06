@@ -5,6 +5,7 @@ import * as readAccount from "@/lib/close-api/read-account";
 import { buildAccountPlan } from "@/lib/close-api/account-plan";
 import { ROUTE_LOOKUP_UNAVAILABLE_CODE } from "@/lib/close-api/decisions";
 import type { fetchConversionPath } from "@/lib/stellar/path-finding";
+import * as rpcModule from "@/lib/stellar/rpc";
 import { UpstreamError } from "@/lib/stellar/upstream-client";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
@@ -18,6 +19,9 @@ const USDC = `USDC:${ISSUER}`;
 beforeEach(() => {
   stubIssuance();
   stubLedgerConfirmation();
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
+    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
+  })) as unknown as typeof rpcModule.getRpcServer);
 });
 
 afterEach(() => {
