@@ -39,9 +39,9 @@
       "protocol": "aquarius",
       "kind": "router",
       "address": "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
-      "wasmHash": "c99539b023df4a28d7857d33ca4c915c2e20fec04f12b125132b84fbdf94dad3",
+      "wasmHash": "d34668cd0b957f4e549719032951503495310a4d1c401ddce591c0f152834254",
       "version": "v1",
-      "label": "Aquarius testnet router - reference only; no specific pool instance is publicly documented yet",
+      "label": "Aquarius testnet router - reference only; no specific pool instance is publicly documented yet; hash re-verified 2026-11-06 after an in-place upstream upgrade (interface unchanged, swap_split added)",
       "verifiedLive": true
     },
     {

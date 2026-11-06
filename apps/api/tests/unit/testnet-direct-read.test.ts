@@ -664,7 +664,7 @@ test("Soroswap: without a pair entry in the registry, every held pair is unknown
 // ─── Aquarius: pools enumerated from the router ──────────────────────────────
 
 const AQ_ROUTER = "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD";
-const AQ_ROUTER_HASH = "c99539b023df4a28d7857d33ca4c915c2e20fec04f12b125132b84fbdf94dad3";
+const AQ_ROUTER_HASH = "d34668cd0b957f4e549719032951503495310a4d1c401ddce591c0f152834254";
 const AQ_CONSTANT_HASH = "d691135aade93ff0f7c229e009cde042130a05124cf7202b03d11246b4f9b473";
 const AQ_STABLE_HASH = "22dff7242d2bc0ea4a4727b4b2cac33b188304d5945740ad24d8a33a5d22741e";
 const AQ_CONCENTRATED_HASH = "155a17b9929ffb1f9e84bd6ef5c00a4d613c1ab5f4ad4c502d84515250cc2907";
