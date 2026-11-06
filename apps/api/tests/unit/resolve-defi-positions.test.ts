@@ -11,15 +11,13 @@ import * as contractRegistry from "@/lib/contract-registry";
 import {
   addressVal,
   detectDefiPositionsViaDirectRead,
-  variantVal,
 } from "@/lib/defi-positions/testnet-direct-read";
 import type { ContractRegistryEntry } from "@/lib/contract-registry";
 import type { getRpcServer } from "@/lib/stellar/rpc";
 import {
-  contractDataEntry,
   contractInstanceEntry,
-  i128Val,
   mockRpc,
+  phoenixLpEntries,
 } from "./fixtures/testnet-direct-read-helpers";
 
 type RpcServer = ReturnType<typeof getRpcServer>;
@@ -27,6 +25,7 @@ type RpcServer = ReturnType<typeof getRpcServer>;
 const ADDRESS = Keypair.random().publicKey();
 const OCTOPOS_BASE = "https://octopos.example";
 const PHOENIX_POOL = "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD";
+const PHOENIX_SHARE = "CC53IRMBHWTXE4BWPD5N4LH2L43YSYBMOFD6UARPMZBTWPSODFFKW2EG";
 const PHOENIX_WASM_HASH = "3".repeat(64);
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
@@ -210,10 +209,8 @@ test("a forged 'source' claiming the internal degraded-confirmed-empty marker is
     label: "test fixture",
     verifiedLive: true,
   };
-  const balanceKey = variantVal("Balance", addressVal(ADDRESS));
   const rpc = mockRpc([
-    contractInstanceEntry(PHOENIX_POOL, PHOENIX_WASM_HASH),
-    contractDataEntry(PHOENIX_POOL, balanceKey, i128Val(42_0000000n)),
+    ...phoenixLpEntries(PHOENIX_POOL, PHOENIX_WASM_HASH, PHOENIX_SHARE, ADDRESS, 42_0000000n),
   ]);
   const raw = {
     positions: [],
@@ -236,6 +233,7 @@ test("a forged 'source' claiming the internal degraded-confirmed-empty marker is
       contractAddress: PHOENIX_POOL,
       wasmHash: PHOENIX_WASM_HASH,
       shareAmount: "420000000",
+      shareToken: PHOENIX_SHARE,
       usdValue: null,
     },
   ]);
@@ -314,10 +312,8 @@ test("a degraded mainnet fallback still surfaces positions the direct read actua
     label: "test fixture",
     verifiedLive: true,
   };
-  const balanceKey = variantVal("Balance", addressVal(ADDRESS));
   const rpc = mockRpc([
-    contractInstanceEntry(PHOENIX_POOL, PHOENIX_WASM_HASH),
-    contractDataEntry(PHOENIX_POOL, balanceKey, i128Val(42_0000000n)),
+    ...phoenixLpEntries(PHOENIX_POOL, PHOENIX_WASM_HASH, PHOENIX_SHARE, ADDRESS, 42_0000000n),
   ]);
 
   const result = await resolveDefiPositions(ADDRESS, "mainnet", {
@@ -339,6 +335,7 @@ test("a degraded mainnet fallback still surfaces positions the direct read actua
       contractAddress: PHOENIX_POOL,
       wasmHash: PHOENIX_WASM_HASH,
       shareAmount: "420000000",
+      shareToken: PHOENIX_SHARE,
       usdValue: null,
     },
   ]);

@@ -67,6 +67,8 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
     protectedTokenContracts: [],
     xbullAssets: { "0": XLM_CONTRACT, "1": CONVERT_TOKEN, "2": OTHER_TOKEN },
     ownTokensByContract: {},
+    shareTokenContracts: [],
+    debtTokenContracts: [],
     repayTokensByPool: {},
     ...over,
   };
@@ -792,6 +794,8 @@ test("verifyCloseTransaction passes a mediated close to a memo-requiring exchang
         protectedTokenContracts: [],
         xbullAssets: {},
         ownTokensByContract: {},
+        shareTokenContracts: [],
+        debtTokenContracts: [],
         repayTokensByPool: {},
       },
     })
@@ -836,6 +840,8 @@ test("verifyCloseTransaction rejects a mediated close to a memo-requiring exchan
         protectedTokenContracts: [],
         xbullAssets: {},
         ownTokensByContract: {},
+        shareTokenContracts: [],
+        debtTokenContracts: [],
         repayTokensByPool: {},
       },
     })
@@ -871,6 +877,8 @@ test("verifyCloseTransaction passes a direct close to a destination the registry
         protectedTokenContracts: [],
         xbullAssets: {},
         ownTokensByContract: {},
+        shareTokenContracts: [],
+        debtTokenContracts: [],
         repayTokensByPool: {},
       },
     })
@@ -2692,6 +2700,47 @@ const redirectTokenCallTo = (fixture: RealExitEnvelope, recipient: string): stri
   });
 
 const TESTNET_XLM = Asset.native().contractId(Networks.TESTNET);
+const HELD_ISSUER = Keypair.random().publicKey();
+const HELD_USDC = new Asset("USDC", HELD_ISSUER);
+const HELD_USDC_SAC = HELD_USDC.contractId(Networks.TESTNET);
+const LISTED_SOROBAN_TOKEN = StrKey.encodeContract(hash(Buffer.from("a listed soroban token")));
+
+type RealPosition = RealExitEnvelope["account"]["defiPositions"]["positions"][number];
+
+/** The field the account read names the exit's own token in: a pool's share token, a vault's
+ *  stablecoin. */
+const ownTokenField = (fixture: RealExitEnvelope): "shareToken" | "debtToken" =>
+  fixture.expected.function === "pay_debt" ? "debtToken" : "shareToken";
+
+/** The fixture's account read with its position's own token set to `token` (absent when null),
+ *  a USDC trustline, and `tokens` as the Soroban balances discovery confirmed. */
+function accountNaming(
+  fixture: RealExitEnvelope,
+  token: string | null,
+  tokens: { contract: string; balance: string }[] = []
+): AccountState {
+  const [position] = fixture.account.defiPositions.positions;
+  const { [ownTokenField(fixture)]: _dropped, ...rest } = position as RealPosition &
+    Record<string, unknown>;
+  return {
+    ...fixture.account,
+    trustlines: [{ asset: `USDC:${HELD_ISSUER}`, code: "USDC", issuer: HELD_ISSUER, balance: "5" }],
+    defiPositions: {
+      positions: [
+        { ...rest, ...(token ? { [ownTokenField(fixture)]: token } : {}) } as RealPosition,
+      ],
+    },
+    sorobanTokens: {
+      tokens: tokens.map((t) => ({ ...t, symbol: null, decimals: 7, sources: ["positions"] })),
+    },
+  } as unknown as AccountState;
+}
+
+/** The real envelope with its one token call moved onto `token`, the rest as built. */
+const tokenCallOn = (fixture: RealExitEnvelope, token: string): string =>
+  mutatedEnvelope(fixture, (_tx, op) => {
+    tokenCall(op).contractAddress = new Address(token).toScAddress();
+  });
 
 function verifyReal(
   fixture: RealExitEnvelope,
@@ -2818,15 +2867,59 @@ for (const fixture of REAL_EXIT_ENVELOPES) {
       expect(() => verifyReal(fixture, altered)).toThrow(/network fee far above/);
     });
 
-    test("rejects the envelope once its token leaves the account read", () => {
-      const account = {
-        ...fixture.account,
-        sorobanTokens: { ...fixture.account.sorobanTokens, tokens: [] },
-      } as AccountState;
+    // The explorer has answered 402 since 2026-11-06: the position alone names the exit's token.
+    test("is accepted with no Soroban token listed, the position naming its own token", () => {
+      const account = accountNaming(fixture, fixture.expected.tokenCall.contract);
+      expect(() =>
+        verifyReal(fixture, fixture.xdr, realExitExpectation(fixture, account))
+      ).not.toThrow();
+    });
+
+    test("rejects the envelope once neither its position nor a listed balance names its token", () => {
+      const account = accountNaming(fixture, null);
       expect(() => verifyReal(fixture, fixture.xdr, realExitExpectation(fixture, account))).toThrow(
         /has no position, balance, or pool token in/
       );
     });
+
+    // A hostile or broken read that names an asset the account holds for value as the position's
+    // own token, with the exit's token call moved onto it.
+    for (const [label, held] of [
+      ["XLM's contract", TESTNET_XLM],
+      ["a held trustline's contract", HELD_USDC_SAC],
+    ] as const) {
+      test(`rejects a read naming ${label} as the position's ${ownTokenField(fixture)}`, () => {
+        const account = accountNaming(fixture, held);
+        expect(() =>
+          verifyReal(fixture, tokenCallOn(fixture, held), realExitExpectation(fixture, account))
+        ).toThrow(/as a DeFi position's own share or debt token/);
+      });
+    }
+
+    if (ownTokenField(fixture) === "shareToken") {
+      // Discovery never lists a share token, so one that is also a listed balance is a read that
+      // contradicts itself. A debt token may be listed: it is what the repay spends.
+      test("rejects a read naming a listed Soroban balance as the position's share token", () => {
+        const account = accountNaming(fixture, LISTED_SOROBAN_TOKEN, [
+          { contract: LISTED_SOROBAN_TOKEN, balance: "9" },
+        ]);
+        expect(() =>
+          verifyReal(
+            fixture,
+            tokenCallOn(fixture, LISTED_SOROBAN_TOKEN),
+            realExitExpectation(fixture, account)
+          )
+        ).toThrow(/as a DeFi position's own share or debt token/);
+      });
+    } else {
+      test("accepts its debt token also listed as a Soroban balance: the repay spends it", () => {
+        const { contract } = fixture.expected.tokenCall;
+        const account = accountNaming(fixture, contract, [{ contract, balance: "100000000" }]);
+        expect(() =>
+          verifyReal(fixture, fixture.xdr, realExitExpectation(fixture, account))
+        ).not.toThrow();
+      });
+    }
 
     // Characterizes a limit, it does not endorse it: the client does not know a protocol's ABI,
     // so verify() checks structure and an exit's amount is the residual in architecture.md

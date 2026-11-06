@@ -249,7 +249,9 @@ Carried forward as a residual risk in Section 11.
 **Status: implemented (epic #151).** `apps/web/lib/stellar/verify.ts`'s DeFi-exit branch, fed by
 `apps/web/lib/stellar/exit-expectations.ts` (which builds `exitContracts`/`heldTokenContracts`/
 `positionTokenContracts`/`exitFunctions` from the account read the user reviewed, never from the
-transaction under verification), backed on the API side by the versioned wasmHash contract registry
+transaction under verification, and refuses an exit outright when that read names XLM, a held
+classic asset, or a listed Soroban balance as a position's own share token, or XLM or a held
+classic asset as its debt token), backed on the API side by the versioned wasmHash contract registry
 (`apps/api/src/lib/contract-registry/index.ts`) and the exit adapters themselves
 (`apps/api/src/lib/defi-exits/{blend,aquarius,soroswap,phoenix,fxdao}.ts`). The xBull conversion quote
 source sits on the same surface: its quotes and swap build live in `apps/api/src/lib/xbull/conversion-quotes.ts`

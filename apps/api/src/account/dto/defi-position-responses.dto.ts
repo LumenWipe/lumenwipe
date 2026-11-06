@@ -179,6 +179,9 @@ export class PhoenixLpPositionDto extends DefiPositionBaseDto implements Phoenix
 
   @ApiProperty()
   shareAmount!: string;
+
+  @ApiPropertyOptional({ description: "The pool's separate LP share token contract." })
+  shareToken?: string;
 }
 
 export class PhoenixStakePositionDto extends DefiPositionBaseDto implements PhoenixStakePosition {
@@ -210,6 +213,9 @@ export class FxdaoCdpPositionDto extends DefiPositionBaseDto implements FxdaoCdp
 
   @ApiProperty()
   debtAmount!: string;
+
+  @ApiPropertyOptional({ description: "The stablecoin contract a repay of this debt burns." })
+  debtToken?: string;
 }
 
 /** Every DefiPosition variant, for @ApiExtraModels registration + the oneOf schema below.

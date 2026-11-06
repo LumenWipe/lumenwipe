@@ -21,7 +21,12 @@ import type { AccountState } from "@/types/account";
  *   XLM and each trustline). An exit's arguments and authorization tree may name these - a
  *   repay spends one, a withdrawal receives one.
  * - `positionTokenContracts`: the tokens of each position detection could read (an LP pair's
- *   two tokens). A withdrawal pays these out, so the call may name them too - and nothing else.
+ *   two tokens), its share token (an Aquarius or Phoenix pool's, which a withdrawal returns to
+ *   the pool) and its debt token (an FxDAO vault's stablecoin, which a repay burns). A
+ *   withdrawal pays out or spends these, so the call may name them too - and nothing else.
+ * - `shareTokenContracts` / `debtTokenContracts`: those share and debt tokens on their own. Each
+ *   is a position's own token, never an asset the account holds for value, so `verify()` refuses
+ *   an exit outright when the read names one that is (see there).
  * - `exitFunctions`: for each contract an exit may invoke, the one function that leaves that
  *   protocol (a Blend pool's `submit`, a Soroswap router's `remove_liquidity`). The contracts
  *   themselves come from the API's read, so this is what stops a hostile read from turning a
@@ -51,6 +56,10 @@ export interface ExitExpectations {
   ownTokensByContract: Record<string, string[]>;
   /** Per Blend pool, the tokens of the account read's `borrow` positions in that pool. */
   repayTokensByPool: Record<string, string[]>;
+  /** Every position's share token (Aquarius, Phoenix). */
+  shareTokenContracts: string[];
+  /** Every position's debt token (FxDAO). */
+  debtTokenContracts: string[];
 }
 
 function xbullAssetsFor(network: Network): Record<string, string> {
@@ -74,6 +83,8 @@ export function exitExpectations(
       xbullAssets: xbullAssetsFor(network),
       ownTokensByContract: {},
       repayTokensByPool: {},
+      shareTokenContracts: [],
+      debtTokenContracts: [],
     };
   }
   const passphrase = NETWORK_PASSPHRASES[network];
@@ -103,16 +114,15 @@ export function exitExpectations(
   for (const r of routers) exitFunctions[r.address] = [...EXIT_FUNCTIONS[r.protocol].router];
   for (const b of backstops) exitFunctions[b.address] = [...EXIT_FUNCTIONS[b.protocol].backstop];
   for (const s of stakes) exitFunctions[s.address] = [...EXIT_FUNCTIONS[s.protocol].stake];
-  // A position's tokens (what a withdrawal pays out) and, where the protocol keeps shares in a
-  // separate contract, its share token (what a withdrawal burns, under the account's authority).
-  const positionTokenContracts = [
-    ...new Set(
-      positions.flatMap((p) => [
-        ...("tokens" in p && p.tokens ? p.tokens : []),
-        ...("shareToken" in p && p.shareToken ? [p.shareToken] : []),
-      ])
-    ),
+  // A position's tokens (what a withdrawal pays out); where the protocol keeps shares in a
+  // separate contract, its share token (what a withdrawal returns, under the account's
+  // authority); and for a debt position, the token its repay burns.
+  const ownTokens = (p: (typeof positions)[number]): string[] => [
+    ...("tokens" in p && p.tokens ? p.tokens : []),
+    ...("shareToken" in p && p.shareToken ? [p.shareToken] : []),
+    ...("debtToken" in p && p.debtToken ? [p.debtToken] : []),
   ];
+  const positionTokenContracts = [...new Set(positions.flatMap(ownTokens))];
   // The account's own balances: XLM and every trustline under their Stellar Asset Contracts, and
   // the Soroban tokens the analysis confirmed on the ledger (absent on older reads: nothing added).
   const heldTokenContracts = [
@@ -141,13 +151,7 @@ export function exitExpectations(
     ],
     xbullAssets: xbullAssetsFor(network),
     ownTokensByContract: Object.fromEntries(
-      positions.map((p) => [
-        p.contractAddress,
-        [
-          ...("tokens" in p && p.tokens ? p.tokens : []),
-          ...("shareToken" in p && p.shareToken ? [p.shareToken] : []),
-        ],
-      ])
+      positions.map((p) => [p.contractAddress, ownTokens(p)])
     ),
     repayTokensByPool: Object.fromEntries(
       borrows.map(({ contractAddress: pool }) => [
@@ -155,5 +159,13 @@ export function exitExpectations(
         borrows.filter((b) => b.contractAddress === pool).map((b) => b.assetAddress),
       ])
     ),
+    shareTokenContracts: [
+      ...new Set(
+        positions.flatMap((p) => ("shareToken" in p && p.shareToken ? [p.shareToken] : []))
+      ),
+    ],
+    debtTokenContracts: [
+      ...new Set(positions.flatMap((p) => ("debtToken" in p && p.debtToken ? [p.debtToken] : []))),
+    ],
   };
 }

@@ -15,7 +15,7 @@ import {
   type ExitStep,
 } from "./adapter";
 import { minReceivedFromQuote } from "./invariants";
-import { contractDataEntry, instanceOfEntry } from "@/lib/stellar/contract-data";
+import { contractAddressOf, contractDataEntry, instanceOfEntry } from "@/lib/stellar/contract-data";
 
 /**
  * The Phoenix exit (architecture.md §9.6): an LP position leaves the pool through
@@ -127,6 +127,19 @@ const persistentKey = (contract: string, key: xdr.ScVal): xdr.LedgerKey =>
 
 const configKey = (pool: string): xdr.LedgerKey =>
   persistentKey(pool, xdr.ScVal.scvSymbol("CONFIG"));
+
+/** The ledger key of a Phoenix pool's `CONFIG`: persistent storage under a bare symbol key. */
+export const phoenixConfigKey = configKey;
+
+/** The LP share token a pool's `CONFIG` entry names, or null, never a throw. Only a contract:
+ *  detection reads it from here, the same field `readLive` builds the exit on. */
+export function phoenixShareToken(configEntry: xdr.LedgerEntryData): string | null {
+  try {
+    return contractAddressOf(mapView(contractDataEntry(configEntry).val).get("share_token"));
+  } catch {
+    return null;
+  }
+}
 const totalSharesKey = (pool: string): xdr.LedgerKey => persistentKey(pool, xdr.ScVal.scvU32(0));
 const reserveAKey = (pool: string): xdr.LedgerKey => persistentKey(pool, xdr.ScVal.scvU32(1));
 const reserveBKey = (pool: string): xdr.LedgerKey => persistentKey(pool, xdr.ScVal.scvU32(2));

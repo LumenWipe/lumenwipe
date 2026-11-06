@@ -1,18 +1,30 @@
 /**
  * Completing an indexer's LP positions from the ledger: what OctoPos leaves out (an Aquarius
- * pool's tokens, share token, and code type; a Soroswap pair's tokens), read from the same
- * instance keys the testnet sweep decodes, and left alone whenever that read cannot be trusted.
+ * pool's tokens, share token, and code type; a Soroswap pair's tokens; a Phoenix pool's share
+ * token), read from the same keys the testnet sweep decodes, and left alone whenever that read
+ * cannot be trusted.
  */
 import { describe, expect, test } from "bun:test";
 import { Address, xdr } from "@stellar/stellar-sdk";
-import type { AquariusLpPosition, DefiPositionsResult, SoroswapLpPosition } from "@lumenwipe/types";
+import type {
+  AquariusLpPosition,
+  DefiPositionsResult,
+  PhoenixLpPosition,
+  PhoenixStakePosition,
+  SoroswapLpPosition,
+} from "@lumenwipe/types";
 import {
   MAX_COMPLETION_READS,
   completePositionsFromLedger,
   type CompletePositionsDeps,
 } from "@/lib/defi-positions/complete-positions";
 import type { ContractResolution } from "@/lib/contract-registry";
-import { contractInstanceEntry, mockRpc } from "./fixtures/testnet-direct-read-helpers";
+import {
+  contractDataEntry,
+  contractInstanceEntry,
+  mockRpc,
+  structVal,
+} from "./fixtures/testnet-direct-read-helpers";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 const ACCOUNT = "GBUYBKHUCCAKG4LM76DONHABFRZSZEHK7ARNEEXBZ3CMVIYKZXPLPVRG";
@@ -27,6 +39,11 @@ const CONSTANT_HASH = "d691135aade93ff0f7c229e009cde042130a05124cf7202b03d11246b
 const STABLE_HASH = "22dff7242d2bc0ea4a4727b4b2cac33b188304d5945740ad24d8a33a5d22741e";
 const PAIR_HASH = "18051456816b66f12e773a56f77c5794fac1b1fb7ab6e22d4fad5a412770f73e";
 const UNKNOWN_HASH = "9".repeat(64);
+const PHX_POOL = "CBHCRSVX3ZZ7EGTSYMKPEFGZNWRVCSESQR3UABET4MIW52N4EVU6BIZX";
+/** Read live from that mainnet pool's `CONFIG` on 2026-11-06: not the pool itself. */
+const PHX_SHARE = "CBTCSVZBJFGMW7E2LKFKRIUARUKZK2DTBUC7X5QPQJLXMAH42DB3ALE5";
+const PHX_STAKE = "CAF3UJ45ZQJP6USFUIMVMGOUETUTXEC35R2247VJYIVQBGKTKBZKNBJ3";
+const PHX_POOL_HASH = "167ab414a226427de34c19947ef9c5cf38c6c0ed91ecf9392f7cef3278ff506c";
 
 const sym = (s: string): xdr.ScVal => xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(s)]);
 const addr = (a: string): xdr.ScVal => new Address(a).toScVal();
@@ -36,6 +53,13 @@ const aquarius: AquariusLpPosition = {
   positionType: "lp",
   contractAddress: AQ_POOL,
   shareAmount: "100",
+  usdValue: null,
+};
+const phoenix: PhoenixLpPosition = {
+  protocol: "phoenix",
+  positionType: "lp",
+  contractAddress: PHX_POOL,
+  shareAmount: "7",
   usdValue: null,
 };
 const soroswap: SoroswapLpPosition = {
@@ -52,13 +76,30 @@ function result(positions: DefiPositionsResult["positions"]): DefiPositionsResul
 
 /** A registry knowing one Aquarius pool code per type and the Soroswap pair code. */
 const registry = (_n: string, hash: string): ContractResolution => {
-  const known = (protocol: "aquarius" | "soroswap", kind: "pool" | "pair", version: string) =>
-    ({ status: "known", protocol, kind, version, wasmHash: hash }) as const;
+  const known = (
+    protocol: "aquarius" | "soroswap" | "phoenix",
+    kind: "pool" | "pair",
+    version: string
+  ) => ({ status: "known", protocol, kind, version, wasmHash: hash }) as const;
   if (hash === CONSTANT_HASH) return known("aquarius", "pool", "constant_product");
   if (hash === STABLE_HASH) return known("aquarius", "pool", "stable");
   if (hash === PAIR_HASH) return known("soroswap", "pair", "v1");
+  if (hash === PHX_POOL_HASH) return known("phoenix", "pool", "v1");
   return { status: "unknown", wasmHash: hash };
 };
+
+/** A Phoenix pool's persistent `CONFIG`, as the live pool lays it out. */
+const phoenixConfig = (pool: string, shareToken: xdr.ScVal) =>
+  contractDataEntry(
+    pool,
+    xdr.ScVal.scvSymbol("CONFIG"),
+    structVal({
+      token_a: addr(XLM_SAC),
+      token_b: addr(AQUA_SAC),
+      share_token: shareToken,
+      stake_contract: addr(PHX_STAKE),
+    })
+  );
 
 function deps(entries: ReturnType<typeof contractInstanceEntry>[]): CompletePositionsDeps {
   return { rpc: mockRpc(entries), resolveWasmHash: registry };
@@ -153,6 +194,72 @@ describe("completing LP positions from the ledger", () => {
     ]);
     const out = await completePositionsFromLedger(result([soroswap]), "mainnet", deps([pair]));
     expect(out.positions[0]).toEqual({ ...soroswap, tokens: [TOKEN_0, TOKEN_1] });
+  });
+
+  test("a Phoenix LP position gains the share token its pool's CONFIG names, a contract apart from the pool", async () => {
+    const entries = [
+      contractInstanceEntry(PHX_POOL, PHX_POOL_HASH),
+      phoenixConfig(PHX_POOL, addr(PHX_SHARE)),
+    ];
+    const out = await completePositionsFromLedger(result([phoenix]), "mainnet", deps(entries));
+    expect(out.positions[0]).toEqual({ ...phoenix, shareToken: PHX_SHARE });
+    expect(PHX_SHARE).not.toBe(PHX_POOL);
+  });
+
+  test("a Phoenix share token comes only from a pool the registry knows, and only as a contract", async () => {
+    const config = phoenixConfig(PHX_POOL, addr(PHX_SHARE));
+    for (const hash of [UNKNOWN_HASH, CONSTANT_HASH]) {
+      const out = await completePositionsFromLedger(
+        result([phoenix]),
+        "mainnet",
+        deps([contractInstanceEntry(PHX_POOL, hash), config])
+      );
+      expect(out.positions).toEqual([phoenix]);
+    }
+    const instance = contractInstanceEntry(PHX_POOL, PHX_POOL_HASH);
+    // An account is never a share token; a pool with no CONFIG names none.
+    for (const entries of [[instance, phoenixConfig(PHX_POOL, addr(ACCOUNT))], [instance]]) {
+      const out = await completePositionsFromLedger(result([phoenix]), "mainnet", deps(entries));
+      expect(out.positions).toEqual([phoenix]);
+    }
+    // An entry under any other key is not the pool's CONFIG, even when the RPC hands it back.
+    const misplaced = contractDataEntry(
+      PHX_POOL,
+      xdr.ScVal.scvSymbol("CONFIGS"),
+      structVal({ share_token: addr(PHX_SHARE) })
+    );
+    const indiscriminate: CompletePositionsDeps = {
+      rpc: { getLedgerEntries: async () => ({ latestLedger: 1, entries: [instance, misplaced] }) },
+      resolveWasmHash: registry,
+    };
+    expect(
+      (await completePositionsFromLedger(result([phoenix]), "mainnet", indiscriminate)).positions
+    ).toEqual([phoenix]);
+  });
+
+  test("a Phoenix stake position is left as reported: unbonding names no share token", async () => {
+    const stake: PhoenixStakePosition = {
+      protocol: "phoenix",
+      positionType: "stake",
+      contractAddress: PHX_POOL,
+      stakedAmount: "1",
+      stakedAtEpoch: "1",
+      usdValue: null,
+    };
+    let reads = 0;
+    const counting: CompletePositionsDeps = {
+      rpc: {
+        getLedgerEntries: async () => {
+          reads++;
+          return { latestLedger: 1, entries: [] };
+        },
+      },
+      resolveWasmHash: registry,
+    };
+    expect(
+      (await completePositionsFromLedger(result([stake]), "mainnet", counting)).positions
+    ).toEqual([stake]);
+    expect(reads).toBe(0);
   });
 
   test("a position already complete is not read again; one that cannot be read stays as reported", async () => {

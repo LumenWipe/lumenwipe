@@ -120,6 +120,12 @@ export interface CloseExpectation {
   /** Per Blend pool, the tokens the account read shows a debt in. At a registry contract, the only
    *  XLM or classic asset an exit may authorize spending, and only as a repay into that pool. */
   repayTokensByPool: Record<string, string[]>;
+  /** The share tokens the account read names on its positions (an Aquarius or Phoenix pool's).
+   *  Never XLM, a classic asset, or a Soroban balance the read lists: an exit is refused if so. */
+  shareTokenContracts: string[];
+  /** The debt tokens the account read names on its positions (an FxDAO vault's stablecoin).
+   *  Never XLM or a classic asset the account holds: an exit is refused if so. */
+  debtTokenContracts: string[];
   /** XLM's own contract on this network, derived client-side from the network passphrase. The one
    *  asset a conversion may buy: without pinning it, the minimum above would be compared against a
    *  figure denominated in whatever the transaction claims to be buying. */
@@ -1038,6 +1044,21 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
             "A DeFi exit would call a contract that is not one of this account's detected positions."
           );
         }
+        // A share or debt token is the position's own token: a pool's receipt for its shares, a
+        // vault's stablecoin. The account read names it, and naming it admits it to the lists
+        // below, so a read that points one at an asset the account holds for value (XLM, a
+        // classic asset, or, for a share token, a Soroban balance the read lists, which discovery
+        // never reports for a share token) would let an exit move that asset as if it were the
+        // position's. A debt token may be a listed Soroban balance: it is what a repay spends.
+        if (
+          expected.shareTokenContracts.some((t) => expected.heldTokenContracts.includes(t)) ||
+          expected.debtTokenContracts.some((t) => expected.protectedTokenContracts.includes(t))
+        ) {
+          throw new VerificationError(
+            "Your analysis names XLM, a classic asset or another token you hold as a DeFi " +
+              "position's own share or debt token, which it never is. Run the analysis again."
+          );
+        }
         if (!(expected.exitFunctions[op.contract] ?? []).includes(op.function)) {
           throw new VerificationError(
             "A DeFi exit would call a function LumenWipe does not use to leave this protocol."
@@ -1297,6 +1318,8 @@ export function verifyCloseTransaction(opts: {
     xbullAssets: Record<string, string>;
     ownTokensByContract: Record<string, string[]>;
     repayTokensByPool: Record<string, string[]>;
+    shareTokenContracts: string[];
+    debtTokenContracts: string[];
   };
 }): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);

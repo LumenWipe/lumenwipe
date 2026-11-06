@@ -21,7 +21,7 @@ import {
   type ExitStep,
 } from "./adapter";
 import { compareBaseUnits, isBaseUnits } from "./invariants";
-import { contractDataEntry, instanceOfEntry } from "@/lib/stellar/contract-data";
+import { contractAddressOf, contractDataEntry, instanceOfEntry } from "@/lib/stellar/contract-data";
 
 /**
  * The FxDAO exit (architecture.md §9.7): a CDP vault locks XLM collateral and mints one of three
@@ -284,6 +284,22 @@ function decodeCoreState(val: xdr.ScVal | undefined): FxdaoCoreState | null {
 function decodeCurrencyContract(val: xdr.ScVal | undefined): string | null {
   if (!val) return null;
   return asAddress(mapView(val).get("contract"));
+}
+
+/** The stablecoin a vault instance registers for `denomination` (`Currency(denomination)
+ *  .contract`), or null, never a throw. Only a contract: detection carries it as the position's
+ *  debt token, the same contract `readLive` repays in. */
+export function fxdaoCurrencyContract(
+  instanceEntry: xdr.LedgerEntryData,
+  denomination: string
+): string | null {
+  try {
+    const key = JSON.stringify(["Currency", denomination]);
+    const currency = instanceStorageMap(instanceEntry).get(key);
+    return currency ? contractAddressOf(mapView(currency).get("contract")) : null;
+  } catch {
+    return null;
+  }
 }
 
 async function readEntries(

@@ -5,7 +5,12 @@
  */
 import { describe, expect, test } from "bun:test";
 import { Address, xdr } from "@stellar/stellar-sdk";
-import type { AquariusLpPosition, BlendSupplyPosition } from "@lumenwipe/types";
+import type {
+  AquariusLpPosition,
+  BlendSupplyPosition,
+  FxdaoCdpPosition,
+  PhoenixLpPosition,
+} from "@lumenwipe/types";
 import {
   EVENTS_CHUNK_LEDGERS,
   EVENTS_PAGE_LIMIT,
@@ -130,6 +135,81 @@ describe("Soroban token discovery", () => {
     });
     const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
     expect(result.tokens.map((t) => [t.contract, t.sources])).toEqual([[NATIVE_A, ["positions"]]]);
+  });
+
+  // The tokens of the real exits in apps/web/tests/unit/fixtures/real-exit-envelopes.ts, with
+  // the explorer answering 402 as stellar.expert does since 2026-11-06 and the credit older than
+  // the event window: the position itself is what names the token, not an indexer.
+  describe("with the explorer refusing and nothing in the event window", () => {
+    const PHOENIX_POOL = "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV";
+    const PHOENIX_SHARE = "CC53IRMBHWTXE4BWPD5N4LH2L43YSYBMOFD6UARPMZBTWPSODFFKW2EG";
+    const FXDAO_VAULT = "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N";
+    const FXDAO_USD = "CAEGVALLV7CA2SIFEDJNA52RKGUWRQWQXM5YNFUH7TH5G6X6QXMRQM4L";
+    const phoenix: PhoenixLpPosition = {
+      protocol: "phoenix",
+      positionType: "lp",
+      contractAddress: PHOENIX_POOL,
+      shareAmount: "388315",
+      shareToken: PHOENIX_SHARE,
+      usdValue: null,
+    };
+    const fxdao: FxdaoCdpPosition = {
+      protocol: "fxdao",
+      positionType: "cdp",
+      contractAddress: FXDAO_VAULT,
+      denomination: "usd",
+      collateralAmount: "199000000",
+      debtAmount: "100000000",
+      debtToken: FXDAO_USD,
+      usdValue: null,
+    };
+    const outage = (positions: Array<PhoenixLpPosition | FxdaoCdpPosition>, extra = {}) =>
+      fakeSorobanDeps({
+        world: {
+          latestLedger: LATEST,
+          tokens: [held(PHOENIX_SHARE, 388315n), held(FXDAO_USD, 100000000n)],
+          explorer: { status: 402, body: { error: "Payment Required" } },
+          events: { [`${LATEST - EVENTS_CHUNK_LEDGERS + 1}-${LATEST}`]: { contracts: [] } },
+        },
+        positions,
+        ...extra,
+      });
+
+    test("an FxDAO vault's stablecoin is still confirmed on the ledger, through the position", async () => {
+      const result = await discoverSorobanTokens(ACCOUNT, "testnet", outage([fxdao]));
+      expect(result.coverage).toContainEqual({
+        source: "explorer",
+        status: "failed",
+        detail: "explorer responded 402",
+      });
+      expect(result.tokens.map((t) => [t.contract, t.balance, t.sources])).toEqual([
+        [FXDAO_USD, "100000000", ["positions"]],
+      ]);
+    });
+
+    test("a Phoenix share token is never a token to decide about, whoever proposes it", async () => {
+      const proposedEverywhere = fakeSorobanDeps({
+        world: {
+          latestLedger: LATEST,
+          tokens: [held(PHOENIX_SHARE, 388315n)],
+          explorer: {
+            status: 200,
+            body: explorerValueBody([{ contract: PHOENIX_SHARE, balance: "388315" }]),
+          },
+          events: {
+            [`${LATEST - EVENTS_CHUNK_LEDGERS + 1}-${LATEST}`]: { contracts: [PHOENIX_SHARE] },
+          },
+        },
+        listCandidates: [PHOENIX_SHARE],
+        manualCandidates: [PHOENIX_SHARE],
+        positions: [phoenix],
+      });
+      for (const deps of [outage([phoenix]), proposedEverywhere]) {
+        const result = await discoverSorobanTokens(ACCOUNT, "mainnet", deps);
+        expect(result.tokens).toEqual([]);
+        expect(result.unreadable).toEqual([]);
+      }
+    });
   });
 
   test("the event scan asks for every credit shape - SEP-41 and Stellar-asset transfers, and mints - over one recent window", async () => {

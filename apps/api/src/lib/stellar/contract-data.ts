@@ -1,4 +1,4 @@
-import type { xdr } from "@stellar/stellar-sdk";
+import { Address, type xdr } from "@stellar/stellar-sdk";
 
 export function contractDataEntry(data: xdr.LedgerEntryData): xdr.ContractDataEntry {
   if (data.type !== "contractData") throw new Error("the ledger entry is not contract data");
@@ -17,4 +17,11 @@ export function contractInstance(val: xdr.ScVal): xdr.ScContractInstance {
 
 export function instanceOfEntry(data: xdr.LedgerEntryData): xdr.ScContractInstance {
   return contractInstance(contractDataEntry(data).val);
+}
+
+/** A contract address, and only a contract address: a token or a pool is never an account. */
+export function contractAddressOf(val: xdr.ScVal | undefined): string | null {
+  return val && val.type === "scvAddress" && val.address.type === "scAddressTypeContract"
+    ? Address.fromScAddress(val.address).toString()
+    : null;
 }

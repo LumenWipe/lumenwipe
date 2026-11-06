@@ -48,6 +48,8 @@ test("no account read vouches for nothing", () => {
     protectedTokenContracts: [Asset.native().contractId(Networks.TESTNET)],
     xbullAssets: {},
     ownTokensByContract: {},
+    shareTokenContracts: [],
+    debtTokenContracts: [],
     repayTokensByPool: {},
   });
 });
@@ -167,6 +169,45 @@ test("an Aquarius LP position pins its pool, allows withdraw and claim on it, an
   expect(e.exitContracts).toEqual([PAIR]);
   expect(e.exitFunctions).toEqual({ [PAIR]: ["withdraw", "claim"] });
   expect(e.positionTokenContracts).toEqual([TOKEN_0, TOKEN_1, SHARE_TOKEN]);
+  expect(e.shareTokenContracts).toEqual([SHARE_TOKEN]);
+  expect(e.debtTokenContracts).toEqual([]);
+});
+
+test("a Phoenix LP position's share token and an FxDAO vault's stablecoin are that position's own tokens", () => {
+  const PHOENIX_POOL = "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV";
+  const PHOENIX_SHARE = "CC53IRMBHWTXE4BWPD5N4LH2L43YSYBMOFD6UARPMZBTWPSODFFKW2EG";
+  const VAULT = "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N";
+  const STABLE = "CAEGVALLV7CA2SIFEDJNA52RKGUWRQWQXM5YNFUH7TH5G6X6QXMRQM4L";
+  const e = exitExpectations(
+    state([
+      {
+        protocol: "phoenix",
+        positionType: "lp",
+        contractAddress: PHOENIX_POOL,
+        shareAmount: "1",
+        shareToken: PHOENIX_SHARE,
+        usdValue: null,
+      },
+      {
+        protocol: "fxdao",
+        positionType: "cdp",
+        contractAddress: VAULT,
+        denomination: "usd",
+        collateralAmount: "100",
+        debtAmount: "50",
+        debtToken: STABLE,
+        usdValue: null,
+      },
+    ]),
+    "testnet"
+  );
+  expect(e.positionTokenContracts).toEqual([PHOENIX_SHARE, STABLE]);
+  expect(e.ownTokensByContract).toEqual({ [PHOENIX_POOL]: [PHOENIX_SHARE], [VAULT]: [STABLE] });
+  expect(e.shareTokenContracts).toEqual([PHOENIX_SHARE]);
+  expect(e.debtTokenContracts).toEqual([STABLE]);
+  // Neither is a balance the account holds: that comes only from the read's own token list.
+  expect(e.heldTokenContracts).not.toContain(PHOENIX_SHARE);
+  expect(e.heldTokenContracts).not.toContain(STABLE);
 });
 
 test("a Phoenix position pins its pool and the bundled registry's stake contract, each to its own call", () => {

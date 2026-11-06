@@ -103,6 +103,9 @@ export interface PhoenixLpPosition extends DefiPositionBase {
   protocol: "phoenix";
   positionType: "lp";
   shareAmount: string;
+  /** The pool's LP share token (`CONFIG.share_token`): a separate contract in Phoenix, where the
+   *  account's shares live and what a withdrawal transfers back to the pool. Read from the pool. */
+  shareToken?: string;
 }
 
 export interface PhoenixStakePosition extends DefiPositionBase {
@@ -119,6 +122,9 @@ export interface FxdaoCdpPosition extends DefiPositionBase {
   denomination: string;
   collateralAmount: string;
   debtAmount: string;
+  /** The denomination's registered stablecoin (`Currency(denomination).contract`), the token a
+   *  repay burns. Read from the vault. */
+  debtToken?: string;
 }
 
 export type DefiPosition =

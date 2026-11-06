@@ -514,14 +514,19 @@ export async function discoverSorobanTokens(
   const excluded = new Set<string>();
   const positionTokens = new Set<string>();
   for (const position of deps.positions) {
-    // The position's own contract is a pool, market, or vault - in Soroswap and Phoenix the pair
-    // contract is also its share token, and the explorer lists it as a balance.
+    // The position's own contract is a pool, pair, market, or vault. A Soroswap pair is also its
+    // own share token, and the explorer lists it as a balance. Aquarius and Phoenix keep shares in
+    // a separate contract (the pool's `TokenShare` and `CONFIG.share_token`), carried on the
+    // position as `shareToken` and excluded below.
     excluded.add(position.contractAddress);
     if ("shareToken" in position && position.shareToken) excluded.add(position.shareToken);
     if ("tokens" in position && position.tokens)
       for (const t of position.tokens) positionTokens.add(t);
+    // A Blend reserve (paid out or repaid) and the stablecoin an FxDAO repay burns are candidates
+    // too, so their balances are confirmed on the ledger without an indexer.
     if (position.protocol === "blend" && "assetAddress" in position)
       positionTokens.add(position.assetAddress);
+    if (position.protocol === "fxdao" && position.debtToken) positionTokens.add(position.debtToken);
   }
   const candidates = new Candidates(excluded);
   for (const c of deps.manualCandidates) candidates.add(c, "manual");
