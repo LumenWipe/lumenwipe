@@ -24,6 +24,9 @@ export interface ExpectedReceive {
   unquotedSwaps: number;
   /** Chosen token swaps: each pays a Soroban resource fee the plan's fee estimate does not hold. */
   tokenSwaps: number;
+  /** Chosen token swaps whose quote was flagged (a high or unmeasured price impact, or quotes
+   *  that disagree) and that the user confirmed anyway. */
+  flaggedSwaps: number;
   /** The account holds DeFi positions whose exits may pay XLM the figure does not count. */
   leavesOutDefiExits: boolean;
 }
@@ -75,9 +78,11 @@ export function expectedReceive(input: ExpectedReceiveInput): ExpectedReceive {
   let swaps = ZERO;
   let unquotedSwaps = 0;
   let tokenSwaps = 0;
+  let flaggedSwaps = 0;
   for (const c of input.conversions) {
     if (!c.convertible || input.dispositions[c.asset] !== "convert") continue;
     if (c.token) tokenSwaps += 1;
+    if ((c.token?.quote?.flags.length ?? 0) > 0) flaggedSwaps += 1;
     const floor = c.token
       ? c.token.quote?.minAmountOut
       : c.quote
@@ -104,6 +109,7 @@ export function expectedReceive(input: ExpectedReceiveInput): ExpectedReceive {
     estimated: swaps > ZERO || claims > ZERO,
     unquotedSwaps,
     tokenSwaps,
+    flaggedSwaps,
     leavesOutDefiExits: account.defiPositions.positions.length > 0,
   };
 }

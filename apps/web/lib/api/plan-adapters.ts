@@ -1,6 +1,7 @@
 import type { PlanResponse } from "@lumenwipe/sdk";
 import type { PlannedStep } from "@/types/plan";
 import type { ClaimPredicate } from "@/types/account";
+import type { TokenQuoteFlag, TokenUnquotedReason } from "@lumenwipe/types";
 import type { ClassicConversionQuote } from "@/types/close-api";
 
 /**
@@ -36,6 +37,8 @@ export interface AssetConvertibility {
     arrivesFromExit: boolean;
     /** The plan's conversion quote when a route exists: XLM out and the floor, in stroops. */
     quote?: TokenQuote;
+    /** Why the plan offers no conversion, when it says so. */
+    reason?: TokenUnquotedReason;
   };
 }
 
@@ -54,6 +57,42 @@ export interface TokenQuote {
    *  later `strict_send` call to before it is ever signed. Absent for a Soroswap win, or when
    *  xBull's route could not be confirmed live (the plan never offers that as convertible). */
   resolvedPath?: string[];
+  /** The price impact in basis points; null when the plan could not measure it. */
+  priceImpactBps: number | null;
+  /** Why converting is not recommended and needs the user's confirmation; empty when it is. */
+  flags: TokenQuoteFlag[];
+  /** The other provider's quote, when both answered. */
+  runnerUp?: { provider: "soroswap" | "xbull"; amountOut: string; minAmountOut: string };
+}
+
+const TOKEN_QUOTE_FLAGS: readonly TokenQuoteFlag[] = [
+  "high_impact",
+  "impact_unknown",
+  "provider_disagreement",
+];
+const TOKEN_UNQUOTED_REASONS: readonly TokenUnquotedReason[] = [
+  "quote_limit",
+  "provider_unavailable",
+  "no_route",
+  "metadata_unreadable",
+];
+
+/** The flags a quote carries. Anything unreadable counts as "impact unknown": a flag the client
+ *  cannot read must never turn into a quote shown as unremarkable. */
+function flagsOf(raw: unknown): TokenQuoteFlag[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) return ["impact_unknown"];
+  const known = raw.filter((f): f is TokenQuoteFlag => TOKEN_QUOTE_FLAGS.includes(f));
+  return known.length === raw.length ? known : [...new Set([...known, "impact_unknown" as const])];
+}
+
+function runnerUpOf(raw: unknown): TokenQuote["runnerUp"] {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  if (r.provider !== "soroswap" && r.provider !== "xbull") return undefined;
+  if (typeof r.amountOut !== "string" || !/^\d+$/.test(r.amountOut)) return undefined;
+  if (typeof r.minAmountOut !== "string" || !/^\d+$/.test(r.minAmountOut)) return undefined;
+  return { provider: r.provider, amountOut: r.amountOut, minAmountOut: r.minAmountOut };
 }
 
 function classicQuoteOf(raw: unknown): ClassicConversionQuote | undefined {
@@ -94,6 +133,14 @@ function tokenQuoteOf(raw: unknown): TokenQuote | undefined {
     route: Array.isArray(q.route) ? q.route.filter((r): r is string => typeof r === "string") : [],
     provider: q.provider,
     ...(wellFormedPath ? { resolvedPath: wellFormedPath } : {}),
+    priceImpactBps:
+      typeof q.priceImpactBps === "number" &&
+      Number.isInteger(q.priceImpactBps) &&
+      q.priceImpactBps >= 0
+        ? q.priceImpactBps
+        : null,
+    flags: flagsOf(q.flags),
+    ...(runnerUpOf(q.runnerUp) ? { runnerUp: runnerUpOf(q.runnerUp) } : {}),
   };
 }
 
@@ -152,6 +199,9 @@ export function decisionPointsToConversions(plan: PlanResponse): AssetConvertibi
             rawBalance,
             arrivesFromExit: dp.subject.arrivesFromExit === true,
             ...(quote ? { quote } : {}),
+            ...(TOKEN_UNQUOTED_REASONS.includes(dp.subject.reason as TokenUnquotedReason)
+              ? { reason: dp.subject.reason as TokenUnquotedReason }
+              : {}),
           },
         };
       }

@@ -64,6 +64,8 @@ function renderPlan() {
       mergeDestination={null}
       onSetDisposition={() => {}}
       onSetTransferDestination={() => {}}
+      isImpactConfirmed={() => false}
+      onConfirmImpact={() => {}}
       claimableBalanceDecisions={[]}
       claimableBalanceSelections={{}}
       onSelectClaimableBalance={() => {}}

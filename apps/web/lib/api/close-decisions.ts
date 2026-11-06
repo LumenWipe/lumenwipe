@@ -99,6 +99,45 @@ export function positionsLeftBehindToDecisions(
     .map((id) => ({ id, choice: LEAVE_POSITION_CHOICE }));
 }
 
+/** Must match the API's `conversionImpactDecisionId` and `CONVERSION_IMPACT_ACK_CHOICE`. */
+function conversionImpactDecisionId(contract: string): string {
+  return `conversion_impact:${contract}`;
+}
+const CONVERSION_IMPACT_ACK_CHOICE = "acknowledged";
+
+/** Whether the user confirmed converting this token at the floor its convert answer carries now.
+ *  A confirmation given for an earlier floor confirms nothing. */
+export function isConversionImpactConfirmed(
+  contract: string,
+  floors: Readonly<Record<string, TokenConversionFloor>>,
+  confirmed: Readonly<Record<string, string>>
+): boolean {
+  const floor = floors[contract]?.minAmountOut;
+  return floor !== undefined && confirmed[contract] === floor;
+}
+
+/** One confirmation per token answered convert whose flagged quote the user confirmed, naming the
+ *  floor it confirms so the API can hold it to the convert answer's. */
+export function conversionImpactAcknowledgementsToDecisions(
+  dispositions: Readonly<Record<string, AssetDisposition>>,
+  floors: Readonly<Record<string, TokenConversionFloor>>,
+  confirmed: Readonly<Record<string, string>>
+): DecisionAnswer[] {
+  return Object.keys(confirmed)
+    .filter(
+      (c) =>
+        isTokenContract(c) &&
+        dispositions[c] === "convert" &&
+        isConversionImpactConfirmed(c, floors, confirmed)
+    )
+    .sort()
+    .map((c) => ({
+      id: conversionImpactDecisionId(c),
+      choice: CONVERSION_IMPACT_ACK_CHOICE,
+      params: { minAmountOut: floors[c]!.minAmountOut },
+    }));
+}
+
 /** Must match the API's `issuerSupplyDecisionId`. Scoped to the account being closed. */
 function issuerSupplyDecisionId(address: string): string {
   return `issuer_supply:${address}`;
@@ -514,6 +553,7 @@ export interface CloseAnswers {
   destinationAcknowledgedFor: string | null;
   defiPositionsAcknowledgedFor: string | null;
   issuerSupplyAcknowledgedFor: string | null;
+  conversionImpactAcknowledgedFor: Readonly<Record<string, string>>;
   positionsLeftBehind: readonly string[];
 }
 
@@ -539,6 +579,11 @@ export function closeDecisions(
     ...destinationAcknowledgementToDecisions(answers.destinationAcknowledgedFor, destination),
     ...defiPositionsAcknowledgementToDecisions(answers.defiPositionsAcknowledgedFor, source),
     ...issuerSupplyAcknowledgementToDecisions(answers.issuerSupplyAcknowledgedFor, source),
+    ...conversionImpactAcknowledgementsToDecisions(
+      answers.assetDispositions,
+      answers.tokenConversionFloors,
+      answers.conversionImpactAcknowledgedFor
+    ),
     ...positionsLeftBehindToDecisions(answers.positionsLeftBehind, source),
   ];
 }
