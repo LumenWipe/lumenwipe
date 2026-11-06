@@ -23,6 +23,25 @@ export interface ClassicConversionQuote {
   minAmountOut: string;
 }
 
+/**
+ * Why a held Soroban token was not quoted for conversion: `subject.reason` on its
+ * `asset_disposition` decision point when `subject.convertible` is false. `quote_limit`: past the
+ * first 20 tokens one plan quotes. `provider_unavailable`: a swap provider failed, was rate
+ * limited or ran out of time, so analyzing again may find a route. `no_route`: every provider
+ * consulted answered that it has none. `metadata_unreadable`: the token does not report its
+ * symbol or decimals, so no amount about it can be shown.
+ */
+export type TokenUnquotedReason =
+  "quote_limit" | "provider_unavailable" | "no_route" | "metadata_unreadable";
+
+/**
+ * Why a token's conversion is offered but not recommended (`subject.quote.flags`). Each one makes
+ * converting need the `conversion_impact:<contract>` acknowledgement. `high_impact`: the price
+ * impact is above 5%. `impact_unknown`: no price impact could be measured. `provider_disagreement`:
+ * the best quote is more than 10% above the other provider's.
+ */
+export type TokenQuoteFlag = "high_impact" | "impact_unknown" | "provider_disagreement";
+
 export interface DecisionOption {
   id: string; // e.g. "convert_to_xlm" | "return_to_issuer" | "transfer_to_account" | "acknowledged"
   recommended?: boolean;
@@ -34,7 +53,9 @@ export interface DecisionPoint {
   id: string; // stable, e.g. "asset:USDC-GISSUER..."
   type: "asset_disposition" | "confirmation" | "choice" | "claimable_balance";
   /** Shape depends on `type`. A convertible classic asset's subject carries a
-   *  `quote: ClassicConversionQuote`. */
+   *  `quote: ClassicConversionQuote`. A Soroban token's carries `quote` (with `priceImpactBps`,
+   *  `flags: TokenQuoteFlag[]` and an optional `runnerUp`) when convertible, else a
+   *  `reason: TokenUnquotedReason`. */
   subject: Record<string, unknown>;
   options: DecisionOption[];
   /**

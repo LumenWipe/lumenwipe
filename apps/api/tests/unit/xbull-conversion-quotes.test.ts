@@ -4,6 +4,7 @@ import { xlmContractId } from "@/lib/soroswap/conversion-quotes";
 import {
   isXBullEnabled,
   quoteTokenToXlmViaXBull,
+  quoteTokenToXlmViaXBullOutcome,
   fetchXBullSwapArgs,
 } from "@/lib/xbull/conversion-quotes";
 
@@ -107,4 +108,62 @@ test("fetchXBullSwapArgs returns the contractArgsXDR the API names, null on any 
       deps(fakeFetch(400, { message: ["Not enough funds"] }))
     )
   ).toBeNull();
+});
+
+const body = (over: Record<string, unknown> = {}) => ({
+  route: "route-1",
+  fromAmount: "100000000",
+  toAmount: "20045626",
+  fromAsset: TOKEN,
+  toAsset: XLM,
+  fee: { platformFee: "6013", referralsFee: "0" },
+  ...over,
+});
+
+const outcome = (status: number, payload: unknown) =>
+  quoteTokenToXlmViaXBullOutcome(TOKEN, 100_000_000n, "mainnet", deps(fakeFetch(status, payload)));
+
+test("xBull's own no-route answer (200, empty route, toAmount 0, as observed live) is no_route", async () => {
+  expect((await outcome(200, body({ route: "", toAmount: "0" }))).kind).toBe("no_route");
+});
+
+test("an xBull 429 is rate_limited; any other failure is unavailable, never no route", async () => {
+  expect((await outcome(429, {})).kind).toBe("rate_limited");
+  expect((await outcome(500, {})).kind).toBe("unavailable");
+  expect((await outcome(200, body({ toAmount: "abc" }))).kind).toBe("unavailable");
+  expect((await outcome(200, body({ fromAmount: "1" }))).kind).toBe("unavailable");
+  expect((await outcome(200, body({ toAsset: TOKEN }))).kind).toBe("unavailable");
+  const throwing = (async () => {
+    throw new Error("offline");
+  }) as unknown as typeof fetch;
+  expect((await quoteTokenToXlmViaXBullOutcome(TOKEN, 1n, "mainnet", deps(throwing))).kind).toBe(
+    "unavailable"
+  );
+});
+
+test("xBull off, or on testnet, is disabled rather than an answer", async () => {
+  expect((await quoteTokenToXlmViaXBullOutcome(TOKEN, 1n, "mainnet", deps(null))).kind).toBe(
+    "disabled"
+  );
+  expect(
+    (await quoteTokenToXlmViaXBullOutcome(TOKEN, 1n, "testnet", deps(fakeFetch(200, body())))).kind
+  ).toBe("disabled");
+});
+
+test("the build round's null wrapper answers exactly what the xBull outcome holds", async () => {
+  for (const [status, payload] of [
+    [200, body()],
+    [200, body({ toAmount: "0" })],
+    [429, {}],
+    [500, {}],
+  ] as const) {
+    const o = await outcome(status, payload);
+    const wrapped = await quoteTokenToXlmViaXBull(
+      TOKEN,
+      100_000_000n,
+      "mainnet",
+      deps(fakeFetch(status, payload))
+    );
+    expect(wrapped).toEqual(o.kind === "quote" ? o.quote : null);
+  }
 });

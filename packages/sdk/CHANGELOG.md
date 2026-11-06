@@ -12,6 +12,12 @@ release is cut.
 - `PhoenixLpPosition.shareToken` and `FxdaoCdpPosition.debtToken`: the contract of the token a
   position's exit moves, read from the pool's `CONFIG` and the vault's currency. Types only; no
   runtime change.
+- The types `TokenQuoteFlag` and `TokenUnquotedReason` are exported, with the error code
+  `conversion_impact_not_acknowledged`. A Soroban token's `subject.quote` carries `priceImpactBps`,
+  `flags` and an optional `runnerUp`; a flagged conversion is not recommended and needs its
+  `conversion_impact:<contract>` decision answered `acknowledged` with the convert answer's
+  `params.minAmountOut`. A token with no quote carries `subject.reason`. Types only; no runtime
+  change.
 - The type `ClassicConversionQuote` is exported: the `quote` a convertible classic asset's
   `asset_disposition` subject already carries (`estimatedReceive` and `minAmountOut`, in stroops).
   Types only; no runtime change.

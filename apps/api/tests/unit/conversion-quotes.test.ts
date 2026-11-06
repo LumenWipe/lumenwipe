@@ -11,7 +11,9 @@ import {
   buildTokenConversion,
   floorUnderQuote,
   isConversionEnabled,
+  isRateLimitRejection,
   quoteTokenToXlm,
+  quoteTokenToXlmOutcome,
   xlmContractId,
   type ConversionSdk,
   type XBullRawQuote,
@@ -41,7 +43,7 @@ function rawQuote(over: Partial<QuoteResponse> = {}): QuoteResponse {
 }
 
 function fakeSdk(
-  answer: QuoteResponse | Error,
+  answer: QuoteResponse | Error | Record<string, unknown>,
   xdr = "AAAA"
 ): ConversionSdk & { calls: unknown[] } {
   const calls: unknown[] = [];
@@ -50,7 +52,8 @@ function fakeSdk(
     async quote(request) {
       calls.push(request);
       if (answer instanceof Error) throw answer;
-      return answer;
+      if (!("assetIn" in answer)) throw answer;
+      return answer as QuoteResponse;
     },
     async build(request) {
       calls.push(request);
@@ -155,4 +158,50 @@ test("conversion is enabled only with the flag on and a key set", () => {
   expect(isConversionEnabled({ enabled: true, apiKey: "sk_x", baseUrl: undefined })).toBe(true);
   expect(isConversionEnabled({ enabled: true, apiKey: undefined, baseUrl: undefined })).toBe(false);
   expect(isConversionEnabled({ enabled: false, apiKey: "sk_x", baseUrl: undefined })).toBe(false);
+});
+
+const outcomeOf = (answer: Parameters<typeof fakeSdk>[0]) =>
+  quoteTokenToXlmOutcome(TOKEN, 100_000_000n, "mainnet", { sdk: fakeSdk(answer), now: () => 0 });
+
+test("the SDK's rate-limit rejection (its body, without the status) reads as rate_limited, never no route", async () => {
+  expect((await outcomeOf({ statusCode: 429, message: "Too Many Requests" })).kind).toBe(
+    "rate_limited"
+  );
+  expect((await outcomeOf({ message: "Rate limit exceeded" })).kind).toBe("rate_limited");
+  expect(isRateLimitRejection(new Error("rate limit"))).toBe(false);
+  expect(isRateLimitRejection("Rate limit exceeded")).toBe(false);
+});
+
+test("any other rejection, or an answer that does not add up, is unavailable", async () => {
+  expect((await outcomeOf({ statusCode: 500, message: "Internal" })).kind).toBe("unavailable");
+  expect((await outcomeOf(new Error("socket hang up"))).kind).toBe("unavailable");
+  expect((await outcomeOf(rawQuote({ amountIn: 1n }))).kind).toBe("unavailable");
+  expect((await outcomeOf(rawQuote({ assetOut: TOKEN }))).kind).toBe("unavailable");
+  expect((await outcomeOf(rawQuote({ amountOut: "x" as never }))).kind).toBe("unavailable");
+});
+
+test("an answer of no usable route is no_route, and a missing key is disabled", async () => {
+  expect((await outcomeOf(rawQuote({ amountOut: 0n }))).kind).toBe("no_route");
+  expect((await outcomeOf(rawQuote({ platform: "sdex" as never }))).kind).toBe("no_route");
+  expect((await outcomeOf(rawQuote({ amountOut: 1n }))).kind).toBe("no_route");
+  expect(
+    (await quoteTokenToXlmOutcome(TOKEN, 1n, "mainnet", { sdk: null, now: () => 0 })).kind
+  ).toBe("disabled");
+});
+
+test("the build round's null wrapper answers exactly what the outcome holds", async () => {
+  for (const answer of [
+    rawQuote(),
+    rawQuote({ amountOut: 0n }),
+    rawQuote({ amountIn: 1n }),
+    { statusCode: 429 },
+    new Error("down"),
+  ]) {
+    const outcome = await outcomeOf(answer);
+    const wrapped = await quoteTokenToXlm(TOKEN, 100_000_000n, "mainnet", {
+      sdk: fakeSdk(answer),
+      now: () => 0,
+    });
+    expect(wrapped).toEqual(outcome.kind === "quote" ? outcome.quote : null);
+  }
 });

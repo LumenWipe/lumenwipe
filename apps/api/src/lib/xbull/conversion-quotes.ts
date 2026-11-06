@@ -1,6 +1,10 @@
 import type { Network } from "@lumenwipe/types";
 import { xlmContractId, floorUnderQuote } from "@/lib/soroswap/conversion-quotes";
-import type { TokenConversionQuote, XBullRawQuote } from "@/lib/soroswap/conversion-quotes";
+import type {
+  ProviderQuoteOutcome,
+  TokenConversionQuote,
+  XBullRawQuote,
+} from "@/lib/soroswap/conversion-quotes";
 
 /**
  * Soroban token conversion quotes through xBull's swap API (swap-api.xbull.io): a second,
@@ -52,15 +56,22 @@ function asPositiveBigInt(value: unknown): bigint | null {
   return n > 0n ? n : null;
 }
 
-export async function quoteTokenToXlmViaXBull(
+/**
+ * Quotes the whole balance of a token into XLM through xBull and says why when it cannot. Never
+ * throws. xBull answers an unknown pair with HTTP 200, an empty route and `toAmount` "0" (observed
+ * live on 2026-11-06), which is its "no route"; anything that does not hold together is a failed
+ * read. Its quote carries no price impact field, so plan time derives one (multi-source-conversion).
+ */
+export async function quoteTokenToXlmViaXBullOutcome(
   token: string,
   amountIn: bigint,
   network: Network,
   deps: XBullConversionDeps = defaultXBullConversionDeps()
-): Promise<TokenConversionQuote | null> {
-  if (!deps.fetch || network === "testnet" || amountIn <= 0n) return null;
+): Promise<ProviderQuoteOutcome> {
+  if (!deps.fetch || network === "testnet") return { kind: "disabled" };
+  if (amountIn <= 0n) return { kind: "no_route" };
   const assetOut = xlmContractId(network);
-  if (token === assetOut) return null;
+  if (token === assetOut) return { kind: "no_route" };
 
   let raw: XBullQuoteResponse;
   try {
@@ -69,26 +80,43 @@ export async function quoteTokenToXlmViaXBull(
     url.searchParams.set("toAsset", assetOut);
     url.searchParams.set("amount", amountIn.toString());
     const res = await deps.fetch(url.toString());
-    if (!res.ok) return null;
+    if (res.status === 429) return { kind: "rate_limited" };
+    if (!res.ok) return { kind: "unavailable" };
     raw = (await res.json()) as XBullQuoteResponse;
   } catch {
-    return null;
+    return { kind: "unavailable" };
   }
-  if (raw.fromAsset !== token || raw.toAsset !== assetOut) return null;
-  const amountOut = asPositiveBigInt(raw.toAmount);
+  if (raw.fromAsset !== token || raw.toAsset !== assetOut) return { kind: "unavailable" };
   const quotedIn = asPositiveBigInt(raw.fromAmount);
-  if (amountOut === null || quotedIn !== amountIn) return null;
+  if (quotedIn !== amountIn) return { kind: "unavailable" };
+  if (raw.toAmount === "0") return { kind: "no_route" };
+  const amountOut = asPositiveBigInt(raw.toAmount);
+  if (amountOut === null) return { kind: "unavailable" };
   const minAmountOut = floorUnderQuote(amountOut);
-  if (minAmountOut <= 0n) return null;
+  if (minAmountOut <= 0n) return { kind: "no_route" };
   return {
-    token,
-    amountIn: amountIn.toString(),
-    amountOut: amountOut.toString(),
-    minAmountOut: minAmountOut.toString(),
-    platform: "router",
-    route: ["xbull"],
-    raw: raw satisfies XBullRawQuote,
+    kind: "quote",
+    quote: {
+      token,
+      amountIn: amountIn.toString(),
+      amountOut: amountOut.toString(),
+      minAmountOut: minAmountOut.toString(),
+      platform: "router",
+      route: ["xbull"],
+      raw: raw satisfies XBullRawQuote,
+    },
   };
+}
+
+/** The build round's wrapper over `quoteTokenToXlmViaXBullOutcome`: a quote, or null. */
+export async function quoteTokenToXlmViaXBull(
+  token: string,
+  amountIn: bigint,
+  network: Network,
+  deps: XBullConversionDeps = defaultXBullConversionDeps()
+): Promise<TokenConversionQuote | null> {
+  const outcome = await quoteTokenToXlmViaXBullOutcome(token, amountIn, network, deps);
+  return outcome.kind === "quote" ? outcome.quote : null;
 }
 
 /** Asks xBull to build a swap for a quoted route, `from` an account to itself, with no
