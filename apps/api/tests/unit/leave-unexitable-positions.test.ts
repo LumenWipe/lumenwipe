@@ -250,6 +250,9 @@ describe("building a close past a position the user left behind", () => {
 
   test("POST close/transactions hands the user's leave answers to the builder", async () => {
     spyOn(readAccountModule, "readAccountState").mockResolvedValue(state([supply(POOL)]));
+    spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
+      getLedgerEntries: () => Promise.resolve({ entries: [], latestLedger: 1000 }),
+    })) as unknown as typeof rpcModule.getRpcServer);
     let seen: ReadonlySet<string> | undefined;
     const service = new CloseService(
       { record: async () => undefined } as never,
