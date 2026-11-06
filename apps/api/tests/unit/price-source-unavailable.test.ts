@@ -22,6 +22,9 @@ beforeEach(() => {
   stubIssuance();
   stubLedgerConfirmation();
   stubLedgerConfirmation();
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
+    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
+  })) as unknown as typeof rpcModule.getRpcServer);
 });
 
 const SOURCE = Keypair.random().publicKey();
