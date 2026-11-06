@@ -99,6 +99,9 @@ jobs:
       # One retry: a public RPC can blip, and a network hiccup must not fail a PR that has
       # nothing to do with it. A real break still fails both times.
       - name: Run integration tests
+        env:
+          # Gateway first: SDF's endpoint stalls for seconds on a share of calls. SDF stays as the failover.
+          STELLAR_RPC_TESTNET: https://soroban-rpc.testnet.stellar.gateway.fm,https://soroban-testnet.stellar.org
         run: |
           bun run --filter '@lumenwipe/api' test:integration ||
             bun run --filter '@lumenwipe/api' test:integration
@@ -138,6 +141,8 @@ jobs:
       - name: Run funded integration tests
         env:
           LUMENWIPE_INTEGRATION_FUNDED: "1"
+          # Gateway first: SDF's endpoint stalls for seconds on a share of calls. SDF stays as the failover.
+          STELLAR_RPC_TESTNET: https://soroban-rpc.testnet.stellar.gateway.fm,https://soroban-testnet.stellar.org
           LUMENWIPE_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
           PHOENIX_TESTNET_TOKEN_ADMIN_SECRET: ${{ secrets.PHOENIX_TESTNET_TOKEN_ADMIN_SECRET }}
           FXDAO_TESTNET_ORACLE_ADMIN_SECRET: ${{ secrets.FXDAO_TESTNET_ORACLE_ADMIN_SECRET }}
