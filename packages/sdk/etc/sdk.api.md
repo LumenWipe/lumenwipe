@@ -560,6 +560,7 @@ export interface FxdaoCdpPosition extends DefiPositionBase {
     collateralAmount: string;
     // (undocumented)
     debtAmount: string;
+    debtToken?: string;
     // (undocumented)
     denomination: string;
     // (undocumented)
@@ -817,6 +818,7 @@ export interface PhoenixLpPosition extends DefiPositionBase {
     protocol: "phoenix";
     // (undocumented)
     shareAmount: string;
+    shareToken?: string;
 }
 
 // @public (undocumented)
