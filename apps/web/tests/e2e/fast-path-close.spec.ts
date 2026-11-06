@@ -133,12 +133,12 @@ async function driveFusedClose(
   // Navigation only happens after the account-analysis API returns; that read hits
   // stellar.expert + RPC (and Horizon for open offers), which can exceed the default
   // 5s expect timeout for heavier accounts. Allow generous headroom.
-  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: TESTNET_STEP_TIMEOUT });
 
   // Late-destination step: once every asset is resolved, the destination panel and
   // the (disabled) "Begin execution" button render. Fill the destination to enable it.
   const beginButton = page.getByRole("button", { name: /Begin execution/i });
-  await expect(beginButton).toBeVisible({ timeout: 30_000 });
+  await expect(beginButton).toBeVisible({ timeout: TESTNET_STEP_TIMEOUT });
 
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(opts.destination);
   await confirmDestinationControl(page);

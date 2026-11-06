@@ -120,12 +120,12 @@ async function enterSourceAndAnalyze(page: Page, source: string): Promise<void> 
   await expect(analyzeButton).toBeEnabled();
   await analyzeButton.click();
 
-  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: TESTNET_STEP_TIMEOUT });
 }
 
 async function enterDestinationAndBegin(page: Page, destination: string): Promise<void> {
   const beginButton = page.getByRole("button", { name: /Begin execution/i });
-  await expect(beginButton).toBeVisible({ timeout: 30_000 });
+  await expect(beginButton).toBeVisible({ timeout: TESTNET_STEP_TIMEOUT });
 
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination);
   await confirmDestinationControl(page);
@@ -218,7 +218,9 @@ test("redesigned flow: add a trustline and claim an otherwise-unreachable balanc
 
   // The claimable-balance card renders in its amber "needs a decision" state: no authorized
   // trustline for the asset, so neither "claim" nor a swap label applies yet.
-  await expect(page.getByText("Claim balances", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Claim balances", { exact: true })).toBeVisible({
+    timeout: TESTNET_STEP_TIMEOUT,
+  });
   await page.getByText("Claim balances", { exact: true }).click();
   await expect(page.getByText(/no trustline for this asset/)).toBeVisible();
 

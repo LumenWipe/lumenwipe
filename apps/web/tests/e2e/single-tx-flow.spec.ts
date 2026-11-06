@@ -13,6 +13,7 @@ import {
   enterSecretKey,
   enterSourceAndAnalyze,
   expectSigningPanel,
+  TESTNET_STEP_TIMEOUT,
 } from "./helpers/flow";
 
 // E2E coverage for the REDESIGNED single-transaction flow, exercised end-to-end
@@ -194,7 +195,9 @@ test("redesigned flow: convertible asset shows a swap label and merges in one tx
   // The accordion preview renders. The "Handle assets" group is open by default
   // and the convertible asset shows the positive "Swap" label (NOT a convert/
   // return-to-issuer prompt).
-  await expect(page.getByText("Handle assets", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Handle assets", { exact: true })).toBeVisible({
+    timeout: TESTNET_STEP_TIMEOUT,
+  });
   await expect(page.getByText(/USDC.*will be swapped to XLM on the DEX/)).toBeVisible();
   await expect(page.getByText("Swap", { exact: true })).toBeVisible();
   // A convertible asset must not surface the no-route / return-to-issuer copy.
@@ -258,7 +261,9 @@ test("redesigned flow: non-convertible asset is returned to issuer, then merged 
 
   // The asset card surfaces the no-route state and the return-to-issuer control.
   // (The "Handle assets" accordion group is open by default.)
-  await expect(page.getByText("Handle assets", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Handle assets", { exact: true })).toBeVisible({
+    timeout: TESTNET_STEP_TIMEOUT,
+  });
   await expect(page.getByText(/no swap route on the DEX/)).toBeVisible();
 
   // Until the user confirms returning the balance, the destination step is gated.
