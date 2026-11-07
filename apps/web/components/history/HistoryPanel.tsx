@@ -10,6 +10,7 @@ import { formatXlm } from "@/lib/utils/amounts";
 import { shortHash } from "@/lib/utils/short-id";
 import type { ReceiptRecord } from "@/types/history";
 import { Dialog, DialogBody, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import ReceiptExportActions from "@/components/receipt/ReceiptExportActions";
 import { ExplorerLink } from "@/components/ui/explorer-link";
 import { IdentifierDisplay } from "@/components/ui/identifier-display";
 
@@ -220,6 +221,8 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
                     Open receipt<span className="sr-only"> of {date}</span>
                   </Link>
                 </div>
+
+                <ReceiptExportActions record={entry} context={`of ${date}`} />
               </div>
             );
           })}

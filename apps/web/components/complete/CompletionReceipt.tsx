@@ -14,11 +14,12 @@ import { saveHistory } from "@/lib/session/history";
 import { allows } from "@/lib/journey/claims";
 import { useJourneyState } from "@/lib/journey/use-journey-state";
 import { buildReceiptRecord } from "@/lib/receipt/build-record";
-import { downloadReceiptJson } from "@/lib/receipt/download";
+import { downloadReceipt } from "@/lib/receipt/download";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import Receipt from "@/components/receipt/Receipt";
 import ReceiptActions from "@/components/receipt/ReceiptActions";
+import ReceiptExportActions from "@/components/receipt/ReceiptExportActions";
 
 interface CompletionReceiptProps {
   network: Network;
@@ -149,6 +150,8 @@ export default function CompletionReceipt({ network, onSaved }: CompletionReceip
         )}
       </div>
 
+      <ReceiptExportActions record={shown} />
+
       {save === "failed" && (
         <Callout
           tone="warning"
@@ -156,7 +159,7 @@ export default function CompletionReceipt({ network, onSaved }: CompletionReceip
           icon={<AlertTriangle className="h-4 w-4" />}
           className="p-3 text-xs"
           action={
-            <Button size="sm" variant="secondary" onClick={() => downloadReceiptJson(shown)}>
+            <Button size="sm" variant="secondary" onClick={() => downloadReceipt(shown, "json")}>
               <Download className="h-3.5 w-3.5" />
               Download receipt
             </Button>

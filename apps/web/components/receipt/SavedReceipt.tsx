@@ -12,6 +12,7 @@ import { getHistory } from "@/lib/session/history";
 import { receiptPath } from "@/lib/receipt/href";
 import Receipt from "@/components/receipt/Receipt";
 import ReceiptActions from "@/components/receipt/ReceiptActions";
+import ReceiptExportActions from "@/components/receipt/ReceiptExportActions";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import type { ReceiptRecord } from "@/types/history";
@@ -76,7 +77,11 @@ export default function SavedReceipt({ network, id }: { network: Network; id: st
   if (load.state === "error") return <ReadFailed onRetry={read} network={network} />;
   if (load.state === "missing") return <NotOnThisDevice network={network} />;
 
-  const { record } = load;
+  // The amount the lookup found is in the files as soon as it is shown.
+  const record =
+    received.state === "recorded" && load.record.receivedLumens === null
+      ? { ...load.record, receivedLumens: received.lumens }
+      : load.record;
   return (
     <Receipt
       record={record}
@@ -87,6 +92,7 @@ export default function SavedReceipt({ network, id }: { network: Network; id: st
       <p className="text-xs text-fg-muted">
         Kept in this browser only. Deleting it from the history removes it from this device.
       </p>
+      <ReceiptExportActions record={record} />
       {record.outcome === "closed" && (
         <ReceiptActions network={record.network} destinationAddress={record.destinationAddress} />
       )}
