@@ -9,17 +9,16 @@ import {
 import { signerNormalizationOps } from "@/lib/stellar/tx-builder/signers";
 import type { LiveLedger } from "@/lib/stellar/live-ledger";
 import type { AccountSigner } from "@lumenwipe/types";
-import { OFFLINE_SOROBAN_TOKENS, fakeSorobanDeps } from "./fixtures/fake-soroban-tokens";
+import {
+  OFFLINE_SOROBAN_TOKENS,
+  explorerValueBody,
+  fakeSorobanDeps,
+} from "./fixtures/fake-soroban-tokens";
+import { tokenAssetsById } from "@/lib/close-api/decisions";
 import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils/errors";
 import type { ResolveDefiPositionsDeps } from "@/lib/defi-positions/resolve-defi-positions";
 import type { ContractRegistryEntry } from "@/lib/contract-registry";
-import { addressVal, variantVal } from "@/lib/defi-positions/testnet-direct-read";
-import {
-  contractDataEntry,
-  contractInstanceEntry,
-  i128Val,
-  mockRpc,
-} from "./fixtures/testnet-direct-read-helpers";
+import { mockRpc, phoenixLpEntries } from "./fixtures/testnet-direct-read-helpers";
 
 // Every fixture below reports `num_sponsoring: 0`, which `enumerateSponsoredEntries` treats as
 // a complete answer and returns without any I/O of its own. That keeps these tests measuring
@@ -299,6 +298,7 @@ test("the rejection names every field that was missing, not just the first", asy
 // ─── issue #150: resolveDefiPositions is actually wired into the account read ───────────────
 
 const PHOENIX_POOL = "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD";
+const PHOENIX_SHARE = "CC53IRMBHWTXE4BWPD5N4LH2L43YSYBMOFD6UARPMZBTWPSODFFKW2EG";
 const PHOENIX_WASM_HASH = "2".repeat(64);
 
 function phoenixRegistryEntry(): ContractRegistryEntry {
@@ -319,13 +319,11 @@ function phoenixRegistryEntry(): ContractRegistryEntry {
 // would reach a real `GET /account/:address` response.
 test("a detected DeFi position flows into the returned account state", async () => {
   const { deps } = stubProvider(accountBody());
-  const balanceKey = variantVal("Balance", addressVal(ADDRESS));
   const defiDeps: ResolveDefiPositionsDeps = {
     octopos: { baseUrl: "" },
     directRead: {
       rpc: mockRpc([
-        contractInstanceEntry(PHOENIX_POOL, PHOENIX_WASM_HASH),
-        contractDataEntry(PHOENIX_POOL, balanceKey, i128Val(42_0000000n)),
+        ...phoenixLpEntries(PHOENIX_POOL, PHOENIX_WASM_HASH, PHOENIX_SHARE, ADDRESS, 42_0000000n),
       ]),
       registryEntries: [phoenixRegistryEntry()],
     },
@@ -346,10 +344,45 @@ test("a detected DeFi position flows into the returned account state", async () 
       contractAddress: PHOENIX_POOL,
       wasmHash: PHOENIX_WASM_HASH,
       shareAmount: "420000000",
+      shareToken: PHOENIX_SHARE,
       usdValue: null,
     },
   ]);
   expect(state.defiPositionsWarnings).toEqual([]);
+});
+
+// The share token a Phoenix position carries is the position, exited by its adapter: whoever
+// proposes it as a balance, it is never a token of its own to transfer, convert or leave.
+test("a detected Phoenix position's share token is never offered as its own token decision", async () => {
+  const { deps } = stubProvider(accountBody());
+  const defiDeps: ResolveDefiPositionsDeps = {
+    octopos: { baseUrl: "" },
+    directRead: {
+      rpc: mockRpc(
+        phoenixLpEntries(PHOENIX_POOL, PHOENIX_WASM_HASH, PHOENIX_SHARE, ADDRESS, 42_0000000n)
+      ),
+      registryEntries: [phoenixRegistryEntry()],
+    },
+  };
+  const state = await readAccountStateFrom(ADDRESS, "testnet", deps, defiDeps, {
+    ...OFFLINE_SOROBAN_TOKENS,
+    sorobanTokensDeps: (positions) =>
+      fakeSorobanDeps({
+        world: {
+          tokens: [{ contract: PHOENIX_SHARE, balance: 42_0000000n, symbol: "PHO", decimals: 7 }],
+          explorer: {
+            status: 200,
+            body: explorerValueBody([{ contract: PHOENIX_SHARE, balance: "420000000" }]),
+          },
+        },
+        listCandidates: [PHOENIX_SHARE],
+        manualCandidates: [PHOENIX_SHARE],
+        positions,
+      }),
+  });
+  expect(state.defiPositions.positions.map((p) => p.contractAddress)).toEqual([PHOENIX_POOL]);
+  expect(state.sorobanTokens?.tokens).toEqual([]);
+  expect(tokenAssetsById(state)).toEqual([]);
 });
 
 // A mainnet OctoPos outage degrades rather than fails the whole read (issue #149) - and that

@@ -9,6 +9,9 @@ release is cut.
 
 ### Added
 
+- `PhoenixLpPosition.shareToken` and `FxdaoCdpPosition.debtToken`: the contract of the token a
+  position's exit moves, read from the pool's `CONFIG` and the vault's currency. Types only; no
+  runtime change.
 - The type `ClassicConversionQuote` is exported: the `quote` a convertible classic asset's
   `asset_disposition` subject already carries (`estimatedReceive` and `minAmountOut`, in stroops).
   Types only; no runtime change.

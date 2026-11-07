@@ -32,6 +32,21 @@ const FXDAO_VAULTS = "CBUZ5NJKA5PRS4TBPHWMN4JGGRVIOQOKI4JUYLA2IXS3BEJKQKEWFW7D";
 const FXDAO_WASM_HASH = "1".repeat(64);
 const PHOENIX_POOL = "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD";
 const PHOENIX_WASM_HASH = "2".repeat(64);
+const PHOENIX_SHARE = "CC53IRMBHWTXE4BWPD5N4LH2L43YSYBMOFD6UARPMZBTWPSODFFKW2EG";
+const FXDAO_STABLE = "CAEGVALLV7CA2SIFEDJNA52RKGUWRQWQXM5YNFUH7TH5G6X6QXMRQM4L";
+
+/** A Phoenix pool's persistent `CONFIG`, naming its separate share token. */
+const phoenixConfigEntry = (shareToken: xdr.ScVal = new Address(PHOENIX_SHARE).toScVal()) =>
+  contractDataEntry(
+    PHOENIX_POOL,
+    xdr.ScVal.scvSymbol("CONFIG"),
+    structVal({
+      share_token: shareToken,
+      stake_contract: new Address(BLEND_POOL).toScVal(),
+      token_a: new Address(FXDAO_VAULTS).toScVal(),
+      token_b: new Address(FXDAO_STABLE).toScVal(),
+    })
+  );
 
 function registryEntry(overrides: Partial<ContractRegistryEntry> = {}): ContractRegistryEntry {
   return {
@@ -326,25 +341,26 @@ test("decodes an FxDAO vault only for the denomination the account actually hold
   ]);
 });
 
-test("decodes a registered pool's LP share balance from the standard token layout", async () => {
-  const entries = [
-    registryEntry({
-      address: PHOENIX_POOL,
-      protocol: "phoenix",
-      kind: "pool",
-      wasmHash: PHOENIX_WASM_HASH,
-    }),
-  ];
-  const balanceKey = variantVal("Balance", addressVal(USER));
+const phoenixRegistry = () => [
+  registryEntry({
+    address: PHOENIX_POOL,
+    protocol: "phoenix",
+    kind: "pool",
+    wasmHash: PHOENIX_WASM_HASH,
+  }),
+];
 
+test("Phoenix: LP shares are read on the share token the pool's CONFIG names, and the position carries it", async () => {
+  const balanceKey = variantVal("Balance", addressVal(USER));
   const rpc = mockRpc([
     contractInstanceEntry(PHOENIX_POOL, PHOENIX_WASM_HASH),
-    contractDataEntry(PHOENIX_POOL, balanceKey, i128Val(42_0000000n)),
+    phoenixConfigEntry(),
+    contractDataEntry(PHOENIX_SHARE, balanceKey, i128Val(42_0000000n)),
   ]);
 
   const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
     rpc,
-    registryEntries: entries,
+    registryEntries: phoenixRegistry(),
   });
   expect(result.unrecognizedPositions).toEqual([]);
   expect(result.positions).toEqual([
@@ -354,32 +370,89 @@ test("decodes a registered pool's LP share balance from the standard token layou
       contractAddress: PHOENIX_POOL,
       wasmHash: PHOENIX_WASM_HASH,
       shareAmount: "420000000",
+      shareToken: PHOENIX_SHARE,
       usdValue: null,
     },
   ]);
 });
 
-test("a zero LP share balance produces no position", async () => {
-  const entries = [
-    registryEntry({
-      address: PHOENIX_POOL,
-      protocol: "phoenix",
-      kind: "pool",
-      wasmHash: PHOENIX_WASM_HASH,
-    }),
-  ];
+test("Phoenix: a balance on the pool itself is not a position; the pool is not its share token", async () => {
   const balanceKey = variantVal("Balance", addressVal(USER));
-
   const rpc = mockRpc([
     contractInstanceEntry(PHOENIX_POOL, PHOENIX_WASM_HASH),
-    contractDataEntry(PHOENIX_POOL, balanceKey, i128Val(0n)),
+    phoenixConfigEntry(),
+    contractDataEntry(PHOENIX_POOL, balanceKey, i128Val(42_0000000n)),
   ]);
-
   const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
     rpc,
-    registryEntries: entries,
+    registryEntries: phoenixRegistry(),
   });
   expect(result.positions).toEqual([]);
+});
+
+test("Phoenix: a zero balance, a missing CONFIG, or a share token that is not a contract produces no position", async () => {
+  const balanceKey = variantVal("Balance", addressVal(USER));
+  const held = contractDataEntry(PHOENIX_SHARE, balanceKey, i128Val(42_0000000n));
+  const instance = contractInstanceEntry(PHOENIX_POOL, PHOENIX_WASM_HASH);
+  for (const ledger of [
+    [instance, phoenixConfigEntry(), contractDataEntry(PHOENIX_SHARE, balanceKey, i128Val(0n))],
+    [instance, held],
+    [instance, phoenixConfigEntry(addressVal(USER)), held],
+  ]) {
+    const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+      rpc: mockRpc(ledger),
+      registryEntries: phoenixRegistry(),
+    });
+    expect(result.positions).toEqual([]);
+  }
+});
+
+test("FxDAO: a vault position carries the stablecoin its vault registers for the denomination", async () => {
+  const entries = [
+    registryEntry({
+      address: FXDAO_VAULTS,
+      protocol: "fxdao",
+      kind: "vault",
+      wasmHash: FXDAO_WASM_HASH,
+    }),
+  ];
+  const usdxKey = variantVal("Vault", xdr.ScVal.scvVec([addressVal(USER), symbolVal("USDx")]));
+  const currency = (contract: xdr.ScVal): Array<[xdr.ScVal, xdr.ScVal]> => [
+    [
+      xdr.ScVal.scvVec([symbolVal("Currency"), symbolVal("USDx")]),
+      structVal({ active: xdr.ScVal.scvBool(true), contract, denomination: symbolVal("USDx") }),
+    ],
+  ];
+  const vault = contractDataEntry(
+    FXDAO_VAULTS,
+    usdxKey,
+    structVal({ total_collateral: i128Val(10n), total_debt: i128Val(4n) })
+  );
+  const read = async (storage: Array<[xdr.ScVal, xdr.ScVal]>) =>
+    (
+      await detectDefiPositionsViaDirectRead(USER, "testnet", {
+        rpc: mockRpc([contractInstanceEntry(FXDAO_VAULTS, FXDAO_WASM_HASH, storage), vault]),
+        registryEntries: entries,
+      })
+    ).positions;
+
+  expect(await read(currency(new Address(FXDAO_STABLE).toScVal()))).toEqual([
+    {
+      protocol: "fxdao",
+      positionType: "cdp",
+      contractAddress: FXDAO_VAULTS,
+      wasmHash: FXDAO_WASM_HASH,
+      denomination: "USDx",
+      collateralAmount: "10",
+      debtAmount: "4",
+      debtToken: FXDAO_STABLE,
+      usdValue: null,
+    },
+  ]);
+  // An account is never the stablecoin: the position is still reported, without a debt token.
+  const [withoutToken] = await read(currency(addressVal(USER)));
+  expect(withoutToken).toBeDefined();
+  expect(withoutToken).not.toHaveProperty("debtToken");
 });
 
 test("an entry the registry marks as not live, and that is still absent, is not reported against the account", async () => {
@@ -1047,7 +1120,8 @@ test("protocol reads run at the same time, and positions still come back in regi
       })
     ),
     contractInstanceEntry(PHOENIX_POOL, PHOENIX_WASM_HASH),
-    contractDataEntry(PHOENIX_POOL, variantVal("Balance", addressVal(USER)), i128Val(7_0000000n)),
+    phoenixConfigEntry(),
+    contractDataEntry(PHOENIX_SHARE, variantVal("Balance", addressVal(USER)), i128Val(7_0000000n)),
   ]);
   // Blend's read is held open longer than Phoenix's, so completion order is the reverse of
   // registry order; the result must not depend on which finished first.

@@ -9577,6 +9577,10 @@
           },
           "shareAmount": {
             "type": "string"
+          },
+          "shareToken": {
+            "type": "string",
+            "description": "The pool's separate LP share token contract."
           }
         },
         "required": [
@@ -9672,6 +9676,10 @@
           },
           "debtAmount": {
             "type": "string"
+          },
+          "debtToken": {
+            "type": "string",
+            "description": "The stablecoin contract a repay of this debt burns."
           }
         },
         "required": [

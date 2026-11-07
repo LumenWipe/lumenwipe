@@ -42,6 +42,8 @@ function baseExpected(): CloseExpectation {
     protectedTokenContracts: [],
     xbullAssets: {},
     ownTokensByContract: {},
+    shareTokenContracts: [],
+    debtTokenContracts: [],
     repayTokensByPool: {},
   };
 }

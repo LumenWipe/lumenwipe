@@ -24,10 +24,8 @@
  *  - Aquarius: pools are enumerated from the router and each pool's separate share token read;
  *    see readAquariusRouterPools. Concentrated-liquidity pools (tick-range positions, no share
  *    token) are not read here.
- *  - Phoenix: LP shares are read from a registered pool's own SEP-41 `Balance(Address)`, but no
- *    pool instance is registered yet, so it finds nothing until one lands via a reviewed pull
- *    request.
- *  - Phoenix has no public testnet deployment at all - no registry entry, nothing to check.
+ *  - Phoenix: a registered pool's `CONFIG` names its `share_token`, a separate SEP-41 contract,
+ *    and the account's LP shares are that token's `Balance(Address)`. Stakes are not read here.
  *
  * ScVal key encoding: a soroban-sdk `#[contracttype]` enum's tuple variant with fields
  * `Variant(A)` encodes as `ScVec[Symbol("Variant"), A]`, and `Variant((A, B))` (a single field
@@ -55,6 +53,8 @@ import type {
   UnrecognizedDefiPosition,
 } from "@lumenwipe/types";
 import { contractDataEntry, instanceOfEntry } from "@/lib/stellar/contract-data";
+import { fxdaoCurrencyContract } from "@/lib/defi-exits/fxdao";
+import { phoenixConfigKey, phoenixShareToken } from "@/lib/defi-exits/phoenix";
 
 type RpcServer = ReturnType<typeof getRpcServer>;
 
@@ -861,30 +861,39 @@ async function readAquariusRouterPools(
   return positions;
 }
 
-// ─── standard SEP-41 LP share balance (Phoenix pools; Soroswap and Aquarius enumerate) ──
+// ─── Phoenix LP shares (Soroswap and Aquarius enumerate theirs above) ──────────
 
-async function readLpShareBalance(
+/**
+ * A Phoenix pool is not its own share token: its `CONFIG` names `share_token`, a separate SEP-41
+ * contract, and the account's shares are that token's `Balance(Address)`. Read in that order,
+ * and the share token rides on the position, so the exit's verifier knows it from the pool
+ * itself rather than from a token-balance indexer.
+ */
+async function readPhoenixLpShares(
   rpc: LedgerReader,
   entry: ContractRegistryEntry,
   address: string
 ): Promise<DefiPosition | null> {
-  const balanceKey = contractDataKey(entry.address, variantVal("Balance", addressVal(address)));
+  const configKey = phoenixConfigKey(entry.address);
+  const config = (await batchRead(rpc, [configKey])).get(configKey.toXdr("base64"));
+  const shareToken = config ? phoenixShareToken(config) : null;
+  if (!shareToken) return null;
+
+  const balanceKey = contractDataKey(shareToken, variantVal("Balance", addressVal(address)));
   const results = await batchRead(rpc, [balanceKey]);
   const native = contractDataScVal(results.get(balanceKey.toXdr("base64")));
   const shareAmount = typeof native === "bigint" ? native : null;
-  if (shareAmount === null || shareAmount === 0n) return null;
+  if (shareAmount === null || shareAmount <= 0n) return null;
 
-  const base = {
+  return {
+    protocol: "phoenix",
+    positionType: "lp",
     contractAddress: entry.address,
     wasmHash: entry.wasmHash ?? undefined,
     shareAmount: shareAmount.toString(),
+    shareToken,
     usdValue: null,
   };
-
-  if (entry.protocol === "phoenix") return { ...base, protocol: "phoenix", positionType: "lp" };
-  // Soroswap pairs and Aquarius pools never reach this read: they are enumerated from their
-  // factory and router above, and their share balances live where those sweeps look.
-  return null;
 }
 
 // ─── FxDAO vault ───────────────────────────────────────────────────────────────
@@ -900,7 +909,10 @@ async function readFxdaoVaults(
       variantVal("Vault", xdr.ScVal.scvVec([addressVal(address), symbolVal(denom)]))
     )
   );
-  const results = await batchRead(rpc, keys);
+  // The vault's instance carries `Currency(denomination)`, the stablecoin a repay burns.
+  const vaultInstanceKey = instanceKey(entry.address);
+  const results = await batchRead(rpc, [...keys, vaultInstanceKey]);
+  const instance = results.get(vaultInstanceKey.toXdr("base64"));
 
   const positions: DefiPosition[] = [];
   for (let i = 0; i < FXDAO_DENOMINATIONS.length; i++) {
@@ -909,6 +921,7 @@ async function readFxdaoVaults(
     const collateral = native.total_collateral;
     const debt = native.total_debt;
     if (typeof collateral !== "bigint" || typeof debt !== "bigint") continue;
+    const debtToken = instance ? fxdaoCurrencyContract(instance, FXDAO_DENOMINATIONS[i]!) : null;
     const position: FxdaoCdpPosition = {
       protocol: "fxdao",
       positionType: "cdp",
@@ -917,6 +930,8 @@ async function readFxdaoVaults(
       denomination: FXDAO_DENOMINATIONS[i]!,
       collateralAmount: collateral.toString(),
       debtAmount: debt.toString(),
+      // Omitted when the vault does not name it: the verifier then refuses the repay, safely.
+      ...(debtToken ? { debtToken } : {}),
       usdValue: null,
     };
     positions.push(position);
@@ -957,8 +972,8 @@ async function readEntry(
     positions.push(...(await readBlendPoolPositions(rpc, entry, address)));
   } else if (entry.protocol === "fxdao" && entry.kind === "vault") {
     positions.push(...(await readFxdaoVaults(rpc, entry, address)));
-  } else if (entry.kind === "pool") {
-    const lp = await readLpShareBalance(rpc, entry, address);
+  } else if (entry.protocol === "phoenix" && entry.kind === "pool") {
+    const lp = await readPhoenixLpShares(rpc, entry, address);
     if (lp) positions.push(lp);
   }
   return { positions, unrecognized };

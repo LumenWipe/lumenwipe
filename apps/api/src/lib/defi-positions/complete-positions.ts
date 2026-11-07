@@ -4,6 +4,7 @@ import type {
   DefiPosition,
   DefiPositionsResult,
   Network,
+  PhoenixLpPosition,
   SoroswapLpPosition,
 } from "@lumenwipe/types";
 import { Logger } from "@nestjs/common";
@@ -12,18 +13,22 @@ import { resolveWasmHash, type ContractResolution } from "@/lib/contract-registr
 import { withTimeout } from "@/lib/utils/with-timeout";
 import type { LedgerEntriesReader } from "@/lib/stellar/contract-instance";
 import { getRpcServer } from "@/lib/stellar/rpc";
-import { contractDataKey, instanceOfEntry } from "@/lib/stellar/contract-data";
+import { phoenixConfigKey, phoenixShareToken } from "@/lib/defi-exits/phoenix";
+import { contractAddressOf, contractDataKey, instanceOfEntry } from "@/lib/stellar/contract-data";
 
 /**
  * Fills in what a position indexer does not carry but the exit path needs from the position
- * itself: an Aquarius pool's tokens, share token, and code type, and a Soroswap pair's tokens.
+ * itself: an Aquarius pool's tokens, share token, and code type, a Soroswap pair's tokens, and a
+ * Phoenix pool's share token.
  *
  * The web anchor lets an exit name a token contract only if it is a held asset's Stellar Asset
  * Contract or one of the position's own tokens (or its share token, which a withdrawal burns
  * under the account's authority). OctoPos reports a mainnet LP position by pool and share amount
  * alone, so without this pass every mainnet withdrawal that touched a Soroban-native token or a
  * share token would fail verification with a misleading message. The testnet direct read fills
- * these fields as it sweeps; here they come from the same instance keys, one read per contract.
+ * these fields as it sweeps; here they come from the same keys, one batch for every contract:
+ * the instance (which also carries the code the registry is checked against) and, for a Phoenix
+ * pool, its persistent `CONFIG`, where Phoenix keeps `share_token` rather than in the instance.
  *
  * The registry is the trust root here as everywhere else: a position's fields are filled only
  * from a contract whose live code the registry knows as that protocol's pool or pair. What a
@@ -71,18 +76,12 @@ function parseInstance(val: xdr.LedgerEntryData): Instance {
   return { wasmHash, storage };
 }
 
-/** A contract address, and only a contract address: a token is never an account. */
-const asContract = (val: xdr.ScVal | undefined): string | null =>
-  val && val.type === "scvAddress" && val.address.type === "scAddressTypeContract"
-    ? Address.fromScAddress(val.address).toString()
-    : null;
-
 /** At least two distinct token contracts, or nothing: a pool of one token is not a pool. */
 function tokenList(val: xdr.ScVal | undefined): string[] | null {
   if (!val || val.type !== "scvVec") return null;
   const out: string[] = [];
   for (const item of val.vec ?? []) {
-    const address = asContract(item);
+    const address = contractAddressOf(item);
     if (address === null) return null;
     out.push(address);
   }
@@ -123,7 +122,7 @@ function aquariusFields(
           )
         )
       );
-  const shareToken = asContract(storage.get('["TokenShare"]'));
+  const shareToken = contractAddressOf(storage.get('["TokenShare"]'));
   const poolType = POOL_TYPES.has(code.version) ? (code.version as AquariusPoolType) : undefined;
   return {
     ...(tokens ? { tokens } : {}),
@@ -149,6 +148,20 @@ function soroswapFields(
   return tokens && tokens.length === 2 ? { tokens: [tokens[0]!, tokens[1]!] } : {};
 }
 
+/** A Phoenix pool's share token, from its `CONFIG`: a separate contract from the pool, where the
+ *  account's shares live and what `withdraw_liquidity` transfers back to the pool. */
+function phoenixFields(
+  instance: Instance,
+  config: xdr.LedgerEntryData | undefined,
+  network: Network,
+  deps: CompletePositionsDeps
+): Pick<PhoenixLpPosition, "shareToken"> {
+  const code = known(instance, network, deps);
+  if (!code || code.protocol !== "phoenix" || code.kind !== "pool" || !config) return {};
+  const shareToken = phoenixShareToken(config);
+  return shareToken ? { shareToken } : {};
+}
+
 function incomplete(position: DefiPosition): boolean {
   if (position.protocol === "aquarius" && position.positionType === "lp") {
     // A concentrated pool keeps no share token and lists no tokens the same way; once its code
@@ -159,6 +172,9 @@ function incomplete(position: DefiPosition): boolean {
   if (position.protocol === "soroswap" && position.positionType === "lp") {
     return !position.tokens;
   }
+  if (position.protocol === "phoenix" && position.positionType === "lp") {
+    return !position.shareToken;
+  }
   return false;
 }
 
@@ -167,7 +183,7 @@ export function defaultCompletePositionsDeps(network: Network): CompletePosition
 }
 
 /**
- * The result with every incomplete Aquarius and Soroswap LP position completed from its
+ * The result with every incomplete Aquarius, Soroswap and Phoenix LP position completed from its
  * contract's instance where that could be read. Never throws.
  */
 export async function completePositionsFromLedger(
@@ -191,9 +207,18 @@ export async function completePositionsFromLedger(
     );
   }
 
+  const phoenixPools = new Set(
+    result.positions
+      .filter((p) => p.protocol === "phoenix" && contracts.includes(p.contractAddress))
+      .map((p) => p.contractAddress)
+  );
   const instances = new Map<string, Instance>();
+  const configs = new Map<string, xdr.LedgerEntryData>();
   try {
-    const keys = contracts.map((c) => new Contract(c).getFootprint());
+    const keys = [
+      ...contracts.map((c) => new Contract(c).getFootprint()),
+      ...[...phoenixPools].map((c) => phoenixConfigKey(c)),
+    ];
     const response = await withTimeout(
       deps.rpc.getLedgerEntries(...keys),
       COMPLETION_TIMEOUT_MS,
@@ -201,10 +226,15 @@ export async function completePositionsFromLedger(
     );
     for (const entry of response.entries ?? []) {
       try {
-        const contract = Address.fromScAddress(contractDataKey(entry.key).contract).toString();
-        instances.set(contract, parseInstance(entry.val));
+        const key = contractDataKey(entry.key);
+        const contract = Address.fromScAddress(key.contract).toString();
+        if (key.key.type === "scvLedgerKeyContractInstance") {
+          instances.set(contract, parseInstance(entry.val));
+        } else if (entry.key.toXdr("base64") === phoenixConfigKey(contract).toXdr("base64")) {
+          configs.set(contract, entry.val);
+        }
       } catch {
-        // An entry that is not a contract instance is not one we asked for.
+        // An entry that is neither an instance nor a pool's config is not one we asked for.
       }
     }
   } catch (err) {
@@ -225,6 +255,10 @@ export async function completePositionsFromLedger(
       }
       if (position.protocol === "soroswap" && position.positionType === "lp") {
         return { ...position, ...soroswapFields(instance, network, deps) };
+      }
+      if (position.protocol === "phoenix" && position.positionType === "lp") {
+        const config = configs.get(position.contractAddress);
+        return { ...position, ...phoenixFields(instance, config, network, deps) };
       }
     } catch {
       // A malformed instance leaves the position as reported; the anchor refuses it later.

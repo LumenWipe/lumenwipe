@@ -92,3 +92,29 @@ export function mockRpc(entries: LedgerEntry[]): RpcServer {
   };
   return { getLedgerEntries } as unknown as RpcServer;
 }
+
+/** A Phoenix LP holding as the ledger keeps it: the pool's persistent `CONFIG` naming its share
+ *  token, a separate contract, and the account's shares as that token's `Balance(account)`. */
+export function phoenixLpEntries(
+  pool: string,
+  wasmHashHex: string,
+  shareToken: string,
+  account: string,
+  shares: bigint
+): LedgerEntry[] {
+  const config = structVal({
+    share_token: new Address(shareToken).toScVal(),
+    stake_contract: new Address(pool).toScVal(),
+    token_a: new Address(shareToken).toScVal(),
+    token_b: new Address(pool).toScVal(),
+  });
+  const balance = xdr.ScVal.scvVec([
+    xdr.ScVal.scvSymbol("Balance"),
+    new Address(account).toScVal(),
+  ]);
+  return [
+    contractInstanceEntry(pool, wasmHashHex),
+    contractDataEntry(pool, xdr.ScVal.scvSymbol("CONFIG"), config),
+    contractDataEntry(shareToken, balance, i128Val(shares)),
+  ];
+}
