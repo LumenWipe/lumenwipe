@@ -81,7 +81,12 @@ import {
   TransferDestinationRefusedError,
   TRANSFER_DESTINATION_REFUSED_NOTICE,
 } from "@/lib/plan/transfer-destination";
-import { HashXPreimageSigner, WalletKitSigner, type TransactionSigner } from "@/lib/stellar/signer";
+import {
+  HashXPreimageSigner,
+  WALLET_CONNECT_WALLET_ID,
+  WalletKitSigner,
+  type TransactionSigner,
+} from "@/lib/stellar/signer";
 import {
   confirmedTransactions,
   isConfirmation,
@@ -167,7 +172,9 @@ function recordProgress(
 
 /** What the signer's prompt is, for the progress line. */
 function signingWait(signer: TransactionSigner): ProgressWait {
-  if (signer instanceof WalletKitSigner) return "wallet";
+  if (signer instanceof WalletKitSigner) {
+    return signer.walletId === WALLET_CONNECT_WALLET_ID ? "wallet-app" : "wallet";
+  }
   if (signer instanceof HashXPreimageSigner) return "preimage";
   return "key";
 }
@@ -716,11 +723,22 @@ export function useCloseExecution() {
             ? "refused"
             : flight.stage;
         const carried = carriedPreimageRef.current;
+        // A refusal of a transaction this device's clock already called expired: a clock set
+        // wrong makes every transaction look that way, and the network refuses it as tx_too_late.
+        const validUntil =
+          err instanceof CloseTransactionFailedError
+            ? err.submission.validUntil
+            : inFlight
+              ? submissionValidUntil((inFlight as CloseTransaction).xdr, passphrase)
+              : null;
+        const clockPastExpiry =
+          failedAt === "refused" && validUntil !== null && Date.now() > validUntil * 1000;
         const message = closeFailureMessage(
           err,
           failedAt,
           useDemolishStore.getState().executionPlan,
-          carried
+          carried,
+          clockPastExpiry
         );
         // Sent and not refused, the transaction may still land: its steps stay submitted, never
         // failed. Every other stage is a transaction that did not, or will not, take effect.

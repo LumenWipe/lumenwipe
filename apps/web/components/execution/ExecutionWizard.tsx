@@ -18,7 +18,7 @@ import ProgressIndicator from "./ProgressIndicator";
 import SigningProgress from "./SigningProgress";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { SecretKeySigner, WalletKitSigner, type TransactionSigner } from "@/lib/stellar/signer";
-import { ensureWalletKitInitialized } from "@/lib/wallet-kit/client";
+import { walletKitSigner } from "@/lib/wallet-kit/client";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card } from "@/components/ui/card";
@@ -26,6 +26,13 @@ import { Tabs, type TabItem } from "@/components/ui/tabs";
 import { PROGRESS_NOT_SAVED } from "@/lib/utils/user-error";
 import { activeStepIndex, isStalled, progressLine, STILL_WAITING } from "@/lib/execution/progress";
 import { useElapsedSeconds } from "@/hooks/useElapsedSeconds";
+
+/**
+ * How long Retry waits for a wallet prompt that timed out to answer. The kit cannot close a
+ * prompt, so retrying at once can open a second one on top of it; once it answers, or after this
+ * long, Retry is offered again. An extension that never answers does not hold Retry back for good.
+ */
+export const STALE_PROMPT_HOLD_MS = 5_000;
 
 interface ExecutionWizardProps {
   network: Network;
@@ -131,9 +138,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
       walletAddressIsKnownSigner &&
       !walletConnection.networkMismatch
     ) {
-      signerRef.current = new WalletKitSigner(walletConnection.address, (xdr, opts) =>
-        ensureWalletKitInitialized(network).signTransaction(xdr, opts)
-      );
+      signerRef.current = walletKitSigner(network, walletConnection.address);
       setWalletAddress(walletConnection.address);
       // A connected wallet supersedes any previously entered secret key, for the
       // same reason the secret-key handler supersedes a connected wallet below:
@@ -242,6 +247,28 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const alertRef = useRef<HTMLDivElement>(null);
   const retryRef = useRef<HTMLButtonElement>(null);
   const previousView = useRef(view);
+
+  // After a wallet prompt timed out, Retry waits for that prompt to answer or for
+  // STALE_PROMPT_HOLD_MS, whichever comes first, so it does not stack a second prompt.
+  const [retryHeld, setRetryHeld] = useState(false);
+  useEffect(() => {
+    if (view !== "failed") return;
+    const signer = signerRef.current;
+    const stale = signer instanceof WalletKitSigner ? signer.stalePrompt() : null;
+    if (!stale) return;
+    let live = true;
+    const release = (): void => {
+      if (live) setRetryHeld(false);
+    };
+    setRetryHeld(true);
+    const timer = setTimeout(release, STALE_PROMPT_HOLD_MS);
+    void stale.then(release);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+      setRetryHeld(false);
+    };
+  }, [view]);
   // Focus follows a view swap only: the control that was clicked is unmounted by it, and focus
   // would otherwise drop to <body>. It never moves on first render, and never out of a field
   // the user is typing in.
@@ -415,7 +442,13 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           <StatusMessage message={statusMessage} />
 
           {busy ? (
-            <ProgressIndicator line={line} stalled={stalled} elapsedSeconds={elapsedSeconds} />
+            <ProgressIndicator
+              line={line}
+              stalled={stalled}
+              elapsedSeconds={elapsedSeconds}
+              // A wallet on another device gives no sign here that its prompt arrived.
+              showTimer={progress?.wait === "wallet-app"}
+            />
           ) : unconfirmed ? (
             <UnconfirmedPanel
               hash={unconfirmedSubmission.hash}
@@ -460,7 +493,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               >
                 Change wallet or key
               </Button>
-              <Button ref={retryRef} onClick={execute} disabled={!signerReady} className="w-full">
+              <Button
+                ref={retryRef}
+                onClick={execute}
+                disabled={!signerReady || retryHeld}
+                className="w-full"
+              >
                 Retry
               </Button>
               {retrySafe === true && allows(journey, "safe-to-retry") && (

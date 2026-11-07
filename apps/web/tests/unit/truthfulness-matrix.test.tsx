@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { Keypair } from "@stellar/stellar-sdk";
+import { WalletSigningError, WalletSigningTimeoutError } from "@/lib/stellar/signer";
 import * as navigation from "next/navigation";
 import NetworkError from "@/app/[network]/error";
 import ExecutePage from "@/app/[network]/execute/page";
@@ -463,7 +464,8 @@ function reloadReset(): Cell {
 
 const IN_FLIGHT: Store = { phase: "STEP_UNCONFIRMED", unconfirmedSubmission: SUBMISSION as never };
 
-const declined = new Error("User declined access");
+const declined = new WalletSigningError(-4, "freighter", "User declined access");
+const timedOut = new WalletSigningTimeoutError("freighter", 120_000);
 const mismatch = new VerificationError("op 2 pays to an unexpected destination");
 const unavailable = new ApiRequestError(503, "");
 
@@ -500,6 +502,13 @@ const MATRIX: Surface[] = [
     cells: [
       failure("signing", declined, "before-submit", ["this-tx-not-sent", "safe-to-retry"]),
       failure("partial", declined, "before-submit", ["this-tx-not-sent", "still-open"]),
+    ],
+  },
+  {
+    name: "wallet timeout",
+    cells: [
+      failure("signing", timedOut, "before-submit", ["this-tx-not-sent", "safe-to-retry"]),
+      failure("partial", timedOut, "before-submit", ["this-tx-not-sent", "still-open"]),
     ],
   },
   {
@@ -765,7 +774,7 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
   },
   "lib/utils/user-error.ts": {
     "nothing-sent": { count: 1, shownBy: OUTSIDE.allowances },
-    "this-tx-not-sent": { count: 2, shownBy: "wallet decline" },
+    "this-tx-not-sent": { count: 3, shownBy: "wallet decline; wallet timeout" },
     "may-be-sent": { count: 1, shownBy: "unconfirmed panel" },
     "account-closed": { count: 2, shownBy: `execute failure panel; ${OUTSIDE.lookup}` },
     "no-new-sent": { count: 2, shownBy: "execute failure panel" },

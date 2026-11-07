@@ -8,6 +8,7 @@ import {
 import { fetchCloseTransactions } from "@/lib/api/close-client";
 import { VerificationError } from "@/lib/stellar/verify";
 import { TxSubmitError } from "@/lib/utils/errors";
+import { WalletSigningError, WalletSigningTimeoutError } from "@/lib/stellar/signer";
 import {
   apiErrorText,
   ApiRequestError,
@@ -17,8 +18,10 @@ import {
   STILL_UNCONFIRMED_NOTICE,
   UNCONFIRMED_NOTICE,
   readApiError,
+  CLOCK_HINT,
   toUserMessage,
   UserFacingError,
+  WALLET_TIMED_OUT,
   type CloseFailureStage,
   type ErrorContext,
 } from "@/lib/utils/user-error";
@@ -34,9 +37,92 @@ afterEach(() => errorSpy.mockRestore());
 
 describe("toUserMessage", () => {
   test("a wallet rejection becomes a calm, actionable message", () => {
-    const msg = toUserMessage(new Error("User declined access"), "execute");
+    const msg = toUserMessage(
+      new WalletSigningError(-4, "freighter", "User declined access"),
+      "execute"
+    );
     expect(msg).toMatch(/declined the request in your wallet/);
     expect(msg).not.toMatch(/User declined access/);
+  });
+
+  test.each([
+    [-1, /ran into a problem and did not sign/],
+    [-2, /could not complete the request and did not sign/],
+    [-3, /can't sign this transaction/],
+    [-4, /declined the request in your wallet/],
+  ])("wallet code %d maps to its own plain message, whatever the wallet wrote", (code, copy) => {
+    const msg = toUserMessage(new WalletSigningError(code, "freighter", "Error 0x6985"), "execute");
+    expect(msg).toMatch(copy);
+    expect(msg).not.toContain("0x6985");
+  });
+
+  test("an unknown wallet code falls back to the generic wallet message", () => {
+    expect(toUserMessage(new WalletSigningError(4001, null, "Ledger says no"), "execute")).toBe(
+      "We couldn't reach your wallet. Make sure it's unlocked and try again."
+    );
+  });
+
+  test("a wallet's own text refines only an error typed as the wallet's", () => {
+    expect(toUserMessage(new WalletSigningError(-1, null, "Wallet is locked"), "execute")).toMatch(
+      /locked/
+    );
+    expect(toUserMessage(new Error("Wallet is locked"), "execute")).not.toMatch(/locked/);
+  });
+
+  test("an unanswered wallet prompt reads as a wallet that did not respond", () => {
+    const msg = toUserMessage(new WalletSigningTimeoutError("wallet_connect", 120_000), "execute");
+    expect(msg).toBe(WALLET_TIMED_OUT);
+    expect(msg).toMatch(/this transaction was not signed or sent/);
+    expect(msg).toMatch(/Close the earlier prompt in your wallet before you try again/);
+  });
+
+  test("a timeout says once that this transaction was not sent", () => {
+    const msg = closeFailureMessage(
+      new WalletSigningTimeoutError(null, 120_000),
+      "before-submit",
+      []
+    );
+    expect(msg).toMatch(/^Your wallet didn't respond in time/);
+    expect(msg).not.toMatch(/No new transaction was sent/);
+  });
+
+  test("a refusal adds the clock hint only when this device's clock said it had expired", () => {
+    const tooLate = new ApiRequestError(
+      422,
+      "Transaction expired before it was confirmed. Please retry.",
+      undefined,
+      "submit_rejected"
+    );
+    const hinted = closeFailureMessage(tooLate, "refused", [], false, true);
+    expect(hinted).toMatch(/Transaction expired before it was confirmed/);
+    expect(hinted).toMatch(/Its operations did not take effect/);
+    expect(hinted.endsWith(CLOCK_HINT)).toBe(true);
+    expect(closeFailureMessage(tooLate, "refused", [])).not.toContain(CLOCK_HINT);
+    expect(closeFailureMessage(tooLate, "before-submit", [], false, true)).not.toContain(
+      CLOCK_HINT
+    );
+  });
+
+  test("a decline in the wallet's own words counts only under the catch-all code -1", () => {
+    expect(
+      toUserMessage(new WalletSigningError(-1, null, "User declined the request"), "execute")
+    ).toMatch(/declined the request in your wallet/);
+    expect(
+      toUserMessage(new WalletSigningError(-2, null, "User declined the request"), "execute")
+    ).toMatch(/could not complete the request and did not sign/);
+  });
+
+  test("an unrelated timeout outside the wallet signer is not reported as a wallet timeout", () => {
+    // The bug: any message matching /time(d)? ?out/ in the execute context read as the wallet.
+    for (const err of [new Error("request timed out"), new Error("Request timed out")]) {
+      const msg = toUserMessage(err, "execute");
+      expect(msg).not.toMatch(/wallet/i);
+      expect(msg).toBe(toUserMessage(new Error("anything else"), "execute"));
+    }
+  });
+
+  test("an untyped decline-like message in the execute context is not read as a wallet decline", () => {
+    expect(toUserMessage(new Error("User declined access"), "execute")).not.toMatch(/declined/);
   });
 
   test("a wallet error thrown as a plain object is still recognized", () => {
@@ -45,8 +131,8 @@ describe("toUserMessage", () => {
     ).toMatch(/declined/);
   });
 
-  test("wallet timeouts and locked wallets are mapped", () => {
-    expect(toUserMessage(new Error("Request timed out"), "execute")).toMatch(/didn't respond/);
+  test("connection timeouts and locked wallets are mapped in the connection flow", () => {
+    expect(toUserMessage(new Error("Request timed out"), "wallet")).toMatch(/didn't respond/);
     expect(toUserMessage(new Error("Wallet is locked"), "wallet")).toMatch(/locked/);
   });
 
@@ -275,7 +361,7 @@ describe("closeFailureMessage truthfulness", () => {
 describe("closeFailureMessage", () => {
   const roundOne = [step(0, "CANCEL_OFFERS", "pending"), step(1, "MERGE", "pending")];
   const roundTwo = [step(0, "CANCEL_OFFERS", "confirmed"), step(1, "MERGE", "pending")];
-  const declined = new Error("User declined access");
+  const declined = new WalletSigningError(-4, "freighter", "User declined access");
   const mismatch = new VerificationError("op 2 pays GABC to unexpected dest");
 
   test("a wallet decline in round one speaks only for this transaction", () => {
@@ -315,7 +401,8 @@ describe("closeFailureMessage", () => {
   });
 
   test("the connect flow keeps its own decline copy", () => {
-    expect(toUserMessage(declined, "wallet")).toBe(
+    // Connecting is not signing: the kit's answer reaches it untyped.
+    expect(toUserMessage(new Error("User declined access"), "wallet")).toBe(
       "You declined the connection request in your wallet, so it was not connected. Approve it when you're ready to continue."
     );
   });

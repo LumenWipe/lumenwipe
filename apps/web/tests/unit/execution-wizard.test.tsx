@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { hash, Keypair, StrKey } from "@stellar/stellar-sdk";
-import ExecutionWizard from "@/components/execution/ExecutionWizard";
+import ExecutionWizard, { STALE_PROMPT_HOLD_MS } from "@/components/execution/ExecutionWizard";
 import { useDemolishStore } from "@/store/demolish";
 import { InvalidPreAuthTxError } from "@/lib/stellar/pre-auth-tx";
 import * as navigation from "next/navigation";
@@ -9,7 +9,13 @@ import * as closeExecution from "@/hooks/useCloseExecution";
 import * as walletKit from "@/hooks/useWalletKitConnection";
 import * as sessionStore from "@/lib/session/store";
 import { fromHex } from "@/lib/stellar/hex";
-import { PROGRESS_NOT_SAVED, UNCONFIRMED_NOTICE } from "@/lib/utils/user-error";
+import {
+  closeFailureMessage,
+  PROGRESS_NOT_SAVED,
+  UNCONFIRMED_NOTICE,
+} from "@/lib/utils/user-error";
+import { WalletKitSigner, WalletSigningTimeoutError } from "@/lib/stellar/signer";
+import * as walletKitClient from "@/lib/wallet-kit/client";
 import type { CloseProgress } from "@/lib/execution/progress";
 
 const WAITING_LINE = "Transaction 1 of 1: approve in your wallet";
@@ -729,4 +735,85 @@ test("execution-wizard › the destination links to the explorer of the network 
     `https://stellar.expert/explorer/testnet/account/${destination}`
   );
   expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+});
+
+test("execution-wizard › a wallet that timed out offers Retry and changing the signer, and is no longer busy", () => {
+  currentWalletAddress = source;
+  useDemolishStore.setState({
+    phase: "STEP_FAILED",
+    lastError: closeFailureMessage(
+      new WalletSigningTimeoutError("freighter", 120_000),
+      "before-submit",
+      []
+    ),
+  } as never);
+  render(<ExecutionWizard network="testnet" />);
+  expect(screen.getByText(/Your wallet didn't respond in time/)).toBeDefined();
+  expect(screen.getByRole("button", { name: "Retry" })).toBeDefined();
+  expect(screen.getByRole("button", { name: "Change wallet or key" })).toBeDefined();
+  expect(screen.queryByText(/In progress/)).toBeNull();
+});
+
+test("execution-wizard › a WalletConnect prompt shows how long it has waited from the start", () => {
+  currentProgress = { ...progressAt("wallet-app"), since: Date.now() - 5_000 };
+  const { container } = render(<ExecutionWizard network="testnet" />);
+  expect(container.textContent).toContain("Transaction 1 of 1: approve in your wallet app");
+  expect(container.textContent).toContain("0:05");
+  expect(screen.getByRole("status").textContent).not.toContain("0:05");
+});
+
+function timedOutWallet(stale: Promise<void> | null): void {
+  const signer = Object.assign(Object.create(WalletKitSigner.prototype) as WalletKitSigner, {
+    publicKey: source,
+    stalePrompt: () => stale,
+  });
+  spyOn(walletKitClient, "walletKitSigner").mockImplementation(() => signer);
+  currentWalletAddress = source;
+  useDemolishStore.setState({
+    phase: "STEP_FAILED",
+    lastError: closeFailureMessage(
+      new WalletSigningTimeoutError(null, 120_000),
+      "before-submit",
+      []
+    ),
+  } as never);
+}
+
+test("execution-wizard › after a timeout, Retry waits for the earlier wallet prompt to answer", async () => {
+  let answer!: () => void;
+  timedOutWallet(new Promise<void>((resolve) => (answer = resolve)));
+  render(<ExecutionWizard network="testnet" />);
+  const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+  expect(retry.disabled).toBe(true);
+  expect(screen.getByText(/Close the earlier prompt in your wallet/)).toBeDefined();
+  await act(async () => {
+    answer();
+    await Promise.resolve();
+  });
+  expect(retry.disabled).toBe(false);
+});
+
+test("execution-wizard › after a timeout, Retry is offered again after 5 s if the prompt never answers", async () => {
+  const real = globalThis.setTimeout;
+  let hold: (() => void) | null = null;
+  spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void, ms?: number) => {
+    if (ms === STALE_PROMPT_HOLD_MS) {
+      hold = fn;
+      return 0;
+    }
+    return real(fn, ms);
+  }) as unknown as typeof setTimeout);
+  timedOutWallet(new Promise<void>(() => {}));
+  render(<ExecutionWizard network="testnet" />);
+  const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+  expect(retry.disabled).toBe(true);
+  expect(hold).not.toBeNull();
+  act(() => hold!());
+  expect(retry.disabled).toBe(false);
+});
+
+test("execution-wizard › Retry is not held when no wallet prompt is left open", () => {
+  timedOutWallet(null);
+  render(<ExecutionWizard network="testnet" />);
+  expect((screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement).disabled).toBe(false);
 });

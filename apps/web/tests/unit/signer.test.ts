@@ -57,11 +57,12 @@ test("WalletKitSigner › delegates to the injected kit signer with the right ar
     return { signedTxXdr: `signed:${xdr}` };
   });
 
-  const result = await signer.sign("raw-xdr", Networks.TESTNET);
+  const xdr = unsignedXdr(Keypair.random());
+  const result = await signer.sign(xdr, Networks.TESTNET);
 
-  expect(result).toBe("signed:raw-xdr");
+  expect(result).toBe(`signed:${xdr}`);
   expect(calls).toEqual([
-    { xdr: "raw-xdr", opts: { networkPassphrase: Networks.TESTNET, address: "GPUBLICKEYEXAMPLE" } },
+    { xdr, opts: { networkPassphrase: Networks.TESTNET, address: "GPUBLICKEYEXAMPLE" } },
   ]);
 });
 

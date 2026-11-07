@@ -8,6 +8,7 @@ import {
 import { apiRequestId } from "@/lib/api/error-body";
 import { InvalidPreAuthTxError } from "@/lib/stellar/pre-auth-tx";
 import { InvalidPreimageError } from "@/lib/stellar/hash-x";
+import { WalletSigningError, WalletSigningTimeoutError } from "@/lib/stellar/signer";
 import { VerificationError } from "@/lib/stellar/verify";
 import { RevokeAllowanceVerificationError } from "@/lib/stellar/verify-revoke-allowance";
 import { TxSubmitError } from "@/lib/utils/errors";
@@ -62,6 +63,23 @@ const DECLINED_TRANSACTION =
   "You declined the request in your wallet. This transaction was not signed or sent - approve it when you're ready to continue.";
 const VERIFICATION_FAILED =
   "This transaction doesn't match what you approved, so it was not signed or sent. Contact support if it keeps happening.";
+
+/** Shown when a wallet's signing prompt was given up on. Whatever the wallet answers later is
+ *  dropped, so the user is told to decline it rather than wonder whether it was used. */
+export const WALLET_TIMED_OUT =
+  "Your wallet didn't respond in time, so this transaction was not signed or sent. Close the earlier prompt in your wallet before you try again: a signature given there now will not be used. You can also change wallet or key.";
+/** Added to a refusal when this device's clock already said the transaction had expired. */
+export const CLOCK_HINT =
+  "If this keeps happening, check that your device's clock is set correctly.";
+const WALLET_UNSUPPORTED =
+  "Your wallet can't sign this transaction. Change to another wallet or your secret key, then try again.";
+
+/** What each wallet kit error code means, when the wallet's own text says nothing more. */
+const WALLET_CODES: Record<number, string> = {
+  [-1]: "Your wallet ran into a problem and did not sign. Open it, check it's unlocked, then try again.",
+  [-2]: "Your wallet could not complete the request and did not sign. Open it and try again.",
+  [-3]: WALLET_UNSUPPORTED,
+};
 
 const WALLET_PATTERNS: ReadonlyArray<[RegExp, string]> = [
   [/locked|unlock/i, "Your wallet is locked. Unlock it and try again."],
@@ -152,7 +170,24 @@ export function requestIdOf(err: unknown): string | undefined {
  * network text never passes through: unknown errors collapse to a context-specific fallback and
  * the original is logged for debugging instead.
  */
+/**
+ * A wallet's refusal, read from the kit's code first. Its own text is only consulted for an error
+ * that is typed as the wallet's, and only to tell a locked or missing wallet from another
+ * failure; it is never shown.
+ */
+function walletSigningMessage(err: WalletSigningError): string {
+  if (err.code === -4) return DECLINED_TRANSACTION;
+  if (err.code === -3) return WALLET_UNSUPPORTED;
+  // -1 is the kit's catch-all, which some wallets use for a decline; any other code says what it is.
+  if (err.code === -1 && DECLINED.test(err.message)) return DECLINED_TRANSACTION;
+  const pattern = WALLET_PATTERNS.find(([re]) => re.test(err.message));
+  if (pattern) return pattern[1];
+  return WALLET_CODES[err.code] ?? FALLBACKS.wallet;
+}
+
 export function toUserMessage(err: unknown, context: ErrorContext = "generic"): string {
+  if (err instanceof WalletSigningTimeoutError) return WALLET_TIMED_OUT;
+  if (err instanceof WalletSigningError) return walletSigningMessage(err);
   if (
     err instanceof UserFacingError ||
     err instanceof CloseDidNotConvergeError ||
@@ -176,10 +211,11 @@ export function toUserMessage(err: unknown, context: ErrorContext = "generic"): 
   if (err instanceof TypeError && /fetch|network|load failed/i.test(message)) {
     return "We couldn't reach the service. Please check your connection and try again.";
   }
-  if (context === "execute" || context === "wallet") {
-    if (DECLINED.test(message)) {
-      return context === "wallet" ? DECLINED_CONNECTION : DECLINED_TRANSACTION;
-    }
+  // The connection flow has no typed error to read yet, so its patterns stay. A signing failure is
+  // only ever a WalletSigningError, handled above: in the execute context, a message that merely
+  // reads like a wallet's ("request timed out") is not one.
+  if (context === "wallet") {
+    if (DECLINED.test(message)) return DECLINED_CONNECTION;
     const wallet = WALLET_PATTERNS.find(([pattern]) => pattern.test(message));
     if (wallet) return wallet[1];
   }
@@ -297,7 +333,9 @@ export function closeFailureMessage(
   err: unknown,
   stage: CloseFailureStage,
   plan: readonly PlannedStep[],
-  carriedPreimage = false
+  carriedPreimage = false,
+  /** This device's clock was already past the refused transaction's `maxTime`. */
+  clockPastExpiry = false
 ): string {
   if (isAccountGone(err)) return ACCOUNT_GONE;
   const base = toUserMessage(err, "execute");
@@ -306,13 +344,21 @@ export function closeFailureMessage(
   const retrySafe = allows(journey, "safe-to-retry");
   if (stage === "refused") {
     const refused = `${REFUSED}${retrySafe ? ", so it is safe to retry." : "."}`;
-    return [base, progress, carriedPreimage ? PREIMAGE_EXPOSED : refused].filter(Boolean).join(" ");
+    return [
+      base,
+      progress,
+      carriedPreimage ? PREIMAGE_EXPOSED : refused,
+      clockPastExpiry ? CLOCK_HINT : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
   }
   if (stage === "submitted") {
     const unconfirmed = `${UNCONFIRMED}${retrySafe ? UNCONFIRMED_RETRY : "."}`;
     return [base, progress, unconfirmed].filter(Boolean).join(" ");
   }
-  const scoped = base === DECLINED_TRANSACTION || base === VERIFICATION_FAILED;
+  const scoped =
+    base === DECLINED_TRANSACTION || base === VERIFICATION_FAILED || base === WALLET_TIMED_OUT;
   return [
     base,
     scoped || !allows(journey, "no-new-sent") ? null : "No new transaction was sent.",
