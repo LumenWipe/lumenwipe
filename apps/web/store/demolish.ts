@@ -9,6 +9,7 @@ import type {
   DemolishPhase,
   AssetDisposition,
   ClaimableBalanceSelection,
+  StepStatus,
   StepType,
 } from "@/types/plan";
 import type { CompletedStepRecord } from "@/types/session";
@@ -191,7 +192,6 @@ interface DemolishState {
   ) => void;
   setMediatorRequired: (required: boolean) => void;
   setCurrentStepIndex: (index: number) => void;
-  updateStep: (index: number, patch: Partial<PlannedStep>) => void;
   markStepConfirmed: (index: number, txHash: string) => void;
   /**
    * Marks every not-yet-confirmed step whose type appears in `coveredTypes` as confirmed.
@@ -207,7 +207,20 @@ interface DemolishState {
      *  `affectedAsset` (an asset or token). Omitted when it covers every step of those types. */
     coversTargets?: string[]
   ) => void;
-  markStepFailed: (index: number, error: string) => void;
+  /**
+   * Moves the not-yet-confirmed steps a transaction covers, matched as `markCoveredConfirmed`
+   * matches them, to `status`. A confirmed step is never touched, and neither the phase nor the
+   * error shown for the close changes: those stay with the close loop.
+   */
+  markCoveredStatus: (
+    coveredTypes: readonly StepType[],
+    coversTargets: readonly string[] | undefined,
+    status: InFlightStepStatus,
+    error?: string
+  ) => void;
+  /** Puts every step left signing or failed by an earlier attempt back to pending. A step left
+   *  submitted keeps its status: that transaction may be on the ledger. */
+  resetUnsettledSteps: () => void;
   setLastError: (error: string | null, reference?: string) => void;
   setReloadNotice: (notice: string | null) => void;
   setExecuteInterrupted: (interrupted: boolean) => void;
@@ -322,6 +335,33 @@ const initialState = {
   progressNotSaved: false,
   signingRun: false,
 };
+
+/** A step that is not settled yet, as the close loop moves a transaction through it. */
+export type InFlightStepStatus = Extract<
+  StepStatus,
+  "pending" | "signing" | "submitted" | "failed"
+>;
+
+/**
+ * Which plan steps a transaction is for. A close can hold several steps of one type - three DeFi
+ * exits, two token transfers - and each is its own transaction. Marking by type alone confirmed
+ * all of them off the first one and stamped them all with its hash, so the receipt reported one
+ * exit where three had run. When the API names which step a transaction was for, by
+ * `affectedContract` (an exit) or `affectedAsset` (an asset or token), only that step matches.
+ */
+export function coveredBy(
+  coveredTypes: readonly StepType[],
+  coversTargets: readonly string[] | undefined
+): (step: PlannedStep) => boolean {
+  const covered = new Set<StepType>(coveredTypes);
+  const targets = coversTargets && coversTargets.length > 0 ? new Set(coversTargets) : null;
+  return (step) => {
+    if (!covered.has(step.type)) return false;
+    if (!targets) return true;
+    const identity = step.affectedContract ?? step.affectedAsset;
+    return identity !== undefined && targets.has(identity);
+  };
+}
 
 export const useDemolishStore = create<DemolishState>((set) => ({
   ...initialState,
@@ -491,11 +531,6 @@ export const useDemolishStore = create<DemolishState>((set) => ({
 
   setCurrentStepIndex: (currentStepIndex) => set({ currentStepIndex }),
 
-  updateStep: (index, patch) =>
-    set((state) => ({
-      executionPlan: state.executionPlan.map((s) => (s.index === index ? { ...s, ...patch } : s)),
-    })),
-
   markStepConfirmed: (index, txHash) =>
     set((state) => {
       const executionPlan = state.executionPlan.map((s) =>
@@ -507,18 +542,7 @@ export const useDemolishStore = create<DemolishState>((set) => ({
 
   markCoveredConfirmed: (coveredTypes, txHash, sponsoredFee, coversTargets) =>
     set((state) => {
-      const covered = new Set<StepType>(coveredTypes);
-      // A close can hold several steps of one type - three DeFi exits, two token transfers - and
-      // each is its own transaction. Marking by type alone confirmed all of them off the first
-      // one and stamped them all with its hash, so the receipt reported one exit where three had
-      // run. When the API names which step a transaction was for, only that step is marked.
-      const targets = coversTargets && coversTargets.length > 0 ? new Set(coversTargets) : null;
-      const isFor = (step: PlannedStep): boolean => {
-        if (!covered.has(step.type)) return false;
-        if (!targets) return true;
-        const identity = step.affectedContract ?? step.affectedAsset;
-        return identity !== undefined && targets.has(identity);
-      };
+      const isFor = coveredBy(coveredTypes, coversTargets);
       const executionPlan = state.executionPlan.map((s) =>
         isFor(s) && s.status !== "confirmed"
           ? {
@@ -533,13 +557,25 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       return { executionPlan, phase: "STEP_CONFIRMED" };
     }),
 
-  markStepFailed: (index, error) =>
+  markCoveredStatus: (coveredTypes, coversTargets, status, error) =>
+    set((state) => {
+      const isFor = coveredBy(coveredTypes, coversTargets);
+      return {
+        executionPlan: state.executionPlan.map((s) =>
+          isFor(s) && s.status !== "confirmed" && s.status !== "skipped"
+            ? { ...s, status, error: status === "failed" ? (error ?? null) : null }
+            : s
+        ),
+      };
+    }),
+
+  resetUnsettledSteps: () =>
     set((state) => ({
       executionPlan: state.executionPlan.map((s) =>
-        s.index === index ? { ...s, status: "failed", error } : s
+        s.status === "signing" || s.status === "failed"
+          ? { ...s, status: "pending" as const, error: null }
+          : s
       ),
-      phase: "STEP_FAILED",
-      lastError: error,
     })),
 
   setLastError: (lastError, reference) => set({ lastError, lastErrorReference: reference ?? null }),

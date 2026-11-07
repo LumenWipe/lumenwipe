@@ -24,6 +24,8 @@ import { Callout } from "@/components/ui/callout";
 import { Card } from "@/components/ui/card";
 import { Tabs, type TabItem } from "@/components/ui/tabs";
 import { PROGRESS_NOT_SAVED } from "@/lib/utils/user-error";
+import { activeStepIndex, isStalled, progressLine, STILL_WAITING } from "@/lib/execution/progress";
+import { useElapsedSeconds } from "@/hooks/useElapsedSeconds";
 
 interface ExecutionWizardProps {
   network: Network;
@@ -55,7 +57,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
   const {
     run,
-    progressStatus,
+    progress,
     signatureStatus,
     submitPreAuthTransaction,
     checkUnconfirmed,
@@ -217,7 +219,11 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
   // A run this mount did not start, as after a remount mid-run, still holds the close.
   const inRun = running || signingRun;
-  const busy = inRun || progressStatus !== null;
+  const busy = inRun || progress !== null;
+  const elapsedSeconds = useElapsedSeconds(progress?.since ?? null);
+  const line = progress ? progressLine(progress) : "Working…";
+  const stalled = progress !== null && isStalled(progress, progress.since + elapsedSeconds * 1000);
+  const currentStep = activeStepIndex(executionPlan);
   const halted = inRun ? null : journey.halted;
   const pendingMoreSignatures = halted === "failed" && signatureStatus !== null;
   const failed = halted === "failed" && !changingSigner && !pendingMoreSignatures;
@@ -259,7 +265,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   }, [view]);
 
   const statusMessage = busy
-    ? (progressStatus ?? "Working…")
+    ? stalled
+      ? `${line} ${STILL_WAITING}`
+      : line
     : pendingMoreSignatures && signatureStatus
       ? `More signatures needed. ${signatureStatus.accumulatedWeight} of ${signatureStatus.requiredWeight} signing weight collected.`
       : "";
@@ -342,7 +350,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
       <div className="w-52 shrink-0 hidden md:block">
         <div className="sticky top-20">
           <p className="mkt-eyebrow text-fg-subtle mb-3">Steps</p>
-          <PlanSidebar steps={executionPlan} currentIndex={0} />
+          <PlanSidebar steps={executionPlan} currentIndex={currentStep} running={inRun} />
         </div>
       </div>
 
@@ -392,7 +400,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           <StatusMessage message={statusMessage} />
 
           {busy ? (
-            <ProgressIndicator status={progressStatus ?? "Working…"} />
+            <ProgressIndicator line={line} stalled={stalled} elapsedSeconds={elapsedSeconds} />
           ) : unconfirmed ? (
             <UnconfirmedPanel
               hash={unconfirmedSubmission.hash}
@@ -497,7 +505,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
         {/* Mobile step list */}
         <div className="md:hidden mt-5">
           <p className="mkt-eyebrow text-fg-subtle mb-2">All steps</p>
-          <PlanSidebar steps={executionPlan} currentIndex={0} />
+          <PlanSidebar steps={executionPlan} currentIndex={currentStep} running={inRun} />
         </div>
       </div>
     </div>

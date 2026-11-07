@@ -18,6 +18,7 @@ import {
   CloseStateChangedError,
   CloseTransactionFailedError,
   InsufficientSignatureWeightError,
+  type CloseProgressEvent,
   type PendingRound,
   type UnresolvedSubmission,
 } from "@lumenwipe/sdk";
@@ -80,7 +81,16 @@ import {
   TransferDestinationRefusedError,
   TRANSFER_DESTINATION_REFUSED_NOTICE,
 } from "@/lib/plan/transfer-destination";
-import type { TransactionSigner } from "@/lib/stellar/signer";
+import { HashXPreimageSigner, WalletKitSigner, type TransactionSigner } from "@/lib/stellar/signer";
+import {
+  confirmedTransactions,
+  isConfirmation,
+  positionOf,
+  waitOf,
+  type CloseProgress,
+  type ProgressPosition,
+  type ProgressWait,
+} from "@/lib/execution/progress";
 import type { AccountSigner } from "@/types/account";
 
 /** Required vs. accumulated signing weight for the transaction that stopped a close, plus the
@@ -155,6 +165,13 @@ function recordProgress(
     });
 }
 
+/** What the signer's prompt is, for the progress line. */
+function signingWait(signer: TransactionSigner): ProgressWait {
+  if (signer instanceof WalletKitSigner) return "wallet";
+  if (signer instanceof HashXPreimageSigner) return "preimage";
+  return "key";
+}
+
 export const PLAN_CHANGED_NOTICE =
   "Your account changed while the close was being prepared, so nothing was submitted for that step. The plan below has been refreshed from your account as it is now: review it and confirm again to continue.";
 
@@ -174,12 +191,13 @@ export function useCloseExecution() {
   const memo = useDemolishStore((s) => s.memo);
   const memoType = useDemolishStore((s) => s.memoType);
   const markCoveredConfirmed = useDemolishStore((s) => s.markCoveredConfirmed);
+  const markCoveredStatus = useDemolishStore((s) => s.markCoveredStatus);
   const setPhase = useDemolishStore((s) => s.setPhase);
   const setLastError = useDemolishStore((s) => s.setLastError);
   const discardPlan = useDemolishStore((s) => s.discardPlan);
   const clearPlanHash = useDemolishStore((s) => s.clearPlanHash);
 
-  const [progressStatus, setProgressStatus] = useState<string | null>(null);
+  const [progress, setProgress] = useState<CloseProgress | null>(null);
   const [signatureStatus, setSignatureStatus] = useState<SignatureStatus | null>(null);
   const [retrySafe, setRetrySafe] = useState<boolean | null>(null);
   const [stillUnconfirmed, setStillUnconfirmed] = useState(false);
@@ -195,6 +213,26 @@ export function useCloseExecution() {
   // and survives a pause so a resumed round is judged against the same state.
   const signerStateRef = useRef<SignerState | null>(null);
   const signerStateForRef = useRef<string | null>(null);
+
+  // Moves the progress line to `wait`. The clock behind the elapsed line restarts only when what
+  // is waited on changes, never on a re-render or a repeated report of the same wait.
+  const showProgress = useCallback(
+    (wait: ProgressWait | null, position: ProgressPosition | null = null): void => {
+      setProgress((current) => {
+        if (wait === null) return null;
+        if (
+          current?.wait === wait &&
+          current.position?.n === position?.n &&
+          current.position?.total === position?.total &&
+          current.position?.atLeast === position?.atLeast
+        ) {
+          return current;
+        }
+        return { wait, position, since: Date.now() };
+      });
+    },
+    []
+  );
 
   const run = useCallback(
     async (signer: TransactionSigner): Promise<void> => {
@@ -270,11 +308,47 @@ export function useCloseExecution() {
       // Set with the check above, before any await, so a leave during the reads below clears it.
       useDemolishStore.getState().setSigningRun(true);
       setPhase("STEP_EXECUTING");
+      // A retry starts with a clean list. A step left submitted keeps it: it may be on the ledger.
+      useDemolishStore.getState().resetUnsettledSteps();
       setSignatureStatus(null);
       setRetrySafe(true);
       setStillUnconfirmed(false);
       carriedPreimageRef.current = false;
       const flight = { stage: "before-submit" as CloseFailureStage };
+      // The transaction the loop is on, for the steps it marks. Display only: nothing that is
+      // verified, signed or sent is read from here.
+      let inFlight: CloseTransaction | null = null;
+      // Numbering for the progress line, counted across retries and resumes (see positionOf).
+      let confirmedBefore: number | null = null;
+      let confirmedInRun = 0;
+      let position: ProgressPosition | null = null;
+      const signerWait = signingWait(signer);
+      // A submission left over from an earlier attempt is settled by runClose before anything
+      // else. Confirmed, it reaches onResolved; failed, it is thrown; expired, it says nothing, so
+      // the first event of the run is where it is known to have expired.
+      // Read just before runClose, once the saved record below has been put in the store.
+      let leftOver: UnresolvedSubmission | null = null;
+      let leftOverOpen = false;
+      const onProgressEvent = (event: CloseProgressEvent): void => {
+        if (!ownsStore(owner)) return;
+        const expired = leftOverOpen ? leftOver : null;
+        if (expired) {
+          leftOverOpen = false;
+          // Expired without landing: those steps are waiting again, not sent.
+          markCoveredStatus(expired.covers, expired.coversTargets, "pending");
+        }
+        const wait = waitOf(event, signerWait);
+        if (!("txIndex" in event)) {
+          position = null;
+          showProgress(wait);
+          return;
+        }
+        confirmedBefore ??= confirmedTransactions(useDemolishStore.getState().executionPlan);
+        if (isConfirmation(event)) confirmedInRun += 1;
+        position = positionOf(event, confirmedBefore, confirmedInRun);
+        // A null wait (submitting) is said by prepare and submit below.
+        if (wait !== null) showProgress(wait, position);
+      };
       const owner = closeOwner(network, sourceAddress);
       // The memo and type the request asks for are the ones every transaction is verified against.
       const sentMemo = confirmedMemo(destinationAddress, memo, memoType);
@@ -288,6 +362,8 @@ export function useCloseExecution() {
         const recordId = await ensureCloseSession(owner).catch(() => {
           throw new UserFacingError(HASH_NOT_KEPT);
         });
+        leftOver = useDemolishStore.getState().unconfirmedSubmission;
+        leftOverOpen = leftOver !== null;
         const { mergeConfirmed } = await runClose(
           {
             planHash: useDemolishStore.getState().planHash ?? undefined,
@@ -320,8 +396,9 @@ export function useCloseExecution() {
                 parseRoundSignerState(batch.sourceAccount) ?? signerStateRef.current;
               return batch;
             },
-            verify: (tx: CloseTransaction) =>
-              verifyCloseTransaction({
+            verify: (tx: CloseTransaction) => {
+              inFlight = tx;
+              return verifyCloseTransaction({
                 unsignedXdr: tx.xdr,
                 network,
                 expected: {
@@ -360,7 +437,8 @@ export function useCloseExecution() {
                   ),
                   ...exitExpectations(accountState, network),
                 },
-              }),
+              });
+            },
             // The network needs at least one matching signature even where a threshold is 0.
             requiredWeight: (tx: CloseTransaction) =>
               Math.max(
@@ -372,7 +450,7 @@ export function useCloseExecution() {
               ),
             sign: async (tx: CloseTransaction, xdr: string) => {
               assertStillOwns(owner);
-              setProgressStatus("Signing transaction…");
+              inFlight = tx;
               // Computed from the exact XDR verify() approved, before any signer touches it -
               // the anchor for both checks below. The hash covers only the transaction body
               // (source, ops, sequence, memo, fee), never signatures, so it stays valid
@@ -396,6 +474,7 @@ export function useCloseExecution() {
                 return { xdr, weight: preSignWeight };
               }
               assertPreimageRemovesItsSigner(xdr, passphrase, sourceAddress, signer.publicKey);
+              markCoveredStatus(tx.covers, tx.coversTargets, "signing");
               const signedXdr = await signer.sign(xdr, passphrase);
 
               // A connected wallet (WalletKitSigner) is a black box outside this app's trust
@@ -438,7 +517,7 @@ export function useCloseExecution() {
               // from the bundled registry, as `verify()` decides it, never from the store: a
               // restored session can carry a stale value, and the store is for display.
               if (mediatorAllowedFor(destinationAddress) && tx.covers.includes("MERGE")) {
-                setProgressStatus("Co-signing the forward payment…");
+                showProgress("relay", position);
                 // Defense-in-depth: the mediator may ONLY add its signature - assert it did not
                 // alter the body, and that it actually added one, before submit.
                 const approvedHash = toHex(TransactionBuilder.fromXdr(xdr, passphrase).hash());
@@ -464,7 +543,7 @@ export function useCloseExecution() {
               // co-sign above, when both apply) - wrapping never touches the inner transaction,
               // but the inner transaction has to be complete before there is anything to wrap.
               if (tx.needsSponsoredFee) {
-                setProgressStatus("Requesting a sponsored fee…");
+                showProgress("sponsor", position);
                 const approved = TransactionBuilder.fromXdr(finalXdr, passphrase);
                 const approvedHash = toHex(approved.hash());
                 const approvedSignatureCount = approved.signatures.length;
@@ -504,10 +583,11 @@ export function useCloseExecution() {
               }
               return finalXdr;
             },
-            submit: async (_tx: CloseTransaction, xdr: string) => {
+            submit: async (tx: CloseTransaction, xdr: string) => {
               assertStillOwns(owner);
-              setProgressStatus("Submitting to Stellar network…");
+              showProgress("network", position);
               flight.stage = "submitted";
+              markCoveredStatus(tx.covers, tx.coversTargets, "submitted");
               const { txHash } = await submitViaApi(xdr, network);
               return txHash;
             },
@@ -517,8 +597,9 @@ export function useCloseExecution() {
               validUntil: (xdr) => submissionValidUntil(xdr, passphrase),
               lookup: (hash) => lookupViaApi(hash, network),
               onSubmission: (submission) => recordSubmission(owner, submission),
-              unresolved: useDemolishStore.getState().unconfirmedSubmission ?? undefined,
+              unresolved: leftOver ?? undefined,
               onResolved: (submission) => {
+                leftOverOpen = false;
                 if (ownsStore(owner)) {
                   clearPlanHash();
                   markCoveredConfirmed(
@@ -536,6 +617,10 @@ export function useCloseExecution() {
                 carriedPreimageRef.current = false;
                 clearPlanHash();
                 markCoveredConfirmed(tx.covers, hash, tx.needsSponsoredFee, tx.coversTargets);
+                // A step the API named but the confirmed envelope did not carry out (a merge
+                // the client did not parse) is not confirmed, and no longer in flight.
+                if (inFlight) markCoveredStatus(inFlight.covers, inFlight.coversTargets, "pending");
+                inFlight = null;
                 signerStateRef.current = applyConfirmedTransaction(
                   roundSignerState(),
                   tx.xdr,
@@ -550,7 +635,7 @@ export function useCloseExecution() {
               }
               recordProgress(owner, recordId, tx.covers, hash);
             },
-            onProgress: setProgressStatus,
+            onProgressEvent,
           },
           pendingRoundRef.current ?? undefined
         );
@@ -567,7 +652,15 @@ export function useCloseExecution() {
       } catch (err) {
         // The store holds another account now: nothing of this run belongs on its screen.
         if (!ownsStore(owner)) return;
+        // The transaction that stopped the run. A failure found by hash names its own, which may
+        // be a left-over from an earlier attempt that this run never verified.
+        const stopped: Pick<CloseTransaction, "covers" | "coversTargets"> | null =
+          err instanceof CloseTransactionFailedError
+            ? err.submission
+            : (inFlight as CloseTransaction | null);
         if (err instanceof InsufficientSignatureWeightError) {
+          // Paused for another signer, not failed: the panel below the steps says what is needed.
+          markCoveredStatus(err.pending.tx.covers, err.pending.tx.coversTargets, "pending");
           pendingRoundRef.current = err.pending;
           setSignatureStatus({
             requiredWeight: err.pending.requiredWeight,
@@ -623,14 +716,22 @@ export function useCloseExecution() {
             ? "refused"
             : flight.stage;
         const carried = carriedPreimageRef.current;
-        setRetrySafe(closeRetryIsSafe(err, failedAt, carried));
-        setLastError(
-          closeFailureMessage(err, failedAt, useDemolishStore.getState().executionPlan, carried),
-          requestIdOf(err)
+        const message = closeFailureMessage(
+          err,
+          failedAt,
+          useDemolishStore.getState().executionPlan,
+          carried
         );
+        // Sent and not refused, the transaction may still land: its steps stay submitted, never
+        // failed. Every other stage is a transaction that did not, or will not, take effect.
+        if (stopped && failedAt !== "submitted") {
+          markCoveredStatus(stopped.covers, stopped.coversTargets, "failed", message);
+        }
+        setRetrySafe(closeRetryIsSafe(err, failedAt, carried));
+        setLastError(message, requestIdOf(err));
         setPhase("STEP_FAILED");
       } finally {
-        setProgressStatus(null);
+        showProgress(null);
         if (ownsStore(owner)) useDemolishStore.getState().setSigningRun(false);
       }
     },
@@ -641,6 +742,8 @@ export function useCloseExecution() {
       memo,
       memoType,
       markCoveredConfirmed,
+      markCoveredStatus,
+      showProgress,
       setPhase,
       setLastError,
       discardPlan,
@@ -658,10 +761,10 @@ export function useCloseExecution() {
     } = useDemolishStore.getState();
     if (!submission || !source) return;
     const owner = closeOwner(network, source);
-    setProgressStatus("Checking the network…");
+    showProgress("checking");
     setStillUnconfirmed(false);
     const settled = await resolveSubmission(submission, (hash) => lookupViaApi(hash, network));
-    setProgressStatus(null);
+    showProgress(null);
     if (settled.outcome === "unknown") {
       setStillUnconfirmed(ownsStore(owner));
       return;
@@ -669,12 +772,14 @@ export function useCloseExecution() {
     await recordSubmission(owner, null);
     if (!ownsStore(owner)) return;
     if (settled.outcome === "expired") {
+      markCoveredStatus(submission.covers, submission.coversTargets, "pending");
       setPhase("STEP_EXECUTING");
       return;
     }
     if (settled.outcome === "failed") {
       const carried = carriedPreimageRef.current;
       const failure = new CloseTransactionFailedError(submission, settled.message);
+      markCoveredStatus(submission.covers, submission.coversTargets, "failed");
       setRetrySafe(closeRetryIsSafe(failure, "refused", carried));
       setLastError(
         closeFailureMessage(failure, "refused", useDemolishStore.getState().executionPlan, carried)
@@ -696,7 +801,15 @@ export function useCloseExecution() {
     } else {
       setPhase("STEP_EXECUTING");
     }
-  }, [network, markCoveredConfirmed, setPhase, setLastError, clearPlanHash]);
+  }, [
+    network,
+    markCoveredConfirmed,
+    markCoveredStatus,
+    showProgress,
+    setPhase,
+    setLastError,
+    clearPlanHash,
+  ]);
 
   // Satisfies a pre-auth-tx signer: unlike every other signing path, the transaction here was
   // never built by the API - it's the user's own, already-fully-authorized transaction, whose
@@ -798,7 +911,7 @@ export function useCloseExecution() {
 
   return {
     run,
-    progressStatus,
+    progress,
     signatureStatus,
     submitPreAuthTransaction,
     checkUnconfirmed,

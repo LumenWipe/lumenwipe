@@ -325,7 +325,7 @@ test.describe("execute with a wallet", () => {
 
     await wallet.waitForSignRequest(TESTNET_STEP_TIMEOUT);
     await expect(
-      page.locator('[role="status"]').filter({ hasText: /Signing transaction/ })
+      page.locator('[role="status"]').filter({ hasText: /approve in your wallet/ })
     ).toBeVisible();
     await expect(page.getByRole("button", { name: /Sign & execute close/i })).toHaveCount(0);
   });

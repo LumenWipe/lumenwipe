@@ -148,7 +148,7 @@ function stubExecution(): void {
     () =>
       ({
         run: async () => {},
-        progressStatus: null,
+        progress: null,
         signatureStatus: null,
         submitPreAuthTransaction: async () => {},
         checkUnconfirmed: async () => {},
