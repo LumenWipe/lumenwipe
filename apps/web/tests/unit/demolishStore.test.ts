@@ -300,14 +300,45 @@ describe("step lifecycle", () => {
     expect(plan[2].status).toBe("pending");
   });
 
-  test("markStepFailed sets status=failed, records error, and sets phase=STEP_FAILED", () => {
-    useDemolishStore.getState().setPlan([step(0)]);
-    useDemolishStore.getState().markStepFailed(0, "tx_bad_auth");
-    const s = useDemolishStore.getState();
-    expect(s.executionPlan[0].status).toBe("failed");
-    expect(s.executionPlan[0].error).toBe("tx_bad_auth");
-    expect(s.phase).toBe("STEP_FAILED");
-    expect(s.lastError).toBe("tx_bad_auth");
+  test("markCoveredStatus moves only the covered steps, and never a confirmed one", () => {
+    const exit = (index: number, contract: string): PlannedStep => ({
+      ...step(index),
+      type: "EXIT_POSITIONS",
+      affectedContract: contract,
+    });
+    useDemolishStore.getState().setPlan([exit(0, "CA"), exit(1, "CB"), step(2)]);
+    useDemolishStore.getState().setPhase("STEP_EXECUTING");
+    useDemolishStore.getState().markCoveredStatus(["EXIT_POSITIONS"], ["CB"], "signing");
+    let s = useDemolishStore.getState();
+    expect(s.executionPlan.map((p) => p.status)).toEqual(["pending", "signing", "pending"]);
+    expect(s.phase).toBe("STEP_EXECUTING");
+
+    useDemolishStore.getState().markStepConfirmed(2, "tx2");
+    useDemolishStore.getState().setPhase("STEP_EXECUTING");
+    useDemolishStore
+      .getState()
+      .markCoveredStatus(["EXIT_POSITIONS", "MERGE"], undefined, "failed", "boom");
+    s = useDemolishStore.getState();
+    expect(s.executionPlan.map((p) => p.status)).toEqual(["failed", "failed", "confirmed"]);
+    expect(s.executionPlan[0].error).toBe("boom");
+    expect(s.executionPlan[2].txHash).toBe("tx2");
+    expect(s.phase).toBe("STEP_EXECUTING");
+    expect(s.lastError).toBeNull();
+  });
+
+  test("resetUnsettledSteps puts signing and failed steps back to pending, and keeps submitted", () => {
+    useDemolishStore.getState().setPlan([step(0), step(1), step(2), step(3)]);
+    useDemolishStore.setState((st) => ({
+      executionPlan: st.executionPlan.map((p, i) => ({
+        ...p,
+        status: (["signing", "failed", "submitted", "confirmed"] as const)[i],
+        error: i === 1 ? "x" : null,
+      })),
+    }));
+    useDemolishStore.getState().resetUnsettledSteps();
+    const plan = useDemolishStore.getState().executionPlan;
+    expect(plan.map((p) => p.status)).toEqual(["pending", "pending", "submitted", "confirmed"]);
+    expect(plan[1].error).toBeNull();
   });
 });
 

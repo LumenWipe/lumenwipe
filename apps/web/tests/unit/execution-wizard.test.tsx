@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { hash, Keypair, StrKey } from "@stellar/stellar-sdk";
-import ExecutionWizard from "@/components/execution/ExecutionWizard";
+import ExecutionWizard, { STALE_PROMPT_HOLD_MS } from "@/components/execution/ExecutionWizard";
 import { useDemolishStore } from "@/store/demolish";
 import { InvalidPreAuthTxError } from "@/lib/stellar/pre-auth-tx";
 import * as navigation from "next/navigation";
@@ -9,7 +9,16 @@ import * as closeExecution from "@/hooks/useCloseExecution";
 import * as walletKit from "@/hooks/useWalletKitConnection";
 import * as sessionStore from "@/lib/session/store";
 import { fromHex } from "@/lib/stellar/hex";
-import { PROGRESS_NOT_SAVED, UNCONFIRMED_NOTICE } from "@/lib/utils/user-error";
+import {
+  closeFailureMessage,
+  PROGRESS_NOT_SAVED,
+  UNCONFIRMED_NOTICE,
+} from "@/lib/utils/user-error";
+import { WalletKitSigner, WalletSigningTimeoutError } from "@/lib/stellar/signer";
+import * as walletKitClient from "@/lib/wallet-kit/client";
+import type { CloseProgress } from "@/lib/execution/progress";
+
+const WAITING_LINE = "Transaction 1 of 1: approve in your wallet";
 
 // ExecutionWizard calls useRouter() (to navigate to /complete on success) - outside of a
 // real Next.js app router tree that throws "invariant expected app router to be mounted".
@@ -39,7 +48,7 @@ function stubCloseExecution(): void {
     () =>
       ({
         run: (signer: { publicKey: string }) => runImpl(signer),
-        progressStatus: currentProgressStatus,
+        progress: currentProgress,
         signatureStatus: currentSignatureStatus,
         submitPreAuthTransaction: (
           signer: { key: string; weight: number; type: string },
@@ -55,7 +64,10 @@ function stubCloseExecution(): void {
 let checkImpl: () => Promise<void> = async () => {};
 let currentRetrySafe: boolean | null = true;
 let currentStillUnconfirmed = false;
-let currentProgressStatus: string | null = null;
+let currentProgress: CloseProgress | null = null;
+function progressAt(wait: CloseProgress["wait"]): CloseProgress {
+  return { wait, position: { n: 1, total: 1, atLeast: false }, since: Date.now() };
+}
 let currentSignatureStatus: {
   requiredWeight: number;
   accumulatedWeight: number;
@@ -106,7 +118,7 @@ beforeEach(() => {
   stubWalletKit();
   stubSessionStore();
   currentSignatureStatus = null;
-  currentProgressStatus = null;
+  currentProgress = null;
   currentWalletAddress = null;
   submitPreAuthTxImpl = async () => {};
   mockSaveSession.mockClear();
@@ -489,9 +501,9 @@ test("execution-wizard › the notice does not repeat once signing progress is o
 // Announcements and focus on view swaps (#357).
 function swapView(
   rerender: (ui: React.ReactElement) => void,
-  next: { progress: string | null; phase: string }
+  next: { progress: CloseProgress | null; phase: string }
 ): void {
-  currentProgressStatus = next.progress;
+  currentProgress = next.progress;
   act(() => {
     useDemolishStore.setState({ phase: next.phase } as never);
     rerender(<ExecutionWizard network="testnet" />);
@@ -499,15 +511,17 @@ function swapView(
 }
 
 test("execution-wizard › announces progress through one status region and hides the spinner", () => {
-  currentProgressStatus = "Waiting for your wallet";
+  currentProgress = progressAt("wallet");
   const { container } = render(<ExecutionWizard network="testnet" />);
 
   const statuses = screen.getAllByRole("status");
   expect(statuses).toHaveLength(1);
-  expect(statuses[0].textContent).toBe("Waiting for your wallet");
-  expect(container.querySelector("svg.animate-spin")?.getAttribute("aria-hidden")).toBe("true");
+  expect(statuses[0].textContent).toBe(WAITING_LINE);
+  expect(
+    container.querySelector("svg.motion-safe\\:animate-spin")?.getAttribute("aria-hidden")
+  ).toBe("true");
 
-  const exposed = Array.from(screen.getAllByText("Waiting for your wallet")).filter(
+  const exposed = Array.from(screen.getAllByText(WAITING_LINE)).filter(
     (el) => !el.closest("[aria-hidden='true']")
   );
   expect(exposed).toEqual([statuses[0]]);
@@ -538,7 +552,7 @@ test("execution-wizard › focus moves to the heading when signing starts and to
   const { rerender } = render(<ExecutionWizard network="testnet" />);
   const heading = screen.getByRole("heading", { name: /sign & execute the close/i });
 
-  swapView(rerender, { progress: "Confirming", phase: "STEP_EXECUTING" });
+  swapView(rerender, { progress: progressAt("network"), phase: "STEP_EXECUTING" });
   expect(document.activeElement).toBe(heading);
 
   swapView(rerender, { progress: null, phase: "STEP_FAILED" });
@@ -552,7 +566,7 @@ test("execution-wizard › a failure with no usable signer focuses the alert ins
   useDemolishStore.setState({ lastError: "The close failed." } as never);
   const { rerender } = render(<ExecutionWizard network="testnet" />);
 
-  swapView(rerender, { progress: "Confirming", phase: "STEP_EXECUTING" });
+  swapView(rerender, { progress: progressAt("network"), phase: "STEP_EXECUTING" });
   swapView(rerender, { progress: null, phase: "STEP_FAILED" });
 
   expect(
@@ -567,7 +581,7 @@ test("execution-wizard › a view swap never steals focus from a field being typ
   const { rerender } = render(<ExecutionWizard network="testnet" />);
   act(() => field.focus());
 
-  swapView(rerender, { progress: "Confirming", phase: "STEP_EXECUTING" });
+  swapView(rerender, { progress: progressAt("network"), phase: "STEP_EXECUTING" });
   expect(document.activeElement).toBe(field);
   field.remove();
 });
@@ -592,8 +606,214 @@ test("execution-wizard › the signer picker is a tablist that arrow keys switch
 });
 
 test("execution-wizard › the signer tabs are not rendered while the close is running", () => {
-  currentProgressStatus = "Submitting transaction";
+  currentProgress = progressAt("network");
   render(<ExecutionWizard network="testnet" />);
   expect(screen.queryByRole("tablist")).toBeNull();
   expect(screen.queryByRole("tab")).toBeNull();
+});
+
+function wizardStep(index: number, title: string, status: string, txHash: string | null = null) {
+  return {
+    index,
+    type: "MERGE",
+    title,
+    description: "",
+    operationCount: 1,
+    estimatedFeeLumens: "0.0000100",
+    txXdr: null,
+    status,
+    txHash,
+    error: null,
+  };
+}
+
+test("execution-wizard › the highlighted step is the first unconfirmed one, in both step lists", () => {
+  useDemolishStore.setState({
+    executionPlan: [
+      wizardStep(0, "Remove signers", "confirmed", "a".repeat(64)),
+      wizardStep(1, "Close offers", "failed"),
+      wizardStep(2, "Merge account", "pending"),
+    ],
+  } as never);
+  const { container } = render(<ExecutionWizard network="testnet" />);
+
+  const lists = screen.getAllByRole("list", { name: "Plan steps" });
+  expect(lists).toHaveLength(2);
+  for (const list of lists) {
+    const current = list.querySelectorAll("[aria-current='step']");
+    expect(current).toHaveLength(1);
+    expect(current[0].textContent).toContain("Close offers");
+    expect(current[0].textContent).toContain("Failed");
+    expect(list.textContent).toContain("Confirmed");
+    expect(list.textContent).toContain("Waiting");
+  }
+  expect(container.querySelectorAll("[aria-current='step']")).toHaveLength(2);
+});
+
+test("execution-wizard › a step in flight spins only while the close runs, and reads as sent once it stops", () => {
+  useDemolishStore.setState({
+    executionPlan: [wizardStep(0, "Merge account", "submitted")],
+    signingRun: true,
+  } as never);
+  currentProgress = progressAt("network");
+  const { container, rerender } = render(<ExecutionWizard network="testnet" />);
+  const row = () => container.querySelector("li[aria-current='step']")!;
+  expect(row().textContent).toContain("Confirming");
+  const spinner = row().querySelector("svg.motion-safe\\:animate-spin");
+  expect(spinner?.closest("[aria-hidden='true']")).not.toBeNull();
+
+  currentProgress = null;
+  act(() => {
+    useDemolishStore.setState({ signingRun: false, phase: "STEP_UNCONFIRMED" } as never);
+    rerender(<ExecutionWizard network="testnet" />);
+  });
+  expect(row().textContent).toContain("Sent, not confirmed");
+  expect(row().querySelector("svg.motion-safe\\:animate-spin")).toBeNull();
+});
+
+test("execution-wizard › a wait past 20 seconds says to keep the tab open, once, through the status region", () => {
+  currentProgress = { ...progressAt("wallet"), since: Date.now() - 25_000 };
+  render(<ExecutionWizard network="testnet" />);
+  const status = screen.getByRole("status");
+  expect(status.textContent).toBe(
+    "Transaction 1 of 1: approve in your wallet Still waiting. Do not close this tab."
+  );
+  expect(status.textContent).not.toMatch(/\d:\d\d/);
+});
+
+test("execution-wizard › a failure in a later round leaves the earlier confirmed hash and its explorer link on screen", () => {
+  const hash = `abcdef${"0".repeat(52)}123456`;
+  useDemolishStore.setState({
+    executionPlan: [
+      wizardStep(0, "Remove signers", "confirmed", hash),
+      wizardStep(1, "Merge account", "failed"),
+    ],
+    phase: "STEP_FAILED",
+    lastError: "You declined the request in your wallet.",
+  } as never);
+  render(<ExecutionWizard network="mainnet" />);
+
+  expect(screen.getByRole("button", { name: "Retry" })).toBeDefined();
+  const links = screen.getAllByRole("link", {
+    name: "View transaction abcdef…123456 on Stellar Expert (opens in a new tab)",
+  });
+  // The desktop sidebar and the mobile step list both carry it.
+  expect(links).toHaveLength(2);
+  for (const link of links) {
+    expect(link.getAttribute("href")).toBe(`https://stellar.expert/explorer/public/tx/${hash}`);
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(link.getAttribute("target")).toBe("_blank");
+  }
+  expect(
+    screen.getAllByRole("button", { name: "Copy transaction hash abcdef…123456" })
+  ).toHaveLength(2);
+  // Only the confirmed step has one.
+  expect(screen.getAllByRole("link", { name: /View transaction/ })).toHaveLength(2);
+});
+
+test("execution-wizard › copying a confirmed hash says so on screen", async () => {
+  const hash = `abcdef${"0".repeat(52)}123456`;
+  const writeText = spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+  useDemolishStore.setState({
+    executionPlan: [wizardStep(0, "Remove signers", "confirmed", hash)],
+  } as never);
+  render(<ExecutionWizard network="testnet" />);
+
+  const [copy] = screen.getAllByRole("button", { name: "Copy transaction hash abcdef…123456" });
+  await act(async () => {
+    fireEvent.click(copy);
+  });
+  expect(writeText).toHaveBeenCalledWith(hash);
+  expect(copy.parentElement?.textContent).toContain("Copied");
+});
+
+test("execution-wizard › the destination links to the explorer of the network being closed on", () => {
+  render(<ExecutionWizard network="testnet" />);
+  const destination = useDemolishStore.getState().destinationAddress!;
+  const link = screen.getByRole("link", { name: /View the destination on Stellar Expert/ });
+  expect(link.getAttribute("href")).toBe(
+    `https://stellar.expert/explorer/testnet/account/${destination}`
+  );
+  expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+});
+
+test("execution-wizard › a wallet that timed out offers Retry and changing the signer, and is no longer busy", () => {
+  currentWalletAddress = source;
+  useDemolishStore.setState({
+    phase: "STEP_FAILED",
+    lastError: closeFailureMessage(
+      new WalletSigningTimeoutError("freighter", 120_000),
+      "before-submit",
+      []
+    ),
+  } as never);
+  render(<ExecutionWizard network="testnet" />);
+  expect(screen.getByText(/Your wallet didn't respond in time/)).toBeDefined();
+  expect(screen.getByRole("button", { name: "Retry" })).toBeDefined();
+  expect(screen.getByRole("button", { name: "Change wallet or key" })).toBeDefined();
+  expect(screen.queryByText(/In progress/)).toBeNull();
+});
+
+test("execution-wizard › a WalletConnect prompt shows how long it has waited from the start", () => {
+  currentProgress = { ...progressAt("wallet-app"), since: Date.now() - 5_000 };
+  const { container } = render(<ExecutionWizard network="testnet" />);
+  expect(container.textContent).toContain("Transaction 1 of 1: approve in your wallet app");
+  expect(container.textContent).toContain("0:05");
+  expect(screen.getByRole("status").textContent).not.toContain("0:05");
+});
+
+function timedOutWallet(stale: Promise<void> | null): void {
+  const signer = Object.assign(Object.create(WalletKitSigner.prototype) as WalletKitSigner, {
+    publicKey: source,
+    stalePrompt: () => stale,
+  });
+  spyOn(walletKitClient, "walletKitSigner").mockImplementation(() => signer);
+  currentWalletAddress = source;
+  useDemolishStore.setState({
+    phase: "STEP_FAILED",
+    lastError: closeFailureMessage(
+      new WalletSigningTimeoutError(null, 120_000),
+      "before-submit",
+      []
+    ),
+  } as never);
+}
+
+test("execution-wizard › after a timeout, Retry waits for the earlier wallet prompt to answer", async () => {
+  let answer!: () => void;
+  timedOutWallet(new Promise<void>((resolve) => (answer = resolve)));
+  render(<ExecutionWizard network="testnet" />);
+  const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+  expect(retry.disabled).toBe(true);
+  expect(screen.getByText(/Close the earlier prompt in your wallet/)).toBeDefined();
+  await act(async () => {
+    answer();
+    await Promise.resolve();
+  });
+  expect(retry.disabled).toBe(false);
+});
+
+test("execution-wizard › after a timeout, Retry is offered again after 5 s if the prompt never answers", async () => {
+  const real = globalThis.setTimeout;
+  let hold: (() => void) | null = null;
+  spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void, ms?: number) => {
+    if (ms === STALE_PROMPT_HOLD_MS) {
+      hold = fn;
+      return 0;
+    }
+    return real(fn, ms);
+  }) as unknown as typeof setTimeout);
+  timedOutWallet(new Promise<void>(() => {}));
+  render(<ExecutionWizard network="testnet" />);
+  const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+  expect(retry.disabled).toBe(true);
+  expect(hold).not.toBeNull();
+  act(() => hold!());
+  expect(retry.disabled).toBe(false);
+});
+
+test("execution-wizard › Retry is not held when no wallet prompt is left open", () => {
+  timedOutWallet(null);
+  render(<ExecutionWizard network="testnet" />);
+  expect((screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement).disabled).toBe(false);
 });

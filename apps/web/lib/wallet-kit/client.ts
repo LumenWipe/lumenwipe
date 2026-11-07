@@ -1,6 +1,7 @@
 import { StellarWalletsKit } from "@creit-tech/stellar-wallets-kit/sdk";
 import { Networks } from "@creit-tech/stellar-wallets-kit/types";
 import type { Network } from "@/config/networks";
+import { WalletKitSigner } from "@/lib/stellar/signer";
 import { walletKitModules } from "./modules";
 
 const KIT_NETWORKS: Record<Network, Networks> = {
@@ -29,4 +30,23 @@ export function ensureWalletKitInitialized(network: Network): typeof StellarWall
   }
 
   return StellarWalletsKit;
+}
+
+/** The kit's id of the wallet the user connected, or null when none is selected. */
+function selectedWalletId(kit: typeof StellarWalletsKit): string | null {
+  try {
+    return kit.selectedModule.productId;
+  } catch {
+    return null;
+  }
+}
+
+/** A signer for `address` through the connected wallet, typed by the wallet it signs with. */
+export function walletKitSigner(network: Network, address: string): WalletKitSigner {
+  const kit = ensureWalletKitInitialized(network);
+  return new WalletKitSigner(
+    address,
+    (xdr, opts) => ensureWalletKitInitialized(network).signTransaction(xdr, opts),
+    { walletId: selectedWalletId(kit) }
+  );
 }

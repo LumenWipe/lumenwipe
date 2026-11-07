@@ -10,6 +10,16 @@ export const SE_EXPLORER_BASE: Record<Network, string> = {
   testnet: "https://stellar.expert/explorer/testnet",
 };
 
+/** Where a transaction can be checked on the network's explorer, independently of LumenWipe. */
+export function explorerTxUrl(network: Network, hash: string): string {
+  return `${SE_EXPLORER_BASE[network]}/tx/${encodeURIComponent(hash)}`;
+}
+
+/** Where an account can be checked on the network's explorer. */
+export function explorerAccountUrl(network: Network, address: string): string {
+  return `${SE_EXPLORER_BASE[network]}/account/${encodeURIComponent(address)}`;
+}
+
 export const SV_EXPLORER_BASE: Record<Network, string> = {
   mainnet: "https://stellarview.acachete.xyz/en/mainnet",
   testnet: "https://stellarview.acachete.xyz/en/testnet",

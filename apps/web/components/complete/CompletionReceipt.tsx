@@ -6,6 +6,7 @@ import { AlertTriangle, CheckCircle, ExternalLink, History, Link2 } from "lucide
 import Link from "next/link";
 import type { Network } from "@/config/networks";
 import { SE_EXPLORER_BASE, SV_EXPLORER_BASE } from "@/config/networks";
+import { shortAddr, shortHash } from "@/lib/utils/short-id";
 import type { AssetDisposition } from "@/types/plan";
 import { useDemolishStore } from "@/store/demolish";
 import { cleanupSession } from "@/lib/session/recovery";
@@ -40,14 +41,6 @@ interface SummaryGroup {
   title: string;
   summary: string;
   body: React.ReactNode;
-}
-
-function shortAddr(addr: string): string {
-  return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
-}
-
-function shortHash(hash: string): string {
-  return `${hash.slice(0, 6)}…${hash.slice(-6)}`;
 }
 
 function assetCode(asset: string): string {

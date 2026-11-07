@@ -10,8 +10,8 @@ import { PROTOCOL_LABELS } from "@/lib/plan/describe-position";
 import { formatTokenAmount } from "@/lib/utils/token-amounts";
 import { OUTCOME_HELD, readApiError, toUserMessage, UserFacingError } from "@/lib/utils/user-error";
 import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
-import { ensureWalletKitInitialized } from "@/lib/wallet-kit/client";
-import { SecretKeySigner, WalletKitSigner, type TransactionSigner } from "@/lib/stellar/signer";
+import { walletKitSigner } from "@/lib/wallet-kit/client";
+import { SecretKeySigner, type TransactionSigner } from "@/lib/stellar/signer";
 import { verifyRevokeAllowanceTransaction } from "@/lib/stellar/verify-revoke-allowance";
 import { findUnresolved } from "@/lib/session/recovery";
 import { submitViaApi } from "@/lib/stellar/submit-via-api";
@@ -95,9 +95,7 @@ export default function RevokeAllowanceModal({
         if (!walletConnection.address || !walletMatches) {
           throw new UserFacingError("Connect the wallet that owns this account first.");
         }
-        signer = new WalletKitSigner(walletConnection.address, (xdr, opts) =>
-          ensureWalletKitInitialized(network).signTransaction(xdr, opts)
-        );
+        signer = walletKitSigner(network, walletConnection.address);
       } else {
         signer = new SecretKeySigner(secretKeyRef.current);
         if (signer.publicKey !== owner) {

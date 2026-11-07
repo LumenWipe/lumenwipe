@@ -287,10 +287,15 @@ test.describe("execute with a wallet", () => {
     page,
   }) => {
     test.setTimeout(180_000);
-    await installWalletStub(page, { address: source.publicKey(), sign: { kind: "reject" } });
+    // Read from the wallet's code, -4, not its wording: this text says nothing about declining.
+    const raw = "Request refused by the extension (0x6985)";
+    await installWalletStub(page, {
+      address: source.publicKey(),
+      sign: { kind: "reject", code: -4, message: raw },
+    });
     await toWalletSigning(page, source, destination);
 
-    await expectPlainCopy(page, /declined the request in your wallet/, "The user rejected");
+    await expectPlainCopy(page, /declined the request in your wallet/, raw);
   });
 
   test("a wallet that approves signs the close and it completes", async ({ page }) => {
@@ -313,10 +318,12 @@ test.describe("execute with a wallet", () => {
     expect((await fetch(`${HORIZON}/accounts/${owner.publicKey()}`)).status).toBe(404);
   });
 
-  test("a wallet that never answers leaves the close waiting on the signature", async ({
+  test("a wallet that never answers is given up on with plain copy, and Retry and Change wallet or key", async ({
     page,
   }) => {
     test.setTimeout(180_000);
+    // Real time keeps flowing; fastForward only jumps it past the two-minute signing timeout.
+    await page.clock.install();
     const wallet = await installWalletStub(page, {
       address: source.publicKey(),
       sign: { kind: "never" },
@@ -325,9 +332,20 @@ test.describe("execute with a wallet", () => {
 
     await wallet.waitForSignRequest(TESTNET_STEP_TIMEOUT);
     await expect(
-      page.locator('[role="status"]').filter({ hasText: /Signing transaction/ })
-    ).toBeVisible();
+      page.locator('[role="status"]').filter({ hasText: /approve in your wallet/ })
+    ).toHaveCount(1);
     await expect(page.getByRole("button", { name: /Sign & execute close/i })).toHaveCount(0);
+
+    await page.clock.fastForward("02:01");
+    await expectPlainCopy(page, /Your wallet didn't respond in time/, "SUBMIT_TRANSACTION");
+    await expect(page.getByText(/this transaction was not signed or sent/)).toBeVisible();
+    await expect(page.getByText(/Close the earlier prompt in your wallet/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Change wallet or key" })).toBeVisible();
+    // The stub never answers the first prompt, so Retry is held for its 5 s, then offered.
+    const retry = page.getByRole("button", { name: "Retry" });
+    await expect(retry).toBeDisabled();
+    await expect(retry).toBeEnabled({ timeout: 15_000 });
+    expect(wallet.signRequests).toHaveLength(1);
   });
 });
 

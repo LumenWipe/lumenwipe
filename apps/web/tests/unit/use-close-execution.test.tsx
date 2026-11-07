@@ -20,6 +20,7 @@ import {
   SUBMIT_RESEND_DELAY_MS,
 } from "@lumenwipe/sdk";
 import { PLAN_CHANGED_NOTICE, useCloseExecution } from "@/hooks/useCloseExecution";
+import { progressLine } from "@/lib/execution/progress";
 import { LeaveGuardProvider } from "@/components/layout/LeaveGuard";
 import NavBar from "@/components/layout/NavBar";
 import { useDemolishStore } from "@/store/demolish";
@@ -41,9 +42,15 @@ import {
 import { deriveJourneyState } from "@/lib/journey/journey-state";
 import * as recovery from "@/lib/session/recovery";
 import * as sessionStore from "@/lib/session/store";
-import type { TransactionSigner } from "@/lib/stellar/signer";
+import {
+  WALLET_CONNECT_WALLET_ID,
+  WalletKitSigner,
+  WalletSigningError,
+  type TransactionSigner,
+} from "@/lib/stellar/signer";
 import { fromHex, toHex } from "@/lib/stellar/hex";
 import { TRANSFER_DESTINATION_REFUSED_NOTICE } from "@/lib/plan/transfer-destination";
+import { CLOCK_HINT, WALLET_TIMED_OUT } from "@/lib/utils/user-error";
 import ReviewView from "@/components/review/ReviewView";
 import * as closeRecord from "@/lib/session/close-record";
 import { freshAccount, freshPlan, stubUnchangedRefresh } from "./fixtures/fresh-plan";
@@ -91,6 +98,9 @@ beforeEach(() => {
 afterEach(() => {
   mock.restore();
 });
+
+/** A wallet's decline, as WalletKitSigner throws it. */
+const USER_DECLINED = new WalletSigningError(-4, "freighter", "User declined access");
 
 function coSigner(publicKey: string): TransactionSigner {
   return { publicKey, sign: async (xdr) => xdr };
@@ -847,9 +857,8 @@ test("useCloseExecution › a sponsor response that isn't a fee-bump transaction
   expect(submitCalls).toBe(0);
 });
 
-test("useCloseExecution › a wallet rejection surfaces as plain language, never the raw wallet text", async () => {
+function singleSigSetup(): string {
   const source = Keypair.random().publicKey();
-
   useNetworkStore.setState({ network: "testnet" });
   useDemolishStore.setState({
     sourceAddress: source,
@@ -862,18 +871,43 @@ test("useCloseExecution › a wallet rejection surfaces as plain language, never
       thresholds: { low: 1, med: 1, high: 1 },
     } as never,
   } as never);
-  stubFetchCloseTransactions(async () => {
-    throw new Error("User declined access");
-  });
+  return source;
+}
+
+test("useCloseExecution › a wallet rejection surfaces as plain language, never the raw wallet text", async () => {
+  const { sourceKeypair } = mergeSetup();
+  const source = sourceKeypair.publicKey();
+  const declining: TransactionSigner = {
+    publicKey: source,
+    sign: async () => {
+      throw USER_DECLINED;
+    },
+  };
 
   const { result } = renderHook(() => useCloseExecution());
   await act(async () => {
-    await result.current.run(coSigner(source));
+    await result.current.run(declining);
   });
 
   const { lastError } = useDemolishStore.getState();
   expect(lastError).toMatch(/declined the request in your wallet/);
   expect(lastError).not.toMatch(/User declined access/);
+});
+
+test("useCloseExecution › a failure outside the wallet that reads like one is not reported as the wallet's", async () => {
+  const source = singleSigSetup();
+  for (const raw of ["User declined access", "request timed out"]) {
+    stubFetchCloseTransactions(async () => {
+      throw new Error(raw);
+    });
+    const { result } = renderHook(() => useCloseExecution());
+    await act(async () => {
+      await result.current.run(coSigner(source));
+    });
+    const { lastError } = useDemolishStore.getState();
+    expect(lastError).not.toMatch(/wallet/i);
+    expect(lastError).not.toContain(raw);
+  }
 });
 
 test("useCloseExecution › an API failure keeps its request id beside the unchanged user message", async () => {
@@ -1361,7 +1395,7 @@ function decliningAfter(keypair: Keypair, approvals: number): TransactionSigner 
   return {
     publicKey: signer.publicKey,
     sign: async (xdr, networkPassphrase) => {
-      if (signed++ >= approvals) throw new Error("User declined access");
+      if (signed++ >= approvals) throw USER_DECLINED;
       return signer.sign(xdr, networkPassphrase);
     },
   };
@@ -1462,6 +1496,8 @@ test("useCloseExecution › an unknown outcome ends unconfirmed with the client'
   expect(state.unconfirmedSubmission?.hash).toBe(submissionHash(sent[0]!, Networks.TESTNET));
   expect(sent).toHaveLength(1 + SUBMIT_RESEND_ATTEMPTS);
   expect(new Set(sent).size).toBe(1);
+  // It may still land, so its step reads as sent, never as failed.
+  expect(state.executionPlan.map((s) => s.status)).toEqual(["confirmed", "submitted", "pending"]);
 });
 
 test("useCloseExecution › a failed lookup or a 503 while reconciling stays unconfirmed", async () => {
@@ -2955,4 +2991,313 @@ describe("useCloseExecution › a transfer destination the registry lists", () =
     expect(fetches).toBe(1);
     expect(useDemolishStore.getState().planChangedNotice).toBe(TRANSFER_DESTINATION_REFUSED_NOTICE);
   });
+});
+
+/** Every status each step held during a run, in order, without repeats. */
+function recordStatuses(): () => Record<string, string[]> {
+  const seen: Record<string, string[]> = {};
+  const note = (): void => {
+    for (const step of useDemolishStore.getState().executionPlan) {
+      const list = (seen[step.type] ??= []);
+      if (list[list.length - 1] !== step.status) list.push(step.status);
+    }
+  };
+  note();
+  const unsubscribe = useDemolishStore.subscribe(note);
+  return () => {
+    unsubscribe();
+    return seen;
+  };
+}
+
+/** Holds a stand-in at `hold()` until the test calls `open()`; `reached` says it got there. */
+function gateAt(): { hold: () => Promise<void>; reached: Promise<void>; open: () => void } {
+  let reach!: () => void;
+  let open!: () => void;
+  const reached = new Promise<void>((resolve) => (reach = resolve));
+  const opened = new Promise<void>((resolve) => (open = resolve));
+  return {
+    hold: () => {
+      reach();
+      return opened;
+    },
+    reached,
+    open: () => open(),
+  };
+}
+
+test("useCloseExecution › each step moves through signing, submitted and confirmed, and a later failure marks only its own steps", async () => {
+  const { sourceKeypair } = twoRoundSetup([
+    planStep(0, "NORMALIZE_SIGNERS", "pending"),
+    planStep(1, "MERGE", "pending"),
+  ]);
+  const signGates = [gateAt(), gateAt()];
+  const submitGate = gateAt();
+  stubSubmitViaApi(async () => {
+    await submitGate.hold();
+    return {};
+  });
+  const real = realSigner(sourceKeypair);
+  let calls = 0;
+  const signer: TransactionSigner = {
+    publicKey: real.publicKey,
+    sign: async (xdr, passphrase) => {
+      const at = calls++;
+      await signGates[at].hold();
+      if (at === 1) throw USER_DECLINED;
+      return real.sign(xdr, passphrase);
+    },
+  };
+  const statuses = recordStatuses();
+  const { result } = renderHook(() => useCloseExecution());
+  const line = (): string | null =>
+    result.current.progress ? progressLine(result.current.progress) : null;
+
+  let running!: Promise<void>;
+  await act(async () => {
+    running = result.current.run(signer);
+    await signGates[0].reached;
+  });
+  // Round one asked for another round, so its count is a floor.
+  expect(line()).toBe("Transaction 1 of at least 1: signing with your key");
+  expect(useDemolishStore.getState().executionPlan[0].status).toBe("signing");
+
+  await act(async () => {
+    signGates[0].open();
+    await submitGate.reached;
+  });
+  expect(line()).toBe(
+    "Transaction 1 of at least 1: confirming on Stellar (usually under 10 seconds)"
+  );
+  expect(useDemolishStore.getState().executionPlan[0].status).toBe("submitted");
+
+  await act(async () => {
+    submitGate.open();
+    await signGates[1].reached;
+  });
+  expect(line()).toBe("Transaction 2 of 2: signing with your key");
+
+  await act(async () => {
+    signGates[1].open();
+    await running;
+  });
+
+  expect(statuses()).toEqual({
+    NORMALIZE_SIGNERS: ["pending", "signing", "submitted", "confirmed"],
+    MERGE: ["pending", "signing", "failed"],
+  });
+  const plan = useDemolishStore.getState().executionPlan;
+  expect(plan[0].txHash).not.toBeNull();
+  expect(plan[1].error).toBe(useDemolishStore.getState().lastError);
+  expect(result.current.progress).toBeNull();
+});
+
+test("useCloseExecution › a retry numbers its transactions after the ones already confirmed, and clears the failed step", async () => {
+  const { sourceKeypair } = twoRoundSetup([
+    planStep(0, "NORMALIZE_SIGNERS", "confirmed"),
+    { ...(planStep(1, "MERGE", "failed") as object), error: "declined" },
+  ]);
+  stubSubmitViaApi(async () => ({}));
+  const signGate = gateAt();
+  const real = realSigner(sourceKeypair);
+  const signer: TransactionSigner = {
+    publicKey: real.publicKey,
+    sign: async (xdr, passphrase) => {
+      await signGate.hold();
+      return real.sign(xdr, passphrase);
+    },
+  };
+  const statuses = recordStatuses();
+  const { result } = renderHook(() => useCloseExecution());
+  let running!: Promise<void>;
+  await act(async () => {
+    running = result.current.run(signer);
+    await signGate.reached;
+  });
+  // planStep gives the confirmed step hash0: one transaction of this close came before.
+  expect(progressLine(result.current.progress!)).toBe("Transaction 2 of 2: signing with your key");
+  await act(async () => {
+    signGate.open();
+    await running;
+  });
+  expect(statuses().MERGE).toEqual(["failed", "pending", "signing", "submitted", "confirmed"]);
+});
+
+test("useCloseExecution › a round paused for another signer puts its steps back to waiting, not failed", async () => {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    executionPlan: [planStep(0, "MERGE", "pending")],
+    accountState: {
+      signers: [
+        { key: source, weight: 1, type: "ed25519_public_key" },
+        { key: Keypair.random().publicKey(), weight: 1, type: "ed25519_public_key" },
+      ],
+      thresholds: { low: 1, med: 2, high: 2 },
+    } as never,
+  } as never);
+  const mergeXdr = unsignedMergeXdr(sourceKeypair, destination);
+  stubFetchCloseTransactions(async () => ({
+    planHash: "h",
+    status: "ready",
+    transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+    remaining: { steps: 0, requiresAnotherCall: false },
+  }));
+  const statuses = recordStatuses();
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+
+  expect(result.current.signatureStatus).not.toBeNull();
+  expect(statuses().MERGE).toEqual(["pending", "signing", "pending"]);
+});
+
+/** A left-over submission of the first round, still marked sent in the step list. */
+function leftOverSetup(): { sourceKeypair: Keypair } {
+  const setup = twoRoundSetup([
+    planStep(0, "NORMALIZE_SIGNERS", "submitted"),
+    planStep(1, "MERGE", "pending"),
+  ]);
+  spyOn(recovery, "findUnresolved").mockResolvedValue(null);
+  useDemolishStore.setState({
+    unconfirmedSubmission: {
+      hash: "e".repeat(64),
+      covers: ["NORMALIZE_SIGNERS"],
+      validUntil: 1_000,
+    },
+  } as never);
+  return setup;
+}
+
+test("useCloseExecution › a left-over found failed at the start marks its steps failed, not sent", async () => {
+  const { sourceKeypair } = leftOverSetup();
+  stubLookup(async (hash) => ({ status: "failed", hash, message: "tx_bad_seq" }));
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  const state = useDemolishStore.getState();
+  expect(state.phase).toBe("STEP_FAILED");
+  expect(state.executionPlan.map((s) => s.status)).toEqual(["failed", "pending"]);
+});
+
+test("useCloseExecution › a left-over found expired puts its steps back to waiting before the run goes on", async () => {
+  const { sourceKeypair } = leftOverSetup();
+  stubLookup(async (hash) => ({ status: "not_found", hash, searched: SEARCHED }));
+  stubFetchCloseTransactions(async () => {
+    throw new ApiRequestError(503, "");
+  });
+  const statuses = recordStatuses();
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  // Expired, the run fetched a fresh round; that fetch failing leaves the step waiting.
+  expect(statuses().NORMALIZE_SIGNERS).toEqual(["submitted", "pending"]);
+  expect(useDemolishStore.getState().unconfirmedSubmission).toBeNull();
+});
+
+test("useCloseExecution › a wallet that never answers ends in the timeout copy, clears the busy state and sends nothing", async () => {
+  const { sourceKeypair } = mergeSetup();
+  let submits = 0;
+  stubSubmitViaApi(async () => {
+    submits += 1;
+    return {};
+  });
+  let expire = (): void => {};
+  let late = (_: { signedTxXdr: string }): void => {};
+  const started: number[] = [];
+  const signer = new WalletKitSigner(
+    sourceKeypair.publicKey(),
+    () => new Promise((resolve) => (late = resolve)),
+    {
+      walletId: WALLET_CONNECT_WALLET_ID,
+      startTimeout: (ms) => {
+        started.push(ms);
+        return { expired: new Promise<void>((resolve) => (expire = resolve)), cancel: () => {} };
+      },
+    }
+  );
+
+  const { result } = renderHook(() => useCloseExecution());
+  let running!: Promise<void>;
+  await act(async () => {
+    running = result.current.run(signer);
+    while (started.length === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(progressLine(result.current.progress!)).toBe(
+    "Transaction 1 of 1: approve in your wallet app"
+  );
+
+  await act(async () => {
+    expire();
+    await running;
+  });
+  const state = useDemolishStore.getState();
+  expect(state.phase).toBe("STEP_FAILED");
+  expect(state.lastError?.startsWith(WALLET_TIMED_OUT)).toBe(true);
+  expect(state.lastError).not.toMatch(/No new transaction was sent/);
+  expect(state.signingRun).toBe(false);
+  expect(result.current.progress).toBeNull();
+  expect(result.current.retrySafe).toBe(true);
+  expect(state.executionPlan[0].status).toBe("failed");
+
+  // The wallet answering now changes nothing: no send, no state.
+  await act(async () => {
+    late({ signedTxXdr: "late" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(submits).toBe(0);
+  expect(useDemolishStore.getState().lastError).toBe(state.lastError);
+});
+
+/** The API's answer for a transaction the network refused as tx_too_late. */
+const TOO_LATE = new ApiRequestError(
+  422,
+  "Transaction expired before it was confirmed. Please retry.",
+  undefined,
+  "submit_rejected"
+);
+
+test("useCloseExecution › a tx_too_late refusal reads as a refusal, and adds the clock hint when this device called it expired", async () => {
+  const { sourceKeypair } = mergeSetup();
+  stubSubmitViaApi(async () => {
+    throw TOO_LATE;
+  });
+  // Ten minutes fast: past the 300 s the merge was built for.
+  const realNow = Date.now;
+  spyOn(Date, "now").mockImplementation(() => realNow() + 600_000);
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  const state = useDemolishStore.getState();
+  expect(state.phase).toBe("STEP_FAILED");
+  expect(state.unconfirmedSubmission).toBeNull();
+  expect(state.lastError).toMatch(/^Transaction expired before it was confirmed/);
+  expect(state.lastError).toMatch(/Its operations did not take effect, so it is safe to retry/);
+  expect(state.lastError?.endsWith(CLOCK_HINT)).toBe(true);
+  expect(state.executionPlan[0].status).toBe("failed");
+  expect(result.current.retrySafe).toBe(true);
+});
+
+test("useCloseExecution › a tx_too_late refusal on a correct clock has no clock hint", async () => {
+  const { sourceKeypair } = mergeSetup();
+  stubSubmitViaApi(async () => {
+    throw TOO_LATE;
+  });
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(useDemolishStore.getState().lastError).toMatch(/Its operations did not take effect/);
+  expect(useDemolishStore.getState().lastError).not.toContain(CLOCK_HINT);
 });

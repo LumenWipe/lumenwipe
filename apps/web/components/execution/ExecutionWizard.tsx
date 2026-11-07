@@ -2,8 +2,8 @@
 
 import { useRef, useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CheckCircle, ShieldCheck } from "lucide-react";
-import type { Network } from "@/config/networks";
+import { AlertCircle, CheckCircle, ExternalLink, ShieldCheck } from "lucide-react";
+import { explorerAccountUrl, type Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { useCloseExecution } from "@/hooks/useCloseExecution";
 import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
@@ -18,12 +18,21 @@ import ProgressIndicator from "./ProgressIndicator";
 import SigningProgress from "./SigningProgress";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { SecretKeySigner, WalletKitSigner, type TransactionSigner } from "@/lib/stellar/signer";
-import { ensureWalletKitInitialized } from "@/lib/wallet-kit/client";
+import { walletKitSigner } from "@/lib/wallet-kit/client";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card } from "@/components/ui/card";
 import { Tabs, type TabItem } from "@/components/ui/tabs";
 import { PROGRESS_NOT_SAVED } from "@/lib/utils/user-error";
+import { activeStepIndex, isStalled, progressLine, STILL_WAITING } from "@/lib/execution/progress";
+import { useElapsedSeconds } from "@/hooks/useElapsedSeconds";
+
+/**
+ * How long Retry waits for a wallet prompt that timed out to answer. The kit cannot close a
+ * prompt, so retrying at once can open a second one on top of it; once it answers, or after this
+ * long, Retry is offered again. An extension that never answers does not hold Retry back for good.
+ */
+export const STALE_PROMPT_HOLD_MS = 5_000;
 
 interface ExecutionWizardProps {
   network: Network;
@@ -55,7 +64,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
   const {
     run,
-    progressStatus,
+    progress,
     signatureStatus,
     submitPreAuthTransaction,
     checkUnconfirmed,
@@ -129,9 +138,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
       walletAddressIsKnownSigner &&
       !walletConnection.networkMismatch
     ) {
-      signerRef.current = new WalletKitSigner(walletConnection.address, (xdr, opts) =>
-        ensureWalletKitInitialized(network).signTransaction(xdr, opts)
-      );
+      signerRef.current = walletKitSigner(network, walletConnection.address);
       setWalletAddress(walletConnection.address);
       // A connected wallet supersedes any previously entered secret key, for the
       // same reason the secret-key handler supersedes a connected wallet below:
@@ -217,7 +224,11 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
   // A run this mount did not start, as after a remount mid-run, still holds the close.
   const inRun = running || signingRun;
-  const busy = inRun || progressStatus !== null;
+  const busy = inRun || progress !== null;
+  const elapsedSeconds = useElapsedSeconds(progress?.since ?? null);
+  const line = progress ? progressLine(progress) : "Working…";
+  const stalled = progress !== null && isStalled(progress, progress.since + elapsedSeconds * 1000);
+  const currentStep = activeStepIndex(executionPlan);
   const halted = inRun ? null : journey.halted;
   const pendingMoreSignatures = halted === "failed" && signatureStatus !== null;
   const failed = halted === "failed" && !changingSigner && !pendingMoreSignatures;
@@ -236,6 +247,28 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const alertRef = useRef<HTMLDivElement>(null);
   const retryRef = useRef<HTMLButtonElement>(null);
   const previousView = useRef(view);
+
+  // After a wallet prompt timed out, Retry waits for that prompt to answer or for
+  // STALE_PROMPT_HOLD_MS, whichever comes first, so it does not stack a second prompt.
+  const [retryHeld, setRetryHeld] = useState(false);
+  useEffect(() => {
+    if (view !== "failed") return;
+    const signer = signerRef.current;
+    const stale = signer instanceof WalletKitSigner ? signer.stalePrompt() : null;
+    if (!stale) return;
+    let live = true;
+    const release = (): void => {
+      if (live) setRetryHeld(false);
+    };
+    setRetryHeld(true);
+    const timer = setTimeout(release, STALE_PROMPT_HOLD_MS);
+    void stale.then(release);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+      setRetryHeld(false);
+    };
+  }, [view]);
   // Focus follows a view swap only: the control that was clicked is unmounted by it, and focus
   // would otherwise drop to <body>. It never moves on first render, and never out of a field
   // the user is typing in.
@@ -259,7 +292,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   }, [view]);
 
   const statusMessage = busy
-    ? (progressStatus ?? "Working…")
+    ? stalled
+      ? `${line} ${STILL_WAITING}`
+      : line
     : pendingMoreSignatures && signatureStatus
       ? `More signatures needed. ${signatureStatus.accumulatedWeight} of ${signatureStatus.requiredWeight} signing weight collected.`
       : "";
@@ -342,7 +377,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
       <div className="w-52 shrink-0 hidden md:block">
         <div className="sticky top-20">
           <p className="mkt-eyebrow text-fg-subtle mb-3">Steps</p>
-          <PlanSidebar steps={executionPlan} currentIndex={0} />
+          <PlanSidebar
+            steps={executionPlan}
+            currentIndex={currentStep}
+            running={inRun}
+            network={network}
+          />
         </div>
       </div>
 
@@ -379,7 +419,17 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
             <p>
               The account will be removed from the Stellar ledger and its balance sent to{" "}
               <span className="font-mono text-white/80 break-all">{destinationAddress}</span>
-              {mediatorRequired ? " through the exchange relay account." : "."} Verify it carefully.
+              {mediatorRequired ? " through the exchange relay account." : "."} Verify it carefully.{" "}
+              <a
+                href={explorerAccountUrl(network, destinationAddress)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-accent hover:underline"
+              >
+                View the destination on Stellar Expert
+                <ExternalLink aria-hidden="true" className="h-3 w-3" />
+                <span className="sr-only">(opens in a new tab)</span>
+              </a>
             </p>
           </Callout>
 
@@ -392,7 +442,13 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           <StatusMessage message={statusMessage} />
 
           {busy ? (
-            <ProgressIndicator status={progressStatus ?? "Working…"} />
+            <ProgressIndicator
+              line={line}
+              stalled={stalled}
+              elapsedSeconds={elapsedSeconds}
+              // A wallet on another device gives no sign here that its prompt arrived.
+              showTimer={progress?.wait === "wallet-app"}
+            />
           ) : unconfirmed ? (
             <UnconfirmedPanel
               hash={unconfirmedSubmission.hash}
@@ -437,7 +493,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               >
                 Change wallet or key
               </Button>
-              <Button ref={retryRef} onClick={execute} disabled={!signerReady} className="w-full">
+              <Button
+                ref={retryRef}
+                onClick={execute}
+                disabled={!signerReady || retryHeld}
+                className="w-full"
+              >
                 Retry
               </Button>
               {retrySafe === true && allows(journey, "safe-to-retry") && (
@@ -497,7 +558,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
         {/* Mobile step list */}
         <div className="md:hidden mt-5">
           <p className="mkt-eyebrow text-fg-subtle mb-2">All steps</p>
-          <PlanSidebar steps={executionPlan} currentIndex={0} />
+          <PlanSidebar
+            steps={executionPlan}
+            currentIndex={currentStep}
+            running={inRun}
+            network={network}
+          />
         </div>
       </div>
     </div>
