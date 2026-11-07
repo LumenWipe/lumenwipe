@@ -138,7 +138,7 @@ test("the fee total sits above the consent, before the button", async () => {
   const follows = (a: Node, b: Node) =>
     Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
   expect(follows(fee, checkbox)).toBe(true);
-  expect(follows(fee, screen.getByRole("button", { name: /want to proceed/i }))).toBe(true);
+  expect(follows(fee, screen.getByRole("button", { name: /continue to signing/i }))).toBe(true);
   expect(screen.queryByText(/in estimated network fees/)).toBeNull();
 });
 

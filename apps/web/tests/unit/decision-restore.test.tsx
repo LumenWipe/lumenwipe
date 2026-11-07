@@ -485,7 +485,7 @@ describe("the review confirm ends what is kept", () => {
     await mount(<ReviewView network="testnet" />);
     fireEvent.click(screen.getByRole("checkbox"));
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /want to proceed/i }));
+      fireEvent.click(screen.getByRole("button", { name: /continue to signing/i }));
     });
   }
 

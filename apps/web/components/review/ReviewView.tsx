@@ -9,6 +9,8 @@ import { closeOwner, saveCloseSession } from "@/lib/session/close-record";
 import { forgetDecisions } from "@/lib/session/decision-snapshot";
 import { readUnresolved } from "@/lib/session/recovery";
 import { journeyOf } from "@/lib/journey/journey-state";
+import { useJourneyState } from "@/lib/journey/use-journey-state";
+import { allows } from "@/lib/journey/claims";
 import {
   CONFIRM_HELD,
   CONFIRM_NOT_SAVED,
@@ -16,7 +18,7 @@ import {
   CONFIRM_UNCHECKED,
 } from "@/lib/utils/user-error";
 import { formatStroops } from "@/lib/api/plan-adapters";
-import { withFeeStroops } from "@/lib/plan/expected-receive";
+import { withFeeStroops, type ExpectedReceive } from "@/lib/plan/expected-receive";
 import { totalFeeStroops, transactionCountLine } from "@/lib/plan/review-fees";
 import { assetOutcomes } from "@/lib/plan/asset-outcomes";
 import { confirmedMemo } from "@/lib/plan/memo-field";
@@ -25,10 +27,13 @@ import PlanStepList from "@/components/review/PlanStepList";
 import ReviewHero, { MemoValue } from "@/components/review/ReviewHero";
 import AssetOutcomeTable from "@/components/review/AssetOutcomeTable";
 import AccountContents from "@/components/plan/AccountContents";
+import { receiveFigure } from "@/components/plan/ExpectedReceiveBreakdown";
+import { NETWORK_NAME } from "@/components/layout/NetworkBadge";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { FullAddress } from "@/components/ui/full-address";
+import { shortenAddress } from "@/components/ui/short-address";
 
 /** How long the confirm waits for the close to be saved: a blocked database never answers. */
 export const CONFIRM_SAVE_TIMEOUT_MS = 5000;
@@ -39,6 +44,28 @@ function withinSaveTime<T>(pending: Promise<T>): Promise<T> {
     timer = setTimeout(() => reject(new Error("save timed out")), CONFIRM_SAVE_TIMEOUT_MS);
   });
   return Promise.race([pending, limit]).finally(() => clearTimeout(timer));
+}
+
+const CONSENT_REQUIRED_ID = "review-consent-required";
+
+/** What the consent says arrives: the hero's own figure, so the two never disagree. */
+function amountPhrase(expected: ExpectedReceive | null): string {
+  if (!expected) return "what is left of its balance";
+  const figure = receiveFigure(expected);
+  return figure.feesExceed
+    ? "what is left after fees, which may be nothing,"
+    : `about ${figure.xlm} XLM`;
+}
+
+/** The one sentence the user consents to: which account, on which network, how much, to whom.
+ *  The memo, when there is one, follows it as the hero shows it. */
+function consentLine(
+  source: string,
+  network: Network,
+  expected: ExpectedReceive | null,
+  destination: string
+): string {
+  return `I confirm closing ${shortenAddress(source)} on ${NETWORK_NAME[network]} and sending ${amountPhrase(expected)} to ${shortenAddress(destination)}`;
 }
 
 interface ReviewViewProps {
@@ -69,6 +96,9 @@ export default function ReviewView({ network }: ReviewViewProps) {
   const [confirming, setConfirming] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [held, setHeld] = useState<string | null>(null);
+  // A resumed close may already have sent transactions, so there it says nothing MORE is sent.
+  const journey = useJourneyState();
+  const firstRun = allows(journey, "sent-only-when-signed");
 
   // The relay is said where verify() holds the close to it, never from the stored flag.
   const viaRelay = destinationAddress !== null && relayRoute(destinationAddress) === "relay";
@@ -176,32 +206,36 @@ export default function ReviewView({ network }: ReviewViewProps) {
         </div>
       </Card>
 
-      <Callout tone="info" icon={<ShieldCheck className="h-4 w-4" />}>
-        Before you sign each transaction, your browser checks its destination, memo and what it does
-        with each asset against what you chose, and does not sign it if anything does not match.
-        Once you proceed, you&apos;ll sign each step on the next screen.
-      </Callout>
+      <section aria-labelledby="review-next-heading" className="space-y-2">
+        <h2 id="review-next-heading" className="text-sm font-semibold text-fg">
+          What happens next
+        </h2>
+        <ol className="list-decimal space-y-2 pl-5 text-sm text-fg">
+          <li>
+            {firstRun
+              ? "You sign each transaction; nothing is sent until you do."
+              : "You sign each transaction; nothing more is sent until you do."}
+          </li>
+          <li>
+            Your first signature starts changes that cannot be undone, such as swaps, returns to
+            issuer and removed trustlines.
+          </li>
+          <li>
+            {allows(journey, "resume-after-stop")
+              ? "If you stop midway the account stays open and partly cleaned up, and you can resume."
+              : "If you stop midway the account stays open and partly cleaned up."}
+          </li>
+          <li>
+            <Callout tone="danger" announce={false} data-testid="review-final-warning">
+              The final transaction permanently closes the account.
+            </Callout>
+          </li>
+        </ol>
+      </section>
 
-      <Callout
-        tone="danger"
-        announce={false}
-        title="This plan is permanent and irreversible."
-        className="p-4"
-      >
-        <p>
-          The account will be removed from the Stellar ledger and its balance sent to{" "}
-          {destinationAddress && (
-            <FullAddress
-              value={destinationAddress}
-              label="destination address"
-              className="text-white/80"
-            />
-          )}
-          {viaRelay ? " through the shared relay account." : "."}
-        </p>
-        <p className="mt-1">
-          Memo: <MemoValue memo={memoShown} />
-        </p>
+      <Callout tone="info" icon={<ShieldCheck className="h-4 w-4" />}>
+        Before you sign each transaction, we check its destination, memo and operations against what
+        you chose.
       </Callout>
 
       <p className="text-sm text-fg-muted" data-testid="fee-summary">
@@ -216,27 +250,50 @@ export default function ReviewView({ network }: ReviewViewProps) {
         )}
       </p>
 
-      <label className="flex items-start gap-3 cursor-pointer select-none">
-        <input
-          type="checkbox"
-          checked={acknowledged}
-          onChange={(e) => setAcknowledged(e.target.checked)}
-          className="mt-0.5 accent-accent"
-        />
-        <span className="text-sm text-white/60">
-          I have reviewed this plan and want to execute it.
-        </span>
-      </label>
+      {sourceAddress && destinationAddress && (
+        <>
+          <p className="text-sm text-fg">
+            Destination: <FullAddress value={destinationAddress} label="destination address" />
+          </p>
+          <label
+            className="flex min-h-control cursor-pointer select-none items-start gap-3 py-2"
+            data-testid="review-consent-row"
+          >
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              onChange={(e) => setAcknowledged(e.target.checked)}
+              className="mt-0.5 accent-accent"
+            />
+            <span className="text-sm text-fg">
+              {consentLine(sourceAddress, network, expected, destinationAddress)}
+              {memoShown.value !== null && (
+                <>
+                  {" "}
+                  with memo <MemoValue memo={memoShown} />
+                </>
+              )}
+              .
+            </span>
+          </label>
+        </>
+      )}
 
       <Button
         onClick={handleConfirm}
         disabled={confirming || executionPlan.length === 0 || !acknowledged}
         loading={confirming}
+        aria-describedby={acknowledged ? undefined : CONSENT_REQUIRED_ID}
         className="w-full"
         iconEnd={<ArrowRight className="h-4 w-4" />}
       >
-        {confirming ? "Preparing..." : "I understand this plan and want to proceed"}
+        {confirming ? "Preparing..." : "Continue to signing"}
       </Button>
+      {!acknowledged && (
+        <p id={CONSENT_REQUIRED_ID} className="text-sm text-fg">
+          Tick the box to continue
+        </p>
+      )}
 
       {held && (
         <Callout tone="danger" icon={<AlertTriangle className="h-4 w-4" />}>

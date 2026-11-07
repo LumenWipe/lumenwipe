@@ -99,7 +99,7 @@ async function confirm() {
   });
   fireEvent.click(screen.getByRole("checkbox"));
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: /want to proceed/i }));
+    fireEvent.click(screen.getByRole("button", { name: /continue to signing/i }));
   });
 }
 
@@ -207,7 +207,7 @@ test("a save that throws releases the button and does not advance", async () => 
 
   expect(screen.getByRole("alert").textContent).toContain(CONFIRM_SAVE_FAILED);
   expect(screen.queryByText("Preparing...")).toBeNull();
-  expect(screen.getByRole("button", { name: /want to proceed/i })).not.toHaveProperty(
+  expect(screen.getByRole("button", { name: /continue to signing/i })).not.toHaveProperty(
     "disabled",
     true
   );

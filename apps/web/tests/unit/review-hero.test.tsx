@@ -142,7 +142,10 @@ test("the destination is shown whole and in the same groups everywhere on the re
   );
   expect(shown.length).toBeGreaterThanOrEqual(3);
   expect(new Set(shown.map((g) => g.innerHTML)).size).toBe(1);
-  const text = container.textContent ?? "";
+  // The consent sentence alone names it short, with the whole address directly above it.
+  const consent = screen.getByTestId("review-consent-row");
+  expect(consent.previousElementSibling?.textContent).toContain(DEST);
+  const text = (container.textContent ?? "").replace(consent.textContent ?? "", "");
   for (const cut of [`${DEST.slice(0, 4)}…`, `${DEST.slice(0, 8)}…`, `${DEST.slice(0, 8)}...`]) {
     expect(text).not.toContain(cut);
   }
@@ -172,9 +175,6 @@ test("the relay is said from the registry, not from the stored flag", async () =
   useDemolishStore.getState().setMediatorRequired(false);
   await show();
   expect(kindText()).toContain("sent through LumenWipe's shared relay account");
-  expect(screen.getByText(/will be removed from the Stellar ledger/).textContent).toContain(
-    "through the shared relay account."
-  );
   expect(screen.getByText(/routed through the shared relay account/)).toBeDefined();
 });
 

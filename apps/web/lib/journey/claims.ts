@@ -12,6 +12,9 @@ export type ClaimKey =
   | "still-open"
   | "safe-to-retry"
   | "each-tx-checked"
+  | "sent-only-when-signed"
+  | "more-sent-only-when-signed"
+  | "resume-after-stop"
   | "funds-safe"
   | "nothing-lost"
   | "can-resume"
@@ -28,15 +31,33 @@ const DURING_SIGNING: readonly ClaimKey[] = [
 /** Which claims may be rendered in each state. Anything not listed is false in some reachable
  *  close in that state. */
 export const ALLOWED_CLAIMS: Record<JourneyStateName, readonly ClaimKey[]> = {
-  untouched: ["nothing-sent", "account-unchanged", "each-tx-checked"],
-  planned: ["nothing-sent", "account-unchanged", "each-tx-checked"],
-  reviewed: ["nothing-sent", "account-unchanged", "each-tx-checked", "confirm-not-started"],
+  untouched: ["nothing-sent", "account-unchanged", "each-tx-checked", "sent-only-when-signed"],
+  planned: ["nothing-sent", "account-unchanged", "each-tx-checked", "sent-only-when-signed"],
+  reviewed: [
+    "nothing-sent",
+    "account-unchanged",
+    "each-tx-checked",
+    "confirm-not-started",
+    "sent-only-when-signed",
+    "more-sent-only-when-signed",
+    "resume-after-stop",
+  ],
   // Past the review confirm a close always has a saved record: run() sends nothing without one.
-  signing: [...DURING_SIGNING, "can-resume", "recorded-progress"],
+  // A review reached with a transaction in flight is here too, so its "nothing more" is allowed.
+  signing: [
+    ...DURING_SIGNING,
+    "more-sent-only-when-signed",
+    "resume-after-stop",
+    "can-resume",
+    "recorded-progress",
+  ],
   partial: [...DURING_SIGNING, "still-open", "can-resume", "recorded-progress"],
   complete: ["each-tx-checked", "account-closed", "no-new-sent", "may-be-sent"],
+  // Earlier transactions may already have been sent: only "nothing more" is true here.
   unknown: [
     "each-tx-checked",
+    "more-sent-only-when-signed",
+    "resume-after-stop",
     "confirm-not-started",
     "may-be-sent",
     "can-resume",
@@ -50,6 +71,7 @@ const FALSE_WHILE_IN_FLIGHT: ReadonlySet<ClaimKey> = new Set([
   "account-unchanged",
   "no-new-sent",
   "safe-to-retry",
+  "sent-only-when-signed",
 ]);
 
 export function allows(journey: Journey, claim: ClaimKey): boolean {
@@ -62,7 +84,7 @@ export function allows(journey: Journey, claim: ClaimKey): boolean {
  *  thing in new words is still caught. */
 export const CLAIM_PATTERNS: Record<ClaimKey, RegExp> = {
   "nothing-sent":
-    /nothing (?:has been|was|is) (?:signed or )?sent|nothing (?:has been|was) signed|no transaction (?:has been|was) sent/i,
+    /nothing (?:has been|was|is) (?:signed or )?sent(?! until you)|nothing (?:has been|was) signed|no transaction (?:has been|was) sent/i,
   "account-unchanged": /account is unchanged|nothing (?:on-chain|on the network) (?:has )?changed/i,
   "this-tx-not-sent": /(?:this transaction|it) was not signed or sent/i,
   "no-new-sent": /no new transaction was sent|nothing more was sent/i,
@@ -75,6 +97,13 @@ export const CLAIM_PATTERNS: Record<ClaimKey, RegExp> = {
   "safe-to-retry": /safe to retry|retrying is (?:also )?safe/i,
   "each-tx-checked":
     /before you sign each transaction|every transaction (?:above )?is verified|each transaction is (?:checked|verified)/i,
+  // A promise about what comes next, not a report on what happened: it holds before the first
+  // signature of a close, and in its "nothing more" form once an earlier run may have sent some.
+  "sent-only-when-signed": /nothing is sent until you (?:sign|do)/i,
+  "more-sent-only-when-signed": /nothing more is sent until you (?:sign|do)/i,
+  // Past the confirm a close always has a saved record (the confirm holds without one), so a
+  // close stopped after it can be resumed. Not said before a plan is reviewed.
+  "resume-after-stop": /if you stop midway[^.]*you can resume/i,
   "funds-safe": /funds are safe|funds stay safe/i,
   "nothing-lost": /nothing is lost|resume exactly where|step (?:already completed )?is skipped/i,
   "can-resume": /resume(?:d)? (?:it |this close )?later/i,
