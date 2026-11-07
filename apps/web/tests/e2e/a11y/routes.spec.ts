@@ -40,6 +40,10 @@ test("allowances", async ({ page }) => {
   await page.getByPlaceholder(/G\.\.\./).fill(Keypair.random().publicKey());
   await page.getByRole("button", { name: /Inspect/ }).click();
   await expect(page.getByRole("status").filter({ hasText: /allowance/i })).toBeVisible();
+  // The status shows before the page's `router.replace` to `?address=` lands, and that navigation
+  // drops the title until its streamed metadata arrives. Scan only once it has landed.
+  await page.waitForURL(/[?&]address=/);
+  await expect(page).toHaveTitle("Token allowances | LumenWipe");
   await expectNoAxeViolations(page, "allowances");
 });
 

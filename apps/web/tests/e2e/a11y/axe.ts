@@ -12,8 +12,10 @@ const BLOCKING = new Set(["serious", "critical"]);
  */
 export async function expectNoAxeViolations(page: Page, screen: string): Promise<void> {
   // Metadata is streamed, and every client navigation mounts the head's title anew, so for a
-  // moment after one `document.title` is empty. Wait for it, so `document-title` never depends
-  // on when axe happens to run.
+  // moment after one `document.title` is empty. Wait for it here. This cannot see a navigation
+  // that has not started yet, and `waitForLoadState("networkidle")` does not help either: it
+  // stays fired for the document after the first idle and ignores client navigations. So a spec
+  // whose last action navigates waits for the destination URL before calling this.
   await expect(page, `document title on ${screen}`).toHaveTitle(/\S/);
   const { violations } = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
   const describe = (v: (typeof violations)[number]): string =>
