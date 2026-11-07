@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { Keypair } from "@stellar/stellar-sdk";
 import {
+  CLOSE_FINISHED_URL,
   enterDestinationAndBegin,
   enterSecretKey,
   enterSourceAndAnalyze,
@@ -44,7 +45,7 @@ test("a confirmation lost after the send still reaches the completed state", asy
   await page.getByRole("checkbox").check();
   await page.getByRole("button", { name: /Sign & execute close/i }).click();
 
-  await expect(page).toHaveURL(/\/testnet\/complete/, { timeout: 120_000 });
+  await expect(page).toHaveURL(CLOSE_FINISHED_URL, { timeout: 120_000 });
   expect(submits).toBeGreaterThan(1);
   await expect(page.getByText(/could not be completed|could not be confirmed/i)).toHaveCount(0);
 

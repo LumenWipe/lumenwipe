@@ -9,6 +9,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { confirmDestinationControl } from "./helpers/destination";
 import {
+  CLOSE_FINISHED_URL,
   enterSecretKey,
   enterSourceAddress,
   expectSigningPanel,
@@ -123,7 +124,7 @@ test("multisig close: a 2-of-3 account signs with two keys in sequence and merge
   await enterSecretKey(page, coSignerB.secret());
   await page.getByRole("button", { name: /Add signature/i }).click();
 
-  await expect(page).toHaveURL(/\/testnet\/complete/, { timeout: 90_000 });
+  await expect(page).toHaveURL(CLOSE_FINISHED_URL, { timeout: 90_000 });
 
   expect(await accountExists(master.publicKey())).toBe(false);
 });
@@ -168,7 +169,7 @@ test("multisig close: a wallet that already signed cannot open a second prompt",
   await enterSecretKey(page, coSignerB.secret());
   await expect(add).toBeEnabled();
   await add.click();
-  await expect(page).toHaveURL(/\/testnet\/complete/, { timeout: 90_000 });
+  await expect(page).toHaveURL(CLOSE_FINISHED_URL, { timeout: 90_000 });
   expect(wallet.signRequests).toHaveLength(1);
   expect(await accountExists(master.publicKey())).toBe(false);
 });
@@ -247,7 +248,7 @@ test("pre-authorized close: the pasted transaction is decoded, confirmed by a se
   await expect(summary).toContainText(`Merge destination: ${destination.publicKey()}`);
 
   await submit.click();
-  await expect(page).toHaveURL(/\/testnet\/complete/, { timeout: 90_000 });
+  await expect(page).toHaveURL(CLOSE_FINISHED_URL, { timeout: 90_000 });
   expect(await accountExists(master.publicKey())).toBe(false);
 });
 

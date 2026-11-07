@@ -69,6 +69,12 @@ export async function openTestnetHome(page: Page): Promise<void> {
 export const TESTNET_STEP_TIMEOUT = 30_000;
 
 /**
+ * Where a finished testnet close lands: its saved receipt, or the completion page when the
+ * receipt could not be saved or the close did not finish.
+ */
+export const CLOSE_FINISHED_URL = /\/testnet\/(?:complete|receipt\/[^/?#]+)$/;
+
+/**
  * Reveals the secret-key field and fills it.
  *
  * Same wallet-first redesign as the source address: signing defaults to a connected wallet and

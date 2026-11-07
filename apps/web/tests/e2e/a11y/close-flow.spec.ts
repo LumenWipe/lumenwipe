@@ -64,9 +64,9 @@ test("analyze, review, execute, complete and history", async ({ page }) => {
 
   await page.getByRole("checkbox").check();
   await page.getByRole("button", { name: /Sign & execute close/i }).click();
-  await expect(page).toHaveURL(/\/testnet\/complete/);
+  await expect(page).toHaveURL(/\/testnet\/receipt\/[^/?#]+$/);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await expectNoAxeViolations(page, "complete");
+  await expectNoAxeViolations(page, "saved receipt");
 
   await page.getByRole("button", { name: "Merge history" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();

@@ -9,6 +9,7 @@ import {
   type xdr,
 } from "@stellar/stellar-sdk";
 import {
+  CLOSE_FINISHED_URL,
   enterDestinationAndBegin,
   enterSecretKey,
   enterSourceAndAnalyze,
@@ -136,7 +137,7 @@ async function signSingleCloseOnce(page: Page, source: Keypair): Promise<void> {
   await signButton.click();
 
   // The wizard auto-advances to /complete once the only step confirms.
-  await expect(page).toHaveURL(/\/testnet\/complete/, { timeout: 90_000 });
+  await expect(page).toHaveURL(CLOSE_FINISHED_URL, { timeout: 90_000 });
 }
 
 // ── Test 1: happy path - one liquid asset, swapped + merged in one transaction ────
@@ -276,4 +277,15 @@ test("redesigned flow: non-convertible asset is returned to issuer, then merged 
 
   // On-chain truth: the source account is gone (merged into the destination).
   expect(await accountExists(source.publicKey())).toBe(false);
+
+  // The receipt is saved in this browser at its own address, and a reload reopens it from there.
+  await expect(page).toHaveURL(/\/testnet\/receipt\/[^/?#]+$/, { timeout: 15_000 });
+  const hash = page.getByText(/^[0-9a-f]{6}…[0-9a-f]{6}$/).first();
+  await expect(hash).toBeVisible();
+  const shownHash = await hash.textContent();
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Account successfully merged");
+  await expect(page.getByText(shownHash!, { exact: true })).toBeVisible();
+  await expect(page.getByText("Assets handled")).toBeVisible();
+  await expect(page.getByText("NOSWAP → returned to issuer")).toBeVisible();
 });

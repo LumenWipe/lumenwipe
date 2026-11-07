@@ -10,12 +10,13 @@ import {
   type xdr,
 } from "@stellar/stellar-sdk";
 import {
+  CLOSE_FINISHED_URL,
   enterDestinationAndBegin,
   enterSecretKey,
   enterSourceAddress,
   enterSourceAndAnalyze,
-  openTestnetHome,
   expectSigningPanel,
+  openTestnetHome,
   TESTNET_STEP_TIMEOUT,
 } from "./helpers/flow";
 import { connectStubWallet, installWalletStub } from "./helpers/wallet-stub";
@@ -310,7 +311,7 @@ test.describe("execute with a wallet", () => {
     });
     await toWalletSigning(page, owner, receiver);
 
-    await expect(page).toHaveURL(/\/testnet\/complete/, { timeout: 90_000 });
+    await expect(page).toHaveURL(CLOSE_FINISHED_URL, { timeout: 90_000 });
     expect(wallet.signRequests.length).toBeGreaterThan(0);
     for (const request of wallet.signRequests) {
       expect(request.networkPassphrase).toBe(Networks.TESTNET);
