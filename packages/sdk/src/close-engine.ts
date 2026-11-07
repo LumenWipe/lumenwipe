@@ -15,7 +15,49 @@ export interface PendingRound {
   accumulatedWeight: number;
   queue: CloseTransaction[];
   requiresAnotherCall: boolean;
+  /** Zero-based round of the run that stopped, as its progress events numbered it. Set by
+   *  `runClose`; a resume without it counts from round 0. */
+  round?: number;
+  /** Zero-based position of `tx` in its batch. Set by `runClose`; 0 when absent. */
+  txIndex?: number;
+  /** How many transactions that batch held. Set by `runClose`; when absent, `txIndex + 1` plus
+   *  the length of `queue`. */
+  txCount?: number;
 }
+
+/** Where a close is, as `onProgressEvent` reports it. */
+export type CloseProgressPhase =
+  "preparing" | "verifying" | "awaiting-signature" | "submitting" | "confirmed";
+
+/** A round is being fetched. Nothing is known about its batch yet. */
+export interface CloseRoundProgress {
+  /** Always `preparing`. */
+  phase: "preparing";
+  /** Zero-based. */
+  round: number;
+}
+
+/** One transaction of the current batch moved to `phase`. */
+export interface CloseTransactionProgress {
+  /** `verifying`, `awaiting-signature` (the signer is asked), `submitting` (signed; the network
+   *  is waited on) or `confirmed`. */
+  phase: Exclude<CloseProgressPhase, "preparing">;
+  /** Zero-based. */
+  round: number;
+  /** Zero-based position of this transaction in its batch. */
+  txIndex: number;
+  /** How many transactions this batch holds. Exact for this batch only. */
+  txCount: number;
+  /** The steps this transaction covers. API metadata in every phase but `confirmed`, which carries
+   *  what `onConfirmed` is given: with `reconcile`, a merge only when the client parsed one. */
+  covers: CloseTransaction["covers"];
+  /** The API asked for another round after this batch. Each round is planned from live state, so
+   *  the close as a whole holds at least `txCount` transactions and its total is not known. */
+  moreRoundsExpected: boolean;
+}
+
+/** What `onProgressEvent` is told: a round being fetched, or a transaction of it changing phase. */
+export type CloseProgressEvent = CloseRoundProgress | CloseTransactionProgress;
 
 /** Thrown when a transaction's accumulated signing weight is still short of what it actually
  *  needs after the currently available signer has contributed. Carries everything needed to
@@ -238,6 +280,15 @@ export interface CloseEngineDeps {
   onConfirmed?: (tx: CloseTransaction, hash: string) => void;
   onProgress?: (message: string) => void;
   /**
+   * Told each step of the close as it happens, in order: `preparing` before a round is fetched,
+   * then for each transaction `verifying`, `awaiting-signature` (the signer is asked),
+   * `submitting` (signed; from here on the network and any `prepare` step are waited on) and
+   * `confirmed`. A resumed transaction starts at `awaiting-signature`: it is not verified again.
+   * An observer only: each event is a fresh object, nothing it returns is awaited, and anything it
+   * throws or rejects with is ignored, so it can neither stop nor change the close.
+   */
+  onProgressEvent?: (event: CloseProgressEvent) => void;
+  /**
    * Overrides the round bound. Without it the bound is derived each round from the API's own
    * `remaining.steps` (rounds done, plus steps left, plus a margin), only ever raised and capped
    * at 200, so a long close is not cut short and a misbehaving API still cannot spin forever.
@@ -281,14 +332,19 @@ export async function runClose(
     if (settled === "confirmed") planHash = undefined;
   }
 
+  // Progress numbering only: the round bound below counts this run's own rounds, as before.
+  let firstRound = 0;
   if (resume) {
-    await signOrThrow(run, resume.tx, resume.xdr, resume.queue, resume.requiresAnotherCall);
-    await processTxs(run, resume.queue, resume.requiresAnotherCall);
+    const at = resumedPosition(resume);
+    firstRound = at.round + 1;
+    await signOrThrow(run, resume.tx, resume.xdr, resume.queue, at);
+    await processTxs(run, resume.queue, { ...at, txIndex: at.txIndex + 1 });
     if (!resume.requiresAnotherCall) return resultOf(run);
   }
 
   for (let round = 0; round < (run.maxRounds ?? Math.max(bound, 1)); round++) {
     run.onProgress?.("Preparing transactions…");
+    report(run, () => ({ phase: "preparing", round: firstRound + round }));
     const batch = await fetchRound(run, planHash).catch(async (error: unknown) => {
       if (await mergeExplainsMissingAccount(run, error)) return null;
       throw error;
@@ -299,7 +355,12 @@ export async function runClose(
     if (requiresAnotherCall && txs.length === 0) {
       throw new CloseDidNotConvergeError(round + 1, run.maxRounds ?? bound, "empty_batch");
     }
-    await processTxs(run, txs, requiresAnotherCall);
+    await processTxs(run, txs, {
+      round: firstRound + round,
+      txIndex: 0,
+      txCount: txs.length,
+      moreRoundsExpected: requiresAnotherCall,
+    });
     if (!requiresAnotherCall) return resultOf(run);
     bound = Math.max(bound, Math.min(HARD_MAX_ROUNDS, round + 1 + steps + ROUND_MARGIN));
   }
@@ -366,15 +427,64 @@ async function fetchRound(
   }
 }
 
+/** Where a transaction sits in the run, for its progress events. */
+interface TxPosition {
+  round: number;
+  txIndex: number;
+  txCount: number;
+  moreRoundsExpected: boolean;
+}
+
+function resumedPosition(resume: PendingRound): TxPosition {
+  const txIndex = resume.txIndex ?? 0;
+  return {
+    round: resume.round ?? 0,
+    txIndex,
+    txCount: resume.txCount ?? txIndex + 1 + resume.queue.length,
+    moreRoundsExpected: resume.requiresAnotherCall,
+  };
+}
+
+/** Hands an event to the observer. The event is built inside the guard, fresh per call with its
+ *  own `covers`, so a callback that changes it changes nothing here, and no failure in building or
+ *  observing it reaches the close. */
+function report(deps: CloseEngineDeps, build: () => CloseProgressEvent): void {
+  if (!deps.onProgressEvent) return;
+  try {
+    const returned: unknown = deps.onProgressEvent(build());
+    if (returned instanceof Promise) returned.catch(() => {});
+  } catch {
+    // An observer only: a failing callback cannot stop the close.
+  }
+}
+
+function reportTx(
+  deps: CloseEngineDeps,
+  phase: CloseTransactionProgress["phase"],
+  at: TxPosition,
+  covers: CloseTransaction["covers"]
+): void {
+  report(deps, () => ({
+    phase,
+    round: at.round,
+    txIndex: at.txIndex,
+    txCount: at.txCount,
+    covers: [...covers],
+    moreRoundsExpected: at.moreRoundsExpected,
+  }));
+}
+
 async function processTxs(
   deps: EngineRun,
   txs: CloseTransaction[],
-  requiresAnotherCall: boolean
+  start: TxPosition
 ): Promise<void> {
   for (let i = 0; i < txs.length; i++) {
     const tx = txs[i];
+    const at = { ...start, txIndex: start.txIndex + i };
+    reportTx(deps, "verifying", at, tx.covers);
     await deps.verify(tx);
-    await signOrThrow(deps, tx, tx.xdr, txs.slice(i + 1), requiresAnotherCall);
+    await signOrThrow(deps, tx, tx.xdr, txs.slice(i + 1), at);
   }
 }
 
@@ -383,9 +493,10 @@ async function signOrThrow(
   tx: CloseTransaction,
   xdr: string,
   queue: CloseTransaction[],
-  requiresAnotherCall: boolean
+  at: TxPosition
 ): Promise<void> {
   const required = deps.requiredWeight(tx);
+  reportTx(deps, "awaiting-signature", at, tx.covers);
   const { xdr: signedXdr, weight } = await deps.sign(tx, xdr);
   if (weight < required) {
     throw new InsufficientSignatureWeightError({
@@ -394,12 +505,17 @@ async function signOrThrow(
       requiredWeight: required,
       accumulatedWeight: weight,
       queue,
-      requiresAnotherCall,
+      requiresAnotherCall: at.moreRoundsExpected,
+      round: at.round,
+      txIndex: at.txIndex,
+      txCount: at.txCount,
     });
   }
+  reportTx(deps, "submitting", at, tx.covers);
   const finalXdr = deps.prepare ? await deps.prepare(tx, signedXdr) : signedXdr;
   if (!deps.reconcile) {
     deps.onConfirmed?.(tx, await deps.submit(tx, finalXdr));
+    reportTx(deps, "confirmed", at, tx.covers);
     return;
   }
   const submission = openSubmission(deps.reconcile, tx, finalXdr);
@@ -408,6 +524,7 @@ async function signOrThrow(
   await deps.reconcile.onSubmission?.(null);
   if (submissionClosesAccount(submission)) deps.confirmedMerge = submission;
   deps.onConfirmed?.({ ...tx, covers: submission.covers }, submission.hash);
+  reportTx(deps, "confirmed", at, submission.covers);
 }
 
 function openSubmission(

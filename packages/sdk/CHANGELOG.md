@@ -9,6 +9,14 @@ release is cut.
 
 ### Added
 
+- `runClose` takes an optional `onProgressEvent(event)`. It is told each step of the close: a
+  `preparing` event before each round is fetched, then `verifying`, `awaiting-signature`,
+  `submitting` and `confirmed` for each transaction, carrying `round`, `txIndex`, `txCount`,
+  `covers` and `moreRoundsExpected`. Each event is a fresh object, and a callback that throws or
+  rejects cannot stop the close. `onProgress` messages are unchanged. New types
+  `CloseProgressEvent`, `CloseProgressPhase`, `CloseRoundProgress` and
+  `CloseTransactionProgress`. `PendingRound` gains optional `round`, `txIndex` and `txCount`, set
+  by `runClose`, so a resumed close keeps its numbering.
 - `CloseTransactionsRequest.memoType` (`"text"` or `"id"`): the type of `memo`. A destination the
   exchange registry does not list uses it, `text` when omitted; a listed exchange keeps the
   registry's type and answers `422 invalid_memo` with `details.memoType` when another is named.

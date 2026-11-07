@@ -57,6 +57,38 @@ await runClose({
 });
 ```
 
+### Progress
+
+Pass `onProgressEvent` to follow the close, for example to show "Transaction 2 of 3: approve in
+your wallet":
+
+```ts
+await runClose({
+  ...deps,
+  onProgressEvent: (event) => {
+    if (event.phase === "preparing") return show(`Preparing round ${event.round + 1}…`);
+    const of = event.moreRoundsExpected ? `at least ${event.txCount}` : `${event.txCount}`;
+    show(`Transaction ${event.txIndex + 1} of ${of}: ${event.phase}`);
+  },
+});
+```
+
+- `phase`: `preparing` before each round is fetched; then, for each transaction, `verifying`,
+  `awaiting-signature` (the signer, for example a wallet, has been asked), `submitting` (signed;
+  the network is waited on) and `confirmed`. A resumed transaction starts at
+  `awaiting-signature`.
+- `round`: zero-based round of the close. A resumed close keeps the numbering it stopped at.
+- `txIndex`: zero-based position of the transaction in its round (not on `preparing`).
+- `txCount`: how many transactions the round holds (not on `preparing`).
+- `covers`: the plan steps the transaction covers. API metadata until `confirmed`, which carries
+  what `onConfirmed` is given: with `reconcile`, a merge only when the client parsed one.
+- `moreRoundsExpected`: the API asked for another round after this one. Rounds are planned from
+  live state, so the close then holds at least `txCount` transactions and its total is not
+  known; never show `txCount` as the total while this is `true`.
+
+The callback only observes: each event is a fresh object, nothing it returns is awaited, and
+anything it throws is ignored. `onProgress(message)` still gets its plain messages.
+
 ## Headless example
 
 [`examples/headless-close.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/packages/sdk/examples/headless-close.ts)
