@@ -42,6 +42,8 @@ test("decisionPointsToClaimableBalances › maps a currently-claimable point", (
       amount: "5.0000000",
       currentlyClaimable: true,
       predicate: { type: "unconditional" },
+      offered: ["claim", "forfeit"],
+      unclaimableNote: null,
     },
   ]);
 });
@@ -74,6 +76,8 @@ test("decisionPointsToClaimableBalances › maps a non-native, not-currently-cla
       amount: "10.0000000",
       currentlyClaimable: false,
       predicate: { type: "before_absolute_time", absBeforeEpoch: "999" },
+      offered: ["add_trustline_then_claim", "forfeit"],
+      unclaimableNote: null,
     },
   ]);
 });

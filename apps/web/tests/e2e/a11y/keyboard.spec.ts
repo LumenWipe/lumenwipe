@@ -95,7 +95,9 @@ test("every control on the analyze screen is reachable with Tab and shows the ri
 }) => {
   const api = await installApiFixtures(page);
   await enterSourceAndAnalyze(page, Keypair.random().publicKey());
-  await expect(page.getByRole("heading", { level: 1, name: "Review & decide" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Decide what happens to each item" })
+  ).toBeVisible();
   await expectEveryStopReachedWithRing(page);
   api.expectAllAnswered();
 });

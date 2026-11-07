@@ -50,7 +50,7 @@ async function beginButtonWhile(loading: boolean): Promise<HTMLElement> {
       />
     );
   });
-  return screen.getByRole("button", { name: /begin execution/i });
+  return screen.getByRole("button", { name: /review the full plan/i });
 }
 
 beforeEach(() => {

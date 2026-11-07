@@ -23,7 +23,7 @@ import {
 //   - /analyze shows an accordion plan preview plus a per-asset decision
 //     (swap on the DEX vs. return to issuer).
 //   - Once every asset is resolved, a destination + memo step appears.
-//   - "Begin execution" -> /review, the whole-plan gate; confirming there -> /execute,
+//   - "Review the full plan" -> /review, the whole-plan gate; confirming there -> /execute,
 //     where the secret key is entered ONCE and the fused single close transaction is signed.
 //   - /complete is the terminal page.
 //
@@ -262,7 +262,8 @@ test("redesigned flow: non-convertible asset is returned to issuer, then merged 
   await expect(page.getByText(/no swap route on the DEX/)).toBeVisible();
 
   // Until the user confirms returning the balance, the destination step is gated.
-  await expect(page.getByRole("button", { name: /Begin execution/i })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Review the full plan/i })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Open: 1 asset" })).toBeVisible();
 
   // Confirm "return to issuer" via the per-asset card option.
   const returnOption = page.getByRole("radio", { name: /Return my .*NOSWAP to the issuer/ });

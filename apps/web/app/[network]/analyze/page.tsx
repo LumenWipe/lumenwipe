@@ -178,7 +178,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     // that answer it - and it must not hide the ASSET cards either, which is what a bare
     // `blockers.length === 0` did: one unresolved claimable balance emptied the list of every
     // balance-bearing asset, and `conversions.every(...)` on an empty array then reported them
-    // all resolved. That combination let a real account reach "Begin execution" and be refused
+    // all resolved. That combination let a real account reach the review and be refused
     // for decisions it had never been shown.
     setConversions(
       hardBlockersOf(plan.blockers).length === 0 ? decisionPointsToConversions(plan) : []
@@ -187,7 +187,15 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     // Unlike other blockers, an unresolved claimable balance is resolvable right here - the
     // decision itself is what clears it - so it must render regardless of blocker state, or
     // the user could never reach the card that resolves it.
-    setClaimableBalanceDecisions(decisionPointsToClaimableBalances(plan));
+    const claims = decisionPointsToClaimableBalances(plan);
+    // A stored or restored answer this plan no longer offers would be refused at build, after
+    // review: it goes, and its balance is asked again.
+    useDemolishStore
+      .getState()
+      .pruneClaimSelectionsToOffered(
+        Object.fromEntries(claims.map((b) => [b.balanceId, b.offered]))
+      );
+    setClaimableBalanceDecisions(claims);
     // Like the claim cards, these answer a blocker, so they render whatever else blocks.
     const leavable = decisionPointsToLeavablePositions(plan);
     setLeavablePositions(leavable);
@@ -226,7 +234,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
           }),
         // The API derives blockers and per-asset convertibility (via server-side path
         // finding) from a plan built with no destination yet. The final plan is requested
-        // with the destination + decisions at the "Begin execution" step.
+        // with the destination + decisions when the user asks to review the full plan.
         //
         // The claim answers go with it, and re-planning on a change is what makes the second
         // decision reachable: choosing to add a trustline and claim puts an asset in the account
@@ -411,7 +419,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
           tabIndex={-1}
           className="mkt-display text-xl font-bold text-white outline-none"
         >
-          Review &amp; decide
+          Decide what happens to each item
         </h1>
       </div>
 

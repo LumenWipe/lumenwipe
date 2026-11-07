@@ -109,6 +109,7 @@ export default function DestinationInput({
         }
       >
         <Input
+          data-jump="destination-memo"
           type={memoType === "id" ? "number" : "text"}
           value={memo}
           onChange={(e) => onMemoChange(e.target.value)}
@@ -134,6 +135,7 @@ export default function DestinationInput({
             </p>
             <label className="flex cursor-pointer items-start gap-2 text-xs text-white/80">
               <input
+                data-jump="destination-acknowledge"
                 type="checkbox"
                 checked={acknowledged}
                 onChange={(e) => onAcknowledgedChange(e.target.checked)}

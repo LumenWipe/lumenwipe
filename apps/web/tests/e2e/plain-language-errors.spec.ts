@@ -191,8 +191,11 @@ test.describe("review", () => {
     await page.route("**/api/testnet/mediator/check/**", failWith(500, raw));
     await enterSourceAndAnalyze(page, source.publicKey());
 
-    const begin = page.getByRole("button", { name: /Begin execution/i });
-    await expect(begin).toBeVisible({ timeout: TESTNET_STEP_TIMEOUT });
+    const begin = page.getByRole("button", { name: /Review the full plan/i });
+    // The button is always there; the destination field appears once every item is decided.
+    await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
+      timeout: TESTNET_STEP_TIMEOUT,
+    });
     await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination.publicKey());
     await page.getByRole("checkbox", { name: /wallet I control/i }).check();
     await begin.click();
@@ -353,11 +356,10 @@ test.describe("a close stopped part way", () => {
     ]);
 
     await enterSourceAndAnalyze(page, owner.publicKey());
-    await page.getByText("Claim balances", { exact: true }).click();
+    // Each group opens on its own when it holds a decision that was not there before.
     await page.getByRole("radio", { name: /Add a PART trustline and claim it/ }).check();
     // The claim answer re-plans, and only the new plan asks what happens to the claimed PART.
     const giveBack = page.getByRole("radio", { name: /Return my .*PART to the issuer/ });
-    await page.getByText("Handle assets", { exact: true }).click();
     await giveBack.check({ timeout: TESTNET_STEP_TIMEOUT });
     await enterDestinationAndBegin(page, receiver.publicKey());
     await expectSigningPanel(page);

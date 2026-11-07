@@ -105,7 +105,7 @@ function stubFetch(
 const notFound = (): Response =>
   Response.json({ error: { code: "account_not_found", message: "raw" } }, { status: 404 });
 
-const FORFEIT = { name: /^Forfeit it/ };
+const FORFEIT = { name: /^Leave it unclaimed/ };
 const forfeitOption = (): HTMLElement => screen.getByRole("radio", FORFEIT);
 const findForfeitOption = (): Promise<HTMLElement> => screen.findByRole("radio", FORFEIT);
 

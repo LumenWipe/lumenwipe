@@ -47,7 +47,7 @@ async function reachDestinationStep(page: Page, source: Keypair): Promise<void> 
   await expect(analyzeButton).toBeEnabled();
   await analyzeButton.click();
   await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
-  await expect(page.getByRole("button", { name: /Begin execution/i })).toBeVisible({
+  await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
     timeout: 30_000,
   });
 }
@@ -69,7 +69,7 @@ test("an unrecognized destination blocks execution until control is confirmed", 
 
   await reachDestinationStep(page, source);
 
-  const beginButton = page.getByRole("button", { name: /Begin execution/i });
+  const beginButton = page.getByRole("button", { name: /Review the full plan/i });
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination.publicKey());
 
   // The warning states the actual risk, not a generic "double-check the address", and does not
@@ -102,7 +102,7 @@ test("editing the destination revokes a confirmation given for the previous addr
 
   await reachDestinationStep(page, source);
 
-  const beginButton = page.getByRole("button", { name: /Begin execution/i });
+  const beginButton = page.getByRole("button", { name: /Review the full plan/i });
   const destinationInput = page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/);
 
   await destinationInput.fill(first.publicKey());

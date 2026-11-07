@@ -2,7 +2,7 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import AssetDispositionCard from "@/components/plan/AssetDispositionCard";
 import TokenDispositionCard from "@/components/plan/TokenDispositionCard";
-import PlanAccordion from "@/components/plan/PlanAccordion";
+import { StatefulPlanAccordion } from "./fixtures/plan-accordion";
 import type { AssetConvertibility } from "@/lib/api/plan-adapters";
 import type { AccountState, Trustline } from "@/types/account";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
@@ -169,7 +169,7 @@ test("the trustline list shows each issuer, so lines sharing a code differ", () 
     defiPositionsWarnings: [],
   };
   render(
-    <PlanAccordion
+    <StatefulPlanAccordion
       account={account}
       conversions={[]}
       assetDispositions={{}}

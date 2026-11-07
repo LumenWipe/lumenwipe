@@ -3,7 +3,7 @@ import { Account, Keypair, Networks, Operation, TransactionBuilder } from "@stel
 import { confirmDestinationControl } from "./helpers/destination";
 import { enterSourceAddress, openTestnetHome, TESTNET_STEP_TIMEOUT } from "./helpers/flow";
 
-// Regression coverage for issue #73: "Begin execution" must land on the whole-plan review
+// Regression coverage for issue #73: "Review the full plan" must land on the whole-plan review
 // gate (/review), not skip straight into /execute, and nothing may be persisted to a
 // resumable session until the user explicitly confirms on that page.
 //
@@ -83,7 +83,7 @@ async function waitUntilIndexed(id: string, attempts = 10, delayMs = 1_500): Pro
   throw new Error(`account ${id} was not indexed in time`);
 }
 
-// Drives home -> analyze -> fills destination -> clicks "Begin execution", stopping the
+// Drives home -> analyze -> fills destination -> clicks "Review the full plan", stopping the
 // instant navigation happens - never confirms the review page.
 async function reachReviewWithoutConfirming(
   page: Page,
@@ -98,8 +98,11 @@ async function reachReviewWithoutConfirming(
   await analyzeButton.click();
   await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
 
-  const beginButton = page.getByRole("button", { name: /Begin execution/i });
-  await expect(beginButton).toBeVisible({ timeout: 30_000 });
+  const beginButton = page.getByRole("button", { name: /Review the full plan/i });
+  // The button is always there; the destination field appears once every item is decided.
+  await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
+    timeout: 30_000,
+  });
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination);
   await confirmDestinationControl(page);
   await expect(beginButton).toBeEnabled({ timeout: TESTNET_STEP_TIMEOUT });
@@ -201,7 +204,7 @@ test("a reload on the review gate rebuilds the plan through analyze with the cho
 
   // The restored acknowledgement is for this very destination, so the plan can be reviewed again
   // without asking for it twice - and only through the review gate.
-  const beginButton = page.getByRole("button", { name: /Begin execution/i });
+  const beginButton = page.getByRole("button", { name: /Review the full plan/i });
   await expect(beginButton).toBeEnabled({ timeout: TESTNET_STEP_TIMEOUT });
   await beginButton.click();
   await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });

@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import { render, screen } from "@testing-library/react";
-import PlanAccordion from "@/components/plan/PlanAccordion";
+import { StatefulPlanAccordion } from "./fixtures/plan-accordion";
 import type { AccountState, DefiPosition, UnrecognizedDefiPosition } from "@/types/account";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
@@ -34,7 +34,7 @@ function baseAccount(over: Partial<AccountState> = {}): AccountState {
 
 function renderAccordion(account: AccountState) {
   return render(
-    <PlanAccordion
+    <StatefulPlanAccordion
       account={account}
       conversions={[]}
       assetDispositions={{}}

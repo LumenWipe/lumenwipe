@@ -62,7 +62,7 @@ export async function openTestnetHome(page: Page): Promise<void> {
  * Playwright's 5s default is right for asserting on DOM that is already there. It is arbitrary
  * for analyze -> review, which builds the whole close plan behind a Horizon read and a path
  * lookup, and for review -> execute. Those were left on the default and failed as "the button
- * did nothing" while the page still read "Preparing transaction..." - the work was in flight,
+ * did nothing" while the page still showed its loading label - the work was in flight,
  * not broken. Assertions on already-rendered DOM keep the short default on purpose, so a
  * genuine hang still fails fast rather than hiding behind a blanket timeout.
  */
@@ -114,10 +114,13 @@ export async function enterSourceAndAnalyze(page: Page, source: string): Promise
   await expect(page.getByText("Analyzing account...")).toHaveCount(0, { timeout: 60_000 });
 }
 
-// Late-destination step: fills the destination, then "Begin execution" -> /review -> /execute.
+// Late-destination step: fills the destination, then "Review the full plan" -> /review -> /execute.
 export async function enterDestinationAndBegin(page: Page, destination: string): Promise<void> {
-  const beginButton = page.getByRole("button", { name: /Begin execution/i });
-  await expect(beginButton).toBeVisible({ timeout: 30_000 });
+  const beginButton = page.getByRole("button", { name: /Review the full plan/i });
+  // The button is always there; the destination field appears once every item is decided.
+  await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
+    timeout: 30_000,
+  });
 
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination);
   await confirmDestinationControl(page);

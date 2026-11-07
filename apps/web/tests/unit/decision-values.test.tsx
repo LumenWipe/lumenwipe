@@ -102,6 +102,8 @@ function balance(id: string, code: string, currentlyClaimable: boolean): Claimab
     amount: "3",
     currentlyClaimable,
     predicate: { type: "unconditional" },
+    offered: currentlyClaimable ? ["claim", "forfeit"] : ["add_trustline_then_claim", "forfeit"],
+    unclaimableNote: null,
   };
 }
 const CLAIMABLE = balance("aaaaaaaa01", "CLMN", true);
@@ -252,13 +254,13 @@ test("token without a route offers no exchange", async () => {
   expect(screen.queryByLabelText(/^Exchange my/)).toBeNull();
 });
 
-test("claimable balance: Forfeit writes forfeit", async () => {
+test("claimable balance: Leave it unclaimed writes forfeit", async () => {
   await mount([], [CLAIMABLE]);
-  await choose(/^Forfeit it/);
+  await choose(/^Leave it unclaimed/);
   expect(stored().claimableBalanceSelections).toEqual({ [CLAIMABLE.balanceId]: "forfeit" });
 });
 
-test("claimable balance: Claim after Forfeit writes claim", async () => {
+test("claimable balance: Claim after leaving it writes claim", async () => {
   await mount([], [CLAIMABLE], {
     claimableBalanceSelections: { [CLAIMABLE.balanceId]: "forfeit" },
   });
@@ -275,9 +277,9 @@ test("balance without a trustline: Add a trustline writes add_trustline_then_cla
   expect(stored().assetDispositions).toEqual({ [NO_TRUSTLINE.asset]: "convert" });
 });
 
-test("balance without a trustline: Forfeit writes forfeit", async () => {
+test("balance without a trustline: Leave it unclaimed writes forfeit", async () => {
   await mount([], [NO_TRUSTLINE]);
-  await choose(/^Forfeit it/);
+  await choose(/^Leave it unclaimed/);
   expect(stored().claimableBalanceSelections).toEqual({ [NO_TRUSTLINE.balanceId]: "forfeit" });
   expect(stored().assetDispositions).toEqual({});
 });
@@ -352,8 +354,8 @@ test("each card checks the option its default answer names", async () => {
       "What happens to TNRT": null,
       "What happens to TRAW": null,
       "What happens to TSWP": null,
-      "What happens to the 3 CLMN claimable balance": "claim",
-      "What happens to the 3 CLMT claimable balance": null,
+      "What happens to the 3 CLMN claimable balance issued by aaaaaaaa": "claim",
+      "What happens to the 3 CLMT claimable balance issued by aaaaaaaa": null,
     }
   `);
 });

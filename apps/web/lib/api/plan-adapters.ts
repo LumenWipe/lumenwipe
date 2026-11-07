@@ -1,5 +1,5 @@
 import type { PlanResponse } from "@lumenwipe/sdk";
-import type { PlannedStep } from "@/types/plan";
+import type { ClaimableBalanceSelection, PlannedStep } from "@/types/plan";
 import type { ClaimPredicate } from "@/types/account";
 import type { TokenQuoteFlag, TokenUnquotedReason } from "@lumenwipe/types";
 import type { ClassicConversionQuote } from "@/types/close-api";
@@ -233,9 +233,39 @@ export interface ClaimableBalanceDecision {
   currentlyClaimable: boolean;
   /** This account's own claim predicate on the balance. */
   predicate: ClaimPredicate;
+  /** The answers the plan offers for this balance, in display order. Only these may be chosen:
+   *  the API refuses any other at build time, after review. Empty when the plan's options could
+   *  not be read, which leaves the balance with no choice and unresolved. */
+  offered: ClaimableBalanceSelection[];
+  /** Why the balance cannot be claimed in this close, from the plan, when leaving it is the only
+   *  answer offered. */
+  unclaimableNote: string | null;
 }
 
 const UNCONDITIONAL: ClaimPredicate = { type: "unconditional" };
+
+const CLAIM_SELECTIONS: readonly ClaimableBalanceSelection[] = [
+  "claim",
+  "add_trustline_then_claim",
+  "forfeit",
+];
+
+type ClaimOptions = PlanResponse["decisionPoints"][number]["options"];
+
+/** The readable options of a decision point: anything that is not a list of options offers
+ *  nothing, and an entry with no id is skipped. */
+function readableOptions(options: unknown): ClaimOptions {
+  if (!Array.isArray(options)) return [];
+  return options.filter(
+    (o): o is ClaimOptions[number] => typeof (o as { id?: unknown } | null)?.id === "string"
+  );
+}
+
+/** The recognized answers among a decision point's options, in a fixed order. */
+function offeredClaimSelections(options: ClaimOptions): ClaimableBalanceSelection[] {
+  const ids = new Set<string>(options.map((o) => o.id));
+  return CLAIM_SELECTIONS.filter((s) => ids.has(s));
+}
 
 /**
  * Derives the analyze-page claimable-balance decision list from the API plan's
@@ -246,6 +276,9 @@ export function decisionPointsToClaimableBalances(plan: PlanResponse): Claimable
     .filter((dp) => dp.type === "claimable_balance")
     .map((dp) => {
       const asset = String(dp.subject.asset ?? "");
+      const options = readableOptions(dp.options);
+      const offered = offeredClaimSelections(options);
+      const forfeitNote = options.find((o) => o.id === "forfeit")?.note;
       return {
         balanceId: String(dp.subject.balanceId ?? ""),
         asset,
@@ -253,6 +286,11 @@ export function decisionPointsToClaimableBalances(plan: PlanResponse): Claimable
         amount: String(dp.subject.amount ?? "0"),
         currentlyClaimable: Boolean(dp.subject.currentlyClaimable),
         predicate: (dp.subject.predicate as ClaimPredicate | undefined) ?? UNCONDITIONAL,
+        offered,
+        unclaimableNote:
+          offered.length === 1 && offered[0] === "forfeit" && typeof forfeitNote === "string"
+            ? forfeitNote
+            : null,
       };
     });
 }

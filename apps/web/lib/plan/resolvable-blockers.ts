@@ -12,7 +12,7 @@ import type { PlanBlocker } from "@/types/plan";
  * `blockers.length === 0`, and the two disagreeing is what made a real mainnet account
  * unclosable: 23 claimable-balance blockers emptied the asset list, so its 38 balances never
  * rendered a card, while `conversions.every(...)` on the resulting empty array reported every
- * asset resolved. The user could reach "Begin execution" and then be refused for decisions the
+ * asset resolved. The user could reach the review and then be refused for decisions the
  * UI had never shown them.
  */
 const RESOLVABLE_HERE = new Set(["claimable_balance_forfeited", "claimable_balance_unclaimable"]);
@@ -90,7 +90,7 @@ export function displayBlockersOf<T extends Pick<PlanBlocker, "code">>(blockers:
 }
 
 /**
- * The error that stops "Begin execution", or null when nothing genuinely blocks.
+ * The error that stops "Review the full plan", or null when nothing genuinely blocks.
  *
  * The proceed gate re-fetches the plan with the user's decisions, and that plan can carry two
  * very different kinds of blocker. A hard one (destination has no trustline, exchange deposit
