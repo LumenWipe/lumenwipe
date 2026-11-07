@@ -57,8 +57,6 @@ export interface ProceedFacts {
   /** The account holds balances the plan's asset list did not come back for. */
   assetCardsWithheld: boolean;
   openItems: readonly OpenItem[];
-  /** The destination field is on screen, so its reasons can move focus to it. */
-  destinationShown: boolean;
   destination: DestinationFact;
   /** An exchange destination with deposit rules past their expiry. */
   registryStale: boolean;
@@ -130,8 +128,8 @@ export function proceedReasons(facts: ProceedFacts): ProceedReason[] {
       target: jumpToItem(first),
     });
   }
-  const field = (selector: string): JumpTarget | null =>
-    facts.destinationShown ? { selector, group: null } : null;
+  // The destination field is on screen from the first paint, so its reasons always link to it.
+  const field = (selector: string): JumpTarget => ({ selector, group: null });
   const address = field(`#${DESTINATION_ID} input`);
   if (facts.destination === "empty") {
     reasons.push({ key: "destination", text: "Enter a destination", target: address });

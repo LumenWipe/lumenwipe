@@ -34,7 +34,7 @@ interface DestinationInputProps {
 }
 
 /**
- * Destination address + optional/required memo, reused by the late-destination step.
+ * Destination address + optional/required memo, on the plan from its first paint.
  * Surfaces the exchange memo requirement from the registry and the
  * source-equals-destination warning.
  */

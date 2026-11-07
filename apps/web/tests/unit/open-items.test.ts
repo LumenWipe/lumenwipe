@@ -21,7 +21,6 @@ const READY: ProceedFacts = {
   otherHardBlockers: 0,
   assetCardsWithheld: false,
   openItems: [],
-  destinationShown: true,
   destination: "ok",
   registryStale: false,
   memo: "ok",
@@ -72,10 +71,11 @@ test("the open reason jumps to the first open item and opens its group", () => {
   expect(open.target).toEqual({ selector: '[data-open-item="claim:1"]', group: "CLAIM_BALANCES" });
 });
 
-test("a destination reason links only once the field is on screen", () => {
-  expect(
-    proceedReasons({ ...READY, destination: "empty", destinationShown: false })[0].target
-  ).toBeNull();
+test("a destination reason links to the field even while decisions are open", () => {
+  expect(proceedReasons({ ...READY, destination: "empty", openItems: [ASSET] })[1].target).toEqual({
+    selector: "#plan-destination input",
+    group: null,
+  });
   expect(proceedReasons({ ...READY, destination: "empty" })[0].target).toEqual({
     selector: "#plan-destination input",
     group: null,
@@ -95,37 +95,35 @@ test("the reasons are empty exactly when the old gate passes, over every combina
     for (const otherHardBlockers of [0, 1, 2])
       for (const assetCardsWithheld of bools)
         for (const openItems of items)
-          for (const destinationShown of bools)
-            for (const destination of destinations)
-              for (const registryStale of bools)
-                for (const memo of memos)
-                  for (const destinationUnacknowledged of bools) {
-                    const facts: ProceedFacts = {
-                      replanning,
-                      otherHardBlockers,
-                      assetCardsWithheld,
-                      openItems,
-                      destinationShown,
-                      destination,
-                      registryStale,
-                      memo,
-                      destinationUnacknowledged,
-                    };
-                    const destinationStepReady =
-                      !assetCardsWithheld && openItems.length === 0 && otherHardBlockers === 0;
-                    const oldGate =
-                      !replanning &&
-                      destinationStepReady &&
-                      destination === "ok" &&
-                      !registryStale &&
-                      memo === "ok" &&
-                      !destinationUnacknowledged;
-                    const reasons = proceedReasons(facts);
-                    expect(reasons.length === 0).toBe(oldGate);
-                    expect(new Set(reasons.map((r) => r.key)).size).toBe(reasons.length);
-                    combinations++;
-                  }
-  expect(combinations).toBe(3456);
+          for (const destination of destinations)
+            for (const registryStale of bools)
+              for (const memo of memos)
+                for (const destinationUnacknowledged of bools) {
+                  const facts: ProceedFacts = {
+                    replanning,
+                    otherHardBlockers,
+                    assetCardsWithheld,
+                    openItems,
+                    destination,
+                    registryStale,
+                    memo,
+                    destinationUnacknowledged,
+                  };
+                  const destinationStepReady =
+                    !assetCardsWithheld && openItems.length === 0 && otherHardBlockers === 0;
+                  const oldGate =
+                    !replanning &&
+                    destinationStepReady &&
+                    destination === "ok" &&
+                    !registryStale &&
+                    memo === "ok" &&
+                    !destinationUnacknowledged;
+                  const reasons = proceedReasons(facts);
+                  expect(reasons.length === 0).toBe(oldGate);
+                  expect(new Set(reasons.map((r) => r.key)).size).toBe(reasons.length);
+                  combinations++;
+                }
+  expect(combinations).toBe(1728);
 });
 
 test("the live summary counts what is left and never counts a re-plan", () => {

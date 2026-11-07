@@ -135,10 +135,10 @@ async function driveFusedClose(
   // 5s expect timeout for heavier accounts. Allow generous headroom.
   await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
 
-  // Late-destination step: once every asset is resolved, the destination panel and
-  // the (disabled) "Review the full plan" button render. Fill the destination to enable it.
+  // Destination step: the destination panel and the (disabled) "Review the full plan" button
+  // are on screen from the start. Fill the destination to enable it.
   const beginButton = page.getByRole("button", { name: /Review the full plan/i });
-  // The button is always there; the destination field appears once every item is decided.
+  // The destination field is on screen from the start; the button unlocks once every item is decided.
   await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
     timeout: 30_000,
   });

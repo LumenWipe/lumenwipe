@@ -347,6 +347,7 @@ test("each card checks the option its default answer names", async () => {
   );
   expect(checked).toMatchInlineSnapshot(`
     {
+      "Memo type": "text",
       "What happens to BACK": "issuer",
       "What happens to DUST": null,
       "What happens to NORT": null,

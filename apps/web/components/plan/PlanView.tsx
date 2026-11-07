@@ -323,8 +323,8 @@ export default function PlanView({
   // unlike the codes above, its own presence is what decides whether the acknowledgement
   // checkbox (DefiPositionsAcknowledgement) even renders, so it cannot sit in
   // resolvable-blockers.ts's unconditional sets - see DEFI_POSITIONS_UNAVAILABLE_CODE's own
-  // comment there for why. This local carve-out only affects this page's own "ready to enter a
-  // destination" gate; `handleProceed`'s post-decision `proceedError` check below calls the
+  // comment there for why. This local carve-out only affects this page's own proceed gate;
+  // `handleProceed`'s post-decision `proceedError` check below calls the
   // plain, unmodified `hardBlockersOf` and remains the authoritative gate before anything is
   // built or signed.
   const defiPositionsBlocker = blockers.find((b) => b.code === DEFI_POSITIONS_UNAVAILABLE_CODE);
@@ -459,7 +459,6 @@ export default function PlanView({
     otherHardBlockers: hardBlockers.length - (defiAckOpen ? 1 : 0) - (issuerAckOpen ? 1 : 0),
     assetCardsWithheld,
     openItems,
-    destinationShown: destinationStepReady,
     destination: destinationFact,
     registryStale: registryBlocksExchange,
     memo: memoFact,
@@ -678,7 +677,7 @@ export default function PlanView({
             onSelectClaimableBalance={handleSelectClaimableBalance}
             onBulkSelectClaimableBalances={handleBulkSelectClaimableBalances}
             onUndoClaimableBalances={handleUndoClaimableBalances}
-            destinationAddress={destinationStepReady && destination ? destination : null}
+            destinationAddress={destinationFact === "ok" ? destination : null}
             mediatorRequired={previewMediatorRequired}
           />
         </div>
@@ -690,25 +689,23 @@ export default function PlanView({
           <p className="text-xs text-fg-subtle">
             {destinationStepReady
               ? "Every item is decided. Enter where the recovered XLM should go."
-              : "Where the recovered XLM goes is entered once every item above is decided."}
+              : "You can enter this now. The button below unlocks once every item above is decided."}
           </p>
         </div>
 
-        {destinationStepReady && (
-          <div id={DESTINATION_ID}>
-            <DestinationInput
-              destination={destination}
-              onDestinationChange={setDestination}
-              memo={memo}
-              onMemoChange={setMemo}
-              memoType={memoType}
-              onMemoTypeChange={setMemoType}
-              source={account.address}
-              acknowledged={destinationAcknowledgedFor === destination}
-              onAcknowledgedChange={(ack) => acknowledgeDestination(ack ? destination : null)}
-            />
-          </div>
-        )}
+        <div id={DESTINATION_ID}>
+          <DestinationInput
+            destination={destination}
+            onDestinationChange={setDestination}
+            memo={memo}
+            onMemoChange={setMemo}
+            memoType={memoType}
+            onMemoTypeChange={setMemoType}
+            source={account.address}
+            acknowledged={destinationAcknowledgedFor === destination}
+            onAcknowledgedChange={(ack) => acknowledgeDestination(ack ? destination : null)}
+          />
+        </div>
 
         {error && (
           <Callout tone="danger" icon={<AlertTriangle className="h-4 w-4" />}>

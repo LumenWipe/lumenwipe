@@ -10,10 +10,10 @@ async function fund(pub: string): Promise<void> {
   if (!res.ok) throw new Error(`friendbot ${res.status}: ${await res.text()}`);
 }
 
-// The same-address warning and the exchange memo requirement now live on the
-// late-destination step (DestinationInput in PlanView), reached after analyzing a
-// real account. A plain freshly-funded account holds no trustlines/offers, so every
-// asset is "resolved" immediately and the destination step renders right away.
+// The same-address warning and the exchange memo requirement live on the destination
+// step (DestinationInput in PlanView), reached after analyzing a real account. A plain
+// freshly-funded account holds no trustlines/offers, so every asset is "resolved"
+// immediately and the destination is the only thing left to enter.
 async function analyzeFreshAccountToDestinationStep(page: Page): Promise<string> {
   const source = Keypair.random();
   await fund(source.publicKey());

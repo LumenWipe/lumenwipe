@@ -180,3 +180,42 @@ test("the page keeps one live region, and it says a count, not the list", async 
   expect(statuses).toHaveLength(1);
   expect(statuses[0].textContent).toBe("1 thing left before you can review the plan");
 });
+
+test("the destination is on screen and fillable before any decision is made", async () => {
+  await mount([NO_ROUTE]);
+  const input = screen.getByRole("textbox", { name: "Destination address" }) as HTMLInputElement;
+  expect(screen.getByText(/You can enter this now\. The button below unlocks/)).toBeDefined();
+
+  fireEvent.change(input, { target: { value: WALLET } });
+
+  expect(input.value).toBe(WALLET);
+  expect(button().disabled).toBe(true);
+  expect(reasons()).toContain("Open: 1 asset");
+  expect(reasons()).not.toContain("Enter a destination");
+});
+
+test("a destination reason moves focus to the field while decisions are still open", async () => {
+  await mount([NO_ROUTE]);
+  const [destination] = screen.getAllByRole("button", { name: "Enter a destination" });
+  await click(destination);
+  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Destination address" }));
+});
+
+test("a destination typed early survives a re-plan", async () => {
+  const replan = await mount([NO_ROUTE]);
+  fireEvent.change(screen.getByRole("textbox", { name: "Destination address" }), {
+    target: { value: WALLET },
+  });
+  fireEvent.change(screen.getByRole("textbox", { name: /Payment memo/ }), {
+    target: { value: "early" },
+  });
+
+  await replan([NO_ROUTE, { ...NO_ROUTE, asset: "MORE:bbbbbbbb", code: "MORE" }], []);
+
+  expect(
+    (screen.getByRole("textbox", { name: "Destination address" }) as HTMLInputElement).value
+  ).toBe(WALLET);
+  expect((screen.getByRole("textbox", { name: /Payment memo/ }) as HTMLInputElement).value).toBe(
+    "early"
+  );
+});
