@@ -30,7 +30,12 @@ test("entry", async ({ page }) => {
 });
 
 test("allowances", async ({ page }) => {
+  // The title comes from server metadata, so it is already in the HTML the server sends.
+  const html = await (await page.request.get("/testnet/allowances")).text();
+  expect(html).toMatch(/<title[^>]*>Token allowances \| LumenWipe<\/title>/);
+
   await page.goto("/testnet/allowances");
+  await expect(page).toHaveTitle("Token allowances | LumenWipe");
   await dismissRiskModal(page);
   await page.getByPlaceholder(/G\.\.\./).fill(Keypair.random().publicKey());
   await page.getByRole("button", { name: /Inspect/ }).click();
