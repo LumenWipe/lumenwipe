@@ -12,7 +12,7 @@
     "test:coverage": "bun test tests/unit --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage",
     "test:watch": "bun test --watch tests/unit",
     "test:e2e": "playwright test",
-    "test:a11y": "NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID=00000000000000000000000000000000 next build && playwright test -c playwright.a11y.config.ts",
+    "test:a11y": "NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID=00000000000000000000000000000000 next build && playwright test -c playwright.a11y.config.ts tests/e2e/a11y/routes.spec.ts -g allowances --repeat-each=20 --retries=0",
     "test:all": "bun test tests/unit && playwright test",
     "setup:mediator": "bun scripts/setup-mediator.ts",
     "test:mediator": "bun scripts/test-mediator-flow.ts",
