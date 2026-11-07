@@ -54,6 +54,38 @@ export interface CloseStatusResponse {
   remaining?: CloseStatusRemaining;
 }
 
+/**
+ * One transaction in a `GET /v1/:network/close/delivered` answer. `delivered` means the ledger's
+ * own result for the confirmed transaction credited `amountStroops` of XLM to the destination,
+ * through a merge into it or, for a close routed through the relay account, the native payment
+ * that forwarded the merged balance. `unavailable` never carries an amount:
+ * - `not_found`: no provider holds the hash. It may be unknown, still pending, or older than the
+ *   providers keep.
+ * - `failed`: the transaction failed, so it moved nothing.
+ * - `no_delivery`: it confirmed, but no merge into the destination and no forward of a merged
+ *   balance to it is in it.
+ */
+export type CloseDeliveredEntry =
+  | { hash: string; status: "delivered"; ledger: number; amountStroops: string }
+  | {
+      hash: string;
+      status: "unavailable";
+      reason: "not_found" | "failed" | "no_delivery";
+      /** Set when the transaction is on the ledger: failed or no_delivery. */
+      ledger?: number;
+    };
+
+/**
+ * Response from `GET /v1/:network/close/delivered`. `entries` follow the order of the requested
+ * hashes. `totalStroops` is present only when every entry is `delivered`. XLM that reached the
+ * destination by any other operation, and any asset other than XLM, is not counted.
+ */
+export interface CloseDeliveredResponse {
+  destination: string;
+  entries: CloseDeliveredEntry[];
+  totalStroops?: string;
+}
+
 /** Response from `GET /:network/paths`. */
 export interface PathResponse {
   path: ConversionPath | null;

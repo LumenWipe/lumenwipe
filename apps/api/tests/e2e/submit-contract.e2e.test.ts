@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
@@ -20,6 +20,7 @@ import {
 } from "@/common/ports";
 import { configureApp } from "@/configure-app";
 import { TxPendingError } from "@/lib/utils/errors";
+import { MeteringService } from "@/metering/metering.service";
 
 const KEY = "e2e_test_key";
 const SOURCE = Keypair.random();
@@ -33,7 +34,7 @@ const WINDOW = {
 
 let app: INestApplication;
 let http: ReturnType<INestApplication["getHttpServer"]>;
-let getTransaction: () => Promise<unknown>;
+let getTransaction: (hash: string) => Promise<unknown>;
 let sendTransaction: () => Promise<unknown>;
 let getLedgerEntries: () => Promise<unknown>;
 let submitOverride: TransactionSubmitterPort["submitAndWait"] | null = null;
@@ -41,9 +42,9 @@ let sends = 0;
 let rpcReads = 0;
 
 const server = {
-  getTransaction: () => {
+  getTransaction: (hash: string) => {
     rpcReads++;
-    return getTransaction();
+    return getTransaction(hash);
   },
   sendTransaction: () => {
     sends++;
@@ -251,5 +252,147 @@ describe("GET close/status", () => {
     const res = await authGet(`/v1/testnet/close/status?source=${source}`);
     expect(res.status).toBe(503);
     expect(res.headers["retry-after"]).toBeDefined();
+  });
+});
+
+describe("GET close/delivered", () => {
+  const destination = Keypair.random().publicKey();
+
+  function mergeTx(sequence: number) {
+    const tx = new TransactionBuilder(new Account(SOURCE.publicKey(), String(sequence)), {
+      fee: "100",
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(Operation.accountMerge({ destination }))
+      .setTimeout(30)
+      .build();
+    return { envelope: tx.toEnvelope(), hash: Buffer.from(tx.hash()).toString("hex") };
+  }
+
+  const merged = (stroops: bigint) =>
+    new xdr.TransactionResult({
+      feeCharged: 100n,
+      result: xdr.TransactionResultResult.txSuccess([
+        xdr.OperationResult.opInner(
+          xdr.OperationResultTr.accountMerge(xdr.AccountMergeResult.accountMergeSuccess(stroops))
+        ),
+      ]),
+      ext: xdr.TransactionResultExt.v0(),
+    });
+
+  /** RPC holds every one of `txs`, each a merge of 10 XLM into the destination. */
+  function rpcHolds(txs: ReturnType<typeof mergeTx>[]) {
+    const byHash = new Map(txs.map((tx) => [tx.hash, tx]));
+    getTransaction = async (hash) => {
+      const tx = byHash.get(hash);
+      if (!tx) throw new Error(`unexpected lookup ${hash}`);
+      return {
+        status: "SUCCESS",
+        ledger: 77,
+        envelopeXdr: tx.envelope,
+        resultXdr: merged(100_000_000n),
+      };
+    };
+  }
+
+  const path = (query: string) => `/v1/testnet/close/delivered?${query}`;
+
+  test("a confirmed merge reports the amount its result carried, and the total", async () => {
+    const tx = mergeTx(1);
+    rpcHolds([tx]);
+    const res = await authGet(path(`destination=${destination}&hashes=${tx.hash.toUpperCase()}`));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      destination,
+      entries: [{ hash: tx.hash, status: "delivered", ledger: 77, amountStroops: "100000000" }],
+      totalStroops: "100000000",
+    });
+    expect(res.headers["cache-control"]).toBe("no-store");
+  });
+
+  test("bad input is refused before any upstream call", async () => {
+    const hash = mergeTx(2).hash;
+    const cases: [string, string][] = [
+      [`hashes=${hash}`, "invalid_destination"],
+      [`destination=nope&hashes=${hash}`, "invalid_destination"],
+      [`destination=${destination}`, "invalid_tx_hash"],
+      [`destination=${destination}&hashes=`, "invalid_tx_hash"],
+      [`destination=${destination}&hashes=abc`, "invalid_tx_hash"],
+      [`destination=${destination}&hashes=${hash},${hash}`, "invalid_tx_hash"],
+      [`destination=${destination}&hashes=${hash},${hash.toUpperCase()}`, "invalid_tx_hash"],
+      [`destination=${destination}&hashes=${hash}&hashes=${"ab".repeat(32)}`, "invalid_tx_hash"],
+      [
+        `destination=${destination}&hashes=${Array.from({ length: 21 }, (_, i) => mergeTx(10 + i).hash).join(",")}`,
+        "invalid_tx_hash",
+      ],
+    ];
+    for (const [query, code] of cases) {
+      const res = await authGet(path(query));
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe(code);
+    }
+    const network = await authGet(
+      `/v1/nowhere/close/delivered?destination=${destination}&hashes=${hash}`
+    );
+    expect(network.status).toBe(400);
+    expect(network.body.error.code).toBe("invalid_network");
+    expect(rpcReads).toBe(0);
+  });
+
+  test("requires a key", async () => {
+    const res = await request(http).get(path(`destination=${destination}&hashes=${HASH}`));
+    expect(res.status).toBe(401);
+    expect(rpcReads).toBe(0);
+  });
+
+  test("a provider answering with another transaction is a 503, never an amount", async () => {
+    const asked = mergeTx(3);
+    const other = mergeTx(4);
+    getTransaction = async () => ({
+      status: "SUCCESS",
+      ledger: 77,
+      envelopeXdr: other.envelope,
+      resultXdr: merged(100_000_000n),
+    });
+    const res = await authGet(path(`destination=${destination}&hashes=${asked.hash}`));
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe("service_unavailable");
+    expect(res.headers["retry-after"]).toBeDefined();
+    expect(JSON.stringify(res.body)).not.toContain("100000000");
+  });
+
+  test("is metered and rate limited like close/status: twenty hashes are one request", async () => {
+    const txs = Array.from({ length: 20 }, (_, i) => mergeTx(100 + i));
+    rpcHolds(txs);
+    getLedgerEntries = async () => ({
+      entries: [{ val: { type: "account", account: { numSubEntries: 0, ext: { type: "v0" } } } }],
+    });
+    const record = spyOn(app.get(MeteringService), "record");
+    try {
+      const query = `destination=${destination}&hashes=${txs.map((tx) => tx.hash).join(",")}`;
+      const first = await authGet(path(query));
+      const second = await authGet(path(query));
+      expect(first.status).toBe(200);
+      expect(first.body.entries).toHaveLength(20);
+      expect(first.body.totalStroops).toBe("2000000000");
+      expect(Number(first.headers["ratelimit-remaining"]) - 1).toBe(
+        Number(second.headers["ratelimit-remaining"])
+      );
+      expect(record.mock.calls).toEqual([
+        ["test", "GET /v1/testnet/close/delivered"],
+        ["test", "GET /v1/testnet/close/delivered"],
+      ]);
+
+      record.mockClear();
+      const status = await authGet(`/v1/testnet/close/status?source=${SOURCE.publicKey()}`);
+      expect(status.status).toBe(200);
+      expect(status.headers["ratelimit-limit"]).toBe(first.headers["ratelimit-limit"]);
+      expect(Number(status.headers["ratelimit-remaining"])).toBe(
+        Number(second.headers["ratelimit-remaining"]) - 1
+      );
+      expect(record.mock.calls).toEqual([["test", "GET /v1/testnet/close/status"]]);
+    } finally {
+      record.mockRestore();
+    }
   });
 });

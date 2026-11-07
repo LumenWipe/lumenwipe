@@ -683,6 +683,8 @@ A platform closing many accounts needs to see outcomes without holding a connect
 
 `close/status` is informational. A close is complete only when the hash of the merge the client signed is confirmed by hash.
 
+`GET /v1/{network}/close/delivered` reports the XLM confirmed close transactions delivered to their destination, and keeps nothing between calls either. The figure comes from the ledger's result for each transaction, never from the plan. Each transaction is read by its hash from RPC, and from Horizon when RPC no longer holds it. Both return the applied envelope and the `TransactionResult`, which is the only data both serve: Horizon no longer returns the result meta, and only Horizon has effects. The parsed envelope must hash to the requested hash under the network's passphrase (the outer or inner hash of a fee-bump), and a fee-bump result must name that inner transaction, or the read is a `503`. A merge into the destination counts the `sourceAccountBalance` its result reports. A native payment to the destination counts only as the forward of a relay close: its source is the account a successful merge earlier in the same transaction went into, at most one forward per merge, and never more than that merge carried. Nothing else counts. Responses are `no-store` and nothing is cached server side: a confirmed result cannot change, but the route stays as stateless as the other lookups, and a cap of 20 hashes per request with 5 read at a time bounds what one call costs upstream.
+
 ## 23. Open questions and known risks
 
 These are the items the team is actively resolving. Listing them is deliberate: a tool that drains accounts should be honest about what is still being pinned down.

@@ -2,6 +2,7 @@ import type {
   AccountState,
   AllowancesResult,
   ClosePlanRequest,
+  CloseDeliveredResponse,
   CloseStatusResponse,
   CloseTransactionsRequest,
   FeeBumpSponsorResponse,
@@ -186,6 +187,25 @@ export class LumenWipeClient {
     return this.http.request<CloseStatusResponse>(
       "GET",
       `/v1/${this.resolveNetwork(network)}/close/status?${query.toString()}`,
+      undefined,
+      { ...options, retry: "transient" }
+    );
+  }
+
+  /** The XLM confirmed close transactions delivered to `destination`, read from each one's ledger
+   *  result: a merge into it, or the relay account's forward of a merged balance. A hash that
+   *  cannot be read as delivered is an `unavailable` entry, not an error, and `totalStroops` is
+   *  set only when every entry is `delivered`. Pass 1 to 20 distinct hashes. */
+  async closeDelivered(
+    destination: string,
+    hashes: readonly string[],
+    network?: Network,
+    options?: RequestOptions
+  ): Promise<CloseDeliveredResponse> {
+    const query = new URLSearchParams({ destination, hashes: hashes.join(",") });
+    return this.http.request<CloseDeliveredResponse>(
+      "GET",
+      `/v1/${this.resolveNetwork(network)}/close/delivered?${query.toString()}`,
       undefined,
       { ...options, retry: "transient" }
     );

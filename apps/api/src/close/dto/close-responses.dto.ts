@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import type { CloseStatusRemaining, CloseStatusResponse, SubmitResponse } from "@lumenwipe/types";
+import type {
+  CloseDeliveredEntry,
+  CloseDeliveredResponse,
+  CloseStatusRemaining,
+  CloseStatusResponse,
+  SubmitResponse,
+} from "@lumenwipe/types";
 
 // Documentation-only, same convention as close-requests.dto.ts: these exist purely to give
 // Swagger a real, navigable response schema instead of a prose description. They mirror
@@ -81,4 +87,53 @@ export class CloseStatusResponseDto implements CloseStatusResponse {
     type: CloseStatusRemainingDto,
   })
   remaining?: CloseStatusRemaining;
+}
+
+class CloseDeliveredEntryDto {
+  @ApiProperty({ description: "The hash asked about, lowercase.", example: "a1b2c3...d4e5f6" })
+  hash!: string;
+
+  @ApiProperty({ enum: ["delivered", "unavailable"], example: "delivered" })
+  status!: CloseDeliveredEntry["status"];
+
+  @ApiPropertyOptional({
+    description:
+      "Set when delivered: the XLM the transaction credited to the destination, in stroops, " +
+      "from the ledger's result.",
+    example: "52345000",
+  })
+  amountStroops?: string;
+
+  @ApiPropertyOptional({
+    enum: ["not_found", "failed", "no_delivery"],
+    description:
+      "Set when unavailable. `not_found`: no provider holds the hash. `failed`: the " +
+      "transaction failed. `no_delivery`: it confirmed without a merge into the destination " +
+      "or a forward of a merged balance to it.",
+  })
+  reason?: "not_found" | "failed" | "no_delivery";
+
+  @ApiPropertyOptional({
+    description: "The ledger the transaction is in; absent for not_found.",
+    example: 123456,
+  })
+  ledger?: number;
+}
+
+export class CloseDeliveredResponseDto implements CloseDeliveredResponse {
+  @ApiProperty({ description: "The destination asked about." })
+  destination!: string;
+
+  @ApiProperty({
+    description: "One entry per requested hash, in the order asked.",
+    type: [CloseDeliveredEntryDto],
+  })
+  entries!: CloseDeliveredEntry[];
+
+  @ApiPropertyOptional({
+    description:
+      "The sum of every entry's amount, in stroops. Present only when every entry is delivered.",
+    example: "52345000",
+  })
+  totalStroops?: string;
 }

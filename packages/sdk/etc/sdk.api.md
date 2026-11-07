@@ -228,6 +228,29 @@ export interface ClassicConversionQuote {
 export type CloseApiStatus = "ready" | "needs_decisions" | "blocked" | "complete";
 
 // @public
+export type CloseDeliveredEntry = {
+    hash: string;
+    status: "delivered";
+    ledger: number;
+    amountStroops: string;
+} | {
+    hash: string;
+    status: "unavailable";
+    reason: "not_found" | "failed" | "no_delivery";
+    ledger?: number;
+};
+
+// @public
+export interface CloseDeliveredResponse {
+    // (undocumented)
+    destination: string;
+    // (undocumented)
+    entries: CloseDeliveredEntry[];
+    // (undocumented)
+    totalStroops?: string;
+}
+
+// @public
 export class CloseDidNotConvergeError extends Error {
     constructor(rounds: number, bound: number, reason: CloseDidNotConvergeReason);
     // (undocumented)
@@ -708,6 +731,7 @@ export class LumenWipeApiError extends Error {
 // @public
 export class LumenWipeClient {
     constructor(options: LumenWipeClientOptions);
+    closeDelivered(destination: string, hashes: readonly string[], network?: Network, options?: RequestOptions): Promise<CloseDeliveredResponse>;
     // (undocumented)
     closePlan(body: ClosePlanRequest, network?: Network, options?: RequestOptions): Promise<PlanResponse>;
     closeStatus(source: string, network?: Network, options?: RequestOptions): Promise<CloseStatusResponse>;

@@ -103,6 +103,28 @@ LUMENWIPE_API_KEY=... bun run --filter '@lumenwipe/sdk' example:headless
 
 `LUMENWIPE_API_URL` overrides the default `https://api.lumenwipe.com`. Testnet only.
 
+## Recording what arrived
+
+After a close, read the XLM that reached the destination from the ledger rather than from the
+plan. Collect the hashes `runClose` confirmed, then ask once:
+
+```ts
+const hashes: string[] = [];
+await runClose({ ...deps, onConfirmed: (_tx, hash) => hashes.push(hash) });
+
+const delivered = await client.closeDelivered(destination, hashes);
+for (const entry of delivered.entries) {
+  if (entry.status === "delivered") record(entry.hash, entry.amountStroops);
+  else record(entry.hash, `unavailable: ${entry.reason}`); // not_found, failed or no_delivery
+}
+// Set only when every entry was delivered: never treat its absence as zero.
+if (delivered.totalStroops !== undefined) record("total", delivered.totalStroops);
+```
+
+Only a merge into the destination, or the relay account's forward of a merged balance, counts.
+A transaction that delivered nothing this way, such as a cleanup round, is `no_delivery`, so pass
+the hashes whose amount you want: up to 20 per call.
+
 ## Verification is the caller's responsibility
 
 This SDK does not verify or sign anything. Every transaction it returns is unsigned XDR built by
@@ -125,6 +147,10 @@ Never sign a transaction from this SDK without an equivalent check.
 - `submit(signedXdr, network?)` - submits a signed transaction.
 - `mediatorCheck(address, network?)` / `mediatorSign(transaction, network?)` - the exchange
   mediator flow (see the architecture doc).
+- `getTransaction(hash, network?)` / `closeStatus(source, network?)` - look a transaction up by
+  hash, and read a close's phase from live state.
+- `closeDelivered(destination, hashes, network?)` - the XLM confirmed close transactions
+  delivered to the destination, read from the ledger's result (see below).
 - `runClose(deps)` - drives the full fetch/verify/sign/submit loop to completion.
 
 Request and response types come from `@lumenwipe/types` and are re-exported from this package, so
