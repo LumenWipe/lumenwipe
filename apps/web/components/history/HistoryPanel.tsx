@@ -1,15 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X, ExternalLink, Trash2, History, AlertTriangle } from "lucide-react";
+import { X, Trash2, History, AlertTriangle } from "lucide-react";
 import Link from "next/link";
-import { SE_EXPLORER_BASE, SV_EXPLORER_BASE } from "@/config/networks";
+import { explorerTxUrl, SV_EXPLORER_BASE } from "@/config/networks";
 import { listHistory, deleteHistoryEntry } from "@/lib/session/history";
 import { receiptPath } from "@/lib/receipt/href";
 import { formatXlm } from "@/lib/utils/amounts";
-import { shortAddr } from "@/lib/utils/short-id";
+import { shortHash } from "@/lib/utils/short-id";
 import type { ReceiptRecord } from "@/types/history";
 import { Dialog, DialogBody, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { ExplorerLink } from "@/components/ui/explorer-link";
+import { IdentifierDisplay } from "@/components/ui/identifier-display";
 
 interface HistoryPanelProps {
   onClose: () => void;
@@ -104,7 +106,6 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
 
         {load.state === "ready" &&
           load.entries.map((entry) => {
-            const explorerBase = SE_EXPLORER_BASE[entry.network];
             const svExplorerBase = SV_EXPLORER_BASE[entry.network];
             const date = new Date(entry.completedAt).toLocaleDateString("en-US", {
               year: "numeric",
@@ -120,11 +121,21 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
                       {date} · {entry.network}
                       {entry.outcome === "incomplete" && " · not finished"}
                     </p>
-                    <p className="text-xs font-mono-address text-white/80 truncate">
-                      {shortAddr(entry.sourceAddress)}
+                    <p className="text-xs text-white/80">
+                      <IdentifierDisplay
+                        value={entry.sourceAddress}
+                        kind="address"
+                        label="source account"
+                      />
                     </p>
-                    <p className="text-xs font-mono-address text-fg-muted truncate">
-                      → {shortAddr(entry.destinationAddress)}
+                    <p className="flex items-center gap-1 text-xs text-fg-muted">
+                      <span aria-hidden="true">→</span>
+                      <span className="sr-only">to</span>
+                      <IdentifierDisplay
+                        value={entry.destinationAddress}
+                        kind="address"
+                        label="destination address"
+                      />
                     </p>
                   </div>
 
@@ -172,26 +183,25 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
 
                 <div className="space-y-1">
                   {entry.transactions.map((receipt) => (
-                    <div key={receipt.txHash} className="flex items-center justify-between text-xs">
-                      <span className="text-fg-muted truncate max-w-[140px]">{receipt.label}</span>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <a
-                          href={`${explorerBase}/tx/${receipt.txHash}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-accent hover:underline"
+                    <div
+                      key={receipt.txHash}
+                      className="flex flex-wrap items-center justify-between gap-x-2 text-xs"
+                    >
+                      <span className="text-fg-muted">{receipt.label}</span>
+                      <span className="flex items-center gap-2">
+                        <ExplorerLink
+                          href={explorerTxUrl(entry.network, receipt.txHash)}
+                          target={`transaction ${shortHash(receipt.txHash)}`}
                         >
-                          SE <ExternalLink className="h-3 w-3" />
-                        </a>
-                        <a
-                          href={`${svExplorerBase}/tx/${receipt.txHash}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-accent hover:underline"
+                          Stellar Expert
+                        </ExplorerLink>
+                        <ExplorerLink
+                          href={`${svExplorerBase}/tx/${encodeURIComponent(receipt.txHash)}`}
+                          target={`transaction ${shortHash(receipt.txHash)}`}
                         >
-                          SV <ExternalLink className="h-3 w-3" />
-                        </a>
-                      </div>
+                          StellarView
+                        </ExplorerLink>
+                      </span>
                     </div>
                   ))}
                 </div>

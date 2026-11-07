@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useFocusOnMount } from "@/hooks/useFocusOnMount";
 import { useReceivedLumens } from "@/hooks/useReceivedLumens";
 import type { Network } from "@/config/networks";
-import { SE_EXPLORER_BASE } from "@/config/networks";
+import { explorerAccountUrl } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { cleanupSession } from "@/lib/session/recovery";
 import { saveHistory } from "@/lib/session/history";
@@ -156,7 +156,7 @@ export default function CompletionReceipt({ network, onSaved }: CompletionReceip
           icon={<AlertTriangle className="h-4 w-4" />}
           className="p-3 text-xs"
           action={
-            <Button size="sm" onClick={() => downloadReceiptJson(shown)}>
+            <Button size="sm" variant="secondary" onClick={() => downloadReceiptJson(shown)}>
               <Download className="h-3.5 w-3.5" />
               Download receipt
             </Button>
@@ -170,12 +170,13 @@ export default function CompletionReceipt({ network, onSaved }: CompletionReceip
       {!closed && sourceAddress && (
         <Button asChild variant="secondary" className="w-full">
           <Link
-            href={`${SE_EXPLORER_BASE[network]}/account/${sourceAddress}`}
+            href={explorerAccountUrl(network, sourceAddress)}
             target="_blank"
             rel="noopener noreferrer"
           >
             View the account on Stellar Expert
-            <ExternalLink className="h-3.5 w-3.5" />
+            <span className="sr-only"> (opens in a new tab)</span>
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden />
           </Link>
         </Button>
       )}

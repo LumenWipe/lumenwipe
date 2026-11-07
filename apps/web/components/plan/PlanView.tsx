@@ -152,7 +152,7 @@ export default function PlanView({
   } = useDemolishStore();
 
   // Pre-fill destination/memo from the store when navigating here from a resume.
-  // On fresh flows the store values are null (reset by "Merge another account") so
+  // On fresh flows the store values are null (reset by "Close another account") so
   // this is a no-op; on resume they hold the session's saved destination.
   const [destination, setDestination] = useState(storedDest ?? "");
   const [memo, setMemo] = useState(storedMemo ?? "");

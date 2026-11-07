@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { dismissRiskModal, enterSourceAddress, openTestnetHome } from "../helpers/flow";
+import { closedReceipt, openSeededReceipt } from "../helpers/receipt";
 import { expectNoAxeViolations } from "./axe";
 import { FLAGGED_TOKEN_ACCOUNT, installApiFixtures, UNRENDERABLE_ACCOUNT } from "./fixtures";
 
@@ -51,6 +52,16 @@ test("receipt not in this browser", async ({ page }) => {
     "Receipt not found in this browser"
   );
   await expectNoAxeViolations(page, "receipt not in this browser");
+});
+
+test("receipt saved in this browser", async ({ page }) => {
+  await openSeededReceipt(page, closedReceipt());
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Account successfully merged");
+  await expectNoAxeViolations(page, "receipt, groups collapsed");
+
+  await page.getByRole("button", { name: /Offers cancelled/ }).click();
+  await page.getByRole("button", { name: "Show full hash of Merge" }).click();
+  await expectNoAxeViolations(page, "receipt, a group and a hash open");
 });
 
 test("not found", async ({ page }) => {

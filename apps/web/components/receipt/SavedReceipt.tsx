@@ -109,7 +109,7 @@ function SavedBanner({ record }: { record: ReceiptRecord }) {
     return (
       <Callout
         tone="success"
-        announce={false}
+        announce="status"
         icon={<CheckCircle className="h-12 w-12" />}
         title={<Heading>Account successfully merged</Heading>}
         className="flex-col items-center gap-3 p-6 text-center"
@@ -121,7 +121,7 @@ function SavedBanner({ record }: { record: ReceiptRecord }) {
   return (
     <Callout
       tone="warning"
-      announce={false}
+      announce="status"
       icon={<AlertTriangle className="h-12 w-12" />}
       title={<Heading>Close not finished</Heading>}
       className="flex-col items-center gap-3 p-6 text-center"
@@ -133,7 +133,8 @@ function SavedBanner({ record }: { record: ReceiptRecord }) {
             rel="noopener noreferrer"
           >
             View the account on Stellar Expert
-            <ExternalLink className="h-3.5 w-3.5" />
+            <span className="sr-only"> (opens in a new tab)</span>
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden />
           </Link>
         </Button>
       }

@@ -89,9 +89,11 @@ test("the route renders a stored receipt from this browser alone", async () => {
   expect(screen.getByText("2026-11-07 10:30 UTC")).toBeTruthy();
   expect(screen.getByText("Received 1,234.50 XLM")).toBeTruthy();
   expect(screen.getByText(DEST)).toBeTruthy();
-  const se = screen.getAllByRole("link", { name: /SE/ })[0];
+  const se = screen.getByRole("link", {
+    name: "Stellar Expert - transaction aaaaaa…beef01, opens in a new tab",
+  });
   expect(se.getAttribute("href")).toContain(`/tx/${HASH}`);
-  expect(screen.getByRole("link", { name: /Merge another account/ })).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Close another account" })).toBeTruthy();
   expect(document.title).toBe("Account closed | LumenWipe");
 });
 
@@ -135,7 +137,7 @@ test("an incomplete receipt never reads as closed", async () => {
 
   expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Close not finished");
   expect(container.textContent).not.toContain("successfully merged");
-  expect(screen.queryAllByRole("link", { name: /Merge another account/ })).toHaveLength(0);
+  expect(screen.queryAllByRole("link", { name: /Close another account/ })).toHaveLength(0);
   expect(document.title).toBe("Close incomplete | LumenWipe");
 });
 
