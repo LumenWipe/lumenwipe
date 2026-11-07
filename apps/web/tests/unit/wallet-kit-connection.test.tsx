@@ -8,7 +8,7 @@ import {
   useWalletKitConnection,
   type WalletKitConnection,
 } from "@/hooks/useWalletKitConnection";
-import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
+import WalletConnectPanel, { NO_WALLET_CONNECT_NOTE } from "@/components/wallet/WalletConnectPanel";
 import { WalletNotUsableError } from "@/lib/stellar/signer";
 import { VARIAL_ID } from "@creit-tech/stellar-wallets-kit/modules/varial";
 
@@ -399,4 +399,34 @@ test("wallet connection › a guard refuses an unknown network whose confirmatio
   expect(await guardOutcome(guard)).toBeNull();
   act(() => result.current.confirmNetwork(false));
   expect(await guardOutcome(guard)).toBe("network-unconfirmed");
+});
+
+function withProjectId(id: string | undefined, fn: () => void): void {
+  const saved = process.env.NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID;
+  if (id === undefined) delete process.env.NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID;
+  else process.env.NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID = id;
+  try {
+    fn();
+  } finally {
+    if (saved === undefined) delete process.env.NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID;
+    else process.env.NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID = saved;
+  }
+}
+
+function disconnected(): WalletKitConnection {
+  return { ...unknownNetworkConnection(), address: null, status: "disconnected" };
+}
+
+test("wallet connection › without a WalletConnect project id the picker says mobile wallets are unavailable", () => {
+  withProjectId(undefined, () => {
+    render(<WalletConnectPanel connection={disconnected()} />);
+    expect(screen.getByText(NO_WALLET_CONNECT_NOTE)).toBeDefined();
+  });
+});
+
+test("wallet connection › with a WalletConnect project id the picker has no such note", () => {
+  withProjectId("0".repeat(32), () => {
+    render(<WalletConnectPanel connection={disconnected()} />);
+    expect(screen.queryByText(NO_WALLET_CONNECT_NOTE)?.textContent ?? null).toBeNull();
+  });
 });

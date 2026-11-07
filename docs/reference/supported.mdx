@@ -104,18 +104,20 @@ The list is read from the wallet modules the web app enables (`apps/web/lib/wall
 
 {/* generated:wallets:start */}
 
-| Wallet                                           | When enabled                                                                          | Network                        |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------- | ------------------------------ |
-| Varial (formerly Freighter)                      | Always enabled                                                                        | Both, set by the app's network |
-| xBull                                            | Always enabled                                                                        | Both, set by the app's network |
-| Albedo                                           | Always enabled                                                                        | Both, set by the app's network |
-| Rabet                                            | Always enabled                                                                        | Both, set by the app's network |
-| Hana                                             | Always enabled                                                                        | Both, set by the app's network |
-| WalletConnect, which is also how LOBSTR connects | Enabled when `NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID` is set on the deployment | Both, set by the app's network |
+| Wallet                                           | When enabled                                                                                                                             | Network                        |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| Varial (formerly Freighter)                      | Always enabled                                                                                                                           | Both, set by the app's network |
+| xBull                                            | Always enabled                                                                                                                           | Both, set by the app's network |
+| Albedo                                           | Always enabled                                                                                                                           | Both, set by the app's network |
+| Rabet                                            | Always enabled                                                                                                                           | Both, set by the app's network |
+| Hana                                             | Always enabled                                                                                                                           | Both, set by the app's network |
+| WalletConnect, which is also how LOBSTR connects | Enabled when `NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID` is set on the deployment; a production deployment does not build without it | Both, set by the app's network |
 
 {/* generated:wallets:end */}
 
 Last verified 2026-10-10. Automated test coverage: a unit test (`wallet-kit-modules.test.ts`) pins which modules are enabled and that LOBSTR's own extension module is excluded. No automated test signs through a real wallet, so a wallet appearing here means the app offers it, not that every release was exercised against it. Per-wallet network support is not tested; the app passes the active network passphrase to the wallet.
+
+Hardware wallets are not offered. Trezor's module starts Trezor Connect from connect.trezor.io on every page, before any wallet is chosen, and needs a manifest with a contact email, so it is left out. Ledger is not offered until its module has been checked against a device.
 
 ## Limits
 

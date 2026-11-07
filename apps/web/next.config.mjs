@@ -1,3 +1,6 @@
+import { PHASE_PRODUCTION_BUILD } from "next/constants.js";
+import { walletConnectBuildError } from "./config/wallet-connect-build.mjs";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -16,4 +19,18 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+/**
+ * A production deployment fails its build without a WalletConnect project id, instead of
+ * shipping with no mobile wallet. Only the build is checked: `next dev` and `next start` load
+ * this config in other phases.
+ *
+ * @param {string} phase
+ * @returns {import('next').NextConfig}
+ */
+export default function config(phase) {
+  if (phase === PHASE_PRODUCTION_BUILD) {
+    const error = walletConnectBuildError(process.env);
+    if (error) throw new Error(error);
+  }
+  return nextConfig;
+}

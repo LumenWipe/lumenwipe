@@ -5,6 +5,12 @@ import { AlertTriangle, CheckCircle } from "lucide-react";
 import { NETWORK_NAME, type Network } from "@/config/networks";
 import type { WalletKitConnection } from "@/hooks/useWalletKitConnection";
 import { Button } from "@/components/ui/button";
+import { walletConnectConfigured } from "@/lib/wallet-kit/modules";
+
+/** Shown under the connect button on a build without a WalletConnect project id (never production:
+ *  its build requires one). */
+export const NO_WALLET_CONNECT_NOTE =
+  "Mobile wallets, LOBSTR included, need WalletConnect, which is not set up on this deployment. Browser wallets still work.";
 
 interface Props {
   connection: WalletKitConnection;
@@ -171,6 +177,9 @@ export default function WalletConnectPanel({
       >
         {connecting ? "Connecting…" : "Connect wallet"}
       </Button>
+      {!walletConnectConfigured() && (
+        <p className="text-xs text-fg-subtle">{NO_WALLET_CONNECT_NOTE}</p>
+      )}
       {error && (
         <p role="alert" className="text-xs text-danger-fg">
           {error}

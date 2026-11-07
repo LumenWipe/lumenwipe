@@ -14,6 +14,11 @@ import type { ModuleInterface } from "@creit-tech/stellar-wallets-kit/types";
  * default modules today (most unreviewed by us); add a new one here only after
  * vetting it, never automatically.
  *
+ * Hardware wallets are not in it yet. Trezor is excluded: its module calls `TrezorConnect.init` in
+ * its constructor, which needs a manifest with a contact email and loads Trezor Connect from
+ * connect.trezor.io on every page (a new script and frame origin under the CSP), before the user
+ * picks any wallet. Ledger is tracked on its own (lumenwipe#736) and is absent until it is vetted.
+ *
  * Note: We import and instantiate only the vetted five module classes directly,
  * rather than using `defaultModules({ filterBy })`, because the latter eagerly
  * constructs every default module upfront - including ones like BitgetModule that
@@ -62,6 +67,19 @@ export function walletConnectMetadata(): WalletConnectMetadata {
 }
 
 /**
+ * Whether this build has a WalletConnect project id. Without one, mobile wallets (LOBSTR
+ * included) are unavailable and the wallet picker says so. A production deployment cannot be
+ * built without it (`config/wallet-connect-build.mjs`).
+ */
+export function walletConnectConfigured(): boolean {
+  return walletConnectProjectId() !== null;
+}
+
+function walletConnectProjectId(): string | null {
+  return process.env.NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID?.trim() || null;
+}
+
+/**
  * Full module list for `StellarWalletsKit.init`. WalletConnect is included only when
  * a project ID is configured - without it, LOBSTR (reachable only via WalletConnect)
  * is unavailable but the five vetted extension wallets still work.
@@ -72,17 +90,10 @@ export function walletConnectMetadata(): WalletConnectMetadata {
  * down too - including the secret-key fallback on the screen where funds get closed.
  */
 export function walletKitModules(): ModuleInterface[] {
-  const projectId = process.env.NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID;
+  const projectId = walletConnectProjectId();
   const modules: ModuleInterface[] = [...vettedDefaultModules()];
-
   if (projectId) {
     modules.push(new WalletConnectModule({ projectId, metadata: walletConnectMetadata() }));
-  } else {
-    // Dev/ops visibility only - never shown to end users, and this must not throw.
-    console.warn(
-      "NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID is not set - WalletConnect (and LOBSTR) will be unavailable."
-    );
   }
-
   return modules;
 }
