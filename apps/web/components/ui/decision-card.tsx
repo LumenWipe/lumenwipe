@@ -23,6 +23,7 @@ export interface DecisionOption<V extends string> {
 
 export const DECISION_TAGS = {
   recommended: { label: "Recommended", tone: "success" },
+  confirmFirst: { label: "Needs your confirmation", tone: "warning" },
   keep: { label: "You keep the tokens", tone: "neutral" },
   giveUp: { label: "You give up the tokens", tone: "warning" },
   keepBalance: { label: "You keep the balance", tone: "neutral" },

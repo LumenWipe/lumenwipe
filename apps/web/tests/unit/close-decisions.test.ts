@@ -767,6 +767,7 @@ describe("closeDecisions", () => {
     destinationAcknowledgedFor: destination,
     defiPositionsAcknowledgedFor: source,
     issuerSupplyAcknowledgedFor: "GOTHER",
+    conversionImpactAcknowledgedFor: {},
     positionsLeftBehind: [],
   };
 

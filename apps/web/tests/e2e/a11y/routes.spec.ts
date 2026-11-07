@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { dismissRiskModal, enterSourceAddress, openTestnetHome } from "../helpers/flow";
 import { expectNoAxeViolations } from "./axe";
-import { installApiFixtures, UNRENDERABLE_ACCOUNT } from "./fixtures";
+import { FLAGGED_TOKEN_ACCOUNT, installApiFixtures, UNRENDERABLE_ACCOUNT } from "./fixtures";
 
 let api: Awaited<ReturnType<typeof installApiFixtures>>;
 
@@ -58,4 +58,14 @@ test("error", async ({ page }) => {
   await dismissRiskModal(page);
   await expect(page.getByRole("heading", { name: "Something went wrong" })).toBeVisible();
   await expectNoAxeViolations(page, "error");
+});
+
+test("analyze, a token conversion that needs a confirmation", async ({ page }) => {
+  await page.goto(`/testnet/analyze?source=${FLAGGED_TOKEN_ACCOUNT}`);
+  await dismissRiskModal(page);
+  await page.getByRole("radio", { name: /Exchange my 250 XTAR for XLM/ }).check();
+  await expect(
+    page.getByRole("checkbox", { name: /still want to exchange my 250 XTAR/ })
+  ).toBeVisible();
+  await expectNoAxeViolations(page, "analyze, flagged token conversion");
 });

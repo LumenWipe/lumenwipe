@@ -68,6 +68,8 @@ function StoreBackedTokenCard(): ReactElement {
       mergeDestination={null}
       onSetDisposition={() => {}}
       onSetTransferDestination={setTransferDestination}
+      impactConfirmed={false}
+      onConfirmImpact={() => {}}
     />
   );
 }

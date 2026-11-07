@@ -82,6 +82,8 @@ function token(code: string, convertible: boolean, decimals: number | null): Ass
               platform: "soroswap",
               route: [],
               provider: "soroswap" as const,
+              priceImpactBps: 10,
+              flags: [],
             },
           }
         : {}),

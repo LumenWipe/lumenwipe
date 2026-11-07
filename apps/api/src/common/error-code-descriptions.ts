@@ -32,6 +32,8 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   confirmation_timeout:
     "The transaction was submitted and is not confirmed yet. Look it up by hash before retrying.",
   conversion_floor_missing: "A conversion carries no destination minimum.",
+  conversion_impact_not_acknowledged:
+    "A token conversion with a high or unmeasured price impact, or with disagreeing quotes, was chosen without its confirmation.",
   conversion_provider_unrecognized: "A conversion names a provider the API does not recognize.",
   defi_exit_blocked: "A DeFi position could not be exited safely.",
   defi_exit_unsupported: "The account holds a DeFi position that cannot be exited yet.",

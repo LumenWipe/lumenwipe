@@ -5,6 +5,9 @@ import type {
   ClassicConversionQuote,
   DecisionAnswer,
   DecisionPoint,
+  PlanBlocker,
+  TokenQuoteFlag,
+  TokenUnquotedReason,
   TransferDestinations,
   Trustline,
 } from "@lumenwipe/types";
@@ -428,11 +431,33 @@ export interface TokenQuoteSummary {
    *  route could not be confirmed live (the plan-time composition falls back rather than ever
    *  offering an unresolved route). */
   resolvedPath?: string[];
+  /** The winning quote's price impact in basis points, null when none could be measured: read
+   *  from Soroswap's own `priceImpactPct`, derived from a probe quote for xBull, which reports
+   *  none. */
+  priceImpactBps: number | null;
+  /** Why this conversion is offered but not recommended; empty for an unremarkable quote. */
+  flags: TokenQuoteFlag[];
+  /** The other provider's usable quote, when both answered: what the winner is compared to. */
+  runnerUp?: { provider: "soroswap" | "xbull"; amountOut: string; minAmountOut: string };
+}
+
+/** The convert option's note on a flagged token: why it is not the recommended choice. */
+function flaggedConvertNote(flags: TokenQuoteFlag[]): string {
+  if (flags.includes("high_impact")) {
+    return "This swap delivers much less than the current market price suggests. Converting needs your confirmation.";
+  }
+  if (flags.includes("provider_disagreement")) {
+    return "The two swap providers' quotes differ by more than 10%, so this one may not hold. Converting needs your confirmation.";
+  }
+  return "The price impact of this swap could not be measured. Converting needs your confirmation.";
 }
 
 export function deriveTokenDecisionPoints(
   account: Pick<AccountState, "sorobanTokens">,
-  quotes: Record<string, TokenQuoteSummary | null | undefined>
+  quotes: Record<string, TokenQuoteSummary | null | undefined>,
+  /** Why each token that has no quote was not quoted, from plan-time quoting. A readable token
+   *  missing here was never quoted (it arrives from an exit, so its amount is not known yet). */
+  reasons: Readonly<Record<string, TokenUnquotedReason>> = {}
 ): DecisionPoint[] {
   const tokens = account.sorobanTokens?.tokens ?? [];
   return (
@@ -445,8 +470,22 @@ export function deriveTokenDecisionPoints(
         const readable = t.symbol !== null && t.decimals !== null;
         const quote = readable ? (quotes[t.contract] ?? null) : null;
         const convertible = quote !== null;
+        // A flagged quote is still offered, never recommended: the user may accept it, but only
+        // by confirming it (conversion_impact:<contract>), never by default.
+        const flagged = quote !== null && quote.flags.length > 0;
+        const reason: TokenUnquotedReason | undefined = convertible
+          ? undefined
+          : !readable
+            ? "metadata_unreadable"
+            : reasons[t.contract];
         const options = [
-          ...(convertible ? [{ id: "convert_to_xlm" as const, recommended: true }] : []),
+          ...(convertible
+            ? [
+                flagged
+                  ? { id: "convert_to_xlm" as const, note: flaggedConvertNote(quote.flags) }
+                  : { id: "convert_to_xlm" as const, recommended: true },
+              ]
+            : []),
           {
             id: TRANSFER_CHOICE,
             note: "Sends the balance, as this token, to an account you name. No trustline is needed.",
@@ -471,13 +510,114 @@ export function deriveTokenDecisionPoints(
             /** True when the balance is what a position's exit will pay out, not what is held now. */
             arrivesFromExit: BigInt(t.balance) === 0n,
             ...(quote ? { quote } : {}),
+            ...(reason ? { reason } : {}),
           },
           options,
-          default: convertible ? "convert_to_xlm" : TRANSFER_CHOICE,
+          default: convertible && !flagged ? "convert_to_xlm" : TRANSFER_CHOICE,
           required: true,
         };
       })
   );
+}
+
+/** Stable id for the confirmation a flagged token conversion needs, scoped to the token. */
+export function conversionImpactDecisionId(contract: string): string {
+  return `conversion_impact:${contract}`;
+}
+
+/** The choice that confirms a flagged conversion. Its answer names the floor it confirms in
+ *  `params.minAmountOut`, the same floor the token's convert answer carries. */
+export const CONVERSION_IMPACT_ACK_CHOICE = "acknowledged";
+
+/** The plan blocker raised while a flagged conversion is chosen and not confirmed. */
+export const CONVERSION_IMPACT_BLOCKER_CODE = "conversion_impact_not_acknowledged";
+
+/**
+ * One confirmation per token whose quote is flagged. It is pending only while that token is
+ * answered `convert_to_xlm` without a matching confirmation; answering transfer or leave needs
+ * none, so it is not `required` on its own.
+ */
+export function deriveConversionImpactDecisionPoints(
+  account: Pick<AccountState, "sorobanTokens">,
+  quotes: Record<string, TokenQuoteSummary | null | undefined>
+): DecisionPoint[] {
+  return (account.sorobanTokens?.tokens ?? []).flatMap((t) => {
+    const quote = quotes[t.contract];
+    if (!quote || quote.flags.length === 0 || t.symbol === null || t.decimals === null) return [];
+    return [
+      {
+        id: conversionImpactDecisionId(t.contract),
+        type: "confirmation" as const,
+        subject: {
+          kind: "conversion_impact",
+          contract: t.contract,
+          symbol: t.symbol,
+          minAmountOut: quote.minAmountOut,
+          priceImpactBps: quote.priceImpactBps,
+          flags: quote.flags,
+        },
+        options: [{ id: CONVERSION_IMPACT_ACK_CHOICE }],
+        default: "",
+        required: false,
+      },
+    ];
+  });
+}
+
+/**
+ * Whether a token's convert answer is confirmed: the latest confirmation answer names exactly the
+ * floor the latest convert answer carries. A confirmation given for another floor (an earlier
+ * quote) confirms nothing, so consent never stretches to a figure the user was not shown.
+ */
+export function isConversionImpactAcknowledged(
+  answers: DecisionAnswer[],
+  contract: string
+): boolean {
+  const latest = new Map<string, DecisionAnswer>();
+  for (const answer of answers) latest.set(answer.id, answer);
+  const convert = latest.get(tokenDecisionId(contract));
+  const ack = latest.get(conversionImpactDecisionId(contract));
+  if (convert?.choice !== "convert_to_xlm" || ack?.choice !== CONVERSION_IMPACT_ACK_CHOICE) {
+    return false;
+  }
+  const floor = convert.params?.minAmountOut;
+  return typeof floor === "string" && floor.length > 0 && ack.params?.minAmountOut === floor;
+}
+
+/** Why converting this token needs confirming, in the words the blocker uses. */
+function impactReason(flags: TokenQuoteFlag[]): string {
+  if (flags.includes("high_impact")) {
+    return "it delivers much less than the current market price suggests";
+  }
+  if (flags.includes("provider_disagreement")) {
+    return "the two swap providers' quotes differ by more than 10%";
+  }
+  return "its price impact could not be measured";
+}
+
+/**
+ * One blocker per token answered `convert_to_xlm` whose quote is flagged and whose answer is not
+ * confirmed. The plan's own gate: the build re-quotes and holds the swap to the pinned floor, but
+ * does not re-check the confirmation.
+ */
+export function conversionImpactBlockers(
+  account: Pick<AccountState, "sorobanTokens">,
+  quotes: Record<string, TokenQuoteSummary | null | undefined>,
+  dispositions: Readonly<Record<string, AssetDisposition>>,
+  answers: DecisionAnswer[]
+): PlanBlocker[] {
+  return deriveConversionImpactDecisionPoints(account, quotes)
+    .map((dp) => String(dp.subject.contract))
+    .filter((c) => dispositions[c] === "convert" && !isConversionImpactAcknowledged(answers, c))
+    .map((c) => {
+      const t = account.sorobanTokens!.tokens.find((tk) => tk.contract === c)!;
+      return {
+        code: CONVERSION_IMPACT_BLOCKER_CODE,
+        message:
+          `Converting ${t.symbol} needs your confirmation: ${impactReason(quotes[c]!.flags)}. ` +
+          "Confirm it on the token's card, or choose another option.",
+      };
+    });
 }
 
 // Stable id for a claimable-balance decision: "claim:<balanceId>".

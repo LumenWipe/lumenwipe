@@ -42,6 +42,8 @@ function renderAccordion(account: AccountState) {
       mergeDestination={null}
       onSetDisposition={() => {}}
       onSetTransferDestination={() => {}}
+      isImpactConfirmed={() => false}
+      onConfirmImpact={() => {}}
       claimableBalanceDecisions={[]}
       claimableBalanceSelections={{}}
       onSelectClaimableBalance={() => {}}

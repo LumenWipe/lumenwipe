@@ -168,7 +168,14 @@ export class DecisionPointDto implements DecisionPoint {
       "for asset_disposition, a claimable balance id for claimable_balance). Freeform by design: " +
       "there is one decision-point contract per `type`, not one global shape. A convertible " +
       "classic asset's subject carries `quote` (ClassicConversionQuoteDto): display data, absent " +
-      "when no route exists or the balance is one a position's exit has yet to pay in.",
+      "when no route exists or the balance is one a position's exit has yet to pay in. A " +
+      "convertible Soroban token's subject carries `quote` with `amountOut`, `minAmountOut`, " +
+      "`provider`, `priceImpactBps` (null when it could not be measured), `flags` (`high_impact` " +
+      "above 5%, `impact_unknown`, `provider_disagreement` above 10%) and, when both providers " +
+      "answered, `runnerUp`. A flagged conversion is offered but not recommended, and converting " +
+      "needs the `conversion_impact:<contract>` confirmation, answered `acknowledged` with the " +
+      "same `params.minAmountOut` as the convert answer. A token with no quote carries `reason`: " +
+      "`quote_limit`, `provider_unavailable` (analyze again), `no_route` or `metadata_unreadable`.",
     type: "object",
     additionalProperties: true,
   })

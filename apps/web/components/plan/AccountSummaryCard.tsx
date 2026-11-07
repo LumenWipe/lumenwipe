@@ -27,6 +27,13 @@ function estimateNote(expected: ExpectedReceive): string {
         : `It leaves out ${expected.unquotedSwaps} swaps that have no estimate.`
     );
   }
+  if (expected.flaggedSwaps > 0) {
+    parts.push(
+      expected.flaggedSwaps === 1
+        ? "One swap you confirmed was flagged on its card: it may deliver much less than the current market price suggests."
+        : `${expected.flaggedSwaps} swaps you confirmed were flagged on their cards: they may deliver much less than the current market price suggests.`
+    );
+  }
   if (expected.tokenSwaps > 0) {
     parts.push("It leaves out the Soroban resource fee each token swap pays.");
   }

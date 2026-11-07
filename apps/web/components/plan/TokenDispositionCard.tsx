@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, ArrowRightLeft, CheckCircle2, Send } from "lucide-react";
-import { formatStroops, type AssetConvertibility } from "@/lib/api/plan-adapters";
+import { formatStroops, type AssetConvertibility, type TokenQuote } from "@/lib/api/plan-adapters";
 import type { AssetDisposition } from "@/types/plan";
 import { AddressField } from "@/components/ui/address-field";
 import { addressErrorMessage, isValidGAddress } from "@/lib/utils/validation";
@@ -16,6 +16,53 @@ interface TokenDispositionCardProps {
   mergeDestination: string | null;
   onSetDisposition: (asset: string, disposition: AssetDisposition) => void;
   onSetTransferDestination: (asset: string, destination: string | null) => void;
+  /** Whether the user confirmed converting at the floor the convert answer carries now. */
+  impactConfirmed: boolean;
+  onConfirmImpact: (asset: string, confirmed: boolean) => void;
+}
+
+const PROVIDER_NAMES = { soroswap: "Soroswap", xbull: "xBull" } as const;
+
+/** Basis points as a percentage, with no trailing zeros. */
+function formatImpact(bps: number): string {
+  return (bps / 100).toFixed(2).replace(/\.?0+$/, "");
+}
+
+/** Why a flagged quote is not recommended, in one sentence the user can weigh. */
+function flaggedNotice(quote: TokenQuote): string {
+  const parts: string[] = [];
+  if (quote.flags.includes("high_impact") && quote.priceImpactBps !== null) {
+    parts.push(
+      `This swap delivers much less than the current market price suggests: a price impact of about ${formatImpact(quote.priceImpactBps)}%.`
+    );
+  }
+  if (quote.flags.includes("impact_unknown")) {
+    parts.push(
+      "The price impact of this swap could not be measured, so it may deliver much less than the current market price suggests."
+    );
+  }
+  if (quote.flags.includes("provider_disagreement") && quote.runnerUp) {
+    parts.push(
+      `The two swap providers disagree by more than 10%: ${PROVIDER_NAMES[quote.provider]} quotes about ${formatStroops(quote.amountOut)} XLM, ${PROVIDER_NAMES[quote.runnerUp.provider]} about ${formatStroops(quote.runnerUp.amountOut)} XLM, so the better quote may not hold.`
+    );
+  }
+  return parts.join(" ");
+}
+
+/** Why there is no conversion to offer, as the plan reported it. */
+function unconvertibleReason(item: AssetConvertibility): string {
+  const token = item.token!;
+  if (token.decimals === null || token.reason === "metadata_unreadable") {
+    return "This token does not report its symbol or decimals, so the balance is shown in raw units and cannot be exchanged for XLM. ";
+  }
+  switch (token.reason) {
+    case "quote_limit":
+      return "This account holds more Soroban tokens than one plan prices, so this one was not quoted for an exchange. ";
+    case "provider_unavailable":
+      return "The swap providers did not answer in time, so this token could not be priced right now. Analyze again in a moment to see whether it can be exchanged. ";
+    default:
+      return "There is no route to exchange this token for XLM. ";
+  }
 }
 
 /**
@@ -34,21 +81,23 @@ export default function TokenDispositionCard({
   mergeDestination,
   onSetDisposition,
   onSetTransferDestination,
+  impactConfirmed,
+  onConfirmImpact,
 }: TokenDispositionCardProps) {
   const token = item.token!;
   const isTransfer = disposition === "transfer";
   const isLeave = disposition === "leave";
   const isConvert = disposition === "convert" && item.convertible;
+  const flagged = item.convertible && (token.quote?.flags.length ?? 0) > 0;
   const transferReady = isTransfer && !!transferDestination && isValidGAddress(transferDestination);
-  const resolved = isConvert || isLeave || transferReady;
-
-  const unknownUnits = token.decimals === null;
+  const convertReady = isConvert && (!flagged || impactConfirmed);
+  const resolved = convertReady || isLeave || transferReady;
 
   const headline = isTransfer
     ? "another account"
     : isLeave
       ? "stays with this address"
-      : isConvert
+      : convertReady
         ? "XLM"
         : "needs a decision";
 
@@ -58,17 +107,38 @@ export default function TokenDispositionCard({
           {
             value: "convert" as const,
             label: `Exchange my ${item.balance} ${item.code} for XLM.`,
-            tag: DECISION_TAGS.recommended,
+            tag: flagged ? DECISION_TAGS.confirmFirst : DECISION_TAGS.recommended,
             detail: token.quote ? (
               <>
                 About {formatStroops(token.quote.amountOut)} XLM, at least{" "}
                 {formatStroops(token.quote.minAmountOut)} XLM, through{" "}
-                {token.quote.provider === "xbull" ? "xBull" : "Soroswap"}
-                {token.quote.route.length > 0 ? ` (${token.quote.route.join(", ")})` : ""}.
+                {PROVIDER_NAMES[token.quote.provider]}
+                {token.quote.route.length > 0 ? ` (${token.quote.route.join(", ")})` : ""}
+                {token.quote.priceImpactBps !== null
+                  ? `, at a price impact of about ${formatImpact(token.quote.priceImpactBps)}%`
+                  : ""}
+                .
               </>
             ) : (
               "Through the best available route."
             ),
+            ...(flagged && token.quote
+              ? {
+                  notice: flaggedNotice(token.quote),
+                  children: (
+                    <label className="flex cursor-pointer items-start gap-2 text-xs text-white/80">
+                      <input
+                        type="checkbox"
+                        checked={impactConfirmed}
+                        onChange={(e) => onConfirmImpact(item.asset, e.target.checked)}
+                        className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-accent"
+                      />
+                      I still want to exchange my {item.balance} {item.code} for at least{" "}
+                      {formatStroops(token.quote.minAmountOut)} XLM.
+                    </label>
+                  ),
+                }
+              : {}),
           },
         ]
       : []),
@@ -123,7 +193,7 @@ export default function TokenDispositionCard({
       data-testid={`token-card-${token.contract}`}
     >
       <div className="flex items-start gap-3">
-        {isConvert ? (
+        {convertReady ? (
           <ArrowRightLeft className="mt-0.5 h-4 w-4 shrink-0 text-success" />
         ) : isTransfer ? (
           <Send className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
@@ -148,9 +218,7 @@ export default function TokenDispositionCard({
           </p>
           {!item.convertible && !isTransfer && !isLeave && (
             <p className="mt-1 text-xs leading-relaxed text-fg-muted">
-              {unknownUnits
-                ? "This token does not report its symbol or decimals, so the balance is shown in raw units and cannot be exchanged for XLM. "
-                : "There is no route to exchange this token for XLM. "}
+              {unconvertibleReason(item)}
               Closing the account does not remove the balance: it stays bound to this key, out of
               reach unless the address is funded again. Send it to an account you control, or
               confirm that it stays.
@@ -158,10 +226,10 @@ export default function TokenDispositionCard({
           )}
         </div>
         <Badge
-          tone={isConvert ? "success" : resolved ? "neutral" : "warning"}
+          tone={convertReady ? "success" : resolved ? "neutral" : "warning"}
           className="shrink-0 uppercase tracking-wide"
         >
-          {isConvert ? "Swap" : isTransfer ? "Send" : isLeave ? "Stays" : "Decide"}
+          {convertReady ? "Swap" : isTransfer ? "Send" : isLeave ? "Stays" : "Decide"}
         </Badge>
       </div>
     </DecisionCard>

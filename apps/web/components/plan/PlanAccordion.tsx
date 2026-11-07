@@ -25,6 +25,9 @@ interface PlanAccordionProps {
   mergeDestination: string | null;
   onSetDisposition: (asset: string, disposition: AssetDisposition) => void;
   onSetTransferDestination: (asset: string, destination: string | null) => void;
+  /** Whether a flagged token conversion is confirmed at the floor it carries now. */
+  isImpactConfirmed: (asset: string) => boolean;
+  onConfirmImpact: (asset: string, confirmed: boolean) => void;
   claimableBalanceDecisions: ClaimableBalanceDecision[];
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection>;
   onSelectClaimableBalance: (balanceId: string, selection: ClaimableBalanceSelection) => void;
@@ -63,6 +66,8 @@ export default function PlanAccordion({
   mergeDestination,
   onSetDisposition,
   onSetTransferDestination,
+  isImpactConfirmed,
+  onConfirmImpact,
   claimableBalanceDecisions,
   claimableBalanceSelections,
   onSelectClaimableBalance,
@@ -248,6 +253,8 @@ export default function PlanAccordion({
                 mergeDestination={mediatorRequired ? null : mergeDestination}
                 onSetDisposition={onSetDisposition}
                 onSetTransferDestination={onSetTransferDestination}
+                impactConfirmed={isImpactConfirmed(c.asset)}
+                onConfirmImpact={onConfirmImpact}
               />
             ) : (
               <AssetDispositionCard

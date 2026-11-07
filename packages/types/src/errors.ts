@@ -25,6 +25,7 @@ export type ErrorCode =
   | "close_fee_balance_short"
   | "confirmation_timeout"
   | "conversion_floor_missing"
+  | "conversion_impact_not_acknowledged"
   | "conversion_provider_unrecognized"
   | "defi_exit_blocked"
   | "defi_exit_unsupported"

@@ -283,6 +283,9 @@ test("decisionPointsToConversions › a convertible token carries its quote; a m
     platform: "aggregator",
     route: ["soroswap"],
     provider: "soroswap",
+    // The plan predates the field: no impact measured, and no flags to show.
+    priceImpactBps: null,
+    flags: [],
   });
   // The API's own `convertible` flag says a route exists, but without a floor the browser could
   // never submit a valid convert answer - so a malformed quote must not leave the option offered.

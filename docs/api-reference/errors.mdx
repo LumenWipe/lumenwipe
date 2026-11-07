@@ -20,7 +20,7 @@ This page lists every code in the API's error registry. If a close fails halfway
 Three rules that apply to every row:
 
 - Every `503` and every `429` carries a `Retry-After` header. On a `503` it is a fixed default of 30 seconds, not a measured recovery time. A `503` does not always mean waiting helps: `registry_expired` and the `*_not_configured` codes are marked No because they need the operator to act.
-- The `status` column is the HTTP status the code is returned with. `request_failed` is any other 4xx status, and `defi_positions_unavailable` and `route_lookup_unavailable` are raised as plan blockers rather than a fixed status.
+- The `status` column is the HTTP status the code is returned with. `request_failed` is any other 4xx status, and `defi_positions_unavailable`, `route_lookup_unavailable` and `conversion_impact_not_acknowledged` are raised as plan blockers rather than a fixed status.
 - The [SDK](/sdk/errors) retries only the calls and statuses it documents, and never retries `submit`.
 
 ## What to show the user
@@ -101,6 +101,7 @@ These come from `close/plan` and `close/transactions`. The `message` names the p
 | `quote_drifted`                               | 409    | After fix | A conversion route changed between planning and building. Plan again.                                                          |
 | `state_changed`                               | 409    | After fix | The account changed between reading and building. Nothing was submitted; plan again.                                           |
 | `conversion_floor_missing`                    | 422    | After fix | A conversion carries no destination minimum.                                                                                   |
+| `conversion_impact_not_acknowledged`          | any    | After fix | A token conversion with a high or unmeasured price impact, or with disagreeing quotes, was chosen without its confirmation.    |
 | `conversion_provider_unrecognized`            | 422    | After fix | A conversion names a provider the API does not recognize.                                                                      |
 | `transfer_destination_missing`                | 422    | After fix | A transfer carries no destination.                                                                                             |
 | `transfer_destination_unusable`               | 422    | After fix | A transfer destination cannot receive its asset.                                                                               |

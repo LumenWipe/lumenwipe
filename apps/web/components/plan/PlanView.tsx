@@ -56,6 +56,7 @@ import {
 import {
   defiPositionsAcknowledgementToDecisions,
   issuerSupplyAcknowledgementToDecisions,
+  isConversionImpactConfirmed,
   positionsLeftBehindToDecisions,
 } from "@/lib/api/close-decisions";
 import StatusMessage from "@/components/a11y/StatusMessage";
@@ -113,6 +114,9 @@ export default function PlanView({
     acknowledgeDefiPositions,
     issuerSupplyAcknowledgedFor,
     acknowledgeIssuerSupply,
+    conversionImpactAcknowledgedFor,
+    acknowledgeConversionImpact,
+    tokenConversionFloors,
     positionsLeftBehind,
     setPositionLeftBehind,
     transferDestinations,
@@ -220,7 +224,20 @@ export default function PlanView({
     balanceBearingCount: assetsNeedingDecision,
     dispositions: assetDispositions,
     transferDestinations,
+    tokenConversionFloors,
+    conversionImpactAcknowledgedFor,
   });
+
+  // A flagged conversion is confirmed for the floor the convert answer carries now, never for
+  // whatever the plan quotes next.
+  const isImpactConfirmed = (asset: string): boolean =>
+    isConversionImpactConfirmed(asset, tokenConversionFloors, conversionImpactAcknowledgedFor);
+  function handleConfirmImpact(asset: string, confirmed: boolean) {
+    acknowledgeConversionImpact(
+      asset,
+      confirmed ? (tokenConversionFloors[asset]?.minAmountOut ?? null) : null
+    );
+  }
 
   // A not-currently-claimable balance is resolved once the user picked a remediation path;
   // a currently-claimable one is always resolved (it defaults to "claim" above).
@@ -474,6 +491,8 @@ export default function PlanView({
             mergeDestination={isValidGAddress(destination) ? destination : null}
             onSetDisposition={handleSetDisposition}
             onSetTransferDestination={setTransferDestination}
+            isImpactConfirmed={isImpactConfirmed}
+            onConfirmImpact={handleConfirmImpact}
             claimableBalanceDecisions={claimableBalanceDecisions}
             claimableBalanceSelections={claimableBalanceSelections}
             onSelectClaimableBalance={handleSelectClaimableBalance}

@@ -148,20 +148,46 @@ function asBigInt(value: unknown): bigint | null {
 }
 
 /**
- * Quotes the whole balance of a token into XLM. Null when conversion is off, the API knows no
- * route, or the answer is not one a swap can be built from (no positive output, unknown platform).
- * Never throws: a quote that fails is a token that is not convertible right now, and the close
- * still offers transfer or leave.
+ * What one provider said about one token at plan time. The build round only ever needs "a quote
+ * or not" (`quoteTokenToXlm` below); plan time needs to tell an answer apart from a failure, so a
+ * provider that is down or rate limited reads as a retryable state, never as "no route".
  */
-export async function quoteTokenToXlm(
+export type ProviderQuoteOutcome =
+  | { kind: "quote"; quote: TokenConversionQuote }
+  /** The provider answered and has no usable route for this token at this amount. */
+  | { kind: "no_route" }
+  /** The provider errored, timed out, or answered with something that does not hold together. */
+  | { kind: "unavailable" }
+  /** The provider refused the call for its rate limit (HTTP 429). */
+  | { kind: "rate_limited" }
+  /** The provider is not configured here, so it was never consulted. */
+  | { kind: "disabled" };
+
+/**
+ * Whether a rejection from the Soroswap SDK is its rate limit. The SDK (0.5.0) rejects with the
+ * response body alone when the API answered, dropping the HTTP status, so the body is all there is
+ * to read: a `statusCode` of 429, or the "Rate limit exceeded" message the API sends with it.
+ */
+export function isRateLimitRejection(reason: unknown): boolean {
+  if (!reason || typeof reason !== "object" || reason instanceof Error) return false;
+  const body = reason as { statusCode?: unknown; status?: unknown; message?: unknown };
+  if (body.statusCode === 429 || body.status === 429) return true;
+  return typeof body.message === "string" && /rate limit/i.test(body.message);
+}
+
+/**
+ * Quotes the whole balance of a token into XLM and says why when it cannot. Never throws.
+ */
+export async function quoteTokenToXlmOutcome(
   token: string,
   amountIn: bigint,
   network: Network,
   deps: ConversionDeps = defaultConversionDeps()
-): Promise<TokenConversionQuote | null> {
-  if (!deps.sdk || amountIn <= 0n) return null;
+): Promise<ProviderQuoteOutcome> {
+  if (!deps.sdk) return { kind: "disabled" };
+  if (amountIn <= 0n) return { kind: "no_route" };
   const assetOut = xlmContractId(network);
-  if (token === assetOut) return null;
+  if (token === assetOut) return { kind: "no_route" };
   let raw: QuoteResponse;
   try {
     raw = await deps.sdk.quote(
@@ -175,30 +201,51 @@ export async function quoteTokenToXlm(
       },
       toSdkNetwork(network)
     );
-  } catch {
-    return null;
+  } catch (reason) {
+    return { kind: isRateLimitRejection(reason) ? "rate_limited" : "unavailable" };
   }
   const amountOut = asBigInt(raw.amountOut);
   const quotedIn = asBigInt(raw.amountIn);
-  if (amountOut === null || amountOut <= 0n || quotedIn !== amountIn) return null;
-  if (raw.assetIn !== token || raw.assetOut !== assetOut) return null;
+  // An answer that does not add up is a failed read, not a market fact.
+  if (amountOut === null || quotedIn !== amountIn) return { kind: "unavailable" };
+  if (raw.assetIn !== token || raw.assetOut !== assetOut) return { kind: "unavailable" };
+  if (amountOut <= 0n) return { kind: "no_route" };
   // Only the two Soroban shapes can be built and verified as a swap of this token; a classic
   // path payment (`sdex`) is not a conversion of a Soroban token at all.
   const platform = raw.platform;
-  if (platform !== "aggregator" && platform !== "router") return null;
+  if (platform !== "aggregator" && platform !== "router") return { kind: "no_route" };
   const minAmountOut = floorUnderQuote(amountOut);
-  if (minAmountOut <= 0n) return null;
+  if (minAmountOut <= 0n) return { kind: "no_route" };
   return {
-    token,
-    amountIn: amountIn.toString(),
-    amountOut: amountOut.toString(),
-    minAmountOut: minAmountOut.toString(),
-    platform,
-    route: [
-      ...new Set((raw.routePlan ?? []).map((r) => String(r.swapInfo?.protocol ?? ""))),
-    ].filter((p) => p.length > 0),
-    raw,
+    kind: "quote",
+    quote: {
+      token,
+      amountIn: amountIn.toString(),
+      amountOut: amountOut.toString(),
+      minAmountOut: minAmountOut.toString(),
+      platform,
+      route: [
+        ...new Set((raw.routePlan ?? []).map((r) => String(r.swapInfo?.protocol ?? ""))),
+      ].filter((p) => p.length > 0),
+      raw,
+    },
   };
+}
+
+/**
+ * Quotes the whole balance of a token into XLM. Null when conversion is off, the API knows no
+ * route, or the answer is not one a swap can be built from (no positive output, unknown platform).
+ * Never throws: a quote that fails is a token that is not convertible right now, and the close
+ * still offers transfer or leave. The build round's wrapper over `quoteTokenToXlmOutcome`.
+ */
+export async function quoteTokenToXlm(
+  token: string,
+  amountIn: bigint,
+  network: Network,
+  deps: ConversionDeps = defaultConversionDeps()
+): Promise<TokenConversionQuote | null> {
+  const outcome = await quoteTokenToXlmOutcome(token, amountIn, network, deps);
+  return outcome.kind === "quote" ? outcome.quote : null;
 }
 
 /** `TokenConversionQuote.raw` now holds either provider's quote (Step 1 above); this is the one

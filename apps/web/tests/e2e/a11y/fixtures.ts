@@ -25,6 +25,70 @@ const SEQUENCE = "100";
  *  during render and the network error boundary takes over. */
 export const UNRENDERABLE_ACCOUNT = Keypair.random().publicKey();
 
+/** An account holding one Soroban token whose only quote is flagged for its price impact, so
+ *  the analyze page shows the conversion's warning and its confirmation checkbox. */
+export const FLAGGED_TOKEN_ACCOUNT = Keypair.random().publicKey();
+const FLAGGED_TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
+
+function flaggedTokenAccount(address: string): AccountState {
+  return {
+    ...accountState(address),
+    sorobanTokens: {
+      tokens: [
+        {
+          contract: FLAGGED_TOKEN,
+          balance: "2500000000",
+          symbol: "XTAR",
+          decimals: 7,
+          sources: ["explorer"],
+        },
+      ],
+      unreadable: [],
+      coverage: [],
+      eventsScanned: null,
+      warnings: [],
+    },
+  };
+}
+
+function flaggedTokenPlan(): PlanResponse {
+  return {
+    ...plan(),
+    status: "needs_decisions",
+    decisionPoints: [
+      {
+        id: `token:${FLAGGED_TOKEN}`,
+        type: "asset_disposition",
+        subject: {
+          kind: "soroban_token",
+          contract: FLAGGED_TOKEN,
+          symbol: "XTAR",
+          decimals: 7,
+          balance: "2500000000",
+          convertible: true,
+          arrivesFromExit: false,
+          quote: {
+            amountOut: "50000000",
+            minAmountOut: "49750000",
+            platform: "aggregator",
+            provider: "soroswap",
+            route: ["soroswap"],
+            priceImpactBps: 2450,
+            flags: ["high_impact"],
+          },
+        },
+        options: [
+          { id: "convert_to_xlm", note: "Converting needs your confirmation." },
+          { id: "transfer_to_account" },
+          { id: "acknowledge_residue" },
+        ],
+        default: "transfer_to_account",
+        required: true,
+      },
+    ],
+  };
+}
+
 export function accountState(address: string): AccountState {
   return {
     address,
@@ -201,9 +265,13 @@ export async function installApiFixtures(page: Page): Promise<{ expectAllAnswere
       if (address === UNRENDERABLE_ACCOUNT) {
         return json(route, { ...accountState(address), trustlines: "unrenderable" });
       }
+      if (address === FLAGGED_TOKEN_ACCOUNT) return json(route, flaggedTokenAccount(address));
       return json(route, accountState(address));
     }
-    if (method === "POST" && pathname === "/api/v1/testnet/close/plan") return json(route, plan());
+    if (method === "POST" && pathname === "/api/v1/testnet/close/plan") {
+      const { source } = request.postDataJSON() as { source: string };
+      return json(route, source === FLAGGED_TOKEN_ACCOUNT ? flaggedTokenPlan() : plan());
+    }
     if (method === "POST" && pathname === "/api/v1/testnet/close/transactions") {
       return json(route, mergeRound(request.postDataJSON() as CloseTransactionsRequest));
     }

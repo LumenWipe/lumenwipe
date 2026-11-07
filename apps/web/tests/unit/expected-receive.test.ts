@@ -32,6 +32,8 @@ const tokenSwap: AssetConvertibility = {
       platform: "router",
       route: [],
       provider: "soroswap",
+      priceImpactBps: 10,
+      flags: [],
     },
   },
 };

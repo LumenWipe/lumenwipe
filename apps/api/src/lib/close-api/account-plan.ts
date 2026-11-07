@@ -13,17 +13,19 @@ import { assessIssuance } from "@/lib/close-api/issuance-preflight";
 import { assessIssuanceBlockers } from "@/lib/close-api/issuance-blocker";
 import { assessMergePreflight } from "@/lib/close-api/merge-preflight";
 import { validateTransferDestinations } from "@/lib/close-api/transfer-destinations";
-import { quoteTokenToXlm, xlmContractId } from "@/lib/soroswap/conversion-quotes";
+import { quoteTokenToXlmOutcome, xlmContractId } from "@/lib/soroswap/conversion-quotes";
 import {
-  quoteTokenToXlmViaXBull,
+  quoteTokenToXlmViaXBullOutcome,
   fetchXBullSwapArgs,
   defaultXBullConversionDeps,
 } from "@/lib/xbull/conversion-quotes";
 import {
-  quoteAllProviders,
-  resolveTokenQuoteSummary,
-  PROVIDER_QUOTE_TIMEOUT_MS,
-} from "@/lib/close-api/multi-source-conversion";
+  quoteTokens,
+  tokenQuoteBudgetMs,
+  type FanoutClock,
+  type FanoutProviders,
+} from "@/lib/close-api/token-quote-fanout";
+import { currentDeadline } from "@/common/request-context";
 import { withTimeout } from "@/lib/utils/with-timeout";
 import { resolveXBullPath } from "@/lib/close-api/token-conversion-round";
 import { getRpcServer } from "@/lib/stellar/rpc";
@@ -36,6 +38,10 @@ import {
   deriveDecisionPoints,
   type TokenQuoteSummary,
   deriveTokenDecisionPoints,
+  deriveConversionImpactDecisionPoints,
+  conversionImpactBlockers,
+  conversionImpactDecisionId,
+  isConversionImpactAcknowledged,
   tokenAssetsById,
   tokenContractsFromAnswers,
   deriveDestinationDecisionPoints,
@@ -72,6 +78,7 @@ import type {
   DecisionAnswer,
   DecisionPoint,
   PlanResponse,
+  TokenUnquotedReason,
   Trustline,
 } from "@lumenwipe/types";
 
@@ -83,6 +90,9 @@ export const EXIT_PREFLIGHT_TIMEOUT_MS = 10_000;
 export interface AccountPlanDeps {
   preflightExits?: typeof preflightExitTargets;
   fetchConversionPath?: typeof fetchConversionPath;
+  /** The token quote providers and the clock the fan-out runs on; the live ones by default. */
+  tokenQuoteProviders?: FanoutProviders;
+  tokenQuoteClock?: FanoutClock;
 }
 
 /**
@@ -224,51 +234,50 @@ export async function buildAccountPlan(
     accountState.sponsorshipEnumerationIncomplete
       ? Promise.resolve({ revocable: [], unaffordableOwners: new Map() })
       : assessSponsorshipAffordability(source, nonClaimableSponsoredEntries, network);
-  // Raced across both providers (Soroswap and xBull), one quote per held token with
-  // readable metadata; anything else is offered transfer or leave. Neither provider is a
-  // hard dependency for the other - quoteAllProviders never throws, so a provider that is
-  // disabled, errors, or times out simply contributes no candidate, and
-  // resolveTokenQuoteSummary picks whichever candidate delivers more XLM (falling back off
-  // an xBull win whose route cannot be confirmed live).
+  // Quoted across both providers (Soroswap and xBull), one quote per held token with readable
+  // metadata, inside one time budget under the request deadline (token-quote-fanout.ts). A token
+  // without a quote is offered transfer or leave, with the reason it has none: past the quote
+  // limit, a provider that failed or ran out of time (analyze again), or no route at all.
   const tokenQuotes: Record<string, TokenQuoteSummary | null> = {};
-  const tokenQuotePromise = Promise.all(
-    (accountState.sorobanTokens?.tokens ?? [])
-      .filter((t) => t.symbol !== null && t.decimals !== null && /^[1-9]\d*$/.test(t.balance))
-      .slice(0, MAX_TOKEN_QUOTES)
-      .map(async (t) => {
-        const results = await quoteAllProviders(t.contract, BigInt(t.balance), network, {
-          soroswap: quoteTokenToXlm,
-          xbull: quoteTokenToXlmViaXBull,
-        });
-        // xBull's own route is confirmed live, once more, before it is ever offered: see
-        // `resolveTokenQuoteSummary`'s docstring for why an unresolved route falls back
-        // rather than being shown at all. Bounded the same way every other provider call
-        // already is - xBull's own build endpoint is independently unreliable, and without
-        // a timeout a hang here would stall the whole plan response even though the other
-        // provider already answered.
-        tokenQuotes[t.contract] = await resolveTokenQuoteSummary(
-          results,
-          (winner) =>
-            withTimeout(
-              fetchXBullSwapArgs(
-                (winner.quote.raw as { route: string }).route,
-                source,
-                BigInt(winner.quote.amountIn),
-                BigInt(winner.quote.minAmountOut),
-                defaultXBullConversionDeps()
-              ).then((contractArgsXDR) =>
-                contractArgsXDR
-                  ? resolveXBullPath(getRpcServer(network), contractArgsXDR)
-                  : undefined
-              ),
-              PROVIDER_QUOTE_TIMEOUT_MS,
-              `xBull route resolution exceeded ${PROVIDER_QUOTE_TIMEOUT_MS} ms`
-            ),
-          t.contract,
-          xlmContractId(network)
-        );
-      })
+  const tokenReasons: Record<string, TokenUnquotedReason> = {};
+  const quotable = (accountState.sorobanTokens?.tokens ?? []).filter(
+    (t) => t.symbol !== null && t.decimals !== null && /^[1-9]\d*$/.test(t.balance)
   );
+  for (const t of quotable.slice(MAX_TOKEN_QUOTES)) tokenReasons[t.contract] = "quote_limit";
+  const tokenQuoteProviders: FanoutProviders = deps.tokenQuoteProviders ?? {
+    quote: {
+      soroswap: (token, amountIn) => quoteTokenToXlmOutcome(token, amountIn, network),
+      xbull: (token, amountIn) => quoteTokenToXlmViaXBullOutcome(token, amountIn, network),
+    },
+    // xBull's own route is confirmed live, once more, before it is ever offered: see
+    // `resolveTokenQuote`'s docstring for why an unresolved route falls back rather than being
+    // shown at all. The fan-out bounds it like every other provider call.
+    resolveXBullRoute: (winner) =>
+      fetchXBullSwapArgs(
+        (winner.quote.raw as { route: string }).route,
+        source,
+        BigInt(winner.quote.amountIn),
+        BigInt(winner.quote.minAmountOut),
+        defaultXBullConversionDeps()
+      ).then((contractArgsXDR) =>
+        contractArgsXDR ? resolveXBullPath(getRpcServer(network), contractArgsXDR) : undefined
+      ),
+  };
+  const tokenQuotePromise = quoteTokens(
+    quotable.slice(0, MAX_TOKEN_QUOTES).map((t) => ({
+      contract: t.contract,
+      amountIn: BigInt(t.balance),
+    })),
+    tokenQuoteProviders,
+    xlmContractId(network),
+    tokenQuoteBudgetMs(currentDeadline()?.remainingMs()),
+    deps.tokenQuoteClock
+  ).then((results) => {
+    for (const [contract, result] of Object.entries(results)) {
+      if (result.kind === "quoted") tokenQuotes[contract] = result.summary;
+      else tokenReasons[contract] = result.reason;
+    }
+  });
   const [, sponsorshipAffordability, , issuance, blockedExits] = await Promise.all([
     convertibilityPromise,
     sponsorshipAffordabilityPromise,
@@ -339,7 +348,8 @@ export async function buildAccountPlan(
     ),
     ...deriveIssuerSupplyDecisionPoints(source, issuance),
     ...leavePoints,
-    ...deriveTokenDecisionPoints(accountState, tokenQuotes),
+    ...deriveTokenDecisionPoints(accountState, tokenQuotes, tokenReasons),
+    ...deriveConversionImpactDecisionPoints(accountState, tokenQuotes),
     ...deriveClaimableBalanceDecisionPoints(accountState),
     ...deriveBulkClaimDecisionPoints(accountState),
   ];
@@ -357,6 +367,13 @@ export async function buildAccountPlan(
     }
     if (dp.id === defiPositionsDecisionId(source)) return !defiPositionsAcknowledged;
     if (dp.id === issuerSupplyDecisionId(source)) return !issuerSupplyAcknowledged;
+    if (dp.id.startsWith(conversionImpactDecisionId(""))) {
+      const contract = String(dp.subject.contract);
+      return (
+        planDispositions[contract] === "convert" &&
+        !isConversionImpactAcknowledged(decisions, contract)
+      );
+    }
     const leaveContract = leaveContractById.get(dp.id);
     if (leaveContract !== undefined) return !leftBehind.has(leaveContract);
     if (!dp.required) return false;
@@ -401,6 +418,7 @@ export async function buildAccountPlan(
   buildResult.blockers = [
     ...buildResult.blockers,
     ...assessIssuanceBlockers(issuance, issuerSupplyAcknowledged),
+    ...conversionImpactBlockers(accountState, tokenQuotes, planDispositions, decisions),
   ];
 
   if (priceSourceUnavailable.size > 0) {

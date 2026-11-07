@@ -59,6 +59,11 @@ interface DemolishState {
    */
   defiPositionsAcknowledgedFor: string | null;
   issuerSupplyAcknowledgedFor: string | null;
+  /** Per Soroban token contract, the conversion floor (stroops) the user confirmed converting at
+   *  although its quote was flagged. Keyed to the floor so a confirmation never covers a quote the
+   *  user was not shown: once the plan quotes a new floor, the old entry no longer matches. Not
+   *  kept across a reload, so a restored conversion is confirmed again. */
+  conversionImpactAcknowledgedFor: Record<string, string>;
   /** Decision ids (`defi_leave:<account>:<contract>`) of the DeFi positions whose exit cannot be
    *  built that the user explicitly chose to leave behind. Each id names its account. */
   positionsLeftBehind: string[];
@@ -133,6 +138,8 @@ interface DemolishState {
   /** Records (or clears, with null) the account the user confirmed has no DeFi positions. */
   acknowledgeDefiPositions: (address: string | null) => void;
   acknowledgeIssuerSupply: (address: string | null) => void;
+  /** Records (or, with null, withdraws) the confirmation of a flagged token conversion. */
+  acknowledgeConversionImpact: (contract: string, minAmountOut: string | null) => void;
   setPositionLeftBehind: (decisionId: string, leave: boolean) => void;
   /** Drops every leave choice the latest plan no longer offers, so none outlives its card. */
   prunePositionsLeftBehind: (offered: string[]) => void;
@@ -263,6 +270,7 @@ const initialState = {
   destinationAcknowledgedFor: null,
   defiPositionsAcknowledgedFor: null,
   issuerSupplyAcknowledgedFor: null,
+  conversionImpactAcknowledgedFor: {} as Record<string, string>,
   positionsLeftBehind: [] as string[],
   phase: "IDLE" as DemolishPhase,
   accountState: null,
@@ -312,6 +320,14 @@ export const useDemolishStore = create<DemolishState>((set) => ({
 
   acknowledgeDefiPositions: (address) => set({ defiPositionsAcknowledgedFor: address }),
   acknowledgeIssuerSupply: (address) => set({ issuerSupplyAcknowledgedFor: address }),
+  acknowledgeConversionImpact: (contract, minAmountOut) =>
+    set((s) => {
+      const { [contract]: _dropped, ...rest } = s.conversionImpactAcknowledgedFor;
+      return {
+        conversionImpactAcknowledgedFor:
+          minAmountOut === null ? rest : { ...rest, [contract]: minAmountOut },
+      };
+    }),
   setPositionLeftBehind: (decisionId, leave) =>
     set((s) => {
       const rest = s.positionsLeftBehind.filter((id) => id !== decisionId);
@@ -340,6 +356,10 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       assetDispositions: pruneDispositions(s.assetDispositions, accountState),
       transferDestinations: pruneToPresentAssets(s.transferDestinations, accountState),
       tokenConversionFloors: pruneToPresentAssets(s.tokenConversionFloors, accountState),
+      conversionImpactAcknowledgedFor: pruneToPresentAssets(
+        s.conversionImpactAcknowledgedFor,
+        accountState
+      ),
       classicConversionFloors: pruneToPresentAssets(s.classicConversionFloors, accountState),
       claimableBalanceSelections: pruneClaimableSelections(
         s.claimableBalanceSelections,

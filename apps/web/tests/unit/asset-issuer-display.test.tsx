@@ -127,6 +127,8 @@ test("a token card shows its contract with a copy button", () => {
       mergeDestination={null}
       onSetDisposition={() => {}}
       onSetTransferDestination={() => {}}
+      impactConfirmed={false}
+      onConfirmImpact={() => {}}
     />
   );
   expect(screen.getByText("CTOK…CCCC").getAttribute("title")).toBe(CONTRACT);
@@ -175,6 +177,8 @@ test("the trustline list shows each issuer, so lines sharing a code differ", () 
       mergeDestination={null}
       onSetDisposition={() => {}}
       onSetTransferDestination={() => {}}
+      isImpactConfirmed={() => false}
+      onConfirmImpact={() => {}}
       claimableBalanceDecisions={[]}
       claimableBalanceSelections={{}}
       onSelectClaimableBalance={() => {}}

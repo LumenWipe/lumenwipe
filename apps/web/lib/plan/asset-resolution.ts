@@ -1,5 +1,7 @@
 import type { AssetConvertibility } from "@/lib/api/plan-adapters";
 import type { AssetDisposition } from "@/types/plan";
+import type { TokenConversionFloor } from "@/store/demolish";
+import { isConversionImpactConfirmed } from "@/lib/api/close-decisions";
 import { isValidGAddress } from "@/lib/utils/validation";
 
 /**
@@ -20,8 +22,13 @@ export function assetsResolved(input: {
   balanceBearingCount: number;
   dispositions: Record<string, AssetDisposition>;
   transferDestinations: Record<string, string>;
+  /** The floors the convert answers carry and the ones the user confirmed for a flagged quote. */
+  tokenConversionFloors?: Readonly<Record<string, TokenConversionFloor>>;
+  conversionImpactAcknowledgedFor?: Readonly<Record<string, string>>;
 }): boolean {
   const { conversions, balanceBearingCount, dispositions, transferDestinations } = input;
+  const floors = input.tokenConversionFloors ?? {};
+  const confirmed = input.conversionImpactAcknowledgedFor ?? {};
 
   if (balanceBearingCount > 0 && conversions.length === 0) return false;
 
@@ -34,6 +41,14 @@ export function assetsResolved(input: {
     }
     // A Soroban token is resolved by an explicit "leave" as well; a trustline never is.
     if (c.token && dispositions[c.asset] === "leave") return true;
+    // A flagged quote is never accepted by default: only an explicit convert the user confirmed
+    // at the floor it carries resolves it.
+    if (c.convertible && (c.token?.quote?.flags.length ?? 0) > 0) {
+      return (
+        dispositions[c.asset] === "convert" &&
+        isConversionImpactConfirmed(c.asset, floors, confirmed)
+      );
+    }
     return c.convertible || dispositions[c.asset] === "issuer";
   });
 }

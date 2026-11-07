@@ -86,6 +86,7 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `close_fee_balance_short`                     | 422    | The account lacks the XLM above its reserve to pay the fees of the steps no sponsor can cover.                                 |
 | `confirmation_timeout`                        | 504    | The transaction was submitted and is not confirmed yet. Look it up by hash before retrying.                                    |
 | `conversion_floor_missing`                    | 422    | A conversion carries no destination minimum.                                                                                   |
+| `conversion_impact_not_acknowledged`          | any    | A token conversion with a high or unmeasured price impact, or with disagreeing quotes, was chosen without its confirmation.    |
 | `conversion_provider_unrecognized`            | 422    | A conversion names a provider the API does not recognize.                                                                      |
 | `defi_exit_blocked`                           | 422    | A DeFi position could not be exited safely.                                                                                    |
 | `defi_exit_unsupported`                       | 422    | The account holds a DeFi position that cannot be exited yet.                                                                   |

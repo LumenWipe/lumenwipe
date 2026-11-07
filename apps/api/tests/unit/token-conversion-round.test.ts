@@ -38,6 +38,12 @@ import {
   type ExpectedConversion,
 } from "@/lib/close-api/token-conversion-round";
 import { XBULL_SWAP_FUNCTION } from "@/lib/close-api/xbull-conversion-round";
+import {
+  CONVERSION_IMPACT_ACK_CHOICE,
+  conversionImpactDecisionId,
+  tokenConversionFloors,
+  tokenDecisionId,
+} from "@/lib/close-api/decisions";
 import { xlmContractId, type ConversionSdk } from "@/lib/soroswap/conversion-quotes";
 import { soroswapConversionContracts } from "@/lib/contract-registry";
 import realSwap from "./fixtures/soroswap-aggregator-v2-swap.json";
@@ -751,6 +757,31 @@ describe("the token conversion round", () => {
         quotedOut: 521_000_000n, // floor under slippage: 518,395,000 < 520,000,000
       }
     );
+    await expect(promise).rejects.toMatchObject({ code: "quote_drifted" });
+    await expect(promise).rejects.toThrow(/51\.8395 XLM, below the 52 XLM you agreed to/);
+  });
+
+  test("a conversion-impact confirmation changes nothing the build holds the swap to: the pinned floor and quote_drifted stand as before", async () => {
+    // The confirmation is a plan and interface gate. The build reads only the convert answer's
+    // floor and provider, so the same answers with and without a confirmation pin the same floor.
+    const byId = [{ id: tokenDecisionId(TOKEN), asset: TOKEN }];
+    const convert = {
+      id: tokenDecisionId(TOKEN),
+      choice: "convert_to_xlm",
+      params: { minAmountOut: FLOOR.toString(), provider: "soroswap" as const },
+    };
+    const confirmation = {
+      id: conversionImpactDecisionId(TOKEN),
+      choice: CONVERSION_IMPACT_ACK_CHOICE,
+      params: { minAmountOut: FLOOR.toString() },
+    };
+    const without = tokenConversionFloors([convert], byId);
+    const withIt = tokenConversionFloors([convert, confirmation], byId);
+    expect(withIt).toEqual(without);
+    const promise = run(account(BALANCE.toString()), withIt, {
+      balance: BALANCE,
+      quotedOut: 521_000_000n,
+    });
     await expect(promise).rejects.toMatchObject({ code: "quote_drifted" });
     await expect(promise).rejects.toThrow(/51\.8395 XLM, below the 52 XLM you agreed to/);
   });
