@@ -1,0 +1,212 @@
+/**
+ * What is still open on the analyze screen, and why the button to the review is not available.
+ *
+ * One pure source for the button, the reasons listed under it, the group chips and the jump
+ * links, so none of them can disagree with another: the disagreement between two local copies of
+ * "is everything resolved" is what once let a real account reach the review with decisions it was
+ * never shown (resolvable-blockers.ts). None of this is the gate before a build: `proceedError`
+ * on the plan fetched at proceed time stays authoritative.
+ */
+
+export type PlanGroupType =
+  | "NORMALIZE_SIGNERS"
+  | "REVOKE_SPONSORSHIP"
+  | "REMOVE_DATA_ENTRIES"
+  | "CANCEL_OFFERS"
+  | "CLAIM_BALANCES"
+  | "DEFI_POSITIONS"
+  | "HANDLE_ASSETS"
+  | "REMOVE_TRUSTLINES"
+  | "MERGE";
+
+/** One decision the user still owes, in the order the page shows them. */
+export interface OpenItem {
+  id: string;
+  kind: "claim" | "asset" | "confirmation";
+  /** The accordion group that holds it, or null when it sits outside the accordion. */
+  group: PlanGroupType | null;
+}
+
+/** The element a reason or a jump moves focus to, and the group to open first. */
+export interface JumpTarget {
+  selector: string;
+  group: PlanGroupType | null;
+}
+
+export interface ProceedReason {
+  key: string;
+  text: string;
+  /** Null when there is nothing on screen to move to yet. */
+  target: JumpTarget | null;
+}
+
+export type DestinationFact = "empty" | "invalid" | "self" | "ok";
+export type MemoFact = "ok" | "missing" | "invalid";
+
+/** Everything the button depends on, as plain facts the view derives. */
+export interface ProceedFacts {
+  /** A plan is being fetched; the one on screen is about to be replaced. */
+  replanning: boolean;
+  /** Hard blockers other than the two the page's own confirmations clear. */
+  otherHardBlockers: number;
+  /** The account holds balances the plan's asset list did not come back for. */
+  assetCardsWithheld: boolean;
+  openItems: readonly OpenItem[];
+  /** The destination field is on screen, so its reasons can move focus to it. */
+  destinationShown: boolean;
+  destination: DestinationFact;
+  /** An exchange destination with deposit rules past their expiry. */
+  registryStale: boolean;
+  memo: MemoFact;
+  destinationUnacknowledged: boolean;
+}
+
+/** The selector of the element that holds an open item; the page puts it on that element. */
+export function openItemSelector(id: string): string {
+  return `[data-open-item="${id.replace(/["\\]/g, "\\$&")}"]`;
+}
+
+export const BLOCKERS_ID = "plan-blockers";
+export const REFRESH_ID = "plan-refresh";
+export const DESTINATION_ID = "plan-destination";
+
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** "2 assets, 1 claimable balance": what kinds of decision are still open. */
+export function openSummary(items: readonly OpenItem[]): string {
+  const count = (kind: OpenItem["kind"]) => items.filter((i) => i.kind === kind).length;
+  const parts: string[] = [];
+  const assets = count("asset");
+  const claims = count("claim");
+  const confirmations = count("confirmation");
+  if (assets > 0) parts.push(plural(assets, "asset", "assets"));
+  if (claims > 0) parts.push(plural(claims, "claimable balance", "claimable balances"));
+  if (confirmations > 0) parts.push(plural(confirmations, "confirmation", "confirmations"));
+  return parts.join(", ");
+}
+
+export function jumpToItem(item: OpenItem): JumpTarget {
+  return { selector: openItemSelector(item.id), group: item.group };
+}
+
+/**
+ * Why the button is disabled, one line each, in the order the page reads. Empty exactly when
+ * the button may be used.
+ */
+export function proceedReasons(facts: ProceedFacts): ProceedReason[] {
+  const reasons: ProceedReason[] = [];
+  if (facts.replanning) {
+    reasons.push({ key: "replanning", text: "The plan is being updated", target: null });
+  }
+  if (facts.otherHardBlockers > 0) {
+    reasons.push({
+      key: "blockers",
+      text:
+        facts.otherHardBlockers === 1
+          ? "Resolve the blocker above"
+          : `Resolve the ${facts.otherHardBlockers} blockers above`,
+      target: { selector: `#${BLOCKERS_ID}`, group: null },
+    });
+  }
+  if (facts.assetCardsWithheld) {
+    reasons.push({
+      key: "withheld",
+      text: "The plan for this account's assets could not be loaded. Refresh to try again",
+      target: { selector: `#${REFRESH_ID}`, group: null },
+    });
+  }
+  const [first] = facts.openItems;
+  if (first) {
+    reasons.push({
+      key: "open",
+      text: `Open: ${openSummary(facts.openItems)}`,
+      target: jumpToItem(first),
+    });
+  }
+  const field = (selector: string): JumpTarget | null =>
+    facts.destinationShown ? { selector, group: null } : null;
+  const address = field(`#${DESTINATION_ID} input`);
+  if (facts.destination === "empty") {
+    reasons.push({ key: "destination", text: "Enter a destination", target: address });
+  } else if (facts.destination === "invalid") {
+    reasons.push({
+      key: "destination",
+      text: "Enter a valid Stellar address as the destination",
+      target: address,
+    });
+  } else if (facts.destination === "self") {
+    reasons.push({
+      key: "destination",
+      text: "The destination cannot be the account being closed",
+      target: address,
+    });
+  }
+  if (facts.registryStale) {
+    reasons.push({
+      key: "registry",
+      text: "This exchange's deposit rules have expired, so it cannot be used as the destination",
+      target: address,
+    });
+  }
+  if (facts.memo === "missing") {
+    reasons.push({
+      key: "memo",
+      text: "Memo is required by this exchange",
+      target: field('[data-jump="destination-memo"]'),
+    });
+  } else if (facts.memo === "invalid") {
+    reasons.push({
+      key: "memo",
+      text: "The memo is not valid for this exchange",
+      target: field('[data-jump="destination-memo"]'),
+    });
+  }
+  if (facts.destinationUnacknowledged) {
+    reasons.push({
+      key: "acknowledge",
+      text: "Confirm the destination is a wallet you control",
+      target: field('[data-jump="destination-acknowledge"]'),
+    });
+  }
+  return reasons;
+}
+
+/** What the live region says: a count of what the user still has to do, never the list itself.
+ *  A plan being updated is not counted: the page announces that on its own, and counting it
+ *  would change the summary, and talk over "Plan updated", on every re-plan. */
+export function reasonsSummary(reasons: readonly ProceedReason[]): string {
+  const left = reasons.filter((r) => r.key !== "replanning").length;
+  return left === 0
+    ? "Ready to review the full plan"
+    : `${plural(left, "thing", "things")} left before you can review the plan`;
+}
+
+export type GroupChip =
+  { kind: "needs"; count: number } | { kind: "done" } | { kind: "informational" };
+
+/** A group's chip. `open` is the number of decisions open in it, or null for a group that asks
+ *  for none. */
+export function groupChip(open: number | null): GroupChip {
+  if (open === null) return { kind: "informational" };
+  return open > 0 ? { kind: "needs", count: open } : { kind: "done" };
+}
+
+export function chipLabel(chip: GroupChip): string {
+  if (chip.kind === "needs") return `Needs your answer (${chip.count})`;
+  return chip.kind === "done" ? "Done" : "Informational";
+}
+
+/**
+ * The group to open for the open items, given the ids already seen. On the first call (`seen`
+ * null) it is the group of the first open item; afterwards only an item that was not there
+ * before opens its group, so a user's own open and close stand until something new needs them.
+ */
+export function newlyOpenGroup(
+  seen: ReadonlySet<string> | null,
+  items: readonly OpenItem[]
+): PlanGroupType | null {
+  const candidates = seen === null ? items : items.filter((i) => !seen.has(i.id));
+  return candidates.find((i) => i.group !== null)?.group ?? null;
+}

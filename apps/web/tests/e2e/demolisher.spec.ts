@@ -69,12 +69,12 @@ test("same source and destination shows warning and keeps the begin button disab
   const address = await analyzeFreshAccountToDestinationStep(page);
 
   // Entering the source account as its own destination must surface the warning
-  // and keep "Begin execution" disabled.
+  // and keep "Review the full plan" disabled.
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(address);
   await confirmDestinationControl(page);
 
   await expect(page.getByText(/Source and destination are the same/i)).toBeVisible();
-  await expect(page.getByRole("button", { name: /Begin execution/i })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /Review the full plan/i })).toBeDisabled();
 });
 
 test("testnet page shows testnet badge in navbar", async ({ page }) => {

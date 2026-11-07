@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, AlertTriangle, RefreshCw } from "lucide-react";
 import type { AccountState } from "@/types/account";
@@ -60,7 +60,28 @@ import {
   positionsLeftBehindToDecisions,
 } from "@/lib/api/close-decisions";
 import StatusMessage from "@/components/a11y/StatusMessage";
-import { assetsResolved, claimResolved } from "@/lib/plan/asset-resolution";
+import {
+  assetCardsWithheld as cardsWithheld,
+  assetResolved,
+  assetsResolved,
+  claimResolved,
+} from "@/lib/plan/asset-resolution";
+import {
+  BLOCKERS_ID,
+  DESTINATION_ID,
+  REFRESH_ID,
+  groupChip,
+  jumpToItem,
+  newlyOpenGroup,
+  proceedReasons,
+  reasonsSummary,
+  type DestinationFact,
+  type GroupChip,
+  type JumpTarget,
+  type MemoFact,
+  type OpenItem,
+  type PlanGroupType,
+} from "@/lib/plan/open-items";
 import { expectedReceive, type ExpectedReceive } from "@/lib/plan/expected-receive";
 import { destinationRefusal } from "@/lib/plan/destination-check";
 import { keepDestinationDraft } from "@/lib/session/restore-decisions";
@@ -217,16 +238,18 @@ export default function PlanView({
   const assetsNeedingDecision =
     account.trustlines.filter((tl) => Number(tl.balance) > 0).length +
     (account.sorobanTokens?.tokens ?? []).filter((t) => /^[1-9]\d*$/.test(t.balance)).length;
-  // Empty is not the same as resolved - see assetsResolved, where that distinction lives.
-  const assetCardsWithheld = assetsNeedingDecision > 0 && conversions.length === 0;
-
-  const allAssetsResolved = assetsResolved({
-    conversions,
-    balanceBearingCount: assetsNeedingDecision,
+  // Empty is not the same as resolved - see assetCardsWithheld, where that distinction lives.
+  const assetCardsWithheld = cardsWithheld(conversions, assetsNeedingDecision);
+  const assetAnswers = {
     dispositions: assetDispositions,
     transferDestinations,
     tokenConversionFloors,
     conversionImpactAcknowledgedFor,
+  };
+  const allAssetsResolved = assetsResolved({
+    ...assetAnswers,
+    conversions,
+    balanceBearingCount: assetsNeedingDecision,
   });
 
   // A flagged conversion is confirmed for the floor the convert answer carries now, never for
@@ -280,6 +303,68 @@ export default function PlanView({
 
   const destinationStepReady = allAssetsResolved && allClaimsResolved && hardBlockers.length === 0;
 
+  // Every decision still owed, in the order the page shows them: the two confirmations above the
+  // plan, then the claim cards, then the asset cards. Read from the same predicates as the gates
+  // above, so the list is empty exactly when they pass.
+  const defiAckOpen = hardBlockers.some((b) => b.code === DEFI_POSITIONS_UNAVAILABLE_CODE);
+  const issuerAckOpen = hardBlockers.some((b) => b.code === ISSUER_SUPPLY_BLOCKER_CODE);
+  const openClaims = claimableBalanceDecisions.filter(
+    (b) => !claimResolved(b, claimableBalanceSelections[b.balanceId])
+  );
+  const openAssets = conversions.filter((c) => !assetResolved(c, assetAnswers));
+  const openItems: OpenItem[] = [
+    ...(defiAckOpen ? [{ id: "confirm:defi", kind: "confirmation" as const, group: null }] : []),
+    ...(issuerAckOpen
+      ? [{ id: "confirm:issuer", kind: "confirmation" as const, group: null }]
+      : []),
+    ...openClaims.map((b) => ({
+      id: `claim:${b.balanceId}`,
+      kind: "claim" as const,
+      group: "CLAIM_BALANCES" as const,
+    })),
+    ...openAssets.map((c) => ({
+      id: `asset:${c.asset}`,
+      kind: "asset" as const,
+      group: "HANDLE_ASSETS" as const,
+    })),
+  ];
+  const chips: Partial<Record<PlanGroupType, GroupChip>> = {
+    CLAIM_BALANCES: groupChip(openClaims.length),
+    HANDLE_ASSETS: groupChip(openAssets.length),
+    DEFI_POSITIONS: groupChip(defiPositionsBlocker ? (defiAckOpen ? 1 : 0) : null),
+  };
+
+  // The group open in the plan. It opens itself on the first decision when the page loads, and
+  // again only when a re-plan brings a decision that was not there before; otherwise the user's
+  // own open and close stand.
+  const seenOpenItems = useRef<Set<string> | null>(null);
+  const [openGroup, setOpenGroup] = useState<PlanGroupType | null>(
+    () => newlyOpenGroup(null, openItems) ?? "HANDLE_ASSETS"
+  );
+  const openItemsKey = openItems.map((i) => i.id).join("\n");
+  useEffect(() => {
+    const target = seenOpenItems.current && newlyOpenGroup(seenOpenItems.current, openItems);
+    seenOpenItems.current = new Set([
+      ...(seenOpenItems.current ?? []),
+      ...openItems.map((i) => i.id),
+    ]);
+    if (target) setOpenGroup(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openItemsKey]);
+
+  // A jump opens the group first and moves focus once it has rendered open: a closed panel is
+  // inert, so nothing inside it can take focus before then.
+  const [pendingFocus, setPendingFocus] = useState<string | null>(null);
+  function jumpTo(target: JumpTarget) {
+    if (target.group) setOpenGroup(target.group);
+    setPendingFocus(target.selector);
+  }
+  useEffect(() => {
+    if (pendingFocus === null) return;
+    setPendingFocus(null);
+    focusJumpTarget(pendingFocus);
+  }, [pendingFocus]);
+
   const memoReq = isValidGAddress(destination) ? getMemoRequirement(destination) : null;
   const memoRequired = memoReq?.requiresMemo ?? false;
   const memoTypeForDest = memoReq?.memoType ?? "text";
@@ -311,16 +396,43 @@ export default function PlanView({
   // would be a self-inflicted outage rather than a safeguard.
   const registryBlocksExchange = isCexAddress(destination) && !isRegistryUsable();
 
+  const destinationFact: DestinationFact =
+    destination === ""
+      ? "empty"
+      : !isValidGAddress(destination)
+        ? "invalid"
+        : destination === account.address
+          ? "self"
+          : "ok";
+  const memoFact: MemoFact = memoValid ? "ok" : memo.trim() === "" ? "missing" : "invalid";
+
   // A re-plan in flight (a claim answer just changed) still owes this view its conversions and
   // their floors; a plan requested before they land is hashed without them and refused at build.
-  const canProceed =
-    !loading &&
-    destinationStepReady &&
-    isValidGAddress(destination) &&
-    destination !== account.address &&
-    !registryBlocksExchange &&
-    memoValid &&
-    destinationAcknowledged;
+  const reasons = proceedReasons({
+    replanning: loading,
+    otherHardBlockers: hardBlockers.length - (defiAckOpen ? 1 : 0) - (issuerAckOpen ? 1 : 0),
+    assetCardsWithheld,
+    openItems,
+    destinationShown: destinationStepReady,
+    destination: destinationFact,
+    registryStale: registryBlocksExchange,
+    memo: memoFact,
+    destinationUnacknowledged: !destinationAcknowledged,
+  });
+  const canProceed = reasons.length === 0;
+  // The page's one live region says the latest of the page's own status and how many things are
+  // left, never the list itself: a list re-read on every keystroke in the destination field would
+  // drown out everything else. The count is first said when it changes, not over "Account
+  // analyzed" on load.
+  const summary = reasonsSummary(reasons);
+  const [announcement, setAnnouncement] = useState(statusMessage);
+  useEffect(() => setAnnouncement(statusMessage), [statusMessage]);
+  const firstSummary = useRef(summary);
+  useEffect(() => {
+    if (summary === firstSummary.current) return;
+    firstSummary.current = summary;
+    setAnnouncement(summary);
+  }, [summary]);
 
   const expectedFrom = (feeStroops: string, relayForwardUncounted: boolean): ExpectedReceive =>
     expectedReceive({
@@ -429,7 +541,7 @@ export default function PlanView({
 
   return (
     <div className="space-y-5">
-      <StatusMessage message={proceeding ? "Preparing transaction" : statusMessage} />
+      <StatusMessage message={proceeding ? "Building your plan" : announcement} />
       <AccountSummaryCard
         account={account}
         destinationAddress={isValidGAddress(destination) ? destination : null}
@@ -439,21 +551,27 @@ export default function PlanView({
       {/* Claimable-balance blockers are already fully conveyed live by the cards below (an
           unresolved or forfeited balance shows its own up-to-date state there); a stale
           snapshot repeating the same thing here would only confuse once the user has acted. */}
-      <BlockersPanel blockers={displayBlockers} blocking={hardBlockers.length > 0} />
+      <div id={BLOCKERS_ID} tabIndex={-1} className="outline-none">
+        <BlockersPanel blockers={displayBlockers} blocking={hardBlockers.length > 0} />
+      </div>
 
       {defiPositionsBlocker && (
-        <DefiPositionsAcknowledgement
-          acknowledged={defiPositionsAcknowledgedFor === account.address}
-          onAcknowledgedChange={(ack) => acknowledgeDefiPositions(ack ? account.address : null)}
-        />
+        <div data-open-item="confirm:defi">
+          <DefiPositionsAcknowledgement
+            acknowledged={defiPositionsAcknowledgedFor === account.address}
+            onAcknowledgedChange={(ack) => acknowledgeDefiPositions(ack ? account.address : null)}
+          />
+        </div>
       )}
 
       {(issuerSupplyBlocker || issuerSupplyAcknowledged) && (
-        <IssuerSupplyAcknowledgement
-          message={issuerSupplyBlocker?.message ?? null}
-          acknowledged={issuerSupplyAcknowledged}
-          onAcknowledgedChange={(ack) => acknowledgeIssuerSupply(ack ? account.address : null)}
-        />
+        <div data-open-item="confirm:issuer">
+          <IssuerSupplyAcknowledgement
+            message={issuerSupplyBlocker?.message ?? null}
+            acknowledged={issuerSupplyAcknowledged}
+            onAcknowledgedChange={(ack) => acknowledgeIssuerSupply(ack ? account.address : null)}
+          />
+        </div>
       )}
 
       {leavablePositions.map((position) => (
@@ -469,6 +587,7 @@ export default function PlanView({
         <CardHeader className="flex items-center justify-between">
           <CardTitle>What this close will do</CardTitle>
           <Button
+            id={REFRESH_ID}
             variant="ghost"
             size="sm"
             onClick={onRefresh}
@@ -480,6 +599,9 @@ export default function PlanView({
         </CardHeader>
         <div className="p-3">
           <PlanAccordion
+            open={openGroup}
+            onOpenChange={setOpenGroup}
+            chips={chips}
             account={account}
             conversions={conversions}
             assetDispositions={assetDispositions}
@@ -498,55 +620,94 @@ export default function PlanView({
         </div>
       </Card>
 
-      {!destinationStepReady && (
-        <p className="text-center text-xs text-fg-subtle">
-          {hardBlockers.length > 0
-            ? "Resolve the blockers above to continue."
-            : assetCardsWithheld
-              ? // Telling the user to decide something the page is not showing them is worse
-                // than saying nothing. This state means the plan could not be read, not that
-                // they have a choice left to make.
-                `This account holds ${assetsNeedingDecision} ${assetsNeedingDecision === 1 ? "asset" : "assets"} with a balance, but the plan for them could not be loaded. Refresh to try again.`
-              : "Decide what happens to each asset and claimable balance above to continue."}
-        </p>
-      )}
+      <Card className="space-y-4 p-5">
+        <div>
+          <CardTitle className="mb-1">Destination</CardTitle>
+          <p className="text-xs text-fg-subtle">
+            {destinationStepReady
+              ? "Every item is decided. Enter where the recovered XLM should go."
+              : "Where the recovered XLM goes is entered once every item above is decided."}
+          </p>
+        </div>
 
-      {destinationStepReady && (
-        <Card className="space-y-4 p-5">
-          <div>
-            <CardTitle className="mb-1">Destination</CardTitle>
-            <p className="text-xs text-fg-subtle">
-              Every asset is resolved. Enter where the recovered XLM should go.
-            </p>
+        {destinationStepReady && (
+          <div id={DESTINATION_ID}>
+            <DestinationInput
+              destination={destination}
+              onDestinationChange={setDestination}
+              memo={memo}
+              onMemoChange={setMemo}
+              source={account.address}
+              acknowledged={destinationAcknowledgedFor === destination}
+              onAcknowledgedChange={(ack) => acknowledgeDestination(ack ? destination : null)}
+            />
           </div>
+        )}
 
-          <DestinationInput
-            destination={destination}
-            onDestinationChange={setDestination}
-            memo={memo}
-            onMemoChange={setMemo}
-            source={account.address}
-            acknowledged={destinationAcknowledgedFor === destination}
-            onAcknowledgedChange={(ack) => acknowledgeDestination(ack ? destination : null)}
-          />
+        {error && (
+          <Callout tone="danger" icon={<AlertTriangle className="h-4 w-4" />}>
+            {error}
+          </Callout>
+        )}
 
-          {error && (
-            <Callout tone="danger" icon={<AlertTriangle className="h-4 w-4" />}>
-              {error}
-            </Callout>
-          )}
-
+        {openItems.length > 0 && (
           <Button
-            onClick={handleProceed}
-            disabled={!canProceed || proceeding}
-            loading={proceeding}
+            variant="secondary"
+            size="sm"
             className="w-full"
-            iconEnd={<ArrowRight className="h-4 w-4" />}
+            onClick={() => jumpTo(jumpToItem(openItems[0]))}
           >
-            {proceeding ? "Preparing transaction..." : "Begin execution"}
+            {openItems.length === 1
+              ? "1 decision left, jump to it"
+              : `${openItems.length} decisions left, jump to next`}
           </Button>
-        </Card>
-      )}
+        )}
+
+        <Button
+          onClick={handleProceed}
+          disabled={!canProceed || proceeding}
+          loading={proceeding}
+          aria-describedby={reasons.length > 0 ? "plan-proceed-reasons" : undefined}
+          className="w-full"
+          iconEnd={<ArrowRight className="h-4 w-4" />}
+        >
+          {proceeding ? "Building your plan..." : "Review the full plan"}
+        </Button>
+
+        {reasons.length > 0 && (
+          <ul id="plan-proceed-reasons" aria-label="Before you can review" className="space-y-1">
+            {reasons.map((r) => (
+              <li key={r.key} className="text-xs text-fg-muted">
+                {r.target ? (
+                  <button
+                    type="button"
+                    onClick={() => jumpTo(r.target as JumpTarget)}
+                    className="text-left underline decoration-fg-subtle underline-offset-2 hover:text-fg"
+                  >
+                    {r.text}
+                  </button>
+                ) : (
+                  r.text
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
     </div>
   );
+}
+
+/** Moves focus to what a reason or a jump names: the chosen answer of a decision when it has one,
+ *  else its first control, else the element itself. A collapsed group of balances opens first. */
+function focusJumpTarget(selector: string): void {
+  const el = document.querySelector<HTMLElement>(selector);
+  if (!el) return;
+  const details = el.closest("details");
+  if (details) details.open = true;
+  const control = el.matches("input, button, textarea, select")
+    ? el
+    : (el.querySelector<HTMLElement>("input:checked") ??
+      el.querySelector<HTMLElement>("input:not([disabled]), button:not([disabled]), textarea"));
+  (control ?? el).focus();
 }

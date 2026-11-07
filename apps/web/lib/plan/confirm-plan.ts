@@ -6,7 +6,7 @@ export interface PlanNavigator {
 }
 
 /**
- * The only transition PlanView's "Begin execution" is allowed to make: PREFLIGHT_COMPLETE,
+ * The only transition PlanView's "Review the full plan" is allowed to make: PREFLIGHT_COMPLETE,
  * never STEP_EXECUTING. The review page's own confirmation is the sole caller allowed to
  * advance the phase past this gate.
  */

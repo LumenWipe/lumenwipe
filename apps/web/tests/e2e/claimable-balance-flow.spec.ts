@@ -124,8 +124,11 @@ async function enterSourceAndAnalyze(page: Page, source: string): Promise<void> 
 }
 
 async function enterDestinationAndBegin(page: Page, destination: string): Promise<void> {
-  const beginButton = page.getByRole("button", { name: /Begin execution/i });
-  await expect(beginButton).toBeVisible({ timeout: 30_000 });
+  const beginButton = page.getByRole("button", { name: /Review the full plan/i });
+  // The button is always there; the destination field appears once every item is decided.
+  await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
+    timeout: 30_000,
+  });
 
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination);
   await confirmDestinationControl(page);
@@ -218,12 +221,13 @@ test("redesigned flow: add a trustline and claim an otherwise-unreachable balanc
 
   // The claimable-balance card renders in its amber "needs a decision" state: no authorized
   // trustline for the asset, so neither "claim" nor a swap label applies yet.
+  // The group opens on its own: it holds the first decision still open.
   await expect(page.getByText("Claim balances", { exact: true })).toBeVisible({ timeout: 30_000 });
-  await page.getByText("Claim balances", { exact: true }).click();
   await expect(page.getByText(/no trustline for this asset/)).toBeVisible();
 
   // Until a remediation is chosen, the destination step is gated.
-  await expect(page.getByRole("button", { name: /Begin execution/i })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Review the full plan/i })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Open: 1 claimable balance" })).toBeVisible();
 
   // Choose "add a trustline and claim it".
   const addTrustlineOption = page.getByRole("radio", { name: /Add a USDC trustline and claim it/ });

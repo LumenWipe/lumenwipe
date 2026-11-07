@@ -92,7 +92,7 @@ async function proceed(plan: () => Response): Promise<{ refreshes: () => number 
       />
     );
   });
-  fireEvent.click(screen.getByRole("button", { name: /begin execution/i }));
+  fireEvent.click(screen.getByRole("button", { name: /review the full plan/i }));
   await waitFor(() => expect(screen.getAllByRole("alert").length).toBe(2));
   return { refreshes: () => refreshes };
 }

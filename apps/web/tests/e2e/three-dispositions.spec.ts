@@ -194,7 +194,7 @@ test("one close swaps one asset, transfers another, and returns a third to its i
 
   // Neither KEEP nor BURN has a route, so both stay unresolved until the user picks - and they
   // pick differently, which is what this test exists to prove. This has to happen BEFORE the
-  // destination step exists: the late-destination panel and "Begin execution" only render once
+  // destination step exists: the late-destination panel and "Review the full plan" only render once
   // every asset is resolved, which is exactly the gate an unresolved transfer must not pass.
   await page.getByRole("radio", { name: /Send my .*KEEP to another account/i }).check();
   await page.getByRole("radio", { name: /Return my .*BURN to the issuer/i }).check();
@@ -203,14 +203,17 @@ test("one close swaps one asset, transfers another, and returns a third to its i
   // for transfer but nameless, the flow must still be blocked - otherwise the user proceeds
   // to a build the API refuses. Asserted before filling the address, because asserting only
   // the positive would let a regression that drops the address requirement pass unnoticed.
-  const beginButton = page.getByRole("button", { name: /Begin execution/i });
-  await expect(beginButton).toBeHidden();
+  const beginButton = page.getByRole("button", { name: /Review the full plan/i });
+  await expect(beginButton).toBeDisabled();
 
   await page
     .getByRole("textbox", { name: /Destination account for KEEP/i })
     .fill(transferTo.publicKey());
   // Only now does the flow advance.
-  await expect(beginButton).toBeVisible({ timeout: TESTNET_STEP_TIMEOUT });
+  // The button is always there; the destination field appears once every item is decided.
+  await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
+    timeout: TESTNET_STEP_TIMEOUT,
+  });
 
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination.publicKey());
   await confirmDestinationControl(page);

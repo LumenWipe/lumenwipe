@@ -12,14 +12,16 @@ test("analyze, review, execute, complete and history", async ({ page }) => {
   const source = Keypair.random();
 
   await enterSourceAndAnalyze(page, source.publicKey());
-  await expect(page.getByRole("heading", { level: 1, name: "Review & decide" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Decide what happens to each item" })
+  ).toBeVisible();
   await expectNoAxeViolations(page, "analyze");
 
   await page
     .getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)
     .fill(Keypair.random().publicKey());
   await confirmDestinationControl(page);
-  await page.getByRole("button", { name: /Begin execution/i }).click();
+  await page.getByRole("button", { name: /Review the full plan/i }).click();
   await expect(page).toHaveURL(/\/testnet\/review/);
   await expect(page.getByRole("heading", { level: 1, name: "Review the full plan" })).toBeVisible();
   await expectNoAxeViolations(page, "review");

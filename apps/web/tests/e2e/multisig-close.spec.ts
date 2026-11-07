@@ -140,8 +140,11 @@ async function driveToExecute(
   await analyzeButton.click();
   await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
 
-  const beginButton = page.getByRole("button", { name: /Begin execution/i });
-  await expect(beginButton).toBeVisible({ timeout: 30_000 });
+  const beginButton = page.getByRole("button", { name: /Review the full plan/i });
+  // The button is always there; the destination field appears once every item is decided.
+  await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
+    timeout: 30_000,
+  });
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(opts.destination);
   await confirmDestinationControl(page);
   await expect(beginButton).toBeEnabled({ timeout: TESTNET_STEP_TIMEOUT });

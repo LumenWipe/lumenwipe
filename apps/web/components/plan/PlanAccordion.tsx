@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId } from "react";
 import { ChevronDown } from "lucide-react";
 import type { AccountState, UnrecognizedDefiPosition } from "@/types/account";
 import { PROTOCOL_LABELS, describeDefiPosition } from "@/lib/plan/describe-position";
@@ -11,10 +11,17 @@ import { formatAsset } from "@/lib/utils/assets";
 import AssetDispositionCard from "./AssetDispositionCard";
 import TokenDispositionCard from "./TokenDispositionCard";
 import ClaimableBalanceCard from "./ClaimableBalanceCard";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { chipLabel, type GroupChip, type PlanGroupType } from "@/lib/plan/open-items";
 import { ShortAddress } from "@/components/ui/short-address";
 
 interface PlanAccordionProps {
+  /** The group shown open, owned by the page so a jump can open the one it moves to. */
+  open: PlanGroupType | null;
+  onOpenChange: (open: PlanGroupType | null) => void;
+  /** Each decision group's chip; a group without one is informational. */
+  chips: Partial<Record<PlanGroupType, GroupChip>>;
   account: AccountState;
   conversions: AssetConvertibility[];
   /** Each balance-bearing asset's recorded disposition, keyed by asset. Absent means the
@@ -36,16 +43,7 @@ interface PlanAccordionProps {
   mediatorRequired: boolean;
 }
 
-type GroupType =
-  | "NORMALIZE_SIGNERS"
-  | "REVOKE_SPONSORSHIP"
-  | "REMOVE_DATA_ENTRIES"
-  | "CANCEL_OFFERS"
-  | "CLAIM_BALANCES"
-  | "DEFI_POSITIONS"
-  | "HANDLE_ASSETS"
-  | "REMOVE_TRUSTLINES"
-  | "MERGE";
+type GroupType = PlanGroupType;
 
 interface Group {
   type: GroupType;
@@ -58,7 +56,12 @@ function shortAddr(addr: string): string {
   return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
 }
 
+const CHIP_TONE = { needs: "warning", done: "success", informational: "neutral" } as const;
+
 export default function PlanAccordion({
+  open,
+  onOpenChange,
+  chips,
   account,
   conversions,
   assetDispositions,
@@ -74,7 +77,6 @@ export default function PlanAccordion({
   destinationAddress,
   mediatorRequired,
 }: PlanAccordionProps) {
-  const [open, setOpen] = useState<GroupType | null>("HANDLE_ASSETS");
   const baseId = useId();
 
   const groups: Group[] = [];
@@ -171,12 +173,13 @@ export default function PlanAccordion({
       body: (
         <div className="space-y-2">
           {claimableBalanceDecisions.map((b) => (
-            <ClaimableBalanceCard
-              key={b.balanceId}
-              item={b}
-              selection={claimableBalanceSelections[b.balanceId]}
-              onSelect={onSelectClaimableBalance}
-            />
+            <div key={b.balanceId} data-open-item={`claim:${b.balanceId}`}>
+              <ClaimableBalanceCard
+                item={b}
+                selection={claimableBalanceSelections[b.balanceId]}
+                onSelect={onSelectClaimableBalance}
+              />
+            </div>
           ))}
         </div>
       ),
@@ -243,31 +246,31 @@ export default function PlanAccordion({
       summary: `${conversions.length} asset${conversions.length === 1 ? "" : "s"} with a balance`,
       body: (
         <div className="space-y-2">
-          {conversions.map((c) =>
-            c.token ? (
-              <TokenDispositionCard
-                key={c.asset}
-                item={c}
-                disposition={assetDispositions[c.asset]}
-                transferDestination={transferDestinations[c.asset]}
-                mergeDestination={mediatorRequired ? null : mergeDestination}
-                onSetDisposition={onSetDisposition}
-                onSetTransferDestination={onSetTransferDestination}
-                impactConfirmed={isImpactConfirmed(c.asset)}
-                onConfirmImpact={onConfirmImpact}
-              />
-            ) : (
-              <AssetDispositionCard
-                key={c.asset}
-                item={c}
-                disposition={assetDispositions[c.asset]}
-                transferDestination={transferDestinations[c.asset]}
-                mergeDestination={mergeDestination}
-                onSetDisposition={onSetDisposition}
-                onSetTransferDestination={onSetTransferDestination}
-              />
-            )
-          )}
+          {conversions.map((c) => (
+            <div key={c.asset} data-open-item={`asset:${c.asset}`}>
+              {c.token ? (
+                <TokenDispositionCard
+                  item={c}
+                  disposition={assetDispositions[c.asset]}
+                  transferDestination={transferDestinations[c.asset]}
+                  mergeDestination={mediatorRequired ? null : mergeDestination}
+                  onSetDisposition={onSetDisposition}
+                  onSetTransferDestination={onSetTransferDestination}
+                  impactConfirmed={isImpactConfirmed(c.asset)}
+                  onConfirmImpact={onConfirmImpact}
+                />
+              ) : (
+                <AssetDispositionCard
+                  item={c}
+                  disposition={assetDispositions[c.asset]}
+                  transferDestination={transferDestinations[c.asset]}
+                  mergeDestination={mergeDestination}
+                  onSetDisposition={onSetDisposition}
+                  onSetTransferDestination={onSetTransferDestination}
+                />
+              )}
+            </div>
+          ))}
         </div>
       ),
     });
@@ -325,7 +328,7 @@ export default function PlanAccordion({
       </div>
     ) : (
       <p className="text-xs text-fg-muted">
-        The destination is entered after every asset above is resolved.
+        The destination is entered after every item above is decided.
       </p>
     ),
   });
@@ -334,13 +337,14 @@ export default function PlanAccordion({
     <Card className="divide-y divide-white/8 overflow-hidden">
       {groups.map((g) => {
         const isOpen = open === g.type;
+        const chip: GroupChip = chips[g.type] ?? { kind: "informational" };
         return (
           <div key={g.type}>
             <button
               type="button"
               id={`${baseId}-${g.type}-header`}
               aria-controls={`${baseId}-${g.type}-panel`}
-              onClick={() => setOpen(isOpen ? null : g.type)}
+              onClick={() => onOpenChange(isOpen ? null : g.type)}
               aria-expanded={isOpen}
               className="flex w-full items-center justify-between gap-4 px-4 py-3.5 text-left transition-colors hover:bg-white/[0.02] focus-visible:-outline-offset-2"
             >
@@ -356,6 +360,9 @@ export default function PlanAccordion({
                   </span>
                   <span className="block truncate text-xs text-fg-subtle">{g.summary}</span>
                 </span>
+              </span>
+              <span className="ml-auto shrink-0">
+                <Badge tone={CHIP_TONE[chip.kind]}>{chipLabel(chip)}</Badge>
               </span>
               <ChevronDown
                 className={`h-4 w-4 shrink-0 text-accent transition-transform duration-300 ${

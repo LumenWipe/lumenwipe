@@ -113,7 +113,7 @@ async function hasRouteFor(amount: string, attempts = 8, delayMs = 2_500): Promi
 //
 // Mirrors the redesigned single-transaction flow: the home page collects ONLY the
 // source public key; the destination + memo step appears on /analyze once every
-// asset is resolved (convertible assets auto-resolve). "Begin execution" then leads
+// asset is resolved (convertible assets auto-resolve). "Review the full plan" then leads
 // to /review, the whole-plan gate; confirming there leads to /execute, where the
 // secret key is entered once and the fused close is signed.
 
@@ -136,9 +136,12 @@ async function driveFusedClose(
   await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
 
   // Late-destination step: once every asset is resolved, the destination panel and
-  // the (disabled) "Begin execution" button render. Fill the destination to enable it.
-  const beginButton = page.getByRole("button", { name: /Begin execution/i });
-  await expect(beginButton).toBeVisible({ timeout: 30_000 });
+  // the (disabled) "Review the full plan" button render. Fill the destination to enable it.
+  const beginButton = page.getByRole("button", { name: /Review the full plan/i });
+  // The button is always there; the destination field appears once every item is decided.
+  await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
+    timeout: 30_000,
+  });
 
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(opts.destination);
   await confirmDestinationControl(page);

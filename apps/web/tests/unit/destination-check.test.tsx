@@ -85,7 +85,7 @@ async function proceedWith(answer: unknown): Promise<{ store: string; planBody: 
       />
     );
   });
-  fireEvent.click(screen.getByRole("button", { name: /begin execution/i }));
+  fireEvent.click(screen.getByRole("button", { name: /review the full plan/i }));
   await waitFor(() => expect(useDemolishStore.getState().phase).toBe("PREFLIGHT_COMPLETE"));
 
   const planCall = (globalThis.fetch as unknown as ReturnType<typeof spyOn>).mock.calls.find(

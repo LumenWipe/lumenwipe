@@ -101,7 +101,8 @@ async function mountView(plan: PlanResponse): Promise<void> {
   });
 }
 
-const readyForDestination = (): boolean => screen.queryByText("Destination") !== null;
+const readyForDestination = (): boolean =>
+  screen.queryByRole("textbox", { name: /Destination address/ }) !== null;
 
 beforeEach(() => {
   window.sessionStorage.clear();

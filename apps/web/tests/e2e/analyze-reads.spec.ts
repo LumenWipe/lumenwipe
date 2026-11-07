@@ -23,7 +23,7 @@ test("one analysis reads the account exactly once", async ({ page }) => {
   const planRequests = countRequests(page, "/api/v1/testnet/close/plan");
 
   await enterSourceAndAnalyze(page, source.publicKey());
-  await expect(page.getByRole("button", { name: /Begin execution/i })).toBeVisible({
+  await expect(page.getByRole("button", { name: /Review the full plan/i })).toBeVisible({
     timeout: TESTNET_STEP_TIMEOUT,
   });
 

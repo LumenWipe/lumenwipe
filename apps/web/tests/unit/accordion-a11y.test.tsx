@@ -1,6 +1,6 @@
 import { test, expect, afterEach } from "bun:test";
 import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
-import PlanAccordion from "@/components/plan/PlanAccordion";
+import { StatefulPlanAccordion } from "./fixtures/plan-accordion";
 import PlanStepAccordion from "@/components/review/PlanStepAccordion";
 import Faq from "@/components/marketing/Faq";
 import type { AccountState } from "@/types/account";
@@ -54,7 +54,7 @@ function step(index: number, type: StepType): PlannedStep {
 
 function renderPlan() {
   return render(
-    <PlanAccordion
+    <StatefulPlanAccordion
       account={account()}
       conversions={[
         { asset: "USDC:GISSUER", code: "USDC", balance: "5.0000000", convertible: true },
