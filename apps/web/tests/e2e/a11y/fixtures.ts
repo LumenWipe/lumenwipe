@@ -11,6 +11,7 @@ import type {
   TransactionLookupResponse,
   TransactionsResponse,
 } from "@lumenwipe/types";
+import type { RecoveryEstimate } from "../../../lib/api/estimate-client";
 import type { FeedData, StatsResult } from "../../../lib/stats";
 import { emptyDefiPositionsResult } from "../../unit/fixtures/defi-positions";
 
@@ -376,6 +377,22 @@ function txHash(signedXdr: string): string {
 const WALLET_CONNECT_HOSTS =
   /^(?:https|wss):\/\/[^/]*(?:walletconnect\.(?:com|org)|reown\.com|web3modal\.(?:com|org))\//;
 
+/** The landing page's recovery estimate: a range, one blocker and the assumptions that apply. */
+export const ESTIMATE: RecoveryEstimate = {
+  readAt: "2026-11-07T12:34:00.000Z",
+  range: {
+    lowStroops: "124999400",
+    highStroops: "201234567",
+    feeStroops: "600",
+    convertedAssets: 2,
+    unquotedSwaps: 1,
+    tokenSwaps: 1,
+    unconvertibleAssets: 1,
+    leavesOutDefiExits: true,
+    blockers: 1,
+  },
+};
+
 export async function installApiFixtures(page: Page): Promise<{ expectAllAnswered(): void }> {
   const unanswered: string[] = [];
 
@@ -421,6 +438,7 @@ export async function installApiFixtures(page: Page): Promise<{ expectAllAnswere
     if (method === "GET" && pathname === "/api/v1/testnet/close/delivered") {
       return json(route, delivered(new URL(request.url()).searchParams));
     }
+    if (method === "POST" && pathname === "/api/mainnet/estimate") return json(route, ESTIMATE);
     if (pathname.startsWith("/api/testnet/mediator/check/")) return json(route, NOT_AN_EXCHANGE);
     if (pathname.startsWith("/api/testnet/allowances/")) return json(route, allowances());
     if (pathname === "/api/config/exchange-registry") return json(route, {}, 503);

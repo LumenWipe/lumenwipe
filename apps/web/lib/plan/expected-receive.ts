@@ -1,6 +1,14 @@
+import type { PlanResponse } from "@lumenwipe/sdk";
 import type { AccountState } from "@/types/account";
 import type { AssetDisposition, ClaimableBalanceSelection } from "@/types/plan";
-import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
+import {
+  decisionPointsToClaimableBalances,
+  decisionPointsToConversions,
+  planFeeStroopsOf,
+  type AssetConvertibility,
+  type ClaimableBalanceDecision,
+} from "@/lib/api/plan-adapters";
+import { hardBlockersOf } from "@/lib/plan/resolvable-blockers";
 import { classicFloorFromQuote } from "@/lib/api/close-decisions";
 import { xlmToStroops } from "@/lib/utils/amounts";
 import { BASE_FEE_STROOPS } from "@/config/constants";
@@ -125,4 +133,67 @@ export function withFeeStroops(expected: ExpectedReceive, feeStroops: string): E
     BigInt(expected.swapStroops) +
     BigInt(expected.claimStroops);
   return { ...expected, feeStroops, totalStroops: total.toString() };
+}
+
+/** The range a close of an account could recover, before any decision is made. Display only. */
+export interface RecoveryRange {
+  /** The XLM balance less the plan's fees: what a close recovers with no conversions and no
+   *  claims. Never below zero. */
+  lowStroops: string;
+  /** The low figure plus the floor of every quoted conversion and the XLM claimable balances. */
+  highStroops: string;
+  feeStroops: string;
+  /** Assets the high figure converts. */
+  convertedAssets: number;
+  /** Convertible assets with no quote, which the high figure counts as nothing. */
+  unquotedSwaps: number;
+  /** Token conversions, whose Soroban resource fee neither figure counts. */
+  tokenSwaps: number;
+  /** Assets with no route to XLM, which neither figure counts. */
+  unconvertibleAssets: number;
+  /** DeFi position exits, which may pay XLM neither figure counts. */
+  leavesOutDefiExits: boolean;
+  /** Plan blockers that would stop the close, as the analyze screen counts them. */
+  blockers: number;
+}
+
+/**
+ * The recovery range of a destination-less plan, from `expectedReceive` twice: once with every
+ * asset left alone, once with every convertible asset converted and every XLM claimable balance
+ * claimed. The destination is not known, so the relay account's forward fee is counted, which
+ * leans low. Null when the plan carries no usable fee, since no figure is shown without one.
+ */
+export function recoveryRange(
+  account: ExpectedReceiveInput["account"],
+  plan: PlanResponse
+): RecoveryRange | null {
+  const planFeeStroops = planFeeStroopsOf(plan);
+  if (planFeeStroops === null) return null;
+  const conversions = decisionPointsToConversions(plan);
+  const claims = decisionPointsToClaimableBalances(plan);
+  const base = { account, planFeeStroops, relayForwardUncounted: true, conversions };
+
+  const low = expectedReceive({ ...base, dispositions: {}, claims: [], claimSelections: {} });
+  const convertible = conversions.filter((c) => c.convertible);
+  const high = expectedReceive({
+    ...base,
+    dispositions: Object.fromEntries(convertible.map((c) => [c.asset, "convert" as const])),
+    claims,
+    claimSelections: Object.fromEntries(
+      claims.map((b) => [b.balanceId, b.offered.includes("claim") ? "claim" : "forfeit"] as const)
+    ),
+  });
+
+  const atLeastZero = (stroops: string) => (BigInt(stroops) > ZERO ? stroops : "0");
+  return {
+    lowStroops: atLeastZero(low.totalStroops),
+    highStroops: atLeastZero(high.totalStroops),
+    feeStroops: low.feeStroops,
+    convertedAssets: convertible.length,
+    unquotedSwaps: high.unquotedSwaps,
+    tokenSwaps: high.tokenSwaps,
+    unconvertibleAssets: conversions.length - convertible.length,
+    leavesOutDefiExits: low.leavesOutDefiExits,
+    blockers: hardBlockersOf(plan.blockers).length,
+  };
 }
