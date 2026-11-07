@@ -83,6 +83,7 @@ import {
   type CloseFailureStage,
 } from "@/lib/utils/user-error";
 import { toHex } from "@/lib/stellar/hex";
+import { signingPromptFor, type SigningPrompt } from "@/lib/execution/signing-prompt";
 import {
   refusedTransferAsset,
   TransferDestinationRefusedError,
@@ -235,6 +236,8 @@ export function useCloseExecution() {
 
   const [progress, setProgress] = useState<CloseProgress | null>(null);
   const [signatureStatus, setSignatureStatus] = useState<SignatureStatus | null>(null);
+  // The transaction a wallet is asked to sign right now, shown beside its prompt; null otherwise.
+  const [signingPrompt, setSigningPrompt] = useState<SigningPrompt | null>(null);
   const [retrySafe, setRetrySafe] = useState<boolean | null>(null);
   const [stillUnconfirmed, setStillUnconfirmed] = useState(false);
   // Whether the transaction in flight carries a preimage: refused or failed, it was still sent.
@@ -523,7 +526,17 @@ export function useCloseExecution() {
               // start: a wallet session that changed since stops here, before it is asked.
               await options.beforeSign?.();
               markCoveredStatus(tx.covers, tx.coversTargets, "signing");
-              const signedXdr = await signer.sign(xdr, passphrase);
+              // A wallet shows its own prompt: the screen shows the same envelope beside it, by
+              // the hash already taken from it, so the two can be compared.
+              if (signer instanceof WalletKitSigner) {
+                setSigningPrompt(signingPromptFor(signer.walletId, xdr, passphrase, approvedHash));
+              }
+              let signedXdr: string;
+              try {
+                signedXdr = await signer.sign(xdr, passphrase);
+              } finally {
+                setSigningPrompt(null);
+              }
 
               // A connected wallet (WalletKitSigner) is a black box outside this app's trust
               // boundary - unlike SecretKeySigner, which signs by parsing this exact xdr and
@@ -1039,6 +1052,7 @@ export function useCloseExecution() {
     run,
     progress,
     signatureStatus,
+    signingPrompt,
     submitPreAuthTransaction,
     checkUnconfirmed,
     retrySafe,

@@ -10,6 +10,8 @@ LumenWipe builds transactions on the server, but signing always happens in your 
 
 The default. Connect a wallet through Stellar Wallets Kit. The wallets the app offers are listed in [Supported](/reference/supported#wallets). The app hands the wallet an unsigned transaction and receives the signed one back, so the key stays inside the wallet.
 
+While the wallet's prompt is open, the screen shows what it was asked to sign: where the account's balance goes when the transaction merges the account, the number of operations, and the first and last eight characters of the transaction hash. All three are read from the exact transaction handed to the wallet, so check that the wallet's own prompt matches before you approve. Mobile wallets, LOBSTR included, connect through WalletConnect and show the prompt in their app; a deployment without a WalletConnect project id says so under **Connect wallet**.
+
 The app only says a wallet is connected once it has checked. A session kept from earlier in the flow is checked by asking the wallet for its account without opening anything; if the wallet cannot be asked that way, or answers with another account, the app shows **Reconnect wallet** instead. A wallet that does not report its network has to be confirmed as being on the page's network before it can sign, and a wallet on another network cannot sign at all. If the wallet signs with a different account than the one connected, or for the other network, the signature is refused before it is used, and the app names the account and lists the keys that can sign.
 
 ## Secret key

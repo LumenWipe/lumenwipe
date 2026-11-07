@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { renderHook, act, fireEvent, render, screen } from "@testing-library/react";
+import { renderHook, act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import * as navigation from "next/navigation";
 import {
   Account,
@@ -57,6 +57,7 @@ import { TRANSFER_DESTINATION_REFUSED_NOTICE } from "@/lib/plan/transfer-destina
 import { CLOCK_HINT, WALLET_TIMED_OUT } from "@/lib/utils/user-error";
 import ReviewView from "@/components/review/ReviewView";
 import * as closeRecord from "@/lib/session/close-record";
+import * as signingPromptModule from "@/lib/execution/signing-prompt";
 import { freshAccount, freshPlan, stubUnchangedRefresh } from "./fixtures/fresh-plan";
 import { VARIAL_ID } from "@creit-tech/stellar-wallets-kit/modules/varial";
 
@@ -3991,4 +3992,68 @@ test("useCloseExecution › an account switched during a pre-authorized submissi
 
   expect(String((error as Error)?.message)).toBe(CLOSE_INTERRUPTED);
   expect(useDemolishStore.getState().phase).toBe("PREFLIGHT_COMPLETE");
+});
+
+test("useCloseExecution › a wallet is shown the hash of the very envelope it is asked to sign", async () => {
+  const { sourceKeypair } = mergeSetup();
+  const destination = useDemolishStore.getState().destinationAddress;
+  stubSubmitViaApi(async () => ({}));
+  const { result } = renderHook(() => useCloseExecution());
+  const seen: { xdr: string; prompt: unknown }[] = [];
+  const wallet = new WalletKitSigner(
+    sourceKeypair.publicKey(),
+    async (xdr) => {
+      // The prompt is on screen while the wallet's own prompt is open.
+      await waitFor(() => expect(result.current.signingPrompt).not.toBeNull());
+      seen.push({ xdr, prompt: result.current.signingPrompt });
+      const tx = TransactionBuilder.fromXDR(xdr, Networks.TESTNET);
+      tx.sign(sourceKeypair);
+      return { signedTxXdr: tx.toXDR(), signerAddress: sourceKeypair.publicKey() };
+    },
+    { walletId: WALLET_CONNECT_WALLET_ID }
+  );
+
+  await result.current.run(wallet);
+
+  expect(seen).toHaveLength(1);
+  const asked = seen[0]!;
+  expect(asked.prompt).toEqual({
+    walletId: WALLET_CONNECT_WALLET_ID,
+    hash: toHex(TransactionBuilder.fromXDR(asked.xdr, Networks.TESTNET).hash()),
+    summary: { mergeDestination: destination, operationCount: 1 },
+  });
+  await waitFor(() => expect(result.current.signingPrompt).toBeNull());
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+});
+
+test("useCloseExecution › the prompt goes when the wallet declines", async () => {
+  const { sourceKeypair } = mergeSetup();
+  const { result } = renderHook(() => useCloseExecution());
+  let shown: unknown = null;
+  const declining = new WalletKitSigner(
+    sourceKeypair.publicKey(),
+    async () => {
+      await waitFor(() => expect(result.current.signingPrompt).not.toBeNull());
+      shown = result.current.signingPrompt;
+      throw USER_DECLINED;
+    },
+    { walletId: VARIAL_ID }
+  );
+  await result.current.run(declining);
+  expect(shown).not.toBeNull();
+  await waitFor(() => expect(result.current.signingPrompt).toBeNull());
+  expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
+});
+
+test("useCloseExecution › a key signer never gets a wallet prompt", async () => {
+  const { sourceKeypair } = mergeSetup();
+  stubSubmitViaApi(async () => ({}));
+  const built = spyOn(signingPromptModule, "signingPromptFor");
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+  expect(built).not.toHaveBeenCalled();
+  expect(result.current.signingPrompt).toBeNull();
 });
