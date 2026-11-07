@@ -37,7 +37,7 @@ export default function ReceiptExportActions({
   }
 
   return (
-    <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-2", className)}>
+    <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-2 print:hidden", className)}>
       <button type="button" onClick={copySummary} className={ACTION}>
         <Copy className="h-3.5 w-3.5" aria-hidden />
         Copy summary{which}

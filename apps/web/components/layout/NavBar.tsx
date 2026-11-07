@@ -18,7 +18,7 @@ export default function NavBar({ network }: NavBarProps) {
 
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-canvas/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 print:hidden border-b border-white/10 bg-canvas/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
             <LeaveLink href="/" aria-label="LumenWipe home" className="shrink-0">

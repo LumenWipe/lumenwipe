@@ -32,7 +32,15 @@ export function IdentifierDisplay({
       className={cn("inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-1", className)}
     >
       <span id={id} className="min-w-0 break-all font-mono-address">
-        {revealed || !shortens ? value : short}
+        {revealed || !shortens ? (
+          value
+        ) : (
+          <>
+            <span className="print:hidden">{short}</span>
+            {/* On paper nothing can be revealed or copied: the whole value is printed. */}
+            <span data-print-only>{value}</span>
+          </>
+        )}
       </span>
       {shortens && (
         <button
@@ -40,13 +48,15 @@ export function IdentifierDisplay({
           aria-expanded={revealed}
           aria-controls={id}
           onClick={() => setRevealed((r) => !r)}
-          className="rounded text-xs text-accent hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+          className="rounded text-xs text-accent hover:underline print:hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
         >
           {revealed ? "Shorten" : "Show full"}
           <span className="sr-only"> {label}</span>
         </button>
       )}
-      <CopyButton value={value} label={label} />
+      <span className="contents print:hidden">
+        <CopyButton value={value} label={label} />
+      </span>
     </span>
   );
 }

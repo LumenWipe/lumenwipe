@@ -55,7 +55,7 @@ export default function Receipt({
   const closed = record.outcome === "closed";
 
   return (
-    <div className="space-y-6">
+    <div data-receipt className="space-y-6">
       {banner}
 
       {closed && <ReceiptHeadline record={record} received={received} onRetry={onRetryReceived} />}
@@ -106,7 +106,7 @@ export default function Receipt({
                     label={`hash of ${tx.label}`}
                     className="text-xs text-fg-muted"
                   />
-                  <p className="flex flex-wrap gap-x-3">
+                  <p className="flex flex-wrap gap-x-3 print:hidden">
                     <ExplorerLink
                       href={explorerTxUrl(record.network, tx.txHash)}
                       target={`transaction ${shortHash(tx.txHash)}`}
@@ -119,6 +119,9 @@ export default function Receipt({
                     >
                       StellarView
                     </ExplorerLink>
+                  </p>
+                  <p data-print-only className="break-all text-xs">
+                    {explorerTxUrl(record.network, tx.txHash)}
                   </p>
                 </div>
               </div>

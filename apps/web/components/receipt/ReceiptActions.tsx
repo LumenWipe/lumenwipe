@@ -28,7 +28,7 @@ export default function ReceiptActions({
 
   const short = shortAddr(destinationAddress);
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center print:hidden">
       <Button asChild>
         <a
           href={explorerAccountUrl(network, destinationAddress)}

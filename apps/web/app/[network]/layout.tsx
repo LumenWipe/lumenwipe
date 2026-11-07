@@ -92,11 +92,11 @@ export default function NetworkLayout({
 
   return (
     <RiskDisclaimerModal>
-      <div className="relative min-h-screen overflow-x-clip bg-canvas">
+      <div className="relative min-h-screen overflow-x-clip bg-canvas print:min-h-0 print:bg-white">
         {/* calm instrument backdrop: grain + faint top hairline, matching the marketing surface.
           Absolute (not fixed) so the mix-blend-overlay grain blends against the dark
           wrapper rather than the white compositor canvas (which would grey the ink). */}
-        <div aria-hidden className="pointer-events-none absolute inset-0 z-0">
+        <div aria-hidden className="pointer-events-none absolute inset-0 z-0 print:hidden">
           <div className="absolute inset-0 mkt-grain" />
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/30 to-transparent" />
         </div>
@@ -112,7 +112,11 @@ export default function NetworkLayout({
             </main>
           </div>
         </LeaveGuardProvider>
-        {showStats && <NetworkStats />}
+        {showStats && (
+          <div className="print:hidden">
+            <NetworkStats />
+          </div>
+        )}
       </div>
     </RiskDisclaimerModal>
   );

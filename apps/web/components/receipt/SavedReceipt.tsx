@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle, ExternalLink } from "lucide-react";
+import { AlertTriangle, CheckCircle, ExternalLink, Printer } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Network } from "@/config/networks";
@@ -89,10 +89,16 @@ export default function SavedReceipt({ network, id }: { network: Network; id: st
       received={received}
       onRetryReceived={retry}
     >
-      <p className="text-xs text-fg-muted">
+      <p className="text-xs text-fg-muted print:hidden">
         Kept in this browser only. Deleting it from the history removes it from this device.
       </p>
-      <ReceiptExportActions record={record} />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 print:hidden">
+        <Button size="sm" variant="secondary" onClick={() => window.print()}>
+          <Printer className="h-3.5 w-3.5" aria-hidden />
+          Print or save as PDF
+        </Button>
+        <ReceiptExportActions record={record} />
+      </div>
       {record.outcome === "closed" && (
         <ReceiptActions network={record.network} destinationAddress={record.destinationAddress} />
       )}

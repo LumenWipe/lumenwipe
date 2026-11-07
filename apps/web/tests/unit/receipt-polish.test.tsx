@@ -59,6 +59,13 @@ function record(over: Partial<ReceiptRecord> = {}): ReceiptRecord {
   };
 }
 
+/** The text an element shows on screen: without its copies that exist only on paper. */
+function onScreen(el: Element | null): string {
+  const clone = el?.cloneNode(true) as Element | undefined;
+  clone?.querySelectorAll("[data-print-only]").forEach((node) => node.remove());
+  return clone?.textContent ?? "";
+}
+
 function settled<T>(value: T): Promise<T> {
   return Object.assign(Promise.resolve(value), { status: "fulfilled", value });
 }
@@ -76,18 +83,22 @@ test("an identifier shows short by default, reveals in full and copies the whole
 
   const toggle = screen.getByRole("button", { name: "Show full merge hash" });
   const shown = document.getElementById(toggle.getAttribute("aria-controls") ?? "");
-  expect(shown?.textContent).toBe("aaaaaa…beef01");
+  expect(onScreen(shown)).toBe("aaaaaa…beef01");
+  // On paper the whole hash is printed, since nothing can be revealed there.
+  expect(shown?.querySelector("[data-print-only]")?.textContent).toBe(HASH);
   expect(toggle.getAttribute("aria-expanded")).toBe("false");
   expect(toggle.tagName).toBe("BUTTON");
   expect(toggle.getAttribute("type")).toBe("button");
 
   fireEvent.click(toggle);
   expect(shown?.textContent).toBe(HASH);
+  expect(shown?.querySelectorAll("[data-print-only]")).toHaveLength(0);
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
   expect(toggle.textContent).toBe("Shorten merge hash");
+  expect(toggle.className).toContain("print:hidden");
 
   fireEvent.click(toggle);
-  expect(shown?.textContent).toBe("aaaaaa…beef01");
+  expect(onScreen(shown)).toBe("aaaaaa…beef01");
 
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy merge hash" }));

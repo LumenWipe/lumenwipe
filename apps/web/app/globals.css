@@ -343,3 +343,51 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* What exists only on paper, such as a hash's full form beside its short one on screen. Unlayered,
+   so no utility class shows it on screen. */
+[data-print-only] {
+  display: none;
+}
+
+/* A printed receipt is a plain document: black on white, every hash and address whole, nothing
+   to click. Components mark their own chrome `print:hidden`; this covers what is left. */
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  html,
+  body {
+    background: white !important;
+  }
+
+  [data-print-only] {
+    display: revert !important;
+  }
+
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+
+  [data-receipt],
+  [data-receipt] * {
+    color: black !important;
+    background: transparent !important;
+    border-color: #9ca3af !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  [data-receipt] {
+    overflow-wrap: anywhere;
+  }
+
+  [data-receipt] button {
+    display: none !important;
+  }
+
+  [data-receipt] [class*="overflow-hidden"] {
+    overflow: visible !important;
+  }
+}
