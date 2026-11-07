@@ -1,7 +1,7 @@
 import { openDB } from "idb";
 import type { UnresolvedSubmission } from "@lumenwipe/sdk";
 import type { Network } from "@/config/networks";
-import { SESSION_RECORD_VERSION, type SessionRecord } from "@/types/session";
+import { RECORD_VERSION, type SessionRecord } from "@/types/session";
 
 const DB_NAME = "lumenwipe";
 const STORE_NAME = "sessions";
@@ -30,7 +30,7 @@ export function normaliseSession(raw: SessionRecord): SessionRecord {
   const legacy = raw as Partial<SessionRecord> & Pick<SessionRecord, "id">;
   return {
     ...raw,
-    version: SESSION_RECORD_VERSION,
+    version: RECORD_VERSION,
     memo: legacy.memo ?? null,
     memoType: legacy.memoType ?? null,
     mediatorRequired: legacy.mediatorRequired ?? false,
@@ -67,7 +67,7 @@ export async function saveSession(record: SessionRecord): Promise<void> {
           stepCount: stepCount === null ? kept.stepCount : kept.currentStepIndex + stepCount,
           updatedAt,
         }
-      : { ...record, version: SESSION_RECORD_VERSION, stepBase: 0, updatedAt }
+      : { ...record, version: RECORD_VERSION, stepBase: 0, updatedAt }
   );
   await tx.done;
 }

@@ -580,7 +580,10 @@ const MATRIX: Surface[] = [
   },
   {
     name: "receipt banner",
-    cells: [receipt("partial", ["still-open"]), receipt("complete", ["account-closed"])],
+    cells: [
+      receipt("partial", ["still-open", "receipt-saved"]),
+      receipt("complete", ["account-closed", "receipt-saved"]),
+    ],
   },
   {
     name: "leave dialog",
@@ -753,6 +756,8 @@ const OUTSIDE = {
   allowances: "the allowance revoke flow, which is not a close",
   lookup: "the home page reporting the outcome a hash lookup just returned",
   notFound: "the 404 page, which plays on the close as a metaphor",
+  savedReceipt:
+    "a receipt reopened from this browser's history, stating the outcome it recorded when the merge confirmed",
 } as const;
 
 const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
@@ -764,8 +769,15 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
     "account-closed": { count: 1, shownBy: OUTSIDE.notFound },
   },
   "components/complete/CompletionReceipt.tsx": {
-    "account-closed": { count: 5, shownBy: "receipt banner" },
+    "account-closed": { count: 3, shownBy: "receipt banner" },
+    "receipt-saved": { count: 1, shownBy: "receipt banner" },
     "still-open": { count: 1, shownBy: "receipt banner" },
+  },
+  "components/receipt/SavedReceipt.tsx": {
+    "account-closed": { count: 3, shownBy: OUTSIDE.savedReceipt },
+  },
+  "lib/receipt/build-record.ts": {
+    "account-closed": { count: 2, shownBy: `receipt banner; ${OUTSIDE.savedReceipt}` },
   },
   "app/[network]/execute/page.tsx": {
     "can-resume": { count: 1, shownBy: "leave and resume control" },

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test";
-import { findResumableSession } from "@/lib/session/recovery";
+import { cleanupSession, findResumableSession } from "@/lib/session/recovery";
 import {
   confirmationOf,
   loadSession,
@@ -8,7 +8,7 @@ import {
   saveUnconfirmed,
   SESSION_MAX_AGE_MS,
 } from "@/lib/session/store";
-import { SESSION_RECORD_VERSION, type SessionRecord } from "@/types/session";
+import { RECORD_VERSION, type SessionRecord } from "@/types/session";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
 
 const NOW = new Date("2026-11-03T12:00:00.000Z");
@@ -26,7 +26,7 @@ afterEach(() => {
 
 function record(over: Partial<SessionRecord> = {}): SessionRecord {
   return {
-    version: SESSION_RECORD_VERSION,
+    version: RECORD_VERSION,
     id: "s",
     network: "testnet",
     sourceAddress: "GSOURCE",
@@ -177,7 +177,7 @@ test("a version 2 database written by an older build opens and reads with defaul
     },
   ]);
   expect(await loadSession("legacy")).toEqual({
-    version: SESSION_RECORD_VERSION,
+    version: RECORD_VERSION,
     id: "legacy",
     network: "testnet",
     sourceAddress: "GSOURCE",
@@ -210,7 +210,7 @@ test("a version 1 record reads with no step count, so its progress is shown as t
   });
   await seedLegacyDatabase([v1]);
   const saved = await loadSession("s");
-  expect(saved?.version).toBe(SESSION_RECORD_VERSION);
+  expect(saved?.version).toBe(RECORD_VERSION);
   expect(saved?.stepCount).toBeNull();
   expect(saved?.stepBase).toBe(0);
   expect(saved?.currentStepIndex).toBe(2);
@@ -291,3 +291,15 @@ async function seedRaw(rows: SessionRecord[]): Promise<void> {
     };
   });
 }
+
+test("cleaning up a finished close keeps a session that holds an unconfirmed hash", async () => {
+  await saveSession(record({ id: "held" }));
+  await saveUnconfirmed("held", { hash: "h", covers: ["MERGE"], validUntil: 0 } as never);
+  await saveSession(record({ id: "settled" }));
+
+  await cleanupSession("held");
+  await cleanupSession("settled");
+
+  expect((await loadSession("held"))?.unconfirmed?.hash).toBe("h");
+  expect(await loadSession("settled")).toBeNull();
+});

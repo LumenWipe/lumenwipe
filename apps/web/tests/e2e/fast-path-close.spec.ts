@@ -9,6 +9,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { confirmDestinationControl } from "./helpers/destination";
 import {
+  CLOSE_FINISHED_URL,
   enterSecretKey,
   enterSourceAddress,
   expectSigningPanel,
@@ -177,7 +178,7 @@ async function driveFusedClose(
   await signButton.click();
 
   // The wizard auto-advances to /complete once the only step confirms.
-  await expect(page).toHaveURL(/\/testnet\/complete/, { timeout: 90_000 });
+  await expect(page).toHaveURL(CLOSE_FINISHED_URL, { timeout: 90_000 });
 }
 
 // ── Test 1: data-entry-only account (no convertible balances) ────────────────────

@@ -1,10 +1,4 @@
-import {
-  deleteSession,
-  deleteSettledSession,
-  expireSessions,
-  isExpired,
-  listSessions,
-} from "./store";
+import { deleteSettledSession, expireSessions, isExpired, listSessions } from "./store";
 import type { SessionRecord } from "@/types/session";
 import type { Network } from "@/config/networks";
 
@@ -61,9 +55,11 @@ export async function clearRecordsOfGoneAccount(network: Network, source: string
   return deleted.filter(Boolean).length;
 }
 
+/** Deletes a finished close's saved session, unless it holds an unconfirmed hash, which is the
+ *  only pointer left to a transaction whose outcome nobody has settled. */
 export async function cleanupSession(id: string): Promise<void> {
   try {
-    await deleteSession(id);
+    await deleteSettledSession(id);
   } catch (err) {
     if (process.env.NODE_ENV !== "production") console.warn("[session] cleanup failed:", err);
   }

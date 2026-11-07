@@ -9,6 +9,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { confirmDestinationControl } from "./helpers/destination";
 import {
+  CLOSE_FINISHED_URL,
   enterSecretKey,
   enterSourceAddress,
   expectSigningPanel,
@@ -233,7 +234,7 @@ test("one close swaps one asset, transfers another, and returns a third to its i
   await enterSecretKey(page, source.secret());
   await page.getByRole("checkbox").first().check();
   await page.getByRole("button", { name: /Sign & execute close/i }).click();
-  await expect(page).toHaveURL(/\/testnet\/complete/, { timeout: 150_000 });
+  await expect(page).toHaveURL(CLOSE_FINISHED_URL, { timeout: 150_000 });
 
   // ── Assert on-chain, not on the UI ──────────────────────────────────────────
   expect(await accountExists(source.publicKey())).toBe(false);

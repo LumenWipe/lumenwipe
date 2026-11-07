@@ -1,490 +1,164 @@
 "use client";
 
-import { useEffect } from "react";
-import { useFocusOnMount } from "@/hooks/useFocusOnMount";
-import { AlertTriangle, CheckCircle, ExternalLink, History, Link2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
+import { AlertTriangle, CheckCircle, Download, ExternalLink, History } from "lucide-react";
 import Link from "next/link";
+import { useFocusOnMount } from "@/hooks/useFocusOnMount";
 import type { Network } from "@/config/networks";
-import { SE_EXPLORER_BASE, SV_EXPLORER_BASE } from "@/config/networks";
-import { shortAddr, shortHash } from "@/lib/utils/short-id";
-import type { AssetDisposition } from "@/types/plan";
+import { SE_EXPLORER_BASE } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { cleanupSession } from "@/lib/session/recovery";
 import { saveHistory } from "@/lib/session/history";
 import { allows } from "@/lib/journey/claims";
 import { useJourneyState } from "@/lib/journey/use-journey-state";
-import { formatXlm } from "@/lib/utils/amounts";
-import { StepTypeIcon } from "@/lib/utils/stepIcons";
-import { buildTxLedger, labelForTx } from "@/lib/utils/txLedger";
-import { receiptAssetSummary, receiptTokenSummary } from "@/lib/api/close-decisions";
-import { describeDefiPosition, positionContracts } from "@/lib/plan/describe-position";
+import { buildReceiptRecord } from "@/lib/receipt/build-record";
+import { downloadReceiptJson } from "@/lib/receipt/download";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import Receipt from "@/components/receipt/Receipt";
+import ReceiptActions from "@/components/receipt/ReceiptActions";
 
 interface CompletionReceiptProps {
   network: Network;
+  /** Called once a finished close's receipt is saved, with the id it was saved under. */
+  onSaved?: (id: string) => void;
 }
 
-type GroupType =
-  | "EXIT_POSITIONS"
-  | "NORMALIZE_SIGNERS"
-  | "REMOVE_DATA_ENTRIES"
-  | "CANCEL_OFFERS"
-  | "CLAIM_BALANCES"
-  | "HANDLE_ASSETS"
-  | "REMOVE_TRUSTLINES"
-  | "MERGE";
+/** Where the receipt's write to this browser's history stands. */
+export type SaveState = "saving" | "saved" | "failed";
 
-interface SummaryGroup {
-  type: GroupType;
-  title: string;
-  summary: string;
-  body: React.ReactNode;
-}
+export default function CompletionReceipt({ network, onSaved }: CompletionReceiptProps) {
+  const store = useDemolishStore();
+  const { sourceAddress, sessionId } = store;
 
-function assetCode(asset: string): string {
-  return asset === "native" ? "XLM" : asset.split(":")[0];
-}
-
-export default function CompletionReceipt({ network }: CompletionReceiptProps) {
-  const {
-    executionPlan,
-    destinationAddress,
-    sourceAddress,
-    sessionId,
-    reset,
-    mediatorRequired,
-    accountState,
-    assetDispositions,
-    transferDestinations,
-    claimableBalanceSelections,
-  } = useDemolishStore();
-  const explorerBase = SE_EXPLORER_BASE[network];
-  const svExplorerBase = SV_EXPLORER_BASE[network];
-
-  const confirmedSteps = executionPlan.filter((s) => s.status === "confirmed" && s.txHash);
   const journey = useJourneyState();
   const closed = allows(journey, "account-closed");
 
-  // A sponsored round's `actualFeeLumens` is exactly "0" - a dedicated sponsor account paid the
-  // network fee, not this one. Any step not yet confirmed (this page can still be reached mid-
-  // close, after a partial failure, with steps still pending) never had `actualFeeLumens` set -
-  // the `??` falls back to `estimatedFeeLumens` there so the sum doesn't go NaN, not because
-  // that estimate is known to be what was actually paid.
-  const totalFee = executionPlan
-    .reduce((sum, s) => sum + parseFloat(s.actualFeeLumens ?? s.estimatedFeeLumens), 0)
-    .toFixed(7);
+  // A close without a session id still gets a receipt, under an id of its own for this visit.
+  const [fallbackId] = useState(() => uuidv4());
+  const [completedAt] = useState(() => new Date().toISOString());
+  const receiptId = sessionId ?? fallbackId;
+  const record = useMemo(
+    () => buildReceiptRecord(store, { id: receiptId, network, completedAt }),
+    [store, receiptId, network, completedAt]
+  );
 
   const headingRef = useFocusOnMount<HTMLHeadingElement>();
+  const [save, setSave] = useState<SaveState | null>(null);
+  const attempted = useRef<string | null>(null);
 
   useEffect(() => {
     document.title = closed ? "Account closed | LumenWipe" : "Close incomplete | LumenWipe";
   }, [closed]);
 
   useEffect(() => {
-    if (!closed || !sessionId || !sourceAddress || !destinationAddress) return;
+    if (!record || record.transactions.length === 0) return;
+    const key = `${record.id}:${record.outcome}`;
+    if (attempted.current === key) return;
+    attempted.current = key;
+    // Only a close that finished, with nothing left in flight, gives up its resumable session:
+    // for anything less the session is the only way back into the close.
+    const finished = record.outcome === "closed" && !journey.mayBeInFlight;
+    setSave("saving");
+    saveHistory(record)
+      .then(
+        () => {
+          setSave("saved");
+          if (record.outcome === "closed") onSaved?.(record.id);
+        },
+        (err: unknown) => {
+          console.error("[receipt] save failed:", err);
+          setSave("failed");
+        }
+      )
+      .then(() => (finished && sessionId ? cleanupSession(sessionId) : undefined));
+  }, [record, journey.mayBeInFlight, sessionId, onSaved]);
 
-    saveHistory({
-      id: sessionId,
-      network,
-      sourceAddress,
-      destinationAddress,
-      completedAt: new Date().toISOString(),
-      txReceipts: confirmedSteps.map((s) => ({
-        type: s.type,
-        title: s.title,
-        txHash: s.txHash!,
-      })),
-      totalFeeLumens: totalFee,
-      usedMediator: mediatorRequired,
-    })
-      .then(() => cleanupSession(sessionId))
-      .catch((err) => console.error("[receipt] save/cleanup failed:", err));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, closed]);
+  const banner = closed ? (
+    <Callout
+      tone="success"
+      icon={<CheckCircle className="h-12 w-12" />}
+      title={
+        <h1
+          ref={headingRef}
+          tabIndex={-1}
+          className="mkt-display text-2xl font-bold text-white outline-none"
+        >
+          Account successfully merged
+        </h1>
+      }
+      className="flex-col items-center gap-3 p-6 text-center"
+    >
+      All assets have been transferred and the account has been removed from the Stellar ledger.
+    </Callout>
+  ) : (
+    <Callout
+      tone="warning"
+      announce="status"
+      icon={<AlertTriangle className="h-12 w-12" />}
+      title={
+        <h1
+          ref={headingRef}
+          tabIndex={-1}
+          className="mkt-display text-2xl font-bold text-white outline-none"
+        >
+          Close not finished
+        </h1>
+      }
+      className="flex-col items-center gap-3 p-6 text-center"
+      action={
+        <Button asChild>
+          <Link href={`/${network}`}>Resume</Link>
+        </Button>
+      }
+    >
+      {journey.confirmed} of {journey.total} transactions confirmed. The account still exists.
+      Resume the close to finish it.
+    </Callout>
+  );
 
-  // The "what was done" groups below describe state changes; the transaction ledger
-  // describes the real on-chain transactions. A fused close is one transaction, a
-  // mediator merge is two, and DeFi exits will each add their own - the ledger reflects
-  // that count instead of implying one transaction per group.
-  const ledger = buildTxLedger(confirmedSteps);
-
-  const account = accountState;
-  const groups: SummaryGroup[] = [];
-
-  if (account) {
-    // Only positions a confirmed exit step actually left. Detection is a snapshot from the
-    // analysis; a position the user exited by hand in between is skipped by the API as already
-    // gone, never built or signed, and must not be reported here as LumenWipe's doing.
-    const exitedContracts = new Set(
-      confirmedSteps
-        .filter((s) => s.type === "EXIT_POSITIONS")
-        .map((s) => s.affectedContract)
-        .filter((c): c is string => typeof c === "string")
-    );
-    const positions = account.defiPositions.positions.filter((p) =>
-      exitedContracts.has(p.contractAddress)
-    );
-    if (positions.length > 0) {
-      const contracts = positionContracts(positions);
-      groups.push({
-        type: "EXIT_POSITIONS",
-        title: "DeFi positions exited",
-        summary: `${positions.length} position${positions.length === 1 ? "" : "s"} in ${contracts.length} pool${contracts.length === 1 ? "" : "s"}, settled and withdrawn before the close`,
-        body: (
-          <ul className="space-y-1">
-            {positions.map((p, i) => (
-              <li key={`${p.contractAddress}-${i}`} className="text-xs text-fg-muted">
-                {describeDefiPosition(p, account.defiPositions.enrichment)}
-                {!p.display?.pool && (
-                  <span className="font-mono-address text-fg-subtle">
-                    {" "}
-                    · {shortAddr(p.contractAddress)}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        ),
-      });
-    }
-
-    const extraSigners = account.signers.filter((s) => s.key !== account.address);
-    if (extraSigners.length > 0) {
-      groups.push({
-        type: "NORMALIZE_SIGNERS",
-        title: "Signers removed",
-        summary: `${extraSigners.length} extra signer${extraSigners.length === 1 ? "" : "s"}, thresholds reset`,
-        body: (
-          <ul className="space-y-1">
-            {extraSigners.map((s) => (
-              <li key={s.key} className="font-mono-address text-xs text-fg-muted">
-                {shortAddr(s.key)} <span className="text-fg-subtle">· weight {s.weight}</span>
-              </li>
-            ))}
-          </ul>
-        ),
-      });
-    }
-
-    if (account.dataEntries.length > 0) {
-      groups.push({
-        type: "REMOVE_DATA_ENTRIES",
-        title: "Data removed",
-        summary: `${account.dataEntries.length} data entr${account.dataEntries.length === 1 ? "y" : "ies"}`,
-        body: (
-          <ul className="space-y-1">
-            {account.dataEntries.map((d) => (
-              <li key={d.key} className="font-mono text-xs text-fg-muted truncate">
-                {d.key}
-              </li>
-            ))}
-          </ul>
-        ),
-      });
-    }
-
-    if (account.openOffers.length > 0) {
-      groups.push({
-        type: "CANCEL_OFFERS",
-        title: "Offers cancelled",
-        summary: `${account.openOffers.length} open offer${account.openOffers.length === 1 ? "" : "s"}`,
-        body: (
-          <ul className="space-y-1">
-            {account.openOffers.map((o) => (
-              <li key={o.id} className="text-xs text-fg-muted">
-                <span className="text-white/70">{o.amount}</span> {assetCode(o.selling)}{" "}
-                <span className="text-fg-subtle">→</span> {assetCode(o.buying)}
-              </li>
-            ))}
-          </ul>
-        ),
-      });
-    }
-
-    // A balance explicitly forfeited was never claimed - exclude it from "what was done" so
-    // an intentionally-abandoned balance doesn't read as claimed.
-    const claimedBalances = account.claimableBalances.filter(
-      (b) => claimableBalanceSelections[b.id] !== "forfeit"
-    );
-    if (claimedBalances.length > 0) {
-      groups.push({
-        type: "CLAIM_BALANCES",
-        title: "Balances claimed",
-        summary: `${claimedBalances.length} claimable balance${claimedBalances.length === 1 ? "" : "s"}`,
-        body: (
-          <ul className="space-y-1">
-            {claimedBalances.map((b) => (
-              <li key={b.id} className="text-xs text-fg-muted">
-                <span className="text-white/70">{b.amount}</span> {assetCode(b.asset)}
-              </li>
-            ))}
-          </ul>
-        ),
-      });
-    }
-
-    // Assets group: per-asset disposition (swapped to XLM vs returned to issuer). Prefer the
-    // store's recorded dispositions; fall back to the HANDLE_ASSETS steps' fallbackToIssuer
-    // flag when dispositions are empty (e.g. a recovered stepwise run).
-    //
-    // The list comes from receiptAssetSummary, not from load-time trustlines: an asset the
-    // close claimed into existence (or into a zero-balance line) held nothing when the page
-    // was analyzed, and building from that state left it out of the permanent record of an
-    // irreversible close entirely - including a balance returned to its issuer, the outcome
-    // someone is most likely to need to look up later.
-    const { handledAssets, removedTrustlines } = receiptAssetSummary(
-      account,
-      claimableBalanceSelections,
-      Object.keys(assetDispositions)
-    );
-    // Soroban tokens sit in the same list: the receipt is the one record of a balance left behind.
-    const handledBalances = [...handledAssets, ...receiptTokenSummary(account)];
-    const assetSteps = confirmedSteps.filter((s) => s.type === "HANDLE_ASSETS");
-
-    function dispositionFor(entry: { asset: string }): AssetDisposition | null {
-      const recorded = assetDispositions[entry.asset];
-      if (recorded) return recorded;
-      const step = assetSteps.find((s) => s.affectedAsset === entry.asset);
-      if (step) return step.fallbackToIssuer ? "issuer" : "convert";
-      return null;
-    }
-
-    if (handledBalances.length > 0) {
-      groups.push({
-        type: "HANDLE_ASSETS",
-        title: "Assets handled",
-        summary: `${handledBalances.length} asset${handledBalances.length === 1 ? "" : "s"} with a balance`,
-        body: (
-          <ul className="space-y-1.5">
-            {handledBalances.map((tl) => {
-              const disposition = dispositionFor(tl);
-              // "transfer" must be named, not folded into the generic fallback. This is the
-              // permanent record of an irreversible close, and it is the only disposition that
-              // sent the balance to a third party - saying "resolved" would hide the one
-              // outcome a user is most likely to need to look up later.
-              const destination = transferDestinations[tl.asset];
-              const label =
-                disposition === "issuer"
-                  ? "returned to issuer"
-                  : disposition === "convert"
-                    ? "swapped to XLM"
-                    : disposition === "transfer"
-                      ? destination
-                        ? `sent to ${shortAddr(destination)}`
-                        : "sent to another account"
-                      : disposition === "leave"
-                        ? "left with this address"
-                        : "resolved";
-              return (
-                <li key={tl.asset} className="flex items-center gap-2 text-xs text-fg-muted">
-                  <span className="font-medium text-white/80">{tl.code}</span>
-                  <span className="text-fg-subtle">→</span>
-                  <span>{label}</span>
-                </li>
-              );
-            })}
-          </ul>
-        ),
-      });
-    }
-
-    if (removedTrustlines.length > 0) {
-      groups.push({
-        type: "REMOVE_TRUSTLINES",
-        title: "Trustlines removed",
-        summary: `${removedTrustlines.length} trustline${removedTrustlines.length === 1 ? "" : "s"}`,
-        body: (
-          <ul className="space-y-1">
-            {removedTrustlines.map((tl) => (
-              <li key={tl.asset} className="text-xs text-fg-muted">
-                {tl.code}
-              </li>
-            ))}
-          </ul>
-        ),
-      });
-    }
-  }
-
-  if (closed) {
-    groups.push({
-      type: "MERGE",
-      title: "Account merged",
-      summary: destinationAddress
-        ? mediatorRequired
-          ? `via relay account to ${shortAddr(destinationAddress)}`
-          : `to ${shortAddr(destinationAddress)}`
-        : "merged to destination",
-      body: (
-        <div className="space-y-1 text-xs text-fg-muted">
-          {destinationAddress && (
-            <p>
-              Destination:{" "}
-              <span className="font-mono-address text-white/70">
-                {shortAddr(destinationAddress)}
-              </span>
-            </p>
-          )}
-          <p>
-            {mediatorRequired
-              ? "The merge was routed through a shared relay account, which passes your funds on to the exchange, as a co-signed transfer."
-              : "The account was merged into the destination and removed from the Stellar ledger."}
-          </p>
-        </div>
-      ),
-    });
-  }
+  if (!record) return banner;
 
   return (
-    <div className="space-y-6">
-      {closed ? (
-        <Callout
-          tone="success"
-          icon={<CheckCircle className="h-12 w-12" />}
-          title={
-            <h1
-              ref={headingRef}
-              tabIndex={-1}
-              className="mkt-display text-2xl font-bold text-white outline-none"
-            >
-              Account successfully merged
-            </h1>
-          }
-          className="flex-col items-center gap-3 p-6 text-center"
-        >
-          All assets have been transferred and the account has been removed from the Stellar ledger.
-        </Callout>
-      ) : (
+    <Receipt record={record} banner={banner}>
+      <div aria-live="polite">
+        {save === "saving" && <p className="text-xs text-fg-muted">Saving the receipt…</p>}
+        {save === "saved" && allows(journey, "receipt-saved") && (
+          <Callout
+            tone="info"
+            announce={false}
+            icon={<History className="h-4 w-4" />}
+            className="p-3 text-xs"
+          >
+            Receipt saved to this browser. You can open it again from the history icon in the
+            navigation bar.
+          </Callout>
+        )}
+      </div>
+
+      {save === "failed" && (
         <Callout
           tone="warning"
-          announce="status"
-          icon={<AlertTriangle className="h-12 w-12" />}
-          title={
-            <h1
-              ref={headingRef}
-              tabIndex={-1}
-              className="mkt-display text-2xl font-bold text-white outline-none"
-            >
-              Close not finished
-            </h1>
-          }
-          className="flex-col items-center gap-3 p-6 text-center"
+          announce="alert"
+          icon={<AlertTriangle className="h-4 w-4" />}
+          className="p-3 text-xs"
           action={
-            <Button asChild>
-              <Link href={`/${network}`}>Resume</Link>
+            <Button size="sm" onClick={() => downloadReceiptJson(record)}>
+              <Download className="h-3.5 w-3.5" />
+              Download receipt
             </Button>
           }
         >
-          {journey.confirmed} of {journey.total} transactions confirmed. The account still exists.
-          Resume the close to finish it.
-        </Callout>
-      )}
-
-      {/* Grouped summary */}
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle>What was done</CardTitle>
-        </CardHeader>
-        <div className="divide-y divide-white/8">
-          {groups.map((g) => (
-            <div key={g.type} className="px-4 py-3.5">
-              <div className="flex items-start justify-between gap-4">
-                <span className="flex min-w-0 items-start gap-2.5">
-                  <StepTypeIcon type={g.type} className="h-4 w-4 mt-0.5 shrink-0 text-accent/70" />
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium text-white/85">{g.title}</span>
-                    <span className="block truncate text-xs text-fg-subtle">{g.summary}</span>
-                  </span>
-                </span>
-              </div>
-              <div className="mt-2 pl-[1.625rem]">{g.body}</div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      {/* Transaction ledger */}
-      {ledger.length > 0 && (
-        <Card className="overflow-hidden">
-          <CardHeader>
-            <CardTitle>
-              {ledger.length === 1 ? "Transaction" : `Transactions · ${ledger.length}`}
-            </CardTitle>
-          </CardHeader>
-          <div className="divide-y divide-white/8">
-            {ledger.map((tx) => (
-              <div key={tx.txHash} className="flex items-center justify-between gap-4 px-4 py-3.5">
-                <span className="flex min-w-0 items-center gap-2.5">
-                  <Link2 className="h-4 w-4 shrink-0 text-accent/70" />
-                  <span className="min-w-0">
-                    <span
-                      className="block truncate text-sm font-medium text-white/85"
-                      title={tx.stepTitles.join(" · ")}
-                    >
-                      {labelForTx(tx)}
-                    </span>
-                    <span className="block font-mono-address text-xs text-fg-subtle">
-                      {shortHash(tx.txHash)}
-                    </span>
-                  </span>
-                </span>
-                <span className="flex shrink-0 items-center gap-2">
-                  <a
-                    href={`${explorerBase}/tx/${tx.txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs text-accent hover:underline"
-                  >
-                    SE <ExternalLink className="h-3 w-3" />
-                  </a>
-                  <a
-                    href={`${svExplorerBase}/tx/${tx.txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs text-accent hover:underline"
-                  >
-                    SV <ExternalLink className="h-3 w-3" />
-                  </a>
-                </span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {/* Summary */}
-      <Card className="space-y-3 p-4">
-        <div className="flex justify-between text-sm">
-          <span className="text-fg-muted">Source account</span>
-          <span className="font-mono-address text-xs text-white/70">
-            {sourceAddress?.slice(0, 8)}...{sourceAddress?.slice(-8)}
-          </span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-fg-muted">Destination</span>
-          <span className="font-mono-address text-xs text-white/70">
-            {destinationAddress?.slice(0, 8)}...{destinationAddress?.slice(-8)}
-          </span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-fg-muted">Total fees paid</span>
-          <span className="text-xs mkt-mono text-white/70">{formatXlm(totalFee)}</span>
-        </div>
-      </Card>
-
-      {closed && (
-        <Callout tone="info" icon={<History className="h-4 w-4" />} className="p-3 text-xs">
-          Receipt saved to local history. You can review past merges anytime from the history icon
-          in the navigation bar.
+          This browser could not keep the receipt, so it will not be in your history. Storage may be
+          blocked or full, as in a private window. Download it now to keep a copy.
         </Callout>
       )}
 
       {!closed && sourceAddress && (
         <Button asChild variant="secondary" className="w-full">
           <Link
-            href={`${explorerBase}/account/${sourceAddress}`}
+            href={`${SE_EXPLORER_BASE[network]}/account/${sourceAddress}`}
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -495,32 +169,8 @@ export default function CompletionReceipt({ network }: CompletionReceiptProps) {
       )}
 
       {closed && (
-        <div className="flex gap-3">
-          <Button variant="secondary" onClick={reset} className="flex-1">
-            Merge another account
-          </Button>
-          <Button asChild className="flex-1">
-            <Link
-              href={`${explorerBase}/account/${destinationAddress}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Stellar Expert
-              <ExternalLink className="h-3.5 w-3.5" />
-            </Link>
-          </Button>
-          <Button asChild variant="secondary" className="flex-1">
-            <Link
-              href={`${svExplorerBase}/account/${destinationAddress}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              StellarView
-              <ExternalLink className="h-3.5 w-3.5" />
-            </Link>
-          </Button>
-        </div>
+        <ReceiptActions network={network} destinationAddress={record.destinationAddress} />
       )}
-    </div>
+    </Receipt>
   );
 }

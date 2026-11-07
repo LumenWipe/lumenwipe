@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
-import { Analytics } from "@vercel/analytics/next";
 import { Toaster } from "sonner";
+import RedactedAnalytics from "@/components/analytics/RedactedAnalytics";
+import { UMAMI_BEFORE_SEND, UMAMI_BEFORE_SEND_SCRIPT } from "@/lib/analytics/redact";
 import { siteFontVars } from "./fonts";
 import "./globals.css";
 
@@ -92,20 +93,30 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
         {process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID && (
-          <script
-            defer
-            nonce={nonce}
-            suppressHydrationWarning
-            src="https://cloud.umami.is/script.js"
-            data-website-id={process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID}
-          />
+          <>
+            <script
+              nonce={nonce}
+              suppressHydrationWarning
+              dangerouslySetInnerHTML={{ __html: UMAMI_BEFORE_SEND_SCRIPT }}
+            />
+            <script
+              defer
+              nonce={nonce}
+              suppressHydrationWarning
+              src="https://cloud.umami.is/script.js"
+              data-website-id={process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID}
+              data-exclude-search="true"
+              data-exclude-hash="true"
+              data-before-send={UMAMI_BEFORE_SEND}
+            />
+          </>
         )}
       </head>
       <body className={`${siteFontVars} font-body`}>
         <div id="app-root" className="contents">
           {children}
         </div>
-        <Analytics />
+        <RedactedAnalytics />
         <Toaster position="bottom-right" theme="dark" richColors />
       </body>
     </html>

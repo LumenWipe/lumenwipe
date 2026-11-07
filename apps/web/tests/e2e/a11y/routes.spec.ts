@@ -44,6 +44,15 @@ test("history", async ({ page }) => {
   await expectNoAxeViolations(page, "history");
 });
 
+test("receipt not in this browser", async ({ page }) => {
+  await page.goto("/testnet/receipt/not-saved-here");
+  await dismissRiskModal(page);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Receipt not found in this browser"
+  );
+  await expectNoAxeViolations(page, "receipt not in this browser");
+});
+
 test("not found", async ({ page }) => {
   await page.goto("/no-such-page");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("This page has");

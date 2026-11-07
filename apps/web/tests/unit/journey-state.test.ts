@@ -189,6 +189,7 @@ describe("allowance table", () => {
       "still-open",
       "can-resume",
       "recorded-progress",
+      "receipt-saved",
     ],
     complete: [
       "key-stays-in-browser",
@@ -196,6 +197,7 @@ describe("allowance table", () => {
       "account-closed",
       "no-new-sent",
       "may-be-sent",
+      "receipt-saved",
     ],
     unknown: [
       "key-stays-in-browser",

@@ -11,6 +11,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { confirmDestinationControl } from "./helpers/destination";
 import {
+  CLOSE_FINISHED_URL,
   enterSecretKey,
   enterSourceAddress,
   expectSigningPanel,
@@ -165,7 +166,7 @@ async function signMultiRoundCloseOnce(page: Page, source: Keypair): Promise<voi
   await signButton.click();
 
   // Two rounds (claim, then cleanup+merge) each wait for RPC confirmation - allow headroom.
-  await expect(page).toHaveURL(/\/testnet\/complete/, { timeout: 150_000 });
+  await expect(page).toHaveURL(CLOSE_FINISHED_URL, { timeout: 150_000 });
 }
 
 test("redesigned flow: add a trustline and claim an otherwise-unreachable balance, then merge", async ({

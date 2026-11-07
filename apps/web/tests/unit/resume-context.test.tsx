@@ -28,7 +28,7 @@ import { GONE_RECORD_CLEARED } from "@/lib/utils/user-error";
 import { useDemolishStore, type ResumedClose } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { PlannedStep } from "@/types/plan";
-import { SESSION_RECORD_VERSION, type SessionRecord } from "@/types/session";
+import { RECORD_VERSION, type SessionRecord } from "@/types/session";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
 
@@ -44,7 +44,7 @@ const params = Object.assign(Promise.resolve({ network: "testnet" as const }), {
 
 function record(over: Partial<SessionRecord> = {}): SessionRecord {
   return {
-    version: SESSION_RECORD_VERSION,
+    version: RECORD_VERSION,
     id: "s",
     network: "testnet",
     sourceAddress: SOURCE,
