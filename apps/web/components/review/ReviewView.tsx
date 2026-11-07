@@ -15,10 +15,12 @@ import {
   CONFIRM_SAVE_FAILED,
   CONFIRM_UNCHECKED,
 } from "@/lib/utils/user-error";
-import { formatXlm } from "@/lib/utils/amounts";
+import { formatStroops } from "@/lib/api/plan-adapters";
+import { withFeeStroops } from "@/lib/plan/expected-receive";
+import { totalFeeStroops, transactionCountLine } from "@/lib/plan/review-fees";
 import { confirmedMemo } from "@/lib/plan/memo-field";
 import { destinationKind, memoLine, relayRoute } from "@/lib/plan/destination-kind";
-import PlanStepAccordion from "@/components/review/PlanStepAccordion";
+import PlanStepList from "@/components/review/PlanStepList";
 import ReviewHero, { MemoValue } from "@/components/review/ReviewHero";
 import AccountContents from "@/components/plan/AccountContents";
 import { Button } from "@/components/ui/button";
@@ -54,6 +56,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
     setPhase,
     resumedClose,
     expectedReceive,
+    estimatedTransactionCount,
   } = useDemolishStore();
 
   const [confirming, setConfirming] = useState(false);
@@ -66,9 +69,13 @@ export default function ReviewView({ network }: ReviewViewProps) {
     destinationAddress ? confirmedMemo(destinationAddress, memo, memoType) : null
   );
 
-  const totalFee = executionPlan
-    .reduce((sum, step) => sum + parseFloat(step.estimatedFeeLumens), 0)
-    .toFixed(7);
+  // One fee on this screen: the exact sum of the steps' fees, which the list below shows one by
+  // one, is also the fee line of the amount the user is told they will receive. A step whose fee
+  // cannot be read leaves both unknown, never understated. The final plan's steps already hold
+  // the relay's forward payment (the builder counts it in the merge step), so nothing is added.
+  const totalFee = totalFeeStroops(executionPlan);
+  const expected =
+    expectedReceive && totalFee !== null ? withFeeStroops(expectedReceive, totalFee) : null;
 
   // The only caller allowed to transition PREFLIGHT_COMPLETE -> STEP_EXECUTING. Nothing
   // is persisted until this fires, so leaving this page without confirming (closing the
@@ -113,7 +120,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
             acknowledgedFor: destinationAcknowledgedFor,
           })}
           memo={memoShown}
-          expected={expectedReceive}
+          expected={expected}
         />
       )}
       {resumedClose?.source === sourceAddress && (
@@ -136,12 +143,15 @@ export default function ReviewView({ network }: ReviewViewProps) {
       <Card>
         <CardHeader>
           <CardTitle>Full plan</CardTitle>
+          <p className="mt-1 text-sm text-white/80" data-testid="transaction-count">
+            {transactionCountLine(estimatedTransactionCount)}
+          </p>
         </CardHeader>
-        <div className="p-3">
-          <PlanStepAccordion
+        <div className="px-4 pb-1">
+          <PlanStepList
             steps={executionPlan}
             destinationAddress={destinationAddress}
-            mediatorRequired={viaRelay}
+            viaRelay={viaRelay}
           />
         </div>
       </Card>
@@ -173,6 +183,18 @@ export default function ReviewView({ network }: ReviewViewProps) {
           Memo: <MemoValue memo={memoShown} />
         </p>
       </Callout>
+
+      <p className="text-sm text-fg-muted" data-testid="fee-summary">
+        {totalFee === null ? (
+          "Network fees could not be estimated for this plan. They are paid from the account and deducted from what arrives."
+        ) : (
+          <>
+            Network fees: about{" "}
+            <span className="mkt-mono text-white/80">{formatStroops(totalFee)} XLM</span>, paid from
+            the account and deducted from what arrives.
+          </>
+        )}
+      </p>
 
       <label className="flex items-start gap-3 cursor-pointer select-none">
         <input
@@ -219,10 +241,6 @@ export default function ReviewView({ network }: ReviewViewProps) {
           Account summary unavailable - the plan below is still accurate.
         </p>
       )}
-
-      <p className="text-center text-xs text-fg-subtle">
-        {formatXlm(totalFee)} in estimated network fees
-      </p>
     </div>
   );
 }

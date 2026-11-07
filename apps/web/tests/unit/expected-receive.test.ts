@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
-import { expectedReceive, type ExpectedReceiveInput } from "@/lib/plan/expected-receive";
+import {
+  expectedReceive,
+  withFeeStroops,
+  type ExpectedReceiveInput,
+} from "@/lib/plan/expected-receive";
 import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
@@ -190,5 +194,17 @@ test("sponsored reserves lower the locked part, and DeFi positions are reported 
   );
   expect(result.reserveStroops).toBe("20000000");
   expect(result.leavesOutDefiExits).toBe(true);
+  expectLinesSum(result);
+});
+
+test("a fee override replaces only the fee line and the total is the lines' sum again", () => {
+  const base = expectedReceive(
+    input({ conversions: [classicSwap], dispositions: { [classicSwap.asset]: "convert" } })
+  );
+  const result = withFeeStroops(base, "1234");
+  expect(result.feeStroops).toBe("1234");
+  expect(result.balanceStroops).toBe(base.balanceStroops);
+  expect(result.swapStroops).toBe(base.swapStroops);
+  expect(BigInt(base.totalStroops) - BigInt(result.totalStroops)).toBe(BigInt(1234 - 500));
   expectLinesSum(result);
 });
