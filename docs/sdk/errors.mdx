@@ -47,11 +47,11 @@ try {
 
 Retries are off by default. Enable them with `retry: { attempts, baseDelayMs }` on the client. Waits use `Retry-After` when present (capped at 30 seconds), otherwise exponential backoff with jitter, and a `signal` abort cuts a wait short. A timeout or a caller abort is never retried.
 
-| Method                                                                                                | Retried on                        |
-| ----------------------------------------------------------------------------------------------------- | --------------------------------- |
-| `health`, `getAccount`, `getPaths`, `mediatorCheck`, `getAllowances`, `getTransaction`, `closeStatus` | Network error, 429, 502, 503, 504 |
-| `closePlan`, `closeTransactions`, `feeBumpSponsor`, `revokeAllowance`                                 | 429, 503 only                     |
-| `submit`, `mediatorSign`                                                                              | Never                             |
+| Method                                                                                                                  | Retried on                        |
+| ----------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `health`, `getAccount`, `getPaths`, `mediatorCheck`, `getAllowances`, `getTransaction`, `closeStatus`, `closeDelivered` | Network error, 429, 502, 503, 504 |
+| `closePlan`, `closeTransactions`, `feeBumpSponsor`, `revokeAllowance`                                                   | 429, 503 only                     |
+| `submit`, `mediatorSign`                                                                                                | Never                             |
 
 `submit` is never retried because a repeated submit can land twice or hide that the first one succeeded; call `getTransaction` with the hash of the envelope you signed before resubmitting. `mediatorSign` is never retried because it co-signs with the relay account's key.
 

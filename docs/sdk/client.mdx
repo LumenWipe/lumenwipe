@@ -50,6 +50,7 @@ Every method takes an optional trailing `network` that overrides the client defa
 | `getAllowances(address)`                             | Every live SEP-41 allowance the account has granted.                                            |
 | `getTransaction(hash)`                               | Looks a transaction up by hash: `confirmed`, `failed` or `not_found`. Sends nothing.            |
 | `closeStatus(source)`                                | The phase of a close and its remaining work, from live state. Informational.                    |
+| `closeDelivered(destination, hashes)`                | The XLM confirmed close transactions delivered to the destination, from the ledger's result.    |
 | `revokeAllowance({ owner, token, spender })`         | Builds the unsigned transaction that revokes one allowance.                                     |
 
 `runClose` is a standalone function, not a client method. See [runClose](/sdk/run-close).

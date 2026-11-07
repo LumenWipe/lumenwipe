@@ -9,6 +9,10 @@ release is cut.
 
 ### Added
 
+- `client.closeDelivered(destination, hashes, network?)`: the XLM confirmed close transactions
+  delivered to `destination`, read by the API from each transaction's ledger result. An entry
+  that cannot be read as delivered comes back as `unavailable` with its `reason`, never thrown,
+  and `totalStroops` is set only when every entry is `delivered`. Retried like the other reads.
 - The types `CloseDeliveredResponse` and `CloseDeliveredEntry`, for
   `GET /v1/{network}/close/delivered`: the XLM confirmed close transactions delivered to their
   destination, one entry per hash, with `totalStroops` only when every entry is `delivered`.

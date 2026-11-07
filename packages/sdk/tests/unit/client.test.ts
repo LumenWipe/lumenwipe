@@ -4,6 +4,7 @@ import {
   LumenWipeClient,
   LumenWipeInvalidNetworkError,
   LumenWipeTimeoutError,
+  type CloseDeliveredResponse,
   type ClosePlanRequest,
   type CloseTransactionsRequest,
   type FetchLike,
@@ -210,6 +211,7 @@ const NETWORK_CALLS: [string, (client: LumenWipeClient, network: Network) => Pro
   ["submit", (c, n) => c.submit("xdr", n)],
   ["getTransaction", (c, n) => c.getTransaction("a", n)],
   ["closeStatus", (c, n) => c.closeStatus("G", n)],
+  ["closeDelivered", (c, n) => c.closeDelivered("G", ["a"], n)],
   ["mediatorCheck", (c, n) => c.mediatorCheck("G", n)],
   ["mediatorSign", (c, n) => c.mediatorSign("xdr", n)],
   ["feeBumpSponsor", (c, n) => c.feeBumpSponsor("xdr", n)],
@@ -261,6 +263,50 @@ test("getTransaction reads by hash and closeStatus by source, with GET and nothi
     ["GET", "https://api.example.com/v1/mainnet/close/status?source=GABC"],
   ]);
   expect(calls.every((c) => c.init?.body === undefined)).toBe(true);
+});
+
+test("closeDelivered sends the destination and the hashes as a GET and returns entries as data", async () => {
+  const hashA = "ab".repeat(32);
+  const hashB = "cd".repeat(32);
+  const body = {
+    destination: "GDEST",
+    entries: [
+      { hash: hashA, status: "delivered", ledger: 7, amountStroops: "123456789" },
+      { hash: hashB, status: "unavailable", reason: "not_found" },
+    ],
+  };
+  const { fetch, calls } = mockFetch(200, body);
+  const client = new LumenWipeClient({ baseUrl: "https://api.example.com", apiKey: "k", fetch });
+  const out = await client.closeDelivered("GDEST", [hashA, hashB], "mainnet");
+  expect(calls.map((c) => [c.init?.method, c.url, c.init?.body])).toEqual([
+    [
+      "GET",
+      `https://api.example.com/v1/mainnet/close/delivered?destination=GDEST&hashes=${hashA}%2C${hashB}`,
+      undefined,
+    ],
+  ]);
+  expect(out).toEqual(body as CloseDeliveredResponse);
+  const missing = out.entries[1]!;
+  expect(missing.status === "unavailable" && missing.reason).toBe("not_found");
+  expect(out.totalStroops).toBeUndefined();
+});
+
+test("closeDelivered retries a 503 like every other read", async () => {
+  let calls = 0;
+  const fetch: FetchLike = () =>
+    Promise.resolve(
+      new Response(JSON.stringify({ destination: "G", entries: [] }), {
+        status: ++calls === 1 ? 503 : 200,
+      })
+    );
+  const client = new LumenWipeClient({
+    baseUrl: "https://api.example.com",
+    apiKey: "k",
+    fetch,
+    retry: { attempts: 2, baseDelayMs: 0 },
+  });
+  await client.closeDelivered("G", ["ab"], "testnet");
+  expect(calls).toBe(2);
 });
 
 test("getTransaction retries a 503 like every other read", async () => {

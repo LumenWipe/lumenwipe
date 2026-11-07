@@ -731,6 +731,7 @@ export class LumenWipeApiError extends Error {
 // @public
 export class LumenWipeClient {
     constructor(options: LumenWipeClientOptions);
+    closeDelivered(destination: string, hashes: readonly string[], network?: Network, options?: RequestOptions): Promise<CloseDeliveredResponse>;
     // (undocumented)
     closePlan(body: ClosePlanRequest, network?: Network, options?: RequestOptions): Promise<PlanResponse>;
     closeStatus(source: string, network?: Network, options?: RequestOptions): Promise<CloseStatusResponse>;

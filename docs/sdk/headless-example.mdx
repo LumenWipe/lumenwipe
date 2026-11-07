@@ -14,6 +14,24 @@ Before signing, the example decodes every transaction and checks it against its 
 
 The example's verifier covers only what a simple account needs: data entries, empty trustlines, and open offers. A production integration needs a wider check.
 
+## Recording what arrived
+
+An integration that keeps its own record of a close reads the XLM received from the ledger, never from the plan. Collect the hashes `runClose` confirmed through `onConfirmed`, then call `closeDelivered`:
+
+```ts
+const hashes: string[] = [];
+await runClose({ ...deps, onConfirmed: (_tx, hash) => hashes.push(hash) });
+
+const delivered = await client.closeDelivered(destination, hashes);
+for (const entry of delivered.entries) {
+  if (entry.status === "delivered") record(entry.hash, entry.amountStroops);
+  else record(entry.hash, `unavailable: ${entry.reason}`);
+}
+if (delivered.totalStroops !== undefined) record("total", delivered.totalStroops);
+```
+
+Amounts are in stroops, as strings. Only a merge into the destination, or the relay account's forward of a merged balance for an exchange close, counts; a path payment, any other payment and any asset other than XLM do not. A transaction that is unknown, failed or delivered nothing this way is an `unavailable` entry with its `reason`, and `totalStroops` is set only when every entry is `delivered`, so a missing amount never reads as zero. See [the API reference](/api-reference/introduction#the-xlm-a-close-delivered).
+
 ## Run it
 
 Create an API key at [lumenwipe.com](https://lumenwipe.com), then, from the repository root:
