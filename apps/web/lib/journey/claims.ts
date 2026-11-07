@@ -20,7 +20,8 @@ export type ClaimKey =
   | "can-resume"
   | "recorded-progress"
   | "key-stays-in-browser"
-  | "receipt-saved";
+  | "receipt-saved"
+  | "amount-received";
 
 const DURING_SIGNING: readonly ClaimKey[] = [
   "each-tx-checked",
@@ -88,6 +89,7 @@ export const ALLOWED_CLAIMS: Record<JourneyStateName, readonly ClaimKey[]> = {
     "no-new-sent",
     "may-be-sent",
     "receipt-saved",
+    "amount-received",
   ],
   // Earlier transactions may already have been sent: only "nothing more" is true here.
   unknown: [
@@ -150,6 +152,9 @@ export const CLAIM_PATTERNS: Record<ClaimKey, RegExp> = {
   "key-stays-in-browser": /key never leaves (?:your browser|this device)|held in memory only/i,
   // That this browser holds the receipt: true only after its write resolved.
   "receipt-saved": /receipt (?:is |was )?saved (?:to|in)/i,
+  // The XLM the destination received, as the ledger's result for the merge reports it. Only a
+  // finished close has one; in the source the figure is an expression.
+  "amount-received": /\breceived (?:[\d,]+(?:\.\d+)?|\{[^}]*\}) XLM\b/i,
 };
 
 export function permittedClaims(journey: Journey): ClaimKey[] {

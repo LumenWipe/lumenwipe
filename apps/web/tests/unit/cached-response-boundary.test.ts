@@ -32,6 +32,7 @@ const FETCH_TARGETS: Record<string, "no-store" | "cached, gate only" | "display 
   "/api/integrator/*": "no-store",
   "/api/stats": "display only",
   "/api/stats/feed": "display only",
+  "/api/v1/*/close/delivered?*": "display only",
   "/api/v1/*/close/plan": "no-store",
   "/api/v1/*/close/transactions": "no-store",
   "/api/v1/*/submit": "no-store",
@@ -150,6 +151,19 @@ test("the signing path cannot reach the gate", () => {
   expect(reachable.has("lib/stellar/verify.ts")).toBe(true);
   expect(reachable.size).toBeGreaterThan(SIGNING_ROOTS.length);
   expect(reachable.has(GATE)).toBe(false);
+});
+
+test("the signing path cannot reach the amount received", () => {
+  const reachable = reachableFrom(SIGNING_ROOTS);
+  expect(reachable.has("lib/stellar/verify.ts")).toBe(true);
+  for (const display of [
+    "lib/receipt/received.ts",
+    "lib/api/delivered-client.ts",
+    "hooks/useReceivedLumens.ts",
+  ]) {
+    expect(existsSync(join(WEB_ROOT, display))).toBe(true);
+    expect(reachable.has(display)).toBe(false);
+  }
 });
 
 test("the gate returns only a refusal", () => {

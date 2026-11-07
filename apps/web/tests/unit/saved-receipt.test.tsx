@@ -26,7 +26,8 @@ beforeEach(() => {
   spyOn(navigation, "useRouter").mockImplementation(
     () => router as unknown as ReturnType<typeof navigation.useRouter>
   );
-  fetchSpy = spyOn(globalThis, "fetch");
+  // A receipt that records its amount asks nothing; a test that expects a lookup answers it.
+  fetchSpy = spyOn(globalThis, "fetch").mockRejectedValue(new Error("no network in unit tests"));
 });
 
 afterEach(() => {
@@ -56,7 +57,7 @@ function record(over: Partial<ReceiptRecord> = {}): ReceiptRecord {
       },
     ],
     feeLumens: "0.0000100",
-    receivedLumens: null,
+    receivedLumens: "1234.5000000",
     ...over,
   };
 }
@@ -86,6 +87,8 @@ test("the route renders a stored receipt from this browser alone", async () => {
   expect(screen.getByText("aaaaaa…beef01")).toBeTruthy();
   expect(screen.getByText("4242")).toBeTruthy();
   expect(screen.getByText("2026-11-07 10:30 UTC")).toBeTruthy();
+  expect(screen.getByText("Received 1,234.50 XLM")).toBeTruthy();
+  expect(screen.getByText(DEST)).toBeTruthy();
   const se = screen.getAllByRole("link", { name: /SE/ })[0];
   expect(se.getAttribute("href")).toContain(`/tx/${HASH}`);
   expect(screen.getByRole("link", { name: /Merge another account/ })).toBeTruthy();
@@ -112,12 +115,17 @@ test("an entry from before this record opens a reduced receipt", async () => {
     usedMediator: false,
   });
   db.close();
+  const consoleSpy = spyOn(console, "error").mockImplementation(() => {});
   await openReceipt("old");
 
   expect(screen.getByText("Merge account")).toBeTruthy();
   expect(screen.getByText(/this receipt was saved before the details of each step/)).toBeTruthy();
-  // Memo and amount were not recorded then.
-  expect(screen.getAllByText("Not recorded").length).toBe(2);
+  // The memo was not recorded then; the amount is asked of the ledger, here without an answer.
+  expect(screen.getAllByText("Not recorded").length).toBe(1);
+  await screen.findByText("Amount not available - check the transaction on the explorer");
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
+  fetchSpy.mockClear();
+  consoleSpy.mockRestore();
 });
 
 test("an incomplete receipt never reads as closed", async () => {
@@ -220,6 +228,10 @@ test("a finished close whose save failed stays on the page with its download", a
 
   await screen.findByRole("button", { name: /Download receipt/ });
   expect(replace).not.toHaveBeenCalled();
+  // The page stays, so it asks for the amount itself.
+  await screen.findByText("Amount not available - check the transaction on the explorer");
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
+  fetchSpy.mockClear();
   consoleSpy.mockRestore();
 });
 

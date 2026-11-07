@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import type { Network } from "@/config/networks";
 import { explorerAccountUrl, isValidNetwork } from "@/config/networks";
 import { useFocusOnMount } from "@/hooks/useFocusOnMount";
+import { useReceivedLumens } from "@/hooks/useReceivedLumens";
 import { getHistory } from "@/lib/session/history";
 import { receiptPath } from "@/lib/receipt/href";
 import Receipt from "@/components/receipt/Receipt";
@@ -47,6 +48,11 @@ export default function SavedReceipt({ network, id }: { network: Network; id: st
   useEffect(read, [read]);
 
   const wrongNetwork = load.state === "found" && load.record.network !== network;
+  // A receipt with no amount yet asks the ledger once, and keeps what it learns.
+  const { received, retry } = useReceivedLumens(load.state === "found" ? load.record : null, {
+    enabled: !wrongNetwork,
+    persist: true,
+  });
   useEffect(() => {
     if (load.state === "found" && wrongNetwork) {
       router.replace(receiptPath(load.record.network, load.record.id));
@@ -72,7 +78,12 @@ export default function SavedReceipt({ network, id }: { network: Network; id: st
 
   const { record } = load;
   return (
-    <Receipt record={record} banner={<SavedBanner record={record} />}>
+    <Receipt
+      record={record}
+      banner={<SavedBanner record={record} />}
+      received={received}
+      onRetryReceived={retry}
+    >
       <p className="text-xs text-fg-muted">
         Kept in this browser only. Deleting it from the history removes it from this device.
       </p>

@@ -773,6 +773,9 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
     "receipt-saved": { count: 1, shownBy: "receipt banner" },
     "still-open": { count: 1, shownBy: "receipt banner" },
   },
+  "components/receipt/ReceiptHeadline.tsx": {
+    "amount-received": { count: 1, shownBy: `receipt banner; ${OUTSIDE.savedReceipt}` },
+  },
   "components/receipt/SavedReceipt.tsx": {
     "account-closed": { count: 3, shownBy: OUTSIDE.savedReceipt },
   },

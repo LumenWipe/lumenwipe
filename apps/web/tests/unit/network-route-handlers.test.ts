@@ -32,6 +32,11 @@ const ROUTES = routeFiles()
   .filter((path) => path.includes("[network]"))
   .map((path) => [path.slice(API_DIR.length), path] as const);
 
+/** The query a route needs to reach the API, for a route that judges one first. */
+const FORWARDED_QUERY: Record<string, string> = {
+  "/v1/[network]/close/delivered/route.ts": `?destination=GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF&hashes=${"a".repeat(64)}`,
+};
+
 const REFUSED = [
   "stats",
   "config",
@@ -100,8 +105,8 @@ describe("route handlers with a [network] param", () => {
     expect(ROUTES.length).toBeGreaterThanOrEqual(10);
   });
 
-  test.each(ROUTES)("%s forwards a known network", async (_, file) => {
-    const res = await call(file, "testnet");
+  test.each(ROUTES)("%s forwards a known network", async (route, file) => {
+    const res = await call(file, "testnet", FORWARDED_QUERY[route] ?? "");
     expect(res.status).toBe(200);
     expect(callsTo(LIMITER)).toBe(1);
     expect(callsTo(UPSTREAM)).toBe(1);

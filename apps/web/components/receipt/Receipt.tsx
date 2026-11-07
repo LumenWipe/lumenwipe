@@ -5,6 +5,8 @@ import { formatXlm } from "@/lib/utils/amounts";
 import { shortAddr, shortHash } from "@/lib/utils/short-id";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import ReceiptHeadline from "@/components/receipt/ReceiptHeadline";
+import type { ReceivedState } from "@/hooks/useReceivedLumens";
 import type { ReceiptRecord } from "@/types/history";
 
 const NOT_RECORDED = "Not recorded";
@@ -13,6 +15,9 @@ interface ReceiptProps {
   record: ReceiptRecord;
   /** The heading block: the live close and a reopened receipt each state their own outcome. */
   banner: ReactNode;
+  /** The XLM received, as far as it is known; a closed receipt leads with it. */
+  received: ReceivedState;
+  onRetryReceived: () => void;
   /** What follows the receipt: save status and actions. */
   children?: ReactNode;
 }
@@ -36,13 +41,22 @@ function SummaryRow({ label, children }: { label: string; children: ReactNode })
 
 /** A close's receipt, drawn only from its record, so the live screen and a reopened receipt
  *  show the same thing. Anything the record lacks reads "Not recorded", never a guess. */
-export default function Receipt({ record, banner, children }: ReceiptProps) {
+export default function Receipt({
+  record,
+  banner,
+  received,
+  onRetryReceived,
+  children,
+}: ReceiptProps) {
   const svExplorerBase = SV_EXPLORER_BASE[record.network];
   const { groups, transactions: ledger, memo } = record;
+  const closed = record.outcome === "closed";
 
   return (
     <div className="space-y-6">
       {banner}
+
+      {closed && <ReceiptHeadline record={record} received={received} onRetry={onRetryReceived} />}
 
       {groups === null ? (
         <Card className="p-4 text-sm">
@@ -144,11 +158,10 @@ export default function Receipt({ record, banner, children }: ReceiptProps) {
 
       <Card className="space-y-3 p-4">
         <SummaryRow label="Source account">{shortAddr(record.sourceAddress)}</SummaryRow>
-        <SummaryRow label="Destination">{shortAddr(record.destinationAddress)}</SummaryRow>
+        {!closed && (
+          <SummaryRow label="Destination">{shortAddr(record.destinationAddress)}</SummaryRow>
+        )}
         <SummaryRow label="Memo">{memo === null ? NOT_RECORDED : (memo.text ?? "None")}</SummaryRow>
-        <SummaryRow label="Amount received">
-          {record.receivedLumens === null ? NOT_RECORDED : formatXlm(record.receivedLumens)}
-        </SummaryRow>
         <SummaryRow label="Total fees paid">
           {record.feeLumens === null ? NOT_RECORDED : formatXlm(record.feeLumens)}
         </SummaryRow>
