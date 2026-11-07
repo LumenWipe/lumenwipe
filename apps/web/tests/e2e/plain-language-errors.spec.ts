@@ -18,6 +18,7 @@ import {
   expectSigningPanel,
   TESTNET_STEP_TIMEOUT,
 } from "./helpers/flow";
+import { connectStubWallet, installWalletStub } from "./helpers/wallet-stub";
 
 // Every failure here is injected at the proxy boundary, so nothing is ever submitted and one
 // funded account serves every case. What is asserted is the copy the user reads: it must be the
@@ -106,44 +107,6 @@ async function analyzeFromHome(page: Page): Promise<void> {
   await openTestnetHome(page);
   await enterSourceAddress(page, source.publicKey());
   await page.getByRole("button", { name: /Analyze account/i }).click();
-}
-
-// Stands in for the Freighter extension at the one seam the real one uses: window.postMessage.
-// The kit and @stellar/freighter-api run unmodified; only the extension's answers are scripted.
-async function installFreighterStub(page: Page, address: string): Promise<void> {
-  await page.addInitScript((addr) => {
-    const network = {
-      network: "TESTNET",
-      networkUrl: "https://horizon-testnet.stellar.org",
-      networkPassphrase: "Test SDF Network ; September 2015",
-      sorobanRpcUrl: "https://soroban-testnet.stellar.org",
-    };
-    const answers: Record<string, Record<string, unknown>> = {
-      REQUEST_CONNECTION_STATUS: { isConnected: true },
-      REQUEST_ALLOWED_STATUS: { isAllowed: true },
-      SET_ALLOWED_STATUS: { isAllowed: true },
-      REQUEST_ACCESS: { publicKey: addr },
-      REQUEST_PUBLIC_KEY: { publicKey: addr },
-      REQUEST_NETWORK_DETAILS: { networkDetails: network },
-      REQUEST_NETWORK: { network: "TESTNET", networkPassphrase: network.networkPassphrase },
-      SUBMIT_TRANSACTION: {
-        signedTransaction: "",
-        apiError: { code: -4, message: "The user rejected this request." },
-      },
-    };
-    window.addEventListener("message", (event) => {
-      const data = event.data as { source?: string; messageId?: number; type?: string } | null;
-      if (event.source !== window || data?.source !== "FREIGHTER_EXTERNAL_MSG_REQUEST") return;
-      window.postMessage(
-        {
-          source: "FREIGHTER_EXTERNAL_MSG_RESPONSE",
-          messagedId: data.messageId,
-          ...(answers[data.type ?? ""] ?? {}),
-        },
-        window.location.origin
-      );
-    });
-  }, address);
 }
 
 let source: Keypair;
@@ -312,25 +275,59 @@ test.describe("execute with a secret key", () => {
 });
 
 test.describe("execute with a wallet", () => {
+  async function toWalletSigning(page: Page, from: Keypair, to: Keypair): Promise<void> {
+    await enterSourceAndAnalyze(page, from.publicKey());
+    await enterDestinationAndBegin(page, to.publicKey());
+    await connectStubWallet(page);
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: /Sign & execute close/i }).click();
+  }
+
   test("a wallet rejection reads as a declined request, not the wallet's wording", async ({
     page,
   }) => {
     test.setTimeout(180_000);
-    await installFreighterStub(page, source.publicKey());
-    await enterSourceAndAnalyze(page, source.publicKey());
-    await enterDestinationAndBegin(page, destination.publicKey());
-
-    await page
-      .getByRole("button", { name: /Connect wallet/i })
-      .last()
-      .click();
-    await page.getByText("Varial", { exact: true }).click();
-    await expect(page.getByText(/Connected:/)).toBeVisible({ timeout: TESTNET_STEP_TIMEOUT });
-
-    await page.getByRole("checkbox").check();
-    await page.getByRole("button", { name: /Sign & execute close/i }).click();
+    await installWalletStub(page, { address: source.publicKey(), sign: { kind: "reject" } });
+    await toWalletSigning(page, source, destination);
 
     await expectPlainCopy(page, /declined the request in your wallet/, "The user rejected");
+  });
+
+  test("a wallet that approves signs the close and it completes", async ({ page }) => {
+    test.setTimeout(300_000);
+    // Its own accounts: this close really merges, and the suite's shared source must survive it.
+    const owner = Keypair.random();
+    const receiver = Keypair.random();
+    await Promise.all([fund(owner.publicKey()), fund(receiver.publicKey())]);
+    const wallet = await installWalletStub(page, {
+      address: owner.publicKey(),
+      sign: { kind: "approve", keypair: owner },
+    });
+    await toWalletSigning(page, owner, receiver);
+
+    await expect(page).toHaveURL(/\/testnet\/complete/, { timeout: 90_000 });
+    expect(wallet.signRequests.length).toBeGreaterThan(0);
+    for (const request of wallet.signRequests) {
+      expect(request.networkPassphrase).toBe(Networks.TESTNET);
+    }
+    expect((await fetch(`${HORIZON}/accounts/${owner.publicKey()}`)).status).toBe(404);
+  });
+
+  test("a wallet that never answers leaves the close waiting on the signature", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const wallet = await installWalletStub(page, {
+      address: source.publicKey(),
+      sign: { kind: "never" },
+    });
+    await toWalletSigning(page, source, destination);
+
+    await wallet.waitForSignRequest(TESTNET_STEP_TIMEOUT);
+    await expect(
+      page.locator('[role="status"]').filter({ hasText: /Signing transaction/ })
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: /Sign & execute close/i })).toHaveCount(0);
   });
 });
 
