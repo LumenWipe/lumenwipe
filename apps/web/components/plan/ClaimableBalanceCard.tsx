@@ -18,10 +18,10 @@ interface ClaimableBalanceCardProps {
 /**
  * One claimable balance's disposition, offering only the answers the plan offers for it. A
  * balance the account can already claim is shown positively (like the "Swap" label) and defaults
- * to being claimed, with forfeiting it as the other option. A balance with no authorized
+ * to being claimed, with leaving it unclaimed as the other option. A balance with no authorized
  * trustline stays unresolved (amber) until the user picks between adding a trustline to claim it
- * or forfeiting it. One the account cannot claim in this close at all (its claim window, or a
- * reserve too low for the trustline) offers forfeiting only, and still needs that answer.
+ * or leaving it unclaimed. One the account cannot claim in this close at all (its claim window, or a
+ * reserve too low for the trustline) offers leaving it only, and still needs that answer.
  */
 export default function ClaimableBalanceCard({
   item,
@@ -46,9 +46,18 @@ export default function ClaimableBalanceCard({
     },
     {
       value: "forfeit",
-      label: "Forfeit it.",
+      label: "Leave it unclaimed.",
       tag: DECISION_TAGS.giveUpBalance,
-      detail: "Inaccessible after the account is merged.",
+      // Full contrast: giving value up is the consequence that must not be the dimmest text.
+      detail: <span className="text-fg">Inaccessible to this account once it is merged.</span>,
+      // Not a `notice`: that one is a live region, and a bulk leave over a group would announce
+      // it once per card. The bulk result is announced once instead.
+      children: (
+        <p className="flex items-start gap-1.5 text-xs text-fg">
+          <AlertTriangle aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+          This balance will be unreachable once the account is merged.
+        </p>
+      ),
     },
   ];
   const options = allOptions.filter((o) => item.offered.includes(o.value));

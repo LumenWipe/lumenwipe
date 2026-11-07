@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useId, type ComponentProps } from "react";
 import { ChevronDown } from "lucide-react";
 import type { AccountState, UnrecognizedDefiPosition } from "@/types/account";
 import { PROTOCOL_LABELS, describeDefiPosition } from "@/lib/plan/describe-position";
@@ -10,7 +10,7 @@ import { StepTypeIcon } from "@/lib/utils/stepIcons";
 import { formatAsset } from "@/lib/utils/assets";
 import AssetDispositionCard from "./AssetDispositionCard";
 import TokenDispositionCard from "./TokenDispositionCard";
-import ClaimableBalanceCard from "./ClaimableBalanceCard";
+import ClaimBalancesSection from "./ClaimBalancesSection";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { chipLabel, type GroupChip, type PlanGroupType } from "@/lib/plan/open-items";
@@ -38,6 +38,8 @@ interface PlanAccordionProps {
   claimableBalanceDecisions: ClaimableBalanceDecision[];
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection>;
   onSelectClaimableBalance: (balanceId: string, selection: ClaimableBalanceSelection) => void;
+  onBulkSelectClaimableBalances: ComponentProps<typeof ClaimBalancesSection>["onBulkSelect"];
+  onUndoClaimableBalances: ComponentProps<typeof ClaimBalancesSection>["onUndo"];
   /** Set once the destination is entered; the merge group shows it. */
   destinationAddress: string | null;
   mediatorRequired: boolean;
@@ -74,6 +76,8 @@ export default function PlanAccordion({
   claimableBalanceDecisions,
   claimableBalanceSelections,
   onSelectClaimableBalance,
+  onBulkSelectClaimableBalances,
+  onUndoClaimableBalances,
   destinationAddress,
   mediatorRequired,
 }: PlanAccordionProps) {
@@ -171,17 +175,13 @@ export default function PlanAccordion({
       title: "Claim balances",
       summary: `${claimableBalanceDecisions.length} claimable balance${claimableBalanceDecisions.length === 1 ? "" : "s"}`,
       body: (
-        <div className="space-y-2">
-          {claimableBalanceDecisions.map((b) => (
-            <div key={b.balanceId} data-open-item={`claim:${b.balanceId}`}>
-              <ClaimableBalanceCard
-                item={b}
-                selection={claimableBalanceSelections[b.balanceId]}
-                onSelect={onSelectClaimableBalance}
-              />
-            </div>
-          ))}
-        </div>
+        <ClaimBalancesSection
+          decisions={claimableBalanceDecisions}
+          selections={claimableBalanceSelections}
+          onSelect={onSelectClaimableBalance}
+          onBulkSelect={onBulkSelectClaimableBalances}
+          onUndo={onUndoClaimableBalances}
+        />
       ),
     });
   }

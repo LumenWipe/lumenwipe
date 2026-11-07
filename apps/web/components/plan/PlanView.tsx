@@ -234,6 +234,27 @@ export default function PlanView({
       }
     }
   }
+  // A bulk answer is one answer per listed balance, through the same path a card takes, so the
+  // trustline seeding above is never skipped. React batches the writes into one render and one
+  // re-plan. The result is said once here, not once per card.
+  function handleBulkSelectClaimableBalances(
+    balanceIds: string[],
+    selection: ClaimableBalanceSelection,
+    result: string
+  ) {
+    for (const id of balanceIds) handleSelectClaimableBalance(id, selection);
+    setAnnouncement(result);
+  }
+
+  // Undo puts back only what the latest plan still offers for a balance it still lists: an answer
+  // the plan stopped offering would be refused at build, after review.
+  function handleUndoClaimableBalances(previous: Record<string, ClaimableBalanceSelection>) {
+    for (const [id, selection] of Object.entries(previous)) {
+      const decision = claimableBalanceDecisions.find((b) => b.balanceId === id);
+      if (decision?.offered.includes(selection)) handleSelectClaimableBalance(id, selection);
+    }
+    setAnnouncement("The earlier answers are back.");
+  }
 
   const assetsNeedingDecision =
     account.trustlines.filter((tl) => Number(tl.balance) > 0).length +
@@ -614,6 +635,8 @@ export default function PlanView({
             claimableBalanceDecisions={claimableBalanceDecisions}
             claimableBalanceSelections={claimableBalanceSelections}
             onSelectClaimableBalance={handleSelectClaimableBalance}
+            onBulkSelectClaimableBalances={handleBulkSelectClaimableBalances}
+            onUndoClaimableBalances={handleUndoClaimableBalances}
             destinationAddress={destinationStepReady && destination ? destination : null}
             mediatorRequired={previewMediatorRequired}
           />

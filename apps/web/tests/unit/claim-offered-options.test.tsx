@@ -130,7 +130,7 @@ test("a balance the plan only lets the account leave offers no trustline to add"
   expect(readyForDestination()).toBe(false);
 
   await act(async () => {
-    fireEvent.click(screen.getByRole("radio", { name: /^Forfeit it/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /^Leave it unclaimed/ }));
   });
   expect(useDemolishStore.getState().claimableBalanceSelections).toEqual({ [BALANCE]: "forfeit" });
   expect(readyForDestination()).toBe(true);

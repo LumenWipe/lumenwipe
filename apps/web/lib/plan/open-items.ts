@@ -8,6 +8,11 @@
  * on the plan fetched at proceed time stays authoritative.
  */
 
+import type { ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
+import type { ClaimableBalanceSelection } from "@/types/plan";
+import { claimResolved } from "@/lib/plan/asset-resolution";
+import { stroopsToXlm, xlmToStroops } from "@/lib/utils/amounts";
+
 export type PlanGroupType =
   | "NORMALIZE_SIGNERS"
   | "REVOKE_SPONSORSHIP"
@@ -209,4 +214,52 @@ export function newlyOpenGroup(
 ): PlanGroupType | null {
   const candidates = seen === null ? items : items.filter((i) => !seen.has(i.id));
   return candidates.find((i) => i.group !== null)?.group ?? null;
+}
+
+/** The claimable balances of one asset, as the claim section shows them. */
+export interface ClaimGroup {
+  asset: string;
+  code: string;
+  balances: ClaimableBalanceDecision[];
+  /** The sum of the balances, or null when one of the amounts cannot be read. */
+  total: string | null;
+  answered: number;
+  /** The balances a bulk answer may set: the ones the account can claim now, for which the plan
+   *  offers both claiming and leaving. Never one that needs a trustline or cannot be claimed in
+   *  this close: those take their own answer. */
+  bulkIds: string[];
+}
+
+function stroopsOf(amount: string): bigint | null {
+  try {
+    return /^\d+(\.\d+)?$/.test(amount) ? BigInt(xlmToStroops(amount)) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Claimable balances grouped by asset in the order the plan lists them, summed in stroops. */
+export function claimGroups(
+  decisions: readonly ClaimableBalanceDecision[],
+  selections: Readonly<Record<string, ClaimableBalanceSelection>>
+): ClaimGroup[] {
+  const byAsset = new Map<string, ClaimableBalanceDecision[]>();
+  for (const b of decisions) byAsset.set(b.asset, [...(byAsset.get(b.asset) ?? []), b]);
+  return [...byAsset.entries()].map(([asset, balances]) => {
+    let sum: bigint | null = BigInt(0);
+    for (const b of balances) {
+      const stroops = stroopsOf(b.amount);
+      sum = sum === null || stroops === null ? null : sum + stroops;
+    }
+    return {
+      asset,
+      code: balances[0].code,
+      balances,
+      total: sum === null ? null : stroopsToXlm(sum),
+      answered: balances.filter((b) => claimResolved(b, selections[b.balanceId])).length,
+      bulkIds: balances
+        .filter((b) => b.offered.includes("claim") && b.offered.includes("forfeit"))
+        .map((b) => b.balanceId),
+    };
+  });
 }
