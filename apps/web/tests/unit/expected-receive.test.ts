@@ -46,6 +46,8 @@ function nativeClaim(balanceId: string, amount: string): ClaimableBalanceDecisio
     amount,
     currentlyClaimable: true,
     predicate: { type: "unconditional" },
+    offered: ["claim", "forfeit"],
+    unclaimableNote: null,
   };
 }
 

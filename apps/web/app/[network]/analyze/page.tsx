@@ -187,7 +187,15 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     // Unlike other blockers, an unresolved claimable balance is resolvable right here - the
     // decision itself is what clears it - so it must render regardless of blocker state, or
     // the user could never reach the card that resolves it.
-    setClaimableBalanceDecisions(decisionPointsToClaimableBalances(plan));
+    const claims = decisionPointsToClaimableBalances(plan);
+    // A stored or restored answer this plan no longer offers would be refused at build, after
+    // review: it goes, and its balance is asked again.
+    useDemolishStore
+      .getState()
+      .pruneClaimSelectionsToOffered(
+        Object.fromEntries(claims.map((b) => [b.balanceId, b.offered]))
+      );
+    setClaimableBalanceDecisions(claims);
     // Like the claim cards, these answer a blocker, so they render whatever else blocks.
     const leavable = decisionPointsToLeavablePositions(plan);
     setLeavablePositions(leavable);

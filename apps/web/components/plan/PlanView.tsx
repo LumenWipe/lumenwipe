@@ -60,7 +60,7 @@ import {
   positionsLeftBehindToDecisions,
 } from "@/lib/api/close-decisions";
 import StatusMessage from "@/components/a11y/StatusMessage";
-import { assetsResolved } from "@/lib/plan/asset-resolution";
+import { assetsResolved, claimResolved } from "@/lib/plan/asset-resolution";
 import { expectedReceive, type ExpectedReceive } from "@/lib/plan/expected-receive";
 import { destinationRefusal } from "@/lib/plan/destination-check";
 import { keepDestinationDraft } from "@/lib/session/restore-decisions";
@@ -179,10 +179,11 @@ export default function PlanView({
   }, [conversions]);
 
   // Auto-select "claim" for balances the account can already claim (the opt-out default),
-  // mirroring the convertible-assets effect above.
+  // mirroring the convertible-assets effect above. Only where the plan offers claiming: a balance
+  // whose options could not be read is never claimed by default.
   useEffect(() => {
     for (const b of claimableBalanceDecisions) {
-      if (b.currentlyClaimable && claimableBalanceSelections[b.balanceId] === undefined) {
+      if (b.offered.includes("claim") && claimableBalanceSelections[b.balanceId] === undefined) {
         setClaimableBalanceSelection(b.balanceId, "claim");
       }
     }
@@ -239,13 +240,8 @@ export default function PlanView({
     );
   }
 
-  // A not-currently-claimable balance is resolved once the user picked a remediation path;
-  // a currently-claimable one is always resolved (it defaults to "claim" above).
-  const allClaimsResolved = claimableBalanceDecisions.every(
-    (b) =>
-      b.currentlyClaimable ||
-      claimableBalanceSelections[b.balanceId] === "add_trustline_then_claim" ||
-      claimableBalanceSelections[b.balanceId] === "forfeit"
+  const allClaimsResolved = claimableBalanceDecisions.every((b) =>
+    claimResolved(b, claimableBalanceSelections[b.balanceId])
   );
 
   // Both claimable-balance blocker codes are resolved locally by `allClaimsResolved` above,

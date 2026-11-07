@@ -1,5 +1,5 @@
-import type { AssetConvertibility } from "@/lib/api/plan-adapters";
-import type { AssetDisposition } from "@/types/plan";
+import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
+import type { AssetDisposition, ClaimableBalanceSelection } from "@/types/plan";
 import type { TokenConversionFloor } from "@/store/demolish";
 import { isConversionImpactConfirmed } from "@/lib/api/close-decisions";
 import { isValidGAddress } from "@/lib/utils/validation";
@@ -51,4 +51,17 @@ export function assetsResolved(input: {
     }
     return c.convertible || dispositions[c.asset] === "issuer";
   });
+}
+
+/**
+ * Whether a claimable balance has an answer the plan offers. An unanswered balance the plan lets
+ * the account claim is resolved, since claiming is its default; any other balance needs an
+ * explicit answer, and one whose options could not be read offers none and stays unresolved.
+ */
+export function claimResolved(
+  decision: Pick<ClaimableBalanceDecision, "offered">,
+  selection: ClaimableBalanceSelection | undefined
+): boolean {
+  if (selection === undefined) return decision.offered.includes("claim");
+  return decision.offered.includes(selection);
 }

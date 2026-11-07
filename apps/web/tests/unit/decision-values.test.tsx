@@ -102,6 +102,8 @@ function balance(id: string, code: string, currentlyClaimable: boolean): Claimab
     amount: "3",
     currentlyClaimable,
     predicate: { type: "unconditional" },
+    offered: currentlyClaimable ? ["claim", "forfeit"] : ["add_trustline_then_claim", "forfeit"],
+    unclaimableNote: null,
   };
 }
 const CLAIMABLE = balance("aaaaaaaa01", "CLMN", true);

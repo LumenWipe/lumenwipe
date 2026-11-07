@@ -165,6 +165,12 @@ interface DemolishState {
   setTokenConversionFloors: (floors: Record<string, TokenConversionFloor>) => void;
   setClassicConversionFloors: (floors: Record<string, ClassicConversionFloor>) => void;
   setClaimableBalanceSelection: (balanceId: string, selection: ClaimableBalanceSelection) => void;
+  /** Drops every claim answer the latest plan does not offer for its balance, stored or restored
+   *  alike, so that balance is asked again. `offered` maps each balance the plan lists to its
+   *  answers; a balance it does not list is left to the account-state prune. */
+  pruneClaimSelectionsToOffered: (
+    offered: Readonly<Record<string, readonly ClaimableBalanceSelection[]>>
+  ) => void;
   setMediatorRequired: (required: boolean) => void;
   setCurrentStepIndex: (index: number) => void;
   updateStep: (index: number, patch: Partial<PlannedStep>) => void;
@@ -432,6 +438,17 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       return { transferDestinations: { ...s.transferDestinations, [asset]: destination } };
     }),
 
+  pruneClaimSelectionsToOffered: (offered) =>
+    set((s) => {
+      const kept: Record<string, ClaimableBalanceSelection> = {};
+      let dropped = false;
+      for (const [balanceId, selection] of Object.entries(s.claimableBalanceSelections)) {
+        const answers = offered[balanceId];
+        if (answers !== undefined && !answers.includes(selection)) dropped = true;
+        else kept[balanceId] = selection;
+      }
+      return dropped ? { claimableBalanceSelections: kept } : {};
+    }),
   setClaimableBalanceSelection: (balanceId, selection) =>
     set((s) => ({
       claimableBalanceSelections: { ...s.claimableBalanceSelections, [balanceId]: selection },
