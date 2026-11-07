@@ -95,6 +95,7 @@ const IN_FLIGHT_FALSE: ClaimKey[] = [
   "account-unchanged",
   "no-new-sent",
   "safe-to-retry",
+  "sent-only-when-signed",
 ];
 
 describe("deriveJourneyState", () => {
@@ -142,10 +143,20 @@ describe("deriveJourneyState", () => {
 
 describe("allowance table", () => {
   const EXACT: Record<JourneyStateName, ClaimKey[]> = {
-    untouched: ["nothing-sent", "account-unchanged", "each-tx-checked"],
-    planned: ["nothing-sent", "account-unchanged", "each-tx-checked"],
-    reviewed: ["nothing-sent", "account-unchanged", "each-tx-checked", "confirm-not-started"],
+    untouched: ["nothing-sent", "account-unchanged", "each-tx-checked", "sent-only-when-signed"],
+    planned: ["nothing-sent", "account-unchanged", "each-tx-checked", "sent-only-when-signed"],
+    reviewed: [
+      "nothing-sent",
+      "account-unchanged",
+      "each-tx-checked",
+      "confirm-not-started",
+      "sent-only-when-signed",
+      "more-sent-only-when-signed",
+      "resume-after-stop",
+    ],
     signing: [
+      "more-sent-only-when-signed",
+      "resume-after-stop",
       "each-tx-checked",
       "this-tx-not-sent",
       "no-new-sent",
@@ -167,6 +178,8 @@ describe("allowance table", () => {
     complete: ["each-tx-checked", "account-closed", "no-new-sent", "may-be-sent"],
     unknown: [
       "each-tx-checked",
+      "more-sent-only-when-signed",
+      "resume-after-stop",
       "confirm-not-started",
       "may-be-sent",
       "can-resume",

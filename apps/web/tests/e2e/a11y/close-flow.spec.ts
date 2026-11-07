@@ -27,7 +27,7 @@ test("analyze, review, execute, complete and history", async ({ page }) => {
   await expectNoAxeViolations(page, "review");
 
   await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: /I understand this plan and want to proceed/i }).click();
+  await page.getByRole("button", { name: /Continue to signing/i }).click();
   await expect(page).toHaveURL(/\/testnet\/execute/);
   await expectSigningPanel(page);
   await expectNoAxeViolations(page, "execute, wallet signer");

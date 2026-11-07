@@ -44,6 +44,9 @@ import * as sessionStore from "@/lib/session/store";
 import type { TransactionSigner } from "@/lib/stellar/signer";
 import { fromHex, toHex } from "@/lib/stellar/hex";
 import { TRANSFER_DESTINATION_REFUSED_NOTICE } from "@/lib/plan/transfer-destination";
+import ReviewView from "@/components/review/ReviewView";
+import * as closeRecord from "@/lib/session/close-record";
+import { freshAccount, freshPlan, stubUnchangedRefresh } from "./fixtures/fresh-plan";
 
 /** The stand-ins return only what the hook reads, so they are typed loosely on purpose. */
 function stubFetchCloseTransactions(impl: () => Promise<unknown>): void {
@@ -2422,6 +2425,89 @@ test("useCloseExecution › the reviewed plan hash is sent until a transaction c
 
   expect(sent).toEqual(["a".repeat(64), undefined]);
   expect(useDemolishStore.getState().planHash).toBeNull();
+});
+
+test("useCloseExecution › the build sends the hash of the plan the review's confirm fetched, not the reviewed one", async () => {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  const reviewedHash = "a".repeat(64);
+  const freshHash = "b".repeat(64);
+  const merge = {
+    index: 0,
+    type: "MERGE" as const,
+    title: "MERGE",
+    description: "",
+    operationCount: 1,
+    estimatedFeeLumens: "0.0000100",
+    txXdr: null,
+    status: "pending" as const,
+    txHash: null,
+    error: null,
+  };
+  const account = freshAccount(source, {
+    signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+    thresholds: { low: 1, med: 1, high: 1 },
+    nativeBalanceLumens: "10.0000000",
+  } as never);
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    destinationAcknowledgedFor: destination,
+    memo: null,
+    mediatorRequired: false,
+    sessionId: null,
+    accountState: account,
+  } as never);
+  useDemolishStore.getState().setPlan([merge], reviewedHash, 1);
+  useDemolishStore.getState().setPhase("PREFLIGHT_COMPLETE");
+  stubUnchangedRefresh(account, freshPlan([merge], { planHash: freshHash }));
+  spyOn(recovery, "readUnresolved").mockResolvedValue(null);
+  spyOn(closeRecord, "saveCloseSession").mockResolvedValue("session");
+  spyOn(navigation, "useRouter").mockImplementation(
+    () => ({ push: () => {}, replace: () => {} }) as never
+  );
+
+  await act(async () => {
+    render(<ReviewView network="testnet" />);
+  });
+  fireEvent.click(screen.getByRole("checkbox"));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /continue to signing/i }));
+  });
+  expect(useDemolishStore.getState().phase).toBe("STEP_EXECUTING");
+
+  const sent: Array<string | undefined> = [];
+  spyOn(closeClient, "fetchCloseTransactions").mockImplementation((async (req: {
+    planHash?: string;
+  }) => {
+    sent.push(req.planHash);
+    return {
+      planHash: freshHash,
+      status: "ready",
+      transactions: [
+        {
+          id: "tx-1",
+          order: 0,
+          dependsOn: [],
+          xdr: unsignedMergeXdr(sourceKeypair, destination),
+          networkPassphrase: Networks.TESTNET,
+          covers: ["MERGE"],
+        },
+      ],
+      remaining: { steps: 0, requiresAnotherCall: false },
+    };
+  }) as unknown as typeof closeClient.fetchCloseTransactions);
+  stubSubmitViaApi(async () => "hash");
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+
+  expect(sent[0]).toBe(freshHash);
+  expect(sent).not.toContain(reviewedHash);
 });
 
 test("useCloseExecution › aborts before submit when the mediator co-sign returns a changed body", async () => {

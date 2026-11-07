@@ -10,9 +10,11 @@ import { readApiError } from "@/lib/utils/user-error";
 /** Builds the deterministic close plan (decision points, estimate) via the proxy. */
 export async function fetchClosePlan(
   body: ClosePlanRequest,
-  network: Network
+  network: Network,
+  signal?: AbortSignal
 ): Promise<PlanResponse> {
   const res = await fetch(`/api/v1/${network}/close/plan`, {
+    signal,
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

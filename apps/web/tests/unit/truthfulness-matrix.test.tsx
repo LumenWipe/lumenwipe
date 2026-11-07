@@ -43,6 +43,7 @@ import type { PlannedStep, StepStatus, StepType } from "@/types/plan";
 import type { SessionRecord } from "@/types/session";
 import type { ResumedClose } from "@/store/demolish";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { stubUnchangedRefresh } from "./fixtures/fresh-plan";
 
 // Every reassurance or success sentence the app can show, rendered on every screen that shows it
 // in every journey state that screen can be reached in. A sentence matching a registered claim
@@ -214,23 +215,32 @@ function executeSetup(state: "signing" | "partial", store: Store, required: Clai
   };
 }
 
-function review(state: "reviewed" | "unknown", hold?: () => void, resumed?: ResumedClose): Cell {
+function review(
+  state: "reviewed" | "unknown",
+  hold?: () => void,
+  resumed?: ResumedClose,
+  also: ClaimKey[] = []
+): Cell {
   return {
     state,
-    required: hold ? ["each-tx-checked", "confirm-not-started"] : ["each-tx-checked"],
+    required: [
+      ...(hold ? ["each-tx-checked", "confirm-not-started"] : ["each-tx-checked"]),
+      ...also,
+    ] as ClaimKey[],
     show: async () => {
       seed(
         state === "reviewed" ? STORE.reviewed : { ...RESUMED_REVIEW, resumedClose: resumed ?? null }
       );
       spyOn(recovery, "readUnresolved").mockResolvedValue(null);
       spyOn(closeRecord, "saveCloseSession").mockResolvedValue("s");
+      stubUnchangedRefresh();
       hold?.();
       await show(<ReviewView network="testnet" />);
       const journey = storeJourney();
       if (hold) {
         fireEvent.click(screen.getByRole("checkbox"));
         await act(async () => {
-          fireEvent.click(screen.getByRole("button", { name: /want to proceed/i }));
+          fireEvent.click(screen.getByRole("button", { name: /continue to signing/i }));
         });
       }
       return journey;
@@ -521,6 +531,14 @@ const MATRIX: Surface[] = [
     cells: [review("reviewed"), review("unknown")],
   },
   {
+    // Before any signature nothing is sent; once an earlier run may have sent some, nothing MORE.
+    name: "review next steps",
+    cells: [
+      review("reviewed", undefined, undefined, ["sent-only-when-signed", "resume-after-stop"]),
+      review("unknown", undefined, RESUMED, ["more-sent-only-when-signed", "resume-after-stop"]),
+    ],
+  },
+  {
     name: "confirm hold",
     cells: HOLDS.flatMap(([, hold]) => [review("reviewed", hold), review("unknown", hold)]),
   },
@@ -637,6 +655,52 @@ describe("truthfulness matrix", () => {
     );
     expect(permittedClaims(signing)).not.toContain("nothing-sent");
   });
+
+  test("the promise about what comes next is not read as a report that nothing was sent", () => {
+    const resumed = deriveJourneyState({
+      phase: "PREFLIGHT_COMPLETE",
+      plan: PENDING,
+      inFlight: false,
+      saved: true,
+    });
+    expect(resumed.state).toBe("unknown");
+    expect(claimsIn("You sign each transaction; nothing is sent until you do.")).toEqual([
+      "sent-only-when-signed",
+    ]);
+    expect(
+      claimViolations("You sign each transaction; nothing is sent until you do.", resumed)
+    ).toEqual(["sent-only-when-signed"]);
+    expect(
+      claimViolations("You sign each transaction; nothing more is sent until you do.", resumed)
+    ).toEqual([]);
+  });
+
+  test("the resume promise is made only once a plan has been reviewed", () => {
+    const planned = deriveJourneyState({
+      phase: "ANALYZING",
+      plan: PENDING,
+      inFlight: false,
+      saved: false,
+    });
+    const line =
+      "If you stop midway the account stays open and partly cleaned up, and you can resume.";
+    expect(claimsIn(line)).toEqual(["resume-after-stop"]);
+    expect(claimViolations(line, planned)).toEqual(["resume-after-stop"]);
+    expect(claimsIn("If you stop midway the account stays open and partly cleaned up.")).toEqual(
+      []
+    );
+  });
+
+  test("a review with a transaction in flight never says nothing is sent", () => {
+    const inFlight = deriveJourneyState({
+      phase: "PREFLIGHT_COMPLETE",
+      plan: PENDING,
+      inFlight: true,
+      saved: false,
+    });
+    expect(allows(inFlight, "sent-only-when-signed")).toBe(false);
+    expect(allows(inFlight, "more-sent-only-when-signed")).toBe(true);
+  });
 });
 
 // A claim string in the source is either shown on a surface the matrix renders, or named here
@@ -679,6 +743,9 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
   },
   "components/review/ReviewView.tsx": {
     "each-tx-checked": { count: 1, shownBy: "review trust note" },
+    "sent-only-when-signed": { count: 1, shownBy: "review next steps" },
+    "more-sent-only-when-signed": { count: 1, shownBy: "review next steps" },
+    "resume-after-stop": { count: 1, shownBy: "review next steps" },
   },
   "components/marketing/ExecutionPlanDemo.tsx": {
     "account-closed": { count: 1, shownBy: OUTSIDE.marketing },

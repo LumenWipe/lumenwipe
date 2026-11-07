@@ -18,6 +18,7 @@ const CONFIRM: OpenItem = { id: "confirm:defi", kind: "confirmation", group: nul
 
 const READY: ProceedFacts = {
   replanning: false,
+  planStale: false,
   otherHardBlockers: 0,
   assetCardsWithheld: false,
   openItems: [],
@@ -42,6 +43,7 @@ test("nothing is listed when everything is ready", () => {
 
 for (const [facts, expected] of [
   [{ replanning: true }, ["The plan is being updated"]],
+  [{ planStale: true }, ["The plan below may not reflect your last answer"]],
   [{ otherHardBlockers: 1 }, ["Resolve the blocker above"]],
   [{ otherHardBlockers: 3 }, ["Resolve the 3 blockers above"]],
   [
@@ -101,6 +103,7 @@ test("the reasons are empty exactly when the old gate passes, over every combina
                 for (const destinationUnacknowledged of bools) {
                   const facts: ProceedFacts = {
                     replanning,
+                    planStale: false,
                     otherHardBlockers,
                     assetCardsWithheld,
                     openItems,

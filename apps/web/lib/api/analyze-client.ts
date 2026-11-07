@@ -28,8 +28,12 @@ export interface Analysis {
 }
 
 /** The one account read of an analysis. A rejection is shown through `toUserMessage`. */
-export async function readAccount(network: Network, source: string): Promise<AccountState> {
-  const res = await fetch(`/api/${network}/account/${source}`).catch(() => {
+export async function readAccount(
+  network: Network,
+  source: string,
+  signal?: AbortSignal
+): Promise<AccountState> {
+  const res = await fetch(`/api/${network}/account/${source}`, { signal }).catch(() => {
     throw new UserFacingError("Failed to connect to the Stellar network. Please try again.");
   });
   if (!res.ok) throw await readApiError(res);

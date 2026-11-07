@@ -16,6 +16,7 @@ import {
 } from "@/lib/utils/user-error";
 import type { PlannedStep } from "@/types/plan";
 import type { SessionRecord, UnconfirmedRecord } from "@/types/session";
+import { stubUnchangedRefresh } from "./fixtures/fresh-plan";
 
 const SOURCE = Keypair.random().publicKey();
 const OLD_DEST = Keypair.random().publicKey();
@@ -99,7 +100,7 @@ async function confirm() {
   });
   fireEvent.click(screen.getByRole("checkbox"));
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: /want to proceed/i }));
+    fireEvent.click(screen.getByRole("button", { name: /continue to signing/i }));
   });
 }
 
@@ -109,6 +110,7 @@ beforeEach(() => {
   useDemolishStore.getState().setAddresses(SOURCE, NEW_DEST);
   useDemolishStore.getState().setPlan([STEP]);
   useDemolishStore.getState().setPhase("PREFLIGHT_COMPLETE");
+  stubUnchangedRefresh();
 });
 
 afterEach(() => mock.restore());
@@ -207,7 +209,7 @@ test("a save that throws releases the button and does not advance", async () => 
 
   expect(screen.getByRole("alert").textContent).toContain(CONFIRM_SAVE_FAILED);
   expect(screen.queryByText("Preparing...")).toBeNull();
-  expect(screen.getByRole("button", { name: /want to proceed/i })).not.toHaveProperty(
+  expect(screen.getByRole("button", { name: /continue to signing/i })).not.toHaveProperty(
     "disabled",
     true
   );

@@ -106,6 +106,9 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   // scroll position and reads as a crash. The panel's own refresh indicator is enough.
   const [replanning, setReplanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Which plan request failed after a plan was already on screen: that plan may not answer the
+  // latest choices, so it is not reviewed until a retry succeeds.
+  const [staleFrom, setStaleFrom] = useState<"replan" | "reload" | null>(null);
   const [status, setStatus] = useState("");
   const [changedAssets, setChangedAssets] = useState<string[]>([]);
   const [goneRecordCleared, setGoneRecordCleared] = useState(false);
@@ -275,10 +278,12 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       });
       if (isStale()) return;
       showPlan(plan);
+      setStaleFrom(null);
       setStatus(firstLoad ? "Account analyzed" : "Plan updated");
     } catch (err) {
       if (!isStale()) {
         setError(accountError ?? planFailureText(err));
+        if (!firstLoad) setStaleFrom("reload");
       }
       // The close of an account the network no longer has cannot go on: its saved record goes,
       // but only for this network and account, and never one still waiting on a hash.
@@ -318,10 +323,12 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         );
         if (isStale()) return;
         showPlan(plan);
+        setStaleFrom(null);
         setStatus("Plan updated");
       } catch (err) {
         if (isStale()) return;
         setError(planFailureText(err));
+        setStaleFrom("replan");
       } finally {
         if (!isStale()) setReplanning(false);
       }
@@ -456,10 +463,35 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
           {planChangedNotice}
         </Callout>
       )}
-      {error && (
-        <Callout tone="danger" icon={<AlertTriangle className="h-4 w-4" />} className="mb-4">
-          {error}
+      {/* Kept through a retry, which clears the error: the plan is stale until one succeeds. */}
+      {staleFrom !== null ? (
+        <Callout
+          tone="warning"
+          icon={<AlertTriangle className="h-4 w-4" />}
+          title="The plan below may not reflect your last answer"
+          className="mb-4"
+          data-testid="stale-plan"
+          action={
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={replanning}
+              onClick={() =>
+                void (staleFrom === "replan" ? replan(knownTokens.current ?? []) : reload())
+              }
+            >
+              Retry
+            </Button>
+          }
+        >
+          {error ?? "Updating the plan"}
         </Callout>
+      ) : (
+        error && (
+          <Callout tone="danger" icon={<AlertTriangle className="h-4 w-4" />} className="mb-4">
+            {error}
+          </Callout>
+        )
       )}
       <PlanView
         account={account}
@@ -471,6 +503,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         network={routeNetwork}
         onRefresh={reload}
         loading={replanning}
+        planStale={staleFrom !== null}
         statusMessage={status}
       />
     </div>

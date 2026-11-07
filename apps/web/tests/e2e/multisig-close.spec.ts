@@ -152,7 +152,7 @@ async function driveToExecute(
 
   await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
   const proceedButton = page.getByRole("button", {
-    name: /I understand this plan and want to proceed/i,
+    name: /Continue to signing/i,
   });
   await expect(proceedButton).toBeDisabled({ timeout: TESTNET_STEP_TIMEOUT });
   await page.getByRole("checkbox").check();

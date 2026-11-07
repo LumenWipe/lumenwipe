@@ -222,7 +222,7 @@ test("one close swaps one asset, transfers another, and returns a third to its i
 
   await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
   const proceed = page.getByRole("button", {
-    name: /I understand this plan and want to proceed/i,
+    name: /Continue to signing/i,
   });
   await expect(proceed).toBeDisabled({ timeout: TESTNET_STEP_TIMEOUT });
   await page.getByRole("checkbox").first().check();

@@ -131,7 +131,7 @@ export async function enterDestinationAndBegin(page: Page, destination: string):
   // Whole-plan review gate: the user must explicitly confirm before anything is built.
   await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
   const proceedButton = page.getByRole("button", {
-    name: /I understand this plan and want to proceed/i,
+    name: /Continue to signing/i,
   });
   await expect(proceedButton).toBeDisabled({ timeout: TESTNET_STEP_TIMEOUT });
 

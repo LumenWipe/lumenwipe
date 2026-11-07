@@ -127,7 +127,7 @@ test("begin execution lands on the review gate, not directly on execute", async 
     timeout: TESTNET_STEP_TIMEOUT,
   });
   const proceedButton = page.getByRole("button", {
-    name: /I understand this plan and want to proceed/i,
+    name: /Continue to signing/i,
   });
   await expect(proceedButton).toBeVisible();
 

@@ -232,9 +232,12 @@ const MERGE_STEP: PlannedStep = {
   error: null,
 };
 
+/** A plan hash of the shape the API returns: /review refuses to install any other. */
+const FIXTURE_PLAN_HASH = "a1".repeat(32);
+
 function plan(): PlanResponse {
   return {
-    planHash: "a11y-fixture-plan",
+    planHash: FIXTURE_PLAN_HASH,
     status: "ready",
     steps: [MERGE_STEP],
     decisionPoints: [],
@@ -254,7 +257,7 @@ function mergeRound(request: CloseTransactionsRequest): TransactionsResponse {
     .build()
     .toXDR();
   return {
-    planHash: "a11y-fixture-plan",
+    planHash: FIXTURE_PLAN_HASH,
     status: "ready",
     transactions: [
       {
