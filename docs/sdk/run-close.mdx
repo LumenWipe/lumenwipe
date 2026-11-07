@@ -31,6 +31,7 @@ await runClose({
 | `submit`          | Submits a transaction that meets its weight and resolves to the hash.                                                                           |
 | `onConfirmed`     | Optional. Called with the transaction and its hash after each confirmation.                                                                     |
 | `onProgress`      | Optional. Called with progress messages.                                                                                                        |
+| `onProgressEvent` | Optional. Told each step of the close as a structured event. See [Progress events](#progress-events).                                           |
 | `planHash`        | Optional. The `planHash` of the plan the user reviewed. Sent with each fetch until the first transaction of the run confirms, then never again. |
 | `sleep`           | Optional. Waits the given milliseconds before a re-fetch. Defaults to a timer; inject one in tests.                                             |
 | `maxRounds`       | Optional. Overrides the round bound. By default the bound follows the API's `remaining.steps` (capped at 200).                                  |
@@ -38,6 +39,31 @@ await runClose({
 `verify` is where the security of your integration lives. `runClose` guarantees it runs before every signature, but only your implementation decides what it accepts. Two signing guards of the LumenWipe web app are not part of `runClose`, so your `sign` and `submit` need their own: never attach a hash(x) preimage to a transaction that does not remove that same signer, and never submit a transaction that removes signers without an `account_merge` unless the master key has signed it and the same transaction lowers every threshold to 1 or below. See [Verification](/sdk/verification).
 
 `runClose` resolves with `{ mergeConfirmed }`. Without `reconcile` it is always `false`: returning then says only that the API asked for no more calls, and a transaction's `covers` is API metadata. Do not tell a user the account is closed until you have established the merge yourself, from the envelope you signed and a confirmed lookup of its hash.
+
+## Progress events
+
+`onProgressEvent` is told where the close is. Before each round is fetched it gets `{ phase: "preparing", round }`. For each transaction of the round it then gets, in order:
+
+| Phase                | Meaning                                                                            |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| `verifying`          | `verify` is checking the transaction.                                              |
+| `awaiting-signature` | `sign` has been asked. With a wallet, the wallet is waiting for the user.          |
+| `submitting`         | The transaction is signed. `prepare`, if any, and the network are being waited on. |
+| `confirmed`          | The transaction confirmed, after `onConfirmed` was called.                         |
+
+Every transaction event carries:
+
+| Field                | Meaning                                                                                                                                                                                                                                  |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `round`              | Zero-based round of the close.                                                                                                                                                                                                           |
+| `txIndex`            | Zero-based position of the transaction in its round.                                                                                                                                                                                     |
+| `txCount`            | How many transactions the round holds.                                                                                                                                                                                                   |
+| `covers`             | The plan steps the transaction covers. API metadata until `confirmed`, which carries what `onConfirmed` gets: with `reconcile`, a merge only when the client parsed one.                                                                 |
+| `moreRoundsExpected` | The API asked for another round after this one. Each round is planned from live state, so the whole close then holds at least `txCount` transactions, and its total is not known. Never show `txCount` as the total when this is `true`. |
+
+A resumed transaction (see [Multisig and partial signing](#multisig-and-partial-signing)) starts at `awaiting-signature`, since it is not verified again, and keeps the round and position it had. A transaction short of signing weight stops at `awaiting-signature`; a failed `verify` stops at `verifying`. Settling a left-over `unresolved` submission reports no event: `onResolved` covers it.
+
+The callback is an observer. Each event is a fresh object, nothing it returns is awaited, and anything it throws or rejects with is ignored, so it cannot stop or change the close. `onProgress` keeps its messages, and both callbacks can be used together.
 
 ## Unknown outcomes
 

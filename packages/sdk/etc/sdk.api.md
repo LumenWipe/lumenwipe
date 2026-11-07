@@ -250,6 +250,7 @@ export interface CloseEngineDeps {
     onConfirmed?: (tx: CloseTransaction, hash: string) => void;
     // (undocumented)
     onProgress?: (message: string) => void;
+    onProgressEvent?: (event: CloseProgressEvent) => void;
     planHash?: string;
     prepare?: (tx: CloseTransaction, xdr: string) => Promise<string>;
     reconcile?: CloseReconciliation;
@@ -281,6 +282,12 @@ export interface ClosePlanRequest {
 }
 
 // @public
+export type CloseProgressEvent = CloseRoundProgress | CloseTransactionProgress;
+
+// @public
+export type CloseProgressPhase = "preparing" | "verifying" | "awaiting-signature" | "submitting" | "confirmed";
+
+// @public
 export interface CloseReconciliation {
     closesAccount: (signedXdr: string) => boolean;
     hashOf: (signedXdr: string) => string;
@@ -290,6 +297,12 @@ export interface CloseReconciliation {
     onSubmission?: (submission: UnresolvedSubmission | null) => void | Promise<void>;
     unresolved?: UnresolvedSubmission;
     validUntil: (signedXdr: string) => number | null;
+}
+
+// @public
+export interface CloseRoundProgress {
+    phase: "preparing";
+    round: number;
 }
 
 // @public
@@ -353,6 +366,16 @@ export class CloseTransactionFailedError extends Error {
     constructor(submission: UnresolvedSubmission, message: string);
     // (undocumented)
     readonly submission: UnresolvedSubmission;
+}
+
+// @public
+export interface CloseTransactionProgress {
+    covers: CloseTransaction["covers"];
+    moreRoundsExpected: boolean;
+    phase: Exclude<CloseProgressPhase, "preparing">;
+    round: number;
+    txCount: number;
+    txIndex: number;
 }
 
 // @public
@@ -805,8 +828,11 @@ export interface PendingRound {
     requiredWeight: number;
     // (undocumented)
     requiresAnotherCall: boolean;
+    round?: number;
     // (undocumented)
     tx: CloseTransaction;
+    txCount?: number;
+    txIndex?: number;
     // (undocumented)
     xdr: string;
 }
