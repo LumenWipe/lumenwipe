@@ -2,7 +2,7 @@ import { ExternalLink } from "lucide-react";
 import { SE_EXPLORER_BASE, type Network } from "@/config/networks";
 import type { ExpectedReceive } from "@/lib/plan/expected-receive";
 import { memoSegments, type DestinationKind, type MemoLine } from "@/lib/plan/destination-kind";
-import { formatStroops } from "@/lib/api/plan-adapters";
+import { FEES_EXCEED_BALANCE, receiveFigure } from "@/components/plan/ExpectedReceiveBreakdown";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FullAddress } from "@/components/ui/full-address";
@@ -144,8 +144,11 @@ export default function ReviewHero({
           <p className="text-sm text-fg-muted">
             You will receive about{" "}
             <span className="mkt-display block text-3xl font-bold text-value">
-              {formatStroops(expected.totalStroops)} XLM
+              {receiveFigure(expected).xlm} XLM
             </span>
+            {receiveFigure(expected).feesExceed && (
+              <span className="mt-1 block text-warning">{FEES_EXCEED_BALANCE}</span>
+            )}
           </p>
         ) : (
           <p className="text-sm text-fg-muted">

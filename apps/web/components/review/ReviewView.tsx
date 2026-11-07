@@ -18,10 +18,12 @@ import {
 import { formatStroops } from "@/lib/api/plan-adapters";
 import { withFeeStroops } from "@/lib/plan/expected-receive";
 import { totalFeeStroops, transactionCountLine } from "@/lib/plan/review-fees";
+import { assetOutcomes } from "@/lib/plan/asset-outcomes";
 import { confirmedMemo } from "@/lib/plan/memo-field";
 import { destinationKind, memoLine, relayRoute } from "@/lib/plan/destination-kind";
 import PlanStepList from "@/components/review/PlanStepList";
 import ReviewHero, { MemoValue } from "@/components/review/ReviewHero";
+import AssetOutcomeTable from "@/components/review/AssetOutcomeTable";
 import AccountContents from "@/components/plan/AccountContents";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
@@ -57,6 +59,11 @@ export default function ReviewView({ network }: ReviewViewProps) {
     resumedClose,
     expectedReceive,
     estimatedTransactionCount,
+    assetDispositions,
+    transferDestinations,
+    tokenConversionFloors,
+    classicConversionFloors,
+    claimableBalanceSelections,
   } = useDemolishStore();
 
   const [confirming, setConfirming] = useState(false);
@@ -128,6 +135,19 @@ export default function ReviewView({ network }: ReviewViewProps) {
           You are continuing a close you started earlier, so this plan lists only what is left on
           the account now.
         </p>
+      )}
+      {accountState && (
+        <AssetOutcomeTable
+          rows={assetOutcomes({
+            account: accountState,
+            dispositions: assetDispositions,
+            transferDestinations,
+            tokenConversionFloors,
+            classicConversionFloors,
+            claimSelections: claimableBalanceSelections,
+          })}
+          expected={expected}
+        />
       )}
       {accountState && (
         <Card>

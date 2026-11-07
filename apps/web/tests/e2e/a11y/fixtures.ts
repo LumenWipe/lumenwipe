@@ -89,6 +89,111 @@ function flaggedTokenPlan(): PlanResponse {
   };
 }
 
+/** An account with one asset to swap, one to send to another account and one claimable balance
+ *  to leave unclaimed, so the review has one row of each to show. */
+export const OUTCOMES_ACCOUNT = Keypair.random().publicKey();
+export const OUTCOMES_ISSUER = Keypair.random().publicKey();
+const OUTCOMES_BALANCE_ID = `00000000${"ab".repeat(32)}`;
+
+function outcomesTrustline(code: string, balance: string): AccountState["trustlines"][number] {
+  return {
+    asset: `${code}:${OUTCOMES_ISSUER}`,
+    code,
+    issuer: OUTCOMES_ISSUER,
+    balance,
+    authorized: true,
+    authorization: "authorized",
+    clawbackEnabled: false,
+  };
+}
+
+function outcomesAccount(address: string): AccountState {
+  return {
+    ...accountState(address),
+    nativeBalanceLumens: "20.0000000",
+    numSubEntries: 2,
+    trustlines: [outcomesTrustline("USDC", "5.0000000"), outcomesTrustline("EURC", "3.0000000")],
+    claimableBalances: [
+      {
+        id: OUTCOMES_BALANCE_ID,
+        asset: `USDC:${OUTCOMES_ISSUER}`,
+        amount: "1.5000000",
+        claimants: [{ destination: address, predicate: { type: "unconditional" } }],
+        sponsor: null,
+      },
+    ],
+  };
+}
+
+function outcomesPlan(decided: boolean): PlanResponse {
+  const step = (index: number, type: PlannedStep["type"], title: string): PlannedStep => ({
+    ...MERGE_STEP,
+    index,
+    type,
+    title,
+    description: "",
+  });
+  const usdc = `USDC:${OUTCOMES_ISSUER}`;
+  const eurc = `EURC:${OUTCOMES_ISSUER}`;
+  return {
+    ...plan(),
+    status: decided ? "ready" : "needs_decisions",
+    steps: [
+      step(0, "HANDLE_ASSETS", "Swap and send assets"),
+      step(1, "REMOVE_TRUSTLINES", "Remove trustlines"),
+      { ...MERGE_STEP, index: 2 },
+    ],
+    estimate: { feeStroops: "300", freedReserveXlm: "2" },
+    execution: { estimatedTransactionCount: 2, transactions: [] },
+    decisionPoints: [
+      {
+        id: `asset:${usdc.replace(":", "-")}`,
+        type: "asset_disposition",
+        subject: {
+          kind: "trustline",
+          asset: usdc,
+          balance: "5.0000000",
+          convertible: true,
+          quote: { estimatedReceive: "25000000", minAmountOut: "24000000" },
+          arrivesFromExit: false,
+        },
+        options: [{ id: "convert_to_xlm" }, { id: "transfer_to_account" }],
+        default: "convert_to_xlm",
+        required: true,
+      },
+      {
+        id: `asset:${eurc.replace(":", "-")}`,
+        type: "asset_disposition",
+        subject: {
+          kind: "trustline",
+          asset: eurc,
+          balance: "3.0000000",
+          convertible: false,
+          arrivesFromExit: false,
+        },
+        options: [{ id: "return_to_issuer" }, { id: "transfer_to_account" }],
+        default: "",
+        required: true,
+      },
+      {
+        id: `claim:${OUTCOMES_BALANCE_ID}`,
+        type: "claimable_balance",
+        subject: {
+          kind: "claimable_balance",
+          balanceId: OUTCOMES_BALANCE_ID,
+          asset: usdc,
+          amount: "1.5000000",
+          currentlyClaimable: true,
+          predicate: { type: "unconditional" },
+        },
+        options: [{ id: "claim" }, { id: "forfeit" }],
+        default: "claim",
+        required: true,
+      },
+    ],
+  };
+}
+
 export function accountState(address: string): AccountState {
   return {
     address,
@@ -266,10 +371,17 @@ export async function installApiFixtures(page: Page): Promise<{ expectAllAnswere
         return json(route, { ...accountState(address), trustlines: "unrenderable" });
       }
       if (address === FLAGGED_TOKEN_ACCOUNT) return json(route, flaggedTokenAccount(address));
+      if (address === OUTCOMES_ACCOUNT) return json(route, outcomesAccount(address));
       return json(route, accountState(address));
     }
     if (method === "POST" && pathname === "/api/v1/testnet/close/plan") {
-      const { source } = request.postDataJSON() as { source: string };
+      const { source, decisions } = request.postDataJSON() as {
+        source: string;
+        decisions?: unknown[];
+      };
+      if (source === OUTCOMES_ACCOUNT) {
+        return json(route, outcomesPlan((decisions?.length ?? 0) > 0));
+      }
       return json(route, source === FLAGGED_TOKEN_ACCOUNT ? flaggedTokenPlan() : plan());
     }
     if (method === "POST" && pathname === "/api/v1/testnet/close/transactions") {

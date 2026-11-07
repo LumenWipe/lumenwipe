@@ -154,6 +154,7 @@ test("the account counts are shown open", async () => {
     accountState: {
       address: SOURCE,
       trustlines: [],
+      claimableBalances: [],
       openOffers: [],
       dataEntries: [],
       signers: [],

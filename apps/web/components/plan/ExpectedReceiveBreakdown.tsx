@@ -1,6 +1,16 @@
 import type { ExpectedReceive } from "@/lib/plan/expected-receive";
 import { formatStroops } from "@/lib/api/plan-adapters";
 
+/** The figure as shown: never below zero, with a flag for when the fees are more than the
+ *  balance would cover. */
+export function receiveFigure(expected: ExpectedReceive): { xlm: string; feesExceed: boolean } {
+  const negative = expected.totalStroops.startsWith("-");
+  return { xlm: negative ? "0" : formatStroops(expected.totalStroops), feesExceed: negative };
+}
+
+export const FEES_EXCEED_BALANCE =
+  "The estimated network fees are more than this account's balance would cover, so nothing may arrive.";
+
 export function estimateNote(expected: ExpectedReceive): string {
   const parts = ["An estimate, after network fees."];
   if (expected.estimated) parts.push("It counts the least each chosen swap may deliver.");
@@ -69,9 +79,7 @@ export function ExpectedReceiveBreakdown({
           data-testid="net-estimate-total"
         >
           <dt className="font-medium text-white/80">You will receive about</dt>
-          <dd className="mkt-mono font-semibold text-value">
-            {formatStroops(expected.totalStroops)} XLM
-          </dd>
+          <dd className="mkt-mono font-semibold text-value">{receiveFigure(expected).xlm} XLM</dd>
         </div>
       )}
     </dl>
