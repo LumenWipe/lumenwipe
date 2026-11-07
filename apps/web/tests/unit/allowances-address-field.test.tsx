@@ -52,3 +52,13 @@ test("a secret key in the link is not put in the field", async () => {
   expect(document.body.innerHTML).not.toContain(SECRET_SHAPED);
   expect(fetchSpy).not.toHaveBeenCalled();
 });
+
+test.each([
+  ["with spaces around it", `  ${SECRET_SHAPED} `],
+  ["after a label", `key: ${SECRET_SHAPED}`],
+])("a secret key in the link %s is not put in the field", async (_, value) => {
+  const input = await renderPage(`address=${encodeURIComponent(value)}`);
+  expect(input.value).toBe("");
+  expect(document.body.innerHTML).not.toContain(SECRET_SHAPED);
+  expect(fetchSpy).not.toHaveBeenCalled();
+});

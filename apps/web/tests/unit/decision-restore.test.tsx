@@ -383,6 +383,30 @@ describe("the destination and memo kept are the last ones the user gave", () => 
     expect(useDemolishStore.getState().destinationAddress).toBe(OTHER_DEST);
   });
 
+  test.each([
+    ["over 28 bytes", "€".repeat(10), "text"],
+    ["shaped like a secret key", "S" + "A".repeat(55), "text"],
+    ["that is an id with a leading zero", "007", "id"],
+    ["that is an id with letters", "12a", "id"],
+  ] as const)("a memo %s is never kept in the draft", async (_, memo, type) => {
+    window.sessionStorage.setItem(KEY, JSON.stringify(snapshot()));
+    await analyzed();
+    keepDestinationDraft("testnet", SOURCE, DEST, memo, type);
+    expect(saved().memo).toBeNull();
+    expect(saved().memoType).toBeNull();
+    expect(window.sessionStorage.getItem(KEY)).not.toContain(memo);
+  });
+
+  test("a memo that can be sent is kept with its type", async () => {
+    window.sessionStorage.setItem(KEY, JSON.stringify(snapshot()));
+    await analyzed();
+    keepDestinationDraft("testnet", SOURCE, DEST, "4411", "id");
+    expect({ memo: saved().memo, memoType: saved().memoType }).toEqual({
+      memo: "4411",
+      memoType: "id",
+    });
+  });
+
   test("a half-typed destination is kept as none and every other choice still restores", async () => {
     window.sessionStorage.setItem(KEY, JSON.stringify(snapshot()));
     await analyzed();

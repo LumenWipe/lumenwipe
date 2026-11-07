@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ClipboardEvent } from "react";
 import { AlertTriangle } from "lucide-react";
-import { isValidGAddress } from "@/lib/utils/validation";
+import { containsSecretKey, isValidGAddress, SECRET_KEY_WARNING } from "@/lib/utils/validation";
 import { activeRegistry, isCexAddress, isRegistryUsable } from "@/lib/exchange-registry";
 import {
   memoField,
@@ -54,9 +54,36 @@ export default function DestinationInput({
   const memoType = field.type;
   const [memoTouched, setMemoTouched] = useState(false);
   const [idEditRefused, setIdEditRefused] = useState(false);
-  const memoError = idEditRefused ? "An id memo is digits only." : memoTouched ? field.error : null;
+  // Only that a key was refused is kept, never the key.
+  const [memoSecretRefused, setMemoSecretRefused] = useState(false);
+  const memoError = memoSecretRefused
+    ? SECRET_KEY_WARNING
+    : idEditRefused
+      ? "An id memo is digits only."
+      : memoTouched
+        ? field.error
+        : null;
+
+  // The whole-key check only: unlike an address, a memo may well start with S.
+  function refuseMemoSecret(): void {
+    setMemoSecretRefused(true);
+    setIdEditRefused(false);
+    onMemoChange("");
+  }
+
+  function handleMemoPaste(e: ClipboardEvent<HTMLInputElement>): void {
+    if (containsSecretKey(e.clipboardData?.getData("text") ?? "")) {
+      e.preventDefault();
+      refuseMemoSecret();
+    }
+  }
 
   function handleMemoChange(next: string): void {
+    if (containsSecretKey(next)) {
+      refuseMemoSecret();
+      return;
+    }
+    setMemoSecretRefused(false);
     if (memoType === "id" && refusesIdMemoEdit(next)) {
       setIdEditRefused(true);
       return;
@@ -174,6 +201,7 @@ export default function DestinationInput({
           inputMode={memoType === "id" ? "numeric" : undefined}
           value={memo}
           onChange={(e) => handleMemoChange(e.target.value)}
+          onPaste={handleMemoPaste}
           onBlur={() => setMemoTouched(true)}
           placeholder={memoType === "id" ? "Enter numeric ID" : "Enter memo text (max 28 bytes)"}
           spellCheck={false}

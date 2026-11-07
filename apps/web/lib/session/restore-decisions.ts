@@ -3,6 +3,7 @@ import { journeyOf, type JourneyStateName } from "@/lib/journey/journey-state";
 import { useDemolishStore } from "@/store/demolish";
 import type { AccountState } from "@/types/account";
 import { isValidGAddress } from "@/lib/utils/validation";
+import { memoField } from "@/lib/plan/memo-field";
 import {
   DECISIONS_VERSION,
   assetFingerprint,
@@ -104,11 +105,15 @@ export function keepDestinationDraft(
   const state = useDemolishStore.getState();
   if (!keepable(state, source)) return;
   const snapshot = snapshotOf(network, source, state, previousOf(network, source));
+  // Only a memo that could be sent is kept: one over the byte limit, of the wrong shape for its
+  // type, or holding a key never reaches storage.
+  const field = memoField(destination, memo, memoType === "id" ? "id" : "text");
+  const kept = field.error === null ? field.normalized : "";
   writeDecisions({
     ...snapshot,
     destination: isValidGAddress(destination) ? destination : null,
-    memo: memo || null,
-    memoType: memo ? memoType : null,
+    memo: kept || null,
+    memoType: kept ? field.memoType : null,
   });
 }
 

@@ -2,7 +2,7 @@
 
 import { useState, type ClipboardEvent, type ReactElement, type ReactNode } from "react";
 import { CheckCircle, XCircle } from "lucide-react";
-import { addressErrorMessage, SECRET_KEY_WARNING } from "@/lib/utils/validation";
+import { addressErrorMessage, couldBeSecretKey, SECRET_KEY_WARNING } from "@/lib/utils/validation";
 import { cn } from "@/lib/utils/cn";
 import { Field, Input } from "./field";
 
@@ -23,12 +23,6 @@ interface AddressFieldProps {
   trailing?: ReactNode;
   groupClassName?: string;
   inputClassName?: string;
-}
-
-/** No account address starts with S, and a secret seed does. Anything that could be one is
- *  refused before it reaches the caller's state, so it is never stored, sent or rendered. */
-function couldBeSecretKey(value: string): boolean {
-  return value.startsWith("S") || /S[A-Z2-7]{55}/.test(value);
 }
 
 export function AddressField({
@@ -59,7 +53,7 @@ export function AddressField({
 
   function handleChange(next: string): void {
     const trimmed = next.trim();
-    if (couldBeSecretKey(trimmed)) {
+    if (couldBeSecretKey(next)) {
       refuseSecret();
       return;
     }
@@ -70,7 +64,7 @@ export function AddressField({
   function handlePaste(e: ClipboardEvent<HTMLInputElement>): void {
     setTouched(true);
     const pasted = e.clipboardData?.getData("text") ?? "";
-    if (couldBeSecretKey(pasted.trim())) {
+    if (couldBeSecretKey(pasted)) {
       e.preventDefault();
       refuseSecret();
     }

@@ -9,7 +9,7 @@ import { coverageNote, unconfirmedSources } from "@/lib/allowances/empty-result"
 import type { Network } from "@/config/networks";
 import type { Allowance, AllowancesResult } from "@/types/allowance";
 import { useDemolishStore } from "@/store/demolish";
-import { isValidGAddress } from "@/lib/utils/validation";
+import { couldBeSecretKey, isValidGAddress } from "@/lib/utils/validation";
 import { apiErrorText } from "@/lib/utils/user-error";
 import AllowanceRow from "@/components/allowances/AllowanceRow";
 import RevokeAllowanceModal from "@/components/allowances/RevokeAllowanceModal";
@@ -31,8 +31,8 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
 
   // A link can carry anything; a secret seed in it is not put in the field.
   const [input, setInput] = useState(() => {
-    const prefill = searchParams.get("address") ?? storedSource ?? "";
-    return prefill.startsWith("S") ? "" : prefill;
+    const prefill = (searchParams.get("address") ?? storedSource ?? "").trim();
+    return couldBeSecretKey(prefill) ? "" : prefill;
   });
   const [address, setAddress] = useState<string | null>(null);
   const [result, setResult] = useState<AllowancesResult | null>(null);
@@ -126,7 +126,7 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            void lookup(input);
+            void lookup(input.trim());
           }}
           className="flex flex-col gap-2 sm:flex-row sm:items-start"
         >

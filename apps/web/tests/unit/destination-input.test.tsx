@@ -144,3 +144,50 @@ test("a required memo left empty says the exchange needs one", () => {
   fireEvent.blur(memoInput());
   expect(screen.getByText("This exchange needs a memo.")).toBeDefined();
 });
+
+// Synthetic: the shape of a secret seed with a checksum that does not match, never a real key.
+const SECRET_SHAPED = "S" + "A".repeat(55);
+
+test.each([
+  ["pasted", true],
+  ["typed or dropped", false],
+])("a secret key %s into the memo is refused and never kept", (_, viaPaste) => {
+  const seen: string[] = [];
+  function Recording(): ReactElement {
+    const [memo, setMemo] = useState("deposit");
+    return (
+      <DestinationInput
+        destination={UNLISTED}
+        onDestinationChange={noop}
+        memo={memo}
+        onMemoChange={(value) => {
+          seen.push(value);
+          setMemo(value);
+        }}
+        memoType="text"
+        onMemoTypeChange={noop}
+        source={Keypair.random().publicKey()}
+        acknowledged
+        onAcknowledgedChange={noop}
+      />
+    );
+  }
+  render(<Recording />);
+  const input = memoInput();
+
+  if (viaPaste) fireEvent.paste(input, { clipboardData: { getData: () => ` ${SECRET_SHAPED}` } });
+  fireEvent.change(input, { target: { value: `ref ${SECRET_SHAPED}` } });
+
+  expect(input.value).toBe("");
+  expect(seen.some((value) => value.includes(SECRET_SHAPED))).toBe(false);
+  expect(document.body.innerHTML).not.toContain(SECRET_SHAPED);
+  expect(
+    screen
+      .getAllByRole("alert")
+      .some((a) => a.textContent?.includes("That looks like a secret key."))
+  ).toBe(true);
+
+  fireEvent.change(input, { target: { value: "SALARY 2026" } });
+  expect(input.value).toBe("SALARY 2026");
+  expect(screen.queryByText(/That looks like a secret key/)).toBeNull();
+});

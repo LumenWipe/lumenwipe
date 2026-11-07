@@ -22,6 +22,22 @@ export function looksLikeSecretKey(value: string): boolean {
   return /^S[A-Z2-7]{55}$/.test(value);
 }
 
+// A key only as a whole token: inside a longer base32 run, such as a muxed address, the same 56
+// characters are part of something else.
+const SECRET_KEY_TOKEN = /(^|[^A-Z2-7])S[A-Z2-7]{55}($|[^A-Z2-7])/;
+
+/** Whether a secret seed appears anywhere in `value`, also once the whitespace inside it is
+ *  removed, so a key copied in groups of four is found too. */
+export function containsSecretKey(value: string): boolean {
+  return SECRET_KEY_TOKEN.test(value) || SECRET_KEY_TOKEN.test(value.replace(/\s+/g, ""));
+}
+
+/** What an address field refuses before it reaches any state: a value that holds a secret key,
+ *  and anything starting with S, since no account address does and a seed always does. */
+export function couldBeSecretKey(value: string): boolean {
+  return value.trim().startsWith("S") || containsSecretKey(value);
+}
+
 function isValidMuxedAddress(address: string): boolean {
   try {
     return StrKey.isValidMed25519PublicKey(address);

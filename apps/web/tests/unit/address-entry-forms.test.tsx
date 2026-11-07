@@ -446,12 +446,12 @@ test("the destination refuses a pasted secret key, and a real address clears the
   expect(seen).not.toContain(SECRET_SHAPED);
 });
 
-test("a secret key pasted into the middle of an address is refused too", () => {
+test("a secret key pasted after what the field already holds is refused too", () => {
   render(<HeroAccountInput />);
   const input = screen.getByRole("textbox", { name: "Stellar account address" });
   fireEvent.change(input, { target: { value: "GABC" } });
 
-  fireEvent.change(input, { target: { value: `GABC${SECRET_SHAPED}` } });
+  fireEvent.change(input, { target: { value: `GABC ${SECRET_SHAPED}` } });
 
   expectRefused(input, []);
 });
