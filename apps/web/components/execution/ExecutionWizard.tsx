@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle, ExternalLink, ShieldCheck } from "lucide-react";
 import { explorerAccountUrl, type Network } from "@/config/networks";
@@ -40,6 +40,31 @@ interface ExecutionWizardProps {
 
 type SignMode = "wallet" | "secret-key";
 
+/**
+ * The one signer `execute()` uses, and the one the screen names. A wallet, a secret key and a
+ * hash(x) preimage each become it the same way, so what is shown can never differ from what
+ * signs. `id` is the signer's key as the account lists it.
+ */
+export type ActiveSigner =
+  | { kind: "none" }
+  | { kind: "wallet" | "secret-key" | "hash-x"; id: string; signer: TransactionSigner };
+
+const NO_SIGNER: ActiveSigner = { kind: "none" };
+
+const SIGNER_KIND_LABEL: Record<Exclude<ActiveSigner["kind"], "none">, string> = {
+  wallet: "wallet",
+  "secret-key": "secret key",
+  "hash-x": "hash(x) preimage for",
+};
+
+export const ALREADY_SIGNED = "This signer already signed. Connect or enter a different signer.";
+export const NOT_STILL_NEEDED =
+  "This signer is not one this transaction still needs. Connect or enter a different signer.";
+
+function shortKey(key: string): string {
+  return `${key.slice(0, 4)}…${key.slice(-4)}`;
+}
+
 const SIGN_MODES: readonly TabItem<SignMode>[] = [
   { value: "wallet", label: "Connect wallet" },
   { value: "secret-key", label: "Use secret key (advanced)" },
@@ -48,7 +73,6 @@ const SIGN_MODES: readonly TabItem<SignMode>[] = [
 export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const router = useRouter();
   const secretKeyRef = useRef<string>("");
-  const signerRef = useRef<TransactionSigner | null>(null);
 
   const executionPlan = useDemolishStore((s) => s.executionPlan);
   const destinationAddress = useDemolishStore((s) => s.destinationAddress);
@@ -61,6 +85,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const unconfirmedSubmission = useDemolishStore((s) => s.unconfirmedSubmission);
   const progressNotSaved = useDemolishStore((s) => s.progressNotSaved);
   const signingRun = useDemolishStore((s) => s.signingRun);
+  const estimatedTransactionCount = useDemolishStore((s) => s.estimatedTransactionCount);
 
   const {
     run,
@@ -72,15 +97,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     stillUnconfirmed,
   } = useCloseExecution();
   const walletConnection = useWalletKitConnection(network);
+  // Which input the picker shows. It never decides who signs: `activeSigner` does.
   const [mode, setMode] = useState<SignMode>("wallet");
-  const [keyEntered, setKeyEntered] = useState(false);
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  // True once the user has explicitly chosen the secret-key path over an available,
-  // matching wallet. Without this, the reactive sync effect below would immediately
-  // re-populate the wallet signer on the very next render - it's still connected
-  // and still matching in the background - undoing the user's choice. Reset when
-  // the user explicitly switches back to the wallet tab.
-  const [walletDismissed, setWalletDismissed] = useState(false);
+  const [activeSigner, setActiveSigner] = useState<ActiveSigner>(NO_SIGNER);
   const [confirmed, setConfirmed] = useState(false);
   const [running, setRunning] = useState(false);
   // Lets the user step out of the "failed" view to reconnect a wallet or switch
@@ -101,63 +120,58 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   );
   const walletAddressIsKnownSigner =
     walletConnection.address !== null && knownEd25519SignerKeys.has(walletConnection.address);
-  const signerReady = mode === "wallet" ? walletAddress !== null : keyEntered;
+  const signerReady = activeSigner.kind !== "none";
 
   const clearSigner = useCallback(() => {
     secretKeyRef.current = "";
-    signerRef.current = null;
-    setKeyEntered(false);
-    setWalletAddress(null);
+    setActiveSigner(NO_SIGNER);
   }, []);
 
-  // Sync the active signer from the shared wallet-connection hook - this covers
-  // both an explicit "Connect wallet" click AND a session already connected during
-  // account entry, which the hook detects on mount without any click at all. Only
-  // treat the connected wallet as the active signer when it's a known signer on the
-  // account actually being closed (the source account's own key for single-sig, or
-  // any co-signer for multisig - see walletAddressIsKnownSigner above), its network
-  // matches the app's, and the user hasn't explicitly dismissed it in favor of the
-  // secret-key path; a mismatch on any axis is surfaced by WalletConnectPanel's
-  // `mismatchWarning`/`networkMismatch` instead of being silently accepted or
-  // silently ignored.
-  //
-  // The `else if (walletAddress !== null)` branch matters beyond the obvious
-  // "wallet disconnected" case: `useWalletKitConnection` commits `address` and
-  // `networkMismatch` in two separate state updates (there's a real `await`
-  // between them), so this effect can fire once with a matching address and no
-  // known mismatch yet, populate the signer, and then fire again a moment later
-  // once the mismatch becomes known. Without this branch, that second run would
-  // hit neither condition and leave the already-populated (but now known-bad)
-  // signer in place - this branch is what actually retracts it. It only ever
-  // clears the *wallet* side (checked via `walletAddress`, not `keyEntered`), so
-  // it can never stomp a live `SecretKeySigner`.
+  // The connected wallet, when it can sign here: a known signer on the account being closed (the
+  // source account's own key for single-sig, or any co-signer for multisig - see
+  // walletAddressIsKnownSigner above) on this page's network. A mismatch on either axis is
+  // surfaced by WalletConnectPanel instead of being silently accepted or ignored.
+  const usableWallet =
+    walletConnection.address && walletAddressIsKnownSigner && !walletConnection.networkMismatch
+      ? walletConnection.address
+      : null;
+  const walletSigner = useMemo(
+    () => (usableWallet ? walletKitSigner(network, usableWallet) : null),
+    [usableWallet, network]
+  );
+
+  // The wallet becomes the active signer whenever nothing else is: on an explicit "Connect wallet"
+  // click, on a session already connected during account entry, and again after a round that
+  // reset the signer to none. A secret key or a preimage the user chose is never replaced by it,
+  // and a wallet that stops being usable (disconnected, switched, wrong network) stops being the
+  // signer at once. `useWalletKitConnection` commits `address` and `networkMismatch` in separate
+  // updates, so this also retracts a wallet adopted a moment before its mismatch became known.
   useEffect(() => {
-    if (
-      !walletDismissed &&
-      walletConnection.address &&
-      walletAddressIsKnownSigner &&
-      !walletConnection.networkMismatch
-    ) {
-      signerRef.current = walletKitSigner(network, walletConnection.address);
-      setWalletAddress(walletConnection.address);
-      // A connected wallet supersedes any previously entered secret key, for the
-      // same reason the secret-key handler supersedes a connected wallet below:
-      // the secret-key tab must not keep showing "loaded" once a different signer
-      // is what `execute()` will actually use.
-      secretKeyRef.current = "";
-      setKeyEntered(false);
-    } else if (walletAddress !== null) {
-      signerRef.current = null;
-      setWalletAddress(null);
+    if (activeSigner.kind === "secret-key" || activeSigner.kind === "hash-x") return;
+    if (walletSigner) {
+      // With no signer, the wallet is picked up only from the wallet tab: on the secret-key tab the
+      // user is choosing a key, and the screen names no signer until one is entered.
+      const adopt =
+        activeSigner.kind === "wallet" ? activeSigner.signer !== walletSigner : mode === "wallet";
+      if (adopt) {
+        setActiveSigner({ kind: "wallet", id: walletSigner.publicKey, signer: walletSigner });
+      }
+    } else if (activeSigner.kind === "wallet") {
+      setActiveSigner(NO_SIGNER);
     }
-  }, [
-    walletConnection.address,
-    walletConnection.networkMismatch,
-    walletAddressIsKnownSigner,
-    walletDismissed,
-    walletAddress,
-    network,
-  ]);
+  }, [activeSigner, walletSigner, mode]);
+
+  // A round that still needs weight ends this signer's turn: whoever signs next is chosen again,
+  // so the screen never keeps offering a signer that has just been used. A secret key is wiped;
+  // a still-connected wallet is picked up again by the effect above, from the wallet tab only.
+  useEffect(() => {
+    if (signatureStatus === null) return;
+    secretKeyRef.current = "";
+    // A fresh object, never NO_SIGNER itself: when the wallet was adopted in this same commit,
+    // setting the very state this render started from would be skipped, and the wallet effect
+    // above would not run again to pick the wallet back up.
+    setActiveSigner({ kind: "none" });
+  }, [signatureStatus]);
 
   // Wipe signing material when the wizard unmounts (navigation away).
   useEffect(() => () => clearSigner(), [clearSigner]);
@@ -170,56 +184,50 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     }
   }, [phase, network, router, clearSigner]);
 
-  const forgetKey = useCallback(() => {
-    secretKeyRef.current = "";
-    signerRef.current = null;
-    setKeyEntered(false);
+  const forgetKey = clearSigner;
+
+  // Entering a working secret key supersedes a connected wallet: exactly one signer is ever live,
+  // so the tabs can never disagree about which one `execute()` uses. An incomplete key only
+  // clears a secret-key signer, never a wallet the user did not touch.
+  const onSecretKeyValidityChange = useCallback((valid: boolean) => {
+    if (valid) {
+      const signer = new SecretKeySigner(secretKeyRef.current);
+      setActiveSigner({ kind: "secret-key", id: signer.publicKey, signer });
+    } else {
+      setActiveSigner((current) => (current.kind === "secret-key" ? NO_SIGNER : current));
+    }
   }, []);
 
-  const onSecretKeyValidityChange = useCallback(
-    (valid: boolean) => {
-      setKeyEntered(valid);
-      if (valid) {
-        signerRef.current = new SecretKeySigner(secretKeyRef.current);
-        // Entering a working secret key supersedes any previously connected wallet -
-        // exactly one signer is ever live, so the two tabs can never disagree about
-        // which one `execute()` will actually use. Marking the wallet dismissed also
-        // stops the reactive sync effect above from immediately re-populating it
-        // just because it's still connected in the background.
-        setWalletAddress(null);
-        setWalletDismissed(true);
-      } else if (!walletAddress) {
-        // Only clear the shared signer if a wallet isn't the one currently holding
-        // it - otherwise typing an incomplete key while a wallet is connected would
-        // silently discard the wallet's signer without any visible feedback.
-        signerRef.current = null;
+  const runWith = useCallback(
+    async (signer: TransactionSigner) => {
+      if (running) return;
+      setChangingSigner(false);
+      setRunning(true);
+      try {
+        // The engine re-reads on-chain state each round, so a retry after a failure
+        // resumes: already-confirmed steps are not rebuilt or re-submitted.
+        await run(signer);
+      } finally {
+        setRunning(false);
       }
     },
-    [walletAddress]
+    [run, running]
   );
 
   const execute = useCallback(async () => {
-    if (!signerRef.current || running) return;
-    setChangingSigner(false);
-    setRunning(true);
-    try {
-      // The engine re-reads on-chain state each round, so a retry after a failure
-      // resumes: already-confirmed steps are not rebuilt or re-submitted.
-      await run(signerRef.current);
-    } finally {
-      setRunning(false);
-    }
-  }, [run, running]);
+    if (activeSigner.kind === "none") return;
+    await runWith(activeSigner.signer);
+  }, [activeSigner, runWith]);
 
   // A hash(x) signer's preimage has already been validated (HashXPreimageInput only calls
-  // this with a confirmed match) - apply it as this round's signer exactly like a connected
-  // wallet or secret key would be, through the same execute() path.
+  // this with a confirmed match) - it becomes the active signer exactly like a connected
+  // wallet or secret key would, and signs this round through the same run.
   const applyHashXPreimage = useCallback(
     (signer: TransactionSigner) => {
-      signerRef.current = signer;
-      void execute();
+      setActiveSigner({ kind: "hash-x", id: signer.publicKey, signer });
+      void runWith(signer);
     },
-    [execute]
+    [runWith]
   );
 
   // A run this mount did not start, as after a remount mid-run, still holds the close.
@@ -253,7 +261,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const [retryHeld, setRetryHeld] = useState(false);
   useEffect(() => {
     if (view !== "failed") return;
-    const signer = signerRef.current;
+    const signer = activeSigner.kind === "none" ? null : activeSigner.signer;
     const stale = signer instanceof WalletKitSigner ? signer.stalePrompt() : null;
     if (!stale) return;
     let live = true;
@@ -268,7 +276,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
       clearTimeout(timer);
       setRetryHeld(false);
     };
-  }, [view]);
+  }, [view, activeSigner]);
   // Focus follows a view swap only: the control that was clicked is unmounted by it, and focus
   // would otherwise drop to <body>. It never moves on first render, and never out of a field
   // the user is typing in.
@@ -316,8 +324,31 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const signers = accountState?.signers ?? [];
   const multisigNotice =
     signers.length > 1 && signatureStatus === null
-      ? { requiredWeight: accountState?.thresholds.high ?? 1, signers }
+      ? {
+          requiredWeight: accountState?.thresholds.high ?? 1,
+          signers,
+          transactionCount: estimatedTransactionCount,
+        }
       : null;
+
+  // "Add signature" only reaches a signer this transaction still needs. A signer that already
+  // signed would only be asked to approve a prompt that adds nothing; the weight check after
+  // signing stays the guard, this only keeps the screen from walking into it.
+  const activeId = activeSigner.kind === "none" ? null : activeSigner.id;
+  const signerBlockedReason =
+    signatureStatus && activeId && !signatureStatus.remainingSigners.some((s) => s.key === activeId)
+      ? signatureStatus.contributed.some((s) => s.key === activeId)
+        ? ALREADY_SIGNED
+        : NOT_STILL_NEEDED
+      : null;
+
+  const activeSignerLine =
+    activeSigner.kind === "none" ? null : (
+      <p data-testid="active-signer" className="text-xs text-fg-muted">
+        Signing with {SIGNER_KIND_LABEL[activeSigner.kind]}{" "}
+        <span className="font-mono-address text-white/80">{shortKey(activeSigner.id)}</span>
+      </p>
+    );
 
   const walletMismatchWarning =
     walletConnection.address && !walletAddressIsKnownSigner
@@ -335,10 +366,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
       value={mode}
       onValueChange={(next) => {
         setMode(next);
-        // Explicitly re-engaging the wallet tab re-arms the reactive
-        // sync effect above, so an already-connected, matching wallet
-        // is picked back up without requiring another "Connect" click.
-        if (next === "wallet") setWalletDismissed(false);
+        // Going back to the wallet tab drops an entered key, so an already-connected,
+        // matching wallet is picked back up without another "Connect" click.
+        if (next === "wallet" && activeSigner.kind === "secret-key") clearSigner();
       }}
     >
       {mode === "wallet" ? (
@@ -347,7 +377,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           disabled={running}
           mismatchWarning={walletMismatchWarning}
         />
-      ) : keyEntered ? (
+      ) : activeSigner.kind === "secret-key" ? (
         <Callout
           tone="success"
           announce={false}
@@ -441,6 +471,8 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
           <StatusMessage message={statusMessage} />
 
+          {!unconfirmed && activeSignerLine}
+
           {busy ? (
             <ProgressIndicator
               line={line}
@@ -464,7 +496,17 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 disabled={running}
               />
               {renderSignerPicker()}
-              <Button onClick={execute} disabled={!signerReady} className="w-full">
+              {signerBlockedReason && (
+                <p id="signer-blocked-reason" className="text-xs text-warning">
+                  {signerBlockedReason}
+                </p>
+              )}
+              <Button
+                onClick={execute}
+                disabled={!signerReady || signerBlockedReason !== null}
+                aria-describedby={signerBlockedReason ? "signer-blocked-reason" : undefined}
+                className="w-full"
+              >
                 Add signature
               </Button>
             </div>
@@ -517,6 +559,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                     {multisigNotice.requiredWeight}. Sign with one signer, then the next. A step
                     that removes signers before the merge must include the account&apos;s master
                     key, and a preimage is only used on a step that removes its own signer.
+                  </p>
+                  <p className="text-sm text-white/70">
+                    Each transaction needs that full weight on its own
+                    {multisigNotice.transactionCount !== null
+                      ? `, so expect to sign up to ${multisigNotice.transactionCount} time${multisigNotice.transactionCount === 1 ? "" : "s"} with each signer.`
+                      : ", so expect to sign once per transaction with each signer."}
                   </p>
                   <ul className="space-y-1">
                     {multisigNotice.signers.map((s) => (

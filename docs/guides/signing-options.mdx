@@ -16,7 +16,7 @@ For keys that live in no wallet. The key is held in memory only for the length o
 
 ## Multisig accounts
 
-When an account needs several signers to reach its threshold, connect wallets or enter keys one after another. Signatures accumulate on the same transaction until the threshold is met, then it is submitted. Each signer stays active for the session, because a later round of the same close may need it again.
+When an account needs several signers to reach its threshold, connect wallets or enter keys one after another. Signatures accumulate on the same transaction until the threshold is met, then it is submitted. The screen always names the signer that will sign. Each time a transaction is still short of weight, the signer is cleared: a secret key has to be entered again if a later transaction needs it, and a connected wallet stays connected but is offered only for a transaction that still needs its signature. A signer that already signed a transaction cannot be asked to sign it again. Each transaction needs the full weight, so expect to sign once per transaction with each signer.
 
 When extra signers exist, the plan removes them early. That collapses the rest of the close to a single key and releases each signer's reserve.
 

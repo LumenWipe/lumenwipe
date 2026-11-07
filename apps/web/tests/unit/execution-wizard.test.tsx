@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { hash, Keypair, StrKey } from "@stellar/stellar-sdk";
-import ExecutionWizard, { STALE_PROMPT_HOLD_MS } from "@/components/execution/ExecutionWizard";
+import ExecutionWizard, {
+  ALREADY_SIGNED,
+  STALE_PROMPT_HOLD_MS,
+} from "@/components/execution/ExecutionWizard";
 import { useDemolishStore } from "@/store/demolish";
 import { InvalidPreAuthTxError } from "@/lib/stellar/pre-auth-tx";
 import * as navigation from "next/navigation";
@@ -71,6 +74,7 @@ function progressAt(wait: CloseProgress["wait"]): CloseProgress {
 let currentSignatureStatus: {
   requiredWeight: number;
   accumulatedWeight: number;
+  contributed: { key: string; weight: number; type: string }[];
   remainingSigners: { key: string; weight: number; type: string }[];
 } | null = null;
 
@@ -147,6 +151,7 @@ test("execution-wizard › shows signing progress and remaining signers when wei
   currentSignatureStatus = {
     requiredWeight: 2,
     accumulatedWeight: 1,
+    contributed: [],
     remainingSigners: [{ key: cosigner, weight: 1, type: "ed25519_public_key" }],
   };
   useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
@@ -155,7 +160,9 @@ test("execution-wizard › shows signing progress and remaining signers when wei
   render(<ExecutionWizard network="testnet" />);
 
   expect(await screen.findByText(/1 more signing weight/)).toBeDefined();
-  expect(screen.getByText(/hasn't signed yet/)).toBeDefined();
+  expect(screen.getByText(/Need 1 more of:/).textContent).toContain(
+    `${cosigner.slice(0, 8)}…${cosigner.slice(-8)} (weight 1)`
+  );
   expect(screen.getByRole("button", { name: /add signature/i })).toBeDefined();
 });
 
@@ -163,6 +170,7 @@ test("execution-wizard › connecting a second (co-signer) wallet enables and dr
   currentSignatureStatus = {
     requiredWeight: 2,
     accumulatedWeight: 1,
+    contributed: [],
     remainingSigners: [{ key: cosigner, weight: 1, type: "ed25519_public_key" }],
   };
   useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
@@ -216,6 +224,7 @@ test("execution-wizard › a hash(x) signer among remainingSigners renders its e
   currentSignatureStatus = {
     requiredWeight: 2,
     accumulatedWeight: 1,
+    contributed: [],
     remainingSigners: [{ key: hashXKey, weight: 1, type: "hash_x" }],
   };
   useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
@@ -236,6 +245,7 @@ test("execution-wizard › a correct hash(x) preimage calls run() with a signer 
   currentSignatureStatus = {
     requiredWeight: 2,
     accumulatedWeight: 1,
+    contributed: [],
     remainingSigners: [{ key: hashXKey, weight: 1, type: "hash_x" }],
   };
   useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
@@ -261,6 +271,7 @@ test("execution-wizard › an incorrect hash(x) preimage shows an inline error a
   currentSignatureStatus = {
     requiredWeight: 2,
     accumulatedWeight: 1,
+    contributed: [],
     remainingSigners: [{ key: hashXKey, weight: 1, type: "hash_x" }],
   };
   useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
@@ -380,6 +391,7 @@ test("execution-wizard › a preauth_tx signer among remainingSigners renders it
   currentSignatureStatus = {
     requiredWeight: 2,
     accumulatedWeight: 1,
+    contributed: [],
     remainingSigners: [{ key: preAuthKey, weight: 1, type: "preauth_tx" }],
   };
   useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
@@ -400,6 +412,7 @@ test("execution-wizard › a successful pre-auth-tx submission calls submitPreAu
   currentSignatureStatus = {
     requiredWeight: 2,
     accumulatedWeight: 1,
+    contributed: [],
     remainingSigners: [{ key: preAuthKey, weight: 1, type: "preauth_tx" }],
   };
   useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
@@ -427,6 +440,7 @@ test("execution-wizard › a rejected pre-auth-tx submission shows an inline err
   currentSignatureStatus = {
     requiredWeight: 2,
     accumulatedWeight: 1,
+    contributed: [],
     remainingSigners: [{ key: preAuthKey, weight: 1, type: "preauth_tx" }],
   };
   useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
@@ -486,6 +500,7 @@ test("execution-wizard › the notice does not repeat once signing progress is o
   currentSignatureStatus = {
     requiredWeight: 2,
     accumulatedWeight: 1,
+    contributed: [],
     remainingSigners: [{ key: cosigner, weight: 1, type: "ed25519_public_key" }],
   };
   useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
@@ -531,6 +546,7 @@ test("execution-wizard › announces that more signatures are needed", () => {
   currentSignatureStatus = {
     requiredWeight: 2,
     accumulatedWeight: 1,
+    contributed: [],
     remainingSigners: [{ key: cosigner, weight: 1, type: "ed25519_public_key" }],
   };
   useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
@@ -816,4 +832,271 @@ test("execution-wizard › Retry is not held when no wallet prompt is left open"
   timedOutWallet(null);
   render(<ExecutionWizard network="testnet" />);
   expect((screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+// #400: the signer on screen is the signer that signs, and a signer that already signed is not
+// asked again.
+const short = (key: string) => `${key.slice(0, 4)}…${key.slice(-4)}`;
+/** The signer line's text, or null without one. Asserted as text, never as an element: a failing
+ *  match on a DOM element makes the matcher print the whole element, which never finishes. */
+const activeSignerText = (): string | null =>
+  screen.queryByTestId("active-signer")?.textContent ?? null;
+
+test("execution-wizard › after a hash(x) round, the next Add signature uses the wallet on screen, not the preimage", async () => {
+  const hashXKey = StrKey.encodeSha256Hash(hash(fromHex("deadbeef")));
+  useDemolishStore.setState({
+    phase: "STEP_FAILED",
+    accountState: {
+      signers: [
+        { key: source, weight: 1, type: "ed25519_public_key" },
+        { key: cosigner, weight: 1, type: "ed25519_public_key" },
+        { key: hashXKey, weight: 1, type: "hash_x" },
+      ],
+      thresholds: { low: 1, med: 3, high: 3 },
+    } as never,
+  } as never);
+  currentWalletAddress = cosigner;
+  currentSignatureStatus = {
+    requiredWeight: 3,
+    accumulatedWeight: 1,
+    contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+    remainingSigners: [
+      { key: hashXKey, weight: 1, type: "hash_x" },
+      { key: cosigner, weight: 1, type: "ed25519_public_key" },
+    ],
+  };
+  let finishHashXRound: () => void = () => {};
+  const runSpy = mock(
+    (_signer: { publicKey: string }) =>
+      new Promise<void>((resolve) => {
+        finishHashXRound = resolve;
+      })
+  );
+  runImpl = runSpy;
+
+  const { rerender } = render(<ExecutionWizard network="testnet" />);
+  await waitFor(() =>
+    expect(screen.getByTestId("active-signer").textContent).toContain(short(cosigner))
+  );
+
+  fireEvent.change(screen.getByPlaceholderText(/hex-encoded preimage/i), {
+    target: { value: "deadbeef" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /apply preimage/i }));
+  await waitFor(() => expect(runSpy).toHaveBeenCalledTimes(1));
+  expect(runSpy.mock.calls[0]?.[0]?.publicKey).toBe(hashXKey);
+  // While the preimage signs, the screen names the preimage, not the connected wallet.
+  const during = screen.getByTestId("active-signer").textContent ?? "";
+  expect(during).toContain("hash(x)");
+  expect(during).toContain(short(hashXKey));
+  expect(during).not.toContain(short(cosigner));
+
+  // The round pauses again, still one signature short.
+  currentSignatureStatus = {
+    requiredWeight: 3,
+    accumulatedWeight: 2,
+    contributed: [
+      { key: source, weight: 1, type: "ed25519_public_key" },
+      { key: hashXKey, weight: 1, type: "hash_x" },
+    ],
+    remainingSigners: [{ key: cosigner, weight: 1, type: "ed25519_public_key" }],
+  };
+  runImpl = mock(async (_signer: { publicKey: string }) => {});
+  await act(async () => {
+    finishHashXRound();
+  });
+  rerender(<ExecutionWizard network="testnet" />);
+
+  await waitFor(() =>
+    expect(screen.getByTestId("active-signer").textContent).toContain(short(cosigner))
+  );
+  const add = screen.getByRole("button", { name: /add signature/i }) as HTMLButtonElement;
+  await waitFor(() => expect(add.disabled).toBe(false));
+  fireEvent.click(add);
+  await waitFor(() => expect(runImpl).toHaveBeenCalledTimes(1));
+  expect((runImpl as ReturnType<typeof mock>).mock.calls[0]?.[0]?.publicKey).toBe(cosigner);
+});
+
+test("execution-wizard › a wallet that already signed cannot start another prompt, and says why", async () => {
+  currentWalletAddress = source;
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+    remainingSigners: [{ key: cosigner, weight: 1, type: "ed25519_public_key" }],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+  const runSpy = mock(async (_signer: { publicKey: string }) => {});
+  runImpl = runSpy;
+
+  render(<ExecutionWizard network="testnet" />);
+
+  await waitFor(() =>
+    expect(screen.getByTestId("active-signer").textContent).toContain(short(source))
+  );
+  const add = screen.getByRole("button", { name: /add signature/i }) as HTMLButtonElement;
+  expect(add.disabled).toBe(true);
+  expect(screen.getByText(ALREADY_SIGNED)).toBeDefined();
+  fireEvent.click(add);
+  expect(runSpy).not.toHaveBeenCalled();
+});
+
+test("execution-wizard › a secret key that already signed cannot sign again, and a remaining one can", async () => {
+  const sourceKey = Keypair.random();
+  const cosignerKey = Keypair.random();
+  useDemolishStore.setState({
+    phase: "STEP_FAILED",
+    accountState: {
+      signers: [
+        { key: sourceKey.publicKey(), weight: 1, type: "ed25519_public_key" },
+        { key: cosignerKey.publicKey(), weight: 1, type: "ed25519_public_key" },
+      ],
+      thresholds: { low: 1, med: 2, high: 2 },
+    } as never,
+  } as never);
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    contributed: [{ key: sourceKey.publicKey(), weight: 1, type: "ed25519_public_key" }],
+    remainingSigners: [{ key: cosignerKey.publicKey(), weight: 1, type: "ed25519_public_key" }],
+  };
+  const runSpy = mock(async (_signer: { publicKey: string }) => {});
+  runImpl = runSpy;
+
+  render(<ExecutionWizard network="testnet" />);
+  fireEvent.click(screen.getByRole("tab", { name: "Use secret key (advanced)" }));
+  fireEvent.change(screen.getByPlaceholderText("S..."), {
+    target: { value: sourceKey.secret() },
+  });
+
+  const add = (await screen.findByRole("button", {
+    name: /add signature/i,
+  })) as HTMLButtonElement;
+  await waitFor(() => expect(screen.getByText(ALREADY_SIGNED)).toBeDefined());
+  expect(add.disabled).toBe(true);
+
+  fireEvent.click(screen.getByRole("button", { name: /forget key/i }));
+  fireEvent.change(screen.getByPlaceholderText("S..."), {
+    target: { value: cosignerKey.secret() },
+  });
+  await waitFor(() => expect(add.disabled).toBe(false));
+  expect(screen.queryByText(ALREADY_SIGNED)?.textContent ?? null).toBeNull();
+  fireEvent.click(add);
+  await waitFor(() => expect(runSpy).toHaveBeenCalledTimes(1));
+  expect(runSpy.mock.calls[0]?.[0]?.publicKey).toBe(cosignerKey.publicKey());
+});
+
+test("execution-wizard › a hash(x) preimage is not offered again once its round has counted it", async () => {
+  const hashXKey = StrKey.encodeSha256Hash(hash(fromHex("deadbeef")));
+  currentSignatureStatus = {
+    requiredWeight: 3,
+    accumulatedWeight: 1,
+    contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+    remainingSigners: [
+      { key: hashXKey, weight: 1, type: "hash_x" },
+      { key: cosigner, weight: 1, type: "ed25519_public_key" },
+    ],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+  const runSpy = mock(async (_signer: { publicKey: string }) => {
+    currentSignatureStatus = {
+      requiredWeight: 3,
+      accumulatedWeight: 2,
+      contributed: [
+        { key: source, weight: 1, type: "ed25519_public_key" },
+        { key: hashXKey, weight: 1, type: "hash_x" },
+      ],
+      remainingSigners: [{ key: cosigner, weight: 1, type: "ed25519_public_key" }],
+    };
+  });
+  runImpl = runSpy;
+
+  const { rerender } = render(<ExecutionWizard network="testnet" />);
+  fireEvent.change(screen.getByPlaceholderText(/hex-encoded preimage/i), {
+    target: { value: "deadbeef" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /apply preimage/i }));
+  await waitFor(() => expect(runSpy).toHaveBeenCalledTimes(1));
+  rerender(<ExecutionWizard network="testnet" />);
+
+  const add = (await screen.findByRole("button", {
+    name: /add signature/i,
+  })) as HTMLButtonElement;
+  await waitFor(() => expect(activeSignerText()).toBeNull());
+  expect(add.disabled).toBe(true);
+  fireEvent.click(add);
+  expect(runSpy).toHaveBeenCalledTimes(1);
+});
+
+test("execution-wizard › the signed list and the still-needed line show each signer's weight", () => {
+  const third = Keypair.random().publicKey();
+  currentSignatureStatus = {
+    requiredWeight: 4,
+    accumulatedWeight: 2,
+    contributed: [{ key: source, weight: 2, type: "ed25519_public_key" }],
+    remainingSigners: [
+      { key: cosigner, weight: 1, type: "ed25519_public_key" },
+      { key: third, weight: 1, type: "ed25519_public_key" },
+    ],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+  runImpl = async () => {};
+
+  render(<ExecutionWizard network="testnet" />);
+
+  const signed = screen.getByRole("list", { name: "Signed" });
+  expect(signed.textContent).toContain(`${source.slice(0, 8)}…${source.slice(-8)}`);
+  expect(signed.textContent).toContain("signed, weight 2");
+  const needed = screen.getByText(/Need 2 more of:/).textContent ?? "";
+  expect(needed).toContain(`${cosigner.slice(0, 8)}…${cosigner.slice(-8)} (weight 1)`);
+  expect(needed).toContain(`${third.slice(0, 8)}…${third.slice(-8)} (weight 1)`);
+
+  const bar = screen.getByRole("progressbar");
+  expect(bar.getAttribute("aria-valuenow")).toBe("2");
+  expect(bar.getAttribute("aria-valuemin")).toBe("0");
+  expect(bar.getAttribute("aria-valuemax")).toBe("4");
+  expect(bar.getAttribute("aria-valuetext")).toBe("2 of 4 signature weight collected");
+});
+
+test("execution-wizard › the multisig notice says each transaction needs the full weight", () => {
+  useDemolishStore.setState({ estimatedTransactionCount: 3 } as never);
+  runImpl = async () => {};
+
+  render(<ExecutionWizard network="testnet" />);
+
+  expect(screen.getByTestId("multisig-notice").textContent).toContain(
+    "Each transaction needs that full weight on its own, so expect to sign up to 3 times with each signer."
+  );
+  useDemolishStore.setState({ estimatedTransactionCount: null } as never);
+});
+
+test("execution-wizard › after a pause on the secret-key tab, the wallet is not picked up until the user goes back to it", async () => {
+  currentWalletAddress = cosigner;
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+    remainingSigners: [{ key: cosigner, weight: 1, type: "ed25519_public_key" }],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+  const runSpy = mock(async (_signer: { publicKey: string }) => {});
+  runImpl = runSpy;
+
+  const { rerender } = render(<ExecutionWizard network="testnet" />);
+  await waitFor(() =>
+    expect(screen.getByTestId("active-signer").textContent).toContain(short(cosigner))
+  );
+  fireEvent.click(screen.getByRole("tab", { name: "Use secret key (advanced)" }));
+
+  // The round pauses again while the user is on the secret-key tab.
+  currentSignatureStatus = { ...currentSignatureStatus, accumulatedWeight: 1 };
+  rerender(<ExecutionWizard network="testnet" />);
+  await waitFor(() => expect(activeSignerText()).toBeNull());
+  const add = screen.getByRole("button", { name: /add signature/i }) as HTMLButtonElement;
+  expect(add.disabled).toBe(true);
+
+  fireEvent.click(screen.getByRole("tab", { name: "Connect wallet" }));
+  await waitFor(() =>
+    expect(screen.getByTestId("active-signer").textContent).toContain(short(cosigner))
+  );
 });

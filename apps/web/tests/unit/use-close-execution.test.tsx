@@ -419,6 +419,10 @@ test("useCloseExecution › a hash(x) signer's preimage completes the close by r
   expect(result.current.signatureStatus?.remainingSigners).toEqual([
     { key: hashXKey, weight: 1, type: "hash_x" },
   ]);
+  // The signed list is the envelope's own evaluated contributions, with the weight each added.
+  expect(result.current.signatureStatus?.contributed).toEqual([
+    { key: source, weight: 1, type: "ed25519_public_key" },
+  ]);
 
   // Second signer: the hash(x) signer's validated preimage, applied the same way a second
   // wallet would be - resumes onto the same envelope, no re-fetch, and its weight counts.
@@ -1077,6 +1081,7 @@ test("useCloseExecution › a later transaction in the round is signed against t
   expect(result.current.signatureStatus).toEqual({
     requiredWeight: 1,
     accumulatedWeight: 0,
+    contributed: [],
     remainingSigners: [{ key: source, weight: 1, type: "ed25519_public_key" }],
   });
 
@@ -1170,6 +1175,7 @@ async function twoRoundClose(roundTwoReportsSigners: boolean): Promise<void> {
   expect(result.current.signatureStatus).toEqual({
     requiredWeight: 1,
     accumulatedWeight: 0,
+    contributed: [],
     remainingSigners: masterOnly.signers,
   });
 
@@ -1235,6 +1241,7 @@ test("useCloseExecution › a key the round no longer lists pauses for a current
   expect(result.current.signatureStatus).toEqual({
     requiredWeight: 1,
     accumulatedWeight: 0,
+    contributed: [],
     remainingSigners: masterOnly,
   });
 });
