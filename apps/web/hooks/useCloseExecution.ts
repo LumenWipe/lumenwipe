@@ -61,6 +61,7 @@ import {
   saveUnconfirmed,
 } from "@/lib/session/store";
 import { requestMediatorCosignature } from "@/lib/stellar/mediator";
+import { mediatorAllowedFor } from "@/lib/exchange-registry";
 import { requestFeeBumpSponsorship } from "@/lib/stellar/fee-bump-sponsor";
 import { notifyStatsRefresh } from "@/lib/stats-events";
 import {
@@ -167,7 +168,6 @@ export function useCloseExecution() {
   const destinationAddress = useDemolishStore((s) => s.destinationAddress);
   const memo = useDemolishStore((s) => s.memo);
   const memoType = useDemolishStore((s) => s.memoType);
-  const mediatorRequired = useDemolishStore((s) => s.mediatorRequired);
   const markCoveredConfirmed = useDemolishStore((s) => s.markCoveredConfirmed);
   const setPhase = useDemolishStore((s) => s.setPhase);
   const setLastError = useDemolishStore((s) => s.setLastError);
@@ -314,7 +314,6 @@ export function useCloseExecution() {
                 expected: {
                   source: sourceAddress,
                   destination: destinationAddress,
-                  mediatorRequired,
                   // The floor under the forwarded amount. Empty defaults fail closed: with no
                   // balance read, any forward is judged short rather than trusted.
                   nativeBalance: accountState?.nativeBalanceLumens ?? "0",
@@ -422,8 +421,10 @@ export function useCloseExecution() {
 
               // A merge through the shared mediator is one atomic transaction: the user
               // signed the merge; the backend co-signs the mediator's forward payment. It
-              // cannot change destination or amount, so funds can never be diverted.
-              if (mediatorRequired && tx.covers.includes("MERGE")) {
+              // cannot change destination or amount, so funds can never be diverted. Decided
+              // from the bundled registry, as `verify()` decides it, never from the store: a
+              // restored session can carry a stale value, and the store is for display.
+              if (mediatorAllowedFor(destinationAddress) && tx.covers.includes("MERGE")) {
                 setProgressStatus("Co-signing the forward payment…");
                 // Defense-in-depth: the mediator may ONLY add its signature - assert it did not
                 // alter the body, and that it actually added one, before submit.
@@ -620,7 +621,6 @@ export function useCloseExecution() {
       destinationAddress,
       memo,
       memoType,
-      mediatorRequired,
       markCoveredConfirmed,
       setPhase,
       setLastError,
@@ -725,7 +725,6 @@ export function useCloseExecution() {
         expected: {
           source: sourceAddress,
           destination: destinationAddress,
-          mediatorRequired,
           nativeBalance: accountState?.nativeBalanceLumens ?? "0",
           memo: sentMemo?.memo ?? null,
           memoType: sentMemo?.memoType ?? null,
@@ -775,7 +774,7 @@ export function useCloseExecution() {
         );
       }
     },
-    [network, sourceAddress, destinationAddress, memo, memoType, mediatorRequired]
+    [network, sourceAddress, destinationAddress, memo, memoType]
   );
 
   return {

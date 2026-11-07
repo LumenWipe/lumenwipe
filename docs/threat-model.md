@@ -162,7 +162,9 @@ must confirm, from its own inputs and never from the API response:
 
 1. The destination the user entered needs the mediator (a known exchange that cannot receive a merge).
    Otherwise the merge must go straight to the user's address, and the mediated shape is refused, so an
-   intermediary the API names cannot be slipped into a close to a plain wallet.
+   intermediary the API names cannot be slipped into a close to a plain wallet. The converse holds too: a
+   merge straight into a destination that needs the mediator is refused, because the exchange cannot credit
+   it. Both are decided from the integrator's own copy of the registry, never from the API response.
 2. The transaction source is the account being closed, and the transaction has exactly two operations: an
    `accountMerge` followed by a `payment`.
 3. The merge is sourced from the account being closed (explicitly, or by inheriting the transaction source).
