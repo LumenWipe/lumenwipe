@@ -1,9 +1,9 @@
 import type { UnresolvedSubmission } from "@lumenwipe/sdk";
 import type { Network } from "@/config/networks";
 
-/** The shape of a saved close record. A record without one predates the field and is read with
- *  defaults for whatever it lacks. */
-export const SESSION_RECORD_VERSION = 2;
+/** The shape of the saved close and receipt records. A record without one predates the field and
+ *  is read with defaults for whatever it lacks. */
+export const RECORD_VERSION = 2;
 
 /** One confirmed transaction of the close, in the order it was confirmed. */
 export interface CompletedStepRecord {

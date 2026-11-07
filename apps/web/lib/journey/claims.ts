@@ -19,7 +19,8 @@ export type ClaimKey =
   | "nothing-lost"
   | "can-resume"
   | "recorded-progress"
-  | "key-stays-in-browser";
+  | "key-stays-in-browser"
+  | "receipt-saved";
 
 const DURING_SIGNING: readonly ClaimKey[] = [
   "each-tx-checked",
@@ -70,8 +71,24 @@ export const ALLOWED_CLAIMS: Record<JourneyStateName, readonly ClaimKey[]> = {
     "can-resume",
     "recorded-progress",
   ],
-  partial: [...IN_EVERY_STATE, ...DURING_SIGNING, "still-open", "can-resume", "recorded-progress"],
-  complete: [...IN_EVERY_STATE, "each-tx-checked", "account-closed", "no-new-sent", "may-be-sent"],
+  // "receipt-saved" is allowed only where a receipt is written, and is shown only once its write
+  // succeeded: the state allows it, the write outcome decides it.
+  partial: [
+    ...IN_EVERY_STATE,
+    ...DURING_SIGNING,
+    "still-open",
+    "can-resume",
+    "recorded-progress",
+    "receipt-saved",
+  ],
+  complete: [
+    ...IN_EVERY_STATE,
+    "each-tx-checked",
+    "account-closed",
+    "no-new-sent",
+    "may-be-sent",
+    "receipt-saved",
+  ],
   // Earlier transactions may already have been sent: only "nothing more" is true here.
   unknown: [
     ...IN_EVERY_STATE,
@@ -131,6 +148,8 @@ export const CLAIM_PATTERNS: Record<ClaimKey, RegExp> = {
   "recorded-progress": /recorded in this browser|this browser recorded/i,
   // The secret key's handling: it stays on the device and only in memory.
   "key-stays-in-browser": /key never leaves (?:your browser|this device)|held in memory only/i,
+  // That this browser holds the receipt: true only after its write resolved.
+  "receipt-saved": /receipt (?:is |was )?saved (?:to|in)/i,
 };
 
 export function permittedClaims(journey: Journey): ClaimKey[] {

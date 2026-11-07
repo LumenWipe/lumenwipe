@@ -1,6 +1,6 @@
 import type { Network } from "@/config/networks";
 import { loadSession, saveSession } from "@/lib/session/store";
-import { SESSION_RECORD_VERSION } from "@/types/session";
+import { RECORD_VERSION } from "@/types/session";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 
@@ -38,7 +38,7 @@ export async function saveCloseSession(owner: CloseOwner): Promise<string | null
   if (!sessionId || !destinationAddress) return null;
   const now = new Date().toISOString();
   await saveSession({
-    version: SESSION_RECORD_VERSION,
+    version: RECORD_VERSION,
     id: sessionId,
     network: owner.network,
     sourceAddress: owner.source,

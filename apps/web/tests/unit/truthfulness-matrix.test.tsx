@@ -580,7 +580,10 @@ const MATRIX: Surface[] = [
   },
   {
     name: "receipt banner",
-    cells: [receipt("partial", ["still-open"]), receipt("complete", ["account-closed"])],
+    cells: [
+      receipt("partial", ["still-open", "receipt-saved"]),
+      receipt("complete", ["account-closed", "receipt-saved"]),
+    ],
   },
   {
     name: "leave dialog",
@@ -764,8 +767,12 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
     "account-closed": { count: 1, shownBy: OUTSIDE.notFound },
   },
   "components/complete/CompletionReceipt.tsx": {
-    "account-closed": { count: 5, shownBy: "receipt banner" },
+    "account-closed": { count: 3, shownBy: "receipt banner" },
+    "receipt-saved": { count: 1, shownBy: "receipt banner" },
     "still-open": { count: 1, shownBy: "receipt banner" },
+  },
+  "lib/receipt/build-record.ts": {
+    "account-closed": { count: 2, shownBy: "receipt banner" },
   },
   "app/[network]/execute/page.tsx": {
     "can-resume": { count: 1, shownBy: "leave and resume control" },

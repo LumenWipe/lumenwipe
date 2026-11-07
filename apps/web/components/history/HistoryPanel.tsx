@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { X, ExternalLink, Trash2, History } from "lucide-react";
 import { SE_EXPLORER_BASE, SV_EXPLORER_BASE } from "@/config/networks";
 import { listHistory, deleteHistoryEntry } from "@/lib/session/history";
-import type { MergeHistoryEntry } from "@/types/history";
+import type { ReceiptRecord } from "@/types/history";
 import { Dialog, DialogBody, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
 interface HistoryPanelProps {
@@ -12,7 +12,7 @@ interface HistoryPanelProps {
 }
 
 export default function HistoryPanel({ onClose }: HistoryPanelProps) {
-  const [entries, setEntries] = useState<MergeHistoryEntry[]>([]);
+  const [entries, setEntries] = useState<ReceiptRecord[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -119,9 +119,9 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
                 </div>
 
                 <div className="space-y-1">
-                  {entry.txReceipts.map((receipt) => (
+                  {entry.transactions.map((receipt) => (
                     <div key={receipt.txHash} className="flex items-center justify-between text-xs">
-                      <span className="text-fg-muted truncate max-w-[140px]">{receipt.title}</span>
+                      <span className="text-fg-muted truncate max-w-[140px]">{receipt.label}</span>
                       <div className="flex items-center gap-2 shrink-0">
                         <a
                           href={`${explorerBase}/tx/${receipt.txHash}`}
@@ -145,8 +145,8 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
                 </div>
 
                 <p className="text-xs text-fg-muted">
-                  Total fees: {entry.totalFeeLumens} XLM
-                  {entry.usedMediator && " · used relay account"}
+                  Total fees: {entry.feeLumens === null ? "not recorded" : `${entry.feeLumens} XLM`}
+                  {entry.mediatorRequired && " · used relay account"}
                 </p>
               </div>
             );

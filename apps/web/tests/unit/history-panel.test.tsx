@@ -3,7 +3,7 @@ import { useState } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import HistoryPanel from "@/components/history/HistoryPanel";
 import * as history from "@/lib/session/history";
-import type { MergeHistoryEntry } from "@/types/history";
+import type { ReceiptRecord } from "@/types/history";
 
 afterEach(() => {
   mock.restore();
@@ -19,7 +19,7 @@ function Host() {
   );
 }
 
-async function openPanel(entries: MergeHistoryEntry[] = []): Promise<HTMLElement> {
+async function openPanel(entries: ReceiptRecord[] = []): Promise<HTMLElement> {
   spyOn(history, "listHistory").mockResolvedValue(entries);
   render(<Host />);
   const trigger = screen.getByRole("button", { name: "Merge history" });
@@ -59,11 +59,16 @@ test("HistoryPanel › the delete control has an accessible name", async () => {
       network: "testnet",
       sourceAddress: "GSOURCE",
       destinationAddress: "GDESTINATION",
-      completedAt: 0,
-      txReceipts: [],
-      totalFeeLumens: "0",
-      usedMediator: false,
-    } as unknown as MergeHistoryEntry,
+      version: 2,
+      outcome: "closed",
+      completedAt: "2026-11-01T00:00:00.000Z",
+      memo: null,
+      transactions: [],
+      groups: null,
+      feeLumens: "0",
+      receivedLumens: null,
+      mediatorRequired: false,
+    },
   ]);
   expect(screen.getByRole("button", { name: "Delete entry" })).toBeTruthy();
 });

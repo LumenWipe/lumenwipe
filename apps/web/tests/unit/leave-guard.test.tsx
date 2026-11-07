@@ -22,7 +22,7 @@ import { saveSession, saveUnconfirmed } from "@/lib/session/store";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { PlannedStep, StepStatus, StepType } from "@/types/plan";
-import { SESSION_RECORD_VERSION } from "@/types/session";
+import { RECORD_VERSION } from "@/types/session";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
 
 const SOURCE = Keypair.random().publicKey();
@@ -201,7 +201,7 @@ describe("leaving while a transaction may be in flight", () => {
 
   test("keeps the durable hash, so the start page still finds it", async () => {
     await saveSession({
-      version: SESSION_RECORD_VERSION,
+      version: RECORD_VERSION,
       id: "s",
       network: "testnet",
       sourceAddress: SOURCE,
