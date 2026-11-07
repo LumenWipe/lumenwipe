@@ -2558,3 +2558,40 @@ test("a freshly mounted close claims nothing about whether a retry is safe", () 
   const { result } = renderHook(() => useCloseExecution());
   expect(result.current.retrySafe).toBeNull();
 });
+
+test.each([
+  ["4411", "id", "id"],
+  ["deposit", "text", "text"],
+  [null, "id", undefined],
+] as const)(
+  "useCloseExecution › memo %p of type %p asks for the transactions with memoType %p",
+  async (memo, memoType, sent) => {
+    const source = Keypair.random();
+    useNetworkStore.setState({ network: "testnet" });
+    useDemolishStore.setState({
+      sourceAddress: source.publicKey(),
+      destinationAddress: Keypair.random().publicKey(),
+      memo,
+      memoType,
+      mediatorRequired: false,
+      accountState: {
+        signers: [{ key: source.publicKey(), weight: 1, type: "ed25519_public_key" }],
+        thresholds: { low: 0, med: 0, high: 0 },
+      } as never,
+    } as never);
+    const bodies: unknown[] = [];
+    spyOn(closeClient, "fetchCloseTransactions").mockImplementation((async (body: unknown) => {
+      bodies.push(body);
+      throw new Error("stop after the request");
+    }) as unknown as typeof closeClient.fetchCloseTransactions);
+
+    const { result } = renderHook(() => useCloseExecution());
+    await act(async () => {
+      await result.current.run(realSigner(source));
+    });
+
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toMatchObject({ memo: memo ?? undefined });
+    expect((bodies[0] as { memoType?: string }).memoType).toBe(sent);
+  }
+);

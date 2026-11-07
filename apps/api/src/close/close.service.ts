@@ -29,7 +29,9 @@ import {
   memoRuleFor,
   needsLedgerMemoRead,
   normalizeRequestMemo,
+  parseRequestMemoType,
   requestMemoProblem,
+  requestMemoTypeProblem,
 } from "@/lib/close-api/memo-rules";
 import { CloseBuildError } from "@/lib/close-api/build-transactions";
 import {
@@ -148,6 +150,7 @@ export class CloseService {
       decisions?: unknown;
       planHash?: unknown;
       memo?: unknown;
+      memoType?: unknown;
     }
   ) {
     const { source, destination } = body;
@@ -165,11 +168,17 @@ export class CloseService {
     ) {
       fail("invalid_plan_hash", "planHash must be the 64-character hex hash a plan returned.", 400);
     }
+    const requestedMemoType = parseRequestMemoType(body.memoType);
+    if (requestedMemoType === undefined) {
+      fail("invalid_body", 'memoType must be "text" or "id".', 400);
+    }
     const normalized = normalizeRequestMemo(body.memo);
     if (!("memo" in normalized)) fail(normalized.code, normalized.message, 422);
     const { memo } = normalized;
     const exchange = this.registry.lookup(destination);
-    const memoProblem = requestMemoProblem(memo, memoRuleFor(exchange, false));
+    const memoProblem =
+      requestMemoTypeProblem(memo, requestedMemoType, exchange) ??
+      requestMemoProblem(memo, memoRuleFor(exchange, false, requestedMemoType));
     if (memoProblem) fail(memoProblem.code, memoProblem.message, 422, memoProblem.details);
 
     // A destination the registry does not recognize cannot be assumed to be a personal wallet,
@@ -207,7 +216,7 @@ export class CloseService {
       needsLedgerMemoRead(exchange, memo !== null) &&
       (await this.reader.readMemoRequired(destination, network))
     ) {
-      const missing = requestMemoProblem(memo, memoRuleFor(exchange, true));
+      const missing = requestMemoProblem(memo, memoRuleFor(exchange, true, requestedMemoType));
       if (missing) fail(missing.code, missing.message, 422, missing.details);
     }
 
@@ -341,7 +350,8 @@ export class CloseService {
         {},
         { floors: conversionFloors, classicFloors },
         isDefiPositionsAcknowledged(decisions, source),
-        { acknowledged: isIssuerSupplyAcknowledged(decisions, source) }
+        { acknowledged: isIssuerSupplyAcknowledged(decisions, source) },
+        requestedMemoType
       );
 
       const response: TransactionsResponse = {

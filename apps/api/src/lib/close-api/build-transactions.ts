@@ -217,7 +217,9 @@ export async function buildCloseTransactions(
     /** The caller's address-scoped answer to the outstanding-supply acknowledgement. */
     acknowledged?: boolean;
     deps?: IssuanceDeps;
-  } = {}
+  } = {},
+  /** The memo type the caller named, already checked against the registry by the caller. */
+  requestedMemoType: "text" | "id" | "hash" | null = null
 ): Promise<CloseBuildResult> {
   // Reject the same two hostile states buildPlan() blocks (issue #167), before any read or
   // build work: /close/transactions is an API-key product surface with an SDK, and
@@ -581,9 +583,9 @@ export async function buildCloseTransactions(
     )
   );
 
-  // The exchange registry dictates the memo type; the client only supplies the value.
+  // A listed exchange's memo type is the registry's; any other destination's is the caller's.
   const exchange = lookupExchange(destinationAddress);
-  const memoType = exchange?.memoType ?? (memo ? "text" : null);
+  const memoType = exchange?.memoType ?? (memo ? (requestedMemoType ?? "text") : null);
 
   // Live re-read immediately before build: /close/plan may have assessed affordability
   // minutes ago, and the sponsored owner's on-chain reserve state can have changed since -

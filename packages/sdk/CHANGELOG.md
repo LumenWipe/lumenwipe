@@ -9,6 +9,12 @@ release is cut.
 
 ### Added
 
+- `CloseTransactionsRequest.memoType` (`"text"` or `"id"`): the type of `memo`. A destination the
+  exchange registry does not list uses it, `text` when omitted; a listed exchange keeps the
+  registry's type and answers `422 invalid_memo` with `details.memoType` when another is named.
+  An unknown value is `400 invalid_body` and `"hash"` is `422 unsupported_memo_type`. An id memo
+  with a leading zero is now `422 invalid_memo`: the network would keep only the number. Types
+  only; no runtime change.
 - `PhoenixLpPosition.shareToken` and `FxdaoCdpPosition.debtToken`: the contract of the token a
   position's exit moves, read from the pool's `CONFIG` and the vault's currency. Types only; no
   runtime change.

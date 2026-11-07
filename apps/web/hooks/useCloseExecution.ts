@@ -165,6 +165,7 @@ export function useCloseExecution() {
   const sourceAddress = useDemolishStore((s) => s.sourceAddress);
   const destinationAddress = useDemolishStore((s) => s.destinationAddress);
   const memo = useDemolishStore((s) => s.memo);
+  const memoType = useDemolishStore((s) => s.memoType);
   const mediatorRequired = useDemolishStore((s) => s.mediatorRequired);
   const markCoveredConfirmed = useDemolishStore((s) => s.markCoveredConfirmed);
   const setPhase = useDemolishStore((s) => s.setPhase);
@@ -289,6 +290,10 @@ export function useCloseExecution() {
                   destination: destinationAddress,
                   decisions,
                   memo: memo ?? undefined,
+                  // The type checked on the plan page goes with the memo, so an id memo to an
+                  // unlisted wallet is not sent as text. A listed exchange's type is checked again.
+                  memoType:
+                    memo && (memoType === "text" || memoType === "id") ? memoType : undefined,
                   planHash,
                 },
                 network
@@ -608,6 +613,7 @@ export function useCloseExecution() {
       sourceAddress,
       destinationAddress,
       memo,
+      memoType,
       mediatorRequired,
       markCoveredConfirmed,
       setPhase,

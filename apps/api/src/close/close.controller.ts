@@ -100,7 +100,7 @@ export class CloseController {
     return this.close.batchPlan(network, body);
   }
 
-  @ApiErrorResponse(400, "Invalid network, source, destination, or JSON body.", [
+  @ApiErrorResponse(400, "Invalid network, source, destination, memo type, or JSON body.", [
     "invalid_network",
     "invalid_source",
     "invalid_destination",
@@ -200,6 +200,7 @@ export class CloseController {
       decisions?: unknown;
       planHash?: unknown;
       memo?: unknown;
+      memoType?: unknown;
     }
   ) {
     return this.close.transactions(network, body);

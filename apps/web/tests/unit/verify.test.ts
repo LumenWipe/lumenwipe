@@ -3318,3 +3318,16 @@ describe("a Blend exit as the decoder reads it", () => {
     );
   });
 });
+
+// Why the plan page and the API refuse a leading zero in an id memo instead of sending it: the
+// network keeps the number, so the memo that comes back is not the one the user confirmed, and
+// verification refuses the transaction only at signing.
+test("an id memo given as 007 comes back as 7 and fails the memo check", () => {
+  const unsignedXdr = buildXdr([Operation.accountMerge({ destination: DEST })], Memo.id("007"));
+  const decoded = intentFromXdr(unsignedXdr, Networks.TESTNET);
+  expect(decoded.memo).toBe("7");
+  expect(() => assertCloseIntent(decoded, expectation({ memo: "007" }))).toThrow(
+    "The transaction carries a memo you did not set."
+  );
+  expect(() => assertCloseIntent(decoded, expectation({ memo: "7" }))).not.toThrow();
+});

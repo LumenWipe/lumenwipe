@@ -568,6 +568,119 @@ describe("transactions", () => {
     expect((await to("a".repeat(28))).status).toBe("ready");
   });
 
+  test("T6b an id memo with a leading zero is refused, not sent as a different number", async () => {
+    const { controller } = await makeController();
+    const to = (memo: string) =>
+      controller.transactions("testnet", body({ destination: ID_EXCHANGE.address, memo }));
+    await expectFail(to("007"), 422, "invalid_memo", "An id memo cannot start with 0.");
+    await expectFail(to("00"), 422, "invalid_memo", "An id memo cannot start with 0.");
+    expect((await to("0")).status).toBe("ready");
+    expect((await to("70")).status).toBe("ready");
+  });
+
+  test("T7b an unlisted destination's memo is built with the type the request names", async () => {
+    const seen: unknown[] = [];
+    const { controller } = await makeController({
+      buildCloseTransactions: (async (...args: unknown[]) => {
+        seen.push(args.at(-1));
+        return BUILT;
+      }) as Builder,
+    });
+    await controller.transactions("testnet", body({ memo: "4411", memoType: "id" }));
+    await controller.transactions("testnet", body({ memo: "4411", memoType: "text" }));
+    await controller.transactions("testnet", body({ memo: "4411" }));
+    expect(seen).toEqual(["id", "text", null]);
+  });
+
+  test("T7c an id memo type for an unlisted destination is validated as an id", async () => {
+    const { controller } = await makeController();
+    const to = (memo: string) => controller.transactions("testnet", body({ memo, memoType: "id" }));
+    await expectFail(
+      to("12ab"),
+      422,
+      "invalid_memo",
+      "This destination requires a numeric id memo within the uint64 range."
+    );
+    await expectFail(to("007"), 422, "invalid_memo");
+    expect((await to("18446744073709551615")).status).toBe("ready");
+  });
+
+  test("T7d a memo type that is not text or id is a malformed body", async () => {
+    const { controller } = await makeController();
+    for (const memoType of ["ID", "number", 1, true, {}]) {
+      await expectFail(
+        controller.transactions("testnet", body({ memo: "1", memoType })),
+        400,
+        "invalid_body",
+        'memoType must be "text" or "id".'
+      );
+    }
+    expect(
+      (await controller.transactions("testnet", body({ memo: "1", memoType: null }))).status
+    ).toBe("ready");
+  });
+
+  test("T7e a hash memo type is not supported", async () => {
+    const { controller } = await makeController();
+    await expectFail(
+      controller.transactions("testnet", body({ memo: "abc", memoType: "hash" })),
+      422,
+      "unsupported_memo_type",
+      "Hash memos are not supported."
+    );
+  });
+
+  test("T7f a listed exchange refuses a memo type other than the registry's", async () => {
+    const { controller } = await makeController();
+    await expectFail(
+      controller.transactions(
+        "testnet",
+        body({ destination: ID_EXCHANGE.address, memo: "4411", memoType: "text" })
+      ),
+      422,
+      "invalid_memo",
+      "This destination requires an id memo.",
+      { memoType: "id" }
+    );
+    await expectFail(
+      controller.transactions(
+        "testnet",
+        body({ destination: TEXT_EXCHANGE.address, memo: "4411", memoType: "id" })
+      ),
+      422,
+      "invalid_memo",
+      undefined,
+      { memoType: "text" }
+    );
+    const same = await controller.transactions(
+      "testnet",
+      body({ destination: ID_EXCHANGE.address, memo: "4411", memoType: "id" })
+    );
+    expect(same.status).toBe("ready");
+  });
+
+  test("T7g a memo type without a memo has no effect", async () => {
+    const { controller } = await makeController();
+    const seen: unknown[] = [];
+    const { controller: recording } = await makeController({
+      buildCloseTransactions: (async (...args: unknown[]) => {
+        seen.push(args[4]);
+        return BUILT;
+      }) as Builder,
+    });
+    const result = await recording.transactions("testnet", body({ memo: "", memoType: "id" }));
+    expect(result.status).toBe("ready");
+    expect(seen).toEqual([null]);
+    await expectFail(
+      controller.transactions(
+        "testnet",
+        body({ destination: TEXT_EXCHANGE.address, memo: "", memoType: "id" })
+      ),
+      422,
+      "memo_required"
+    );
+  });
+
   test("T8 an exchange close is refused once the registry has expired", async () => {
     const { controller } = await makeController({ isFresh: () => false });
     await expectFail(
