@@ -23,6 +23,7 @@ import {
 } from "@/lib/close-api/decisions";
 import { assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
 import { preflightErrorCode } from "@/lib/close-api/merge-preflight";
+import type { AccountReader } from "@/lib/close-api/transfer-destinations";
 import { parseDecisions } from "@/lib/close-api/parse-decisions";
 import { computePlanHash } from "@/lib/close-api/plan-response";
 import {
@@ -51,7 +52,7 @@ import { mapDomainError, PLAN_ERRORS, TRANSACTION_ERRORS } from "@/lib/close-api
 import { withTimeout } from "@/lib/utils/with-timeout";
 import { StatsService } from "@/stats/stats.service";
 import { builtCloseHashes, signedXdrHasAccountMerge } from "@/stats/merge-verification";
-import type { SubmitPendingDetails, TransactionsResponse, Trustline } from "@lumenwipe/types";
+import type { SubmitPendingDetails, TransactionsResponse } from "@lumenwipe/types";
 import {
   CLOCK,
   CLOSE_BUILDER,
@@ -90,10 +91,8 @@ export class CloseService {
     @Inject(CLOCK) private readonly clock: Clock
   ) {}
 
-  private readonly readDestinationTrustlines = async (
-    address: string,
-    net: Network
-  ): Promise<{ trustlines: Trustline[] } | null> => this.reader.readTrustlinesOnly(address, net);
+  private readonly readDestinationTrustlines: AccountReader = (address, net) =>
+    this.reader.readTrustlinesOnly(address, net);
 
   async plan(
     network: Network,
