@@ -4,6 +4,7 @@ import { renderToString } from "react-dom/server";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { Keypair } from "@stellar/stellar-sdk";
 import SecretKeyInput from "@/components/account-entry/SecretKeyInput";
+import { isValidSecretKey } from "@/lib/utils/validation";
 
 afterEach(() => mock.restore());
 
@@ -82,10 +83,20 @@ test("the error state leaves no copy of the key in any attribute or message", ()
   expectNoCopyInMarkup(container);
 });
 
-test("the caller's ref receives exactly what was entered", () => {
+test("the caller's ref receives what was entered, without surrounding whitespace", () => {
   render(<Harness />);
   type(` ${TYPED} `);
-  expect(held.current).toBe(` ${TYPED} `);
+  expect(held.current).toBe(TYPED);
+});
+
+test("a pasted key with a trailing newline is accepted as the key", () => {
+  const secret = Keypair.random().secret();
+  const reports: boolean[] = [];
+  render(<Harness onValidity={(valid) => reports.push(valid)} />);
+  type(`${secret}\n`);
+  expect(reports).toEqual([true]);
+  expect(held.current).toBe(secret);
+  expect(screen.queryByRole("alert")).toBeNull();
 });
 
 test("validity is reported without the key", () => {
@@ -191,4 +202,57 @@ test("an invalid key is not described as valid", () => {
   type(TYPED);
   fireEvent.blur(field());
   expect(describedText(field())).not.toContain("Valid secret key");
+});
+
+// Synthetic placeholders, never a parseable key: each is asserted invalid where it is used.
+const UNFINISHED = "SABC";
+const FULL_LENGTH_INVALID = `S${"A".repeat(55)}`;
+
+test("a value that can never become a key is flagged while typing, before the field is left", () => {
+  render(<Harness />);
+  type(TYPED);
+  expect(screen.getByRole("alert").textContent).toContain("Not a valid Stellar secret key");
+  expect(field().getAttribute("aria-invalid")).toBe("true");
+});
+
+test("a key still being typed is not flagged until the field is left", () => {
+  render(<Harness />);
+  type(UNFINISHED);
+  expect(screen.queryByRole("alert")).toBeNull();
+  fireEvent.blur(field());
+  expect(screen.getByRole("alert")).toBeDefined();
+});
+
+test("a full-length value that does not parse is flagged while typing", () => {
+  expect(isValidSecretKey(FULL_LENGTH_INVALID)).toBe(false);
+  render(<Harness />);
+  type(FULL_LENGTH_INVALID);
+  expect(screen.getByRole("alert")).toBeDefined();
+});
+
+test("a valid key says so in visible text as it is entered, and in the field's description", () => {
+  const secret = Keypair.random().secret();
+  render(<Harness />);
+  type(secret);
+
+  const visible = screen.getByText("Valid secret key", { selector: "p" });
+  expect(visible.className).not.toContain("sr-only");
+  expect(visible.getAttribute("aria-hidden")).toBe("true");
+  expect(describedText(field())).toContain("Valid secret key");
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("the field states that the key controls the account, and that it stays in memory", () => {
+  render(<Harness />);
+  const described = describedText(field());
+  expect(described).toContain("Anyone who has this key controls the account.");
+  expect(described).toContain("held in memory only, never persisted");
+});
+
+test("a partly typed key leaves the caller's ref when the field goes", () => {
+  const { unmount } = render(<Harness />);
+  type(Keypair.random().secret().slice(0, 55));
+  expect(held.current).toHaveLength(55);
+  unmount();
+  expect(held.current).toBe("");
 });

@@ -9,6 +9,7 @@ import { fetchCloseTransactions } from "@/lib/api/close-client";
 import { VerificationError } from "@/lib/stellar/verify";
 import { TxSubmitError } from "@/lib/utils/errors";
 import {
+  SignerReleasedError,
   WalletNotUsableError,
   WalletSignerMismatchError,
   WalletSigningError,
@@ -22,6 +23,7 @@ import {
   closeFailureMessage,
   closeRetryIsSafe,
   PREIMAGE_EXPOSED,
+  SIGNER_RELEASED,
   STILL_UNCONFIRMED_NOTICE,
   UNCONFIRMED_NOTICE,
   readApiError,
@@ -44,6 +46,10 @@ beforeEach(() => {
 afterEach(() => errorSpy.mockRestore());
 
 describe("toUserMessage", () => {
+  test("a run stopped because its signer was cleared says so", () => {
+    expect(toUserMessage(new SignerReleasedError(), "execute")).toBe(SIGNER_RELEASED);
+  });
+
   test("a wallet rejection becomes a calm, actionable message", () => {
     const msg = toUserMessage(
       new WalletSigningError(-4, VARIAL_ID, "User declined access"),

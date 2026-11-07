@@ -19,7 +19,8 @@ export class SecretKeySigner implements TransactionSigner {
   private readonly keypair: Keypair;
 
   constructor(secretKey: string) {
-    this.keypair = Keypair.fromSecret(secretKey);
+    // Surrounding whitespace from a paste is not part of the key.
+    this.keypair = Keypair.fromSecret(secretKey.trim());
   }
 
   get publicKey(): string {
@@ -52,6 +53,17 @@ export class HashXPreimageSigner implements TransactionSigner {
     const built = TransactionBuilder.fromXdr(xdr, networkPassphrase);
     built.signHashX(this.preimage);
     return built.toEnvelope().toXdr("base64");
+  }
+}
+
+/**
+ * The screen dropped the signer a run was started with (Forget key, another tab, leaving the
+ * screen). Thrown before the next signature, so the run asks nothing more of that signer.
+ */
+export class SignerReleasedError extends Error {
+  constructor() {
+    super("The signer this run started with was cleared.");
+    this.name = "SignerReleasedError";
   }
 }
 

@@ -16,6 +16,8 @@ The app only says a wallet is connected once it has checked. A session kept from
 
 For keys that live in no wallet. The key is held in memory only for the length of the session. It is never written to storage and never sent over the network. It is wiped when the close completes, when you abort, when you leave the page, or when you click **Forget key**.
 
+Anyone who has the key controls the account. Once a key is entered, the screen shows its public key (the first and last six characters) and whether it is a signer on the account being closed, with its weight. Once a transaction is waiting for more signatures, that standing comes from the signers read for it then, so a co-signer added after review is recognised. A key the account does not list, or lists with weight 0, cannot sign, and the sign button stays disabled with the reason next to it.
+
 ## Multisig accounts
 
 When an account needs several signers to reach its threshold, connect wallets or enter keys one after another. Signatures accumulate on the same transaction until the threshold is met, then it is submitted. The screen always names the signer that will sign. Each time a transaction is still short of weight, the signer is cleared: a secret key has to be entered again if a later transaction needs it, and a connected wallet stays connected but is offered only for a transaction that still needs its signature. A signer that already signed a transaction cannot be asked to sign it again. Each transaction needs the full weight, so expect to sign once per transaction with each signer.
