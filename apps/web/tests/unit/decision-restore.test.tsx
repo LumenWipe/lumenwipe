@@ -30,6 +30,7 @@ import type { AccountState } from "@/types/account";
 import type { PlannedStep } from "@/types/plan";
 import type { SessionRecord } from "@/types/session";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { stubUnchangedRefresh } from "./fixtures/fresh-plan";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -481,6 +482,7 @@ describe("the review confirm ends what is kept", () => {
     spyOn(closeRecord, "saveCloseSession").mockResolvedValue("s");
     useDemolishStore.getState().setAddresses(SOURCE, DEST);
     useDemolishStore.setState({ phase: "PREFLIGHT_COMPLETE", executionPlan: [step] });
+    stubUnchangedRefresh();
     window.sessionStorage.setItem(KEY, JSON.stringify(snapshot()));
     await mount(<ReviewView network="testnet" />);
     fireEvent.click(screen.getByRole("checkbox"));

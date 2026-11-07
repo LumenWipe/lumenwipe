@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
+import { ShieldCheck, AlertTriangle, ArrowRight, Loader2, RefreshCw } from "lucide-react";
 import type { Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { closeOwner, saveCloseSession } from "@/lib/session/close-record";
@@ -17,6 +17,9 @@ import {
   CONFIRM_SAVE_FAILED,
   CONFIRM_UNCHECKED,
 } from "@/lib/utils/user-error";
+import { refreshReviewedPlan, type RefreshOutcome } from "@/lib/plan/refresh-plan";
+import { describeChange, preparedAgo } from "@/lib/plan/plan-freshness";
+import { goBackToAnalyze } from "@/lib/plan/confirm-plan";
 import { formatStroops } from "@/lib/api/plan-adapters";
 import { withFeeStroops, type ExpectedReceive } from "@/lib/plan/expected-receive";
 import { totalFeeStroops, transactionCountLine } from "@/lib/plan/review-fees";
@@ -47,6 +50,25 @@ function withinSaveTime<T>(pending: Promise<T>): Promise<T> {
 }
 
 const CONSENT_REQUIRED_ID = "review-consent-required";
+
+/** How often the "prepared" line is brought up to date while the page is open. */
+export const PREPARED_TICK_MS = 30_000;
+
+/** What the last refresh found, as shown; an unchanged confirm-time refresh shows nothing. */
+type RefreshNote =
+  | Exclude<RefreshOutcome, { kind: "unchanged" | "failed" }>
+  | { kind: "same" }
+  | { kind: "failed"; message: string; fromConfirm: boolean };
+
+/** The current time, brought up to date every tick, for a line that says how old something is. */
+function useNow(tickMs: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), tickMs);
+    return () => clearInterval(timer);
+  }, [tickMs]);
+  return now;
+}
 
 /** What the consent says arrives: the hero's own figure, so the two never disagree. */
 function amountPhrase(expected: ExpectedReceive | null): string {
@@ -91,11 +113,29 @@ export default function ReviewView({ network }: ReviewViewProps) {
     tokenConversionFloors,
     classicConversionFloors,
     claimableBalanceSelections,
+    planPreparedAt,
   } = useDemolishStore();
 
   const [confirming, setConfirming] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [held, setHeld] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [note, setNote] = useState<RefreshNote | null>(null);
+  // Set synchronously, so a second click before the first one's render cannot start a second
+  // refresh or a second save.
+  const busy = useRef(false);
+  // A confirm or refresh that outlives this page must not act for it: leaving the review ends
+  // what it started, and aborts what it is still fetching.
+  const mounted = useRef(true);
+  const inFlight = useRef<AbortController | null>(null);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      inFlight.current?.abort();
+    };
+  }, []);
+  const now = useNow(PREPARED_TICK_MS);
   // A resumed close may already have sent transactions, so there it says nothing MORE is sent.
   const journey = useJourneyState();
   const firstRun = allows(journey, "sent-only-when-signed");
@@ -118,25 +158,51 @@ export default function ReviewView({ network }: ReviewViewProps) {
   // is persisted until this fires, so leaving this page without confirming (closing the
   // tab, navigating away) never leaves a resumable session behind. A transaction of this
   // account with an unknown outcome, or a saved state that cannot be read or written, holds it.
+  // Before any of that, the plan is fetched again with the same answers and compared with the one
+  // reviewed: only a plan whose material content is unchanged moves on, carrying the fresh hash.
   async function handleConfirm() {
-    if (!sourceAddress || !destinationAddress) return;
+    // The consent is checked here, not only by the main button: a retry button starts a confirm too.
+    if (!sourceAddress || !destinationAddress || !acknowledged || busy.current) return;
+    busy.current = true;
     setConfirming(true);
-    setHeld(null);
+    let advanced = false;
+    try {
+      advanced = await confirmFresh(sourceAddress);
+    } finally {
+      busy.current = false;
+      // Left as "Preparing..." only on the way to the next page.
+      if (!advanced && mounted.current) setConfirming(false);
+    }
+  }
 
+  /** Plans again, then holds or saves; true once the close has moved on to signing. */
+  async function confirmFresh(source: string): Promise<boolean> {
+    setHeld(null);
+    setNote(null);
+
+    const outcome = await fetchFresh();
+    if (!mounted.current) return false;
+    if (outcome.kind !== "unchanged") {
+      show(outcome, true);
+      return false;
+    }
+
+    const unresolved = await readUnresolved(network, source).then(
+      (found) =>
+        found || journeyOf(useDemolishStore.getState()).mayBeInFlight ? CONFIRM_HELD : null,
+      () => CONFIRM_UNCHECKED
+    );
+    if (!mounted.current) return false;
     const hold =
-      (await readUnresolved(network, sourceAddress).then(
-        (found) =>
-          found || journeyOf(useDemolishStore.getState()).mayBeInFlight ? CONFIRM_HELD : null,
-        () => CONFIRM_UNCHECKED
-      )) ??
-      (await withinSaveTime(saveCloseSession(closeOwner(network, sourceAddress))).then(
+      unresolved ??
+      (await withinSaveTime(saveCloseSession(closeOwner(network, source))).then(
         (id) => (id ? null : CONFIRM_NOT_SAVED),
         () => CONFIRM_SAVE_FAILED
       ));
+    if (!mounted.current) return false;
     if (hold) {
       setHeld(hold);
-      setConfirming(false);
-      return;
+      return false;
     }
 
     // The choices were consented to just now: none of them outlives this confirm, so a resume
@@ -144,7 +210,47 @@ export default function ReviewView({ network }: ReviewViewProps) {
     forgetDecisions();
     setPhase("STEP_EXECUTING");
     router.push(`/${network}/execute`);
+    return true;
   }
+
+  async function fetchFresh(): Promise<RefreshOutcome> {
+    const controller = new AbortController();
+    inFlight.current = controller;
+    try {
+      return await refreshReviewedPlan(network, controller.signal);
+    } finally {
+      if (inFlight.current === controller) inFlight.current = null;
+    }
+  }
+
+  function show(outcome: RefreshOutcome, fromConfirm: boolean) {
+    // A changed plan was not the one consented to: the consent is asked for again.
+    if (outcome.kind === "changed") setAcknowledged(false);
+    setNote(
+      outcome.kind === "unchanged"
+        ? { kind: "same" }
+        : outcome.kind === "failed"
+          ? { kind: "failed", message: outcome.message, fromConfirm }
+          : outcome
+    );
+  }
+
+  async function handleRefresh() {
+    if (busy.current) return;
+    busy.current = true;
+    setRefreshing(true);
+    setHeld(null);
+    setNote(null);
+    try {
+      const outcome = await fetchFresh();
+      if (mounted.current) show(outcome, false);
+    } finally {
+      busy.current = false;
+      if (mounted.current) setRefreshing(false);
+    }
+  }
+
+  const working = confirming || refreshing;
 
   return (
     <div className="space-y-5">
@@ -160,6 +266,23 @@ export default function ReviewView({ network }: ReviewViewProps) {
           expected={expected}
         />
       )}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {planPreparedAt !== null && (
+          <p className="text-sm text-fg-muted" data-testid="plan-prepared">
+            {preparedAgo(now - planPreparedAt)}
+          </p>
+        )}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => void handleRefresh()}
+          disabled={working}
+          loading={refreshing}
+          icon={<RefreshCw className="h-3.5 w-3.5" />}
+        >
+          Refresh plan
+        </Button>
+      </div>
       {resumedClose?.source === sourceAddress && (
         <p className="text-sm text-fg-muted">
           You are continuing a close you started earlier, so this plan lists only what is left on
@@ -262,6 +385,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
             <input
               type="checkbox"
               checked={acknowledged}
+              disabled={working}
               onChange={(e) => setAcknowledged(e.target.checked)}
               className="mt-0.5 accent-accent"
             />
@@ -281,7 +405,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
 
       <Button
         onClick={handleConfirm}
-        disabled={confirming || executionPlan.length === 0 || !acknowledged}
+        disabled={working || executionPlan.length === 0 || !acknowledged}
         loading={confirming}
         aria-describedby={acknowledged ? undefined : CONSENT_REQUIRED_ID}
         className="w-full"
@@ -295,6 +419,62 @@ export default function ReviewView({ network }: ReviewViewProps) {
         </p>
       )}
 
+      {note?.kind === "same" && (
+        <Callout tone="info" announce="status">
+          The plan is the same as the one you reviewed.
+        </Callout>
+      )}
+      {note?.kind === "changed" && (
+        <Callout
+          tone="warning"
+          announce="alert"
+          icon={<AlertTriangle className="h-4 w-4" />}
+          title="The plan changed since you reviewed it"
+          data-testid="plan-changes"
+        >
+          <ul className="list-disc space-y-1 pl-5">
+            {note.changes.map((change) => (
+              <li key={change.kind}>{describeChange(change)}</li>
+            ))}
+          </ul>
+          <p className="mt-2">Review it again, then tick the box to continue.</p>
+        </Callout>
+      )}
+      {note?.kind === "needs-analyze" && (
+        <Callout
+          tone="danger"
+          icon={<AlertTriangle className="h-4 w-4" />}
+          action={
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => goBackToAnalyze(setPhase, router, network)}
+            >
+              Go back to decide
+            </Button>
+          }
+        >
+          {note.message}
+        </Callout>
+      )}
+      {note?.kind === "failed" && (
+        <Callout
+          tone="danger"
+          icon={<AlertTriangle className="h-4 w-4" />}
+          action={
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={working || (note.fromConfirm && !acknowledged)}
+              onClick={() => void (note.fromConfirm ? handleConfirm() : handleRefresh())}
+            >
+              Try again
+            </Button>
+          }
+        >
+          {note.message}
+        </Callout>
+      )}
       {held && (
         <Callout tone="danger" icon={<AlertTriangle className="h-4 w-4" />}>
           <p>{held}</p>

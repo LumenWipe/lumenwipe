@@ -52,6 +52,8 @@ export type MemoFact = "ok" | "missing" | "invalid";
 export interface ProceedFacts {
   /** A plan is being fetched; the one on screen is about to be replaced. */
   replanning: boolean;
+  /** The last re-plan failed: the plan on screen may not answer the latest choices. */
+  planStale: boolean;
   /** Hard blockers other than the two the page's own confirmations clear. */
   otherHardBlockers: number;
   /** The account holds balances the plan's asset list did not come back for. */
@@ -102,6 +104,13 @@ export function proceedReasons(facts: ProceedFacts): ProceedReason[] {
   const reasons: ProceedReason[] = [];
   if (facts.replanning) {
     reasons.push({ key: "replanning", text: "The plan is being updated", target: null });
+  }
+  if (facts.planStale) {
+    reasons.push({
+      key: "stale",
+      text: "The plan below may not reflect your last answer",
+      target: null,
+    });
   }
   if (facts.otherHardBlockers > 0) {
     reasons.push({

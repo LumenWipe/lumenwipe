@@ -241,6 +241,21 @@ export const CONFIRM_NOT_SAVED =
   "This close is no longer the one open in this tab, so it was not saved and this confirm did not start it. Review the plan again before you continue.";
 export const CONFIRM_SAVE_FAILED =
   "This browser could not save the close, so this confirm did not start it. A close needs this browser's storage to keep track of any transaction whose outcome is not known yet. Allow this site to store data, then try again.";
+/** /review checks the plan again before signing; these say why it did not move on. */
+export const PLAN_REFRESH_FAILED =
+  "The plan could not be checked again just now, so signing has not started. Check your connection and try again.";
+export const PLAN_NEEDS_ANSWERS =
+  "Something on the account changed and needs an answer before this close can go on. Go back to decide what happens to it.";
+export const PLAN_REVIEW_LEFT =
+  "The review changed while the plan was being checked, so signing has not started. Review the plan again before you continue.";
+export const PLAN_FLOOR_MISSING =
+  "A swap in this plan has no minimum amount recorded, so what it delivers cannot be checked. Go back to choose again what happens to that asset.";
+export const PLAN_FEES_UNREADABLE =
+  "The plan's network fees could not be read, so signing has not started. Try again in a moment.";
+export const PLAN_NOT_COMPARABLE =
+  "This plan could not be compared with the one you reviewed. Go back to decide, then review it again.";
+export const PLAN_HOLDINGS_CHANGED =
+  "What the account holds changed since this plan was prepared, so its choices need to be made again. Go back to decide what happens to each item.";
 export const PROGRESS_NOT_SAVED =
   "This browser could not save the progress of this close. Signing goes on, but if this page is lost the start page may not show how far the close got.";
 export const NO_MERGE_CONFIRMED =

@@ -92,8 +92,9 @@ async function proceedWith(answer: unknown): Promise<{ store: string; planBody: 
     ([url]: unknown[]) => String(url).includes("/close/plan")
   ) as [string, RequestInit];
   const planBody = JSON.parse(String(planCall[1].body));
-  // The reset count differs by construction: each run here starts from its own reset.
-  const { closeEpoch: _epoch, ...state } = useDemolishStore.getState();
+  // The reset count and the time the plan was prepared differ by construction: each run here
+  // starts from its own reset, a moment after the last.
+  const { closeEpoch: _epoch, planPreparedAt: _at, ...state } = useDemolishStore.getState();
   const store = JSON.stringify(state);
   cleanup();
   mock.restore();

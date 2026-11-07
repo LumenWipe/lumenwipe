@@ -43,6 +43,7 @@ import type { PlannedStep, StepStatus, StepType } from "@/types/plan";
 import type { SessionRecord } from "@/types/session";
 import type { ResumedClose } from "@/store/demolish";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { stubUnchangedRefresh } from "./fixtures/fresh-plan";
 
 // Every reassurance or success sentence the app can show, rendered on every screen that shows it
 // in every journey state that screen can be reached in. A sentence matching a registered claim
@@ -232,6 +233,7 @@ function review(
       );
       spyOn(recovery, "readUnresolved").mockResolvedValue(null);
       spyOn(closeRecord, "saveCloseSession").mockResolvedValue("s");
+      stubUnchangedRefresh();
       hold?.();
       await show(<ReviewView network="testnet" />);
       const journey = storeJourney();

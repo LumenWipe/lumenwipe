@@ -17,6 +17,7 @@ import {
   type TokenConversionFloor,
 } from "@/store/demolish";
 import { fetchClosePlan } from "@/lib/api/close-client";
+import { signatureOf } from "@/lib/plan/plan-freshness";
 import {
   claimableSelectionsToDecisions,
   classicFloorFromQuote,
@@ -102,6 +103,8 @@ interface PlanViewProps {
   network: Network;
   onRefresh: () => void;
   loading: boolean;
+  /** The last re-plan failed, so the plan on screen may not answer the latest choices. */
+  planStale?: boolean;
   statusMessage?: string;
 }
 
@@ -115,6 +118,7 @@ export default function PlanView({
   network,
   onRefresh,
   loading,
+  planStale = false,
   statusMessage = "",
 }: PlanViewProps) {
   const router = useRouter();
@@ -457,6 +461,7 @@ export default function PlanView({
   // their floors; a plan requested before they land is hashed without them and refused at build.
   const reasons = proceedReasons({
     replanning: loading,
+    planStale,
     otherHardBlockers: hardBlockers.length - (defiAckOpen ? 1 : 0) - (issuerAckOpen ? 1 : 0),
     assetCardsWithheld,
     openItems,
@@ -579,7 +584,13 @@ export default function PlanView({
         return;
       }
 
-      setPlan(apiStepsToPlannedSteps(plan), plan.planHash, planTransactionCountOf(plan));
+      // What /review compares a fresh plan against before signing.
+      setPlan(
+        apiStepsToPlannedSteps(plan),
+        plan.planHash,
+        planTransactionCountOf(plan),
+        signatureOf(plan, account, useDemolishStore.getState())
+      );
       const finalFee = planFeeStroopsOf(plan);
       setExpectedReceive(finalFee === null ? null : expectedFrom(finalFee, false));
 

@@ -13,6 +13,7 @@ import type {
 } from "@/types/plan";
 import type { CompletedStepRecord } from "@/types/session";
 import type { ExpectedReceive } from "@/lib/plan/expected-receive";
+import type { PlanSignature } from "@/lib/plan/plan-freshness";
 
 /** What a "convert" disposition is pinned to: the floor the plan quoted, which provider quoted
  *  it, and - only for an xBull-routed token - the live route `verify()` needs to hold its
@@ -111,6 +112,11 @@ interface DemolishState {
   /** What the reviewed plan is expected to deliver, kept for the screens after /analyze. Display
    *  only: never sent to the API and never part of verify(). */
   expectedReceive: ExpectedReceive | null;
+  /** When the installed plan was fetched, in epoch ms, for /review's "prepared" line. */
+  planPreparedAt: number | null;
+  /** The installed plan's material content, which /review compares a fresh plan against before
+   *  signing. Display only: never sent to the API and never part of verify(). */
+  planSignature: PlanSignature | null;
   /** Why the inputs were restored or reset after a reload, for the next page to show once. */
   reloadNotice: string | null;
   /** The execute page lost its plan to a reload and sent the user to the start page. */
@@ -151,8 +157,14 @@ interface DemolishState {
   setProgressNotSaved: (notSaved: boolean) => void;
   setSigningRun: (running: boolean) => void;
   setAccountState: (state: AccountState) => void;
-  /** Installs a plan. A count not given is cleared, so none outlives the plan it came with. */
-  setPlan: (plan: PlannedStep[], planHash?: string, transactionCount?: number | null) => void;
+  /** Installs a plan, stamped as prepared now. A count or signature not given is cleared, so none
+   *  outlives the plan it came with. */
+  setPlan: (
+    plan: PlannedStep[],
+    planHash?: string,
+    transactionCount?: number | null,
+    signature?: PlanSignature
+  ) => void;
   setExpectedReceive: (expected: ExpectedReceive | null) => void;
   /** Called once a transaction of the close confirms: the account has changed on purpose, so the
    *  reviewed plan's hash no longer describes it. */
@@ -301,6 +313,8 @@ const initialState = {
   planHash: null,
   estimatedTransactionCount: null,
   expectedReceive: null,
+  planPreparedAt: null,
+  planSignature: null,
   reloadNotice: null,
   executeInterrupted: false,
   resumedClose: null,
@@ -383,13 +397,15 @@ export const useDemolishStore = create<DemolishState>((set) => ({
   // Reset the step pointer whenever a new plan is installed: a prior run may have
   // advanced currentStepIndex, and a new (often shorter) plan must start at step 0
   // so executionPlan[currentStepIndex] never points past the end.
-  setPlan: (executionPlan, planHash, transactionCount) =>
+  setPlan: (executionPlan, planHash, transactionCount, signature) =>
     set({
       executionPlan,
       currentStepIndex: 0,
       planChangedNotice: null,
       planHash: planHash ?? null,
       estimatedTransactionCount: transactionCount ?? null,
+      planPreparedAt: Date.now(),
+      planSignature: signature ?? null,
     }),
 
   setExpectedReceive: (expectedReceive) => set({ expectedReceive }),
@@ -407,6 +423,8 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       planHash: null,
       estimatedTransactionCount: null,
       expectedReceive: null,
+      planPreparedAt: null,
+      planSignature: null,
     }),
 
   setAssetDisposition: (asset, action) =>

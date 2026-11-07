@@ -16,6 +16,7 @@ import {
 } from "@/lib/utils/user-error";
 import type { PlannedStep } from "@/types/plan";
 import type { SessionRecord, UnconfirmedRecord } from "@/types/session";
+import { stubUnchangedRefresh } from "./fixtures/fresh-plan";
 
 const SOURCE = Keypair.random().publicKey();
 const OLD_DEST = Keypair.random().publicKey();
@@ -109,6 +110,7 @@ beforeEach(() => {
   useDemolishStore.getState().setAddresses(SOURCE, NEW_DEST);
   useDemolishStore.getState().setPlan([STEP]);
   useDemolishStore.getState().setPhase("PREFLIGHT_COMPLETE");
+  stubUnchangedRefresh();
 });
 
 afterEach(() => mock.restore());
