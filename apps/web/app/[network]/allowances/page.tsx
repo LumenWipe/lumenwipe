@@ -13,6 +13,7 @@ import { isValidGAddress } from "@/lib/utils/validation";
 import { apiErrorText } from "@/lib/utils/user-error";
 import AllowanceRow from "@/components/allowances/AllowanceRow";
 import RevokeAllowanceModal from "@/components/allowances/RevokeAllowanceModal";
+import { AddressField } from "@/components/ui/address-field";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card } from "@/components/ui/card";
@@ -28,7 +29,11 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
   const searchParams = useSearchParams();
   const storedSource = useDemolishStore((s) => s.sourceAddress);
 
-  const [input, setInput] = useState(searchParams.get("address") ?? storedSource ?? "");
+  // A link can carry anything; a secret seed in it is not put in the field.
+  const [input, setInput] = useState(() => {
+    const prefill = searchParams.get("address") ?? storedSource ?? "";
+    return prefill.startsWith("S") ? "" : prefill;
+  });
   const [address, setAddress] = useState<string | null>(null);
   const [result, setResult] = useState<AllowancesResult | null>(null);
   // Which sources, if any, did not cover everything they look at. Read once here so the empty
@@ -121,18 +126,19 @@ export default function AllowancesPage({ params }: { params: Promise<{ network: 
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            void lookup(input.trim());
+            void lookup(input);
           }}
-          className="flex flex-col gap-2 sm:flex-row"
+          className="flex flex-col gap-2 sm:flex-row sm:items-start"
         >
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="G... (the account to inspect)"
-            spellCheck={false}
-            autoComplete="off"
-            className="w-full flex-1 font-mono-address bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 text-sm placeholder:text-fg-subtle"
-          />
+          <div className="min-w-0 flex-1">
+            <AddressField
+              label="Account to inspect"
+              hideLabel
+              value={input}
+              onChange={setInput}
+              placeholder="G... (the account to inspect)"
+            />
+          </div>
           <Button
             type="submit"
             disabled={loading}
