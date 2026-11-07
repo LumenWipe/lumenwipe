@@ -72,3 +72,114 @@ test("HistoryPanel › the delete control has an accessible name", async () => {
   ]);
   expect(screen.getByRole("button", { name: "Delete entry" })).toBeTruthy();
 });
+
+const SOURCE = "GSOURCE00000000000000000000000000000000000000000000000000";
+const DEST = "GDESTINATION000000000000000000000000000000000000000000000";
+
+function entry(over: Partial<ReceiptRecord> = {}): ReceiptRecord {
+  return {
+    version: 2,
+    id: "r-1",
+    network: "testnet",
+    sourceAddress: SOURCE,
+    destinationAddress: DEST,
+    mediatorRequired: false,
+    outcome: "closed",
+    completedAt: "2026-11-01T12:00:00.000Z",
+    memo: null,
+    transactions: [{ txHash: "h1", label: "Merge", stepTypes: ["MERGE"], stepTitles: ["Merge"] }],
+    groups: null,
+    feeLumens: "0.0000100",
+    receivedLumens: null,
+    ...over,
+  };
+}
+
+async function openWith(read: () => Promise<ReceiptRecord[]>): Promise<void> {
+  spyOn(history, "listHistory").mockImplementation(read);
+  render(<Host />);
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Merge history" }));
+  });
+}
+
+test("HistoryPanel › a rejected read shows an error with a retry, never the empty state", async () => {
+  const consoleSpy = spyOn(console, "error").mockImplementation(() => {});
+  let calls = 0;
+  await openWith(async () => {
+    calls += 1;
+    if (calls === 1) throw new Error("blocked");
+    return [entry()];
+  });
+
+  expect(screen.getByRole("alert").textContent).toContain("could not be read in this browser");
+  expect(screen.queryAllByText("No merges recorded yet.")).toHaveLength(0);
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  });
+  expect(calls).toBe(2);
+  expect(screen.queryAllByRole("alert")).toHaveLength(0);
+  expect(screen.getByRole("link", { name: /Open receipt/ })).toBeTruthy();
+  consoleSpy.mockRestore();
+});
+
+test("HistoryPanel › only a successful read with no entries shows the empty state", async () => {
+  await openWith(async () => []);
+  expect(screen.getByText("No merges recorded yet.")).toBeTruthy();
+  expect(screen.queryAllByRole("alert")).toHaveLength(0);
+});
+
+test("HistoryPanel › entries show the amount received or that it was not recorded, and link to their receipt", async () => {
+  await openWith(async () => [
+    entry({ id: "with amount", receivedLumens: "99.5" }),
+    entry({ id: "without", outcome: "incomplete" }),
+  ]);
+
+  expect(screen.queryAllByText("No merges recorded yet.")).toHaveLength(0);
+  expect(screen.getByText("99.50 XLM")).toBeTruthy();
+  expect(screen.getByText("not recorded")).toBeTruthy();
+  expect(screen.getByText(/not finished/)).toBeTruthy();
+  const links = screen.getAllByRole("link", { name: /Open receipt/ });
+  expect(links.map((l) => l.getAttribute("href"))).toEqual([
+    "/testnet/receipt/with%20amount",
+    "/testnet/receipt/without",
+  ]);
+  expect(screen.getAllByText("GSOURCE0…00000000")).toHaveLength(2);
+});
+
+test("HistoryPanel › opening a receipt closes the drawer", async () => {
+  await openWith(async () => [entry()]);
+  await act(async () => {
+    fireEvent.click(screen.getByRole("link", { name: /Open receipt/ }));
+  });
+  expect(screen.queryAllByRole("dialog")).toHaveLength(0);
+});
+
+async function confirmDelete(): Promise<void> {
+  fireEvent.click(screen.getByRole("button", { name: "Delete entry" }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+  });
+}
+
+test("HistoryPanel › a rejected delete keeps the entry and says so", async () => {
+  const consoleSpy = spyOn(console, "error").mockImplementation(() => {});
+  spyOn(history, "deleteHistoryEntry").mockRejectedValue(new Error("blocked"));
+  await openWith(async () => [entry()]);
+  await confirmDelete();
+
+  expect(screen.getByRole("alert").textContent).toContain("could not be deleted");
+  expect(screen.getByRole("link", { name: /Open receipt/ })).toBeTruthy();
+  consoleSpy.mockRestore();
+});
+
+test("HistoryPanel › a delete that succeeds removes the entry", async () => {
+  const remove = spyOn(history, "deleteHistoryEntry").mockResolvedValue(undefined);
+  await openWith(async () => [entry()]);
+  await confirmDelete();
+
+  expect(remove).toHaveBeenCalledWith("r-1");
+  expect(screen.queryAllByRole("link", { name: /Open receipt/ })).toHaveLength(0);
+  expect(screen.getByText("No merges recorded yet.")).toBeTruthy();
+});
