@@ -1,6 +1,9 @@
-import { CheckCircle, Clock, AlertCircle, Loader2, ChevronRight } from "lucide-react";
+import { CheckCircle, Clock, AlertCircle, Loader2, ChevronRight, ExternalLink } from "lucide-react";
 import type { PlannedStep } from "@/types/plan";
+import { explorerTxUrl, type Network } from "@/config/networks";
+import { CopyButton } from "@/components/ui/copy-button";
 import { cn } from "@/lib/utils/cn";
+import { shortHash } from "@/lib/utils/short-id";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
 
 interface PlanSidebarProps {
@@ -9,6 +12,8 @@ interface PlanSidebarProps {
   currentIndex: number;
   /** Whether a run of the close is going, so a step in flight is being worked on now. */
   running: boolean;
+  /** The network the hashes are on, for their explorer links. */
+  network: Network;
 }
 
 /** The status a row reads out, in words, so it never depends on its icon or colour. */
@@ -30,7 +35,27 @@ export function stepStatusText(step: PlannedStep, running: boolean): string {
   }
 }
 
-export default function PlanSidebar({ steps, currentIndex, running }: PlanSidebarProps) {
+/** A confirmed transaction's hash, to check on the network independently of this screen. */
+function ConfirmedHash({ hash, network }: { hash: string; network: Network }) {
+  const short = shortHash(hash);
+  return (
+    <span className="flex items-center gap-1 text-caption">
+      <a
+        href={explorerTxUrl(network, hash)}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`View transaction ${short} on Stellar Expert (opens in a new tab)`}
+        className="flex items-center gap-1 font-mono-address text-accent hover:underline"
+      >
+        {short}
+        <ExternalLink aria-hidden="true" className="h-3 w-3" />
+      </a>
+      <CopyButton value={hash} label={`transaction hash ${short}`} visibleFeedback />
+    </span>
+  );
+}
+
+export default function PlanSidebar({ steps, currentIndex, running, network }: PlanSidebarProps) {
   return (
     <ol aria-label="Plan steps" className="space-y-1">
       {steps.map((step) => {
@@ -68,6 +93,11 @@ export default function PlanSidebar({ steps, currentIndex, running }: PlanSideba
                 {step.title}
               </span>
               <span className="text-caption text-fg-subtle">{stepStatusText(step, running)}</span>
+              {/* Kept whatever happens later in the close: a confirmed transaction stays on the
+                  ledger, and this is where it can be checked from. */}
+              {step.status === "confirmed" && step.txHash && (
+                <ConfirmedHash hash={step.txHash} network={network} />
+              )}
             </span>
 
             {isActive && (

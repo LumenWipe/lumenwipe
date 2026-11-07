@@ -2,8 +2,8 @@
 
 import { useRef, useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CheckCircle, ShieldCheck } from "lucide-react";
-import type { Network } from "@/config/networks";
+import { AlertCircle, CheckCircle, ExternalLink, ShieldCheck } from "lucide-react";
+import { explorerAccountUrl, type Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { useCloseExecution } from "@/hooks/useCloseExecution";
 import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
@@ -350,7 +350,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
       <div className="w-52 shrink-0 hidden md:block">
         <div className="sticky top-20">
           <p className="mkt-eyebrow text-fg-subtle mb-3">Steps</p>
-          <PlanSidebar steps={executionPlan} currentIndex={currentStep} running={inRun} />
+          <PlanSidebar
+            steps={executionPlan}
+            currentIndex={currentStep}
+            running={inRun}
+            network={network}
+          />
         </div>
       </div>
 
@@ -387,7 +392,17 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
             <p>
               The account will be removed from the Stellar ledger and its balance sent to{" "}
               <span className="font-mono text-white/80 break-all">{destinationAddress}</span>
-              {mediatorRequired ? " through the exchange relay account." : "."} Verify it carefully.
+              {mediatorRequired ? " through the exchange relay account." : "."} Verify it carefully.{" "}
+              <a
+                href={explorerAccountUrl(network, destinationAddress)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-accent hover:underline"
+              >
+                View the destination on Stellar Expert
+                <ExternalLink aria-hidden="true" className="h-3 w-3" />
+                <span className="sr-only">(opens in a new tab)</span>
+              </a>
             </p>
           </Callout>
 
@@ -505,7 +520,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
         {/* Mobile step list */}
         <div className="md:hidden mt-5">
           <p className="mkt-eyebrow text-fg-subtle mb-2">All steps</p>
-          <PlanSidebar steps={executionPlan} currentIndex={currentStep} running={inRun} />
+          <PlanSidebar
+            steps={executionPlan}
+            currentIndex={currentStep}
+            running={inRun}
+            network={network}
+          />
         </div>
       </div>
     </div>

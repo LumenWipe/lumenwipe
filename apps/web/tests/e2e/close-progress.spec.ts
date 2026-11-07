@@ -87,7 +87,7 @@ async function multiTransactionClose(page: Page, owner: Keypair): Promise<void> 
   await page.getByRole("checkbox").check();
 }
 
-test("the step list and progress line follow each transaction of a multi-transaction close", async ({
+test("the step list, progress line and confirmed hash follow each transaction of a multi-transaction close", async ({
   page,
 }) => {
   test.setTimeout(300_000);
@@ -117,4 +117,26 @@ test("the step list and progress line follow each transaction of a multi-transac
   await expect(current).toContainText("Signing");
   // The active step moved off the first one, which is confirmed.
   await expect(list.locator("li").first()).not.toHaveAttribute("aria-current", "step");
+
+  // Before the close completes, the confirmed transaction can be checked on the explorer.
+  const link = list
+    .locator("li")
+    .first()
+    .getByRole("link", { name: /^View transaction/ });
+  await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  const href = await link.getAttribute("href");
+  const hash = /^https:\/\/stellar\.expert\/explorer\/testnet\/tx\/([0-9a-f]{64})$/.exec(
+    href ?? ""
+  )?.[1];
+  expect(hash).toBeDefined();
+  await expect(link).toHaveAccessibleName(
+    `View transaction ${hash!.slice(0, 6)}…${hash!.slice(-6)} on Stellar Expert (opens in a new tab)`
+  );
+  const onChain = (await (await fetch(`${HORIZON}/transactions/${hash}`)).json()) as {
+    successful?: boolean;
+    source_account?: string;
+  };
+  expect(onChain.successful).toBe(true);
+  expect(onChain.source_account).toBe(owner.publicKey());
+  await expect(page).toHaveURL(/\/testnet\/execute/);
 });

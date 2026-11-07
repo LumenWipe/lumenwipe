@@ -674,3 +674,59 @@ test("execution-wizard › a wait past 20 seconds says to keep the tab open, onc
   );
   expect(status.textContent).not.toMatch(/\d:\d\d/);
 });
+
+test("execution-wizard › a failure in a later round leaves the earlier confirmed hash and its explorer link on screen", () => {
+  const hash = `abcdef${"0".repeat(52)}123456`;
+  useDemolishStore.setState({
+    executionPlan: [
+      wizardStep(0, "Remove signers", "confirmed", hash),
+      wizardStep(1, "Merge account", "failed"),
+    ],
+    phase: "STEP_FAILED",
+    lastError: "You declined the request in your wallet.",
+  } as never);
+  render(<ExecutionWizard network="mainnet" />);
+
+  expect(screen.getByRole("button", { name: "Retry" })).toBeDefined();
+  const links = screen.getAllByRole("link", {
+    name: "View transaction abcdef…123456 on Stellar Expert (opens in a new tab)",
+  });
+  // The desktop sidebar and the mobile step list both carry it.
+  expect(links).toHaveLength(2);
+  for (const link of links) {
+    expect(link.getAttribute("href")).toBe(`https://stellar.expert/explorer/public/tx/${hash}`);
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(link.getAttribute("target")).toBe("_blank");
+  }
+  expect(
+    screen.getAllByRole("button", { name: "Copy transaction hash abcdef…123456" })
+  ).toHaveLength(2);
+  // Only the confirmed step has one.
+  expect(screen.getAllByRole("link", { name: /View transaction/ })).toHaveLength(2);
+});
+
+test("execution-wizard › copying a confirmed hash says so on screen", async () => {
+  const hash = `abcdef${"0".repeat(52)}123456`;
+  const writeText = spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+  useDemolishStore.setState({
+    executionPlan: [wizardStep(0, "Remove signers", "confirmed", hash)],
+  } as never);
+  render(<ExecutionWizard network="testnet" />);
+
+  const [copy] = screen.getAllByRole("button", { name: "Copy transaction hash abcdef…123456" });
+  await act(async () => {
+    fireEvent.click(copy);
+  });
+  expect(writeText).toHaveBeenCalledWith(hash);
+  expect(copy.parentElement?.textContent).toContain("Copied");
+});
+
+test("execution-wizard › the destination links to the explorer of the network being closed on", () => {
+  render(<ExecutionWizard network="testnet" />);
+  const destination = useDemolishStore.getState().destinationAddress!;
+  const link = screen.getByRole("link", { name: /View the destination on Stellar Expert/ });
+  expect(link.getAttribute("href")).toBe(
+    `https://stellar.expert/explorer/testnet/account/${destination}`
+  );
+  expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+});
