@@ -192,3 +192,11 @@ test("an invalid key is not described as valid", () => {
   fireEvent.blur(field());
   expect(describedText(field())).not.toContain("Valid secret key");
 });
+
+test("a partly typed key leaves the caller's ref when the field goes", () => {
+  const { unmount } = render(<Harness />);
+  type(Keypair.random().secret().slice(0, 55));
+  expect(held.current).toHaveLength(55);
+  unmount();
+  expect(held.current).toBe("");
+});

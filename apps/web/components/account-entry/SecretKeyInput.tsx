@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Eye, EyeOff, CheckCircle, XCircle, ShieldAlert } from "lucide-react";
 import { isValidSecretKey } from "@/lib/utils/validation";
 import { Field, Input } from "@/components/ui/field";
@@ -34,6 +34,15 @@ export default function SecretKeyInput({
   useLayoutEffect(() => {
     if (inputRef.current) inputRef.current.value = "";
   }, []);
+
+  // A partly typed or mistyped key goes with the field: nothing of it stays in the caller's ref
+  // once the field is gone, whether it was valid or not.
+  useEffect(() => {
+    const held = secretKeyRef;
+    return () => {
+      held.current = "";
+    };
+  }, [secretKeyRef]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;

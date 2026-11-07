@@ -9,6 +9,7 @@ import { apiRequestId } from "@/lib/api/error-body";
 import { InvalidPreAuthTxError } from "@/lib/stellar/pre-auth-tx";
 import { InvalidPreimageError } from "@/lib/stellar/hash-x";
 import {
+  SignerReleasedError,
   WalletNotUsableError,
   WalletSignerMismatchError,
   WalletSigningError,
@@ -75,6 +76,9 @@ const VERIFICATION_FAILED =
  *  dropped, so the user is told to decline it rather than wonder whether it was used. */
 export const WALLET_TIMED_OUT =
   "Your wallet didn't respond in time, so this transaction was not signed or sent. Close the earlier prompt in your wallet before you try again: a signature given there now will not be used. You can also change wallet or key.";
+/** A run whose signer the screen dropped, stopped before its next signature. */
+export const SIGNER_RELEASED =
+  "Signing stopped because the signer was cleared. Enter or connect a signer to continue.";
 /** A wallet that reported signing with another account than the one it was asked for. */
 export function walletAccountMismatch(reported: string, expected: string): string {
   const short = (key: string) => `${key.slice(0, 4)}…${key.slice(-4)}`;
@@ -231,6 +235,7 @@ export function toUserMessage(err: unknown, context: ErrorContext = "generic"): 
   }
   if (err instanceof WalletWrongNetworkError) return walletWrongNetwork(networkOf(err.requested));
   if (err instanceof WalletNotUsableError) return walletNotUsable(err.reason, err.network);
+  if (err instanceof SignerReleasedError) return SIGNER_RELEASED;
   if (
     err instanceof UserFacingError ||
     err instanceof CloseDidNotConvergeError ||

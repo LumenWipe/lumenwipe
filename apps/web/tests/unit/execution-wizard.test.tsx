@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import {
   Account,
   Asset,
@@ -30,10 +32,15 @@ import {
   walletAccountMismatch,
 } from "@/lib/utils/user-error";
 import {
+  HashXPreimageSigner,
+  SecretKeySigner,
+  SignerReleasedError,
   WalletKitSigner,
   WalletNotUsableError,
   WalletSigningTimeoutError,
 } from "@/lib/stellar/signer";
+import * as activeSignerHook from "@/hooks/useActiveSigner";
+import * as secretKeyInputModule from "@/components/account-entry/SecretKeyInput";
 import * as walletKitClient from "@/lib/wallet-kit/client";
 import type { CloseProgress } from "@/lib/execution/progress";
 
@@ -1396,7 +1403,7 @@ test("execution-wizard › after a pause on the secret-key tab, the wallet is no
   );
 });
 
-test("execution-wizard › a wallet run is checked again before each signature, a key run is not", async () => {
+test("execution-wizard › a wallet run is checked again before each signature, by the wallet and for its signer", async () => {
   currentWalletAddress = source;
   const guard = mock(async () => {});
   const beforeSigning = mock((_address: string) => guard);
@@ -1412,7 +1419,8 @@ test("execution-wizard › a wallet run is checked again before each signature, 
   fireEvent.click(screen.getByRole("button", { name: /Sign & execute close/ }));
   await waitFor(() => expect(runSpy).toHaveBeenCalledTimes(1));
   expect(beforeSigning).toHaveBeenCalledWith(source);
-  expect(runSpy.mock.calls[0]?.[1]?.beforeSign).toBe(guard);
+  await runSpy.mock.calls[0]?.[1]?.beforeSign?.();
+  expect(guard).toHaveBeenCalledTimes(1);
 });
 
 test("execution-wizard › after a wallet left the network mid-run, Retry comes back once it is usable again", async () => {
@@ -1547,4 +1555,301 @@ test("execution-wizard › a pre-authorized transaction left unconfirmed holds s
   expect(screen.queryAllByRole("button", { name: /add signature/i })).toHaveLength(0);
   expect(screen.getByRole("button", { name: /check again/i })).toBeDefined();
   useDemolishStore.setState({ unconfirmedSubmission: null } as never);
+});
+
+// The signer object is held outside React state. These watch the real hook through a pass-through
+// spy, to read what it holds after each way the screen drops a signer.
+const realUseActiveSigner = activeSignerHook.useActiveSigner;
+let signerControl: activeSignerHook.ActiveSignerControl | null = null;
+function watchHeldSigner(): () => ReturnType<activeSignerHook.ActiveSignerControl["current"]> {
+  signerControl = null;
+  spyOn(activeSignerHook, "useActiveSigner").mockImplementation(() => {
+    const control = realUseActiveSigner();
+    signerControl = control;
+    return control;
+  });
+  return () => signerControl!.current();
+}
+
+function enterKey(secret: string): void {
+  fireEvent.click(screen.getByRole("tab", { name: "Use secret key (advanced)" }));
+  fireEvent.change(screen.getByPlaceholderText("S..."), { target: { value: secret } });
+}
+
+const SIGNING_MATERIAL = [Keypair, SecretKeySigner, HashXPreimageSigner];
+
+/** Whether `value` holds a keypair, a signer holding one or a preimage, or the secret itself. */
+function holdsSigningMaterial(value: unknown, secret: string, seen = new Set<object>()): boolean {
+  if (typeof value === "string") return value.includes(secret);
+  if (value === null || typeof value !== "object" || seen.has(value)) return false;
+  seen.add(value);
+  if (SIGNING_MATERIAL.some((material) => value instanceof material)) return true;
+  if (value instanceof Node || "$$typeof" in value) return false;
+  const inner =
+    value instanceof Map || value instanceof Set ? [...value.values()] : Object.values(value);
+  return inner.some((v) => holdsSigningMaterial(v, secret, seen));
+}
+
+interface Fiber {
+  tag: number;
+  memoizedState: unknown;
+  child: Fiber | null;
+  sibling: Fiber | null;
+  return: Fiber | null;
+}
+interface Hook {
+  memoizedState: unknown;
+  queue: unknown;
+  next: Hook | null;
+}
+
+/** Every state value of every component rendered in `container`: useState, useReducer and store
+ *  subscriptions (hooks with an update queue), and class state. Refs have no queue. */
+function reactStateValues(container: HTMLElement): unknown[] {
+  const element = container.querySelector("*") as Element;
+  const key = Object.keys(element).find((k) => k.startsWith("__reactFiber$")) as string;
+  let fiber = (element as unknown as Record<string, Fiber>)[key] as Fiber;
+  while (fiber.return) fiber = fiber.return;
+  // The node's fiber may be the stale copy of a double-buffered tree: read the committed one.
+  fiber = (fiber as Fiber & { stateNode: { current: Fiber } }).stateNode.current;
+  const values: unknown[] = [];
+  const visit = (node: Fiber | null): void => {
+    for (let f = node; f; f = f.sibling) {
+      if (f.tag === 1) values.push(f.memoizedState);
+      if ([0, 11, 14, 15].includes(f.tag)) {
+        for (let hook = f.memoizedState as Hook | null; hook; hook = hook.next) {
+          if (hook.queue) values.push(hook.memoizedState);
+        }
+      }
+      visit(f.child);
+    }
+  };
+  visit(fiber);
+  return values;
+}
+
+test("execution-wizard › an entered secret key reaches no React state and no store", async () => {
+  const key = Keypair.random();
+  useDemolishStore.setState({
+    accountState: {
+      signers: [{ key: key.publicKey(), weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 1, med: 1, high: 1 },
+    } as never,
+  } as never);
+  const held = watchHeldSigner();
+
+  const { container } = render(<ExecutionWizard network="testnet" />);
+  enterKey(key.secret());
+  await waitFor(() => expect(held()?.kind).toBe("secret-key"));
+
+  const states = reactStateValues(container);
+  expect(states.length).toBeGreaterThan(5);
+  expect(states.filter((v) => holdsSigningMaterial(v, key.secret()))).toEqual([]);
+  expect(holdsSigningMaterial(useDemolishStore.getState(), key.secret())).toBe(false);
+  // The scan itself sees signing material where there is some.
+  expect(holdsSigningMaterial([{ signer: held()!.signer }], key.secret())).toBe(true);
+  expect(holdsSigningMaterial({ text: `x${key.secret()}` }, key.secret())).toBe(true);
+});
+
+test("execution-wizard › no component keeps a signer or keypair in useState", () => {
+  const web = join(import.meta.dir, "..", "..");
+  const files = (dir: string): string[] =>
+    readdirSync(dir).flatMap((name) => {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) return files(path);
+      return /\.tsx?$/.test(name) ? [path] : [];
+    });
+  const material = /\b(?:SecretKeySigner|HashXPreimageSigner|TransactionSigner|Keypair)\b/;
+  const offenders = ["app", "components", "hooks", "store", "lib"]
+    .flatMap((dir) => files(join(web, dir)))
+    .filter((file) => {
+      const source = readFileSync(file, "utf8");
+      const typed = [...source.matchAll(/use(?:State|Reducer)<([^>]*)>/g)];
+      return typed.some(([, type]) => material.test(type ?? ""));
+    });
+  expect(offenders).toEqual([]);
+});
+
+test("execution-wizard › Forget key drops the held key signer", async () => {
+  const held = watchHeldSigner();
+  render(<ExecutionWizard network="testnet" />);
+  enterKey(Keypair.random().secret());
+  await waitFor(() => expect(held()?.kind).toBe("secret-key"));
+
+  fireEvent.click(screen.getByRole("button", { name: /forget key/i }));
+  expect(held()).toBeNull();
+});
+
+test("execution-wizard › going back to the wallet tab drops the held key signer", async () => {
+  const held = watchHeldSigner();
+  render(<ExecutionWizard network="testnet" />);
+  enterKey(Keypair.random().secret());
+  await waitFor(() => expect(held()?.kind).toBe("secret-key"));
+
+  fireEvent.click(screen.getByRole("tab", { name: "Connect wallet" }));
+  expect(held()).toBeNull();
+});
+
+test("execution-wizard › a multisig pause drops the held key signer", async () => {
+  const held = watchHeldSigner();
+  const { rerender } = render(<ExecutionWizard network="testnet" />);
+  enterKey(Keypair.random().secret());
+  await waitFor(() => expect(held()?.kind).toBe("secret-key"));
+
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+    remainingSigners: [{ key: cosigner, weight: 1, type: "ed25519_public_key" }],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+  rerender(<ExecutionWizard network="testnet" />);
+  await waitFor(() => expect(held()).toBeNull());
+  expect(activeSignerText()).toBeNull();
+});
+
+test("execution-wizard › leaving the screen drops the held key signer", async () => {
+  const held = watchHeldSigner();
+  const { unmount } = render(<ExecutionWizard network="testnet" />);
+  enterKey(Keypair.random().secret());
+  await waitFor(() => expect(held()?.kind).toBe("secret-key"));
+
+  unmount();
+  expect(held()).toBeNull();
+});
+
+test("execution-wizard › a finished close drops the held key signer", async () => {
+  const held = watchHeldSigner();
+  const { rerender } = render(<ExecutionWizard network="testnet" />);
+  enterKey(Keypair.random().secret());
+  await waitFor(() => expect(held()?.kind).toBe("secret-key"));
+
+  useDemolishStore.setState({ phase: "COMPLETE" } as never);
+  rerender(<ExecutionWizard network="testnet" />);
+  await waitFor(() => expect(held()).toBeNull());
+});
+
+test("execution-wizard › a preimage after a key replaces the held key signer", async () => {
+  const preimage = fromHex("deadbeef");
+  const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    contributed: [],
+    remainingSigners: [
+      { key: hashXKey, weight: 1, type: "hash_x" },
+      { key: cosigner, weight: 1, type: "ed25519_public_key" },
+    ],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+  runImpl = async () => {};
+  const held = watchHeldSigner();
+
+  render(<ExecutionWizard network="testnet" />);
+  enterKey(Keypair.random().secret());
+  await waitFor(() => expect(held()?.kind).toBe("secret-key"));
+
+  fireEvent.change(screen.getByPlaceholderText(/hex-encoded preimage/i), {
+    target: { value: "deadbeef" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /apply preimage/i }));
+  await waitFor(() => expect(held()?.kind).toBe("hash-x"));
+  expect(held()?.signer).not.toBeInstanceOf(SecretKeySigner);
+});
+
+/** A run that waits at its first signature until `release` is called, then signs as the hook
+ *  does: the check before the signature first, the signer only if it passes. */
+function heldRun() {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const signed = mock(async () => {});
+  const outcome: { error: unknown } = { error: null };
+  runImpl = async (signer, options) => {
+    await gate;
+    try {
+      await options?.beforeSign?.();
+      await signed();
+      void signer;
+    } catch (err) {
+      outcome.error = err;
+    }
+  };
+  return { release: () => release(), signed, outcome };
+}
+
+/** Enters a key the account lists and starts the close with it. */
+async function startKeyRun() {
+  const key = Keypair.random();
+  useDemolishStore.setState({
+    accountState: {
+      signers: [{ key: key.publicKey(), weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 1, med: 1, high: 1 },
+    } as never,
+  } as never);
+  const held = watchHeldSigner();
+  const view = render(<ExecutionWizard network="testnet" />);
+  enterKey(key.secret());
+  await waitFor(() => expect(held()?.kind).toBe("secret-key"));
+  fireEvent.click(screen.getByRole("checkbox", { name: /I understand/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Sign & execute close/ }));
+  return view;
+}
+
+test("execution-wizard › a key run left in flight when the screen goes stops before its next signature", async () => {
+  const run = heldRun();
+  const { unmount } = await startKeyRun();
+
+  unmount();
+  await act(async () => run.release());
+  expect(run.outcome.error).toBeInstanceOf(SignerReleasedError);
+  expect(run.signed).not.toHaveBeenCalled();
+});
+
+test("execution-wizard › a run whose signer is still held signs", async () => {
+  const run = heldRun();
+  await startKeyRun();
+
+  await act(async () => run.release());
+  expect(run.outcome.error).toBeNull();
+  expect(run.signed).toHaveBeenCalledTimes(1);
+});
+
+test("execution-wizard › a hash(x) run stops before its next signature once the screen goes", async () => {
+  const preimage = fromHex("deadbeef");
+  const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    contributed: [],
+    remainingSigners: [{ key: hashXKey, weight: 1, type: "hash_x" }],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+  const run = heldRun();
+
+  const { unmount } = render(<ExecutionWizard network="testnet" />);
+  fireEvent.change(screen.getByPlaceholderText(/hex-encoded preimage/i), {
+    target: { value: "deadbeef" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /apply preimage/i }));
+
+  unmount();
+  await act(async () => run.release());
+  expect(run.outcome.error).toBeInstanceOf(SignerReleasedError);
+  expect(run.signed).not.toHaveBeenCalled();
+});
+
+test("execution-wizard › a partly typed key is wiped when the user switches to the wallet tab", () => {
+  const Real = secretKeyInputModule.default;
+  let keyRef: { current: string } | null = null;
+  spyOn(secretKeyInputModule, "default").mockImplementation((props) => {
+    keyRef = props.secretKeyRef;
+    return Real(props);
+  });
+
+  render(<ExecutionWizard network="testnet" />);
+  enterKey(Keypair.random().secret().slice(0, 55));
+  expect(keyRef!.current).toHaveLength(55);
+
+  fireEvent.click(screen.getByRole("tab", { name: "Connect wallet" }));
+  expect(keyRef!.current).toBe("");
 });

@@ -55,6 +55,17 @@ export class HashXPreimageSigner implements TransactionSigner {
   }
 }
 
+/**
+ * The screen dropped the signer a run was started with (Forget key, another tab, leaving the
+ * screen). Thrown before the next signature, so the run asks nothing more of that signer.
+ */
+export class SignerReleasedError extends Error {
+  constructor() {
+    super("The signer this run started with was cleared.");
+    this.name = "SignerReleasedError";
+  }
+}
+
 /** The wallet kit's id for WalletConnect, whose wallet answers from another device. */
 export const WALLET_CONNECT_WALLET_ID = "wallet_connect";
 
