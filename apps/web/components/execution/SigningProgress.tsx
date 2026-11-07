@@ -1,3 +1,4 @@
+import { CheckCircle } from "lucide-react";
 import type { SignatureStatus } from "@/hooks/useCloseExecution";
 import type { TransactionSigner } from "@/lib/stellar/signer";
 import type { AccountSigner } from "@/types/account";
@@ -27,7 +28,7 @@ export default function SigningProgress({
   onSubmitPreAuthTx,
   disabled,
 }: Props) {
-  const { requiredWeight, accumulatedWeight, remainingSigners } = status;
+  const { requiredWeight, accumulatedWeight, contributed, remainingSigners } = status;
   const remaining = Math.max(0, requiredWeight - accumulatedWeight);
   const pct = Math.min(100, Math.round((accumulatedWeight / requiredWeight) * 100));
   const satisfiable = remainingSigners.filter((s) => s.type === "ed25519_public_key");
@@ -46,6 +47,8 @@ export default function SigningProgress({
     0
   );
   const blockedByUnsatisfiable = satisfiableWeight < remaining;
+  const stillNeeded = [...satisfiable, ...hashXSigners, ...preAuthTxSigners];
+  const collected = `${accumulatedWeight} of ${requiredWeight} signature weight collected`;
 
   return (
     <Card className="flex flex-col gap-3 p-4">
@@ -54,19 +57,38 @@ export default function SigningProgress({
           This account needs {remaining} more signing weight before it can be submitted (
           {accumulatedWeight} of {requiredWeight} collected).
         </p>
-        <div className="mt-2 h-1.5 w-full rounded-full bg-white/10">
+        <div
+          role="progressbar"
+          aria-label="Signature weight"
+          aria-valuemin={0}
+          aria-valuemax={requiredWeight}
+          aria-valuenow={Math.min(accumulatedWeight, requiredWeight)}
+          aria-valuetext={collected}
+          className="mt-2 h-1.5 w-full rounded-full bg-white/10"
+        >
           <div className="h-1.5 rounded-full bg-accent" style={{ width: `${pct}%` }} />
         </div>
       </div>
-      {satisfiable.length > 0 && (
-        <ul className="space-y-1">
-          {satisfiable.map((s) => (
-            <li key={s.key} className="font-mono-address text-xs text-fg-muted">
-              {shortAddr(s.key)} <span className="text-fg-subtle">· weight {s.weight}</span>
-              <span className="text-fg-subtle"> · hasn&apos;t signed yet</span>
+      {contributed.length > 0 && (
+        <ul aria-label="Signed" className="space-y-1">
+          {contributed.map((s) => (
+            <li
+              key={s.key}
+              className="flex items-center gap-1.5 font-mono-address text-xs text-fg-muted"
+            >
+              <CheckCircle aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-success" />
+              {shortAddr(s.key)} <span className="text-fg-subtle">· signed, weight {s.weight}</span>
             </li>
           ))}
         </ul>
+      )}
+      {stillNeeded.length > 0 && (
+        <p className="text-xs text-fg-muted">
+          Need {remaining} more of:{" "}
+          <span className="font-mono-address">
+            {stillNeeded.map((s) => `${shortAddr(s.key)} (weight ${s.weight})`).join(", ")}
+          </span>
+        </p>
       )}
       {hashXSigners.length > 0 && (
         <div className="flex flex-col gap-2">

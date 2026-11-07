@@ -349,6 +349,96 @@ test.describe("execute with a wallet", () => {
   });
 });
 
+test.describe("wallet state checked before signing", () => {
+  async function toWalletReady(page: Page): Promise<void> {
+    await enterSourceAndAnalyze(page, source.publicKey());
+    await enterDestinationAndBegin(page, destination.publicKey());
+    await connectStubWallet(page);
+  }
+
+  test("an account switch after connecting is caught when the tab regains focus", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    await page.clock.install();
+    const other = Keypair.random();
+    const wallet = await installWalletStub(page, {
+      address: source.publicKey(),
+      sign: { kind: "approve", keypair: source },
+    });
+    await toWalletReady(page);
+
+    wallet.set({ address: other.publicKey(), sign: { kind: "approve", keypair: other } });
+    // Past the 5 s between re-checks, then back to the tab.
+    await page.clock.fastForward("00:06");
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+
+    await expect(page.getByRole("button", { name: "Reconnect wallet" })).toBeVisible({
+      timeout: TESTNET_STEP_TIMEOUT,
+    });
+    await expect(page.getByText(/Connected:/)).toHaveCount(0);
+    await page.getByRole("checkbox").check();
+    await expect(page.getByRole("button", { name: /Sign & execute close/i })).toBeDisabled();
+    expect(wallet.signRequests).toHaveLength(0);
+  });
+
+  test("a wallet that signs with another account is refused with the account named", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const other = Keypair.random();
+    const wallet = await installWalletStub(page, {
+      address: source.publicKey(),
+      sign: { kind: "approve", keypair: source },
+    });
+    await toWalletReady(page);
+    let submits = 0;
+    await page.route("**/api/v1/testnet/submit", (route) => {
+      submits++;
+      return route.abort("failed");
+    });
+
+    // The account switches inside the wallet, with no event the page could see.
+    wallet.set({ sign: { kind: "approve", keypair: other } });
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: /Sign & execute close/i }).click();
+
+    const short = `${other.publicKey().slice(0, 4)}…${other.publicKey().slice(-4)}`;
+    await expectPlainCopy(
+      page,
+      new RegExp(`Your wallet signed with a different account \\(${short}\\)`),
+      "SUBMIT_TRANSACTION"
+    );
+    await expect(
+      page.getByRole("button", { name: "Disconnect and choose another wallet" })
+    ).toBeVisible();
+    await expect(page.getByRole("list", { name: "Keys that can sign" })).toContainText(
+      source.publicKey().slice(-4)
+    );
+    expect(wallet.signRequests).toHaveLength(1);
+    expect(submits).toBe(0);
+  });
+
+  test("a wallet on another network is blocked before any prompt", async ({ page }) => {
+    test.setTimeout(180_000);
+    const wallet = await installWalletStub(page, {
+      address: source.publicKey(),
+      network: "PUBLIC",
+      sign: { kind: "approve", keypair: source },
+    });
+    await toWalletReady(page);
+
+    await expect(
+      page.getByText(/Your wallet is on a different network than this page/)
+    ).toBeVisible();
+    await page.getByRole("checkbox").check();
+    const sign = page.getByRole("button", { name: /Sign & execute close/i });
+    await expect(sign).toBeDisabled();
+    await sign.click({ force: true });
+    expect(wallet.signRequests).toHaveLength(0);
+  });
+});
+
 test.describe("a close stopped part way", () => {
   test("a failure after a confirmed round states what is done and claims nothing false", async ({
     page,

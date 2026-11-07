@@ -13,18 +13,30 @@ import {
 import * as walletKit from "@/hooks/useWalletKitConnection";
 import * as recovery from "@/lib/session/recovery";
 import RevokeAllowanceModal from "@/components/allowances/RevokeAllowanceModal";
+import * as walletKitClient from "@/lib/wallet-kit/client";
+import { WalletKitSigner, WalletNotUsableError } from "@/lib/stellar/signer";
 import type { Allowance } from "@/types/allowance";
 
-function stubWalletKit(address: string | null = null): void {
+function stubWalletKit(
+  address: string | null = null,
+  state: Partial<walletKit.WalletKitConnection> = {}
+): void {
   spyOn(walletKit, "useWalletKitConnection").mockImplementation(
     () =>
       ({
         address,
         connecting: false,
         error: null,
-        networkMismatch: false,
+        status: "connected",
+        checking: false,
+        network: "yes",
+        networkConfirmed: false,
+        confirmNetwork: () => {},
+        verified: true,
+        beforeSigning: () => async () => {},
         connect: async () => {},
         disconnect: async () => {},
+        ...state,
       }) as unknown as ReturnType<typeof walletKit.useWalletKitConnection>
   );
 }
@@ -356,7 +368,13 @@ test("RevokeAllowanceModal › the tablist goes inert with the dialog while the 
         address: null,
         connecting: true,
         error: null,
-        networkMismatch: false,
+        status: "connected",
+        checking: false,
+        network: "yes",
+        networkConfirmed: false,
+        confirmNetwork: () => {},
+        verified: true,
+        beforeSigning: () => async () => {},
         connect: async () => {},
         disconnect: async () => {},
       }) as unknown as ReturnType<typeof walletKit.useWalletKitConnection>
@@ -498,7 +516,13 @@ test("RevokeAllowanceModal › while the wallet picker is open the dialog hands 
         address: null,
         connecting: true,
         error: null,
-        networkMismatch: false,
+        status: "connected",
+        checking: false,
+        network: "yes",
+        networkConfirmed: false,
+        confirmNetwork: () => {},
+        verified: true,
+        beforeSigning: () => async () => {},
         connect: async () => {},
         disconnect: async () => {},
       }) as unknown as ReturnType<typeof walletKit.useWalletKitConnection>
@@ -566,4 +590,112 @@ test("RevokeAllowanceModal › the key is not in the markup and a new mount star
   expect(
     (screen.getByRole("button", { name: /revoke allowance/i }) as HTMLButtonElement).disabled
   ).toBe(true);
+});
+
+// The revoke inherits the wallet checks of the close: an owner wallet that is not checked, or is
+// on another network, cannot sign, and one that signs with another account is refused before
+// anything is submitted.
+test.each([
+  ["on another network", { network: "no" as const, verified: false }],
+  ["whose session could not be checked", { status: "stale" as const, verified: false }],
+  ["whose network is unknown and not confirmed", { network: "unknown" as const, verified: false }],
+  ["still being checked", { checking: true }],
+])("RevokeAllowanceModal › an owner wallet %s cannot revoke", (_, state) => {
+  stubWalletKit(OWNER, state);
+  render(
+    <RevokeAllowanceModal
+      network="testnet"
+      owner={OWNER}
+      allowance={allowance()}
+      onClose={() => {}}
+      onRevoked={() => {}}
+    />
+  );
+
+  expect(
+    (screen.getByRole("button", { name: /revoke allowance/i }) as HTMLButtonElement).disabled
+  ).toBe(true);
+});
+
+test("RevokeAllowanceModal › an owner wallet that signs with another account is refused before submit", async () => {
+  stubWalletKit(OWNER);
+  spyOn(recovery, "findUnresolved").mockResolvedValue(undefined as never);
+  const other = Keypair.random();
+  spyOn(walletKitClient, "walletKitSigner").mockImplementation(
+    () =>
+      new WalletKitSigner(OWNER, async (unsigned, opts) => {
+        const tx = TransactionBuilder.fromXdr(unsigned, opts.networkPassphrase);
+        tx.sign(other);
+        return { signedTxXdr: tx.toEnvelope().toXdr("base64"), signerAddress: other.publicKey() };
+      })
+  );
+  let submitCalled = false;
+  globalThis.fetch = (async (url: string) => {
+    if (url.includes("/submit")) {
+      submitCalled = true;
+      return new Response(JSON.stringify({ hash: "x", ledger: 1 }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ transaction: realRevokeXdr() }), { status: 200 });
+  }) as unknown as typeof fetch;
+
+  const onRevoked = mock((_a: Allowance) => {});
+  render(
+    <RevokeAllowanceModal
+      network="testnet"
+      owner={OWNER}
+      allowance={allowance()}
+      onClose={() => {}}
+      onRevoked={onRevoked}
+    />
+  );
+  fireEvent.click(screen.getByRole("button", { name: /revoke allowance/i }));
+
+  await waitFor(() =>
+    expect(screen.getByText(/Your wallet signed with a different account/)).toBeTruthy()
+  );
+  expect(submitCalled).toBe(false);
+  expect(onRevoked).not.toHaveBeenCalled();
+});
+
+test("RevokeAllowanceModal › a wallet session that changes while the revoke is built is refused before the wallet is asked", async () => {
+  let switched = false;
+  stubWalletKit(OWNER, {
+    beforeSigning: () => async () => {
+      if (switched) throw new WalletNotUsableError("session", "testnet");
+    },
+  });
+  spyOn(recovery, "findUnresolved").mockResolvedValue(undefined as never);
+  const sign = mock(async (xdr: string) => xdr);
+  spyOn(walletKitClient, "walletKitSigner").mockImplementation(
+    () => ({ publicKey: OWNER, sign }) as unknown as WalletKitSigner
+  );
+  let submitCalled = false;
+  globalThis.fetch = (async (url: string) => {
+    if (url.includes("/submit")) {
+      submitCalled = true;
+      return new Response(JSON.stringify({ hash: "x", ledger: 1 }), { status: 200 });
+    }
+    // The account switches inside the wallet while the transaction is being built.
+    switched = true;
+    return new Response(JSON.stringify({ transaction: realRevokeXdr() }), { status: 200 });
+  }) as unknown as typeof fetch;
+
+  const onRevoked = mock((_a: Allowance) => {});
+  render(
+    <RevokeAllowanceModal
+      network="testnet"
+      owner={OWNER}
+      allowance={allowance()}
+      onClose={() => {}}
+      onRevoked={onRevoked}
+    />
+  );
+  fireEvent.click(screen.getByRole("button", { name: /revoke allowance/i }));
+
+  await waitFor(() =>
+    expect(screen.getByText(/Your wallet session changed before this signature/)).toBeTruthy()
+  );
+  expect(sign).not.toHaveBeenCalled();
+  expect(submitCalled).toBe(false);
+  expect(onRevoked).not.toHaveBeenCalled();
 });

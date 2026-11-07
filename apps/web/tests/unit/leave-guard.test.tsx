@@ -78,7 +78,12 @@ function stubExecution(): void {
         address: null,
         connecting: false,
         error: null,
-        networkMismatch: false,
+        status: "connected",
+        checking: false,
+        network: "yes",
+        networkConfirmed: false,
+        confirmNetwork: () => {},
+        verified: true,
         connect: async () => {},
         disconnect: async () => {},
       }) as unknown as ReturnType<typeof walletKit.useWalletKitConnection>

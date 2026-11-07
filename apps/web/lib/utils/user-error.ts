@@ -8,7 +8,14 @@ import {
 import { apiRequestId } from "@/lib/api/error-body";
 import { InvalidPreAuthTxError } from "@/lib/stellar/pre-auth-tx";
 import { InvalidPreimageError } from "@/lib/stellar/hash-x";
-import { WalletSigningError, WalletSigningTimeoutError } from "@/lib/stellar/signer";
+import {
+  WalletNotUsableError,
+  WalletSignerMismatchError,
+  WalletSigningError,
+  WalletSigningTimeoutError,
+  WalletWrongNetworkError,
+} from "@/lib/stellar/signer";
+import { NETWORK_NAME, NETWORK_PASSPHRASES, type Network } from "@/config/networks";
 import { VerificationError } from "@/lib/stellar/verify";
 import { RevokeAllowanceVerificationError } from "@/lib/stellar/verify-revoke-allowance";
 import { TxSubmitError } from "@/lib/utils/errors";
@@ -68,6 +75,37 @@ const VERIFICATION_FAILED =
  *  dropped, so the user is told to decline it rather than wonder whether it was used. */
 export const WALLET_TIMED_OUT =
   "Your wallet didn't respond in time, so this transaction was not signed or sent. Close the earlier prompt in your wallet before you try again: a signature given there now will not be used. You can also change wallet or key.";
+/** A wallet that reported signing with another account than the one it was asked for. */
+export function walletAccountMismatch(reported: string, expected: string): string {
+  const short = (key: string) => `${key.slice(0, 4)}…${key.slice(-4)}`;
+  return `Your wallet signed with a different account (${short(reported)}). Switch your wallet to ${short(expected)}, or disconnect it and choose a wallet that holds one of this account's signers.`;
+}
+
+/** A wallet that signed for another network than the page's. */
+export function walletWrongNetwork(network: Network | null): string {
+  return network
+    ? `Your wallet signed for a different network than this page. Switch your wallet to ${NETWORK_NAME[network]} and try again.`
+    : "Your wallet signed for a different network than this page. Switch your wallet to this page's network and try again.";
+}
+
+/** A wallet session that stopped being usable during a run, found before the wallet was asked. */
+export function walletNotUsable(reason: WalletNotUsableError["reason"], network: Network): string {
+  if (reason === "network") {
+    return `Your wallet is now on a different network than this page, so the wallet was not asked to sign. Switch it to ${NETWORK_NAME[network]}, then retry.`;
+  }
+  if (reason === "network-unconfirmed") {
+    return `Your wallet's network needs confirming again, so the wallet was not asked to sign. Confirm it is set to ${NETWORK_NAME[network]}, then retry.`;
+  }
+  return "Your wallet session changed before this signature, so the wallet was not asked to sign. Reconnect your wallet, then retry.";
+}
+
+function networkOf(passphrase: string): Network | null {
+  const found = (Object.entries(NETWORK_PASSPHRASES) as [Network, string][]).find(
+    ([, p]) => p === passphrase
+  );
+  return found ? found[0] : null;
+}
+
 /** Added to a refusal when this device's clock already said the transaction had expired. */
 export const CLOCK_HINT =
   "If this keeps happening, check that your device's clock is set correctly.";
@@ -188,6 +226,11 @@ function walletSigningMessage(err: WalletSigningError): string {
 export function toUserMessage(err: unknown, context: ErrorContext = "generic"): string {
   if (err instanceof WalletSigningTimeoutError) return WALLET_TIMED_OUT;
   if (err instanceof WalletSigningError) return walletSigningMessage(err);
+  if (err instanceof WalletSignerMismatchError) {
+    return walletAccountMismatch(err.reported, err.expected);
+  }
+  if (err instanceof WalletWrongNetworkError) return walletWrongNetwork(networkOf(err.requested));
+  if (err instanceof WalletNotUsableError) return walletNotUsable(err.reason, err.network);
   if (
     err instanceof UserFacingError ||
     err instanceof CloseDidNotConvergeError ||

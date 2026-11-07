@@ -98,12 +98,21 @@ import {
 } from "@/lib/execution/progress";
 import type { AccountSigner } from "@/types/account";
 
-/** Required vs. accumulated signing weight for the transaction that stopped a close, plus the
- *  account's known signers who haven't contributed yet - consumed by the multi-wallet-switch UI
- *  (issue #100) to let the user bring in another signer without re-deriving this state. */
+export interface RunOptions {
+  /** Runs right before each signature of the run; throwing stops the run with nothing signed or
+   *  sent for that transaction. */
+  beforeSign?: () => Promise<void>;
+}
+
+/** Required vs. accumulated signing weight for the transaction that stopped a close, the
+ *  signers whose signature on it already counts, and the account's known signers who haven't
+ *  contributed yet - consumed by the multi-wallet-switch UI (issue #100) to let the user bring in
+ *  another signer without re-deriving this state. Display only: the weight checks in `sign`
+ *  re-evaluate the envelope itself. */
 export interface SignatureStatus {
   requiredWeight: number;
   accumulatedWeight: number;
+  contributed: AccountSigner[];
   remainingSigners: AccountSigner[];
 }
 
@@ -242,7 +251,7 @@ export function useCloseExecution() {
   );
 
   const run = useCallback(
-    async (signer: TransactionSigner): Promise<void> => {
+    async (signer: TransactionSigner, options: RunOptions = {}): Promise<void> => {
       // One run per close: a page remounted mid-run has lost its own record of the first.
       if (useDemolishStore.getState().signingRun) return;
       if (!sourceAddress || !destinationAddress) {
@@ -481,6 +490,9 @@ export function useCloseExecution() {
                 return { xdr, weight: preSignWeight };
               }
               assertPreimageRemovesItsSigner(xdr, passphrase, sourceAddress, signer.publicKey);
+              // The signer's own live check, at each signature of the run and not only at its
+              // start: a wallet session that changed since stops here, before it is asked.
+              await options.beforeSign?.();
               markCoveredStatus(tx.covers, tx.coversTargets, "signing");
               const signedXdr = await signer.sign(xdr, passphrase);
 
@@ -669,16 +681,16 @@ export function useCloseExecution() {
           // Paused for another signer, not failed: the panel below the steps says what is needed.
           markCoveredStatus(err.pending.tx.covers, err.pending.tx.coversTargets, "pending");
           pendingRoundRef.current = err.pending;
+          const contributions = evaluateSignatureContributions(
+            err.pending.xdr,
+            passphrase,
+            roundSignerState().signers
+          );
           setSignatureStatus({
             requiredWeight: err.pending.requiredWeight,
             accumulatedWeight: err.pending.accumulatedWeight,
-            remainingSigners: evaluateSignatureContributions(
-              err.pending.xdr,
-              passphrase,
-              roundSignerState().signers
-            )
-              .filter((c) => !c.contributed)
-              .map((c) => c.signer),
+            contributed: contributions.filter((c) => c.contributed).map((c) => c.signer),
+            remainingSigners: contributions.filter((c) => !c.contributed).map((c) => c.signer),
           });
           setLastError(
             `This account needs ${err.pending.requiredWeight - err.pending.accumulatedWeight} more signing weight. Connect another signer to continue.`

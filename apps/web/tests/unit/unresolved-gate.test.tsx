@@ -145,7 +145,7 @@ test("a confirmed merge ends the close there and offers nothing to sign", async 
 test("the entry form sends a held account to the gate without reading it", async () => {
   route("/testnet");
   spyOn(walletConnection, "useWalletKitConnection").mockImplementation(
-    () => ({ address: SOURCE, networkMismatch: false }) as never
+    () => ({ address: SOURCE, status: "connected", network: "yes", verified: true }) as never
   );
   const fetched = spyOn(globalThis, "fetch");
   render(<AccountEntryForm />);

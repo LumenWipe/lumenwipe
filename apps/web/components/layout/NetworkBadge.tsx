@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils/cn";
-import type { Network } from "@/config/networks";
+import { NETWORK_NAME, type Network } from "@/config/networks";
 import { Badge } from "@/components/ui/badge";
 
 interface NetworkBadgeProps {
@@ -8,12 +8,6 @@ interface NetworkBadgeProps {
   detailed?: boolean;
   className?: string;
 }
-
-/** The network's name as the app says it wherever a mistaken network would cost real funds. */
-export const NETWORK_NAME: Record<Network, string> = {
-  mainnet: "MAINNET",
-  testnet: "TESTNET",
-};
 
 const DETAIL: Record<Network, string> = {
   mainnet: "MAINNET: real funds",

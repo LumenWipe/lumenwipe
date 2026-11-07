@@ -70,8 +70,10 @@ export default function RevokeAllowanceModal({
     ? PROTOCOL_LABELS[allowance.spenderProtocol]
     : null;
 
+  // Only a checked session on this network (or confirmed to be) that holds the owner can sign.
   const walletMatches = walletConnection.address === owner;
-  const signerReady = mode === "wallet" ? walletMatches : keyValid;
+  const walletUsable = walletMatches && walletConnection.verified && !walletConnection.checking;
+  const signerReady = mode === "wallet" ? walletUsable : keyValid;
   const pickerShown = step === "confirm" || step === "signing" || step === "failed";
   const keyFieldShown = pickerShown && mode === "secret-key";
 
@@ -92,7 +94,7 @@ export default function RevokeAllowanceModal({
 
       let signer: TransactionSigner;
       if (mode === "wallet") {
-        if (!walletConnection.address || !walletMatches) {
+        if (!walletConnection.address || !walletUsable) {
           throw new UserFacingError("Connect the wallet that owns this account first.");
         }
         signer = walletKitSigner(network, walletConnection.address);
@@ -124,6 +126,9 @@ export default function RevokeAllowanceModal({
         spender: allowance.spender,
       });
 
+      // The wallet session is read again now, not at the click: a session that went stale or moved
+      // to another account or network while the transaction was built stops here, unasked.
+      if (mode === "wallet") await walletConnection.beforeSigning(owner)();
       const signedXdr = await signer.sign(data.transaction, passphrase);
       const signedTx = TransactionBuilder.fromXdr(signedXdr, passphrase);
       if (signedTx.signatures.length === 0) {
@@ -233,6 +238,7 @@ export default function RevokeAllowanceModal({
                 <WalletConnectPanel
                   connection={walletConnection}
                   disabled={busy}
+                  signingNetwork={network}
                   mismatchWarning={
                     walletConnection.address && !walletMatches
                       ? `Connected wallet doesn't match this account (${shortAddress(owner)}).`

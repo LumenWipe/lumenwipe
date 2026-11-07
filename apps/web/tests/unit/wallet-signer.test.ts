@@ -3,8 +3,11 @@ import { Account, Keypair, Networks, Operation, TransactionBuilder } from "@stel
 import {
   WALLET_CONNECT_WALLET_ID,
   WalletKitSigner,
+  WalletSignerMismatchError,
   WalletSigningError,
   WalletSigningTimeoutError,
+  WalletWrongNetworkError,
+  otherNetworkSignedFor,
 } from "@/lib/stellar/signer";
 import {
   SUBMIT_MARGIN_MS,
@@ -14,6 +17,7 @@ import {
   type SignTimer,
 } from "@/lib/stellar/wallet-timeout";
 import { WALLET_CONNECT_ID } from "@creit-tech/stellar-wallets-kit/modules/wallet-connect";
+import { VARIAL_ID } from "@creit-tech/stellar-wallets-kit/modules/varial";
 
 const NOW = 1_800_000_000_000;
 const source = Keypair.random();
@@ -86,12 +90,12 @@ describe("WalletKitSigner errors", () => {
       async () => {
         throw thrown;
       },
-      { walletId: "freighter", startTimeout: timer.start, now: () => NOW }
+      { walletId: VARIAL_ID, startTimeout: timer.start, now: () => NOW }
     );
     const err = await caught(signer.sign(FRESH, Networks.TESTNET));
     expect(err).toBeInstanceOf(WalletSigningError);
     expect((err as WalletSigningError).code).toBe(code);
-    expect((err as WalletSigningError).walletId).toBe("freighter");
+    expect((err as WalletSigningError).walletId).toBe(VARIAL_ID);
     expect(timer.cancelled()).toBe(1);
   });
 
@@ -224,4 +228,102 @@ test("signTimeoutMs is the validity window less the margin, kept between 30 s an
 
 test("the WalletConnect id is the kit's own", () => {
   expect(WALLET_CONNECT_WALLET_ID).toBe(WALLET_CONNECT_ID);
+});
+
+/** Signs `xdr` with `keypair` as if on `passphrase`: the envelope bytes are the same on every
+ *  network, only the hash under the signature differs. */
+function signedOn(xdr: string, keypair: Keypair, passphrase: string): string {
+  const tx = TransactionBuilder.fromXdr(xdr, passphrase);
+  tx.sign(keypair);
+  return tx.toEnvelope().toXdr("base64");
+}
+
+function kitAnswering(answer: { signedTxXdr: string; signerAddress?: string }) {
+  const timer = manualTimer();
+  return new WalletKitSigner(source.publicKey(), async () => answer, {
+    walletId: VARIAL_ID,
+    startTimeout: timer.start,
+    now: () => NOW,
+  });
+}
+
+describe("WalletKitSigner pre-checks", () => {
+  test("a wallet reporting another signing account is refused before its signature is returned", async () => {
+    const other = Keypair.random();
+    const signer = kitAnswering({
+      signedTxXdr: signedOn(FRESH, other, Networks.TESTNET),
+      signerAddress: other.publicKey(),
+    });
+
+    const err = await caught(signer.sign(FRESH, Networks.TESTNET));
+
+    expect(err).toBeInstanceOf(WalletSignerMismatchError);
+    expect((err as WalletSignerMismatchError).reported).toBe(other.publicKey());
+    expect((err as WalletSignerMismatchError).expected).toBe(source.publicKey());
+    expect(signer.mismatchedAccount()).toBe(other.publicKey());
+  });
+
+  test("a wallet reporting the expected account passes, and clears an earlier mismatch", async () => {
+    const other = Keypair.random();
+    let answer = {
+      signedTxXdr: signedOn(FRESH, other, Networks.TESTNET),
+      signerAddress: other.publicKey(),
+    };
+    const timer = manualTimer();
+    const signer = new WalletKitSigner(source.publicKey(), async () => answer, {
+      startTimeout: timer.start,
+      now: () => NOW,
+    });
+    await caught(signer.sign(FRESH, Networks.TESTNET));
+    expect(signer.mismatchedAccount()).toBe(other.publicKey());
+
+    const good = signedOn(FRESH, source, Networks.TESTNET);
+    answer = { signedTxXdr: good, signerAddress: source.publicKey() };
+    expect(await signer.sign(FRESH, Networks.TESTNET)).toBe(good);
+    expect(signer.mismatchedAccount()).toBeNull();
+  });
+
+  test("a wallet that reports no signing account and signed with another key is left to the checks after signing", async () => {
+    const other = Keypair.random();
+    const wrong = signedOn(FRESH, other, Networks.TESTNET);
+    const signer = kitAnswering({ signedTxXdr: wrong });
+    expect(await signer.sign(FRESH, Networks.TESTNET)).toBe(wrong);
+  });
+
+  test("a signature valid for the requested network is never refused", async () => {
+    const good = signedOn(FRESH, source, Networks.TESTNET);
+    expect(otherNetworkSignedFor(good, Networks.TESTNET, source.publicKey())).toBeNull();
+    expect(await kitAnswering({ signedTxXdr: good }).sign(FRESH, Networks.TESTNET)).toBe(good);
+
+    const onMainnet = signedOn(FRESH, source, Networks.PUBLIC);
+    expect(otherNetworkSignedFor(onMainnet, Networks.PUBLIC, source.publicKey())).toBeNull();
+    expect(await kitAnswering({ signedTxXdr: onMainnet }).sign(FRESH, Networks.PUBLIC)).toBe(
+      onMainnet
+    );
+  });
+
+  test("a valid signature for the requested network wins even beside one for the other network", async () => {
+    const both = signedOn(signedOn(FRESH, source, Networks.PUBLIC), source, Networks.TESTNET);
+    expect(otherNetworkSignedFor(both, Networks.TESTNET, source.publicKey())).toBeNull();
+  });
+
+  test.each([
+    ["testnet", Networks.TESTNET, Networks.PUBLIC],
+    ["mainnet", Networks.PUBLIC, Networks.TESTNET],
+  ])(
+    "a signature made for the other network on a %s page is refused as a wrong network",
+    async (_, requested, signedFor) => {
+      const wrongNetwork = signedOn(FRESH, source, signedFor);
+      expect(otherNetworkSignedFor(wrongNetwork, requested, source.publicKey())).toBe(signedFor);
+
+      const err = await caught(kitAnswering({ signedTxXdr: wrongNetwork }).sign(FRESH, requested));
+      expect(err).toBeInstanceOf(WalletWrongNetworkError);
+      expect((err as WalletWrongNetworkError).signedFor).toBe(signedFor);
+    }
+  );
+
+  test("an envelope with no signature from the key, or that cannot be read, is not called a wrong network", () => {
+    expect(otherNetworkSignedFor(FRESH, Networks.TESTNET, source.publicKey())).toBeNull();
+    expect(otherNetworkSignedFor("not xdr", Networks.TESTNET, source.publicKey())).toBeNull();
+  });
 });

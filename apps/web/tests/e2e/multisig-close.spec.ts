@@ -15,6 +15,7 @@ import {
   openTestnetHome,
   TESTNET_STEP_TIMEOUT,
 } from "./helpers/flow";
+import { connectStubWallet, installWalletStub } from "./helpers/wallet-stub";
 
 // E2E coverage for "the multisig path" - named as an explicit target in
 // docs/architecture.md §17 and never previously exercised end to end. Configures a real
@@ -124,6 +125,51 @@ test("multisig close: a 2-of-3 account signs with two keys in sequence and merge
 
   await expect(page).toHaveURL(/\/testnet\/complete/, { timeout: 90_000 });
 
+  expect(await accountExists(master.publicKey())).toBe(false);
+});
+
+test("multisig close: a wallet that already signed cannot open a second prompt", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+
+  const master = Keypair.random();
+  const coSignerB = Keypair.random();
+  const coSignerC = Keypair.random();
+  const destination = Keypair.random();
+  const wallet = await installWalletStub(page, {
+    address: master.publicKey(),
+    sign: { kind: "approve", keypair: master },
+  });
+
+  await fund(master.publicKey());
+  await fund(destination.publicKey());
+  await configureTwoOfThree(master, coSignerB, coSignerC);
+
+  await driveToExecute(page, { source: master.publicKey(), destination: destination.publicKey() });
+
+  // Round 1: the master key signs through the wallet (weight 1 of 2).
+  await connectStubWallet(page);
+  await page.getByRole("checkbox").check();
+  await page.getByRole("button", { name: /Sign .* execute close/i }).click();
+  await expect(page.getByText(/more signing weight/i)).toBeVisible({ timeout: 30_000 });
+  expect(wallet.signRequests).toHaveLength(1);
+
+  // The wallet is still connected and still on screen, but it already signed: the button stays
+  // disabled with the reason, and no second prompt reaches the wallet.
+  const add = page.getByRole("button", { name: /Add signature/i });
+  await expect(page.getByTestId("active-signer")).toContainText(master.publicKey().slice(-4));
+  await expect(page.getByText("This signer already signed.", { exact: false })).toBeVisible();
+  await expect(add).toBeDisabled();
+  await add.click({ force: true });
+  expect(wallet.signRequests).toHaveLength(1);
+
+  // A signer the round still needs finishes the close.
+  await enterSecretKey(page, coSignerB.secret());
+  await expect(add).toBeEnabled();
+  await add.click();
+  await expect(page).toHaveURL(/\/testnet\/complete/, { timeout: 90_000 });
+  expect(wallet.signRequests).toHaveLength(1);
   expect(await accountExists(master.publicKey())).toBe(false);
 });
 

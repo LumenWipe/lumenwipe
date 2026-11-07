@@ -25,6 +25,12 @@ export const SV_EXPLORER_BASE: Record<Network, string> = {
   testnet: "https://stellarview.acachete.xyz/en/testnet",
 };
 
+/** The network's name as the app says it wherever a mistaken network would cost real funds. */
+export const NETWORK_NAME: Record<Network, string> = {
+  mainnet: "MAINNET",
+  testnet: "TESTNET",
+};
+
 export const NETWORK_LABELS: Record<Network, string> = {
   mainnet: "Mainnet",
   testnet: "Testnet",

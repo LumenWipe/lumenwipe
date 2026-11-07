@@ -280,7 +280,7 @@ test("a dropped connection reads as a connection problem", async () => {
 test("the entry form reads no account and persists nothing for a mistyped address", async () => {
   spyOn(recovery, "findUnresolved").mockImplementation(async () => null);
   spyOn(walletConnection, "useWalletKitConnection").mockImplementation(
-    () => ({ address: SOURCE, networkMismatch: false }) as never
+    () => ({ address: SOURCE, status: "connected", network: "yes", verified: true }) as never
   );
   const saved = spyOn(sessionStore, "saveSession").mockImplementation(async () => {});
   const seen = stubFetch({ account: notFound, plan: notFound });
