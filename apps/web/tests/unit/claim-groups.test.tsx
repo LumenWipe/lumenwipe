@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { Keypair } from "@stellar/stellar-sdk";
 import * as navigation from "next/navigation";
 import PlanView from "@/components/plan/PlanView";
 import { claimGroups } from "@/lib/plan/open-items";
@@ -87,7 +88,8 @@ async function mount(claims: ClaimableBalanceDecision[]) {
 
 const selections = () => useDemolishStore.getState().claimableBalanceSelections;
 const section = (code: string): HTMLElement =>
-  screen.getByRole("region", { name: `${code} claimable balances` });
+  screen.getByRole("region", { name: new RegExp(`^${code} claimable balances`) });
+const announced = (): string => screen.getAllByRole("status")[0].textContent ?? "";
 async function press(code: string, name: string | RegExp): Promise<void> {
   await act(async () => {
     fireEvent.click(within(section(code)).getByRole("button", { name }));
@@ -149,7 +151,7 @@ test("in a mixed group a bulk answer skips what cannot be claimed now or has no 
   expect(selections()).toEqual({ "MIX-1": "claim", "MIX-2": "claim", "MIX-3": "claim" });
 });
 
-test("a bulk leave can be undone, and undo puts back only what the latest plan offers", async () => {
+test("undo after a re-plan clears an answer the plan stopped offering, and says so", async () => {
   const claims = many("AAA", "now", 4);
   const update = await mount(claims);
   await act(async () => {
@@ -163,13 +165,76 @@ test("a bulk leave can be undone, and undo puts back only what the latest plan o
   await update([claims[0], balance("AAA-2", "AAA", "late"), claims[3]]);
   await press("AAA", "Undo");
 
-  expect(selections()).toEqual({
-    "AAA-1": "forfeit",
-    "AAA-2": "forfeit",
-    "AAA-3": "forfeit",
-    "AAA-4": "claim",
-  });
+  // AAA-2's earlier "claim" is no longer offered, and AAA-3 is no longer listed: neither keeps
+  // the bulk answer, so each is asked again.
+  expect(selections()).toEqual({ "AAA-1": "forfeit", "AAA-4": "claim" });
+  const late = document.querySelector('[data-open-item="claim:AAA-2"]') as HTMLElement;
+  expect(
+    within(late)
+      .getAllByRole("radio")
+      .some((r) => (r as HTMLInputElement).checked)
+  ).toBe(false);
+  expect(announced()).toBe(
+    "Restored the earlier answer for 2 balances. 2 balances need a new answer: the plan no longer offers the earlier one. 2 things left before you can review the plan"
+  );
   expect(within(section("AAA")).queryByRole("button", { name: "Undo" })).toBeNull();
+});
+
+test("undo leaves alone a balance answered by hand after the bulk answer", async () => {
+  await mount(many("AAA", "now", 3));
+  await press("AAA", "Leave all unclaimed");
+
+  const claimRadios = screen.getAllByRole("radio", { name: /^Claim it/ });
+  await act(async () => {
+    fireEvent.click(claimRadios[1]);
+  });
+  expect(selections()["AAA-2"]).toBe("claim");
+
+  await act(async () => {
+    fireEvent.click(screen.getAllByRole("radio", { name: /^Leave it unclaimed/ })[1]);
+  });
+  await act(async () => {
+    fireEvent.click(claimRadios[1]);
+  });
+  await press("AAA", "Undo");
+
+  expect(selections()).toEqual({ "AAA-1": "claim", "AAA-2": "claim", "AAA-3": "claim" });
+  expect(announced()).toBe(
+    "Restored the earlier answer for 2 balances. 1 balance answered since then keeps its answer."
+  );
+});
+
+test("two groups with the same code from different issuers read apart", async () => {
+  const first = Keypair.random().publicKey();
+  const second = Keypair.random().publicKey();
+  const usdc = (id: string, issuer: string): ClaimableBalanceDecision => ({
+    ...balance(id, "USDC", "now"),
+    asset: `USDC:${issuer}`,
+  });
+  await mount([
+    usdc("U-1", first),
+    usdc("U-2", second),
+    { ...balance("N-1", "XLM", "now"), asset: "native" },
+  ]);
+
+  const short = (g: string) => `${g.slice(0, 4)}…${g.slice(-4)}`;
+  const one = screen.getByRole("region", {
+    name: `USDC claimable balances issued by ${short(first)}`,
+  });
+  const two = screen.getByRole("region", {
+    name: `USDC claimable balances issued by ${short(second)}`,
+  });
+  expect(one).not.toBe(two);
+  expect(one.textContent).toContain(`Issued by ${short(first)}`);
+  expect(two.textContent).toContain(`Issued by ${short(second)}`);
+  expect(
+    within(one).getByRole("group", {
+      name: `What happens to the 1 USDC claimable balance issued by ${short(first)}`,
+    })
+  ).toBeTruthy();
+
+  const native = screen.getByRole("region", { name: "XLM claimable balances" });
+  expect(native.textContent).not.toContain("Issued by");
 });
 
 test("a balance that appears after a bulk answer is not answered by it", async () => {

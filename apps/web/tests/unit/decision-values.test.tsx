@@ -354,8 +354,8 @@ test("each card checks the option its default answer names", async () => {
       "What happens to TNRT": null,
       "What happens to TRAW": null,
       "What happens to TSWP": null,
-      "What happens to the 3 CLMN claimable balance": "claim",
-      "What happens to the 3 CLMT claimable balance": null,
+      "What happens to the 3 CLMN claimable balance issued by aaaaaaaa": "claim",
+      "What happens to the 3 CLMT claimable balance issued by aaaaaaaa": null,
     }
   `);
 });

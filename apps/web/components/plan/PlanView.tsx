@@ -122,6 +122,7 @@ export default function PlanView({
     setAssetDisposition,
     claimableBalanceSelections,
     setClaimableBalanceSelection,
+    clearClaimableBalanceSelection,
     setAddresses,
     setMediatorRequired,
     setPlan,
@@ -243,17 +244,36 @@ export default function PlanView({
     result: string
   ) {
     for (const id of balanceIds) handleSelectClaimableBalance(id, selection);
-    setAnnouncement(result);
+    announceAction(result);
   }
 
-  // Undo puts back only what the latest plan still offers for a balance it still lists: an answer
-  // the plan stopped offering would be refused at build, after review.
-  function handleUndoClaimableBalances(previous: Record<string, ClaimableBalanceSelection>) {
+  // Undo touches only the balances still holding the bulk answer: one the user answered by hand
+  // since keeps that answer. Each gets its earlier answer back where the latest plan still offers
+  // it; otherwise its answer is cleared so the card asks again, since an answer the plan stopped
+  // offering would be refused at build, after review. The announcement says which happened.
+  function handleUndoClaimableBalances(
+    previous: Record<string, ClaimableBalanceSelection>,
+    bulkChoice: ClaimableBalanceSelection
+  ) {
+    const current = useDemolishStore.getState().claimableBalanceSelections;
+    let restored = 0;
+    let cleared = 0;
+    let kept = 0;
     for (const [id, selection] of Object.entries(previous)) {
+      if (current[id] !== bulkChoice) {
+        kept++;
+        continue;
+      }
       const decision = claimableBalanceDecisions.find((b) => b.balanceId === id);
-      if (decision?.offered.includes(selection)) handleSelectClaimableBalance(id, selection);
+      if (decision?.offered.includes(selection)) {
+        handleSelectClaimableBalance(id, selection);
+        restored++;
+      } else {
+        clearClaimableBalanceSelection(id);
+        cleared++;
+      }
     }
-    setAnnouncement("The earlier answers are back.");
+    announceAction(undoAnnouncement(restored, cleared, kept));
   }
 
   const assetsNeedingDecision =
@@ -449,11 +469,23 @@ export default function PlanView({
   const [announcement, setAnnouncement] = useState(statusMessage);
   useEffect(() => setAnnouncement(statusMessage), [statusMessage]);
   const firstSummary = useRef(summary);
+  // What a bulk answer or an undo just did. When the same change also moves the count, the count
+  // follows it in the one announcement instead of replacing it.
+  const pendingAction = useRef<string | null>(null);
+  function announceAction(text: string) {
+    pendingAction.current = text;
+    setAnnouncement(text);
+  }
   useEffect(() => {
     if (summary === firstSummary.current) return;
     firstSummary.current = summary;
-    setAnnouncement(summary);
+    const action = pendingAction.current;
+    setAnnouncement(action === null ? summary : `${action} ${summary}`);
   }, [summary]);
+  // An action speaks for the render it caused, never for a later one.
+  useEffect(() => {
+    pendingAction.current = null;
+  });
 
   const expectedFrom = (feeStroops: string, relayForwardUncounted: boolean): ExpectedReceive =>
     expectedReceive({
@@ -733,4 +765,25 @@ function focusJumpTarget(selector: string): void {
     : (el.querySelector<HTMLElement>("input:checked") ??
       el.querySelector<HTMLElement>("input:not([disabled]), button:not([disabled]), textarea"));
   (control ?? el).focus();
+}
+
+function balances(n: number): string {
+  return `${n} ${n === 1 ? "balance" : "balances"}`;
+}
+
+/** What an undo did, in one sentence per outcome that happened. */
+function undoAnnouncement(restored: number, cleared: number, kept: number): string {
+  const parts: string[] = [];
+  if (restored > 0) parts.push(`Restored the earlier answer for ${balances(restored)}.`);
+  if (cleared > 0) {
+    parts.push(
+      `${balances(cleared)} need${cleared === 1 ? "s" : ""} a new answer: the plan no longer offers the earlier one.`
+    );
+  }
+  if (kept > 0) {
+    parts.push(
+      `${balances(kept)} answered since then ${kept === 1 ? "keeps its" : "keep their"} answer.`
+    );
+  }
+  return parts.join(" ") || "Nothing to undo.";
 }

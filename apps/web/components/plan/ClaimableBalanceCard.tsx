@@ -6,6 +6,7 @@ import type { ClaimableBalanceSelection } from "@/types/plan";
 import { describeClaimPredicate } from "@/lib/stellar/claim-predicates";
 import { cn } from "@/lib/utils/cn";
 import { Card } from "@/components/ui/card";
+import { shortenAddress } from "@/components/ui/short-address";
 import { DECISION_TAGS, DecisionCard, type DecisionOption } from "@/components/ui/decision-card";
 
 interface ClaimableBalanceCardProps {
@@ -29,7 +30,10 @@ export default function ClaimableBalanceCard({
   onSelect,
 }: ClaimableBalanceCardProps) {
   const predicateNote = describeClaimPredicate(item.predicate);
-  const legend = `What happens to the ${item.amount} ${item.code} claimable balance`;
+  const issuer = item.asset === "native" ? null : (item.asset.split(":")[1] ?? null);
+  const legend = `What happens to the ${item.amount} ${item.code} claimable balance${
+    issuer ? ` issued by ${shortenAddress(issuer)}` : ""
+  }`;
   const choose = (next: ClaimableBalanceSelection): void => onSelect(item.balanceId, next);
   const allOptions: DecisionOption<ClaimableBalanceSelection>[] = [
     {

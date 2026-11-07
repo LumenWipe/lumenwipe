@@ -220,6 +220,8 @@ export function newlyOpenGroup(
 export interface ClaimGroup {
   asset: string;
   code: string;
+  /** The issuer of a classic asset; null for XLM. Two groups can share a code, never an issuer. */
+  issuer: string | null;
   balances: ClaimableBalanceDecision[];
   /** The sum of the balances, or null when one of the amounts cannot be read. */
   total: string | null;
@@ -254,6 +256,7 @@ export function claimGroups(
     return {
       asset,
       code: balances[0].code,
+      issuer: asset === "native" ? null : (asset.split(":")[1] ?? null),
       balances,
       total: sum === null ? null : stroopsToXlm(sum),
       answered: balances.filter((b) => claimResolved(b, selections[b.balanceId])).length,

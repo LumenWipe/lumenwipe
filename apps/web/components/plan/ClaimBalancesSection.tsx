@@ -6,6 +6,7 @@ import type { ClaimableBalanceSelection } from "@/types/plan";
 import { claimGroups } from "@/lib/plan/open-items";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ShortAddress, shortenAddress } from "@/components/ui/short-address";
 import ClaimableBalanceCard from "./ClaimableBalanceCard";
 
 type BulkChoice = Extract<ClaimableBalanceSelection, "claim" | "forfeit">;
@@ -16,13 +17,14 @@ interface ClaimBalancesSectionProps {
   onSelect: (balanceId: string, selection: ClaimableBalanceSelection) => void;
   /** Sets each listed balance, one answer per id, and announces `result` once. */
   onBulkSelect: (balanceIds: string[], selection: BulkChoice, result: string) => void;
-  /** Puts back the answers a bulk action replaced, where the latest plan still offers them. */
-  onUndo: (previous: Record<string, ClaimableBalanceSelection>) => void;
+  /** Undoes a bulk action for the balances still holding its answer, and announces the outcome. */
+  onUndo: (previous: Record<string, ClaimableBalanceSelection>, bulkChoice: BulkChoice) => void;
 }
 
 interface BulkResult {
   asset: string;
   text: string;
+  choice: BulkChoice;
   previous: Record<string, ClaimableBalanceSelection>;
 }
 
@@ -56,7 +58,7 @@ export default function ClaimBalancesSection({
     const text = `Set ${plural(ids.length, `${code} balance`, `${code} balances`)} to ${
       choice === "claim" ? "be claimed" : "be left unclaimed"
     }.`;
-    setResult({ asset, text, previous });
+    setResult({ asset, text, choice, previous });
     onBulkSelect(ids, choice, text);
   }
 
@@ -67,11 +69,12 @@ export default function ClaimBalancesSection({
       </p>
       {groups.map((g) => {
         const done = g.answered === g.balances.length;
+        const issuedBy = g.issuer ? ` issued by ${shortenAddress(g.issuer)}` : "";
         const own = g.balances.length - g.bulkIds.length;
         return (
           <section
             key={g.asset}
-            aria-label={`${g.code} claimable balances`}
+            aria-label={`${g.code} claimable balances${issuedBy}`}
             className="space-y-2 rounded-md border border-edge/10 p-2.5"
           >
             <div className="flex flex-wrap items-center gap-2">
@@ -82,6 +85,11 @@ export default function ClaimBalancesSection({
                   {g.total !== null && ` · ${g.total} ${g.code} in total`}
                 </span>
               </p>
+              {g.issuer && (
+                <span className="text-xs text-fg-subtle">
+                  Issued by <ShortAddress value={g.issuer} label={`${g.code} issuer address`} />
+                </span>
+              )}
               <Badge tone={done ? "success" : "warning"} className="ml-auto">
                 {g.answered} of {g.balances.length} answered
               </Badge>
@@ -122,7 +130,7 @@ export default function ClaimBalancesSection({
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    onUndo(result.previous);
+                    onUndo(result.previous, result.choice);
                     setResult(null);
                   }}
                 >
