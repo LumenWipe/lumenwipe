@@ -18,6 +18,10 @@ await Bun.plugin({
 // or it throws "a global document has to be available". A dynamic import
 // defers evaluation until after that call, unlike a static import (which
 // would execute in file order regardless of hoisting).
-const { cleanup } = await import("@testing-library/react");
+const { cleanup, configure } = await import("@testing-library/react");
+
+// Queries read the screen. A `data-print-only` copy is display: none there (app/globals.css), but
+// this DOM loads no stylesheet, so it is left out here the way the screen leaves it out.
+configure({ defaultIgnore: "script, style, [data-print-only], [data-print-only] *" });
 
 afterEach(cleanup);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle, ExternalLink } from "lucide-react";
+import { AlertTriangle, CheckCircle, ExternalLink, Printer } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Network } from "@/config/networks";
@@ -12,6 +12,7 @@ import { getHistory } from "@/lib/session/history";
 import { receiptPath } from "@/lib/receipt/href";
 import Receipt from "@/components/receipt/Receipt";
 import ReceiptActions from "@/components/receipt/ReceiptActions";
+import ReceiptExportActions from "@/components/receipt/ReceiptExportActions";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import type { ReceiptRecord } from "@/types/history";
@@ -76,7 +77,11 @@ export default function SavedReceipt({ network, id }: { network: Network; id: st
   if (load.state === "error") return <ReadFailed onRetry={read} network={network} />;
   if (load.state === "missing") return <NotOnThisDevice network={network} />;
 
-  const { record } = load;
+  // The amount the lookup found is in the files as soon as it is shown.
+  const record =
+    received.state === "recorded" && load.record.receivedLumens === null
+      ? { ...load.record, receivedLumens: received.lumens }
+      : load.record;
   return (
     <Receipt
       record={record}
@@ -84,9 +89,16 @@ export default function SavedReceipt({ network, id }: { network: Network; id: st
       received={received}
       onRetryReceived={retry}
     >
-      <p className="text-xs text-fg-muted">
+      <p className="text-xs text-fg-muted print:hidden">
         Kept in this browser only. Deleting it from the history removes it from this device.
       </p>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 print:hidden">
+        <Button size="sm" variant="secondary" onClick={() => window.print()}>
+          <Printer className="h-3.5 w-3.5" aria-hidden />
+          Print or save as PDF
+        </Button>
+        <ReceiptExportActions record={record} />
+      </div>
       {record.outcome === "closed" && (
         <ReceiptActions network={record.network} destinationAddress={record.destinationAddress} />
       )}
@@ -109,7 +121,7 @@ function SavedBanner({ record }: { record: ReceiptRecord }) {
     return (
       <Callout
         tone="success"
-        announce={false}
+        announce="status"
         icon={<CheckCircle className="h-12 w-12" />}
         title={<Heading>Account successfully merged</Heading>}
         className="flex-col items-center gap-3 p-6 text-center"
@@ -121,7 +133,7 @@ function SavedBanner({ record }: { record: ReceiptRecord }) {
   return (
     <Callout
       tone="warning"
-      announce={false}
+      announce="status"
       icon={<AlertTriangle className="h-12 w-12" />}
       title={<Heading>Close not finished</Heading>}
       className="flex-col items-center gap-3 p-6 text-center"
@@ -133,7 +145,8 @@ function SavedBanner({ record }: { record: ReceiptRecord }) {
             rel="noopener noreferrer"
           >
             View the account on Stellar Expert
-            <ExternalLink className="h-3.5 w-3.5" />
+            <span className="sr-only"> (opens in a new tab)</span>
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden />
           </Link>
         </Button>
       }

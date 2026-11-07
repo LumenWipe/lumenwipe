@@ -1,0 +1,68 @@
+---
+title: "Receipt format"
+description: "The JSON and CSV files the web app downloads for a close's receipt: their fields, their version and how values that were not recorded read."
+icon: "file-export"
+---
+
+A receipt in the web app can be copied as a plain-text summary or downloaded as JSON or CSV, from the receipt page and from each entry of the history. The files are built in the browser from the receipt this browser saved. Nothing is uploaded and there is no share link: the only copy that leaves the page is the file you download.
+
+The files hold only the fields below. They never carry a secret key, a signer, a signed or unsigned transaction, the receipt's local id, or the "what was done" details shown on screen.
+
+## Values that were not recorded
+
+A receipt saved before a field existed, or an amount that could not be read from the ledger, reads as the string `not recorded` in every format. It is never `0` and never empty.
+
+## JSON
+
+The JSON file is one object. `format` names it and `version` is raised whenever a field is renamed, removed or changes meaning; adding a field does not raise it. The current version is `1`.
+
+| Field                        | Type                         | Meaning                                                                                          |
+| ---------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------ |
+| `format`                     | `"lumenwipe.receipt"`        | Always this value.                                                                               |
+| `version`                    | `1`                          | The shape of this file.                                                                          |
+| `network`                    | `"mainnet"` or `"testnet"`   | The network the close ran on.                                                                    |
+| `outcome`                    | `"closed"` or `"incomplete"` | `closed` when the merge confirmed; `incomplete` when some steps confirmed and the merge did not. |
+| `completedAt`                | string                       | When the receipt was recorded, UTC, ISO 8601, or `not recorded`.                                 |
+| `sourceAccount`              | string                       | The account that was closed (`G...`).                                                            |
+| `destinationAccount`         | string                       | The account its XLM was sent to (`G...`).                                                        |
+| `viaRelayAccount`            | boolean                      | True when the close was routed through the relay account for an exchange.                        |
+| `memo`                       | object or `not recorded`     | `{ "type": "text" \| "id" \| "hash", "text": "..." }`; both are `null` when there was no memo.   |
+| `receivedXlm`                | string                       | The XLM the destination received, as a decimal string in XLM, or `not recorded`.                 |
+| `feesXlm`                    | string                       | The network fees of the confirmed transactions, as a decimal string in XLM, or `not recorded`.   |
+| `transactions`               | array                        | One entry per confirmed transaction, in order.                                                   |
+| `transactions[].hash`        | string                       | The transaction hash, 64 hex characters.                                                         |
+| `transactions[].phase`       | string                       | What the transaction carried out, as the receipt labels it.                                      |
+| `transactions[].explorerUrl` | string                       | The transaction on Stellar Expert, or `not recorded`.                                            |
+
+```json
+{
+  "format": "lumenwipe.receipt",
+  "version": 1,
+  "network": "testnet",
+  "outcome": "closed",
+  "completedAt": "2026-11-07T10:30:00.000Z",
+  "sourceAccount": "GSOURCE...",
+  "destinationAccount": "GDEST...",
+  "viaRelayAccount": false,
+  "memo": { "type": "id", "text": "4242" },
+  "receivedXlm": "1234.5000000",
+  "feesXlm": "0.0000200",
+  "transactions": [
+    {
+      "hash": "5f5f...5f5f",
+      "phase": "Merge",
+      "explorerUrl": "https://stellar.expert/explorer/testnet/tx/5f5f...5f5f"
+    }
+  ]
+}
+```
+
+## CSV
+
+The CSV file is UTF-8 with a byte order mark, with CRLF line ends. The first row is the header; then there is one row per transaction, each repeating the receipt's own fields so that every row stands alone. A receipt with no transaction has one row with the transaction cells empty.
+
+Columns, in order: `network`, `outcome`, `completed_at_utc`, `source_account`, `destination_account`, `via_relay_account` (`yes` or `no`), `memo_type` (`text`, `id`, `hash`, `none` or `not recorded`), `memo`, `received_xlm`, `fees_xlm`, `transaction_hash`, `phase`, `explorer_url`.
+
+Every cell is quoted, and a quote inside a cell is doubled, so commas and line breaks in a memo stay in its cell.
+
+A cell that begins with `=`, `+`, `-`, `@`, a tab or a carriage return is written with a leading apostrophe (`'`), so a spreadsheet shows it as text instead of running it as a formula. This applies to every column. A value column never holds a negative number, but one would be neutralised too: strip the leading apostrophe before reading a cell as a number.

@@ -62,8 +62,12 @@ test("a partial close shows the incomplete banner with a resume link and no succ
   expect(screen.queryByText("Account successfully merged")).toBeNull();
   expect(container.textContent).not.toContain("removed from the Stellar ledger");
   expect(container.textContent).not.toContain("Account merged");
-  expect(screen.getByRole("status").textContent).toContain("1 of 2 transactions confirmed");
-  expect(screen.getByRole("status").textContent).toContain("The account still exists");
+  // The banner is the status that holds the heading; each copy button has one of its own.
+  const banner = screen
+    .getAllByRole("status")
+    .find((s) => s.contains(screen.getByRole("heading", { level: 1 })));
+  expect(banner?.textContent).toContain("1 of 2 transactions confirmed");
+  expect(banner?.textContent).toContain("The account still exists");
   expect(screen.getByRole("link", { name: "Resume" }).getAttribute("href")).toBe("/testnet");
   expect(document.title).toBe("Close incomplete | LumenWipe");
 });

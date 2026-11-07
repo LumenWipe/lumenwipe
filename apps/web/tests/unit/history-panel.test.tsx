@@ -146,6 +146,10 @@ test("HistoryPanel › entries show the amount received or that it was not recor
     "/testnet/receipt/without",
   ]);
   expect(screen.getAllByText("GSOURCE0…00000000")).toHaveLength(2);
+  // Every entry can be copied and downloaded, each action named for its own entry.
+  for (const action of ["Copy summary", "Download JSON", "Download CSV"]) {
+    expect(screen.getAllByRole("button", { name: new RegExp(`^${action} of `) })).toHaveLength(2);
+  }
 });
 
 test("HistoryPanel › opening a receipt closes the drawer", async () => {

@@ -1,10 +1,14 @@
+"use client";
+
 import type { ReactNode } from "react";
-import { ExternalLink, Link2 } from "lucide-react";
+import { Link2 } from "lucide-react";
 import { explorerTxUrl, SV_EXPLORER_BASE } from "@/config/networks";
 import { formatXlm } from "@/lib/utils/amounts";
-import { shortAddr, shortHash } from "@/lib/utils/short-id";
-import { StepTypeIcon } from "@/lib/utils/stepIcons";
+import { shortHash } from "@/lib/utils/short-id";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { ExplorerLink } from "@/components/ui/explorer-link";
+import { IdentifierDisplay } from "@/components/ui/identifier-display";
+import ReceiptGroupRow from "@/components/receipt/ReceiptGroupRow";
 import ReceiptHeadline from "@/components/receipt/ReceiptHeadline";
 import type { ReceivedState } from "@/hooks/useReceivedLumens";
 import type { ReceiptRecord } from "@/types/history";
@@ -30,11 +34,9 @@ function completedAtUtc(iso: string): string {
 
 function SummaryRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex justify-between gap-4 text-sm">
+    <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 text-sm">
       <span className="shrink-0 text-fg-muted">{label}</span>
-      <span className="min-w-0 truncate text-right font-mono-address text-xs text-white/70">
-        {children}
-      </span>
+      <span className="min-w-0 text-right font-mono-address text-xs text-white/85">{children}</span>
     </div>
   );
 }
@@ -53,7 +55,7 @@ export default function Receipt({
   const closed = record.outcome === "closed";
 
   return (
-    <div className="space-y-6">
+    <div data-receipt className="space-y-6">
       {banner}
 
       {closed && <ReceiptHeadline record={record} received={received} onRetry={onRetryReceived} />}
@@ -73,35 +75,7 @@ export default function Receipt({
             </CardHeader>
             <div className="divide-y divide-white/8">
               {groups.map((g) => (
-                <div key={g.type} className="px-4 py-3.5">
-                  <span className="flex min-w-0 items-start gap-2.5">
-                    <StepTypeIcon
-                      type={g.type}
-                      className="mt-0.5 h-4 w-4 shrink-0 text-accent/70"
-                    />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium text-white/85">{g.title}</span>
-                      <span className="block truncate text-xs text-fg-subtle">{g.summary}</span>
-                    </span>
-                  </span>
-                  <div className="mt-2 space-y-1 pl-[1.625rem] text-xs text-fg-muted">
-                    {g.items.length > 0 && (
-                      <ul className="space-y-1">
-                        {g.items.map((item, i) => (
-                          <li key={i} className="truncate">
-                            <span className={item.mono ? "font-mono-address" : undefined}>
-                              {item.text}
-                            </span>
-                            {item.detail && (
-                              <span className="text-fg-subtle"> · {item.detail}</span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {g.note && <p>{g.note}</p>}
-                  </div>
-                </div>
+                <ReceiptGroupRow key={g.type} group={g} />
               ))}
             </div>
           </Card>
@@ -117,39 +91,39 @@ export default function Receipt({
           </CardHeader>
           <div className="divide-y divide-white/8">
             {ledger.map((tx) => (
-              <div key={tx.txHash} className="flex items-center justify-between gap-4 px-4 py-3.5">
-                <span className="flex min-w-0 items-center gap-2.5">
-                  <Link2 className="h-4 w-4 shrink-0 text-accent/70" />
-                  <span className="min-w-0">
-                    <span
-                      className="block truncate text-sm font-medium text-white/85"
-                      title={tx.stepTitles.join(" · ")}
+              <div key={tx.txHash} className="flex items-start gap-2.5 px-4 py-3.5">
+                <Link2 aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-accent/70" />
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p
+                    className="text-sm font-medium text-white/85"
+                    title={tx.stepTitles.join(" · ")}
+                  >
+                    {tx.label}
+                  </p>
+                  <IdentifierDisplay
+                    value={tx.txHash}
+                    kind="hash"
+                    label={`hash of ${tx.label}`}
+                    className="text-xs text-fg-muted"
+                  />
+                  <p className="flex flex-wrap gap-x-3 print:hidden">
+                    <ExplorerLink
+                      href={explorerTxUrl(record.network, tx.txHash)}
+                      target={`transaction ${shortHash(tx.txHash)}`}
                     >
-                      {tx.label}
-                    </span>
-                    <span className="block font-mono-address text-xs text-fg-subtle">
-                      {shortHash(tx.txHash)}
-                    </span>
-                  </span>
-                </span>
-                <span className="flex shrink-0 items-center gap-2">
-                  <a
-                    href={explorerTxUrl(record.network, tx.txHash)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs text-accent hover:underline"
-                  >
-                    SE <ExternalLink className="h-3 w-3" />
-                  </a>
-                  <a
-                    href={`${svExplorerBase}/tx/${encodeURIComponent(tx.txHash)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs text-accent hover:underline"
-                  >
-                    SV <ExternalLink className="h-3 w-3" />
-                  </a>
-                </span>
+                      Stellar Expert
+                    </ExplorerLink>
+                    <ExplorerLink
+                      href={`${svExplorerBase}/tx/${encodeURIComponent(tx.txHash)}`}
+                      target={`transaction ${shortHash(tx.txHash)}`}
+                    >
+                      StellarView
+                    </ExplorerLink>
+                  </p>
+                  <p data-print-only className="break-all text-xs">
+                    {explorerTxUrl(record.network, tx.txHash)}
+                  </p>
+                </div>
               </div>
             ))}
           </div>
@@ -157,9 +131,17 @@ export default function Receipt({
       )}
 
       <Card className="space-y-3 p-4">
-        <SummaryRow label="Source account">{shortAddr(record.sourceAddress)}</SummaryRow>
+        <SummaryRow label="Source account">
+          <IdentifierDisplay value={record.sourceAddress} kind="address" label="source account" />
+        </SummaryRow>
         {!closed && (
-          <SummaryRow label="Destination">{shortAddr(record.destinationAddress)}</SummaryRow>
+          <SummaryRow label="Destination">
+            <IdentifierDisplay
+              value={record.destinationAddress}
+              kind="address"
+              label="destination address"
+            />
+          </SummaryRow>
         )}
         <SummaryRow label="Memo">{memo === null ? NOT_RECORDED : (memo.text ?? "None")}</SummaryRow>
         <SummaryRow label="Total fees paid">
