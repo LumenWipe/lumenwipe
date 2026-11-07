@@ -193,9 +193,9 @@ test("one close swaps one asset, transfers another, and returns a third to its i
   });
 
   // Neither KEEP nor BURN has a route, so both stay unresolved until the user picks - and they
-  // pick differently, which is what this test exists to prove. This has to happen BEFORE the
-  // destination step exists: the late-destination panel and "Review the full plan" only render once
-  // every asset is resolved, which is exactly the gate an unresolved transfer must not pass.
+  // pick differently, which is what this test exists to prove. "Review the full plan" stays
+  // disabled until every asset is resolved, which is exactly the gate an unresolved transfer
+  // must not pass.
   await page.getByRole("radio", { name: /Send my .*KEEP to another account/i }).check();
   await page.getByRole("radio", { name: /Return my .*BURN to the issuer/i }).check();
 
@@ -209,9 +209,8 @@ test("one close swaps one asset, transfers another, and returns a third to its i
   await page
     .getByRole("textbox", { name: /Destination account for KEEP/i })
     .fill(transferTo.publicKey());
-  // Only now does the flow advance.
-  // The button is always there; the destination field appears once every item is decided.
-  await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
+  // Only now does the flow advance: no asset is left open.
+  await expect(page.getByRole("button", { name: /^Open: / })).toHaveCount(0, {
     timeout: TESTNET_STEP_TIMEOUT,
   });
 

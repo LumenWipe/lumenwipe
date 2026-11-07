@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Keypair } from "@stellar/stellar-sdk";
 import * as navigation from "next/navigation";
 import AnalyzePage from "@/app/[network]/analyze/page";
@@ -11,6 +11,12 @@ import { useNetworkStore } from "@/store/network";
 import type { AccountState } from "@/types/account";
 import type { PlanResponse } from "@/types/close-api";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+
+/** The radios of the claim cards: the destination's memo type choice is on the page too. */
+function claimRadios(): HTMLElement[] {
+  const memoType = within(screen.getByRole("group", { name: "Memo type" })).getAllByRole("radio");
+  return screen.queryAllByRole("radio").filter((radio) => !memoType.includes(radio));
+}
 
 // The card used to offer "add a trustline and claim" for every balance the account could not
 // claim now, whatever the plan offered. For one whose claim window has not opened, or whose
@@ -101,8 +107,8 @@ async function mountView(plan: PlanResponse): Promise<void> {
   });
 }
 
-const readyForDestination = (): boolean =>
-  screen.queryByRole("textbox", { name: /Destination address/ }) !== null;
+/** Every decision is answered: the reasons under the button list none still open. */
+const nothingOpen = (): boolean => screen.queryByRole("button", { name: /^Open: / }) === null;
 
 beforeEach(() => {
   window.sessionStorage.clear();
@@ -125,15 +131,15 @@ test("a balance the plan only lets the account leave offers no trustline to add"
   await mountView(planWith(FORFEIT_ONLY));
 
   expect(screen.queryByRole("radio", { name: /trustline/ })).toBeNull();
-  expect(screen.getAllByRole("radio")).toHaveLength(1);
+  expect(claimRadios()).toHaveLength(1);
   expect(screen.getByText(FORFEIT_NOTE)).toBeTruthy();
-  expect(readyForDestination()).toBe(false);
+  expect(nothingOpen()).toBe(false);
 
   await act(async () => {
     fireEvent.click(screen.getByRole("radio", { name: /^Leave it unclaimed/ }));
   });
   expect(useDemolishStore.getState().claimableBalanceSelections).toEqual({ [BALANCE]: "forfeit" });
-  expect(readyForDestination()).toBe(true);
+  expect(nothingOpen()).toBe(true);
 });
 
 for (const [label, options] of [
@@ -144,10 +150,10 @@ for (const [label, options] of [
   test(`${label}: no choice is offered, nothing is claimed by default, and it stays open`, async () => {
     await mountView(planWith(options, true));
 
-    expect(screen.queryAllByRole("radio")).toHaveLength(0);
+    expect(claimRadios()).toHaveLength(0);
     expect(screen.getByText(/could not be read/)).toBeTruthy();
     expect(useDemolishStore.getState().claimableBalanceSelections).toEqual({});
-    expect(readyForDestination()).toBe(false);
+    expect(nothingOpen()).toBe(false);
   });
 }
 

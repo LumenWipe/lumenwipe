@@ -70,7 +70,8 @@ test("the summary leads with what the close is expected to deliver, as an estima
   const lead = screen.getByTestId("expected-receive");
   const body = lead.parentElement!.children;
   expect(body[1]).toBe(lead);
-  expect(lead.textContent).toContain("You will receive about 9.99999 XLM at GDES T000");
+  expect(lead.textContent).toContain(`You will receive about 9.99999 XLM at ${DESTINATION}`);
+  expect(screen.getByRole("button", { name: "Copy destination address" })).toBeTruthy();
   expect(lead.textContent).toContain("An estimate, after network fees.");
   expect(lead.textContent).not.toMatch(/guarantee|exactly/i);
   expect(screen.getByText("- 0.00001 XLM")).toBeTruthy();

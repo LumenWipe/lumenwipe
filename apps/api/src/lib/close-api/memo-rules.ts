@@ -21,11 +21,16 @@ export interface MemoProblem {
 const UINT64_MAX = 18446744073709551615n;
 const TEXT_MEMO_MAX_BYTES = 28;
 
-export function memoRuleFor(exchange: RegistryEntry | null, requiredOnChain: boolean): MemoRule {
+/** `requested` is the type the caller named, used only where the registry names none. */
+export function memoRuleFor(
+  exchange: RegistryEntry | null,
+  requiredOnChain: boolean,
+  requested: MemoType | null = null
+): MemoRule {
   const byRegistry = exchange?.requiresMemo ?? false;
   return {
     required: byRegistry || requiredOnChain,
-    memoType: exchange?.memoType ?? "text",
+    memoType: exchange?.memoType ?? requested ?? "text",
     fixedType: exchange !== null,
     source: byRegistry ? "registry" : requiredOnChain ? "account" : null,
   };
@@ -58,6 +63,10 @@ function valueProblem(memo: string, memoType: MemoType): MemoProblem | null {
       message: "This destination requires a numeric id memo within the uint64 range.",
     };
   }
+  // The network keeps the number, so "007" would be sent as 7 and no longer be the memo given.
+  if (memoType === "id" && memo.length > 1 && memo.startsWith("0")) {
+    return { code: "invalid_memo", message: "An id memo cannot start with 0." };
+  }
   if (memoType === "text" && Buffer.byteLength(memo, "utf8") > TEXT_MEMO_MAX_BYTES) {
     return { code: "invalid_memo", message: "A text memo must be at most 28 bytes." };
   }
@@ -71,6 +80,35 @@ export function normalizeRequestMemo(raw: unknown): { memo: string | null } | Me
     return { code: "invalid_memo", message: "A memo must be a string." };
   }
   return { memo: raw.trim() === "" ? null : raw };
+}
+
+/** The memo type a request names, null when it names none, or undefined when the field is not
+ *  one of the memo types at all. */
+export function parseRequestMemoType(raw: unknown): MemoType | null | undefined {
+  if (raw === undefined || raw === null) return null;
+  return raw === "text" || raw === "id" || raw === "hash" ? raw : undefined;
+}
+
+/** Why the named memo type cannot go with this memo to this destination. A listed exchange's
+ *  type is the registry's: a caller naming another is refused rather than overridden, so it
+ *  learns that the memo it holds is not the kind the exchange credits. */
+export function requestMemoTypeProblem(
+  memo: string | null,
+  requested: MemoType | null,
+  exchange: RegistryEntry | null
+): MemoProblem | null {
+  if (memo === null || requested === null) return null;
+  if (requested === "hash") {
+    return { code: "unsupported_memo_type", message: "Hash memos are not supported." };
+  }
+  if (exchange !== null && requested !== exchange.memoType) {
+    return {
+      code: "invalid_memo",
+      message: `This destination requires ${exchange.memoType === "id" ? "an id" : `a ${exchange.memoType}`} memo.`,
+      details: { memoType: exchange.memoType },
+    };
+  }
+  return null;
 }
 
 /** Whether the destination's own ledger entry must be read: only when the registry has not

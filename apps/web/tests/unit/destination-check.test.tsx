@@ -147,3 +147,49 @@ test("a failed check throws, so the caller shows its own connection message", as
   );
   await expect(destinationRefusal("testnet", DEST, "")).rejects.toThrow("Relay check failed");
 });
+
+async function renderReadyPlan(): Promise<void> {
+  useDemolishStore.getState().reset();
+  answering(PASSING_ANSWERS[0]);
+  useDemolishStore.setState({ destinationAddress: DEST, destinationAcknowledgedFor: DEST });
+  await act(async () => {
+    render(
+      <PlanView
+        account={account}
+        conversions={[]}
+        claimableBalanceDecisions={[]}
+        blockers={[]}
+        planFeeStroops={null}
+        network="testnet"
+        onRefresh={() => {}}
+        loading={false}
+      />
+    );
+  });
+}
+
+test("the memo type chosen for an unlisted destination is the one stored with the memo", async () => {
+  await renderReadyPlan();
+  fireEvent.click(screen.getByRole("radio", { name: "ID (numbers only)" }));
+  fireEvent.change(screen.getByRole("textbox", { name: /Payment memo/ }), {
+    target: { value: " 4242 " },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: /review the full plan/i }));
+  await waitFor(() => expect(useDemolishStore.getState().phase).toBe("PREFLIGHT_COMPLETE"));
+
+  const { memo, memoType } = useDemolishStore.getState();
+  expect({ memo, memoType }).toEqual({ memo: "4242", memoType: "id" });
+});
+
+test("an optional memo that cannot be sent as typed keeps the button disabled", async () => {
+  await renderReadyPlan();
+  fireEvent.click(screen.getByRole("radio", { name: "ID (numbers only)" }));
+  fireEvent.change(screen.getByRole("textbox", { name: /Payment memo/ }), {
+    target: { value: "007" },
+  });
+
+  const button = screen.getByRole("button", { name: /review the full plan/i }) as HTMLButtonElement;
+  expect(button.disabled).toBe(true);
+  expect(screen.getByText("The memo is not valid")).toBeDefined();
+});

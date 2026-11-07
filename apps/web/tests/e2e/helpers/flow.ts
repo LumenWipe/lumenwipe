@@ -114,10 +114,10 @@ export async function enterSourceAndAnalyze(page: Page, source: string): Promise
   await expect(page.getByText("Analyzing account...")).toHaveCount(0, { timeout: 60_000 });
 }
 
-// Late-destination step: fills the destination, then "Review the full plan" -> /review -> /execute.
+// Destination step: fills the destination, then "Review the full plan" -> /review -> /execute.
 export async function enterDestinationAndBegin(page: Page, destination: string): Promise<void> {
   const beginButton = page.getByRole("button", { name: /Review the full plan/i });
-  // The button is always there; the destination field appears once every item is decided.
+  // The destination field is on screen from the start; the button unlocks once every item is decided.
   await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
     timeout: 30_000,
   });

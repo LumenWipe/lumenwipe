@@ -14,6 +14,7 @@ import ClaimBalancesSection from "./ClaimBalancesSection";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { chipLabel, type GroupChip, type PlanGroupType } from "@/lib/plan/open-items";
+import { FullAddress } from "@/components/ui/full-address";
 import { ShortAddress } from "@/components/ui/short-address";
 
 interface PlanAccordionProps {
@@ -305,13 +306,17 @@ export default function PlanAccordion({
     summary: destinationAddress
       ? mediatorRequired
         ? "via relay account, 2 transactions"
-        : `to ${shortAddr(destinationAddress)}`
+        : "directly to your destination"
       : "Destination: to be entered",
     body: destinationAddress ? (
       <div className="space-y-1 text-xs text-fg-muted">
         <p>
           Destination:{" "}
-          <span className="font-mono-address text-white/70">{shortAddr(destinationAddress)}</span>
+          <FullAddress
+            value={destinationAddress}
+            label="destination address"
+            className="text-white/70"
+          />
         </p>
         {mediatorRequired ? (
           <p>

@@ -5,16 +5,13 @@ import { formatStroops } from "@/lib/api/plan-adapters";
 import { defiVerificationLabel } from "@/lib/plan/defi-verification-source";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { FullAddress } from "@/components/ui/full-address";
 
 interface AccountSummaryCardProps {
   account: AccountState;
   destinationAddress: string | null;
   /** Null when no plan estimate is at hand; the counts still render. */
   expected: ExpectedReceive | null;
-}
-
-function groupAddress(address: string): string {
-  return address.match(/.{1,4}/g)?.join(" ") ?? address;
 }
 
 function estimateNote(expected: ExpectedReceive): string {
@@ -106,9 +103,11 @@ export default function AccountSummaryCard({
             {destinationAddress ? (
               <>
                 at{" "}
-                <span className="font-mono-address break-all text-white/70">
-                  {groupAddress(destinationAddress)}
-                </span>
+                <FullAddress
+                  value={destinationAddress}
+                  label="destination address"
+                  className="text-white/70"
+                />
               </>
             ) : (
               "at the destination you enter below"

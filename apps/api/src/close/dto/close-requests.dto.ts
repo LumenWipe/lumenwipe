@@ -55,10 +55,17 @@ export class CloseTransactionsRequestDto {
 
   @ApiPropertyOptional({
     description:
-      "Deposit memo value for exchange destinations that require one. The memo type is taken from the exchange registry, not the client.",
+      "Deposit memo value for destinations that require one. An id memo is a decimal uint64 with no leading zeros.",
     example: "1234567890",
   })
   memo?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "The type of memo. For a listed exchange the registry's type is used and a different one is refused (422 invalid_memo); for any other destination this type is used, text when omitted. Has no effect without a memo.",
+    enum: ["text", "id"],
+  })
+  memoType?: "text" | "id";
 
   @ApiPropertyOptional({
     description:

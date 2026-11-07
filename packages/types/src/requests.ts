@@ -13,12 +13,17 @@ export interface CloseTransactionsRequest {
   destination: string;
   decisions?: DecisionAnswer[];
   /**
-   * Deposit memo value. The memo type is taken from the exchange registry, not the
-   * client, and is text for an unlisted destination. Required when the destination
-   * is an exchange that mandates a memo, or an account whose `config.memo_required`
-   * data entry is set (SEP-29). A blank memo counts as none.
+   * Deposit memo value. Required when the destination is an exchange that mandates a
+   * memo, or an account whose `config.memo_required` data entry is set (SEP-29). A blank
+   * memo counts as none. An id memo is a decimal uint64 with no leading zeros.
    */
   memo?: string;
+  /**
+   * The type of `memo`. For an exchange the registry lists, the registry's type is used and
+   * a different one is refused with `422 invalid_memo`; for any other destination this type
+   * is used, `text` when omitted. Has no effect without a memo.
+   */
+  memoType?: "text" | "id";
   /**
    * The `planHash` of the plan the user reviewed. Send it with the first call after that plan, and
    * the API answers `409 state_changed` when the account's sequence or the answers differ from

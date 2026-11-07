@@ -2,7 +2,14 @@ import { afterEach, expect, mock, spyOn, test, beforeEach } from "bun:test";
 import * as pathFinding from "@/lib/stellar/path-finding";
 import type { PathResult } from "@/lib/stellar/path-finding";
 import * as rpcModule from "@/lib/stellar/rpc";
-import { Account, Keypair, Operation, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
+import {
+  Account,
+  Keypair,
+  Operation,
+  Transaction,
+  TransactionBuilder,
+  Networks,
+} from "@stellar/stellar-sdk";
 import { AssetRouteLostError } from "@/lib/utils/errors";
 import type { AccountState, Trustline } from "@lumenwipe/types";
 import { buildCloseTransactions } from "@/lib/close-api/build-transactions";
@@ -170,4 +177,42 @@ test("close build › a conversion is refused when the route no longer clears th
     (o) => o.type === "pathPaymentStrictSend"
   ) as Operation.PathPaymentStrictSend;
   expect(conversion.destMin).toBe("4.9999999");
+});
+
+test("close build › an unlisted destination's memo goes on chain with the type the caller named", async () => {
+  spyOn(pathFinding, "fetchConversionPath").mockImplementation((() =>
+    Promise.resolve<PathResult>({
+      kind: "none",
+      reason: "no_market",
+    })) as unknown as typeof pathFinding.fetchConversionPath);
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
+    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  const memoOf = async (memoType: "text" | "id" | null) => {
+    const result = await buildCloseTransactions(
+      accountState(),
+      DEST,
+      { [NOSWAP]: "issuer" },
+      "testnet",
+      "4411",
+      {},
+      {},
+      {},
+      {},
+      {},
+      false,
+      {},
+      memoType
+    );
+    const { memo } = TransactionBuilder.fromXDR(
+      result.transactions[0]!.xdr,
+      Networks.TESTNET
+    ) as Transaction;
+    const value =
+      memo.value instanceof Uint8Array ? Buffer.from(memo.value).toString() : String(memo.value);
+    return { type: memo.type, value };
+  };
+
+  expect(await memoOf("id")).toEqual({ type: "id", value: "4411" });
+  expect(await memoOf("text")).toEqual({ type: "text", value: "4411" });
+  expect(await memoOf(null)).toEqual({ type: "text", value: "4411" });
 });

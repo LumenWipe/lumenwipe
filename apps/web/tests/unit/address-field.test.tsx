@@ -180,3 +180,44 @@ test("an untouched field claims no validity", () => {
   render(<Harness emitted={[]} />);
   expect(screen.queryByText("Valid address")).toBeNull();
 });
+
+// Synthetic: the shape of a secret seed with a checksum that does not match, never a real key.
+const SECRET_SHAPED = "S" + "A".repeat(55);
+const spaced = (value: string): string => value.match(/.{1,4}/g)!.join(" ");
+
+function pasteText(input: HTMLElement, text: string): void {
+  fireEvent.paste(input, { clipboardData: { getData: () => text } });
+  fireEvent.change(input, { target: { value: text } });
+}
+
+test("muxed addresses that hold a 56-character S run are explained, not refused as keys", () => {
+  // Found in one of every three or so random muxed addresses: an S followed by 55 base32
+  // characters inside the address.
+  const reported = "MDGTZ6GSXM6CRQAS2VGIVTSGE44XPOMDQ7RHOZ5ZB5ZSJ6VR2G33KAAAAAAAAAAABBRAO";
+  const emitted: string[] = [];
+  render(<Harness emitted={emitted} />);
+  const input = screen.getByLabelText("Account") as HTMLInputElement;
+
+  pasteText(input, reported);
+
+  expect(emitted).toEqual([reported]);
+  expect(input.value).toBe(reported);
+  expect(screen.getByRole("alert").textContent).toContain("This looks like a muxed address.");
+});
+
+test.each([
+  ["after a label", `key: ${SECRET_SHAPED}`],
+  ["split into groups", spaced(SECRET_SHAPED)],
+  ["split after a label", `key: ${spaced(SECRET_SHAPED)}`],
+])("a secret key pasted %s is refused", (_, text) => {
+  const emitted: string[] = [];
+  render(<Harness emitted={emitted} />);
+  const input = screen.getByLabelText("Account") as HTMLInputElement;
+
+  pasteText(input, text);
+
+  expect(emitted.every((value) => value === "")).toBe(true);
+  expect(input.value).toBe("");
+  expect(document.body.innerHTML).not.toContain(SECRET_SHAPED.slice(1, 9));
+  expect(screen.getByRole("alert").textContent).toContain("That looks like a secret key.");
+});

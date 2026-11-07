@@ -362,6 +362,7 @@ export interface CloseTransactionsRequest {
     // (undocumented)
     destination: string;
     memo?: string;
+    memoType?: "text" | "id";
     planHash?: string;
     // (undocumented)
     source: string;

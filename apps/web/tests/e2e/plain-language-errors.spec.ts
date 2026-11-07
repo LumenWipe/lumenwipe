@@ -192,7 +192,7 @@ test.describe("review", () => {
     await enterSourceAndAnalyze(page, source.publicKey());
 
     const begin = page.getByRole("button", { name: /Review the full plan/i });
-    // The button is always there; the destination field appears once every item is decided.
+    // The destination field is on screen from the start; the button unlocks once every item is decided.
     await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
       timeout: TESTNET_STEP_TIMEOUT,
     });

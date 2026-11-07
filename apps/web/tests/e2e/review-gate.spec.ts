@@ -99,7 +99,7 @@ async function reachReviewWithoutConfirming(
   await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
 
   const beginButton = page.getByRole("button", { name: /Review the full plan/i });
-  // The button is always there; the destination field appears once every item is decided.
+  // The destination field is on screen from the start; the button unlocks once every item is decided.
   await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
     timeout: 30_000,
   });

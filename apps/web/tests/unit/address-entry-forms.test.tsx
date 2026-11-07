@@ -260,6 +260,8 @@ function destinationInput(onDestinationChange: (value: string) => void = () => {
       onDestinationChange={onDestinationChange}
       memo=""
       onMemoChange={() => {}}
+      memoType="text"
+      onMemoTypeChange={() => {}}
       source=""
       acknowledged={false}
       onAcknowledgedChange={() => {}}
@@ -286,6 +288,8 @@ test("the memo is named, described, and passes its value through untouched", () 
       onDestinationChange={() => {}}
       memo=""
       onMemoChange={(value) => seen.push(value)}
+      memoType="text"
+      onMemoTypeChange={() => {}}
       source=""
       acknowledged={false}
       onAcknowledgedChange={() => {}}
@@ -317,6 +321,8 @@ test("the destination reports a valid address as text alongside its helper", () 
         onDestinationChange={setDestination}
         memo=""
         onMemoChange={() => {}}
+        memoType="text"
+        onMemoTypeChange={() => {}}
         source=""
         acknowledged={false}
         onAcknowledgedChange={() => {}}
@@ -329,4 +335,123 @@ test("the destination reports a valid address as text alongside its helper", () 
   fireEvent.blur(input);
   expect(describedText(input)).toContain("Valid address");
   expect(describedText(input)).toContain("All XLM from the merged account");
+});
+
+// Synthetic: the shape of a secret seed with a checksum that does not match, never a real key.
+const SECRET_SHAPED = "S" + "A".repeat(55);
+const WARNING = "That looks like a secret key. Never paste it here.";
+
+function pasteText(input: HTMLElement, text: string): void {
+  fireEvent.paste(input, { clipboardData: { getData: () => text } });
+}
+
+/** The key is in no field, no rendered text and no attribute, the warning shows, and nothing was
+ *  logged or sent. */
+function expectRefused(input: HTMLElement, logs: ReturnType<typeof spyOn>[]): void {
+  expect((input as HTMLInputElement).value).toBe("");
+  expect(document.body.innerHTML).not.toContain(SECRET_SHAPED);
+  expect(document.body.textContent).toContain(WARNING);
+  expect(push).not.toHaveBeenCalled();
+  for (const log of logs) {
+    expect(JSON.stringify(log.mock.calls)).not.toContain(SECRET_SHAPED);
+  }
+}
+
+function spyLogs(): ReturnType<typeof spyOn>[] {
+  return (["log", "info", "warn", "error", "debug"] as const).map((level) =>
+    spyOn(console, level).mockImplementation(() => {})
+  );
+}
+
+const refusalPaths = [
+  ["pasted", (input: HTMLElement) => pasteText(input, ` ${SECRET_SHAPED}\n`)],
+  [
+    "typed or dropped",
+    (input: HTMLElement) => fireEvent.change(input, { target: { value: SECRET_SHAPED } }),
+  ],
+] as const;
+
+test.each(refusalPaths)("the hero refuses a %s secret key and analyzes nothing", (_, enter) => {
+  const logs = spyLogs();
+  const fetchSpy = spyOn(globalThis, "fetch");
+  render(<HeroAccountInput />);
+  const input = screen.getByRole("textbox", { name: "Stellar account address" });
+
+  enter(input);
+  fireEvent.click(screen.getByRole("button", { name: "Analyze account" }));
+
+  expectRefused(input, logs);
+  expect(fetchSpy).not.toHaveBeenCalled();
+});
+
+test.each(refusalPaths)("the account entry refuses a %s secret key", async (_, enter) => {
+  const logs = spyLogs();
+  const fetchSpy = spyOn(globalThis, "fetch");
+  const find = spyOn(recovery, "findUnresolved").mockResolvedValue(null as never);
+  renderEntryForm();
+  fireEvent.click(screen.getByRole("tab", { name: "Paste address" }));
+  const input = screen.getByRole("textbox", { name: "Account to close" });
+
+  enter(input);
+  await analyze();
+
+  expectRefused(input, logs);
+  expect(fetchSpy).not.toHaveBeenCalled();
+  expect(find).not.toHaveBeenCalled();
+});
+
+test.each(cards)("the %s card refuses a pasted secret key and stores nothing", (_, Card) => {
+  const logs = spyLogs();
+  render(<Card />);
+  const input = screen.getByRole("textbox", { name: "Destination account for USDC" });
+
+  for (const [, enter] of refusalPaths) {
+    enter(input);
+    expectRefused(input, logs);
+    expect(useDemolishStore.getState().transferDestinations[ASSET]).toBeUndefined();
+    expect(JSON.stringify(useDemolishStore.getState())).not.toContain(SECRET_SHAPED);
+  }
+});
+
+test("the destination refuses a pasted secret key, and a real address clears the warning", () => {
+  const seen: string[] = [];
+  function Controlled(): ReactElement {
+    const [destination, setDestination] = useState("");
+    return (
+      <DestinationInput
+        destination={destination}
+        onDestinationChange={(value) => {
+          seen.push(value);
+          setDestination(value);
+        }}
+        memo=""
+        onMemoChange={() => {}}
+        memoType="text"
+        onMemoTypeChange={() => {}}
+        source=""
+        acknowledged={false}
+        onAcknowledgedChange={() => {}}
+      />
+    );
+  }
+  render(<Controlled />);
+  const input = screen.getByRole("textbox", { name: "Destination address" });
+
+  pasteText(input, SECRET_SHAPED);
+  expectRefused(input, []);
+  expect(screen.getByRole("alert").textContent).toContain(WARNING);
+
+  fireEvent.change(input, { target: { value: VALID } });
+  expect(document.body.textContent).not.toContain(WARNING);
+  expect(seen).not.toContain(SECRET_SHAPED);
+});
+
+test("a secret key pasted after what the field already holds is refused too", () => {
+  render(<HeroAccountInput />);
+  const input = screen.getByRole("textbox", { name: "Stellar account address" });
+  fireEvent.change(input, { target: { value: "GABC" } });
+
+  fireEvent.change(input, { target: { value: `GABC ${SECRET_SHAPED}` } });
+
+  expectRefused(input, []);
 });

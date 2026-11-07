@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, type ReactElement, type ReactNode } from "react";
+import { useState, type ClipboardEvent, type ReactElement, type ReactNode } from "react";
 import { CheckCircle, XCircle } from "lucide-react";
-import { addressErrorMessage } from "@/lib/utils/validation";
+import { addressErrorMessage, couldBeSecretKey, SECRET_KEY_WARNING } from "@/lib/utils/validation";
 import { cn } from "@/lib/utils/cn";
 import { Field, Input } from "./field";
 
@@ -41,8 +41,34 @@ export function AddressField({
   inputClassName,
 }: AddressFieldProps): ReactElement {
   const [touched, setTouched] = useState(false);
+  // Only that a key was refused is kept, never the key.
+  const [secretRefused, setSecretRefused] = useState(false);
   const revealed = touched && value ? addressErrorMessage(value) : null;
-  const shown = error ?? revealed;
+  const shown = secretRefused ? SECRET_KEY_WARNING : (error ?? revealed);
+
+  function refuseSecret(): void {
+    setSecretRefused(true);
+    onChange("");
+  }
+
+  function handleChange(next: string): void {
+    const trimmed = next.trim();
+    if (couldBeSecretKey(next)) {
+      refuseSecret();
+      return;
+    }
+    setSecretRefused(false);
+    onChange(trimmed);
+  }
+
+  function handlePaste(e: ClipboardEvent<HTMLInputElement>): void {
+    setTouched(true);
+    const pasted = e.clipboardData?.getData("text") ?? "";
+    if (couldBeSecretKey(pasted)) {
+      e.preventDefault();
+      refuseSecret();
+    }
+  }
   const confirmed = touched && !!value && !addressErrorMessage(value);
 
   return (
@@ -59,9 +85,9 @@ export function AddressField({
         <Input
           type="text"
           value={value}
-          onChange={(e) => onChange(e.target.value.trim())}
+          onChange={(e) => handleChange(e.target.value)}
           onBlur={() => setTouched(true)}
-          onPaste={() => setTouched(true)}
+          onPaste={handlePaste}
           placeholder={placeholder}
           disabled={disabled}
           spellCheck={false}
