@@ -34,6 +34,8 @@ import { verifyCloseTransaction } from "@/lib/stellar/verify";
 import { confirmedMemo } from "@/lib/plan/memo-field";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { requiredSignatureWeight } from "@/lib/stellar/thresholds";
+import { stepsCoveredBy } from "@/lib/stellar/covered-steps";
+import { routeForPhase } from "@/lib/journey/route-for-phase";
 import { verifyPreAuthTxHash } from "@/lib/stellar/pre-auth-tx";
 import {
   assertMasterSignsSignerRemoval,
@@ -47,7 +49,12 @@ import {
   type SignerState,
 } from "@/lib/stellar/signature-weight";
 import { lookupViaApi, submitViaApi } from "@/lib/stellar/submit-via-api";
-import { mergesAccount, submissionHash, submissionValidUntil } from "@/lib/stellar/submission";
+import {
+  consumesSequenceOf,
+  mergesAccount,
+  submissionHash,
+  submissionValidUntil,
+} from "@/lib/stellar/submission";
 import {
   closeOwner,
   ensureCloseSession,
@@ -97,6 +104,14 @@ import {
   type ProgressWait,
 } from "@/lib/execution/progress";
 import type { AccountSigner } from "@/types/account";
+
+/** A pre-authorized transaction that the network confirmed. */
+export interface PreAuthSubmission {
+  /** The hash of the pasted envelope, computed locally. */
+  hash: string;
+  /** It merged the account: the close is complete. */
+  closedAccount: boolean;
+}
 
 export interface RunOptions {
   /** Runs right before each signature of the run; throwing stops the run with nothing signed or
@@ -179,6 +194,11 @@ function recordProgress(
     });
 }
 
+/** The close already completed: no later failure is set over it. */
+function closeFinished(): boolean {
+  return routeForPhase(useDemolishStore.getState().phase) === "complete";
+}
+
 /** What the signer's prompt is, for the progress line. */
 function signingWait(signer: TransactionSigner): ProgressWait {
   if (signer instanceof WalletKitSigner) {
@@ -251,7 +271,10 @@ export function useCloseExecution() {
   );
 
   const run = useCallback(
-    async (signer: TransactionSigner, options: RunOptions = {}): Promise<void> => {
+    // `signer` null re-reads the account and builds the next round without asking anyone to sign,
+    // as after a pre-authorized transaction: every transaction needs weight 1 or more, so such a
+    // run always pauses for a signer and can never submit anything.
+    async (signer: TransactionSigner | null, options: RunOptions = {}): Promise<void> => {
       // One run per close: a page remounted mid-run has lost its own record of the first.
       if (useDemolishStore.getState().signingRun) return;
       if (!sourceAddress || !destinationAddress) {
@@ -284,7 +307,7 @@ export function useCloseExecution() {
       if (!signerStateRef.current) signerStateRef.current = snapshotState;
       const resuming = pendingRoundRef.current !== null;
       const knownSigners = (resuming ? signerStateRef.current : snapshotState).signers;
-      if (!knownSigners.some((s) => s.key === signer.publicKey)) {
+      if (signer && !knownSigners.some((s) => s.key === signer.publicKey)) {
         pendingRoundRef.current = null;
         setSignatureStatus(null);
         setLastError(
@@ -299,6 +322,15 @@ export function useCloseExecution() {
       const passphrase = NETWORK_PASSPHRASES[network];
       const initialSignerState = signerStateRef.current;
       const roundSignerState = (): SignerState => signerStateRef.current ?? initialSignerState;
+      // The network needs at least one matching signature even where a threshold is 0.
+      const requiredFor = (tx: CloseTransaction): number =>
+        Math.max(
+          1,
+          requiredSignatureWeight(
+            intentFromXdr(tx.xdr, passphrase).operations,
+            roundSignerState().thresholds
+          )
+        );
       // Read dispositions/selections live so a mid-flow re-decision is honored.
       const claimableBalanceSelections = useDemolishStore.getState().claimableBalanceSelections;
       const accountState = useDemolishStore.getState().accountState;
@@ -338,7 +370,7 @@ export function useCloseExecution() {
       let confirmedBefore: number | null = null;
       let confirmedInRun = 0;
       let position: ProgressPosition | null = null;
-      const signerWait = signingWait(signer);
+      const signerWait: ProgressWait = signer ? signingWait(signer) : "checking";
       // A submission left over from an earlier attempt is settled by runClose before anything
       // else. Confirmed, it reaches onResolved; failed, it is thrown; expired, it says nothing, so
       // the first event of the run is where it is known to have expired.
@@ -455,15 +487,10 @@ export function useCloseExecution() {
                 },
               });
             },
-            // The network needs at least one matching signature even where a threshold is 0.
+            // With no signer the bar is out of reach on purpose: such a run only reads and
+            // pauses, and never submits, even a resumed envelope that already carries weight.
             requiredWeight: (tx: CloseTransaction) =>
-              Math.max(
-                1,
-                requiredSignatureWeight(
-                  intentFromXdr(tx.xdr, passphrase).operations,
-                  roundSignerState().thresholds
-                )
-              ),
+              signer ? requiredFor(tx) : Number.POSITIVE_INFINITY,
             sign: async (tx: CloseTransaction, xdr: string) => {
               assertStillOwns(owner);
               inFlight = tx;
@@ -486,6 +513,8 @@ export function useCloseExecution() {
               );
               // A key the round no longer lists would add a signature the network refuses as
               // extra, so it is not asked to sign; the round pauses for a current signer.
+              // With no signer at all, the round pauses the same way: nobody is asked.
+              if (!signer) return { xdr, weight: preSignWeight };
               if (!roundSignerState().signers.some((s) => s.key === signer.publicKey)) {
                 return { xdr, weight: preSignWeight };
               }
@@ -664,13 +693,15 @@ export function useCloseExecution() {
         signerStateForRef.current = null;
         if (mergeConfirmed) {
           setPhase("COMPLETE");
-        } else {
+        } else if (!closeFinished()) {
           setLastError(NO_MERGE_CONFIRMED);
           setPhase("STEP_FAILED");
         }
       } catch (err) {
         // The store holds another account now: nothing of this run belongs on its screen.
         if (!ownsStore(owner)) return;
+        // The close completed meanwhile (a pre-authorized merge): a failure no longer applies.
+        if (closeFinished()) return;
         // The transaction that stopped the run. A failure found by hash names its own, which may
         // be a left-over from an earlier attempt that this run never verified.
         const stopped: Pick<CloseTransaction, "covers" | "coversTargets"> | null =
@@ -680,20 +711,22 @@ export function useCloseExecution() {
         if (err instanceof InsufficientSignatureWeightError) {
           // Paused for another signer, not failed: the panel below the steps says what is needed.
           markCoveredStatus(err.pending.tx.covers, err.pending.tx.coversTargets, "pending");
-          pendingRoundRef.current = err.pending;
+          // The weight the transaction really needs, also after a run with no signer.
+          const pending = { ...err.pending, requiredWeight: requiredFor(err.pending.tx) };
+          pendingRoundRef.current = pending;
           const contributions = evaluateSignatureContributions(
             err.pending.xdr,
             passphrase,
             roundSignerState().signers
           );
           setSignatureStatus({
-            requiredWeight: err.pending.requiredWeight,
-            accumulatedWeight: err.pending.accumulatedWeight,
+            requiredWeight: pending.requiredWeight,
+            accumulatedWeight: pending.accumulatedWeight,
             contributed: contributions.filter((c) => c.contributed).map((c) => c.signer),
             remainingSigners: contributions.filter((c) => !c.contributed).map((c) => c.signer),
           });
           setLastError(
-            `This account needs ${err.pending.requiredWeight - err.pending.accumulatedWeight} more signing weight. Connect another signer to continue.`
+            `This account needs ${Math.max(0, pending.requiredWeight - pending.accumulatedWeight)} more signing weight. Connect another signer to continue.`
           );
           setPhase("STEP_FAILED");
           return;
@@ -845,14 +878,14 @@ export function useCloseExecution() {
   // never built by the API - it's the user's own, already-fully-authorized transaction, whose
   // hash IS the signer's key (see docs on verifyPreAuthTxHash). It cannot be merged onto
   // whatever the round loop currently has pending (different sequence number/operations each
-  // round), so it bypasses close-engine.ts entirely and goes straight to /submit. Deliberately
-  // leaves pendingRoundRef/signatureStatus/phase untouched: this envelope has nothing to do
-  // with whatever round-loop envelope might be mid-accumulation, and clearing that state here
-  // would destroy real progress on an unrelated transaction. The caller continues the normal
-  // flow afterward (Retry/Add signature) - the API re-reads live state every round, so any work
-  // this submission completed is simply absent from the next round's build.
+  // round), so it bypasses close-engine.ts entirely and goes straight to /submit. It does not
+  // touch signatureStatus or start a run itself: the caller continues the close afterward with
+  // `run`, which re-reads the account, so any work this submission completed is simply absent
+  // from the next round. A partly signed round survives it unless the submission provably used
+  // up that round's sequence number, and a submission that merged the account completes the
+  // close here.
   const submitPreAuthTransaction = useCallback(
-    async (signer: AccountSigner, xdr: string): Promise<void> => {
+    async (signer: AccountSigner, xdr: string): Promise<PreAuthSubmission> => {
       if (!sourceAddress || !destinationAddress) {
         throw new UserFacingError("Missing account or destination.");
       }
@@ -917,26 +950,89 @@ export function useCloseExecution() {
         },
       });
 
-      try {
-        await submitViaApi(xdr, network);
-      } catch (err) {
-        if (isSubmitRefused(err)) throw err;
+      // The hash of the exact envelope pasted and verified, computed here, as every confirmed
+      // hash of the close is. Its outcome is only ever settled by this hash.
+      const hash = submissionHash(xdr, passphrase);
+      const owner = closeOwner(network, sourceAddress);
+      const covered = stepsCoveredBy(xdr, passphrase, sourceAddress);
+      // Kept like any submission of the close while its outcome is open: with the steps that need
+      // no target (a record holds one target list for all its steps; the rest are read again).
+      const submission: UnresolvedSubmission = {
+        hash,
+        covers: [...new Set(covered.filter((s) => !s.target).map((s) => s.type))],
+        validUntil: submissionValidUntil(xdr, passphrase),
+      };
+      const unsettled = new UserFacingError(
+        `This transaction may already be on the network. Look up ${hash} on an explorer before trying again.`
+      );
+      // A run of the close and this submission never overlap: each holds the store's one flag.
+      if (useDemolishStore.getState().signingRun) {
         throw new UserFacingError(
-          `This transaction may already be on the network. Look up ${submissionHash(xdr, passphrase)} on an explorer before trying again.`
+          "Another step of this close is still running. Wait for it to finish, then try again."
         );
       }
-      useDemolishStore.getState().clearPlanHash();
-      if (signerStateRef.current && signerStateForRef.current === `${network}:${sourceAddress}`) {
-        signerStateRef.current = applyConfirmedTransaction(
-          signerStateRef.current,
-          xdr,
-          passphrase,
-          intentFromXdr(xdr, passphrase).operations,
-          sourceAddress
-        );
+      useDemolishStore.getState().setSigningRun(true);
+      try {
+        // Saved before it is sent, so a refresh or a lost answer still holds new signing until
+        // the hash settles (Check again), as for every other transaction of the close.
+        await recordSubmission(owner, submission);
+        let reported: string;
+        try {
+          ({ txHash: reported } = await submitViaApi(xdr, network));
+        } catch (err) {
+          if (isSubmitRefused(err)) {
+            await recordSubmission(owner, null);
+            throw err;
+          }
+          if (ownsStore(owner)) setPhase("STEP_UNCONFIRMED");
+          throw unsettled;
+        }
+        // The store may hold another account by now: nothing of this one is written into it.
+        if (!ownsStore(owner)) throw new UserFacingError(CLOSE_INTERRUPTED);
+        // As in the engine, a hash the API answers with is compared and never adopted: an answer
+        // for another transaction confirms nothing, so the outcome is left to Check again.
+        if (reported !== hash) {
+          setPhase("STEP_UNCONFIRMED");
+          throw unsettled;
+        }
+        await recordSubmission(owner, null);
+        if (!ownsStore(owner)) throw new UserFacingError(CLOSE_INTERRUPTED);
+        useDemolishStore.getState().clearPlanHash();
+        if (signerStateRef.current && signerStateForRef.current === `${network}:${sourceAddress}`) {
+          signerStateRef.current = applyConfirmedTransaction(
+            signerStateRef.current,
+            xdr,
+            passphrase,
+            intentFromXdr(xdr, passphrase).operations,
+            sourceAddress
+          );
+        }
+        // A partly signed round is kept unless this transaction provably used up its sequence
+        // number: same source account, and a sequence at or past the round's. Such a round can
+        // never land, so resuming it would only ask the next signer for a dead transaction.
+        const pending = pendingRoundRef.current;
+        if (pending && consumesSequenceOf(xdr, pending.xdr, passphrase)) {
+          pendingRoundRef.current = null;
+        }
+        // Every step its operations carried out, each one only for its own asset or contract.
+        for (const step of covered) {
+          markCoveredConfirmed([step.type], hash, false, step.target ? [step.target] : undefined);
+        }
+        const coveredTypes = [...new Set(covered.map((s) => s.type))];
+        recordProgress(owner, useDemolishStore.getState().sessionId, coveredTypes, hash);
+        // A pre-authorized merge of the account closes it: judged from its own operations.
+        if (mergesAccount(xdr, passphrase, sourceAddress)) {
+          pendingRoundRef.current = null;
+          notifyStatsRefresh();
+          setPhase("COMPLETE");
+          return { hash, closedAccount: true };
+        }
+        return { hash, closedAccount: false };
+      } finally {
+        if (ownsStore(owner)) useDemolishStore.getState().setSigningRun(false);
       }
     },
-    [network, sourceAddress, destinationAddress, memo, memoType]
+    [network, sourceAddress, destinationAddress, memo, memoType, markCoveredConfirmed, setPhase]
   );
 
   return {

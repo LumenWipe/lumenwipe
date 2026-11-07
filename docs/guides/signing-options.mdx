@@ -36,6 +36,8 @@ A [pre-auth signer](/reference/glossary#pre-auth-signer)'s key is the hash of on
 
 LumenWipe builds a fresh transaction every round, so a pre-auth signer will almost never match it. The only way to use one is to paste the exact pre-authorized transaction [XDR](/reference/glossary#xdr).
 
+After you paste it, **Review transaction** decodes it and lists its source account, every operation in order (an operation the app does not describe is listed as "Unrecognized operation" with its type, and a contract call with every argument), the merge destination, the memo with its type, the fee, the sequence number and when it can land. Only a second click, **Submit pre-authorized transaction**, sends it, after the same checks as before. Once the network confirms it, the app shows its hash with an explorer link and continues the close on its own: it reads the account again and either finishes, if the transaction merged the account, or asks for the next signature. Retrying that step never sends the pre-authorized transaction again. If the network gives no clear answer, the transaction is held as unconfirmed, like any other of the close, and nothing more can be signed until **Check again** settles it.
+
 <Warning>
   LumenWipe did not build or verify a pasted pre-authorized transaction the way it does every other
   one. Review it yourself before you submit it. The app shows this warning every time.

@@ -2,8 +2,10 @@ import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import {
   Account,
+  Asset,
   hash,
   Keypair,
+  Memo,
   Networks,
   Operation,
   StrKey,
@@ -17,7 +19,7 @@ import { useDemolishStore } from "@/store/demolish";
 import { InvalidPreAuthTxError } from "@/lib/stellar/pre-auth-tx";
 import * as navigation from "next/navigation";
 import * as closeExecution from "@/hooks/useCloseExecution";
-import type { RunOptions } from "@/hooks/useCloseExecution";
+import type { PreAuthSubmission, RunOptions } from "@/hooks/useCloseExecution";
 import * as walletKit from "@/hooks/useWalletKitConnection";
 import * as sessionStore from "@/lib/session/store";
 import { fromHex } from "@/lib/stellar/hex";
@@ -55,16 +57,18 @@ function stubRouter(): void {
 // Mocks kept minimal and behavior-focused: this test exercises ExecutionWizard's own
 // state machine (signature-progress rendering, signer switching, no persisted writes),
 // not the full close pipeline - that's Task 3/4's job.
+// A run with no signer (after a pre-authorized transaction) reaches it as null.
 let runImpl: (signer: { publicKey: string }, options?: RunOptions) => Promise<void>;
 let submitPreAuthTxImpl: (
   signer: { key: string; weight: number; type: string },
   xdr: string
-) => Promise<void>;
+) => Promise<PreAuthSubmission>;
 function stubCloseExecution(): void {
   spyOn(closeExecution, "useCloseExecution").mockImplementation(
     () =>
       ({
-        run: (signer: { publicKey: string }, options?: RunOptions) => runImpl(signer, options),
+        run: (signer: { publicKey: string } | null, options?: RunOptions) =>
+          runImpl(signer as { publicKey: string }, options),
         progress: currentProgress,
         signatureStatus: currentSignatureStatus,
         submitPreAuthTransaction: (
@@ -147,7 +151,7 @@ beforeEach(() => {
   currentProgress = null;
   currentWalletAddress = null;
   currentWalletState = {};
-  submitPreAuthTxImpl = async () => {};
+  submitPreAuthTxImpl = async () => ({ hash: "0".repeat(64), closedAccount: false });
   mockSaveSession.mockClear();
   useDemolishStore.setState({
     executionPlan: [{ id: "s1" } as never],
@@ -430,43 +434,110 @@ test("execution-wizard › a preauth_tx signer among remainingSigners renders it
   expect(screen.queryByText(/can't yet contribute automatically/i)).toBeNull();
 });
 
-test("execution-wizard › a successful pre-auth-tx submission calls submitPreAuthTransaction and shows the success state", async () => {
-  const preAuthKey = "TAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJRY";
+const PRE_AUTH_KEY = "TAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJRY";
+const PRE_AUTH_HASH = "ab".repeat(32);
+
+/** A pre-authorized transaction of several operations, one of a type the close vocabulary does
+ *  not describe (bump sequence), ending in a merge, with a text memo. */
+function preAuthXdr(mergeTo: string): string {
+  return (
+    new TransactionBuilder(new Account(source, "41"), {
+      fee: "100",
+      networkPassphrase: Networks.TESTNET,
+    })
+      .setTimeout(0)
+      .addMemo(Memo.text("prepaid"))
+      // Acting as another account than the transaction's source, which the list must say.
+      .addOperation(
+        Operation.payment({
+          destination: mergeTo,
+          asset: Asset.native(),
+          amount: "1",
+          source: mergeTo,
+        })
+      )
+      .addOperation(Operation.bumpSequence({ bumpTo: "100" }))
+      .addOperation(Operation.accountMerge({ destination: mergeTo }))
+      .build()
+      .toXdr()
+  );
+}
+
+function pausedOnPreAuthSigner(): void {
   currentSignatureStatus = {
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [],
-    remainingSigners: [{ key: preAuthKey, weight: 1, type: "preauth_tx" }],
+    remainingSigners: [{ key: PRE_AUTH_KEY, weight: 1, type: "preauth_tx" }],
   };
   useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
-  runImpl = async () => {};
+}
 
-  const submitSpy = mock(
-    async (_signer: { key: string; weight: number; type: string }, _xdr: string) => {}
-  );
+function pasteAndReview(xdr: string): void {
+  fireEvent.change(screen.getByPlaceholderText(/paste the pre-authorized transaction xdr/i), {
+    target: { value: xdr },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Review transaction" }));
+}
+
+test("execution-wizard › a pasted pre-authorized transaction is listed in full, and only a second click submits it", async () => {
+  pausedOnPreAuthSigner();
+  runImpl = async () => {};
+  const submitSpy = mock(async () => ({ hash: PRE_AUTH_HASH, closedAccount: false }));
+  submitPreAuthTxImpl = submitSpy;
+  const mergeTo = Keypair.random().publicKey();
+  const xdr = preAuthXdr(mergeTo);
+
+  render(<ExecutionWizard network="testnet" />);
+  expect(
+    screen.queryAllByRole("button", { name: /submit pre-authorized transaction/i })
+  ).toHaveLength(0);
+  pasteAndReview(xdr);
+
+  const summary = screen.getByRole("region", { name: "What this transaction does" });
+  expect(summary.textContent).toContain(`Source account: ${source}`);
+  const operations = screen
+    .getAllByRole("listitem")
+    .filter((li) => screen.getByRole("list", { name: "Operations" }).contains(li));
+  expect(operations.map((li) => li.textContent)).toEqual([
+    `Pay 1.0000000 XLM to ${mergeTo} (acting as ${mergeTo})`,
+    "Unrecognized operation (bumpSequence)",
+    `Merge account ${source} into ${mergeTo}`,
+  ]);
+  expect(summary.textContent).toContain(`Merge destination: ${mergeTo}`);
+  expect(summary.textContent).toContain("Memo: text: prepaid (7 bytes)");
+  expect(summary.textContent).toContain("Fee: 0.0000300 XLM");
+  expect(summary.textContent).toContain("Sequence number: 42");
+  expect(summary.textContent).toContain("Valid: no time limit");
+  // Reviewing sends nothing.
+  expect(submitSpy).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: /submit pre-authorized transaction/i }));
+  await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(1));
+  expect(submitSpy.mock.calls[0]).toEqual([
+    { key: PRE_AUTH_KEY, weight: 1, type: "preauth_tx" },
+    xdr,
+  ] as never);
+});
+
+test("execution-wizard › an unreadable pasted transaction is not offered for submission", () => {
+  pausedOnPreAuthSigner();
+  runImpl = async () => {};
+  const submitSpy = mock(async () => ({ hash: PRE_AUTH_HASH, closedAccount: false }));
   submitPreAuthTxImpl = submitSpy;
 
   render(<ExecutionWizard network="testnet" />);
+  pasteAndReview("AAAAAgAAAAA=");
 
-  const textarea = screen.getByPlaceholderText(/paste the pre-authorized transaction xdr/i);
-  fireEvent.change(textarea, { target: { value: "AAAAAgAAAAA=" } });
-  fireEvent.click(screen.getByRole("button", { name: /submit pre-authorized transaction/i }));
-
-  expect(await screen.findByText(/pre-authorized transaction submitted/i)).toBeDefined();
-  expect(submitSpy).toHaveBeenCalledTimes(1);
-  expect(submitSpy.mock.calls[0]?.[0]?.key).toBe(preAuthKey);
-  expect(submitSpy.mock.calls[0]?.[1]).toBe("AAAAAgAAAAA=");
+  expect(screen.getByText(/This transaction could not be read/)).toBeDefined();
+  expect(
+    screen.queryAllByRole("button", { name: /submit pre-authorized transaction/i })
+  ).toHaveLength(0);
+  expect(submitSpy).not.toHaveBeenCalled();
 });
 
 test("execution-wizard › a rejected pre-auth-tx submission shows an inline error", async () => {
-  const preAuthKey = "TAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJRY";
-  currentSignatureStatus = {
-    requiredWeight: 2,
-    accumulatedWeight: 1,
-    contributed: [],
-    remainingSigners: [{ key: preAuthKey, weight: 1, type: "preauth_tx" }],
-  };
-  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+  pausedOnPreAuthSigner();
   runImpl = async () => {};
   submitPreAuthTxImpl = async () => {
     throw new InvalidPreAuthTxError(
@@ -475,13 +546,71 @@ test("execution-wizard › a rejected pre-auth-tx submission shows an inline err
   };
 
   render(<ExecutionWizard network="testnet" />);
-
-  const textarea = screen.getByPlaceholderText(/paste the pre-authorized transaction xdr/i);
-  fireEvent.change(textarea, { target: { value: "AAAAAgAAAAA=" } });
+  pasteAndReview(preAuthXdr(Keypair.random().publicKey()));
   fireEvent.click(screen.getByRole("button", { name: /submit pre-authorized transaction/i }));
 
   expect(await screen.findByText(/does not match the pre-auth-tx signer's key/i)).toBeDefined();
-  expect(screen.queryByText(/pre-authorized transaction submitted/i)).toBeNull();
+  expect(screen.queryAllByText(/Pre-authorized transaction confirmed/)).toHaveLength(0);
+});
+
+test("execution-wizard › a confirmed pre-authorized transaction shows its hash and continues the close with no signer", async () => {
+  pausedOnPreAuthSigner();
+  const runSpy = mock(async (_signer: { publicKey: string } | null) => {});
+  runImpl = runSpy;
+  submitPreAuthTxImpl = async () => ({ hash: PRE_AUTH_HASH, closedAccount: false });
+
+  render(<ExecutionWizard network="testnet" />);
+  pasteAndReview(preAuthXdr(Keypair.random().publicKey()));
+  fireEvent.click(screen.getByRole("button", { name: /submit pre-authorized transaction/i }));
+
+  await waitFor(() => expect(runSpy).toHaveBeenCalledTimes(1));
+  expect(runSpy.mock.calls[0]?.[0]).toBeNull();
+  const link = screen.getByRole("link", { name: /View it on Stellar Expert/ });
+  expect(link.getAttribute("href")).toBe(
+    `https://stellar.expert/explorer/testnet/tx/${PRE_AUTH_HASH}`
+  );
+  expect(screen.getByText(PRE_AUTH_HASH)).toBeDefined();
+});
+
+test("execution-wizard › a pre-authorized merge completes the close without a run", async () => {
+  pausedOnPreAuthSigner();
+  const runSpy = mock(async (_signer: { publicKey: string } | null) => {});
+  runImpl = runSpy;
+  submitPreAuthTxImpl = async () => ({ hash: PRE_AUTH_HASH, closedAccount: true });
+
+  render(<ExecutionWizard network="testnet" />);
+  pasteAndReview(preAuthXdr(Keypair.random().publicKey()));
+  fireEvent.click(screen.getByRole("button", { name: /submit pre-authorized transaction/i }));
+
+  await waitFor(() => expect(screen.getByText(PRE_AUTH_HASH)).toBeDefined());
+  expect(runSpy).not.toHaveBeenCalled();
+});
+
+test("execution-wizard › a failed continuation shows the failure and Retry continues again without resubmitting", async () => {
+  pausedOnPreAuthSigner();
+  const submitSpy = mock(async () => ({ hash: PRE_AUTH_HASH, closedAccount: false }));
+  submitPreAuthTxImpl = submitSpy;
+  const failure = closeFailureMessage(new Error("boom"), "before-submit", []);
+  const runSpy = mock(async (_signer: { publicKey: string } | null) => {
+    // The continuation fails: no pause, a plain failure.
+    currentSignatureStatus = null;
+    useDemolishStore.setState({ phase: "STEP_FAILED", lastError: failure } as never);
+  });
+  runImpl = runSpy;
+
+  const { rerender } = render(<ExecutionWizard network="testnet" />);
+  pasteAndReview(preAuthXdr(Keypair.random().publicKey()));
+  fireEvent.click(screen.getByRole("button", { name: /submit pre-authorized transaction/i }));
+  await waitFor(() => expect(runSpy).toHaveBeenCalledTimes(1));
+  rerender(<ExecutionWizard network="testnet" />);
+
+  expect(screen.getByText(failure)).toBeDefined();
+  const retry = (await screen.findByRole("button", { name: "Retry" })) as HTMLButtonElement;
+  expect(retry.disabled).toBe(false);
+  fireEvent.click(retry);
+  await waitFor(() => expect(runSpy).toHaveBeenCalledTimes(2));
+  expect(runSpy.mock.calls[1]?.[0]).toBeNull();
+  expect(submitSpy).toHaveBeenCalledTimes(1);
 });
 
 // ─── The multisig nature must be visible BEFORE the first signature ──────────
@@ -1333,4 +1462,89 @@ test("execution-wizard › a session check that briefly fails during a stale pro
     await Promise.resolve();
   });
   expect(retry().disabled).toBe(false);
+});
+
+function memoXdr(memo: Memo): string {
+  return new TransactionBuilder(new Account(source, "41"), {
+    fee: "100",
+    networkPassphrase: Networks.TESTNET,
+  })
+    .setTimeout(0)
+    .addMemo(memo)
+    .addOperation(Operation.accountMerge({ destination: cosigner }))
+    .build()
+    .toXdr();
+}
+
+test("execution-wizard › an id memo and a text memo of the same digits read differently", () => {
+  pausedOnPreAuthSigner();
+  runImpl = async () => {};
+
+  const { unmount } = render(<ExecutionWizard network="testnet" />);
+  pasteAndReview(memoXdr(Memo.id("123")));
+  const idMemo = screen.getByRole("region", { name: "What this transaction does" }).textContent;
+  unmount();
+
+  render(<ExecutionWizard network="testnet" />);
+  pasteAndReview(memoXdr(Memo.text("123")));
+  const textMemo = screen.getByRole("region", { name: "What this transaction does" }).textContent;
+
+  expect(idMemo).toContain("Memo: id: 123");
+  expect(textMemo).toContain("Memo: text: 123 (3 bytes)");
+  expect(idMemo).not.toBe(textMemo);
+});
+
+test("execution-wizard › while a pre-authorized transaction is being sent, no other signature can start", async () => {
+  pausedOnPreAuthSigner();
+  currentWalletAddress = cosigner;
+  currentSignatureStatus = {
+    ...currentSignatureStatus!,
+    remainingSigners: [
+      { key: PRE_AUTH_KEY, weight: 1, type: "preauth_tx" },
+      { key: cosigner, weight: 1, type: "ed25519_public_key" },
+    ],
+  };
+  const runSpy = mock(async (_signer: { publicKey: string } | null) => {});
+  runImpl = runSpy;
+  let answer: (value: PreAuthSubmission) => void = () => {};
+  submitPreAuthTxImpl = () =>
+    new Promise<PreAuthSubmission>((resolve) => {
+      answer = resolve;
+    });
+
+  render(<ExecutionWizard network="testnet" />);
+  const add = screen.getByRole("button", { name: /add signature/i }) as HTMLButtonElement;
+  await waitFor(() => expect(add.disabled).toBe(false));
+  pasteAndReview(preAuthXdr(Keypair.random().publicKey()));
+  fireEvent.click(screen.getByRole("button", { name: /submit pre-authorized transaction/i }));
+
+  await waitFor(() => expect(add.disabled).toBe(true));
+  for (const tab of screen.getAllByRole("tab")) {
+    expect((tab as HTMLButtonElement).disabled).toBe(true);
+  }
+  fireEvent.click(add);
+  expect(runSpy).not.toHaveBeenCalled();
+
+  await act(async () => {
+    answer({ hash: PRE_AUTH_HASH, closedAccount: false });
+    await Promise.resolve();
+  });
+  await waitFor(() => expect(runSpy).toHaveBeenCalledTimes(1));
+  expect(runSpy.mock.calls[0]?.[0]).toBeNull();
+});
+
+test("execution-wizard › a pre-authorized transaction left unconfirmed holds signing until it settles", () => {
+  currentWalletAddress = cosigner;
+  pausedOnPreAuthSigner();
+  useDemolishStore.setState({
+    phase: "STEP_UNCONFIRMED",
+    unconfirmedSubmission: { hash: PRE_AUTH_HASH, covers: ["MERGE"], validUntil: null },
+  } as never);
+  runImpl = async () => {};
+
+  render(<ExecutionWizard network="testnet" />);
+
+  expect(screen.queryAllByRole("button", { name: /add signature/i })).toHaveLength(0);
+  expect(screen.getByRole("button", { name: /check again/i })).toBeDefined();
+  useDemolishStore.setState({ unconfirmedSubmission: null } as never);
 });

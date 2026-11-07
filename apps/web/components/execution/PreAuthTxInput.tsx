@@ -2,12 +2,16 @@
 
 import { useState } from "react";
 import { AlertTriangle, CheckCircle, Info, XCircle } from "lucide-react";
+import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
+import type { PreAuthSubmission } from "@/hooks/useCloseExecution";
+import { summarizeTransaction, type TransactionSummary } from "@/lib/stellar/intent/describe";
 import { cn } from "@/lib/utils/cn";
 import { toUserMessage } from "@/lib/utils/user-error";
 import type { AccountSigner } from "@/types/account";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card } from "@/components/ui/card";
+import { MemoValue } from "@/components/review/ReviewHero";
 
 function shortAddr(addr: string): string {
   return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
@@ -15,8 +19,9 @@ function shortAddr(addr: string): string {
 
 interface Props {
   signer: AccountSigner;
+  network: Network;
   disabled?: boolean;
-  onSubmit: (signer: AccountSigner, xdr: string) => Promise<void>;
+  onSubmit: (signer: AccountSigner, xdr: string) => Promise<PreAuthSubmission>;
 }
 
 /**
@@ -27,12 +32,26 @@ interface Props {
  * app. This is also the one path where the transaction under review was never built or
  * verified by LumenWipe the way the rest of the flow's transactions are - the persistent
  * warning below is not dismissible, and is always shown whenever this input is rendered.
+ *
+ * Submitting takes two clicks: the first decodes the pasted transaction and lists what it does
+ * (source, every operation, the merge destination, the memo); only the second submits it. The
+ * list is for the user's review and replaces none of the checks made before it is sent.
  */
-export default function PreAuthTxInput({ signer, disabled, onSubmit }: Props) {
+export default function PreAuthTxInput({ signer, network, disabled, onSubmit }: Props) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [summary, setSummary] = useState<TransactionSummary | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  const review = () => {
+    setError(null);
+    try {
+      setSummary(summarizeTransaction(value.trim(), NETWORK_PASSPHRASES[network]));
+    } catch {
+      setError("This transaction could not be read. Check that you pasted the whole XDR.");
+    }
+  };
 
   const submit = async () => {
     setError(null);
@@ -74,8 +93,10 @@ export default function PreAuthTxInput({ signer, disabled, onSubmit }: Props) {
         onChange={(e) => {
           setValue(e.target.value);
           setError(null);
+          setSummary(null);
           setSubmitted(false);
         }}
+        aria-label="Pre-authorized transaction XDR"
         placeholder="paste the pre-authorized transaction XDR"
         disabled={disabled || submitting || submitted}
         spellCheck={false}
@@ -88,16 +109,81 @@ export default function PreAuthTxInput({ signer, disabled, onSubmit }: Props) {
           error ? "border-danger" : "border-white/10"
         )}
       />
-      <Button
-        size="sm"
-        type="button"
-        onClick={submit}
-        disabled={disabled || submitting || submitted || value.trim().length === 0}
-        loading={submitting}
-        className="self-start shrink-0"
-      >
-        {submitting ? "Submitting…" : "Submit pre-authorized transaction"}
-      </Button>
+      {summary === null ? (
+        <Button
+          size="sm"
+          type="button"
+          onClick={review}
+          disabled={disabled || value.trim().length === 0}
+          className="self-start shrink-0"
+        >
+          Review transaction
+        </Button>
+      ) : (
+        <>
+          <section
+            aria-label="What this transaction does"
+            className="flex flex-col gap-1.5 rounded-lg border border-white/10 p-2.5 text-xs text-fg-muted"
+          >
+            <p>
+              Source account:{" "}
+              <span className="font-mono-address break-all text-white/80">{summary.source}</span>
+            </p>
+            <p>
+              {summary.operations.length} operation{summary.operations.length === 1 ? "" : "s"}:
+            </p>
+            <ol aria-label="Operations" className="list-decimal space-y-1 pl-5">
+              {summary.operations.map((op, i) => (
+                <li key={i} className="break-all">
+                  {op.label}
+                  {op.source !== summary.source && (
+                    <span className="text-fg-subtle"> (acting as {op.source})</span>
+                  )}
+                </li>
+              ))}
+            </ol>
+            <p>
+              Merge destination:{" "}
+              {summary.mergeDestination ? (
+                <span className="font-mono-address break-all text-white/80">
+                  {summary.mergeDestination}
+                </span>
+              ) : (
+                "none, this transaction does not merge an account"
+              )}
+            </p>
+            <p>
+              Memo: <MemoValue memo={summary.memo} />
+            </p>
+            <p>Fee: {summary.feeXlm} XLM</p>
+            <p>Sequence number: {summary.sequence}</p>
+            <p>Valid: {summary.validity}</p>
+          </section>
+          {!submitted && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                type="button"
+                onClick={submit}
+                disabled={disabled || submitting}
+                loading={submitting}
+                className="shrink-0"
+              >
+                {submitting ? "Submitting…" : "Submit pre-authorized transaction"}
+              </Button>
+              <Button
+                size="sm"
+                type="button"
+                variant="ghost"
+                onClick={() => setSummary(null)}
+                disabled={submitting}
+              >
+                Back
+              </Button>
+            </div>
+          )}
+        </>
+      )}
       {error && (
         <p className="flex items-center gap-1.5 text-xs text-danger-fg">
           <XCircle className="h-3.5 w-3.5 shrink-0" />
@@ -107,7 +193,7 @@ export default function PreAuthTxInput({ signer, disabled, onSubmit }: Props) {
       {submitted && !error && (
         <p className="flex items-center gap-1.5 text-xs text-success">
           <CheckCircle className="h-3.5 w-3.5 shrink-0" />
-          Pre-authorized transaction submitted.
+          Pre-authorized transaction confirmed on the network.
         </p>
       )}
     </Card>

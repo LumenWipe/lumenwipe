@@ -13,6 +13,7 @@ import {
   StrKey,
   TransactionBuilder,
   type Transaction,
+  type xdr,
 } from "@stellar/stellar-sdk";
 import {
   STATE_CHANGED_REFETCH_DELAY_MS,
@@ -35,6 +36,7 @@ import * as mediatorModule from "@/lib/stellar/mediator";
 import { activeRegistry, setRegistry } from "@/lib/exchange-registry";
 import {
   ApiRequestError,
+  CLOSE_INTERRUPTED,
   closeFailureMessage,
   HASH_NOT_KEPT,
   NO_MERGE_CONFIRMED,
@@ -3435,4 +3437,558 @@ test("useCloseExecution › a wallet on another network by the second transactio
   expect(submitted).toHaveLength(1);
   expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
   expect(useDemolishStore.getState().lastError).toContain(walletNotUsable("network", "testnet"));
+});
+
+// #401: a run with no signer, as after a pre-authorized transaction, re-reads the account and
+// builds the next round, but can never submit: every transaction needs weight 1 or more.
+test("useCloseExecution › a run with no signer pauses with a status and submits nothing", async () => {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    accountState: {
+      signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 1, med: 1, high: 1 },
+    } as never,
+  } as never);
+  let fetches = 0;
+  stubFetchCloseTransactions(async () => {
+    fetches++;
+    return {
+      planHash: "h",
+      status: "ready",
+      transactions: [
+        {
+          id: "t0",
+          order: 0,
+          xdr: unsignedMergeXdr(sourceKeypair, destination),
+          covers: ["MERGE"],
+        },
+      ],
+      remaining: { steps: 0, requiresAnotherCall: false },
+    };
+  });
+  let submits = 0;
+  stubSubmitViaApi(async () => {
+    submits++;
+    return { txHash: "never" };
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(null);
+  });
+
+  expect(fetches).toBe(1);
+  expect(submits).toBe(0);
+  expect(result.current.signatureStatus).toEqual({
+    requiredWeight: 1,
+    accumulatedWeight: 0,
+    contributed: [],
+    remainingSigners: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+  });
+  expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
+});
+
+/** A 2-of-3 account whose third signer pre-authorized a transaction removing the cosigner. The
+ *  round on the API is a merge at sequence 101, paused after the master key signed it. */
+async function pausedWithPreAuthSigner(preAuthSequence: string) {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const cosigner = Keypair.random().publicKey();
+  const destination = Keypair.random().publicKey();
+  const preAuthXdr = unsignedNormalizeXdr(sourceKeypair, [cosigner], preAuthSequence);
+  const preAuthKey = StrKey.encodePreAuthTx(
+    (TransactionBuilder.fromXdr(preAuthXdr, Networks.TESTNET) as Transaction).hash()
+  );
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    accountState: {
+      signers: [
+        { key: source, weight: 1, type: "ed25519_public_key" },
+        { key: cosigner, weight: 1, type: "ed25519_public_key" },
+        { key: preAuthKey, weight: 1, type: "preauth_tx" },
+      ],
+      thresholds: { low: 1, med: 2, high: 2 },
+    } as never,
+  } as never);
+  const counts = { fetches: 0, submits: 0 };
+  stubFetchCloseTransactions(async () => {
+    counts.fetches++;
+    return {
+      planHash: "h",
+      status: "ready",
+      transactions: [
+        {
+          id: "t0",
+          order: 0,
+          xdr: unsignedMergeXdr(sourceKeypair, destination),
+          covers: ["MERGE"],
+        },
+      ],
+      remaining: { steps: 0, requiresAnotherCall: false },
+    };
+  });
+  stubSubmitViaApi(async () => {
+    counts.submits++;
+    return { txHash: "server-hash" };
+  });
+  const hook = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await hook.result.current.run(realSigner(sourceKeypair));
+  });
+  expect(hook.result.current.signatureStatus?.accumulatedWeight).toBe(1);
+  const preAuthSigner = { key: preAuthKey, weight: 1, type: "preauth_tx" as const };
+  return { hook, counts, preAuthXdr, preAuthSigner };
+}
+
+test("useCloseExecution › after a pre-authorized transaction with no wallet or key, the close continues with the next round", async () => {
+  // Sequence 100 + 1: the same number the paused round needs, now used up on the ledger.
+  const { hook, counts, preAuthXdr, preAuthSigner } = await pausedWithPreAuthSigner("100");
+
+  let submission: { hash: string; closedAccount: boolean } | undefined;
+  await act(async () => {
+    submission = await hook.result.current.submitPreAuthTransaction(preAuthSigner, preAuthXdr);
+  });
+  expect(submission).toEqual({
+    hash: submissionHash(preAuthXdr, Networks.TESTNET),
+    closedAccount: false,
+  });
+  expect(counts.submits).toBe(1);
+
+  await act(async () => {
+    await hook.result.current.run(null);
+  });
+  // The dead round was dropped, so the account was read again for the next one.
+  expect(counts.fetches).toBe(2);
+  expect(counts.submits).toBe(1);
+  expect(hook.result.current.signatureStatus).not.toBeNull();
+});
+
+test("useCloseExecution › a pre-authorized transaction that did not use the round's sequence keeps the partly signed round", async () => {
+  // Sequence 50 + 1, below the paused round's 101: that round can still land.
+  const { hook, counts, preAuthXdr, preAuthSigner } = await pausedWithPreAuthSigner("50");
+
+  await act(async () => {
+    await hook.result.current.submitPreAuthTransaction(preAuthSigner, preAuthXdr);
+  });
+  await act(async () => {
+    await hook.result.current.run(null);
+  });
+  // Resumed onto the same envelope, which still carries the master key's signature.
+  expect(counts.fetches).toBe(1);
+  expect(counts.submits).toBe(1);
+  expect(hook.result.current.signatureStatus?.accumulatedWeight).toBe(1);
+});
+
+test("useCloseExecution › a pre-authorized merge completes the close with its own hash", async () => {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  const preAuthXdr = unsignedMergeXdr(sourceKeypair, destination);
+  const preAuthKey = StrKey.encodePreAuthTx(
+    (TransactionBuilder.fromXdr(preAuthXdr, Networks.TESTNET) as Transaction).hash()
+  );
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    executionPlan: [{ id: "m", type: "MERGE", status: "pending" } as never],
+    accountState: {
+      signers: [
+        { key: source, weight: 1, type: "ed25519_public_key" },
+        { key: preAuthKey, weight: 1, type: "preauth_tx" },
+      ],
+      thresholds: { low: 1, med: 2, high: 2 },
+    } as never,
+  } as never);
+  stubSubmitViaApi(async () => ({ txHash: "server-hash" }));
+
+  const { result } = renderHook(() => useCloseExecution());
+  let submission: { hash: string; closedAccount: boolean } | undefined;
+  await act(async () => {
+    submission = await result.current.submitPreAuthTransaction(
+      { key: preAuthKey, weight: 1, type: "preauth_tx" },
+      preAuthXdr
+    );
+  });
+
+  const hash = submissionHash(preAuthXdr, Networks.TESTNET);
+  expect(submission).toEqual({ hash, closedAccount: true });
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+  expect(useDemolishStore.getState().executionPlan[0]).toMatchObject({
+    status: "confirmed",
+    txHash: hash,
+  });
+});
+
+test("useCloseExecution › an API answering a pre-authorized submission with another hash settles nothing", async () => {
+  const { hook, counts, preAuthXdr, preAuthSigner } = await pausedWithPreAuthSigner("100");
+  stubSubmitViaApi(async () => {
+    counts.submits++;
+    return { wrongHash: "f".repeat(64) };
+  });
+
+  const local = submissionHash(preAuthXdr, Networks.TESTNET);
+  let error: unknown;
+  await act(async () => {
+    await hook.result.current
+      .submitPreAuthTransaction(preAuthSigner, preAuthXdr)
+      .catch((err: unknown) => (error = err));
+  });
+
+  // Told to look up the local hash, never the one the API reported, and held until it settles.
+  expect(String((error as Error)?.message)).toContain(`Look up ${local}`);
+  expect(String((error as Error)?.message)).not.toContain("f".repeat(64));
+  expect(useDemolishStore.getState().phase).toBe("STEP_UNCONFIRMED");
+  expect(useDemolishStore.getState().unconfirmedSubmission?.hash).toBe(local);
+  expect(useDemolishStore.getState().signingRun).toBe(false);
+});
+
+/** A pre-authorized transaction of an account with a pre-auth signer, ready to submit. Checks
+ *  are stubbed out: these tests are about what happens around the submission. */
+function preAuthSetup(ops: xdr.Operation[], plan: unknown[]) {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  const builder = new TransactionBuilder(new Account(source, "100"), {
+    fee: "100",
+    networkPassphrase: Networks.TESTNET,
+  }).setTimeout(300);
+  ops.forEach((op) => builder.addOperation(op));
+  const preAuthXdr = builder.build().toXdr();
+  const preAuthKey = StrKey.encodePreAuthTx(
+    (TransactionBuilder.fromXdr(preAuthXdr, Networks.TESTNET) as Transaction).hash()
+  );
+  spyOn(verifyModule, "verifyCloseTransaction").mockImplementation(() => undefined as never);
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    phase: "STEP_FAILED",
+    signingRun: false,
+    unconfirmedSubmission: null,
+    executionPlan: plan,
+    accountState: {
+      signers: [
+        { key: source, weight: 1, type: "ed25519_public_key" },
+        { key: preAuthKey, weight: 1, type: "preauth_tx" },
+      ],
+      thresholds: { low: 1, med: 2, high: 2 },
+    } as never,
+  } as never);
+  const signer = { key: preAuthKey, weight: 1, type: "preauth_tx" as const };
+  return { source, destination, preAuthXdr, signer };
+}
+
+test("useCloseExecution › a pre-authorized merge the API answers with another hash does not complete", async () => {
+  const destination = Keypair.random().publicKey();
+  const { preAuthXdr, signer } = preAuthSetup(
+    [Operation.accountMerge({ destination })],
+    [planStep(0, "MERGE", "pending")]
+  );
+  stubSubmitViaApi(async () => ({ wrongHash: "f".repeat(64) }));
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.submitPreAuthTransaction(signer, preAuthXdr).catch(() => {});
+  });
+
+  expect(useDemolishStore.getState().phase).toBe("STEP_UNCONFIRMED");
+  expect(useDemolishStore.getState().executionPlan[0]?.status).toBe("pending");
+});
+
+test("useCloseExecution › a pre-authorized submission with no answer is held as unconfirmed, and Check again settles it", async () => {
+  const destination = Keypair.random().publicKey();
+  const { preAuthXdr, signer } = preAuthSetup(
+    [Operation.accountMerge({ destination })],
+    [planStep(0, "MERGE", "pending")]
+  );
+  stubSubmitViaApi(async () => {
+    throw new ApiRequestError(504, "");
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  let error: unknown;
+  await act(async () => {
+    await result.current
+      .submitPreAuthTransaction(signer, preAuthXdr)
+      .catch((err: unknown) => (error = err));
+  });
+
+  const hash = submissionHash(preAuthXdr, Networks.TESTNET);
+  expect(String((error as Error)?.message)).toContain(`Look up ${hash}`);
+  const held = useDemolishStore.getState().unconfirmedSubmission;
+  expect(held?.hash).toBe(hash);
+  // The steps its operations cover, as the close's own submissions record them.
+  expect(held?.covers).toEqual(["MERGE", "CLOSE_ACCOUNT"]);
+  expect(useDemolishStore.getState().phase).toBe("STEP_UNCONFIRMED");
+
+  stubLookup(async (h) => ({ status: "confirmed", hash: h, ledger: 9 }));
+  await act(async () => {
+    await result.current.checkUnconfirmed();
+  });
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+  expect(useDemolishStore.getState().unconfirmedSubmission).toBeNull();
+});
+
+test("useCloseExecution › an account switched during a pre-authorized submission gets nothing written into it", async () => {
+  const destination = Keypair.random().publicKey();
+  const { preAuthXdr, signer } = preAuthSetup(
+    [Operation.accountMerge({ destination })],
+    [planStep(0, "MERGE", "pending")]
+  );
+  const other = Keypair.random().publicKey();
+  const otherPlan = [planStep(0, "MERGE", "pending")];
+  stubSubmitViaApi(async (xdr) => {
+    // Another account is started in this tab while the answer is on its way.
+    useDemolishStore.setState({
+      sourceAddress: other,
+      phase: "PREFLIGHT_COMPLETE",
+      executionPlan: otherPlan,
+      unconfirmedSubmission: null,
+      signingRun: false,
+    } as never);
+    return { txHash: submissionHash(xdr as string, Networks.TESTNET) };
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  let error: unknown;
+  await act(async () => {
+    await result.current
+      .submitPreAuthTransaction(signer, preAuthXdr)
+      .catch((err: unknown) => (error = err));
+  });
+
+  expect(String((error as Error)?.message)).toBe(CLOSE_INTERRUPTED);
+  const state = useDemolishStore.getState();
+  expect(state.sourceAddress).toBe(other);
+  expect(state.phase).toBe("PREFLIGHT_COMPLETE");
+  expect(state.executionPlan).toEqual(otherPlan as never);
+  expect(state.unconfirmedSubmission).toBeNull();
+  expect(state.signingRun).toBe(false);
+});
+
+test("useCloseExecution › a landed pre-authorized transaction marks every step its operations cover", async () => {
+  const issuer = Keypair.random().publicKey();
+  const usdc = new Asset("USDC", issuer);
+  const destination = Keypair.random().publicKey();
+  const { preAuthXdr, signer } = preAuthSetup(
+    [
+      Operation.payment({ destination, asset: usdc, amount: "1" }),
+      Operation.changeTrust({ asset: usdc, limit: "0" }),
+      Operation.accountMerge({ destination }),
+    ],
+    [
+      { ...(planStep(0, "HANDLE_ASSETS", "pending") as object), affectedAsset: `USDC:${issuer}` },
+      { ...(planStep(1, "HANDLE_ASSETS", "pending") as object), affectedAsset: `EURC:${issuer}` },
+      planStep(2, "REMOVE_TRUSTLINES", "pending"),
+      planStep(3, "CLOSE_ACCOUNT", "pending"),
+      planStep(4, "MERGE", "pending"),
+    ]
+  );
+  stubSubmitViaApi(async () => ({}));
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.submitPreAuthTransaction(signer, preAuthXdr);
+  });
+
+  const hash = submissionHash(preAuthXdr, Networks.TESTNET);
+  const plan = useDemolishStore.getState().executionPlan;
+  expect(plan.map((s) => [s.type, s.affectedAsset ?? null, s.status, s.txHash ?? null])).toEqual([
+    ["HANDLE_ASSETS", `USDC:${issuer}`, "confirmed", hash],
+    // Another asset's step of the same type is not this transaction's.
+    ["HANDLE_ASSETS", `EURC:${issuer}`, "pending", null],
+    ["REMOVE_TRUSTLINES", null, "confirmed", hash],
+    ["CLOSE_ACCOUNT", null, "confirmed", hash],
+    ["MERGE", null, "confirmed", hash],
+  ]);
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+});
+
+test("useCloseExecution › a signer run is refused while a pre-authorized submission is in flight", async () => {
+  const destination = Keypair.random().publicKey();
+  const { preAuthXdr, signer } = preAuthSetup(
+    [Operation.accountMerge({ destination })],
+    [planStep(0, "MERGE", "pending")]
+  );
+  let answer: (value: unknown) => void = () => {};
+  stubSubmitViaApi(
+    () =>
+      new Promise((resolve) => {
+        answer = resolve;
+      })
+  );
+  let fetches = 0;
+  stubFetchCloseTransactions(async () => {
+    fetches++;
+    throw new ApiRequestError(500, "");
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  let submitting: Promise<unknown> = Promise.resolve();
+  await act(async () => {
+    submitting = result.current.submitPreAuthTransaction(signer, preAuthXdr);
+    await Promise.resolve();
+  });
+  await waitForSigningRun(true);
+  await act(async () => {
+    await result.current.run(realSigner(Keypair.random()));
+  });
+  expect(fetches).toBe(0);
+
+  await act(async () => {
+    answer({});
+    await submitting;
+  });
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+  expect(useDemolishStore.getState().signingRun).toBe(false);
+});
+
+async function waitForSigningRun(value: boolean): Promise<void> {
+  for (let i = 0; i < 50 && useDemolishStore.getState().signingRun !== value; i++) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+  expect(useDemolishStore.getState().signingRun).toBe(value);
+}
+
+test("useCloseExecution › a run that fails after the close completed leaves it complete", async () => {
+  const sourceKeypair = Keypair.random();
+  const destination = Keypair.random().publicKey();
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: sourceKeypair.publicKey(),
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    phase: "STEP_FAILED",
+    signingRun: false,
+    accountState: {
+      signers: [{ key: sourceKeypair.publicKey(), weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 1, med: 1, high: 1 },
+    } as never,
+  } as never);
+  stubFetchCloseTransactions(async () => {
+    // A pre-authorized merge completed the close while this round was being read.
+    useDemolishStore.setState({ phase: "COMPLETE" } as never);
+    throw new ApiRequestError(500, "");
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+});
+
+test("useCloseExecution › a run that ends without a merge after the close completed leaves it complete", async () => {
+  const sourceKeypair = Keypair.random();
+  const destination = Keypair.random().publicKey();
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: sourceKeypair.publicKey(),
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    phase: "STEP_FAILED",
+    signingRun: false,
+    accountState: {
+      signers: [{ key: sourceKeypair.publicKey(), weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 1, med: 1, high: 1 },
+    } as never,
+  } as never);
+  stubFetchCloseTransactions(async () => {
+    useDemolishStore.setState({ phase: "COMPLETE" } as never);
+    return {
+      planHash: "h",
+      status: "ready",
+      transactions: [],
+      remaining: { steps: 0, requiresAnotherCall: false },
+    };
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(realSigner(sourceKeypair));
+  });
+  expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+});
+
+test("useCloseExecution › a pre-authorized submission is refused while a run is in flight", async () => {
+  const destination = Keypair.random().publicKey();
+  const { preAuthXdr, signer } = preAuthSetup(
+    [Operation.accountMerge({ destination })],
+    [planStep(0, "MERGE", "pending")]
+  );
+  useDemolishStore.setState({ signingRun: true } as never);
+  let submits = 0;
+  stubSubmitViaApi(async () => {
+    submits++;
+    return {};
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  let error: unknown;
+  await act(async () => {
+    await result.current
+      .submitPreAuthTransaction(signer, preAuthXdr)
+      .catch((err: unknown) => (error = err));
+  });
+
+  expect(String((error as Error)?.message)).toContain(
+    "Another step of this close is still running"
+  );
+  expect(submits).toBe(0);
+  expect(useDemolishStore.getState().signingRun).toBe(true);
+  useDemolishStore.setState({ signingRun: false } as never);
+});
+
+test("useCloseExecution › an account switched during a pre-authorized submission answered with another hash is left alone", async () => {
+  const destination = Keypair.random().publicKey();
+  const { preAuthXdr, signer } = preAuthSetup(
+    [Operation.accountMerge({ destination })],
+    [planStep(0, "MERGE", "pending")]
+  );
+  const other = Keypair.random().publicKey();
+  stubSubmitViaApi(async () => {
+    useDemolishStore.setState({
+      sourceAddress: other,
+      phase: "PREFLIGHT_COMPLETE",
+      unconfirmedSubmission: null,
+      signingRun: false,
+    } as never);
+    return { wrongHash: "f".repeat(64) };
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  let error: unknown;
+  await act(async () => {
+    await result.current
+      .submitPreAuthTransaction(signer, preAuthXdr)
+      .catch((err: unknown) => (error = err));
+  });
+
+  expect(String((error as Error)?.message)).toBe(CLOSE_INTERRUPTED);
+  expect(useDemolishStore.getState().phase).toBe("PREFLIGHT_COMPLETE");
 });

@@ -31,3 +31,33 @@ export function mergesAccount(xdr: string, passphrase: string, account: string):
     (op) => op.type === "account_merge" && op.source === account
   );
 }
+
+/** The inner transaction's source account and sequence number, or null when it cannot be read. */
+function sourceAndSequence(
+  xdr: string,
+  passphrase: string
+): { source: string; sequence: bigint } | null {
+  try {
+    const tx = decode(xdr, passphrase);
+    const inner = tx instanceof FeeBumpTransaction ? tx.innerTransaction : tx;
+    return { source: inner.source, sequence: BigInt(inner.sequence) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether `confirmedXdr`, already on the ledger, used up the sequence number `pendingXdr` needs:
+ * the same source account, at a sequence at or past the pending one. Only what both envelopes
+ * say decides it; when either cannot be read, the answer is false, so a pending round is kept.
+ */
+export function consumesSequenceOf(
+  confirmedXdr: string,
+  pendingXdr: string,
+  passphrase: string
+): boolean {
+  const confirmed = sourceAndSequence(confirmedXdr, passphrase);
+  const pending = sourceAndSequence(pendingXdr, passphrase);
+  if (!confirmed || !pending) return false;
+  return confirmed.source === pending.source && confirmed.sequence >= pending.sequence;
+}
