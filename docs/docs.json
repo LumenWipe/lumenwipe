@@ -42,6 +42,7 @@
           "architecture",
           "threat-model",
           "invariants",
+          "multisig-cosigning",
           "security-scope",
           "security-remediation-plan",
           "monitoring-plan",
