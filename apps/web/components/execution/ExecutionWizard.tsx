@@ -21,6 +21,7 @@ import WalletConnectPanel, { OtherWalletChoice } from "@/components/wallet/Walle
 import PlanSidebar from "./PlanSidebar";
 import UnconfirmedPanel from "./UnconfirmedPanel";
 import ProgressIndicator from "./ProgressIndicator";
+import PreSignPanel from "./PreSignPanel";
 import SigningProgress from "./SigningProgress";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { SecretKeySigner, SignerReleasedError, type TransactionSigner } from "@/lib/stellar/signer";
@@ -94,6 +95,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     run,
     progress,
     signatureStatus,
+    signingPrompt,
     submitPreAuthTransaction,
     checkUnconfirmed,
     retrySafe,
@@ -640,13 +642,16 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           )}
 
           {busy ? (
-            <ProgressIndicator
-              line={line}
-              stalled={stalled}
-              elapsedSeconds={elapsedSeconds}
-              // A wallet on another device gives no sign here that its prompt arrived.
-              showTimer={progress?.wait === "wallet-app"}
-            />
+            <>
+              <ProgressIndicator
+                line={line}
+                stalled={stalled}
+                elapsedSeconds={elapsedSeconds}
+                // A wallet on another device gives no sign here that its prompt arrived.
+                showTimer={progress?.wait === "wallet-app"}
+              />
+              {signingPrompt && <PreSignPanel prompt={signingPrompt} />}
+            </>
           ) : unconfirmed ? (
             <UnconfirmedPanel
               hash={unconfirmedSubmission.hash}

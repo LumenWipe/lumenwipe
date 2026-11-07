@@ -164,7 +164,7 @@ function walletsBlock(): string {
   if (!/new WalletConnectModule/.test(source)) throw new Error("WalletConnect module not found");
   rows.push([
     "WalletConnect, which is also how LOBSTR connects",
-    `Enabled when \`${envVar}\` is set on the deployment`,
+    `Enabled when \`${envVar}\` is set on the deployment; a production deployment does not build without it`,
     "Both, set by the app's network",
   ]);
   return table(["Wallet", "When enabled", "Network"], rows);

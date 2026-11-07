@@ -45,6 +45,7 @@ import * as activeSignerHook from "@/hooks/useActiveSigner";
 import * as secretKeyInputModule from "@/components/account-entry/SecretKeyInput";
 import * as walletKitClient from "@/lib/wallet-kit/client";
 import type { CloseProgress } from "@/lib/execution/progress";
+import { hashFingerprint, type SigningPrompt } from "@/lib/execution/signing-prompt";
 
 const WAITING_LINE = "Transaction 1 of 1: approve in your wallet";
 
@@ -80,6 +81,7 @@ function stubCloseExecution(): void {
           runImpl(signer as { publicKey: string }, options),
         progress: currentProgress,
         signatureStatus: currentSignatureStatus,
+        signingPrompt: currentSigningPrompt,
         submitPreAuthTransaction: (
           signer: { key: string; weight: number; type: string },
           xdr: string
@@ -95,6 +97,7 @@ let checkImpl: () => Promise<void> = async () => {};
 let currentRetrySafe: boolean | null = true;
 let currentStillUnconfirmed = false;
 let currentProgress: CloseProgress | null = null;
+let currentSigningPrompt: SigningPrompt | null = null;
 function progressAt(wait: CloseProgress["wait"]): CloseProgress {
   return { wait, position: { n: 1, total: 1, atLeast: false }, since: Date.now() };
 }
@@ -158,6 +161,7 @@ beforeEach(() => {
   stubSessionStore();
   currentSignatureStatus = null;
   currentProgress = null;
+  currentSigningPrompt = null;
   currentWalletAddress = null;
   currentWalletState = {};
   submitPreAuthTxImpl = async () => ({ hash: "0".repeat(64), closedAccount: false });
@@ -2106,4 +2110,25 @@ test("execution-wizard › a pasted key with surrounding whitespace signs as tha
   fireEvent.click(signButton());
   await waitFor(() => expect(runSpy).toHaveBeenCalledTimes(1));
   expect(runSpy.mock.calls[0]?.[0]?.publicKey).toBe(key.publicKey());
+});
+
+test("execution-wizard › while a wallet signs, the panel beside its prompt shows that transaction", () => {
+  const destination = Keypair.random().publicKey();
+  currentProgress = progressAt("wallet-app");
+  currentSigningPrompt = {
+    walletId: null,
+    hash: "ab".repeat(32),
+    summary: { mergeDestination: destination, operationCount: 3 },
+  };
+  render(<ExecutionWizard network="testnet" />);
+
+  expect(screen.getByTestId("pre-sign-destination").textContent).toBe(destination);
+  expect(screen.getByTestId("pre-sign-operations").textContent).toBe("3");
+  expect(screen.getByTestId("pre-sign-hash").textContent).toBe(hashFingerprint("ab".repeat(32)));
+});
+
+test("execution-wizard › no panel is shown while nothing is asked of a wallet", () => {
+  currentProgress = progressAt("network");
+  render(<ExecutionWizard network="testnet" />);
+  expect(screen.queryByTestId("pre-sign-panel")).toBeNull();
 });
