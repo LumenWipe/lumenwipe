@@ -113,3 +113,16 @@ export function expectedReceive(input: ExpectedReceiveInput): ExpectedReceive {
     leavesOutDefiExits: account.defiPositions.positions.length > 0,
   };
 }
+
+/**
+ * The same figure with `feeStroops` as its fee line, so a screen showing one fee total shows one
+ * fee everywhere. Every other line stays as it was, and the total is their sum again.
+ */
+export function withFeeStroops(expected: ExpectedReceive, feeStroops: string): ExpectedReceive {
+  const total =
+    BigInt(expected.balanceStroops) -
+    BigInt(feeStroops) +
+    BigInt(expected.swapStroops) +
+    BigInt(expected.claimStroops);
+  return { ...expected, feeStroops, totalStroops: total.toString() };
+}

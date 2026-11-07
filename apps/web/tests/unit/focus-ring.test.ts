@@ -57,11 +57,7 @@ describe("global focus ring", () => {
   });
 
   test("full-width accordion triggers inside overflow-hidden containers draw the ring inward", () => {
-    for (const rel of [
-      "components/plan/PlanAccordion.tsx",
-      "components/review/PlanStepAccordion.tsx",
-      "components/marketing/Faq.tsx",
-    ]) {
+    for (const rel of ["components/plan/PlanAccordion.tsx", "components/marketing/Faq.tsx"]) {
       const src = files.find((f) => f.rel === rel)?.src ?? "";
       expect(src).toContain("focus-visible:-outline-offset-2");
     }

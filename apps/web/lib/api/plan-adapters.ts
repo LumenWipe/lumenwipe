@@ -150,6 +150,14 @@ export function planFeeStroopsOf(plan: PlanResponse): string | null {
   return typeof fee === "string" && /^\d+$/.test(fee) ? fee : null;
 }
 
+/** How many transactions the plan expects the close to take, for /review. Display only. Null
+ *  unless it is a positive whole count: a count is never shown from a value that is not one. */
+export function planTransactionCountOf(plan: PlanResponse): number | null {
+  const count: unknown = (plan as { execution?: { estimatedTransactionCount?: unknown } }).execution
+    ?.estimatedTransactionCount;
+  return typeof count === "number" && Number.isSafeInteger(count) && count > 0 ? count : null;
+}
+
 /** Stroops rendered as XLM with the trailing zeros dropped. */
 export function formatStroops(stroops: string): string {
   return formatTokenBalance(stroops, 7);

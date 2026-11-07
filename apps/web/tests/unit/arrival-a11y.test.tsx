@@ -156,7 +156,8 @@ test("review focuses the page heading and announces the plan once", async () => 
   await renderPage(<ReviewPage params={settled({ network: "testnet" as const })} />);
   expectValidOutline();
   expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1 }));
-  const statuses = screen.getAllByRole("status");
+  // Each copy button keeps an empty status region for its own result; only one says anything.
+  const statuses = screen.getAllByRole("status").filter((s) => s.textContent !== "");
   expect(statuses).toHaveLength(1);
   expect(statuses[0].textContent).toBe("Plan ready to review: 2 steps.");
 });

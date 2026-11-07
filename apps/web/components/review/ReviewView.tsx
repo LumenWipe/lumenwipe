@@ -15,12 +15,20 @@ import {
   CONFIRM_SAVE_FAILED,
   CONFIRM_UNCHECKED,
 } from "@/lib/utils/user-error";
-import { formatXlm } from "@/lib/utils/amounts";
-import PlanStepAccordion from "@/components/review/PlanStepAccordion";
-import AccountSummaryCard from "@/components/plan/AccountSummaryCard";
+import { formatStroops } from "@/lib/api/plan-adapters";
+import { withFeeStroops } from "@/lib/plan/expected-receive";
+import { totalFeeStroops, transactionCountLine } from "@/lib/plan/review-fees";
+import { assetOutcomes } from "@/lib/plan/asset-outcomes";
+import { confirmedMemo } from "@/lib/plan/memo-field";
+import { destinationKind, memoLine, relayRoute } from "@/lib/plan/destination-kind";
+import PlanStepList from "@/components/review/PlanStepList";
+import ReviewHero, { MemoValue } from "@/components/review/ReviewHero";
+import AssetOutcomeTable from "@/components/review/AssetOutcomeTable";
+import AccountContents from "@/components/plan/AccountContents";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { FullAddress } from "@/components/ui/full-address";
 
 /** How long the confirm waits for the close to be saved: a blocked database never answers. */
 export const CONFIRM_SAVE_TIMEOUT_MS = 5000;
@@ -43,22 +51,38 @@ export default function ReviewView({ network }: ReviewViewProps) {
     accountState,
     executionPlan,
     destinationAddress,
-    mediatorRequired,
+    destinationAcknowledgedFor,
     sourceAddress,
     memo,
     memoType,
     setPhase,
     resumedClose,
     expectedReceive,
+    estimatedTransactionCount,
+    assetDispositions,
+    transferDestinations,
+    tokenConversionFloors,
+    classicConversionFloors,
+    claimableBalanceSelections,
   } = useDemolishStore();
 
   const [confirming, setConfirming] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [held, setHeld] = useState<string | null>(null);
 
-  const totalFee = executionPlan
-    .reduce((sum, step) => sum + parseFloat(step.estimatedFeeLumens), 0)
-    .toFixed(7);
+  // The relay is said where verify() holds the close to it, never from the stored flag.
+  const viaRelay = destinationAddress !== null && relayRoute(destinationAddress) === "relay";
+  const memoShown = memoLine(
+    destinationAddress ? confirmedMemo(destinationAddress, memo, memoType) : null
+  );
+
+  // One fee on this screen: the exact sum of the steps' fees, which the list below shows one by
+  // one, is also the fee line of the amount the user is told they will receive. A step whose fee
+  // cannot be read leaves both unknown, never understated. The final plan's steps already hold
+  // the relay's forward payment (the builder counts it in the merge step), so nothing is added.
+  const totalFee = totalFeeStroops(executionPlan);
+  const expected =
+    expectedReceive && totalFee !== null ? withFeeStroops(expectedReceive, totalFee) : null;
 
   // The only caller allowed to transition PREFLIGHT_COMPLETE -> STEP_EXECUTING. Nothing
   // is persisted until this fires, so leaving this page without confirming (closing the
@@ -94,6 +118,18 @@ export default function ReviewView({ network }: ReviewViewProps) {
 
   return (
     <div className="space-y-5">
+      {sourceAddress && destinationAddress && (
+        <ReviewHero
+          network={network}
+          source={sourceAddress}
+          destination={destinationAddress}
+          kind={destinationKind(destinationAddress, {
+            acknowledgedFor: destinationAcknowledgedFor,
+          })}
+          memo={memoShown}
+          expected={expected}
+        />
+      )}
       {resumedClose?.source === sourceAddress && (
         <p className="text-sm text-fg-muted">
           You are continuing a close you started earlier, so this plan lists only what is left on
@@ -101,22 +137,41 @@ export default function ReviewView({ network }: ReviewViewProps) {
         </p>
       )}
       {accountState && (
-        <AccountSummaryCard
-          account={accountState}
-          destinationAddress={destinationAddress}
-          expected={expectedReceive}
+        <AssetOutcomeTable
+          rows={assetOutcomes({
+            account: accountState,
+            dispositions: assetDispositions,
+            transferDestinations,
+            tokenConversionFloors,
+            classicConversionFloors,
+            claimSelections: claimableBalanceSelections,
+          })}
+          expected={expected}
         />
+      )}
+      {accountState && (
+        <Card>
+          <details open>
+            <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-white/80">
+              What is on this account
+            </summary>
+            <AccountContents account={accountState} className="border-t border-white/10" />
+          </details>
+        </Card>
       )}
 
       <Card>
         <CardHeader>
           <CardTitle>Full plan</CardTitle>
+          <p className="mt-1 text-sm text-white/80" data-testid="transaction-count">
+            {transactionCountLine(estimatedTransactionCount)}
+          </p>
         </CardHeader>
-        <div className="p-3">
-          <PlanStepAccordion
+        <div className="px-4 pb-1">
+          <PlanStepList
             steps={executionPlan}
             destinationAddress={destinationAddress}
-            mediatorRequired={mediatorRequired}
+            viaRelay={viaRelay}
           />
         </div>
       </Card>
@@ -135,16 +190,31 @@ export default function ReviewView({ network }: ReviewViewProps) {
       >
         <p>
           The account will be removed from the Stellar ledger and its balance sent to{" "}
-          <span className="font-mono text-white/80 break-all">{destinationAddress}</span>
-          {mediatorRequired ? " through the exchange relay account." : "."}
+          {destinationAddress && (
+            <FullAddress
+              value={destinationAddress}
+              label="destination address"
+              className="text-white/80"
+            />
+          )}
+          {viaRelay ? " through the shared relay account." : "."}
         </p>
-        {memo && (
-          <p className="mt-1">
-            Memo: <span className="font-mono text-white/80">{memo}</span>
-            {memoType ? ` (${memoType})` : ""}
-          </p>
-        )}
+        <p className="mt-1">
+          Memo: <MemoValue memo={memoShown} />
+        </p>
       </Callout>
+
+      <p className="text-sm text-fg-muted" data-testid="fee-summary">
+        {totalFee === null ? (
+          "Network fees could not be estimated for this plan. They are paid from the account and deducted from what arrives."
+        ) : (
+          <>
+            Network fees: about{" "}
+            <span className="mkt-mono text-white/80">{formatStroops(totalFee)} XLM</span>, paid from
+            the account and deducted from what arrives.
+          </>
+        )}
+      </p>
 
       <label className="flex items-start gap-3 cursor-pointer select-none">
         <input
@@ -191,10 +261,6 @@ export default function ReviewView({ network }: ReviewViewProps) {
           Account summary unavailable - the plan below is still accurate.
         </p>
       )}
-
-      <p className="text-center text-xs text-fg-subtle">
-        {formatXlm(totalFee)} in estimated network fees
-      </p>
     </div>
   );
 }

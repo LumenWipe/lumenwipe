@@ -759,3 +759,22 @@ describe("an unsettled submission belongs to its account", () => {
     expect(useDemolishStore.getState().sessionId).toBe("first");
   });
 });
+
+describe("plan transaction count", () => {
+  test("setPlan keeps the plan's transaction count", () => {
+    useDemolishStore.getState().setPlan([step(0)], "hash", 2);
+    expect(useDemolishStore.getState().estimatedTransactionCount).toBe(2);
+  });
+
+  test("a plan installed without a count clears the previous one", () => {
+    useDemolishStore.getState().setPlan([step(0)], "hash", 2);
+    useDemolishStore.getState().setPlan([step(0)], "other");
+    expect(useDemolishStore.getState().estimatedTransactionCount).toBeNull();
+  });
+
+  test("a discarded plan takes its count with it", () => {
+    useDemolishStore.getState().setPlan([step(0)], "hash", 2);
+    useDemolishStore.getState().discardPlan("changed");
+    expect(useDemolishStore.getState().estimatedTransactionCount).toBeNull();
+  });
+});

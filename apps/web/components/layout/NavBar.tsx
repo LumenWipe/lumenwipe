@@ -22,10 +22,11 @@ export default function NavBar({ network }: NavBarProps) {
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
             <LeaveLink href="/" aria-label="LumenWipe home" className="shrink-0">
-              <Logo />
+              {/* The word gives way on a phone so the network badge and switcher fit beside it. */}
+              <Logo wordClassName="hidden min-[400px]:inline" />
             </LeaveLink>
             <span className="hidden h-4 w-px bg-white/10 sm:block" />
-            <NetworkBadge network={network} className="hidden sm:inline-flex" />
+            <NetworkBadge network={network} />
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4">

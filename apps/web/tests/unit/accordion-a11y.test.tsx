@@ -1,10 +1,8 @@
 import { test, expect, afterEach } from "bun:test";
 import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
 import { StatefulPlanAccordion } from "./fixtures/plan-accordion";
-import PlanStepAccordion from "@/components/review/PlanStepAccordion";
 import Faq from "@/components/marketing/Faq";
 import type { AccountState } from "@/types/account";
-import type { PlannedStep, StepType } from "@/types/plan";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 afterEach(cleanup);
@@ -37,21 +35,6 @@ function account(): AccountState {
   } as AccountState;
 }
 
-function step(index: number, type: StepType): PlannedStep {
-  return {
-    index,
-    type,
-    title: `${type} title`,
-    description: `${type} description`,
-    operationCount: 1,
-    estimatedFeeLumens: "0.00001",
-    txXdr: null,
-    status: "pending",
-    txHash: null,
-    error: null,
-  };
-}
-
 function renderPlan() {
   return render(
     <StatefulPlanAccordion
@@ -69,16 +52,6 @@ function renderPlan() {
       claimableBalanceDecisions={[]}
       claimableBalanceSelections={{}}
       onSelectClaimableBalance={() => {}}
-      destinationAddress={null}
-      mediatorRequired={false}
-    />
-  );
-}
-
-function renderSteps() {
-  return render(
-    <PlanStepAccordion
-      steps={[step(0, "CANCEL_OFFERS"), step(1, "MERGE")]}
       destinationAddress={null}
       mediatorRequired={false}
     />
@@ -130,15 +103,6 @@ test("plan accordion › reopening a panel removes inert", () => {
   expect(within(panel as HTMLElement).getByText("k1")).toBeTruthy();
 });
 
-test("step accordion › every header controls a labelled region that is inert only when closed", () => {
-  const { container } = renderSteps();
-  expectWired(container);
-  const merge = screen.getByText("Merge account").closest("button") as HTMLButtonElement;
-  fireEvent.click(merge);
-  expectWired(container);
-  expect(merge.getAttribute("aria-expanded")).toBe("true");
-});
-
 test("faq › every header controls a labelled region that is inert only when closed", () => {
   const { container } = render(<Faq />);
   expectWired(container);
@@ -149,7 +113,7 @@ test("faq › every header controls a labelled region that is inert only when cl
 });
 
 test("every expanding group shows a chevron that turns over, not a plus that becomes a cross", () => {
-  for (const renderGroup of [renderPlan, renderSteps, () => render(<Faq />)]) {
+  for (const renderGroup of [renderPlan, () => render(<Faq />)]) {
     const { container } = renderGroup();
     for (const header of Array.from(container.querySelectorAll("button[aria-expanded]"))) {
       const icon = header.querySelector(".lucide-chevron-down");

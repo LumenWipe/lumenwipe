@@ -27,6 +27,7 @@ import {
 } from "@/lib/api/close-decisions";
 import {
   apiStepsToPlannedSteps,
+  planTransactionCountOf,
   decisionPointsToLeavablePositions,
   planFeeStroopsOf,
 } from "@/lib/api/plan-adapters";
@@ -578,7 +579,7 @@ export default function PlanView({
         return;
       }
 
-      setPlan(apiStepsToPlannedSteps(plan), plan.planHash);
+      setPlan(apiStepsToPlannedSteps(plan), plan.planHash, planTransactionCountOf(plan));
       const finalFee = planFeeStroopsOf(plan);
       setExpectedReceive(finalFee === null ? null : expectedFrom(finalFee, false));
 
