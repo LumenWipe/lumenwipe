@@ -24,6 +24,7 @@ import ProgressIndicator from "./ProgressIndicator";
 import SigningProgress from "./SigningProgress";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { SecretKeySigner, SignerReleasedError, type TransactionSigner } from "@/lib/stellar/signer";
+import { signerStanding, signerStandingText } from "@/lib/stellar/signer-standing";
 import { walletKitSigner } from "@/lib/wallet-kit/client";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
@@ -55,9 +56,16 @@ const SIGNER_KIND_LABEL: Record<SignerKind, string> = {
 export const ALREADY_SIGNED = "This signer already signed. Connect or enter a different signer.";
 export const NOT_STILL_NEEDED =
   "This signer is not one this transaction still needs. Connect or enter a different signer.";
+export const NOT_A_SIGNER =
+  "This key cannot sign for this account. Connect or enter a signer of this account.";
 
 function shortKey(key: string): string {
   return `${key.slice(0, 4)}…${key.slice(-4)}`;
+}
+
+/** A key as the loaded-key notice shows it: enough of both ends to compare with the account's. */
+function keyEnds(key: string): string {
+  return `${key.slice(0, 6)}…${key.slice(-6)}`;
 }
 
 const SIGN_MODES: readonly TabItem<SignMode>[] = [
@@ -121,6 +129,21 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   // to the secret-key path, without touching the store's `phase` - purely a
   // local UI override. Reset whenever a fresh attempt starts.
   const [changingSigner, setChangingSigner] = useState(false);
+
+  // Who can sign, with what weight: the live round's signers once a round paused for weight, as
+  // the run last read them from the network; before the first round, the account as reviewed. A
+  // co-signer added after review, or a weight changed since, is judged by the live list.
+  const standingSigners = useMemo<readonly AccountSigner[]>(
+    () =>
+      signatureStatus
+        ? [...signatureStatus.remainingSigners, ...signatureStatus.contributed]
+        : (accountState?.signers ?? []),
+    [signatureStatus, accountState]
+  );
+  const canSign = useCallback(
+    (key: string): boolean => signerStanding(key, standingSigners).kind === "signer",
+    [standingSigners]
+  );
 
   // Only ed25519 signers can ever be satisfied by a connected wallet - hash(x)/pre-auth-tx
   // signers use different strkey prefixes and could never equal a wallet's `G...` address.
@@ -259,6 +282,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     // The held signer is the one the screen names: both are set and dropped together.
     const held = heldSigner();
     if (!held || walletHeld) return;
+    // The same standing the screen shows, read again here: a key that cannot sign is never run,
+    // whatever state the buttons were left in.
+    if (!canSign(held.signer.publicKey)) return;
     setContinueWithoutSigner(false);
     const stillHeld = stillHeldCheck();
     // A wallet is checked again before each of its signatures in the run, not only now. Its own
@@ -271,7 +297,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
         await stillHeld();
       },
     });
-  }, [heldSigner, walletHeld, runWith, walletConnection, stillHeldCheck]);
+  }, [heldSigner, walletHeld, canSign, runWith, walletConnection, stillHeldCheck]);
 
   // A pre-authorized transaction the network confirmed moves the close on by itself: the close
   // continues with no signer, which re-reads the account and either completes or pauses for the
@@ -310,9 +336,11 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const applyHashXPreimage = useCallback(
     (signer: TransactionSigner) => {
       selectSigner("hash-x", signer);
+      // Named on screen either way; run only when the live round counts its weight.
+      if (!canSign(signer.publicKey)) return;
       void runWith(signer, { beforeSign: stillHeldCheck() });
     },
-    [selectSigner, runWith, stillHeldCheck]
+    [selectSigner, canSign, runWith, stillHeldCheck]
   );
 
   // A run this mount did not start, as after a remount mid-run, still holds the close.
@@ -420,16 +448,28 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
         }
       : null;
 
-  // "Add signature" only reaches a signer this transaction still needs. A signer that already
+  // A signer the account does not list, or lists with weight 0, can never add weight: signing is
+  // held with the reason on screen before the user confirms, not refused after a prompt.
+  // "Add signature" also only reaches a signer this transaction still needs. A signer that already
   // signed would only be asked to approve a prompt that adds nothing; the weight check after
   // signing stays the guard, this only keeps the screen from walking into it.
   const activeId = activeSigner.kind === "none" ? null : activeSigner.id;
+  const standing = activeId ? signerStanding(activeId, standingSigners) : null;
   const signerBlockedReason =
-    signatureStatus && activeId && !signatureStatus.remainingSigners.some((s) => s.key === activeId)
-      ? signatureStatus.contributed.some((s) => s.key === activeId)
-        ? ALREADY_SIGNED
-        : NOT_STILL_NEEDED
-      : null;
+    standing && standing.kind !== "signer"
+      ? NOT_A_SIGNER
+      : signatureStatus &&
+          activeId &&
+          !signatureStatus.remainingSigners.some((s) => s.key === activeId)
+        ? signatureStatus.contributed.some((s) => s.key === activeId)
+          ? ALREADY_SIGNED
+          : NOT_STILL_NEEDED
+        : null;
+  const blockedReasonLine = signerBlockedReason && (
+    <p id="signer-blocked-reason" className="text-xs text-warning">
+      {signerBlockedReason}
+    </p>
+  );
 
   // The wallet reported signing with another account: offer the way out, not just Retry.
   const walletAccountMismatch =
@@ -474,13 +514,27 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
         />
       ) : activeSigner.kind === "secret-key" ? (
         <Callout
-          tone="success"
+          tone={standing?.kind === "signer" ? "success" : "warning"}
           announce={false}
-          icon={<CheckCircle className="h-4 w-4" />}
+          icon={
+            standing?.kind === "signer" ? (
+              <CheckCircle className="h-4 w-4" />
+            ) : (
+              <AlertCircle className="h-4 w-4" />
+            )
+          }
           className="items-center py-2"
         >
           <div className="flex items-center justify-between gap-3">
-            Secret key loaded for this session
+            <div className="min-w-0">
+              <p>Secret key loaded for this session</p>
+              {standing && (
+                <p data-testid="key-standing" className="text-xs">
+                  Key <span className="font-mono-address">{keyEnds(activeSigner.id)}</span>:{" "}
+                  {signerStandingText(standing)}
+                </p>
+              )}
+            </div>
             <Button type="button" variant="ghost" size="sm" onClick={forgetKey} disabled={locked}>
               Forget key
             </Button>
@@ -609,11 +663,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 disabled={locked}
               />
               {renderSignerPicker()}
-              {signerBlockedReason && (
-                <p id="signer-blocked-reason" className="text-xs text-warning">
-                  {signerBlockedReason}
-                </p>
-              )}
+              {blockedReasonLine}
               <Button
                 onClick={execute}
                 disabled={!signerReady || locked || walletHeld || signerBlockedReason !== null}
@@ -654,12 +704,18 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               >
                 Change wallet or key
               </Button>
+              {blockedReasonLine}
               <Button
                 ref={retryRef}
                 onClick={retry}
                 disabled={
-                  !(signerReady || continueWithoutSigner) || locked || walletHeld || retryHeld
+                  !(signerReady || continueWithoutSigner) ||
+                  locked ||
+                  walletHeld ||
+                  retryHeld ||
+                  signerBlockedReason !== null
                 }
+                aria-describedby={signerBlockedReason ? "signer-blocked-reason" : undefined}
                 className="w-full"
               >
                 Retry
@@ -712,10 +768,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 </span>
               </label>
 
+              {blockedReasonLine}
               <Button
                 variant="danger"
                 onClick={execute}
-                disabled={!signerReady || walletHeld || !confirmed}
+                disabled={!signerReady || walletHeld || !confirmed || signerBlockedReason !== null}
+                aria-describedby={signerBlockedReason ? "signer-blocked-reason" : undefined}
                 className="w-full"
               >
                 Sign &amp; execute close

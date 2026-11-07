@@ -18,7 +18,8 @@ export type ClaimKey =
   | "funds-safe"
   | "nothing-lost"
   | "can-resume"
-  | "recorded-progress";
+  | "recorded-progress"
+  | "key-stays-in-browser";
 
 const DURING_SIGNING: readonly ClaimKey[] = [
   "each-tx-checked",
@@ -28,12 +29,29 @@ const DURING_SIGNING: readonly ClaimKey[] = [
   "safe-to-retry",
 ];
 
+/** True in every state: a secret key entered on the signing screen is held in memory and is never
+ *  stored or sent, whatever the close has done. */
+const IN_EVERY_STATE: readonly ClaimKey[] = ["key-stays-in-browser"];
+
 /** Which claims may be rendered in each state. Anything not listed is false in some reachable
  *  close in that state. */
 export const ALLOWED_CLAIMS: Record<JourneyStateName, readonly ClaimKey[]> = {
-  untouched: ["nothing-sent", "account-unchanged", "each-tx-checked", "sent-only-when-signed"],
-  planned: ["nothing-sent", "account-unchanged", "each-tx-checked", "sent-only-when-signed"],
+  untouched: [
+    ...IN_EVERY_STATE,
+    "nothing-sent",
+    "account-unchanged",
+    "each-tx-checked",
+    "sent-only-when-signed",
+  ],
+  planned: [
+    ...IN_EVERY_STATE,
+    "nothing-sent",
+    "account-unchanged",
+    "each-tx-checked",
+    "sent-only-when-signed",
+  ],
   reviewed: [
+    ...IN_EVERY_STATE,
     "nothing-sent",
     "account-unchanged",
     "each-tx-checked",
@@ -45,16 +63,18 @@ export const ALLOWED_CLAIMS: Record<JourneyStateName, readonly ClaimKey[]> = {
   // Past the review confirm a close always has a saved record: run() sends nothing without one.
   // A review reached with a transaction in flight is here too, so its "nothing more" is allowed.
   signing: [
+    ...IN_EVERY_STATE,
     ...DURING_SIGNING,
     "more-sent-only-when-signed",
     "resume-after-stop",
     "can-resume",
     "recorded-progress",
   ],
-  partial: [...DURING_SIGNING, "still-open", "can-resume", "recorded-progress"],
-  complete: ["each-tx-checked", "account-closed", "no-new-sent", "may-be-sent"],
+  partial: [...IN_EVERY_STATE, ...DURING_SIGNING, "still-open", "can-resume", "recorded-progress"],
+  complete: [...IN_EVERY_STATE, "each-tx-checked", "account-closed", "no-new-sent", "may-be-sent"],
   // Earlier transactions may already have been sent: only "nothing more" is true here.
   unknown: [
+    ...IN_EVERY_STATE,
     "each-tx-checked",
     "more-sent-only-when-signed",
     "resume-after-stop",
@@ -109,6 +129,8 @@ export const CLAIM_PATTERNS: Record<ClaimKey, RegExp> = {
   "can-resume": /resume(?:d)? (?:it |this close )?later/i,
   // How far a saved close got is only ever what this browser recorded, never the account's state.
   "recorded-progress": /recorded in this browser|this browser recorded/i,
+  // The secret key's handling: it stays on the device and only in memory.
+  "key-stays-in-browser": /key never leaves (?:your browser|this device)|held in memory only/i,
 };
 
 export function permittedClaims(journey: Journey): ClaimKey[] {

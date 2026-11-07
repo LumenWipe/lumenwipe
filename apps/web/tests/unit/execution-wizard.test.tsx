@@ -15,6 +15,8 @@ import {
 } from "@stellar/stellar-sdk";
 import ExecutionWizard, {
   ALREADY_SIGNED,
+  NOT_A_SIGNER,
+  NOT_STILL_NEEDED,
   STALE_PROMPT_HOLD_MS,
 } from "@/components/execution/ExecutionWizard";
 import { useDemolishStore } from "@/store/demolish";
@@ -1757,6 +1759,116 @@ test("execution-wizard › a preimage after a key replaces the held key signer",
   expect(held()?.signer).not.toBeInstanceOf(SecretKeySigner);
 });
 
+const ends = (key: string) => `${key.slice(0, 6)}…${key.slice(-6)}`;
+const keyStandingText = (): string | null =>
+  screen.queryByTestId("key-standing")?.textContent ?? null;
+
+function seedSigners(signers: { key: string; weight: number }[]): void {
+  useDemolishStore.setState({
+    accountState: {
+      signers: signers.map((s) => ({ ...s, type: "ed25519_public_key" })),
+      thresholds: { low: 1, med: 1, high: 1 },
+    } as never,
+  } as never);
+}
+
+function signButton(): HTMLButtonElement {
+  return screen.getByRole("button", { name: /Sign & execute close/ }) as HTMLButtonElement;
+}
+
+test("execution-wizard › a key that signs for the account is named with its weight before signing", async () => {
+  const key = Keypair.random();
+  seedSigners([{ key: key.publicKey(), weight: 2 }]);
+  const runSpy = mock(async (_signer: { publicKey: string }) => {});
+  runImpl = runSpy;
+
+  render(<ExecutionWizard network="testnet" />);
+  enterKey(key.secret());
+
+  await waitFor(() =>
+    expect(keyStandingText()).toBe(`Key ${ends(key.publicKey())}: Signer on this account, weight 2`)
+  );
+  expect(screen.queryByText(NOT_A_SIGNER)).toBeNull();
+  fireEvent.click(screen.getByRole("checkbox", { name: /I understand/ }));
+  expect(signButton().disabled).toBe(false);
+  expect(signButton().hasAttribute("aria-describedby")).toBe(false);
+  fireEvent.click(signButton());
+  await waitFor(() => expect(runSpy).toHaveBeenCalledTimes(1));
+  expect(runSpy.mock.calls[0]?.[0]?.publicKey).toBe(key.publicKey());
+});
+
+test("execution-wizard › a key that is not a signer holds signing with the reason on screen", async () => {
+  const key = Keypair.random();
+  seedSigners([{ key: source, weight: 1 }]);
+  const runSpy = mock(async (_signer: { publicKey: string }) => {});
+  runImpl = runSpy;
+
+  render(<ExecutionWizard network="testnet" />);
+  enterKey(key.secret());
+
+  await waitFor(() =>
+    expect(keyStandingText()).toBe(`Key ${ends(key.publicKey())}: Not a signer on this account`)
+  );
+  fireEvent.click(screen.getByRole("checkbox", { name: /I understand/ }));
+  const reason = screen.getByText(NOT_A_SIGNER);
+  expect(signButton().disabled).toBe(true);
+  expect(signButton().getAttribute("aria-describedby")).toBe(reason.id);
+  fireEvent.click(signButton());
+  expect(runSpy).not.toHaveBeenCalled();
+});
+
+test("execution-wizard › a key listed with weight 0 cannot sign", async () => {
+  const key = Keypair.random();
+  seedSigners([
+    { key: source, weight: 1 },
+    { key: key.publicKey(), weight: 0 },
+  ]);
+
+  render(<ExecutionWizard network="testnet" />);
+  enterKey(key.secret());
+
+  await waitFor(() =>
+    expect(keyStandingText()).toBe(
+      `Key ${ends(key.publicKey())}: Not a signer on this account: its weight is 0`
+    )
+  );
+  fireEvent.click(screen.getByRole("checkbox", { name: /I understand/ }));
+  expect(screen.getByText(NOT_A_SIGNER)).toBeDefined();
+  expect(signButton().disabled).toBe(true);
+});
+
+test("execution-wizard › an invalid key names no account and enables nothing", () => {
+  render(<ExecutionWizard network="testnet" />);
+  enterKey(`S${"A".repeat(55)}`);
+
+  expect(keyStandingText()).toBeNull();
+  expect(activeSignerText()).toBeNull();
+  expect(screen.getByRole("alert").textContent).toContain("Not a valid Stellar secret key");
+  fireEvent.click(screen.getByRole("checkbox", { name: /I understand/ }));
+  expect(signButton().disabled).toBe(true);
+  expect(screen.queryByText(NOT_A_SIGNER)).toBeNull();
+});
+
+test("execution-wizard › Add signature is held for a key that is not a signer on the account", async () => {
+  const key = Keypair.random();
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+    remainingSigners: [{ key: cosigner, weight: 1, type: "ed25519_public_key" }],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+
+  render(<ExecutionWizard network="testnet" />);
+  enterKey(key.secret());
+
+  await waitFor(() => expect(screen.getByText(NOT_A_SIGNER)).toBeDefined());
+  const add = screen.getByRole("button", { name: /add signature/i }) as HTMLButtonElement;
+  expect(add.disabled).toBe(true);
+  expect(add.getAttribute("aria-describedby")).toBe(screen.getByText(NOT_A_SIGNER).id);
+  expect(screen.queryByText(NOT_STILL_NEEDED)).toBeNull();
+});
+
 /** A run that waits at its first signature until `release` is called, then signs as the hook
  *  does: the check before the signature first, the signer only if it passes. */
 function heldRun() {
@@ -1852,4 +1964,146 @@ test("execution-wizard › a partly typed key is wiped when the user switches to
 
   fireEvent.click(screen.getByRole("tab", { name: "Connect wallet" }));
   expect(keyRef!.current).toBe("");
+});
+
+/** The button's own click handler, called as a stale or tampered UI could: past `disabled`. */
+function clickPastDisabled(button: HTMLElement): void {
+  const key = Object.keys(button).find((k) => k.startsWith("__reactProps$")) as string;
+  const props = (button as unknown as Record<string, { onClick: () => unknown }>)[key]!;
+  act(() => void props.onClick());
+}
+
+test("execution-wizard › a co-signer added after review is judged by the live round and can sign", async () => {
+  const added = Keypair.random();
+  seedSigners([{ key: source, weight: 1 }]);
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+    remainingSigners: [{ key: added.publicKey(), weight: 1, type: "ed25519_public_key" }],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+  const runSpy = mock(async (_signer: { publicKey: string }) => {});
+  runImpl = runSpy;
+
+  render(<ExecutionWizard network="testnet" />);
+  enterKey(added.secret());
+
+  await waitFor(() =>
+    expect(keyStandingText()).toBe(
+      `Key ${ends(added.publicKey())}: Signer on this account, weight 1`
+    )
+  );
+  expect(screen.queryByText(NOT_A_SIGNER)).toBeNull();
+  const add = screen.getByRole("button", { name: /add signature/i }) as HTMLButtonElement;
+  expect(add.disabled).toBe(false);
+  fireEvent.click(add);
+  await waitFor(() => expect(runSpy).toHaveBeenCalledTimes(1));
+  expect(runSpy.mock.calls[0]?.[0]?.publicKey).toBe(added.publicKey());
+});
+
+test("execution-wizard › a key whose live weight is 0 cannot sign, whatever the review read", async () => {
+  const key = Keypair.random();
+  seedSigners([
+    { key: source, weight: 1 },
+    { key: key.publicKey(), weight: 1 },
+  ]);
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+    remainingSigners: [{ key: key.publicKey(), weight: 0, type: "ed25519_public_key" }],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+
+  render(<ExecutionWizard network="testnet" />);
+  enterKey(key.secret());
+
+  await waitFor(() =>
+    expect(keyStandingText()).toBe(
+      `Key ${ends(key.publicKey())}: Not a signer on this account: its weight is 0`
+    )
+  );
+  expect(screen.getByText(NOT_A_SIGNER)).toBeDefined();
+  expect(
+    (screen.getByRole("button", { name: /add signature/i }) as HTMLButtonElement).disabled
+  ).toBe(true);
+});
+
+test("execution-wizard › signing re-reads the standing and never runs a key that cannot sign", async () => {
+  const key = Keypair.random();
+  seedSigners([{ key: source, weight: 1 }]);
+  const runSpy = mock(async (_signer: { publicKey: string }) => {});
+  runImpl = runSpy;
+
+  render(<ExecutionWizard network="testnet" />);
+  enterKey(key.secret());
+  await waitFor(() => expect(screen.getByText(NOT_A_SIGNER)).toBeDefined());
+  fireEvent.click(screen.getByRole("checkbox", { name: /I understand/ }));
+
+  clickPastDisabled(signButton());
+  await act(async () => {});
+  expect(runSpy).not.toHaveBeenCalled();
+});
+
+test("execution-wizard › Retry is held, with the reason, for a signer that cannot sign", async () => {
+  // A wallet the account lists with weight 0 is adopted, and the failed view offers Retry.
+  seedSigners([
+    { key: source, weight: 1 },
+    { key: cosigner, weight: 0 },
+  ]);
+  currentWalletAddress = cosigner;
+  useDemolishStore.setState({ phase: "STEP_FAILED", lastError: "boom" } as never);
+  const runSpy = mock(async (_signer: { publicKey: string }) => {});
+  runImpl = runSpy;
+
+  render(<ExecutionWizard network="testnet" />);
+  await waitFor(() => expect(activeSignerText()).toContain(short(cosigner)));
+
+  const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+  expect(retry.disabled).toBe(true);
+  expect(retry.getAttribute("aria-describedby")).toBe(screen.getByText(NOT_A_SIGNER).id);
+  clickPastDisabled(retry);
+  await act(async () => {});
+  expect(runSpy).not.toHaveBeenCalled();
+});
+
+test("execution-wizard › a preimage for a signer whose live weight is 0 is named but not run", async () => {
+  const preimage = fromHex("deadbeef");
+  const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+    remainingSigners: [{ key: hashXKey, weight: 0, type: "hash_x" }],
+  };
+  useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
+  const runSpy = mock(async (_signer: { publicKey: string }) => {});
+  runImpl = runSpy;
+
+  render(<ExecutionWizard network="testnet" />);
+  fireEvent.change(screen.getByPlaceholderText(/hex-encoded preimage/i), {
+    target: { value: "deadbeef" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /apply preimage/i }));
+
+  await waitFor(() => expect(screen.getByText(NOT_A_SIGNER)).toBeDefined());
+  expect(activeSignerText()).toContain(short(hashXKey));
+  expect(runSpy).not.toHaveBeenCalled();
+});
+
+test("execution-wizard › a pasted key with surrounding whitespace signs as that key", async () => {
+  const key = Keypair.random();
+  seedSigners([{ key: key.publicKey(), weight: 1 }]);
+  const runSpy = mock(async (_signer: { publicKey: string }) => {});
+  runImpl = runSpy;
+
+  render(<ExecutionWizard network="testnet" />);
+  enterKey(` ${key.secret()}\n`);
+
+  await waitFor(() => expect(keyStandingText()).toContain("Signer on this account, weight 1"));
+  fireEvent.click(screen.getByRole("checkbox", { name: /I understand/ }));
+  fireEvent.click(signButton());
+  await waitFor(() => expect(runSpy).toHaveBeenCalledTimes(1));
+  expect(runSpy.mock.calls[0]?.[0]?.publicKey).toBe(key.publicKey());
 });

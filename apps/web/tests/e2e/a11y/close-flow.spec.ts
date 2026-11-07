@@ -47,8 +47,19 @@ test("analyze, review, execute, complete and history", async ({ page }) => {
   await expect(reveal).toHaveAttribute("aria-pressed", "false");
   await expectNoAxeViolations(page, "execute, secret key field");
 
+  // A key that is not a signer on the account is named, and signing is held with the reason.
+  await enterSecretKey(page, Keypair.random().secret());
+  await expect(page.getByTestId("key-standing")).toContainText("Not a signer on this account");
+  await page.getByRole("checkbox").check();
+  const sign = page.getByRole("button", { name: /Sign & execute close/i });
+  await expect(sign).toBeDisabled();
+  await expect(sign).toHaveAccessibleDescription(/cannot sign for this account/);
+  await expectNoAxeViolations(page, "execute, key that is not a signer");
+  await page.getByRole("button", { name: "Forget key" }).click();
+
   await enterSecretKey(page, source.secret());
   await expect(page.getByText("Secret key loaded for this session")).toBeVisible();
+  await expect(page.getByTestId("key-standing")).toContainText("Signer on this account, weight 1");
   await expectNoAxeViolations(page, "execute, key loaded");
 
   await page.getByRole("checkbox").check();

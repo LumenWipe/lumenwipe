@@ -222,6 +222,23 @@ function executeSetup(state: "signing" | "partial", store: Store, required: Clai
   };
 }
 
+/** The execute screen with the secret-key tab open, as the user is about to enter a key. */
+function executeSecretKey(state: "signing" | "partial"): Cell {
+  return {
+    state,
+    required: ["key-stays-in-browser"],
+    show: async () => {
+      seed(STORE[state]);
+      stubExecution();
+      await show(<ExecutionWizard network="testnet" />);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("tab", { name: "Use secret key (advanced)" }));
+      });
+      return storeJourney();
+    },
+  };
+}
+
 function review(
   state: "reviewed" | "unknown",
   hold?: () => void,
@@ -537,9 +554,13 @@ const MATRIX: Surface[] = [
   {
     name: "execute trust note",
     cells: [
-      executeSetup("signing", {}, ["each-tx-checked"]),
-      executeSetup("partial", {}, ["each-tx-checked"]),
+      executeSetup("signing", {}, ["each-tx-checked", "key-stays-in-browser"]),
+      executeSetup("partial", {}, ["each-tx-checked", "key-stays-in-browser"]),
     ],
+  },
+  {
+    name: "execute secret key field",
+    cells: [executeSecretKey("signing"), executeSecretKey("partial")],
   },
   {
     name: "review trust note",
@@ -752,8 +773,15 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
   "components/layout/LeaveGuard.tsx": {
     "can-resume": { count: 1, shownBy: "leave dialog" },
   },
+  "components/account-entry/SecretKeyInput.tsx": {
+    "key-stays-in-browser": { count: 2, shownBy: "execute secret key field" },
+  },
+  "components/marketing/Faq.tsx": {
+    "key-stays-in-browser": { count: 1, shownBy: OUTSIDE.marketing },
+  },
   "components/execution/ExecutionWizard.tsx": {
     "each-tx-checked": { count: 1, shownBy: "execute trust note" },
+    "key-stays-in-browser": { count: 1, shownBy: "execute trust note" },
     "safe-to-retry": { count: 1, shownBy: "execute failure panel" },
   },
   "components/review/ReviewView.tsx": {

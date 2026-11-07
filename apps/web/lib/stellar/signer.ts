@@ -19,7 +19,8 @@ export class SecretKeySigner implements TransactionSigner {
   private readonly keypair: Keypair;
 
   constructor(secretKey: string) {
-    this.keypair = Keypair.fromSecret(secretKey);
+    // Surrounding whitespace from a paste is not part of the key.
+    this.keypair = Keypair.fromSecret(secretKey.trim());
   }
 
   get publicKey(): string {

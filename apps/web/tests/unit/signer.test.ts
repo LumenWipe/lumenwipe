@@ -151,3 +151,8 @@ test("HashXPreimageSigner › sign() appends onto an envelope that already carri
   expect(finalTx.signatures.length).toBe(2);
   expect(toHex(finalTx.signatures[1].signature.toBytes())).toBe(toHex(preimage));
 });
+
+test("SecretKeySigner › whitespace around a pasted key is not part of it", () => {
+  const kp = Keypair.random();
+  expect(new SecretKeySigner(`  ${kp.secret()}\n`).publicKey).toBe(kp.publicKey());
+});
