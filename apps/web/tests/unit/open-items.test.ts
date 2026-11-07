@@ -59,7 +59,7 @@ for (const [facts, expected] of [
     ["This exchange's deposit rules have expired, so it cannot be used as the destination"],
   ],
   [{ memo: "missing" }, ["Memo is required by this exchange"]],
-  [{ memo: "invalid" }, ["The memo is not valid for this exchange"]],
+  [{ memo: "invalid" }, ["The memo is not valid"]],
   [{ destinationUnacknowledged: true }, ["Confirm the destination is a wallet you control"]],
 ] as const) {
   test(`reasons for ${JSON.stringify(facts)}`, () => {

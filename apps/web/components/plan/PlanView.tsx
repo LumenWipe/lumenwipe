@@ -31,9 +31,9 @@ import {
   planFeeStroopsOf,
 } from "@/lib/api/plan-adapters";
 import { goToReview } from "@/lib/plan/confirm-plan";
-import { isValidGAddress, isValidMemo } from "@/lib/utils/validation";
+import { isValidGAddress } from "@/lib/utils/validation";
+import { memoField, type ChosenMemoType } from "@/lib/plan/memo-field";
 import {
-  getMemoRequirement,
   isCexAddress,
   isRegistryUsable,
   requiresMediatorForAddress,
@@ -130,6 +130,7 @@ export default function PlanView({
     setPhase,
     destinationAddress: storedDest,
     memo: storedMemo,
+    memoType: storedMemoType,
     destinationAcknowledgedFor,
     acknowledgeDestination,
     defiPositionsAcknowledgedFor,
@@ -150,6 +151,7 @@ export default function PlanView({
   // this is a no-op; on resume they hold the session's saved destination.
   const [destination, setDestination] = useState(storedDest ?? "");
   const [memo, setMemo] = useState(storedMemo ?? "");
+  const [memoType, setMemoType] = useState<ChosenMemoType>(storedMemoType === "id" ? "id" : "text");
   const [proceeding, setProceeding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -406,16 +408,19 @@ export default function PlanView({
     focusJumpTarget(pendingFocus);
   }, [pendingFocus]);
 
-  const memoReq = isValidGAddress(destination) ? getMemoRequirement(destination) : null;
-  const memoRequired = memoReq?.requiresMemo ?? false;
-  const memoTypeForDest = memoReq?.memoType ?? "text";
-  const memoValid =
-    !memoRequired || (memo.trim().length > 0 && isValidMemo(memo.trim(), memoTypeForDest));
-  const draftMemoType = memoRequired ? memoTypeForDest : null;
+  // One memo, validated once: the value and type checked here are what the draft keeps, what the
+  // review shows and what the request carries.
+  const memoState = memoField(destination, memo, memoType);
 
   useEffect(() => {
-    keepDestinationDraft(network, account.address, destination, memo.trim(), draftMemoType);
-  }, [network, account.address, destination, memo, draftMemoType]);
+    keepDestinationDraft(
+      network,
+      account.address,
+      destination,
+      memoState.normalized,
+      memoState.memoType
+    );
+  }, [network, account.address, destination, memoState.normalized, memoState.memoType]);
 
   // Preview: derive mediator requirement from the registry synchronously so the
   // plan accordion shows the correct step titles before the user clicks proceed.
@@ -445,7 +450,7 @@ export default function PlanView({
         : destination === account.address
           ? "self"
           : "ok";
-  const memoFact: MemoFact = memoValid ? "ok" : memo.trim() === "" ? "missing" : "invalid";
+  const memoFact: MemoFact = memoState.fact;
 
   // A re-plan in flight (a claim answer just changed) still owes this view its conversions and
   // their floors; a plan requested before they land is hashed without them and refused at build.
@@ -508,7 +513,7 @@ export default function PlanView({
     setError(null);
 
     try {
-      const refusal = await destinationRefusal(network, destination, memo);
+      const refusal = await destinationRefusal(network, destination, memoState.normalized);
       if (refusal !== null) {
         setError(refusal);
         return;
@@ -517,8 +522,12 @@ export default function PlanView({
       // No second gate on knowing the intermediary's address: verification asserts the
       // hand-off structurally, so nothing client-side needs to be told which account it is.
 
-      const effectiveMemoType = memoRequired ? memoTypeForDest : undefined;
-      setAddresses(account.address, destination, memo.trim() || undefined, effectiveMemoType);
+      setAddresses(
+        account.address,
+        destination,
+        memoState.normalized || undefined,
+        memoState.memoType ?? undefined
+      );
       setMediatorRequired(mediatorAllowedFor(destination));
 
       // Request the final plan (for the execute sidebar) from the API with the destination
@@ -692,6 +701,8 @@ export default function PlanView({
               onDestinationChange={setDestination}
               memo={memo}
               onMemoChange={setMemo}
+              memoType={memoType}
+              onMemoTypeChange={setMemoType}
               source={account.address}
               acknowledged={destinationAcknowledgedFor === destination}
               onAcknowledgedChange={(ack) => acknowledgeDestination(ack ? destination : null)}

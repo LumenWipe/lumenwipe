@@ -164,7 +164,7 @@ export function proceedReasons(facts: ProceedFacts): ProceedReason[] {
   } else if (facts.memo === "invalid") {
     reasons.push({
       key: "memo",
-      text: "The memo is not valid for this exchange",
+      text: "The memo is not valid",
       target: field('[data-jump="destination-memo"]'),
     });
   }

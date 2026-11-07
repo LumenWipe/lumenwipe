@@ -1,13 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { isValidGAddress } from "@/lib/utils/validation";
+import { activeRegistry, isCexAddress, isRegistryUsable } from "@/lib/exchange-registry";
 import {
-  activeRegistry,
-  getMemoRequirement,
-  isCexAddress,
-  isRegistryUsable,
-} from "@/lib/exchange-registry";
+  memoField,
+  refusesIdMemoEdit,
+  TEXT_MEMO_MAX_BYTES,
+  type ChosenMemoType,
+} from "@/lib/plan/memo-field";
 import { AddressField } from "@/components/ui/address-field";
 import { Field, Input } from "@/components/ui/field";
 import { Callout } from "@/components/ui/callout";
@@ -17,6 +19,9 @@ interface DestinationInputProps {
   onDestinationChange: (value: string) => void;
   memo: string;
   onMemoChange: (value: string) => void;
+  /** The memo type for a destination the registry does not list; a listed one uses its own. */
+  memoType: ChosenMemoType;
+  onMemoTypeChange: (type: ChosenMemoType) => void;
   source: string;
   /**
    * True when the user has confirmed they control an unrecognized destination. Both of these
@@ -38,13 +43,27 @@ export default function DestinationInput({
   onDestinationChange,
   memo,
   onMemoChange,
+  memoType: chosenMemoType,
+  onMemoTypeChange,
   source,
   acknowledged,
   onAcknowledgedChange,
 }: DestinationInputProps) {
-  const memoReq = isValidGAddress(destination) ? getMemoRequirement(destination) : null;
-  const memoRequired = memoReq?.requiresMemo ?? false;
-  const memoType = memoReq?.memoType ?? "text";
+  const field = memoField(destination, memo, chosenMemoType);
+  const memoRequired = field.required;
+  const memoType = field.type;
+  const [memoTouched, setMemoTouched] = useState(false);
+  const [idEditRefused, setIdEditRefused] = useState(false);
+  const memoError = idEditRefused ? "An id memo is digits only." : memoTouched ? field.error : null;
+
+  function handleMemoChange(next: string): void {
+    if (memoType === "id" && refusesIdMemoEdit(next)) {
+      setIdEditRefused(true);
+      return;
+    }
+    setIdEditRefused(false);
+    onMemoChange(next);
+  }
 
   // The registry lists a curated set of exchange deposit addresses; it cannot tell a personal
   // wallet from an exchange address it simply has not been told about. Merging straight into an
@@ -64,6 +83,41 @@ export default function DestinationInput({
         required
       />
 
+      {!field.typeFixed && (
+        <fieldset className="space-y-1.5">
+          <legend className="text-sm font-medium text-fg">Memo type</legend>
+          <p className="text-xs text-fg-subtle">
+            Use the type the receiving wallet shows. A numeric id sent as text is not the same memo.
+          </p>
+          <div className="flex gap-4">
+            {(
+              [
+                ["text", "Text"],
+                ["id", "ID (numbers only)"],
+              ] as const
+            ).map(([value, label]) => (
+              <label
+                key={value}
+                className="flex cursor-pointer items-center gap-2 text-xs text-white/80"
+              >
+                <input
+                  type="radio"
+                  name="destination-memo-type"
+                  value={value}
+                  checked={chosenMemoType === value}
+                  onChange={() => {
+                    setIdEditRefused(false);
+                    onMemoTypeChange(value);
+                  }}
+                  className="h-3.5 w-3.5 cursor-pointer accent-accent"
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
       <Field
         label={
           <>
@@ -72,13 +126,19 @@ export default function DestinationInput({
           </>
         }
         required={memoRequired}
+        error={memoError}
         helper={
           <div className="space-y-1.5">
-            {memoReq?.requiresMemo ? (
+            {memoType === "text" && (
+              <p className="text-xs text-fg-subtle">
+                {field.bytes} / {TEXT_MEMO_MAX_BYTES} bytes
+              </p>
+            )}
+            {memoRequired ? (
               <>
                 <p className="text-xs text-warning">
-                  {memoReq.exchangeName} requires a {memoType === "id" ? "numeric" : "text"} memo
-                  for all deposits.
+                  {field.exchangeName} requires a {memoType === "id" ? "numeric" : "text"} memo for
+                  all deposits.
                 </p>
                 {/* The age of the rule, next to the rule. A memo requirement is data about the
                     outside world that changes without telling us, and this is the last screen
@@ -110,11 +170,14 @@ export default function DestinationInput({
       >
         <Input
           data-jump="destination-memo"
-          type={memoType === "id" ? "number" : "text"}
+          type="text"
+          inputMode={memoType === "id" ? "numeric" : undefined}
           value={memo}
-          onChange={(e) => onMemoChange(e.target.value)}
+          onChange={(e) => handleMemoChange(e.target.value)}
+          onBlur={() => setMemoTouched(true)}
           placeholder={memoType === "id" ? "Enter numeric ID" : "Enter memo text (max 28 bytes)"}
-          maxLength={memoType === "text" ? 28 : undefined}
+          spellCheck={false}
+          autoComplete="off"
         />
       </Field>
 

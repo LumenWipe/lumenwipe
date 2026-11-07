@@ -260,6 +260,8 @@ function destinationInput(onDestinationChange: (value: string) => void = () => {
       onDestinationChange={onDestinationChange}
       memo=""
       onMemoChange={() => {}}
+      memoType="text"
+      onMemoTypeChange={() => {}}
       source=""
       acknowledged={false}
       onAcknowledgedChange={() => {}}
@@ -286,6 +288,8 @@ test("the memo is named, described, and passes its value through untouched", () 
       onDestinationChange={() => {}}
       memo=""
       onMemoChange={(value) => seen.push(value)}
+      memoType="text"
+      onMemoTypeChange={() => {}}
       source=""
       acknowledged={false}
       onAcknowledgedChange={() => {}}
@@ -317,6 +321,8 @@ test("the destination reports a valid address as text alongside its helper", () 
         onDestinationChange={setDestination}
         memo=""
         onMemoChange={() => {}}
+        memoType="text"
+        onMemoTypeChange={() => {}}
         source=""
         acknowledged={false}
         onAcknowledgedChange={() => {}}
@@ -420,6 +426,8 @@ test("the destination refuses a pasted secret key, and a real address clears the
         }}
         memo=""
         onMemoChange={() => {}}
+        memoType="text"
+        onMemoTypeChange={() => {}}
         source=""
         acknowledged={false}
         onAcknowledgedChange={() => {}}

@@ -125,3 +125,16 @@ test("the memo that goes on chain is the typed one with only the outer whitespac
   expect(memoField(UNLISTED, "  a b  ", "text").normalized).toBe("a b");
   expect(memoBytes("é")).toBe(2);
 });
+
+test.each([
+  ["7 emoji, 28 bytes", "🚀".repeat(7), "text", true],
+  ["8 emoji, 32 bytes", "🚀".repeat(8), "text", false],
+  ["9 CJK characters, 27 bytes", "日".repeat(9), "text", true],
+  ["10 CJK characters, 30 bytes", "日".repeat(10), "text", false],
+  ["a numeric id", "12345678", "id", true],
+  ["a negative id", "-1", "id", false],
+  ["a fractional id", "1.5", "id", false],
+  ["letters as an id", "abc", "id", false],
+] as const)("%s", (_, memo, type, ok) => {
+  expect(memoField(UNLISTED, memo, type).error === null).toBe(ok);
+});
