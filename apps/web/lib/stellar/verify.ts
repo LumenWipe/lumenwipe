@@ -1,6 +1,7 @@
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
 import { isRegistryUsable, lookupExchange, mediatorAllowedFor } from "@/lib/exchange-registry";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
+import { VerificationError } from "@/lib/stellar/verification-error";
 import { xlmToStroops } from "@/lib/utils/amounts";
 import type { AccountSigner, AccountThresholds } from "@/types/account";
 import type { IntentOperation, TxIntent } from "@/types/close-api";
@@ -18,13 +19,7 @@ const MAX_CLASSIC_FEE_PER_OPERATION_STROOPS = BigInt(1_000);
  *  to ten minutes behind. Keeps a signed envelope tied to the moment the user reviewed it. */
 const MAX_VALIDITY_SECONDS = 900;
 
-/** Thrown when a server-built close transaction fails verification. Never sign past this. */
-export class VerificationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "VerificationError";
-  }
-}
+export { VerificationError };
 
 /** What the client independently knows a close transaction should look like. */
 export interface CloseExpectation {

@@ -3595,3 +3595,41 @@ describe("memo value and type", () => {
     ).not.toThrow();
   });
 });
+
+// ─── A text memo is decoded byte for byte before it is compared ─────────────
+
+describe("text memo decoding", () => {
+  const mergeWithTextMemo = (bytes: Buffer) =>
+    buildXdr([Operation.accountMerge({ destination: DEST })], Memo.text(bytes));
+
+  test("a byte order mark before the memo is kept, so it does not match the memo the user set", () => {
+    const bom = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from("4411")]);
+    const decoded = intentFromXdr(mergeWithTextMemo(bom), Networks.TESTNET);
+    expect(decoded.memo).toBe("﻿4411");
+    expect(() =>
+      assertCloseIntent(decoded, expectation({ memo: "4411", memoType: "text" }))
+    ).toThrow("The transaction carries a memo you did not set.");
+  });
+
+  test("a text memo that is not valid UTF-8 is refused", () => {
+    const xdrWithInvalidText = mergeWithTextMemo(Buffer.from([0x34, 0xff, 0x31]));
+    expect(() => intentFromXdr(xdrWithInvalidText, Networks.TESTNET)).toThrow(VerificationError);
+    expect(() =>
+      verifyCloseTransaction({
+        unsignedXdr: xdrWithInvalidText,
+        network: "testnet",
+        expected: { ...expectation(), memo: "4�1", memoType: "text" },
+      })
+    ).toThrow("The transaction carries a memo that is not valid text.");
+  });
+
+  test("an ASCII memo and a multibyte UTF-8 memo still match", () => {
+    for (const memo of ["4411", "café ✓ 預金"]) {
+      const decoded = intentFromXdr(mergeWithTextMemo(Buffer.from(memo)), Networks.TESTNET);
+      expect(decoded.memo).toBe(memo);
+      expect(() =>
+        assertCloseIntent(decoded, expectation({ memo, memoType: "text" }))
+      ).not.toThrow();
+    }
+  });
+});
