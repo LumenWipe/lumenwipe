@@ -168,7 +168,12 @@ test("the hero asks for an address on an empty submit and drops the error on the
 test("the paste-an-address entry is named and keeps its placeholder", () => {
   spyOn(walletKit, "useWalletKitConnection").mockReturnValue({
     address: null,
-    networkMismatch: false,
+    status: "connected",
+    checking: false,
+    network: "yes",
+    networkConfirmed: false,
+    confirmNetwork: () => {},
+    verified: true,
   } as never);
   render(<AccountEntryForm />);
   fireEvent.click(screen.getByRole("tab", { name: "Paste address" }));
@@ -188,7 +193,12 @@ function renderEntryForm(address: string | null = null): ReturnType<typeof mock>
   useNetworkStore.setState({ network: "testnet" });
   spyOn(walletKit, "useWalletKitConnection").mockReturnValue({
     address,
-    networkMismatch: false,
+    status: "connected",
+    checking: false,
+    network: "yes",
+    networkConfirmed: false,
+    confirmNetwork: () => {},
+    verified: true,
     connect,
     disconnect: async () => {},
   } as never);

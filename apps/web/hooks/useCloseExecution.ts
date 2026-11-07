@@ -98,6 +98,12 @@ import {
 } from "@/lib/execution/progress";
 import type { AccountSigner } from "@/types/account";
 
+export interface RunOptions {
+  /** Runs right before each signature of the run; throwing stops the run with nothing signed or
+   *  sent for that transaction. */
+  beforeSign?: () => Promise<void>;
+}
+
 /** Required vs. accumulated signing weight for the transaction that stopped a close, the
  *  signers whose signature on it already counts, and the account's known signers who haven't
  *  contributed yet - consumed by the multi-wallet-switch UI (issue #100) to let the user bring in
@@ -245,7 +251,7 @@ export function useCloseExecution() {
   );
 
   const run = useCallback(
-    async (signer: TransactionSigner): Promise<void> => {
+    async (signer: TransactionSigner, options: RunOptions = {}): Promise<void> => {
       // One run per close: a page remounted mid-run has lost its own record of the first.
       if (useDemolishStore.getState().signingRun) return;
       if (!sourceAddress || !destinationAddress) {
@@ -484,6 +490,9 @@ export function useCloseExecution() {
                 return { xdr, weight: preSignWeight };
               }
               assertPreimageRemovesItsSigner(xdr, passphrase, sourceAddress, signer.publicKey);
+              // The signer's own live check, at each signature of the run and not only at its
+              // start: a wallet session that changed since stops here, before it is asked.
+              await options.beforeSign?.();
               markCoveredStatus(tx.covers, tx.coversTargets, "signing");
               const signedXdr = await signer.sign(xdr, passphrase);
 

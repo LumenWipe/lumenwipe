@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle, ExternalLink, ShieldCheck } from "lucide-react";
 import { explorerAccountUrl, type Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
-import { useCloseExecution } from "@/hooks/useCloseExecution";
+import { useCloseExecution, type RunOptions } from "@/hooks/useCloseExecution";
 import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
 import { allows } from "@/lib/journey/claims";
 import { routeForPhase } from "@/lib/journey/route-for-phase";
 import { useJourneyState } from "@/lib/journey/use-journey-state";
 import SecretKeyInput from "@/components/account-entry/SecretKeyInput";
-import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
+import WalletConnectPanel, { OtherWalletChoice } from "@/components/wallet/WalletConnectPanel";
 import PlanSidebar from "./PlanSidebar";
 import UnconfirmedPanel from "./UnconfirmedPanel";
 import ProgressIndicator from "./ProgressIndicator";
@@ -96,7 +96,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     retrySafe,
     stillUnconfirmed,
   } = useCloseExecution();
-  const walletConnection = useWalletKitConnection(network);
+  const walletConnection = useWalletKitConnection(network, { recheckOnFocus: true });
   // Which input the picker shows. It never decides who signs: `activeSigner` does.
   const [mode, setMode] = useState<SignMode>("wallet");
   const [activeSigner, setActiveSigner] = useState<ActiveSigner>(NO_SIGNER);
@@ -127,14 +127,17 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     setActiveSigner(NO_SIGNER);
   }, []);
 
-  // The connected wallet, when it can sign here: a known signer on the account being closed (the
-  // source account's own key for single-sig, or any co-signer for multisig - see
-  // walletAddressIsKnownSigner above) on this page's network. A mismatch on either axis is
-  // surfaced by WalletConnectPanel instead of being silently accepted or ignored.
+  // The connected wallet, when it can sign here: a checked session (never a restored address
+  // alone), a known signer on the account being closed (the source account's own key for
+  // single-sig, or any co-signer for multisig - see walletAddressIsKnownSigner above), on this
+  // page's network or confirmed by the user to be. A mismatch on any axis is surfaced by
+  // WalletConnectPanel instead of being silently accepted or ignored.
   const usableWallet =
-    walletConnection.address && walletAddressIsKnownSigner && !walletConnection.networkMismatch
+    walletConnection.address && walletAddressIsKnownSigner && walletConnection.verified
       ? walletConnection.address
       : null;
+  // A check of the wallet still running holds signing until it settles or times out.
+  const walletHeld = activeSigner.kind === "wallet" && walletConnection.checking;
   const walletSigner = useMemo(
     () => (usableWallet ? walletKitSigner(network, usableWallet) : null),
     [usableWallet, network]
@@ -143,9 +146,8 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   // The wallet becomes the active signer whenever nothing else is: on an explicit "Connect wallet"
   // click, on a session already connected during account entry, and again after a round that
   // reset the signer to none. A secret key or a preimage the user chose is never replaced by it,
-  // and a wallet that stops being usable (disconnected, switched, wrong network) stops being the
-  // signer at once. `useWalletKitConnection` commits `address` and `networkMismatch` in separate
-  // updates, so this also retracts a wallet adopted a moment before its mismatch became known.
+  // and a wallet that stops being usable (disconnected, switched, stale, wrong network) stops
+  // being the signer at once, as does one whose network answer arrives after its address.
   useEffect(() => {
     if (activeSigner.kind === "secret-key" || activeSigner.kind === "hash-x") return;
     if (walletSigner) {
@@ -199,14 +201,14 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   }, []);
 
   const runWith = useCallback(
-    async (signer: TransactionSigner) => {
+    async (signer: TransactionSigner, options?: RunOptions) => {
       if (running) return;
       setChangingSigner(false);
       setRunning(true);
       try {
         // The engine re-reads on-chain state each round, so a retry after a failure
         // resumes: already-confirmed steps are not rebuilt or re-submitted.
-        await run(signer);
+        await run(signer, options);
       } finally {
         setRunning(false);
       }
@@ -215,9 +217,15 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   );
 
   const execute = useCallback(async () => {
-    if (activeSigner.kind === "none") return;
-    await runWith(activeSigner.signer);
-  }, [activeSigner, runWith]);
+    if (activeSigner.kind === "none" || walletHeld) return;
+    // A wallet is checked again before each of its signatures in the run, not only now.
+    await runWith(
+      activeSigner.signer,
+      activeSigner.kind === "wallet"
+        ? { beforeSign: walletConnection.beforeSigning(activeSigner.id) }
+        : undefined
+    );
+  }, [activeSigner, walletHeld, runWith, walletConnection]);
 
   // A hash(x) signer's preimage has already been validated (HashXPreimageInput only calls
   // this with a confirmed match) - it becomes the active signer exactly like a connected
@@ -257,26 +265,31 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const previousView = useRef(view);
 
   // After a wallet prompt timed out, Retry waits for that prompt to answer or for
-  // STALE_PROMPT_HOLD_MS, whichever comes first, so it does not stack a second prompt.
-  const [retryHeld, setRetryHeld] = useState(false);
+  // STALE_PROMPT_HOLD_MS, whichever comes first, so it does not stack a second prompt. The hold is
+  // read from the prompt itself at each render, so a signer dropped and picked up again (the same
+  // instance, see walletKitSigner) is held again at once, and only that prompt's release ends it.
+  const stalePrompt =
+    view === "failed" &&
+    activeSigner.kind === "wallet" &&
+    activeSigner.signer instanceof WalletKitSigner
+      ? activeSigner.signer.stalePrompt()
+      : null;
+  const [releasedPrompt, setReleasedPrompt] = useState<Promise<void> | null>(null);
   useEffect(() => {
-    if (view !== "failed") return;
-    const signer = activeSigner.kind === "none" ? null : activeSigner.signer;
-    const stale = signer instanceof WalletKitSigner ? signer.stalePrompt() : null;
-    if (!stale) return;
+    if (!stalePrompt) return;
     let live = true;
     const release = (): void => {
-      if (live) setRetryHeld(false);
+      if (live) setReleasedPrompt(stalePrompt);
     };
-    setRetryHeld(true);
     const timer = setTimeout(release, STALE_PROMPT_HOLD_MS);
-    void stale.then(release);
+    void stalePrompt.then(release);
     return () => {
       live = false;
       clearTimeout(timer);
-      setRetryHeld(false);
     };
-  }, [view, activeSigner]);
+  }, [stalePrompt]);
+  const retryHeld = stalePrompt !== null && releasedPrompt !== stalePrompt;
+
   // Focus follows a view swap only: the control that was clicked is unmounted by it, and focus
   // would otherwise drop to <body>. It never moves on first render, and never out of a field
   // the user is typing in.
@@ -342,6 +355,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
         : NOT_STILL_NEEDED
       : null;
 
+  // The wallet reported signing with another account: offer the way out, not just Retry.
+  const walletAccountMismatch =
+    activeSigner.kind === "wallet" &&
+    activeSigner.signer instanceof WalletKitSigner &&
+    activeSigner.signer.mismatchedAccount() !== null;
+
   const activeSignerLine =
     activeSigner.kind === "none" ? null : (
       <p data-testid="active-signer" className="text-xs text-fg-muted">
@@ -376,6 +395,8 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           connection={walletConnection}
           disabled={running}
           mismatchWarning={walletMismatchWarning}
+          signerKeys={walletMismatchWarning ? [...knownEd25519SignerKeys] : undefined}
+          signingNetwork={network}
         />
       ) : activeSigner.kind === "secret-key" ? (
         <Callout
@@ -503,7 +524,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               )}
               <Button
                 onClick={execute}
-                disabled={!signerReady || signerBlockedReason !== null}
+                disabled={!signerReady || walletHeld || signerBlockedReason !== null}
                 aria-describedby={signerBlockedReason ? "signer-blocked-reason" : undefined}
                 className="w-full"
               >
@@ -526,6 +547,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                   </span>
                 )}
               </Callout>
+              {walletAccountMismatch && (
+                <OtherWalletChoice
+                  connection={walletConnection}
+                  signerKeys={[...knownEd25519SignerKeys]}
+                />
+              )}
               <Button
                 type="button"
                 variant="ghost"
@@ -538,7 +565,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               <Button
                 ref={retryRef}
                 onClick={execute}
-                disabled={!signerReady || retryHeld}
+                disabled={!signerReady || walletHeld || retryHeld}
                 className="w-full"
               >
                 Retry
@@ -594,7 +621,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               <Button
                 variant="danger"
                 onClick={execute}
-                disabled={!signerReady || !confirmed}
+                disabled={!signerReady || walletHeld || !confirmed}
                 className="w-full"
               >
                 Sign &amp; execute close

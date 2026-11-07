@@ -10,6 +10,8 @@ LumenWipe builds transactions on the server, but signing always happens in your 
 
 The default. Connect a wallet through Stellar Wallets Kit. The wallets the app offers are listed in [Supported](/reference/supported#wallets). The app hands the wallet an unsigned transaction and receives the signed one back, so the key stays inside the wallet.
 
+The app only says a wallet is connected once it has checked. A session kept from earlier in the flow is checked by asking the wallet for its account without opening anything; if the wallet cannot be asked that way, or answers with another account, the app shows **Reconnect wallet** instead. A wallet that does not report its network has to be confirmed as being on the page's network before it can sign, and a wallet on another network cannot sign at all. If the wallet signs with a different account than the one connected, or for the other network, the signature is refused before it is used, and the app names the account and lists the keys that can sign.
+
 ## Secret key
 
 For keys that live in no wallet. The key is held in memory only for the length of the session. It is never written to storage and never sent over the network. It is wiped when the close completes, when you abort, when you leave the page, or when you click **Forget key**.

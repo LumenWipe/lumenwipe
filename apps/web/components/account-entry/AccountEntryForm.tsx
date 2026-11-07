@@ -32,9 +32,15 @@ export default function AccountEntryForm() {
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const source = mode === "wallet" ? (walletConnection.address ?? "") : pastedSource;
+  // Only a checked wallet session names the account: a restored address alone is not.
+  const source =
+    mode === "wallet"
+      ? walletConnection.status === "connected"
+        ? (walletConnection.address ?? "")
+        : ""
+      : pastedSource;
   const canProceed =
-    isValidGAddress(source) && !(mode === "wallet" && walletConnection.networkMismatch);
+    isValidGAddress(source) && !(mode === "wallet" && walletConnection.network === "no");
 
   async function handleAnalyze() {
     if (!canProceed) return;

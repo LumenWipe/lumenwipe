@@ -20,6 +20,7 @@ import {
   SUBMIT_RESEND_DELAY_MS,
 } from "@lumenwipe/sdk";
 import { PLAN_CHANGED_NOTICE, useCloseExecution } from "@/hooks/useCloseExecution";
+import { walletNotUsable } from "@/lib/utils/user-error";
 import { progressLine } from "@/lib/execution/progress";
 import { LeaveGuardProvider } from "@/components/layout/LeaveGuard";
 import NavBar from "@/components/layout/NavBar";
@@ -45,6 +46,7 @@ import * as sessionStore from "@/lib/session/store";
 import {
   WALLET_CONNECT_WALLET_ID,
   WalletKitSigner,
+  WalletNotUsableError,
   WalletSigningError,
   type TransactionSigner,
 } from "@/lib/stellar/signer";
@@ -54,6 +56,7 @@ import { CLOCK_HINT, WALLET_TIMED_OUT } from "@/lib/utils/user-error";
 import ReviewView from "@/components/review/ReviewView";
 import * as closeRecord from "@/lib/session/close-record";
 import { freshAccount, freshPlan, stubUnchangedRefresh } from "./fixtures/fresh-plan";
+import { VARIAL_ID } from "@creit-tech/stellar-wallets-kit/modules/varial";
 
 /** The stand-ins return only what the hook reads, so they are typed loosely on purpose. */
 function stubFetchCloseTransactions(impl: () => Promise<unknown>): void {
@@ -100,7 +103,7 @@ afterEach(() => {
 });
 
 /** A wallet's decline, as WalletKitSigner throws it. */
-const USER_DECLINED = new WalletSigningError(-4, "freighter", "User declined access");
+const USER_DECLINED = new WalletSigningError(-4, VARIAL_ID, "User declined access");
 
 function coSigner(publicKey: string): TransactionSigner {
   return { publicKey, sign: async (xdr) => xdr };
@@ -3307,4 +3310,129 @@ test("useCloseExecution › a tx_too_late refusal on a correct clock has no cloc
   });
   expect(useDemolishStore.getState().lastError).toMatch(/Its operations did not take effect/);
   expect(useDemolishStore.getState().lastError).not.toContain(CLOCK_HINT);
+});
+
+// #402: the reported-account check in WalletKitSigner is a pre-check only. A wallet that reports
+// no signing account and signs with another key is still refused by the weight check after
+// signing, before anything is submitted.
+test("useCloseExecution › a wallet that signs with another key and reports nothing is refused by the weight check", async () => {
+  const sourceKeypair = Keypair.random();
+  const other = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const destination = Keypair.random().publicKey();
+  const mergeXdr = unsignedMergeXdr(sourceKeypair, destination);
+
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    accountState: {
+      signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 0, med: 0, high: 0 },
+    } as never,
+  } as never);
+  stubFetchCloseTransactions(async () => ({
+    planHash: "h",
+    status: "ready",
+    transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+    remaining: { steps: 0, requiresAnotherCall: false },
+  }));
+  const submitted: unknown[] = [];
+  stubSubmitViaApi(async (xdr) => {
+    submitted.push(xdr);
+    return { txHash: "never" };
+  });
+
+  const wallet = new WalletKitSigner(source, async (xdr, opts) => {
+    const tx = TransactionBuilder.fromXdr(xdr, opts.networkPassphrase);
+    tx.sign(other);
+    return { signedTxXdr: tx.toEnvelope().toXdr("base64") };
+  });
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(wallet);
+  });
+
+  expect(useDemolishStore.getState().lastError).toMatch(/didn't add a new signature/);
+  expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
+  expect(submitted).toHaveLength(0);
+});
+
+// #402: a wallet that stops being usable between two transactions of a run stops the run before
+// its second prompt, with nothing more sent.
+test("useCloseExecution › a wallet on another network by the second transaction is not asked again", async () => {
+  const sourceKeypair = Keypair.random();
+  const source = sourceKeypair.publicKey();
+  const cosigner = Keypair.random().publicKey();
+  const destination = Keypair.random().publicKey();
+  const normalizeXdr = unsignedNormalizeXdr(sourceKeypair, [cosigner], "100");
+  const mergeXdr = new TransactionBuilder(new Account(source, "101"), {
+    fee: "100",
+    networkPassphrase: Networks.TESTNET,
+  })
+    .setTimeout(300)
+    .addOperation(Operation.accountMerge({ destination }))
+    .build()
+    .toXdr();
+  const roundSigners = {
+    signers: [
+      { key: source, weight: 1, type: "ed25519_public_key" },
+      { key: cosigner, weight: 1, type: "ed25519_public_key" },
+    ],
+    thresholds: { low: 0, med: 1, high: 1 },
+  };
+  useNetworkStore.setState({ network: "testnet" });
+  useDemolishStore.setState({
+    sourceAddress: source,
+    destinationAddress: destination,
+    memo: null,
+    mediatorRequired: false,
+    lastError: null,
+    accountState: roundSigners as never,
+  } as never);
+  stubFetchCloseTransactions(async () => ({
+    planHash: "h",
+    status: "ready",
+    transactions: [
+      { id: "t0", order: 0, xdr: normalizeXdr, covers: ["NORMALIZE_SIGNERS"] },
+      { id: "t1", order: 1, xdr: mergeXdr, covers: ["MERGE"] },
+    ],
+    remaining: { steps: 0, requiresAnotherCall: false },
+    sourceAccount: roundSigners,
+  }));
+  const submitted: string[] = [];
+  stubSubmitViaApi(async (xdr) => {
+    submitted.push(xdr as string);
+    return { txHash: `hash-${submitted.length}` };
+  });
+
+  let prompts = 0;
+  const wallet = realSigner(sourceKeypair);
+  const counted: TransactionSigner = {
+    publicKey: wallet.publicKey,
+    sign: (xdr, passphrase) => {
+      prompts++;
+      return wallet.sign(xdr, passphrase);
+    },
+  };
+  let checks = 0;
+  const beforeSign = async (): Promise<void> => {
+    checks++;
+    // Usable for the first signature; on another network by the second.
+    if (checks > 1) throw new WalletNotUsableError("network", "testnet");
+  };
+
+  const { result } = renderHook(() => useCloseExecution());
+  await act(async () => {
+    await result.current.run(counted, { beforeSign });
+  });
+
+  expect(checks).toBe(2);
+  expect(prompts).toBe(1);
+  expect(submitted).toHaveLength(1);
+  expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
+  expect(useDemolishStore.getState().lastError).toContain(walletNotUsable("network", "testnet"));
 });

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldCheck, AlertTriangle, ArrowRight, Loader2, RefreshCw } from "lucide-react";
-import type { Network } from "@/config/networks";
+import { NETWORK_NAME, type Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
 import { closeOwner, saveCloseSession } from "@/lib/session/close-record";
 import { forgetDecisions } from "@/lib/session/decision-snapshot";
@@ -31,7 +31,6 @@ import ReviewHero, { MemoValue } from "@/components/review/ReviewHero";
 import AssetOutcomeTable from "@/components/review/AssetOutcomeTable";
 import AccountContents from "@/components/plan/AccountContents";
 import { receiveFigure } from "@/components/plan/ExpectedReceiveBreakdown";
-import { NETWORK_NAME } from "@/components/layout/NetworkBadge";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";

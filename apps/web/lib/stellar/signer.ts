@@ -1,4 +1,5 @@
-import { Keypair, TransactionBuilder } from "@stellar/stellar-sdk";
+import { Keypair, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
+import type { Network } from "@/config/networks";
 import { submissionValidUntil } from "@/lib/stellar/submission";
 import { signTimeoutMs, startSignTimeout, type SignTimer } from "@/lib/stellar/wallet-timeout";
 
@@ -87,6 +88,94 @@ export class WalletSigningTimeoutError extends Error {
   }
 }
 
+/**
+ * The wallet reported that it signed with an account other than the one it was asked to sign
+ * with. Thrown before the signed transaction is returned, so nothing it signed is used. A pre-check
+ * only: a wallet that reports nothing is still held to the approved-hash and weight checks after
+ * signing, which stay the authority.
+ */
+export class WalletSignerMismatchError extends Error {
+  constructor(
+    readonly walletId: string | null,
+    readonly expected: string,
+    readonly reported: string
+  ) {
+    super(`The wallet signed with ${reported} instead of ${expected}.`);
+    this.name = "WalletSignerMismatchError";
+  }
+}
+
+/**
+ * The wallet signed the transaction for another network: its signature from the expected key
+ * does not verify for the network it was asked to sign for, and does verify for `signedFor`.
+ * Thrown before the signed transaction is returned.
+ */
+export class WalletWrongNetworkError extends Error {
+  constructor(
+    readonly walletId: string | null,
+    readonly requested: string,
+    readonly signedFor: string
+  ) {
+    super(`The wallet signed for "${signedFor}" instead of "${requested}".`);
+    this.name = "WalletWrongNetworkError";
+  }
+}
+
+/** Why a wallet session can no longer sign: it changed or went stale, it is on another network,
+ *  or its unknown network is no longer confirmed. */
+export type WalletUnusableReason = "session" | "network" | "network-unconfirmed";
+
+/**
+ * The wallet session stopped being usable while a run was in progress, found right before a
+ * signature. Thrown before the wallet is asked, so nothing is signed or sent.
+ */
+export class WalletNotUsableError extends Error {
+  constructor(
+    readonly reason: WalletUnusableReason,
+    readonly network: Network
+  ) {
+    super(`The wallet session is not usable: ${reason}.`);
+    this.name = "WalletNotUsableError";
+  }
+}
+
+/** The networks a wallet could have signed for instead of the one asked for. */
+const KNOWN_PASSPHRASES: readonly string[] = [Networks.PUBLIC, Networks.TESTNET];
+
+/**
+ * The network `signedXdr` was signed for by `publicKey`, when that is a network other than
+ * `requested`; null otherwise. A signature that verifies for `requested` always wins, so a valid
+ * signature is never refused. An envelope that cannot be read is left to the checks after signing.
+ */
+export function otherNetworkSignedFor(
+  signedXdr: string,
+  requested: string,
+  publicKey: string
+): string | null {
+  let keypair: Keypair;
+  let signatures: Uint8Array[];
+  try {
+    keypair = Keypair.fromPublicKey(publicKey);
+    const hint = keypair.signatureHint();
+    signatures = TransactionBuilder.fromXdr(signedXdr, requested)
+      .signatures.filter((s) => {
+        const bytes = s.hint.toBytes();
+        return bytes.length === hint.length && bytes.every((byte, i) => byte === hint[i]);
+      })
+      .map((s) => s.signature.toBytes());
+  } catch {
+    return null;
+  }
+  if (signatures.length === 0) return null;
+  const verifiesFor = (passphrase: string): boolean => {
+    const hash = TransactionBuilder.fromXdr(signedXdr, passphrase).hash();
+    return signatures.some((signature) => keypair.verify(hash, signature));
+  };
+  if (verifiesFor(requested)) return null;
+  // `requested` already failed above, so only another network can match here.
+  return KNOWN_PASSPHRASES.find(verifiesFor) ?? null;
+}
+
 /** The kit's own reading of a wallet error (`parseError` in the kit): a nested `error.code`, then
  *  `code`, else -1. */
 function walletErrorOf(thrown: unknown, walletId: string | null): WalletSigningError {
@@ -126,6 +215,7 @@ export interface WalletKitSignerOptions {
 export class WalletKitSigner implements TransactionSigner {
   readonly walletId: string | null;
   private openPrompt: Promise<void> | null = null;
+  private lastMismatch: string | null = null;
   private readonly startTimeout: (ms: number) => SignTimer;
   private readonly now: () => number;
 
@@ -134,7 +224,7 @@ export class WalletKitSigner implements TransactionSigner {
     private readonly signWithKit: (
       xdr: string,
       opts: { networkPassphrase: string; address: string }
-    ) => Promise<{ signedTxXdr: string }>,
+    ) => Promise<{ signedTxXdr: string; signerAddress?: string }>,
     options: WalletKitSignerOptions = {}
   ) {
     this.walletId = options.walletId ?? null;
@@ -151,6 +241,11 @@ export class WalletKitSigner implements TransactionSigner {
     return this.openPrompt;
   }
 
+  /** The account the wallet last reported signing with, when it was not this signer's. */
+  mismatchedAccount(): string | null {
+    return this.lastMismatch;
+  }
+
   async sign(xdr: string, networkPassphrase: string): Promise<string> {
     const timeoutMs = signTimeoutMs(submissionValidUntil(xdr, networkPassphrase), this.now());
     const timer = this.startTimeout(timeoutMs);
@@ -158,7 +253,18 @@ export class WalletKitSigner implements TransactionSigner {
     const answer = Promise.resolve()
       .then(() => this.signWithKit(xdr, { networkPassphrase, address: this.publicKey }))
       .then(
-        ({ signedTxXdr }) => signedTxXdr,
+        ({ signedTxXdr, signerAddress }) => {
+          // Pre-checks, so a wallet on another account or network is named in plain words. They
+          // only ever refuse; what passes is still held to the checks after signing.
+          if (signerAddress && signerAddress !== this.publicKey) {
+            throw new WalletSignerMismatchError(this.walletId, this.publicKey, signerAddress);
+          }
+          const signedFor = otherNetworkSignedFor(signedTxXdr, networkPassphrase, this.publicKey);
+          if (signedFor) {
+            throw new WalletWrongNetworkError(this.walletId, networkPassphrase, signedFor);
+          }
+          return signedTxXdr;
+        },
         (thrown: unknown) => {
           throw walletErrorOf(thrown, this.walletId);
         }
@@ -178,7 +284,12 @@ export class WalletKitSigner implements TransactionSigner {
       throw new WalletSigningTimeoutError(this.walletId, timeoutMs);
     });
     try {
-      return await Promise.race([answer, expired]);
+      const signed = await Promise.race([answer, expired]);
+      this.lastMismatch = null;
+      return signed;
+    } catch (err) {
+      this.lastMismatch = err instanceof WalletSignerMismatchError ? err.reported : null;
+      throw err;
     } finally {
       timer.cancel();
     }

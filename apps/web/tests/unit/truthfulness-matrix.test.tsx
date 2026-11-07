@@ -45,6 +45,7 @@ import type { SessionRecord } from "@/types/session";
 import type { ResumedClose } from "@/store/demolish";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { stubUnchangedRefresh } from "./fixtures/fresh-plan";
+import { VARIAL_ID } from "@creit-tech/stellar-wallets-kit/modules/varial";
 
 // Every reassurance or success sentence the app can show, rendered on every screen that shows it
 // in every journey state that screen can be reached in. A sentence matching a registered claim
@@ -163,7 +164,12 @@ function stubExecution(): void {
         address: null,
         connecting: false,
         error: null,
-        networkMismatch: false,
+        status: "connected",
+        checking: false,
+        network: "yes",
+        networkConfirmed: false,
+        confirmNetwork: () => {},
+        verified: true,
         connect: async () => {},
         disconnect: async () => {},
       }) as unknown as ReturnType<typeof walletKit.useWalletKitConnection>
@@ -464,8 +470,8 @@ function reloadReset(): Cell {
 
 const IN_FLIGHT: Store = { phase: "STEP_UNCONFIRMED", unconfirmedSubmission: SUBMISSION as never };
 
-const declined = new WalletSigningError(-4, "freighter", "User declined access");
-const timedOut = new WalletSigningTimeoutError("freighter", 120_000);
+const declined = new WalletSigningError(-4, VARIAL_ID, "User declined access");
+const timedOut = new WalletSigningTimeoutError(VARIAL_ID, 120_000);
 const mismatch = new VerificationError("op 2 pays to an unexpected destination");
 const unavailable = new ApiRequestError(503, "");
 

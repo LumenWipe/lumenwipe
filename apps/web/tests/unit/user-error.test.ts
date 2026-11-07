@@ -8,7 +8,14 @@ import {
 import { fetchCloseTransactions } from "@/lib/api/close-client";
 import { VerificationError } from "@/lib/stellar/verify";
 import { TxSubmitError } from "@/lib/utils/errors";
-import { WalletSigningError, WalletSigningTimeoutError } from "@/lib/stellar/signer";
+import {
+  WalletNotUsableError,
+  WalletSignerMismatchError,
+  WalletSigningError,
+  WalletSigningTimeoutError,
+  WalletWrongNetworkError,
+} from "@/lib/stellar/signer";
+import { Keypair, Networks } from "@stellar/stellar-sdk";
 import {
   apiErrorText,
   ApiRequestError,
@@ -26,6 +33,7 @@ import {
   type ErrorContext,
 } from "@/lib/utils/user-error";
 import type { PlannedStep, StepStatus, StepType } from "@/types/plan";
+import { VARIAL_ID } from "@creit-tech/stellar-wallets-kit/modules/varial";
 
 const LEAKS = /\b(tx|op)_[a-z_]+\b|Error:|\bat \S+ \(|undefined|\[object|stack|\(\d{3}\)/i;
 
@@ -38,7 +46,7 @@ afterEach(() => errorSpy.mockRestore());
 describe("toUserMessage", () => {
   test("a wallet rejection becomes a calm, actionable message", () => {
     const msg = toUserMessage(
-      new WalletSigningError(-4, "freighter", "User declined access"),
+      new WalletSigningError(-4, VARIAL_ID, "User declined access"),
       "execute"
     );
     expect(msg).toMatch(/declined the request in your wallet/);
@@ -51,7 +59,7 @@ describe("toUserMessage", () => {
     [-3, /can't sign this transaction/],
     [-4, /declined the request in your wallet/],
   ])("wallet code %d maps to its own plain message, whatever the wallet wrote", (code, copy) => {
-    const msg = toUserMessage(new WalletSigningError(code, "freighter", "Error 0x6985"), "execute");
+    const msg = toUserMessage(new WalletSigningError(code, VARIAL_ID, "Error 0x6985"), "execute");
     expect(msg).toMatch(copy);
     expect(msg).not.toContain("0x6985");
   });
@@ -361,7 +369,7 @@ describe("closeFailureMessage truthfulness", () => {
 describe("closeFailureMessage", () => {
   const roundOne = [step(0, "CANCEL_OFFERS", "pending"), step(1, "MERGE", "pending")];
   const roundTwo = [step(0, "CANCEL_OFFERS", "confirmed"), step(1, "MERGE", "pending")];
-  const declined = new WalletSigningError(-4, "freighter", "User declined access");
+  const declined = new WalletSigningError(-4, VARIAL_ID, "User declined access");
   const mismatch = new VerificationError("op 2 pays GABC to unexpected dest");
 
   test("a wallet decline in round one speaks only for this transaction", () => {
@@ -447,4 +455,43 @@ describe("closeFailureMessage after a confirmed merge", () => {
       expect(msg).not.toMatch(/still open/);
     }
   );
+});
+
+describe("wallet pre-check errors", () => {
+  test("a wallet that signed with another account is named in plain words", () => {
+    const expected = Keypair.random().publicKey();
+    const reported = Keypair.random().publicKey();
+    const message = toUserMessage(
+      new WalletSignerMismatchError(VARIAL_ID, expected, reported),
+      "execute"
+    );
+    expect(message).toContain(
+      `Your wallet signed with a different account (${reported.slice(0, 4)}…${reported.slice(-4)}).`
+    );
+    expect(message).toContain(`${expected.slice(0, 4)}…${expected.slice(-4)}`);
+  });
+
+  test.each([
+    [Networks.PUBLIC, Networks.TESTNET, "MAINNET"],
+    [Networks.TESTNET, Networks.PUBLIC, "TESTNET"],
+  ])(
+    "a wallet that signed for another network is told to switch to the page's",
+    (requested, signedFor, name) => {
+      expect(
+        toUserMessage(new WalletWrongNetworkError(VARIAL_ID, requested, signedFor), "execute")
+      ).toBe(
+        `Your wallet signed for a different network than this page. Switch your wallet to ${name} and try again.`
+      );
+    }
+  );
+});
+
+describe("wallet not usable at the moment of signing", () => {
+  test.each([
+    ["network", "mainnet", /different network than this page.*Switch it to MAINNET, then retry\./],
+    ["network-unconfirmed", "testnet", /Confirm it is set to TESTNET, then retry\./],
+    ["session", "mainnet", /session changed before this signature.*Reconnect your wallet/],
+  ] as const)("%s on %s reads as plain copy", (reason, network, copy) => {
+    expect(toUserMessage(new WalletNotUsableError(reason, network), "execute")).toMatch(copy);
+  });
 });

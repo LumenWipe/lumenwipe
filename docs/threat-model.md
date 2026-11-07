@@ -69,7 +69,14 @@ Two paths: the wallet path (`stellar-wallets-kit`, primary) and the secret-key a
 
 Wallet-path signing carries a narrower version of the same threats: the key never enters the application at
 all, so Information disclosure and Tampering against in-memory key material do not apply - the residual
-threats are wallet-extension compromise and CSP bypass, both outside this surface's boundary.
+threats are wallet-extension compromise and CSP bypass, both outside this surface's boundary. The wallet's own
+state is checked rather than trusted: a restored session is shown as connected only after a silent address lookup
+matches (`apps/web/hooks/useWalletKitConnection.ts`), a wallet that cannot report its network has to be confirmed
+by the user, and `WalletKitSigner` refuses a signature the wallet reports making with another account, or one that
+verifies only for the other network, before it is used. The session is read again right before each signature of a
+run (`beforeSigning`), so a wallet that went stale or changed network since the run started is not asked to sign.
+These are pre-checks; the approved-hash and weight checks
+in `useCloseExecution` stay the authority.
 
 ## 3. Surface 2: the client-side session layer
 
