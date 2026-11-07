@@ -35,6 +35,7 @@ import * as rpcModule from "@/lib/stellar/rpc";
 import * as accountStateModule from "@/lib/stellar/account-state";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { stubIssuance } from "./fixtures/issuance";
+import { servedRegistry } from "@/lib/exchange-registry";
 
 const TOKEN_A = Address.contract(Buffer.alloc(32, 1)).toString();
 const TOKEN_B = Address.contract(Buffer.alloc(32, 2)).toString();
@@ -334,6 +335,68 @@ test("the plan still asks about a held token whose only answer is the discovery 
       "testnet"
     );
     expect(answered.status).toBe("ready");
+  } finally {
+    mock.restore();
+  }
+});
+
+test("the plan blocks a token sent to a listed exchange or to an account that requires a memo", async () => {
+  const source = Keypair.random().publicKey();
+  const wallet = Keypair.random().publicKey();
+  const exchange = servedRegistry().entries[0]!;
+  spyOn(readAccount, "readAccountState").mockResolvedValue({
+    address: source,
+    network: "testnet",
+    sequence: "100",
+    nativeBalanceLumens: "50.0000000",
+    dataEntries: [],
+    signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+    thresholds: { low: 0, med: 0, high: 0 },
+    numSubEntries: 0,
+    numSponsoring: 0,
+    sponsoredBy: null,
+    authImmutable: false,
+    trustlines: [],
+    openOffers: [],
+    poolShares: [],
+    claimableBalances: [],
+    subEntryMismatch: false,
+    sponsoredEntries: [],
+    sponsorshipEnumerationIncomplete: false,
+    defiPositions: emptyDefiPositionsResult(source),
+    defiPositionsWarnings: [],
+    ...withTokens([held(TOKEN_A, "3"), held(TOKEN_B, "4")]),
+  });
+  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
+    getLatestLedger: () => Promise.resolve({ sequence: 1_000_000 }),
+  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(accountStateModule, "readTrustlinesOnly").mockImplementation(async (address) => ({
+    address,
+    trustlines: [],
+    memoRequired: address === wallet,
+  }));
+  stubIssuance();
+  try {
+    const plan = await buildAccountPlan(
+      source,
+      wallet,
+      [
+        { id: destinationDecisionId(wallet), choice: DESTINATION_ACK_CHOICE },
+        {
+          id: tokenDecisionId(TOKEN_A),
+          choice: TRANSFER_CHOICE,
+          params: { destination: exchange.address },
+        },
+        { id: tokenDecisionId(TOKEN_B), choice: TRANSFER_CHOICE, params: { destination: wallet } },
+      ],
+      "testnet"
+    );
+    expect(plan.status).toBe("blocked");
+    const messages = plan.blockers.map((b) => b.message);
+    expect(messages).toContainEqual(
+      expect.stringContaining(`deposit address for ${exchange.name}`)
+    );
+    expect(messages).toContainEqual(expect.stringContaining("needs a memo"));
   } finally {
     mock.restore();
   }

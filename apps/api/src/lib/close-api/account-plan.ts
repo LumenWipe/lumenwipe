@@ -12,7 +12,10 @@ import { requiresMediatorForAddress } from "@/lib/exchange-registry";
 import { assessIssuance } from "@/lib/close-api/issuance-preflight";
 import { assessIssuanceBlockers } from "@/lib/close-api/issuance-blocker";
 import { assessMergePreflight } from "@/lib/close-api/merge-preflight";
-import { validateTransferDestinations } from "@/lib/close-api/transfer-destinations";
+import {
+  validateTransferDestinations,
+  type AccountReader,
+} from "@/lib/close-api/transfer-destinations";
 import { quoteTokenToXlmOutcome, xlmContractId } from "@/lib/soroswap/conversion-quotes";
 import {
   quoteTokenToXlmViaXBullOutcome,
@@ -79,7 +82,6 @@ import type {
   DecisionPoint,
   PlanResponse,
   TokenUnquotedReason,
-  Trustline,
 } from "@lumenwipe/types";
 
 /** Quotes per plan are bounded like discovery candidates; a token past this is offered no swap. */
@@ -129,10 +131,7 @@ async function exitPreflightFor(
  * thousands of sponsorship operations - would turn one inbound request into an unbounded
  * upstream fan-out, and would fail a destination merely for holding more than 1000 offers.
  */
-const readDestinationTrustlines = async (
-  address: string,
-  net: Network
-): Promise<{ trustlines: Trustline[] } | null> => readTrustlinesOnly(address, net);
+const readDestinationTrustlines: AccountReader = (address, net) => readTrustlinesOnly(address, net);
 
 export function pricedAmountsPerAsset(
   accountState: AccountState,

@@ -39,6 +39,7 @@ import {
   destinationDecisionId,
   ISSUER_SUPPLY_ACK_CHOICE,
   issuerSupplyDecisionId,
+  TRANSFER_CHOICE,
 } from "@/lib/close-api/decisions";
 import { BATCH_PLAN_MAX_ADDRESSES, planBatch } from "@/lib/close-api/batch-plan";
 import { readAccountState } from "@/lib/close-api/read-account";
@@ -879,6 +880,80 @@ describe("transactions", () => {
     });
     await controller.transactions("testnet", body());
     expect(reads).toEqual([[DEST, "testnet"]]);
+  });
+
+  describe("T12c a transfer to an address that cannot credit it is refused before anything is built", () => {
+    const TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
+    const HOLDING = accountState({
+      trustlines: [
+        {
+          asset: USDC,
+          balance: "5.0000000",
+          limit: "1000",
+          ...authorizationOf(true),
+          issuer: ISSUER,
+          code: "USDC",
+        },
+      ],
+      sorobanTokens: {
+        tokens: [{ contract: TOKEN, balance: "70", symbol: "TKN", decimals: 7, sources: [] }],
+        unreadable: [],
+        coverage: [],
+        eventsScanned: null,
+        warnings: [],
+      },
+    });
+    const sending = (classicTo: string, tokenTo: string) =>
+      body({
+        decisions: [
+          ACK,
+          { id: decisionIdFor(USDC), choice: TRANSFER_CHOICE, params: { destination: classicTo } },
+          { id: decisionIdFor(TOKEN), choice: TRANSFER_CHOICE, params: { destination: tokenTo } },
+        ],
+      });
+    const refusal = async (classicTo: string, tokenTo: string, memoRequired: boolean) => {
+      let built = 0;
+      const { controller } = await makeController({
+        readAccountState: async () => HOLDING,
+        validateTransferDestinations,
+        readTrustlinesOnly: (async (address: string) => ({
+          address,
+          trustlines: HOLDING.trustlines,
+          memoRequired,
+        })) as unknown as TrustlineReader,
+        buildCloseTransactions: (async () => {
+          built += 1;
+          return BUILT;
+        }) as unknown as Builder,
+      });
+      const err = (await controller
+        .transactions("testnet", sending(classicTo, tokenTo))
+        .catch((e: unknown) => e)) as HttpException;
+      expect(built).toBe(0);
+      expect(err).toBeInstanceOf(HttpException);
+      expect(err.getStatus()).toBe(422);
+      const { error } = err.getResponse() as {
+        error: { code: string; details: { problems: { asset: string; code: string }[] } };
+      };
+      expect(error.code).toBe("transfer_destination_unusable");
+      return error.details.problems.map((p) => [p.asset, p.code]);
+    };
+
+    test("a listed exchange, for a classic asset and for a token", async () => {
+      const exchange = TEXT_EXCHANGE.address;
+      expect(await refusal(exchange, exchange, false)).toEqual([
+        [USDC, "destination_is_exchange"],
+        [TOKEN, "destination_is_exchange"],
+      ]);
+    });
+
+    test("an account whose own data entry requires a memo, for a classic asset and for a token", async () => {
+      const wallet = Keypair.random().publicKey();
+      expect(await refusal(wallet, wallet, true)).toEqual([
+        [USDC, "destination_requires_memo"],
+        [TOKEN, "destination_requires_memo"],
+      ]);
+    });
   });
 
   test("T13 a ready close returns the plan hash, the transactions and what remains", async () => {

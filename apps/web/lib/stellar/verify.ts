@@ -86,6 +86,10 @@ export interface CloseExpectation {
    * token's `transfer(account, destination, amount)` with nothing else authorized.
    */
   tokenTransfers: Record<string, { destination: string; amount: string }>;
+  /** Per transfer destination the exchange registry lists, the exchange's name. A transfer
+   *  outside the merge carries no deposit memo, so none of these could credit it.
+   *  `verifyCloseTransaction` derives it from the active registry; the caller does not pass it. */
+  depositAddresses: Record<string, string>;
   /**
    * The Soroban token conversions the user chose, keyed by token contract, each with the least
    * XLM (in stroops) the plan quoted and they accepted.
@@ -577,6 +581,12 @@ function assertUserChoseThisTransfer(
       `The transaction would send ${assetCode(op.asset)} to an address you did not choose.`
     );
   }
+  const exchange = expected.depositAddresses[op.destination];
+  if (exchange !== undefined && op.destination !== op.asset.split(":")[1]) {
+    throw new VerificationError(
+      `The transaction would send ${assetCode(op.asset)} to a ${exchange} deposit address. A transfer in a close carries no deposit memo, so ${exchange} could not credit it. Go back to the plan and choose a wallet you control.`
+    );
+  }
   if (seen.has(op.asset)) {
     throw new VerificationError(
       `The transaction would send ${assetCode(op.asset)} more than once.`
@@ -991,6 +1001,12 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
               "A token transfer would send the balance to an address you did not choose."
             );
           }
+          const exchange = expected.depositAddresses[tokenTransfer.destination];
+          if (exchange !== undefined) {
+            throw new VerificationError(
+              `A token transfer would send the balance to a ${exchange} deposit address. A token transfer carries no deposit memo, so ${exchange} could not credit it. Go back to the plan and choose a wallet you control.`
+            );
+          }
           const amount = op.args[2] ?? "";
           if (
             !/^\d+$/.test(amount) ||
@@ -1326,6 +1342,15 @@ function assertMemo(intent: TxIntent, expected: CloseExpectation): void {
   }
 }
 
+function depositAddressesOf(transfers: { destination: string }[]): Record<string, string> {
+  const listed: Record<string, string> = {};
+  for (const { destination } of transfers) {
+    const exchange = lookupExchange(destination);
+    if (exchange) listed[destination] = exchange.name;
+  }
+  return listed;
+}
+
 /**
  * Decodes a server-built unsigned close transaction and asserts it against what the client
  * expects, using the client-bundled exchange registry for the memo policy. Throws on any
@@ -1393,6 +1418,10 @@ export function verifyCloseTransaction(opts: {
   // close that needs the intermediary must use it whatever the session or the store says.
   assertCloseIntent(intent, {
     ...opts.expected,
+    depositAddresses: depositAddressesOf([
+      ...Object.values(opts.expected.transfers),
+      ...Object.values(opts.expected.tokenTransfers),
+    ]),
     mediatorRequired: mediatorAllowedFor(opts.expected.destination),
     directMergeRefused: requiresMediatorForAddress(opts.expected.destination),
     memoRequired: exchange?.requiresMemo ?? false,
