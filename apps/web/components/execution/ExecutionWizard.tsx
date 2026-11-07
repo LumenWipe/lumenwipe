@@ -3,9 +3,14 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle, ExternalLink, ShieldCheck } from "lucide-react";
-import { explorerAccountUrl, type Network } from "@/config/networks";
+import { explorerAccountUrl, explorerTxUrl, type Network } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
-import { useCloseExecution, type RunOptions } from "@/hooks/useCloseExecution";
+import {
+  useCloseExecution,
+  type PreAuthSubmission,
+  type RunOptions,
+} from "@/hooks/useCloseExecution";
+import type { AccountSigner } from "@/types/account";
 import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
 import { allows } from "@/lib/journey/claims";
 import { routeForPhase } from "@/lib/journey/route-for-phase";
@@ -100,6 +105,16 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   // Which input the picker shows. It never decides who signs: `activeSigner` does.
   const [mode, setMode] = useState<SignMode>("wallet");
   const [activeSigner, setActiveSigner] = useState<ActiveSigner>(NO_SIGNER);
+  // The hash of a pre-authorized transaction confirmed on this screen, kept on screen with its
+  // explorer link across the views that follow.
+  const [preAuthHash, setPreAuthHash] = useState<string | null>(null);
+  // The close was last continued with no signer, after a pre-authorized transaction: Retry may
+  // continue it the same way until a signer is used.
+  const [continueWithoutSigner, setContinueWithoutSigner] = useState(false);
+  // A pre-authorized transaction is being sent. Like a run, it holds every way to start
+  // another signature until it settles; unlike a run, its panel stays on screen to show the
+  // outcome next to the transaction pasted.
+  const [submittingPreAuth, setSubmittingPreAuth] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [running, setRunning] = useState(false);
   // Lets the user step out of the "failed" view to reconnect a wallet or switch
@@ -201,8 +216,8 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   }, []);
 
   const runWith = useCallback(
-    async (signer: TransactionSigner, options?: RunOptions) => {
-      if (running) return;
+    async (signer: TransactionSigner | null, options?: RunOptions) => {
+      if (running || submittingPreAuth) return;
       setChangingSigner(false);
       setRunning(true);
       try {
@@ -213,11 +228,12 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
         setRunning(false);
       }
     },
-    [run, running]
+    [run, running, submittingPreAuth]
   );
 
   const execute = useCallback(async () => {
     if (activeSigner.kind === "none" || walletHeld) return;
+    setContinueWithoutSigner(false);
     // A wallet is checked again before each of its signatures in the run, not only now.
     await runWith(
       activeSigner.signer,
@@ -226,6 +242,37 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
         : undefined
     );
   }, [activeSigner, walletHeld, runWith, walletConnection]);
+
+  // A pre-authorized transaction the network confirmed moves the close on by itself: the close
+  // continues with no signer, which re-reads the account and either completes or pauses for the
+  // next signature. It never sends anything, and a Retry of it never sends the pre-authorized
+  // transaction again: only `run` is called again, never the submission.
+  const submitPreAuth = useCallback(
+    async (signer: AccountSigner, xdr: string): Promise<PreAuthSubmission> => {
+      setSubmittingPreAuth(true);
+      let result: PreAuthSubmission;
+      try {
+        result = await submitPreAuthTransaction(signer, xdr);
+      } finally {
+        setSubmittingPreAuth(false);
+      }
+      setPreAuthHash(result.hash);
+      if (!result.closedAccount) {
+        setContinueWithoutSigner(true);
+        void runWith(null);
+      }
+      return result;
+    },
+    [submitPreAuthTransaction, runWith]
+  );
+
+  const retry = useCallback(async () => {
+    if (activeSigner.kind === "none" && continueWithoutSigner) {
+      await runWith(null);
+      return;
+    }
+    await execute();
+  }, [activeSigner, continueWithoutSigner, runWith, execute]);
 
   // A hash(x) signer's preimage has already been validated (HashXPreimageInput only calls
   // this with a confirmed match) - it becomes the active signer exactly like a connected
@@ -239,7 +286,10 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   );
 
   // A run this mount did not start, as after a remount mid-run, still holds the close.
-  const inRun = running || signingRun;
+  // The store's flag also covers a pre-authorized submission, whose panel stays on screen.
+  const inRun = running || (signingRun && !submittingPreAuth);
+  // Nothing may start another signature while a run or a pre-authorized submission is in flight.
+  const locked = running || submittingPreAuth;
   const busy = inRun || progress !== null;
   const elapsedSeconds = useElapsedSeconds(progress?.since ?? null);
   const line = progress ? progressLine(progress) : "Working…";
@@ -381,7 +431,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const renderSignerPicker = () => (
     <Tabs
       label="How to sign"
-      items={SIGN_MODES}
+      items={locked ? SIGN_MODES.map((item) => ({ ...item, disabled: true })) : SIGN_MODES}
       value={mode}
       onValueChange={(next) => {
         setMode(next);
@@ -393,7 +443,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
       {mode === "wallet" ? (
         <WalletConnectPanel
           connection={walletConnection}
-          disabled={running}
+          disabled={locked}
           mismatchWarning={walletMismatchWarning}
           signerKeys={walletMismatchWarning ? [...knownEd25519SignerKeys] : undefined}
           signingNetwork={network}
@@ -407,7 +457,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
         >
           <div className="flex items-center justify-between gap-3">
             Secret key loaded for this session
-            <Button type="button" variant="ghost" size="sm" onClick={forgetKey}>
+            <Button type="button" variant="ghost" size="sm" onClick={forgetKey} disabled={locked}>
               Forget key
             </Button>
           </div>
@@ -416,7 +466,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
         <SecretKeyInput
           secretKeyRef={secretKeyRef}
           onValidityChange={onSecretKeyValidityChange}
-          disabled={running}
+          disabled={locked}
         />
       )}
     </Tabs>
@@ -494,6 +544,23 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
 
           {!unconfirmed && activeSignerLine}
 
+          {preAuthHash && (
+            <Callout tone="success" announce={false} icon={<CheckCircle className="h-4 w-4" />}>
+              Your pre-authorized transaction is confirmed on the network:{" "}
+              <span className="font-mono-address break-all">{preAuthHash}</span>{" "}
+              <a
+                href={explorerTxUrl(network, preAuthHash)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-accent hover:underline"
+              >
+                View it on Stellar Expert
+                <ExternalLink aria-hidden="true" className="h-3 w-3" />
+                <span className="sr-only">(opens in a new tab)</span>
+              </a>
+            </Callout>
+          )}
+
           {busy ? (
             <ProgressIndicator
               line={line}
@@ -513,8 +580,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               <SigningProgress
                 status={signatureStatus}
                 onApplyHashX={applyHashXPreimage}
-                onSubmitPreAuthTx={submitPreAuthTransaction}
-                disabled={running}
+                onSubmitPreAuthTx={submitPreAuth}
+                network={network}
+                disabled={locked}
               />
               {renderSignerPicker()}
               {signerBlockedReason && (
@@ -524,7 +592,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               )}
               <Button
                 onClick={execute}
-                disabled={!signerReady || walletHeld || signerBlockedReason !== null}
+                disabled={!signerReady || locked || walletHeld || signerBlockedReason !== null}
                 aria-describedby={signerBlockedReason ? "signer-blocked-reason" : undefined}
                 className="w-full"
               >
@@ -564,8 +632,10 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               </Button>
               <Button
                 ref={retryRef}
-                onClick={execute}
-                disabled={!signerReady || walletHeld || retryHeld}
+                onClick={retry}
+                disabled={
+                  !(signerReady || continueWithoutSigner) || locked || walletHeld || retryHeld
+                }
                 className="w-full"
               >
                 Retry

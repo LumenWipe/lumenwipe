@@ -173,6 +173,84 @@ test("multisig close: a wallet that already signed cannot open a second prompt",
   expect(await accountExists(master.publicKey())).toBe(false);
 });
 
+/** Adds, as a second signer of `master` (weight 1, thresholds 2), the hash of a transaction that
+ *  merges `master` into `destination`, and returns that transaction's XDR. It is built for the
+ *  sequence the account will have once the signer is added, so it is the next one to land. */
+async function preAuthorizeMerge(master: Keypair, destination: string): Promise<string> {
+  const res = await fetch(`${HORIZON}/accounts/${master.publicKey()}`);
+  const { sequence } = (await res.json()) as { sequence: string };
+  const merge = new TransactionBuilder(
+    new Account(master.publicKey(), (BigInt(sequence) + BigInt(1)).toString()),
+    {
+      fee: BASE_FEE,
+      networkPassphrase: PASSPHRASE,
+    }
+  )
+    .addOperation(Operation.accountMerge({ destination }))
+    .setTimeout(1800)
+    .build();
+  const config = new TransactionBuilder(new Account(master.publicKey(), sequence), {
+    fee: BASE_FEE,
+    networkPassphrase: PASSPHRASE,
+  })
+    .addOperation(Operation.setOptions({ signer: { preAuthTx: merge.hash(), weight: 1 } }))
+    .addOperation(Operation.setOptions({ lowThreshold: 1, medThreshold: 2, highThreshold: 2 }))
+    .setTimeout(60)
+    .build();
+  config.sign(master);
+  const submitRes = await fetch(`${HORIZON}/transactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ tx: config.toEnvelope().toXdr("base64") }),
+  });
+  if (!submitRes.ok)
+    throw new Error(`preAuthorizeMerge failed ${submitRes.status}: ${await submitRes.text()}`);
+  for (let attempt = 0; attempt < SIGNERS_POLL_MAX_ATTEMPTS; attempt++) {
+    const account = (await (await fetch(`${HORIZON}/accounts/${master.publicKey()}`)).json()) as {
+      signers: unknown[];
+    };
+    if (account.signers.length === 2) return merge.toXDR();
+    await new Promise((resolve) => setTimeout(resolve, SIGNERS_POLL_DELAY_MS));
+  }
+  throw new Error(`timed out waiting for ${master.publicKey()} to show its pre-auth signer`);
+}
+
+test("pre-authorized close: the pasted transaction is decoded, confirmed by a second click, and completes the close", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+
+  const master = Keypair.random();
+  const destination = Keypair.random();
+  await fund(master.publicKey());
+  await fund(destination.publicKey());
+  const preAuthXdr = await preAuthorizeMerge(master, destination.publicKey());
+
+  await driveToExecute(page, { source: master.publicKey(), destination: destination.publicKey() });
+
+  // The master key alone (weight 1 of 2) pauses the close on the pre-auth signer.
+  await enterSecretKey(page, master.secret());
+  await page.getByRole("checkbox").check();
+  await page.getByRole("button", { name: /Sign .* execute close/i }).click();
+  await expect(page.getByText(/more signing weight/i)).toBeVisible({ timeout: 30_000 });
+
+  await page.getByLabel("Pre-authorized transaction XDR").fill(preAuthXdr);
+  const submit = page.getByRole("button", { name: "Submit pre-authorized transaction" });
+  await expect(submit).toHaveCount(0);
+  await page.getByRole("button", { name: "Review transaction" }).click();
+
+  const summary = page.getByRole("region", { name: "What this transaction does" });
+  await expect(summary).toContainText(`Source account: ${master.publicKey()}`);
+  await expect(page.getByRole("list", { name: "Operations" }).getByRole("listitem")).toHaveText([
+    `Merge account ${master.publicKey()} into ${destination.publicKey()}`,
+  ]);
+  await expect(summary).toContainText(`Merge destination: ${destination.publicKey()}`);
+
+  await submit.click();
+  await expect(page).toHaveURL(/\/testnet\/complete/, { timeout: 90_000 });
+  expect(await accountExists(master.publicKey())).toBe(false);
+});
+
 // Mirrors fast-path-close.spec.ts's driveFusedClose through the review gate, stopping
 // short of signing (this test drives two separate signing rounds itself).
 async function driveToExecute(

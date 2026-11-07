@@ -1,5 +1,6 @@
 import { CheckCircle } from "lucide-react";
-import type { SignatureStatus } from "@/hooks/useCloseExecution";
+import type { PreAuthSubmission, SignatureStatus } from "@/hooks/useCloseExecution";
+import type { Network } from "@/config/networks";
 import type { TransactionSigner } from "@/lib/stellar/signer";
 import type { AccountSigner } from "@/types/account";
 import HashXPreimageInput from "./HashXPreimageInput";
@@ -18,7 +19,9 @@ interface Props {
   /** Validates and submits a pre-auth-tx signer's pasted transaction directly, bypassing the
    *  round loop entirely (see useCloseExecution's submitPreAuthTransaction). Omitted in
    *  contexts that don't drive the close loop. */
-  onSubmitPreAuthTx?: (signer: AccountSigner, xdr: string) => Promise<void>;
+  onSubmitPreAuthTx?: (signer: AccountSigner, xdr: string) => Promise<PreAuthSubmission>;
+  /** The page's network, to decode a pasted pre-authorized transaction for review. */
+  network: Network;
   disabled?: boolean;
 }
 
@@ -26,6 +29,7 @@ export default function SigningProgress({
   status,
   onApplyHashX,
   onSubmitPreAuthTx,
+  network,
   disabled,
 }: Props) {
   const { requiredWeight, accumulatedWeight, contributed, remainingSigners } = status;
@@ -108,10 +112,11 @@ export default function SigningProgress({
             <PreAuthTxInput
               key={s.key}
               signer={s}
+              network={network}
               disabled={disabled}
               onSubmit={async (signer, xdr) => {
                 if (!onSubmitPreAuthTx) throw new Error("Not available.");
-                await onSubmitPreAuthTx(signer, xdr);
+                return onSubmitPreAuthTx(signer, xdr);
               }}
             />
           ))}
