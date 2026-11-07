@@ -30,6 +30,7 @@ import {
   closeDecisions,
 } from "@/lib/api/close-decisions";
 import { verifyCloseTransaction } from "@/lib/stellar/verify";
+import { confirmedMemo } from "@/lib/plan/memo-field";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { requiredSignatureWeight } from "@/lib/stellar/thresholds";
 import { verifyPreAuthTxHash } from "@/lib/stellar/pre-auth-tx";
@@ -270,6 +271,8 @@ export function useCloseExecution() {
       carriedPreimageRef.current = false;
       const flight = { stage: "before-submit" as CloseFailureStage };
       const owner = closeOwner(network, sourceAddress);
+      // The memo and type the request asks for are the ones every transaction is verified against.
+      const sentMemo = confirmedMemo(destinationAddress, memo, memoType);
       // Saved by an earlier page load: until it settles, this account signs nothing new.
       const recorded = await findUnresolved(network, sourceAddress);
       if (recorded?.unconfirmed && !useDemolishStore.getState().unconfirmedSubmission) {
@@ -289,11 +292,13 @@ export function useCloseExecution() {
                   source: sourceAddress,
                   destination: destinationAddress,
                   decisions,
-                  memo: memo ?? undefined,
+                  memo: sentMemo?.memo,
                   // The type checked on the plan page goes with the memo, so an id memo to an
                   // unlisted wallet is not sent as text. A listed exchange's type is checked again.
                   memoType:
-                    memo && (memoType === "text" || memoType === "id") ? memoType : undefined,
+                    sentMemo?.memoType === "text" || sentMemo?.memoType === "id"
+                      ? sentMemo.memoType
+                      : undefined,
                   planHash,
                 },
                 network
@@ -313,7 +318,8 @@ export function useCloseExecution() {
                   // The floor under the forwarded amount. Empty defaults fail closed: with no
                   // balance read, any forward is judged short rather than trusted.
                   nativeBalance: accountState?.nativeBalanceLumens ?? "0",
-                  memo,
+                  memo: sentMemo?.memo ?? null,
+                  memoType: sentMemo?.memoType ?? null,
                   claimTrustlineAssets,
                   // Empty defaults fail closed: if account state somehow wasn't loaded by
                   // execution time, a set_options op touching any signer is rejected rather
@@ -691,6 +697,7 @@ export function useCloseExecution() {
 
       const passphrase = NETWORK_PASSPHRASES[network];
       verifyPreAuthTxHash(xdr, passphrase, signer.key);
+      const sentMemo = confirmedMemo(destinationAddress, memo, memoType);
 
       const claimableBalanceSelections = useDemolishStore.getState().claimableBalanceSelections;
       const accountState = useDemolishStore.getState().accountState;
@@ -720,7 +727,8 @@ export function useCloseExecution() {
           destination: destinationAddress,
           mediatorRequired,
           nativeBalance: accountState?.nativeBalanceLumens ?? "0",
-          memo,
+          memo: sentMemo?.memo ?? null,
+          memoType: sentMemo?.memoType ?? null,
           claimTrustlineAssets,
           accountSigners: accountState?.signers ?? [],
           accountThresholds: accountState?.thresholds ?? { low: 0, med: 1, high: 1 },
@@ -767,7 +775,7 @@ export function useCloseExecution() {
         );
       }
     },
-    [network, sourceAddress, destinationAddress, memo, mediatorRequired]
+    [network, sourceAddress, destinationAddress, memo, memoType, mediatorRequired]
   );
 
   return {

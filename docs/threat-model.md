@@ -171,7 +171,9 @@ must confirm, from its own inputs and never from the API response:
 6. The payment's asset is native XLM.
 7. The payment's amount is at least the native balance the integrator observed for the account, less a small
    fee tolerance (the web client allows 0.01 XLM).
-8. The memo, and its type, match what the user entered and what the exchange requires.
+8. The memo, and its type, match what the user confirmed: the registry's type for a listed exchange, the user's
+   choice for any other destination. A close with no memo carries none, and no other transaction of the close
+   carries a memo.
 
 A check that pins the mediator's address in place of step 4 proves which account receives the merge, but not
 that the payment moves the balance on. The reference implementation is `assertCloseIntent` in

@@ -1,6 +1,7 @@
 import { TransactionBuilder, StrKey, type Asset, type Transaction } from "@stellar/stellar-sdk";
 import { describeInvocation } from "./invocation";
 import { toBase64, toHex } from "@/lib/stellar/hex";
+import { VerificationError } from "@/lib/stellar/verification-error";
 import type { AccountSigner } from "@/types/account";
 import type { IntentOperation, IntentOperationBody, TxIntent } from "@/types/close-api";
 
@@ -9,13 +10,23 @@ function signerBytes(value: string | Uint8Array | undefined): Uint8Array {
   return value;
 }
 
+// Strict, and keeping a byte order mark: the value compared against the user's memo is then the
+// text the transaction carries, byte for byte. A lenient decoder drops a leading BOM and replaces
+// invalid bytes, so a memo that differs on chain could read back equal to the one confirmed.
+const STRICT_UTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+
 function memoToString(
   value: string | Uint8Array | null | undefined,
   type: "text" | "id" | "hash" | null
 ): string | null {
   if (value == null || value === "") return null;
   if (typeof value === "string") return value;
-  return type === "hash" ? toHex(value) : new TextDecoder().decode(value);
+  if (type !== "text") return toHex(value);
+  try {
+    return STRICT_UTF8.decode(value);
+  } catch {
+    throw new VerificationError("The transaction carries a memo that is not valid text.");
+  }
 }
 
 function assetToString(asset: Asset): string {

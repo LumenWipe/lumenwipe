@@ -501,17 +501,30 @@ test("a real SetOptions carrying a home-domain change is decoded and rejected (c
 });
 
 test("rejects a memo the user did not set", () => {
-  const i = intent({ memo: "not-mine", operations: [merge(DEST)] });
-  expect(() => assertCloseIntent(i, expectation({ memo: "mine" }))).toThrow(/memo you did not set/);
+  const i = intent({ memo: "not-mine", memoType: "text", operations: [merge(DEST)] });
+  expect(() => assertCloseIntent(i, expectation({ memo: "mine", memoType: "text" }))).toThrow(
+    /memo you did not set/
+  );
 });
 
-// A missing memo is not the same claim as a memo the user did not set - the transaction simply
-// carries none, which the later "required memo" check (not this one) is responsible for.
-test("does not reject a memo-less transaction just because the user typed one elsewhere", () => {
+// The memo travels on the transaction that delivers the balance, so leaving it off that one is a
+// different transaction from the one the user confirmed.
+test("rejects a merge that leaves out the memo the user set", () => {
   const i = intent({ memo: null, operations: [merge(DEST)] });
-  expect(() =>
-    assertCloseIntent(i, expectation({ memo: "typed-but-irrelevant-here" }))
-  ).not.toThrow();
+  expect(() => assertCloseIntent(i, expectation({ memo: "4411", memoType: "text" }))).toThrow(
+    "The transaction is missing the memo you set."
+  );
+});
+
+// A cleanup or claim transaction delivers nothing to the destination, so it carries no memo even
+// when the user set one for the merge.
+test("accepts a transaction without a merge that carries no memo when the user set one", () => {
+  const i = intent({
+    memo: null,
+    guarantees: { mergeDestination: null, paymentsOnlyTo: [SRC], minXlmFromConversions: "9" },
+    operations: [conversion()],
+  });
+  expect(() => assertCloseIntent(i, expectation({ memo: "4411", memoType: "text" }))).not.toThrow();
 });
 
 test("rejects a missing memo when the destination requires one (even if the user left it blank)", () => {
@@ -525,7 +538,7 @@ test("rejects a memo of the wrong type for the destination", () => {
   const i = intent({ memo: "12345", memoType: "text", operations: [merge(DEST)] });
   expect(() =>
     assertCloseIntent(i, expectation({ memo: "12345", memoRequired: true, memoType: "id" }))
-  ).toThrow(/wrong type for this destination/);
+  ).toThrow("The transaction would send your memo as a text memo, not the id memo you confirmed.");
 });
 
 // The required-memo check only applies to a transaction that actually delivers to the
@@ -777,6 +790,7 @@ test("verifyCloseTransaction passes a mediated close to a memo-requiring exchang
         mediatorRequired: true,
         nativeBalance: "100.0000000",
         memo: "deposit-1",
+        memoType: "text",
         claimTrustlineAssets: [],
         transfers: {},
         tokenTransfers: {},
@@ -823,6 +837,7 @@ test("verifyCloseTransaction rejects a mediated close to a memo-requiring exchan
         mediatorRequired: true,
         nativeBalance: "100.0000000",
         memo: null,
+        memoType: null,
         claimTrustlineAssets: [],
         transfers: {},
         tokenTransfers: {},
@@ -860,6 +875,7 @@ test("verifyCloseTransaction passes a direct close to a destination the registry
         mediatorRequired: false,
         nativeBalance: "100.0000000",
         memo: null,
+        memoType: null,
         claimTrustlineAssets: [],
         transfers: {},
         tokenTransfers: {},
@@ -2637,6 +2653,7 @@ function realExitExpectation(fixture: RealExitEnvelope, account = fixture.accoun
     mediatorRequired: false,
     nativeBalance: account.nativeBalanceLumens,
     memo: null,
+    memoType: null,
     claimTrustlineAssets: [],
     accountSigners: account.signers,
     accountThresholds: account.thresholds,
@@ -3064,6 +3081,7 @@ describe("a Blend exit as the decoder reads it", () => {
         mediatorRequired: false,
         nativeBalance: read.nativeBalanceLumens,
         memo: null,
+        memoType: null,
         claimTrustlineAssets: [],
         accountSigners: read.signers,
         accountThresholds: read.thresholds,
@@ -3326,8 +3344,292 @@ test("an id memo given as 007 comes back as 7 and fails the memo check", () => {
   const unsignedXdr = buildXdr([Operation.accountMerge({ destination: DEST })], Memo.id("007"));
   const decoded = intentFromXdr(unsignedXdr, Networks.TESTNET);
   expect(decoded.memo).toBe("7");
-  expect(() => assertCloseIntent(decoded, expectation({ memo: "007" }))).toThrow(
+  expect(() => assertCloseIntent(decoded, expectation({ memo: "007", memoType: "id" }))).toThrow(
     "The transaction carries a memo you did not set."
   );
-  expect(() => assertCloseIntent(decoded, expectation({ memo: "7" }))).not.toThrow();
+  expect(() =>
+    assertCloseIntent(decoded, expectation({ memo: "7", memoType: "id" }))
+  ).not.toThrow();
+});
+
+// ─── The memo is bound by value and type to the transaction that delivers the balance ────────
+
+describe("memo value and type", () => {
+  const MEMO = "4411";
+  const directClose = (memo?: Memo) =>
+    intentFromXdr(
+      buildXdr([Operation.accountMerge({ destination: DEST })], memo),
+      Networks.TESTNET
+    );
+  const cleanup = (memo?: Memo) =>
+    intentFromXdr(
+      buildXdr([Operation.changeTrust({ asset: new Asset("USDC", ISSUER), limit: "0" })], memo),
+      Networks.TESTNET
+    );
+  const mediatedClose = (destination: string, memo?: Memo) =>
+    buildXdr(
+      [
+        Operation.accountMerge({ destination: MED }),
+        Operation.payment({ destination, asset: Asset.native(), amount: "100", source: MED }),
+      ],
+      memo
+    );
+  const verifyMemo = (
+    unsignedXdr: string,
+    destination: string,
+    memo: string | null,
+    memoType: "text" | "id" | null,
+    mediatorRequired = false
+  ) =>
+    verifyCloseTransaction({
+      unsignedXdr,
+      network: "testnet",
+      expected: { ...expectation({ destination }), mediatorRequired, memo, memoType },
+    });
+  const withServedEntry = (
+    entry: { requiresMemo: boolean; memoType: "text" | "id" },
+    run: () => void
+  ) => {
+    const before = activeRegistry();
+    setRegistry({
+      ...before,
+      served: true,
+      entries: [
+        ...before.entries,
+        { address: DEST, name: "Listed", domain: "example.com", requiresMediator: false, ...entry },
+      ],
+    });
+    try {
+      run();
+    } finally {
+      setRegistry(before);
+    }
+  };
+
+  test("an unlisted destination accepts the memo in the type the user chose", () => {
+    expect(() =>
+      assertCloseIntent(directClose(Memo.id(MEMO)), expectation({ memo: MEMO, memoType: "id" }))
+    ).not.toThrow();
+    expect(() =>
+      assertCloseIntent(directClose(Memo.text(MEMO)), expectation({ memo: MEMO, memoType: "text" }))
+    ).not.toThrow();
+  });
+
+  test("an unlisted destination refuses an id memo when the user chose text", () => {
+    expect(() =>
+      assertCloseIntent(directClose(Memo.id(MEMO)), expectation({ memo: MEMO, memoType: "text" }))
+    ).toThrow(
+      "The transaction would send your memo as an id memo, not the text memo you confirmed."
+    );
+  });
+
+  test("an unlisted destination refuses a text memo when the user chose id", () => {
+    expect(() =>
+      assertCloseIntent(directClose(Memo.text(MEMO)), expectation({ memo: MEMO, memoType: "id" }))
+    ).toThrow(
+      "The transaction would send your memo as a text memo, not the id memo you confirmed."
+    );
+  });
+
+  test("a memo whose type cannot be read, or is a hash, is refused on the merge", () => {
+    const unreadable = intent({ memo: MEMO, memoType: null, operations: [merge(DEST)] });
+    expect(() =>
+      assertCloseIntent(unreadable, expectation({ memo: MEMO, memoType: "text" }))
+    ).toThrow(
+      "The transaction would send your memo as an unreadable memo, not the text memo you confirmed."
+    );
+    const hashed = intent({ memo: MEMO, memoType: "hash", operations: [merge(DEST)] });
+    expect(() => assertCloseIntent(hashed, expectation({ memo: MEMO, memoType: "text" }))).toThrow(
+      "The transaction would send your memo as a hash memo, not the text memo you confirmed."
+    );
+  });
+
+  test("a memo type with no value still counts as a memo", () => {
+    const typedOnly = intent({ memo: null, memoType: "text", operations: [merge(DEST)] });
+    expect(() => assertCloseIntent(typedOnly, expectation())).toThrow(
+      "The transaction carries a memo you did not set."
+    );
+  });
+
+  test("a merge without the memo the user set is refused", () => {
+    expect(() =>
+      assertCloseIntent(directClose(), expectation({ memo: MEMO, memoType: "id" }))
+    ).toThrow("The transaction is missing the memo you set.");
+  });
+
+  test("a merge carrying a memo when the user set none is refused, in either type", () => {
+    for (const memo of [Memo.text(MEMO), Memo.id(MEMO)]) {
+      expect(() => assertCloseIntent(directClose(memo), expectation())).toThrow(
+        "The transaction carries a memo you did not set."
+      );
+    }
+  });
+
+  test("a merge carrying a return memo or an empty text memo when the user set none is refused", () => {
+    for (const memo of [Memo.return("aa".repeat(32)), Memo.text("")]) {
+      expect(() => assertCloseIntent(directClose(memo), expectation())).toThrow(
+        "The transaction carries a memo you did not set."
+      );
+    }
+  });
+
+  test("a transaction without a merge carries no memo, even the one the user set", () => {
+    for (const memo of [Memo.text(MEMO), Memo.id(MEMO)]) {
+      expect(() =>
+        assertCloseIntent(cleanup(memo), expectation({ memo: MEMO, memoType: "text" }))
+      ).toThrow("The transaction carries a memo you did not set.");
+    }
+    expect(() =>
+      assertCloseIntent(cleanup(), expectation({ memo: MEMO, memoType: "text" }))
+    ).not.toThrow();
+  });
+
+  test("a memo with no confirmed type fails closed", () => {
+    expect(() =>
+      assertCloseIntent(directClose(Memo.text(MEMO)), expectation({ memo: MEMO, memoType: null }))
+    ).toThrow("The memo type you confirmed could not be read, so this close cannot be checked.");
+    expect(() =>
+      verifyMemo(
+        buildXdr([Operation.accountMerge({ destination: DEST })], Memo.text(MEMO)),
+        DEST,
+        MEMO,
+        null
+      )
+    ).toThrow("The memo type you confirmed could not be read, so this close cannot be checked.");
+  });
+
+  test("a transfer to an unlisted destination outside the merge carries no memo", () => {
+    const i = intent({
+      guarantees: { mergeDestination: null, paymentsOnlyTo: [DEST], minXlmFromConversions: null },
+      operations: [payment(DEST)],
+    });
+    const transfers = { [`USDC:${ISSUER}`]: { destination: DEST, amount: "5" } };
+    expect(() =>
+      assertCloseIntent(i, expectation({ memo: MEMO, memoType: "id", transfers }))
+    ).not.toThrow();
+    expect(() =>
+      assertCloseIntent(
+        i,
+        expectation({ memo: MEMO, memoType: "id", memoRequired: true, transfers })
+      )
+    ).toThrow("This destination requires a deposit memo.");
+  });
+
+  test("verifyCloseTransaction holds an unlisted destination to the type the user chose", () => {
+    const xdrOf = (memo: Memo) => buildXdr([Operation.accountMerge({ destination: DEST })], memo);
+    expect(() => verifyMemo(xdrOf(Memo.id(MEMO)), DEST, MEMO, "id")).not.toThrow();
+    expect(() => verifyMemo(xdrOf(Memo.text(MEMO)), DEST, MEMO, "id")).toThrow(
+      "The transaction would send your memo as a text memo, not the id memo you confirmed."
+    );
+    expect(() => verifyMemo(xdrOf(Memo.id(MEMO)), DEST, MEMO, "text")).toThrow(
+      "The transaction would send your memo as an id memo, not the text memo you confirmed."
+    );
+  });
+
+  test("a listed exchange that does not require a memo holds an optional memo to the registry type", () => {
+    const xdrOf = (memo?: Memo) => buildXdr([Operation.accountMerge({ destination: DEST })], memo);
+    withServedEntry({ requiresMemo: false, memoType: "id" }, () => {
+      expect(() => verifyMemo(xdrOf(Memo.id(MEMO)), DEST, MEMO, "id")).not.toThrow();
+      // The registry's type replaces whatever the caller passed.
+      expect(() => verifyMemo(xdrOf(Memo.id(MEMO)), DEST, MEMO, "text")).not.toThrow();
+      expect(() => verifyMemo(xdrOf(Memo.text(MEMO)), DEST, MEMO, "text")).toThrow(
+        "The transaction would send your memo as a text memo, not the id memo you confirmed."
+      );
+      expect(() => verifyMemo(xdrOf(), DEST, MEMO, "id")).toThrow(
+        "The transaction is missing the memo you set."
+      );
+      expect(() => verifyMemo(xdrOf(Memo.id(MEMO)), DEST, null, null)).toThrow(
+        "The transaction carries a memo you did not set."
+      );
+      expect(() => verifyMemo(xdrOf(), DEST, null, null)).not.toThrow();
+    });
+  });
+
+  test("a listed exchange that requires an id memo refuses the memo as text", () => {
+    const xdrOf = (memo?: Memo) => buildXdr([Operation.accountMerge({ destination: DEST })], memo);
+    withServedEntry({ requiresMemo: true, memoType: "id" }, () => {
+      expect(() => verifyMemo(xdrOf(Memo.id(MEMO)), DEST, MEMO, "id")).not.toThrow();
+      expect(() => verifyMemo(xdrOf(Memo.text(MEMO)), DEST, MEMO, "id")).toThrow(
+        "The transaction would send your memo as a text memo, not the id memo you confirmed."
+      );
+      expect(() => verifyMemo(xdrOf(), DEST, null, null)).toThrow(
+        "This destination requires a deposit memo."
+      );
+    });
+  });
+
+  test("the mediated merge and forward carries the memo in the registry type", () => {
+    expect(() =>
+      verifyMemo(mediatedClose(COINBASE, Memo.text(MEMO)), COINBASE, MEMO, "text", true)
+    ).not.toThrow();
+    expect(() =>
+      verifyMemo(mediatedClose(COINBASE, Memo.id(MEMO)), COINBASE, MEMO, "text", true)
+    ).toThrow(
+      "The transaction would send your memo as an id memo, not the text memo you confirmed."
+    );
+    // The caller cannot move a listed exchange off its registry type.
+    expect(() =>
+      verifyMemo(mediatedClose(COINBASE, Memo.id(MEMO)), COINBASE, MEMO, "id", true)
+    ).toThrow(
+      "The transaction would send your memo as an id memo, not the text memo you confirmed."
+    );
+    expect(() => verifyMemo(mediatedClose(COINBASE), COINBASE, MEMO, "text", true)).toThrow(
+      "The transaction is missing the memo you set."
+    );
+    expect(() =>
+      verifyMemo(mediatedClose(COINBASE, Memo.text(MEMO)), COINBASE, null, null, true)
+    ).toThrow("The transaction carries a memo you did not set.");
+  });
+
+  test("the mediated merge and forward refuses a swapped type for an id memo", () => {
+    const i = intentFromXdr(mediatedClose(DEST, Memo.text(MEMO)), Networks.TESTNET);
+    const mediatedExpectation = expectation({ mediatorRequired: true, memo: MEMO, memoType: "id" });
+    expect(() => assertCloseIntent(i, mediatedExpectation)).toThrow(
+      "The transaction would send your memo as a text memo, not the id memo you confirmed."
+    );
+    expect(() =>
+      assertCloseIntent(
+        intentFromXdr(mediatedClose(DEST, Memo.id(MEMO)), Networks.TESTNET),
+        mediatedExpectation
+      )
+    ).not.toThrow();
+  });
+});
+
+// ─── A text memo is decoded byte for byte before it is compared ─────────────
+
+describe("text memo decoding", () => {
+  const mergeWithTextMemo = (bytes: Buffer) =>
+    buildXdr([Operation.accountMerge({ destination: DEST })], Memo.text(bytes));
+
+  test("a byte order mark before the memo is kept, so it does not match the memo the user set", () => {
+    const bom = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from("4411")]);
+    const decoded = intentFromXdr(mergeWithTextMemo(bom), Networks.TESTNET);
+    expect(decoded.memo).toBe("﻿4411");
+    expect(() =>
+      assertCloseIntent(decoded, expectation({ memo: "4411", memoType: "text" }))
+    ).toThrow("The transaction carries a memo you did not set.");
+  });
+
+  test("a text memo that is not valid UTF-8 is refused", () => {
+    const xdrWithInvalidText = mergeWithTextMemo(Buffer.from([0x34, 0xff, 0x31]));
+    expect(() => intentFromXdr(xdrWithInvalidText, Networks.TESTNET)).toThrow(VerificationError);
+    expect(() =>
+      verifyCloseTransaction({
+        unsignedXdr: xdrWithInvalidText,
+        network: "testnet",
+        expected: { ...expectation(), memo: "4�1", memoType: "text" },
+      })
+    ).toThrow("The transaction carries a memo that is not valid text.");
+  });
+
+  test("an ASCII memo and a multibyte UTF-8 memo still match", () => {
+    for (const memo of ["4411", "café ✓ 預金"]) {
+      const decoded = intentFromXdr(mergeWithTextMemo(Buffer.from(memo)), Networks.TESTNET);
+      expect(decoded.memo).toBe(memo);
+      expect(() =>
+        assertCloseIntent(decoded, expectation({ memo, memoType: "text" }))
+      ).not.toThrow();
+    }
+  });
 });
