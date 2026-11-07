@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { activeRegistry, setRegistry } from "@/lib/exchange-registry";
-import { memoBytes, memoField, refusesIdMemoEdit } from "@/lib/plan/memo-field";
+import { confirmedMemo, memoBytes, memoField, refusesIdMemoEdit } from "@/lib/plan/memo-field";
 
 const UNLISTED = Keypair.random().publicKey();
 const original = activeRegistry();
@@ -137,4 +137,37 @@ test.each([
   ["letters as an id", "abc", "id", false],
 ] as const)("%s", (_, memo, type, ok) => {
   expect(memoField(UNLISTED, memo, type).error === null).toBe(ok);
+});
+
+test("confirmedMemo uses the registry type for a listed exchange, whatever was stored", () => {
+  expect(confirmedMemo(ID_EXCHANGE.address, "4411", "text")).toEqual({
+    memo: "4411",
+    memoType: "id",
+  });
+  expect(confirmedMemo(TEXT_EXCHANGE.address, "4411", "id")).toEqual({
+    memo: "4411",
+    memoType: "text",
+  });
+});
+
+test("confirmedMemo uses the stored type for an unlisted destination", () => {
+  expect(confirmedMemo(UNLISTED, "4411", "id")).toEqual({ memo: "4411", memoType: "id" });
+  expect(confirmedMemo(UNLISTED, "4411", "text")).toEqual({ memo: "4411", memoType: "text" });
+});
+
+test("confirmedMemo falls back to text when no type was stored", () => {
+  expect(confirmedMemo(UNLISTED, "4411", null)).toEqual({ memo: "4411", memoType: "text" });
+});
+
+test("confirmedMemo is null without a memo and trims like the plan page", () => {
+  expect(confirmedMemo(UNLISTED, null, "id")).toBeNull();
+  expect(confirmedMemo(UNLISTED, "   ", "id")).toBeNull();
+  expect(confirmedMemo(UNLISTED, " 4411 ", "id")).toEqual({ memo: "4411", memoType: "id" });
+  expect(confirmedMemo(UNLISTED, " 4411 ", "id")?.memo).toBe(
+    memoField(UNLISTED, " 4411 ", "id").normalized
+  );
+});
+
+test("confirmedMemo does not look up a destination that is not an account address", () => {
+  expect(confirmedMemo("not-an-address", "4411", "id")).toEqual({ memo: "4411", memoType: "id" });
 });

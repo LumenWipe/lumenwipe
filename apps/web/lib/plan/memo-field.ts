@@ -78,6 +78,29 @@ export function memoField(destination: string, memo: string, chosen: ChosenMemoT
   };
 }
 
+export interface ConfirmedMemo {
+  memo: string;
+  memoType: "text" | "id" | "hash";
+}
+
+/**
+ * The memo and type a close sends and verifies, from what the plan page stored. One value feeds
+ * both the transactions request and `verify()`, so the type the API is asked for is the type the
+ * signed transaction is held to. The type follows `memoField`: the registry's for a listed
+ * exchange, the user's choice otherwise, and text for a record saved before the choice existed,
+ * which is also what the API uses when no type is sent.
+ */
+export function confirmedMemo(
+  destination: string,
+  memo: string | null,
+  memoType: "text" | "id" | "hash" | null
+): ConfirmedMemo | null {
+  const normalized = memo?.trim() ?? "";
+  if (normalized === "") return null;
+  const entry = isValidGAddress(destination) ? lookupExchange(destination) : null;
+  return { memo: normalized, memoType: entry?.memoType ?? memoType ?? "text" };
+}
+
 /** Whether an edit to an id memo is refused as it is typed: anything but digits. The edit is
  *  refused whole, never filtered, so what the field holds is always what was typed. */
 export function refusesIdMemoEdit(next: string): boolean {

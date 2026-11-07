@@ -41,7 +41,7 @@ export interface CloseExpectation {
   /** The account's native balance in XLM as the client last read it. The floor under the
    *  forwarded amount: the intermediary is only a conduit if what leaves it is what arrived. */
   nativeBalance: string;
-  /** The memo the user entered, or null. */
+  /** The memo the user confirmed, or null. */
   memo: string | null;
   /** Contracts the account's analysis showed it holds DeFi positions in - the only contracts a
    *  DeFi exit may invoke. From the account read the user reviewed; empty fails closed. */
@@ -59,7 +59,8 @@ export interface CloseExpectation {
   conversionContracts: string[];
   /** Whether the destination requires a memo (from the client-bundled exchange registry). */
   memoRequired: boolean;
-  /** The memo type the destination requires (from the registry), or null. */
+  /** The type `memo` must carry: the registry's for a listed exchange, the user's choice for any
+   *  other destination. Read only when `memo` is set. */
   memoType: "text" | "id" | "hash" | null;
   /**
    * The per-asset payments the user chose, keyed by canonical `CODE:ISSUER`: a transfer to the
@@ -1251,28 +1252,63 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
     }
   }
 
-  // Memo integrity: the transaction must never carry a memo other than the one the user set.
-  if (intent.memo !== null && intent.memo !== expected.memo) {
-    throw new VerificationError("The transaction carries a memo you did not set.");
-  }
+  assertMemo(intent, expected);
+}
 
-  // Required memo: the transaction delivering funds to the destination must carry the exact
-  // memo - value and type - the destination requires.
-  const deliversToDestination =
-    intent.guarantees.mergeDestination === expected.destination ||
-    intent.guarantees.paymentsOnlyTo.includes(expected.destination);
-  if (deliversToDestination && expected.memoRequired) {
-    // Stryker disable next-line ConditionalExpression: the memo-integrity check above already
-    // guarantees, for every path that reaches here, that intent.memo is either null or exactly
-    // equal to expected.memo (any other value throws before this point) - so
-    // `intent.memo !== expected.memo` can never independently be true here. Only the
-    // `=== null` half is reachable; the second is dead by construction, not untested.
-    if (intent.memo === null || intent.memo !== expected.memo) {
-      throw new VerificationError("This destination requires a deposit memo.");
+const MEMO_TYPE_WITH_ARTICLE: Record<"text" | "id" | "hash", string> = {
+  text: "a text",
+  id: "an id",
+  hash: "a hash",
+};
+
+/**
+ * The memo is bound to the transaction that delivers the balance: the merge to the destination,
+ * or the mediated merge and forward. That transaction carries exactly the memo the user confirmed,
+ * value and type, or none when they set none. Every other transaction of a close carries no memo:
+ * the API never puts one there, and a per-asset transfer cannot carry a memo of its own.
+ *
+ * The type is compared as well as the value because the decoded value alone cannot tell them
+ * apart: an id memo 4411 and a text memo "4411" read back as the same string, and a wallet that
+ * credits deposits by id does not credit a text memo.
+ */
+function assertMemo(intent: TxIntent, expected: CloseExpectation): void {
+  // A memo of any kind counts: a value of a type the intent does not name (a return memo), and a
+  // type with no value.
+  const carriesMemo = intent.memo !== null || intent.memoType !== null;
+  const deliversBalance = intent.guarantees.mergeDestination !== null;
+
+  if (!deliversBalance || expected.memo === null) {
+    if (carriesMemo) {
+      throw new VerificationError("The transaction carries a memo you did not set.");
+    }
+  } else {
+    if (expected.memoType === null) {
+      throw new VerificationError(
+        "The memo type you confirmed could not be read, so this close cannot be checked."
+      );
+    }
+    if (!carriesMemo) {
+      throw new VerificationError("The transaction is missing the memo you set.");
+    }
+    if (intent.memo !== expected.memo) {
+      throw new VerificationError("The transaction carries a memo you did not set.");
     }
     if (intent.memoType !== expected.memoType) {
-      throw new VerificationError("The deposit memo has the wrong type for this destination.");
+      const sent =
+        intent.memoType === null ? "an unreadable" : MEMO_TYPE_WITH_ARTICLE[intent.memoType];
+      throw new VerificationError(
+        `The transaction would send your memo as ${sent} memo, not the ${expected.memoType} memo you confirmed.`
+      );
     }
+  }
+
+  // A destination that needs a memo is never paid without one. Only the transaction that
+  // delivers the balance can carry a memo, so a payment to it anywhere else is refused here too.
+  const paysDestination =
+    intent.guarantees.mergeDestination === expected.destination ||
+    intent.guarantees.paymentsOnlyTo.includes(expected.destination);
+  if (paysDestination && expected.memoRequired && (!deliversBalance || expected.memo === null)) {
+    throw new VerificationError("This destination requires a deposit memo.");
   }
 }
 
@@ -1293,6 +1329,9 @@ export function verifyCloseTransaction(opts: {
     mediatorRequired: boolean;
     nativeBalance: string;
     memo: string | null;
+    /** The type the user confirmed for `memo` (`confirmedMemo`), or null with no memo. A listed
+     *  exchange's registry type replaces it. */
+    memoType: "text" | "id" | "hash" | null;
     claimTrustlineAssets: string[];
     accountSigners: AccountSigner[];
     accountThresholds: AccountThresholds;
@@ -1342,7 +1381,7 @@ export function verifyCloseTransaction(opts: {
     mediatorRequired:
       opts.expected.mediatorRequired && mediatorAllowedFor(opts.expected.destination),
     memoRequired: exchange?.requiresMemo ?? false,
-    memoType: exchange?.memoType ?? null,
+    memoType: exchange?.memoType ?? opts.expected.memoType,
     nowSeconds: Math.floor(Date.now() / 1000),
     preAuthorized: opts.preAuthorized === true,
   });

@@ -2563,6 +2563,8 @@ test.each([
   ["4411", "id", "id"],
   ["deposit", "text", "text"],
   [null, "id", undefined],
+  // A record saved before the type was chosen: the API's own default, now sent explicitly.
+  ["4411", null, "text"],
 ] as const)(
   "useCloseExecution › memo %p of type %p asks for the transactions with memoType %p",
   async (memo, memoType, sent) => {
@@ -2593,5 +2595,93 @@ test.each([
     expect(bodies).toHaveLength(1);
     expect(bodies[0]).toMatchObject({ memo: memo ?? undefined });
     expect((bodies[0] as { memoType?: string }).memoType).toBe(sent);
+  }
+);
+
+function unsignedMergeWithMemoXdr(sourceKeypair: Keypair, destination: string, memo: Memo): string {
+  const builder = new TransactionBuilder(new Account(sourceKeypair.publicKey(), "100"), {
+    fee: "100",
+    networkPassphrase: Networks.TESTNET,
+  }).setTimeout(300);
+  builder.addOperation(Operation.accountMerge({ destination }));
+  builder.addMemo(memo);
+  return builder.build().toXdr();
+}
+
+test.each([
+  ["id", "id", false],
+  ["text", "text", false],
+  ["id", "text", true],
+  ["text", "id", true],
+] as const)(
+  "useCloseExecution › a %p memo the user chose, built by the API as %p, is refused before signing: %p",
+  async (memoType, builtType, refused) => {
+    const built = builtType === "id" ? Memo.id("4411") : Memo.text("4411");
+    const source = Keypair.random();
+    const destination = Keypair.random().publicKey();
+    useNetworkStore.setState({ network: "testnet" });
+    useDemolishStore.setState({
+      sourceAddress: source.publicKey(),
+      destinationAddress: destination,
+      memo: "4411",
+      memoType,
+      mediatorRequired: false,
+      phase: "STEP_EXECUTING",
+      lastError: null,
+      accountState: {
+        signers: [{ key: source.publicKey(), weight: 1, type: "ed25519_public_key" }],
+        thresholds: { low: 0, med: 0, high: 0 },
+      } as never,
+    } as never);
+    const bodies: unknown[] = [];
+    stubFetchCloseTransactions((async (body: unknown) => {
+      bodies.push(body);
+      return {
+        planHash: "h",
+        status: "ready",
+        transactions: [
+          {
+            id: "t0",
+            order: 0,
+            xdr: unsignedMergeWithMemoXdr(source, destination, built),
+            covers: ["MERGE"],
+          },
+        ],
+        remaining: { steps: 0, requiresAnotherCall: false },
+      };
+    }) as never);
+    let signCalls = 0;
+    let submitCalls = 0;
+    stubSubmitViaApi(async () => {
+      submitCalls++;
+      return {};
+    });
+    const signer = realSigner(source);
+    const counting: TransactionSigner = {
+      publicKey: signer.publicKey,
+      sign: async (...args) => {
+        signCalls++;
+        return signer.sign(...args);
+      },
+    };
+
+    const { result } = renderHook(() => useCloseExecution());
+    await act(async () => {
+      await result.current.run(counting);
+    });
+
+    expect((bodies[0] as { memoType?: string }).memoType).toBe(memoType);
+    if (!refused) {
+      expect(useDemolishStore.getState().lastError).toBeNull();
+      expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+      expect(submitCalls).toBe(1);
+    } else {
+      expect(useDemolishStore.getState().lastError).toContain(
+        "This transaction doesn't match what you approved, so it was not signed or sent."
+      );
+      expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
+      expect(signCalls).toBe(0);
+      expect(submitCalls).toBe(0);
+    }
   }
 );
