@@ -41,6 +41,7 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
     source: SRC,
     destination: DEST,
     mediatorRequired: false,
+    directMergeRefused: false,
     nativeBalance: "100.0000000",
     memo: null,
     memoRequired: false,
@@ -787,7 +788,6 @@ test("verifyCloseTransaction passes a mediated close to a memo-requiring exchang
       expected: {
         source: SRC,
         destination: COINBASE,
-        mediatorRequired: true,
         nativeBalance: "100.0000000",
         memo: "deposit-1",
         memoType: "text",
@@ -834,7 +834,6 @@ test("verifyCloseTransaction rejects a mediated close to a memo-requiring exchan
       expected: {
         source: SRC,
         destination: COINBASE,
-        mediatorRequired: true,
         nativeBalance: "100.0000000",
         memo: null,
         memoType: null,
@@ -872,7 +871,6 @@ test("verifyCloseTransaction passes a direct close to a destination the registry
       expected: {
         source: SRC,
         destination: DEST,
-        mediatorRequired: false,
         nativeBalance: "100.0000000",
         memo: null,
         memoType: null,
@@ -2201,7 +2199,8 @@ function mediatedWrapper(destination: string, mediatorRequired: boolean): () => 
     verifyCloseTransaction({
       unsignedXdr,
       network: "testnet",
-      expected: { ...expectation({ destination }), mediatorRequired },
+      // Passed through the spread, the way an untyped caller could: the wrapper must ignore it.
+      expected: expectation({ destination, mediatorRequired }),
     });
 }
 
@@ -2231,6 +2230,124 @@ test("a served registry entry cannot make the mediated hand-off reachable for a 
   } finally {
     setRegistry(before);
   }
+});
+
+// ─── A destination that needs the intermediary is never merged into directly ─
+
+function directMergeInto(
+  destination: string,
+  over: { memo?: string | null; memoType?: "text" | "id" | null; preAuthorized?: boolean } = {}
+): () => void {
+  const memo = over.memo ?? null;
+  const memoType = over.memoType ?? null;
+  const unsignedXdr = buildXdr(
+    [Operation.accountMerge({ destination })],
+    memo === null ? undefined : memoType === "id" ? Memo.id(memo) : Memo.text(memo)
+  );
+  return () =>
+    verifyCloseTransaction({
+      unsignedXdr,
+      network: "testnet",
+      preAuthorized: over.preAuthorized,
+      expected: expectation({ destination, memo, memoType }),
+    });
+}
+
+const DIRECT_MERGE_REFUSED =
+  "This exchange cannot credit an account merge, so the balance has to reach it as a payment. This transaction would merge your account straight into it.";
+
+test("a direct merge into an exchange the registry lists as needing the intermediary is refused, memo and all", () => {
+  expect(directMergeInto(COINBASE, { memo: "deposit-1", memoType: "text" })).toThrow(
+    DIRECT_MERGE_REFUSED
+  );
+});
+
+test("a direct merge into such an exchange is refused whatever the caller says about the intermediary", () => {
+  const unsignedXdr = buildXdr(
+    [Operation.accountMerge({ destination: COINBASE })],
+    Memo.text("d-1")
+  );
+  expect(() =>
+    verifyCloseTransaction({
+      unsignedXdr,
+      network: "testnet",
+      expected: expectation({
+        destination: COINBASE,
+        memo: "d-1",
+        memoType: "text",
+        mediatorRequired: false,
+        directMergeRefused: false,
+      }),
+    })
+  ).toThrow(DIRECT_MERGE_REFUSED);
+});
+
+test("a direct merge into a destination that needs no intermediary passes", () => {
+  expect(directMergeInto(DEST)).not.toThrow();
+  expect(directMergeInto(DEST, { memo: "4411", memoType: "id" })).not.toThrow();
+});
+
+test("the mediated hand-off to an exchange that needs the intermediary still passes", () => {
+  const intermediary = Keypair.random().publicKey();
+  const unsignedXdr = buildXdr(
+    [
+      Operation.accountMerge({ destination: intermediary }),
+      Operation.payment({
+        destination: COINBASE,
+        asset: Asset.native(),
+        amount: "100",
+        source: intermediary,
+      }),
+    ],
+    Memo.text("deposit-1")
+  );
+  expect(() =>
+    verifyCloseTransaction({
+      unsignedXdr,
+      network: "testnet",
+      expected: expectation({ destination: COINBASE, memo: "deposit-1", memoType: "text" }),
+    })
+  ).not.toThrow();
+});
+
+test("a pre-authorized direct merge into an exchange that needs the intermediary is refused", () => {
+  expect(
+    directMergeInto(COINBASE, { memo: "deposit-1", memoType: "text", preAuthorized: true })
+  ).toThrow(DIRECT_MERGE_REFUSED);
+  expect(directMergeInto(DEST, { preAuthorized: true })).not.toThrow();
+});
+
+test("a served registry entry that needs the intermediary refuses a direct merge into a new address", () => {
+  const before = activeRegistry();
+  setRegistry({
+    ...before,
+    served: true,
+    entries: [
+      ...before.entries,
+      {
+        address: DEST,
+        name: "Served only",
+        domain: "example.com",
+        requiresMediator: true,
+        requiresMemo: false,
+        memoType: "text",
+      },
+    ],
+  });
+  try {
+    expect(directMergeInto(DEST)).toThrow(DIRECT_MERGE_REFUSED);
+    expect(mediatedWrapper(DEST, true)).toThrow(/address you did not choose/);
+  } finally {
+    setRegistry(before);
+  }
+});
+
+test("assertCloseIntent refuses a direct merge only when the destination is marked as needing the intermediary", () => {
+  const i = intent({ operations: [merge(DEST)] });
+  expect(() => assertCloseIntent(i, expectation({ directMergeRefused: true }))).toThrow(
+    DIRECT_MERGE_REFUSED
+  );
+  expect(() => assertCloseIntent(i, expectation({ directMergeRefused: false }))).not.toThrow();
 });
 
 test("a swap floor sits no more than 1% under the quote the user was shown, whatever floor the plan carried", () => {
@@ -2650,7 +2767,6 @@ function realExitExpectation(fixture: RealExitEnvelope, account = fixture.accoun
   return {
     source: account.address,
     destination: DEST,
-    mediatorRequired: false,
     nativeBalance: account.nativeBalanceLumens,
     memo: null,
     memoType: null,
@@ -3078,7 +3194,6 @@ describe("a Blend exit as the decoder reads it", () => {
       expected: {
         source: ACCOUNT,
         destination: DEST,
-        mediatorRequired: false,
         nativeBalance: read.nativeBalanceLumens,
         memo: null,
         memoType: null,
@@ -3378,13 +3493,12 @@ describe("memo value and type", () => {
     unsignedXdr: string,
     destination: string,
     memo: string | null,
-    memoType: "text" | "id" | null,
-    mediatorRequired = false
+    memoType: "text" | "id" | null
   ) =>
     verifyCloseTransaction({
       unsignedXdr,
       network: "testnet",
-      expected: { ...expectation({ destination }), mediatorRequired, memo, memoType },
+      expected: { ...expectation({ destination }), memo, memoType },
     });
   const withServedEntry = (
     entry: { requiresMemo: boolean; memoType: "text" | "id" },
@@ -3560,24 +3674,22 @@ describe("memo value and type", () => {
 
   test("the mediated merge and forward carries the memo in the registry type", () => {
     expect(() =>
-      verifyMemo(mediatedClose(COINBASE, Memo.text(MEMO)), COINBASE, MEMO, "text", true)
+      verifyMemo(mediatedClose(COINBASE, Memo.text(MEMO)), COINBASE, MEMO, "text")
     ).not.toThrow();
     expect(() =>
-      verifyMemo(mediatedClose(COINBASE, Memo.id(MEMO)), COINBASE, MEMO, "text", true)
+      verifyMemo(mediatedClose(COINBASE, Memo.id(MEMO)), COINBASE, MEMO, "text")
     ).toThrow(
       "The transaction would send your memo as an id memo, not the text memo you confirmed."
     );
     // The caller cannot move a listed exchange off its registry type.
-    expect(() =>
-      verifyMemo(mediatedClose(COINBASE, Memo.id(MEMO)), COINBASE, MEMO, "id", true)
-    ).toThrow(
+    expect(() => verifyMemo(mediatedClose(COINBASE, Memo.id(MEMO)), COINBASE, MEMO, "id")).toThrow(
       "The transaction would send your memo as an id memo, not the text memo you confirmed."
     );
-    expect(() => verifyMemo(mediatedClose(COINBASE), COINBASE, MEMO, "text", true)).toThrow(
+    expect(() => verifyMemo(mediatedClose(COINBASE), COINBASE, MEMO, "text")).toThrow(
       "The transaction is missing the memo you set."
     );
     expect(() =>
-      verifyMemo(mediatedClose(COINBASE, Memo.text(MEMO)), COINBASE, null, null, true)
+      verifyMemo(mediatedClose(COINBASE, Memo.text(MEMO)), COINBASE, null, null)
     ).toThrow("The transaction carries a memo you did not set.");
   });
 

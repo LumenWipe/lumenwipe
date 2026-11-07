@@ -42,7 +42,7 @@ import { deriveJourneyState } from "@/lib/journey/journey-state";
 import * as recovery from "@/lib/session/recovery";
 import * as sessionStore from "@/lib/session/store";
 import type { TransactionSigner } from "@/lib/stellar/signer";
-import { fromHex } from "@/lib/stellar/hex";
+import { fromHex, toHex } from "@/lib/stellar/hex";
 
 /** The stand-ins return only what the hook reads, so they are typed loosely on purpose. */
 function stubFetchCloseTransactions(impl: () => Promise<unknown>): void {
@@ -2491,6 +2491,79 @@ test("useCloseExecution › aborts before submit when the mediator co-sign retur
     );
     expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
     expect(submitCalls).toBe(0);
+  } finally {
+    setRegistry(originalRegistry);
+  }
+});
+
+test("useCloseExecution › co-signs and submits a mediated close from the registry, whatever the store says", async () => {
+  const originalRegistry = activeRegistry();
+  setRegistry({ ...originalRegistry, validUntil: "2999-12-31" });
+  try {
+    const sourceKeypair = Keypair.random();
+    const mediatorKeypair = Keypair.random();
+    const source = sourceKeypair.publicKey();
+    const exchange = originalRegistry.entries.find((entry) => entry.requiresMediator)!.address;
+    const mediatedMerge = new TransactionBuilder(new Account(source, "100"), {
+      fee: "200",
+      networkPassphrase: Networks.TESTNET,
+      memo: Memo.text("123"),
+    })
+      .setTimeout(300)
+      .addOperation(Operation.accountMerge({ destination: mediatorKeypair.publicKey() }))
+      .addOperation(
+        Operation.payment({
+          source: mediatorKeypair.publicKey(),
+          destination: exchange,
+          asset: Asset.native(),
+          amount: "50",
+        })
+      )
+      .build();
+
+    useNetworkStore.setState({ network: "testnet" });
+    useDemolishStore.setState({
+      sourceAddress: source,
+      destinationAddress: exchange,
+      memo: "123",
+      // What a restored session can carry: the store says no intermediary.
+      mediatorRequired: false,
+      lastError: null,
+      accountState: {
+        nativeBalanceLumens: "50",
+        signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+        thresholds: { low: 1, med: 1, high: 1 },
+      } as never,
+    } as never);
+    stubFetchCloseTransactions(async () => ({
+      planHash: "h",
+      status: "ready",
+      transactions: [{ id: "t", order: 0, xdr: mediatedMerge.toXdr(), covers: ["MERGE"] }],
+      remaining: { steps: 0, requiresAnotherCall: false },
+    }));
+    const submitted: string[] = [];
+    stubSubmitViaApi(async (xdr) => {
+      submitted.push(xdr as string);
+      return {};
+    });
+    const cosign = spyOn(mediatorModule, "requestMediatorCosignature").mockImplementation(
+      async (xdr: string) => {
+        const tx = TransactionBuilder.fromXdr(xdr, Networks.TESTNET);
+        tx.sign(mediatorKeypair);
+        return tx.toEnvelope().toXdr("base64");
+      }
+    );
+
+    const { result } = renderHook(() => useCloseExecution());
+    await act(async () => {
+      await result.current.run(realSigner(sourceKeypair));
+    });
+
+    expect(cosign).toHaveBeenCalledTimes(1);
+    expect(submitted).toHaveLength(1);
+    const sent = TransactionBuilder.fromXdr(submitted[0]!, Networks.TESTNET) as Transaction;
+    expect(toHex(sent.hash())).toBe(toHex(mediatedMerge.hash()));
+    expect(sent.signatures).toHaveLength(2);
   } finally {
     setRegistry(originalRegistry);
   }

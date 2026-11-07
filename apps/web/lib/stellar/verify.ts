@@ -1,5 +1,10 @@
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
-import { isRegistryUsable, lookupExchange, mediatorAllowedFor } from "@/lib/exchange-registry";
+import {
+  isRegistryUsable,
+  lookupExchange,
+  mediatorAllowedFor,
+  requiresMediatorForAddress,
+} from "@/lib/exchange-registry";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { VerificationError } from "@/lib/stellar/verification-error";
 import { xlmToStroops } from "@/lib/utils/amounts";
@@ -28,11 +33,15 @@ export interface CloseExpectation {
   /** The user's chosen final destination. */
   destination: string;
   /** Whether the user's destination routes through the shared intermediary.
-   *  `verifyCloseTransaction` sets it only when the bundled exchange registry lists the
-   *  destination as needing one, whatever the caller passed. Without it the two-operation
-   *  hand-off would be accepted for a close the user asked to send straight to their own
-   *  wallet. */
+   *  `verifyCloseTransaction` derives it from the bundled exchange registry alone; the caller
+   *  does not pass it. Without it the two-operation hand-off would be accepted for a close the
+   *  user asked to send straight to their own wallet. */
   mediatorRequired: boolean;
+  /** Whether the destination cannot be merged into directly: an exchange the registry lists as
+   *  needing the intermediary, which credits a payment carrying a memo but not an account merge.
+   *  `verifyCloseTransaction` derives it from the active registry, whose served entries can
+   *  only add to the bundled ones. */
+  directMergeRefused: boolean;
   /** The account's native balance in XLM as the client last read it. The floor under the
    *  forwarded amount: the intermediary is only a conduit if what leaves it is what arrived. */
   nativeBalance: string;
@@ -193,8 +202,18 @@ function assertMergeShape(
     throw new VerificationError("The account merge is not sent by the account being closed.");
   }
 
-  // Merging to the address the user typed needs no intermediary and no further shape checks.
-  if (merge.destination === expected.destination) return null;
+  // Merging to the address the user typed needs no intermediary and no further shape checks,
+  // unless the address is an exchange that needs one. Such an exchange credits a payment
+  // carrying a memo and cannot credit a merge, so a merge straight into it delivers the balance
+  // to the right address uncredited.
+  if (merge.destination === expected.destination) {
+    if (expected.directMergeRefused) {
+      throw new VerificationError(
+        "This exchange cannot credit an account merge, so the balance has to reach it as a payment. This transaction would merge your account straight into it."
+      );
+    }
+    return null;
+  }
 
   // The hand-off exists because exchanges cannot be merged into. Accepting it for a close the
   // user routed straight to their own wallet would make an attacker-nominated intermediary
@@ -1321,7 +1340,6 @@ export function verifyCloseTransaction(opts: {
   expected: {
     source: string;
     destination: string;
-    mediatorRequired: boolean;
     nativeBalance: string;
     memo: string | null;
     /** The type the user confirmed for `memo` (`confirmedMemo`), or null with no memo. A listed
@@ -1371,10 +1389,12 @@ export function verifyCloseTransaction(opts: {
         "cannot be checked. Refresh the page; if it persists, the registry needs updating."
     );
   }
+  // Both routing values come from the registry the browser holds, never from the caller: a
+  // close that needs the intermediary must use it whatever the session or the store says.
   assertCloseIntent(intent, {
     ...opts.expected,
-    mediatorRequired:
-      opts.expected.mediatorRequired && mediatorAllowedFor(opts.expected.destination),
+    mediatorRequired: mediatorAllowedFor(opts.expected.destination),
+    directMergeRefused: requiresMediatorForAddress(opts.expected.destination),
     memoRequired: exchange?.requiresMemo ?? false,
     memoType: exchange?.memoType ?? opts.expected.memoType,
     nowSeconds: Math.floor(Date.now() / 1000),

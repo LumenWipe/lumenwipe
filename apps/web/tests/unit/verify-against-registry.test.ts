@@ -57,6 +57,7 @@ function expectationFor(account: AccountState): CloseExpectation {
     source: SRC,
     destination: DEST,
     mediatorRequired: false,
+    directMergeRefused: false,
     nativeBalance: "100.0000000",
     memo: null,
     memoRequired: false,
