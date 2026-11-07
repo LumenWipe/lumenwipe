@@ -49,6 +49,7 @@ function expectation(over: Partial<CloseExpectation> = {}): CloseExpectation {
     claimTrustlineAssets: [],
     transfers: {},
     tokenTransfers: {},
+    depositAddresses: {},
     classicConversions: { [`USDC:${ISSUER}`]: { minAmountOut: "90000000" } },
     tokenConversions: {},
     conversionContracts: [SOROSWAP_ROUTER],
@@ -3743,5 +3744,133 @@ describe("text memo decoding", () => {
         assertCloseIntent(decoded, expectation({ memo, memoType: "text" }))
       ).not.toThrow();
     }
+  });
+});
+
+describe("a transfer is never sent to an exchange deposit address", () => {
+  const USDC = `USDC:${ISSUER}`;
+  const WALLET = Keypair.random().publicKey();
+
+  const classicPayment = (destination: string): string =>
+    buildXdr([Operation.payment({ destination, asset: new Asset("USDC", ISSUER), amount: "5" })]);
+
+  function tokenPayment(destination: string): string {
+    const args = [
+      Address.fromString(SRC).toScVal(),
+      Address.fromString(destination).toScVal(),
+      nativeToScVal(BigInt(2500000000), { type: "i128" }),
+    ];
+    const rootInvocation = new xdr.SorobanAuthorizedInvocation({
+      function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
+        new xdr.InvokeContractArgs({
+          contractAddress: Address.fromString(TOKEN).toScAddress(),
+          functionName: "transfer",
+          args,
+        })
+      ),
+      subInvocations: [],
+    });
+    const op = Operation.invokeContractFunction({
+      contract: TOKEN,
+      function: "transfer",
+      args,
+      auth: [
+        new xdr.SorobanAuthorizationEntry({
+          credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
+          rootInvocation,
+        }),
+      ],
+    });
+    return buildXdr([op]);
+  }
+
+  const verifying =
+    (unsignedXdr: string, over: Partial<Pick<CloseExpectation, "transfers" | "tokenTransfers">>) =>
+    () =>
+      verifyCloseTransaction({
+        unsignedXdr,
+        network: "testnet",
+        expected: expectation({ ...over, depositAddresses: {} }),
+      });
+
+  test("a classic transfer to a listed exchange is refused, even one other than the close destination", () => {
+    expect(COINBASE).not.toBe(DEST);
+    const toExchange = { [USDC]: { destination: COINBASE, amount: "5.0000000" } };
+    expect(verifying(classicPayment(COINBASE), { transfers: toExchange })).toThrow(
+      "The transaction would send USDC to a Coinbase deposit address. A transfer in a close carries no deposit memo, so Coinbase could not credit it. Go back to the plan and choose a wallet you control."
+    );
+    const toWallet = { [USDC]: { destination: WALLET, amount: "5.0000000" } };
+    expect(verifying(classicPayment(WALLET), { transfers: toWallet })).not.toThrow();
+  });
+
+  test("a token transfer to a listed exchange is refused", () => {
+    const amount = "2500000000";
+    expect(
+      verifying(tokenPayment(COINBASE), {
+        tokenTransfers: { [TOKEN]: { destination: COINBASE, amount } },
+      })
+    ).toThrow(
+      "A token transfer would send the balance to a Coinbase deposit address. A token transfer carries no deposit memo, so Coinbase could not credit it. Go back to the plan and choose a wallet you control."
+    );
+    expect(
+      verifying(tokenPayment(WALLET), {
+        tokenTransfers: { [TOKEN]: { destination: WALLET, amount } },
+      })
+    ).not.toThrow();
+  });
+
+  describe("with a served entry", () => {
+    let before: ReturnType<typeof activeRegistry>;
+    beforeEach(() => {
+      before = activeRegistry();
+      setRegistry({
+        ...before,
+        served: true,
+        entries: [
+          ...before.entries,
+          ...[WALLET, ISSUER].map((address) => ({
+            address,
+            name: "Served only",
+            domain: "example.com",
+            requiresMediator: false,
+            requiresMemo: false,
+            memoType: "text" as const,
+          })),
+        ],
+      });
+    });
+    afterEach(() => setRegistry(before));
+
+    test("an address listed after the plan refuses the transfer, even with no memo rule", () => {
+      const toWallet = { [USDC]: { destination: WALLET, amount: "5.0000000" } };
+      expect(verifying(classicPayment(WALLET), { transfers: toWallet })).toThrow(
+        /Served only deposit address/
+      );
+    });
+
+    test("a return to an issuer the registry lists still passes", () => {
+      const toIssuer = { [USDC]: { destination: ISSUER, amount: "0" } };
+      expect(verifying(classicPayment(ISSUER), { transfers: toIssuer })).not.toThrow();
+    });
+  });
+
+  test("the pure check refuses only what the derived list names", () => {
+    const op: IntentOperation = {
+      source: SRC,
+      type: "payment",
+      destination: WALLET,
+      asset: USDC,
+      amount: "5.0000000",
+    };
+    const transfers = { [USDC]: { destination: WALLET, amount: "5.0000000" } };
+    expect(() =>
+      assertCloseIntent(intent({ operations: [op] }), expectation({ transfers }))
+    ).not.toThrow();
+    expect(() =>
+      assertCloseIntent(
+        intent({ operations: [op] }),
+        expectation({ transfers, depositAddresses: { [WALLET]: "Example" } })
+      )
+    ).toThrow(/Example deposit address/);
   });
 });
