@@ -12,6 +12,10 @@ As of 2026-10-10, the mediator flow (exchange closes) and sponsored fees are ava
 
 ## 2026-11
 
+### 2026-11-07
+
+- **API:** `GET /v1/{network}/close/delivered` reports the XLM confirmed close transactions delivered to their destination, read from each transaction's ledger result: the merged balance, or the relay account's forward for an exchange close. A transaction that is unknown, failed, or delivered nothing this way is marked unavailable, and the total is present only when every transaction resolved.
+
 ### 2026-11-02
 
 - **Web:** Analyzing an account reads it once. Answering a claimable-balance card or acknowledging a position updates the plan without reading the account again, and an unknown account now reports on the analyze page.

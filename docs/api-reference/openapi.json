@@ -2552,6 +2552,244 @@
         ]
       }
     },
+    "/v1/{network}/close/delivered": {
+      "get": {
+        "description": "Read from the ledger's own result for each transaction, through RPC and then Horizon when RPC no longer holds it. Counted: the balance a successful merge into `destination` carried, as the merge's result reports it, and, for a close routed through the relay account, the successful native payment to `destination` from the account a merge earlier in the same transaction went into, at most once per merge and never more than that merge carried. Not counted: XLM that reached `destination` by any other operation (a path payment, or a payment without that merge) and any asset other than XLM. An entry that cannot be read as delivered is `unavailable` with a reason and no amount, and `totalStroops` is present only when every entry is `delivered`. `not_found` means no provider holds the hash: it may be unknown, still pending, or older than the providers keep. Wait for `transactions/{hash}` to report `confirmed` before asking. A fee-bump answers for its outer or its inner hash.",
+        "operationId": "TransactionsController_delivered",
+        "parameters": [
+          {
+            "name": "hashes",
+            "required": true,
+            "in": "query",
+            "description": "Comma-separated transaction hashes, 64 hex characters each, 1 to 20 and distinct.",
+            "schema": {}
+          },
+          {
+            "name": "destination",
+            "required": true,
+            "in": "query",
+            "description": "The account the close sent its XLM to (G...).",
+            "schema": {}
+          },
+          {
+            "name": "network",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "testnet",
+                "mainnet"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One entry per hash, in the order asked, and the total when every one resolved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloseDeliveredResponseDto"
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid network, destination or transaction hashes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "invalid_network",
+                                "invalid_destination",
+                                "invalid_tx_hash"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "unauthorized"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded for this key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "rate_limited"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/Retry-After"
+              }
+            }
+          },
+          "503": {
+            "description": "The network could not be read. Retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponseDto"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "enum": [
+                                "service_unavailable"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/Retry-After"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api-key": []
+          }
+        ],
+        "summary": "Read the XLM confirmed close transactions delivered to their destination.",
+        "tags": [
+          "close"
+        ]
+      }
+    },
     "/v1/{network}/stats": {
       "get": {
         "operationId": "StatsController_totals",
@@ -8830,6 +9068,72 @@
         "required": [
           "source",
           "phase"
+        ]
+      },
+      "CloseDeliveredEntryDto": {
+        "type": "object",
+        "properties": {
+          "hash": {
+            "type": "string",
+            "description": "The hash asked about, lowercase.",
+            "example": "a1b2c3...d4e5f6"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "delivered",
+              "unavailable"
+            ],
+            "example": "delivered"
+          },
+          "amountStroops": {
+            "type": "string",
+            "description": "Set when delivered: the XLM the transaction credited to the destination, in stroops, from the ledger's result.",
+            "example": "52345000"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "not_found",
+              "failed",
+              "no_delivery"
+            ],
+            "description": "Set when unavailable. `not_found`: no provider holds the hash. `failed`: the transaction failed. `no_delivery`: it confirmed without a merge into the destination or a forward of a merged balance to it."
+          },
+          "ledger": {
+            "type": "number",
+            "description": "The ledger the transaction is in; absent for not_found.",
+            "example": 123456
+          }
+        },
+        "required": [
+          "hash",
+          "status"
+        ]
+      },
+      "CloseDeliveredResponseDto": {
+        "type": "object",
+        "properties": {
+          "destination": {
+            "type": "string",
+            "description": "The destination asked about."
+          },
+          "entries": {
+            "description": "One entry per requested hash, in the order asked.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CloseDeliveredEntryDto"
+            }
+          },
+          "totalStroops": {
+            "type": "string",
+            "description": "The sum of every entry's amount, in stroops. Present only when every entry is delivered.",
+            "example": "52345000"
+          }
+        },
+        "required": [
+          "destination",
+          "entries"
         ]
       },
       "StatsTotalsDto": {

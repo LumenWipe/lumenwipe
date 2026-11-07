@@ -228,6 +228,29 @@ export interface ClassicConversionQuote {
 export type CloseApiStatus = "ready" | "needs_decisions" | "blocked" | "complete";
 
 // @public
+export type CloseDeliveredEntry = {
+    hash: string;
+    status: "delivered";
+    ledger: number;
+    amountStroops: string;
+} | {
+    hash: string;
+    status: "unavailable";
+    reason: "not_found" | "failed" | "no_delivery";
+    ledger?: number;
+};
+
+// @public
+export interface CloseDeliveredResponse {
+    // (undocumented)
+    destination: string;
+    // (undocumented)
+    entries: CloseDeliveredEntry[];
+    // (undocumented)
+    totalStroops?: string;
+}
+
+// @public
 export class CloseDidNotConvergeError extends Error {
     constructor(rounds: number, bound: number, reason: CloseDidNotConvergeReason);
     // (undocumented)

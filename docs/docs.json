@@ -109,7 +109,8 @@
               "POST /v1/{network}/close/transactions",
               "POST /v1/{network}/submit",
               "GET /v1/{network}/transactions/{hash}",
-              "GET /v1/{network}/close/status"
+              "GET /v1/{network}/close/status",
+              "GET /v1/{network}/close/delivered"
             ]
           },
           {

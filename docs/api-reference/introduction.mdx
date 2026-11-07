@@ -214,13 +214,13 @@ A single `runClose` over a multi-round account shares this budget with any polli
 
 A `504` from `submit` means the outcome is unknown, not that the transaction failed. Compute the hash from the envelope you signed, then call `GET /v1/{network}/transactions/{hash}`. Honor `Retry-After` wherever it is sent.
 
-| Endpoint                                                        | Safe to retry                           | Retry after                                                                                               | Never retry                                                                                        |
-| --------------------------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `GET` reads, including `transactions/{hash}` and `close/status` | Network error, 429, 502, 503, 504       | `Retry-After`, else a few seconds                                                                         | A `400`                                                                                            |
-| `POST close/plan`, `close/batch-plan`, `close/transactions`     | Network error, 429, 503                 | `Retry-After`. Each call re-reads the account                                                             | A `4xx` before the cause is fixed                                                                  |
-| `POST submit`, same signed envelope                             | Only after a lookup by hash, or a `429` | About one ledger. The API checks the hash first, so a confirmed envelope answers `200` with the same body | `invalid_*` and `422 submit_rejected`: the network refused it, so build and sign a new transaction |
-| `POST {network}/mediator/sign`                                  | Network error, 429, 503                 | `Retry-After`                                                                                             | A `4xx`. Co-signing a replaced transaction spends the relay account's sequence                     |
-| `POST {network}/fee-bump/sponsor`                               | 429, 503                                | `Retry-After`                                                                                             | `sponsorship_budget_exhausted` before the next UTC day                                             |
+| Endpoint                                                                           | Safe to retry                           | Retry after                                                                                               | Never retry                                                                                        |
+| ---------------------------------------------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `GET` reads, including `transactions/{hash}`, `close/status` and `close/delivered` | Network error, 429, 502, 503, 504       | `Retry-After`, else a few seconds                                                                         | A `400`                                                                                            |
+| `POST close/plan`, `close/batch-plan`, `close/transactions`                        | Network error, 429, 503                 | `Retry-After`. Each call re-reads the account                                                             | A `4xx` before the cause is fixed                                                                  |
+| `POST submit`, same signed envelope                                                | Only after a lookup by hash, or a `429` | About one ledger. The API checks the hash first, so a confirmed envelope answers `200` with the same body | `invalid_*` and `422 submit_rejected`: the network refused it, so build and sign a new transaction |
+| `POST {network}/mediator/sign`                                                     | Network error, 429, 503                 | `Retry-After`                                                                                             | A `4xx`. Co-signing a replaced transaction spends the relay account's sequence                     |
+| `POST {network}/fee-bump/sponsor`                                                  | 429, 503                                | `Retry-After`                                                                                             | `sponsorship_budget_exhausted` before the next UTC day                                             |
 
 `POST submit` for an envelope that already confirmed answers `200` with the same `hash` and `ledger`, however many times it is sent. The check is by hash through RPC, so it holds for as long as the RPC provider retains the transaction.
 
@@ -240,6 +240,27 @@ Use polling. `GET /v1/{network}/close/status?source=` reads live state and keeps
 Each call costs one request against your key's rate limit, and upstream one RPC read, plus one Horizon read when the account is absent. Poll an account no more often than every 15 seconds: a ledger closes about every 5 seconds, and nothing changes faster than your own transactions. At the default 120 requests per minute that follows about 30 accounts at once, with the rest of the budget spent by `RateLimit-Remaining` on the close itself.
 
 There are no webhooks. Delivering one needs subscriptions, delivery state and signing secrets kept per close, and the API keeps nothing per close. See [the design note](https://github.com/LumenWipe/lumenwipe/blob/main/docs/architecture.md#following-a-close-from-outside).
+
+## The XLM a close delivered
+
+Once the transactions of a close are confirmed, `GET /v1/{network}/close/delivered?destination=G...&hashes=<hash>,<hash>` reports the XLM each one delivered to the destination. Pass 1 to 20 distinct hashes, comma-separated. Ask only after `transactions/{hash}` reports `confirmed`.
+
+The amount is read from the ledger's own result for each transaction: RPC first, then Horizon when RPC no longer holds it. It is never estimated from the plan. Only two things count:
+
+- the balance a successful merge into the destination carried, as the merge's result reports it;
+- for a close routed through the relay account, the successful native payment to the destination from the account a merge earlier in the same transaction went into, at most once per merge and never more than that merge carried.
+
+XLM that reached the destination by any other operation, such as a path payment or a payment without that merge, is not counted, and neither is any asset other than XLM.
+
+Each hash gets an entry, in the order asked. An entry that cannot be read as delivered is `unavailable` with a `reason` and no amount:
+
+| Reason        | Meaning                                                                                                     |
+| ------------- | ----------------------------------------------------------------------------------------------------------- |
+| `not_found`   | Neither RPC nor Horizon holds the hash. It may be unknown, still pending, or older than the providers keep. |
+| `failed`      | The transaction failed, so it moved nothing.                                                                |
+| `no_delivery` | It confirmed without a merge into the destination or a forward of a merged balance to it.                   |
+
+`totalStroops` is present only when every entry is `delivered`, so a missing amount never reads as zero. A fee-bump answers for its outer or its inner hash. A provider that answers with a different transaction, or one from another network, is a `503`, never an amount. One call is one request against your key's rate limit, however many hashes it carries, and costs up to two upstream reads per hash.
 
 ## The close loop
 
