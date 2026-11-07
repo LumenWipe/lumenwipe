@@ -75,6 +75,11 @@ import {
   type CloseFailureStage,
 } from "@/lib/utils/user-error";
 import { toHex } from "@/lib/stellar/hex";
+import {
+  refusedTransferAsset,
+  TransferDestinationRefusedError,
+  TRANSFER_DESTINATION_REFUSED_NOTICE,
+} from "@/lib/plan/transfer-destination";
 import type { TransactionSigner } from "@/lib/stellar/signer";
 import type { AccountSigner } from "@/types/account";
 
@@ -287,6 +292,14 @@ export function useCloseExecution() {
           {
             planHash: useDemolishStore.getState().planHash ?? undefined,
             getTransactions: async ({ planHash }) => {
+              // Before every round, so a registry that changed since the review stops the close
+              // between rounds, with nothing of the next one fetched or signed.
+              const live = useDemolishStore.getState();
+              const refused = refusedTransferAsset(
+                live.assetDispositions,
+                live.transferDestinations
+              );
+              if (refused !== null) throw new TransferDestinationRefusedError(refused);
               const batch = await fetchCloseTransactions(
                 {
                   source: sourceAddress,
@@ -589,6 +602,12 @@ export function useCloseExecution() {
           signerStateForRef.current = null;
           setSignatureStatus(null);
           discardPlan(PLAN_CHANGED_NOTICE);
+          return;
+        }
+        if (err instanceof TransferDestinationRefusedError) {
+          pendingRoundRef.current = null;
+          setSignatureStatus(null);
+          discardPlan(TRANSFER_DESTINATION_REFUSED_NOTICE);
           return;
         }
         // A non-weight failure (network error, verify rejection) invalidates any resumable

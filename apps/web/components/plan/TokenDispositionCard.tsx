@@ -4,7 +4,10 @@ import { AlertTriangle, ArrowRightLeft, CheckCircle2, Send } from "lucide-react"
 import { formatStroops, type AssetConvertibility, type TokenQuote } from "@/lib/api/plan-adapters";
 import type { AssetDisposition } from "@/types/plan";
 import { AddressField } from "@/components/ui/address-field";
-import { addressErrorMessage, isValidGAddress } from "@/lib/utils/validation";
+import {
+  isUsableTransferDestination,
+  transferDestinationError,
+} from "@/lib/plan/transfer-destination";
 import { Badge } from "@/components/ui/badge";
 import { ShortAddress } from "@/components/ui/short-address";
 import { DECISION_TAGS, DecisionCard, type DecisionOption } from "@/components/ui/decision-card";
@@ -89,7 +92,7 @@ export default function TokenDispositionCard({
   const isLeave = disposition === "leave";
   const isConvert = disposition === "convert" && item.convertible;
   const flagged = item.convertible && (token.quote?.flags.length ?? 0) > 0;
-  const transferReady = isTransfer && !!transferDestination && isValidGAddress(transferDestination);
+  const transferReady = isTransfer && isUsableTransferDestination(transferDestination);
   const convertReady = isConvert && (!flagged || impactConfirmed);
   const resolved = convertReady || isLeave || transferReady;
 
@@ -154,19 +157,20 @@ export default function TokenDispositionCard({
             hideLabel
             value={transferDestination ?? ""}
             onChange={(next) => onSetTransferDestination(item.asset, next || null)}
-            error={transferDestination ? addressErrorMessage(transferDestination) : null}
+            error={transferDestination ? transferDestinationError(transferDestination) : null}
             placeholder="G... (an account that exists)"
             helper="Not an exchange deposit address: a token transfer carries no deposit memo, so an exchange could not credit it."
           />
-          {mergeDestination && transferDestination !== mergeDestination && (
-            <button
-              type="button"
-              onClick={() => onSetTransferDestination(item.asset, mergeDestination)}
-              className="text-label text-accent/90 underline-offset-2 hover:underline"
-            >
-              Use the same account I&apos;m merging into
-            </button>
-          )}
+          {isUsableTransferDestination(mergeDestination) &&
+            transferDestination !== mergeDestination && (
+              <button
+                type="button"
+                onClick={() => onSetTransferDestination(item.asset, mergeDestination)}
+                className="text-label text-accent/90 underline-offset-2 hover:underline"
+              >
+                Use the same account I&apos;m merging into
+              </button>
+            )}
         </div>
       ),
     },

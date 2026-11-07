@@ -2,7 +2,7 @@ import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/pl
 import type { AssetDisposition, ClaimableBalanceSelection } from "@/types/plan";
 import type { TokenConversionFloor } from "@/store/demolish";
 import { isConversionImpactConfirmed } from "@/lib/api/close-decisions";
-import { isValidGAddress } from "@/lib/utils/validation";
+import { isUsableTransferDestination } from "@/lib/plan/transfer-destination";
 
 /** What an asset's answer is read against: its transfer address, and the floors the convert
  *  answers carry with the ones the user confirmed for a flagged quote. */
@@ -19,8 +19,7 @@ export function assetResolved(c: AssetConvertibility, answers: AssetAnswers): bo
   if (dispositions[c.asset] === "transfer") {
     // A transfer is resolved only once it names a usable address: the API can refuse a
     // missing destination, but a well-formed wrong one would be built and signed.
-    const destination = transferDestinations[c.asset];
-    return !!destination && isValidGAddress(destination);
+    return isUsableTransferDestination(transferDestinations[c.asset]);
   }
   // A Soroban token is resolved by an explicit "leave" as well; a trustline never is.
   if (c.token && dispositions[c.asset] === "leave") return true;

@@ -5,7 +5,10 @@ import { formatStroops, type AssetConvertibility } from "@/lib/api/plan-adapters
 import { classicFloorFromQuote } from "@/lib/api/close-decisions";
 import type { AssetDisposition } from "@/types/plan";
 import { AddressField } from "@/components/ui/address-field";
-import { addressErrorMessage, isValidGAddress } from "@/lib/utils/validation";
+import {
+  isUsableTransferDestination,
+  transferDestinationError,
+} from "@/lib/plan/transfer-destination";
 import { Badge } from "@/components/ui/badge";
 import { ShortAddress } from "@/components/ui/short-address";
 import { DECISION_TAGS, DecisionCard, type DecisionOption } from "@/components/ui/decision-card";
@@ -51,7 +54,7 @@ export default function AssetDispositionCard({
   const isIssuer = disposition === "issuer";
   // A transfer is only resolved once its destination is a usable address. Until then the asset
   // counts as unresolved, exactly like an unconfirmed return-to-issuer.
-  const transferReady = isTransfer && !!transferDestination && isValidGAddress(transferDestination);
+  const transferReady = isTransfer && isUsableTransferDestination(transferDestination);
   const resolved = item.convertible ? !isTransfer || transferReady : isIssuer || transferReady;
 
   // Before the exit that pays it in, the balance is genuinely zero, and "0 AQUA will be swapped"
@@ -94,20 +97,21 @@ export default function AssetDispositionCard({
           hideLabel
           value={transferDestination ?? ""}
           onChange={(next) => onSetTransferDestination(item.asset, next || null)}
-          error={transferDestination ? addressErrorMessage(transferDestination) : null}
+          error={transferDestination ? transferDestinationError(transferDestination) : null}
           placeholder={`G... (an account that already holds ${item.code})`}
         />
         {/* A shortcut, not a constraint: the API takes any address per asset, and hiding that
             behind a single fixed destination would make the UI narrower than the contract. */}
-        {mergeDestination && transferDestination !== mergeDestination && (
-          <button
-            type="button"
-            onClick={() => onSetTransferDestination(item.asset, mergeDestination)}
-            className="text-label text-accent/90 underline-offset-2 hover:underline"
-          >
-            Use the same account I&apos;m merging into
-          </button>
-        )}
+        {isUsableTransferDestination(mergeDestination) &&
+          transferDestination !== mergeDestination && (
+            <button
+              type="button"
+              onClick={() => onSetTransferDestination(item.asset, mergeDestination)}
+              className="text-label text-accent/90 underline-offset-2 hover:underline"
+            >
+              Use the same account I&apos;m merging into
+            </button>
+          )}
       </div>
     ),
   };

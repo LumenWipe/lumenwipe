@@ -23,6 +23,9 @@ import * as closeRecord from "@/lib/session/close-record";
 import * as recovery from "@/lib/session/recovery";
 import { keepDecisions, keepDestinationDraft } from "@/lib/session/restore-decisions";
 import { useNetworkStore } from "@/store/network";
+import { activeRegistry, setRegistry } from "@/lib/exchange-registry";
+import { assetResolved } from "@/lib/plan/asset-resolution";
+import { transferDestinationError } from "@/lib/plan/transfer-destination";
 import type { AccountState } from "@/types/account";
 import type { PlannedStep } from "@/types/plan";
 import type { SessionRecord } from "@/types/session";
@@ -339,6 +342,43 @@ describe("what is restored is checked against what it was given for", () => {
         "These assets changed since you chose what to do with them, so they need an answer again: USDC."
       )
     ).toBeTruthy();
+  });
+});
+
+describe("a resumed transfer to an address the registry now lists", () => {
+  test("comes back as the user gave it, unresolved, with the card's reason for refusing it", async () => {
+    const before = activeRegistry();
+    setRegistry({
+      ...before,
+      entries: [
+        ...before.entries,
+        {
+          address: PAYEE,
+          name: "Example Exchange",
+          domain: "example.com",
+          requiresMediator: false,
+          requiresMemo: true,
+          memoType: "text",
+        },
+      ],
+    });
+    try {
+      window.sessionStorage.setItem(KEY, JSON.stringify(snapshot()));
+      await analyzed();
+      const state = useDemolishStore.getState();
+      expect(state.assetDispositions[USDC]).toBe("transfer");
+      expect(state.transferDestinations).toEqual({ [USDC]: PAYEE });
+      const usdc = { asset: USDC, code: "USDC", balance: "5.0000000", convertible: true };
+      expect(
+        assetResolved(usdc, {
+          dispositions: state.assetDispositions,
+          transferDestinations: state.transferDestinations,
+        })
+      ).toBe(false);
+      expect(transferDestinationError(PAYEE)).toContain("Example Exchange deposit address");
+    } finally {
+      setRegistry(before);
+    }
   });
 });
 

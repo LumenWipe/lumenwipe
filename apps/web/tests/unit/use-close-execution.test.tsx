@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { renderHook, act, fireEvent, render, screen } from "@testing-library/react";
 import * as navigation from "next/navigation";
 import {
@@ -43,6 +43,7 @@ import * as recovery from "@/lib/session/recovery";
 import * as sessionStore from "@/lib/session/store";
 import type { TransactionSigner } from "@/lib/stellar/signer";
 import { fromHex, toHex } from "@/lib/stellar/hex";
+import { TRANSFER_DESTINATION_REFUSED_NOTICE } from "@/lib/plan/transfer-destination";
 
 /** The stand-ins return only what the hook reads, so they are typed loosely on purpose. */
 function stubFetchCloseTransactions(impl: () => Promise<unknown>): void {
@@ -2758,3 +2759,114 @@ test.each([
     }
   }
 );
+
+describe("useCloseExecution › a transfer destination the registry lists", () => {
+  const ISSUER = Keypair.random().publicKey();
+  const USDC = `USDC:${ISSUER}`;
+  const PAYEE = Keypair.random().publicKey();
+  let before: ReturnType<typeof activeRegistry>;
+
+  beforeEach(() => {
+    before = activeRegistry();
+  });
+  afterEach(() => setRegistry(before));
+
+  const listPayee = (): void =>
+    setRegistry({
+      ...before,
+      entries: [
+        ...before.entries,
+        {
+          address: PAYEE,
+          name: "Example Exchange",
+          domain: "example.com",
+          requiresMediator: false,
+          requiresMemo: true,
+          memoType: "text",
+        },
+      ],
+    });
+
+  function closing(sourceKeypair: Keypair): void {
+    const source = sourceKeypair.publicKey();
+    useNetworkStore.setState({ network: "testnet" });
+    useDemolishStore.setState({
+      sourceAddress: source,
+      destinationAddress: Keypair.random().publicKey(),
+      memo: null,
+      mediatorRequired: false,
+      lastError: null,
+      planChangedNotice: null,
+      phase: "STEP_EXECUTING",
+      executionPlan: [{ type: "MERGE", status: "pending", operationCount: 1 }] as never,
+      assetDispositions: { [USDC]: "transfer" },
+      transferDestinations: { [USDC]: PAYEE },
+      accountState: {
+        signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+        thresholds: { low: 1, med: 1, high: 1 },
+      } as never,
+    } as never);
+  }
+
+  test("listed before the first round, nothing is fetched and the plan goes back for a new answer", async () => {
+    const sourceKeypair = Keypair.random();
+    closing(sourceKeypair);
+    listPayee();
+    let fetches = 0;
+    stubFetchCloseTransactions(async () => {
+      fetches++;
+      throw new Error("must not be fetched");
+    });
+
+    const { result } = renderHook(() => useCloseExecution());
+    await act(async () => {
+      await result.current.run(realSigner(sourceKeypair));
+    });
+
+    const state = useDemolishStore.getState();
+    expect(fetches).toBe(0);
+    expect(state.phase).not.toBe("STEP_FAILED");
+    expect(state.executionPlan).toEqual([]);
+    expect(state.lastError).toBeNull();
+    expect(state.planChangedNotice).toBe(TRANSFER_DESTINATION_REFUSED_NOTICE);
+    expect(state.transferDestinations).toEqual({ [USDC]: PAYEE });
+  });
+
+  test("listed after a round was submitted, the next round is never fetched", async () => {
+    const sourceKeypair = Keypair.random();
+    closing(sourceKeypair);
+    const round = new TransactionBuilder(new Account(sourceKeypair.publicKey(), "100"), {
+      fee: "100",
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(Operation.manageData({ name: "note", value: null }))
+      .setTimeout(300)
+      .build()
+      .toXdr();
+    let fetches = 0;
+    stubFetchCloseTransactions(async () => {
+      fetches++;
+      return {
+        planHash: "h",
+        status: "ready",
+        transactions: [{ id: "t0", order: 0, xdr: round, covers: ["REMOVE_DATA_ENTRIES"] }],
+        remaining: { steps: 1, requiresAnotherCall: true },
+      };
+    });
+    const submitted: string[] = [];
+    stubSubmitViaApi(async (xdr) => {
+      submitted.push(xdr as string);
+      listPayee();
+      return {};
+    });
+
+    const { result } = renderHook(() => useCloseExecution());
+    await act(async () => {
+      await result.current.run(realSigner(sourceKeypair));
+    });
+
+    expect(submitted).toHaveLength(1);
+    expect(fetches).toBe(1);
+    expect(useDemolishStore.getState().planChangedNotice).toBe(TRANSFER_DESTINATION_REFUSED_NOTICE);
+  });
+});
