@@ -3,6 +3,7 @@ import { Account, Keypair, Networks, Operation, TransactionBuilder } from "@stel
 import type {
   AccountState,
   AllowancesResult,
+  CloseDeliveredResponse,
   CloseTransactionsRequest,
   MediatorCheckResult,
   PlanResponse,
@@ -348,6 +349,17 @@ const FEED: FeedData = {
   totals: STATS,
 };
 
+/** Each asked merge delivered 100 XLM, as the API answers when every one resolved. */
+function delivered(query: URLSearchParams): CloseDeliveredResponse {
+  const hashes = (query.get("hashes") ?? "").split(",");
+  const amountStroops = "1000000000";
+  return {
+    destination: query.get("destination") ?? "",
+    entries: hashes.map((hash) => ({ hash, status: "delivered", ledger: 1, amountStroops })),
+    totalStroops: (BigInt(amountStroops) * BigInt(hashes.length)).toString(),
+  };
+}
+
 function json(route: Route, body: unknown, status = 200): Promise<void> {
   return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 }
@@ -405,6 +417,9 @@ export async function installApiFixtures(page: Page): Promise<{ expectAllAnswere
     if ((match = pathname.match(/^\/api\/v1\/testnet\/transactions\/([0-9a-f]{64})$/))) {
       const found: TransactionLookupResponse = { status: "confirmed", hash: match[1], ledger: 1 };
       return json(route, found);
+    }
+    if (method === "GET" && pathname === "/api/v1/testnet/close/delivered") {
+      return json(route, delivered(new URL(request.url()).searchParams));
     }
     if (pathname.startsWith("/api/testnet/mediator/check/")) return json(route, NOT_AN_EXCHANGE);
     if (pathname.startsWith("/api/testnet/allowances/")) return json(route, allowances());

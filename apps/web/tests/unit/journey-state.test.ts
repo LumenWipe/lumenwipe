@@ -198,6 +198,7 @@ describe("allowance table", () => {
       "no-new-sent",
       "may-be-sent",
       "receipt-saved",
+      "amount-received",
     ],
     unknown: [
       "key-stays-in-browser",

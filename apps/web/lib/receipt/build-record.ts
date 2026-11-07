@@ -24,7 +24,7 @@ export type ReceiptSource = Pick<
   | "claimableBalanceSelections"
 >;
 
-const CLOSING_STEPS = ["MERGE", "CLOSE_ACCOUNT"];
+export const CLOSING_STEPS: readonly string[] = ["MERGE", "CLOSE_ACCOUNT"];
 
 export function confirmedStepsOf(plan: readonly PlannedStep[]): PlannedStep[] {
   return plan.filter((s) => s.status === "confirmed" && !!s.txHash);

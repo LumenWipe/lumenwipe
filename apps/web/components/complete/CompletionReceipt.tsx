@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import { AlertTriangle, CheckCircle, Download, ExternalLink, History } from "lucide-react";
 import Link from "next/link";
 import { useFocusOnMount } from "@/hooks/useFocusOnMount";
+import { useReceivedLumens } from "@/hooks/useReceivedLumens";
 import type { Network } from "@/config/networks";
 import { SE_EXPLORER_BASE } from "@/config/networks";
 import { useDemolishStore } from "@/store/demolish";
@@ -75,6 +76,17 @@ export default function CompletionReceipt({ network, onSaved }: CompletionReceip
       .then(() => (finished && sessionId ? cleanupSession(sessionId) : undefined));
   }, [record, journey.mayBeInFlight, sessionId, onSaved]);
 
+  // A saved receipt that moves to its own address is looked up there. This page asks only when it
+  // stays: the save failed, or nothing moves it on.
+  const { received, retry } = useReceivedLumens(record, {
+    enabled: save === "failed" || (save === "saved" && !onSaved),
+    persist: save === "saved",
+  });
+  const shown =
+    record && received.state === "recorded" && record.receivedLumens === null
+      ? { ...record, receivedLumens: received.lumens }
+      : record;
+
   const banner = closed ? (
     <Callout
       tone="success"
@@ -118,10 +130,10 @@ export default function CompletionReceipt({ network, onSaved }: CompletionReceip
     </Callout>
   );
 
-  if (!record) return banner;
+  if (!shown) return banner;
 
   return (
-    <Receipt record={record} banner={banner}>
+    <Receipt record={shown} banner={banner} received={received} onRetryReceived={retry}>
       <div aria-live="polite">
         {save === "saving" && <p className="text-xs text-fg-muted">Saving the receipt…</p>}
         {save === "saved" && allows(journey, "receipt-saved") && (
@@ -144,7 +156,7 @@ export default function CompletionReceipt({ network, onSaved }: CompletionReceip
           icon={<AlertTriangle className="h-4 w-4" />}
           className="p-3 text-xs"
           action={
-            <Button size="sm" onClick={() => downloadReceiptJson(record)}>
+            <Button size="sm" onClick={() => downloadReceiptJson(shown)}>
               <Download className="h-3.5 w-3.5" />
               Download receipt
             </Button>
@@ -168,9 +180,7 @@ export default function CompletionReceipt({ network, onSaved }: CompletionReceip
         </Button>
       )}
 
-      {closed && (
-        <ReceiptActions network={network} destinationAddress={record.destinationAddress} />
-      )}
+      {closed && <ReceiptActions network={network} destinationAddress={shown.destinationAddress} />}
     </Receipt>
   );
 }

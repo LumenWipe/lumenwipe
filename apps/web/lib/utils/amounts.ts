@@ -25,3 +25,22 @@ export function estimateFeeLumens(operationCount: number): string {
   const stroops = operationCount * 100;
   return stroopsToXlm(stroops);
 }
+
+/** A whole number of stroops as XLM with all seven decimals, exactly: no floating point. */
+export function stroopsToFixedLumens(stroops: string): string {
+  const n = BigInt(stroops);
+  const unit = BigInt(STROOPS_PER_XLM);
+  return `${n / unit}.${(n % unit).toString().padStart(7, "0")}`;
+}
+
+const LUMENS = /^(\d+)(?:\.(\d{1,7}))?$/;
+
+/** An XLM amount for display, exactly as given: thousands grouped, two to seven decimals, no
+ *  rounding. Null when the value is not a plain non-negative amount of at most seven decimals. */
+export function formatLumensExact(lumens: string): string | null {
+  const match = LUMENS.exec(lumens);
+  if (!match) return null;
+  const whole = BigInt(match[1]).toLocaleString("en-US");
+  const fraction = (match[2] ?? "").replace(/0+$/, "").padEnd(2, "0");
+  return `${whole}.${fraction}`;
+}
