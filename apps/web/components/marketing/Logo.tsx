@@ -1,13 +1,21 @@
+import { cn } from "@/lib/utils/cn";
+
 interface LogoProps {
   className?: string;
   showWord?: boolean;
+  /** Extra classes for the word, e.g. to hide it where the bar is narrow. */
+  wordClassName?: string;
 }
 
 /**
  * LumenWipe mark: a four-point Stellar "spark" with a sweep tail,
  * the account being cleanly wiped and its light recovered.
  */
-export default function Logo({ className = "h-7 w-auto", showWord = true }: LogoProps) {
+export default function Logo({
+  className = "h-7 w-auto",
+  showWord = true,
+  wordClassName,
+}: LogoProps) {
   return (
     <span className="inline-flex items-center gap-2.5">
       <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true" role="img">
@@ -36,7 +44,9 @@ export default function Logo({ className = "h-7 w-auto", showWord = true }: Logo
         />
       </svg>
       {showWord && (
-        <span className="mkt-display text-body font-bold tracking-tight text-white">
+        <span
+          className={cn("mkt-display text-body font-bold tracking-tight text-white", wordClassName)}
+        >
           Lumen<span className="text-accent">Wipe</span>
         </span>
       )}

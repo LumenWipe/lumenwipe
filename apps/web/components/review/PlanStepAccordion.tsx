@@ -6,15 +6,12 @@ import type { PlannedStep, StepType } from "@/types/plan";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
 import { groupStepsByType } from "@/lib/plan/group-steps";
 import { Card } from "@/components/ui/card";
+import { FullAddress } from "@/components/ui/full-address";
 
 interface PlanStepAccordionProps {
   steps: PlannedStep[];
   destinationAddress: string | null;
   mediatorRequired: boolean;
-}
-
-function shortAddr(addr: string): string {
-  return `${addr.slice(0, 8)}…${addr.slice(-8)}`;
 }
 
 /**
@@ -91,10 +88,12 @@ export default function PlanStepAccordion({
                   {g.type === "MERGE" && destinationAddress && (
                     <p className="text-xs text-fg-muted">
                       Destination:{" "}
-                      <span className="font-mono-address text-white/70">
-                        {shortAddr(destinationAddress)}
-                      </span>
-                      {mediatorRequired && " · routed through the shared exchange relay account"}
+                      <FullAddress
+                        value={destinationAddress}
+                        label="destination address"
+                        className="text-white/70"
+                      />
+                      {mediatorRequired && " · routed through the shared relay account"}
                     </p>
                   )}
                 </div>

@@ -12,7 +12,9 @@ import { useKeepDecisions } from "@/hooks/useKeepDecisions";
 import { goBackToAnalyze } from "@/lib/plan/confirm-plan";
 import { routeForPhase } from "@/lib/journey/route-for-phase";
 import ReviewView from "@/components/review/ReviewView";
+import NetworkBadge from "@/components/layout/NetworkBadge";
 import { Button } from "@/components/ui/button";
+import { shortenAddress } from "@/components/ui/short-address";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { useFocusOnMount } from "@/hooks/useFocusOnMount";
 
@@ -59,25 +61,30 @@ export default function ReviewPage({ params }: { params: Promise<{ network: Netw
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
-      <div className="flex items-center gap-2 mb-6">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="Back to analyze"
-          onClick={() => goBackToAnalyze(setPhase, router, network)}
-          icon={<ArrowLeft className="h-4 w-4" />}
-        />
-        <h1
-          ref={headingRef}
-          tabIndex={-1}
-          className="mkt-display text-xl font-bold text-white outline-none"
-        >
-          Review the full plan
-        </h1>
-        <span className="text-xs text-fg-subtle ml-auto mkt-mono">
-          {sourceAddress.slice(0, 8)}...{sourceAddress.slice(-8)}
-        </span>
+      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Back to analyze"
+            onClick={() => goBackToAnalyze(setPhase, router, network)}
+            icon={<ArrowLeft className="h-4 w-4" />}
+          />
+          <h1
+            ref={headingRef}
+            tabIndex={-1}
+            className="mkt-display text-xl font-bold text-white outline-none"
+          >
+            Review the full plan
+          </h1>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+          <NetworkBadge network={network} detailed />
+          <span className="font-mono-address text-xs text-fg-subtle" title={sourceAddress}>
+            {shortenAddress(sourceAddress)}
+          </span>
+        </div>
       </div>
 
       <StatusMessage

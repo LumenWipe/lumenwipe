@@ -16,11 +16,15 @@ import {
   CONFIRM_UNCHECKED,
 } from "@/lib/utils/user-error";
 import { formatXlm } from "@/lib/utils/amounts";
+import { confirmedMemo } from "@/lib/plan/memo-field";
+import { destinationKind, memoLine, relayRoute } from "@/lib/plan/destination-kind";
 import PlanStepAccordion from "@/components/review/PlanStepAccordion";
-import AccountSummaryCard from "@/components/plan/AccountSummaryCard";
+import ReviewHero, { MemoValue } from "@/components/review/ReviewHero";
+import AccountContents from "@/components/plan/AccountContents";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { FullAddress } from "@/components/ui/full-address";
 
 /** How long the confirm waits for the close to be saved: a blocked database never answers. */
 export const CONFIRM_SAVE_TIMEOUT_MS = 5000;
@@ -43,7 +47,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
     accountState,
     executionPlan,
     destinationAddress,
-    mediatorRequired,
+    destinationAcknowledgedFor,
     sourceAddress,
     memo,
     memoType,
@@ -55,6 +59,12 @@ export default function ReviewView({ network }: ReviewViewProps) {
   const [confirming, setConfirming] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [held, setHeld] = useState<string | null>(null);
+
+  // The relay is said where verify() holds the close to it, never from the stored flag.
+  const viaRelay = destinationAddress !== null && relayRoute(destinationAddress) === "relay";
+  const memoShown = memoLine(
+    destinationAddress ? confirmedMemo(destinationAddress, memo, memoType) : null
+  );
 
   const totalFee = executionPlan
     .reduce((sum, step) => sum + parseFloat(step.estimatedFeeLumens), 0)
@@ -94,6 +104,18 @@ export default function ReviewView({ network }: ReviewViewProps) {
 
   return (
     <div className="space-y-5">
+      {sourceAddress && destinationAddress && (
+        <ReviewHero
+          network={network}
+          source={sourceAddress}
+          destination={destinationAddress}
+          kind={destinationKind(destinationAddress, {
+            acknowledgedFor: destinationAcknowledgedFor,
+          })}
+          memo={memoShown}
+          expected={expectedReceive}
+        />
+      )}
       {resumedClose?.source === sourceAddress && (
         <p className="text-sm text-fg-muted">
           You are continuing a close you started earlier, so this plan lists only what is left on
@@ -101,11 +123,14 @@ export default function ReviewView({ network }: ReviewViewProps) {
         </p>
       )}
       {accountState && (
-        <AccountSummaryCard
-          account={accountState}
-          destinationAddress={destinationAddress}
-          expected={expectedReceive}
-        />
+        <Card>
+          <details open>
+            <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-white/80">
+              What is on this account
+            </summary>
+            <AccountContents account={accountState} className="border-t border-white/10" />
+          </details>
+        </Card>
       )}
 
       <Card>
@@ -116,7 +141,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
           <PlanStepAccordion
             steps={executionPlan}
             destinationAddress={destinationAddress}
-            mediatorRequired={mediatorRequired}
+            mediatorRequired={viaRelay}
           />
         </div>
       </Card>
@@ -135,15 +160,18 @@ export default function ReviewView({ network }: ReviewViewProps) {
       >
         <p>
           The account will be removed from the Stellar ledger and its balance sent to{" "}
-          <span className="font-mono text-white/80 break-all">{destinationAddress}</span>
-          {mediatorRequired ? " through the exchange relay account." : "."}
+          {destinationAddress && (
+            <FullAddress
+              value={destinationAddress}
+              label="destination address"
+              className="text-white/80"
+            />
+          )}
+          {viaRelay ? " through the shared relay account." : "."}
         </p>
-        {memo && (
-          <p className="mt-1">
-            Memo: <span className="font-mono text-white/80">{memo}</span>
-            {memoType ? ` (${memoType})` : ""}
-          </p>
-        )}
+        <p className="mt-1">
+          Memo: <MemoValue memo={memoShown} />
+        </p>
       </Callout>
 
       <label className="flex items-start gap-3 cursor-pointer select-none">
