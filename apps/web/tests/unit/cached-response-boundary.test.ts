@@ -26,6 +26,7 @@ const FETCH_TARGETS: Record<string, "no-store" | "cached, gate only" | "display 
   "/api/*/account/*": "no-store",
   "/api/*/allowances/*": "no-store",
   "/api/*/allowances/revoke": "no-store",
+  "/api/*/estimate": "display only",
   "/api/*/fee-bump/sponsor": "no-store",
   "/api/*/mediator/check/*": "cached, gate only",
   "/api/*/mediator/sign": "no-store",
@@ -160,6 +161,17 @@ test("the signing path cannot reach the amount received", () => {
     "lib/receipt/received.ts",
     "lib/api/delivered-client.ts",
     "hooks/useReceivedLumens.ts",
+  ]) {
+    expect(existsSync(join(WEB_ROOT, display))).toBe(true);
+    expect(reachable.has(display)).toBe(false);
+  }
+});
+
+test("the signing path cannot reach the landing page's recovery estimate", () => {
+  const reachable = reachableFrom(SIGNING_ROOTS);
+  for (const display of [
+    "lib/api/estimate-client.ts",
+    "components/marketing/RecoveryEstimate.tsx",
   ]) {
     expect(existsSync(join(WEB_ROOT, display))).toBe(true);
     expect(reachable.has(display)).toBe(false);

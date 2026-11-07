@@ -7,7 +7,7 @@ import { rateLimitedResponse } from "@/lib/api/proxy-error";
 
 // Generous for a legitimate close flow (a close is a handful of requests), but caps how
 // much any single IP can pump through LumenWipe's shared API key in a day.
-const PROXY_LIMIT_PER_DAY = 500;
+export const PROXY_LIMIT_PER_DAY = 500;
 
 function clientIp(req: NextRequest): string {
   // Prefer x-real-ip: on Vercel it's the platform-set, trusted single client IP. The
@@ -26,22 +26,20 @@ function clientIp(req: NextRequest): string {
  * anonymous amplifier against the shared server-side key. Returns a 429 response when the
  * caller is over the limit, or null to proceed. Fails open (an Upstash Redis outage allows the request)
  * so infrastructure trouble never blocks a legitimate, irreversible close. A route with a
- * `[network]` param passes `params`, so an unknown network gets its 400 without counting.
+ * `[network]` param passes `params`, so an unknown network gets its 400 without counting. A
+ * route that costs more than one upstream read per request passes its own `limitPerDay`.
  */
 export async function rateLimitProxy(
   req: NextRequest,
   namespace: string,
-  params?: Promise<{ network: string }>
+  params?: Promise<{ network: string }>,
+  limitPerDay = PROXY_LIMIT_PER_DAY
 ): Promise<NextResponse | null> {
   if (params && !isValidNetwork((await params).network)) return invalidNetworkResponse();
 
   let allowed = true;
   try {
-    allowed = await checkNamespacedRateLimit(
-      `proxy:${namespace}`,
-      clientIp(req),
-      PROXY_LIMIT_PER_DAY
-    );
+    allowed = await checkNamespacedRateLimit(`proxy:${namespace}`, clientIp(req), limitPerDay);
   } catch {
     // Fail open - limiter trouble must never block a legitimate, irreversible close.
     return null;

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { NextRequest, type NextResponse } from "next/server";
+import { Keypair } from "@stellar/stellar-sdk";
 import { LumenWipeInvalidNetworkError, type Network } from "@lumenwipe/sdk";
 import { proxyErrorResponse } from "@/lib/api/proxy-error";
 
@@ -32,6 +33,18 @@ const ROUTES = routeFiles()
   .filter((path) => path.includes("[network]"))
   .map((path) => [path.slice(API_DIR.length), path] as const);
 
+/** The body a POST route needs to reach the API, for a route that judges one first. */
+const FORWARDED_BODY: Record<string, string> = {
+  "/[network]/estimate/route.ts": JSON.stringify({ address: Keypair.random().publicKey() }),
+};
+
+/** How a route that reads the API more than once, or derives its answer from what it read,
+ *  answers this file's empty upstream bodies. The estimate reads the account and its plan, and
+ *  an empty plan carries no fee, so it answers with its own failure, never a figure. */
+const FORWARDED_ANSWER: Record<string, { status: number; upstreamCalls: number }> = {
+  "/[network]/estimate/route.ts": { status: 502, upstreamCalls: 2 },
+};
+
 /** The query a route needs to reach the API, for a route that judges one first. */
 const FORWARDED_QUERY: Record<string, string> = {
   "/v1/[network]/close/delivered/route.ts": `?destination=GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF&hashes=${"a".repeat(64)}`,
@@ -59,14 +72,14 @@ function callsTo(origin: string): number {
     .length;
 }
 
-async function call(file: string, network: string, query = ""): Promise<NextResponse> {
+async function call(file: string, network: string, query = "", body = "{}"): Promise<NextResponse> {
   const mod = (await import(file)) as { GET?: Handler; POST?: Handler };
   const method = mod.POST ? "POST" : "GET";
   const handler = mod.POST ?? mod.GET;
   if (!handler) throw new Error(`${file} exports no handler`);
   const req = new NextRequest(`https://www.lumenwipe.com/api/route${query}`, {
     method,
-    body: method === "POST" ? "{}" : undefined,
+    body: method === "POST" ? body : undefined,
   });
   return handler(req, { params: Promise.resolve({ network, address: "G", hash: "a".repeat(64) }) });
 }
@@ -106,10 +119,11 @@ describe("route handlers with a [network] param", () => {
   });
 
   test.each(ROUTES)("%s forwards a known network", async (route, file) => {
-    const res = await call(file, "testnet", FORWARDED_QUERY[route] ?? "");
-    expect(res.status).toBe(200);
+    const res = await call(file, "testnet", FORWARDED_QUERY[route] ?? "", FORWARDED_BODY[route]);
+    const expected = FORWARDED_ANSWER[route] ?? { status: 200, upstreamCalls: 1 };
+    expect(res.status).toBe(expected.status);
     expect(callsTo(LIMITER)).toBe(1);
-    expect(callsTo(UPSTREAM)).toBe(1);
+    expect(callsTo(UPSTREAM)).toBe(expected.upstreamCalls);
   });
 
   test.each(ROUTES)("%s refuses any other value, with no fetch", async (_, file) => {
