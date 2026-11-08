@@ -8,6 +8,8 @@ export interface CloseExpectation {
   /** The destination the user typed. */
   destination: string;
   network: ExampleNetwork;
+  /** The deposit memo the user typed, for an exchange destination. None when omitted. */
+  memo?: { value: string; type: "text" | "id" };
 }
 
 const DESTINATION_ACK_CHOICE = "i_control_this_address";
@@ -17,14 +19,15 @@ export const destinationDecisionId = (address: string): string => `destination:$
 /**
  * Checks every transaction with `@lumenwipe/verify`, the verifier the LumenWipe web app signs
  * with, against the caller's own inputs and the account read, never against the API's `intent`
- * summary. This example makes no per-asset choices and sets no memo, so those inputs are empty:
- * any transfer, conversion or memo the API added is refused rather than signed.
+ * summary. These examples make no per-asset choices, so those inputs are empty: any transfer or
+ * conversion the API added is refused rather than signed, and so is any memo other than the one
+ * the caller passed.
  */
 export function verifyCloseTransaction(tx: CloseTransaction, expected: CloseExpectation): void {
   if (tx.needsSponsoredFee) {
     throw new Error("This example does not handle fee-sponsored transactions.");
   }
-  const { account, destination, network } = expected;
+  const { account, destination, network, memo } = expected;
   verifyClose({
     unsignedXdr: tx.xdr,
     network,
@@ -32,8 +35,8 @@ export function verifyCloseTransaction(tx: CloseTransaction, expected: CloseExpe
       source: account.address,
       destination,
       nativeBalance: account.nativeBalanceLumens,
-      memo: null,
-      memoType: null,
+      memo: memo?.value ?? null,
+      memoType: memo?.type ?? null,
       claimTrustlineAssets: [],
       accountSigners: account.signers,
       accountThresholds: account.thresholds,
@@ -47,9 +50,10 @@ export function verifyCloseTransaction(tx: CloseTransaction, expected: CloseExpe
 }
 
 /**
- * Answers the one decision this example can make on its own: acknowledging a destination it
- * controls. Anything else the plan requires is a choice about the user's assets, so it stops
- * the run instead of guessing.
+ * Answers the one decision these examples can make on its own: acknowledging a destination it
+ * controls, and only when the plan asks (it does not for a listed exchange, which is never an
+ * address the caller controls). Anything else the plan requires is a choice about the user's
+ * assets, so it stops the run instead of guessing.
  */
 export function buildDecisions(
   decisionPoints: DecisionPoint[],
@@ -62,5 +66,7 @@ export function buildDecisions(
       `The plan needs decisions this example does not answer: ${unresolved.map((dp) => dp.id).join(", ")}.`
     );
   }
-  return [{ id: destinationId, choice: DESTINATION_ACK_CHOICE }];
+  return decisionPoints.some((dp) => dp.id === destinationId)
+    ? [{ id: destinationId, choice: DESTINATION_ACK_CHOICE }]
+    : [];
 }

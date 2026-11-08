@@ -126,6 +126,9 @@ export function exitExpectations(accountState: AccountState | null | undefined, 
 export type Network = "mainnet" | "testnet";
 
 // @public
+export function requiresMediator(address: string): boolean;
+
+// @public
 export interface TokenConversionChoice {
     amountIn: string;
     amountOut?: string;

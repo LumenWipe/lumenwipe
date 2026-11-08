@@ -9,6 +9,7 @@
 import type { AccountSigner, AccountState, AccountThresholds } from "@lumenwipe/types";
 import { verifyCloseTransaction as webVerifyCloseTransaction } from "../../../apps/web/lib/stellar/verify";
 import { exitExpectations as webExitExpectations } from "../../../apps/web/lib/stellar/exit-expectations";
+import { mediatorAllowedFor } from "../../../apps/web/lib/exchange-registry";
 
 export { VerificationError } from "../../../apps/web/lib/stellar/verification-error";
 export type { AccountSigner, AccountState, AccountThresholds };
@@ -165,4 +166,14 @@ export function exitExpectations(
   network: Network
 ): ExitExpectations {
   return webExitExpectations(accountState, network);
+}
+
+/**
+ * Whether a close to `address` goes through the shared intermediary: true only for an exchange
+ * the registry bundled in this package lists as unable to receive an account merge. The same
+ * rule `verifyCloseTransaction` applies, so an integrator decides from it, never from the API's
+ * response, whether a transaction needs the intermediary's co-signature.
+ */
+export function requiresMediator(address: string): boolean {
+  return mediatorAllowedFor(address);
 }

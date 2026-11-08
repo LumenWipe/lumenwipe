@@ -12,6 +12,8 @@ release is cut.
 - `verifyCloseTransaction(input)`, compiled from the web verifier, with the bundled exchange and
   contract registries.
 - `exitExpectations(accountState, network)`, the DeFi half of the expectation.
+- `requiresMediator(address)`, whether a close to that address goes through the shared
+  intermediary according to the bundled exchange registry.
 - `VerificationError`, and the documented input types `VerifyCloseInput`,
   `CloseExpectationInput` and `ExitExpectations`.
 - `vectors/close-v1.json`, the conformance vector set (schema 1).

@@ -1,6 +1,6 @@
 ---
 title: "Headless example"
-description: "A complete testnet close from a plain Node or Bun process, and a read-only rehearsal of any account."
+description: "A complete testnet close from a plain Node or Bun process, the same close to an exchange, and a read-only rehearsal of any account."
 icon: "terminal"
 ---
 
@@ -8,9 +8,11 @@ icon: "terminal"
 
 It funds two accounts through Friendbot, adds a data entry, then runs `getAccount`, `closePlan`, `closeTransactions`, and `submit` through [`runClose`](/sdk/run-close), signing with an in-process keypair.
 
+[`examples/exchange-close.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/packages/sdk/examples/exchange-close.ts) is the same close to an exchange deposit address, through the shared intermediary. See [Close to an exchange](#close-to-an-exchange).
+
 [`examples/plan-only.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/packages/sdk/examples/plan-only.ts) is its read-only counterpart: it rehearses the close of any account, mainnet included, without holding a key or building a transaction. See [Rehearse a mainnet account](#rehearse-a-mainnet-account).
 
-Both run every night in CI against testnet, so a change that breaks them against the API is caught the next morning.
+All three run every night in CI against testnet, so a change that breaks them against the API is caught the next morning.
 
 ## The part to copy
 
@@ -62,6 +64,37 @@ LUMENWIPE_API_KEY=... bun run --filter '@lumenwipe/sdk' example:headless
 ```
 
 `LUMENWIPE_API_URL` overrides the default `https://api.lumenwipe.com`. The example runs on testnet only.
+
+## Close to an exchange
+
+Exchanges do not accept an account merge. A close to one is a single transaction with two operations: the account merges into the shared intermediary, and the intermediary forwards the balance in XLM to the exchange address with the deposit memo. The API co-signs the forward with the intermediary's key (`mediatorSign`). The example adds three things to the headless close:
+
+- **The registry decides, not the API.** Whether the destination needs the intermediary comes from `requiresMediator(destination)` in `@lumenwipe/verify`, which reads the exchange registry bundled in that package. Before anything is built, the example also calls `mediatorCheck` and stops with `MediatorUnavailableError` (with its `available` and `registryFresh` fields printed) when the API cannot co-sign. Otherwise the cleanup round would land and the merge would then be refused.
+- **The memo is an input.** The deposit memo goes to `closeTransactions` and to the verifier, which refuses a transaction carrying any other memo, a forward to any address but the one typed, or a forward smaller than the balance read.
+- **The co-signature may only add a signature.** In `runClose`'s `prepare` step, the example asks for the co-signature only on the merge of a close to a listed exchange, decided from the destination it typed and the decoded transaction. It refuses the returned envelope when its hash differs from the one it signed, when it dropped a signature, or when it carries no new one. Nothing is submitted in those cases.
+
+When the close confirms, it reads what reached the exchange with `closeDelivered`: only the intermediary's forward counts. These are the checks listed under [Mediated closes](/sdk/verification#mediated-closes-the-destination-is-yours-to-check).
+
+The destination is the Coinbase deposit address from the bundled registry, used on testnet, where the XLM is worthless and nobody here holds its key. A forward is a payment, which needs an existing account, so the example creates the address with Friendbot when a testnet reset has removed it.
+
+The API needs an intermediary key for the network. A self-hosted API takes a throwaway testnet one:
+
+```bash
+# Make a testnet keypair and fund it; it never needs to leave this shell.
+read -r MEDIATOR_SECRET MEDIATOR_PUBLIC < <(bun -e 'import { Keypair } from "@stellar/stellar-sdk"; const k = Keypair.random(); console.log(k.secret(), k.publicKey())')
+curl -fsS "https://friendbot.stellar.org/?addr=$MEDIATOR_PUBLIC" > /dev/null
+MEDIATOR_SECRET_TESTNET="$MEDIATOR_SECRET" MEDIATOR_PUBLIC_TESTNET="$MEDIATOR_PUBLIC" \
+API_KEYS=local=... bun run --filter '@lumenwipe/api' start
+```
+
+Then, from the repository root:
+
+```bash
+LUMENWIPE_API_URL=http://localhost:3001 LUMENWIPE_API_KEY=... \
+bun run --filter '@lumenwipe/sdk' example:exchange
+```
+
+The example runs on testnet only and refuses any other network. Never use a mainnet intermediary key for it.
 
 ## Rehearse a mainnet account
 
