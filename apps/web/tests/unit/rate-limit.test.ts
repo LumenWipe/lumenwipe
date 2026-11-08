@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
 import { rateLimitProxy } from "@/lib/api/rate-limit";
+import * as limiter from "@/lib/upstash-redis";
 import { checkNamespacedRateLimit } from "@/lib/upstash-redis";
 
 const LIMITER = "https://limiter.invalid";
@@ -49,6 +50,14 @@ function limiterCalls(): number {
     .length;
 }
 
+/** The bodies the limiter was sent, as text, to read the key a request counted against. */
+function limiterBodies(): string {
+  return (fetchSpy.mock.calls as unknown[][])
+    .filter(([input]) => originOf(input) === LIMITER)
+    .map(([, init]) => String((init as RequestInit | undefined)?.body ?? ""))
+    .join("\n");
+}
+
 function logged(): string {
   return [...errorSpy.mock.calls, ...warnSpy.mock.calls].flat().map(String).join("\n");
 }
@@ -70,6 +79,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setSystemTime();
   fetchSpy.mockRestore();
   errorSpy.mockRestore();
   warnSpy.mockRestore();
@@ -80,6 +90,13 @@ afterEach(() => {
 });
 
 describe("checkNamespacedRateLimit", () => {
+  test("counts against the UTC day of the instant it is given", async () => {
+    setSystemTime(new Date("2026-11-09T00:00:00.100Z"));
+    await checkNamespacedRateLimit("t", IP, 5, { now: new Date("2026-11-08T23:59:59.900Z") });
+    expect(limiterBodies()).toContain(`t:ratelimit:${IP_HASH}:2026-11-08`);
+    expect(limiterBodies()).not.toContain("2026-11-09");
+  });
+
   test("a count within the limit is allowed, one past it is limited", async () => {
     reply = counted(5);
     expect(await checkNamespacedRateLimit("t", IP, 5)).toBe("allowed");
@@ -178,6 +195,65 @@ describe("rateLimitProxy", () => {
     expect(res?.status).toBe(429);
   });
 
+  test.each([
+    ["2026-11-08T23:59:59.900Z", "1", "2026-11-08"],
+    ["2026-11-09T00:00:00.000Z", "86400", "2026-11-09"],
+    ["2026-11-08T12:00:00.000Z", "43200", "2026-11-08"],
+  ])(
+    "a 429 at %s says to retry in %s s, from the day its own key counted (%s), uncached",
+    async (instant, retryAfter, day) => {
+      setSystemTime(new Date(instant));
+      reply = counted(501);
+      const res = await rateLimitProxy(request(), "t");
+      expect(res?.status).toBe(429);
+      expect(res?.headers.get("Retry-After")).toBe(retryAfter);
+      expect(res?.headers.get("Cache-Control")).toBe("no-store");
+      expect(await res?.json()).toEqual({
+        error: {
+          code: "rate_limited",
+          message: "Too many requests. Please slow down and try again later.",
+        },
+      });
+      expect(limiterBodies()).toContain(`proxy:t:ratelimit:${IP_HASH}:${day}`);
+    }
+  );
+
+  test("a 429 takes its Retry-After from the clock its key was counted on", async () => {
+    // The clock reads 23:59:59.900 when the request is counted and has passed midnight by the
+    // time the counter answers: the caller was limited on yesterday's key, which has already
+    // reset, so the wait is the 1 s left at counting time, never a whole new day.
+    setSystemTime(new Date("2026-11-08T23:59:59.900Z"));
+    reply = async () => {
+      setSystemTime(new Date("2026-11-09T00:00:00.100Z"));
+      return Response.json([{ result: 501 }, { result: 1 }]);
+    };
+    const res = await rateLimitProxy(request(), "t");
+    expect(res?.headers.get("Retry-After")).toBe("1");
+    expect(limiterBodies()).toContain(`proxy:t:ratelimit:${IP_HASH}:2026-11-08`);
+  });
+
+  test("the counter is asked for the same instant the 429 is built from", async () => {
+    setSystemTime(new Date("2026-11-08T23:59:59.900Z"));
+    let counted: Date | undefined;
+    const spy = spyOn(limiter, "checkNamespacedRateLimit").mockImplementation((async (
+      _namespace: string,
+      _ip: string,
+      _limit: number,
+      options?: { now?: Date }
+    ) => {
+      counted = options?.now;
+      setSystemTime(new Date("2026-11-09T00:00:00.100Z"));
+      return "limited";
+    }) as never);
+    try {
+      const res = await rateLimitProxy(request(), "t");
+      expect(counted?.toISOString()).toBe("2026-11-08T23:59:59.900Z");
+      expect(res?.headers.get("Retry-After")).toBe("1");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test("an unavailable limiter lets a default route through", async () => {
     reply = async () => {
       throw new TypeError("fetch failed");
@@ -210,6 +286,7 @@ describe("rateLimitProxy", () => {
       whenUnavailable: "refuse",
     });
     expect(res?.status).toBe(400);
+    expect(res?.headers.get("Cache-Control")).toBe("no-store");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,10 @@
 import { Redis } from "@upstash/redis";
 import { createHash } from "crypto";
+import { utcDayKey } from "@/lib/utc-day";
 
-// {namespace}:ratelimit:{ipHash}:{date} → per-IP daily request counter
+// {namespace}:ratelimit:{ipHash}:{date} → per-IP daily request counter. The UTC date in the key is
+// what resets the counter at 00:00 UTC; the 24-hour expiry, renewed on each increment, only clears
+// the previous day's key.
 
 /**
  * What the limiter says about one request:
@@ -64,12 +67,13 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
 /**
  * Increments this IP's daily counter in `namespace` and judges it against `limitPerDay`. Never
  * throws: a failure to count is reported as `unavailable`, and the caller decides what that means.
+ * `now` picks the UTC day counted against, so a caller can answer with the same day's reset.
  */
 export async function checkNamespacedRateLimit(
   namespace: string,
   ip: string,
   limitPerDay: number,
-  options: { timeoutMs?: number } = {}
+  options: { timeoutMs?: number; now?: Date } = {}
 ): Promise<RateLimitVerdict> {
   const creds = credentials();
   if (!creds) {
@@ -88,7 +92,7 @@ export async function checkNamespacedRateLimit(
   }
 
   try {
-    const key = `${namespace}:ratelimit:${hashIp(ip)}:${new Date().toISOString().slice(0, 10)}`;
+    const key = `${namespace}:ratelimit:${hashIp(ip)}:${utcDayKey(options.now ?? new Date())}`;
     const pipeline = redis(creds.url, creds.token).pipeline();
     pipeline.incr(key);
     pipeline.expire(key, 86_400);
