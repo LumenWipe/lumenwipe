@@ -38,6 +38,9 @@ import {
 import { batchItems } from "./batching";
 import type { KillSwitches } from "@/config/kill-switches";
 import { killSwitchBlockers, type ConversionProvider } from "@/lib/kill-switches/blockers";
+import { computeNeedsSignerNormalization, normalizesSignersFirst } from "./signers";
+
+export { computeNeedsSignerNormalization, normalizesSignersFirst };
 import { CLAIM_ROUND_BATCH_SIZE, OP_BATCH_LIMIT } from "@/config/constants";
 
 function shortAddr(addr: string): string {
@@ -169,28 +172,6 @@ function step(
     error: null,
     ...extra,
   };
-}
-
-export function computeNeedsSignerNormalization(accountState: AccountState): boolean {
-  const extraSigners = accountState.signers.filter((s) => s.key !== accountState.address);
-  return (
-    extraSigners.length > 0 || accountState.thresholds.med > 1 || accountState.thresholds.high > 1
-  );
-}
-
-/**
- * Whether signer normalization is the close's own first transaction (docs/multisig-cosigning.md
- * Section 3.1): no single key reaches every threshold, so each round before normalization would
- * need several keys. The master key must carry weight, because it signs that transaction
- * (INV-43); a weight-0 master keeps today's layout and its blocker. Shared by `buildPlan()` and
- * `buildCloseTransactions()`, so the plan's order is the order the builder emits.
- */
-export function normalizesSignersFirst(accountState: AccountState): boolean {
-  if (!computeNeedsSignerNormalization(accountState)) return false;
-  const { signers, thresholds, address } = accountState;
-  if ((signers.find((s) => s.key === address)?.weight ?? 0) < 1) return false;
-  const needed = Math.max(thresholds.low, thresholds.med, thresholds.high, 1);
-  return !signers.some((s) => s.type === "ed25519_public_key" && s.weight >= needed);
 }
 
 /**

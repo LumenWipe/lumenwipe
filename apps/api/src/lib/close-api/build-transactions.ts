@@ -96,6 +96,7 @@ import { confirmLedgerState } from "@/lib/close-api/state-drift";
 import { assessIssuance, type IssuanceDeps } from "@/lib/close-api/issuance-preflight";
 import type { KillSwitches } from "@/config/kill-switches";
 import { killSwitchBlockers } from "@/lib/kill-switches/blockers";
+import { packFees, projectClassicFees } from "@/lib/close-api/sponsored-fees";
 
 // Raised when a close cannot be expressed as the minimal set of transactions.
 // The route handler maps `code` to an error response.
@@ -316,6 +317,15 @@ export async function buildCloseTransactions(
   const validUntilLedger = latest.sequence + Math.ceil(TX_TIMEOUT_SECONDS / 5);
   const needsMediator = requiresMediatorForAddress(destinationAddress);
   const sponsorConfigured = switches.feeSponsorship && switches.feeSponsorConfigured;
+  // What each classic round leaves the account for the ones after it, so a fee the sponsor would
+  // pay is not taken from XLM a later fee it would refuse needs.
+  const { laterOwnStroops } = projectClassicFees(
+    accountState,
+    dispositions,
+    claimableBalanceSelections,
+    needsMediator,
+    sponsorConfigured
+  );
 
   // Round 0 for an account no single key can close: signer normalization alone, ahead of every
   // other round, so each later one needs only the master key (docs/multisig-cosigning.md 3.1).
@@ -366,6 +376,9 @@ export async function buildCloseTransactions(
         throw e;
       }
     }
+    const sorobanRounds =
+      2 * accountState.defiPositions.positions.length +
+      tokenRoundsAhead(accountState, dispositions);
     const normalization = packCloseTransactions(
       sdkAccount,
       {
@@ -386,11 +399,10 @@ export async function buildCloseTransactions(
       network,
       validUntilLedger,
       accountState,
-      sponsorConfigured
+      sponsorConfigured,
+      // With Soroban rounds ahead, `assertOwnFeesFit` below holds the account to every later fee.
+      sorobanRounds > 0 ? 0n : laterOwnStroops.afterNormalization
     )[0]!;
-    const sorobanRounds =
-      2 * accountState.defiPositions.positions.length +
-      tokenRoundsAhead(accountState, dispositions);
     if (sorobanRounds > 0) {
       assertOwnFeesFit(
         accountState,
@@ -635,7 +647,8 @@ export async function buildCloseTransactions(
           network,
           validUntilLedger,
           accountState,
-          sponsorConfigured
+          sponsorConfigured,
+          laterOwnStroops.afterClaims
         ),
         requiresAnotherCall: true,
         remainingSteps:
@@ -912,23 +925,18 @@ function sponsorWouldPay(sdkAccount: Account, chunk: TaggedCloseOp[], network: N
  * Pure: reusing one Account across builds chains the sequence numbers with no
  * network access. The client submits the transactions in `order`.
  *
- * `feeAffordability` is the account state to judge each chunk's fee against - the round's own
- * snapshot, read once and held fixed for every chunk built here (architecture.md §8.1). A chunk
- * whose fee the account cannot pay without dropping below its reserve (plus the XLM its open offers
- * are selling, held fixed for the round like the reserve) is built with its own fee
- * at zero and flagged `needsSponsoredFee: true`, so the client routes it through the fee-bump
- * sponsor (`/fee-bump/sponsor`) before submitting instead of paying the network directly, and
- * the round is refused instead when no sponsor is configured or the sponsor would not accept the
- * chunk's operations. The
- * account's *reserve* is not re-evaluated chunk to chunk, even though an earlier chunk would free
- * reserve on-chain by removing subentries: this round's transactions are all built from one
- * static snapshot with no network access in between, and a later round - which does re-read
- * state - is where a chunk that turns out to no longer need sponsoring gets built without it. Its
- * *balance*, however, IS tracked chunk to chunk within this one call: an earlier chunk built
- * unsponsored spends its own fee out of that same balance once it lands on-chain, so a later
- * chunk in the same round must be judged against what's left after that spend, not the round's
- * original balance - otherwise a run of several unsponsored chunks near the reserve line could
- * each look affordable in isolation while collectively overdrawing it.
+ * `feeAffordability` is the account state to judge the fees against - the round's own snapshot,
+ * read once and held fixed for every chunk built here (architecture.md §8.1): what the account
+ * holds above its reserve plus the XLM its open offers are selling. Who pays each chunk is
+ * `packFees`: a chunk the sponsor would not accept (`sponsorWouldPay`), or any chunk when no
+ * sponsor is configured, is paid by the account, and so is `laterOwnStroops`, what later rounds
+ * of the close will need from it. A chunk the sponsor accepts is paid by the account only from
+ * what is left beyond those, and is otherwise built with its own fee at zero and flagged
+ * `needsSponsoredFee: true`, so the client routes it through the fee-bump sponsor
+ * (`/fee-bump/sponsor`) before submitting. When those kept fees exceed the spare, the round is
+ * refused with `close_fee_balance_short` and the amount. The reserve is not re-evaluated chunk to
+ * chunk, even though an earlier chunk frees reserve on-chain by removing subentries; a later
+ * round, which re-reads state, is where that shows.
  */
 export function packCloseTransactions(
   sdkAccount: Account,
@@ -936,36 +944,31 @@ export function packCloseTransactions(
   network: Network,
   validUntilLedger: number,
   feeAffordability: FeeAffordability,
-  sponsorConfigured: boolean
+  sponsorConfigured: boolean,
+  laterOwnStroops = 0n
 ): CloseTransaction[] {
   const tagged = assembleCloseOpsTagged(sdkAccount.accountId(), input);
   const chunks = splitCloseOps(tagged);
   const networkPassphrase = NETWORK_PASSPHRASES[network];
   const fullSummary = buildSummary(input);
-  const reserve = feeFloorStroops(feeAffordability);
-  let remainingBalanceStroops = BigInt(xlmToStroops(feeAffordability.nativeBalanceLumens));
+  const spare =
+    BigInt(xlmToStroops(feeAffordability.nativeBalanceLumens)) - feeFloorStroops(feeAffordability);
+  const packing = packFees(
+    spare,
+    chunks.map((chunk) => ({
+      // The SDK multiplies `fee` by the operation count, so the per-operation base
+      // fee yields BASE_FEE_STROOPS * opCount on-chain.
+      fee: BigInt(BASE_FEE_STROOPS) * BigInt(chunk.length),
+      sponsorable: sponsorConfigured && sponsorWouldPay(sdkAccount, chunk, network),
+    })),
+    laterOwnStroops
+  );
+  if (packing.shortStroops > 0n) throw feeBalanceShortError(packing.shortStroops);
 
   return chunks.map((chunk, i): CloseTransaction => {
     const isLast = i === chunks.length - 1;
     const sourceSequence = sdkAccount.sequenceNumber();
-
-    // The SDK multiplies `fee` by the operation count, so the per-operation base
-    // fee yields BASE_FEE_STROOPS * opCount on-chain.
-    const chunkFeeStroops = BigInt(BASE_FEE_STROOPS) * BigInt(chunk.length);
-    const needsSponsoredFee = !accountPaysFee(remainingBalanceStroops, reserve, chunkFeeStroops);
-    if (needsSponsoredFee && !(sponsorConfigured && sponsorWouldPay(sdkAccount, chunk, network))) {
-      throw new CloseBuildError(
-        "close_fee_balance_short",
-        closeFeeShortMessage(chunkFeeStroops - (remainingBalanceStroops - reserve)),
-        422
-      );
-    }
-    // Only an unsponsored chunk spends the account's own balance on its fee - a sponsored
-    // chunk's fee is "0" and paid by the fee account instead, so it doesn't reduce what later
-    // chunks in this round have left to draw on.
-    if (!needsSponsoredFee) {
-      remainingBalanceStroops -= chunkFeeStroops;
-    }
+    const needsSponsoredFee = packing.sponsored[i]!;
     const builder = new TransactionBuilder(sdkAccount, {
       fee: needsSponsoredFee ? "0" : String(BASE_FEE_STROOPS),
       networkPassphrase,
