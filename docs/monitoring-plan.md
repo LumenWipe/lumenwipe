@@ -108,33 +108,53 @@ does not. Monitor implementation is tracked separately (#278).
 
 `.github/workflows/onchain-monitors.yml` runs the service-account checks every hour and the registry
 comparison once a day at 06:00 UTC, and everything on demand from the Actions tab. All of them are read-only
-against public endpoints: no account, no transaction, no funds. The service accounts to watch are one list at
-the top of the workflow, keyed by network.
+against public endpoints: no account, no transaction, no funds.
+
+The service accounts to watch come from repository variables, one per role and network and read nowhere else:
+`MEDIATOR_ADDRESS_TESTNET`, `FEE_ACCOUNT_ADDRESS_TESTNET`, `MEDIATOR_ADDRESS_MAINNET` and
+`FEE_ACCOUNT_ADDRESS_MAINNET`. Every check runs for each network that has a variable set. Before any check
+runs, a config step compares the variables with the inventory table in §1 and with the `ACCOUNTS` list of the
+published `stellar.toml`, and fails when they disagree: a variable the table lists an address for but that is
+unset, an address that differs from the table, a set variable whose row says not yet deployed, a
+`stellar.toml` account that is not a configured mainnet account, or a configured mainnet mediator that
+`stellar.toml` does not list. A key rotation therefore edits one variable and the matching row of the table,
+and the run stays red until both agree. The same comparison between the table and `stellar.toml` runs in the
+unit suite on every pull request.
+
+The source-account and forward checks read the transactions of the last `MONITOR_HISTORY_HOURS` hours (an
+optional repository variable from 2 to 720; 168, one week, when unset), paging through Horizon 200 at a time.
+A transaction older than the window is no longer read, so a finding stops being reported once the transaction
+behind it leaves the window, one week after it happened by default; the issue it opened stays open until a
+clean daily run closes it, as before. More than 25 pages inside the window is itself a finding for that
+account, naming the window, because the older transactions went unchecked.
 
 `S7.Tampering.1.M.1` reads each `verifiedLive` mainnet entry's executable hash over RPC and compares it to the
 registry. It also runs on every pull request as part of the integration suite, but the schedule is what makes
 it a monitor: a contract can be upgraded during a week when nobody opens a pull request.
 
-`S4a.Information.1.M.1` and `S4b.Information.1.M.1` query Horizon for the last 200 transactions touching each
-service account and count the ones it sourced. Measured on the testnet sponsor on 2026-09-18: 8 transactions
-touching the account, 0 sourced from it. The mediator: 0 as well. The threshold is that measurement, not a
-guess.
+`S4a.Information.1.M.1` and `S4b.Information.1.M.1` read every transaction touching each service account
+inside the history window and report each one it sourced. Measured on the testnet sponsor on 2026-09-18: 8
+transactions touching the account, 0 sourced from it. The mediator: 0 as well. The threshold is that
+measurement, not a guess.
 
 `S4a.Elevation.1.M.1` has two signals, both in `apps/api/scripts/monitors/service-accounts.ts`. The balance
-floor reads each account's native balance from Horizon and compares it to the floor in the list: the mediator's
-base reserve, and a provisional top-up level for the sponsor that stands in for `S4b.Denial.1.M.1`'s balance
-half until real usage sets one. The forward check reads the effects of every transaction touching the
-mediator and fires when it debited more than the merge credited in the same transaction, which is the only way
-the mediator can pay out of its own balance. Measured on the testnet mediator on 2026-10-07: 6 transactions,
-forward equal to the merge in every one.
+floor reads each account's native balance from Horizon and compares it to its role's floor in
+`service-accounts.ts`: the mediator's base reserve, and a provisional top-up level for the sponsor that stands
+in for `S4b.Denial.1.M.1`'s balance half until real usage sets one. The forward check reads the effects of
+every transaction touching the mediator inside the history window, one transaction at a time, and fires when
+it debited more than the merge credited in the same transaction, which is the only way the mediator can pay
+out of its own balance. Measured on the testnet mediator on 2026-10-07: 6 transactions, forward equal to the
+merge in every one.
 
-A finding opens a GitHub issue, assigned rather than merely labelled, and posts to a private Discord channel
-the maintainers watch. A suspected key compromise (the two service-key checks and the forward check) pings
-`@everyone`; a registry or balance finding, and a recovery, do not, so the ping keeps its meaning. The two service-key checks and the forward check post again on
-every hourly run they keep failing, because a suspected key compromise is worth repeating; a registry or
-balance finding posts once, then gets a daily comment on the issue, so the channel stays readable. The next
-clean daily run closes the issue and posts the recovery. A finding the webhook cannot deliver fails the run
-itself, so a missing or revoked webhook shows up as red rather than as silence.
+A finding opens a GitHub issue, assigned rather than merely labelled, and posts to the team channels the
+maintainers watch. A check that did not report success, whether it failed, was skipped behind a failed config
+step, was cancelled, or never ran, counts as a finding: a check that did not run never reads as clean. A
+suspected key compromise (the two service-key checks and the forward check) pings `@everyone`; a registry or
+balance finding, and a recovery, do not, so the ping keeps its meaning. The two service-key checks and the
+forward check post again on every hourly run they keep failing, because a suspected key compromise is worth
+repeating; a registry or balance finding posts once, then gets a daily comment on the issue, so the channel
+stays readable. The next clean daily run closes the issue and posts the recovery. A finding the webhook cannot
+deliver fails the run itself, so a missing or revoked webhook shows up as red rather than as silence.
 
 ### Provider contract check
 
@@ -206,8 +226,9 @@ scheduled query does. `S4b.Denial.1.M.1`'s rate half needs a baseline that does 
 real usage to measure.
 
 The live service-account checks watch testnet accounts, because those are the only service accounts that
-exist. Adding the mainnet mediator and sponsor is one entry each in the workflow's list once they are
-deployed.
+exist. Adding the mainnet mediator and sponsor, once they are deployed, is setting their two repository
+variables and filling their rows in §1 (and, for the mediator, `stellar.toml`); the config step fails until
+all three agree.
 
 ## 6. Did we do a good job?
 
