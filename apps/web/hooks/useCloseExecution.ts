@@ -43,6 +43,7 @@ import {
 } from "@/lib/stellar/signing-guards";
 import {
   accumulatedWeight,
+  addedSigners,
   applyConfirmedTransaction,
   evaluateSignatureContributions,
   parseRoundSignerState,
@@ -79,6 +80,7 @@ import {
   HASH_NOT_KEPT,
   NO_MERGE_CONFIRMED,
   requestIdOf,
+  SIGNED_NOT_APPROVED,
   UserFacingError,
   type CloseFailureStage,
 } from "@/lib/utils/user-error";
@@ -93,6 +95,7 @@ import {
   HashXPreimageSigner,
   WALLET_CONNECT_WALLET_ID,
   WalletKitSigner,
+  WalletSignerMismatchError,
   type TransactionSigner,
 } from "@/lib/stellar/signer";
 import {
@@ -208,6 +211,10 @@ function signingWait(signer: TransactionSigner): ProgressWait {
   if (signer instanceof HashXPreimageSigner) return "preimage";
   return "key";
 }
+
+/** A signing call that added no signature the account counts, from the named signer or at all. */
+const NO_NEW_SIGNATURE =
+  "This signer didn't add a new signature. If you already signed with this key, connect a different signer.";
 
 export const PLAN_CHANGED_NOTICE =
   "Your account changed while the close was being prepared, so nothing was submitted for that step. The plan below has been refreshed from your account as it is now: review it and confirm again to continue.";
@@ -498,7 +505,7 @@ export function useCloseExecution() {
               assertStillOwns(owner);
               inFlight = tx;
               // Computed from the exact XDR verify() approved, before any signer touches it -
-              // the anchor for both checks below. The hash covers only the transaction body
+              // the anchor for the checks below. The hash covers only the transaction body
               // (source, ops, sequence, memo, fee), never signatures, so it stays valid
               // whether taken before or after signing.
               const approvedHash = toHex(TransactionBuilder.fromXdr(xdr, passphrase).hash());
@@ -510,17 +517,21 @@ export function useCloseExecution() {
               // signature even for an already-used key (stellar-sdk doesn't dedupe), so a
               // same-key re-sign would still increase signature count while contributing
               // nothing new - evaluateSignatureContributions dedupes by signer key, so weight
-              // only goes up when a signer that hadn't yet contributed actually does.
-              const preSignWeight = accumulatedWeight(
-                evaluateSignatureContributions(xdr, passphrase, roundSignerState().signers)
+              // only goes up when a signer that hadn't yet contributed actually does. Both
+              // sides of the comparison below are evaluated against this one signer list.
+              const roundSigners = roundSignerState().signers;
+              const preSignContributions = evaluateSignatureContributions(
+                xdr,
+                passphrase,
+                roundSigners
               );
+              const preSignWeight = accumulatedWeight(preSignContributions);
               // A key the round no longer lists would add a signature the network refuses as
               // extra, so it is not asked to sign; the round pauses for a current signer.
               // With no signer at all, the round pauses the same way: nobody is asked.
               if (!signer) return { xdr, weight: preSignWeight };
-              if (!roundSignerState().signers.some((s) => s.key === signer.publicKey)) {
-                return { xdr, weight: preSignWeight };
-              }
+              const ownSigner = roundSigners.find((s) => s.key === signer.publicKey);
+              if (!ownSigner) return { xdr, weight: preSignWeight };
               assertPreimageRemovesItsSigner(xdr, passphrase, sourceAddress, signer.publicKey);
               // The signer's own live check, at each signature of the run and not only at its
               // start: a wallet session that changed since stops here, before it is asked.
@@ -545,22 +556,39 @@ export function useCloseExecution() {
               // signature at all. Assert both before trusting the result any further.
               const signedTx = TransactionBuilder.fromXdr(signedXdr, passphrase);
               if (toHex(signedTx.hash()) !== approvedHash) {
-                throw new UserFacingError(
-                  "The signed transaction does not match what you approved."
-                );
+                throw new UserFacingError(SIGNED_NOT_APPROVED);
               }
 
+              // Evaluated after the hash check, so every signature counted here is over the
+              // approved hash.
               const contributions = evaluateSignatureContributions(
                 signedXdr,
                 passphrase,
-                roundSignerState().signers
+                roundSigners
               );
-              const weight = accumulatedWeight(contributions);
-              if (weight <= preSignWeight) {
-                throw new UserFacingError(
-                  "This signer didn't add a new signature. If you already signed with this key, connect a different signer."
-                );
+              // The new signature must be the named signer's own. Weight alone would accept a
+              // wallet that reports no address and signs with another of the account's signer
+              // keys, and the screen would count that signature as the named key's. Only ed25519
+              // signers are held to this: a hash(x) signer is not a key that signs, and keeps the
+              // preimage guard above and the weight check below. A call that also adds another
+              // account key next to its own is accepted: both signatures are real and verified.
+              const added = addedSigners(preSignContributions, contributions);
+              if (
+                ownSigner.type === "ed25519_public_key" &&
+                !added.some((s) => s.key === ownSigner.key)
+              ) {
+                const signedWith = added.find((s) => s.type === "ed25519_public_key");
+                if (signedWith) {
+                  throw new WalletSignerMismatchError(
+                    signer instanceof WalletKitSigner ? signer.walletId : null,
+                    ownSigner.key,
+                    signedWith.key
+                  );
+                }
+                throw new UserFacingError(NO_NEW_SIGNATURE);
               }
+              const weight = accumulatedWeight(contributions);
+              if (weight <= preSignWeight) throw new UserFacingError(NO_NEW_SIGNATURE);
               return { xdr: signedXdr, weight };
             },
             prepare: async (tx: CloseTransaction, xdr: string) => {

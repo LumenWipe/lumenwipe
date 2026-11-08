@@ -53,6 +53,20 @@ export function evaluateSignatureContributions(
   });
 }
 
+/**
+ * The signers whose signature is in `after` but was not in `before`: the keys a signing call added.
+ * Both lists come from `evaluateSignatureContributions` over the same signers, so this only compares
+ * its results, matched by signer key rather than by position. A key that had already signed is
+ * never counted as added, even if the call appended a second signature from it.
+ */
+export function addedSigners(
+  before: SignerContribution[],
+  after: SignerContribution[]
+): AccountSigner[] {
+  const signedBefore = new Set(before.filter((c) => c.contributed).map((c) => c.signer.key));
+  return after.filter((c) => c.contributed && !signedBefore.has(c.signer.key)).map((c) => c.signer);
+}
+
 /** Sums the weight of signers who have actually contributed a valid signature. */
 export function accumulatedWeight(contributions: SignerContribution[]): number {
   return contributions.filter((c) => c.contributed).reduce((sum, c) => sum + c.signer.weight, 0);

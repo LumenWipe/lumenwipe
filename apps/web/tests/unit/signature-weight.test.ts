@@ -10,6 +10,7 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 import {
+  addedSigners,
   evaluateSignatureContributions,
   accumulatedWeight,
   type SignerContribution,
@@ -229,4 +230,45 @@ test("evaluateSignatureContributions › a decorated signature from a key that i
 
   expect(contributions).toEqual([{ signer: signers[0], contributed: false }]);
   expect(accumulatedWeight(contributions)).toBe(0);
+});
+
+test("addedSigners › returns only the signers contributed after and not before, matched by key", () => {
+  const a: AccountSigner = { type: "ed25519_public_key", key: "GA", weight: 1 };
+  const b: AccountSigner = { type: "ed25519_public_key", key: "GB", weight: 1 };
+  const c: AccountSigner = { type: "ed25519_public_key", key: "GC", weight: 1 };
+  const before: SignerContribution[] = [
+    { signer: a, contributed: true },
+    { signer: b, contributed: false },
+    { signer: c, contributed: false },
+  ];
+  // A different order than `before`: the match is by key, never by position.
+  const after: SignerContribution[] = [
+    { signer: c, contributed: false },
+    { signer: b, contributed: true },
+    { signer: a, contributed: true },
+  ];
+  expect(addedSigners(before, after)).toEqual([b]);
+});
+
+test("addedSigners › a key that had already signed is not added again", () => {
+  const a: AccountSigner = { type: "ed25519_public_key", key: "GA", weight: 1 };
+  const contributed: SignerContribution[] = [{ signer: a, contributed: true }];
+  expect(addedSigners(contributed, contributed)).toEqual([]);
+});
+
+test("addedSigners › from a real envelope, only the key that signed in this call is added", () => {
+  const first = Keypair.random();
+  const second = Keypair.random();
+  const signers: AccountSigner[] = [
+    { type: "ed25519_public_key", key: first.publicKey(), weight: 1 },
+    { type: "ed25519_public_key", key: second.publicKey(), weight: 1 },
+  ];
+  const tx = TransactionBuilder.fromXdr(unsignedXdr(first.publicKey()), Networks.TESTNET);
+  tx.sign(first);
+  const before = evaluateSignatureContributions(tx.toXDR(), Networks.TESTNET, signers);
+  // The first key signs again next to the second: only the second is new.
+  tx.sign(first);
+  tx.sign(second);
+  const after = evaluateSignatureContributions(tx.toXDR(), Networks.TESTNET, signers);
+  expect(addedSigners(before, after).map((s) => s.key)).toEqual([second.publicKey()]);
 });

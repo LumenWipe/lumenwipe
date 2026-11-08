@@ -21,7 +21,7 @@ import {
   SUBMIT_RESEND_DELAY_MS,
 } from "@lumenwipe/sdk";
 import { PLAN_CHANGED_NOTICE, useCloseExecution } from "@/hooks/useCloseExecution";
-import { walletNotUsable } from "@/lib/utils/user-error";
+import { walletAccountMismatch, walletNotUsable } from "@/lib/utils/user-error";
 import { progressLine } from "@/lib/execution/progress";
 import { LeaveGuardProvider } from "@/components/layout/LeaveGuard";
 import NavBar from "@/components/layout/NavBar";
@@ -3362,6 +3362,199 @@ test("useCloseExecution › a wallet that signs with another key and reports not
   expect(useDemolishStore.getState().lastError).toMatch(/didn't add a new signature/);
   expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
   expect(submitted).toHaveLength(0);
+});
+
+// The post-sign check requires the named signer's own signature, not only more weight: a wallet
+// that reports no signing account and signs with another of the account's own signer keys would
+// otherwise be counted as the named key.
+describe("useCloseExecution › the named signer's own signature after signing", () => {
+  function ownSignatureSetup(
+    signers: { key: string; weight: number; type: string }[],
+    thresholds: { low: number; med: number; high: number },
+    sourceKeypair: Keypair
+  ): { submitted: string[]; cosigns: () => number } {
+    const destination = Keypair.random().publicKey();
+    const mergeXdr = unsignedMergeXdr(sourceKeypair, destination);
+    useNetworkStore.setState({ network: "testnet" });
+    useDemolishStore.setState({
+      sourceAddress: sourceKeypair.publicKey(),
+      destinationAddress: destination,
+      memo: null,
+      mediatorRequired: false,
+      lastError: null,
+      accountState: { signers, thresholds } as never,
+    } as never);
+    stubFetchCloseTransactions(async () => ({
+      planHash: "h",
+      status: "ready",
+      transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+      remaining: { steps: 0, requiresAnotherCall: false },
+    }));
+    const submitted: string[] = [];
+    stubSubmitViaApi(async (xdr) => {
+      submitted.push(xdr as string);
+      return {};
+    });
+    const cosign = spyOn(mediatorModule, "requestMediatorCosignature");
+    return { submitted, cosigns: () => cosign.mock.calls.length };
+  }
+
+  /** A wallet named for `named` that signs with `keys` and reports no signing account. */
+  function walletSigningWith(named: string, keys: Keypair[]): WalletKitSigner {
+    return new WalletKitSigner(named, async (xdr, opts) => {
+      const tx = TransactionBuilder.fromXdr(xdr, opts.networkPassphrase);
+      for (const key of keys) tx.sign(key);
+      return { signedTxXdr: tx.toEnvelope().toXdr("base64") };
+    });
+  }
+
+  const ed25519 = (key: string, weight = 1) => ({ key, weight, type: "ed25519_public_key" });
+
+  test("a wallet named for one signer that signs with another signer key is refused, naming the key that signed", async () => {
+    const sourceKeypair = Keypair.random();
+    const cosigner = Keypair.random().publicKey();
+    const source = sourceKeypair.publicKey();
+    // Weight 1 is enough, so a weight-only check would have submitted this.
+    const { submitted, cosigns } = ownSignatureSetup(
+      [ed25519(source), ed25519(cosigner)],
+      { low: 1, med: 1, high: 1 },
+      sourceKeypair
+    );
+
+    const { result } = renderHook(() => useCloseExecution());
+    await act(async () => {
+      await result.current.run(walletSigningWith(cosigner, [sourceKeypair]));
+    });
+
+    expect(useDemolishStore.getState().lastError).toContain(
+      walletAccountMismatch(source, cosigner)
+    );
+    expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
+    expect(submitted).toHaveLength(0);
+    expect(cosigns()).toBe(0);
+  });
+
+  test("on a resumed round, a wallet named for a third signer that signs with the second is refused", async () => {
+    const sourceKeypair = Keypair.random();
+    const secondKeypair = Keypair.random();
+    const third = Keypair.random().publicKey();
+    const source = sourceKeypair.publicKey();
+    const second = secondKeypair.publicKey();
+    const { submitted } = ownSignatureSetup(
+      [ed25519(source), ed25519(second), ed25519(third)],
+      { low: 1, med: 2, high: 2 },
+      sourceKeypair
+    );
+
+    const { result } = renderHook(() => useCloseExecution());
+    await act(async () => {
+      await result.current.run(realSigner(sourceKeypair));
+    });
+    expect(result.current.signatureStatus?.accumulatedWeight).toBe(1);
+
+    await act(async () => {
+      await result.current.run(walletSigningWith(third, [secondKeypair]));
+    });
+
+    expect(useDemolishStore.getState().lastError).toContain(walletAccountMismatch(second, third));
+    expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
+    // A refusal, not a pause: the partly signed round is not kept, as for any non-weight error.
+    expect(result.current.signatureStatus).toBeNull();
+    expect(submitted).toHaveLength(0);
+  });
+
+  test("a wallet that reports nothing and signs with the named key is accepted", async () => {
+    const sourceKeypair = Keypair.random();
+    const cosignerKeypair = Keypair.random();
+    const source = sourceKeypair.publicKey();
+    const cosigner = cosignerKeypair.publicKey();
+    const { submitted } = ownSignatureSetup(
+      [ed25519(source), ed25519(cosigner)],
+      { low: 1, med: 1, high: 1 },
+      sourceKeypair
+    );
+
+    const { result } = renderHook(() => useCloseExecution());
+    await act(async () => {
+      await result.current.run(walletSigningWith(cosigner, [cosignerKeypair]));
+    });
+
+    expect(useDemolishStore.getState().lastError).toBeNull();
+    expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+    expect(submitted).toHaveLength(1);
+  });
+
+  test("a wallet that adds the named key's signature and another signer key's is accepted", async () => {
+    const sourceKeypair = Keypair.random();
+    const cosignerKeypair = Keypair.random();
+    const source = sourceKeypair.publicKey();
+    const cosigner = cosignerKeypair.publicKey();
+    const { submitted } = ownSignatureSetup(
+      [ed25519(source), ed25519(cosigner)],
+      { low: 2, med: 2, high: 2 },
+      sourceKeypair
+    );
+
+    const { result } = renderHook(() => useCloseExecution());
+    await act(async () => {
+      await result.current.run(walletSigningWith(cosigner, [cosignerKeypair, sourceKeypair]));
+    });
+
+    expect(useDemolishStore.getState().lastError).toBeNull();
+    expect(useDemolishStore.getState().phase).toBe("COMPLETE");
+    expect(submitted).toHaveLength(1);
+  });
+
+  test("a wallet named for a key that adds only a hash(x) preimage is refused", async () => {
+    const sourceKeypair = Keypair.random();
+    const cosigner = Keypair.random().publicKey();
+    const source = sourceKeypair.publicKey();
+    const preimage = new Uint8Array(32).fill(7);
+    // The preimage alone carries enough weight, so a weight-only check would have submitted it.
+    const { submitted } = ownSignatureSetup(
+      [
+        ed25519(source),
+        ed25519(cosigner),
+        { key: StrKey.encodeSha256Hash(hash(Buffer.from(preimage))), weight: 1, type: "hash_x" },
+      ],
+      { low: 1, med: 1, high: 1 },
+      sourceKeypair
+    );
+    const wallet = new WalletKitSigner(cosigner, async (xdr, opts) => {
+      const tx = TransactionBuilder.fromXdr(xdr, opts.networkPassphrase);
+      tx.signHashX(Buffer.from(preimage));
+      return { signedTxXdr: tx.toEnvelope().toXdr("base64") };
+    });
+
+    const { result } = renderHook(() => useCloseExecution());
+    await act(async () => {
+      await result.current.run(wallet);
+    });
+
+    expect(useDemolishStore.getState().lastError).toMatch(/didn't add a new signature/);
+    expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
+    expect(submitted).toHaveLength(0);
+  });
+
+  test("the named key's own signature that adds no weight is still refused by the weight check", async () => {
+    const sourceKeypair = Keypair.random();
+    const cosigner = Keypair.random().publicKey();
+    const source = sourceKeypair.publicKey();
+    const { submitted } = ownSignatureSetup(
+      [ed25519(source, 0), ed25519(cosigner)],
+      { low: 1, med: 1, high: 1 },
+      sourceKeypair
+    );
+
+    const { result } = renderHook(() => useCloseExecution());
+    await act(async () => {
+      await result.current.run(realSigner(sourceKeypair));
+    });
+
+    expect(useDemolishStore.getState().lastError).toMatch(/didn't add a new signature/);
+    expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
+    expect(submitted).toHaveLength(0);
+  });
 });
 
 // #402: a wallet that stops being usable between two transactions of a run stops the run before
