@@ -86,16 +86,20 @@ export interface ConversionDeps {
   now: () => number;
 }
 
-function readEnv(): { apiKey: string | undefined; baseUrl: string | undefined; enabled: boolean } {
+export function readSoroswapEnv(env: NodeJS.ProcessEnv = process.env): {
+  apiKey: string | undefined;
+  baseUrl: string | undefined;
+  enabled: boolean;
+} {
   return {
-    apiKey: process.env.SOROSWAP_API_KEY?.trim() || undefined,
-    baseUrl: process.env.SOROSWAP_API_URL?.trim() || undefined,
-    enabled: process.env.SOROBAN_CONVERSION_ENABLED === "true",
+    apiKey: env.SOROSWAP_API_KEY?.trim() || undefined,
+    baseUrl: env.SOROSWAP_API_URL?.trim() || undefined,
+    enabled: env.SOROBAN_CONVERSION_ENABLED === "true",
   };
 }
 
 /** Whether the close may offer to convert a Soroban token at all: the flag is on and a key is set. */
-export function isConversionEnabled(env = readEnv()): boolean {
+export function isConversionEnabled(env = readSoroswapEnv()): boolean {
   return env.enabled && env.apiKey !== undefined;
 }
 
@@ -105,7 +109,7 @@ let cachedFrom = "";
 
 /** The live SDK when conversion is enabled, else null (and every quote is "no route"). */
 export function defaultConversionDeps(): ConversionDeps {
-  const env = readEnv();
+  const env = readSoroswapEnv();
   const signature = `${env.enabled}|${env.apiKey ?? ""}|${env.baseUrl ?? ""}`;
   if (cachedSdk === undefined || cachedFrom !== signature) {
     cachedSdk =

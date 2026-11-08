@@ -1,8 +1,8 @@
 import type { DefiProtocol } from "@lumenwipe/types";
 import { getMediatorPublicKey, type Network } from "@/config/networks";
 import { getMediatorKeypair } from "@/lib/stellar/mediator-server";
-import { isConversionEnabled } from "@/lib/soroswap/conversion-quotes";
-import { isXBullEnabled } from "@/lib/xbull/conversion-quotes";
+import { isConversionEnabled, readSoroswapEnv } from "@/lib/soroswap/conversion-quotes";
+import { isXBullEnabled, readXBullEnv } from "@/lib/xbull/conversion-quotes";
 
 /**
  * Paths an operator can turn off with a revision environment update, no code deploy. Read once
@@ -73,12 +73,8 @@ export function readKillSwitches(
     feeSponsorship: flagOn(env[FEE_SPONSORSHIP_FLAG]),
     mediatorForward: flagOn(env[MEDIATOR_FORWARD_FLAG]),
     mediatorConfigured: mediatorConfigured(network),
-    sorobanConversion: isConversionEnabled({
-      enabled: env.SOROBAN_CONVERSION_ENABLED === "true",
-      apiKey: env.SOROSWAP_API_KEY?.trim() || undefined,
-      baseUrl: undefined,
-    }),
-    xbullConversion: isXBullEnabled({ enabled: env.XBULL_CONVERSION_ENABLED === "true" }),
+    sorobanConversion: isConversionEnabled(readSoroswapEnv(env)),
+    xbullConversion: isXBullEnabled(readXBullEnv(env)),
     pausedExits: new Set(
       EXIT_FLAGS.filter(({ name }) => !flagOn(env[name])).map(({ protocol }) => protocol)
     ),
