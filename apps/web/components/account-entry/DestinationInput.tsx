@@ -24,9 +24,13 @@ interface DestinationInputProps {
   onDestinationChange: (value: string) => void;
   memo: string;
   onMemoChange: (value: string) => void;
-  /** The memo type for a destination the registry does not list; a listed one uses its own. */
+  /** The memo type for a destination the bundled registry does not list; a bundled one uses its
+   *  own. */
   memoType: ChosenMemoType;
   onMemoTypeChange: (type: ChosenMemoType) => void;
+  /** Whether `memoType` was picked for this destination. An exchange only the served registry
+   *  lists shows no type as picked until it is. */
+  memoTypeChosen: boolean;
   source: string;
   /**
    * True when the user has confirmed they control an unrecognized destination. Both of these
@@ -50,11 +54,12 @@ export default function DestinationInput({
   onMemoChange,
   memoType: chosenMemoType,
   onMemoTypeChange,
+  memoTypeChosen,
   source,
   acknowledged,
   onAcknowledgedChange,
 }: DestinationInputProps) {
-  const field = memoField(destination, memo, chosenMemoType);
+  const field = memoField(destination, memo, chosenMemoType, memoTypeChosen);
   const memoRequired = field.required;
   const memoType = field.type;
   const [memoTouched, setMemoTouched] = useState(false);
@@ -119,7 +124,9 @@ export default function DestinationInput({
         <fieldset className="space-y-1.5">
           <legend className="text-sm font-medium text-fg">Memo type</legend>
           <p className="text-xs text-fg-subtle">
-            Use the type the receiving wallet shows. A numeric id sent as text is not the same memo.
+            {field.listing === "served"
+              ? `Check the memo type on ${field.exchangeName}'s deposit page and choose it here. A memo of the wrong type can leave the funds uncredited.`
+              : "Use the type the receiving wallet shows. A numeric id sent as text is not the same memo."}
           </p>
           <div className="flex gap-4">
             {(
@@ -133,10 +140,11 @@ export default function DestinationInput({
                 className="flex cursor-pointer items-center gap-2 text-xs text-white/80"
               >
                 <input
+                  data-jump={value === "text" ? "destination-memo-type" : undefined}
                   type="radio"
                   name="destination-memo-type"
                   value={value}
-                  checked={chosenMemoType === value}
+                  checked={field.typeChosen && chosenMemoType === value}
                   onChange={() => {
                     setIdEditRefused(false);
                     onMemoTypeChange(value);
@@ -147,6 +155,16 @@ export default function DestinationInput({
               </label>
             ))}
           </div>
+          {field.fact === "type-mismatch" && (
+            <p role="alert" className="text-xs text-danger-fg">
+              {field.exchangeName}&apos;s deposit rules list a{" "}
+              {field.servedType === "id" ? "numeric" : "text"} memo, not the{" "}
+              {field.type === "id" ? "numeric" : "text"} memo you chose. A memo of the wrong type
+              can leave the funds uncredited, so this close cannot go ahead. Check the memo type on
+              the exchange&apos;s deposit page. If you are sure of your choice, choose another
+              destination.
+            </p>
+          )}
         </fieldset>
       )}
 
@@ -169,8 +187,9 @@ export default function DestinationInput({
             {memoRequired ? (
               <>
                 <p className="text-xs text-warning">
-                  {field.exchangeName} requires a {memoType === "id" ? "numeric" : "text"} memo for
-                  all deposits.
+                  {field.listing === "served"
+                    ? `${field.exchangeName} requires a memo for all deposits.`
+                    : `${field.exchangeName} requires a ${memoType === "id" ? "numeric" : "text"} memo for all deposits.`}
                 </p>
                 {/* The age of the rule, next to the rule. A memo requirement is data about the
                     outside world that changes without telling us, and this is the last screen

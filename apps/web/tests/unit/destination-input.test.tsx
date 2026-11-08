@@ -3,8 +3,8 @@ import { useState, type ReactElement } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { Keypair } from "@stellar/stellar-sdk";
 import DestinationInput from "@/components/account-entry/DestinationInput";
-import { activeRegistry, setRegistry } from "@/lib/exchange-registry";
-import type { ChosenMemoType } from "@/lib/plan/memo-field";
+import { activeRegistry, bundledRegistry, setRegistry } from "@/lib/exchange-registry";
+import { confirmedMemo, type ChosenMemoType } from "@/lib/plan/memo-field";
 
 const noop = (): void => {};
 
@@ -17,6 +17,7 @@ function renderInput(destination: string): void {
       onMemoChange={noop}
       memoType="text"
       onMemoTypeChange={() => {}}
+      memoTypeChosen={false}
       source={Keypair.random().publicKey()}
       acknowledged={false}
       onAcknowledgedChange={noop}
@@ -55,6 +56,7 @@ function Controlled({
 }): ReactElement {
   const [memo, setMemo] = useState(initialMemo);
   const [memoType, setMemoType] = useState<ChosenMemoType>("text");
+  const [chosenFor, setChosenFor] = useState<string | null>(null);
   return (
     <DestinationInput
       destination={destination}
@@ -65,7 +67,9 @@ function Controlled({
       onMemoTypeChange={(type) => {
         types.push(type);
         setMemoType(type);
+        setChosenFor(destination);
       }}
+      memoTypeChosen={chosenFor === destination}
       source={Keypair.random().publicKey()}
       acknowledged
       onAcknowledgedChange={noop}
@@ -108,6 +112,97 @@ test("an unlisted destination offers a text or id choice, and the choice is repo
   expect(types).toEqual(["id"]);
   expect(memoInput().getAttribute("inputmode")).toBe("numeric");
   expect(memoInput().getAttribute("type")).toBe("text");
+});
+
+test("an unlisted destination starts on text, as it always has", () => {
+  render(<Controlled destination={UNLISTED} />);
+  expect((screen.getByRole("radio", { name: "Text" }) as HTMLInputElement).checked).toBe(true);
+  expect(screen.queryByText(/deposit page/)).toBeNull();
+});
+
+/** Serves the bundled registry plus one exchange it does not list, then restores what was there,
+ *  so no test depends on what another left in module state. */
+function withSnapshotOnly(memoType: "text" | "id", run: (address: string) => void): void {
+  const address = Keypair.random().publicKey();
+  const before = activeRegistry();
+  const bundled = bundledRegistry();
+  setRegistry({
+    ...bundled,
+    served: true,
+    entries: [
+      ...bundled.entries,
+      {
+        address,
+        name: "Newly Listed",
+        domain: "example.com",
+        requiresMediator: false,
+        requiresMemo: true,
+        memoType,
+      },
+    ],
+  });
+  try {
+    run(address);
+  } finally {
+    setRegistry(before);
+  }
+}
+
+const radio = (name: string) => screen.getByRole("radio", { name }) as HTMLInputElement;
+
+test("an exchange only the served registry lists asks for its memo type, with none picked", () => {
+  withSnapshotOnly("id", (address) => {
+    render(<Controlled destination={address} />);
+
+    expect(radio("Text").checked).toBe(false);
+    expect(radio("ID (numbers only)").checked).toBe(false);
+    expect(
+      screen.getByText(/Check the memo type on Newly Listed's deposit page and choose it here/)
+    ).toBeDefined();
+    expect(screen.getByText("Newly Listed requires a memo for all deposits.")).toBeDefined();
+    expect(screen.queryByText(/numeric memo/)).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+test("the type picked for an exchange only the served registry lists is the one confirmed", () => {
+  withSnapshotOnly("id", (address) => {
+    const types: ChosenMemoType[] = [];
+    render(<Controlled destination={address} initialMemo="4411" types={types} />);
+
+    fireEvent.click(radio("Text"));
+
+    expect(types).toEqual(["text"]);
+    expect(radio("Text").checked).toBe(true);
+    expect(confirmedMemo(address, "4411", types[0])).toEqual({ memo: "4411", memoType: "text" });
+    const alert = screen.getByRole("alert").textContent ?? "";
+    expect(alert).toContain(
+      "Newly Listed's deposit rules list a numeric memo, not the text memo you chose."
+    );
+    expect(alert).toContain("If you are sure of your choice, choose another destination.");
+
+    fireEvent.click(radio("ID (numbers only)"));
+
+    expect(types).toEqual(["text", "id"]);
+    expect(confirmedMemo(address, "4411", types[1])).toEqual({ memo: "4411", memoType: "id" });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+test("a bundled exchange keeps its own memo type with no choice offered", () => {
+  const before = activeRegistry();
+  setRegistry(bundledRegistry());
+  try {
+    const listed = exchange("id");
+    render(<Controlled destination={listed.address} initialMemo="4411" />);
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(
+      screen.getByText(`${listed.name} requires a numeric memo for all deposits.`)
+    ).toBeDefined();
+    expect(confirmedMemo(listed.address, "4411", "text")?.memoType).toBe("id");
+  } finally {
+    setRegistry(before);
+  }
 });
 
 test("a listed exchange takes its own memo type, with no choice offered", () => {
@@ -166,6 +261,7 @@ test.each([
         }}
         memoType="text"
         onMemoTypeChange={noop}
+        memoTypeChosen={false}
         source={Keypair.random().publicKey()}
         acknowledged
         onAcknowledgedChange={noop}

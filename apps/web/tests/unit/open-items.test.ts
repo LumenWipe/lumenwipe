@@ -70,6 +70,11 @@ for (const [facts, expected] of [
     { registryStale: true, registryMemoTypeDisputed: true },
     ["This exchange's deposit rules have expired, so it cannot be used as the destination"],
   ],
+  [{ memo: "type-unchosen" }, ["Choose the memo type this exchange asks for"]],
+  [
+    { memo: "type-mismatch" },
+    ["The memo type you chose does not match this exchange's deposit rules"],
+  ],
   [{ memo: "missing" }, ["Memo is required by this exchange"]],
   [{ memo: "invalid" }, ["The memo is not valid"]],
   [{ destinationUnacknowledged: true }, ["Confirm the destination is a wallet you control"]],
@@ -82,6 +87,15 @@ for (const [facts, expected] of [
 test("the open reason jumps to the first open item and opens its group", () => {
   const [open] = proceedReasons({ ...READY, openItems: [CLAIM, ASSET] });
   expect(open.target).toEqual({ selector: '[data-open-item="claim:1"]', group: "CLAIM_BALANCES" });
+});
+
+test("a memo type reason jumps to the memo type choice", () => {
+  for (const memo of ["type-unchosen", "type-mismatch"] as const) {
+    expect(proceedReasons({ ...READY, memo })[0].target).toEqual({
+      selector: '[data-jump="destination-memo-type"]',
+      group: null,
+    });
+  }
 });
 
 test("a destination reason links to the field even while decisions are open", () => {
@@ -101,7 +115,7 @@ test("a destination reason links to the field even while decisions are open", ()
 test("the reasons are empty exactly when the old gate passes, over every combination", () => {
   const bools = [false, true];
   const destinations: DestinationFact[] = ["empty", "invalid", "self", "ok"];
-  const memos: MemoFact[] = ["ok", "missing", "invalid"];
+  const memos: MemoFact[] = ["ok", "missing", "invalid", "type-unchosen", "type-mismatch"];
   const items: OpenItem[][] = [[], [ASSET], [CONFIRM, CLAIM, ASSET]];
   let combinations = 0;
   for (const replanning of bools)
@@ -138,7 +152,7 @@ test("the reasons are empty exactly when the old gate passes, over every combina
                   expect(new Set(reasons.map((r) => r.key)).size).toBe(reasons.length);
                   combinations++;
                 }
-  expect(combinations).toBe(1728);
+  expect(combinations).toBe(2880);
 });
 
 test("the live summary counts what is left and never counts a re-plan", () => {
