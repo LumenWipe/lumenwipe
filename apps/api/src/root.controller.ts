@@ -7,6 +7,8 @@ import { API_VERSION } from "./openapi";
 export interface ServiceIndex {
   name: string;
   version: string;
+  /** The commit the running image was built from, or null when it was built without one. */
+  gitSha: string | null;
   docs: string;
   openapi: string;
   health: string;
@@ -26,6 +28,7 @@ export class RootController {
     return {
       name: "LumenWipe API",
       version: API_VERSION,
+      gitSha: process.env.GIT_SHA || null,
       docs: "/docs",
       openapi: "/docs-json",
       health: "/health",
