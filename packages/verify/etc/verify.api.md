@@ -144,8 +144,14 @@ export interface TransferChoice {
 
 // @public
 export class VerificationError extends Error {
-    constructor(message: string);
+    constructor(code: VerificationErrorCode, message: string);
+    readonly code: VerificationErrorCode;
 }
+
+// Warning: (ae-forgotten-export) The symbol "VERIFICATION_ERROR_CODES" needs to be exported by the entry point index.d.ts
+//
+// @public
+export type VerificationErrorCode = (typeof VERIFICATION_ERROR_CODES)[number];
 
 // @public
 export interface VerifyCloseInput {

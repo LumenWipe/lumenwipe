@@ -19,6 +19,10 @@ import {
   VerificationError,
   type CloseExpectation,
 } from "@/lib/stellar/verify";
+import {
+  VERIFICATION_ERROR_CODES,
+  type VerificationErrorCode,
+} from "@/lib/stellar/verification-error";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import type { IntentOperation, TxIntent } from "@/types/close-api";
 import type { AccountSigner } from "@/types/account";
@@ -27,6 +31,30 @@ import { activeRegistry, setRegistry } from "@/lib/exchange-registry";
 import { exitExpectations } from "@/lib/stellar/exit-expectations";
 import type { AccountState } from "@/types/account";
 import { REAL_EXIT_ENVELOPES, type RealExitEnvelope } from "./fixtures/real-exit-envelopes";
+
+/** Every code a test below saw thrown; the last test checks it is the whole registry. */
+const refusalCodesSeen = new Set<VerificationErrorCode>();
+
+/** Runs `run`, expecting a VerificationError with exactly `code` and, when given, a message
+ *  containing `message` (a string) or matching it (a pattern), as `toThrow` reads them. */
+function expectRefusal(
+  run: () => unknown,
+  code: VerificationErrorCode,
+  message?: string | RegExp
+): void {
+  let thrown: unknown = null;
+  try {
+    run();
+  } catch (error) {
+    thrown = error;
+  }
+  expect(thrown).toBeInstanceOf(VerificationError);
+  const refusal = thrown as VerificationError;
+  expect(refusal.code).toBe(code);
+  if (typeof message === "string") expect(refusal.message).toContain(message);
+  else if (message !== undefined) expect(refusal.message).toMatch(message);
+  refusalCodesSeen.add(code);
+}
 
 const SRC = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -241,7 +269,7 @@ test("rejects a real transaction carrying an unrecognized operation", () => {
     Operation.accountMerge({ destination: DEST }),
   ]);
   const i = intentFromXdr(xdr, Networks.TESTNET);
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expectRefusal(() => assertCloseIntent(i, expectation()), "operation_unknown");
 });
 
 // ─── Tampering is caught (pure) ──────────────────────────────────────────────
@@ -251,39 +279,63 @@ test("rejects a merge to an unexpected destination", () => {
     guarantees: { mergeDestination: ATTACKER, paymentsOnlyTo: [], minXlmFromConversions: null },
     operations: [merge(ATTACKER)],
   });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/did not choose/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "merge_destination_mismatch",
+    /did not choose/
+  );
 });
 
 test("rejects a native-XLM payment to a trustline issuer", () => {
   const i = intent({ operations: [payment(ISSUER, "native")] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expectRefusal(() => assertCloseIntent(i, expectation()), "transfer_not_chosen");
 });
 
 test("rejects a payment to an unexpected address", () => {
   const i = intent({ operations: [payment(ATTACKER)] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/unexpected address/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "transfer_not_chosen",
+    /unexpected address/
+  );
 });
 
 test("rejects a conversion that pays out of the account", () => {
   const i = intent({ operations: [conversion(ATTACKER)] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/send funds out of your account/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "conversion_recipient_mismatch",
+    /send funds out of your account/
+  );
 });
 
 test("rejects a conversion that would not settle in XLM", () => {
   const i = intent({ operations: [conversion(SRC, `USDC:${ISSUER}`, "9")] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/would not settle in XLM/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "conversion_not_to_xlm",
+    /would not settle in XLM/
+  );
 });
 
 test("rejects a conversion with no minimum floor", () => {
   const i = intent({ operations: [conversion(SRC, "native", "0")] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/no minimum-received floor/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "conversion_min_out_missing",
+    /no minimum-received floor/
+  );
 });
 
 test("rejects a trustline that is created/raised instead of removed", () => {
   const i = intent({
     operations: [{ source: SRC, type: "change_trust", asset: `USDC:${ISSUER}`, limit: "100" }],
   });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/created or raised, not removed/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "trustline_not_removal",
+    /created or raised, not removed/
+  );
 });
 
 test("allows a raised trustline for an asset the user chose to claim-remediate", () => {
@@ -295,16 +347,21 @@ test("allows a raised trustline for an asset the user chose to claim-remediate",
 test("rejects a raised trustline for an asset not in the user's own claim-remediation choice", () => {
   const asset = `USDC:${ISSUER}`;
   const i = intent({ operations: [{ source: SRC, type: "change_trust", asset, limit: "100" }] });
-  expect(() =>
-    assertCloseIntent(i, expectation({ claimTrustlineAssets: [`EURC:${ISSUER}`] }))
-  ).toThrow(VerificationError);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation({ claimTrustlineAssets: [`EURC:${ISSUER}`] })),
+    "trustline_not_removal"
+  );
 });
 
 test("rejects a data entry that is written instead of removed", () => {
   const i = intent({
     operations: [{ source: SRC, type: "manage_data", name: "k", value: "dmFsdWU=" }],
   });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/would be written, not removed/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "data_entry_not_removal",
+    /would be written, not removed/
+  );
 });
 
 test("allows a data entry deletion", () => {
@@ -316,7 +373,11 @@ test("rejects an offer that is created instead of cancelled", () => {
   const i = intent({
     operations: [{ source: SRC, type: "manage_sell_offer", offerId: "0", amount: "50" }],
   });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/created, not cancelled/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "offer_not_cancellation",
+    /created, not cancelled/
+  );
 });
 
 test("rejects a set_options that adds or empowers a signer", () => {
@@ -325,14 +386,22 @@ test("rejects a set_options that adds or empowers a signer", () => {
       setOptions({ signer: { type: "ed25519_public_key", key: REMOVED_SIGNER, weight: 1 } }),
     ],
   });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/signer would be added or empowered/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "signer_added",
+    /signer would be added or empowered/
+  );
 });
 
 test("rejects a set_options signer removal for a key that is not on the account", () => {
   const i = intent({
     operations: [setOptions({ signer: { type: "ed25519_public_key", key: ATTACKER, weight: 0 } })],
   });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/wasn't on your account/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "signer_unknown",
+    /wasn't on your account/
+  );
 });
 
 test("rejects a signer removal when accountSigners is empty (fail-closed default)", () => {
@@ -344,9 +413,7 @@ test("rejects a signer removal when accountSigners is empty (fail-closed default
       setOptions({ signer: { type: "ed25519_public_key", key: REMOVED_SIGNER, weight: 0 } }),
     ],
   });
-  expect(() => assertCloseIntent(i, expectation({ accountSigners: [] }))).toThrow(
-    VerificationError
-  );
+  expectRefusal(() => assertCloseIntent(i, expectation({ accountSigners: [] })), "signer_unknown");
 });
 
 test("rejects a signer removal whose key matches a known signer but whose type does not", () => {
@@ -354,7 +421,7 @@ test("rejects a signer removal whose key matches a known signer but whose type d
   const i = intent({
     operations: [setOptions({ signer: { type: "hash_x", key: REMOVED_SIGNER, weight: 0 } })],
   });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expectRefusal(() => assertCloseIntent(i, expectation()), "signer_unknown");
 });
 
 test("allows a set_options that only touches thresholds (no signer field)", () => {
@@ -401,7 +468,7 @@ test("rejects a hash(x) signer removal for a hash that is not a known signer", (
   const hashXRaw = Keypair.random().rawPublicKey();
   const txXdr = buildXdr([Operation.setOptions({ signer: { sha256Hash: hashXRaw, weight: 0 } })]);
   const i = intentFromXdr(txXdr, Networks.TESTNET);
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expectRefusal(() => assertCloseIntent(i, expectation()), "signer_unknown");
 });
 
 // ─── Multisig: a hash(x) decorated signature needs no special-casing (#101) ──
@@ -435,12 +502,20 @@ test("verifyCloseTransaction still approves a transaction whose only change is a
 
 test.each([0, 1, 2])("rejects a set_options that sets the master key to weight %i", (weight) => {
   const i = intent({ operations: [setOptions({ signer: null, masterWeight: weight })] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/master key's weight would be changed/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "master_weight_changed",
+    /master key's weight would be changed/
+  );
 });
 
 test("rejects a set_options that raises the high threshold", () => {
   const i = intent({ operations: [setOptions({ signer: null, highThreshold: 2 })] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/thresholds would be raised/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "thresholds_raised",
+    /thresholds would be raised/
+  );
 });
 
 // Each threshold field is checked independently - a mutation collapsing any single one of the
@@ -448,7 +523,11 @@ test("rejects a set_options that raises the high threshold", () => {
 // to set. Isolating low/med here (high is already isolated above, since low/med default to null).
 test("rejects a set_options that raises only the low threshold", () => {
   const i = intent({ operations: [setOptions({ signer: null, lowThreshold: 2 })] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/thresholds would be raised/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "thresholds_raised",
+    /thresholds would be raised/
+  );
 });
 
 test("allows a set_options that sets the low threshold to exactly 1 (the close's own normalization)", () => {
@@ -458,7 +537,11 @@ test("allows a set_options that sets the low threshold to exactly 1 (the close's
 
 test("rejects a set_options that raises only the med threshold", () => {
   const i = intent({ operations: [setOptions({ signer: null, medThreshold: 2 })] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/thresholds would be raised/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "thresholds_raised",
+    /thresholds would be raised/
+  );
 });
 
 test("allows a set_options that sets the med threshold to exactly 1 (the close's own normalization)", () => {
@@ -473,24 +556,26 @@ test("allows a set_options that sets the high threshold to exactly 1 (the close'
 
 test("rejects a set_options that sets account flags", () => {
   const i = intent({ operations: [setOptions({ signer: null, setFlags: 1 })] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "account_settings_changed",
     /change account flags, the home domain, or the inflation destination/
   );
 });
 
 test("rejects a set_options that clears account flags", () => {
   const i = intent({ operations: [setOptions({ signer: null, clearFlags: 1 })] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expectRefusal(() => assertCloseIntent(i, expectation()), "account_settings_changed");
 });
 
 test("rejects a set_options that changes the home domain", () => {
   const i = intent({ operations: [setOptions({ signer: null, homeDomain: "evil.example" })] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expectRefusal(() => assertCloseIntent(i, expectation()), "account_settings_changed");
 });
 
 test("rejects a set_options that changes the inflation destination", () => {
   const i = intent({ operations: [setOptions({ signer: null, inflationDest: ATTACKER })] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expectRefusal(() => assertCloseIntent(i, expectation()), "account_settings_changed");
 });
 
 test("a real SetOptions carrying a home-domain change is decoded and rejected (catches decode-shape bugs)", () => {
@@ -499,12 +584,14 @@ test("a real SetOptions carrying a home-domain change is decoded and rejected (c
     Operation.accountMerge({ destination: DEST }),
   ]);
   const i = intentFromXdr(txXdr, Networks.TESTNET);
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
+  expectRefusal(() => assertCloseIntent(i, expectation()), "account_settings_changed");
 });
 
 test("rejects a memo the user did not set", () => {
   const i = intent({ memo: "not-mine", memoType: "text", operations: [merge(DEST)] });
-  expect(() => assertCloseIntent(i, expectation({ memo: "mine", memoType: "text" }))).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(i, expectation({ memo: "mine", memoType: "text" })),
+    "memo_value_mismatch",
     /memo you did not set/
   );
 });
@@ -513,7 +600,9 @@ test("rejects a memo the user did not set", () => {
 // different transaction from the one the user confirmed.
 test("rejects a merge that leaves out the memo the user set", () => {
   const i = intent({ memo: null, operations: [merge(DEST)] });
-  expect(() => assertCloseIntent(i, expectation({ memo: "4411", memoType: "text" }))).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(i, expectation({ memo: "4411", memoType: "text" })),
+    "memo_missing",
     "The transaction is missing the memo you set."
   );
 });
@@ -531,16 +620,20 @@ test("accepts a transaction without a merge that carries no memo when the user s
 
 test("rejects a missing memo when the destination requires one (even if the user left it blank)", () => {
   const i = intent({ memo: null, operations: [merge(DEST)] });
-  expect(() =>
-    assertCloseIntent(i, expectation({ memo: null, memoRequired: true, memoType: "id" }))
-  ).toThrow(/requires a deposit memo/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation({ memo: null, memoRequired: true, memoType: "id" })),
+    "memo_required",
+    /requires a deposit memo/
+  );
 });
 
 test("rejects a memo of the wrong type for the destination", () => {
   const i = intent({ memo: "12345", memoType: "text", operations: [merge(DEST)] });
-  expect(() =>
-    assertCloseIntent(i, expectation({ memo: "12345", memoRequired: true, memoType: "id" }))
-  ).toThrow("The transaction would send your memo as a text memo, not the id memo you confirmed.");
+  expectRefusal(
+    () => assertCloseIntent(i, expectation({ memo: "12345", memoRequired: true, memoType: "id" })),
+    "memo_type_mismatch",
+    "The transaction would send your memo as a text memo, not the id memo you confirmed."
+  );
 });
 
 // The required-memo check only applies to a transaction that actually delivers to the
@@ -559,7 +652,11 @@ test("does not require a memo for an operation that does not deliver to the dest
 
 test("rejects a transaction for a different account", () => {
   const i = intent({ source: ATTACKER });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/not for your account/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "transaction_source_mismatch",
+    /not for your account/
+  );
 });
 
 // #102: pre-auth-tx signer support. The manual pre-auth-tx path (useCloseExecution's
@@ -573,14 +670,22 @@ test("rejects a pasted pre-auth-tx transaction that merges to an unexpected dest
     operations: [merge(ATTACKER)],
     guarantees: { mergeDestination: ATTACKER, paymentsOnlyTo: [], minXlmFromConversions: null },
   });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/did not choose/i);
+  expectRefusal(() => assertCloseIntent(i, expectation()), "merge_destination_mismatch");
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "merge_destination_mismatch",
+    /did not choose/i
+  );
 });
 
 test("rejects a pasted pre-auth-tx transaction carrying an unrecognized operation", () => {
   const i = intent({ operations: [{ source: SRC, type: "unknown" }] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(VerificationError);
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/unrecognized operation/i);
+  expectRefusal(() => assertCloseIntent(i, expectation()), "operation_unknown");
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "operation_unknown",
+    /unrecognized operation/i
+  );
 });
 
 // CAP-33's reserve-burden reversion makes this op family safe by construction (see the comment
@@ -608,7 +713,11 @@ test("allows a claim_claimable_balance operation", () => {
 test("fails closed on an operation type the switch does not recognize at all", () => {
   const bogus = { source: SRC, type: "totally_bogus_operation" } as unknown as IntentOperation;
   const i = intent({ operations: [bogus] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/unrecognized operation/i);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "operation_unknown",
+    /unrecognized operation/i
+  );
 });
 
 // ─── the mediated close is accepted on structure, not on identity (#116) ─────
@@ -630,12 +739,20 @@ test("a mediated close passes without the client knowing the intermediary's addr
 test("rejects an intermediary that forwards dust and keeps the balance", () => {
   const attackerKey = Keypair.random().publicKey();
   const i = intent(mediated(attackerKey, { amount: "0.0000001" }));
-  expect(() => assertCloseIntent(i, MEDIATED())).toThrow(/only part of it/);
+  expectRefusal(
+    () => assertCloseIntent(i, MEDIATED()),
+    "mediator_forward_short",
+    /only part of it/
+  );
 });
 
 test("rejects a forward that is short by more than the fee tolerance", () => {
   const i = intent(mediated(Keypair.random().publicKey(), { amount: "99.5000000" }));
-  expect(() => assertCloseIntent(i, MEDIATED())).toThrow(/only part of it/);
+  expectRefusal(
+    () => assertCloseIntent(i, MEDIATED()),
+    "mediator_forward_short",
+    /only part of it/
+  );
 });
 
 test("accepts a forward short only by the network fee", () => {
@@ -663,14 +780,20 @@ test("rejects a mediated close whose second operation is not a payment", () => {
     },
     operations: [merge(intermediary), setOptions()],
   });
-  expect(() => assertCloseIntent(i, MEDIATED())).toThrow(/hand the balance straight on/);
+  expectRefusal(
+    () => assertCloseIntent(i, MEDIATED()),
+    "mediator_handoff_shape",
+    /hand the balance straight on/
+  );
 });
 
 // The hand-off shape only makes sense for a destination that cannot be merged into. Accepting
 // it for a direct close would make an attacker-nominated intermediary reachable for every user.
 test("rejects the mediated shape when the user did not route through an intermediary", () => {
   const i = intent(mediated(Keypair.random().publicKey()));
-  expect(() => assertCloseIntent(i, expectation({ nativeBalance: BALANCE }))).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(i, expectation({ nativeBalance: BALANCE })),
+    "merge_destination_mismatch",
     /did not choose/
   );
 });
@@ -679,7 +802,11 @@ test("rejects the mediated shape when the user did not route through an intermed
 // account holding the balance is under no obligation to pass it on.
 test("rejects a forward sent by an account other than the one the merge paid into", () => {
   const i = intent(mediated(Keypair.random().publicKey(), { forwardSource: ATTACKER }));
-  expect(() => assertCloseIntent(i, MEDIATED())).toThrow(/is the one passing them on/);
+  expectRefusal(
+    () => assertCloseIntent(i, MEDIATED()),
+    "mediator_forward_source_mismatch",
+    /is the one passing them on/
+  );
 });
 
 test("rejects a merge to an unexpected address with no forward at all", () => {
@@ -687,19 +814,27 @@ test("rejects a merge to an unexpected address with no forward at all", () => {
     guarantees: { mergeDestination: ATTACKER, paymentsOnlyTo: [], minXlmFromConversions: null },
     operations: [merge(ATTACKER)],
   });
-  expect(() => assertCloseIntent(i, MEDIATED())).toThrow(/hand the balance straight on/);
+  expectRefusal(
+    () => assertCloseIntent(i, MEDIATED()),
+    "mediator_handoff_shape",
+    /hand the balance straight on/
+  );
 });
 
 test("rejects a mediated close carrying an extra operation", () => {
   const intermediary = Keypair.random().publicKey();
   const m = mediated(intermediary);
   const i = intent({ ...m, operations: [...m.operations, setOptions()] });
-  expect(() => assertCloseIntent(i, MEDIATED())).toThrow(VerificationError);
+  expectRefusal(() => assertCloseIntent(i, MEDIATED()), "mediator_handoff_shape");
 });
 
 test("rejects a forward to an address the user did not type", () => {
   const i = intent(mediated(Keypair.random().publicKey(), { forwardTo: ATTACKER }));
-  expect(() => assertCloseIntent(i, MEDIATED())).toThrow(/unexpected address/);
+  expectRefusal(
+    () => assertCloseIntent(i, MEDIATED()),
+    "mediator_forward_destination_mismatch",
+    /unexpected address/
+  );
 });
 
 test("rejects a forward that is not XLM", () => {
@@ -712,7 +847,11 @@ test("rejects a forward that is not XLM", () => {
     },
     operations: [merge(intermediary), payment(DEST, `USDC:${ISSUER}`, intermediary, BALANCE)],
   });
-  expect(() => assertCloseIntent(i, MEDIATED())).toThrow(/would not be XLM/);
+  expectRefusal(
+    () => assertCloseIntent(i, MEDIATED()),
+    "mediator_forward_not_native",
+    /would not be XLM/
+  );
 });
 
 test("rejects a merge not sent by the account being closed", () => {
@@ -725,7 +864,11 @@ test("rejects a merge not sent by the account being closed", () => {
     },
     operations: [merge(intermediary, ATTACKER), payment(DEST, "native", intermediary, BALANCE)],
   });
-  expect(() => assertCloseIntent(i, MEDIATED())).toThrow(/not sent by the account being closed/);
+  expectRefusal(
+    () => assertCloseIntent(i, MEDIATED()),
+    "operation_source_mismatch",
+    /not sent by the account being closed/
+  );
 });
 
 test("rejects the two operations in the wrong order", () => {
@@ -738,7 +881,7 @@ test("rejects the two operations in the wrong order", () => {
     },
     operations: [payment(DEST, "native", intermediary, BALANCE), merge(intermediary)],
   });
-  expect(() => assertCloseIntent(i, MEDIATED())).toThrow(VerificationError);
+  expectRefusal(() => assertCloseIntent(i, MEDIATED()), "mediator_handoff_shape");
 });
 
 // A second merge riding along behind a well-formed first: `guarantees.mergeDestination` reports
@@ -748,7 +891,11 @@ test("rejects a transaction carrying a second account merge", () => {
     guarantees: { mergeDestination: DEST, paymentsOnlyTo: [], minXlmFromConversions: null },
     operations: [merge(DEST), merge(ATTACKER)],
   });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/more than one account/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "merge_multiple",
+    /more than one account/
+  );
 });
 
 // ─── verifyCloseTransaction: the exchange-derived memo policy (the wrapper, not assertCloseIntent) ──
@@ -828,39 +975,42 @@ test("verifyCloseTransaction rejects a mediated close to a memo-requiring exchan
       source: intermediary,
     }),
   ]);
-  expect(() =>
-    verifyCloseTransaction({
-      unsignedXdr,
-      network: "testnet",
-      expected: {
-        source: SRC,
-        destination: COINBASE,
-        nativeBalance: "100.0000000",
-        memo: null,
-        memoType: null,
-        claimTrustlineAssets: [],
-        transfers: {},
-        tokenTransfers: {},
-        classicConversions: {},
-        tokenConversions: {},
-        conversionContracts: [],
-        xlmContract: XLM_SAC,
-        exitContracts: [],
-        heldTokenContracts: [],
-        positionTokenContracts: [],
-        exitFunctions: {},
-        accountSigners: wrapperSigners(),
-        accountThresholds: wrapperThresholds,
-        registryContracts: [],
-        protectedTokenContracts: [],
-        xbullAssets: {},
-        ownTokensByContract: {},
-        shareTokenContracts: [],
-        debtTokenContracts: [],
-        repayTokensByPool: {},
-      },
-    })
-  ).toThrow(/requires a deposit memo/);
+  expectRefusal(
+    () =>
+      verifyCloseTransaction({
+        unsignedXdr,
+        network: "testnet",
+        expected: {
+          source: SRC,
+          destination: COINBASE,
+          nativeBalance: "100.0000000",
+          memo: null,
+          memoType: null,
+          claimTrustlineAssets: [],
+          transfers: {},
+          tokenTransfers: {},
+          classicConversions: {},
+          tokenConversions: {},
+          conversionContracts: [],
+          xlmContract: XLM_SAC,
+          exitContracts: [],
+          heldTokenContracts: [],
+          positionTokenContracts: [],
+          exitFunctions: {},
+          accountSigners: wrapperSigners(),
+          accountThresholds: wrapperThresholds,
+          registryContracts: [],
+          protectedTokenContracts: [],
+          xbullAssets: {},
+          ownTokensByContract: {},
+          shareTokenContracts: [],
+          debtTokenContracts: [],
+          repayTokensByPool: {},
+        },
+      }),
+    "memo_required",
+    /requires a deposit memo/
+  );
 });
 
 test("verifyCloseTransaction passes a direct close to a destination the registry does not recognize", () => {
@@ -938,7 +1088,9 @@ test("a transfer the user chose passes", () => {
 
 test("a transfer to an address the user never chose is rejected", () => {
   const i = intent({ operations: [transferPayment(ATTACKER), merge(DEST)] });
-  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(i, expectation({ transfers: chose() })),
+    "transfer_destination_mismatch",
     /did not choose/i
   );
 });
@@ -949,20 +1101,29 @@ test("a destination valid for one asset does not authorize another", () => {
   const i = intent({
     operations: [transferPayment(TRANSFER_DEST, "10", `EURC:${ISSUER}`), merge(DEST)],
   });
-  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).toThrow(
-    VerificationError
+  expectRefusal(
+    () => assertCloseIntent(i, expectation({ transfers: chose() })),
+    "transfer_not_chosen"
   );
 });
 
 test("a payment for an asset with no transfer chosen is rejected", () => {
   const i = intent({ operations: [transferPayment(), merge(DEST)] });
-  expect(() => assertCloseIntent(i, expectation({ transfers: {} }))).toThrow(/unexpected address/i);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation({ transfers: {} })),
+    "transfer_not_chosen",
+    /unexpected address/i
+  );
 });
 
 test("an altered amount is rejected", () => {
   // Binding only the destination would let this through: right account, wrong amount.
   const i = intent({ operations: [transferPayment(TRANSFER_DEST, "0.0000001"), merge(DEST)] });
-  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).toThrow(/less USDC/i);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation({ transfers: chose() })),
+    "transfer_amount_short",
+    /less USDC/i
+  );
 });
 
 test("more than approved is allowed: a claim round legitimately raises the balance", () => {
@@ -985,7 +1146,9 @@ test("the amount is compared in whole stroops, not as decimal strings", () => {
 test("the same approved transfer repeated is rejected", () => {
   // Each copy matches the user's choice individually; together they pay it twice.
   const i = intent({ operations: [transferPayment(), transferPayment(), merge(DEST)] });
-  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(i, expectation({ transfers: chose() })),
+    "transfer_duplicate",
     /more than once/i
   );
 });
@@ -994,15 +1157,23 @@ test("the rejection names the asset code, so the user can tell which one is wron
   // The messages are what a user acts on. Without asserting them, every mutation of the label
   // survives - the regexes above only match the fixed part of the sentence.
   const i = intent({ operations: [transferPayment(ATTACKER), merge(DEST)] });
-  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).toThrow(/send USDC to/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation({ transfers: chose() })),
+    "transfer_destination_mismatch",
+    /send USDC to/
+  );
 
   const wrongAmount = intent({ operations: [transferPayment(TRANSFER_DEST, "1"), merge(DEST)] });
-  expect(() => assertCloseIntent(wrongAmount, expectation({ transfers: chose() }))).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(wrongAmount, expectation({ transfers: chose() })),
+    "transfer_amount_short",
     /less USDC/
   );
 
   const twice = intent({ operations: [transferPayment(), transferPayment(), merge(DEST)] });
-  expect(() => assertCloseIntent(twice, expectation({ transfers: chose() }))).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(twice, expectation({ transfers: chose() })),
+    "transfer_duplicate",
     /send USDC more than once/
   );
 
@@ -1020,19 +1191,25 @@ test("a return to the issuer passes only for an asset the user chose to return",
   });
   const returned = { [USDC]: { destination: ISSUER, amount: "10" } };
   expect(() => assertCloseIntent(i, expectation({ transfers: returned }))).not.toThrow();
-  expect(() => assertCloseIntent(i, expectation({ transfers: {} }))).toThrow(VerificationError);
-  expect(() =>
-    assertCloseIntent(
-      i,
-      expectation({ transfers: { [USDC]: { destination: ISSUER, amount: "11" } } })
-    )
-  ).toThrow(/less USDC than you approved/);
-  expect(() =>
-    assertCloseIntent(
-      i,
-      expectation({ transfers: { [USDC]: { destination: TRANSFER_DEST, amount: "10" } } })
-    )
-  ).toThrow(/address you did not choose/);
+  expectRefusal(() => assertCloseIntent(i, expectation({ transfers: {} })), "transfer_not_chosen");
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        i,
+        expectation({ transfers: { [USDC]: { destination: ISSUER, amount: "11" } } })
+      ),
+    "transfer_amount_short",
+    /less USDC than you approved/
+  );
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        i,
+        expectation({ transfers: { [USDC]: { destination: TRANSFER_DEST, amount: "10" } } })
+      ),
+    "transfer_destination_mismatch",
+    /address you did not choose/
+  );
 });
 
 test("a close with no transfers verifies exactly as before", () => {
@@ -1049,7 +1226,9 @@ test("a transfer debiting a different account is rejected", () => {
   const i = intent({
     operations: [{ ...transferPayment(), source: ATTACKER }, merge(DEST)],
   });
-  expect(() => assertCloseIntent(i, expectation({ transfers: chose() }))).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(i, expectation({ transfers: chose() })),
+    "operation_source_mismatch",
     /from an account other than the one being closed/
   );
 });
@@ -1059,7 +1238,9 @@ test("an issuer-return debiting a different account is rejected too", () => {
   const i = intent({
     operations: [{ ...transferPayment(ISSUER, "10", USDC), source: ATTACKER }, merge(DEST)],
   });
-  expect(() => assertCloseIntent(i, expectation({ transfers: {} }))).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(i, expectation({ transfers: {} })),
+    "operation_source_mismatch",
     /from an account other than the one being closed/
   );
 });
@@ -1140,46 +1321,69 @@ test("an exit may name the token contracts of assets the account holds - a repay
 
 test("rejects an exit whose arguments name any other account - proceeds could go there", () => {
   const op = exit({ accountsReferenced: [SRC, ATTACKER] });
-  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(op), expectation()),
+    "invocation_foreign_account",
     /other than the one being closed/
   );
 });
 
 test("rejects an exit that names a contract the account has no position or balance in - a contract-typed recipient", () => {
   const op = exit({ contractsReferenced: [POOL, OTHER_POOL] });
-  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(op), expectation()),
+    "exit_foreign_contract",
     /no position, balance, or pool token in/
   );
 });
 
 test("rejects an exit that invokes a contract the analysis never showed a position in", () => {
   const op = exit({ contract: OTHER_POOL, contractsReferenced: [OTHER_POOL] });
-  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(/not one of this account/);
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(op), expectation()),
+    "exit_contract_not_position",
+    /not one of this account/
+  );
 });
 
 test("rejects an exit when the client has no positions to pin it to - fails closed", () => {
-  expect(() => assertCloseIntent(exitOnly(exit()), expectation({ exitContracts: [] }))).toThrow(
-    VerificationError
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(exit()), expectation({ exitContracts: [] })),
+    "exit_contract_not_position"
   );
 });
 
 test("rejects an exit that names an address form the check cannot pin - a muxed recipient", () => {
   const op = exit({ unsupportedAddressCount: 1 });
-  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(/cannot be verified/);
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(op), expectation()),
+    "invocation_address_unsupported",
+    /cannot be verified/
+  );
 });
 
 test("rejects an exit whose signature would authorize more than the account's own call - a hidden sub-invocation or another party's credentials", () => {
   const op = exit({ authorizesBeyondSelf: true });
-  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(/beyond this account/);
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(op), expectation()),
+    "invocation_auth_beyond_self",
+    /beyond this account/
+  );
 });
 
 test("rejects an exit sourced from another account", () => {
   const op = exit({ source: ATTACKER });
-  expect(() => assertCloseIntent(exitOnly(op), expectation())).toThrow(/act for an account other/);
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(op), expectation()),
+    "operation_source_mismatch",
+    /act for an account other/
+  );
 });
 
 test("rejects an exit whose fee is far above what any exit costs", () => {
-  expect(() => assertCloseIntent(exitOnly(exit(), "10000001"), expectation())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(exit(), "10000001"), expectation()),
+    "fee_above_cap",
     /network fee far above/
   );
   expect(() => assertCloseIntent(exitOnly(exit(), "10000000"), expectation())).not.toThrow();
@@ -1187,7 +1391,11 @@ test("rejects an exit whose fee is far above what any exit costs", () => {
 
 test("rejects an exit that shares its transaction with anything else", () => {
   const i = intent({ operations: [exit(), merge(DEST)] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/only operation/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "invocation_not_alone",
+    /only operation/
+  );
 });
 
 test("an AMM withdrawal may invoke the protocol's router and name the pair's tokens", () => {
@@ -1207,47 +1415,65 @@ test("an AMM withdrawal may invoke the protocol's router and name the pair's tok
   });
   expect(() => assertCloseIntent(exitOnly(op), expected)).not.toThrow();
   // The same call without the router in the pinned set - an expired or unknown registry - fails.
-  expect(() =>
-    assertCloseIntent(
-      exitOnly(op),
-      expectation({ positionTokenContracts: [TOKEN, XLM_SAC], exitFunctions: functions })
-    )
-  ).toThrow(/not one of this account/);
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(op),
+        expectation({ positionTokenContracts: [TOKEN, XLM_SAC], exitFunctions: functions })
+      ),
+    "exit_contract_not_position",
+    /not one of this account/
+  );
   // A pool token the position does not have is not a place funds may go.
-  expect(() =>
-    assertCloseIntent(
-      exitOnly(op),
-      expectation({ exitContracts: [POOL, ROUTER], exitFunctions: functions })
-    )
-  ).toThrow(/no position, balance, or pool token/);
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(op),
+        expectation({ exitContracts: [POOL, ROUTER], exitFunctions: functions })
+      ),
+    "exit_foreign_contract",
+    /no position, balance, or pool token/
+  );
   // The router may only be asked to remove liquidity - never to swap, whatever the API says.
-  expect(() =>
-    assertCloseIntent(
-      exitOnly(
-        exit({
-          contract: ROUTER,
-          function: "swap_exact_tokens_for_tokens",
-          contractsReferenced: [POOL, ROUTER, TOKEN, XLM_SAC],
-        })
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(
+          exit({
+            contract: ROUTER,
+            function: "swap_exact_tokens_for_tokens",
+            contractsReferenced: [POOL, ROUTER, TOKEN, XLM_SAC],
+          })
+        ),
+        expected
       ),
-      expected
-    )
-  ).toThrow(/function LumenWipe does not use/);
+    "exit_function_not_allowed",
+    /function LumenWipe does not use/
+  );
   // And the pair itself is never a call target, even though it is a detected position.
-  expect(() =>
-    assertCloseIntent(
-      exitOnly(
-        exit({ contract: POOL, function: "withdraw", contractsReferenced: [POOL, TOKEN, XLM_SAC] })
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(
+          exit({
+            contract: POOL,
+            function: "withdraw",
+            contractsReferenced: [POOL, TOKEN, XLM_SAC],
+          })
+        ),
+        expected
       ),
-      expected
-    )
-  ).toThrow(/function LumenWipe does not use/);
+    "exit_function_not_allowed",
+    /function LumenWipe does not use/
+  );
 });
 
 test("a Blend exit may only call submit on its pool", () => {
-  expect(() =>
-    assertCloseIntent(exitOnly(exit({ function: "flash_loan" })), expectation())
-  ).toThrow(/function LumenWipe does not use/);
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(exit({ function: "flash_loan" })), expectation()),
+    "exit_function_not_allowed",
+    /function LumenWipe does not use/
+  );
 });
 
 test("a Blend exit may claim emissions on its pool and withdraw a queued deposit from the registry's backstop, nothing else", () => {
@@ -1270,18 +1496,25 @@ test("a Blend exit may claim emissions on its pool and withdraw a queued deposit
   });
   expect(() => assertCloseIntent(exitOnly(withdraw), expected)).not.toThrow();
   // The pool's functions do not carry over to the backstop, nor the other way round.
-  expect(() =>
-    assertCloseIntent(exitOnly(exit({ contract: BACKSTOP, function: "submit" })), expected)
-  ).toThrow(/function LumenWipe does not use/);
-  expect(() => assertCloseIntent(exitOnly(exit({ function: "withdraw" })), expected)).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(exit({ contract: BACKSTOP, function: "submit" })), expected),
+    "exit_function_not_allowed",
     /function LumenWipe does not use/
   );
-  expect(() =>
-    assertCloseIntent(
-      exitOnly(exit({ contract: BACKSTOP, function: "queue_withdrawal" })),
-      expected
-    )
-  ).toThrow(/function LumenWipe does not use/);
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(exit({ function: "withdraw" })), expected),
+    "exit_function_not_allowed",
+    /function LumenWipe does not use/
+  );
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(exit({ contract: BACKSTOP, function: "queue_withdrawal" })),
+        expected
+      ),
+    "exit_function_not_allowed",
+    /function LumenWipe does not use/
+  );
 });
 
 test("a Phoenix exit may withdraw_liquidity on its pool and unbond on the registry's stake contract, nothing else", () => {
@@ -1296,18 +1529,28 @@ test("a Phoenix exit may withdraw_liquidity on its pool and unbond on the regist
   const unbond = exit({ contract: STAKE, function: "unbond", contractsReferenced: [STAKE] });
   expect(() => assertCloseIntent(exitOnly(unbond), expected)).not.toThrow();
   // The pool's function does not carry over to the stake contract, nor the other way round.
-  expect(() =>
-    assertCloseIntent(exitOnly(exit({ contract: STAKE, function: "withdraw_liquidity" })), expected)
-  ).toThrow(/function LumenWipe does not use/);
-  expect(() => assertCloseIntent(exitOnly(exit({ function: "unbond" })), expected)).toThrow(
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(exit({ contract: STAKE, function: "withdraw_liquidity" })),
+        expected
+      ),
+    "exit_function_not_allowed",
+    /function LumenWipe does not use/
+  );
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(exit({ function: "unbond" })), expected),
+    "exit_function_not_allowed",
     /function LumenWipe does not use/
   );
 });
 
 test("a FxDAO exit may only call pay_debt on its vault", () => {
-  expect(() =>
-    assertCloseIntent(exitOnly(exit({ function: "withdraw_collateral" })), expectation())
-  ).toThrow(/function LumenWipe does not use/);
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(exit({ function: "withdraw_collateral" })), expectation()),
+    "exit_function_not_allowed",
+    /function LumenWipe does not use/
+  );
   const expected = expectation({ exitFunctions: { [POOL]: ["pay_debt"] } });
   expect(() => assertCloseIntent(exitOnly(exit({ function: "pay_debt" })), expected)).not.toThrow();
 });
@@ -1325,7 +1568,9 @@ test("an Aquarius exit may call withdraw or claim on its pool, and the share tok
   expect(() => assertCloseIntent(exitOnly(withdraw), expected)).not.toThrow();
   const claim = exit({ function: "claim", args: [SRC], contractsReferenced: [POOL] });
   expect(() => assertCloseIntent(exitOnly(claim), expected)).not.toThrow();
-  expect(() => assertCloseIntent(exitOnly(exit({ function: "deposit" })), expected)).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(exit({ function: "deposit" })), expected),
+    "exit_function_not_allowed",
     /function LumenWipe does not use/
   );
 });
@@ -1356,9 +1601,11 @@ test("rejects a Blend exit whose submit call hides a transfer of the held asset 
     contractsReferenced: [POOL, XLM_SAC],
     subInvocations: [{ contract: XLM_SAC, function: "transfer", args: [SRC, ATTACKER, "100"] }],
   });
-  expect(() =>
-    assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] }))
-  ).toThrow(/other than this account or the protocol/);
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] })),
+    "exit_token_recipient_mismatch",
+    /other than this account or the protocol/
+  );
 });
 
 test("rejects an Aquarius exit whose withdraw call hides a transfer of the share token to a third party", () => {
@@ -1372,7 +1619,9 @@ test("rejects an Aquarius exit whose withdraw call hides a transfer of the share
     exitFunctions: { [POOL]: ["withdraw", "claim"] },
     positionTokenContracts: [SHARE_TOKEN],
   });
-  expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(op), expected),
+    "exit_token_recipient_mismatch",
     /other than this account or the protocol/
   );
 });
@@ -1392,7 +1641,9 @@ test("rejects a Soroswap router exit whose remove_liquidity call hides a transfe
     positionTokenContracts: [TOKEN, XLM_SAC],
     exitFunctions: { [POOL]: [], [ROUTER]: ["remove_liquidity"] },
   });
-  expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(op), expected),
+    "exit_liquidity_auth_invalid",
     /something other than paying its liquidity share into its pair/
   );
 });
@@ -1411,7 +1662,9 @@ test("rejects a Phoenix unbond whose call hides a transfer of the share token to
     positionTokenContracts: [SHARE_TOKEN],
     exitFunctions: { [POOL]: ["withdraw_liquidity"], [STAKE]: ["unbond"] },
   });
-  expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(op), expected),
+    "exit_token_recipient_mismatch",
     /other than this account or the protocol/
   );
 });
@@ -1426,7 +1679,9 @@ test("rejects a FxDAO pay_debt whose call hides a transfer of the debt asset to 
     exitFunctions: { [POOL]: ["pay_debt"] },
     heldTokenContracts: [XLM_SAC],
   });
-  expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(op), expected),
+    "exit_token_recipient_mismatch",
     /other than this account or the protocol/
   );
 });
@@ -1441,9 +1696,11 @@ test("rejects an exit sub-invocation that spends a token's allowance to a third-
       { contract: XLM_SAC, function: "approve", args: [SRC, ATTACKER, "100", "999999"] },
     ],
   });
-  expect(() =>
-    assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] }))
-  ).toThrow(/other than this account or the protocol/);
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] })),
+    "exit_token_recipient_mismatch",
+    /other than this account or the protocol/
+  );
 });
 
 test("rejects an exit sub-invocation calling a function on a token that no exit legitimately needs", () => {
@@ -1453,9 +1710,11 @@ test("rejects an exit sub-invocation calling a function on a token that no exit 
     contractsReferenced: [POOL, XLM_SAC],
     subInvocations: [{ contract: XLM_SAC, function: "set_admin", args: [ATTACKER] }],
   });
-  expect(() =>
-    assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] }))
-  ).toThrow(/LumenWipe does not use to leave a protocol/);
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] })),
+    "exit_token_function_not_allowed",
+    /LumenWipe does not use to leave a protocol/
+  );
 });
 
 test("a burn sub-invocation on a held token needs no recipient pinning - it destroys value, moving it nowhere", () => {
@@ -1475,9 +1734,11 @@ test("rejects a transfer-shaped sub-invocation whose argument count does not mat
     contractsReferenced: [POOL, XLM_SAC],
     subInvocations: [{ contract: XLM_SAC, function: "transfer", args: [SRC, "100"] }],
   });
-  expect(() =>
-    assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] }))
-  ).toThrow(/argument count/);
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(op), expectation({ heldTokenContracts: [XLM_SAC] })),
+    "exit_token_argument_count",
+    /argument count/
+  );
 });
 
 test("a sub-invocation on a contract outside the account's tokens is refused, whatever it calls", () => {
@@ -1486,9 +1747,11 @@ test("a sub-invocation on a contract outside the account's tokens is refused, wh
       contractsReferenced: [POOL, OTHER_POOL],
       subInvocations: [{ contract: OTHER_POOL, function: fn, args: [] }],
     });
-    expect(() =>
-      assertCloseIntent(exitOnly(op), expectation({ exitContracts: [POOL, OTHER_POOL] }))
-    ).toThrow(/a contract that is not one of this account's tokens/);
+    expectRefusal(
+      () => assertCloseIntent(exitOnly(op), expectation({ exitContracts: [POOL, OTHER_POOL] })),
+      "exit_auth_foreign_contract",
+      /a contract that is not one of this account's tokens/
+    );
   }
 });
 
@@ -1499,7 +1762,9 @@ test("submit and claim are refused on a token too", () => {
       contractsReferenced: [POOL, TOKEN],
       subInvocations: [{ contract: TOKEN, function: fn, args: [SRC, SRC, SRC, "[]"] }],
     });
-    expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
+    expectRefusal(
+      () => assertCloseIntent(exitOnly(op), expected),
+      "exit_token_function_not_allowed",
       /a function on a token that LumenWipe does not use/
     );
   }
@@ -1543,27 +1808,43 @@ describe("Soroswap's router may move the LP share into its pair", () => {
   ] as const) {
     test(`and not ${name}`, () => {
       const call = { ...sub, args: [...sub.args] };
-      expect(() => assertCloseIntent(exitOnly(removal(call)), expected)).toThrow(REFUSED);
+      expectRefusal(
+        () => assertCloseIntent(exitOnly(removal(call)), expected),
+        "exit_liquidity_auth_invalid",
+        REFUSED
+      );
     });
   }
 
   test("for the amount the removal names", () => {
     const op = removal({ ...share, args: [SRC, PAIR, "101"] });
-    expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(REFUSED);
+    expectRefusal(
+      () => assertCloseIntent(exitOnly(op), expected),
+      "exit_liquidity_auth_invalid",
+      REFUSED
+    );
   });
 
   test("and nothing beside it", () => {
     const heldToken = expectation({ ...expected, heldTokenContracts: [TOKEN] });
     for (const other of [share, { contract: TOKEN, function: "burn", args: [SRC, "1"] }]) {
       const op = { ...removal(share), subInvocations: [share, other] } as IntentOperation;
-      expect(() => assertCloseIntent(exitOnly(op), heldToken)).toThrow(REFUSED);
+      expectRefusal(
+        () => assertCloseIntent(exitOnly(op), heldToken),
+        "exit_liquidity_auth_invalid",
+        REFUSED
+      );
     }
     const tokenAlone = removal({
       contract: TOKEN,
       function: "transfer",
       args: [SRC, SOROSWAP_ROUTER, "100"],
     });
-    expect(() => assertCloseIntent(exitOnly(tokenAlone), heldToken)).toThrow(REFUSED);
+    expectRefusal(
+      () => assertCloseIntent(exitOnly(tokenAlone), heldToken),
+      "exit_liquidity_auth_invalid",
+      REFUSED
+    );
   });
 
   for (const [name, args] of [
@@ -1576,7 +1857,9 @@ describe("Soroswap's router may move the LP share into its pair", () => {
   ] as const) {
     test(`and a removal with ${name} is refused`, () => {
       const op = { ...removal(share), args: [...args] } as IntentOperation;
-      expect(() => assertCloseIntent(exitOnly(op), expected)).toThrow(
+      expectRefusal(
+        () => assertCloseIntent(exitOnly(op), expected),
+        "exit_argument_party_mismatch",
         /an address other than the account being closed/
       );
     });
@@ -1585,7 +1868,9 @@ describe("Soroswap's router may move the LP share into its pair", () => {
   test("only through remove_liquidity", () => {
     const op = { ...removal(share), function: "withdraw" } as IntentOperation;
     const other = { ...expected, exitFunctions: { [SOROSWAP_ROUTER]: ["withdraw"], [PAIR]: [] } };
-    expect(() => assertCloseIntent(exitOnly(op), other)).toThrow(
+    expectRefusal(
+      () => assertCloseIntent(exitOnly(op), other),
+      "exit_auth_foreign_contract",
       /not one of this account's tokens/
     );
   });
@@ -1620,95 +1905,141 @@ test("a token transfer of at least the balance shown, to the account the user ch
 });
 
 test("rejects a token transfer to an address the user did not choose - the diversion this rule exists for", () => {
-  expect(() =>
-    assertCloseIntent(
-      exitOnly(
-        tokenTransfer({ args: [SRC, ATTACKER, "2500000000"], accountsReferenced: [SRC, ATTACKER] })
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(
+          tokenTransfer({
+            args: [SRC, ATTACKER, "2500000000"],
+            accountsReferenced: [SRC, ATTACKER],
+          })
+        ),
+        chosenToken()
       ),
-      chosenToken()
-    )
-  ).toThrow(/address you did not choose/);
+    "transfer_destination_mismatch",
+    /address you did not choose/
+  );
 });
 
 test("rejects a token transfer of less than the balance the user was shown, or of an unreadable amount", () => {
-  expect(() =>
-    assertCloseIntent(exitOnly(tokenTransfer({ args: [SRC, DEST, "2499999999"] })), chosenToken())
-  ).toThrow(/less than the balance/);
-  expect(() =>
-    assertCloseIntent(exitOnly(tokenTransfer({ args: [SRC, DEST, '"2500000000"'] })), chosenToken())
-  ).toThrow(/less than the balance/);
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(tokenTransfer({ args: [SRC, DEST, "2499999999"] })),
+        chosenToken()
+      ),
+    "transfer_amount_short",
+    /less than the balance/
+  );
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(tokenTransfer({ args: [SRC, DEST, '"2500000000"'] })),
+        chosenToken()
+      ),
+    "transfer_amount_short",
+    /less than the balance/
+  );
 });
 
 test("rejects a token transfer that moves another account's balance", () => {
-  expect(() =>
-    assertCloseIntent(
-      exitOnly(
-        tokenTransfer({
-          args: [ATTACKER, DEST, "2500000000"],
-          accountsReferenced: [ATTACKER, DEST],
-        })
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(
+          tokenTransfer({
+            args: [ATTACKER, DEST, "2500000000"],
+            accountsReferenced: [ATTACKER, DEST],
+          })
+        ),
+        chosenToken()
       ),
-      chosenToken()
-    )
-  ).toThrow(/other than this account's own/);
+    "token_transfer_from_mismatch",
+    /other than this account's own/
+  );
 });
 
 test("rejects a token call that is not a plain three-argument transfer", () => {
-  expect(() =>
-    assertCloseIntent(exitOnly(tokenTransfer({ function: "approve" })), chosenToken())
-  ).toThrow(/something other than a plain transfer/);
-  expect(() =>
-    assertCloseIntent(exitOnly(tokenTransfer({ args: [SRC, DEST] })), chosenToken())
-  ).toThrow(/something other than a plain transfer/);
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(tokenTransfer({ function: "approve" })), chosenToken()),
+    "token_transfer_function_invalid",
+    /something other than a plain transfer/
+  );
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(tokenTransfer({ args: [SRC, DEST] })), chosenToken()),
+    "token_transfer_function_invalid",
+    /something other than a plain transfer/
+  );
 });
 
 test("rejects a token whose transfer makes the account authorize anything else - a nested call or foreign credentials", () => {
-  expect(() => assertCloseIntent(exitOnly(tokenTransfer({ authDepth: 1 })), chosenToken())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(tokenTransfer({ authDepth: 1 })), chosenToken()),
+    "invocation_auth_beyond_self",
     /beyond the transfer itself/
   );
-  expect(() =>
-    assertCloseIntent(exitOnly(tokenTransfer({ authorizesBeyondSelf: true })), chosenToken())
-  ).toThrow(/beyond the transfer itself/);
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(tokenTransfer({ authorizesBeyondSelf: true })), chosenToken()),
+    "invocation_auth_beyond_self",
+    /beyond the transfer itself/
+  );
 });
 
 test("rejects a token transfer that names any other account or contract, or an address form it cannot pin", () => {
-  expect(() =>
-    assertCloseIntent(
-      exitOnly(tokenTransfer({ accountsReferenced: [SRC, DEST, ATTACKER] })),
-      chosenToken()
-    )
-  ).toThrow(/other than this one and your chosen destination/);
-  expect(() =>
-    assertCloseIntent(
-      exitOnly(tokenTransfer({ contractsReferenced: [TOKEN, OTHER_POOL] })),
-      chosenToken()
-    )
-  ).toThrow(/other than the token itself/);
-  expect(() =>
-    assertCloseIntent(exitOnly(tokenTransfer({ unsupportedAddressCount: 1 })), chosenToken())
-  ).toThrow(/cannot be verified/);
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(tokenTransfer({ accountsReferenced: [SRC, DEST, ATTACKER] })),
+        chosenToken()
+      ),
+    "invocation_foreign_account",
+    /other than this one and your chosen destination/
+  );
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(tokenTransfer({ contractsReferenced: [TOKEN, OTHER_POOL] })),
+        chosenToken()
+      ),
+    "token_transfer_foreign_contract",
+    /other than the token itself/
+  );
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(tokenTransfer({ unsupportedAddressCount: 1 })), chosenToken()),
+    "invocation_address_unsupported",
+    /cannot be verified/
+  );
 });
 
 test("rejects a token transfer that is not alone, acts for another account, or pays an outsized fee", () => {
-  expect(() =>
-    assertCloseIntent(
-      intent({
-        operations: [tokenTransfer(), tokenTransfer()],
-        guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
-      }),
-      chosenToken()
-    )
-  ).toThrow(/only operation/);
-  expect(() =>
-    assertCloseIntent(exitOnly(tokenTransfer({ source: ATTACKER })), chosenToken())
-  ).toThrow(/other than the one being closed/);
-  expect(() => assertCloseIntent(exitOnly(tokenTransfer(), "20000000"), chosenToken())).toThrow(
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        intent({
+          operations: [tokenTransfer(), tokenTransfer()],
+          guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
+        }),
+        chosenToken()
+      ),
+    "invocation_not_alone",
+    /only operation/
+  );
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(tokenTransfer({ source: ATTACKER })), chosenToken()),
+    "operation_source_mismatch",
+    /other than the one being closed/
+  );
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(tokenTransfer(), "20000000"), chosenToken()),
+    "fee_above_cap",
     /network fee/
   );
 });
 
 test("a token the user never chose to transfer is judged as a DeFi exit, and fails there: no position, no balance", () => {
-  expect(() => assertCloseIntent(exitOnly(tokenTransfer()), expectation())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(tokenTransfer()), expectation()),
+    "exit_contract_not_position",
     /not one of this account's detected positions/
   );
 });
@@ -1771,11 +2102,15 @@ test("rejects a swap that would accept less XLM than the minimum the user was sh
   const worse = routerSwap({
     args: ["100000000", "519999999", JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), SRC, "1"],
   });
-  expect(() => assertCloseIntent(exitOnly(worse), chosenConversion())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(worse), chosenConversion()),
+    "conversion_min_out_below_floor",
     /less XLM than the minimum/
   );
   const worseAggregator = aggregatorSwap({ args: aggregatorArgs({ min: "1" }) });
-  expect(() => assertCloseIntent(exitOnly(worseAggregator), chosenConversion())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(worseAggregator), chosenConversion()),
+    "conversion_min_out_below_floor",
     /less XLM than the minimum/
   );
 });
@@ -1785,11 +2120,15 @@ test("rejects a swap that would buy something other than XLM - the floor is mean
   const wrongOutputRouter = routerSwap({
     args: ["100000000", FLOOR, JSON.stringify([CONVERT_TOKEN, other]), SRC, "1"],
   });
-  expect(() => assertCloseIntent(exitOnly(wrongOutputRouter), chosenConversion())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(wrongOutputRouter), chosenConversion()),
+    "conversion_not_to_xlm",
     /something other than XLM/
   );
   const wrongOutputAggregator = aggregatorSwap({ args: aggregatorArgs({ out: other }) });
-  expect(() => assertCloseIntent(exitOnly(wrongOutputAggregator), chosenConversion())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(wrongOutputAggregator), chosenConversion()),
+    "conversion_not_to_xlm",
     /something other than XLM/
   );
 });
@@ -1798,9 +2137,11 @@ test("rejects a swap that spends less of the token than the balance the user was
   const shortfall = routerSwap({
     args: ["99999999", FLOOR, JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), SRC, "1"],
   });
-  expect(() =>
-    assertCloseIntent(exitOnly(shortfall), chosenConversion(FLOOR, "100000000"))
-  ).toThrow(/less of the token/);
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(shortfall), chosenConversion(FLOOR, "100000000")),
+    "conversion_amount_short",
+    /less of the token/
+  );
   // Spending more than the balance shown is not a loss - the account simply held more.
   const more = routerSwap({
     args: ["100000001", FLOOR, JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), SRC, "1"],
@@ -1813,21 +2154,27 @@ test("rejects a swap that pays the proceeds anywhere but the account being close
     args: ["100000000", FLOOR, JSON.stringify([CONVERT_TOKEN, XLM_CONTRACT]), ATTACKER, "1"],
     accountsReferenced: [SRC, ATTACKER],
   });
-  expect(() => assertCloseIntent(exitOnly(diverted), chosenConversion())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(diverted), chosenConversion()),
+    "conversion_recipient_mismatch",
     /other than the account being closed/
   );
   const divertedAggregator = aggregatorSwap({
     args: aggregatorArgs({ user: ATTACKER }),
     accountsReferenced: [SRC, ATTACKER],
   });
-  expect(() => assertCloseIntent(exitOnly(divertedAggregator), chosenConversion())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(divertedAggregator), chosenConversion()),
+    "conversion_recipient_mismatch",
     /other than the account being closed/
   );
 });
 
 test("rejects an aggregator swap that names a fee partner", () => {
   const withPartner = aggregatorSwap({ args: aggregatorArgs({ partner: '{"bps":25,"id":"x"}' }) });
-  expect(() => assertCloseIntent(exitOnly(withPartner), chosenConversion())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(withPartner), chosenConversion()),
+    "swap_args_unreadable",
     /arguments could not be read/
   );
 });
@@ -1837,45 +2184,67 @@ test("rejects a swap of a token the user never chose to convert", () => {
   const wrongToken = routerSwap({
     args: ["100000000", FLOOR, JSON.stringify([other, XLM_CONTRACT]), SRC, "1"],
   });
-  expect(() => assertCloseIntent(exitOnly(wrongToken), chosenConversion())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(wrongToken), chosenConversion()),
+    "conversion_asset_not_chosen",
     /token you did not choose to convert/
   );
   // With no conversion chosen at all, a call on the swap contract is refused the same way: the
   // rule is keyed on the user's decision, not on the contract having been recognized.
-  expect(() => assertCloseIntent(exitOnly(routerSwap()), expectation())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(routerSwap()), expectation()),
+    "conversion_asset_not_chosen",
     /token you did not choose to convert/
   );
   // And a swap contract the bundled registry does not name is judged as an exit, and fails there.
-  expect(() =>
-    assertCloseIntent(exitOnly(routerSwap()), expectation({ conversionContracts: [] }))
-  ).toThrow(/not one of this account's detected positions/);
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(routerSwap()), expectation({ conversionContracts: [] })),
+    "exit_contract_not_position",
+    /not one of this account's detected positions/
+  );
 });
 
 test("rejects a swap that is not alone, acts for another account, calls another function, or pays an outsized fee", () => {
-  expect(() =>
-    assertCloseIntent(
-      intent({
-        operations: [routerSwap(), routerSwap()],
-        guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
-      }),
-      chosenConversion()
-    )
-  ).toThrow(/only operation/);
-  expect(() =>
-    assertCloseIntent(exitOnly(routerSwap({ source: ATTACKER })), chosenConversion())
-  ).toThrow(/other than the one being closed/);
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        intent({
+          operations: [routerSwap(), routerSwap()],
+          guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
+        }),
+        chosenConversion()
+      ),
+    "invocation_not_alone",
+    /only operation/
+  );
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(routerSwap({ source: ATTACKER })), chosenConversion()),
+    "operation_source_mismatch",
+    /other than the one being closed/
+  );
   // A non-swap call on the swap contract is judged as an exit, and fails there unless the account
   // actually holds a position that contract leaves.
-  expect(() =>
-    assertCloseIntent(exitOnly(routerSwap({ function: "remove_liquidity" })), chosenConversion())
-  ).toThrow(/not one of this account's detected positions/);
+  expectRefusal(
+    () =>
+      assertCloseIntent(exitOnly(routerSwap({ function: "remove_liquidity" })), chosenConversion()),
+    "exit_contract_not_position",
+    /not one of this account's detected positions/
+  );
   // swap_exact_out carries the same seven arguments with the amounts meaning (max_in,
   // amount_out), so reading it as an exact-in swap would hold the wrong figures to the balance
   // and the floor. The function name is what stops it.
-  expect(() =>
-    assertCloseIntent(exitOnly(aggregatorSwap({ function: "swap_exact_out" })), chosenConversion())
-  ).toThrow(/not one of this account's detected positions/);
-  expect(() => assertCloseIntent(exitOnly(routerSwap(), "20000000"), chosenConversion())).toThrow(
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(aggregatorSwap({ function: "swap_exact_out" })),
+        chosenConversion()
+      ),
+    "exit_contract_not_position",
+    /not one of this account's detected positions/
+  );
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(routerSwap(), "20000000"), chosenConversion()),
+    "fee_above_cap",
     /network fee/
   );
 });
@@ -1887,22 +2256,33 @@ test("rejects a swap whose arguments cannot be read, or that authorizes beyond t
     ["1", FLOOR, "not json", SRC, "1"],
     ["1", "x", "[]", SRC, "1"],
   ]) {
-    expect(() => assertCloseIntent(exitOnly(routerSwap({ args })), chosenConversion())).toThrow(
+    expectRefusal(
+      () => assertCloseIntent(exitOnly(routerSwap({ args })), chosenConversion()),
+      "swap_args_unreadable",
       /arguments could not be read|other than a swap/
     );
   }
-  expect(() =>
-    assertCloseIntent(exitOnly(routerSwap({ authorizesBeyondSelf: true })), chosenConversion())
-  ).toThrow(/beyond this account's own contract calls/);
-  expect(() =>
-    assertCloseIntent(exitOnly(routerSwap({ unsupportedAddressCount: 1 })), chosenConversion())
-  ).toThrow(/cannot be verified/);
-  expect(() =>
-    assertCloseIntent(
-      exitOnly(routerSwap({ accountsReferenced: [SRC, ATTACKER] })),
-      chosenConversion()
-    )
-  ).toThrow(/other than the one being closed/);
+  expectRefusal(
+    () =>
+      assertCloseIntent(exitOnly(routerSwap({ authorizesBeyondSelf: true })), chosenConversion()),
+    "invocation_auth_beyond_self",
+    /beyond this account's own contract calls/
+  );
+  expectRefusal(
+    () =>
+      assertCloseIntent(exitOnly(routerSwap({ unsupportedAddressCount: 1 })), chosenConversion()),
+    "invocation_address_unsupported",
+    /cannot be verified/
+  );
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(routerSwap({ accountsReferenced: [SRC, ATTACKER] })),
+        chosenConversion()
+      ),
+    "invocation_foreign_account",
+    /other than the one being closed/
+  );
 });
 
 /**
@@ -1938,7 +2318,9 @@ test("the dual role does not let a swap skip the conversion rules", () => {
     xlmContract: XLM_CONTRACT,
   });
 
-  expect(() => assertCloseIntent(exitOnly(routerSwap()), bothRoles)).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(routerSwap()), bothRoles),
+    "conversion_asset_not_chosen",
     /token you did not choose to convert/
   );
 });
@@ -1950,9 +2332,11 @@ test("the dual role does not admit a function that is neither a swap nor that pr
     exitFunctions: { [POOL]: ["submit"], [SOROSWAP_ROUTER]: ["remove_liquidity"] },
   });
 
-  expect(() =>
-    assertCloseIntent(exitOnly(routerSwap({ function: "add_liquidity" })), bothRoles)
-  ).toThrow(/function LumenWipe does not use to leave this protocol/);
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(routerSwap({ function: "add_liquidity" })), bothRoles),
+    "exit_function_not_allowed",
+    /function LumenWipe does not use to leave this protocol/
+  );
 });
 
 // ─── xBull's strict_send swap shape (Task 8) ─────────────────────────────────
@@ -1996,7 +2380,9 @@ test("a strict_send swap whose resolved path matches the chosen token and XLM pa
 
 test("rejects a strict_send swap whose route does not end at XLM", () => {
   const toOther = xbullSwap({ args: [SRC, SRC, "100000000", FLOOR, "[[0,1,0,2]]", "[]"] });
-  expect(() => assertCloseIntent(exitOnly(toOther), chosenXBullConversion())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(toOther), chosenXBullConversion()),
+    "conversion_not_to_xlm",
     /something other than XLM/
   );
 });
@@ -2005,14 +2391,18 @@ test("refuses a strict_send call whose refs is non-empty even before reaching re
   const withRef = xbullSwap({
     args: [SRC, SRC, "100000000", FLOOR, "[[0,1,0,0]]", `[["${SRC}","100"]]`],
   });
-  expect(() => assertCloseIntent(exitOnly(withRef), chosenXBullConversion())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(withRef), chosenXBullConversion()),
+    "swap_referral_recipient",
     /referral fee/
   );
 });
 
 test("rejects a strict_send swap that would accept less XLM than the minimum the user was shown", () => {
   const worse = xbullSwap({ args: [SRC, SRC, "100000000", "519999999", "[[0,1,0,0]]", "[]"] });
-  expect(() => assertCloseIntent(exitOnly(worse), chosenXBullConversion())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(worse), chosenXBullConversion()),
+    "conversion_min_out_below_floor",
     /less XLM than the minimum/
   );
 });
@@ -2021,9 +2411,12 @@ test("rejects a strict_send swap that spends less of the token than the balance 
   const shortfall = xbullSwap({
     args: [SRC, SRC, "99999999", FLOOR, "[[0,1,0,0]]", "[]"],
   });
-  expect(() =>
-    assertCloseIntent(exitOnly(shortfall), chosenXBullConversion(undefined, FLOOR, "100000000"))
-  ).toThrow(/less of the token/);
+  expectRefusal(
+    () =>
+      assertCloseIntent(exitOnly(shortfall), chosenXBullConversion(undefined, FLOOR, "100000000")),
+    "conversion_amount_short",
+    /less of the token/
+  );
 });
 
 test("rejects a strict_send swap that pays the proceeds anywhere but the account being closed", () => {
@@ -2031,27 +2424,40 @@ test("rejects a strict_send swap that pays the proceeds anywhere but the account
     args: [SRC, ATTACKER, "100000000", FLOOR, "[[0,1,0,0]]", "[]"],
     accountsReferenced: [SRC, ATTACKER],
   });
-  expect(() => assertCloseIntent(exitOnly(diverted), chosenXBullConversion())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(diverted), chosenXBullConversion()),
+    "conversion_recipient_mismatch",
     /other than the account being closed/
   );
 });
 
 test("rejects a strict_send swap whose route spends a token the user did not choose to convert", () => {
   const spendsOther = xbullSwap({ args: [SRC, SRC, "100000000", FLOOR, "[[0,2,0,0]]", "[]"] });
-  expect(() => assertCloseIntent(exitOnly(spendsOther), chosenXBullConversion())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(spendsOther), chosenXBullConversion()),
+    "conversion_asset_not_chosen",
     /token you did not choose to convert/
   );
-  expect(() =>
-    assertCloseIntent(exitOnly(xbullSwap()), expectation({ conversionContracts: [XBULL_ROUTER] }))
-  ).toThrow(/token you did not choose to convert/);
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(xbullSwap()),
+        expectation({ conversionContracts: [XBULL_ROUTER] })
+      ),
+    "conversion_asset_not_chosen",
+    /token you did not choose to convert/
+  );
 });
 
 test("rejects a strict_send swap whose route names an index the bundled table does not hold, or breaks between hops", () => {
-  for (const path of ["[[0,7,0,0]]", "[[0,1,0,2],[0,1,3,0]]", "[[0,1,0]]", "[]"]) {
+  for (const [path, code] of [
+    ["[[0,7,0,0]]", "swap_route_asset_unknown"],
+    ["[[0,1,0,2],[0,1,3,0]]", "swap_route_asset_unknown"],
+    ["[[0,1,0]]", "swap_args_unreadable"],
+    ["[]", "swap_args_unreadable"],
+  ] as const) {
     const swap = xbullSwap({ args: [SRC, SRC, "100000000", FLOOR, path, "[]"] });
-    expect(() => assertCloseIntent(exitOnly(swap), chosenXBullConversion())).toThrow(
-      VerificationError
-    );
+    expectRefusal(() => assertCloseIntent(exitOnly(swap), chosenXBullConversion()), code);
   }
   const twoHop = xbullSwap({ args: [SRC, SRC, "100000000", FLOOR, "[[0,1,0,2],[0,2,1,0]]", "[]"] });
   expect(() => assertCloseIntent(exitOnly(twoHop), chosenXBullConversion())).not.toThrow();
@@ -2064,40 +2470,64 @@ test("rejects a strict_send swap whose arguments cannot be read", () => {
     [SRC, SRC, "100000000", FLOOR, "not json", "[]"],
     [SRC, SRC, "x", FLOOR, "[[0,1,0,0]]", "[]"],
   ]) {
-    expect(() => assertCloseIntent(exitOnly(xbullSwap({ args })), chosenXBullConversion())).toThrow(
+    expectRefusal(
+      () => assertCloseIntent(exitOnly(xbullSwap({ args })), chosenXBullConversion()),
+      "swap_args_unreadable",
       /arguments could not be read/
     );
   }
 });
 
 test("a strict_send swap is held to the same outer swap-shape rules as Soroswap's: alone, own fee, own source, no extra authorization", () => {
-  expect(() =>
-    assertCloseIntent(
-      intent({
-        operations: [xbullSwap(), xbullSwap()],
-        guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
-      }),
-      chosenXBullConversion()
-    )
-  ).toThrow(/only operation/);
-  expect(() =>
-    assertCloseIntent(exitOnly(xbullSwap({ source: ATTACKER })), chosenXBullConversion())
-  ).toThrow(/other than the one being closed/);
-  expect(() =>
-    assertCloseIntent(exitOnly(xbullSwap(), "20000000"), chosenXBullConversion())
-  ).toThrow(/network fee/);
-  expect(() =>
-    assertCloseIntent(exitOnly(xbullSwap({ authorizesBeyondSelf: true })), chosenXBullConversion())
-  ).toThrow(/beyond this account's own contract calls/);
-  expect(() =>
-    assertCloseIntent(exitOnly(xbullSwap({ unsupportedAddressCount: 1 })), chosenXBullConversion())
-  ).toThrow(/cannot be verified/);
-  expect(() =>
-    assertCloseIntent(
-      exitOnly(xbullSwap({ accountsReferenced: [SRC, ATTACKER] })),
-      chosenXBullConversion()
-    )
-  ).toThrow(/other than the one being closed/);
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        intent({
+          operations: [xbullSwap(), xbullSwap()],
+          guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
+        }),
+        chosenXBullConversion()
+      ),
+    "invocation_not_alone",
+    /only operation/
+  );
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(xbullSwap({ source: ATTACKER })), chosenXBullConversion()),
+    "operation_source_mismatch",
+    /other than the one being closed/
+  );
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(xbullSwap(), "20000000"), chosenXBullConversion()),
+    "fee_above_cap",
+    /network fee/
+  );
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(xbullSwap({ authorizesBeyondSelf: true })),
+        chosenXBullConversion()
+      ),
+    "invocation_auth_beyond_self",
+    /beyond this account's own contract calls/
+  );
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(xbullSwap({ unsupportedAddressCount: 1 })),
+        chosenXBullConversion()
+      ),
+    "invocation_address_unsupported",
+    /cannot be verified/
+  );
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        exitOnly(xbullSwap({ accountsReferenced: [SRC, ATTACKER] })),
+        chosenXBullConversion()
+      ),
+    "invocation_foreign_account",
+    /other than the one being closed/
+  );
 });
 
 // ─── Network fee and expiry ──────────────────────────────────────────────────
@@ -2108,7 +2538,9 @@ test("a classic close may pay up to ten times the base fee per operation", () =>
     transfers: { [`USDC:${ISSUER}`]: { destination: ISSUER, amount: "5" } },
   });
   expect(() => assertCloseIntent(intent({ operations: ops, fee: "3000" }), chosen)).not.toThrow();
-  expect(() => assertCloseIntent(intent({ operations: ops, fee: "3001" }), chosen)).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(intent({ operations: ops, fee: "3001" }), chosen),
+    "fee_above_cap",
     /network fee far above/
   );
 });
@@ -2120,23 +2552,31 @@ test("a classic close whose fee is paid by a sponsor carries a zero fee and pass
 });
 
 test("a fee that is not a whole number of stroops is refused", () => {
-  expect(() =>
-    assertCloseIntent(intent({ operations: [merge(DEST)], fee: "1e3" }), expectation())
-  ).toThrow(/fee could not be read/);
+  expectRefusal(
+    () => assertCloseIntent(intent({ operations: [merge(DEST)], fee: "1e3" }), expectation()),
+    "fee_unreadable",
+    /fee could not be read/
+  );
 });
 
 test("a transaction without an upper time bound is refused", () => {
   for (const maxTime of [null, undefined, "0"]) {
-    expect(() =>
-      assertCloseIntent(intent({ operations: [merge(DEST)], maxTime }), expectation())
-    ).toThrow(/never expires/);
+    expectRefusal(
+      () => assertCloseIntent(intent({ operations: [merge(DEST)], maxTime }), expectation()),
+      "expiry_missing",
+      /never expires/
+    );
   }
 });
 
 test("a transaction may stay valid for at most fifteen minutes from verification", () => {
   const at = (maxTime: number) => intent({ operations: [merge(DEST)], maxTime: String(maxTime) });
   expect(() => assertCloseIntent(at(NOW + 900), expectation())).not.toThrow();
-  expect(() => assertCloseIntent(at(NOW + 901), expectation())).toThrow(/far longer/);
+  expectRefusal(
+    () => assertCloseIntent(at(NOW + 901), expectation()),
+    "expiry_too_far",
+    /far longer/
+  );
 });
 
 test("verifyCloseTransaction reads the expiry from the envelope itself", () => {
@@ -2155,8 +2595,8 @@ test("verifyCloseTransaction reads the expiry from the envelope itself", () => {
       expected: expectation(),
     });
   expect(() => run(unsignedXdr(300))).not.toThrow();
-  expect(() => run(unsignedXdr(0))).toThrow(/never expires/);
-  expect(() => run(unsignedXdr(3600))).toThrow(/far longer/);
+  expectRefusal(() => run(unsignedXdr(0)), "expiry_missing", /never expires/);
+  expectRefusal(() => run(unsignedXdr(3600)), "expiry_too_far", /far longer/);
 });
 
 test("every operation must act for the account being closed", () => {
@@ -2170,9 +2610,11 @@ test("every operation must act for the account being closed", () => {
     { ...conversion(), source: ATTACKER },
   ];
   for (const op of others) {
-    expect(() =>
-      assertCloseIntent(intent({ operations: [op, merge(DEST)] }), expectation())
-    ).toThrow(/^The transaction would act for an account other than the one being closed\.$/);
+    expectRefusal(
+      () => assertCloseIntent(intent({ operations: [op, merge(DEST)] }), expectation()),
+      "operation_source_mismatch",
+      /^The transaction would act for an account other than the one being closed\.$/
+    );
   }
 });
 
@@ -2180,7 +2622,7 @@ test("a pre-authorized transaction keeps its own expiry and fee", () => {
   const ops = [merge(DEST)];
   const own = intent({ operations: ops, maxTime: null, fee: "5000" });
   expect(() => assertCloseIntent(own, expectation({ preAuthorized: true }))).not.toThrow();
-  expect(() => assertCloseIntent(own, expectation())).toThrow(/never expires/);
+  expectRefusal(() => assertCloseIntent(own, expectation()), "expiry_missing", /never expires/);
 });
 
 // ─── The mediated hand-off follows the bundled registry ─────────────────────
@@ -2206,7 +2648,11 @@ function mediatedWrapper(destination: string, mediatorRequired: boolean): () => 
 }
 
 test("the mediated hand-off is refused for a destination the bundled registry does not list, whatever the caller says", () => {
-  expect(mediatedWrapper(DEST, true)).toThrow(/address you did not choose/);
+  expectRefusal(
+    mediatedWrapper(DEST, true),
+    "merge_destination_mismatch",
+    /address you did not choose/
+  );
 });
 
 test("a served registry entry cannot make the mediated hand-off reachable for a new address", () => {
@@ -2227,7 +2673,11 @@ test("a served registry entry cannot make the mediated hand-off reachable for a 
     ],
   });
   try {
-    expect(mediatedWrapper(DEST, true)).toThrow(/address you did not choose/);
+    expectRefusal(
+      mediatedWrapper(DEST, true),
+      "merge_destination_mismatch",
+      /address you did not choose/
+    );
   } finally {
     setRegistry(before);
   }
@@ -2258,7 +2708,9 @@ const DIRECT_MERGE_REFUSED =
   "This exchange cannot credit an account merge, so the balance has to reach it as a payment. This transaction would merge your account straight into it.";
 
 test("a direct merge into an exchange the registry lists as needing the intermediary is refused, memo and all", () => {
-  expect(directMergeInto(COINBASE, { memo: "deposit-1", memoType: "text" })).toThrow(
+  expectRefusal(
+    directMergeInto(COINBASE, { memo: "deposit-1", memoType: "text" }),
+    "merge_direct_refused",
     DIRECT_MERGE_REFUSED
   );
 });
@@ -2268,19 +2720,38 @@ test("a direct merge into such an exchange is refused whatever the caller says a
     [Operation.accountMerge({ destination: COINBASE })],
     Memo.text("d-1")
   );
-  expect(() =>
-    verifyCloseTransaction({
-      unsignedXdr,
-      network: "testnet",
-      expected: expectation({
-        destination: COINBASE,
-        memo: "d-1",
-        memoType: "text",
-        mediatorRequired: false,
-        directMergeRefused: false,
+  expectRefusal(
+    () =>
+      verifyCloseTransaction({
+        unsignedXdr,
+        network: "testnet",
+        expected: expectation({
+          destination: COINBASE,
+          memo: "d-1",
+          memoType: "text",
+          mediatorRequired: false,
+          directMergeRefused: false,
+        }),
       }),
-    })
-  ).toThrow(DIRECT_MERGE_REFUSED);
+    "merge_direct_refused",
+    DIRECT_MERGE_REFUSED
+  );
+});
+
+test("an exchange close is refused once the bundled registry is past its validity date", () => {
+  const before = activeRegistry();
+  setRegistry({ ...before, validUntil: "2000-01-01" });
+  try {
+    expectRefusal(
+      directMergeInto(COINBASE, { memo: "deposit-1", memoType: "text" }),
+      "registry_expired",
+      "The exchange deposit rules have expired and have not been re-verified"
+    );
+    // The same expired registry does not stand in the way of a close to a plain wallet.
+    expect(directMergeInto(DEST)).not.toThrow();
+  } finally {
+    setRegistry(before);
+  }
 });
 
 test("a direct merge into a destination that needs no intermediary passes", () => {
@@ -2312,9 +2783,11 @@ test("the mediated hand-off to an exchange that needs the intermediary still pas
 });
 
 test("a pre-authorized direct merge into an exchange that needs the intermediary is refused", () => {
-  expect(
-    directMergeInto(COINBASE, { memo: "deposit-1", memoType: "text", preAuthorized: true })
-  ).toThrow(DIRECT_MERGE_REFUSED);
+  expectRefusal(
+    directMergeInto(COINBASE, { memo: "deposit-1", memoType: "text", preAuthorized: true }),
+    "merge_direct_refused",
+    DIRECT_MERGE_REFUSED
+  );
   expect(directMergeInto(DEST, { preAuthorized: true })).not.toThrow();
 });
 
@@ -2336,8 +2809,12 @@ test("a served registry entry that needs the intermediary refuses a direct merge
     ],
   });
   try {
-    expect(directMergeInto(DEST)).toThrow(DIRECT_MERGE_REFUSED);
-    expect(mediatedWrapper(DEST, true)).toThrow(/address you did not choose/);
+    expectRefusal(directMergeInto(DEST), "merge_direct_refused", DIRECT_MERGE_REFUSED);
+    expectRefusal(
+      mediatedWrapper(DEST, true),
+      "merge_destination_mismatch",
+      /address you did not choose/
+    );
   } finally {
     setRegistry(before);
   }
@@ -2345,7 +2822,9 @@ test("a served registry entry that needs the intermediary refuses a direct merge
 
 test("assertCloseIntent refuses a direct merge only when the destination is marked as needing the intermediary", () => {
   const i = intent({ operations: [merge(DEST)] });
-  expect(() => assertCloseIntent(i, expectation({ directMergeRefused: true }))).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(i, expectation({ directMergeRefused: true })),
+    "merge_direct_refused",
     DIRECT_MERGE_REFUSED
   );
   expect(() => assertCloseIntent(i, expectation({ directMergeRefused: false }))).not.toThrow();
@@ -2373,10 +2852,14 @@ test("a swap floor sits no more than 1% under the quote the user was shown, what
   expect(() =>
     assertCloseIntent(swapWithMin("5940000000"), quoted("1", "6000000000"))
   ).not.toThrow();
-  expect(() => assertCloseIntent(swapWithMin("5939999999"), quoted("1", "6000000000"))).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(swapWithMin("5939999999"), quoted("1", "6000000000")),
+    "conversion_min_out_below_floor",
     /less XLM than the minimum/
   );
-  expect(() => assertCloseIntent(swapWithMin("5940000000"), quoted("1"))).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(swapWithMin("5940000000"), quoted("1")),
+    "swap_quote_missing",
     /quote you were shown/
   );
 });
@@ -2397,7 +2880,9 @@ test("a strict_send swap floor also sits no more than 1% under the quote the use
   const withMin = (min: string) =>
     exitOnly(xbullSwap({ args: [SRC, SRC, "100000000", min, "[[0,1,0,0]]", "[]"] }));
   expect(() => assertCloseIntent(withMin("5940000000"), quoted)).not.toThrow();
-  expect(() => assertCloseIntent(withMin("5939999999"), quoted)).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(withMin("5939999999"), quoted),
+    "conversion_min_out_below_floor",
     /less XLM than the minimum/
   );
 });
@@ -2406,7 +2891,9 @@ test("a strict_send swap floor also sits no more than 1% under the quote the use
 
 test("a classic conversion sells only an asset the user chose to convert", () => {
   const i = intent({ operations: [conversion(), merge(DEST)] });
-  expect(() => assertCloseIntent(i, expectation({ classicConversions: {} }))).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(i, expectation({ classicConversions: {} })),
+    "conversion_asset_not_chosen",
     /did not choose to convert/
   );
 });
@@ -2415,10 +2902,14 @@ test("a classic conversion accepts at least the minimum the plan showed", () => 
   const at = (destMin: string) =>
     intent({ operations: [conversion(SRC, "native", destMin), merge(DEST)] });
   expect(() => assertCloseIntent(at("9.0000000"), expectation())).not.toThrow();
-  expect(() => assertCloseIntent(at("8.9999999"), expectation())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(at("8.9999999"), expectation()),
+    "conversion_min_out_below_floor",
     /less XLM than the minimum you were shown/
   );
-  expect(() => assertCloseIntent(at("0.0000001"), expectation())).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(at("0.0000001"), expectation()),
+    "conversion_min_out_below_floor",
     /less XLM than the minimum you were shown/
   );
 });
@@ -2433,7 +2924,11 @@ test("an asset only an exit pays in is held to the user's choice and a positive 
 
 test("an asset is converted at most once per transaction", () => {
   const i = intent({ operations: [conversion(), conversion(), merge(DEST)] });
-  expect(() => assertCloseIntent(i, expectation())).toThrow(/convert USDC more than once/);
+  expectRefusal(
+    () => assertCloseIntent(i, expectation()),
+    "conversion_duplicate",
+    /convert USDC more than once/
+  );
 });
 
 test("a classic conversion of XLM itself, or of an asset the user chose to send elsewhere, is refused", () => {
@@ -2448,17 +2943,24 @@ test("a classic conversion of XLM itself, or of an asset the user chose to send 
     path: [],
   };
   const native = intent({ operations: [nativeSale, merge(DEST)] });
-  expect(() => assertCloseIntent(native, expectation())).toThrow(/did not choose to convert/);
+  expectRefusal(
+    () => assertCloseIntent(native, expectation()),
+    "conversion_asset_not_chosen",
+    /did not choose to convert/
+  );
   const kept = intent({ operations: [conversion(SRC, "native", "9.0000000"), merge(DEST)] });
-  expect(() =>
-    assertCloseIntent(
-      kept,
-      expectation({
-        classicConversions: {},
-        transfers: { [`USDC:${ISSUER}`]: { destination: DEST, amount: "10" } },
-      })
-    )
-  ).toThrow(/did not choose to convert/);
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        kept,
+        expectation({
+          classicConversions: {},
+          transfers: { [`USDC:${ISSUER}`]: { destination: DEST, amount: "10" } },
+        })
+      ),
+    "conversion_asset_not_chosen",
+    /did not choose to convert/
+  );
 });
 
 // ─── Exits outside the registry and what a swap authorizes ───────────────────
@@ -2477,7 +2979,11 @@ test("an exit through a contract outside the bundled registry may not touch XLM 
     { contract: XLM_SAC, function: "burn", args: [SRC, "100"] },
   ]) {
     const op = exit({ contractsReferenced: [POOL, XLM_SAC], subInvocations: [sub] });
-    expect(() => assertCloseIntent(exitOnly(op), unregistered)).toThrow(/has not verified/);
+    expectRefusal(
+      () => assertCloseIntent(exitOnly(op), unregistered),
+      "exit_unverified_spend",
+      /has not verified/
+    );
   }
   const shareBack = exit({
     contractsReferenced: [POOL, SHARE],
@@ -2490,15 +2996,22 @@ test("an exit through a contract outside the bundled registry may not touch XLM 
     })
   ).not.toThrow();
   // Another position's token, or a token the account merely holds, stays out of its reach.
-  expect(() => assertCloseIntent(exitOnly(shareBack), unregistered)).toThrow(/has not verified/);
-  expect(() =>
-    assertCloseIntent(exitOnly(shareBack), {
-      ...unregistered,
-      positionTokenContracts: [],
-      heldTokenContracts: [XLM_SAC, SHARE],
-      ownTokensByContract: { [POOL]: [] },
-    })
-  ).toThrow(/has not verified/);
+  expectRefusal(
+    () => assertCloseIntent(exitOnly(shareBack), unregistered),
+    "exit_unverified_spend",
+    /has not verified/
+  );
+  expectRefusal(
+    () =>
+      assertCloseIntent(exitOnly(shareBack), {
+        ...unregistered,
+        positionTokenContracts: [],
+        heldTokenContracts: [XLM_SAC, SHARE],
+        ownTokensByContract: { [POOL]: [] },
+      }),
+    "exit_unverified_spend",
+    /has not verified/
+  );
 });
 
 // ─── What an exit may authorize at a contract the registry names ─────────────
@@ -2523,10 +3036,16 @@ describe("a Blend submit allows only withdraw and repay requests", () => {
   for (const type of [0, 2, 4, 6, 7, 8, 9, 10]) {
     test(`request type ${type} is refused, alone or beside an allowed one`, () => {
       const expected = expectation();
-      expect(() => assertCloseIntent(exitOnly(submit(request(type))), expected)).toThrow(REFUSED);
-      expect(() =>
-        assertCloseIntent(exitOnly(submit(request(1), request(type))), expected)
-      ).toThrow(REFUSED);
+      expectRefusal(
+        () => assertCloseIntent(exitOnly(submit(request(type))), expected),
+        "exit_request_not_allowed",
+        REFUSED
+      );
+      expectRefusal(
+        () => assertCloseIntent(exitOnly(submit(request(1), request(type))), expected),
+        "exit_request_not_allowed",
+        REFUSED
+      );
     });
   }
 
@@ -2537,17 +3056,21 @@ describe("a Blend submit allows only withdraw and repay requests", () => {
   });
 
   const fine = JSON.stringify([request(1)]);
-  for (const [name, args, refusal] of [
-    ["no requests", [SRC, SRC, SRC, "[]"], REFUSED],
-    ["requests that are not a list", [SRC, SRC, SRC, JSON.stringify(request(1))], REFUSED],
-    ["requests that are not JSON", [SRC, SRC, SRC, "AAAA"], REFUSED],
-    ["a null request", [SRC, SRC, SRC, "[null]"], REFUSED],
-    ["a null list", [SRC, SRC, SRC, "null"], REFUSED],
-    ["too few arguments", [SRC, SRC, fine], OTHER_PARTY],
-    ["too many arguments", [SRC, SRC, SRC, fine, SRC], OTHER_PARTY],
+  const NOT_EXIT = ["exit_request_not_allowed", REFUSED] as const;
+  const PARTY = ["exit_argument_party_mismatch", OTHER_PARTY] as const;
+  for (const [name, args, [code, refusal]] of [
+    ["no requests", [SRC, SRC, SRC, "[]"], NOT_EXIT],
+    ["requests that are not a list", [SRC, SRC, SRC, JSON.stringify(request(1))], NOT_EXIT],
+    ["requests that are not JSON", [SRC, SRC, SRC, "AAAA"], NOT_EXIT],
+    ["a null request", [SRC, SRC, SRC, "[null]"], NOT_EXIT],
+    ["a null list", [SRC, SRC, SRC, "null"], NOT_EXIT],
+    ["too few arguments", [SRC, SRC, fine], PARTY],
+    ["too many arguments", [SRC, SRC, SRC, fine, SRC], PARTY],
   ] as const) {
     test(`${name} is refused`, () => {
-      expect(() => assertCloseIntent(exitOnly(exit({ args: [...args] })), expectation())).toThrow(
+      expectRefusal(
+        () => assertCloseIntent(exitOnly(exit({ args: [...args] })), expectation()),
+        code,
         refusal
       );
     });
@@ -2567,7 +3090,11 @@ describe("a Blend submit allows only withdraw and repay requests", () => {
     ["an amount that is not a string", request(1, { amount: 1 })],
   ] as const) {
     test(`a request with ${name} is refused`, () => {
-      expect(() => assertCloseIntent(exitOnly(submit(bad)), expectation())).toThrow(REFUSED);
+      expectRefusal(
+        () => assertCloseIntent(exitOnly(submit(bad)), expectation()),
+        "exit_request_not_allowed",
+        REFUSED
+      );
     });
   }
 
@@ -2579,19 +3106,24 @@ describe("a Blend submit allows only withdraw and repay requests", () => {
         args: blendSubmitArgs(undefined, parties),
         contractsReferenced: [POOL, OTHER_POOL],
       });
-      expect(() =>
-        assertCloseIntent(exitOnly(op), expectation({ exitContracts: [POOL, OTHER_POOL] }))
-      ).toThrow(/an address other than the account being closed/);
+      expectRefusal(
+        () => assertCloseIntent(exitOnly(op), expectation({ exitContracts: [POOL, OTHER_POOL] })),
+        "exit_argument_party_mismatch",
+        /an address other than the account being closed/
+      );
     });
   }
 
   test("the same rule holds at a pool the registry does not name", () => {
-    expect(() =>
-      assertCloseIntent(
-        exitOnly(submit(request(0))),
-        expectation({ registryContracts: [], ownTokensByContract: { [POOL]: [XLM_SAC] } })
-      )
-    ).toThrow(REFUSED);
+    expectRefusal(
+      () =>
+        assertCloseIntent(
+          exitOnly(submit(request(0))),
+          expectation({ registryContracts: [], ownTokensByContract: { [POOL]: [XLM_SAC] } })
+        ),
+      "exit_request_not_allowed",
+      REFUSED
+    );
   });
 });
 
@@ -2610,7 +3142,9 @@ describe("a claim pays the account being closed", () => {
 
   test("and names no contract on either side", () => {
     for (const args of [[SRC, "[1]", OTHER_POOL], [OTHER_POOL, "[1]", SRC], [OTHER_POOL], []]) {
-      expect(() => assertCloseIntent(exitOnly(claim(args)), expected)).toThrow(
+      expectRefusal(
+        () => assertCloseIntent(exitOnly(claim(args)), expected),
+        "exit_argument_party_mismatch",
         /an address other than the account being closed/
       );
     }
@@ -2650,8 +3184,10 @@ describe("at a registry contract, XLM and classic assets move only as a repay in
   test("with no debt in the read, the refusal says to run the analysis again", () => {
     const stale = { ...repay, repayTokensByPool: {} };
     const check = () => assertCloseIntent(exitOnly(paying(transfer)), stale);
-    expect(check).toThrow(VerificationError);
-    expect(check).toThrow(
+    expectRefusal(check, "exit_spend_not_repay");
+    expectRefusal(
+      check,
+      "exit_spend_not_repay",
       "This exit would spend your XLM or a classic asset other than to repay a debt in your " +
         "analysis. If this position changed since, run the analysis again."
     );
@@ -2659,7 +3195,11 @@ describe("at a registry contract, XLM and classic assets move only as a repay in
 
   test("a debt in one token does not open another", () => {
     const usdcDebt = { ...repay, repayTokensByPool: { [POOL]: [TOKEN] } };
-    expect(() => assertCloseIntent(exitOnly(paying(transfer)), usdcDebt)).toThrow(REFUSED);
+    expectRefusal(
+      () => assertCloseIntent(exitOnly(paying(transfer)), usdcDebt),
+      "exit_spend_not_repay",
+      REFUSED
+    );
   });
 
   test("a debt in one pool does not open another", () => {
@@ -2669,17 +3209,25 @@ describe("at a registry contract, XLM and classic assets move only as a repay in
       args: [SRC, OTHER_POOL, "100"],
     };
     const op = paying(elsewhere, { contract: OTHER_POOL });
-    expect(() => assertCloseIntent(exitOnly(op), repay)).toThrow(REFUSED);
+    expectRefusal(() => assertCloseIntent(exitOnly(op), repay), "exit_spend_not_repay", REFUSED);
   });
 
   test("the transfer pays the pool that is being called, whatever the read lists", () => {
     const toListedPool = paying(transfer, { contract: OTHER_POOL });
-    expect(() => assertCloseIntent(exitOnly(toListedPool), repay)).toThrow(REFUSED);
+    expectRefusal(
+      () => assertCloseIntent(exitOnly(toListedPool), repay),
+      "exit_spend_not_repay",
+      REFUSED
+    );
     const bothListed = {
       ...repay,
       repayTokensByPool: { [POOL]: [XLM_SAC], [OTHER_POOL]: [XLM_SAC] },
     };
-    expect(() => assertCloseIntent(exitOnly(toListedPool), bothListed)).toThrow(REFUSED);
+    expectRefusal(
+      () => assertCloseIntent(exitOnly(toListedPool), bothListed),
+      "exit_spend_not_repay",
+      REFUSED
+    );
   });
 
   for (const [name, sub] of [
@@ -2694,7 +3242,7 @@ describe("at a registry contract, XLM and classic assets move only as a repay in
   ] as const) {
     test(`${name} of a token with a debt is refused`, () => {
       const op = paying({ contract: XLM_SAC, function: sub.function, args: [...sub.args] });
-      expect(() => assertCloseIntent(exitOnly(op), repay)).toThrow(REFUSED);
+      expectRefusal(() => assertCloseIntent(exitOnly(op), repay), "exit_spend_not_repay", REFUSED);
     });
   }
 
@@ -2710,7 +3258,11 @@ describe("at a registry contract, XLM and classic assets move only as a repay in
       const op = paying(transfer, { function: fn, args });
       const expected = { ...repay, exitFunctions: { [POOL]: [fn] } };
       const withoutDebt = { ...expected, repayTokensByPool: {} };
-      expect(() => assertCloseIntent(exitOnly(op), withoutDebt)).toThrow(REFUSED);
+      expectRefusal(
+        () => assertCloseIntent(exitOnly(op), withoutDebt),
+        "exit_spend_not_repay",
+        REFUSED
+      );
     });
   }
 });
@@ -2732,16 +3284,23 @@ test("a swap may authorize only paying in the token it sells, from this account,
     { contract: CONVERT_TOKEN, function: "transfer", args: [ATTACKER, PAIR, "1"] },
     { contract: PAIR, function: "withdraw", args: [] },
   ]) {
-    expect(() => assertCloseIntent(withSubs([sub]), chosenConversion())).toThrow(
+    expectRefusal(
+      () => assertCloseIntent(withSubs([sub]), chosenConversion()),
+      "swap_auth_unexpected_call",
       /other than paying in the token/
     );
   }
-  expect(() =>
-    assertCloseIntent(
-      withSubs([{ contract: CONVERT_TOKEN, function: "transfer", args: [SRC, PAIR, "100000001"] }]),
-      chosenConversion()
-    )
-  ).toThrow(/more than the balance it sells/);
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        withSubs([
+          { contract: CONVERT_TOKEN, function: "transfer", args: [SRC, PAIR, "100000001"] },
+        ]),
+        chosenConversion()
+      ),
+    "swap_auth_exceeds_amount",
+    /more than the balance it sells/
+  );
   expect(() =>
     assertCloseIntent(
       withSubs([
@@ -2751,12 +3310,15 @@ test("a swap may authorize only paying in the token it sells, from this account,
       chosenConversion()
     )
   ).not.toThrow();
-  expect(() =>
-    assertCloseIntent(
-      withSubs([{ contract: XLM_CONTRACT, function: "swap", args: [] }]),
-      chosenConversion()
-    )
-  ).toThrow(/other than paying in the token/);
+  expectRefusal(
+    () =>
+      assertCloseIntent(
+        withSubs([{ contract: XLM_CONTRACT, function: "swap", args: [] }]),
+        chosenConversion()
+      ),
+    "swap_auth_unexpected_call",
+    /other than paying in the token/
+  );
 });
 
 type ExitExpected = Parameters<typeof verifyCloseTransaction>[0]["expected"];
@@ -2932,31 +3494,45 @@ for (const fixture of REAL_EXIT_ENVELOPES) {
         const outsider = new Address(OUTSIDER_CONTRACT).toScAddress();
         for (const call of rootCalls(op)) call.contractAddress = outsider;
       });
-      expect(() => verifyReal(fixture, altered)).toThrow(/not one of this account's detected/);
+      expectRefusal(
+        () => verifyReal(fixture, altered),
+        "exit_contract_not_position",
+        /not one of this account's detected/
+      );
     });
 
     test("rejects a changed root function", () => {
       const altered = mutatedEnvelope(fixture, (_tx, op) => {
         for (const call of rootCalls(op)) call.functionName = "upgrade";
       });
-      expect(() => verifyReal(fixture, altered)).toThrow(/does not use to leave this protocol/);
+      expectRefusal(
+        () => verifyReal(fixture, altered),
+        "exit_function_not_allowed",
+        /does not use to leave this protocol/
+      );
     });
 
     test("rejects a token call paying a third-party account", () => {
-      expect(() => verifyReal(fixture, redirectTokenCallTo(fixture, ATTACKER))).toThrow(
+      expectRefusal(
+        () => verifyReal(fixture, redirectTokenCallTo(fixture, ATTACKER)),
+        "invocation_foreign_account",
         /would send funds to, or act for, an account other than the one being closed/
       );
     });
 
     test("rejects a token call paying a contract the exit may name but not pay", () => {
       const { xlmContract } = realExitExpectation(fixture);
-      expect(() => verifyReal(fixture, redirectTokenCallTo(fixture, xlmContract))).toThrow(
+      expectRefusal(
+        () => verifyReal(fixture, redirectTokenCallTo(fixture, xlmContract)),
+        "exit_token_recipient_mismatch",
         /move a token balance to an address other than this account or the protocol/
       );
     });
 
     test("rejects a token call paying a contract outside the account read", () => {
-      expect(() => verifyReal(fixture, redirectTokenCallTo(fixture, OUTSIDER_CONTRACT))).toThrow(
+      expectRefusal(
+        () => verifyReal(fixture, redirectTokenCallTo(fixture, OUTSIDER_CONTRACT)),
+        "exit_foreign_contract",
         /has no position, balance, or pool token in/
       );
     });
@@ -2965,21 +3541,33 @@ for (const fixture of REAL_EXIT_ENVELOPES) {
       const altered = mutatedEnvelope(fixture, (_tx, op) => {
         tokenCall(op).functionName = "mint";
       });
-      expect(() => verifyReal(fixture, altered)).toThrow(/function on a token/);
+      expectRefusal(
+        () => verifyReal(fixture, altered),
+        "exit_token_function_not_allowed",
+        /function on a token/
+      );
     });
 
     test("rejects its token call moved onto XLM", () => {
       const altered = mutatedEnvelope(fixture, (_tx, op) => {
         tokenCall(op).contractAddress = new Address(TESTNET_XLM).toScAddress();
       });
-      expect(() => verifyReal(fixture, altered)).toThrow(/run the analysis again/);
+      expectRefusal(
+        () => verifyReal(fixture, altered),
+        "exit_spend_not_repay",
+        /run the analysis again/
+      );
     });
 
     test("rejects a sub-invocation function its arguments do not fit", () => {
       const altered = mutatedEnvelope(fixture, (_tx, op) => {
         tokenCall(op).functionName = "approve";
       });
-      expect(() => verifyReal(fixture, altered)).toThrow(/does not match its real signature/);
+      expectRefusal(
+        () => verifyReal(fixture, altered),
+        "exit_token_argument_count",
+        /does not match its real signature/
+      );
     });
 
     test("rejects an extra operation", () => {
@@ -2991,14 +3579,18 @@ for (const fixture of REAL_EXIT_ENVELOPES) {
         });
         tx.operations = [...tx.operations, extra];
       });
-      expect(() => verifyReal(fixture, altered)).toThrow(/must be the only operation/);
+      expectRefusal(
+        () => verifyReal(fixture, altered),
+        "invocation_not_alone",
+        /must be the only operation/
+      );
     });
 
     test("rejects a fee over the cap", () => {
       const altered = mutatedEnvelope(fixture, (tx) => {
         tx.fee = MAX_EXIT_FEE_STROOPS + 1;
       });
-      expect(() => verifyReal(fixture, altered)).toThrow(/network fee far above/);
+      expectRefusal(() => verifyReal(fixture, altered), "fee_above_cap", /network fee far above/);
     });
 
     // The explorer has answered 402 since 2026-11-06: the position alone names the exit's token.
@@ -3011,7 +3603,9 @@ for (const fixture of REAL_EXIT_ENVELOPES) {
 
     test("rejects the envelope once neither its position nor a listed balance names its token", () => {
       const account = accountNaming(fixture, null);
-      expect(() => verifyReal(fixture, fixture.xdr, realExitExpectation(fixture, account))).toThrow(
+      expectRefusal(
+        () => verifyReal(fixture, fixture.xdr, realExitExpectation(fixture, account)),
+        "exit_foreign_contract",
         /has no position, balance, or pool token in/
       );
     });
@@ -3024,9 +3618,12 @@ for (const fixture of REAL_EXIT_ENVELOPES) {
     ] as const) {
       test(`rejects a read naming ${label} as the position's ${ownTokenField(fixture)}`, () => {
         const account = accountNaming(fixture, held);
-        expect(() =>
-          verifyReal(fixture, tokenCallOn(fixture, held), realExitExpectation(fixture, account))
-        ).toThrow(/as a DeFi position's own share or debt token/);
+        expectRefusal(
+          () =>
+            verifyReal(fixture, tokenCallOn(fixture, held), realExitExpectation(fixture, account)),
+          "exit_expectation_inconsistent",
+          /as a DeFi position's own share or debt token/
+        );
       });
     }
 
@@ -3037,13 +3634,16 @@ for (const fixture of REAL_EXIT_ENVELOPES) {
         const account = accountNaming(fixture, LISTED_SOROBAN_TOKEN, [
           { contract: LISTED_SOROBAN_TOKEN, balance: "9" },
         ]);
-        expect(() =>
-          verifyReal(
-            fixture,
-            tokenCallOn(fixture, LISTED_SOROBAN_TOKEN),
-            realExitExpectation(fixture, account)
-          )
-        ).toThrow(/as a DeFi position's own share or debt token/);
+        expectRefusal(
+          () =>
+            verifyReal(
+              fixture,
+              tokenCallOn(fixture, LISTED_SOROBAN_TOKEN),
+              realExitExpectation(fixture, account)
+            ),
+          "exit_expectation_inconsistent",
+          /as a DeFi position's own share or debt token/
+        );
       });
     } else {
       test("accepts its debt token also listed as a Soroban balance: the repay spends it", () => {
@@ -3237,8 +3837,12 @@ describe("a Blend exit as the decoder reads it", () => {
     const repay = envelope("submit", submit(requestEntries(TESTNET_XLM, 5)), [
       { token: TESTNET_XLM },
     ]);
-    expect(() => verify(repay, accountRead([supply]))).toThrow(VerificationError);
-    expect(() => verify(repay, accountRead([supply]))).toThrow(/run the analysis again/);
+    expectRefusal(() => verify(repay, accountRead([supply])), "exit_spend_not_repay");
+    expectRefusal(
+      () => verify(repay, accountRead([supply])),
+      "exit_spend_not_repay",
+      /run the analysis again/
+    );
   });
 
   test("a request type outside the exit set is refused", () => {
@@ -3246,7 +3850,9 @@ describe("a Blend exit as the decoder reads it", () => {
       const xdrString = envelope("submit", submit(requestEntries(TESTNET_XLM, type)), [
         { token: TESTNET_XLM },
       ]);
-      expect(() => verify(xdrString, accountRead([supply, borrow(TESTNET_XLM)]))).toThrow(
+      expectRefusal(
+        () => verify(xdrString, accountRead([supply, borrow(TESTNET_XLM)])),
+        "exit_request_not_allowed",
         /request of a lending pool/
       );
     }
@@ -3256,13 +3862,19 @@ describe("a Blend exit as the decoder reads it", () => {
     const [address, amount] = requestEntries(TESTNET_XLM, 1);
     const wide = field("request_type", nativeToScVal(BigInt(1), { type: "u64" }));
     const xdrString = envelope("submit", submit([address!, amount!, wide]));
-    expect(() => verify(xdrString, accountRead([supply]))).toThrow(/request of a lending pool/);
+    expectRefusal(
+      () => verify(xdrString, accountRead([supply])),
+      "exit_request_not_allowed",
+      /request of a lending pool/
+    );
   });
 
   test("a contract in the to position is refused", () => {
     const [from, spender, , list] = submit(requestEntries(TESTNET_XLM, 1));
     const xdrString = envelope("submit", [from!, spender!, new Address(POOL).toScVal(), list!]);
-    expect(() => verify(xdrString, accountRead([supply]))).toThrow(
+    expectRefusal(
+      () => verify(xdrString, accountRead([supply])),
+      "exit_argument_party_mismatch",
       /an address other than the account being closed/
     );
   });
@@ -3298,7 +3910,7 @@ describe("a Blend exit as the decoder reads it", () => {
         const xdrString = envelopeOf(OUTSIDE, "withdraw", root, [
           authorized(OUTSIDE, "withdraw", root, [inner]),
         ]);
-        expect(() => verify(xdrString, withOutside)).toThrow(REFUSED);
+        expectRefusal(() => verify(xdrString, withOutside), "exit_auth_foreign_contract", REFUSED);
       });
 
       test(`${name} is refused two levels down`, () => {
@@ -3312,7 +3924,7 @@ describe("a Blend exit as the decoder reads it", () => {
             ),
           ]),
         ]);
-        expect(() => verify(xdrString, withOutside)).toThrow(REFUSED);
+        expectRefusal(() => verify(xdrString, withOutside), "exit_auth_foreign_contract", REFUSED);
       });
 
       test(`${name} is refused as a second authorization`, () => {
@@ -3320,7 +3932,7 @@ describe("a Blend exit as the decoder reads it", () => {
           authorized(OUTSIDE, "withdraw", root),
           inner,
         ]);
-        expect(() => verify(xdrString, withOutside)).toThrow(REFUSED);
+        expectRefusal(() => verify(xdrString, withOutside), "exit_auth_foreign_contract", REFUSED);
       });
     }
 
@@ -3331,7 +3943,7 @@ describe("a Blend exit as the decoder reads it", () => {
         authorized(POOL, "submit", args),
         authorized(POOL, "submit", other),
       ]);
-      expect(() => verify(xdrString, withOutside)).toThrow(REFUSED);
+      expectRefusal(() => verify(xdrString, withOutside), "exit_auth_foreign_contract", REFUSED);
     });
 
     test("only the root call itself stands apart from what it authorizes", () => {
@@ -3343,7 +3955,7 @@ describe("a Blend exit as the decoder reads it", () => {
         [authorized(POOL, "submit", args), authorized(POOL, "submit", args.slice(0, 3))],
       ]) {
         const xdrString = envelopeOf(POOL, "submit", args, roots);
-        expect(() => verify(xdrString, withOutside)).toThrow(REFUSED);
+        expectRefusal(() => verify(xdrString, withOutside), "exit_auth_foreign_contract", REFUSED);
       }
     });
 
@@ -3405,14 +4017,18 @@ describe("a Blend exit as the decoder reads it", () => {
 
     test("refuses the share paid anywhere else", () => {
       const xdrString = removal(argsFor(PARTY), [transferCall(PAIR, ROUTER)]);
-      expect(() => verify(xdrString, read)).toThrow(OTHER);
+      expectRefusal(() => verify(xdrString, read), "exit_liquidity_auth_invalid", OTHER);
     });
 
     test("refuses another recipient of the tokens", () => {
       const xdrString = removal(argsFor(new Address(OUTSIDE).toScVal()), [
         transferCall(PAIR, PAIR),
       ]);
-      expect(() => verify(xdrString, read)).toThrow(/an address other than the account/);
+      expectRefusal(
+        () => verify(xdrString, read),
+        "exit_argument_party_mismatch",
+        /an address other than the account/
+      );
     });
 
     test("refuses a second transfer", () => {
@@ -3420,17 +4036,17 @@ describe("a Blend exit as the decoder reads it", () => {
         transferCall(PAIR, PAIR),
         transferCall(PAIR, PAIR),
       ]);
-      expect(() => verify(xdrString, read)).toThrow(OTHER);
+      expectRefusal(() => verify(xdrString, read), "exit_liquidity_auth_invalid", OTHER);
     });
 
     test("refuses a transfer for another amount", () => {
       const xdrString = removal(argsFor(PARTY, 1), [transferCall(PAIR, PAIR)]);
-      expect(() => verify(xdrString, read)).toThrow(OTHER);
+      expectRefusal(() => verify(xdrString, read), "exit_liquidity_auth_invalid", OTHER);
     });
 
     test("refuses a separate authorization for another amount", () => {
       const xdrString = removal(argsFor(PARTY, 1), [], [transferCall(PAIR, PAIR)]);
-      expect(() => verify(xdrString, read)).toThrow(OTHER);
+      expectRefusal(() => verify(xdrString, read), "exit_liquidity_auth_invalid", OTHER);
     });
 
     test("refuses a separate authorization beside the transfer", () => {
@@ -3439,7 +4055,7 @@ describe("a Blend exit as the decoder reads it", () => {
         [transferCall(PAIR, PAIR)],
         [transferCall(PAIR, PAIR)]
       );
-      expect(() => verify(xdrString, read)).toThrow(OTHER);
+      expectRefusal(() => verify(xdrString, read), "exit_liquidity_auth_invalid", OTHER);
     });
   });
 
@@ -3447,7 +4063,9 @@ describe("a Blend exit as the decoder reads it", () => {
     const ids = xdr.ScVal.scvVec([nativeToScVal(1, { type: "u32" })]);
     const claim = (to: xdr.ScVal) => envelope("claim", [PARTY, ids, to]);
     expect(() => verify(claim(PARTY), accountRead([supply]))).not.toThrow();
-    expect(() => verify(claim(new Address(POOL).toScVal()), accountRead([supply]))).toThrow(
+    expectRefusal(
+      () => verify(claim(new Address(POOL).toScVal()), accountRead([supply])),
+      "exit_argument_party_mismatch",
       /an address other than the account being closed/
     );
   });
@@ -3460,7 +4078,9 @@ test("an id memo given as 007 comes back as 7 and fails the memo check", () => {
   const unsignedXdr = buildXdr([Operation.accountMerge({ destination: DEST })], Memo.id("007"));
   const decoded = intentFromXdr(unsignedXdr, Networks.TESTNET);
   expect(decoded.memo).toBe("7");
-  expect(() => assertCloseIntent(decoded, expectation({ memo: "007", memoType: "id" }))).toThrow(
+  expectRefusal(
+    () => assertCloseIntent(decoded, expectation({ memo: "007", memoType: "id" })),
+    "memo_value_mismatch",
     "The transaction carries a memo you did not set."
   );
   expect(() =>
@@ -3531,50 +4151,66 @@ describe("memo value and type", () => {
   });
 
   test("an unlisted destination refuses an id memo when the user chose text", () => {
-    expect(() =>
-      assertCloseIntent(directClose(Memo.id(MEMO)), expectation({ memo: MEMO, memoType: "text" }))
-    ).toThrow(
+    expectRefusal(
+      () =>
+        assertCloseIntent(
+          directClose(Memo.id(MEMO)),
+          expectation({ memo: MEMO, memoType: "text" })
+        ),
+      "memo_type_mismatch",
       "The transaction would send your memo as an id memo, not the text memo you confirmed."
     );
   });
 
   test("an unlisted destination refuses a text memo when the user chose id", () => {
-    expect(() =>
-      assertCloseIntent(directClose(Memo.text(MEMO)), expectation({ memo: MEMO, memoType: "id" }))
-    ).toThrow(
+    expectRefusal(
+      () =>
+        assertCloseIntent(
+          directClose(Memo.text(MEMO)),
+          expectation({ memo: MEMO, memoType: "id" })
+        ),
+      "memo_type_mismatch",
       "The transaction would send your memo as a text memo, not the id memo you confirmed."
     );
   });
 
   test("a memo whose type cannot be read, or is a hash, is refused on the merge", () => {
     const unreadable = intent({ memo: MEMO, memoType: null, operations: [merge(DEST)] });
-    expect(() =>
-      assertCloseIntent(unreadable, expectation({ memo: MEMO, memoType: "text" }))
-    ).toThrow(
+    expectRefusal(
+      () => assertCloseIntent(unreadable, expectation({ memo: MEMO, memoType: "text" })),
+      "memo_type_mismatch",
       "The transaction would send your memo as an unreadable memo, not the text memo you confirmed."
     );
     const hashed = intent({ memo: MEMO, memoType: "hash", operations: [merge(DEST)] });
-    expect(() => assertCloseIntent(hashed, expectation({ memo: MEMO, memoType: "text" }))).toThrow(
+    expectRefusal(
+      () => assertCloseIntent(hashed, expectation({ memo: MEMO, memoType: "text" })),
+      "memo_type_mismatch",
       "The transaction would send your memo as a hash memo, not the text memo you confirmed."
     );
   });
 
   test("a memo type with no value still counts as a memo", () => {
     const typedOnly = intent({ memo: null, memoType: "text", operations: [merge(DEST)] });
-    expect(() => assertCloseIntent(typedOnly, expectation())).toThrow(
+    expectRefusal(
+      () => assertCloseIntent(typedOnly, expectation()),
+      "memo_unexpected",
       "The transaction carries a memo you did not set."
     );
   });
 
   test("a merge without the memo the user set is refused", () => {
-    expect(() =>
-      assertCloseIntent(directClose(), expectation({ memo: MEMO, memoType: "id" }))
-    ).toThrow("The transaction is missing the memo you set.");
+    expectRefusal(
+      () => assertCloseIntent(directClose(), expectation({ memo: MEMO, memoType: "id" })),
+      "memo_missing",
+      "The transaction is missing the memo you set."
+    );
   });
 
   test("a merge carrying a memo when the user set none is refused, in either type", () => {
     for (const memo of [Memo.text(MEMO), Memo.id(MEMO)]) {
-      expect(() => assertCloseIntent(directClose(memo), expectation())).toThrow(
+      expectRefusal(
+        () => assertCloseIntent(directClose(memo), expectation()),
+        "memo_unexpected",
         "The transaction carries a memo you did not set."
       );
     }
@@ -3582,7 +4218,9 @@ describe("memo value and type", () => {
 
   test("a merge carrying a return memo or an empty text memo when the user set none is refused", () => {
     for (const memo of [Memo.return("aa".repeat(32)), Memo.text("")]) {
-      expect(() => assertCloseIntent(directClose(memo), expectation())).toThrow(
+      expectRefusal(
+        () => assertCloseIntent(directClose(memo), expectation()),
+        "memo_unexpected",
         "The transaction carries a memo you did not set."
       );
     }
@@ -3590,9 +4228,11 @@ describe("memo value and type", () => {
 
   test("a transaction without a merge carries no memo, even the one the user set", () => {
     for (const memo of [Memo.text(MEMO), Memo.id(MEMO)]) {
-      expect(() =>
-        assertCloseIntent(cleanup(memo), expectation({ memo: MEMO, memoType: "text" }))
-      ).toThrow("The transaction carries a memo you did not set.");
+      expectRefusal(
+        () => assertCloseIntent(cleanup(memo), expectation({ memo: MEMO, memoType: "text" })),
+        "memo_unexpected",
+        "The transaction carries a memo you did not set."
+      );
     }
     expect(() =>
       assertCloseIntent(cleanup(), expectation({ memo: MEMO, memoType: "text" }))
@@ -3600,17 +4240,26 @@ describe("memo value and type", () => {
   });
 
   test("a memo with no confirmed type fails closed", () => {
-    expect(() =>
-      assertCloseIntent(directClose(Memo.text(MEMO)), expectation({ memo: MEMO, memoType: null }))
-    ).toThrow("The memo type you confirmed could not be read, so this close cannot be checked.");
-    expect(() =>
-      verifyMemo(
-        buildXdr([Operation.accountMerge({ destination: DEST })], Memo.text(MEMO)),
-        DEST,
-        MEMO,
-        null
-      )
-    ).toThrow("The memo type you confirmed could not be read, so this close cannot be checked.");
+    expectRefusal(
+      () =>
+        assertCloseIntent(
+          directClose(Memo.text(MEMO)),
+          expectation({ memo: MEMO, memoType: null })
+        ),
+      "memo_type_unreadable",
+      "The memo type you confirmed could not be read, so this close cannot be checked."
+    );
+    expectRefusal(
+      () =>
+        verifyMemo(
+          buildXdr([Operation.accountMerge({ destination: DEST })], Memo.text(MEMO)),
+          DEST,
+          MEMO,
+          null
+        ),
+      "memo_type_unreadable",
+      "The memo type you confirmed could not be read, so this close cannot be checked."
+    );
   });
 
   test("a transfer to an unlisted destination outside the merge carries no memo", () => {
@@ -3622,21 +4271,28 @@ describe("memo value and type", () => {
     expect(() =>
       assertCloseIntent(i, expectation({ memo: MEMO, memoType: "id", transfers }))
     ).not.toThrow();
-    expect(() =>
-      assertCloseIntent(
-        i,
-        expectation({ memo: MEMO, memoType: "id", memoRequired: true, transfers })
-      )
-    ).toThrow("This destination requires a deposit memo.");
+    expectRefusal(
+      () =>
+        assertCloseIntent(
+          i,
+          expectation({ memo: MEMO, memoType: "id", memoRequired: true, transfers })
+        ),
+      "memo_required",
+      "This destination requires a deposit memo."
+    );
   });
 
   test("verifyCloseTransaction holds an unlisted destination to the type the user chose", () => {
     const xdrOf = (memo: Memo) => buildXdr([Operation.accountMerge({ destination: DEST })], memo);
     expect(() => verifyMemo(xdrOf(Memo.id(MEMO)), DEST, MEMO, "id")).not.toThrow();
-    expect(() => verifyMemo(xdrOf(Memo.text(MEMO)), DEST, MEMO, "id")).toThrow(
+    expectRefusal(
+      () => verifyMemo(xdrOf(Memo.text(MEMO)), DEST, MEMO, "id"),
+      "memo_type_mismatch",
       "The transaction would send your memo as a text memo, not the id memo you confirmed."
     );
-    expect(() => verifyMemo(xdrOf(Memo.id(MEMO)), DEST, MEMO, "text")).toThrow(
+    expectRefusal(
+      () => verifyMemo(xdrOf(Memo.id(MEMO)), DEST, MEMO, "text"),
+      "memo_type_mismatch",
       "The transaction would send your memo as an id memo, not the text memo you confirmed."
     );
   });
@@ -3647,13 +4303,19 @@ describe("memo value and type", () => {
       expect(() => verifyMemo(xdrOf(Memo.id(MEMO)), DEST, MEMO, "id")).not.toThrow();
       // The registry's type replaces whatever the caller passed.
       expect(() => verifyMemo(xdrOf(Memo.id(MEMO)), DEST, MEMO, "text")).not.toThrow();
-      expect(() => verifyMemo(xdrOf(Memo.text(MEMO)), DEST, MEMO, "text")).toThrow(
+      expectRefusal(
+        () => verifyMemo(xdrOf(Memo.text(MEMO)), DEST, MEMO, "text"),
+        "memo_type_mismatch",
         "The transaction would send your memo as a text memo, not the id memo you confirmed."
       );
-      expect(() => verifyMemo(xdrOf(), DEST, MEMO, "id")).toThrow(
+      expectRefusal(
+        () => verifyMemo(xdrOf(), DEST, MEMO, "id"),
+        "memo_missing",
         "The transaction is missing the memo you set."
       );
-      expect(() => verifyMemo(xdrOf(Memo.id(MEMO)), DEST, null, null)).toThrow(
+      expectRefusal(
+        () => verifyMemo(xdrOf(Memo.id(MEMO)), DEST, null, null),
+        "memo_unexpected",
         "The transaction carries a memo you did not set."
       );
       expect(() => verifyMemo(xdrOf(), DEST, null, null)).not.toThrow();
@@ -3664,10 +4326,14 @@ describe("memo value and type", () => {
     const xdrOf = (memo?: Memo) => buildXdr([Operation.accountMerge({ destination: DEST })], memo);
     withServedEntry({ requiresMemo: true, memoType: "id" }, () => {
       expect(() => verifyMemo(xdrOf(Memo.id(MEMO)), DEST, MEMO, "id")).not.toThrow();
-      expect(() => verifyMemo(xdrOf(Memo.text(MEMO)), DEST, MEMO, "id")).toThrow(
+      expectRefusal(
+        () => verifyMemo(xdrOf(Memo.text(MEMO)), DEST, MEMO, "id"),
+        "memo_type_mismatch",
         "The transaction would send your memo as a text memo, not the id memo you confirmed."
       );
-      expect(() => verifyMemo(xdrOf(), DEST, null, null)).toThrow(
+      expectRefusal(
+        () => verifyMemo(xdrOf(), DEST, null, null),
+        "memo_required",
         "This destination requires a deposit memo."
       );
     });
@@ -3677,27 +4343,35 @@ describe("memo value and type", () => {
     expect(() =>
       verifyMemo(mediatedClose(COINBASE, Memo.text(MEMO)), COINBASE, MEMO, "text")
     ).not.toThrow();
-    expect(() =>
-      verifyMemo(mediatedClose(COINBASE, Memo.id(MEMO)), COINBASE, MEMO, "text")
-    ).toThrow(
+    expectRefusal(
+      () => verifyMemo(mediatedClose(COINBASE, Memo.id(MEMO)), COINBASE, MEMO, "text"),
+      "memo_type_mismatch",
       "The transaction would send your memo as an id memo, not the text memo you confirmed."
     );
     // The caller cannot move a listed exchange off its registry type.
-    expect(() => verifyMemo(mediatedClose(COINBASE, Memo.id(MEMO)), COINBASE, MEMO, "id")).toThrow(
+    expectRefusal(
+      () => verifyMemo(mediatedClose(COINBASE, Memo.id(MEMO)), COINBASE, MEMO, "id"),
+      "memo_type_mismatch",
       "The transaction would send your memo as an id memo, not the text memo you confirmed."
     );
-    expect(() => verifyMemo(mediatedClose(COINBASE), COINBASE, MEMO, "text")).toThrow(
+    expectRefusal(
+      () => verifyMemo(mediatedClose(COINBASE), COINBASE, MEMO, "text"),
+      "memo_missing",
       "The transaction is missing the memo you set."
     );
-    expect(() =>
-      verifyMemo(mediatedClose(COINBASE, Memo.text(MEMO)), COINBASE, null, null)
-    ).toThrow("The transaction carries a memo you did not set.");
+    expectRefusal(
+      () => verifyMemo(mediatedClose(COINBASE, Memo.text(MEMO)), COINBASE, null, null),
+      "memo_unexpected",
+      "The transaction carries a memo you did not set."
+    );
   });
 
   test("the mediated merge and forward refuses a swapped type for an id memo", () => {
     const i = intentFromXdr(mediatedClose(DEST, Memo.text(MEMO)), Networks.TESTNET);
     const mediatedExpectation = expectation({ mediatorRequired: true, memo: MEMO, memoType: "id" });
-    expect(() => assertCloseIntent(i, mediatedExpectation)).toThrow(
+    expectRefusal(
+      () => assertCloseIntent(i, mediatedExpectation),
+      "memo_type_mismatch",
       "The transaction would send your memo as a text memo, not the id memo you confirmed."
     );
     expect(() =>
@@ -3719,21 +4393,26 @@ describe("text memo decoding", () => {
     const bom = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from("4411")]);
     const decoded = intentFromXdr(mergeWithTextMemo(bom), Networks.TESTNET);
     expect(decoded.memo).toBe("﻿4411");
-    expect(() =>
-      assertCloseIntent(decoded, expectation({ memo: "4411", memoType: "text" }))
-    ).toThrow("The transaction carries a memo you did not set.");
+    expectRefusal(
+      () => assertCloseIntent(decoded, expectation({ memo: "4411", memoType: "text" })),
+      "memo_value_mismatch",
+      "The transaction carries a memo you did not set."
+    );
   });
 
   test("a text memo that is not valid UTF-8 is refused", () => {
     const xdrWithInvalidText = mergeWithTextMemo(Buffer.from([0x34, 0xff, 0x31]));
-    expect(() => intentFromXdr(xdrWithInvalidText, Networks.TESTNET)).toThrow(VerificationError);
-    expect(() =>
-      verifyCloseTransaction({
-        unsignedXdr: xdrWithInvalidText,
-        network: "testnet",
-        expected: { ...expectation(), memo: "4�1", memoType: "text" },
-      })
-    ).toThrow("The transaction carries a memo that is not valid text.");
+    expectRefusal(() => intentFromXdr(xdrWithInvalidText, Networks.TESTNET), "memo_invalid_text");
+    expectRefusal(
+      () =>
+        verifyCloseTransaction({
+          unsignedXdr: xdrWithInvalidText,
+          network: "testnet",
+          expected: { ...expectation(), memo: "4�1", memoType: "text" },
+        }),
+      "memo_invalid_text",
+      "The transaction carries a memo that is not valid text."
+    );
   });
 
   test("an ASCII memo and a multibyte UTF-8 memo still match", () => {
@@ -3796,7 +4475,9 @@ describe("a transfer is never sent to an exchange deposit address", () => {
   test("a classic transfer to a listed exchange is refused, even one other than the close destination", () => {
     expect(COINBASE).not.toBe(DEST);
     const toExchange = { [USDC]: { destination: COINBASE, amount: "5.0000000" } };
-    expect(verifying(classicPayment(COINBASE), { transfers: toExchange })).toThrow(
+    expectRefusal(
+      verifying(classicPayment(COINBASE), { transfers: toExchange }),
+      "transfer_to_deposit_address",
       "The transaction would send USDC to a Coinbase deposit address. A transfer in a close carries no deposit memo, so Coinbase could not credit it. Go back to the plan and choose a wallet you control."
     );
     const toWallet = { [USDC]: { destination: WALLET, amount: "5.0000000" } };
@@ -3805,11 +4486,11 @@ describe("a transfer is never sent to an exchange deposit address", () => {
 
   test("a token transfer to a listed exchange is refused", () => {
     const amount = "2500000000";
-    expect(
+    expectRefusal(
       verifying(tokenPayment(COINBASE), {
         tokenTransfers: { [TOKEN]: { destination: COINBASE, amount } },
-      })
-    ).toThrow(
+      }),
+      "transfer_to_deposit_address",
       "A token transfer would send the balance to a Coinbase deposit address. A token transfer carries no deposit memo, so Coinbase could not credit it. Go back to the plan and choose a wallet you control."
     );
     expect(
@@ -3843,7 +4524,9 @@ describe("a transfer is never sent to an exchange deposit address", () => {
 
     test("an address listed after the plan refuses the transfer, even with no memo rule", () => {
       const toWallet = { [USDC]: { destination: WALLET, amount: "5.0000000" } };
-      expect(verifying(classicPayment(WALLET), { transfers: toWallet })).toThrow(
+      expectRefusal(
+        verifying(classicPayment(WALLET), { transfers: toWallet }),
+        "transfer_to_deposit_address",
         /Served only deposit address/
       );
     });
@@ -3866,11 +4549,20 @@ describe("a transfer is never sent to an exchange deposit address", () => {
     expect(() =>
       assertCloseIntent(intent({ operations: [op] }), expectation({ transfers }))
     ).not.toThrow();
-    expect(() =>
-      assertCloseIntent(
-        intent({ operations: [op] }),
-        expectation({ transfers, depositAddresses: { [WALLET]: "Example" } })
-      )
-    ).toThrow(/Example deposit address/);
+    expectRefusal(
+      () =>
+        assertCloseIntent(
+          intent({ operations: [op] }),
+          expectation({ transfers, depositAddresses: { [WALLET]: "Example" } })
+        ),
+      "transfer_to_deposit_address",
+      /Example deposit address/
+    );
   });
+});
+
+// Last in the file: the tests above reached every refusal through expectRefusal, so the codes
+// they saw are exactly the registry. A code nothing throws, or a refusal with no test, fails here.
+test("the refusal tests cover every registered code, and nothing outside the registry", () => {
+  expect([...refusalCodesSeen].sort()).toEqual([...VERIFICATION_ERROR_CODES].sort());
 });
