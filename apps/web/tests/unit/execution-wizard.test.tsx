@@ -46,6 +46,7 @@ import * as secretKeyInputModule from "@/components/account-entry/SecretKeyInput
 import * as walletKitClient from "@/lib/wallet-kit/client";
 import type { CloseProgress } from "@/lib/execution/progress";
 import { hashFingerprint, type SigningPrompt } from "@/lib/execution/signing-prompt";
+import { expectFocused, expectFocusedNow, expectSameElement } from "./fixtures/focus";
 
 const WAITING_LINE = "Transaction 1 of 1: approve in your wallet";
 
@@ -352,7 +353,7 @@ test("execution-wizard › the failed state says under Retry that retrying is sa
   const note = screen.getByText(
     "Safe to retry. LumenWipe re-reads your account first, so a confirmed transaction is never sent twice."
   );
-  expect(retry.nextElementSibling).toBe(note);
+  expectSameElement(retry.nextElementSibling, note);
 });
 
 test("execution-wizard › a failure whose retry safety is unknown makes no safe-to-retry claim", async () => {
@@ -724,7 +725,7 @@ test("execution-wizard › announces that more signatures are needed", () => {
 
 test("execution-wizard › does not move focus on first render of the setup view", () => {
   render(<ExecutionWizard network="testnet" />);
-  expect(document.activeElement).toBe(document.body);
+  expectFocusedNow(document.body);
 });
 
 test("execution-wizard › focus moves to the heading when signing starts and to Retry after a failure", async () => {
@@ -734,12 +735,12 @@ test("execution-wizard › focus moves to the heading when signing starts and to
   const heading = screen.getByRole("heading", { name: /sign & execute the close/i });
 
   swapView(rerender, { progress: progressAt("network"), phase: "STEP_EXECUTING" });
-  expect(document.activeElement).toBe(heading);
+  await expectFocused(heading);
 
   swapView(rerender, { progress: null, phase: "STEP_FAILED" });
   const retry = await screen.findByRole("button", { name: /retry/i });
   await waitFor(() => expect((retry as HTMLButtonElement).disabled).toBe(false));
-  expect(document.activeElement).toBe(retry);
+  await expectFocused(retry);
   expect(screen.getByRole("alert").textContent).toContain("The close failed.");
 });
 
@@ -753,7 +754,7 @@ test("execution-wizard › a failure with no usable signer focuses the alert ins
   expect(
     (await screen.findByRole("button", { name: /retry/i })) as HTMLButtonElement
   ).toHaveProperty("disabled", true);
-  expect(document.activeElement).toBe(screen.getByRole("alert"));
+  await expectFocused(screen.getByRole("alert"));
 });
 
 test("execution-wizard › a view swap never steals focus from a field being typed in", () => {
@@ -763,7 +764,7 @@ test("execution-wizard › a view swap never steals focus from a field being typ
   act(() => field.focus());
 
   swapView(rerender, { progress: progressAt("network"), phase: "STEP_EXECUTING" });
-  expect(document.activeElement).toBe(field);
+  expectFocusedNow(field);
   field.remove();
 });
 

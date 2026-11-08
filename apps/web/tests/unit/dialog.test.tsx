@@ -8,6 +8,7 @@ import {
   DialogFooter,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { expectFocused, expectFocusedNow } from "./fixtures/focus";
 
 function Content({ extra }: { extra?: boolean }) {
   return (
@@ -75,12 +76,12 @@ test("Dialog › a part outside a dialog is refused", () => {
   console.error = error;
 });
 
-test("Dialog › focus moves to the dialog by default", () => {
+test("Dialog › focus moves to the dialog by default", async () => {
   openHost();
-  expect(document.activeElement).toBe(screen.getByRole("dialog"));
+  await expectFocused(screen.getByRole("dialog"));
 });
 
-test("Dialog › focus moves to the initial focus target", () => {
+test("Dialog › focus moves to the initial focus target", async () => {
   function Targeted() {
     const targetRef = useRef<HTMLButtonElement>(null);
     return (
@@ -93,21 +94,21 @@ test("Dialog › focus moves to the initial focus target", () => {
     );
   }
   render(<Targeted />);
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Target" }));
+  await expectFocused(screen.getByRole("button", { name: "Target" }));
 });
 
-test("Dialog › Tab from the last control wraps to the first, skipping disabled ones", () => {
+test("Dialog › Tab from the last control wraps to the first, skipping disabled ones", async () => {
   openHost();
   screen.getByRole("button", { name: "Last" }).focus();
   press("Tab");
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "First" }));
+  await expectFocused(screen.getByRole("button", { name: "First" }));
 });
 
-test("Dialog › Shift+Tab from the first control wraps to the last", () => {
+test("Dialog › Shift+Tab from the first control wraps to the last", async () => {
   openHost();
   screen.getByRole("button", { name: "First" }).focus();
   press("Tab", { shiftKey: true });
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Last" }));
+  await expectFocused(screen.getByRole("button", { name: "Last" }));
 });
 
 function renderWithUntabbableEnds(): void {
@@ -123,27 +124,27 @@ function renderWithUntabbableEnds(): void {
   );
 }
 
-test("Dialog › Tab from the last tabbable control wraps past a tabindex -1 button", () => {
+test("Dialog › Tab from the last tabbable control wraps past a tabindex -1 button", async () => {
   renderWithUntabbableEnds();
   screen.getByRole("button", { name: "Last" }).focus();
   press("Tab");
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "First" }));
+  await expectFocused(screen.getByRole("button", { name: "First" }));
 });
 
-test("Dialog › Shift+Tab from the first tabbable control wraps past a tabindex -1 button", () => {
+test("Dialog › Shift+Tab from the first tabbable control wraps past a tabindex -1 button", async () => {
   renderWithUntabbableEnds();
   screen.getByRole("button", { name: "First" }).focus();
   press("Tab", { shiftKey: true });
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Last" }));
+  await expectFocused(screen.getByRole("button", { name: "Last" }));
 });
 
-test("Dialog › Tab from the dialog itself enters at either end", () => {
+test("Dialog › Tab from the dialog itself enters at either end", async () => {
   openHost();
   press("Tab");
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "First" }));
+  await expectFocused(screen.getByRole("button", { name: "First" }));
   screen.getByRole("dialog").focus();
   press("Tab", { shiftKey: true });
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Last" }));
+  await expectFocused(screen.getByRole("button", { name: "Last" }));
 });
 
 test("Dialog › Tab between inner controls is left to the browser", () => {
@@ -153,15 +154,15 @@ test("Dialog › Tab between inner controls is left to the browser", () => {
   expect(allowed).toBe(true);
 });
 
-test("Dialog › Tab pulls lost focus back in from the body", () => {
+test("Dialog › Tab pulls lost focus back in from the body", async () => {
   openHost();
   (document.activeElement as HTMLElement).blur();
-  expect(document.activeElement).toBe(document.body);
+  expectFocusedNow(document.body);
   fireEvent.keyDown(document.body, { key: "Tab" });
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "First" }));
+  await expectFocused(screen.getByRole("button", { name: "First" }));
 });
 
-test("Dialog › with nothing focusable, Tab keeps focus on the dialog", () => {
+test("Dialog › with nothing focusable, Tab keeps focus on the dialog", async () => {
   render(
     <Dialog>
       <DialogTitle>Title</DialogTitle>
@@ -169,12 +170,12 @@ test("Dialog › with nothing focusable, Tab keeps focus on the dialog", () => {
     </Dialog>
   );
   const dialog = screen.getByRole("dialog");
-  expect(document.activeElement).toBe(dialog);
+  await expectFocused(dialog);
   expect(fireEvent.keyDown(dialog, { key: "Tab" })).toBe(false);
-  expect(document.activeElement).toBe(dialog);
+  expectFocusedNow(dialog);
 });
 
-test("Dialog › a control added while open joins the trap", () => {
+test("Dialog › a control added while open joins the trap", async () => {
   const { rerender } = render(
     <Dialog>
       <Content />
@@ -188,15 +189,15 @@ test("Dialog › a control added while open joins the trap", () => {
     </Dialog>
   );
   press("Tab");
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Last" }));
+  expectFocusedNow(screen.getByRole("button", { name: "Last" }));
   screen.getByRole("button", { name: "Newest" }).focus();
   press("Tab");
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "First" }));
+  await expectFocused(screen.getByRole("button", { name: "First" }));
   press("Tab", { shiftKey: true });
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Newest" }));
+  await expectFocused(screen.getByRole("button", { name: "Newest" }));
 });
 
-test("Dialog › a control that becomes disabled while open leaves the trap", () => {
+test("Dialog › a control that becomes disabled while open leaves the trap", async () => {
   const view = (disabled: boolean) => (
     <Dialog>
       <DialogTitle>Title</DialogTitle>
@@ -210,7 +211,7 @@ test("Dialog › a control that becomes disabled while open leaves the trap", ()
   screen.getByRole("button", { name: "Two" }).focus();
   rerender(view(true));
   press("Tab");
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "One" }));
+  await expectFocused(screen.getByRole("button", { name: "One" }));
 });
 
 test("Dialog › Escape closes a dismissible dialog", () => {
@@ -264,10 +265,10 @@ test("Dialog › keys pressed in another overlay on the page are left alone", ()
   fireEvent.keyDown(overlay, { key: "Escape" });
   expect(fireEvent.keyDown(overlay, { key: "Tab" })).toBe(true);
   expect(onClose).not.toHaveBeenCalled();
-  expect(document.activeElement).toBe(overlay);
+  expectFocusedNow(overlay);
 });
 
-test("Dialog › while suspended it is inert and leaves Tab and Escape alone", () => {
+test("Dialog › while suspended it is inert and leaves Tab and Escape alone", async () => {
   const onClose = mock(() => {});
   const view = (suspended: boolean) => (
     <Dialog suspended={suspended} onClose={onClose}>
@@ -280,7 +281,7 @@ test("Dialog › while suspended it is inert and leaves Tab and Escape alone", (
 
   (document.activeElement as HTMLElement).blur();
   expect(fireEvent.keyDown(document.body, { key: "Tab" })).toBe(true);
-  expect(document.activeElement).toBe(document.body);
+  expectFocusedNow(document.body);
   fireEvent.keyDown(document.body, { key: "Escape" });
   fireEvent.click(scrim());
   expect(onClose).not.toHaveBeenCalled();
@@ -288,7 +289,7 @@ test("Dialog › while suspended it is inert and leaves Tab and Escape alone", (
   rerender(view(false));
   expect(dialog.hasAttribute("inert")).toBe(false);
   fireEvent.keyDown(document.body, { key: "Tab" });
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "First" }));
+  await expectFocused(screen.getByRole("button", { name: "First" }));
   fireEvent.click(scrim());
   expect(onClose).toHaveBeenCalledTimes(1);
 });
@@ -345,7 +346,7 @@ test("Dialog › background and page stay held until the last dialog closes, las
   expect(html.style.scrollbarGutter).toBe("");
 });
 
-test("Dialog › focus returns to the trigger after the background is live again", () => {
+test("Dialog › focus returns to the trigger after the background is live again", async () => {
   const trigger = openHost();
   const root = document.getElementById("app-root") as HTMLElement;
   const originalFocus = trigger.focus.bind(trigger);
@@ -356,7 +357,7 @@ test("Dialog › focus returns to the trigger after the background is live again
   };
   press("Escape");
   expect(inertAtFocus === false).toBe(true);
-  expect(document.activeElement).toBe(trigger);
+  await expectFocused(trigger);
 });
 
 test("Dialog › closing after the trigger is gone does not throw", () => {

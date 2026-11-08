@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { render, screen } from "@testing-library/react";
 import { Field, Input, Textarea } from "@/components/ui/field";
+import { expectSameElement } from "./fixtures/focus";
 
 function describedByElements(control: HTMLElement): (HTMLElement | null)[] {
   return (control.getAttribute("aria-describedby") ?? "")
@@ -68,7 +69,7 @@ test("an error is one alert, marks the control invalid and comes first in its de
   const input = screen.getByLabelText("Memo");
   expect(input.getAttribute("aria-invalid")).toBe("true");
   const [error, helper] = describedByElements(input);
-  expect(error).toBe(screen.getByRole("alert"));
+  expectSameElement(error, screen.getByRole("alert"));
   expect(error?.textContent).toBe("Too long");
   expect(helper?.textContent).toBe("Optional");
 });
@@ -98,7 +99,10 @@ test("wiring reaches a control nested inside other markup", () => {
       </div>
     </Field>
   );
-  expect(describedByElements(screen.getByLabelText("Memo"))[0]).toBe(screen.getByRole("alert"));
+  expectSameElement(
+    describedByElements(screen.getByLabelText("Memo"))[0],
+    screen.getByRole("alert")
+  );
 });
 
 test("Textarea takes the same wiring as Input", () => {

@@ -8,6 +8,7 @@ import { activeRegistry, setRegistry } from "@/lib/exchange-registry";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { PlannedStep } from "@/types/plan";
+import { expectSameElement } from "./fixtures/focus";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -59,7 +60,7 @@ test("the hero is the first thing on the review and holds both full addresses", 
   useDemolishStore.getState().setAddresses(SOURCE, DEST);
   const container = await show();
   const hero = screen.getByTestId("review-hero");
-  expect(container.firstElementChild?.firstElementChild).toBe(hero);
+  expectSameElement(container.firstElementChild?.firstElementChild, hero);
   const groups = [...hero.querySelectorAll('[aria-hidden="true"]')].map((g) => g.textContent);
   expect(groups).toContain(SOURCE);
   expect(groups).toContain(DEST);

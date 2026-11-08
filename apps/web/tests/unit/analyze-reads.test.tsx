@@ -15,6 +15,7 @@ import { useNetworkStore } from "@/store/network";
 import type { AccountState } from "@/types/account";
 import type { SessionRecord } from "@/types/session";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { expectFocusedNow, expectSameElement } from "./fixtures/focus";
 
 const SOURCE = Keypair.random().publicKey();
 const BALANCE = "00000000b1";
@@ -186,10 +187,10 @@ test("the chosen claim option keeps its node and focus through the re-plan it st
   await waitFor(() => expect(seen.plan.length).toBe(2));
   await screen.findByText("Plan updated");
 
-  expect(forfeitOption()).toBe(forfeit);
+  expectSameElement(forfeitOption(), forfeit);
   expect(forfeit.isConnected).toBe(true);
   expect((forfeit as HTMLInputElement).checked).toBe(true);
-  expect(document.activeElement).toBe(forfeit);
+  expectFocusedNow(forfeit);
 });
 
 test("a DeFi acknowledgement re-plans with no account read", async () => {

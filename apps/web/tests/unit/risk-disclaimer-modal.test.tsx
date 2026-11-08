@@ -6,6 +6,7 @@ import * as navigation from "next/navigation";
 import NetworkLayout from "@/app/[network]/layout";
 import RiskDisclaimerModal from "@/components/RiskDisclaimerModal";
 import * as statsHook from "@/hooks/useStats";
+import { expectNotFocused } from "./fixtures/focus";
 
 const KEY = "lumenwipe_risk_accepted";
 const HEADING = "Beta Software - Use at Your Own Risk";
@@ -89,7 +90,7 @@ test("RiskDisclaimerModal › Escape and the scrim do not dismiss it", () => {
 test("RiskDisclaimerModal › opening focus lands on the text, not the accept button", () => {
   gate();
   const button = screen.getByRole("button", ACCEPT);
-  expect(document.activeElement).not.toBe(button);
+  expectNotFocused(button);
   expect(document.activeElement?.textContent).toContain("permanent and irreversible");
 });
 

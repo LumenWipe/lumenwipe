@@ -224,7 +224,7 @@ test("two groups with the same code from different issuers read apart", async ()
   const two = screen.getByRole("region", {
     name: `USDC claimable balances issued by ${short(second)}`,
   });
-  expect(one).not.toBe(two);
+  expect(one === two).toBe(false);
   expect(one.textContent).toContain(`Issued by ${short(first)}`);
   expect(two.textContent).toContain(`Issued by ${short(second)}`);
   expect(
