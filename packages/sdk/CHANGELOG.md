@@ -11,6 +11,8 @@ version number before 0.4.0. Neither has a git tag.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-08
+
 ### Changed
 
 - The default `timeout` of `LumenWipeClient` and `LumenWipeIntegratorClient` is 45000 ms instead
@@ -403,7 +405,8 @@ fee-bump/allowance endpoints above weren't added until after this tag.
 - Configurable timeout and custom `fetch` injection, for non-browser/non-Node environments and
   testing.
 
-[Unreleased]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.10.0...HEAD
+[Unreleased]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.10.1...HEAD
+[0.10.1]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.10.0...sdk-v0.10.1
 [0.10.0]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.9.0...sdk-v0.10.0
 [0.9.0]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.8.0...sdk-v0.9.0
 [0.8.0]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.7.0...sdk-v0.8.0
