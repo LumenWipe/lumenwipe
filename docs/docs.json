@@ -46,6 +46,7 @@
           "security-scope",
           "security-remediation-plan",
           "monitoring-plan",
+          "service-levels",
           "community-and-communications"
         ]
       },
