@@ -61,6 +61,12 @@ Two different "versions" exist for the API and they answer different questions:
   stay until a release after the sunset date removes them; access log lines for them carry
   `deprecatedAlias: true`, which is how to check nobody still depends on them first.
 
+The public [compatibility and deprecation policy](docs/integrators/compatibility.mdx) is the rule
+for every API and package change: what counts as breaking, a deprecation window of at least six
+months with `Deprecation` and `Sunset` headers on a deprecated route, and nothing removed in the
+release that introduces its replacement. A deprecation gets a row in its "Deprecated today" table
+and a changelog entry.
+
 **Rollback**: `gcloud run services update-traffic lumenwipe-api --to-revisions=<previous-revision>=100`
 routes traffic back to the last known-good revision without a new deploy. Cloud Run keeps prior
 revisions around; nothing needs to be rebuilt.

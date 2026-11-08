@@ -1,6 +1,6 @@
 ---
 title: "Supported"
-description: "What LumenWipe supports today, by network: protocols, assets, destinations, signers, wallets and limits, each with the date it was last verified."
+description: "What LumenWipe supports today, by network: protocols, assets, destinations, signers and wallets, each with the date it was last verified."
 icon: "table-list"
 ---
 
@@ -121,15 +121,4 @@ Hardware wallets are not offered. Trezor's module starts Trezor Connect from con
 
 ## Limits
 
-Verified 2026-10-10 against the code named in each row. Rate limit state is reported on every response in the `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` headers, with `Retry-After` on a rejected request. The older `X-RateLimit-*` names are still sent and are deprecated. See the [API reference](/api-reference/introduction#rate-limits) for the full behavior.
-
-{/* generated:limits:start */}
-
-| Limit                            | Value                                    | Where it is enforced                                                                                                                      |
-| -------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Operations per transaction       | 100                                      | `OP_BATCH_LIMIT` in `apps/api/src/config/constants.ts`                                                                                    |
-| Addresses per batch plan request | 20                                       | `BATCH_PLAN_MAX_ADDRESSES` in `apps/api/src/lib/close-api/batch-plan.ts`                                                                  |
-| JSON request body                | 100 KB                                   | `JSON_BODY_LIMIT` in `apps/api/src/configure-app.ts`                                                                                      |
-| Default request rate             | 120 requests per 60 seconds, per API key | `THROTTLE_LIMIT` and `THROTTLE_TTL` defaults in `apps/api/src/app.module.ts`, overridable per deployment, and per key for self-serve keys |
-
-{/* generated:limits:end */}
+Every request, key and body limit is on one page, [Limits](/integrators/limits), each with the constant in the code that enforces it.

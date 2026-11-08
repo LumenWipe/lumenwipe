@@ -2,7 +2,6 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
-const PAGE = join(ROOT, "docs/reference/supported.mdx");
 
 interface RegistryEntry {
   network: string;
@@ -213,6 +212,11 @@ function limitsBlock(): string {
     /export const BATCH_PLAN_MAX_ADDRESSES = (\d+);/,
     "BATCH_PLAN_MAX_ADDRESSES"
   );
+  const hashes = constant(
+    "apps/api/src/lib/close-api/delivered-amount.ts",
+    /export const DELIVERED_MAX_HASHES = (\d+);/,
+    "DELIVERED_MAX_HASHES"
+  );
   const body = constant(
     "apps/api/src/configure-app.ts",
     /export const JSON_BODY_LIMIT = "(\w+)";/,
@@ -228,6 +232,26 @@ function limitsBlock(): string {
     /positiveIntEnv\("THROTTLE_LIMIT", (\d+)\)/,
     "THROTTLE_LIMIT"
   );
+  const keys = constant(
+    "apps/api/src/integrator/integrator.controller.ts",
+    /const MAX_ACTIVE_KEYS_PER_OWNER = (\d+);/,
+    "MAX_ACTIVE_KEYS_PER_OWNER"
+  );
+  const label = constant(
+    "apps/api/src/integrator/key-options.ts",
+    /export const MAX_LABEL_LENGTH = (\d+);/,
+    "MAX_LABEL_LENGTH"
+  );
+  const challenge = constant(
+    "apps/api/src/integrator/wallet-auth.ts",
+    /const CHALLENGE_TTL_SECONDS = (\d+);/,
+    "CHALLENGE_TTL_SECONDS"
+  );
+  const session = constant(
+    "apps/api/src/integrator/wallet-auth.ts",
+    /const SESSION_TTL_SECONDS = (\d+);/,
+    "SESSION_TTL_SECONDS"
+  );
   const headers = read("apps/api/src/auth/rate-limiter.ts");
   if (!/RateLimit-\$\{name\}/.test(headers) || !/Retry-After/.test(headers)) {
     throw new Error("Rate limit headers changed in rate-limiter.ts");
@@ -235,6 +259,31 @@ function limitsBlock(): string {
   return table(
     ["Limit", "Value", "Where it is enforced"],
     [
+      [
+        "Default request rate",
+        `${limit} requests per ${Number(ttl) / 1000} seconds, per API key`,
+        "`THROTTLE_LIMIT` and `THROTTLE_TTL` defaults in `apps/api/src/app.module.ts`, overridable per deployment, and per key for self-serve keys",
+      ],
+      [
+        "Active keys per wallet",
+        keys,
+        "`MAX_ACTIVE_KEYS_PER_OWNER` in `apps/api/src/integrator/integrator.controller.ts`",
+      ],
+      [
+        "Key label",
+        `1 to ${label} characters`,
+        "`MAX_LABEL_LENGTH` in `apps/api/src/integrator/key-options.ts`",
+      ],
+      [
+        "Sign-in challenge lifetime",
+        `${Number(challenge) / 60} minutes`,
+        "`CHALLENGE_TTL_SECONDS` in `apps/api/src/integrator/wallet-auth.ts`",
+      ],
+      [
+        "Key management session lifetime",
+        `${Number(session) / 60} minutes`,
+        "`SESSION_TTL_SECONDS` in `apps/api/src/integrator/wallet-auth.ts`",
+      ],
       ["Operations per transaction", ops, "`OP_BATCH_LIMIT` in `apps/api/src/config/constants.ts`"],
       [
         "Addresses per batch plan request",
@@ -242,25 +291,27 @@ function limitsBlock(): string {
         "`BATCH_PLAN_MAX_ADDRESSES` in `apps/api/src/lib/close-api/batch-plan.ts`",
       ],
       [
+        "Hashes per `close/delivered` request",
+        hashes,
+        "`DELIVERED_MAX_HASHES` in `apps/api/src/lib/close-api/delivered-amount.ts`",
+      ],
+      [
         "JSON request body",
         body.replace("kb", " KB"),
         "`JSON_BODY_LIMIT` in `apps/api/src/configure-app.ts`",
-      ],
-      [
-        "Default request rate",
-        `${limit} requests per ${Number(ttl) / 1000} seconds, per API key`,
-        "`THROTTLE_LIMIT` and `THROTTLE_TTL` defaults in `apps/api/src/app.module.ts`, overridable per deployment, and per key for self-serve keys",
       ],
     ]
   );
 }
 
-const BLOCKS: Record<string, () => string> = {
-  protocols: protocolsBlock,
-  wallets: walletsBlock,
-  destinations: destinationsBlock,
-  tokens: tokensBlock,
-  limits: limitsBlock,
+const PAGES: Record<string, Record<string, () => string>> = {
+  "docs/reference/supported.mdx": {
+    protocols: protocolsBlock,
+    wallets: walletsBlock,
+    destinations: destinationsBlock,
+    tokens: tokensBlock,
+  },
+  "docs/integrators/limits.mdx": { limits: limitsBlock },
 };
 
 export function normalize(text: string): string {
@@ -270,13 +321,15 @@ export function normalize(text: string): string {
     .join("\n");
 }
 
-export function render(page: string): string {
+export function render(page: string, path: string): string {
+  const blocks = PAGES[path];
+  if (!blocks) throw new Error(`${path} has no generated blocks`);
   let out = page;
-  for (const [name, build] of Object.entries(BLOCKS)) {
+  for (const [name, build] of Object.entries(blocks)) {
     const pattern = new RegExp(
       `(\\{/\\* generated:${name}:start \\*/\\})[\\s\\S]*?(\\{/\\* generated:${name}:end \\*/\\})`
     );
-    if (!pattern.test(out)) throw new Error(`Missing generated:${name} markers in supported.mdx`);
+    if (!pattern.test(out)) throw new Error(`Missing generated:${name} markers in ${path}`);
     out = out.replace(
       pattern,
       (_m, start: string, end: string) => `${start}\n\n${build()}\n\n${end}`
@@ -286,14 +339,18 @@ export function render(page: string): string {
 }
 
 if (import.meta.main) {
-  const current = readFileSync(PAGE, "utf8");
-  const next = render(current);
-  if (process.argv.includes("--write")) {
-    writeFileSync(PAGE, next);
-  } else if (normalize(next) !== normalize(current)) {
-    console.error(
-      "docs/reference/supported.mdx is out of date. Run: bun scripts/supported-matrix.ts --write"
-    );
+  const stale: string[] = [];
+  for (const path of Object.keys(PAGES)) {
+    const current = read(path);
+    const next = render(current, path);
+    if (process.argv.includes("--write")) {
+      writeFileSync(join(ROOT, path), next);
+    } else if (normalize(next) !== normalize(current)) {
+      stale.push(path);
+    }
+  }
+  if (stale.length > 0) {
+    console.error(`${stale.join(", ")} out of date. Run: bun scripts/supported-matrix.ts --write`);
     process.exit(1);
   }
 }

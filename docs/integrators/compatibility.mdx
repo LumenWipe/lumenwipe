@@ -1,0 +1,86 @@
+---
+title: "Compatibility and deprecation"
+description: "What counts as a breaking change to the LumenWipe API and SDK, how long a deprecated surface keeps working, how it is announced, and what defines SDK 1.0."
+icon: "code-compare"
+---
+
+This policy covers the REST API under `/v1` and the published packages `@lumenwipe/sdk` and `@lumenwipe/verify`. The operational routes (`GET /` and `/health`) and the operator-only `/admin` routes are not part of it.
+
+## What is breaking
+
+A change is breaking when code written against the current contract can stop working. For the API:
+
+- removing or renaming a route, a response field or a header;
+- adding a required request field, or rejecting a request that was accepted before;
+- changing the type or meaning of a field, an error `code`, or the HTTP status a given outcome answers with;
+- removing an error code, an enum value or a decision type a client may already handle.
+
+For the SDK and the verifier, removing or renaming an export, changing a signature in a way existing calls no longer compile or run, or making `verify` accept something it refused before or refuse something it accepted for the same inputs.
+
+## What is additive
+
+These ship without notice beyond the changelog, and your code must tolerate them:
+
+- new routes, new optional request fields, new response fields and new headers;
+- new values in a response enum, such as a protocol, a position type, a decision type, a blocker or an error `code`.
+
+Treat an unknown enum value as unknown, never as an error that aborts the close: show it as a blocker the user resolves, or stop before signing. The SDK's TypeScript unions list the values known when it was released, so code that switches on them needs a default branch.
+
+## Deprecation window
+
+Nothing is removed in the same release that introduces its replacement. A deprecated route, field or header keeps working for at least **6 months** from the date it is announced as deprecated, and is removed only in a release after its sunset date.
+
+A deprecation is announced in the [changelog](/changelog), and in the [SDK changelog](https://github.com/LumenWipe/lumenwipe/blob/main/packages/sdk/CHANGELOG.md) when the SDK is affected.
+
+## Deprecation headers
+
+A deprecated route answers exactly as its replacement does and adds:
+
+| Header        | Meaning                                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------------------------- |
+| `Deprecation` | The date the route was deprecated, in the RFC 9745 form `@<unix seconds>`.                              |
+| `Sunset`      | The date after which the route may stop answering, as an HTTP date.                                     |
+| `Link`        | The route to call instead, as `rel="successor-version"`, and the documentation, as `rel="deprecation"`. |
+
+Log any response that carries a `Deprecation` header: it means your integration calls something with an end date.
+
+## Deprecated today
+
+| Surface                                                                               | Deprecated | Not removed before | Use instead                                                                         |
+| ------------------------------------------------------------------------------------- | ---------- | ------------------ | ----------------------------------------------------------------------------------- |
+| Paths without the `/v1` prefix, such as `/testnet/account/G...`                       | 2026-11-09 | 2027-06-01         | The same path under `/v1`. See [Versioning](/api-reference/introduction#versioning) |
+| `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` response headers | 2026-10-10 | 2027-06-01         | `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`                      |
+
+The `X-RateLimit-*` headers are response headers, so they carry no `Deprecation` header of their own; this table and the changelog are their notice.
+
+## Versions
+
+- **API.** A breaking change to a route gets a new prefix (`/v2`) instead of changing `/v1`, and the `/v1` route follows the deprecation window above.
+- **SDK and verifier.** Both follow [semantic versioning](https://semver.org). In the `0.x` series a minor release can include a breaking change, so pin a tilde range, as the [Quickstart](/integrators/quickstart#install) does, and read the changelog before upgrading. From `1.0`, a breaking change needs a new major version. See [SDK versioning](/sdk/versioning).
+
+## SDK 1.0 checklist
+
+`@lumenwipe/sdk` 1.0 is released once every issue of the epic [A stable public API contract and SDK (#343)](https://github.com/LumenWipe/lumenwipe/issues/343) is closed. The epic shows the live state of each one:
+
+- [#463](https://github.com/LumenWipe/lumenwipe/issues/463) Every integrator route lives under `/v1` with deprecated legacy aliases
+- [#464](https://github.com/LumenWipe/lumenwipe/issues/464) Package version, changelog, tags and npm agree, and the tarball ships complete
+- [#465](https://github.com/LumenWipe/lumenwipe/issues/465) Error codes come from one typed registry and the spec documents them
+- [#466](https://github.com/LumenWipe/lumenwipe/issues/466) Submit is idempotent by hash, an unknown outcome can be resolved, and close progress can be polled
+- [#467](https://github.com/LumenWipe/lumenwipe/issues/467) Rate-limit headers and `Retry-After` on every response
+- [#468](https://github.com/LumenWipe/lumenwipe/issues/468) API keys carry a label, a network scope and a last-used time with visible usage
+- [#469](https://github.com/LumenWipe/lumenwipe/issues/469) `LumenWipeApiError` exposes typed fields, plus cancellation and opt-in retries
+- [#470](https://github.com/LumenWipe/lumenwipe/issues/470) SDK covers every public endpoint, enforced by a parity test
+- [#471](https://github.com/LumenWipe/lumenwipe/issues/471) Publish a reference verifier with a conformance test set
+- [#472](https://github.com/LumenWipe/lumenwipe/issues/472) Headless example runs in CI, surfaces errors, and a plan-only example rehearses a mainnet account
+- [#473](https://github.com/LumenWipe/lumenwipe/issues/473) Key owners can sign in with more than one wallet type and the key page explains the limits
+- [#474](https://github.com/LumenWipe/lumenwipe/issues/474) Integrator contract docs: quickstart, network parity, limits, deprecation policy and the path to 1.0
+- [#770](https://github.com/LumenWipe/lumenwipe/issues/770) Authenticate contract-account owners for key management
+- [#771](https://github.com/LumenWipe/lumenwipe/issues/771) Offer email sign-in on the key page
+- [#772](https://github.com/LumenWipe/lumenwipe/issues/772) Show each key's label, network scope, last use and usage on the key page
+- [#778](https://github.com/LumenWipe/lumenwipe/issues/778) Send `Retry-After` and `no-store` on every proxy 429
+- [#779](https://github.com/LumenWipe/lumenwipe/issues/779) Key the proxy rate-limit counters with a keyed hash of the client IP
+- [#781](https://github.com/LumenWipe/lumenwipe/issues/781) Let the reference verifier take a served exchange registry through the stricter-only merge
+- [#782](https://github.com/LumenWipe/lumenwipe/issues/782) Give `VerificationError` a stable code and key the conformance vectors on it
+- [#783](https://github.com/LumenWipe/lumenwipe/issues/783) Add a release workflow and changelog guard for the verify package
+- [#799](https://github.com/LumenWipe/lumenwipe/issues/799) Default request timeout is shorter than the API request deadline
+- [#800](https://github.com/LumenWipe/lumenwipe/issues/800) Answer 503 with `Retry-After` and fail over when the upstream provider is rate limited or unavailable
