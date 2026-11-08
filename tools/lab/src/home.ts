@@ -1,4 +1,12 @@
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
@@ -20,11 +28,19 @@ export function checkoutRoot(from: string = import.meta.dir): string {
   return dir;
 }
 
+function errorCode(error: unknown): string | undefined {
+  return (error as NodeJS.ErrnoException | null)?.code;
+}
+
 /** Resolves symlinks on the longest existing prefix, so a path that does not exist yet is
  *  still compared by where it would really land. */
 function realPath(path: string): string {
   const absolute = resolve(path);
-  if (existsSync(absolute)) return realpathSync(absolute);
+  try {
+    return realpathSync(absolute);
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT") throw error;
+  }
   const parent = dirname(absolute);
   return parent === absolute ? absolute : join(realPath(parent), absolute.slice(parent.length));
 }
@@ -58,17 +74,42 @@ export function labHome(env: NodeJS.ProcessEnv = process.env, root = checkoutRoo
   return assertOutsideCheckout(resolve(home), "The lab folder", root);
 }
 
-/** Reads a credential file: outside the checkout, a regular file, and readable by its owner only. */
-export function readPrivateFile(path: string, what: string, root = checkoutRoot()): string {
+/**
+ * Reads a credential file: outside the checkout, not a symlink, a regular file, and readable by
+ * its owner only. The checks and the read act on one open descriptor, so the file cannot be
+ * swapped between them. Null when there is no file.
+ */
+export function readPrivateFileIfPresent(
+  path: string,
+  what: string,
+  root = checkoutRoot()
+): string | null {
   assertOutsideCheckout(path, what, root);
-  if (!existsSync(path)) throw new LabRefusal(`${what} not found at ${path}`);
-  const stat = statSync(path);
-  if (!stat.isFile()) throw new LabRefusal(`${what} at ${path} is not a regular file`);
-  if ((stat.mode & 0o077) !== 0) {
-    throw new LabRefusal(`${what} at ${path} is readable by others: run chmod 600 on it`);
+  let fd: number;
+  try {
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  } catch (error) {
+    if (errorCode(error) === "ENOENT") return null;
+    if (errorCode(error) === "ELOOP") throw new LabRefusal(`${what} at ${path} is a symlink`);
+    throw error;
   }
-  const value = readFileSync(path, "utf8").trim();
-  if (value === "") throw new LabRefusal(`${what} at ${path} is empty`);
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile()) throw new LabRefusal(`${what} at ${path} is not a regular file`);
+    if ((stat.mode & 0o077) !== 0) {
+      throw new LabRefusal(`${what} at ${path} is readable by others: run chmod 600 on it`);
+    }
+    const value = readFileSync(fd, "utf8").trim();
+    if (value === "") throw new LabRefusal(`${what} at ${path} is empty`);
+    return value;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+export function readPrivateFile(path: string, what: string, root = checkoutRoot()): string {
+  const value = readPrivateFileIfPresent(path, what, root);
+  if (value === null) throw new LabRefusal(`${what} not found at ${path}`);
   return value;
 }
 
@@ -83,12 +124,13 @@ export function productionApiKey(
   const fromEnv = env[API_KEY_ENV]?.trim();
   if (fromEnv) return fromEnv;
   const file = join(home, "keys", "api-key");
-  if (!existsSync(file)) {
+  const value = readPrivateFileIfPresent(file, "The API key file", root);
+  if (value === null) {
     throw new LabRefusal(
       `The production target needs an API key: set ${API_KEY_ENV} or write it to ${file} (chmod 600). Run --target local to measure without one.`
     );
   }
-  return readPrivateFile(file, "The API key file", root);
+  return value;
 }
 
 /** The environment for the build and helper commands: without the lab's own variables, so the

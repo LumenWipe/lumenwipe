@@ -1,6 +1,5 @@
-import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import { LabRefusal, checkoutRoot, readPrivateFile } from "./home";
+import { LabRefusal, checkoutRoot, readPrivateFileIfPresent } from "./home";
 import type { Network } from "./scenarios";
 
 export interface LabConfig {
@@ -86,6 +85,5 @@ export function parseConfig(raw: string, home: string): LabConfig {
  *  read under the same rules as a key file. */
 export function loadConfig(home: string, root = checkoutRoot()): LabConfig {
   const file = join(home, "config.json");
-  if (!existsSync(file)) return parseConfig("{}", home);
-  return parseConfig(readPrivateFile(file, "config.json", root), home);
+  return parseConfig(readPrivateFileIfPresent(file, "config.json", root) ?? "{}", home);
 }

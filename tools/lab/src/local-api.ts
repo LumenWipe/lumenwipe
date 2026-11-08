@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LabRefusal } from "./home";
@@ -138,8 +138,14 @@ export async function startLocalApi(opts: {
     rmSync(cwd, { recursive: true, force: true });
   };
   const baseUrl = `http://127.0.0.1:${env.PORT}`;
-  const spans = (): Span[] =>
-    existsSync(spansFile) ? parseSpans(readFileSync(spansFile, "utf8")) : [];
+  const spans = (): Span[] => {
+    try {
+      return parseSpans(readFileSync(spansFile, "utf8"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+  };
   const deadline = startedAt + (opts.bootTimeoutMs ?? 60_000);
   while (performance.now() < deadline) {
     if (child.exitCode !== null || spawnError) break;

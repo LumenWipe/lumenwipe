@@ -80,6 +80,19 @@ describe("the production API key", () => {
     expect(() => productionApiKey({}, home, root)).toThrow(/empty/);
   });
 
+  test("is refused through a symlink, even to an owner-only file", () => {
+    const target = join(home, "real-key");
+    writePrivate(target, "key");
+    mkdirSync(join(home, "keys"), { recursive: true });
+    symlinkSync(target, join(home, "keys", "api-key"));
+    expect(() => productionApiKey({}, home, root)).toThrow(/is a symlink/);
+  });
+
+  test("is refused when the path is not a regular file", () => {
+    mkdirSync(join(home, "keys", "api-key"), { recursive: true });
+    expect(() => productionApiKey({}, home, root)).toThrow(/not a regular file/);
+  });
+
   test("is never read from inside the checkout", () => {
     expect(() =>
       readPrivateFile(join(root, "apps", "api", ".env.local"), "The key file", root)
@@ -93,6 +106,12 @@ describe("config.json", () => {
     expect(config.productionUrl).toBe("https://api.lumenwipe.com");
     expect(config.localEnv).toEqual({});
     expect(config.e2e).toBeUndefined();
+  });
+
+  test("is refused through a symlink", () => {
+    writePrivate(join(home, "real-config.json"), "{}");
+    symlinkSync(join(home, "real-config.json"), join(home, "config.json"));
+    expect(() => loadConfig(home, root)).toThrow(/is a symlink/);
   });
 
   test("is refused when others can read it, since it can hold provider keys", () => {

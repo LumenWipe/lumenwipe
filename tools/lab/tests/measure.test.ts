@@ -139,8 +139,9 @@ describe("what the lab writes", () => {
       now: api.now,
       pause: async () => {},
     });
-    const dir = mkdtempSync(join(tmpdir(), "lab-results-test-"));
-    dirs.push(dir);
+    const base = mkdtempSync(join(tmpdir(), "lab-results-test-"));
+    dirs.push(base);
+    const dir = join(base, "run");
     const meta = { date: "2026-11-09T00:00:00.000Z", commit: "abc1234" };
     writeResults(
       dir,
@@ -186,6 +187,13 @@ describe("what the lab writes", () => {
       ])
     ).toThrow(/refusing/);
     expect(existsSync(dir)).toBe(false);
+  });
+
+  test("never writes into a folder that already exists", () => {
+    const dir = mkdtempSync(join(tmpdir(), "lab-results-test-"));
+    dirs.push(dir);
+    expect(() => writeResults(dir, { "table.md": "fine" }, [])).toThrow(/EEXIST/);
+    expect(readdirSync(dir)).toEqual([]);
   });
 
   test("refuses a results folder inside the checkout", () => {

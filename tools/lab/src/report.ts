@@ -1,4 +1,5 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { closeSync, constants, mkdirSync, openSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { join } from "node:path";
 import { assertOutsideCheckout, checkoutRoot } from "./home";
 import type { ScenarioResult } from "./measure";
@@ -86,7 +87,9 @@ export function renderReport(
   ].join("\n");
 }
 
-/** Writes the run's files to `dir`, outside the checkout, after checking each for secrets. */
+/** Writes the run's files to `dir`, a new folder outside the checkout, after checking each for
+ *  secrets. The folder must not exist yet and each file is created exclusively without following
+ *  a symlink, so nothing already there is written through. */
 export function writeResults(
   dir: string,
   files: Record<string, string>,
@@ -95,10 +98,17 @@ export function writeResults(
 ): string[] {
   assertOutsideCheckout(dir, "The results folder", root);
   for (const text of Object.values(files)) assertNoSecrets(text, secrets);
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  mkdirSync(dirname(dir), { recursive: true, mode: 0o700 });
+  mkdirSync(dir, { mode: 0o700 });
+  const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
   return Object.entries(files).map(([name, text]) => {
     const path = join(dir, name);
-    writeFileSync(path, text, { mode: 0o600 });
+    const fd = openSync(path, flags, 0o600);
+    try {
+      writeFileSync(fd, text);
+    } finally {
+      closeSync(fd);
+    }
     return path;
   });
 }
