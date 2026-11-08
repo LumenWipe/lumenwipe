@@ -69,7 +69,7 @@ test("a partial close shows the incomplete banner with a resume link and no succ
   expect(banner?.textContent).toContain("1 of 2 transactions confirmed");
   expect(banner?.textContent).toContain("The account still exists");
   expect(screen.getByRole("link", { name: "Resume" }).getAttribute("href")).toBe("/testnet");
-  expect(document.title).toBe("Close incomplete | LumenWipe");
+  await waitFor(() => expect(document.title).toBe("Close incomplete | LumenWipe"));
 });
 
 test("a partial close saves an incomplete record and keeps the saved session", async () => {
@@ -100,7 +100,7 @@ test("a confirmed merge shows the success banner and saves then cleans up", asyn
 
   expect(screen.getByText("Account successfully merged")).toBeTruthy();
   expect(screen.queryByRole("link", { name: "Resume" })).toBeNull();
-  expect(document.title).toBe("Account closed | LumenWipe");
+  await waitFor(() => expect(document.title).toBe("Account closed | LumenWipe"));
   await waitFor(() => expect(cleanupSpy).toHaveBeenCalledWith("session-1"));
   expect(saveSpy).toHaveBeenCalledTimes(1);
 });

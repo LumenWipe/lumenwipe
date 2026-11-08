@@ -94,7 +94,7 @@ test("the route renders a stored receipt from this browser alone", async () => {
   });
   expect(se.getAttribute("href")).toContain(`/tx/${HASH}`);
   expect(screen.getByRole("link", { name: "Close another account" })).toBeTruthy();
-  expect(document.title).toBe("Account closed | LumenWipe");
+  await waitFor(() => expect(document.title).toBe("Account closed | LumenWipe"));
 });
 
 test("an entry from before this record opens a reduced receipt", async () => {
@@ -138,7 +138,7 @@ test("an incomplete receipt never reads as closed", async () => {
   expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Close not finished");
   expect(container.textContent).not.toContain("successfully merged");
   expect(screen.queryAllByRole("link", { name: /Close another account/ })).toHaveLength(0);
-  expect(document.title).toBe("Close incomplete | LumenWipe");
+  await waitFor(() => expect(document.title).toBe("Close incomplete | LumenWipe"));
 });
 
 test("an unknown id explains that receipts stay on the device that made them", async () => {

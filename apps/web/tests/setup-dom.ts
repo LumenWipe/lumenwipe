@@ -1,5 +1,5 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import { afterEach } from "bun:test";
+import { afterEach, beforeEach } from "bun:test";
 
 GlobalRegistrator.register();
 
@@ -25,3 +25,10 @@ const { cleanup, configure } = await import("@testing-library/react");
 configure({ defaultIgnore: "script, style, [data-print-only], [data-print-only] *" });
 
 afterEach(cleanup);
+
+// Every file shares this one document, and cleanup() only empties the body. A title a component set
+// in an earlier test would otherwise still be there, and could satisfy the next test's title check
+// before (or without) its own component setting one.
+beforeEach(() => {
+  document.title = "";
+});
