@@ -5,6 +5,10 @@ All notable changes to `@lumenwipe/sdk` are documented here. Format follows
 [Semantic Versioning](https://semver.org/). See [`RELEASING.md`](../../RELEASING.md) for how a
 release is cut.
 
+Versions 0.4.0 to 0.6.0 were cut in the repository but never published to npm; each says which
+published release first contains it. There was never a 0.3.x release: 0.3.0 was only a working
+version number before 0.4.0. Neither has a git tag.
+
 ## [Unreleased]
 
 ### Added
@@ -226,6 +230,8 @@ release is cut.
 
 ## [0.6.0] - 2026-10-12
 
+Not published to npm; first available in 0.7.0.
+
 ### Added
 
 - `Trustline` gains `authorization` (`"authorized" | "maintain_liabilities" | "unauthorized"`) and
@@ -254,6 +260,8 @@ release is cut.
 
 ## [0.5.0] - 2026-10-10
 
+Not published to npm; first available in 0.5.1.
+
 ### Changed
 
 - **Breaking:** `PlanResponse.execution.estimatedTransactionCount` is now `number | null`. It is
@@ -267,6 +275,8 @@ release is cut.
 
 ## [0.4.2] - 2026-10-10
 
+Not published to npm; first available in 0.5.1.
+
 ### Added
 
 - `ErrorCode` gains `merge_destination_unusable`, `source_sequence_too_far` and
@@ -277,12 +287,16 @@ release is cut.
 
 ## [0.4.1] - 2026-10-10
 
+Not published to npm; first available in 0.5.1.
+
 ### Added
 
 - `MediatorCheckResult.registryFresh`: whether the exchange registry is inside its verification
   window, so a client learns of staleness before an exchange close is refused.
 
 ## [0.4.0] - 2026-10-10
+
+Not published to npm; first available in 0.5.1.
 
 ### Removed
 
@@ -304,7 +318,6 @@ release is cut.
 - The client logs once when a call falls back to the `"testnet"` default network, and once when
   `baseUrl` is plaintext `http://` on a non-local host. Pass `network`, or a `logger`, to control
   both; `logger` replaces the default `console.warn`.
-
 - `ErrorCode`, the closed union of every `error.code` the API can return. Purely additive;
   `StructuredApiError.error.code` stays a `string` for now.
 - `StatsTotals`, `StatsFeed`, `MergeRecord`, `DailyActivity` and `RecordMergeResponse` types,
@@ -355,5 +368,9 @@ fee-bump/allowance endpoints above weren't added until after this tag.
 - Configurable timeout and custom `fetch` injection, for non-browser/non-Node environments and
   testing.
 
-[0.2.0]: https://github.com/LumenWipe/lumenwipe/releases/tag/sdk-v0.2.0
-[0.1.0]: https://github.com/LumenWipe/lumenwipe/releases/tag/sdk-v0.1.0
+[Unreleased]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.8.0...HEAD
+[0.8.0]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.7.0...sdk-v0.8.0
+[0.7.0]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.5.1...sdk-v0.7.0
+[0.5.1]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.2.0...sdk-v0.5.1
+[0.2.0]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.1.0...sdk-v0.2.0
+[0.1.0]: https://github.com/LumenWipe/lumenwipe/tree/sdk-v0.1.0
