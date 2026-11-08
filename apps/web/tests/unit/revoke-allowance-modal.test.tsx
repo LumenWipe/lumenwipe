@@ -15,6 +15,7 @@ import * as recovery from "@/lib/session/recovery";
 import RevokeAllowanceModal from "@/components/allowances/RevokeAllowanceModal";
 import * as walletKitClient from "@/lib/wallet-kit/client";
 import { WalletKitSigner, WalletNotUsableError } from "@/lib/stellar/signer";
+import { toHex } from "@/lib/stellar/hex";
 import type { Allowance } from "@/types/allowance";
 import { expectFocused, expectNotFocused, expectSameElement } from "./fixtures/focus";
 
@@ -656,6 +657,87 @@ test("RevokeAllowanceModal › an owner wallet that signs with another account i
   );
   expect(submitCalled).toBe(false);
   expect(onRevoked).not.toHaveBeenCalled();
+});
+
+/** The owner wallet, signing with the owner's key whatever `respond` hands back, and every envelope
+ *  that reaches `/submit` (the served transaction is `served`). */
+function stubOwnerWallet(
+  served: string,
+  respond: (unsigned: string, passphrase: string) => string
+): { submitted: string[] } {
+  stubWalletKit(OWNER);
+  spyOn(recovery, "findUnresolved").mockResolvedValue(undefined as never);
+  spyOn(walletKitClient, "walletKitSigner").mockImplementation(
+    () =>
+      new WalletKitSigner(OWNER, async (unsigned, opts) => {
+        const tx = TransactionBuilder.fromXdr(
+          respond(unsigned, opts.networkPassphrase),
+          opts.networkPassphrase
+        );
+        tx.sign(OWNER_KP);
+        return { signedTxXdr: tx.toEnvelope().toXdr("base64"), signerAddress: OWNER };
+      })
+  );
+  const submitted: string[] = [];
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    if (url.includes("/submit")) {
+      const { signedXdr } = JSON.parse(String(init?.body)) as { signedXdr: string };
+      submitted.push(signedXdr);
+      return new Response(JSON.stringify({ hash: "x", ledger: 1 }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ transaction: served }), { status: 200 });
+  }) as unknown as typeof fetch;
+  return { submitted };
+}
+
+function hashOf(envelope: string): string {
+  return toHex(TransactionBuilder.fromXdr(envelope, Networks.TESTNET).hash());
+}
+
+test("RevokeAllowanceModal › a signer that returns a different, validly signed transaction is refused and nothing is submitted", async () => {
+  const attackerSpender = Address.contract(new Uint8Array(32).fill(9)).toString();
+  const { submitted } = stubOwnerWallet(realRevokeXdr(), () =>
+    realRevokeXdr({ spender: attackerSpender })
+  );
+
+  const onRevoked = mock((_a: Allowance) => {});
+  render(
+    <RevokeAllowanceModal
+      network="testnet"
+      owner={OWNER}
+      allowance={allowance()}
+      onClose={() => {}}
+      onRevoked={onRevoked}
+    />
+  );
+  fireEvent.click(screen.getByRole("button", { name: /revoke allowance/i }));
+
+  await waitFor(() =>
+    expect(screen.getByText(/signed transaction does not match what you approved/i)).toBeTruthy()
+  );
+  expect(submitted).toHaveLength(0);
+  expect(onRevoked).not.toHaveBeenCalled();
+});
+
+test("RevokeAllowanceModal › an owner wallet that signs the verified transaction submits it", async () => {
+  const served = realRevokeXdr();
+  const { submitted } = stubOwnerWallet(served, (unsigned) => unsigned);
+
+  const onRevoked = mock((_a: Allowance) => {});
+  render(
+    <RevokeAllowanceModal
+      network="testnet"
+      owner={OWNER}
+      allowance={allowance()}
+      onClose={() => {}}
+      onRevoked={onRevoked}
+    />
+  );
+  fireEvent.click(screen.getByRole("button", { name: /revoke allowance/i }));
+
+  await waitFor(() => expect(onRevoked).toHaveBeenCalledTimes(1));
+  expect(submitted).toHaveLength(1);
+  expect(hashOf(submitted[0]!)).toBe(hashOf(served));
 });
 
 test("RevokeAllowanceModal › a wallet session that changes while the revoke is built is refused before the wallet is asked", async () => {

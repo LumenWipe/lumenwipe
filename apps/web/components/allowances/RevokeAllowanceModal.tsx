@@ -8,13 +8,20 @@ import { NETWORK_PASSPHRASES } from "@/config/networks";
 import type { Allowance } from "@/types/allowance";
 import { PROTOCOL_LABELS } from "@/lib/plan/describe-position";
 import { formatTokenAmount } from "@/lib/utils/token-amounts";
-import { OUTCOME_HELD, readApiError, toUserMessage, UserFacingError } from "@/lib/utils/user-error";
+import {
+  OUTCOME_HELD,
+  readApiError,
+  SIGNED_NOT_APPROVED,
+  toUserMessage,
+  UserFacingError,
+} from "@/lib/utils/user-error";
 import { useWalletKitConnection } from "@/hooks/useWalletKitConnection";
 import { walletKitSigner } from "@/lib/wallet-kit/client";
 import { SecretKeySigner, type TransactionSigner } from "@/lib/stellar/signer";
 import { verifyRevokeAllowanceTransaction } from "@/lib/stellar/verify-revoke-allowance";
 import { findUnresolved } from "@/lib/session/recovery";
 import { submitViaApi } from "@/lib/stellar/submit-via-api";
+import { toHex } from "@/lib/stellar/hex";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import SecretKeyInput from "@/components/account-entry/SecretKeyInput";
 import { cn } from "@/lib/utils/cn";
@@ -125,12 +132,18 @@ export default function RevokeAllowanceModal({
         token: allowance.token,
         spender: allowance.spender,
       });
+      // Taken from the exact XDR just verified, before any signer sees it. The hash covers the
+      // transaction body only, never its signatures, so the signed envelope must hash the same.
+      const verifiedHash = toHex(TransactionBuilder.fromXdr(data.transaction, passphrase).hash());
 
       // The wallet session is read again now, not at the click: a session that went stale or moved
       // to another account or network while the transaction was built stops here, unasked.
       if (mode === "wallet") await walletConnection.beforeSigning(owner)();
       const signedXdr = await signer.sign(data.transaction, passphrase);
       const signedTx = TransactionBuilder.fromXdr(signedXdr, passphrase);
+      // A wallet, or anything between it and this page, could hand back a different transaction
+      // signed by the right key. Only what was verified is sent.
+      if (toHex(signedTx.hash()) !== verifiedHash) throw new UserFacingError(SIGNED_NOT_APPROVED);
       if (signedTx.signatures.length === 0) {
         throw new UserFacingError("The signer did not add a signature.");
       }

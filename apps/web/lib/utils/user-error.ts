@@ -315,6 +315,8 @@ export const CLOSE_INTERRUPTED =
   "This close was interrupted because another account was started in this tab, so nothing more was sent for it.";
 export const HASH_NOT_KEPT =
   "This browser could not save the details needed to check this transaction if the page is lost, so it was held back. Allow this site to store data, then try again.";
+/** A signer returned a transaction other than the one that was verified, so it was not sent. */
+export const SIGNED_NOT_APPROVED = "The signed transaction does not match what you approved.";
 export const OUTCOME_HELD =
   "This account has a transaction whose outcome is unknown, and a revoke would use the same sequence number, so nothing was signed or sent. Open the close page on this network and choose Check again first.";
 export const CONFIRM_HELD =
