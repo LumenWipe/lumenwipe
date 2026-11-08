@@ -7,8 +7,8 @@
  *
  * Every transaction is built here from fixed inputs, so the output is byte-for-byte stable. Keys
  * come from fixed seeds and only their public halves are ever written; the file holds no secret.
- * Every rejection is one named mutation of an accepted vector, and its expected message is written
- * by hand below, never captured from a run of the verifier.
+ * Every rejection is one named mutation of an accepted vector, and its expected code and message are
+ * written by hand below, never captured from a run of the verifier.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -28,6 +28,7 @@ import {
   exitExpectations,
   type AccountState,
   type CloseExpectationInput,
+  type VerificationErrorCode,
   type VerifyCloseInput,
 } from "../src/index";
 
@@ -135,7 +136,7 @@ interface RejectVector {
   mutation: string;
   nowSeconds: number;
   input: VerifyCloseInput;
-  error: { name: "VerificationError"; message: string };
+  error: { name: "VerificationError"; code: VerificationErrorCode; message: string };
 }
 
 export type Vector = AcceptVector | RejectVector;
@@ -175,6 +176,7 @@ function reject(
   name: string,
   mutation: string,
   unsignedXdr: string,
+  code: VerificationErrorCode,
   message: string
 ): void {
   rejects.push({
@@ -184,7 +186,7 @@ function reject(
     mutation,
     nowSeconds: base.nowSeconds,
     input: { ...base.input, unsignedXdr },
-    error: { name: "VerificationError", message },
+    error: { name: "VerificationError", code, message },
   });
 }
 
@@ -204,6 +206,7 @@ reject(
   "unknown-operation",
   "Adds a bump sequence operation, which no close uses.",
   build([Operation.bumpSequence({ bumpTo: "9" }), merge()]),
+  "operation_unknown",
   "The transaction contains an unrecognized operation."
 );
 reject(
@@ -211,6 +214,7 @@ reject(
   "wrong-merge-destination",
   "Merges to an address the user did not type.",
   build([merge(ATTACKER)]),
+  "merge_destination_mismatch",
   "The account would be merged to an address you did not choose."
 );
 reject(
@@ -226,6 +230,7 @@ reject(
       source: INTERMEDIARY,
     }),
   ]),
+  "merge_destination_mismatch",
   "The account would be merged to an address you did not choose."
 );
 reject(
@@ -233,6 +238,7 @@ reject(
   "second-merge",
   "Adds a second merge, of another account, into the same destination.",
   build([merge(), merge(DESTINATION, OTHER_ACCOUNT)]),
+  "merge_multiple",
   "The transaction would merge more than one account."
 );
 reject(
@@ -240,6 +246,7 @@ reject(
   "merge-sent-by-another-account",
   "The merge names another account as its source.",
   build([merge(DESTINATION, OTHER_ACCOUNT)]),
+  "operation_source_mismatch",
   "The account merge is not sent by the account being closed."
 );
 reject(
@@ -247,6 +254,7 @@ reject(
   "fee-above-classic-cap",
   "Raises the fee to one stroop above 1,000 per operation.",
   build([merge()], { feePerOperation: 1001 }),
+  "fee_above_cap",
   "This transaction would pay a network fee far above what its operations need."
 );
 reject(
@@ -254,6 +262,7 @@ reject(
   "never-expires",
   "Removes the upper time bound.",
   build([merge()], { maxTime: 0 }),
+  "expiry_missing",
   "This transaction never expires, so it could be submitted long after you approved it."
 );
 reject(
@@ -261,6 +270,7 @@ reject(
   "valid-too-long",
   "Sets the upper time bound 901 seconds after the clock.",
   build([merge()], { maxTime: NOW + 901 }),
+  "expiry_too_far",
   "This transaction stays valid for far longer than a close needs. If your device clock is wrong, correct it and try again."
 );
 reject(
@@ -268,6 +278,7 @@ reject(
   "not-for-this-account",
   "Builds the transaction for another source account.",
   build([merge(DESTINATION, SOURCE)], { source: OTHER_ACCOUNT }),
+  "transaction_source_mismatch",
   "The transaction is not for your account."
 );
 reject(
@@ -275,6 +286,7 @@ reject(
   "memo-not-set",
   "Adds a text memo the user never set.",
   build([merge()], { memo: Memo.text("surprise") }),
+  "memo_unexpected",
   "The transaction carries a memo you did not set."
 );
 
@@ -313,6 +325,7 @@ reject(
     Operation.changeTrust({ asset: USDC, limit: "0" }),
     merge(),
   ]),
+  "data_entry_not_removal",
   "A data entry would be written, not removed."
 );
 reject(
@@ -331,6 +344,7 @@ reject(
     Operation.changeTrust({ asset: USDC, limit: "0" }),
     merge(),
   ]),
+  "offer_not_cancellation",
   "An offer would be created, not cancelled."
 );
 reject(
@@ -349,6 +363,7 @@ reject(
     Operation.changeTrust({ asset: USDC, limit: "0" }),
     merge(),
   ]),
+  "operation_source_mismatch",
   "The transaction would act for an account other than the one being closed."
 );
 
@@ -371,6 +386,7 @@ reject(
     Operation.changeTrust({ asset: EURT }),
     Operation.claimClaimableBalance({ balanceId: BALANCE_ID }),
   ]),
+  "trustline_not_removal",
   "A trustline would be created or raised, not removed."
 );
 
@@ -408,6 +424,7 @@ reject(
       lowerThresholds
     )
   ),
+  "signer_added",
   "A signer would be added or empowered."
 );
 reject(
@@ -420,6 +437,7 @@ reject(
       lowerThresholds
     )
   ),
+  "signer_unknown",
   "This transaction touches a signer that wasn't on your account when we last read it. Re-run the analysis and try again."
 );
 reject(
@@ -432,6 +450,7 @@ reject(
       Operation.setOptions({ lowThreshold: 0, medThreshold: 1, highThreshold: 2 })
     )
   ),
+  "thresholds_raised",
   "Account thresholds would be raised."
 );
 reject(
@@ -444,6 +463,7 @@ reject(
       Operation.setOptions({ masterWeight: 2, lowThreshold: 0, medThreshold: 1, highThreshold: 1 })
     )
   ),
+  "master_weight_changed",
   "The master key's weight would be changed."
 );
 
@@ -460,6 +480,7 @@ reject(
   "memo-type-changed",
   "Sends the same digits as a text memo.",
   build([merge()], { memo: Memo.text("4411") }),
+  "memo_type_mismatch",
   "The transaction would send your memo as a text memo, not the id memo you confirmed."
 );
 reject(
@@ -467,6 +488,7 @@ reject(
   "memo-value-changed",
   "Sends id memo 4412.",
   build([merge()], { memo: Memo.id("4412") }),
+  "memo_value_mismatch",
   "The transaction carries a memo you did not set."
 );
 reject(
@@ -474,6 +496,7 @@ reject(
   "memo-dropped",
   "Drops the memo.",
   build([merge()]),
+  "memo_missing",
   "The transaction is missing the memo you set."
 );
 
@@ -499,6 +522,7 @@ reject(
   "forward-short",
   "Forwards 99.98 XLM of a 100 XLM balance, below the 0.01 XLM tolerance.",
   build([merge(INTERMEDIARY), forward({ amount: "99.98" })], { memo: deposit }),
+  "mediator_forward_short",
   "This transaction would hand your balance to an intermediary and pass on only part of it."
 );
 reject(
@@ -506,6 +530,7 @@ reject(
   "forward-elsewhere",
   "Forwards the balance to another address.",
   build([merge(INTERMEDIARY), forward({ destination: ATTACKER })], { memo: deposit }),
+  "mediator_forward_destination_mismatch",
   `The transaction would pay funds to an unexpected address (${ATTACKER}).`
 );
 reject(
@@ -513,6 +538,7 @@ reject(
   "forward-sent-by-another-account",
   "The forward is sent by an account other than the one the merge paid.",
   build([merge(INTERMEDIARY), forward({ source: OTHER_ACCOUNT })], { memo: deposit }),
+  "mediator_forward_source_mismatch",
   "The balance would be handed to one account and forwarded by another. Nothing guarantees the account receiving your funds is the one passing them on."
 );
 reject(
@@ -520,6 +546,7 @@ reject(
   "direct-merge-into-exchange",
   "Merges straight into the exchange, which cannot credit a merge.",
   build([merge(COINBASE)], { memo: deposit }),
+  "merge_direct_refused",
   "This exchange cannot credit an account merge, so the balance has to reach it as a payment. This transaction would merge your account straight into it."
 );
 
@@ -545,6 +572,7 @@ reject(
   "transfer-elsewhere",
   "Sends the USDC to another address.",
   build(transferOps(ATTACKER, "25")),
+  "transfer_destination_mismatch",
   "The transaction would send USDC to an address you did not choose."
 );
 reject(
@@ -552,6 +580,7 @@ reject(
   "transfer-short",
   "Sends 24 USDC of the 25 the user approved.",
   build(transferOps(FRIEND, "24")),
+  "transfer_amount_short",
   "The transaction would send less USDC than you approved."
 );
 
@@ -581,6 +610,7 @@ reject(
   "conversion-pays-out",
   "The conversion pays another address instead of the account.",
   build(conversionOps(ATTACKER, "9.5")),
+  "conversion_recipient_mismatch",
   "A conversion would send funds out of your account."
 );
 reject(
@@ -588,6 +618,7 @@ reject(
   "conversion-below-floor",
   "Lowers the conversion's minimum to 9.4 XLM.",
   build(conversionOps(SOURCE, "9.4")),
+  "conversion_min_out_below_floor",
   "A conversion of USDC would accept less XLM than the minimum you were shown."
 );
 
@@ -631,6 +662,7 @@ for (const fixture of REAL_EXIT_ENVELOPES) {
     `real-exit-${slug}-fee-above-cap`,
     "Raises the envelope's fee to 10,000,001 stroops, one above the 1 XLM cap on a DeFi exit.",
     envelope.toXdr("base64"),
+    "fee_above_cap",
     "A DeFi exit would pay a network fee far above what any exit needs."
   );
 }
@@ -640,7 +672,7 @@ export function buildVectorFile(): VectorFile {
     schema: 1,
     name: "close-v1",
     description:
-      "Conformance vectors for verifyCloseTransaction. Set the clock to nowSeconds, call the verifier with input, and expect it to return (accept) or to throw a VerificationError with exactly error.message (reject). Each reject is one named mutation of the accept named in base. Every key is public.",
+      "Conformance vectors for verifyCloseTransaction. Set the clock to nowSeconds, call the verifier with input, and expect it to return (accept) or to throw a VerificationError with exactly error.code and error.message (reject). The code is the stable reason to branch on; the message is the current English wording. Each reject is one named mutation of the accept named in base. Every key is public.",
     generator: "packages/verify/scripts/generate-vectors.ts",
     vectors: [...accepts, ...rejects],
   };

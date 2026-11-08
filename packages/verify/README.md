@@ -91,8 +91,8 @@ valid for more than 900 seconds from now is refused.
 ## Conformance vectors
 
 `vectors/close-v1.json` (schema 1) lists accepted and rejected transactions with the full
-`VerifyCloseInput` for each, the clock to set (`nowSeconds`), and for a rejection the exact
-`VerificationError` message. Each rejection is one named mutation of an accepted vector. Every
+`VerifyCloseInput` for each, the clock to set (`nowSeconds`), and for a rejection the
+`VerificationError` code and exact message; match on the code, which is stable across releases. Each rejection is one named mutation of an accepted vector. Every
 key in it is public; no secret is stored. Use it to test your own verifier, or a wrapper around
 this one:
 
