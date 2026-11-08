@@ -352,6 +352,56 @@ test("soroban round › rounds still to come are reserved at the plan's estimate
   expect(fits.transactions).toHaveLength(1);
 });
 
+test("soroban round › a trustline a claim round opens later is reserved with its fees", async () => {
+  const fee = await tokenTransferFee();
+  const balance = {
+    id: `00000000${"c".repeat(64)}`,
+    asset: USDC,
+    amount: "10.0000000",
+    claimants: [{ destination: SOURCE, predicate: { type: "unconditional" as const } }],
+    sponsor: null,
+  };
+  const selections = { [balance.id]: "add_trustline_then_claim" as const };
+  // The claim adds 200 to the classic bound, and its trustline a base reserve plus 200.
+  const owed = fee + CLASSIC_FEES + 200n + HALF_XLM + 200n;
+  const withClaim = (stroops: bigint) => withToken(stroops, { claimableBalances: [balance] });
+  const build = (stroops: bigint) =>
+    buildCloseTransactions(
+      ALL_ON,
+      withClaim(stroops),
+      DEST,
+      { [TOKEN]: "transfer" },
+      "testnet",
+      null,
+      selections,
+      { [TOKEN]: TRANSFER_TO },
+      {},
+      { rpc: tokenRpc() }
+    );
+  const planBlocker = (stroops: bigint) =>
+    buildPlan(
+      ALL_ON,
+      withClaim(stroops),
+      false,
+      false,
+      selections,
+      undefined,
+      { [TOKEN]: "transfer" },
+      { [TOKEN]: TRANSFER_TO }
+    ).blockers.find((b) => b.code === "close_fee_balance_short");
+
+  const short = await refusal(build(ONE_XLM + owed - 1n));
+  expect(short.code).toBe("close_fee_balance_short");
+  expect(short.message).toContain("0.0000001 XLM");
+
+  const planned = ESTIMATE - fee + owed;
+  expect(planBlocker(ONE_XLM + planned - 1n)?.message).toContain("0.0000001 XLM");
+  expect(planBlocker(ONE_XLM + planned)).toBeUndefined();
+
+  const fits = await build(ONE_XLM + owed);
+  expect(fits.transactions).toHaveLength(1);
+});
+
 test("exit round › the exit is built only when the account can also pay the rounds after it", async () => {
   // One later round is reserved for each position, at the estimate.
   const owed = 100n + ESTIMATE + CLASSIC_FEES;

@@ -108,6 +108,42 @@ export function laterOwnFeesStroops(
   );
 }
 
+/**
+ * Trustlines the claim round still opens: one per asset answered `add_trustline_then_claim` that
+ * the account holds no trustline for. Whether the balance's predicate holds is left out, so the
+ * plan and every round of the build count the same; a balance it shuts out is refused on its own.
+ */
+export function claimTrustlinesToOpen(
+  state: Pick<AccountState, "trustlines" | "claimableBalances">,
+  claimSelections: Readonly<Record<string, string>>
+): number {
+  const held = new Set(state.trustlines.map((t) => t.asset));
+  return new Set(
+    state.claimableBalances
+      .filter(
+        (b) =>
+          claimSelections[b.id] === "add_trustline_then_claim" &&
+          b.asset !== "native" &&
+          !held.has(b.asset)
+      )
+      .map((b) => b.asset)
+  ).size;
+}
+
+/**
+ * What the trustlines a claim round opens add to the close's own fees: each raises the minimum
+ * balance by a base reserve, and is later disposed of and removed, two operations the bound of
+ * the round before the claim does not count.
+ */
+export function claimTrustlineCostStroops(
+  state: Pick<AccountState, "trustlines" | "claimableBalances">,
+  claimSelections: Readonly<Record<string, string>>
+): bigint {
+  const perTrustline =
+    BigInt(xlmToStroops(BASE_RESERVE_XLM.toFixed(7))) + BigInt(2 * BASE_FEE_STROOPS);
+  return perTrustline * BigInt(claimTrustlinesToOpen(state, claimSelections));
+}
+
 export function closeFeeShortMessage(shortStroops: bigint): string {
   return (
     `This account needs at least ${stroopsToFixedXlm(shortStroops)} XLM more than it has to ` +

@@ -1,6 +1,7 @@
 import type { AccountState, ErrorCode } from "@lumenwipe/types";
 import type { KillSwitches } from "@/config/kill-switches";
 import {
+  claimTrustlineCostStroops,
   closeFeeShortMessage,
   laterOwnFeesStroops,
   ownFeeShortfallStroops,
@@ -9,6 +10,7 @@ import {
 import { stroopsToFixedXlm } from "@/lib/utils/amounts";
 import { groupExitTargets, PROTOCOL_LABEL, shortContract } from "@/lib/defi-exits/plan-exits";
 import { isTokenContract } from "@/lib/close-api/decisions";
+import { projectClassicFees } from "@/lib/close-api/sponsored-fees";
 
 export type ConversionProvider = "soroswap" | "xbull";
 
@@ -25,6 +27,8 @@ export interface KillSwitchContext {
   /** Per token answered convert, the provider whose quote the answer accepted. Unnamed is Soroswap,
    *  the provider the build re-quotes through for such an answer. */
   conversionProviders: Readonly<Record<string, ConversionProvider>>;
+  /** Per claimable balance, the answer the close claims it by. */
+  claimableBalanceSelections: Readonly<Record<string, string>>;
 }
 
 function forwardBlocker(switches: KillSwitches): KillSwitchBlocker | null {
@@ -100,14 +104,29 @@ function sponsorshipBlocker(
   switches: KillSwitches,
   ctx: KillSwitchContext
 ): KillSwitchBlocker | null {
-  if (switches.feeSponsorConfigured && switches.feeSponsorship) return null;
   const sorobanRounds =
     2 * state.defiPositions.positions.length + tokenRoundsAhead(state, ctx.dispositions);
   // With Soroban rounds ahead no sponsor could pay anyway, and the fee shortfall says so itself.
   if (sorobanRounds > 0) return null;
+  if (switches.feeSponsorConfigured && switches.feeSponsorship) {
+    const projected = projectClassicFees(
+      state,
+      ctx.dispositions,
+      ctx.claimableBalanceSelections,
+      ctx.viaMediator,
+      true
+    );
+    if (!projected.closeRoundRefused || projected.shortStroops <= 0n) return null;
+    return {
+      code: "close_fee_balance_short",
+      message: closeFeeShortMessage(projected.shortStroops),
+      status: 422,
+    };
+  }
   const short = ownFeeShortfallStroops(
     state,
-    laterOwnFeesStroops(state, sorobanRounds, ctx.viaMediator)
+    laterOwnFeesStroops(state, sorobanRounds, ctx.viaMediator) +
+      claimTrustlineCostStroops(state, ctx.claimableBalanceSelections)
   );
   if (short <= 0n) return null;
   if (!switches.feeSponsorConfigured) {
