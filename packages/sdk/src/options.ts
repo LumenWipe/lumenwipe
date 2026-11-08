@@ -23,7 +23,10 @@ export interface LumenWipeClientOptions {
   network?: Network;
   /** Custom fetch (for environments without a global `fetch`, or for testing). */
   fetch?: FetchLike;
-  /** Per-request timeout in milliseconds. Defaults to 30000. `0`/`Infinity` disables it. */
+  /**
+   * Per-request timeout in milliseconds. Defaults to 45000, longer than the API's 40-second request
+   * deadline. `0`/`Infinity` disables it.
+   */
   timeout?: number;
   /** Opt-in retries. Off by default; never applied to `submit`, `mediatorSign` or `healthDeep`. */
   retry?: RetryOptions;
@@ -36,7 +39,10 @@ export interface LumenWipeIntegratorClientOptions {
   baseUrl: string;
   /** Custom fetch (for environments without a global `fetch`, or for testing). */
   fetch?: FetchLike;
-  /** Per-request timeout in milliseconds. Defaults to 30000. `0`/`Infinity` disables it. */
+  /**
+   * Per-request timeout in milliseconds. Defaults to 45000, longer than the API's 40-second request
+   * deadline. `0`/`Infinity` disables it.
+   */
   timeout?: number;
   /** Opt-in retries. Off by default; never applied to creating, revoking or rotating a key. */
   retry?: RetryOptions;

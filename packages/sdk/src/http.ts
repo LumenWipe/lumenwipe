@@ -15,6 +15,12 @@ export interface TransportRequest extends RequestOptions {
   bearer?: string;
 }
 
+/**
+ * Longer than the API's own 40-second request deadline, plus room for its answer to arrive, so a
+ * slow upstream surfaces as the API's typed 503 with `Retry-After` rather than a client timeout.
+ */
+export const DEFAULT_TIMEOUT_MS = 45_000;
+
 const MAX_DELAY_MS = 30_000;
 const TRANSIENT_STATUSES = new Set([429, 502, 503, 504]);
 const THROTTLE_STATUSES = new Set([429, 503]);
@@ -29,7 +35,7 @@ export class HttpTransport {
   constructor(
     private readonly baseUrl: string,
     private readonly apiKey: string | undefined,
-    private readonly timeout: number,
+    private readonly timeout: number = DEFAULT_TIMEOUT_MS,
     private readonly doFetch: FetchLike,
     private readonly retry?: RetryOptions
   ) {}
