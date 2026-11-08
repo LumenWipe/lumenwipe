@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
-import { KeyRound, RefreshCw, Trash2, Wallet } from "lucide-react";
+import { Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card, CardBody } from "@/components/ui/card";
@@ -20,8 +20,8 @@ import {
   requestChallenge,
   revokeKey,
   rotateKey,
+  type CreateKeyRequest,
   type KeyList,
-  type KeyRecord,
   type Session,
 } from "@/lib/integrator/client";
 import {
@@ -35,6 +35,13 @@ import {
   walletName,
   walletNetworkPassphrase,
 } from "@/lib/integrator/wallet-sign-in";
+import CreateKeyForm, {
+  LABEL_ERROR,
+  NETWORKS_ERROR,
+  type CreateKeyFailure,
+  type CreateOutcome,
+} from "./CreateKeyForm";
+import KeyRow from "./KeyRow";
 import type { PollarAccount, PollarSignInProps } from "./PollarSignIn";
 
 export const API_DOCS_URL = "https://docs.lumenwipe.com/api-reference/introduction";
@@ -68,17 +75,19 @@ export interface ApiKeysPanelProps {
   pollar?: ComponentType<PollarSignInProps>;
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
+
+/** The create errors the form shows next to the field they are about. */
+const CREATE_ERRORS: Record<string, CreateKeyFailure> = {
+  invalid_label: { field: "label", message: LABEL_ERROR },
+  invalid_networks: { field: "networks", message: NETWORKS_ERROR },
+  key_limit_reached: {
+    field: "form",
+    message: `You already have ${MAX_ACTIVE_KEYS} active keys. Revoke one to create another.`,
+  },
+};
 
 const SIGN_IN_ERRORS: Record<"signer_mismatch" | "bad_signature", string> = {
   signer_mismatch:
@@ -248,12 +257,22 @@ export default function ApiKeysPanel({ pollar: PollarSlot }: ApiKeysPanelProps) 
       endLocally(SIGNED_OUT);
     });
 
-  const onCreate = () =>
-    guarded("keys", async () => {
-      const created = await createKey();
-      setRevealed(created.key);
+  const onCreate = async (request: CreateKeyRequest): Promise<CreateOutcome> => {
+    let outcome: CreateOutcome = null;
+    await guarded("keys", async () => {
+      try {
+        const created = await createKey(request);
+        outcome = "created";
+        setRevealed(created.key);
+      } catch (e) {
+        const code = e instanceof IntegratorRequestError ? e.code : null;
+        if (!code || !Object.hasOwn(CREATE_ERRORS, code)) throw e;
+        outcome = CREATE_ERRORS[code];
+      }
       setList(await listKeys());
     });
+    return outcome;
+  };
 
   const onRotate = (id: string) =>
     guarded("keys", async () => {
@@ -433,34 +452,39 @@ export default function ApiKeysPanel({ pollar: PollarSlot }: ApiKeysPanelProps) 
                       </p>
                     )}
                   </div>
-                  <Button
-                    icon={<KeyRound aria-hidden="true" className="h-4 w-4" />}
-                    loading={busy === "keys"}
-                    disabled={busy !== null}
-                    aria-describedby={describedBy}
-                    onClick={() => void onCreate()}
-                  >
-                    Create key
-                  </Button>
                 </div>
+
+                <CreateKeyForm
+                  busy={busy !== null}
+                  loading={busy === "keys"}
+                  atLimit={active.length >= MAX_ACTIVE_KEYS}
+                  maxKeys={MAX_ACTIVE_KEYS}
+                  describedBy={describedBy}
+                  onCreate={onCreate}
+                />
 
                 {active.length === 0 ? (
                   <p className="mt-6 text-sm text-white/60">You have no active keys yet.</p>
                 ) : (
-                  <ul className="mt-5 divide-y divide-white/6">
-                    {active.map((key) => (
-                      <KeyRow
-                        key={key.id}
-                        record={key}
-                        busy={busy !== null}
-                        confirming={confirming === key.id}
-                        onAskConfirm={() => setConfirming(key.id)}
-                        onCancel={() => setConfirming(null)}
-                        onRotate={() => void onRotate(key.id)}
-                        onRevoke={() => void onRevoke(key.id)}
-                      />
-                    ))}
-                  </ul>
+                  <>
+                    <p className="mt-6 text-xs text-fg-subtle">
+                      Last used is updated within a minute of a request.
+                    </p>
+                    <ul className="mt-2 divide-y divide-white/6">
+                      {active.map((key) => (
+                        <KeyRow
+                          key={key.id}
+                          record={key}
+                          busy={busy !== null}
+                          confirming={confirming === key.id}
+                          onAskConfirm={() => setConfirming(key.id)}
+                          onCancel={() => setConfirming(null)}
+                          onRotate={() => void onRotate(key.id)}
+                          onRevoke={() => void onRevoke(key.id)}
+                        />
+                      ))}
+                    </ul>
+                  </>
                 )}
                 {revokedCount > 0 && (
                   <p className="mt-4 text-xs text-fg-subtle">{revokedCount} revoked or rotated</p>
@@ -515,62 +539,5 @@ function HowKeysWork() {
         .
       </p>
     </section>
-  );
-}
-
-function KeyRow(props: {
-  record: KeyRecord;
-  busy: boolean;
-  confirming: boolean;
-  onAskConfirm: () => void;
-  onCancel: () => void;
-  onRotate: () => void;
-  onRevoke: () => void;
-}) {
-  const { record, busy, confirming } = props;
-  const name = record.label || `Key ${record.id.slice(0, 8)}`;
-  return (
-    <li className="flex flex-wrap items-center justify-between gap-3 py-3">
-      <div>
-        <p className="mkt-mono text-xs text-white/80">{name}</p>
-        <p className="text-xs text-fg-subtle">Created {formatDate(record.createdAt)}</p>
-      </div>
-      {confirming ? (
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-white/70">Revoke or rotate this key?</span>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={busy}
-            icon={<RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />}
-            onClick={props.onRotate}
-          >
-            Rotate
-          </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            disabled={busy}
-            icon={<Trash2 aria-hidden="true" className="h-3.5 w-3.5" />}
-            onClick={props.onRevoke}
-          >
-            Revoke
-          </Button>
-          <Button variant="ghost" size="sm" onClick={props.onCancel}>
-            Cancel
-          </Button>
-        </div>
-      ) : (
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={busy}
-          aria-label={`Manage ${name}`}
-          onClick={props.onAskConfirm}
-        >
-          Manage
-        </Button>
-      )}
-    </li>
   );
 }

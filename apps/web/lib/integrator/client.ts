@@ -1,34 +1,27 @@
-export interface KeyRecord {
-  id: string;
-  createdAt: string;
-  revokedAt: string | null;
-  rotatedFrom: string | null;
-  label?: string | null;
-  networks?: string[] | null;
-  lastUsedAt?: string | null;
-}
+import type {
+  CreateIntegratorKeyRequest,
+  IntegratorKeyList,
+  IntegratorKeyListEntry,
+  IntegratorKeyRecord,
+  IntegratorKeyUsage,
+  IntegratorOwnerUsage,
+  IssuedIntegratorKey,
+} from "@lumenwipe/types";
+
+/** The API's own shapes, so the page and the SDK read the same fields. */
+export type KeyRecord = IntegratorKeyRecord;
+export type KeyListEntry = IntegratorKeyListEntry;
+export type KeyUsage = IntegratorKeyUsage;
+export type Usage = IntegratorOwnerUsage;
+export type KeyList = IntegratorKeyList;
+export type CreatedKey = IssuedIntegratorKey;
+export type CreateKeyRequest = CreateIntegratorKeyRequest;
 
 /** The signed-in wallet. The session token itself lives in an httpOnly cookie and never reaches
  *  this code. */
 export interface Session {
   address: string;
   expiresAt: string;
-}
-
-export interface Usage {
-  today: number;
-  last30Days: number;
-}
-
-export interface KeyList {
-  keys: KeyRecord[];
-  /** Null or absent when the API could not read it; the listing still renders without it. */
-  usage?: Usage | null;
-}
-
-export interface CreatedKey {
-  key: string;
-  record: KeyRecord;
 }
 
 export class IntegratorRequestError extends Error {
@@ -114,8 +107,9 @@ export function listKeys(): Promise<KeyList> {
   return request("keys", { method: "GET" });
 }
 
-export function createKey(): Promise<CreatedKey> {
-  return request("keys", { method: "POST" });
+/** An omitted label or scope is left out of the body: no label, every network. */
+export function createKey(options: CreateKeyRequest = {}): Promise<CreatedKey> {
+  return request("keys", { method: "POST", body: JSON.stringify(options) });
 }
 
 export function revokeKey(id: string): Promise<{ status: string }> {

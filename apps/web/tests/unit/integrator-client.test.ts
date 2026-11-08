@@ -80,6 +80,17 @@ describe("integrator client", () => {
     expect(error.status).toBe(503);
   });
 
+  test("sends the label and networks it is given, and an empty object otherwise", async () => {
+    const { calls } = stubFetch(201, { key: "k", record: {} });
+    await createKey({ label: "ops", networks: ["testnet"] });
+    await createKey();
+    expect(calls.map((c) => c.init.method)).toEqual(["POST", "POST"]);
+    expect(calls.map((c) => JSON.parse(c.init.body as string))).toEqual([
+      { label: "ops", networks: ["testnet"] },
+      {},
+    ]);
+  });
+
   test("surfaces the API's plain-language error message", async () => {
     stubFetch(409, { error: { code: "key_limit_reached", message: "Revoke one first." } });
     const error = await createKey().catch((e: unknown) => e);
