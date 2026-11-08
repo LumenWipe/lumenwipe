@@ -51,6 +51,7 @@ import {
   computeNeedsSignerNormalization,
   assessSignerNormalizationSafety,
   assessTrustlineAuthorizationBlockers,
+  heldSorobanTokens,
   normalizesSignersFirst,
 } from "@/lib/stellar/tx-builder";
 import { assessSponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
@@ -81,6 +82,7 @@ import type { TransferDestinationProblem } from "@/lib/close-api/transfer-destin
 import { findTransferProblems, type TransferCheck } from "@/lib/close-api/transfer-revalidation";
 import {
   TokenTransferBlockedError,
+  assertTokenDestination,
   buildTokenTransferRound,
   type TokenTransferRoundDeps,
 } from "@/lib/close-api/token-transfer-round";
@@ -315,7 +317,7 @@ export async function buildCloseTransactions(
   // It does not close the account, so it is refused while a later round is already known to be.
   if (normalizesSignersFirst(accountState)) {
     const ledgerCloseTime = parseLedgerCloseTime(latest.closeTime);
-    const laterRefusal = buildPlan(
+    const plan = buildPlan(
       switches,
       { ...accountState, ledgerCloseTime: ledgerCloseTime ?? undefined },
       needsMediator,
@@ -326,7 +328,10 @@ export async function buildCloseTransactions(
       transferDestinations,
       accountState.defiPositions,
       userVerifiedNoDefiPositions
-    ).blockers.find((b) => b.code !== undefined && LATER_ROUND_PLAN_REFUSALS.has(b.code));
+    );
+    const laterRefusal = plan.blockers.find(
+      (b) => b.code !== undefined && LATER_ROUND_PLAN_REFUSALS.has(b.code)
+    );
     if (laterRefusal && isErrorCode(laterRefusal.code)) {
       throw new CloseBuildError(laterRefusal.code, laterRefusal.message, 422);
     }
@@ -344,6 +349,16 @@ export async function buildCloseTransactions(
         BigInt(xlmToStroops(tl.balance)) > 0n
       ) {
         throw new MissingTransferDestinationError(tl.asset);
+      }
+    }
+    for (const token of heldSorobanTokens(accountState)) {
+      if (dispositions[token.contract] !== "transfer") continue;
+      try {
+        assertTokenDestination(accountState, token.contract, transferDestinations);
+      } catch (e) {
+        if (e instanceof TokenTransferBlockedError)
+          throw new CloseBuildError(e.code, e.message, 422);
+        throw e;
       }
     }
     const normalization = packCloseTransactions(
@@ -388,7 +403,11 @@ export async function buildCloseTransactions(
         },
       ],
       requiresAnotherCall: true,
-      remainingSteps: 1,
+      remainingSteps:
+        sorobanRounds +
+        (plan.steps.some((s) => s.type === "CLAIM_BALANCES") ? 1 : 0) +
+        1 +
+        (needsMediator ? 1 : 0),
     };
   }
 

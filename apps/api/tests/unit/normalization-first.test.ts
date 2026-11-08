@@ -212,6 +212,8 @@ describe("a multisig close with an exit, a token, a conversion and a claim", () 
 
     expect(reached).toEqual([]);
     expect(result.requiresAnotherCall).toBe(true);
+    // Two exit rounds and one token round, the claim round, then the classic close.
+    expect(result.remainingSteps).toBe(5);
     expect(result.transactions).toHaveLength(1);
     const [tx] = result.transactions;
     expect(tx!.covers).toEqual(["NORMALIZE_SIGNERS"]);
@@ -355,6 +357,26 @@ describe("round 0 is refused while a later round is already known to be", () => 
       "testnet"
     );
     await expect(promise).rejects.toThrow(/USDC/);
+  });
+
+  test("a Soroban token to transfer with no destination", async () => {
+    stubRpc();
+    const promise = buildCloseTransactions(
+      ALL_ON,
+      multisigEverything({
+        defiPositions: emptyDefiPositionsResult(SOURCE),
+        claimableBalances: [],
+      }),
+      DEST,
+      { [TOKEN]: "transfer", [USDC]: "convert" },
+      "testnet"
+    );
+    await expect(promise).rejects.toMatchObject({
+      code: "transfer_destination_missing",
+      status: 422,
+      message: "Transferring the XTAR balance needs the account to send it to.",
+    });
+    expect(reached).toEqual([]);
   });
 });
 

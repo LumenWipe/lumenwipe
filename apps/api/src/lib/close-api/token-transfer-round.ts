@@ -78,6 +78,22 @@ function describeToken(accountState: AccountState, contract: string): string {
   return token?.symbol ?? shortContract(contract);
 }
 
+/** Refuses a token answered `transfer` that has no account to send it to. */
+export function assertTokenDestination(
+  accountState: AccountState,
+  token: string,
+  transferDestinations: TransferDestinations
+): string {
+  const destination = transferDestinations[token];
+  if (!destination) {
+    throw new TokenTransferBlockedError(
+      "transfer_destination_missing",
+      `Transferring the ${describeToken(accountState, token)} balance needs the account to send it to.`
+    );
+  }
+  return destination;
+}
+
 function tokenDecimals(accountState: AccountState, contract: string): number | null {
   return accountState.sorobanTokens?.tokens.find((t) => t.contract === contract)?.decimals ?? null;
 }
@@ -237,13 +253,7 @@ export async function buildTokenTransferRound(
   for (let i = 0; i < due.length; i++) {
     const token = due[i]!;
     const name = describeToken(accountState, token);
-    const destination = transferDestinations[token];
-    if (!destination) {
-      throw new TokenTransferBlockedError(
-        "transfer_destination_missing",
-        `Transferring the ${name} balance needs the account to send it to.`
-      );
-    }
+    const destination = assertTokenDestination(accountState, token, transferDestinations);
     const balance = await liveTokenBalance(deps.rpc, network, account, token);
     if (balance === null) {
       throw new TokenTransferBlockedError(
