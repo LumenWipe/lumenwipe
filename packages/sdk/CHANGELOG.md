@@ -9,6 +9,9 @@ release is cut.
 
 ### Added
 
+- The error codes `key_network_not_allowed` (403: the API key is limited to other networks),
+  `invalid_label` and `invalid_networks` (400, from `POST /v1/integrator/keys`). Types only; no
+  runtime change.
 - `client.closeDelivered(destination, hashes, network?)`: the XLM confirmed close transactions
   delivered to `destination`, read by the API from each transaction's ledger result. An entry
   that cannot be read as delivered comes back as `unavailable` with its `reason`, never thrown,

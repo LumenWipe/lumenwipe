@@ -115,3 +115,39 @@ describe("FirestoreApiKeyStore rotate retries", () => {
     expect(hashApiKey(rotated!.raw)).toBe(created[0]);
   });
 });
+
+describe("FirestoreApiKeyStore records written before label and network scopes", () => {
+  const raw = generateApiKey();
+  const legacy = {
+    owner: "GOWNER",
+    createdAt: { toDate: () => new Date("2026-10-01T00:00:00Z") },
+    revokedAt: null,
+    rotatedFrom: null,
+    rateLimit: { limit: 10, ttlMs: 60_000 },
+  };
+  const firestore = {
+    collection: () => ({
+      doc: (id: string) => ({
+        get: async () =>
+          id === hashApiKey(raw)
+            ? { exists: true, id, data: () => legacy }
+            : { exists: false, id, data: () => undefined },
+      }),
+    }),
+  } as unknown as Firestore;
+
+  test("resolve as unlabelled, unscoped and never used, with the rest unchanged", async () => {
+    const record = await new FirestoreApiKeyStore(firestore).resolve(raw);
+    expect(record).toEqual({
+      hash: hashApiKey(raw),
+      owner: "GOWNER",
+      createdAt: new Date("2026-10-01T00:00:00Z"),
+      revokedAt: null,
+      rotatedFrom: null,
+      rateLimit: { limit: 10, ttlMs: 60_000 },
+      label: null,
+      networks: null,
+      lastUsedAt: null,
+    });
+  });
+});

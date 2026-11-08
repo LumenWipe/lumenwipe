@@ -211,6 +211,9 @@ These belong to key management, the operator routes and the public stats counter
 | `invalid_challenge`             | 401    | After fix   | The signed challenge is invalid or has expired.                            |
 | `invalid_owner`                 | 400    | After fix   | The owner is missing or empty.                                             |
 | `invalid_rate_limit`            | 400    | After fix   | The rate limit override is malformed.                                      |
+| `invalid_label`                 | 400    | After fix   | The key label is not a string of 1 to 64 printable characters.             |
+| `invalid_networks`              | 400    | After fix   | The key networks are not a non-empty list of testnet and mainnet.          |
+| `key_network_not_allowed`       | 403    | After fix   | The API key is not scoped to this network or route.                        |
 | `api_key_not_found`             | 404    | After fix   | No active key with that id belongs to the caller.                          |
 | `key_limit_reached`             | 409    | After fix   | The wallet already has the maximum number of active keys.                  |
 | `admin_api_not_configured`      | 503    | No          | Operator key management is not configured on this server.                  |

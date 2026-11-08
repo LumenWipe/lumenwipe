@@ -57,8 +57,10 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   invalid_challenge: "The signed challenge is invalid or has expired.",
   invalid_decisions: "The decisions in the request are malformed.",
   invalid_destination: "The destination is missing or not a valid address.",
+  invalid_label: "The key label is not a string of 1 to 64 printable characters.",
   invalid_memo: "The memo is not valid for its type.",
   invalid_network: "The network is not testnet or mainnet.",
+  invalid_networks: "The key networks are not a non-empty list of testnet and mainnet.",
   invalid_owner: "The owner is missing or empty.",
   invalid_plan_hash: "The plan hash is not a 64-character hex string.",
   invalid_rate_limit: "The rate limit override is malformed.",
@@ -75,6 +77,7 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   issuer_supply_not_acknowledged:
     "The account issues assets that are still held and the close was not acknowledged.",
   key_limit_reached: "The wallet already has the maximum number of active keys.",
+  key_network_not_allowed: "The API key is not scoped to this network or route.",
   mediator_key_misconfiguration: "The exchange flow is temporarily unavailable. Retry.",
   mediator_not_configured: "The exchange (mediator) flow is not configured on this server.",
   memo_required: "The destination requires a memo.",

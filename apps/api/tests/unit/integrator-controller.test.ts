@@ -5,7 +5,7 @@ import type { ConfigService } from "@nestjs/config";
 import { Keypair } from "@stellar/stellar-sdk";
 import { ApiKeyDirectory } from "@/auth/api-key-directory";
 import { ApiKeyService } from "@/auth/api-key.service";
-import type { ApiKeyRecord, ApiKeyStore } from "@/auth/api-key-store";
+import type { ApiKeyRecord, ApiKeyStore, NewApiKeyOptions } from "@/auth/api-key-store";
 import { AuditLogger } from "@/common/audit-logger";
 import { MeteringService } from "@/metering/metering.service";
 import { InMemoryUsageStore } from "@/metering/usage-store";
@@ -17,7 +17,7 @@ const SECRET = "test-integrator-auth-secret-0123456789";
 
 class MemoryStore implements ApiKeyStore {
   records: ApiKeyRecord[] = [];
-  async create(owner: string) {
+  async create(owner: string, options: NewApiKeyOptions = {}) {
     const record: ApiKeyRecord = {
       hash: `hash-${this.records.length}`,
       owner,
@@ -25,6 +25,9 @@ class MemoryStore implements ApiKeyStore {
       revokedAt: null,
       rotatedFrom: null,
       rateLimit: null,
+      label: options.label ?? null,
+      networks: options.networks ?? null,
+      lastUsedAt: null,
     };
     this.records.push(record);
     return { raw: `lw_raw-${record.hash}`, record };
@@ -47,9 +50,10 @@ class MemoryStore implements ApiKeyStore {
     const old = this.records.find((x) => x.hash === hash && !x.revokedAt);
     if (!old) return null;
     old.revokedAt = new Date();
-    const next = await this.create(old.owner);
+    const next = await this.create(old.owner, { label: old.label, networks: old.networks });
     return next;
   }
+  async recordLastUsed() {}
 }
 
 function codeOf(e: unknown): string | null {
@@ -153,7 +157,7 @@ describe("key creation", () => {
   test("returns the raw key and never includes it in a later listing", async () => {
     const { controller } = setup();
     const alice = Keypair.random().publicKey();
-    const created = await controller.create(asUser(alice));
+    const created = await controller.create(asUser(alice), undefined);
     const listed = await controller.list(asUser(alice));
     expect(JSON.stringify(listed)).not.toContain(created.key);
   });
@@ -161,18 +165,88 @@ describe("key creation", () => {
   test("caps active keys per wallet", async () => {
     const { controller } = setup();
     const alice = Keypair.random().publicKey();
-    for (let i = 0; i < 5; i++) await controller.create(asUser(alice));
-    expect(codeOf(await rejection(controller.create(asUser(alice))))).toBe("key_limit_reached");
+    for (let i = 0; i < 5; i++) await controller.create(asUser(alice), undefined);
+    expect(codeOf(await rejection(controller.create(asUser(alice), undefined)))).toBe(
+      "key_limit_reached"
+    );
   });
 
   test("revoked keys free a slot", async () => {
     const { controller, store } = setup();
     const alice = Keypair.random().publicKey();
-    for (let i = 0; i < 5; i++) await controller.create(asUser(alice));
+    for (let i = 0; i < 5; i++) await controller.create(asUser(alice), undefined);
     await controller.revoke(asUser(alice), store.records[0].hash);
-    await controller.create(asUser(alice));
+    await controller.create(asUser(alice), undefined);
     expect(store.records).toHaveLength(6);
   });
+});
+
+describe("key label and networks", () => {
+  test("stores a trimmed label and the networks in a fixed order, and lists them", async () => {
+    const { controller } = setup();
+    const alice = Keypair.random().publicKey();
+    const created = await controller.create(asUser(alice), {
+      label: "  billing worker ",
+      networks: ["testnet", "mainnet", "testnet"],
+    });
+    expect(created.record).toMatchObject({
+      label: "billing worker",
+      networks: ["mainnet", "testnet"],
+      lastUsedAt: null,
+    });
+    const { keys } = await controller.list(asUser(alice));
+    expect(keys[0]).toMatchObject({ label: "billing worker", networks: ["mainnet", "testnet"] });
+  });
+
+  test("a key created without them is unlabelled and unscoped", async () => {
+    const { controller } = setup();
+    const created = await controller.create(asUser(Keypair.random().publicKey()), {});
+    expect(created.record).toMatchObject({ label: null, networks: null, lastUsedAt: null });
+  });
+
+  test("rotation keeps the label and networks", async () => {
+    const { controller } = setup();
+    const alice = Keypair.random().publicKey();
+    const created = await controller.create(asUser(alice), { label: "ci", networks: ["testnet"] });
+    const rotated = await controller.rotate(asUser(alice), created.record.id);
+    expect(rotated.record).toMatchObject({ label: "ci", networks: ["testnet"] });
+  });
+
+  test.each([
+    [""],
+    ["   "],
+    ["x".repeat(65)],
+    ["tab\there"],
+    ["bidi\u202eoverride"],
+    [42],
+    [["a"]],
+  ])("refuses the label %p", async (label) => {
+    const { controller, store } = setup();
+    expect(
+      codeOf(await rejection(controller.create(asUser(Keypair.random().publicKey()), { label })))
+    ).toBe("invalid_label");
+    expect(store.records).toHaveLength(0);
+  });
+
+  test("accepts a label of exactly 64 characters, counted as characters", async () => {
+    const { controller } = setup();
+    const label = "\u00e9".repeat(64);
+    const created = await controller.create(asUser(Keypair.random().publicKey()), { label });
+    expect(created.record.label).toBe(label);
+  });
+
+  test.each([[[]], [["futurenet"]], [["mainnet", 1]], ["testnet"], [{}]])(
+    "refuses the networks %p",
+    async (networks) => {
+      const { controller, store } = setup();
+      expect(
+        codeOf(
+          await rejection(controller.create(asUser(Keypair.random().publicKey()), { networks }))
+        )
+      ).toBe("invalid_networks");
+      expect(store.records).toHaveLength(0);
+    }
+  );
 });
 
 describe("auth endpoints", () => {

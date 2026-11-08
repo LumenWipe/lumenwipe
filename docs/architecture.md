@@ -317,7 +317,7 @@ The web never calls the API directly from the browser; it goes through a server-
 
 Requests are authenticated with an API key and rate-limited per key, or per client IP when no valid key is sent; the web's proxy holds the key server-side and applies its own per-IP limit on top, so the shared key can never be turned into an anonymous amplifier.
 
-Keys are either manually provisioned (`API_KEYS`, `label=key` pairs - the first-party web app and internal partners) or self-serve, backed by a Firestore-native collection keyed by each key's own SHA-256 hash rather than a separate lookup field, so resolving a key is a single indexed read and the raw secret is never a queryable value. Only the hash is ever persisted or logged; the raw key is returned to its owner exactly once, at issuance or rotation. A self-serve key can carry its own rate-limit override, otherwise the service-wide default applies. Issuance, listing, revocation, and rotation are admin-only for now, gated by a separate operator token distinct from any integrator key - true self-serve issuance needs an integrator-facing auth mechanism (wallet vs. email magic link) that is a decision outside this repository's scope.
+Keys are either manually provisioned (`API_KEYS`, `label=key` pairs - the first-party web app and internal partners) or self-serve, backed by a Firestore-native collection keyed by each key's own SHA-256 hash rather than a separate lookup field, so resolving a key is a single indexed read and the raw secret is never a queryable value. Only the hash is ever persisted or logged; the raw key is returned to its owner exactly once, at issuance or rotation. A self-serve key can carry its own rate-limit override, otherwise the service-wide default applies. A self-serve key can also carry a label and a network scope, both fixed at creation and kept on rotation, and a `lastUsedAt` time written in batches at most once a minute rather than on every request (Section 13.5). Issuance, listing, revocation, and rotation are admin-only for now, gated by a separate operator token distinct from any integrator key - true self-serve issuance needs an integrator-facing auth mechanism (wallet vs. email magic link) that is a decision outside this repository's scope.
 
 ### 7.1 DeFi position adapter
 
@@ -569,6 +569,10 @@ A third layer sits above these two: before any transaction is built or signed, t
 ### 13.4 Security reviews
 
 The codebase undergoes internal security reviews as part of our development process. External security audits will be conducted when possible.
+
+### 13.5 API key network scope
+
+A self-serve key can be limited to testnet, to mainnet, or left valid on both. `ApiKeyGuard` enforces the scope right after it resolves the key and before any pipe or handler runs, so a key limited to testnet is refused (403 `key_network_not_allowed`) on a mainnet route without a single upstream read, and the refusal is not metered. The check reads the route's `:network` param, so a deprecated alias path is refused the same way as its `/v1` path. It fails closed: a keyed route without `:network` refuses every scoped key unless it is marked `@NetworkAgnostic()`, and a test walks every registered route so that a new keyed route has to take a network or be marked. No route takes the network from its body or query. A key without a scope, which includes every key created before scopes existed and every manually provisioned key, behaves exactly as before. The scope narrows what a key can do and never widens it: it adds no access the key did not already have.
 
 ## 14. Trust minimization and decentralization
 

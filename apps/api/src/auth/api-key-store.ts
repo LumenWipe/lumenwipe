@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import { Firestore, Timestamp } from "@google-cloud/firestore";
 import { fail } from "@/common/fail";
+import { isValidNetwork, type Network } from "@/config/networks";
 import { withTimeout } from "@/lib/utils/with-timeout";
 
 const STORE_TIMEOUT_MS = 5_000;
@@ -24,6 +25,18 @@ export interface ApiKeyRecord {
   revokedAt: Date | null;
   rotatedFrom: string | null;
   rateLimit: RateLimitOverride | null;
+  label: string | null;
+  /** Null means every network: the behavior of every key created before scopes existed. */
+  networks: Network[] | null;
+  /** Written in batches (see `KeyActivityService`), so it trails real use by up to a minute. */
+  lastUsedAt: Date | null;
+}
+
+/** What the issuer chooses for a new key; anything left out keeps the pre-existing behavior. */
+export interface NewApiKeyOptions {
+  rateLimit?: RateLimitOverride | null;
+  label?: string | null;
+  networks?: Network[] | null;
 }
 
 /**
@@ -32,10 +45,7 @@ export interface ApiKeyRecord {
  * ever see the raw value, returning it exactly once to the caller.
  */
 export interface ApiKeyStore {
-  create(
-    owner: string,
-    rateLimit?: RateLimitOverride | null
-  ): Promise<{ raw: string; record: ApiKeyRecord }>;
+  create(owner: string, options?: NewApiKeyOptions): Promise<{ raw: string; record: ApiKeyRecord }>;
   /** Null for an unknown OR revoked key - callers don't need to tell the two apart. */
   resolve(rawKey: string): Promise<ApiKeyRecord | null>;
   listByOwner(owner: string): Promise<ApiKeyRecord[]>;
@@ -46,6 +56,8 @@ export interface ApiKeyStore {
   revoke(hash: string): Promise<boolean>;
   /** Null if no *active* key with that hash exists (unknown, or already revoked). */
   rotate(hash: string): Promise<{ raw: string; record: ApiKeyRecord } | null>;
+  /** Sets `lastUsedAt` on keys that exist; never creates a record. */
+  recordLastUsed(entries: ReadonlyMap<string, Date>): Promise<void>;
 }
 
 /** Injection token for `ApiKeyStore` - it's an interface, so a class token doesn't exist. */
@@ -78,8 +90,35 @@ function copyRecord(record: ApiKeyRecord): ApiKeyRecord {
     createdAt: new Date(record.createdAt),
     revokedAt: record.revokedAt ? new Date(record.revokedAt) : null,
     rateLimit: record.rateLimit ? { ...record.rateLimit } : null,
+    networks: record.networks ? [...record.networks] : null,
+    lastUsedAt: record.lastUsedAt ? new Date(record.lastUsedAt) : null,
   };
 }
+
+function newRecord(
+  raw: string,
+  owner: string,
+  options: NewApiKeyOptions,
+  rotatedFrom: string | null
+): ApiKeyRecord {
+  return {
+    hash: hashApiKey(raw),
+    owner,
+    createdAt: new Date(),
+    revokedAt: null,
+    rotatedFrom,
+    rateLimit: options.rateLimit ? { ...options.rateLimit } : null,
+    label: options.label ?? null,
+    networks: options.networks ? [...options.networks] : null,
+    lastUsedAt: null,
+  };
+}
+
+function inheritedOptions(old: ApiKeyRecord): NewApiKeyOptions {
+  return { rateLimit: old.rateLimit, label: old.label, networks: old.networks };
+}
+
+const FIRESTORE_BATCH_LIMIT = 500;
 
 function rethrowUnavailable(error: unknown): never {
   if (error instanceof Error && error.message === STORE_TIMEOUT_MESSAGE) {
@@ -95,6 +134,9 @@ function toFirestoreData(record: Omit<ApiKeyRecord, "hash">): FirebaseFirestore.
     revokedAt: record.revokedAt ? Timestamp.fromDate(record.revokedAt) : null,
     rotatedFrom: record.rotatedFrom,
     rateLimit: record.rateLimit,
+    label: record.label,
+    networks: record.networks,
+    lastUsedAt: record.lastUsedAt ? Timestamp.fromDate(record.lastUsedAt) : null,
   };
 }
 
@@ -106,6 +148,13 @@ function fromFirestoreData(hash: string, data: FirebaseFirestore.DocumentData): 
     revokedAt: data.revokedAt ? (data.revokedAt as Timestamp).toDate() : null,
     rotatedFrom: (data.rotatedFrom as string | null) ?? null,
     rateLimit: (data.rateLimit as RateLimitOverride | null) ?? null,
+    label: typeof data.label === "string" ? data.label : null,
+    networks: Array.isArray(data.networks)
+      ? (data.networks as unknown[]).filter(
+          (n): n is Network => typeof n === "string" && isValidNetwork(n)
+        )
+      : null,
+    lastUsedAt: data.lastUsedAt ? (data.lastUsedAt as Timestamp).toDate() : null,
   };
 }
 
@@ -135,17 +184,10 @@ export class FirestoreApiKeyStore implements ApiKeyStore {
 
   async create(
     owner: string,
-    rateLimit: RateLimitOverride | null = null
+    options: NewApiKeyOptions = {}
   ): Promise<{ raw: string; record: ApiKeyRecord }> {
     const raw = generateApiKey();
-    const record: ApiKeyRecord = {
-      hash: hashApiKey(raw),
-      owner,
-      createdAt: new Date(),
-      revokedAt: null,
-      rotatedFrom: null,
-      rateLimit,
-    };
+    const record = newRecord(raw, owner, options, null);
     await this.bounded(() => this.collection.doc(record.hash).create(toFirestoreData(record)));
     return { raw, record };
   }
@@ -182,7 +224,6 @@ export class FirestoreApiKeyStore implements ApiKeyStore {
     // Minted once, outside the callback: Firestore re-runs it on contention, and a retry must
     // not hand the caller a raw key that differs from the document it committed.
     const raw = generateApiKey();
-    const newHash = hashApiKey(raw);
     return this.bounded(() =>
       this.firestore.runTransaction(async (tx) => {
         const snap = await tx.get(ref);
@@ -190,19 +231,23 @@ export class FirestoreApiKeyStore implements ApiKeyStore {
         const old = fromFirestoreData(snap.id, snap.data()!);
         if (old.revokedAt) return null;
 
-        const record: ApiKeyRecord = {
-          hash: newHash,
-          owner: old.owner,
-          createdAt: new Date(),
-          revokedAt: null,
-          rotatedFrom: hash,
-          rateLimit: old.rateLimit,
-        };
-        tx.create(this.collection.doc(newHash), toFirestoreData(record));
+        const record = newRecord(raw, old.owner, inheritedOptions(old), hash);
+        tx.create(this.collection.doc(record.hash), toFirestoreData(record));
         tx.update(ref, { revokedAt: Timestamp.now() });
         return { raw, record };
       })
     );
+  }
+
+  async recordLastUsed(entries: ReadonlyMap<string, Date>): Promise<void> {
+    const all = [...entries];
+    for (let i = 0; i < all.length; i += FIRESTORE_BATCH_LIMIT) {
+      const batch = this.firestore.batch();
+      for (const [hash, at] of all.slice(i, i + FIRESTORE_BATCH_LIMIT)) {
+        batch.update(this.collection.doc(hash), { lastUsedAt: Timestamp.fromDate(at) });
+      }
+      await this.bounded(() => batch.commit());
+    }
   }
 }
 
@@ -214,27 +259,20 @@ export class InMemoryApiKeyStore implements ApiKeyStore {
 
   private issue(
     owner: string,
-    rateLimit: RateLimitOverride | null,
+    options: NewApiKeyOptions,
     rotatedFrom: string | null
   ): { raw: string; record: ApiKeyRecord } {
     const raw = generateApiKey();
-    const record: ApiKeyRecord = {
-      hash: hashApiKey(raw),
-      owner,
-      createdAt: new Date(),
-      revokedAt: null,
-      rotatedFrom,
-      rateLimit: rateLimit ? { ...rateLimit } : null,
-    };
+    const record = newRecord(raw, owner, options, rotatedFrom);
     this.records.set(record.hash, record);
     return { raw, record: copyRecord(record) };
   }
 
   async create(
     owner: string,
-    rateLimit: RateLimitOverride | null = null
+    options: NewApiKeyOptions = {}
   ): Promise<{ raw: string; record: ApiKeyRecord }> {
-    return this.issue(owner, rateLimit, null);
+    return this.issue(owner, options, null);
   }
 
   async resolve(rawKey: string): Promise<ApiKeyRecord | null> {
@@ -262,7 +300,14 @@ export class InMemoryApiKeyStore implements ApiKeyStore {
     const old = this.records.get(hash);
     if (!old || old.revokedAt) return null;
     old.revokedAt = new Date();
-    return this.issue(old.owner, old.rateLimit, hash);
+    return this.issue(old.owner, inheritedOptions(old), hash);
+  }
+
+  async recordLastUsed(entries: ReadonlyMap<string, Date>): Promise<void> {
+    for (const [hash, at] of entries) {
+      const record = this.records.get(hash);
+      if (record) record.lastUsedAt = new Date(at);
+    }
   }
 }
 

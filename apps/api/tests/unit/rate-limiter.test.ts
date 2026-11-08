@@ -14,7 +14,7 @@ function limiter(
   rateLimit: { limit: number; ttlMs: number } | null = null,
   defaults = { limit: 3, ttl: 60_000 }
 ): RateLimiter {
-  const known = { label: "k", rateLimit };
+  const known = { label: "k", rateLimit, id: null, networks: null };
   const directory = {
     peek: () => known,
     resolve: async () => known,
@@ -114,7 +114,7 @@ describe("RateLimiter with unauthenticated and unknown bearers", () => {
 
   test("a store-backed key is counted against its own budget, not the client's", async () => {
     const { rl, store } = realLimiter(2);
-    const { raw } = await store.create("polar", { limit: 5, ttlMs: 60_000 });
+    const { raw } = await store.create("polar", { rateLimit: { limit: 5, ttlMs: 60_000 } });
     const first = await rl.consume(request(raw));
     expect(first.limit).toBe(5);
     expect(first.remaining).toBe(4);

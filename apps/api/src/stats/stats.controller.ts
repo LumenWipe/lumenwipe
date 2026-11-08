@@ -67,6 +67,7 @@ export class StatsController {
     ["invalid_network", "invalid_tx_hash", "tx_not_verified", "invalid_body"]
   )
   @ApiErrorResponse(401, "Missing or invalid API key.", ["unauthorized"])
+  @ApiErrorResponse(403, "The API key is not scoped to this network.", ["key_network_not_allowed"])
   @ApiBodyErrorResponses()
   @Post("merges")
   @HttpCode(200)

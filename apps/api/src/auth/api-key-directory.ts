@@ -1,3 +1,4 @@
+import type { Network } from "@/config/networks";
 import { ApiKeyService } from "./api-key.service";
 import {
   hashApiKey,
@@ -11,6 +12,10 @@ export interface ResolvedApiKey {
   label: string;
   /** Absent (null) means the global default rate limit applies. */
   rateLimit: RateLimitOverride | null;
+  /** The self-serve key's id (its hash); null for a manually provisioned key. */
+  id: string | null;
+  /** Null means every network. Manually provisioned keys are never scoped. */
+  networks: Network[] | null;
 }
 
 const DEFAULT_CACHE_TTL_MS = 60_000;
@@ -62,7 +67,7 @@ export class ApiKeyDirectory {
    */
   peek(rawKey: string): ResolvedApiKey | null | undefined {
     const staticLabel = this.staticKeys.resolve(rawKey);
-    if (staticLabel) return { label: staticLabel, rateLimit: null };
+    if (staticLabel) return { label: staticLabel, rateLimit: null, id: null, networks: null };
     if (!isApiKeyFormat(rawKey)) return null;
 
     const cacheKey = hashApiKey(rawKey);
@@ -88,7 +93,12 @@ export class ApiKeyDirectory {
     const cacheKey = hashApiKey(rawKey);
     const expiresAt = Date.now() + this.cacheTtlMs;
     if (record) {
-      const resolved = { label: record.owner, rateLimit: record.rateLimit };
+      const resolved: ResolvedApiKey = {
+        label: record.owner,
+        rateLimit: record.rateLimit,
+        id: record.hash,
+        networks: record.networks,
+      };
       this.known.set(cacheKey, { value: resolved, expiresAt });
       return resolved;
     }

@@ -35,6 +35,9 @@ function toRecordDto(record: ApiKeyRecord): ApiKeyRecordDto {
     revokedAt: record.revokedAt ? record.revokedAt.toISOString() : null,
     rotatedFrom: record.rotatedFrom,
     rateLimit: record.rateLimit,
+    label: record.label,
+    networks: record.networks,
+    lastUsedAt: record.lastUsedAt ? record.lastUsedAt.toISOString() : null,
   };
 }
 
@@ -87,7 +90,7 @@ export class ApiKeysAdminController {
 
     return this.audit.track("api_key.create", ADMIN_ACTOR, async (scope) => {
       scope.owner = owner;
-      const { raw, record } = await this.store.create(owner, rateLimit);
+      const { raw, record } = await this.store.create(owner, { rateLimit });
       scope.keyHash = record.hash;
       return { key: raw, record: toRecordDto(record) };
     });

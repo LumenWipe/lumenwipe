@@ -49,6 +49,10 @@ Notes:
 - A rejected operator token, a missing wallet session and an invalid request body are not lifecycle actions and get no such line; the request's access line records them.
 - The raw key, the full key hash and session or operator tokens are never written.
 
+### What a key record keeps
+
+Besides its hash, owner and dates, a self-serve key stores the `label` and `networks` its owner chose and a `lastUsedAt` time, written at most once a minute. The label is free text chosen by the owner; do not put personal data in it. No request path, account address or client IP is stored with a key.
+
 ## What is never logged
 
 - Request or response bodies.

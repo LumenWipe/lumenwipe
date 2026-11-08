@@ -46,6 +46,16 @@ curl https://api.lumenwipe.com/v1/testnet/account/G... \
   the LumenWipe web app does.
 </Warning>
 
+### Self-serve keys
+
+You manage your keys by signing in with a Stellar wallet: `POST /v1/integrator/auth/challenge` returns a message to sign, and `POST /v1/integrator/auth/session` exchanges the signature for a session token that lasts 30 minutes. Sign in again when it expires. The session token only manages keys; it is not an API key.
+
+- A wallet holds at most 5 active keys. Creating a sixth answers `409 key_limit_reached`; revoke one first.
+- `POST /v1/integrator/keys` takes an optional `label` (1 to 64 characters) and an optional `networks` list (`["testnet"]`, `["mainnet"]` or both). A key without `networks` works on every network.
+- A key with `networks` is refused with `403 key_network_not_allowed` on any other network, and on any keyed route that takes no network. The request does no work before it is refused. The label and networks cannot be changed later, and rotating a key keeps them.
+- Each key has its own rate-limit budget (see [Rate limits](#rate-limits)).
+- `GET /v1/integrator/keys` returns each key's `label`, `networks` and `lastUsedAt`. `lastUsedAt` is written at most once a minute, so it can trail the key's real use by about a minute, and stays `null` until a use has been written.
+
 ## Errors
 
 Every error uses the same envelope, whichever endpoint produced it:
@@ -123,8 +133,10 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `invalid_challenge`                           | 401    | The signed challenge is invalid or has expired.                                                                                |
 | `invalid_decisions`                           | 400    | The decisions in the request are malformed.                                                                                    |
 | `invalid_destination`                         | 400    | The destination is missing or not a valid address.                                                                             |
+| `invalid_label`                               | 400    | The key label is not a string of 1 to 64 printable characters.                                                                 |
 | `invalid_memo`                                | 422    | The memo is not valid for its type.                                                                                            |
 | `invalid_network`                             | 400    | The network is not testnet or mainnet.                                                                                         |
+| `invalid_networks`                            | 400    | The key networks are not a non-empty list of testnet and mainnet.                                                              |
 | `invalid_owner`                               | 400    | The owner is missing or empty.                                                                                                 |
 | `invalid_plan_hash`                           | 400    | The plan hash is not a 64-character hex string.                                                                                |
 | `invalid_rate_limit`                          | 400    | The rate limit override is malformed.                                                                                          |
@@ -140,6 +152,7 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `issuer_read_failed`                          | 503    | The assets issued by the account could not be read. Retry.                                                                     |
 | `issuer_supply_not_acknowledged`              | 422    | The account issues assets that are still held and the close was not acknowledged.                                              |
 | `key_limit_reached`                           | 409    | The wallet already has the maximum number of active keys.                                                                      |
+| `key_network_not_allowed`                     | 403    | The API key is not scoped to this network or route.                                                                            |
 | `mediator_key_misconfiguration`               | 503    | The exchange flow is temporarily unavailable. Retry.                                                                           |
 | `mediator_not_configured`                     | 503    | The exchange (mediator) flow is not configured on this server.                                                                 |
 | `memo_required`                               | 422    | The destination requires a memo.                                                                                               |
