@@ -437,22 +437,28 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+    outputs:
+      installed: ${{ steps.install.outputs.installed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       # Version, checksum, config and log range come from scripts/security-tools.json, shared
-      # with `bun run security:scan`.
+      # with `bun run security:scan`. The `installed` output lets the aggregate job tell an install
+      # failure apart from a failed scan.
       - name: Install gitleaks
+        id: install
         run: |
           GITLEAKS_VERSION="$(jq -er .gitleaks.version scripts/security-tools.json)"
           GITLEAKS_SHA256="$(jq -er .gitleaks.linuxSha256 scripts/security-tools.json)"
-          curl -sSfL -o gitleaks.tar.gz \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          scripts/download.sh \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            gitleaks.tar.gz
           echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
           tar -xzf gitleaks.tar.gz gitleaks
           rm gitleaks.tar.gz
+          echo "installed=true" >> "$GITHUB_OUTPUT"
 
       - name: Scan the full history
         run: |
@@ -497,6 +503,9 @@ jobs:
       - name: Test the security scan report
         run: bun test scripts/security-scan.test.ts
 
+      - name: Test the download script
+        run: bun test scripts/download.test.ts
+
       - name: Audit dependencies
         run: bun run scripts/audit-gate.ts
 
@@ -518,8 +527,9 @@ jobs:
 
       - name: Install actionlint
         run: |
-          curl -sSfL -o actionlint.tar.gz \
-            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          scripts/download.sh \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            actionlint.tar.gz
           echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
           tar -xzf actionlint.tar.gz actionlint
           rm actionlint.tar.gz
@@ -591,8 +601,9 @@ jobs:
       - name: Install lychee
         if: steps.changed.outputs.docs == 'true'
         run: |
-          curl -sSfL -o lychee.tar.gz \
-            "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-gnu.tar.gz"
+          scripts/download.sh \
+            "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-gnu.tar.gz" \
+            lychee.tar.gz
           echo "${LYCHEE_SHA256}  lychee.tar.gz" | sha256sum -c -
           tar -xzf lychee.tar.gz --strip-components=1 lychee-x86_64-unknown-linux-gnu/lychee
           rm lychee.tar.gz
@@ -682,6 +693,9 @@ jobs:
     if: ${{ always() }}
     steps:
       - name: Verify every check passed
+        env:
+          GITLEAKS_RESULT: ${{ needs.gitleaks.result }}
+          GITLEAKS_INSTALLED: ${{ needs.gitleaks.outputs.installed }}
         run: |
           if [ "${{ needs.check.result }}" != "success" ]; then
             echo "One or more package checks failed."
@@ -715,8 +729,12 @@ jobs:
             echo "Semgrep reported a finding."
             exit 1
           fi
-          if [ "${{ needs.gitleaks.result }}" != "success" ]; then
-            echo "gitleaks found a secret in the git history."
+          if [ "$GITLEAKS_RESULT" != "success" ]; then
+            if [ "$GITLEAKS_INSTALLED" != "true" ]; then
+              echo "gitleaks could not be installed (download or checksum failed), see the gitleaks job log."
+            else
+              echo "The gitleaks scan did not pass (a secret was found or the scan errored), see the gitleaks job log."
+            fi
             exit 1
           fi
           if [ "${{ needs.audit.result }}" != "success" ]; then
