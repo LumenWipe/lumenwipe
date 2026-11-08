@@ -16,6 +16,7 @@ import { BASE_FEE_STROOPS, CLAIM_ROUND_BATCH_SIZE, TX_TIMEOUT_SECONDS } from "@/
 import { TOO_MANY_CLAIMABLE_BALANCES_MESSAGE } from "@/lib/stellar/tx-builder/claimable-balances";
 import {
   accountPaysFee,
+  claimTrustlineCostStroops,
   claimReserveShortMessage,
   closeFeeShortMessage,
   feeFloorStroops,
@@ -175,9 +176,13 @@ function assertOwnFeesFit(
   state: AccountState,
   tx: CloseTransaction,
   laterSorobanRounds: number,
-  viaMediator: boolean
+  viaMediator: boolean,
+  claimSelections: Readonly<Record<string, string>>
 ): void {
-  const owed = feeOf(tx) + laterOwnFeesStroops(state, laterSorobanRounds, viaMediator);
+  const owed =
+    feeOf(tx) +
+    laterOwnFeesStroops(state, laterSorobanRounds, viaMediator) +
+    claimTrustlineCostStroops(state, claimSelections);
   const short = ownFeeShortfallStroops(state, owed);
   if (short > 0n) throw feeBalanceShortError(short);
 }
@@ -290,6 +295,7 @@ export async function buildCloseTransactions(
     conversionProviders: Object.fromEntries(
       Object.entries(conversion.floors ?? {}).map(([contract, f]) => [contract, f.provider])
     ),
+    claimableBalanceSelections,
   })[0];
   if (killed) throw new CloseBuildError(killed.code, killed.message, killed.status);
 
@@ -386,7 +392,13 @@ export async function buildCloseTransactions(
       2 * accountState.defiPositions.positions.length +
       tokenRoundsAhead(accountState, dispositions);
     if (sorobanRounds > 0) {
-      assertOwnFeesFit(accountState, normalization, sorobanRounds, needsMediator);
+      assertOwnFeesFit(
+        accountState,
+        normalization,
+        sorobanRounds,
+        needsMediator,
+        claimableBalanceSelections
+      );
     }
     const removed = normalization.intent.operations.length - 1;
     return {
@@ -429,7 +441,8 @@ export async function buildCloseTransactions(
         exit.remainingSteps +
           accountState.defiPositions.positions.length +
           tokenRoundsAhead(accountState, dispositions),
-        needsMediator
+        needsMediator,
+        claimableBalanceSelections
       );
       return {
         transactions: [exit.transaction],
@@ -474,7 +487,8 @@ export async function buildCloseTransactions(
         accountState,
         tokenRound.transaction,
         tokenRound.remainingSteps + tokenRoundsAhead(accountState, dispositions, "convert"),
-        needsMediator
+        needsMediator,
+        claimableBalanceSelections
       );
       return {
         transactions: [tokenRound.transaction],
@@ -499,7 +513,8 @@ export async function buildCloseTransactions(
           accountState,
           conversionRound.transaction,
           conversionRound.remainingSteps,
-          needsMediator
+          needsMediator,
+          claimableBalanceSelections
         );
         return {
           transactions: [conversionRound.transaction],

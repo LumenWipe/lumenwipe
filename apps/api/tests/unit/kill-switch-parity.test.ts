@@ -343,6 +343,7 @@ describe.each(CASES)("when $name", (c) => {
         viaMediator: c.exchange,
         dispositions: c.dispositions,
         conversionProviders: {},
+        claimableBalanceSelections: {},
       })
     ).toEqual([]);
   });
@@ -471,7 +472,12 @@ describe("fee sponsorship paused", () => {
     const blockers = killSwitchBlockers(
       state(2n * ONE_XLM),
       { ...ALL_ON, feeSponsorship: false },
-      { viaMediator: false, dispositions: {}, conversionProviders: {} }
+      {
+        viaMediator: false,
+        dispositions: {},
+        conversionProviders: {},
+        claimableBalanceSelections: {},
+      }
     );
     expect(blockers).toEqual([]);
   });
@@ -480,7 +486,12 @@ describe("fee sponsorship paused", () => {
     const [blocker] = killSwitchBlockers(
       state(ONE_XLM),
       { ...ALL_ON, feeSponsorship: false },
-      { viaMediator: false, dispositions: {}, conversionProviders: {} }
+      {
+        viaMediator: false,
+        dispositions: {},
+        conversionProviders: {},
+        claimableBalanceSelections: {},
+      }
     );
     expect(blocker!.message).toContain("0.0000200 XLM");
   });
@@ -491,7 +502,12 @@ describe("no fee sponsor configured for the network", () => {
     const codes = killSwitchBlockers(
       atMinimum(),
       { ...NO_SPONSOR, feeSponsorship: false },
-      { viaMediator: false, dispositions: {}, conversionProviders: {} }
+      {
+        viaMediator: false,
+        dispositions: {},
+        conversionProviders: {},
+        claimableBalanceSelections: {},
+      }
     ).map((b) => b.code);
     expect(codes).toEqual(["close_fee_balance_short"]);
   });
@@ -502,6 +518,7 @@ describe("no fee sponsor configured for the network", () => {
         viaMediator: false,
         dispositions: {},
         conversionProviders: {},
+        claimableBalanceSelections: {},
       })
     ).toEqual([]);
   });

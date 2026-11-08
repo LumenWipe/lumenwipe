@@ -27,6 +27,7 @@ import {
 import { TOO_MANY_CLAIMABLE_BALANCES_MESSAGE } from "./claimable-balances";
 import {
   claimReserveShortMessage,
+  claimTrustlineCostStroops,
   closeFeeShortMessage,
   laterOwnFeesStroops,
   ownFeeShortfallStroops,
@@ -430,6 +431,7 @@ export function buildPlan(
       viaMediator: mediatorRequired,
       dispositions,
       conversionProviders,
+      claimableBalanceSelections,
     }).map(({ code, message }) => ({ code, message }))
   );
 
@@ -544,7 +546,8 @@ export function buildPlan(
       ? 0n
       : ownFeeShortfallStroops(
           accountState,
-          laterOwnFeesStroops(accountState, sorobanRounds, mediatorRequired)
+          laterOwnFeesStroops(accountState, sorobanRounds, mediatorRequired) +
+            claimTrustlineCostStroops(accountState, claimableBalanceSelections)
         );
   if (ownFeeShort > 0n) {
     blockers.push({ code: "close_fee_balance_short", message: closeFeeShortMessage(ownFeeShort) });

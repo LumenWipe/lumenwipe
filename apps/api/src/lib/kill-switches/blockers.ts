@@ -1,6 +1,7 @@
 import type { AccountState, ErrorCode } from "@lumenwipe/types";
 import type { KillSwitches } from "@/config/kill-switches";
 import {
+  claimTrustlineCostStroops,
   closeFeeShortMessage,
   laterOwnFeesStroops,
   ownFeeShortfallStroops,
@@ -25,6 +26,8 @@ export interface KillSwitchContext {
   /** Per token answered convert, the provider whose quote the answer accepted. Unnamed is Soroswap,
    *  the provider the build re-quotes through for such an answer. */
   conversionProviders: Readonly<Record<string, ConversionProvider>>;
+  /** Per claimable balance, the answer the close claims it by. */
+  claimableBalanceSelections: Readonly<Record<string, string>>;
 }
 
 function forwardBlocker(switches: KillSwitches): KillSwitchBlocker | null {
@@ -107,7 +110,8 @@ function sponsorshipBlocker(
   if (sorobanRounds > 0) return null;
   const short = ownFeeShortfallStroops(
     state,
-    laterOwnFeesStroops(state, sorobanRounds, ctx.viaMediator)
+    laterOwnFeesStroops(state, sorobanRounds, ctx.viaMediator) +
+      claimTrustlineCostStroops(state, ctx.claimableBalanceSelections)
   );
   if (short <= 0n) return null;
   if (!switches.feeSponsorConfigured) {
