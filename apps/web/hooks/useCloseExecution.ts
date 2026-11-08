@@ -50,6 +50,19 @@ import {
   type SignerState,
 } from "@/lib/stellar/signature-weight";
 import { lookupViaApi, submitViaApi } from "@/lib/stellar/submit-via-api";
+import { readAccount } from "@/lib/api/analyze-client";
+import { CosignArtifactError, parseCosignArtifact } from "@/lib/cosign/artifact";
+import {
+  assertStillSignable,
+  COSIGN_REFUSED,
+  cosignExport,
+  envelopeWith,
+  minimalSignatureSet,
+  roundSignatures,
+  verifyResponse,
+  type CosignExport,
+  type PoolSignature,
+} from "@/lib/cosign/merge";
 import {
   consumesSequenceOf,
   mergesAccount,
@@ -126,6 +139,18 @@ export interface RunOptions {
   /** Runs right before each signature of the run; throwing stops the run with nothing signed or
    *  sent for that transaction. */
   beforeSign?: () => Promise<void>;
+  /** Resumes the paused round onto the signatures merged from other devices: it goes on to be
+   *  prepared and submitted with no signer when they meet its weight. */
+  cosignedResume?: boolean;
+}
+
+/** Signing the paused round on other devices: what may be exported, and what has come back. */
+export interface CosignStatus {
+  export: CosignExport;
+  /** Weight of the verified signatures collected so far, here and from responses. */
+  collectedWeight: number;
+  /** The attached set meets the round's weight: the round can continue without a signer. */
+  ready: boolean;
 }
 
 /** Required vs. accumulated signing weight for the transaction that stopped a close, the
@@ -284,6 +309,13 @@ export function useCloseExecution() {
   // and survives a pause so a resumed round is judged against the same state.
   const signerStateRef = useRef<SignerState | null>(null);
   const signerStateForRef = useRef<string | null>(null);
+  // Every verified signature collected for the paused round, by its pinned hash. The envelope
+  // carries only the minimal set drawn from it.
+  const cosignPoolRef = useRef<{ hash: string; pool: PoolSignature[] } | null>(null);
+  // The pinned hash of the paused round whose envelope carries signatures merged from other
+  // devices. Whatever run resumes that round checks it live first and looks up its inner hash.
+  const mergedHashRef = useRef<string | null>(null);
+  const [cosign, setCosign] = useState<CosignStatus | null>(null);
 
   // Moves the progress line to `wait`. The clock behind the elapsed line restarts only when what
   // is waited on changes, never on a re-render or a repeated report of the same wait.
@@ -369,6 +401,15 @@ export function useCloseExecution() {
       // The round this run resumes, and whether the wallet itself stopped signing that very
       // envelope: only then does the round survive the failure (see the catch below).
       const resumedRound = pendingRoundRef.current;
+      const cosignedRound =
+        resumedRound?.approvedHash !== undefined &&
+        mergedHashRef.current === resumedRound.approvedHash
+          ? resumedRound
+          : null;
+      // Set once the merged round reaches preparation, so only its own failure is looked up by
+      // its inner hash; `liveCheckRefused` when the live read is what stopped it.
+      let cosignedInFlight = false;
+      let liveCheckRefused = false;
       let walletStoppedResume = false;
       const initialSignerState = signerStateRef.current;
       const roundSignerState = (): SignerState => signerStateRef.current ?? initialSignerState;
@@ -409,6 +450,7 @@ export function useCloseExecution() {
       // A retry starts with a clean list. A step left submitted keeps it: it may be on the ledger.
       useDemolishStore.getState().resetUnsettledSteps();
       setSignatureStatus(null);
+      setCosign(null);
       setRetrySafe(true);
       setStillUnconfirmed(false);
       carriedPreimageRef.current = false;
@@ -539,8 +581,13 @@ export function useCloseExecution() {
             },
             // With no signer the bar is out of reach on purpose: such a run only reads and
             // pauses, and never submits, even a resumed envelope that already carries weight.
+            // The one exception is the round merged from other devices, resumed for that.
             requiredWeight: (tx: CloseTransaction) =>
-              signer ? requiredFor(tx) : Number.POSITIVE_INFINITY,
+              signer || (options.cosignedResume === true && tx === cosignedRound?.tx)
+                ? requiredFor(tx)
+                : Number.POSITIVE_INFINITY,
+            transactionHash: (xdr: string) =>
+              toHex(TransactionBuilder.fromXdr(xdr, passphrase).hash()),
             sign: async (tx: CloseTransaction, xdr: string) => {
               assertStillOwns(owner);
               inFlight = tx;
@@ -646,6 +693,26 @@ export function useCloseExecution() {
             },
             prepare: async (tx: CloseTransaction, xdr: string) => {
               let finalXdr = xdr;
+              // Signatures from other devices count only against the signers the account has
+              // now: one could have changed them without using this transaction's sequence.
+              if (tx === cosignedRound?.tx) {
+                cosignedInFlight = true;
+                showProgress("checking", position);
+                const live = await readAccount(network, sourceAddress);
+                const state = parseRoundSignerState(live);
+                try {
+                  if (!state) throw new UserFacingError(COSIGN_REFUSED.signersChanged);
+                  assertStillSignable({
+                    envelopeXdr: xdr,
+                    passphrase,
+                    account: sourceAddress,
+                    live: { sequence: live.sequence, ...state },
+                  });
+                } catch (refusal) {
+                  liveCheckRefused = true;
+                  throw refusal;
+                }
+              }
               carriedPreimageRef.current = evaluateSignatureContributions(
                 xdr,
                 passphrase,
@@ -757,6 +824,7 @@ export function useCloseExecution() {
             onConfirmed: (tx, hash) => {
               if (ownsStore(owner)) {
                 carriedPreimageRef.current = false;
+                cosignedInFlight = false;
                 clearPlanHash();
                 markCoveredConfirmed(tx.covers, hash, tx.needsSponsoredFee, tx.coversTargets);
                 // A step the API named but the confirmed envelope did not carry out (a merge
@@ -824,7 +892,57 @@ export function useCloseExecution() {
               `This account needs ${Math.max(0, pending.requiredWeight - pending.accumulatedWeight)} more signing weight. Connect another signer to continue.`
           );
           setPhase("STEP_FAILED");
+          if (cosignPoolRef.current?.hash !== pending.approvedHash) cosignPoolRef.current = null;
+          if (mergedHashRef.current !== pending.approvedHash) mergedHashRef.current = null;
+          setCosign({
+            export: cosignExport({
+              round: pending,
+              network,
+              account: sourceAddress,
+              signers: roundSignerState().signers,
+              passphrase,
+              nowSeconds: Math.floor(Date.now() / 1000),
+            }),
+            collectedWeight: pending.accumulatedWeight,
+            ready: false,
+          });
         };
+        // A round signed on other devices can be submitted by anyone holding its signatures, and
+        // without the fee bump, under its inner hash: that hash is looked up before reporting,
+        // also when the live read found its sequence number already used.
+        if (
+          cosignedInFlight &&
+          cosignedRound?.approvedHash !== undefined &&
+          (liveCheckRefused ||
+            err instanceof CloseTransactionFailedError ||
+            err instanceof CloseOutcomeUnknownError ||
+            (flight.stage === "submitted" && isSubmitRefused(err)))
+        ) {
+          const inner = cosignedRound.approvedHash;
+          const found = await lookupViaApi(inner, network).catch(() => null);
+          if (found?.hash === inner && found.status === "confirmed") {
+            await recordSubmission(owner, null);
+            if (!ownsStore(owner)) return;
+            const tx = cosignedRound.tx;
+            clearPlanHash();
+            markCoveredConfirmed(tx.covers, inner, tx.needsSponsoredFee, tx.coversTargets);
+            recordProgress(owner, useDemolishStore.getState().sessionId, tx.covers, inner);
+            signerStateRef.current = applyConfirmedTransaction(
+              roundSignerState(),
+              tx.xdr,
+              passphrase,
+              intentFromXdr(tx.xdr, passphrase).operations,
+              sourceAddress
+            );
+            pendingRoundRef.current = null;
+            cosignPoolRef.current = null;
+            mergedHashRef.current = null;
+            setSignatureStatus(null);
+            setLastError(null);
+            setPhase("STEP_EXECUTING");
+            return;
+          }
+        }
         if (err instanceof InsufficientSignatureWeightError) {
           // The weight the transaction really needs, also after a run with no signer.
           pauseFor({ ...err.pending, requiredWeight: requiredFor(err.pending.tx) }, null);
@@ -1148,10 +1266,93 @@ export function useCloseExecution() {
     [network, sourceAddress, destinationAddress, memo, memoType, markCoveredConfirmed, setPhase]
   );
 
+  // Adds the signatures of a response to the paused round. Returns why it was refused, or null.
+  const importCosignResponse = useCallback(
+    (text: string): string | null => {
+      const round = pendingRoundRef.current;
+      const state = signerStateRef.current;
+      if (!round?.approvedHash || !state || !sourceAddress) {
+        return "There is no paused step to add these signatures to.";
+      }
+      if (useDemolishStore.getState().signingRun) {
+        return "Wait for the current step to finish, then add the response again.";
+      }
+      const passphrase = NETWORK_PASSPHRASES[network];
+      if (roundExpired(round.xdr, passphrase, Date.now())) return PENDING_ROUND_EXPIRED;
+      try {
+        const artifact = parseCosignArtifact(text, "response");
+        const held =
+          cosignPoolRef.current?.hash === round.approvedHash
+            ? cosignPoolRef.current.pool
+            : roundSignatures(round, state.signers, passphrase);
+        const added = verifyResponse({
+          artifact,
+          round,
+          network,
+          account: sourceAddress,
+          signers: state.signers,
+          passphrase,
+          pool: held,
+        });
+        const pool = [...held, ...added];
+        const set = minimalSignatureSet(pool, round.requiredWeight, [sourceAddress]);
+        cosignPoolRef.current = { hash: round.approvedHash, pool };
+        let collectedWeight = pool.reduce((sum, s) => sum + s.weight, 0);
+        if (set) {
+          const merged = envelopeWith(
+            round.xdr,
+            set.map((s) => s.signature)
+          );
+          const contributions = evaluateSignatureContributions(merged, passphrase, state.signers);
+          collectedWeight = accumulatedWeight(contributions);
+          pendingRoundRef.current = { ...round, xdr: merged, accumulatedWeight: collectedWeight };
+          mergedHashRef.current = round.approvedHash;
+          setSignatureStatus(
+            (current) =>
+              current && {
+                ...current,
+                accumulatedWeight: collectedWeight,
+                contributed: contributions.filter((c) => c.contributed).map((c) => c.signer),
+                remainingSigners: contributions.filter((c) => !c.contributed).map((c) => c.signer),
+              }
+          );
+        }
+        setCosign(
+          (current) =>
+            current && {
+              ...current,
+              collectedWeight,
+              ready: set !== null && collectedWeight >= round.requiredWeight,
+            }
+        );
+        return null;
+      } catch (err) {
+        if (err instanceof CosignArtifactError || err instanceof UserFacingError) {
+          return err.message;
+        }
+        console.error("[cosign] could not read the response:", err);
+        return "This response could not be read. Ask the cosigner to send it again.";
+      }
+    },
+    [network, sourceAddress]
+  );
+
+  // Drops the paused round and what was collected for it, before it is built again.
+  const discardCosignRound = useCallback((): void => {
+    pendingRoundRef.current = null;
+    cosignPoolRef.current = null;
+    mergedHashRef.current = null;
+    setSignatureStatus(null);
+    setCosign(null);
+  }, []);
+
   return {
     run,
     progress,
     signatureStatus,
+    cosign,
+    importCosignResponse,
+    discardCosignRound,
     signingPrompt,
     submitPreAuthTransaction,
     checkUnconfirmed,
