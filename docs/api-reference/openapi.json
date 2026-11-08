@@ -835,7 +835,7 @@
             }
           },
           "503": {
-            "description": "The destination, the account's issued assets or the ledger could not be read. Retry.",
+            "description": "The data provider, the destination, the account's issued assets or the ledger could not be read. Retry.",
             "content": {
               "application/json": {
                 "schema": {

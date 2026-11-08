@@ -31,8 +31,14 @@ const ADDRESS = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H";
 const CONTRACT = "CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE";
 
 function respondWith(filter: PlanErrorFilter | TransactionErrorFilter, error: unknown) {
-  const sent: { status?: number; body?: unknown } = {};
+  const sent: { status?: number; body?: unknown; headers: Record<string, string> } = {
+    headers: {},
+  };
   const res = {
+    getHeader: (name: string) => sent.headers[name],
+    setHeader(name: string, value: string) {
+      sent.headers[name] = value;
+    },
     status(code: number) {
       sent.status = code;
       return res;
@@ -45,6 +51,10 @@ function respondWith(filter: PlanErrorFilter | TransactionErrorFilter, error: un
   filter.catch(error, host);
   return sent;
 }
+
+/** Every 503 tells the client when to retry, the domain-mapped ones included. */
+const retryAfterFor = (status: number): Record<string, string> =>
+  status === 503 ? { "Retry-After": "30" } : {};
 
 type Case = [string, Error, number, string, unknown];
 
@@ -199,6 +209,7 @@ describe("PlanErrorFilter", () => {
     expect(respondWith(new PlanErrorFilter(), error)).toEqual({
       status,
       body: { error: { code, message: error.message } },
+      headers: retryAfterFor(status),
     });
   });
 });
@@ -210,6 +221,7 @@ describe("TransactionErrorFilter", () => {
     expect(respondWith(new TransactionErrorFilter(), error)).toEqual({
       status,
       body: { error: expected },
+      headers: retryAfterFor(status),
     });
   });
 });

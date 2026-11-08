@@ -66,6 +66,8 @@ These mean the request itself is wrong or not allowed. Treat them as a fault in 
 
 These are transient. Retry with backoff, honoring `Retry-After`. While retrying, show "The service is busy, trying again". If it keeps failing, show the `message` and the reference id.
 
+A data provider that is rate limiting the API, failing or too slow is `503 service_unavailable` with `Retry-After`, never `account_read_failed` or `plan_failed`: on `GET account/:address`, `close/plan` and `close/transactions`, and as the blocker of that address in a `close/batch-plan` result. The API skips that provider for the next requests, so a retry after `Retry-After` reaches another one when more than one is configured.
+
 | Code                       | Status | Retry | Meaning                                                                                     |
 | -------------------------- | ------ | ----- | ------------------------------------------------------------------------------------------- |
 | `rate_limited`             | 429    | Yes   | Too many requests. Wait and retry.                                                          |
