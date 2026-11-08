@@ -21,7 +21,7 @@ import { NetworkPipe } from "@/common/pipes/network.pipe";
 @ApiParam({ name: "network", enum: ["testnet", "mainnet"] })
 @ApiErrorResponse(401, "Missing or invalid API key.", ["unauthorized"])
 @ApiErrorResponse(429, "Rate limit exceeded for this key.", ["rate_limited"])
-@Controller(":network/mediator")
+@Controller("v1/:network/mediator")
 export class MediatorController {
   constructor(private readonly signing: MediatorSigningService) {}
 

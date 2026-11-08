@@ -17,7 +17,7 @@ import { ServedRegistryDto } from "./dto/registry-responses.dto";
  * attacker guarantees the case that needs nobody.
  */
 @ApiTags("config")
-@Controller("config")
+@Controller("v1/config")
 export class RegistryController {
   @Public()
   @Get("exchange-registry")

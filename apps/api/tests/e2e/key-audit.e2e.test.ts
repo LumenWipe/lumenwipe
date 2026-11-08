@@ -199,11 +199,11 @@ describe("admin key lifecycle lines", () => {
 
 describe("integrator key lifecycle lines", () => {
   test("create, rotate and revoke each write one line with the cut wallet address", async () => {
-    const created = await wallet("/integrator/keys");
+    const created = await wallet("/v1/integrator/keys");
     expect(created.status).toBe(201);
-    const rotated = await wallet(`/integrator/keys/${created.body.record.id}/rotate`);
+    const rotated = await wallet(`/v1/integrator/keys/${created.body.record.id}/rotate`);
     expect(rotated.status).toBe(200);
-    const revoked = await wallet(`/integrator/keys/${rotated.body.record.id}/revoke`);
+    const revoked = await wallet(`/v1/integrator/keys/${rotated.body.record.id}/revoke`);
     expect(revoked.status).toBe(200);
 
     expect(audits().map((l) => [l.event, l.result])).toEqual([
@@ -236,7 +236,7 @@ describe("integrator key lifecycle lines", () => {
     "%s of another wallet's key writes one failure line",
     async (action) => {
       const foreign = await seed(OTHER_WALLET);
-      const res = await wallet(`/integrator/keys/${foreign.hash}/${action}`);
+      const res = await wallet(`/v1/integrator/keys/${foreign.hash}/${action}`);
       expect(res.status).toBe(404);
       expect(res.body.error.code).toBe("api_key_not_found");
       expect(audits()).toHaveLength(1);
@@ -254,7 +254,7 @@ describe("integrator key lifecycle lines", () => {
     const token = issueSession(INTEGRATOR_SECRET, limited).token;
     for (let i = 0; i < 5; i++) await seed(limited);
     const res = await request(http)
-      .post("/integrator/keys")
+      .post("/v1/integrator/keys")
       .set("Authorization", `Bearer ${token}`)
       .set("X-Forwarded-For", nextIp());
     expect(res.status).toBe(409);
@@ -266,14 +266,14 @@ describe("integrator key lifecycle lines", () => {
   test("a store failure writes one failure line and the response stays a 500", async () => {
     const record = await seed(WALLET);
     store.broken = true;
-    const res = await wallet(`/integrator/keys/${record.hash}/rotate`);
+    const res = await wallet(`/v1/integrator/keys/${record.hash}/rotate`);
     expect(res.status).toBe(500);
     expect(audits()).toHaveLength(1);
     expect(audits()[0]).toMatchObject({ event: "api_key.rotate", result: "failure" });
   });
 
   test("a missing session is not a lifecycle action", async () => {
-    const res = await request(http).post("/integrator/keys").set("X-Forwarded-For", nextIp());
+    const res = await request(http).post("/v1/integrator/keys").set("X-Forwarded-For", nextIp());
     expect(res.status).toBe(401);
     expect(audits()).toHaveLength(0);
   });

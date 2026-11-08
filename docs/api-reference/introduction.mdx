@@ -16,16 +16,30 @@ https://api.lumenwipe.com
 
 Most routes take the network in the path, either `mainnet` or `testnet`, for example `/v1/testnet/close/plan`. Any other value returns `400 invalid_network`.
 
+## Versioning
+
+Every integrator route lives under `/v1`, for example `/v1/testnet/account/G...`, `/v1/config/exchange-registry` and `/v1/integrator/keys`. A breaking change to a request or response gets a new prefix (`/v2`) instead of changing `/v1`. `GET /` and the health routes are operational and stay unversioned. The operator-only key administration routes under `/admin` are not part of the public API and are not versioned.
+
+Paths without the prefix, such as `/testnet/account/G...`, `/{network}/mediator/sign`, `/config/exchange-registry` and `/integrator/...`, are deprecated aliases. They answer exactly as their `/v1` path does, with the same authentication and the same rate-limit budget, and add three headers:
+
+| Header        | Value                                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------------------------- |
+| `Deprecation` | `@1794182400`, the date the alias was deprecated (2026-11-09), in RFC 9745 form.                        |
+| `Sunset`      | `Tue, 01 Jun 2027 00:00:00 GMT`. After this date an alias may stop answering.                           |
+| `Link`        | The `/v1` path to call instead, as `rel="successor-version"`, and this section, as `rel="deprecation"`. |
+
+The deprecated paths are not listed in the endpoint pages. Move to the `/v1` path before the sunset date.
+
 ## Authentication
 
 Send your API key as a bearer token:
 
 ```bash
-curl https://api.lumenwipe.com/testnet/account/G... \
+curl https://api.lumenwipe.com/v1/testnet/account/G... \
   -H "Authorization: Bearer $LUMENWIPE_API_KEY"
 ```
 
-`GET /`, the health routes, and `GET /config/exchange-registry` need no key. Everything else does. [Get an API key](https://lumenwipe.com/api-keys) with the self-service page.
+`GET /`, the health routes, and `GET /v1/config/exchange-registry` need no key. Everything else does. [Get an API key](https://lumenwipe.com/api-keys) with the self-service page.
 
 <Warning>
   Keep the key on your server. A browser application should call the API through its own backend, as
@@ -280,4 +294,4 @@ Each entry of the plan's `decisionPoints` carries a `subject` whose shape depend
 
 The quote is display data. To hold the conversion to a figure the user saw, send it as the convert answer's `params.minAmountOut`; `close/transactions` refuses a route that no longer clears it with `quote_drifted`. `quote` is absent when no route exists, and for a balance a position's exit has yet to pay in.
 
-For exchange destinations, `POST /{network}/mediator/sign` co-signs the mediator's forward payment. To plan several accounts at once, use `POST /v1/{network}/close/batch-plan`. See [how a close works](/guides/how-closing-works) for the flow from a user's side.
+For exchange destinations, `POST /v1/{network}/mediator/sign` co-signs the mediator's forward payment. To plan several accounts at once, use `POST /v1/{network}/close/batch-plan`. See [how a close works](/guides/how-closing-works) for the flow from a user's side.

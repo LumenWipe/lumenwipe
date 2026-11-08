@@ -118,26 +118,29 @@
             "group": "Account",
             "openapi": "api-reference/openapi.json",
             "pages": [
-              "GET /{network}/account/{address}",
-              "GET /{network}/allowances/{address}",
-              "POST /{network}/allowances/revoke",
-              "GET /{network}/paths"
+              "GET /v1/{network}/account/{address}",
+              "GET /v1/{network}/allowances/{address}",
+              "POST /v1/{network}/allowances/revoke",
+              "GET /v1/{network}/paths"
             ]
           },
           {
             "group": "Mediator",
             "openapi": "api-reference/openapi.json",
-            "pages": ["POST /{network}/mediator/sign", "GET /{network}/mediator/check/{address}"]
+            "pages": [
+              "POST /v1/{network}/mediator/sign",
+              "GET /v1/{network}/mediator/check/{address}"
+            ]
           },
           {
             "group": "Fee sponsorship",
             "openapi": "api-reference/openapi.json",
-            "pages": ["POST /{network}/fee-bump/sponsor"]
+            "pages": ["POST /v1/{network}/fee-bump/sponsor"]
           },
           {
             "group": "Config",
             "openapi": "api-reference/openapi.json",
-            "pages": ["GET /config/exchange-registry"]
+            "pages": ["GET /v1/config/exchange-registry"]
           },
           {
             "group": "Stats",

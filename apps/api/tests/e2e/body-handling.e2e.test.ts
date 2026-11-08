@@ -15,14 +15,14 @@ const POST_ROUTES = [
   "/v1/:network/close/transactions",
   "/v1/:network/submit",
   "/v1/:network/stats/merges",
-  "/:network/mediator/sign",
-  "/:network/fee-bump/sponsor",
-  "/:network/allowances/revoke",
-  "/integrator/auth/challenge",
-  "/integrator/auth/session",
-  "/integrator/keys",
-  "/integrator/keys/:id/revoke",
-  "/integrator/keys/:id/rotate",
+  "/v1/:network/mediator/sign",
+  "/v1/:network/fee-bump/sponsor",
+  "/v1/:network/allowances/revoke",
+  "/v1/integrator/auth/challenge",
+  "/v1/integrator/auth/session",
+  "/v1/integrator/keys",
+  "/v1/integrator/keys/:id/revoke",
+  "/v1/integrator/keys/:id/rotate",
   "/admin/api-keys",
   "/admin/api-keys/:id/revoke",
   "/admin/api-keys/:id/rotate",
@@ -98,7 +98,7 @@ describe.each(POST_ROUTES)("POST %s", (route) => {
   });
 });
 
-test.each(["/integrator/keys/x/revoke", "/integrator/keys/x/rotate"])(
+test.each(["/v1/integrator/keys/x/revoke", "/v1/integrator/keys/x/rotate"])(
   "POST %s with no body and no content type is not rejected as a bad body",
   async (path) => {
     const res = await request(http).post(path).set("Authorization", `Bearer ${KEY}`);

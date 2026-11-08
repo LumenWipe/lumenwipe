@@ -17,7 +17,7 @@ const NO_ERROR_CASE = new Set([
   "GET /health",
   "GET /health/deep",
   "GET /health/dependencies",
-  "GET /config/exchange-registry",
+  "GET /v1/config/exchange-registry",
 ]);
 
 let app: INestApplication;
@@ -54,7 +54,7 @@ function documentedCodes(responses: Responses, status: number): string[] | undef
 }
 
 function invalidInput(path: string): { path: string; status: number; code: string } {
-  if (path.startsWith("/integrator/")) {
+  if (path.startsWith("/v1/integrator/")) {
     return { path, status: 503, code: "integrator_api_not_configured" };
   }
   return { path: path.replace("{network}", "nope"), status: 400, code: "invalid_network" };

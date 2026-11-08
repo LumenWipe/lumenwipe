@@ -25,9 +25,12 @@ afterAll(async () => {
 });
 
 const ADDRESS_ROUTES = [
-  { path: (n: string, a: string) => `/${n}/account/${a}`, message: "Invalid Stellar address" },
-  { path: (n: string, a: string) => `/${n}/allowances/${a}`, message: "Invalid Stellar address" },
-  { path: (n: string, a: string) => `/${n}/mediator/check/${a}`, message: "Invalid address" },
+  { path: (n: string, a: string) => `/v1/${n}/account/${a}`, message: "Invalid Stellar address" },
+  {
+    path: (n: string, a: string) => `/v1/${n}/allowances/${a}`,
+    message: "Invalid Stellar address",
+  },
+  { path: (n: string, a: string) => `/v1/${n}/mediator/check/${a}`, message: "Invalid address" },
 ];
 
 for (const route of ADDRESS_ROUTES) {

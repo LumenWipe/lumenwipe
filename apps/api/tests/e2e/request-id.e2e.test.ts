@@ -40,7 +40,7 @@ function expectIdentified(res: request.Response): string {
 }
 
 test("a 401 carries the request id in the header and the envelope, with no-store and the budget", async () => {
-  const res = await request(http).get("/testnet/account/NOPE").set(ip("203.0.113.1"));
+  const res = await request(http).get("/v1/testnet/account/NOPE").set(ip("203.0.113.1"));
   expect(res.status).toBe(401);
   expect(res.body.error.message).toBe("A valid API key is required.");
   expectIdentified(res);
@@ -48,8 +48,8 @@ test("a 401 carries the request id in the header and the envelope, with no-store
 
 test("a 429 from the limiter carries the request id, no-store and the budget headers", async () => {
   const caller = ip("203.0.113.2");
-  for (let i = 0; i < LIMIT; i++) await request(http).get("/testnet/account/G").set(caller);
-  const blocked = await request(http).get("/testnet/account/G").set(caller);
+  for (let i = 0; i < LIMIT; i++) await request(http).get("/v1/testnet/account/G").set(caller);
+  const blocked = await request(http).get("/v1/testnet/account/G").set(caller);
   expect(blocked.status).toBe(429);
   expect(blocked.headers["retry-after"]).toBeDefined();
   expectIdentified(blocked);
@@ -105,7 +105,7 @@ test("every request gets its own id and a client-supplied one is ignored", async
   expect(a.headers["x-request-id"]).toMatch(UUID);
   expect(a.headers["x-request-id"]).not.toBe(b.headers["x-request-id"]);
   const c = await request(http)
-    .get("/testnet/account/NOPE")
+    .get("/v1/testnet/account/NOPE")
     .set(ip("203.0.113.8"))
     .set("X-Request-Id", "client-chosen-id");
   expect(c.body.error.requestId).toMatch(UUID);

@@ -24,7 +24,7 @@ export function requireIntegratorConfig(): string {
 
 export type IntegratorRequest = Request & { integratorAddress?: string };
 
-/** Authenticates the wallet session minted by `POST /integrator/auth/session`. */
+/** Authenticates the wallet session minted by `POST /v1/integrator/auth/session`. */
 @Injectable()
 export class IntegratorGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {

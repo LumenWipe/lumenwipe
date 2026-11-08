@@ -56,7 +56,7 @@ import { SPONSORSHIP_BUDGET, type SponsorshipBudget } from "./sponsorship-budget
 @ApiParam({ name: "network", enum: ["testnet", "mainnet"] })
 @ApiErrorResponse(401, "Missing or invalid API key.", ["unauthorized"])
 @ApiErrorResponse(429, "Rate limit exceeded for this key.", ["rate_limited"])
-@Controller(":network/fee-bump")
+@Controller("v1/:network/fee-bump")
 export class FeeBumpController {
   constructor(
     @Inject(SPONSORSHIP_BUDGET) private readonly budget: SponsorshipBudget,

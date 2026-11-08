@@ -294,7 +294,7 @@
         ]
       }
     },
-    "/config/exchange-registry": {
+    "/v1/config/exchange-registry": {
       "get": {
         "operationId": "RegistryController_registry",
         "parameters": [],
@@ -3457,7 +3457,7 @@
         ]
       }
     },
-    "/{network}/account/{address}": {
+    "/v1/{network}/account/{address}": {
       "get": {
         "operationId": "AccountController_account",
         "parameters": [
@@ -3903,7 +3903,7 @@
         ]
       }
     },
-    "/{network}/allowances/{address}": {
+    "/v1/{network}/allowances/{address}": {
       "get": {
         "operationId": "AccountController_allowances",
         "parameters": [
@@ -4131,7 +4131,7 @@
         ]
       }
     },
-    "/{network}/allowances/revoke": {
+    "/v1/{network}/allowances/revoke": {
       "post": {
         "operationId": "AccountController_revokeAllowance",
         "parameters": [
@@ -4548,7 +4548,7 @@
         ]
       }
     },
-    "/{network}/paths": {
+    "/v1/{network}/paths": {
       "get": {
         "operationId": "AccountController_paths",
         "parameters": [
@@ -4829,7 +4829,7 @@
         ]
       }
     },
-    "/{network}/mediator/sign": {
+    "/v1/{network}/mediator/sign": {
       "post": {
         "operationId": "MediatorController_sign",
         "parameters": [
@@ -5195,7 +5195,7 @@
         ]
       }
     },
-    "/{network}/mediator/check/{address}": {
+    "/v1/{network}/mediator/check/{address}": {
       "get": {
         "operationId": "MediatorController_check",
         "parameters": [
@@ -5426,7 +5426,7 @@
         ]
       }
     },
-    "/{network}/fee-bump/sponsor": {
+    "/v1/{network}/fee-bump/sponsor": {
       "post": {
         "operationId": "FeeBumpController_sponsor",
         "parameters": [
@@ -5750,7 +5750,7 @@
         ]
       }
     },
-    "/integrator/auth/challenge": {
+    "/v1/integrator/auth/challenge": {
       "post": {
         "operationId": "IntegratorController_challenge",
         "parameters": [],
@@ -6005,7 +6005,7 @@
         ]
       }
     },
-    "/integrator/auth/session": {
+    "/v1/integrator/auth/session": {
       "post": {
         "operationId": "IntegratorController_session",
         "parameters": [],
@@ -6301,7 +6301,7 @@
         ]
       }
     },
-    "/integrator/keys": {
+    "/v1/integrator/keys": {
       "get": {
         "operationId": "IntegratorController_list",
         "parameters": [],
@@ -6756,7 +6756,7 @@
         ]
       }
     },
-    "/integrator/keys/{id}/revoke": {
+    "/v1/integrator/keys/{id}/revoke": {
       "post": {
         "operationId": "IntegratorController_revoke",
         "parameters": [
@@ -7056,7 +7056,7 @@
         ]
       }
     },
-    "/integrator/keys/{id}/rotate": {
+    "/v1/integrator/keys/{id}/rotate": {
       "post": {
         "operationId": "IntegratorController_rotate",
         "parameters": [
@@ -7425,7 +7425,7 @@
         "scheme": "bearer",
         "bearerFormat": "opaque",
         "type": "http",
-        "description": "Short-lived wallet session token from POST /integrator/auth/session"
+        "description": "Short-lived wallet session token from POST /v1/integrator/auth/session"
       }
     },
     "schemas": {
@@ -8788,7 +8788,7 @@
           },
           "needsSponsoredFee": {
             "type": "boolean",
-            "description": "True when the account cannot pay this transaction's own fee without dropping below its reserve - the client must route the signed envelope through POST /:network/fee-bump/sponsor before submitting it. Absent (not false) otherwise.",
+            "description": "True when the account cannot pay this transaction's own fee without dropping below its reserve - the client must route the signed envelope through POST /v1/:network/fee-bump/sponsor before submitting it. Absent (not false) otherwise.",
             "enum": [
               true
             ]

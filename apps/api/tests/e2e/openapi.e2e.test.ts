@@ -41,10 +41,10 @@ test("spec documents all v1 + read + mediator endpoints", () => {
       "/v1/{network}/close/batch-plan",
       "/v1/{network}/close/transactions",
       "/v1/{network}/submit",
-      "/{network}/account/{address}",
-      "/{network}/paths",
-      "/{network}/mediator/sign",
-      "/{network}/mediator/check/{address}",
+      "/v1/{network}/account/{address}",
+      "/v1/{network}/paths",
+      "/v1/{network}/mediator/sign",
+      "/v1/{network}/mediator/check/{address}",
     ])
   );
 });
@@ -90,7 +90,8 @@ test("response DTOs are present as schemas and wired to their 200 responses (#59
     )
   ).toBe("#/components/schemas/SubmitResponseDto");
 
-  const mediatorCheck = spec.paths["/{network}/mediator/check/{address}"].get?.responses?.["200"];
+  const mediatorCheck =
+    spec.paths["/v1/{network}/mediator/check/{address}"].get?.responses?.["200"];
   expect(
     refOf(
       (mediatorCheck as { content?: Record<string, { schema: unknown }> })?.content?.[
@@ -122,7 +123,7 @@ test("phase 2 response schemas (allowances, close/plan) are present and wired (#
     (schema as { $ref?: string; allOf?: { $ref?: string }[] })?.$ref ??
     (schema as { allOf?: { $ref?: string }[] })?.allOf?.[0]?.$ref;
 
-  const allowances = spec.paths["/{network}/allowances/{address}"].get?.responses?.["200"];
+  const allowances = spec.paths["/v1/{network}/allowances/{address}"].get?.responses?.["200"];
   expect(
     refOf(
       (allowances as { content?: Record<string, { schema: unknown }> })?.content?.[
@@ -176,7 +177,7 @@ test("account response schema, including its discriminated unions, is present an
     (schema as { $ref?: string; allOf?: { $ref?: string }[] })?.$ref ??
     (schema as { allOf?: { $ref?: string }[] })?.allOf?.[0]?.$ref;
 
-  const account = spec.paths["/{network}/account/{address}"].get?.responses?.["200"];
+  const account = spec.paths["/v1/{network}/account/{address}"].get?.responses?.["200"];
   expect(
     refOf(
       (account as { content?: Record<string, { schema: unknown }> })?.content?.["application/json"]

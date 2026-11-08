@@ -5,6 +5,7 @@ import type { ErrorRequestHandler, RequestHandler } from "express";
 import { RateLimiter } from "./auth/rate-limiter";
 import { ErrorEnvelopeFilter } from "./common/error-envelope.filter";
 import { JsonLogger } from "./common/json-logger";
+import { legacyAliasMiddleware } from "./common/legacy-aliases";
 import { registerRequestSecrets, requestContextMiddleware } from "./common/request-context";
 
 export const JSON_BODY_LIMIT = "100kb";
@@ -58,9 +59,12 @@ export function configureApp(
   // First, ahead of the rate limiter, body parsing and authentication, so the limiter's own 429,
   // a 401 and a body error all carry x-request-id. Also sets Cache-Control: no-store: every
   // response is dynamic and non-cacheable (account state, plans, unsigned XDR, mediator
-  // co-signatures), success or error. Order: request context, rate limiter, filters, body
-  // parser, body-error mapping, body normalization, secret registration.
+  // co-signatures), success or error. Order: request context, legacy aliases, rate limiter,
+  // filters, body parser, body-error mapping, body normalization, secret registration.
   app.use(requestContextMiddleware());
+
+  // Before the rate limiter, so a 429 on a pre-/v1 path carries its deprecation headers too.
+  app.use(legacyAliasMiddleware());
 
   // Ahead of body parsing, routing and authentication, so the budget is spent and
   // reported on every response, including a 404 or a rejected body.
