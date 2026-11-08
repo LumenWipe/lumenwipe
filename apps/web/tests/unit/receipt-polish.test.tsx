@@ -188,7 +188,7 @@ test("a reopened closed receipt focuses its h1 inside a status banner and retitl
   expect(h1.textContent).toBe("Account successfully merged");
   await expectFocused(h1);
   expect(screen.getAllByRole("status").some((s) => s.contains(h1))).toBe(true);
-  expect(document.title).toBe("Account closed | LumenWipe");
+  await waitFor(() => expect(document.title).toBe("Account closed | LumenWipe"));
 });
 
 test("the receipt shows each hash and address one way, with no bare initials for explorers", async () => {
