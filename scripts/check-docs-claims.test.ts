@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
   checkAll,
+  checkAnalyticsTools,
   checkControllerList,
   checkDesignTokens,
   checkFormatCommand,
@@ -38,6 +39,21 @@ const WORKFLOW = [
   "    steps: []",
   "",
 ].join("\n");
+const LAYOUT =
+  'import RedactedAnalytics from "@/components/analytics/RedactedAnalytics";\n' +
+  "export default function RootLayout() {\n" +
+  '  return <html><head><script src="https://cloud.umami.is/script.js" /></head>' +
+  "<body><RedactedAnalytics /></body></html>;\n}\n";
+const ANALYTICS_COMPONENT =
+  'import { Analytics } from "@vercel/analytics/next";\n' +
+  "export default function RedactedAnalytics() {\n  return <Analytics />;\n}\n";
+const ARCHITECTURE =
+  "## 15. Deployment\n\nThe web deploys to Vercel.\n\n" +
+  "## 16. User protection and privacy\n\nVercel Web Analytics on every page, and Umami Cloud when set.\n\n" +
+  "## 17. Testing strategy\n\nNot about analytics.\n";
+const PRIVACY_PAGE =
+  "## Retention and access\n\nLogs.\n\n## Page analytics\n\n" +
+  "| Vercel Web Analytics | always |\n| Umami Cloud | when set |\n";
 const ROW =
   '| INV-01 | x | `apps/web/lib/verify.ts#assertCloseIntent` | `apps/web/tests/unit/verify.test.ts#"rejects an unknown operation"`, `.github/workflows/ci.yml#docs-claims` | Enforced |';
 
@@ -129,6 +145,10 @@ function fixture(files: Record<string, string | null>): string {
     "apps/web/app/(marketing)/page.tsx": "export default function Page() {}\n",
     "docs/threat-model.md":
       "## 12. Coverage cross-reference\n\n| x | `apps/web/tests/unit/{verify}.test.ts` |\n\n## 13. Maintenance\n\n`apps/missing/elsewhere.ts`\n",
+    "apps/web/app/layout.tsx": LAYOUT,
+    "apps/web/components/analytics/RedactedAnalytics.tsx": ANALYTICS_COMPONENT,
+    "docs/architecture.md": ARCHITECTURE,
+    "docs/reference/logging-and-privacy.mdx": PRIVACY_PAGE,
   };
   for (const [path, content] of Object.entries({ ...base, ...files })) {
     if (content === null) continue;
@@ -167,6 +187,8 @@ describe("the command", () => {
       { "packages/sdk/src/x.ts": 'import { Keypair } from "@stellar/stellar-sdk";\n' },
       { "docs/threat-model.md": "## 12. Coverage cross-reference\n\n`apps/gone.ts`\n" },
       { "apps/web/app/(marketing)/page.tsx": null },
+      { "docs/architecture.md": ARCHITECTURE.replace("Umami Cloud", "Plausible") },
+      { "apps/web/app/layout.tsx": LAYOUT.replace("cloud.umami.is", "example.com") },
     ];
     for (const files of stale) {
       const { code, output } = run(fixture(files));
@@ -614,6 +636,77 @@ describe("the design token reference", () => {
     expect(messages({ "docs/brand/color.mdx": brand })).toEqual([
       "docs/brand/color.mdx: cites --gold, which globals.css does not define",
       "docs/brand/color.mdx: names apps/web/gone.tsx, which does not exist",
+    ]);
+  });
+});
+
+describe("the analytics tools", () => {
+  test("a tool loaded through a component the layout imports counts as loaded", () => {
+    expect(checkAnalyticsTools(fixture({}))).toEqual([]);
+  });
+
+  test("a tool the layout loads that a privacy page does not name is reported", () => {
+    const root = fixture({
+      "docs/reference/logging-and-privacy.mdx": PRIVACY_PAGE.replace(
+        "| Umami Cloud | when set |\n",
+        ""
+      ),
+    });
+    expect(checkAnalyticsTools(root)).toEqual([
+      {
+        source: "docs/reference/logging-and-privacy.mdx",
+        message: "does not name Umami Cloud, which apps/web/app/layout.tsx loads",
+      },
+    ]);
+  });
+
+  test("a privacy page naming a tool the layout does not load is reported", () => {
+    const root = fixture({
+      "docs/architecture.md": ARCHITECTURE.replace("when set.", "when set, not Plausible."),
+      "apps/web/app/layout.tsx": LAYOUT.replace(
+        '<script src="https://cloud.umami.is/script.js" />',
+        ""
+      ),
+    });
+    expect(checkAnalyticsTools(root).map((p) => `${p.source}: ${p.message}`)).toEqual([
+      "docs/architecture.md: names Umami Cloud, which apps/web/app/layout.tsx does not load",
+      "docs/architecture.md: names Plausible, which apps/web/app/layout.tsx does not load",
+      "docs/reference/logging-and-privacy.mdx: names Umami Cloud, which apps/web/app/layout.tsx does not load",
+    ]);
+  });
+
+  test("a tool named only in a comment of the code is not loaded", () => {
+    const root = fixture({
+      "apps/web/components/analytics/RedactedAnalytics.tsx":
+        '// import { Analytics } from "@vercel/analytics/next";\nexport default function RedactedAnalytics() {}\n',
+    });
+    expect(checkAnalyticsTools(root).map((p) => p.message)).toEqual([
+      "names Vercel Web Analytics, which apps/web/app/layout.tsx does not load",
+      "names Vercel Web Analytics, which apps/web/app/layout.tsx does not load",
+    ]);
+  });
+
+  test("a tool named outside the privacy section does not count", () => {
+    const root = fixture({
+      "docs/architecture.md": ARCHITECTURE.replace(
+        "Not about analytics.",
+        "Plausible is mentioned here."
+      ).replace("Umami Cloud", "Umami"),
+    });
+    expect(checkAnalyticsTools(root)).toEqual([]);
+  });
+
+  test("a missing privacy section or layout is reported", () => {
+    const noSection = fixture({ "docs/architecture.md": "## 15. Deployment\n\nVercel.\n" });
+    expect(checkAnalyticsTools(noSection)).toEqual([
+      {
+        source: "docs/architecture.md",
+        message: "the section stating the privacy position was not found",
+      },
+    ]);
+    const noLayout = fixture({ "apps/web/app/layout.tsx": null });
+    expect(checkAnalyticsTools(noLayout)).toEqual([
+      { source: "apps/web/app/layout.tsx", message: "is missing" },
     ]);
   });
 });

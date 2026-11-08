@@ -1,6 +1,6 @@
 ---
 title: "Logging and privacy"
-description: "What the LumenWipe API writes to its logs, what it never writes, how long logs are kept and who can read them."
+description: "What the LumenWipe API writes to its logs, what it never writes, how long logs are kept and who can read them, and what the web app's page analytics receive."
 icon: "shield-halved"
 ---
 
@@ -68,3 +68,19 @@ The rules are applied where lines are written, not left to each call site. Befor
 ## Retention and access
 
 Logs go to standard output, Cloud Run forwards them to Cloud Logging, and retention is that log bucket's setting. The default bucket keeps entries for 30 days unless the operator changes it. Reading them requires logging permission on the Google Cloud project that runs the API; nobody else, including API integrators, can read them.
+
+## Page analytics
+
+The logs above are the API's. The web app separately reports page views to two analytics tools, loaded from its root layout (`apps/web/app/layout.tsx`):
+
+| Tool                 | When it loads                                                | What it receives                                                              |
+| -------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| Vercel Web Analytics | On every page                                                | The address of each page viewed                                               |
+| Umami Cloud          | Only when the deployment sets `NEXT_PUBLIC_UMAMI_WEBSITE_ID` | The address and title of each page viewed, and the page the visitor came from |
+
+Every address is redacted in the browser before an event is sent (`apps/web/lib/analytics/redact.ts`):
+
+- The query string and the fragment are dropped, so a parameter such as `?source=` or `?address=` never reaches either tool.
+- A saved receipt's id is replaced with `[id]`: `/mainnet/receipt/<id>` is reported as `/mainnet/receipt/[id]`.
+
+Umami's script is also configured to leave out the query and the fragment itself (`data-exclude-search`, `data-exclude-hash`). Page titles are fixed text and never contain an address. The web app sends no custom events, so no account address, transaction data, memo or key reaches either tool.
