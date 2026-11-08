@@ -3,6 +3,7 @@
 import { ArrowRightLeft, AlertTriangle, CheckCircle2, Send } from "lucide-react";
 import { formatStroops, type AssetConvertibility } from "@/lib/api/plan-adapters";
 import { classicFloorFromQuote } from "@/lib/api/close-decisions";
+import { convertFloorOf } from "@/lib/plan/asset-resolution";
 import type { AssetDisposition } from "@/types/plan";
 import { AddressField } from "@/components/ui/address-field";
 import {
@@ -55,7 +56,14 @@ export default function AssetDispositionCard({
   // A transfer is only resolved once its destination is a usable address. Until then the asset
   // counts as unresolved, exactly like an unconfirmed return-to-issuer.
   const transferReady = isTransfer && isUsableTransferDestination(transferDestination);
-  const resolved = item.convertible ? !isTransfer || transferReady : isIssuer || transferReady;
+  // Without a floor there is no minimum to hold a swap to, so the swap is not offered and the
+  // asset stays open until it is sent or returned (asset-resolution.ts).
+  const swappable = item.convertible && convertFloorOf(item) !== undefined;
+  /** Offered a swap the plan gives no quote for, and not yet sent or returned instead. */
+  const unquoted = item.convertible && !swappable && !isTransfer && !isIssuer;
+  const resolved = item.convertible
+    ? isIssuer || transferReady || (swappable && !isTransfer)
+    : isIssuer || transferReady;
 
   // Before the exit that pays it in, the balance is genuinely zero, and "0 AQUA will be swapped"
   // reads as a no-op rather than as the decision it is.
@@ -132,43 +140,63 @@ export default function AssetDispositionCard({
     return (
       <DecisionCard
         legend={legend}
-        options={
-          isIssuer ? [swapOption, transferOption, issuerOption] : [swapOption, transferOption]
-        }
+        options={[
+          ...(swappable ? [swapOption] : []),
+          transferOption,
+          ...(isIssuer ? [issuerOption] : []),
+        ]}
         value={disposition}
         onValueChange={choose}
         tone={resolved ? "success" : "warning"}
       >
-        <div className="flex items-center gap-3">
-          {isTransfer || isIssuer ? (
-            <Send className="h-4 w-4 shrink-0 text-fg-muted" />
-          ) : (
-            <ArrowRightLeft className="h-4 w-4 shrink-0 text-success" />
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-white">
-              {item.code} <span className="text-fg-subtle">→</span>{" "}
-              {isTransfer ? "another account" : isIssuer ? "its issuer" : "XLM"}
-            </p>
-            <p className="text-xs text-fg-muted">
-              {isTransfer
-                ? amountPhrase(`sent as ${item.code}, not swapped`)
-                : isIssuer
-                  ? amountPhrase("returned to its issuer") + " You give up these tokens."
-                  : amountPhrase("swapped to XLM on the DEX") +
-                    (item.quote
-                      ? ` About ${formatStroops(item.quote.estimatedReceive)} XLM, at least ${formatStroops(classicFloorFromQuote(item.quote.minAmountOut))} XLM.`
-                      : " Estimate unavailable.")}
-            </p>
-            {issuerLine}
+        {unquoted ? (
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-white">
+                {item.code} <span className="text-fg-subtle">·</span>{" "}
+                <span className="text-warning">no swap quote</span>
+              </p>
+              {issuerLine}
+              <p className="mt-1 text-xs leading-relaxed text-fg-muted">
+                No swap quote is available for {item.code} right now, so it cannot be swapped in
+                this close. Send it to another account, or refresh the plan to look for a quote
+                again.
+              </p>
+            </div>
           </div>
-          <Badge
-            tone={isTransfer || isIssuer ? "neutral" : "success"}
-            className="shrink-0 uppercase tracking-wide"
-          >
-            {isTransfer ? "Send" : isIssuer ? "Return" : "Swap"}
-          </Badge>
-        </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            {isTransfer || isIssuer ? (
+              <Send className="h-4 w-4 shrink-0 text-fg-muted" />
+            ) : (
+              <ArrowRightLeft className="h-4 w-4 shrink-0 text-success" />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-white">
+                {item.code} <span className="text-fg-subtle">→</span>{" "}
+                {isTransfer ? "another account" : isIssuer ? "its issuer" : "XLM"}
+              </p>
+              <p className="text-xs text-fg-muted">
+                {isTransfer
+                  ? amountPhrase(`sent as ${item.code}, not swapped`)
+                  : isIssuer
+                    ? amountPhrase("returned to its issuer") + " You give up these tokens."
+                    : amountPhrase("swapped to XLM on the DEX") +
+                      (item.quote
+                        ? ` About ${formatStroops(item.quote.estimatedReceive)} XLM, at least ${formatStroops(classicFloorFromQuote(item.quote.minAmountOut))} XLM.`
+                        : " Estimate unavailable.")}
+              </p>
+              {issuerLine}
+            </div>
+            <Badge
+              tone={isTransfer || isIssuer ? "neutral" : "success"}
+              className="shrink-0 uppercase tracking-wide"
+            >
+              {isTransfer ? "Send" : isIssuer ? "Return" : "Swap"}
+            </Badge>
+          </div>
+        )}
         {clawbackNote}
       </DecisionCard>
     );

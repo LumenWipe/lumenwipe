@@ -748,6 +748,34 @@ test("a plan without the lookup blocker leaves return-to-issuer choices alone", 
   expect(useDemolishStore.getState().assetDispositions).toEqual({ "NOSWAP:GISSUER": "issuer" });
 });
 
+test("a plan with no floor for a swap drops only that asset's convert answer", () => {
+  const store = useDemolishStore.getState();
+  store.setAssetDisposition("NOQ:GISSUER", "convert");
+  store.setAssetDisposition("USDC:GISSUER", "convert");
+  store.setAssetDisposition("EURC:GOTHER", "transfer");
+  store.setTransferDestination("EURC:GOTHER", "GDEST");
+  store.setAssetDisposition("BACK:GISSUER", "issuer");
+
+  useDemolishStore
+    .getState()
+    .pruneUnflooredConverts(["NOQ:GISSUER", "EURC:GOTHER", "BACK:GISSUER", "GONE:GISSUER"]);
+
+  expect(useDemolishStore.getState().assetDispositions).toEqual({
+    "USDC:GISSUER": "convert",
+    "EURC:GOTHER": "transfer",
+    "BACK:GISSUER": "issuer",
+  });
+  expect(useDemolishStore.getState().transferDestinations).toEqual({ "EURC:GOTHER": "GDEST" });
+});
+
+test("pruning nothing leaves the answers object as it was", () => {
+  useDemolishStore.getState().setAssetDisposition("USDC:GISSUER", "convert");
+  const before = useDemolishStore.getState().assetDispositions;
+  useDemolishStore.getState().pruneUnflooredConverts([]);
+  useDemolishStore.getState().pruneUnflooredConverts(["OTHER:GISSUER"]);
+  expect(useDemolishStore.getState().assetDispositions).toBe(before);
+});
+
 describe("discardPlan", () => {
   test("leaves nothing that /review or /execute could act on, and only a new plan clears the notice", () => {
     const store = useDemolishStore.getState();

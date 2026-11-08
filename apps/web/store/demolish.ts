@@ -184,6 +184,9 @@ interface DemolishState {
   setClaimableBalanceSelection: (balanceId: string, selection: ClaimableBalanceSelection) => void;
   /** Removes one balance's answer, so its card asks again. */
   clearClaimableBalanceSelection: (balanceId: string) => void;
+  /** Drops the "convert" answer of each listed asset, stored or restored alike, so its card asks
+   *  again: the latest plan gives no floor to hold that swap to. Other answers are kept. */
+  pruneUnflooredConverts: (assets: readonly string[]) => void;
   /** Drops every claim answer the latest plan does not offer for its balance, stored or restored
    *  alike, so that balance is asked again. `offered` maps each balance the plan lists to its
    *  answers; a balance it does not list is left to the account-state prune. */
@@ -521,6 +524,14 @@ export const useDemolishStore = create<DemolishState>((set) => ({
         else kept[balanceId] = selection;
       }
       return dropped ? { claimableBalanceSelections: kept } : {};
+    }),
+  pruneUnflooredConverts: (assets) =>
+    set((s) => {
+      const drop = assets.filter((asset) => s.assetDispositions[asset] === "convert");
+      if (drop.length === 0) return {};
+      const kept = { ...s.assetDispositions };
+      for (const asset of drop) delete kept[asset];
+      return { assetDispositions: kept };
     }),
   setClaimableBalanceSelection: (balanceId, selection) =>
     set((s) => ({

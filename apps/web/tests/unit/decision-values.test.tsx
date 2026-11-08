@@ -59,6 +59,7 @@ const STORED_ISSUER: AssetConvertibility = {
   code: "BACK",
   balance: "5",
   convertible: true,
+  quote: { estimatedReceive: "20000000", minAmountOut: "19000000" },
 };
 
 function token(code: string, convertible: boolean, decimals: number | null): AssetConvertibility {
