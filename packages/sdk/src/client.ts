@@ -26,6 +26,7 @@ import type {
 } from "@lumenwipe/types";
 import { LumenWipeInvalidNetworkError } from "./errors";
 import { HttpTransport } from "./http";
+import { withoutTrailingSlashes } from "./url";
 import type { LumenWipeClientOptions, RequestOptions } from "./options";
 
 const NETWORKS: readonly unknown[] = ["mainnet", "testnet"] satisfies Network[];
@@ -58,7 +59,7 @@ export class LumenWipeClient {
       throw new Error("No fetch implementation available; pass one via options.fetch.");
     }
     this.http = new HttpTransport(
-      options.baseUrl.replace(/\/+$/, ""),
+      withoutTrailingSlashes(options.baseUrl),
       options.apiKey,
       options.timeout ?? 30_000,
       resolved,

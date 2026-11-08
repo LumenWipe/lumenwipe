@@ -9,6 +9,7 @@ import type {
 } from "@lumenwipe/types";
 import { isPlaintextRemote } from "./client";
 import { HttpTransport } from "./http";
+import { withoutTrailingSlashes } from "./url";
 import type { LumenWipeIntegratorClientOptions, RequestOptions } from "./options";
 
 /**
@@ -28,7 +29,7 @@ export class LumenWipeIntegratorClient {
       throw new Error("No fetch implementation available; pass one via options.fetch.");
     }
     this.http = new HttpTransport(
-      options.baseUrl.replace(/\/+$/, ""),
+      withoutTrailingSlashes(options.baseUrl),
       undefined,
       options.timeout ?? 30_000,
       resolved,
