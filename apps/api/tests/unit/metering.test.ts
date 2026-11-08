@@ -4,9 +4,17 @@ import { firstValueFrom, of } from "rxjs";
 import type { AuthedRequest } from "@/auth/api-key.guard";
 import { MeteringInterceptor, meteredRoute } from "@/metering/metering.interceptor";
 import { MeteringService, RECORD_TIMEOUT_MS } from "@/metering/metering.service";
-import { InMemoryUsageStore, ownerDocId, type UsageStore } from "@/metering/usage-store";
+import type { Firestore } from "@google-cloud/firestore";
+import { FIRESTORE_BATCH_LIMIT } from "@/auth/api-key-store";
+import {
+  FirestoreUsageStore,
+  InMemoryUsageStore,
+  ownerDocId,
+  type UsageStore,
+} from "@/metering/usage-store";
 
 const OWNER = "GOWNER";
+const KEY_ID = "d".repeat(64);
 
 function service(store: UsageStore = new InMemoryUsageStore(), at = "2026-10-09T12:00:00Z") {
   const clock = { now: new Date(at) };
@@ -65,6 +73,7 @@ describe("MeteringService", () => {
       increment: () => Promise.reject(new Error("firestore down")),
       daily: async () => [],
       addUpstreamCounts: async () => {},
+      addRateLimited: async () => {},
     };
     await expect(service(store).metering.record(OWNER, "r")).resolves.toBeUndefined();
   });
@@ -74,6 +83,7 @@ describe("MeteringService", () => {
       increment: () => new Promise(() => {}),
       daily: async () => [],
       addUpstreamCounts: async () => {},
+      addRateLimited: async () => {},
     };
     const started = Date.now();
     await service(store).metering.record(OWNER, "r");
@@ -85,8 +95,143 @@ describe("MeteringService", () => {
       increment: async () => {},
       daily: () => Promise.reject(new Error("firestore down")),
       addUpstreamCounts: async () => {},
+      addRateLimited: async () => {},
     };
     expect(await service(store).metering.usage(OWNER)).toBeNull();
+  });
+});
+
+describe("per-key usage", () => {
+  const KEY_A = "a".repeat(64);
+  const KEY_B = "b".repeat(64);
+
+  test("splits the owner's requests by key, today and over the window, and keeps 429s apart", async () => {
+    const { metering, store, clock } = service();
+    clock.now = new Date("2026-09-09T12:00:00Z");
+    await metering.record(OWNER, "r", KEY_A);
+    clock.now = new Date("2026-10-01T12:00:00Z");
+    await metering.record(OWNER, "r", KEY_A);
+    await metering.record(OWNER, "r", KEY_B);
+    clock.now = new Date("2026-10-09T12:00:00Z");
+    await metering.record(OWNER, "r", KEY_A);
+    await metering.record(OWNER, "r");
+    await store.addRateLimited([{ owner: OWNER, keyId: KEY_B, date: "2026-10-09", count: 7 }]);
+
+    expect(await metering.report(OWNER)).toEqual({
+      owner: { today: 2, last30Days: 4 },
+      byKey: {
+        [KEY_A]: { today: 1, last30Days: 2, rateLimitedLast30Days: 0 },
+        [KEY_B]: { today: 0, last30Days: 1, rateLimitedLast30Days: 7 },
+      },
+    });
+    expect(await metering.usage(OWNER)).toEqual({ today: 2, last30Days: 4 });
+  });
+
+  test("a day with only 429s adds nothing to the owner's requests", async () => {
+    const { metering, store } = service();
+    await store.addRateLimited([{ owner: OWNER, keyId: KEY_A, date: "2026-10-09", count: 3 }]);
+    expect(await metering.usage(OWNER)).toEqual({ today: 0, last30Days: 0 });
+  });
+
+  test("an id without the key id shape is never counted per key", async () => {
+    const { metering, store } = service();
+    await metering.record(OWNER, "r", "a.b");
+    await store.addRateLimited([{ owner: OWNER, keyId: "x/y", date: "2026-10-09", count: 1 }]);
+    expect(await metering.report(OWNER)).toEqual({
+      owner: { today: 1, last30Days: 1 },
+      byKey: {},
+    });
+  });
+
+  test("the interceptor passes the request's key id", async () => {
+    const { metering } = service();
+    await intercept(metering, request({ apiKeyId: KEY_A }), {});
+    expect((await metering.report(OWNER))?.byKey[KEY_A]?.today).toBe(1);
+  });
+});
+
+describe("FirestoreUsageStore per-key fields", () => {
+  test("counts a key in the request's own write and refuses an unsafe id as a field name", async () => {
+    const writes: Record<string, unknown>[] = [];
+    const days = {
+      doc: () => ({ set: async (data: Record<string, unknown>) => writes.push(data) }),
+    };
+    const firestore = {
+      collection: () => ({ doc: () => ({ collection: () => days }) }),
+    } as unknown as Firestore;
+    const store = new FirestoreUsageStore(firestore);
+    await store.increment(OWNER, "r", "2026-10-09", KEY_ID);
+    await store.increment(OWNER, "r", "2026-10-09", "a.b.c");
+    expect(writes).toHaveLength(2);
+    expect(Object.keys(writes[0]!.byKey as object)).toEqual([KEY_ID]);
+    expect(writes[1]!.byKey).toBeUndefined();
+  });
+
+  test("adds 429s in one batch without touching total, skipping unsafe ids", async () => {
+    const sets: Record<string, unknown>[] = [];
+    let commits = 0;
+    const firestore = {
+      collection: () => ({ doc: () => ({ collection: () => ({ doc: () => ({}) }) }) }),
+      batch: () => ({
+        set: (_ref: unknown, data: Record<string, unknown>) => sets.push(data),
+        commit: async () => {
+          commits++;
+        },
+      }),
+    } as unknown as Firestore;
+    await new FirestoreUsageStore(firestore).addRateLimited([
+      { owner: OWNER, keyId: KEY_ID, date: "2026-10-09", count: 4 },
+      { owner: OWNER, keyId: "a.b", date: "2026-10-09", count: 1 },
+    ]);
+    expect(commits).toBe(1);
+    expect(sets).toHaveLength(1);
+    expect(sets[0]!.total).toBeUndefined();
+    expect(Object.keys(sets[0]!.rateLimitedByKey as object)).toEqual([KEY_ID]);
+  });
+
+  test("splits more than one batch's worth of 429 slots into batches Firestore accepts", async () => {
+    const batches: number[] = [];
+    const firestore = {
+      collection: () => ({ doc: () => ({ collection: () => ({ doc: () => ({}) }) }) }),
+      batch: () => {
+        let size = 0;
+        return {
+          set: () => size++,
+          commit: async () => {
+            if (size > FIRESTORE_BATCH_LIMIT) throw new Error("too many writes");
+            batches.push(size);
+          },
+        };
+      },
+    } as unknown as Firestore;
+    const counts = Array.from({ length: FIRESTORE_BATCH_LIMIT + 1 }, (_, i) => ({
+      owner: `G${i}`,
+      keyId: KEY_ID,
+      date: "2026-10-09",
+      count: 1,
+    }));
+    await new FirestoreUsageStore(firestore).addRateLimited(counts);
+    expect(batches).toEqual([FIRESTORE_BATCH_LIMIT, 1]);
+  });
+
+  test("reads a day that has only 429s as zero requests", async () => {
+    const doc = (fields: Record<string, unknown>) => ({ get: (f: string) => fields[f] });
+    const firestore = {
+      collection: () => ({
+        doc: () => ({
+          collection: () => ({
+            where: () => ({
+              get: async () => ({
+                docs: [doc({ date: "2026-10-09", rateLimitedByKey: { [KEY_ID]: 2 } })],
+              }),
+            }),
+          }),
+        }),
+      }),
+    } as unknown as Firestore;
+    expect(await new FirestoreUsageStore(firestore).daily(OWNER, "2026-10-01")).toEqual([
+      { date: "2026-10-09", total: 0, rateLimitedByKey: { [KEY_ID]: 2 } },
+    ]);
   });
 });
 
@@ -100,6 +245,7 @@ describe("MeteringInterceptor", () => {
       },
       daily: async () => [],
       addUpstreamCounts: async () => {},
+      addRateLimited: async () => {},
     };
     const body = await intercept(service(store).metering, request(), { ok: true });
     order.push("emitted");
@@ -112,6 +258,7 @@ describe("MeteringInterceptor", () => {
       increment: () => Promise.reject(new Error("firestore down")),
       daily: async () => [],
       addUpstreamCounts: async () => {},
+      addRateLimited: async () => {},
     };
     expect(await intercept(service(store).metering, request(), { ok: true })).toEqual({
       ok: true,

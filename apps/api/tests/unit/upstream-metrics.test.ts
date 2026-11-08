@@ -20,6 +20,7 @@ import {
   recordUpstream,
   type UpstreamDelta,
 } from "@/lib/stellar/upstream-metrics";
+import { KeyActivityService } from "@/metering/key-activity.service";
 import { UpstreamFlushInterceptor } from "@/metering/upstream-flush.interceptor";
 import {
   UPSTREAM_FLUSH_INTERVAL_MS,
@@ -384,6 +385,7 @@ describe("durable flush", () => {
     increment: async () => {},
     daily: async () => [],
     addUpstreamCounts,
+    addRateLimited: async () => {},
   });
 
   beforeEach(() => {
@@ -538,17 +540,22 @@ describe("durable flush", () => {
 
   describe("interceptor", () => {
     function run(path: string, handle: CallHandler["handle"]) {
-      const flushes = { count: 0 };
+      const flushes = { count: 0, activity: 0 };
       const metrics = {
         flushIfDue: async () => {
           flushes.count++;
         },
       } as unknown as UpstreamMetricsService;
+      const activity = {
+        flushIfDue: async () => {
+          flushes.activity++;
+        },
+      } as unknown as KeyActivityService;
       const context = {
         switchToHttp: () => ({ getRequest: () => ({ path }) }),
       } as unknown as ExecutionContext;
       const result = firstValueFrom(
-        new UpstreamFlushInterceptor(metrics).intercept(context, { handle })
+        new UpstreamFlushInterceptor(metrics, activity).intercept(context, { handle })
       );
       return { flushes, result };
     }
@@ -556,14 +563,14 @@ describe("durable flush", () => {
     test("flushes after a success", async () => {
       const { flushes, result } = run("/v1/testnet/analyze", () => of({ ok: true }));
       expect(await result).toEqual({ ok: true });
-      expect(flushes.count).toBe(1);
+      expect(flushes).toEqual({ count: 1, activity: 1 });
     });
 
     test("flushes after a failure and still surfaces it", async () => {
       const boom = new Error("boom");
       const { flushes, result } = run("/v1/testnet/analyze", () => throwError(() => boom));
       await expect(result).rejects.toBe(boom);
-      expect(flushes.count).toBe(1);
+      expect(flushes).toEqual({ count: 1, activity: 1 });
     });
 
     test("never runs for the health routes", async () => {

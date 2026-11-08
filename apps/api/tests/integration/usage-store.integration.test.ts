@@ -64,4 +64,17 @@ describe.skipIf(!EMULATOR)("FirestoreUsageStore (emulator)", () => {
     expect(await store.daily(OWNER, "2026-01-01")).toEqual([]);
     expect(ownerDocId("team/a")).not.toContain("/");
   });
+
+  test("counts per key in the request's write and adds 429s outside total", async () => {
+    const store = new FirestoreUsageStore(firestore!, freshRoot());
+    const key = "e".repeat(64);
+    await store.increment(OWNER, "r", "2026-10-09", key);
+    await store.increment(OWNER, "r", "2026-10-09");
+    await store.addRateLimited([{ owner: OWNER, keyId: key, date: "2026-10-09", count: 5 }]);
+    await store.addRateLimited([{ owner: OWNER, keyId: key, date: "2026-10-10", count: 1 }]);
+    expect(await store.daily(OWNER, "2026-10-01")).toEqual([
+      { date: "2026-10-09", total: 2, byKey: { [key]: 1 }, rateLimitedByKey: { [key]: 5 } },
+      { date: "2026-10-10", total: 0, rateLimitedByKey: { [key]: 1 } },
+    ]);
+  });
 });

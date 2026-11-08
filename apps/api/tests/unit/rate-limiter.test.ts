@@ -5,21 +5,24 @@ import { RateLimiter, isUnthrottledPath } from "@/auth/rate-limiter";
 import { ApiKeyDirectory } from "@/auth/api-key-directory";
 import { ApiKeyService } from "@/auth/api-key.service";
 import { InMemoryApiKeyStore, generateApiKey } from "@/auth/api-key-store";
+import type { KeyActivityService } from "@/metering/key-activity.service";
 
 afterEach(() => {
   mock.restore();
 });
 
+const noActivity = { rateLimited: () => undefined } as unknown as KeyActivityService;
+
 function limiter(
   rateLimit: { limit: number; ttlMs: number } | null = null,
   defaults = { limit: 3, ttl: 60_000 }
 ): RateLimiter {
-  const known = { label: "k", rateLimit };
+  const known = { label: "k", rateLimit, id: null, networks: null };
   const directory = {
     peek: () => known,
     resolve: async () => known,
   } as unknown as ApiKeyDirectory;
-  return new RateLimiter([defaults], new ThrottlerStorageService(), directory);
+  return new RateLimiter([defaults], new ThrottlerStorageService(), directory, noActivity);
 }
 
 const request = (key: string, ip = "203.0.113.1"): Record<string, unknown> => ({
@@ -27,7 +30,10 @@ const request = (key: string, ip = "203.0.113.1"): Record<string, unknown> => ({
   ip,
 });
 
-function realLimiter(limit = 3): {
+function realLimiter(
+  limit = 3,
+  activity: KeyActivityService = noActivity
+): {
   rl: RateLimiter;
   store: InMemoryApiKeyStore;
   storeResolve: ReturnType<typeof spyOn>;
@@ -38,11 +44,29 @@ function realLimiter(limit = 3): {
     get: () => "web=static_web_key",
   } as unknown as ConfigService);
   const directory = new ApiKeyDirectory(staticKeys, store);
-  const rl = new RateLimiter([{ limit, ttl: 60_000 }], new ThrottlerStorageService(), directory);
+  const rl = new RateLimiter(
+    [{ limit, ttl: 60_000 }],
+    new ThrottlerStorageService(),
+    directory,
+    activity
+  );
   return { rl, store, storeResolve };
 }
 
 describe("RateLimiter", () => {
+  test("counts each 429 of a self-serve key for its owner, and nothing else", async () => {
+    const counted: string[] = [];
+    const activity = {
+      rateLimited: (owner: string, id: string) => counted.push(`${owner} ${id}`),
+    } as unknown as KeyActivityService;
+    const { rl, store } = realLimiter(2, activity);
+    const { raw, record } = await store.create("GOWNER");
+    for (let i = 0; i < 4; i++) await rl.consume(request(raw));
+    for (let i = 0; i < 4; i++) await rl.consume(request("static_web_key"));
+    for (let i = 0; i < 4; i++) await rl.consume(request("nope", "198.51.100.9"));
+    expect(counted).toEqual([`GOWNER ${record.hash}`, `GOWNER ${record.hash}`]);
+  });
+
   test("reports the limit and a decreasing remaining count, then blocks", async () => {
     const rl = limiter();
     const seen = [];
@@ -114,7 +138,7 @@ describe("RateLimiter with unauthenticated and unknown bearers", () => {
 
   test("a store-backed key is counted against its own budget, not the client's", async () => {
     const { rl, store } = realLimiter(2);
-    const { raw } = await store.create("polar", { limit: 5, ttlMs: 60_000 });
+    const { raw } = await store.create("polar", { rateLimit: { limit: 5, ttlMs: 60_000 } });
     const first = await rl.consume(request(raw));
     expect(first.limit).toBe(5);
     expect(first.remaining).toBe(4);

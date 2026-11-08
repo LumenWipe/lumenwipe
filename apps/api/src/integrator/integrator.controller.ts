@@ -32,12 +32,14 @@ import {
 import {
   ChallengeRequestDto,
   ChallengeResponseDto,
+  CreateIntegratorKeyRequestDto,
   IssuedIntegratorKeyResponseDto,
   ListIntegratorKeysResponseDto,
   RevokeIntegratorKeyResponseDto,
   SessionRequestDto,
   SessionResponseDto,
 } from "./dto/integrator.dto";
+import { parseLabel, parseNetworks } from "./key-options";
 import { buildChallenge, isClassicAddress, issueSession, verifyChallenge } from "./wallet-auth";
 
 const MAX_ACTIVE_KEYS_PER_OWNER = 5;
@@ -48,6 +50,9 @@ function toDto(record: ApiKeyRecord) {
     createdAt: record.createdAt.toISOString(),
     revokedAt: record.revokedAt ? record.revokedAt.toISOString() : null,
     rotatedFrom: record.rotatedFrom,
+    label: record.label,
+    networks: record.networks,
+    lastUsedAt: record.lastUsedAt ? record.lastUsedAt.toISOString() : null,
   };
 }
 
@@ -122,15 +127,31 @@ export class IntegratorController {
   @Get("keys")
   @ApiBearerAuth("integrator-session")
   @UseGuards(IntegratorGuard)
-  @ApiOperation({ summary: "List the signed-in wallet's keys with its request counts." })
+  @ApiOperation({
+    summary: "List the signed-in wallet's keys with its request counts.",
+    description:
+      "Counts cover the last 30 UTC days, today included, and survive a restart. A key's 429 count is written at most once a minute and can trail by that much.",
+  })
   @ApiResponse({ status: 200, type: ListIntegratorKeysResponseDto })
   async list(@Req() req: IntegratorRequest) {
     const owner = req.integratorAddress!;
     const records = await this.store.listByOwner(owner);
-    const usage = await this.metering.usage(owner);
-    return { keys: records.map(toDto), usage };
+    const report = await this.metering.report(owner);
+    const none = { today: 0, last30Days: 0, rateLimitedLast30Days: 0 };
+    return {
+      keys: records.map((r) => ({
+        ...toDto(r),
+        usage: report ? (report.byKey[r.hash] ?? none) : null,
+      })),
+      usage: report?.owner ?? null,
+    };
   }
 
+  @ApiErrorResponse(400, "The label or networks are malformed.", [
+    "invalid_label",
+    "invalid_networks",
+    "invalid_body",
+  ])
   @ApiErrorResponse(401, "Missing, invalid or expired session token.", ["unauthorized"])
   @ApiErrorResponse(409, "The wallet already has the maximum active keys.", ["key_limit_reached"])
   @ApiErrorResponse(503, "Self-serve key management is not configured.", [
@@ -141,14 +162,23 @@ export class IntegratorController {
   @HttpCode(201)
   @ApiBearerAuth("integrator-session")
   @UseGuards(IntegratorGuard)
-  @ApiOperation({ summary: "Create a key. The raw secret is returned exactly once." })
+  @ApiOperation({
+    summary: "Create a key. The raw secret is returned exactly once.",
+    description: `A wallet holds at most ${MAX_ACTIVE_KEYS_PER_OWNER} active keys. A key limited to some networks is refused with \`key_network_not_allowed\` on any other network and on routes that take no network. Label and networks cannot be changed later; rotation keeps them.`,
+  })
+  @ApiBody({ type: CreateIntegratorKeyRequestDto, required: false })
   @ApiResponse({
     status: 201,
     description: "The raw key, returned exactly once.",
     type: IssuedIntegratorKeyResponseDto,
   })
-  async create(@Req() req: IntegratorRequest) {
+  async create(
+    @Req() req: IntegratorRequest,
+    @Body() body: { label?: unknown; networks?: unknown } | undefined
+  ) {
     const owner = req.integratorAddress!;
+    const label = parseLabel(body?.label);
+    const networks = parseNetworks(body?.networks);
     return this.audit.track("api_key.create", owner, async (scope) => {
       scope.owner = owner;
       const active = (await this.store.listByOwner(owner)).filter((r) => !r.revokedAt);
@@ -159,7 +189,7 @@ export class IntegratorController {
           409
         );
       }
-      const { raw, record } = await this.store.create(owner);
+      const { raw, record } = await this.store.create(owner, { label, networks });
       scope.keyHash = record.hash;
       return { key: raw, record: toDto(record) };
     });

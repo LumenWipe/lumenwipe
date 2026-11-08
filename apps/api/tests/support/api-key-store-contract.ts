@@ -48,7 +48,7 @@ export function runApiKeyStoreContract(label: string, makeStore: () => ApiKeySto
     test("rotate retires the old key and issues a linked replacement", async () => {
       const store = makeStore();
       const limit = { limit: 10, ttlMs: 1000 };
-      const { raw: oldRaw, record: old } = await store.create("polar", limit);
+      const { raw: oldRaw, record: old } = await store.create("polar", { rateLimit: limit });
       const rotated = await store.rotate(old.hash);
 
       expect(rotated!.raw).not.toBe(oldRaw);
@@ -89,9 +89,54 @@ export function runApiKeyStoreContract(label: string, makeStore: () => ApiKeySto
       expect(keys.map((k) => k.hash).sort()).toEqual([a.record.hash, b.record.hash].sort());
     });
 
+    test("a key created without options has the pre-scope shape", async () => {
+      const store = makeStore();
+      const { raw, record } = await store.create("polar");
+      expect(record).toMatchObject({
+        label: null,
+        networks: null,
+        lastUsedAt: null,
+        rateLimit: null,
+      });
+      expect(await store.resolve(raw)).toEqual(record);
+    });
+
+    test("label and networks persist and survive rotation", async () => {
+      const store = makeStore();
+      const { record } = await store.create("polar", { label: "ci", networks: ["testnet"] });
+      expect((await store.findByHash(record.hash))!).toMatchObject({
+        label: "ci",
+        networks: ["testnet"],
+      });
+      const rotated = await store.rotate(record.hash);
+      expect(rotated!.record).toMatchObject({
+        label: "ci",
+        networks: ["testnet"],
+        lastUsedAt: null,
+      });
+      expect(await store.findByHash(rotated!.record.hash)).toEqual(rotated!.record);
+    });
+
+    test("recordLastUsed sets the time on existing keys and leaves everything else alone", async () => {
+      const store = makeStore();
+      const { raw, record } = await store.create("polar", { networks: ["mainnet"] });
+      const at = new Date("2026-11-08T12:00:00.000Z");
+      await store.recordLastUsed(new Map([[record.hash, at]]));
+      const updated = (await store.findByHash(record.hash))!;
+      expect(updated.lastUsedAt?.getTime()).toBe(at.getTime());
+      expect({ ...updated, lastUsedAt: record.lastUsedAt }).toEqual(record);
+      expect((await store.resolve(raw))!.lastUsedAt?.getTime()).toBe(at.getTime());
+    });
+
+    test("recordLastUsed never creates a record for an unknown id", async () => {
+      const store = makeStore();
+      await store.recordLastUsed(new Map([["unknown-hash", new Date()]])).catch(() => undefined);
+      expect(await store.findByHash("unknown-hash")).toBeNull();
+    });
+
     test("records are copies and never carry the raw key", async () => {
       const store = makeStore();
-      const { raw, record } = await store.create("polar", { limit: 5, ttlMs: 100 });
+      const { raw, record } = await store.create("polar", { rateLimit: { limit: 5, ttlMs: 100 } });
       record.owner = "tampered";
       record.revokedAt = new Date();
       record.rateLimit!.limit = 999;

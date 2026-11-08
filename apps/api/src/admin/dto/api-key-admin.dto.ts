@@ -43,6 +43,15 @@ export class ApiKeyRecordDto {
 
   @ApiPropertyOptional({ type: RateLimitOverrideDto, nullable: true })
   rateLimit!: RateLimitOverrideDto | null;
+
+  @ApiPropertyOptional({ nullable: true, type: String })
+  label!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, enum: ["mainnet", "testnet"], isArray: true })
+  networks!: ("mainnet" | "testnet")[] | null;
+
+  @ApiPropertyOptional({ description: "ISO 8601, or null.", nullable: true, type: String })
+  lastUsedAt!: string | null;
 }
 
 export class CreateApiKeyResponseDto {

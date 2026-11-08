@@ -2,7 +2,12 @@ import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import type { ConfigService } from "@nestjs/config";
 import { ApiKeyService } from "@/auth/api-key.service";
 import { ApiKeyDirectory } from "@/auth/api-key-directory";
-import { InMemoryApiKeyStore, generateApiKey, isApiKeyFormat } from "@/auth/api-key-store";
+import {
+  InMemoryApiKeyStore,
+  generateApiKey,
+  hashApiKey,
+  isApiKeyFormat,
+} from "@/auth/api-key-store";
 
 afterEach(() => {
   mock.restore();
@@ -24,18 +29,23 @@ test("resolves a static (env-provisioned) key without touching the store", async
   const directory = new ApiKeyDirectory(staticKeys("web=key_abc"), store);
   const resolved = await directory.resolve("key_abc");
 
-  expect(resolved).toEqual({ label: "web", rateLimit: null });
+  expect(resolved).toEqual({ label: "web", rateLimit: null, id: null, networks: null });
   expect(storeCalls).toBe(0);
 });
 
 test("falls back to the store for a key the static map doesn't know", async () => {
   const store = new InMemoryApiKeyStore();
-  const { raw } = await store.create("polar", { limit: 5, ttlMs: 1000 });
+  const { raw } = await store.create("polar", { rateLimit: { limit: 5, ttlMs: 1000 } });
 
   const directory = new ApiKeyDirectory(staticKeys("web=key_abc"), store);
   const resolved = await directory.resolve(raw);
 
-  expect(resolved).toEqual({ label: "polar", rateLimit: { limit: 5, ttlMs: 1000 } });
+  expect(resolved).toEqual({
+    label: "polar",
+    rateLimit: { limit: 5, ttlMs: 1000 },
+    id: hashApiKey(raw),
+    networks: null,
+  });
 });
 
 test("an unknown key (neither static nor in the store) resolves to null", async () => {
@@ -92,11 +102,21 @@ test("invalidate drops a cached positive resolution, forcing a fresh store read 
   const { raw, record } = await store.create("polar");
 
   const directory = new ApiKeyDirectory(staticKeys("web=key_abc"), store, 60_000);
-  expect(await directory.resolve(raw)).toEqual({ label: "polar", rateLimit: null });
+  expect(await directory.resolve(raw)).toEqual({
+    label: "polar",
+    rateLimit: null,
+    id: hashApiKey(raw),
+    networks: null,
+  });
 
   await store.revoke(record.hash);
   // Still cached as valid, within the TTL - proves the cache is the reason invalidate matters.
-  expect(await directory.resolve(raw)).toEqual({ label: "polar", rateLimit: null });
+  expect(await directory.resolve(raw)).toEqual({
+    label: "polar",
+    rateLimit: null,
+    id: hashApiKey(raw),
+    networks: null,
+  });
 
   directory.invalidate(record.hash);
   expect(await directory.resolve(raw)).toBeNull();
@@ -147,10 +167,20 @@ test("peek answers from the static map and the cache, and is undefined when only
   const { raw } = await store.create("polar");
   const directory = new ApiKeyDirectory(staticKeys("web=key_abc"), store);
 
-  expect(directory.peek("key_abc")).toEqual({ label: "web", rateLimit: null });
+  expect(directory.peek("key_abc")).toEqual({
+    label: "web",
+    rateLimit: null,
+    id: null,
+    networks: null,
+  });
   expect(directory.peek(raw)).toBeUndefined();
   await directory.resolve(raw);
-  expect(directory.peek(raw)).toEqual({ label: "polar", rateLimit: null });
+  expect(directory.peek(raw)).toEqual({
+    label: "polar",
+    rateLimit: null,
+    id: hashApiKey(raw),
+    networks: null,
+  });
 
   const unknown = generateApiKey();
   expect(directory.peek(unknown)).toBeUndefined();
@@ -189,6 +219,11 @@ test("a flood of unknown keys does not evict a cached known key", async () => {
   for (let i = 0; i < 20; i++) await directory.resolve(generateApiKey());
   storeResolve.mockClear();
 
-  expect(await directory.resolve(raw)).toEqual({ label: "polar", rateLimit: null });
+  expect(await directory.resolve(raw)).toEqual({
+    label: "polar",
+    rateLimit: null,
+    id: hashApiKey(raw),
+    networks: null,
+  });
   expect(storeResolve).not.toHaveBeenCalled();
 });

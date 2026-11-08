@@ -23,7 +23,9 @@ export class MeteringInterceptor implements NestInterceptor {
     const req = context.switchToHttp().getRequest<AuthedRequest>();
     return next.handle().pipe(
       concatMap(async (body) => {
-        if (req.apiKeyLabel) await this.metering.record(req.apiKeyLabel, meteredRoute(req));
+        if (req.apiKeyLabel) {
+          await this.metering.record(req.apiKeyLabel, meteredRoute(req), req.apiKeyId ?? null);
+        }
         return body;
       })
     );

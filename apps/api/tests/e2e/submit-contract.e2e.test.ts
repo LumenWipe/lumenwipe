@@ -379,8 +379,8 @@ describe("GET close/delivered", () => {
         Number(second.headers["ratelimit-remaining"])
       );
       expect(record.mock.calls).toEqual([
-        ["test", "GET /v1/testnet/close/delivered"],
-        ["test", "GET /v1/testnet/close/delivered"],
+        ["test", "GET /v1/testnet/close/delivered", null],
+        ["test", "GET /v1/testnet/close/delivered", null],
       ]);
 
       record.mockClear();
@@ -390,7 +390,7 @@ describe("GET close/delivered", () => {
       expect(Number(status.headers["ratelimit-remaining"])).toBe(
         Number(second.headers["ratelimit-remaining"]) - 1
       );
-      expect(record.mock.calls).toEqual([["test", "GET /v1/testnet/close/status"]]);
+      expect(record.mock.calls).toEqual([["test", "GET /v1/testnet/close/status", null]]);
     } finally {
       record.mockRestore();
     }

@@ -26,6 +26,7 @@ import { CloseService } from "./close.service";
 @ApiBearerAuth("api-key")
 @ApiParam({ name: "network", enum: ["testnet", "mainnet"] })
 @ApiErrorResponse(401, "Missing or invalid API key.", ["unauthorized"])
+@ApiErrorResponse(403, "The API key is not scoped to this network.", ["key_network_not_allowed"])
 @ApiErrorResponse(429, "Rate limit exceeded for this key.", ["rate_limited"])
 @Controller("v1/:network")
 export class CloseController {
