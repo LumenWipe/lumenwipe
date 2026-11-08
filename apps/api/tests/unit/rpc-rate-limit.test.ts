@@ -103,6 +103,16 @@ function useProviders(...urls: string[]): void {
   RPC_FALLBACKS.testnet = urls.slice(1).map((url) => ({ url, headers: {} }));
 }
 
+/**
+ * A one-entry list reads the memoized server, whose URL is whatever the first caller in this process
+ * saw; the stub answers on that origin instead of assuming it.
+ */
+function useLoneProvider(): string {
+  const origin = getRpcServer("testnet").serverURL.origin;
+  useProviders(origin);
+  return origin;
+}
+
 beforeEach(() => {
   resetRpcCooldowns();
   resetProviderFailoverCount();
@@ -118,35 +128,35 @@ afterEach(() => {
 });
 
 test("a 429 from a lone provider is a typed rate limit that every route answers as a 503", async () => {
-  useProviders(A);
-  fakeRpc({ [A]: provider(RATE_LIMITED) });
+  const lone = useLoneProvider();
+  fakeRpc({ [lone]: provider(RATE_LIMITED) });
   const failure = await readEntries();
   expect(failure).toBeInstanceOf(UpstreamError);
   expect(failure).toMatchObject({ kind: "rate_limited" });
   for (const table of [UPSTREAM_ERRORS, PLAN_ERRORS]) {
     const mapped = mapDomainError(table, failure);
     expect(mapped).toMatchObject({ code: "service_unavailable", status: 503 });
-    expect(mapped!.message).not.toContain("rpc-a");
+    expect(mapped!.message).not.toContain(new URL(lone).host);
   }
 });
 
 test("a 503 from the provider is a typed unavailable", async () => {
-  useProviders(A);
-  fakeRpc({ [A]: provider({ status: 503 }) });
+  const lone = useLoneProvider();
+  fakeRpc({ [lone]: provider({ status: 503 }) });
   expect(await readEntries()).toMatchObject({ kind: "unavailable" });
 });
 
 test("a read that times out is a typed timeout", async () => {
-  useProviders(A);
+  const lone = useLoneProvider();
   const timeout = new DOMException("The operation timed out.", "TimeoutError");
-  fakeRpc({ [A]: provider({ throws: timeout }) });
+  fakeRpc({ [lone]: provider({ throws: timeout }) });
   expect(await readEntries()).toMatchObject({ kind: "timeout" });
 });
 
 test("a JSON-RPC error and a 4xx are the provider's answer: passed through, no cooldown", async () => {
   for (const answer of [{ rpcError: "invalid key" }, { status: 400 }] as Reply[]) {
-    useProviders(A);
-    fakeRpc({ [A]: provider(answer) });
+    const lone = useLoneProvider();
+    fakeRpc({ [lone]: provider(answer) });
     const failure = await readEntries();
     expect(failure).toBeDefined();
     expect(failure).not.toBeInstanceOf(UpstreamError);
@@ -159,8 +169,8 @@ test("a JSON-RPC error and a 4xx are the provider's answer: passed through, no c
 });
 
 test("a missing account whose address spells TIMEOUT is still the SDK's not-found", async () => {
-  useProviders(A);
-  fakeRpc({ [A]: provider(EMPTY_ENTRIES) });
+  const lone = useLoneProvider();
+  fakeRpc({ [lone]: provider(EMPTY_ENTRIES) });
   const address = "GAJA7Z7F5HTIMEOUTCBAH5EG6GJNI7U2BJL4Z7GTYMTN4DGXUL4VNHIK";
   const failure = await inRequest(() => getRpcServer("testnet").getAccount(address)).catch(
     (e: unknown) => e
@@ -257,8 +267,8 @@ test("a rate-limited send keeps its untyped error and starts no cooldown", async
 });
 
 test("a rate-limited by-hash check before a submit sends nothing", async () => {
-  useProviders(A);
-  fakeRpc({ [A]: provider(RATE_LIMITED) });
+  const lone = useLoneProvider();
+  fakeRpc({ [lone]: provider(RATE_LIMITED) });
   const send = spyOn(rpc.Server.prototype, "sendTransaction");
   try {
     const failure = await inRequest(() =>
