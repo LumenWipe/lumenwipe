@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { YAML } from "bun";
 import {
   checkAgreement,
   compareSemver,
@@ -425,3 +426,59 @@ describe("the repository agrees with itself", () => {
   });
 });
 
+describe("publish-sdk.yml", () => {
+  const text = readFileSync(join(import.meta.dir, "../.github/workflows/publish-sdk.yml"), "utf8");
+  const workflow = YAML.parse(text) as {
+    on: Record<string, unknown>;
+    permissions: unknown;
+    concurrency: { group: string; "cancel-in-progress": boolean };
+    jobs: Record<
+      string,
+      {
+        permissions: Record<string, string>;
+        steps: { name?: string; uses?: string; run?: string; with?: Record<string, unknown> }[];
+      }
+    >;
+  };
+  const jobs = Object.values(workflow.jobs);
+  const steps = jobs.flatMap((job) => job.steps);
+
+  test("runs only on a tag push or by hand", () => {
+    expect(Object.keys(workflow.on).sort()).toEqual(["push", "workflow_dispatch"]);
+    expect(workflow.on).not.toHaveProperty("pull_request");
+    expect(workflow.on).not.toHaveProperty("pull_request_target");
+    expect(workflow.on.push).toEqual({ tags: ["sdk-v*.*.*"] });
+  });
+
+  test("grants nothing at the top and only read and id-token to its one job", () => {
+    expect(workflow.permissions).toEqual({});
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].permissions).toEqual({ contents: "read", "id-token": "write" });
+    expect(text).not.toContain("contents: write");
+  });
+
+  test("never cancels a publish in progress", () => {
+    expect(workflow.concurrency["cancel-in-progress"]).toBe(false);
+  });
+
+  test("no run step interpolates a workflow input", () => {
+    for (const step of steps) {
+      expect(step.run ?? "").not.toContain("${{ inputs.");
+      expect(step.run ?? "").not.toContain("${{ github.event.inputs.");
+    }
+  });
+
+  test("checks out without persisted credentials", () => {
+    const checkout = steps.find((s) => s.uses?.startsWith("actions/checkout@"));
+    expect(checkout?.with?.["persist-credentials"]).toBe(false);
+  });
+
+  test("runs the agreement check, the pack check and publishes the checked tarball", () => {
+    const runs = steps.map((s) => s.run ?? "").join("\n");
+    expect(runs).toContain("scripts/sdk-release.ts publish");
+    expect(runs).toContain("check-api");
+    expect(runs).toContain("pack:check");
+    expect(runs).toContain('npm publish "$TARBALL" --provenance --access public');
+    expect(runs).not.toMatch(/npm publish\s*(--|$)/m);
+  });
+});

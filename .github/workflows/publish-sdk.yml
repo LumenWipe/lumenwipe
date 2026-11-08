@@ -2,7 +2,8 @@ name: Publish SDK (npm)
 
 # Triggered by a version tag (sdk-vX.Y.Z) so a publish is always a deliberate, versioned release -
 # not a side effect of every merge to main. workflow_dispatch is a manual escape hatch for a
-# re-run (e.g. the tag was pushed but the run failed before npm publish completed).
+# re-run (the tag was pushed but the run failed before npm publish completed). It never runs on a
+# pull request, and it writes nothing to the repository: no release, no tag, no write permission.
 on:
   push:
     tags:
@@ -15,26 +16,64 @@ on:
 
 permissions: {}
 
+# One run per tag at a time, and a publish in progress is never cancelled halfway.
+concurrency:
+  group: publish-sdk-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
       id-token: write # required for npm provenance attestation
     environment: npm-publish
     steps:
+      # The tag reaches the shell through env only, and must be exactly sdk-vX.Y.Z before anything
+      # uses it: the glob above also matches sdk-v1.2.3-rc.1, and a dispatch input is free text.
+      - name: Validate the tag
+        id: tag
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          if ! [[ "$TAG" =~ ^sdk-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::the tag is not of the form sdk-vX.Y.Z"
+            exit 1
+          fi
+          {
+            echo "tag=$TAG"
+            echo "version=${TAG#sdk-v}"
+          } >> "$GITHUB_OUTPUT"
+
+      # Full history so the agreement check can prove the tag's commit is on main.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          ref: refs/tags/${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
 
+      - name: Set up Node for npm
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          registry-url: https://registry.npmjs.org
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      # Cheapest gate first. Fails when the tag is not on main, is not the checked-out commit, or
+      # disagrees with package.json, SDK_VERSION, CHANGELOG.md or the docs pin, and when the
+      # version is already on npm or not above npm latest. See RELEASING.md.
+      - name: Check the release agrees with the repository and npm
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: bun scripts/sdk-release.ts publish
 
       # Same gate as CI's sdk matrix entry, run again here since a tag push does not
       # depend on the CI workflow having run against this exact ref.
@@ -47,37 +86,44 @@ jobs:
       - name: Build SDK types
         run: bun run --filter '@lumenwipe/sdk' build:types
 
-      # `build` below rolls up the API report in --local/auto-fix mode, which would silently
+      # `build:dist` below rolls up the API report in --local/auto-fix mode, which would silently
       # rewrite etc/sdk.api.md instead of catching drift. Checking it strictly here, before that
-      # rollup runs, is what makes this the same guardrail as CI's sdk matrix - not just the same
-      # type-check/lint/test - for a tag that never went through that PR's CI on this exact ref.
+      # rollup runs, is what makes this the same guardrail as CI's sdk matrix.
       - name: Verify the SDK's public API report matches
         run: bun run --filter '@lumenwipe/sdk' check-api
 
       - name: Build
-        run: bun run --filter '@lumenwipe/sdk' build
+        run: bun run --filter '@lumenwipe/sdk' build:dist
 
-      # The tag is the source of truth for what's being published; package.json must agree,
-      # or a mismatched dist/version pair could reach the registry silently.
-      - name: Verify tag matches package.json version
-        working-directory: packages/sdk
-        run: |
-          TAG="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
-          TAG_VERSION="${TAG#sdk-v}"
-          PKG_VERSION="$(node -p "require('./package.json').version")"
-          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "Tag $TAG (version $TAG_VERSION) does not match package.json version $PKG_VERSION"
-            exit 1
-          fi
-
-      - name: Set up Node for npm publish
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 26
-          registry-url: https://registry.npmjs.org
+      # Packs the tarball, checks its file list, publint, attw, an install of it into an empty
+      # project through import and require, and its types on the current and minimum TypeScript.
+      # The tarball it checked is the one published below, not a fresh pack of the directory.
+      - name: Pack and check the tarball
+        id: pack
+        env:
+          PACK_OUT_DIR: ${{ runner.temp }}/sdk-pack
+        run: bun run --filter '@lumenwipe/sdk' pack:check
 
       - name: Publish to npm
-        working-directory: packages/sdk
-        run: npm publish --provenance --access public
         env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish "$TARBALL" --provenance --access public
+
+      # The registry can take a while to serve a new version; the run is green only once
+      # `latest` is the version just published.
+      - name: Wait for npm latest to be the new version
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          for attempt in $(seq 1 20); do
+            latest="$(npm view @lumenwipe/sdk dist-tags.latest 2>/dev/null || true)"
+            if [ "$latest" = "$VERSION" ]; then
+              echo "npm latest is $VERSION."
+              exit 0
+            fi
+            echo "npm latest is \"$latest\", waiting for $VERSION (attempt $attempt of 20)"
+            sleep 15
+          done
+          echo "::error::npm latest never became $VERSION"
+          exit 1
