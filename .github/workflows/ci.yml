@@ -25,11 +25,12 @@ jobs:
           # --local/auto-fix mode) is what actually enforces the API report: a PR that changes
           # the SDK's public surface without updating etc/sdk.api.md fails here instead of the
           # check silently rewriting the file first. pack:check then checks the packed tarball
-          # (file list, publint, attw, ESM and CJS install, minimum TypeScript). See RELEASING.md.
+          # (file list, publint, attw, ESM and CJS install, minimum TypeScript) and release:check
+          # that the version, SDK_VERSION, changelog and docs pin agree. See RELEASING.md.
           - {
               name: "sdk",
               pkg: "@lumenwipe/sdk",
-              checks: "type-check lint test build:types check-api build:dist pack:check",
+              checks: "type-check lint test build:types check-api build:dist pack:check release:check",
             }
           # The reference verifier, compiled from the web's verify(). `test` builds the bundle
           # first and runs the conformance vectors against it in both module formats; the web
@@ -320,6 +321,35 @@ jobs:
             exit 1
           fi
           echo "[Unreleased] entry added for: $REASON"
+
+  # The SDK's version, SDK_VERSION, CHANGELOG.md headings and links and the docs pin must agree
+  # with each other, with the sdk-v* tags and with npm (scripts/sdk-release.ts). A merged release
+  # that is not on npm yet is only a warning, so no PR waits on a publish; a release PR whose
+  # version is already on npm, or not above npm latest or the base branch, fails. Read-only:
+  # npm view and git ls-remote, retried.
+  sdk-release-agreement:
+    name: sdk release agreement
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+
+      - name: Test the release agreement check
+        run: bun test ./scripts/sdk-release.test.ts
+
+      - name: Check the SDK release agrees with its tags and npm
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bun scripts/sdk-release.ts pr
 
   # Findings go to the Security tab and do not fail the job. The repo's CodeQL default setup
   # must stay off, or GitHub rejects this upload as a conflicting configuration.
@@ -632,6 +662,7 @@ jobs:
         docker,
         prettier,
         sdk-changelog,
+        sdk-release-agreement,
         codeql,
         semgrep,
         gitleaks,
@@ -700,6 +731,10 @@ jobs:
           # skipped (not run on a push event) counts as passing - only a real failure blocks.
           if [ "${{ needs.sdk-changelog.result }}" != "success" ] && [ "${{ needs.sdk-changelog.result }}" != "skipped" ]; then
             echo "SDK changed without an [Unreleased] changelog entry - see RELEASING.md."
+            exit 1
+          fi
+          if [ "${{ needs.sdk-release-agreement.result }}" != "success" ]; then
+            echo "The SDK's version, changelog, docs pin, tags and npm disagree - see the sdk release agreement job."
             exit 1
           fi
           echo "All package checks passed."

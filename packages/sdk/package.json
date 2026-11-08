@@ -52,6 +52,7 @@
     "build:dist": "api-extractor run --local && cp dist/index.d.ts dist/index.d.cts",
     "check-api": "api-extractor run",
     "pack:check": "bun scripts/pack-check.ts",
+    "release:check": "bun ../../scripts/sdk-release.ts offline",
     "type-check": "bun run --filter '@lumenwipe/verify' build && tsc --noEmit && tsc -p tests/tsconfig.json --noEmit && tsc -p examples/tsconfig.json --noEmit",
     "lint": "eslint src examples scripts",
     "test": "bun run --filter '@lumenwipe/verify' build:js && bun test tests",
