@@ -30,6 +30,9 @@ export interface OpenItem {
   kind: "claim" | "asset" | "confirmation";
   /** The accordion group that holds it, or null when it sits outside the accordion. */
   group: PlanGroupType | null;
+  /** The code of an asset left open because a swap of it has no quote to hold it to. It gets a
+   *  reason of its own that names it, instead of a place in the "Open" count. */
+  unquoted?: string;
 }
 
 /** The element a reason or a jump moves focus to, and the group to open first. */
@@ -129,12 +132,23 @@ export function proceedReasons(facts: ProceedFacts): ProceedReason[] {
       target: { selector: `#${REFRESH_ID}`, group: null },
     });
   }
-  const [first] = facts.openItems;
+  const counted = facts.openItems.filter((i) => i.unquoted === undefined);
+  const [first] = counted;
   if (first) {
     reasons.push({
       key: "open",
-      text: `Open: ${openSummary(facts.openItems)}`,
+      text: `Open: ${openSummary(counted)}`,
       target: jumpToItem(first),
+    });
+  }
+  // Each one named: the review refuses a swap with no minimum, so saying only "1 asset" would
+  // leave the user guessing why an answer that looks chosen still holds the button.
+  for (const item of facts.openItems) {
+    if (item.unquoted === undefined) continue;
+    reasons.push({
+      key: `unquoted:${item.id}`,
+      text: `No swap quote is available for ${item.unquoted}, so it cannot be swapped in this close. Choose another answer for it, or refresh the plan`,
+      target: jumpToItem(item),
     });
   }
   // The destination field is on screen from the first paint, so its reasons always link to it.

@@ -1,7 +1,7 @@
 import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
 import type { AssetDisposition, ClaimableBalanceSelection } from "@/types/plan";
-import type { TokenConversionFloor } from "@/store/demolish";
-import { isConversionImpactConfirmed } from "@/lib/api/close-decisions";
+import type { ClassicConversionFloor, TokenConversionFloor } from "@/store/demolish";
+import { classicFloorFromQuote, isConversionImpactConfirmed } from "@/lib/api/close-decisions";
 import { isUsableTransferDestination } from "@/lib/plan/transfer-destination";
 
 /** What an asset's answer is read against: its transfer address, and the floors the convert
@@ -11,6 +11,46 @@ export interface AssetAnswers {
   transferDestinations: Record<string, string>;
   tokenConversionFloors?: Readonly<Record<string, TokenConversionFloor>>;
   conversionImpactAcknowledgedFor?: Readonly<Record<string, string>>;
+}
+
+/**
+ * The floor a convert answer for this asset carries: a token's quoted minimum, a classic asset's
+ * quoted minimum less the drift allowance, or null for a classic asset only an exit pays in.
+ * Undefined when the plan gives no floor, so a swap of it could not be held to any amount.
+ *
+ * The one rule for both what PlanView stores as the floors and what counts as answerable here,
+ * so an answer shown as resolved always carries the floor the review and verify() require.
+ */
+export function convertFloorOf(
+  c: AssetConvertibility
+): TokenConversionFloor | ClassicConversionFloor | undefined {
+  return c.token ? tokenFloorOf(c) : classicFloorOf(c);
+}
+
+/** A Soroban token's floor: its readable quote's minimum, with the provider it was quoted by. */
+export function tokenFloorOf(c: AssetConvertibility): TokenConversionFloor | undefined {
+  const quote = c.token?.quote;
+  if (!quote) return undefined;
+  const { minAmountOut, amountOut, provider, resolvedPath } = quote;
+  return { minAmountOut, amountOut, provider, ...(resolvedPath ? { resolvedPath } : {}) };
+}
+
+/** A classic asset's floor: the quoted minimum less the drift allowance, or null when only an
+ *  exit pays the asset in and there is nothing to quote until it lands. */
+export function classicFloorOf(c: AssetConvertibility): ClassicConversionFloor | undefined {
+  if (c.token || !c.convertible) return undefined;
+  if (c.quote) return { minAmountOut: classicFloorFromQuote(c.quote.minAmountOut) };
+  return c.arrivesFromExit ? { minAmountOut: null } : undefined;
+}
+
+/** An asset the plan offers a swap for, or the user answered "convert", with no floor to hold
+ *  that swap to: converting it is not an answer the close can act on. */
+export function convertUnfloored(
+  c: AssetConvertibility,
+  disposition: AssetDisposition | undefined
+): boolean {
+  const asksToConvert = disposition === "convert" || (disposition === undefined && c.convertible);
+  return asksToConvert && convertFloorOf(c) === undefined;
 }
 
 /** Whether one balance-bearing asset has an answer the builder can act on. */
@@ -23,6 +63,8 @@ export function assetResolved(c: AssetConvertibility, answers: AssetAnswers): bo
   }
   // A Soroban token is resolved by an explicit "leave" as well; a trustline never is.
   if (c.token && dispositions[c.asset] === "leave") return true;
+  // A swap with no floor, chosen or taken by default, is still open.
+  if (convertUnfloored(c, dispositions[c.asset])) return false;
   // A flagged quote is never accepted by default: only an explicit convert the user confirmed
   // at the floor it carries resolves it.
   if (c.convertible && (c.token?.quote?.flags.length ?? 0) > 0) {

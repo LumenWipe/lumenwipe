@@ -20,7 +20,6 @@ import { fetchClosePlan } from "@/lib/api/close-client";
 import { signatureOf } from "@/lib/plan/plan-freshness";
 import {
   claimableSelectionsToDecisions,
-  classicFloorFromQuote,
   closeDecisions,
   destinationAcknowledgementToDecisions,
   dispositionsToDecisions,
@@ -65,6 +64,10 @@ import StatusMessage from "@/components/a11y/StatusMessage";
 import {
   assetCardsWithheld as cardsWithheld,
   assetResolved,
+  classicFloorOf,
+  convertFloorOf,
+  convertUnfloored,
+  tokenFloorOf,
   assetsResolved,
   claimResolved,
 } from "@/lib/plan/asset-resolution";
@@ -171,36 +174,33 @@ export default function PlanView({
   // the card silently went back to reading "will be swapped to XLM" and the balance would
   // have been sold. `=== undefined` mirrors the claimable-balance effect below, which had it
   // right.
-  // The floors the plan quoted, kept for the convert answers and for verify(): only tokens whose
-  // quote is usable get one, and a token without a quote can never be answered "convert".
+  // The floors the plan quoted, kept for the convert answers and for verify(). Read from the same
+  // rule that decides whether a convert answer is resolved (asset-resolution.ts), so an asset
+  // with no floor here is never shown as answered.
   useEffect(() => {
     const floors: Record<string, TokenConversionFloor> = {};
-    for (const c of conversions) {
-      if (c.token?.quote) {
-        const { minAmountOut, amountOut, provider, resolvedPath } = c.token.quote;
-        floors[c.asset] = {
-          minAmountOut,
-          amountOut,
-          provider,
-          ...(resolvedPath ? { resolvedPath } : {}),
-        };
-      }
-    }
-    useDemolishStore.getState().setTokenConversionFloors(floors);
     const classic: Record<string, ClassicConversionFloor> = {};
     for (const c of conversions) {
-      if (c.token || !c.convertible) continue;
-      if (c.quote) classic[c.asset] = { minAmountOut: classicFloorFromQuote(c.quote.minAmountOut) };
-      else if (c.arrivesFromExit) classic[c.asset] = { minAmountOut: null };
+      const token = tokenFloorOf(c);
+      if (token) floors[c.asset] = token;
+      const floor = classicFloorOf(c);
+      if (floor) classic[c.asset] = floor;
     }
+    useDemolishStore.getState().setTokenConversionFloors(floors);
     useDemolishStore.getState().setClassicConversionFloors(classic);
   }, [conversions]);
 
   useEffect(() => {
     for (const c of conversions) {
       // Never for a Soroban token: its conversion is not built yet, so an auto-selected "convert"
-      // would pass the resolved gate and leave the balance behind.
-      if (c.convertible && !c.token && assetDispositions[c.asset] === undefined) {
+      // would pass the resolved gate and leave the balance behind. Never without a floor either:
+      // a swap with no minimum is refused at review and at signing, so it stays the user's call.
+      if (
+        c.convertible &&
+        !c.token &&
+        assetDispositions[c.asset] === undefined &&
+        convertFloorOf(c) !== undefined
+      ) {
         setAssetDisposition(c.asset, "convert");
       }
     }
@@ -374,6 +374,7 @@ export default function PlanView({
       id: `asset:${c.asset}`,
       kind: "asset" as const,
       group: "HANDLE_ASSETS" as const,
+      ...(convertUnfloored(c, assetDispositions[c.asset]) ? { unquoted: c.code } : {}),
     })),
   ];
   const chips: Partial<Record<PlanGroupType, GroupChip>> = {

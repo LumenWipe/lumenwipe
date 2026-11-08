@@ -156,3 +156,48 @@ test("the first group opens on load, then only for an item not seen before", () 
   expect(newlyOpenGroup(seen, [CLAIM, ASSET])).toBe("HANDLE_ASSETS");
   expect(newlyOpenGroup(new Set<string>(), [CONFIRM])).toBeNull();
 });
+
+// An asset left open because its swap has no quote: the review would refuse it with "no minimum
+// amount recorded", so analyze names it instead of folding it into the count.
+const UNQUOTED: OpenItem = {
+  id: "asset:NOQ:G1",
+  kind: "asset",
+  group: "HANDLE_ASSETS",
+  unquoted: "NOQ",
+};
+const UNQUOTED_TEXT =
+  "No swap quote is available for NOQ, so it cannot be swapped in this close. Choose another answer for it, or refresh the plan";
+
+test("a convert with no quote is a reason of its own that names the asset", () => {
+  const reasons = proceedReasons({ ...READY, openItems: [UNQUOTED] });
+  expect(reasons).toEqual([
+    {
+      key: "unquoted:asset:NOQ:G1",
+      text: UNQUOTED_TEXT,
+      target: { selector: '[data-open-item="asset:NOQ:G1"]', group: "HANDLE_ASSETS" },
+    },
+  ]);
+});
+
+test("an asset with no quote is counted once: named, and left out of the open count", () => {
+  const reasons = proceedReasons({ ...READY, openItems: [UNQUOTED, ASSET, CLAIM] });
+  expect(reasons.map((r) => r.text)).toEqual(["Open: 1 asset, 1 claimable balance", UNQUOTED_TEXT]);
+  // The open reason jumps to the first item it counts, not to the named one.
+  expect(reasons[0].target).toEqual({
+    selector: '[data-open-item="asset:A"]',
+    group: "HANDLE_ASSETS",
+  });
+  expect(reasonsSummary(reasons)).toBe("2 things left before you can review the plan");
+  expect(reasonsSummary(proceedReasons({ ...READY, openItems: [UNQUOTED] }))).toBe(
+    "1 thing left before you can review the plan"
+  );
+});
+
+test("each asset with no quote gets its own named reason, before the destination's", () => {
+  const second: OpenItem = { ...UNQUOTED, id: "asset:ZZZ:G2", unquoted: "ZZZ" };
+  expect(
+    proceedReasons({ ...READY, openItems: [UNQUOTED, second], destination: "empty" }).map(
+      (r) => r.key
+    )
+  ).toEqual(["unquoted:asset:NOQ:G1", "unquoted:asset:ZZZ:G2", "destination"]);
+});

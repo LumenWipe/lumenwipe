@@ -53,6 +53,7 @@ import {
   toUserMessage,
 } from "@/lib/utils/user-error";
 import { hardBlockersOf } from "@/lib/plan/resolvable-blockers";
+import { convertFloorOf } from "@/lib/plan/asset-resolution";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 
@@ -183,9 +184,16 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     // balance-bearing asset, and `conversions.every(...)` on an empty array then reported them
     // all resolved. That combination let a real account reach the review and be refused
     // for decisions it had never been shown.
-    setConversions(
-      hardBlockersOf(plan.blockers).length === 0 ? decisionPointsToConversions(plan) : []
-    );
+    const conversions =
+      hardBlockersOf(plan.blockers).length === 0 ? decisionPointsToConversions(plan) : [];
+    // A stored or restored "convert" for an asset this plan gives no floor for would be refused
+    // at review: it goes, and the asset is asked again. Only assets the plan lists are touched.
+    useDemolishStore
+      .getState()
+      .pruneUnflooredConverts(
+        conversions.filter((c) => convertFloorOf(c) === undefined).map((c) => c.asset)
+      );
+    setConversions(conversions);
     setPlanFeeStroops(planFeeStroopsOf(plan));
     // Unlike other blockers, an unresolved claimable balance is resolvable right here - the
     // decision itself is what clears it - so it must render regardless of blocker state, or

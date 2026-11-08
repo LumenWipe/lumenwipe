@@ -100,8 +100,8 @@ test("with a quote the swap card shows the expected and least XLM", () => {
   expect(screen.queryByText(/Estimate unavailable/)).toBeNull();
 });
 
-test("without a quote the swap card says the estimate is unavailable", () => {
-  renderAsset(classic(ISSUER_A));
+test("an asset only an exit pays in says the estimate is unavailable", () => {
+  renderAsset(classic(ISSUER_A, { arrivesFromExit: true }));
   expect(screen.getByText(/Estimate unavailable\./)).toBeTruthy();
   expect(screen.queryByText(/About .* XLM, at least/)).toBeNull();
 });
