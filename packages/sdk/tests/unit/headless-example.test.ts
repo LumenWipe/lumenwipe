@@ -9,7 +9,8 @@ import {
   TransactionBuilder,
   xdr,
 } from "@stellar/stellar-sdk";
-import type { CloseTransaction, DecisionPoint } from "../../src/index";
+import { VerificationError } from "@lumenwipe/verify";
+import type { AccountState, CloseTransaction, DecisionPoint } from "../../src/index";
 import {
   buildDecisions,
   destinationDecisionId,
@@ -34,7 +35,23 @@ function closeTx(
   return { xdr: builder.build().toEnvelope().toXdr("base64"), ...extra } as CloseTransaction;
 }
 
-const expected = { source, destination };
+/** The account read the example passes on: one master key, no positions. */
+const account = {
+  address: source,
+  nativeBalanceLumens: "100.0000000",
+  signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+  thresholds: { low: 0, med: 0, high: 0 },
+  trustlines: [],
+  defiPositions: { positions: [] },
+} as unknown as AccountState;
+
+const expected = { account, destination, network: "testnet" as const };
+
+/** The refusal comes from `@lumenwipe/verify`, never from a check of the example's own. */
+function expectRefusal(tx: CloseTransaction, message: string): void {
+  expect(() => verifyCloseTransaction(tx, expected)).toThrow(VerificationError);
+  expect(() => verifyCloseTransaction(tx, expected)).toThrow(message);
+}
 
 describe("verifyCloseTransaction", () => {
   test("accepts removals followed by a merge to the stated destination", () => {
@@ -47,35 +64,35 @@ describe("verifyCloseTransaction", () => {
 
   test("rejects a merge to any other account", () => {
     const tx = closeTx([Operation.accountMerge({ destination: other })]);
-    expect(() => verifyCloseTransaction(tx, expected)).toThrow("not the requested destination");
+    expectRefusal(tx, "The account would be merged to an address you did not choose.");
   });
 
   test("rejects a transaction sourced from another account", () => {
     const tx = closeTx([Operation.accountMerge({ destination })], {}, { txSource: other });
-    expect(() => verifyCloseTransaction(tx, expected)).toThrow("not the account being closed");
+    expectRefusal(tx, "The transaction is not for your account.");
   });
 
-  test("rejects an operation sourced from another account", () => {
+  test("rejects a merge sourced from another account", () => {
     const tx = closeTx([Operation.accountMerge({ destination, source: other })]);
-    expect(() => verifyCloseTransaction(tx, expected)).toThrow("different account");
+    expectRefusal(tx, "The account merge is not sent by the account being closed.");
   });
 
-  test("rejects payments", () => {
+  test("rejects a payment the user did not choose", () => {
     const tx = closeTx([
       Operation.payment({ destination: other, asset: Asset.native(), amount: "1" }),
     ]);
-    expect(() => verifyCloseTransaction(tx, expected)).toThrow("Unsupported operation");
+    expectRefusal(tx, `The transaction would pay funds to an unexpected address (${other}).`);
   });
 
   test("rejects a data entry write", () => {
     const tx = closeTx([Operation.manageData({ name: "k", value: "v" })]);
-    expect(() => verifyCloseTransaction(tx, expected)).toThrow("writes instead of removes");
+    expectRefusal(tx, "A data entry would be written, not removed.");
   });
 
   test("rejects a trustline that is not being removed", () => {
     const asset = new Asset("USD", Keypair.random().publicKey());
     const tx = closeTx([Operation.changeTrust({ asset, limit: "10" })]);
-    expect(() => verifyCloseTransaction(tx, expected)).toThrow("does not remove");
+    expectRefusal(tx, "A trustline would be created or raised, not removed.");
   });
 
   test("accepts removing a trustline and cancelling an offer", () => {
@@ -104,12 +121,12 @@ describe("verifyCloseTransaction", () => {
         offerId: "7",
       }),
     ]);
-    expect(() => verifyCloseTransaction(tx, expected)).toThrow("does not cancel");
+    expectRefusal(tx, "An offer would be created, not cancelled.");
   });
 
   test("rejects a memo the user did not ask for", () => {
     const tx = closeTx([Operation.accountMerge({ destination })], {}, { memo: Memo.text("x") });
-    expect(() => verifyCloseTransaction(tx, expected)).toThrow("memo");
+    expectRefusal(tx, "The transaction carries a memo you did not set.");
   });
 
   test("rejects a fee-sponsored transaction", () => {

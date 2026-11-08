@@ -38,6 +38,12 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      # The headless example signs only what @lumenwipe/verify accepts, imported from its built
+      # bundle. Build it first and run its conformance vectors, so a failure below is the
+      # example's and never a stale or broken verifier.
+      - name: Build and test the verifier the example signs with
+        run: bun run --filter '@lumenwipe/verify' test
+
       - name: Start the API
         env:
           # No secret: public testnet endpoints, and a key that exists only for this run.

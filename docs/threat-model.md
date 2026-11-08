@@ -188,6 +188,9 @@ must confirm, from its own inputs and never from the API response:
 A check that pins the mediator's address in place of step 4 proves which account receives the merge, but not
 that the payment moves the balance on. The reference implementation is `assertCloseIntent` in
 [`apps/web/lib/stellar/verify.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/apps/web/lib/stellar/verify.ts).
+`@lumenwipe/verify` (`packages/verify`) packages that same code for integrators, with a shared conformance vector
+set. It decides steps 1 and 8 from the exchange registry bundled in its release only, never from the served copy,
+so an exchange listed after that release is checked as a plain wallet until the integrator upgrades.
 
 ## 6. Surface 4b: backend signing key (fee-bump sponsor)
 

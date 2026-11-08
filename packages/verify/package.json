@@ -1,0 +1,74 @@
+{
+  "name": "@lumenwipe/verify",
+  "version": "0.1.0",
+  "description": "Reference verifier for LumenWipe close transactions, compiled from the web app's own trust anchor, with a conformance vector set.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./vectors/close-v1.json": "./vectors/close-v1.json"
+  },
+  "files": [
+    "dist",
+    "vectors",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LumenWipe/lumenwipe.git",
+    "directory": "packages/verify"
+  },
+  "homepage": "https://github.com/LumenWipe/lumenwipe/tree/main/packages/verify#readme",
+  "bugs": "https://github.com/LumenWipe/lumenwipe/issues",
+  "keywords": [
+    "stellar",
+    "verify",
+    "account-merge",
+    "conformance"
+  ],
+  "scripts": {
+    "build": "bun run build:types && api-extractor run --local && cp dist/index.d.ts dist/index.d.cts",
+    "build:js": "tsup",
+    "build:types": "bun run --filter '@lumenwipe/types' build && tsup && tsc -p tsconfig.build.json",
+    "check-api": "api-extractor run",
+    "type-check": "tsc --noEmit && tsc -p tests/tsconfig.json --noEmit",
+    "lint": "eslint src scripts tests",
+    "test": "bun run build:js && bun test tests",
+    "vectors": "bun scripts/generate-vectors.ts",
+    "vectors:check": "bun scripts/generate-vectors.ts --check"
+  },
+  "peerDependencies": {
+    "@stellar/stellar-sdk": "17.4.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@lumenwipe/types": "workspace:*",
+    "@microsoft/api-extractor": "^7.59.4",
+    "@stellar/stellar-sdk": "17.4.0",
+    "@types/bun": "^1.4.3",
+    "@typescript-eslint/eslint-plugin": "^8.71.2",
+    "@typescript-eslint/parser": "^8.71.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "tsup": "^9.0.0",
+    "typescript": "^6.0.3"
+  }
+}

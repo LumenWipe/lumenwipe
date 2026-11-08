@@ -98,8 +98,8 @@ anything it throws is ignored. `onProgress(message)` still gets its plain messag
 [`examples/headless-close.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/packages/sdk/examples/headless-close.ts)
 closes a throwaway testnet account end to end from a plain Node/Bun process, with no browser or
 web UI: it funds two accounts, then runs `getAccount`, `closePlan`, `closeTransactions` and
-`submit` through `runClose`, signing with an in-process keypair. It decodes and verifies every
-transaction itself before signing (`examples/verify.ts`), which is the pattern to copy.
+`submit` through `runClose`, signing with an in-process keypair. It verifies every transaction
+before signing with `@lumenwipe/verify` (`examples/verify.ts`), which is the pattern to copy.
 
 ```bash
 LUMENWIPE_API_KEY=... bun run --filter '@lumenwipe/sdk' example:headless
@@ -135,10 +135,11 @@ This SDK does not verify or sign anything. Every transaction it returns is unsig
 the API from data you provided - before signing, your own code must independently confirm the
 transaction does exactly what the user asked (correct destination, no unexpected operations, no
 added signers, matching amounts) using values from your own inputs, never from the API response
-alone. LumenWipe's own web client's verification logic (`assertCloseIntent` in
-[`apps/web/lib/stellar/verify.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/apps/web/lib/stellar/verify.ts))
-is the reference implementation - read it before wiring up signing in a production integration.
-Never sign a transaction from this SDK without an equivalent check.
+alone. [`@lumenwipe/verify`](https://github.com/LumenWipe/lumenwipe/tree/main/packages/verify)
+is that check: the verifier LumenWipe's own web client signs with, compiled from
+[`apps/web/lib/stellar/verify.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/apps/web/lib/stellar/verify.ts),
+with a conformance vector set. Pass it as `runClose`'s `verify` (see the docs' Verification page).
+Never sign a transaction from this SDK without it or an equivalent check.
 
 ## API surface
 

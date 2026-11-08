@@ -19,6 +19,7 @@ COPY apps/web/package.json apps/web/
 COPY apps/playground/package.json apps/playground/
 COPY packages/sdk/package.json packages/sdk/
 COPY packages/types/package.json packages/types/
+COPY packages/verify/package.json packages/verify/
 # Install the api's full dependency graph (incl. devDeps: nest CLI, typescript).
 RUN bun install --frozen-lockfile --filter '@lumenwipe/api'
 # Compile: nest build (tsc + asset copy) -> apps/api/dist/main.js
@@ -36,6 +37,7 @@ COPY apps/web/package.json apps/web/
 COPY apps/playground/package.json apps/playground/
 COPY packages/sdk/package.json packages/sdk/
 COPY packages/types/package.json packages/types/
+COPY packages/verify/package.json packages/verify/
 # Deps hoist to /app/node_modules (Bun has no isolated per-workspace prune yet);
 # copy the whole tree into the runtime stage below.
 RUN bun install --frozen-lockfile --production --filter '@lumenwipe/api'

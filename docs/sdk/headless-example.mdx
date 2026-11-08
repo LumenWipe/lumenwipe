@@ -14,7 +14,7 @@ Both run every night in CI against testnet, so a change that breaks them against
 
 ## The part to copy
 
-Before signing, the example decodes every transaction and checks it against its own inputs in [`examples/verify.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/packages/sdk/examples/verify.ts). It rejects any operation it does not recognize. This is the pattern to follow. See [Verification](/sdk/verification).
+Before signing, the example checks every transaction with `@lumenwipe/verify` against its own inputs and the account read, in [`examples/verify.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/packages/sdk/examples/verify.ts). It rejects any operation the web verifier does not accept. This is the pattern to follow. See [Verification](/sdk/verification).
 
 The example's verifier covers only what a simple account needs: data entries, empty trustlines, and open offers. A production integration needs a wider check.
 

@@ -1,11 +1,13 @@
-import { Networks, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
-import type { CloseTransaction, DecisionAnswer, DecisionPoint } from "@lumenwipe/sdk";
+import { exitExpectations, verifyCloseTransaction as verifyClose } from "@lumenwipe/verify";
+import type { AccountState, CloseTransaction, DecisionAnswer, DecisionPoint } from "@lumenwipe/sdk";
+import type { ExampleNetwork } from "./support";
 
 export interface CloseExpectation {
-  source: string;
+  /** The account read the user reviewed before the close: source, balance, signers, positions. */
+  account: AccountState;
+  /** The destination the user typed. */
   destination: string;
-  /** Defaults to testnet, the only network this example closes on. */
-  networkPassphrase?: string;
+  network: ExampleNetwork;
 }
 
 const DESTINATION_ACK_CHOICE = "i_control_this_address";
@@ -13,47 +15,35 @@ const DESTINATION_ACK_CHOICE = "i_control_this_address";
 export const destinationDecisionId = (address: string): string => `destination:${address}`;
 
 /**
- * Decodes the XDR itself and checks it against the caller's own inputs, never against the API's
- * `intent` summary. It covers only what an account holding data entries, empty trustlines and
- * open offers needs; any other operation is rejected rather than signed.
+ * Checks every transaction with `@lumenwipe/verify`, the verifier the LumenWipe web app signs
+ * with, against the caller's own inputs and the account read, never against the API's `intent`
+ * summary. This example makes no per-asset choices and sets no memo, so those inputs are empty:
+ * any transfer, conversion or memo the API added is refused rather than signed.
  */
 export function verifyCloseTransaction(tx: CloseTransaction, expected: CloseExpectation): void {
   if (tx.needsSponsoredFee) {
     throw new Error("This example does not handle fee-sponsored transactions.");
   }
-  const parsed = TransactionBuilder.fromXdr(tx.xdr, expected.networkPassphrase ?? Networks.TESTNET);
-  if (!(parsed instanceof Transaction)) {
-    throw new Error("Unexpected fee-bump envelope.");
-  }
-  if (parsed.source !== expected.source) {
-    throw new Error(`Transaction source ${parsed.source} is not the account being closed.`);
-  }
-  if (parsed.memo.type !== "none") {
-    throw new Error("Unexpected memo on a close transaction.");
-  }
-  for (const op of parsed.operations) {
-    if (op.source !== undefined && op.source !== expected.source) {
-      throw new Error("An operation is sourced from a different account.");
-    }
-    switch (op.type) {
-      case "manageData":
-        if (op.value) throw new Error("A data entry operation writes instead of removes.");
-        break;
-      case "changeTrust":
-        if (op.limit !== "0.0000000") throw new Error("A trustline operation does not remove it.");
-        break;
-      case "manageSellOffer":
-        if (op.amount !== "0.0000000") throw new Error("An offer operation does not cancel it.");
-        break;
-      case "accountMerge":
-        if (op.destination !== expected.destination) {
-          throw new Error(`Merge targets ${op.destination}, not the requested destination.`);
-        }
-        break;
-      default:
-        throw new Error(`Unsupported operation in a close transaction: ${op.type}.`);
-    }
-  }
+  const { account, destination, network } = expected;
+  verifyClose({
+    unsignedXdr: tx.xdr,
+    network,
+    expected: {
+      source: account.address,
+      destination,
+      nativeBalance: account.nativeBalanceLumens,
+      memo: null,
+      memoType: null,
+      claimTrustlineAssets: [],
+      accountSigners: account.signers,
+      accountThresholds: account.thresholds,
+      transfers: {},
+      tokenTransfers: {},
+      classicConversions: {},
+      tokenConversions: {},
+      ...exitExpectations(account, network),
+    },
+  });
 }
 
 /**

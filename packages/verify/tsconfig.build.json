@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Declarations only. tsup emits the JS; api-extractor rolls these into one self-contained
+    // .d.ts. The web modules are in the program (the facade calls them), so rootDir spans the
+    // repository; only the facade's own declaration is the entry point, and it names no web type.
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "declarationMap": false,
+    "outDir": "./dist-types",
+    "rootDir": "../..",
+    "paths": {
+      "@/*": ["../../apps/web/*"],
+      "@registry/*": ["../../apps/api/src/config/*"],
+      "@lumenwipe/types": ["../types/dist/index.d.ts"]
+    }
+  },
+  "exclude": ["node_modules", "dist", "dist-types", "tests"]
+}
