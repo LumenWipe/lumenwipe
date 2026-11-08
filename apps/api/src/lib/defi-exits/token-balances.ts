@@ -4,6 +4,7 @@ import { SOROBAN_EXIT_FEE_ESTIMATE_STROOPS } from "@/config/constants";
 import { feeFloorStroops, laterOwnFeesStroops } from "@/lib/stellar/claim-reserve";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { xlmToStroops } from "@/lib/utils/amounts";
+import { isBaseUnits } from "./invariants";
 
 /** What open offers hold back of an asset: the ledger refuses to spend below it. */
 function sellingLiabilities(offers: OpenOffer[], asset: string): bigint {
@@ -64,5 +65,26 @@ export function tokenBalancesFor(accountState: AccountState): Record<string, str
   // token balance the analysis found (`sorobanTokens`) is neither: paying more of it out to the
   // account would only move value onto a balance the merge leaves behind, so such tokens are
   // decided about separately (transfer, convert, or leave) and never make an exit look safer.
+  // What a repay can spend of them is `sorobanTokenBalancesFor` instead.
+  return balances;
+}
+
+/**
+ * The Soroban token balances the account read confirmed on the ledger, keyed by token contract.
+ * A contract whose balance could not be read is absent, so a repay in it reports the balance as
+ * unknown. Contracts of the account's own classic assets are skipped: their balance is the
+ * trustline, which `tokenBalancesFor` reports net of what offers and fees hold back.
+ */
+export function sorobanTokenBalancesFor(accountState: AccountState): Record<string, string> {
+  const passphrase = NETWORK_PASSPHRASES[accountState.network];
+  const classic = new Set([
+    Asset.native().contractId(passphrase),
+    ...accountState.trustlines.map((t) => new Asset(t.code, t.issuer).contractId(passphrase)),
+  ]);
+  const balances: Record<string, string> = {};
+  for (const token of accountState.sorobanTokens?.tokens ?? []) {
+    if (classic.has(token.contract) || !isBaseUnits(token.balance)) continue;
+    balances[token.contract] = token.balance;
+  }
   return balances;
 }

@@ -150,6 +150,10 @@ export interface ExitContext {
   /** What the account holds of each token, keyed by contract address, in base units - what a
    *  repay can spend. Native XLM and classic assets appear under their Stellar Asset Contract. */
   tokenBalances: Record<string, string>;
+  /** Base-unit balances of Soroban tokens that are not a Stellar asset's contract, keyed by
+   *  contract, each confirmed on the ledger by `balance(account)`: a repay may spend from them,
+   *  and no adapter may read presence here as the account being able to carry a token. */
+  sorobanTokenBalances: Record<string, string>;
   now: Date;
   slippageBps: number;
 }

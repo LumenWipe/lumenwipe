@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { Asset, Keypair, Networks } from "@stellar/stellar-sdk";
-import type { AccountState } from "@lumenwipe/types";
-import { tokenBalancesFor } from "@/lib/defi-exits/token-balances";
+import { Asset, Keypair, Networks, StrKey } from "@stellar/stellar-sdk";
+import type { AccountState, SorobanTokenBalance } from "@lumenwipe/types";
+import { sorobanTokenBalancesFor, tokenBalancesFor } from "@/lib/defi-exits/token-balances";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
 
@@ -144,4 +144,75 @@ test("the Soroban rounds still to come are held back at the plan's estimate", ()
     BigInt(tokenBalancesFor(withoutPositions)[native]!) -
       BigInt(tokenBalancesFor(withPositions)[native]!)
   ).toBe(4n * 100_000n);
+});
+
+function withSorobanTokens(
+  tokens: Array<Pick<SorobanTokenBalance, "contract" | "balance">>,
+  over: Partial<AccountState> = {},
+  unreadable: string[] = []
+): AccountState {
+  return account({
+    sorobanTokens: {
+      tokens: tokens.map((t) => ({ ...t, symbol: null, decimals: null, sources: ["positions"] })),
+      unreadable,
+      coverage: [{ source: "explorer", status: "failed" }],
+      eventsScanned: null,
+      warnings: [],
+    },
+    ...over,
+  });
+}
+
+const WASM_TOKEN = StrKey.encodeContract(Buffer.alloc(32, 7));
+const OTHER_WASM_TOKEN = StrKey.encodeContract(Buffer.alloc(32, 8));
+
+test("a repay can spend the Soroban token balances the account read confirmed on the ledger", () => {
+  const balances = sorobanTokenBalancesFor(
+    withSorobanTokens([
+      { contract: WASM_TOKEN, balance: "100000000" },
+      { contract: OTHER_WASM_TOKEN, balance: "0" },
+    ])
+  );
+  expect(balances).toEqual({ [WASM_TOKEN]: "100000000", [OTHER_WASM_TOKEN]: "0" });
+});
+
+test("a token whose balance could not be read is absent, never a zero", () => {
+  expect(sorobanTokenBalancesFor(withSorobanTokens([], {}, [WASM_TOKEN]))).toEqual({});
+  expect(sorobanTokenBalancesFor(account())).toEqual({});
+});
+
+test("a balance that is not a base-unit integer string is skipped", () => {
+  const balances = sorobanTokenBalancesFor(
+    withSorobanTokens([
+      { contract: WASM_TOKEN, balance: "12.5" },
+      { contract: OTHER_WASM_TOKEN, balance: "-1" },
+    ])
+  );
+  expect(balances).toEqual({});
+});
+
+test("a Stellar asset's contract is never a Soroban token balance: its balance is the trustline", () => {
+  const usdc = new Asset("USDC", ISSUER).contractId(Networks.TESTNET);
+  const native = Asset.native().contractId(Networks.TESTNET);
+  const balances = sorobanTokenBalancesFor(
+    withSorobanTokens(
+      [
+        { contract: usdc, balance: "999999999" },
+        { contract: native, balance: "999999999" },
+        { contract: WASM_TOKEN, balance: "5" },
+      ],
+      {
+        trustlines: [
+          {
+            asset: `USDC:${ISSUER}`,
+            code: "USDC",
+            issuer: ISSUER,
+            balance: "1.0000000",
+            ...authorizationOf(false),
+          },
+        ],
+      }
+    )
+  );
+  expect(balances).toEqual({ [WASM_TOKEN]: "5" });
 });

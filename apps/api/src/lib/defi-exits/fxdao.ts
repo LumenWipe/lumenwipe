@@ -578,7 +578,7 @@ export function fxdaoExitAdapter(
 
       const stableAsset = live.currencyContract;
       const debt = vault.totalDebt.toString();
-      const holding = ctx.tokenBalances[stableAsset];
+      const holding = ctx.tokenBalances[stableAsset] ?? ctx.sorobanTokenBalances[stableAsset];
       if (!isBaseUnits(holding)) {
         return manualReview(
           "fxdao_repay_asset_balance_unknown",

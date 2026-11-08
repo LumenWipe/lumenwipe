@@ -74,6 +74,7 @@ test.skipIf(!RUN_INTEGRATION || FORK_PR_WITHOUT_SECRETS)(
           account: account.publicKey(),
           sequence: live.sequenceNumber(),
           tokenBalances: {},
+          sorobanTokenBalances: {},
           now: new Date(),
           slippageBps: 50,
         },
