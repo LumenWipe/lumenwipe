@@ -1,21 +1,91 @@
 ---
 title: "Verification is your responsibility"
-description: "Why the SDK never verifies or signs, and what your code must check before every signature."
+description: "Why the SDK never verifies or signs, how to check every transaction with @lumenwipe/verify, and what any verifier must check."
 icon: "shield-check"
 ---
 
 <Warning>
-  The SDK does not verify or sign anything. Never sign a transaction returned by the SDK without an
-  independent check of your own.
+  The SDK does not verify or sign anything. Never sign a transaction returned by the SDK without
+  `@lumenwipe/verify` or an equivalent check of your own.
 </Warning>
 
 Closing an account is irreversible: it merges every remaining lumen into one destination. Every transaction the SDK returns is unsigned XDR built by the API from the data you provided. Before signing, your code must independently confirm that the transaction does exactly what the user asked.
+
+## Use `@lumenwipe/verify`
+
+`@lumenwipe/verify` is the verifier the LumenWipe web app runs before every signature, as a package. It is compiled from the web's own [`verify.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/apps/web/lib/stellar/verify.ts), not ported, so there is one implementation. A shared set of conformance vectors runs against the package and against the web verifier in CI.
+
+```bash
+npm install @lumenwipe/verify @stellar/stellar-sdk@17.4.0
+```
+
+`@stellar/stellar-sdk` is a peer dependency, pinned to the version the web verifier is tested with, and is never bundled.
+
+Pass it as `verify` to [`runClose`](/sdk/run-close):
+
+```ts
+import { LumenWipeClient, runClose } from "@lumenwipe/sdk";
+import { exitExpectations, verifyCloseTransaction } from "@lumenwipe/verify";
+
+const account = await client.getAccount(source); // the read the user reviewed
+
+await runClose({
+  // getTransactions, requiredWeight, sign, submit as usual
+  verify: (tx) =>
+    verifyCloseTransaction({
+      unsignedXdr: tx.xdr,
+      network: "testnet",
+      expected: {
+        source,
+        destination, // typed by the user
+        nativeBalance: account.nativeBalanceLumens,
+        memo: null, // the memo the user confirmed, and its type
+        memoType: null,
+        claimTrustlineAssets: [],
+        accountSigners: account.signers,
+        accountThresholds: account.thresholds,
+        transfers: {}, // the user's per-asset choices
+        tokenTransfers: {},
+        classicConversions: {},
+        tokenConversions: {},
+        ...exitExpectations(account, "testnet"),
+      },
+    }),
+});
+```
+
+`verifyCloseTransaction` returns only when the transaction may be signed, and throws `VerificationError` otherwise. It is synchronous and reads no network.
+
+### Where each input comes from
+
+| Input                                                                   | Source                                                                                                                                     |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `destination`, `memo`, `memoType`                                       | What the user typed and confirmed.                                                                                                         |
+| `transfers`, `tokenTransfers`, `classicConversions`, `tokenConversions` | The user's per-asset choices, with the balance or quote they were shown as the floor. Pass `{}` for none.                                  |
+| `claimTrustlineAssets`                                                  | The `CODE:ISSUER` of each claimable balance the user chose to claim into a new trustline.                                                  |
+| `source`, `nativeBalance`, `accountSigners`, `accountThresholds`        | The account read the user reviewed (`client.getAccount`). Empty signers fail closed.                                                       |
+| The DeFi fields                                                         | `exitExpectations(account, network)`, from the same read and the contract registry bundled in the package. With no read, every exit fails. |
+
+Never take an input from the transaction under verification or from its `intent` summary. The values from the account read come from the same API that builds the transaction, so they catch a builder bug or a partial compromise, not an API that keeps both consistent.
+
+### What the package decides on its own
+
+Whether the destination is a listed exchange, whether it needs a memo and of which type, and whether the merge must go through the shared mediator are not inputs. The package derives them from the exchange registry bundled in its release. It never fetches the copy the API serves:
+
+- An exchange listed after the release you installed is checked as a plain wallet, so a direct merge to it passes with whatever memo the user typed. Upgrade on every release.
+- Once the bundled registry's `validUntil` date passes, every close to a listed exchange is refused until you upgrade.
+
+It also reads the system clock: a transaction valid for more than 900 seconds from now is refused.
+
+### Conformance vectors
+
+The package ships `vectors/close-v1.json`: accepted and rejected transactions with the full input for each, the clock to set, and the exact `VerificationError` message for each rejection. Every rejection is one named mutation of an accepted vector, and every key in the file is public. Run them against your own verifier, or against a wrapper around this one.
 
 ## Why
 
 LumenWipe's architecture puts the trust boundary at the signer. The API builds the bytes, and the client decides whether to sign them. If a compromised or faulty API could choose what you sign, it could divert funds. Your own check removes that risk.
 
-## What to check
+## What to check if you write your own
 
 Decode the XDR yourself and compare it against **your own inputs**, never against values from the API response alone. At minimum:
 
@@ -47,7 +117,8 @@ The `intent` field on a transaction is the API's own summary. Do not use it as a
 
 ## Reference implementations
 
-- [`assertCloseIntent`](https://github.com/LumenWipe/lumenwipe/blob/main/apps/web/lib/stellar/verify.ts) in the LumenWipe web client is the full reference. Read it before wiring up signing in a production integration.
-- The [headless example](/sdk/headless-example) ships a smaller verifier for the simple case.
+- `@lumenwipe/verify`, above, is the web client's verifier as a package.
+- [`assertCloseIntent`](https://github.com/LumenWipe/lumenwipe/blob/main/apps/web/lib/stellar/verify.ts) in the LumenWipe web client is the source it is compiled from.
+- The [headless example](/sdk/headless-example) wires the package into `runClose`.
 
 Whatever you write, pass it as `verify` to [`runClose`](/sdk/run-close) so it runs before every signature.

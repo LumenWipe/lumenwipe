@@ -166,6 +166,32 @@ change. What they don't cover is `apps/api` behavior the SDK's own types don't m
 undocumented status code, a header, a timing change) - that class of drift is still a human
 judgment call at review time, the same way "does this need a release" is above.
 
+## `@lumenwipe/verify`: the reference verifier
+
+`packages/verify` is not published yet: there is no publish workflow or `verify-v*` tag for it, and
+its `CHANGELOG.md` holds `0.1.0` as unreleased. Until there is, `0.1.0` stays the version and the
+rules below apply to its first release and every one after.
+
+It has no source of its own. tsup compiles the web's `apps/web/lib/stellar/verify.ts`,
+`exit-expectations.ts` and `verification-error.ts` with everything they import, including the
+registries (`apps/api/src/config/exchange-registry.json`, `contract-registry.json` and
+`apps/web/config/xbull-asset-map.json`). So a release is due whenever any of that changes, even
+when nothing under `packages/verify` did:
+
+- **every registry change** - an exchange added or re-verified, a new `validUntil`, a contract
+  added or re-pinned. Integrators run on the bundled registry only, never the served one, so an
+  exchange listed after their release is checked as a plain wallet, and once the bundled
+  `validUntil` passes every exchange close is refused. A registry change without a verify release
+  leaves them exactly there;
+- every change to what `verify()` accepts or how it words a refusal, which also changes
+  `vectors/close-v1.json` (the web's `verify-conformance.test.ts` fails until the vectors are
+  regenerated with `bun run --filter '@lumenwipe/verify' vectors`);
+- every change to the package's public types (`packages/verify/etc/verify.api.md`).
+
+The bump follows the SDK's semver rules above. A registry-only release is a patch; a newly
+refused shape is a minor before 1.0. Add the change under `## [Unreleased]` in
+`packages/verify/CHANGELOG.md` in the PR that makes it, and name the registry version it bundles.
+
 ## Why `@lumenwipe/types` stays private
 
 It's `"private": true` in `packages/types/package.json` on purpose, not an oversight. The SDK's
