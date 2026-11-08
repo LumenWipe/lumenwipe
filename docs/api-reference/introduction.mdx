@@ -124,6 +124,7 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `conversion_impact_not_acknowledged`          | any    | A token conversion with a high or unmeasured price impact, or with disagreeing quotes, was chosen without its confirmation.    |
 | `conversion_provider_unrecognized`            | 422    | A conversion names a provider the API does not recognize.                                                                      |
 | `defi_exit_blocked`                           | 422    | A DeFi position could not be exited safely.                                                                                    |
+| `defi_exit_paused`                            | 503    | Exits from this DeFi protocol are paused. Retry later.                                                                         |
 | `defi_exit_unsupported`                       | 422    | The account holds a DeFi position that cannot be exited yet.                                                                   |
 | `defi_position_unrecognized`                  | 422    | A DeFi position could not be identified.                                                                                       |
 | `defi_positions_blocked`                      | 422    | A DeFi position blocks the close.                                                                                              |
@@ -131,8 +132,10 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `defi_positions_unavailable`                  | any    | DeFi positions could not be confirmed for this account.                                                                        |
 | `destination_not_acknowledged`                | 422    | The destination is not a recognized exchange address and was not confirmed.                                                    |
 | `destination_read_failed`                     | 503    | The destination account could not be read. Retry.                                                                              |
+| `exchange_forward_paused`                     | 503    | Closing into an exchange is paused. Retry later.                                                                               |
 | `fee_bump_exceeds_cap`                        | 400    | The sponsored fee would exceed the cap.                                                                                        |
 | `fee_bump_not_configured`                     | 503    | Sponsored fees are not configured on this server.                                                                              |
+| `fee_sponsorship_paused`                      | 503    | Fee sponsorship is paused. Retry later.                                                                                        |
 | `forbidden`                                   | 403    | The caller is not allowed to do this.                                                                                          |
 | `forward_amount_exceeds_balance`              | 400    | The mediator forward is larger than the balance being merged.                                                                  |
 | `inner_fee_not_zero`                          | 400    | The inner transaction of a sponsored fee bump must carry no fee of its own.                                                    |

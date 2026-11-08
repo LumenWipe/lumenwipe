@@ -4,6 +4,7 @@ import { planBatch, type BatchPlanDeps } from "@/lib/close-api/batch-plan";
 import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils/errors";
 import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 import type { PlanResponse } from "@lumenwipe/types";
+import { ALL_ON } from "@/config/kill-switches";
 
 // `deps.buildAccountPlan` is injected rather than mocked via `mock.module` - see
 // account-state.test.ts's header comment for why this codebase avoids that: it is
@@ -32,7 +33,7 @@ describe("planBatch", () => {
     const addresses = [Keypair.random().publicKey(), Keypair.random().publicKey()];
     const deps = fakeDeps(async (address) => readyPlan(`hash-${address}`));
 
-    const results = await planBatch(addresses, null, "testnet", deps);
+    const results = await planBatch(addresses, null, "testnet", ALL_ON, deps);
 
     expect(results.map((r) => r.address)).toEqual(addresses);
     expect(results[0]!.plan.planHash).toBe(`hash-${addresses[0]}`);
@@ -47,7 +48,7 @@ describe("planBatch", () => {
       return readyPlan("ok");
     });
 
-    const results = await planBatch([good, missing], null, "testnet", deps);
+    const results = await planBatch([good, missing], null, "testnet", ALL_ON, deps);
 
     const goodResult = results.find((r) => r.address === good)!;
     expect(goodResult.plan.status).toBe("ready");
@@ -65,7 +66,7 @@ describe("planBatch", () => {
       throw new TruncatedCollectionError("Too many offers to enumerate safely.");
     });
 
-    const [result] = await planBatch([address], null, "testnet", deps);
+    const [result] = await planBatch([address], null, "testnet", ALL_ON, deps);
 
     expect(result!.plan.status).toBe("blocked");
     expect(result!.plan.blockers[0]!.code).toBe("account_too_large");
@@ -77,7 +78,7 @@ describe("planBatch", () => {
       throw new UnusableProviderResponseError(address, ["num_sponsoring"]);
     });
 
-    const [result] = await planBatch([address], null, "testnet", deps);
+    const [result] = await planBatch([address], null, "testnet", ALL_ON, deps);
 
     expect(result!.plan.status).toBe("blocked");
     expect(result!.plan.blockers[0]!.code).toBe("provider_response_unusable");
@@ -89,7 +90,7 @@ describe("planBatch", () => {
       throw new Error("boom");
     });
 
-    const [result] = await planBatch([address], null, "testnet", deps);
+    const [result] = await planBatch([address], null, "testnet", ALL_ON, deps);
 
     expect(result!.plan.status).toBe("blocked");
     expect(result!.plan.blockers[0]!.code).toBe("plan_failed");
@@ -106,7 +107,7 @@ describe("planBatch", () => {
       },
     };
 
-    await planBatch(addresses, destination, "testnet", deps);
+    await planBatch(addresses, destination, "testnet", ALL_ON, deps);
 
     expect(seen).toEqual([destination, destination]);
   });

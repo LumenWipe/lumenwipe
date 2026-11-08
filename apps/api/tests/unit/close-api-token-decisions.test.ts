@@ -36,6 +36,7 @@ import * as accountStateModule from "@/lib/stellar/account-state";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { stubIssuance } from "./fixtures/issuance";
 import { servedRegistry } from "@/lib/exchange-registry";
+import { ALL_ON } from "@/config/kill-switches";
 
 const TOKEN_A = Address.contract(Buffer.alloc(32, 1)).toString();
 const TOKEN_B = Address.contract(Buffer.alloc(32, 2)).toString();
@@ -321,7 +322,8 @@ test("the plan still asks about a held token whose only answer is the discovery 
         { id: destinationDecisionId(destination), choice: DESTINATION_ACK_CHOICE },
         { id: tokenDecisionId(TOKEN_A), choice: TOKEN_DISCOVERED_CHOICE },
       ],
-      "testnet"
+      "testnet",
+      ALL_ON
     );
     expect(plan.status).toBe("needs_decisions");
     const answered = await buildAccountPlan(
@@ -332,7 +334,8 @@ test("the plan still asks about a held token whose only answer is the discovery 
         { id: tokenDecisionId(TOKEN_A), choice: TOKEN_DISCOVERED_CHOICE },
         { id: tokenDecisionId(TOKEN_A), choice: LEAVE_CHOICE },
       ],
-      "testnet"
+      "testnet",
+      ALL_ON
     );
     expect(answered.status).toBe("ready");
   } finally {
@@ -389,7 +392,8 @@ test("the plan blocks a token sent to a listed exchange or to an account that re
         },
         { id: tokenDecisionId(TOKEN_B), choice: TRANSFER_CHOICE, params: { destination: wallet } },
       ],
-      "testnet"
+      "testnet",
+      ALL_ON
     );
     expect(plan.status).toBe("blocked");
     const messages = plan.blockers.map((b) => b.message);
@@ -614,7 +618,7 @@ test("the plan gates a flagged conversion on its confirmation, and marks a token
     },
   ];
   const plan = (decisions: typeof base) =>
-    buildAccountPlan(source, destination, decisions, "testnet", {
+    buildAccountPlan(source, destination, decisions, "testnet", ALL_ON, {
       tokenQuoteProviders,
       tokenQuoteClock: instantClock,
     });

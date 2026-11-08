@@ -14,6 +14,7 @@
  */
 
 import { endpointHeaderVars, splitEndpointList, type Network } from "./networks";
+import { isMalformedFlag, ON_UNLESS_FALSE_FLAGS, flagOn } from "./kill-switches";
 
 export interface EnvProblem {
   variable: string;
@@ -179,6 +180,16 @@ export function checkEnv(env: NodeJS.ProcessEnv = process.env): {
   for (const { name, consequence } of OPTIONAL) {
     if (!env[name] || env[name]!.trim() === "") {
       warnings.push({ variable: name, message: `${name} is not set - ${consequence}.` });
+    }
+  }
+
+  // A kill switch that does not parse is refused rather than read as on: the new revision fails
+  // to start and the previous one keeps serving, so the operator sees the switch did not take.
+  for (const { name, pauses } of ON_UNLESS_FALSE_FLAGS) {
+    if (isMalformedFlag(env[name])) {
+      problems.push({ variable: name, message: `${name} must be true or false.` });
+    } else if (!flagOn(env[name])) {
+      warnings.push({ variable: name, message: `${name} is false - ${pauses}.` });
     }
   }
 

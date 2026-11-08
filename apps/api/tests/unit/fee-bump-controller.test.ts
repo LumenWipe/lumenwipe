@@ -100,6 +100,24 @@ describe("FeeBumpController.sponsor", () => {
     expect(BigInt(feeBump.fee)).toBeLessThanOrEqual(BigInt(MAX_FEE_BUMP_STROOPS));
   });
 
+  test("refuses with 503 while sponsorship is paused, before reading the transaction, and sponsors again once on", async () => {
+    const saved = process.env.FEE_SPONSORSHIP_ENABLED;
+    try {
+      process.env.FEE_SPONSORSHIP_ENABLED = "false";
+      await expectFail(controller.sponsor("testnet", {}), 503, "fee_sponsorship_paused");
+      process.env.FEE_SPONSORSHIP_ENABLED = "true";
+      const { transaction } = await controller.sponsor("testnet", {
+        transaction: windDownTx(Operation.accountMerge({ destination: DEST })),
+      });
+      expect(TransactionBuilder.fromXDR(transaction, Networks.TESTNET)).toBeInstanceOf(
+        FeeBumpTransaction
+      );
+    } finally {
+      if (saved === undefined) delete process.env.FEE_SPONSORSHIP_ENABLED;
+      else process.env.FEE_SPONSORSHIP_ENABLED = saved;
+    }
+  });
+
   test("refuses when the sponsor is not configured for the network - mainnet unaffected by testnet's key", async () => {
     await expectFail(
       controller.sponsor("mainnet", {

@@ -65,6 +65,7 @@ import {
   PRICE_SOURCE_UNAVAILABLE,
   ROUTE_LOOKUP_UNAVAILABLE_CODE,
   TOKEN_DISCOVERED_CHOICE,
+  tokenConversionProviders,
 } from "@/lib/close-api/decisions";
 import { ARRIVING_ASSET_PROBE_AMOUNT, assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
 import { DEFI_POSITIONS_UNAVAILABLE_CODE } from "@/lib/defi-positions/positions-gate";
@@ -76,6 +77,7 @@ import {
 } from "@/lib/defi-exits/plan-exits";
 import { assemblePlanResponse, computePlanHash } from "@/lib/close-api/plan-response";
 import { BASE_FEE_STROOPS } from "@/config/constants";
+import type { KillSwitches } from "@/config/kill-switches";
 import type {
   ClassicConversionQuote,
   DecisionAnswer,
@@ -107,12 +109,18 @@ export interface AccountPlanDeps {
 async function exitPreflightFor(
   accountState: AccountState,
   network: Network,
-  preflight: typeof preflightExitTargets
+  preflight: typeof preflightExitTargets,
+  pausedExits: KillSwitches["pausedExits"]
 ): Promise<ReadonlyMap<string, ExitTargetBlock>> {
-  if (accountState.defiPositions.positions.length === 0) return new Map();
+  // A paused protocol is never simulated: its contracts may be the reason it is paused.
+  const positions = accountState.defiPositions.positions.filter(
+    (p) => !pausedExits.has(p.protocol)
+  );
+  if (positions.length === 0) return new Map();
+  const state = { ...accountState, defiPositions: { ...accountState.defiPositions, positions } };
   try {
     const blocked = await withTimeout(
-      preflight(accountState, network, { rpc: getRpcServer(network) }),
+      preflight(state, network, { rpc: getRpcServer(network) }),
       EXIT_PREFLIGHT_TIMEOUT_MS,
       `exit preflight exceeded ${EXIT_PREFLIGHT_TIMEOUT_MS} ms`
     );
@@ -179,6 +187,7 @@ export async function buildAccountPlan(
   destination: string | null,
   decisions: DecisionAnswer[],
   network: Network,
+  switches: KillSwitches,
   deps: AccountPlanDeps = {}
 ): Promise<PlanResponse> {
   const accountState = await readAccountState(
@@ -191,7 +200,8 @@ export async function buildAccountPlan(
   const exitPreflightPromise = exitPreflightFor(
     accountState,
     network,
-    deps.preflightExits ?? preflightExitTargets
+    deps.preflightExits ?? preflightExitTargets,
+    switches.pausedExits
   );
 
   const convertibility: Record<string, boolean> = {};
@@ -245,8 +255,14 @@ export async function buildAccountPlan(
   for (const t of quotable.slice(MAX_TOKEN_QUOTES)) tokenReasons[t.contract] = "quote_limit";
   const tokenQuoteProviders: FanoutProviders = deps.tokenQuoteProviders ?? {
     quote: {
-      soroswap: (token, amountIn) => quoteTokenToXlmOutcome(token, amountIn, network),
-      xbull: (token, amountIn) => quoteTokenToXlmViaXBullOutcome(token, amountIn, network),
+      soroswap: (token, amountIn) =>
+        switches.sorobanConversion
+          ? quoteTokenToXlmOutcome(token, amountIn, network)
+          : Promise.resolve({ kind: "disabled" }),
+      xbull: (token, amountIn) =>
+        switches.xbullConversion
+          ? quoteTokenToXlmViaXBullOutcome(token, amountIn, network)
+          : Promise.resolve({ kind: "disabled" }),
     },
     // xBull's own route is confirmed live, once more, before it is ever offered: see
     // `resolveTokenQuote`'s docstring for why an unresolved route falls back rather than being
@@ -318,6 +334,7 @@ export async function buildAccountPlan(
   const issuerSupplyAcknowledged = isIssuerSupplyAcknowledged(decisions, source);
 
   const buildResult = buildPlan(
+    switches,
     accountState,
     mediatorRequired,
     false,
@@ -327,11 +344,16 @@ export async function buildAccountPlan(
     planDestinations,
     accountState.defiPositions,
     defiPositionsAcknowledged,
-    exitPreflight
+    exitPreflight,
+    tokenConversionProviders(decisions, planAssetsById)
   );
   const leavePoints = deriveLeavePositionDecisionPoints(
     source,
-    planExitSteps(accountState.defiPositions.positions, 0, exitPreflight).leavable
+    planExitSteps(
+      accountState.defiPositions.positions.filter((p) => !switches.pausedExits.has(p.protocol)),
+      0,
+      exitPreflight
+    ).leavable
   );
   const leaveContractById = new Map(leavePoints.map((dp) => [dp.id, String(dp.subject.contract)]));
   const decisionPoints = [

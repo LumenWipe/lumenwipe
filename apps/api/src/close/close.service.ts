@@ -1,5 +1,6 @@
 import { HttpException, Inject, Injectable, Logger } from "@nestjs/common";
 import type { Network } from "@/config/networks";
+import { readKillSwitches } from "@/config/kill-switches";
 import { isValidGAddress } from "@/lib/utils/validation";
 import { BATCH_PLAN_MAX_ADDRESSES } from "@/lib/close-api/batch-plan";
 import {
@@ -109,7 +110,13 @@ export class CloseService {
     const decisions = parseDecisions(body.decisions);
 
     try {
-      return await this.reader.buildAccountPlan(source, destination, decisions, network);
+      return await this.reader.buildAccountPlan(
+        source,
+        destination,
+        decisions,
+        network,
+        readKillSwitches(network)
+      );
     } catch (e) {
       if (e instanceof HttpException || mapDomainError(PLAN_ERRORS, e)) throw e;
       this.logger.error("close/plan failed", e instanceof Error ? e.stack : String(e));
@@ -137,7 +144,12 @@ export class CloseService {
       fail("invalid_destination", "Destination must be a valid account (G...).", 400);
     }
 
-    const results = await this.reader.planBatch(addresses as string[], destination, network);
+    const results = await this.reader.planBatch(
+      addresses as string[],
+      destination,
+      network,
+      readKillSwitches(network)
+    );
     return { results };
   }
 
@@ -338,6 +350,7 @@ export class CloseService {
       }
 
       const result = await this.builder.buildCloseTransactions(
+        readKillSwitches(network),
         accountState,
         destination,
         dispositions,

@@ -14,7 +14,7 @@ export interface ExitTarget {
   positions: DefiPosition[];
 }
 
-const PROTOCOL_LABEL: Record<DefiProtocol, string> = {
+export const PROTOCOL_LABEL: Record<DefiProtocol, string> = {
   blend: "Blend",
   aquarius: "Aquarius",
   soroswap: "Soroswap",
@@ -26,7 +26,7 @@ const PROTOCOL_LABEL: Record<DefiProtocol, string> = {
   xbull: "xBull",
 };
 
-function shortContract(address: string): string {
+export function shortContract(address: string): string {
   return `${address.slice(0, 4)}…${address.slice(-4)}`;
 }
 

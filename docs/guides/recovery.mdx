@@ -80,7 +80,7 @@ A transaction the API builds is valid for 300 seconds. If the signing took longe
 
 For an exchange destination, the API co-signs the relay account's payment before anything is submitted. If that call fails, or the sponsored fee wrap fails, nothing has reached the ledger and nothing has changed. Run the close again.
 
-A refusal with `transaction_structure_not_allowed` means the transaction was not the exact shape the relay will sign, and trying the same transaction again will not help. `mediator_not_configured` means exchange closes are not set up on that network. Choose a destination that is not an exchange, or see [exchange closes](/guides/exchanges-and-the-mediator).
+A refusal with `transaction_structure_not_allowed` means the transaction was not the exact shape the relay will sign, and trying the same transaction again will not help. `mediator_not_configured` means exchange closes are not set up on that network, and `exchange_forward_paused` that they are paused for now. Either is reported by the plan and by `close/transactions` before any cleanup transaction is built, so nothing has changed on the ledger. Choose a destination that is not an exchange, or see [exchange closes](/guides/exchanges-and-the-mediator).
 
 ### The service is unavailable
 

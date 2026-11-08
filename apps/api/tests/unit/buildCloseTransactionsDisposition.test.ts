@@ -18,6 +18,7 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
+import { ALL_ON } from "@/config/kill-switches";
 
 beforeEach(() => {
   stubIssuance();
@@ -102,6 +103,7 @@ test("close build › issuer disposition returns the balance to the issuer witho
     rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
 
   const result = await buildCloseTransactions(
+    ALL_ON,
     accountState(),
     DEST,
     { [NOSWAP]: "issuer" },
@@ -134,7 +136,7 @@ test("close build › a genuinely lost route for a convert asset still surfaces 
     rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
 
   await expect(
-    buildCloseTransactions(accountState(), DEST, { [NOSWAP]: "convert" }, "testnet")
+    buildCloseTransactions(ALL_ON, accountState(), DEST, { [NOSWAP]: "convert" }, "testnet")
   ).rejects.toThrow(AssetRouteLostError);
 });
 
@@ -158,6 +160,7 @@ test("close build › a conversion is refused when the route no longer clears th
 
   const build = (floor: bigint) =>
     buildCloseTransactions(
+      ALL_ON,
       accountState(),
       DEST,
       { [NOSWAP]: "convert" },
@@ -189,6 +192,7 @@ test("close build › an unlisted destination's memo goes on chain with the type
     rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   const memoOf = async (memoType: "text" | "id" | null) => {
     const result = await buildCloseTransactions(
+      ALL_ON,
       accountState(),
       DEST,
       { [NOSWAP]: "issuer" },

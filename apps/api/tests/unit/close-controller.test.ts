@@ -53,6 +53,7 @@ import { mapDomainError, TRANSACTION_ERRORS } from "@/lib/close-api/domain-error
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { OFFLINE_SOROBAN_TOKENS } from "./fixtures/fake-soroban-tokens";
 import { authorizationOf } from "./fixtures/trustline";
+import { readKillSwitches, type KillSwitches } from "@/config/kill-switches";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -252,9 +253,46 @@ describe("plan", () => {
     );
     expect(await controller.plan("testnet", { source: SOURCE, destination: 5 })).toBe(plan);
     expect(calls).toEqual([
-      [SOURCE, DEST, decisions, "testnet"],
-      [SOURCE, null, [], "testnet"],
+      [SOURCE, DEST, decisions, "testnet", readKillSwitches("testnet")],
+      [SOURCE, null, [], "testnet", readKillSwitches("testnet")],
     ]);
+  });
+
+  test("P4b the switches are read on each request, so a flipped variable reaches the next plan and build", async () => {
+    const planned: KillSwitches[] = [];
+    const built: KillSwitches[] = [];
+    const { controller } = await makeController({
+      buildAccountPlan: async (...args) => {
+        planned.push(args[4]);
+        return { marker: "plan" } as unknown as PlanResponse;
+      },
+      buildCloseTransactions: (async (...args: unknown[]) => {
+        built.push(args[0] as KillSwitches);
+        return BUILT;
+      }) as unknown as Builder,
+    });
+    const saved = process.env.MEDIATOR_FORWARD_ENABLED;
+    try {
+      delete process.env.MEDIATOR_FORWARD_ENABLED;
+      await controller.plan("testnet", { source: SOURCE, destination: DEST });
+      await controller.transactions("testnet", {
+        source: SOURCE,
+        destination: DEST,
+        decisions: [ACK],
+      });
+      process.env.MEDIATOR_FORWARD_ENABLED = "false";
+      await controller.plan("testnet", { source: SOURCE, destination: DEST });
+      await controller.transactions("testnet", {
+        source: SOURCE,
+        destination: DEST,
+        decisions: [ACK],
+      });
+    } finally {
+      if (saved === undefined) delete process.env.MEDIATOR_FORWARD_ENABLED;
+      else process.env.MEDIATOR_FORWARD_ENABLED = saved;
+    }
+    expect(planned.map((s) => s.mediatorForward)).toEqual([true, false]);
+    expect(built.map((s) => s.mediatorForward)).toEqual([true, false]);
   });
 
   test("P5 an HttpException from the planner passes through unchanged", async () => {
@@ -364,8 +402,8 @@ describe("batchPlan", () => {
     ).toEqual({ results });
     expect(await controller.batchPlan("testnet", { addresses: [SOURCE] })).toEqual({ results });
     expect(calls).toEqual([
-      [[SOURCE], DEST, "testnet"],
-      [[SOURCE], null, "testnet"],
+      [[SOURCE], DEST, "testnet", readKillSwitches("testnet")],
+      [[SOURCE], null, "testnet", readKillSwitches("testnet")],
     ]);
   });
 });
@@ -499,8 +537,8 @@ describe("transactions", () => {
     });
     expect((await controller.transactions("testnet", body({ memo: "" }))).status).toBe("ready");
     expect((await controller.transactions("testnet", body({ memo: "  " }))).status).toBe("ready");
-    expect(calls[0]![4]).toBeNull();
-    expect(calls[1]![4]).toBeNull();
+    expect(calls[0]![5]).toBeNull();
+    expect(calls[1]![5]).toBeNull();
   });
 
   test("T4g a blank memo does not satisfy an on-chain memo requirement", async () => {
@@ -665,7 +703,7 @@ describe("transactions", () => {
     const seen: unknown[] = [];
     const { controller: recording } = await makeController({
       buildCloseTransactions: (async (...args: unknown[]) => {
-        seen.push(args[4]);
+        seen.push(args[5]);
         return BUILT;
       }) as Builder,
     });
@@ -986,14 +1024,15 @@ describe("transactions", () => {
       },
     });
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.slice(1, 5)).toEqual([DEST, {}, "testnet", "note"]);
+    expect(calls[0]![0]).toEqual(readKillSwitches("testnet"));
+    expect(calls[0]!.slice(2, 6)).toEqual([DEST, {}, "testnet", "note"]);
   });
 
   test("T13b the issuer-supply acknowledgement reaches the builder only when the caller sent it", async () => {
     const received: unknown[] = [];
     const { controller } = await makeController({
       buildCloseTransactions: (async (...args: unknown[]) => {
-        received.push(args[11]);
+        received.push(args[12]);
         return { transactions: TX, requiresAnotherCall: false, remainingSteps: 0 };
       }) as unknown as Builder,
     });

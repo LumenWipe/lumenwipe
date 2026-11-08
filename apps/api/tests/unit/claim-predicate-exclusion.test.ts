@@ -15,6 +15,7 @@ import { ledgerEntries } from "./fixtures/ledger-trustlines";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import * as rpcModule from "@/lib/stellar/rpc";
+import { ALL_ON } from "@/config/kill-switches";
 
 beforeEach(() => {
   stubIssuance();
@@ -135,7 +136,7 @@ test("decisions › a vesting balance states the date it becomes claimable", () 
 
 test("buildPlan › an expired balance blocks with its own message and is not claimed by default", () => {
   const s = state([balance("a", before(NOW - 1))]);
-  const plan = buildPlan(s, false);
+  const plan = buildPlan(ALL_ON, s, false);
   expect(plan.blockers.map((b) => b.code)).toContain("claimable_balance_unclaimable");
   expect(plan.blockers[0]!.message).toContain("can no longer be claimed");
   expect(plan.steps.some((st) => st.type === "CLAIM_BALANCES")).toBe(false);
@@ -143,13 +144,13 @@ test("buildPlan › an expired balance blocks with its own message and is not cl
 
 test("buildPlan › forfeiting the expired balance leaves only the acknowledged warning", () => {
   const b = balance("a", before(NOW - 1));
-  const plan = buildPlan(state([b]), false, false, { [b.id]: "forfeit" });
+  const plan = buildPlan(ALL_ON, state([b]), false, false, { [b.id]: "forfeit" });
   expect(plan.blockers.map((x) => x.code)).toEqual(["claimable_balance_forfeited"]);
 });
 
 test("buildPlan › unknown ledger time fails closed for a time-bound balance", () => {
   const s = state([balance("a", before(NOW + 10_000_000))], { ledgerCloseTime: undefined });
-  expect(buildPlan(s, false).blockers.map((b) => b.code)).toContain(
+  expect(buildPlan(ALL_ON, s, false).blockers.map((b) => b.code)).toContain(
     "claimable_balance_unclaimable"
   );
 });
@@ -174,9 +175,17 @@ test("buildCloseTransactions › one expired and one good balance claim only the
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   const expired = balance("a", before(NOW - 1));
   const good = balance("b", { type: "unconditional" });
-  const result = await buildCloseTransactions(state([expired, good]), DEST, {}, "testnet", null, {
-    [expired.id]: "forfeit",
-  });
+  const result = await buildCloseTransactions(
+    ALL_ON,
+    state([expired, good]),
+    DEST,
+    {},
+    "testnet",
+    null,
+    {
+      [expired.id]: "forfeit",
+    }
+  );
   expect(result.requiresAnotherCall).toBe(true);
   expect(result.transactions).toHaveLength(1);
   expect(claimIds(result.transactions[0]!.xdr)).toBe(1);
@@ -187,7 +196,7 @@ test("buildCloseTransactions › an expired balance with no answer is refused, n
     rpcStub(NOW)) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   await expect(
-    buildCloseTransactions(state([balance("a", before(NOW - 1))]), DEST, {}, "testnet")
+    buildCloseTransactions(ALL_ON, state([balance("a", before(NOW - 1))]), DEST, {}, "testnet")
   ).rejects.toMatchObject({ code: "claimable_balance_not_claimable_now" });
 });
 
@@ -197,7 +206,7 @@ test("buildCloseTransactions › a balance claimable at plan time that closed by
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   const flips = balance("a", before(NOW + 400));
   await expect(
-    buildCloseTransactions(state([flips]), DEST, {}, "testnet", null, {})
+    buildCloseTransactions(ALL_ON, state([flips]), DEST, {}, "testnet", null, {})
   ).rejects.toMatchObject({ code: "claimable_balance_not_claimable_now" });
 });
 
@@ -207,7 +216,7 @@ test("buildCloseTransactions › a claim answer for a balance that needs a trust
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   const needsTrustline = balance("a", { type: "unconditional" }, "USDC:GX");
   await expect(
-    buildCloseTransactions(state([needsTrustline]), DEST, {}, "testnet", null, {
+    buildCloseTransactions(ALL_ON, state([needsTrustline]), DEST, {}, "testnet", null, {
       [needsTrustline.id]: "claim",
     })
   ).rejects.toMatchObject({ code: "claimable_balance_not_claimable_now" });
@@ -218,7 +227,7 @@ test("buildCloseTransactions › an explicit forfeit of a closed balance still b
     rpcStub(NOW)) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   const closed = balance("a", before(NOW - 1));
-  const result = await buildCloseTransactions(state([closed]), DEST, {}, "testnet", null, {
+  const result = await buildCloseTransactions(ALL_ON, state([closed]), DEST, {}, "testnet", null, {
     [closed.id]: "forfeit",
   });
   const types = result.transactions.flatMap((t) =>
@@ -234,7 +243,7 @@ test("buildCloseTransactions › a stale claim answer for a balance now closed i
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   const aboutToExpire = balance("a", before(NOW + 30));
   await expect(
-    buildCloseTransactions(state([aboutToExpire]), DEST, {}, "testnet", null, {
+    buildCloseTransactions(ALL_ON, state([aboutToExpire]), DEST, {}, "testnet", null, {
       [aboutToExpire.id]: "claim",
     })
   ).rejects.toMatchObject({ code: "claimable_balance_not_claimable_now" });
@@ -252,7 +261,7 @@ test("an absurdly distant opening date cannot break the plan or the decisions", 
   const [d] = deriveClaimableBalanceDecisionPoints(s);
   expect(d!.options.map((o) => o.id)).toEqual(["forfeit"]);
   expect(d!.options[0]!.note).toContain("can no longer be claimed");
-  expect(buildPlan(s, false).blockers.map((b) => b.code)).toContain(
+  expect(buildPlan(ALL_ON, s, false).blockers.map((b) => b.code)).toContain(
     "claimable_balance_unclaimable"
   );
 });
@@ -266,7 +275,13 @@ test.each([["NaN"], ["0"], ["-5"], [undefined]])(
     })) as unknown as typeof rpcModule.getRpcServer);
     const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
     await expect(
-      buildCloseTransactions(state([balance("a", before(NOW + 100_000))]), DEST, {}, "testnet")
+      buildCloseTransactions(
+        ALL_ON,
+        state([balance("a", before(NOW + 100_000))]),
+        DEST,
+        {},
+        "testnet"
+      )
     ).rejects.toMatchObject({ code: "claimable_balance_not_claimable_now" });
   }
 );

@@ -7,6 +7,7 @@ import type {
   PlannedStep,
 } from "@lumenwipe/types";
 import { buildAccountPlan } from "@/lib/close-api/account-plan";
+import { planBatch } from "@/lib/close-api/batch-plan";
 import { buildCloseTransactions } from "@/lib/close-api/build-transactions";
 import {
   DESTINATION_ACK_CHOICE,
@@ -32,6 +33,7 @@ import * as rpcModule from "@/lib/stellar/rpc";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
+import { ALL_ON } from "@/config/kill-switches";
 
 const SOURCE = Keypair.random().publicKey();
 const OTHER_ACCOUNT = Keypair.random().publicKey();
@@ -131,7 +133,7 @@ describe("the plan for a position whose exit cannot be built", () => {
 
   test("blocks the merge by name, offers no exit for it, and asks whether to leave it behind", async () => {
     arrange(state([supply(POOL), supply(POOL_2)]));
-    const plan = await buildAccountPlan(SOURCE, DEST, [], "testnet", {
+    const plan = await buildAccountPlan(SOURCE, DEST, [], "testnet", ALL_ON, {
       preflightExits: preflight({ [POOL]: simulationFails }),
     });
     expect(plan.status).toBe("blocked");
@@ -152,9 +154,44 @@ describe("the plan for a position whose exit cannot be built", () => {
     expect(plan.decisionPoints.some((dp) => dp.id.endsWith(POOL_2))).toBe(false);
   });
 
+  test("a paused protocol is never simulated, offers no exit or leave choice, and blocks by name", async () => {
+    arrange(state([supply(POOL)]));
+    let preflighted = 0;
+    const plan = await buildAccountPlan(
+      SOURCE,
+      DEST,
+      [],
+      "testnet",
+      { ...ALL_ON, pausedExits: new Set(["blend"]) },
+      {
+        preflightExits: async () => {
+          preflighted++;
+          return new Map();
+        },
+      }
+    );
+    expect(preflighted).toBe(0);
+    expect(plan.status).toBe("blocked");
+    expect(plan.blockers.map((b) => b.code)).toEqual(["defi_exit_paused"]);
+    expect((plan.steps as PlannedStep[]).some((s) => s.type === "EXIT_POSITIONS")).toBe(false);
+    expect(plan.decisionPoints.some((dp) => dp.id.startsWith("defi_leave:"))).toBe(false);
+  });
+
+  test("a batch plan reports a paused protocol for every address, as a single plan does", async () => {
+    arrange(state([supply(POOL)]));
+    const results = await planBatch([SOURCE, OTHER_ACCOUNT], DEST, "testnet", {
+      ...ALL_ON,
+      pausedExits: new Set(["blend"]),
+    });
+    expect(results.map((r) => r.plan.blockers.map((b) => b.code))).toEqual([
+      ["defi_exit_paused"],
+      ["defi_exit_paused"],
+    ]);
+  });
+
   test("after the user leaves it behind, only a recorded warning remains", async () => {
     arrange(state([supply(POOL)]));
-    const plan = await buildAccountPlan(SOURCE, DEST, [leave(POOL)], "testnet", {
+    const plan = await buildAccountPlan(SOURCE, DEST, [leave(POOL)], "testnet", ALL_ON, {
       preflightExits: preflight({ [POOL]: simulationFails }),
     });
     expect(plan.blockers.map((b) => b.code)).toEqual(["defi_position_left_behind"]);
@@ -163,15 +200,22 @@ describe("the plan for a position whose exit cannot be built", () => {
 
   test("an answer given for another account leaves nothing behind", async () => {
     arrange(state([supply(POOL)]));
-    const plan = await buildAccountPlan(SOURCE, DEST, [leave(POOL, OTHER_ACCOUNT)], "testnet", {
-      preflightExits: preflight({ [POOL]: simulationFails }),
-    });
+    const plan = await buildAccountPlan(
+      SOURCE,
+      DEST,
+      [leave(POOL, OTHER_ACCOUNT)],
+      "testnet",
+      ALL_ON,
+      {
+        preflightExits: preflight({ [POOL]: simulationFails }),
+      }
+    );
     expect(plan.blockers.map((b) => b.code)).toEqual(["exit_simulation_failed"]);
   });
 
   test("a blocker that may clear on retry is never offered as something to leave, and the round decides", async () => {
     arrange(state([supply(POOL)]));
-    const plan = await buildAccountPlan(SOURCE, DEST, [leave(POOL)], "testnet", {
+    const plan = await buildAccountPlan(SOURCE, DEST, [leave(POOL)], "testnet", ALL_ON, {
       preflightExits: preflight({
         [POOL]: { code: "exit_read_failed", message: "Retry the analysis.", leaveEligible: false },
       }),
@@ -183,7 +227,7 @@ describe("the plan for a position whose exit cannot be built", () => {
 
   test("a preflight that fails plans the exit as before, so the round still decides", async () => {
     arrange(state([supply(POOL)]));
-    const plan = await buildAccountPlan(SOURCE, DEST, [], "testnet", {
+    const plan = await buildAccountPlan(SOURCE, DEST, [], "testnet", ALL_ON, {
       preflightExits: async () => {
         throw new Error("rpc down");
       },
@@ -214,6 +258,7 @@ describe("building a close past a position the user left behind", () => {
   test("without the choice, the build refuses before any merge is offered", async () => {
     stubRpc();
     const promise = buildCloseTransactions(
+      ALL_ON,
       state([supply(POOL)]),
       DEST,
       {},
@@ -231,6 +276,7 @@ describe("building a close past a position the user left behind", () => {
   test("with the choice, the close goes on to the merge", async () => {
     stubRpc();
     const result = await buildCloseTransactions(
+      ALL_ON,
       state([supply(POOL)]),
       DEST,
       {},
@@ -261,7 +307,7 @@ describe("building a close past a position the user left behind", () => {
         ...defaultCloseBuilder,
         assessMergePreflight: async () => [],
         buildCloseTransactions: async (...args) => {
-          seen = args[7]?.leaveBehind;
+          seen = args[8]?.leaveBehind;
           return { transactions: [], requiresAnotherCall: false, remainingSteps: 0 };
         },
       },

@@ -11,6 +11,18 @@ version number before 0.4.0. Neither has a git tag.
 
 ## [Unreleased]
 
+### Added
+
+- `ErrorCode` gains `exchange_forward_paused`, `fee_sponsorship_paused` and `defi_exit_paused`:
+  an exchange close, fee sponsorship or one protocol's exits paused on the server. Each is a plan
+  blocker and a 503 from `close/transactions` before any transaction is built; the first two also
+  come from the mediator co-sign and the fee-bump sponsor.
+
+### Changed
+
+- `mediator_not_configured` is now a plan blocker, and `close/transactions` refuses an exchange
+  close with it before the cleanup round instead of after the cleanup has landed.
+
 ## [0.9.0] - 2026-11-08
 
 ### Added

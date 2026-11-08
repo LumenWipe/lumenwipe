@@ -18,6 +18,7 @@ import { authorizationOf } from "../unit/fixtures/trustline";
 import { ledgerEntries } from "../unit/fixtures/ledger-trustlines";
 import { stubIssuance } from "../unit/fixtures/issuance";
 import { stubLedgerConfirmation } from "../unit/fixtures/ledger-confirmation";
+import { ALL_ON } from "@/config/kill-switches";
 
 beforeEach(() => {
   stubIssuance();
@@ -114,6 +115,7 @@ async function build(
   balance = BALANCE
 ): Promise<Op[]> {
   const result = await buildCloseTransactions(
+    ALL_ON,
     state(offers, balance),
     DEST,
     dispositions,
@@ -179,14 +181,16 @@ test("an unanswered disposition converts the whole balance when a route exists",
 test("no transaction is built while an asset with no market has no disposition", async () => {
   spyOn(pathFinding, "fetchConversionPath").mockResolvedValue(NO_MARKET);
   stubChain();
-  const failure = await buildCloseTransactions(state([OFFER]), DEST, {}, "testnet").catch(
+  const failure = await buildCloseTransactions(ALL_ON, state([OFFER]), DEST, {}, "testnet").catch(
     (e: unknown) => e
   );
   expect(failure).toBeInstanceOf(Error);
 });
 
 test("the plan keeps the offer cancellation and the held asset's step as separate steps", () => {
-  const plan = buildPlan(state([OFFER]), false, false, {}, undefined, { [ASSET]: "convert" });
+  const plan = buildPlan(ALL_ON, state([OFFER]), false, false, {}, undefined, {
+    [ASSET]: "convert",
+  });
   const kinds = plan.steps.map((s) => (s as { type: string }).type);
   expect(kinds).toContain("CANCEL_OFFERS");
   expect(kinds).toContain("HANDLE_ASSETS");

@@ -27,6 +27,7 @@ import { mirrorSnapshot } from "../unit/fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
 import { stubIssuance } from "../unit/fixtures/issuance";
 import { stubLedgerConfirmation } from "../unit/fixtures/ledger-confirmation";
+import { ALL_ON } from "@/config/kill-switches";
 
 beforeEach(() => {
   stubIssuance();
@@ -103,7 +104,7 @@ test("build-transactions re-reads sponsorship affordability live, independent of
     unaffordableOwners: new Map([[OWNER, { entries: SPONSORED_ENTRIES, shortfallXlm: "5" }]]),
   });
 
-  const result = await buildCloseTransactions(accountState(), DEST, {}, "testnet");
+  const result = await buildCloseTransactions(ALL_ON, accountState(), DEST, {}, "testnet");
 
   const ops = opsOf(result.transactions[0]!.xdr);
   // Unaffordable per the live (build-time) read: no revoke-sponsorship op is built for it.
@@ -117,7 +118,7 @@ test("build-transactions includes the revoke when the live read confirms it's af
     unaffordableOwners: new Map(),
   });
 
-  const result = await buildCloseTransactions(accountState(), DEST, {}, "testnet");
+  const result = await buildCloseTransactions(ALL_ON, accountState(), DEST, {}, "testnet");
 
   const ops = opsOf(result.transactions[0]!.xdr);
   expect(ops.some((o) => o.type === "revokeTrustlineSponsorship")).toBe(true);

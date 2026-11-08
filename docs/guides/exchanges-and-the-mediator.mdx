@@ -19,7 +19,7 @@ The mediator is a persistent account funded once by the operator, so you do not 
 
 ## Availability by network
 
-As of 2026-10-10, the mediator flow is available on testnet. Mainnet availability follows the deployment status in the [monitoring plan](/monitoring-plan): the API only co-signs the mediator payment on a network where a mediator key is configured, and otherwise reports that exchange closes are not configured there.
+As of 2026-10-10, the mediator flow is available on testnet. Mainnet availability follows the deployment status in the [monitoring plan](/monitoring-plan): the API only co-signs the mediator payment on a network where a mediator key is configured. Elsewhere, or while exchange closes are paused, the plan reports the close as blocked before anything is built or signed, so the account is never cleaned up for a merge that cannot follow. Choose a wallet you control as the destination instead, or try again later.
 
 ## Your browser checks it too
 

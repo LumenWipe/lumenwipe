@@ -30,6 +30,7 @@ import { rawSimulation } from "./fixtures/fake-exit-adapter";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
+import { ALL_ON } from "@/config/kill-switches";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -213,6 +214,7 @@ function oneStepExit(): ExitRunResult {
 
 function exitRound(s: AccountState) {
   return buildCloseTransactions(
+    ALL_ON,
     s,
     DEST,
     {},
@@ -242,6 +244,7 @@ async function refusal(promise: Promise<unknown>): Promise<CloseBuildError> {
 
 function tokenTransfer(s: AccountState) {
   return buildCloseTransactions(
+    ALL_ON,
     s,
     DEST,
     { [TOKEN]: "transfer" },
@@ -324,6 +327,7 @@ test("soroban round › rounds still to come are reserved at the plan's estimate
   const second = Address.contract(Buffer.alloc(32, 8)).toString();
   const twoTokens = (balance: bigint) =>
     buildCloseTransactions(
+      ALL_ON,
       withToken(balance, {
         sorobanTokens: {
           tokens: [
@@ -369,11 +373,18 @@ test("exchange merge › refused below the least forward plus its fee, built at 
   const sponsoredAccount = { numSponsored: 2 };
 
   const short = await refusal(
-    buildCloseTransactions(state(ONE_XLM + MERGE_FEE - 1n, sponsoredAccount), DEST, {}, "testnet")
+    buildCloseTransactions(
+      ALL_ON,
+      state(ONE_XLM + MERGE_FEE - 1n, sponsoredAccount),
+      DEST,
+      {},
+      "testnet"
+    )
   );
   expect(short.code).toBe("close_fee_balance_short");
 
   const built = await buildCloseTransactions(
+    ALL_ON,
     state(ONE_XLM + MERGE_FEE, sponsoredAccount),
     DEST,
     {},
@@ -387,7 +398,7 @@ test("exchange merge › an unconfigured relay is reported as such, not as a fee
   spyOn(registry, "requiresMediatorForAddress").mockReturnValue(true);
   spyOn(networks, "getMediatorPublicKey").mockReturnValue(null as unknown as string);
 
-  const failure = await refusal(buildCloseTransactions(state(1n), DEST, {}, "testnet"));
+  const failure = await refusal(buildCloseTransactions(ALL_ON, state(1n), DEST, {}, "testnet"));
   expect(failure.code).toBe("mediator_not_configured");
 });
 
@@ -398,12 +409,13 @@ test("exchange cleanup › refused before anything is built when the merge after
   const emptyLine = { trustlines: [trustline("0")], numSubEntries: 1, numSponsored: 2 };
 
   const short = await refusal(
-    buildCloseTransactions(state(ONE_XLM + MERGE_FEE + 99n, emptyLine), DEST, {}, "testnet")
+    buildCloseTransactions(ALL_ON, state(ONE_XLM + MERGE_FEE + 99n, emptyLine), DEST, {}, "testnet")
   );
   expect(short.code).toBe("close_fee_balance_short");
   expect(short.message).toContain("0.0000001 XLM");
 
   const built = await buildCloseTransactions(
+    ALL_ON,
     state(ONE_XLM + MERGE_FEE + 100n, emptyLine),
     DEST,
     {},
@@ -426,7 +438,7 @@ test("exchange cleanup › a conversion's destination minimum counts toward what
   const funded = { trustlines: [trustline("1.0000000")], numSubEntries: 1, numSponsored: 1 };
 
   route("0.0000200");
-  const built = await buildCloseTransactions(state(ONE_XLM, funded), DEST, {}, "testnet");
+  const built = await buildCloseTransactions(ALL_ON, state(ONE_XLM, funded), DEST, {}, "testnet");
   expect(built.transactions[0]!.needsSponsoredFee).toBe(true);
 
   mock.restore();
@@ -437,19 +449,22 @@ test("exchange cleanup › a conversion's destination minimum counts toward what
   viaExchange();
   sponsorConfigured();
   route("0.0000199");
-  const short = await refusal(buildCloseTransactions(state(ONE_XLM, funded), DEST, {}, "testnet"));
+  const short = await refusal(
+    buildCloseTransactions(ALL_ON, state(ONE_XLM, funded), DEST, {}, "testnet")
+  );
   expect(short.code).toBe("close_fee_balance_short");
 });
 
 test("classic round › refused, not flagged, when no sponsor is configured to pay its fee", async () => {
   const atMinimum = { trustlines: [trustline("0")], numSubEntries: 1 };
   const short = await refusal(
-    buildCloseTransactions(state(ONE_XLM + HALF_XLM, atMinimum), DEST, {}, "testnet")
+    buildCloseTransactions(ALL_ON, state(ONE_XLM + HALF_XLM, atMinimum), DEST, {}, "testnet")
   );
   expect(short.code).toBe("close_fee_balance_short");
 
   sponsorConfigured();
   const built = await buildCloseTransactions(
+    ALL_ON,
     state(ONE_XLM + HALF_XLM, atMinimum),
     DEST,
     {},
@@ -462,6 +477,7 @@ test("plan › a close whose Soroban rounds the account cannot pay for is blocke
   const owed = 2n * ESTIMATE + CLASSIC_FEES;
   const blocker = (balance: bigint) =>
     buildPlan(
+      ALL_ON,
       withPosition(balance),
       false,
       false,

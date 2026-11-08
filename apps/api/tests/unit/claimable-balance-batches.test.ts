@@ -19,6 +19,7 @@ import { ledgerEntries } from "./fixtures/ledger-trustlines";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import * as rpcModule from "@/lib/stellar/rpc";
+import { ALL_ON } from "@/config/kill-switches";
 
 beforeEach(() => {
   stubIssuance();
@@ -136,7 +137,7 @@ async function build(s: AccountState, selections: Record<string, ClaimableBalanc
   spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
     rpcStub()) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
-  return buildCloseTransactions(s, DEST, {}, "testnet", null, selections);
+  return buildCloseTransactions(ALL_ON, s, DEST, {}, "testnet", null, selections);
 }
 
 const claims = (xdrs: string[]) => opTypes(xdrs).filter((t) => t === "claimClaimableBalance");
@@ -207,9 +208,15 @@ test("a read full of left-behind balances is a blocker, not a loop and not a mer
 test("the plan reports the same blocker when nothing visible can be claimed", () => {
   const forfeited = [balance(1), balance(2)];
   const answers = Object.fromEntries(forfeited.map((b) => [b.id, "forfeit" as const]));
-  const stuck = buildPlan(state(forfeited, { claimableBalancesMore: true }), false, false, answers);
+  const stuck = buildPlan(
+    ALL_ON,
+    state(forfeited, { claimableBalancesMore: true }),
+    false,
+    false,
+    answers
+  );
   expect(stuck.blockers.map((b) => b.code)).toContain("claimable_balances_too_many");
-  const moving = buildPlan(state(forfeited, { claimableBalancesMore: true }), false);
+  const moving = buildPlan(ALL_ON, state(forfeited, { claimableBalancesMore: true }), false);
   expect(moving.blockers.map((b) => b.code)).not.toContain("claimable_balances_too_many");
 });
 

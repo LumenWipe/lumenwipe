@@ -544,7 +544,7 @@ The user keeps control. A trustline is only removed once the protocol's full del
 
 Exchanges do not support `ACCOUNT_MERGE`, and their crediting systems only recognize `Payment` operations with a memo, so a user cannot merge directly into a deposit address (a direct merge is typically lost). The tool bridges this with a single shared mediator account, the same pattern the reference demolisher uses, in one atomic transaction.
 
-Availability by network (as of 2026-10-10): the mediator flow is available on testnet. Mainnet availability follows the deployment status in the [monitoring plan](/monitoring-plan); without a configured mainnet mediator key the API answers mainnet exchange closes with a "not configured" error instead of attempting them.
+Availability by network (as of 2026-10-10): the mediator flow is available on testnet. Mainnet availability follows the deployment status in the [monitoring plan](/monitoring-plan); without a configured mainnet mediator key the API reports a mainnet exchange close as blocked (`mediator_not_configured`) in its plan, and `close/transactions` refuses it before any cleanup transaction is built, so an account is never emptied for a forward that cannot follow. An operator can also pause the forward without a deploy (`MEDIATOR_FORWARD_ENABLED=false`, see RELEASING.md), which blocks the same way with `exchange_forward_paused`.
 
 ![Mediator account flow for exchange destinations: one atomic transaction where the user signs the AccountMerge and the API co-signs the forwarding Payment with memo](./diagrams/output/09-mediator-flow.svg)
 

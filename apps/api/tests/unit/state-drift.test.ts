@@ -25,6 +25,7 @@ import {
   type LedgerEntryFixture,
 } from "./fixtures/live-ledger";
 import { authorizationOf } from "./fixtures/trustline";
+import { ALL_ON } from "@/config/kill-switches";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -145,7 +146,7 @@ function useLedger(spec: AccountEntrySpec | null) {
   return server;
 }
 
-const build = () => buildCloseTransactions(state(), DEST, {}, "testnet");
+const build = () => buildCloseTransactions(ALL_ON, state(), DEST, {}, "testnet");
 
 afterEach(() => mock.restore());
 
@@ -351,7 +352,8 @@ describe("an RPC behind the snapshot, with more than one provider configured", (
   }
 
   const snapshot = state({ snapshotLedger: SNAPSHOT });
-  const buildFrom = (from: AccountState) => buildCloseTransactions(from, DEST, {}, "testnet");
+  const buildFrom = (from: AccountState) =>
+    buildCloseTransactions(ALL_ON, from, DEST, {}, "testnet");
 
   test("a drift the RPC has not reached yet is a 503, not a change of state", async () => {
     atLedger(SNAPSHOT - 1);

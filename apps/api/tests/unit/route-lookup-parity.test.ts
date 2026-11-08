@@ -15,6 +15,7 @@ import { ledgerEntries } from "./fixtures/ledger-trustlines";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { EMPTY_MARKET, MAINNET_DUST_SHX, MAINNET_LIQUID_USDC } from "./fixtures/horizon-paths";
+import { ALL_ON } from "@/config/kill-switches";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -98,10 +99,11 @@ test.each(TABLE)(
     spyOn(readAccount, "readAccountState").mockResolvedValue(state(balance));
     stubChain();
 
-    const plan = await buildAccountPlan(SOURCE, null, [], "testnet");
+    const plan = await buildAccountPlan(SOURCE, null, [], "testnet", ALL_ON);
     const card = plan.decisionPoints.find((d) => d.type === "asset_disposition");
     const blockerCodes = plan.blockers.map((b) => b.code);
     const build = await buildCloseTransactions(
+      ALL_ON,
       state(balance),
       DEST,
       { [ASSET]: "convert" },

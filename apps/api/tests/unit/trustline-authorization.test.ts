@@ -9,6 +9,7 @@ import { readTrustlinesOnly } from "@/lib/stellar/account-state";
 import { assessTrustlineAuthorizationBlockers, buildPlan } from "@/lib/stellar/tx-builder";
 import { UnusableProviderResponseError } from "@/lib/utils/errors";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { ALL_ON } from "@/config/kill-switches";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -100,7 +101,7 @@ test.each(PARITY_CASES)(
   "plan and build agree on a %s line holding %s",
   async (authorization, balance, expectedCode) => {
     const account = state([line(authorization, balance)]);
-    const planCodes = buildPlan(account, false, false)
+    const planCodes = buildPlan(ALL_ON, account, false, false)
       .blockers.map((b) => b.code)
       .filter((c) => c?.startsWith("trustline_"));
     expect(planCodes).toEqual(expectedCode ? [expectedCode] : []);
@@ -115,7 +116,9 @@ test.each(PARITY_CASES)(
       },
     })) as unknown as typeof rpcModule.getRpcServer);
 
-    const err = await buildCloseTransactions(account, DEST, {}, "testnet").catch((e: unknown) => e);
+    const err = await buildCloseTransactions(ALL_ON, account, DEST, {}, "testnet").catch(
+      (e: unknown) => e
+    );
     if (expectedCode) {
       expect(err).toBeInstanceOf(CloseBuildError);
       expect((err as CloseBuildError).code).toBe(expectedCode as CloseBuildError["code"]);

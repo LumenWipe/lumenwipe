@@ -7,6 +7,7 @@ import * as rpcModule from "@/lib/stellar/rpc";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
+import { ALL_ON } from "@/config/kill-switches";
 
 beforeEach(() => {
   stubIssuance();
@@ -105,7 +106,7 @@ test("buildCloseTransactions › add_trustline_then_claim balance → changeTrus
   const balance = claimableBalance("a", USDC);
   const state = accountState({ claimableBalances: [balance] });
 
-  const result = await buildCloseTransactions(state, DEST, {}, "testnet", null, {
+  const result = await buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet", null, {
     [balance.id]: "add_trustline_then_claim",
   });
 
@@ -128,7 +129,7 @@ test("buildCloseTransactions › forfeited unclaimable balance → excluded from
   const balance = claimableBalance("b", USDC);
   const state = accountState({ claimableBalances: [balance] });
 
-  const result = await buildCloseTransactions(state, DEST, {}, "testnet", null, {
+  const result = await buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet", null, {
     [balance.id]: "forfeit",
   });
 
@@ -148,7 +149,7 @@ test("buildCloseTransactions › unresolved unclaimable balance → refused rath
   const balance = claimableBalance("c", USDC);
   const state = accountState({ claimableBalances: [balance] });
 
-  await expect(buildCloseTransactions(state, DEST, {}, "testnet")).rejects.toMatchObject({
+  await expect(buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet")).rejects.toMatchObject({
     code: "claimable_balance_not_claimable_now",
   });
 });
@@ -161,7 +162,7 @@ test("buildCloseTransactions › currently-claimable balance defaults to claim w
   const balance = claimableBalance("d", "native");
   const state = accountState({ claimableBalances: [balance] });
 
-  const result = await buildCloseTransactions(state, DEST, {}, "testnet");
+  const result = await buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet");
 
   expect(result.requiresAnotherCall).toBe(true);
   const ops = opsOf(result.transactions[0].xdr);
@@ -176,7 +177,7 @@ test("buildCloseTransactions › currently-claimable balance explicitly forfeite
   const balance = claimableBalance("e", "native");
   const state = accountState({ claimableBalances: [balance] });
 
-  const result = await buildCloseTransactions(state, DEST, {}, "testnet", null, {
+  const result = await buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet", null, {
     [balance.id]: "forfeit",
   });
 
@@ -205,7 +206,7 @@ test("buildCloseTransactions › sponsored entry the live re-read marks revocabl
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const state = accountState({ sponsoredEntries: [SPONSORED_ENTRY], numSponsoring: 1 });
-  const result = await buildCloseTransactions(state, DEST, {}, "testnet");
+  const result = await buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet");
 
   expect(result.transactions).toHaveLength(1);
   expect(result.transactions[0].covers).toContain("REVOKE_SPONSORSHIP");
@@ -225,7 +226,7 @@ test("buildCloseTransactions › sponsored entry the live re-read marks unafford
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const state = accountState({ sponsoredEntries: [SPONSORED_ENTRY], numSponsoring: 1 });
-  const result = await buildCloseTransactions(state, DEST, {}, "testnet");
+  const result = await buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet");
 
   expect(result.transactions).toHaveLength(1);
   expect(result.transactions[0].covers).not.toContain("REVOKE_SPONSORSHIP");
@@ -261,6 +262,7 @@ async function buildTransferWithClaim(selection: "forfeit" | undefined) {
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   const balance = claimableBalance("d", USDC, "60.0000000");
   return buildCloseTransactions(
+    ALL_ON,
     accountState({ trustlines: [heldUsdc("50")], claimableBalances: [balance] }),
     DEST,
     { [USDC]: "transfer" },

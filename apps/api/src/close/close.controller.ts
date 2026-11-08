@@ -172,9 +172,12 @@ export class CloseController {
   ])
   @ApiErrorResponse(
     503,
-    "The exchange (mediator) flow or the exchange registry is not available, or the destination or ledger could not be read. Retry.",
+    "The exchange (mediator) flow, the exchange registry, fee sponsorship or a protocol's exits are not available or paused, or the destination or ledger could not be read. Retry.",
     [
       "mediator_not_configured",
+      "exchange_forward_paused",
+      "fee_sponsorship_paused",
+      "defi_exit_paused",
       "registry_expired",
       "destination_read_failed",
       "issuer_read_failed",

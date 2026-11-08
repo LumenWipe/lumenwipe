@@ -21,6 +21,7 @@ import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
 import { NetworkPipe } from "@/common/pipes/network.pipe";
 import { BASE_FEE_STROOPS, MAX_FEE_BUMP_STROOPS } from "@/config/constants";
 import { getFeeAccountKeypair } from "@/lib/stellar/fee-account";
+import { readKillSwitches } from "@/config/kill-switches";
 import { fail } from "@/common/fail";
 import {
   ACCOUNT_SEQUENCE_READER,
@@ -84,8 +85,8 @@ export class FeeBumpController {
   )
   @ApiErrorResponse(
     503,
-    "Sponsored-fee flow not configured on this server, or the account could not be read.",
-    ["fee_bump_not_configured", "service_unavailable"]
+    "Sponsored-fee flow not configured on this server or paused, or the account could not be read.",
+    ["fee_bump_not_configured", "fee_sponsorship_paused", "service_unavailable"]
   )
   @ApiBodyErrorResponses()
   @Post("sponsor")
@@ -103,6 +104,13 @@ export class FeeBumpController {
     @Req() req: Pick<AuthedRequest, "apiKeyLabel">,
     @Res({ passthrough: true }) res?: { setHeader(name: string, value: string): unknown }
   ) {
+    if (!readKillSwitches(network).feeSponsorship) {
+      fail(
+        "fee_sponsorship_paused",
+        "Fee sponsorship is paused right now. Analyze the account again to see what it needs.",
+        503
+      );
+    }
     const feeAccount = getFeeAccountKeypair(network);
     if (!feeAccount) {
       fail(

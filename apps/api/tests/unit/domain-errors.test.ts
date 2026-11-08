@@ -25,6 +25,7 @@ import {
   AssetRouteLostError,
   UnusableProviderResponseError,
 } from "@/lib/utils/errors";
+import { ALL_ON } from "@/config/kill-switches";
 
 const ADDRESS = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H";
 const CONTRACT = "CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE";
@@ -255,7 +256,7 @@ describe("what each filter catches", () => {
 
 describe("close/plan and close/batch-plan share one mapping", () => {
   test.each(PLAN_CASES)("%s is the same blocker code", async (_name, error, _status, code) => {
-    const [{ plan }] = await planBatch([ADDRESS], null, "testnet", {
+    const [{ plan }] = await planBatch([ADDRESS], null, "testnet", ALL_ON, {
       buildAccountPlan: () => Promise.reject(error),
     });
     expect(plan.status).toBe("blocked");
@@ -263,7 +264,7 @@ describe("close/plan and close/batch-plan share one mapping", () => {
   });
 
   test("an unrecognized error falls back to plan_failed", async () => {
-    const [{ plan }] = await planBatch([ADDRESS], null, "testnet", {
+    const [{ plan }] = await planBatch([ADDRESS], null, "testnet", ALL_ON, {
       buildAccountPlan: () => Promise.reject(new Error("boom")),
     });
     expect(plan.blockers).toEqual([

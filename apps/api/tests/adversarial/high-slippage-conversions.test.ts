@@ -26,6 +26,7 @@ import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
 import { authorizationOf } from "../unit/fixtures/trustline";
 import { stubIssuance } from "../unit/fixtures/issuance";
 import { stubLedgerConfirmation } from "../unit/fixtures/ledger-confirmation";
+import { ALL_ON } from "@/config/kill-switches";
 
 beforeEach(() => {
   stubIssuance();
@@ -144,7 +145,13 @@ test("a build called twice embeds each call's own fresh quote, never a cached or
     kind: "route",
     path: betterPath,
   });
-  const firstResult = await buildCloseTransactions(accountState("100"), DEST, {}, "testnet");
+  const firstResult = await buildCloseTransactions(
+    ALL_ON,
+    accountState("100"),
+    DEST,
+    {},
+    "testnet"
+  );
   expect(destMinOf(firstResult.transactions[0]!.xdr)).toBe("99.5000000");
 
   // A second build - a real caller re-requesting after the route degraded between rounds -
@@ -154,6 +161,12 @@ test("a build called twice embeds each call's own fresh quote, never a cached or
     kind: "route",
     path: worsePath,
   });
-  const secondResult = await buildCloseTransactions(accountState("100"), DEST, {}, "testnet");
+  const secondResult = await buildCloseTransactions(
+    ALL_ON,
+    accountState("100"),
+    DEST,
+    {},
+    "testnet"
+  );
   expect(destMinOf(secondResult.transactions[0]!.xdr)).toBe("80.0000000");
 });

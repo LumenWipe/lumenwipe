@@ -9,6 +9,7 @@ import { ledgerEntries } from "./fixtures/ledger-trustlines";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import * as rpcModule from "@/lib/stellar/rpc";
+import { ALL_ON } from "@/config/kill-switches";
 
 beforeEach(() => {
   stubIssuance();
@@ -117,10 +118,10 @@ test("decisions › an account with headroom keeps both options", () => {
 
 test("plan › the shortfall is a blocker, and the unanswered balance names it", () => {
   const b = balance(1, USDC);
-  const unanswered = buildPlan(state("1.0000000", [b]), false);
+  const unanswered = buildPlan(ALL_ON, state("1.0000000", [b]), false);
   expect(unanswered.blockers[0]!.message).toContain("0.5000200 XLM");
 
-  const chosen = buildPlan(state("1.0000000", [b]), false, false, {
+  const chosen = buildPlan(ALL_ON, state("1.0000000", [b]), false, false, {
     [b.id]: "add_trustline_then_claim",
   });
   expect(chosen.blockers.map((x) => x.code)).toContain("claimable_balance_reserve_short");
@@ -130,14 +131,14 @@ test("plan › several balances of one asset share one new reserve", () => {
   const same = [balance(1, USDC), balance(2, USDC), balance(3, USDC)];
   const answers = Object.fromEntries(same.map((b) => [b.id, "add_trustline_then_claim" as const]));
   // 1.0 reserve + 0.5 for ONE trustline + 4 ops x 100 stroops of fees
-  const enough = buildPlan(state("1.5000400", same), false, false, answers);
+  const enough = buildPlan(ALL_ON, state("1.5000400", same), false, false, answers);
   expect(enough.blockers.map((x) => x.code)).not.toContain("claimable_balance_reserve_short");
 
   const two = [balance(1, USDC), balance(2, EURC)];
   const twoAnswers = Object.fromEntries(
     two.map((b) => [b.id, "add_trustline_then_claim" as const])
   );
-  const short = buildPlan(state("1.5000400", two), false, false, twoAnswers);
+  const short = buildPlan(ALL_ON, state("1.5000400", two), false, false, twoAnswers);
   expect(short.blockers.map((x) => x.code)).toContain("claimable_balance_reserve_short");
 });
 
@@ -153,7 +154,7 @@ async function build(s: AccountState, selections: Record<string, "add_trustline_
   spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
     rpcStub()) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
-  return buildCloseTransactions(s, DEST, {}, "testnet", null, selections);
+  return buildCloseTransactions(ALL_ON, s, DEST, {}, "testnet", null, selections);
 }
 
 test("builder › an account at its minimum is refused with the shortfall instead of a reverting round", async () => {

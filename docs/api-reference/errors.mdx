@@ -19,7 +19,7 @@ This page lists every code in the API's error registry. If a close fails halfway
 
 Three rules that apply to every row:
 
-- Every `503` and every `429` carries a `Retry-After` header. On a `503` it is a fixed default of 30 seconds, not a measured recovery time. A `503` does not always mean waiting helps: `registry_expired` and the `*_not_configured` codes are marked No because they need the operator to act.
+- Every `503` and every `429` carries a `Retry-After` header. On a `503` it is a fixed default of 30 seconds, not a measured recovery time. A `503` does not always mean waiting helps: `registry_expired` and the `*_not_configured` codes are marked No because they need the operator to act. The `*_paused` codes are marked Yes: the operator paused that path on purpose and turns it back on without any change on your side, though not within one `Retry-After`.
 - The `status` column is the HTTP status the code is returned with. `request_failed` is any other 4xx status, and `defi_positions_unavailable`, `route_lookup_unavailable` and `conversion_impact_not_acknowledged` are raised as plan blockers rather than a fixed status.
 - The [SDK](/sdk/errors) retries only the calls and statuses it documents, and never retries `submit`.
 
@@ -125,6 +125,7 @@ A position that cannot be closed safely is reported, never skipped. Show the `me
 | Code                                | Status | Retry     | Meaning                                                                     |
 | ----------------------------------- | ------ | --------- | --------------------------------------------------------------------------- |
 | `defi_exit_blocked`                 | 422    | After fix | A DeFi position could not be exited safely.                                 |
+| `defi_exit_paused`                  | 503    | Yes       | Exits from this DeFi protocol are paused. Retry later.                      |
 | `defi_exit_unsupported`             | 422    | After fix | The account holds a DeFi position that cannot be exited yet.                |
 | `defi_position_unrecognized`        | 422    | No        | A DeFi position could not be identified.                                    |
 | `defi_positions_blocked`            | 422    | After fix | A DeFi position blocks the close.                                           |
@@ -172,16 +173,18 @@ These refuse a conversion or transfer of a Soroban token that cannot be done saf
 
 ## Exchange relay, sponsored fees and the registry
 
-A refusal here happens before anything is submitted, so nothing has changed on the ledger. `transaction_structure_not_allowed` means the transaction is not the exact shape the relay or the fee sponsor will sign, and sending it again will not change that. `registry_expired` and the `*_not_configured` codes are about the server, not the request: show the `message`, and offer a destination that is not an exchange where one exists.
+A refusal here happens before anything is submitted, so nothing has changed on the ledger. `transaction_structure_not_allowed` means the transaction is not the exact shape the relay or the fee sponsor will sign, and sending it again will not change that. `registry_expired`, the `*_not_configured` codes and the `*_paused` codes are about the server, not the request: show the `message`, and offer a destination that is not an exchange where one exists. A `*_paused` code means the path is switched off for now and comes back without any change on your side. `close/plan` reports `mediator_not_configured`, `exchange_forward_paused`, `fee_sponsorship_paused` and `defi_exit_paused` as blockers, and `close/transactions` refuses with the same code before it builds any transaction.
 
 | Code                                | Status | Retry       | Meaning                                                                        |
 | ----------------------------------- | ------ | ----------- | ------------------------------------------------------------------------------ |
 | `mediator_not_configured`           | 503    | No          | The exchange (mediator) flow is not configured on this server.                 |
+| `exchange_forward_paused`           | 503    | Yes         | Closing into an exchange is paused. Retry later.                               |
 | `mediator_key_misconfiguration`     | 503    | Yes         | The exchange flow is temporarily unavailable. Retry.                           |
 | `forward_amount_exceeds_balance`    | 400    | After fix   | The mediator forward is larger than the balance being merged.                  |
 | `merged_account_not_found`          | 400    | Check first | The account being merged does not exist.                                       |
 | `transaction_structure_not_allowed` | 400    | After fix   | The transaction is not a shape this endpoint may sign.                         |
 | `fee_bump_not_configured`           | 503    | No          | Sponsored fees are not configured on this server.                              |
+| `fee_sponsorship_paused`            | 503    | Yes         | Fee sponsorship is paused. Retry later.                                        |
 | `fee_bump_exceeds_cap`              | 400    | After fix   | The sponsored fee would exceed the cap.                                        |
 | `inner_fee_not_zero`                | 400    | After fix   | The inner transaction of a sponsored fee bump must carry no fee of its own.    |
 | `operation_not_sponsorable`         | 400    | After fix   | The transaction contains an operation that cannot be sponsored.                |

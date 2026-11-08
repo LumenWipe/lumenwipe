@@ -1,4 +1,5 @@
 import type { Network } from "@/config/networks";
+import type { KillSwitches } from "@/config/kill-switches";
 import { buildAccountPlan } from "@/lib/close-api/account-plan";
 import { mapDomainError, PLAN_ERRORS } from "@/lib/close-api/domain-errors";
 import type { BatchPlanResult, PlanResponse } from "@lumenwipe/types";
@@ -53,6 +54,7 @@ export async function planBatch(
   addresses: string[],
   destination: string | null,
   network: Network,
+  switches: KillSwitches,
   deps: BatchPlanDeps = defaultBatchPlanDeps()
 ): Promise<BatchPlanResult[]> {
   const results = new Array<BatchPlanResult>(addresses.length);
@@ -64,7 +66,7 @@ export async function planBatch(
       if (index >= addresses.length) return;
       const address = addresses[index]!;
       try {
-        const plan = await deps.buildAccountPlan(address, destination, [], network);
+        const plan = await deps.buildAccountPlan(address, destination, [], network, switches);
         results[index] = { address, plan };
       } catch (error) {
         results[index] = { address, plan: blockedPlanFor(address, error) };

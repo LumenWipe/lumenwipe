@@ -20,6 +20,7 @@ import { rawSimulation } from "./fixtures/fake-exit-adapter";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
+import { ALL_ON } from "@/config/kill-switches";
 
 beforeEach(() => {
   stubIssuance();
@@ -136,6 +137,7 @@ test("a token chosen for transfer is its own first transaction, and the close as
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const result = await buildCloseTransactions(
+    ALL_ON,
     withToken("250", { trustlines: [trustline(USDC, "100")] }),
     DEST,
     { [TOKEN]: "transfer", [USDC]: "issuer" },
@@ -170,6 +172,7 @@ test("a token left on record needs no transaction: the classic close builds stra
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const result = await buildCloseTransactions(
+    ALL_ON,
     withToken("250"),
     DEST,
     { [TOKEN]: "leave" },
@@ -198,6 +201,7 @@ test("a trustline cannot be left: the answer is refused by name, never converted
   const { buildCloseTransactions, CloseBuildError } =
     await import("@/lib/close-api/build-transactions");
   const promise = buildCloseTransactions(
+    ALL_ON,
     accountState({ trustlines: [trustline(USDC, "100")] }),
     DEST,
     { [USDC]: "leave" as never },
@@ -211,6 +215,7 @@ const affordability = { revocable: [], unaffordableOwners: new Map() };
 
 test("the plan shows a token transfer as its own step ahead of the classic close, and the close no longer fuses", () => {
   const plan = buildPlan(
+    ALL_ON,
     withToken("2500000000", { trustlines: [trustline(USDC, "0")] }),
     false,
     true,
@@ -232,6 +237,7 @@ test("the plan shows a token transfer as its own step ahead of the classic close
 
 test("a token left on record is a step with nothing to sign, shown so the review carries what stays behind", () => {
   const plan = buildPlan(
+    ALL_ON,
     withToken("7", { trustlines: [trustline(USDC, "0")] }),
     false,
     true,
@@ -250,6 +256,7 @@ test("a token left on record is a step with nothing to sign, shown so the review
 
 test("a token without a decision yet still keeps the close out of the fused shape", () => {
   const plan = buildPlan(
+    ALL_ON,
     withToken("7", { trustlines: [trustline(USDC, "0")] }),
     false,
     true,
@@ -271,6 +278,7 @@ test("a trustline answered leave is refused before any token moves: the token ro
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   let simulated = 0;
   const promise = buildCloseTransactions(
+    ALL_ON,
     withToken("250", { trustlines: [trustline(USDC, "100")] }),
     DEST,
     { [TOKEN]: "transfer", [USDC]: "leave" as never },
@@ -292,11 +300,17 @@ test("a trustline answered leave is refused before any token moves: the token ro
   expect(simulated).toBe(0);
 });
 
-test("convert for a Soroban token is refused by name until conversion is built, never left to the merge", async () => {
+test("convert for a Soroban token is refused by name while conversion is off, never left to the merge", async () => {
   spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
     rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
-  const promise = buildCloseTransactions(withToken("250"), DEST, { [TOKEN]: "convert" }, "testnet");
+  const promise = buildCloseTransactions(
+    { ...ALL_ON, sorobanConversion: false, xbullConversion: false },
+    withToken("250"),
+    DEST,
+    { [TOKEN]: "convert" },
+    "testnet"
+  );
   await expect(promise).rejects.toMatchObject({
     code: "soroban_token_conversion_unavailable",
     status: 422,
@@ -308,6 +322,7 @@ test("with conversion switched off a token's convert answer is refused; switched
     rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   const off = buildCloseTransactions(
+    { ...ALL_ON, sorobanConversion: false, xbullConversion: false },
     withToken("250"),
     DEST,
     { [TOKEN]: "convert" },
@@ -317,13 +332,14 @@ test("with conversion switched off a token's convert answer is refused; switched
     {},
     {},
     {},
-    { enabled: false, floors: { [TOKEN]: { minAmountOut: "1", provider: "soroswap" } } }
+    { floors: { [TOKEN]: { minAmountOut: "1", provider: "soroswap" } } }
   );
   await expect(off).rejects.toMatchObject({ code: "soroban_token_conversion_unavailable" });
 
   // On, with a quote but no verified Soroswap contracts on this network: the round reached the
   // registry gate, which is the last check before a build is requested.
   const on = buildCloseTransactions(
+    ALL_ON,
     withToken("250"),
     DEST,
     { [TOKEN]: "convert" },
@@ -334,7 +350,6 @@ test("with conversion switched off a token's convert answer is refused; switched
     {},
     { rpc: tokenRpc(250n) },
     {
-      enabled: true,
       floors: { [TOKEN]: { minAmountOut: "1", provider: "soroswap" } },
       deps: {
         rpc: tokenRpc(250n) as never,

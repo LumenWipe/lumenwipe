@@ -26,6 +26,7 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { authorizationOf } from "./fixtures/trustline";
+import { ALL_ON } from "@/config/kill-switches";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -264,7 +265,7 @@ describe("plan and build refuse the same issuance state", () => {
     arrangePlan();
     stubIssuance(issuance);
     stubLedgerConfirmation();
-    const plan = await buildAccountPlan(SOURCE, DEST, answers, "testnet");
+    const plan = await buildAccountPlan(SOURCE, DEST, answers, "testnet", ALL_ON);
     const planCodes = plan.blockers.map((b) => b.code).filter((c) => c.startsWith("issuer_"));
     expect(planCodes).toEqual(expected ? [expected] : []);
 
@@ -273,6 +274,7 @@ describe("plan and build refuse the same issuance state", () => {
     stubIssuance(issuance);
     stubLedgerConfirmation();
     const err = await buildCloseTransactions(
+      ALL_ON,
       state(),
       DEST,
       {},
@@ -299,7 +301,7 @@ describe("plan and build refuse the same issuance state", () => {
     arrangePlan();
     stubIssuance(ISSUING);
     stubLedgerConfirmation();
-    const plan = await buildAccountPlan(SOURCE, DEST, [], "testnet");
+    const plan = await buildAccountPlan(SOURCE, DEST, [], "testnet", ALL_ON);
     expect(plan.status).toBe("blocked");
     const point = plan.decisionPoints.find((d) => d.id === issuerSupplyDecisionId(SOURCE));
     expect(point?.subject).toMatchObject({ assetCount: 2, holderCount: 7 });
@@ -308,13 +310,15 @@ describe("plan and build refuse the same issuance state", () => {
   test("a failed supply read stops the plan and the build with a retryable error", async () => {
     arrangePlan();
     spyOn(issuancePreflight, "assessIssuance").mockRejectedValue(new IssuerReadError());
-    const planErr = await buildAccountPlan(SOURCE, DEST, [], "testnet").catch((e: unknown) => e);
+    const planErr = await buildAccountPlan(SOURCE, DEST, [], "testnet", ALL_ON).catch(
+      (e: unknown) => e
+    );
     expect(mapDomainError(PLAN_ERRORS, planErr)?.code).toBe("issuer_read_failed");
 
     mock.restore();
     arrangeBuild();
     spyOn(issuancePreflight, "assessIssuance").mockRejectedValue(new IssuerReadError());
-    const buildErr = await buildCloseTransactions(state(), DEST, {}, "testnet").catch(
+    const buildErr = await buildCloseTransactions(ALL_ON, state(), DEST, {}, "testnet").catch(
       (e: unknown) => e
     );
     expect(mapDomainError(TRANSACTION_ERRORS, buildErr)).toMatchObject({
@@ -339,7 +343,7 @@ describe("plan and build refuse the same issuance state", () => {
       started.push("supply");
       return null;
     });
-    await buildCloseTransactions(state(), DEST, {}, "testnet").catch(() => null);
+    await buildCloseTransactions(ALL_ON, state(), DEST, {}, "testnet").catch(() => null);
     expect(started.slice(0, 3).sort()).toEqual(["account", "ledger", "supply"]);
   });
 });

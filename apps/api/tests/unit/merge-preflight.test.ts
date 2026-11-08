@@ -21,6 +21,7 @@ import * as rpcModule from "@/lib/stellar/rpc";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
+import { ALL_ON } from "@/config/kill-switches";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -325,28 +326,28 @@ describe("POST close/plan", () => {
 
   test("a destination equal to the source blocks the plan", async () => {
     arrange(state(), true);
-    const plan = await buildAccountPlan(SOURCE, SOURCE, [], "testnet");
+    const plan = await buildAccountPlan(SOURCE, SOURCE, [], "testnet", ALL_ON);
     expect(plan.status).toBe("blocked");
     expect(plan.blockers.some((b) => b.message.includes("account being closed"))).toBe(true);
   });
 
   test("an unfunded destination blocks the plan", async () => {
     arrange(state(), false);
-    const plan = await buildAccountPlan(SOURCE, DEST, [], "testnet");
+    const plan = await buildAccountPlan(SOURCE, DEST, [], "testnet", ALL_ON);
     expect(plan.status).toBe("blocked");
     expect(plan.blockers.some((b) => b.message.includes("does not exist"))).toBe(true);
   });
 
   test("a sequence at the limit blocks the plan with the real explanation", async () => {
     arrange(state({ sequence: seq(-1n) }), true);
-    const plan = await buildAccountPlan(SOURCE, DEST, [], "testnet");
+    const plan = await buildAccountPlan(SOURCE, DEST, [], "testnet", ALL_ON);
     expect(plan.status).toBe("blocked");
     expect(plan.blockers.some((b) => b.message.includes("too far ahead"))).toBe(true);
   });
 
   test("a healthy account and funded destination add no blocker", async () => {
     arrange(state(), true);
-    const plan = await buildAccountPlan(SOURCE, DEST, [], "testnet");
+    const plan = await buildAccountPlan(SOURCE, DEST, [], "testnet", ALL_ON);
     expect(plan.blockers).toEqual([]);
   });
 });
