@@ -5,6 +5,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { Keypair } from "@stellar/stellar-sdk";
 import SecretKeyInput from "@/components/account-entry/SecretKeyInput";
 import { isValidSecretKey } from "@/lib/utils/validation";
+import { expectFocused } from "./fixtures/focus";
 
 afterEach(() => mock.restore());
 
@@ -160,7 +161,7 @@ test("the input keeps its protections", () => {
   expect(input.getAttribute("autocapitalize")).toBe("none");
 });
 
-test("the reveal toggle is a named, tabbable toggle button that reports its state", () => {
+test("the reveal toggle is a named, tabbable toggle button that reports its state", async () => {
   render(<Harness />);
   const button = toggle();
   expect(button.tagName).toBe("BUTTON");
@@ -170,7 +171,7 @@ test("the reveal toggle is a named, tabbable toggle button that reports its stat
   expect(button.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
 
   button.focus();
-  expect(document.activeElement).toBe(button);
+  await expectFocused(button);
 
   fireEvent.click(button);
   expect(toggle().getAttribute("aria-pressed")).toBe("true");

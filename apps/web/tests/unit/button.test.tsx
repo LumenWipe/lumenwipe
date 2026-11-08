@@ -5,6 +5,7 @@ import { createRef } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { expectSameElement } from "./fixtures/focus";
 
 test.each([
   ["primary", ["bg-accent", "text-accent-fg"]],
@@ -112,7 +113,7 @@ test("loading locks the width measured at rest and releases it afterwards", () =
 test("the ref reaches the button", () => {
   const ref = createRef<HTMLButtonElement>();
   render(<Button ref={ref}>Go</Button>);
-  expect(ref.current).toBe(screen.getByRole("button") as HTMLButtonElement);
+  expectSameElement(ref.current, screen.getByRole("button"));
 });
 
 test("the type is left to the caller", () => {
@@ -147,8 +148,8 @@ test("asChild forwards the ref to the child and keeps the child's own ref", () =
     </Button>
   );
   const link = screen.getByRole("link") as HTMLAnchorElement;
-  expect(outer.current).toBe(link);
-  expect(inner.current).toBe(link);
+  expectSameElement(outer.current, link);
+  expectSameElement(inner.current, link);
 });
 
 test("a click handler on the child still runs", () => {

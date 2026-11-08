@@ -13,6 +13,7 @@ import * as recovery from "@/lib/session/recovery";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { AssetConvertibility } from "@/lib/api/plan-adapters";
+import { expectSameElement } from "./fixtures/focus";
 
 const VALID = Keypair.random().publicKey();
 const CHECKSUM_TYPO = VALID.slice(0, -1) + (VALID.endsWith("A") ? "B" : "A");
@@ -257,7 +258,7 @@ test("reselecting the active entry mode changes nothing", () => {
 
   fireEvent.click(screen.getByRole("tab", { name: "Paste address" }));
 
-  expect(screen.getByRole("textbox", { name: "Account to close" })).toBe(input);
+  expectSameElement(screen.getByRole("textbox", { name: "Account to close" }), input);
   expect((input as HTMLInputElement).value).toBe(VALID);
   expect(connect).not.toHaveBeenCalled();
   expect(push).not.toHaveBeenCalled();

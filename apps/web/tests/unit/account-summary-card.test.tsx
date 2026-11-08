@@ -6,6 +6,7 @@ import AccountSummaryCard from "@/components/plan/AccountSummaryCard";
 import { expectedReceive, type ExpectedReceive } from "@/lib/plan/expected-receive";
 import type { AccountState } from "@/types/account";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { expectSameElement } from "./fixtures/focus";
 
 const ADDRESS = "GSOURCE0000000000000000000000000000000000000000000000000";
 
@@ -69,7 +70,7 @@ test("the summary leads with what the close is expected to deliver, as an estima
   renderCard(account, expectedFor(account), DESTINATION);
   const lead = screen.getByTestId("expected-receive");
   const body = lead.parentElement!.children;
-  expect(body[1]).toBe(lead);
+  expectSameElement(body[1], lead);
   expect(lead.textContent).toContain(`You will receive about 9.99999 XLM at ${DESTINATION}`);
   expect(screen.getByRole("button", { name: "Copy destination address" })).toBeTruthy();
   expect(lead.textContent).toContain("An estimate, after network fees.");

@@ -7,6 +7,7 @@ import { useDemolishStore } from "@/store/demolish";
 import type { AccountState } from "@/types/account";
 import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { expectFocused } from "./fixtures/focus";
 
 const SOURCE = Keypair.random().publicKey();
 const WALLET = Keypair.random().publicKey();
@@ -161,15 +162,13 @@ test("the jump opens the group and moves focus into the next open decision", asy
   await click(screen.getByRole("button", { name: "1 decision left, jump to it" }));
 
   expect(header("Claim balances").getAttribute("aria-expanded")).toBe("true");
-  expect(document.activeElement).toBe(
-    screen.getByRole("radio", { name: /^Add a CLMT trustline and claim it/ })
-  );
+  await expectFocused(screen.getByRole("radio", { name: /^Add a CLMT trustline and claim it/ }));
 });
 
 test("a destination reason moves focus to the field it names", async () => {
   await mount([]);
   await click(screen.getByRole("button", { name: "Enter a destination" }));
-  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: /Destination address/ }));
+  await expectFocused(screen.getByRole("textbox", { name: /Destination address/ }));
 });
 
 test("the page keeps one live region, and it says a count, not the list", async () => {
@@ -198,7 +197,7 @@ test("a destination reason moves focus to the field while decisions are still op
   await mount([NO_ROUTE]);
   const [destination] = screen.getAllByRole("button", { name: "Enter a destination" });
   await click(destination);
-  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Destination address" }));
+  await expectFocused(screen.getByRole("textbox", { name: "Destination address" }));
 });
 
 test("a destination typed early survives a re-plan", async () => {

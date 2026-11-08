@@ -2,6 +2,7 @@ import { afterEach, expect, mock, test } from "bun:test";
 import { useState, type ReactElement } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Tabs, type TabItem } from "@/components/ui/tabs";
+import { expectFocused } from "./fixtures/focus";
 
 afterEach(cleanup);
 
@@ -75,7 +76,7 @@ test.each([
   ["ArrowLeft", "one", "three"],
   ["Home", "three", "one"],
   ["End", "one", "three"],
-] as const)("%s from %s selects and focuses %s", (key, from, to) => {
+] as const)("%s from %s selects and focuses %s", async (key, from, to) => {
   const onChange = mock((_: Value) => {});
   render(<Harness initial={from} onChange={onChange} />);
   const name = to[0].toUpperCase() + to.slice(1);
@@ -86,7 +87,7 @@ test.each([
   expect(notPrevented).toBe(false);
   expect(onChange.mock.calls).toEqual([[to]]);
   expect(selectedNames()).toEqual([name]);
-  expect(document.activeElement).toBe(tab(name));
+  await expectFocused(tab(name));
 });
 
 test.each(["Enter", "a", "ArrowDown", "Tab"])("%s changes nothing", (key) => {

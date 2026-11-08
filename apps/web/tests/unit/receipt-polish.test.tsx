@@ -10,6 +10,7 @@ import { saveHistory } from "@/lib/session/history";
 import type { ReceiptGroup, ReceiptRecord } from "@/types/history";
 import { RECORD_VERSION } from "@/types/session";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
+import { expectFocused, expectSameElement } from "./fixtures/focus";
 
 const SOURCE = "GSOURCE00000000000000000000000000000000000000000000000000";
 const DEST = "GDESTINATION000000000000000000000000000000000000000000000";
@@ -159,7 +160,9 @@ test("the actions have one solid primary, stack below 640px and name their targe
   expect(primary.getAttribute("href")).toBe(
     `https://stellar.expert/explorer/testnet/account/${DEST}`
   );
-  expect(links.filter((l) => l.className.includes("bg-accent"))).toEqual([primary]);
+  const solid = links.filter((l) => l.className.includes("bg-accent"));
+  expect(solid.length).toBe(1);
+  expectSameElement(solid[0], primary);
 
   const another = screen.getByRole("link", { name: "Close another account" });
   expect(another.getAttribute("href")).toBe("/testnet");
@@ -183,7 +186,7 @@ test("a reopened closed receipt focuses its h1 inside a status banner and retitl
 
   const h1 = screen.getByRole("heading", { level: 1 });
   expect(h1.textContent).toBe("Account successfully merged");
-  expect(document.activeElement).toBe(h1);
+  await expectFocused(h1);
   expect(screen.getAllByRole("status").some((s) => s.contains(h1))).toBe(true);
   expect(document.title).toBe("Account closed | LumenWipe");
 });
