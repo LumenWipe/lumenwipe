@@ -7,6 +7,7 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "sideEffects": false,
   "exports": {
     ".": {
       "import": {
@@ -21,8 +22,13 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public",
     "provenance": true
@@ -41,17 +47,21 @@
     "account-merge"
   ],
   "scripts": {
-    "build": "bun run build:types && api-extractor run --local && cp dist/index.d.ts dist/index.d.cts",
+    "build": "bun run build:types && bun run build:dist",
     "build:types": "bun run --filter '@lumenwipe/types' build && tsup src/index.ts --format esm,cjs --clean && tsc -p tsconfig.build.json",
+    "build:dist": "api-extractor run --local && cp dist/index.d.ts dist/index.d.cts",
     "check-api": "api-extractor run",
+    "pack:check": "bun scripts/pack-check.ts",
+    "release:check": "bun ../../scripts/sdk-release.ts offline",
     "type-check": "bun run --filter '@lumenwipe/verify' build && tsc --noEmit && tsc -p tests/tsconfig.json --noEmit && tsc -p examples/tsconfig.json --noEmit",
-    "lint": "eslint src examples",
+    "lint": "eslint src examples scripts",
     "test": "bun run --filter '@lumenwipe/verify' build:js && bun test tests",
     "example:headless": "bun run --filter '@lumenwipe/verify' build:js && bun run examples/headless-close.ts",
     "example:plan-only": "bun run examples/plan-only.ts",
     "example:exchange": "bun run --filter '@lumenwipe/verify' build:js && bun run examples/exchange-close.ts"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
     "@eslint/js": "^10.0.1",
     "@lumenwipe/types": "workspace:*",
     "@lumenwipe/verify": "workspace:*",
@@ -63,7 +73,9 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
+    "publint": "0.3.25",
     "tsup": "^9.0.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "typescript-minimum": "npm:typescript@4.7.4"
   }
 }

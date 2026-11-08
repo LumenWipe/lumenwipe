@@ -25,9 +25,14 @@
       "allowedVersions": "<6.1.0"
     },
     {
-      "description": "The docs job stays on its runner and Node: the diagram check compares against SVGs rendered by that image's Graphviz, and Mintlify refuses Node 25 and later.",
+      "description": "The docs job stays on its runner and Node: the diagram check compares against SVGs rendered by that image's Graphviz, and Mintlify refuses Node 25 and later. The sdk row's Node 22 is the SDK's engines.node floor on purpose, so it moves with engines.node, not with Node releases.",
       "matchFileNames": [".github/workflows/ci.yml"],
       "matchDepNames": ["node", "ubuntu"],
+      "enabled": false
+    },
+    {
+      "description": "typescript-minimum is the oldest TypeScript the SDK's published declarations are checked against (packages/sdk/scripts/pack-check.ts, README Requirements). It is a measured floor, not a version to keep current: it moves only when pack:check fails against it and the README, docs and MINIMUM_TYPESCRIPT move with it.",
+      "matchDepNames": ["typescript-minimum"],
       "enabled": false
     },
     {

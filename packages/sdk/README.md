@@ -14,6 +14,14 @@ transaction happens server-side; this client just relays typed JSON and XDR stri
 npm install @lumenwipe/sdk
 ```
 
+## Requirements
+
+- Node.js 22 or later (`engines.node` is `>=22`; Node 18 and 20 are end-of-life and not tested). No
+  runtime dependencies.
+- TypeScript 4.7 or later, with `moduleResolution` set to `node16`, `nodenext` or `bundler`
+  (`bundler` needs TypeScript 5.0). The `import` and `require` entry points each ship their own
+  declarations.
+
 ## Quick start
 
 ```ts

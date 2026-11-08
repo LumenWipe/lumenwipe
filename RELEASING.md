@@ -73,32 +73,52 @@ revisions around; nothing needs to be rebuilt.
 A PR that changes what the SDK does never touches its version. It adds a line under
 `## [Unreleased]` in `packages/sdk/CHANGELOG.md` (Keep a Changelog: `Added`, `Changed`, `Fixed`,
 `Removed`), written from the consumer's point of view. That keeps `package.json` equal to the
-latest version on npm, and the bump is decided once per release by reading the whole section.
+latest version on npm once each release is published, and the bump is decided once per release by
+reading the whole section.
+
+The changelog keeps two pieces of history that must not be "fixed" with tags. `0.4.0`, `0.4.1`,
+`0.4.2`, `0.5.0` and `0.6.0` were cut in the repository but never published; each heading says
+`Not published to npm; first available in 0.5.1.` (or `0.7.0`). `0.3.x` was never released at
+all. None of them has an `sdk-v*` tag and none gets one: a tag publishes, so a historical tag would
+publish code that was never released. Only published versions get a compare link at the bottom of
+the changelog.
 
 ### The checklist
 
 1. Read `## [Unreleased]` and decide the bump (semver: breaking / feature / fix; before 1.0, a
    breaking change is a minor bump).
-2. Set `packages/sdk/package.json`'s `"version"` and `SDK_VERSION` in `packages/sdk/src/version.ts`
-   (a test fails if they differ).
+2. Set `packages/sdk/package.json`'s `"version"` and `SDK_VERSION` in `packages/sdk/src/version.ts`.
 3. Rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and open a new, empty `## [Unreleased]`
-   above it.
-4. Open a PR with just those file changes (`chore(sdk): release vX.Y.Z`). Get it merged to
-   `main` like any other PR - CI runs the same `sdk` matrix entry every other PR gets.
-5. Once merged, tag the exact commit on `main` and push the tag:
+   above it. At the bottom of the changelog, point `[Unreleased]` at
+   `compare/sdk-vX.Y.Z...HEAD` and add `[X.Y.Z]: .../compare/sdk-v<previous>...sdk-vX.Y.Z`.
+4. Set the pin in `docs/sdk/versioning.mdx` to `~X.Y.0`.
+5. Open a PR with just those file changes (`chore(sdk): release vX.Y.Z`). Get it merged to
+   `main` like any other PR. Besides the `sdk` matrix entry every PR gets, the
+   `sdk release agreement` job checks that steps 2 to 4 agree, that `X.Y.Z` is above the base
+   branch's version and npm `latest`, and that neither npm nor the tags have it yet.
+6. Once merged, tag the exact commit on `main` and push the tag:
    ```bash
    git checkout main && git pull
    git tag sdk-vX.Y.Z
    git push origin sdk-vX.Y.Z
    ```
-6. `.github/workflows/publish-sdk.yml` picks up the tag, re-runs type-check/lint/test/build,
-   double-checks the tag's version matches `package.json` (fails loudly if someone tagged the
-   wrong commit), and publishes to npm with provenance.
-7. Confirm: `npm view @lumenwipe/sdk` shows the new version as `latest`.
+7. `.github/workflows/publish-sdk.yml` picks up the tag. It checks the tag is exactly
+   `sdk-vX.Y.Z`, that its commit is on `main` and agrees with `package.json`, `SDK_VERSION`,
+   the changelog and the docs pin (`bun scripts/sdk-release.ts publish`), and that npm does not
+   have the version yet. It re-runs type-check, lint, test, `check-api` and the build, runs
+   `pack:check`, publishes the tarball `pack:check` checked with provenance, and stays red until
+   npm `latest` is the new version. It creates no GitHub release and needs no write access to the
+   repository.
+8. Optionally, publish a GitHub release for the tag with the changelog section as its notes:
+   `bun scripts/sdk-release.ts notes X.Y.Z` prints it.
 
-If a tagged run fails after the checks pass but before `npm publish` completes (a registry blip,
-say), re-run it with `workflow_dispatch` and the same tag - `dist-tag`s are still whatever they
-were, nothing is left half-published.
+Between steps 5 and 7 the version is merged but not on npm. Every check reports that as a warning,
+never a failure, so other PRs are not blocked while a release waits for its tag.
+
+If a tagged run fails before `npm publish` completes (a registry blip, say), re-run it with
+`workflow_dispatch` and the same tag; `dist-tag`s are still whatever they were. Once the version
+is on npm a re-run fails the agreement check on purpose: npm never accepts the same version twice,
+so a fix ships as the next patch release.
 
 ### What needs a changelog entry
 
@@ -130,6 +150,24 @@ or changes the content of `packages/sdk/etc/sdk.api.md`, without changing the
 `## [Unreleased]` section of `packages/sdk/CHANGELOG.md`. It publishes nothing and says nothing
 about when to release; that stays a maintainer's call.
 
+Three more checks keep the release itself consistent:
+
+- `release:check` in the `sdk` matrix entry (`bun scripts/sdk-release.ts offline`) fails when
+  `package.json`'s version has no matching newest `CHANGELOG.md` heading, when `SDK_VERSION`
+  differs, when headings are duplicated, out of order or malformed, when a compare link is wrong or
+  belongs to an unpublished version, and when the docs pin is not `~X.Y.0` for the current version.
+- The `sdk release agreement` job (`bun scripts/sdk-release.ts pr`) adds npm and the `sdk-v*` tags:
+  every npm version needs its tag and an unmarked heading, every tag a heading, npm `latest` must
+  not be ahead of `package.json`, and a release PR's version must be new to npm and to the tags and
+  above both npm `latest` and the base branch. A merged version not on npm yet is a warning.
+- `pack:check` in the `sdk` matrix entry packs the SDK and checks the tarball: exactly `LICENSE`,
+  `CHANGELOG.md`, `README.md`, `package.json` and the four `dist` files; `publint` and
+  `@arethetypeswrong/cli`; an offline install into an empty project on the minimum supported Node,
+  where `import` and `require` expose the same exports and a working client; and a type-check of
+  both entry points with the current TypeScript and with the minimum one the README names (pinned
+  as the `typescript-minimum` devDependency). `packages/sdk/LICENSE` is a copy of the root
+  `LICENSE`, and a test fails if they differ.
+
 ### The other direction: the live API outrunning an already-published SDK
 
 The gap above is about the SDK falling behind its own source. There's a second, sharper version
@@ -142,12 +180,10 @@ what it's calling.
 
 Two things make this concrete rather than theoretical:
 
-- **Most of the API has no version boundary at all.** Only `CloseController` (`close/plan`,
-  `close/transactions`, `submit`) is under `/v1`. `account`, `mediator`, `fee-bump`, `health`, and
-  `config` have no prefix, so there's no `/v2` to cut if one of them needs a breaking change -
-  today, "don't break it" is the only policy those endpoints have. Treat every field currently
-  returned or accepted by any live endpoint, versioned or not, as permanent, additive-only surface
-  until that changes.
+- **A version prefix only helps once a `/v2` exists.** Every integrator route is under `/v1` (see
+  [`apps/api`](#appsapi) above), but nothing serves a `/v2` yet, so today "don't break it" is the
+  policy for every endpoint. Treat every field currently returned or accepted by any live endpoint,
+  versioned or not, as permanent, additive-only surface until that changes.
 - **The SDK's own build now has a structural tripwire for this.** `packages/sdk/api-extractor.json`
   enables `apiReport`, which snapshots the SDK's full flattened public type surface - including
   every field pulled in from `@lumenwipe/types`, however deeply nested - into
@@ -202,10 +238,11 @@ compatibility promises for zero actual benefit to anyone outside this repo.
 
 ## Tag and environment protection
 
-`sdk-v*` tags are not currently protected - anyone with push access can push one from any branch
-and trigger a real npm publish, and the `npm-publish` GitHub environment has no required reviewers
-or branch restriction. For a two-person team this hasn't bitten anyone, but it's worth tightening
-before onboarding another maintainer:
+`sdk-v*` tags are not currently protected - anyone with push access can push one. The publish
+workflow refuses a tag whose commit is not on `main`, so a tag on a stray branch fails before
+anything is built, but a tag on any commit of `main` still publishes, and the `npm-publish` GitHub
+environment has no required reviewers. For a two-person team this hasn't bitten anyone, but it's
+worth tightening before onboarding another maintainer:
 
 - A [tag protection rule](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-tag-protection-rules)
   for `sdk-v*` restricting who can create matching tags.
