@@ -30,6 +30,14 @@ jobs:
               pkg: "@lumenwipe/sdk",
               checks: "type-check lint test build:types check-api",
             }
+          # The reference verifier, compiled from the web's verify(). `test` builds the bundle
+          # first and runs the conformance vectors against it in both module formats; the web
+          # row runs the same vectors against the source. check-api holds its public types.
+          - {
+              name: "verify",
+              pkg: "@lumenwipe/verify",
+              checks: "type-check lint test build:types check-api",
+            }
           # test:coverage runs the same suite as `test` with a coverage report printed to the
           # log - same pass/fail outcome, no threshold gate, just visibility into what's covered.
           # `build` is in the list because type-check alone cannot catch a broken build: tsc
