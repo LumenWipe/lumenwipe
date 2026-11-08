@@ -9,13 +9,19 @@
  */
 
 import { isValidGAddress } from "@/lib/utils/validation";
-import { isBundledExchange, lookupExchange } from "@/lib/exchange-registry";
+import { bundledRegistry, lookupExchange } from "@/lib/exchange-registry";
 import type { MemoFact } from "@/lib/plan/open-items";
 
 export type ChosenMemoType = "text" | "id";
 
 /** Which registry lists the destination: the bundled one, only the served one, or neither. */
 export type MemoListing = "bundled" | "served" | "unlisted";
+
+/** Whether the bundled registry lists this address. A served copy can add an exchange, but its
+ *  memo type is then the user's to state, never the served one. */
+function isBundledExchange(address: string): boolean {
+  return bundledRegistry().entries.some((e) => e.address === address);
+}
 
 export const TEXT_MEMO_MAX_BYTES = 28;
 const UINT64_MAX = BigInt("18446744073709551615");
